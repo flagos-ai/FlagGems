@@ -16102,6 +16102,17 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: npu_add_rms_norm
+  description: Fused residual addition and RMS normalization returning the output, inverse RMS and residual.
+  for:
+  - npu_add_rms_norm
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nuclear_norm
   description: 'Computes the nuclear norm (sum of singular values) of a matrix.
 

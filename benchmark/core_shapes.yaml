@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_add_rms_norm:
+  shapes:
+    - [1, 2048]
+    - [1024, 2048]
+    - [1, 3072]
+  shape_desc: "input shape"
