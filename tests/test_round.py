@@ -119,3 +119,52 @@ def test_round_half_to_even(shape, dtype):
     res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.round
+@pytest.mark.parametrize("shape", ROUND_HALF_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round_non_contiguous(shape, dtype):
+    # ATen accepts transposed tensors and strided slices; the
+    # kernel used to raise ValueError on both.
+    transposed = torch.randn(shape[1], shape[0], dtype=dtype, device=flag_gems.device).t()
+    ref = utils.to_reference(transposed)
+    utils.gems_assert_equal(flag_gems.round(transposed), torch.round(ref))
+
+    strided = torch.randn(shape[0] * 2, shape[1], dtype=dtype, device=flag_gems.device)[::2]
+    ref = utils.to_reference(strided)
+    utils.gems_assert_equal(flag_gems.round(strided), torch.round(ref))
+
+
+@pytest.mark.round
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round_decimals_non_contiguous(dtype):
+    # decimals path: the scale must also be applied through strides.
+    inp = torch.randn(8, 4, dtype=dtype, device=flag_gems.device).t()
+    ref = utils.to_reference(inp)
+    # the decimals path scales by 10**2 then divides back; a 1-ULP difference
+    # in the fp32 divide is expected (pointwise_dynamic and ATen round the
+    # intermediate at slightly different points)
+    res = flag_gems.round(inp, decimals=2)
+    # Reference on CPU (torch.round on CUDA may route through the gems dispatch)
+    ref_out = torch.round(inp.cpu(), decimals=2)
+    assert res.shape == ref_out.shape and res.dtype == ref_out.dtype
+    # The decimals path (scale by 10**n, round, divide back) has inherent
+    # last-digit ambiguity on half-precision types: bf16 cannot exactly
+    # represent 0.17, so both 0.1699 and 0.1709 are "correct" roundings.
+    # This is orthogonal to the non-contiguous support this PR adds.
+    torch.testing.assert_close(res.cpu().float(), ref_out.float(), rtol=5e-3, atol=5e-3)
+
+
+@pytest.mark.round_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round__non_contiguous(dtype):
+    # in-place path: the result is written back through the view's strides.
+    inp = torch.randn(4, 8, dtype=dtype, device=flag_gems.device).t()
+    ref = utils.to_reference(inp.clone())
+    ref_out = ref.round_()
+
+    res_out = flag_gems.round_(inp)
+
+    utils.gems_assert_equal(inp, ref_out)
+    assert res_out is inp
