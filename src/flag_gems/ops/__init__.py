@@ -554,6 +554,7 @@ from flag_gems.ops.addr_ import addr_
 from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.affine_grid_generator_backward import affine_grid_generator_backward
+from flag_gems.ops.alias import alias, alias_backward
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
@@ -2293,6 +2294,8 @@ __all__ = [
     "adjoint",
     "affine_grid_generator",
     "affine_grid_generator_backward",
+    "alias",
+    "alias_backward",
     "alias_copy",
     "alias_copy_out",
     "all",

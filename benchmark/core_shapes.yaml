@@ -1456,6 +1456,14 @@ addmm:
   shape_desc: B, M, N, K
   accuracy_shapes: *id002
   quick_shapes: *id003
+alias_backward:
+  shapes:
+  - [4096]
+  - [1048576]
+  - [64, 64]
+  - [1024, 1024]
+  - [4096, 4096]
+  shape_desc: N
 mv:
   shapes: &id004
   - [1, 2048]

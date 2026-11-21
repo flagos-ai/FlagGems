@@ -1052,6 +1052,12 @@ _FULL_CONFIG = (
     ("adjoint", adjoint),
     ("affine_grid_generator", affine_grid_generator),
     ("affine_grid_generator_backward", affine_grid_generator_backward),
+    (
+        "alias",
+        alias,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, alias),),
+    ),
     ("alias_copy", alias_copy),
     ("alias_copy.out", alias_copy_out),
     ("all", all),
