@@ -3475,6 +3475,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: chunk_backward
+  description: Computes the gradient of `torch.chunk` with respect to its input by
+    concatenating the per-chunk gradients along `dim`.
+  for:
+    - chunk_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: chunk_cat
   description: Triton kernel implementation for _chunk_cat.
   for:
