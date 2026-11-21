@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_sparse_attention_score:
+  shapes:
+    - [8, 16, 128]
+    - [1024, 16, 128]
+  shape_desc: "Tokens, heads, head dimension"
