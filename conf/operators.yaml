@@ -11991,6 +11991,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_eigh_backward
+  description: The backward computation of `linalg_eigh()`, exercised through the
+    autograd of the forward operator. ATen registers no independent backward
+    schema for eigh, so `for` points at the forward schema that carries the
+    autograd node.
+  for:
+  - linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_eigvals
   description: Computes the eigenvalues of a square matrix.
   for:

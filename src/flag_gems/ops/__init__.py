@@ -1104,7 +1104,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
-from flag_gems.ops.linalg_eigh import linalg_eigh
+from flag_gems.ops.linalg_eigh import linalg_eigh, linalg_eigh_backward
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_eigvalsh import linalg_eigvalsh, linalg_eigvalsh_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
@@ -2872,6 +2872,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_eig",
     "linalg_eigh",
+    "linalg_eigh_backward",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_eigvalsh",
