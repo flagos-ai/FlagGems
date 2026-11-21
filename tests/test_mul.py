@@ -554,3 +554,141 @@ def test_mul_complex_grid_stride_review(
     torch.npu.synchronize()
     assert launches
     torch.testing.assert_close(result.cpu(), expected, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend output cast contract"
+)
+@pytest.mark.parametrize(
+    "input_dtype,other_dtype,output_dtype",
+    [
+        (torch.float16, torch.float32, torch.float16),
+        (torch.bfloat16, torch.float32, torch.bfloat16),
+        (torch.float32, torch.float32, torch.float16),
+        (torch.float32, torch.float32, torch.bfloat16),
+        (torch.float16, torch.float16, torch.float32),
+        (torch.bfloat16, torch.bfloat16, torch.float32),
+        (torch.int8, torch.int8, torch.int64),
+        (torch.int64, torch.int64, torch.int32),
+        (torch.bool, torch.bool, torch.int32),
+        (torch.float32, torch.float32, torch.complex64),
+    ],
+)
+@pytest.mark.parametrize("strided", [False, True])
+def test_mul_out_cast_ascend(input_dtype, other_dtype, output_dtype, strided):
+    a = torch.tensor([[100, -100, 3], [1.1, -1.3, 2.2]], dtype=input_dtype)
+    b = torch.tensor([[3, 3, -2]], dtype=other_dtype)
+    expected = torch.empty(a.shape, dtype=output_dtype)
+    torch.mul(a, b, out=expected)
+    actual_a, actual_b = a.to(flag_gems.device), b.to(flag_gems.device)
+    backing = torch.full((2, 7), 17, dtype=output_dtype, device=flag_gems.device)
+    out = (
+        backing[:, 1::2]
+        if strided
+        else torch.empty_like(expected, device=flag_gems.device)
+    )
+    result = flag_gems.mul(actual_a, actual_b, out=out)
+    assert result is out
+    torch.testing.assert_close(result.cpu(), expected, atol=0, rtol=0)
+    torch.testing.assert_close(actual_a.cpu(), a, atol=0, rtol=0)
+    torch.testing.assert_close(actual_b.cpu(), b, atol=0, rtol=0)
+    if strided:
+        assert torch.all(backing.cpu()[:, ::2] == 17)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend output cast contract"
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.int8])
+@pytest.mark.parametrize("alias", [False, True])
+def test_mul_out_cast_scalar_alias_ascend(dtype, alias):
+    cpu = torch.tensor([[100, -100, 3], [1.1, -1.3, 2.2]], dtype=dtype)
+    a = cpu.to(flag_gems.device)
+    other = torch.tensor([[1.3, 2.3, 3.3]], dtype=torch.float32)
+    if dtype == torch.int8:
+        other = other.to(torch.int64)
+    output_dtype = (
+        dtype if alias else (torch.int64 if dtype == torch.int8 else torch.float32)
+    )
+    operand = other if alias else (3 if dtype == torch.int8 else 1.3)
+    expected = torch.empty(cpu.shape, dtype=output_dtype)
+    torch.mul(cpu, operand, out=expected)
+    out = a if alias else torch.empty_like(expected, device=flag_gems.device)
+    device_operand = (
+        operand.to(flag_gems.device) if isinstance(operand, torch.Tensor) else operand
+    )
+    result = flag_gems.mul(a, device_operand, out=out)
+    assert result is out
+    torch.testing.assert_close(result.cpu(), expected, atol=0, rtol=0)
+    if not alias:
+        torch.testing.assert_close(a.cpu(), cpu, atol=0, rtol=0)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend output cast guards"
+)
+@pytest.mark.parametrize(
+    "invalid", ["float_to_int", "complex_to_real", "shape", "device"]
+)
+def test_mul_out_cast_rejected_ascend(invalid):
+    a = torch.tensor([1.1, 2.2], device=flag_gems.device)
+    if invalid == "complex_to_real":
+        a = a.to(torch.complex64)
+    dtype = torch.int32 if invalid == "float_to_int" else torch.float16
+    shape = (3,) if invalid == "shape" else (2,)
+    device = "cpu" if invalid == "device" else flag_gems.device
+    out = torch.full(shape, 17, dtype=dtype, device=device)
+    with pytest.raises(RuntimeError):
+        flag_gems.mul(a, a, out=out)
+    assert torch.all(out == 17)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend output cast graph"
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_mul_out_cast_graph_ascend(dtype):
+    cpu = torch.tensor([1.1, -1.3, 2.2], dtype=dtype)
+    a = cpu.to(flag_gems.device)
+    b = torch.tensor([1.3, 2.3, 3.3], dtype=torch.float32, device=flag_gems.device)
+    output_dtype = torch.complex64 if dtype == torch.float32 else dtype
+    backing = torch.full((7,), 17, dtype=output_dtype, device=flag_gems.device)
+    out = backing[1::2]
+    flag_gems.mul(a, b, out=out)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        result = flag_gems.mul(a, b, out=out)
+    for version in (1, 2):
+        changed = cpu * (-version)
+        a.copy_(changed)
+        if out.is_complex():
+            torch.view_as_real(out).fill_(float("nan"))
+        else:
+            out.fill_(float("nan"))
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.empty(cpu.shape, dtype=output_dtype)
+        torch.mul(changed, b.cpu(), out=expected)
+        assert result is out
+        torch.testing.assert_close(result.cpu(), expected, atol=0, rtol=0)
+        assert torch.all(backing.cpu()[::2] == 17)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend output cast contract"
+)
+@pytest.mark.parametrize("shape", [(), (0, 3)])
+def test_mul_out_cast_scalar_empty_ascend(shape):
+    cpu = torch.full(shape, 1.1, dtype=torch.bfloat16)
+    a = cpu.to(flag_gems.device)
+    out = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    expected = torch.empty(shape, dtype=torch.float32)
+    torch.mul(cpu, 1.3, out=expected)
+    result = flag_gems.mul(a, 1.3, out=out)
+    assert result is out
+    torch.testing.assert_close(result.cpu(), expected, atol=0, rtol=0)

@@ -26,7 +26,7 @@ from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.libentry import LibTuner
-from flag_gems.utils.shape_utils import volume
+from flag_gems.utils.shape_utils import broadcast_shapes, volume
 
 logger = logging.getLogger(__name__)
 
@@ -1232,6 +1232,46 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 def mul(A, B, *, out=None):
     logger.debug("GEMS_ASCEND MUL")
+    if out is not None and _select_device(A, B).type == _DEVICE_NAME:
+        dtype = _result_dtype(A, B)
+        if out.dtype != dtype:
+            # can_cast examines dtype categories without launching tensor compute.
+            cast_ok = torch.can_cast(dtype, out.dtype)  # allow-torch-compute
+            if not cast_ok:
+                raise RuntimeError(
+                    f"result type {dtype} cannot be cast to output dtype {out.dtype}"
+                )
+            shapes = [
+                tuple(x.shape) if isinstance(x, torch.Tensor) else () for x in (A, B)
+            ]
+            try:
+                out_shape = broadcast_shapes(shapes)
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+            if tuple(out.shape) != out_shape:
+                raise RuntimeError(
+                    f"output with shape {tuple(out.shape)} cannot be broadcast to {out_shape}"
+                )
+            if out.device != _select_device(A, B):
+                raise RuntimeError("output must be on the same device as inputs")
+            if out.numel() == 0:
+                return out
+            # Keep input-dtype rounding/overflow before converting to out.dtype.
+            # Casting the inputs to out.dtype would change the multiplication.
+            result = mul(A, B)
+            from flag_gems import copy_
+
+            if out.is_complex():
+                # Real storage views avoid the native complex-copy fallback.
+                out_view = torch.view_as_real(out)  # allow-torch-compute
+                if result.is_complex():
+                    src_view = torch.view_as_real(result)  # allow-torch-compute
+                    copy_(out_view, src_view)
+                else:
+                    copy_(out_view[..., 0], result)
+                    copy_(out_view[..., 1], torch.zeros_like(result))
+                return out
+            return copy_(out, result)
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
