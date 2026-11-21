@@ -559,7 +559,7 @@ from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
 from flag_gems.ops.alpha_dropout_ import alpha_dropout_
 from flag_gems.ops.amax import amax
-from flag_gems.ops.amin import amin, amin_
+from flag_gems.ops.amin import amin, amin_, amin_backward
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.and_tensor import and_tensor
@@ -2304,6 +2304,7 @@ __all__ = [
     "amax",
     "amin",
     "amin_",
+    "amin_backward",
     "aminmax",
     "and_scalar",
     "and_tensor",
