@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -44,9 +46,11 @@ def _build_inputs_fn(plan, dtype, device):
     alpha = torch.rand(shape, dtype=dtype, device=device) * 9.5 + 0.5
     total = alpha.sum(-1, keepdim=True).expand_as(alpha).contiguous()
     gamma_shape = alpha if dtype == torch.float64 else alpha.float()
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float64:
+        gamma_shape = gamma_shape.cpu()
     samples = torch.distributions.Gamma(
         gamma_shape, torch.ones_like(gamma_shape)
-    ).sample().to(dtype)
+    ).sample().to(device=alpha.device, dtype=dtype)
     x = samples / samples.sum(-1, keepdim=True)
     return x, alpha, total
 

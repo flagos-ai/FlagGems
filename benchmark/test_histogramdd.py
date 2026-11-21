@@ -92,6 +92,10 @@ def _cpu_reference(inp, *, bins, range=None, weight=None, density=False):
 
 @pytest.mark.histogramdd
 def test_histogramdd():
+    if flag_gems.vendor_name == "iluvatar" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("Iluvatar has no native device histogramdd implementation")
     bench = HistogramddBenchmark(
         op_name="histogramdd",
         torch_op=_cpu_reference,
