@@ -61,6 +61,12 @@ _BENCH_CASES = [
         "none",
         None,
     ),
+    # Additional core geometries from the corresponding master overload.
+    ((16, 64, 56, 56), (128, 64, 1, 1), (1, 1), (0, 0), (1, 1), 1, "channel", 1.0),
+    ((8, 256, 64, 64), (256, 256, 3, 3), (1, 1), (1, 1), (1, 1), 1, "channel", 1.0),
+    ((16, 32, 32, 32), (32, 32, 3, 3), (1, 1), (2, 2), (2, 2), 1, "channel", 1.0),
+    ((8, 3, 224, 224), (16, 3, 3, 3), (1, 1), (1, 1), (1, 1), 1, "channel", 1.0),
+    ((16, 32, 56, 56), (32, 1, 3, 3), (1, 1), (1, 1), (1, 1), 32, "channel", 1.0),
 ]
 
 _BIAS_FORMS = ("none", "channel", "channel_11", "broadcast_1C11")
@@ -152,12 +158,15 @@ class CudnnConvolutionAddReluBenchmark(OperatorBenchmark):
 
 @pytest.mark.cudnn_convolution_add_relu
 def test_cudnn_convolution_add_relu():
+    if flag_gems.vendor_name in {"hygon", "mthreads"} and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("Native cudnn_convolution_add_relu requires cuDNN")
     bench = CudnnConvolutionAddReluBenchmark(
         op_name="cudnn_convolution_add_relu",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.cudnn_convolution_add_relu,
-        gems_op=getattr(flag_gems, "cudnn_convolution_add_relu", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()

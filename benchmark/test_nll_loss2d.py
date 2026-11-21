@@ -68,14 +68,33 @@ def test_nll_loss2d_forward():
     bench.run()
 
 
+def nll_loss_backward_build_inputs_fn(plan, dtype, device):
+    shape, variant = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    target_shape = (shape[0], *shape[2:])
+    target = torch.randint(0, shape[1], target_shape, device=device)
+    if variant == "weighted":
+        weight = torch.randn(shape[1], dtype=dtype, device=device)
+        valid_target = target[target != 1]
+        total_weight = weight[valid_target].sum()
+        grad = torch.randn(target_shape, dtype=dtype, device=device)
+        return grad, inp, target, weight, 0, 1, total_weight
+    grad = torch.randn((), dtype=dtype, device=device)
+    # Construct the count in a wide dtype before converting, as the forward
+    # reduction does. Direct half construction rejects counts above 65504.
+    total_weight = torch.full(
+        (), math.prod(target_shape), dtype=torch.float32, device=device
+    ).to(dtype)
+    return grad, inp, target, None, 1, -100, total_weight
+
+
 @pytest.mark.nll_loss2d_backward
 def test_nll_loss2d_backward():
     bench = NllLoss2dBenchmark(
         case_fn=nll_loss_case_fn,
-        build_inputs_fn=nll_loss_build_inputs_fn,
+        build_inputs_fn=nll_loss_backward_build_inputs_fn,
         op_name="nll_loss2d_backward",
-        torch_op=torch.nn.functional.nll_loss,
+        torch_op=torch.ops.aten.nll_loss2d_backward.default,
         dtypes=consts.FLOAT_DTYPES,
-        is_backward=True,
     )
     bench.run()

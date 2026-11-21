@@ -39,6 +39,18 @@ SLOW_CONV2D_BACKWARD_CASES = tu.selected_cases(
     ],
 )
 
+# Extra same-overload geometries covered by master. Keep the existing cases.
+FULL_MASK_CASES = SLOW_CONV2D_BACKWARD_CASES + tu.selected_cases(
+    [
+        ((2, 3, 8, 8), (5, 3, 1, 1), (1, 1), (1, 1), (0, 0)),
+        ((2, 4, 10, 10), (6, 4, 3, 3), (3, 3), (1, 1), (0, 0)),
+        ((3, 3, 9, 9), (4, 3, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((2, 3, 5, 5), (4, 3, 3, 3), (3, 3), (2, 2), (1, 1)),
+        ((1, 2, 7, 11), (3, 2, 2, 3), (2, 3), (2, 1), (1, 2)),
+    ],
+    quick=[],
+)
+
 SLOW_CONV2D_VALUE_RANGES_CASES = SLOW_CONV2D_BACKWARD_CASES[:4]
 
 _FULL_MASK = (True, True, True)
@@ -90,12 +102,22 @@ def _make_inputs(
     return inp, weight, grad_output
 
 
+_MUSA = flag_gems.vendor_name == "mthreads"
+
+
+def _reference_input(tensor, upcast=False):
+    if not _MUSA:
+        return tu.to_reference(tensor, upcast)
+    dtype = torch.float64 if upcast else tensor.dtype
+    return tensor.detach().to(device="cpu", dtype=dtype, copy=True)
+
+
 def _reference_output_mask(
     inp, weight, grad_output, kernel_size, stride, padding, mask, *, upcast=True
 ):
-    ref_inp = tu.to_reference(inp, upcast)
-    ref_weight = tu.to_reference(weight, upcast)
-    ref_grad_output = tu.to_reference(grad_output, upcast)
+    ref_inp = _reference_input(inp, upcast)
+    ref_weight = _reference_input(weight, upcast)
+    ref_grad_output = _reference_input(grad_output, upcast)
     return torch.ops.aten._slow_conv2d_backward.output_mask(
         ref_grad_output,
         ref_inp,
@@ -122,40 +144,20 @@ def _reduction_dims(inp_shape, weight_shape, stride, padding):
 
 
 def _assert_grads_close(
-    res, ref, in_reduce_dim, out_reduce_dim, dtype, equal_nan=False
+    res, ref, in_reduce_dim, out_reduce_dim, dtype, expected_device, equal_nan=False
 ):
-    # Masked gradients must remain None; compare computed gradients using their reduction sizes.
-    res_in_grad, res_weight_grad, res_bias_grad = res
-    ref_in_grad, ref_weight_grad, ref_bias_grad = ref
-    if ref_in_grad is None:
-        assert res_in_grad is None
-    else:
+    # Masked gradients must remain None; use each computed gradient's reduction size.
+    for result, reference, reduce_dim in zip(
+        res, ref, (in_reduce_dim, out_reduce_dim, out_reduce_dim)
+    ):
+        if reference is None:
+            assert result is None
+            continue
+        assert result.device == expected_device
+        if _MUSA:
+            result = result.cpu()
         utils.gems_assert_close(
-            res_in_grad,
-            ref_in_grad,
-            dtype,
-            reduce_dim=in_reduce_dim,
-            equal_nan=equal_nan,
-        )
-    if ref_weight_grad is None:
-        assert res_weight_grad is None
-    else:
-        utils.gems_assert_close(
-            res_weight_grad,
-            ref_weight_grad,
-            dtype,
-            reduce_dim=out_reduce_dim,
-            equal_nan=equal_nan,
-        )
-    if ref_bias_grad is None:
-        assert res_bias_grad is None
-    else:
-        utils.gems_assert_close(
-            res_bias_grad,
-            ref_bias_grad,
-            dtype,
-            reduce_dim=out_reduce_dim,
-            equal_nan=equal_nan,
+            result, reference, dtype, reduce_dim=reduce_dim, equal_nan=equal_nan
         )
 
 
@@ -186,11 +188,13 @@ def test__slow_conv2d_backward_value_ranges(case, value_range, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, equal_nan=True)
+    _assert_grads_close(
+        res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device, equal_nan=True
+    )
 
 
 @pytest.mark.underscore_slow_conv2d_backward
-@pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
+@pytest.mark.parametrize("case", FULL_MASK_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_output_mask_full(case, dtype):
     inp_shape, weight_shape, kernel_size, stride, padding = case
@@ -208,7 +212,7 @@ def test__slow_conv2d_backward_output_mask_full(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -231,7 +235,7 @@ def test__slow_conv2d_backward_grad_input_only(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -254,7 +258,7 @@ def test__slow_conv2d_backward_grad_weight_only(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -277,7 +281,7 @@ def test__slow_conv2d_backward_grad_bias_only(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -300,7 +304,7 @@ def test__slow_conv2d_backward_mixed_mask(case, mask, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -321,15 +325,15 @@ def test__slow_conv2d_backward_grad_input_out(case, dtype):
         (weight_shape[0],), 7.0, dtype=dtype, device=flag_gems.device
     )
     ref_ret = torch.ops.aten._slow_conv2d_backward.grad_input(
-        grad_output,
-        inp,
-        weight,
+        _reference_input(grad_output) if _MUSA else grad_output,
+        _reference_input(inp) if _MUSA else inp,
+        _reference_input(weight) if _MUSA else weight,
         kernel_size,
         stride,
         padding,
-        grad_input=ref_grad_input,
-        grad_weight=ref_grad_weight,
-        grad_bias=ref_grad_bias,
+        grad_input=_reference_input(ref_grad_input) if _MUSA else ref_grad_input,
+        grad_weight=_reference_input(ref_grad_weight) if _MUSA else ref_grad_weight,
+        grad_bias=_reference_input(ref_grad_bias) if _MUSA else ref_grad_bias,
     )
 
     res_grad_input = torch.full_like(inp, 7.0)
@@ -355,8 +359,10 @@ def test__slow_conv2d_backward_grad_input_out(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
-    _assert_grads_close(ref_ret, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
+    _assert_grads_close(
+        ref_ret, ref, in_reduce_dim, out_reduce_dim, dtype, ref_ret[0].device
+    )
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -375,16 +381,16 @@ def test__slow_conv2d_backward_output_mask_out(case, dtype):
     ref_out1 = torch.full_like(weight, 7.0)
     ref_out2 = torch.full((weight_shape[0],), 7.0, dtype=dtype, device=flag_gems.device)
     ref_ret = torch.ops.aten._slow_conv2d_backward.output_mask_out(
-        grad_output,
-        inp,
-        weight,
+        _reference_input(grad_output) if _MUSA else grad_output,
+        _reference_input(inp) if _MUSA else inp,
+        _reference_input(weight) if _MUSA else weight,
         kernel_size,
         stride,
         padding,
         _FULL_MASK,
-        out0=ref_out0,
-        out1=ref_out1,
-        out2=ref_out2,
+        out0=_reference_input(ref_out0) if _MUSA else ref_out0,
+        out1=_reference_input(ref_out1) if _MUSA else ref_out1,
+        out2=_reference_input(ref_out2) if _MUSA else ref_out2,
     )
 
     res_out0 = torch.full_like(inp, 7.0)
@@ -409,8 +415,10 @@ def test__slow_conv2d_backward_output_mask_out(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
-    _assert_grads_close(ref_ret, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
+    _assert_grads_close(
+        ref_ret, ref, in_reduce_dim, out_reduce_dim, dtype, ref_ret[0].device
+    )
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -427,10 +435,10 @@ def test__slow_conv2d_backward_backward(case, dtype):
     # through autograd on the fp64 upcast reference and compare against the
     # candidate's three gradients. This validates the candidate against the true
     # gradient through an independent computation path.
-    ref_inp = tu.to_reference(inp, True).requires_grad_(True)
-    ref_weight = tu.to_reference(weight, True).requires_grad_(True)
-    ref_bias = tu.to_reference(bias, True).requires_grad_(True)
-    ref_grad_output = tu.to_reference(grad_output, True)
+    ref_inp = _reference_input(inp, True).requires_grad_(True)
+    ref_weight = _reference_input(weight, True).requires_grad_(True)
+    ref_bias = _reference_input(bias, True).requires_grad_(True)
+    ref_grad_output = _reference_input(grad_output, True)
 
     fwd = torch.ops.aten._slow_conv2d_forward(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
@@ -448,7 +456,7 @@ def test__slow_conv2d_backward_backward(case, dtype):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         inp_shape, weight_shape, stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype)
+    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device)
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -479,7 +487,9 @@ def test__slow_conv2d_backward_nan_inf(dtype, scenario, special_arg):
     in_reduce_dim, out_reduce_dim = _reduction_dims(
         (2, 3, 5, 5), (2, 3, 3, 3), stride, padding
     )
-    _assert_grads_close(res, ref, in_reduce_dim, out_reduce_dim, dtype, equal_nan=True)
+    _assert_grads_close(
+        res, ref, in_reduce_dim, out_reduce_dim, dtype, inp.device, equal_nan=True
+    )
 
 
 @pytest.mark.underscore_slow_conv2d_backward
@@ -495,7 +505,13 @@ def test__slow_conv2d_backward_negative_invalid_config(case):
     # The reference rejects the inconsistent configuration...
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_backward.output_mask(
-            grad_output, inp, weight, kernel_size, stride, padding, _FULL_MASK
+            _reference_input(grad_output) if _MUSA else grad_output,
+            _reference_input(inp) if _MUSA else inp,
+            _reference_input(weight) if _MUSA else weight,
+            kernel_size,
+            stride,
+            padding,
+            _FULL_MASK,
         )
 
     # The candidate must reject the same invalid arguments.
@@ -514,7 +530,13 @@ def test__slow_conv2d_backward_negative_non_float_dtype(dtype):
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_backward.output_mask(
-            grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK
+            _reference_input(grad_output) if _MUSA else grad_output,
+            _reference_input(inp) if _MUSA else inp,
+            _reference_input(weight) if _MUSA else weight,
+            (3, 3),
+            (1, 1),
+            (0, 0),
+            _FULL_MASK,
         )
 
     with pytest.raises((TypeError, ValueError, RuntimeError)):
@@ -531,7 +553,13 @@ def test__slow_conv2d_backward_negative_non_4d_grad_output():
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_backward.output_mask(
-            grad_output, inp, weight, (3, 3), (1, 1), (0, 0), _FULL_MASK
+            _reference_input(grad_output) if _MUSA else grad_output,
+            _reference_input(inp) if _MUSA else inp,
+            _reference_input(weight) if _MUSA else weight,
+            (3, 3),
+            (1, 1),
+            (0, 0),
+            _FULL_MASK,
         )
 
     with pytest.raises((TypeError, ValueError, RuntimeError)):
@@ -564,7 +592,13 @@ def test__slow_conv2d_backward_negative_scalar_param(scalar_param):
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_backward.output_mask(
-            grad_output, inp, weight, args[0], args[1], args[2], _FULL_MASK
+            _reference_input(grad_output) if _MUSA else grad_output,
+            _reference_input(inp) if _MUSA else inp,
+            _reference_input(weight) if _MUSA else weight,
+            args[0],
+            args[1],
+            args[2],
+            _FULL_MASK,
         )
 
     with pytest.raises((TypeError, ValueError, RuntimeError)):

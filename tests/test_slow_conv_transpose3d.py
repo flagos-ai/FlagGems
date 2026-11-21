@@ -182,6 +182,85 @@ SLOW_CONV_TRANSPOSE3D_CASES = tu.selected_cases(
     ],
 )
 
+# Extra same-overload geometries covered by master. Keep the existing cases.
+TRANSPOSE_CASES = SLOW_CONV_TRANSPOSE3D_CASES + tu.selected_cases(
+    [
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (1, 1, 1),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (2, 2, 2),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (2, 1, 1),
+            (1, 0, 2),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (1, 2, 3),
+            (2, 2, 1),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (1, 1, 1),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (2, 2, 2),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (2, 1, 1),
+            (1, 0, 2),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (1, 2, 3),
+            (2, 2, 1),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+    ],
+    quick=[],
+)
+
 BIASES = tu.selected_cases([True, False], quick=[True])
 
 SUPPORTED_DTYPES = [torch.float32, torch.bfloat16, torch.float16, torch.float64]
@@ -238,6 +317,24 @@ def _make_conv_inputs(
     return inp, weight, bias
 
 
+_MUSA = flag_gems.vendor_name == "mthreads"
+
+
+def _reference_input(tensor, upcast=False):
+    if not _MUSA or tensor is None:
+        return tu.to_reference(tensor, upcast)
+    # MUSA lacks this native convolution. Preserve the reference's intended
+    # precision and gradients while evaluating the corresponding CPU ATen API.
+    dtype = torch.float64 if upcast else tensor.dtype
+    reference = tensor.detach().to(device="cpu", dtype=dtype, copy=True)
+    return reference.requires_grad_(tensor.requires_grad)
+
+
+def _comparison_output(result, expected_device):
+    assert result.device == expected_device
+    return result.cpu() if _MUSA else result
+
+
 def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     # Supplement dtype-relative tolerance for the fp64 reference with absolute reduction-error bounds.
     if dtype == torch.bfloat16:
@@ -252,7 +349,7 @@ def _assert_close(res_out, ref_out, dtype, equal_nan=False):
 @pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize(
     "inp_shape, weight_shape, kernel_size, stride, padding, output_padding, dilation",
-    SLOW_CONV_TRANSPOSE3D_CASES,
+    TRANSPOSE_CASES,
 )
 @pytest.mark.parametrize(
     "dtype",
@@ -282,9 +379,9 @@ def test_slow_conv_transpose3d(
     bias,
 ):
     inp, weight, bias_t = _make_conv_inputs(inp_shape, weight_shape, bias, dtype)
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp,
@@ -302,7 +399,7 @@ def test_slow_conv_transpose3d(
     )
 
     assert res_out.shape == ref_out.shape
-    _assert_close(res_out, ref_out, dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
 
 
 @pytest.mark.slow_conv_transpose3d
@@ -339,9 +436,9 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     inp = tu.make_input(dtype, inp_shape, value_range)
     weight = tu.make_input(dtype, weight_shape, value_range)
     bias_t = tu.make_input(dtype, (weight_shape[1],), value_range) if bias else None
-    ref_inp = tu.to_reference(inp, not tu.is_extreme_range(value_range))
-    ref_weight = tu.to_reference(weight, not tu.is_extreme_range(value_range))
-    ref_bias = tu.to_reference(bias_t, not tu.is_extreme_range(value_range))
+    ref_inp = _reference_input(inp, not tu.is_extreme_range(value_range))
+    ref_weight = _reference_input(weight, not tu.is_extreme_range(value_range))
+    ref_bias = _reference_input(bias_t, not tu.is_extreme_range(value_range))
 
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp,
@@ -361,7 +458,9 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     assert res_out.shape == ref_out.shape
     # neg-inf / +inf saturate the same way on both paths; equal_nan keeps the
     # inf + (-inf) = nan corner from being reported as a mismatch.
-    _assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_close(
+        _comparison_output(res_out, inp.device), ref_out, dtype, equal_nan=True
+    )
 
 
 @pytest.mark.slow_conv_transpose3d_out
@@ -397,9 +496,9 @@ def test_slow_conv_transpose3d_out(
     bias,
 ):
     inp, weight, bias_t = _make_conv_inputs(inp_shape, weight_shape, bias, dtype)
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     # The .out overload must write into the provided tensor and return it.
     ref_full = torch.ops.aten.slow_conv_transpose3d(
@@ -440,7 +539,7 @@ def test_slow_conv_transpose3d_out(
     assert res_ret is out
     assert res_ret.shape == ref_ret.shape
 
-    _assert_close(res_ret, ref_ret, dtype)
+    _assert_close(_comparison_output(res_ret, inp.device), ref_ret, dtype)
 
 
 @pytest.mark.slow_conv_transpose3d_backward
@@ -479,10 +578,10 @@ def test_slow_conv_transpose3d_backward(case, dtype):
 
     # Reference graph on the fp64-upcast inputs. ``detach`` keeps the upcast
     # tensors leaves so ``requires_grad_`` is legal.
-    ref_inp = tu.to_reference(inp.detach(), True).requires_grad_()
-    ref_weight = tu.to_reference(weight.detach(), True).requires_grad_()
-    ref_bias = tu.to_reference(bias.detach(), True).requires_grad_()
-    ref_grad_out = tu.to_reference(grad_out, True)
+    ref_inp = _reference_input(inp.detach(), True).requires_grad_()
+    ref_weight = _reference_input(weight.detach(), True).requires_grad_()
+    ref_bias = _reference_input(bias.detach(), True).requires_grad_()
+    ref_grad_out = _reference_input(grad_out, True)
 
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp,
@@ -505,7 +604,7 @@ def test_slow_conv_transpose3d_backward(case, dtype):
     res_out = flag_gems.slow_conv_transpose3d(
         inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
     )
-    _assert_close(res_out, ref_out.to(dtype), dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out.to(dtype), dtype)
 
     # ...and, if the candidate kernel is autograd-aware, its gradients must
     # match the reference gradients too.
@@ -521,12 +620,16 @@ def test_slow_conv_transpose3d_backward(case, dtype):
     ):
         # Native HF32 input/weight gradients differ from the CPU FP64 oracle.
         # Keep forward, bias and non-HF32 comparisons at their original tolerances.
-        utils.gems_assert_close(res_gi, ref_gi.to(dtype), dtype, atol=3e-3)
-        utils.gems_assert_close(res_gw, ref_gw.to(dtype), dtype, atol=5e-3)
+        utils.gems_assert_close(
+            _comparison_output(res_gi, inp.device), ref_gi.to(dtype), dtype, atol=3e-3
+        )
+        utils.gems_assert_close(
+            _comparison_output(res_gw, inp.device), ref_gw.to(dtype), dtype, atol=5e-3
+        )
     else:
-        _assert_close(res_gi, ref_gi.to(dtype), dtype)
-        _assert_close(res_gw, ref_gw.to(dtype), dtype)
-    _assert_close(res_gb, ref_gb.to(dtype), dtype)
+        _assert_close(_comparison_output(res_gi, inp.device), ref_gi.to(dtype), dtype)
+        _assert_close(_comparison_output(res_gw, inp.device), ref_gw.to(dtype), dtype)
+    _assert_close(_comparison_output(res_gb, inp.device), ref_gb.to(dtype), dtype)
 
 
 @pytest.mark.slow_conv_transpose3d_nan_inf
@@ -559,9 +662,9 @@ def test_slow_conv_transpose3d_nan_inf(dtype, scenario, special_arg):
     target.flatten()[: specials.numel()] = specials
     kernel_size = (1, 1, 1)
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp,
         ref_weight,
@@ -577,7 +680,7 @@ def test_slow_conv_transpose3d_nan_inf(dtype, scenario, special_arg):
         inp, weight, kernel_size, bias, (1, 1, 1), (0, 0, 0), (0, 0, 0), (1, 1, 1)
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out)
 
 
 @pytest.mark.slow_conv_transpose3d_negative
@@ -587,7 +690,14 @@ def test_slow_conv_transpose3d_rejects_output_padding_not_less_than_stride():
     )
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (2, 2, 2), (1, 1, 1), (2, 2, 2), (1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            None,
+            (2, 2, 2),
+            (1, 1, 1),
+            (2, 2, 2),
+            (1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
@@ -602,7 +712,14 @@ def test_slow_conv_transpose3d_rejects_negative_stride():
     )
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (-1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            None,
+            (-1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            (1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
@@ -617,7 +734,14 @@ def test_slow_conv_transpose3d_rejects_negative_dilation():
     )
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (1, 1, 1), (1, 1, 1), (0, 0, 0), (-1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            None,
+            (1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            (-1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
@@ -629,10 +753,18 @@ def test_slow_conv_transpose3d_rejects_negative_dilation():
 def test_slow_conv_transpose3d_rejects_int_dtype():
     inp = tu.make_input(torch.int32, (1, 2, 5, 5, 5), ["-1", "1"])
     weight = tu.make_input(torch.int32, (2, 1, 3, 3, 3), ["-1", "1"])
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
-        )
+    if not _MUSA:
+        with pytest.raises(RuntimeError):
+            torch.ops.aten.slow_conv_transpose3d(
+                inp.cpu() if _MUSA else inp,
+                weight.cpu() if _MUSA else weight,
+                (3, 3, 3),
+                None,
+                (1, 1, 1),
+                (1, 1, 1),
+                (0, 0, 0),
+                (1, 1, 1),
+            )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
             inp, weight, (3, 3, 3), None, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
@@ -645,7 +777,14 @@ def test_slow_conv_transpose3d_rejects_6d_input():
     weight = tu.make_input(torch.float32, (2, 1, 3, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            None,
+            (1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            (1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
@@ -659,7 +798,14 @@ def test_slow_conv_transpose3d_rejects_4d_weight():
     weight = tu.make_input(torch.float32, (2, 1, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            None,
+            (1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            (1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
@@ -673,7 +819,14 @@ def test_slow_conv_transpose3d_rejects_channel_mismatch():
     weight = tu.make_input(torch.float32, (3, 1, 3, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), None, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            None,
+            (1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            (1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
@@ -688,12 +841,114 @@ def test_slow_conv_transpose3d_rejects_bias_size_mismatch():
     bias = tu.make_input(torch.float32, (5,), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            inp, weight, (3, 3, 3), bias, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
+            (3, 3, 3),
+            bias.cpu() if _MUSA else bias,
+            (1, 1, 1),
+            (1, 1, 1),
+            (0, 0, 0),
+            (1, 1, 1),
         )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.slow_conv_transpose3d(
             inp, weight, (3, 3, 3), bias, (1, 1, 1), (1, 1, 1), (0, 0, 0), (1, 1, 1)
         )
+
+
+@pytest.mark.slow_conv_transpose3d
+def test_slow_conv_transpose3d_strided_bias():
+    """A non-contiguous bias must be indexed by logical channel, not storage."""
+    # bias = arange(12)[::2] holds [0, 2, 4, 6, 8, 10] with stride 2; the kernel
+    # must not read the interleaved storage as [0, 1, 2, 3, 4, 5].
+    shape = (1, 3, 5, 5, 5)
+    weight_shape = (3, 6, 2, 2, 2)
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.arange(12, device=flag_gems.device, dtype=dtype)[::2]
+    assert not bias.is_contiguous()
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
+
+    kernel_size = [2, 2, 2]
+    stride = [1, 1, 1]
+    padding = [0, 0, 0]
+    output_padding = [0, 0, 0]
+    dilation = [1, 1, 1]
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp,
+        ref_weight,
+        kernel_size,
+        ref_bias,
+        stride,
+        padding,
+        output_padding,
+        dilation,
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_transpose3d
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_slow_conv_transpose3d_output_padding_dilation(dtype):
+    """Non-trivial output padding and dilation exercise the size formula."""
+    # A small 4x6x6 input keeps this extra case cheap on top of the main grid.
+    shape = (1, 2, 4, 6, 6)
+    weight_shape = (2, 3, 2, 2, 2)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    kernel_size = [2, 2, 2]
+    stride = [2, 2, 2]
+    padding = [0, 1, 1]
+    output_padding = [1, 1, 0]
+    dilation = [2, 2, 2]
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp,
+        ref_weight,
+        kernel_size,
+        None,
+        stride,
+        padding,
+        output_padding,
+        dilation,
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, None, stride, padding, output_padding, dilation
+    )
+
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_transpose3d
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_slow_conv_transpose3d_scalar_stride(dtype):
+    """Scalar int stride/padding are broadcast across all three spatial dims."""
+    # Odd-sized volume (1, 3, 5, 7, 9): exercises the int-broadcast path where
+    # the reference API needs explicit triples but the wrapper takes scalars.
+    shape = (1, 3, 5, 7, 9)
+    weight_shape = (3, 4, 3, 3, 3)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp, ref_weight, [3, 3, 3], None, [2, 2, 2], [1, 1, 1], [0, 0, 0], [1, 1, 1]
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, 3, None, stride=2, padding=1, output_padding=0, dilation=1
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
 
 
 @pytest.fixture(autouse=True)

@@ -44,6 +44,9 @@ _SLOW_CONV2D_BACKWARD_SHAPES = [
     (2, 3, 4, 4, 5, 3, 3, 1, 0),
     (64, 32, 8, 8, 64, 3, 3, 1, 1),
     (8, 64, 16, 16, 64, 3, 3, 2, 1),
+    # Additional core geometries from the corresponding master overload.
+    (8, 8, 16, 16, 16, 3, 3, 1, 0),
+    (4, 16, 32, 32, 32, 3, 3, 1, 0),
 ]
 
 _FULL_MASK = (True, True, True)
@@ -88,12 +91,15 @@ class SlowConv2dBackwardBenchmark(OperatorBenchmark):
 
 @pytest.mark.underscore_slow_conv2d_backward
 def test__slow_conv2d_backward():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("MUSA lacks the native _slow_conv2d_backward.output_mask reference")
     bench = SlowConv2dBackwardBenchmark(
         op_name="_slow_conv2d_backward",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._slow_conv2d_backward.output_mask,
-        gems_op=getattr(flag_gems, "_slow_conv2d_backward", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

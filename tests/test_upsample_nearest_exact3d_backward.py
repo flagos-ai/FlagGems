@@ -28,6 +28,60 @@ CASES = [
 ]
 
 
+def _nearest_exact3d_backward_cpu(grad_output, output_size, input_size, *scales):
+    # Scatter the output gradient to the input sample selected by each
+    # nearest-exact forward coordinate. Explicit scales may leave part of the
+    # output beyond the input grid; the CUDA backward drops those contributions.
+    scales = scales or (None, None, None)
+    input_depth, input_height, input_width = input_size[-3:]
+    indices = []
+    for source, output, scale in zip(input_size[-3:], output_size, scales):
+        factor = scale if scale is not None and scale > 0 else output / source
+        index = ((torch.arange(output, dtype=torch.float64) + 0.5) / factor).floor()
+        indices.append(index.long())
+    depth, height, width = torch.meshgrid(*indices, indexing="ij")
+    valid = (depth < input_depth) & (height < input_height) & (width < input_width)
+    flat_index = (depth[valid] * input_height + height[valid]) * input_width + width[
+        valid
+    ]
+
+    acc_dtype = {
+        torch.float64: torch.float64,
+        torch.uint8: torch.int64,
+    }.get(grad_output.dtype, torch.float32)
+    batch, channels = input_size[:2]
+    totals = torch.zeros(
+        (batch, channels, input_depth * input_height * input_width), dtype=acc_dtype
+    )
+    values = grad_output.to(device="cpu", dtype=acc_dtype)[..., valid]
+    totals.scatter_add_(2, flat_index.expand(batch, channels, -1), values)
+    return totals.reshape(input_size).to(grad_output.dtype)
+
+
+def _reference(grad_output, output_size, input_size, *scales):
+    if flag_gems.vendor_name == "mthreads":
+        # MUSA eager uses legacy-nearest mapping for uneven resize ratios.
+        return _nearest_exact3d_backward_cpu(
+            grad_output, output_size, input_size, *scales
+        )
+    if scales == (1.5, 2.5, 0.75):
+        # Native CPU clamps gradients for inconsistent explicit scales, unlike CUDA.
+        result = torch.ops.aten._upsample_nearest_exact3d_backward.default(
+            grad_output, output_size, input_size, *scales
+        )
+        return result.cpu() if utils.TO_CPU else result
+    return torch.ops.aten._upsample_nearest_exact3d_backward.default(
+        utils.to_reference(grad_output), output_size, input_size, *scales
+    )
+
+
+def _assert_result(result, ref, grad_output):
+    assert result.device == grad_output.device
+    if flag_gems.vendor_name == "mthreads":
+        result = result.cpu()
+    utils.gems_assert_close(result, ref, grad_output.dtype)
+
+
 @pytest.mark.upsample_nearest_exact3d_backward
 @pytest.mark.underscore_upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("input_size,output_size,scales", CASES)
@@ -35,9 +89,6 @@ CASES = [
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin cannot preserve float64 input storage")
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float64:
-        if not utils.TO_CPU or scales == (1.5, 2.5, 0.75):
-            pytest.skip("MUSA native nearest-exact3d backward does not support float64")
     if flag_gems.vendor_name == "ascend":
         uses_device_reference = not utils.TO_CPU or scales == (1.5, 2.5, 0.75)
         if dtype == torch.float64 and uses_device_reference:
@@ -52,23 +103,12 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
         (*input_size[:2], *output_size), dtype=dtype, device=flag_gems.device
     )
     assert grad_output.dtype == dtype
-    if scales == (1.5, 2.5, 0.75):
-        # Native CPU ignores inconsistent explicit scales in this overload,
-        # whereas CUDA uses them.  FlagGems implements the CUDA dispatch key.
-        ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-            grad_output, output_size, input_size, *scales
-        )
-        if utils.TO_CPU:
-            ref = ref.cpu()
-    else:
-        ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-            utils.to_reference(grad_output), output_size, input_size, *scales
-        )
+    ref = _reference(grad_output, output_size, input_size, *scales)
     result = flag_gems._upsample_nearest_exact3d_backward(
         grad_output, output_size, input_size, *scales
     )
 
-    utils.gems_assert_close(result, ref, dtype)
+    _assert_result(result, ref, grad_output)
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
@@ -87,12 +127,19 @@ def test_upsample_nearest_exact3d_backward_uint8():
         dtype=torch.uint8,
         device=flag_gems.device,
     )
-    ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-        grad_output, output_size, input_size
-    )
+    if flag_gems.vendor_name == "mthreads":
+        ref = _nearest_exact3d_backward_cpu(grad_output, output_size, input_size)
+    else:
+        ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
+            grad_output, output_size, input_size
+        )
     result = flag_gems._upsample_nearest_exact3d_backward(
         grad_output, output_size, input_size
     )
+    assert result.device == grad_output.device
+    assert result.dtype == grad_output.dtype
+    if flag_gems.vendor_name == "mthreads":
+        result = result.cpu()
     assert torch.equal(result, ref)
 
 
@@ -110,13 +157,11 @@ def test_upsample_nearest_exact3d_backward_noncontiguous(dtype):
     grad_output = base[:, :, ::2, ::2, ::2]
     assert not grad_output.is_contiguous()
 
-    ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-        utils.to_reference(grad_output), output_size, input_size
-    )
+    ref = _reference(grad_output, output_size, input_size)
     result = flag_gems._upsample_nearest_exact3d_backward(
         grad_output, output_size, input_size
     )
-    utils.gems_assert_close(result, ref, dtype)
+    _assert_result(result, ref, grad_output)
 
 
 @pytest.mark.upsample_nearest_exact3d_backward_grad_input

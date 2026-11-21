@@ -104,6 +104,52 @@ SLOW_CONV_TRANSPOSE3D_SHAPES = [
         (0, 0, 0),
         (1, 1, 1),
     ),
+    # Additional core geometries from the corresponding master overload.
+    (
+        (2, 4, 8, 16, 16),
+        (4, 8, 3, 3, 3),
+        (3, 3, 3),
+        (1, 1, 1),
+        (0, 0, 0),
+        (0, 0, 0),
+        (1, 1, 1),
+    ),
+    (
+        (1, 8, 6, 8, 8),
+        (8, 4, 2, 2, 2),
+        (2, 2, 2),
+        (2, 2, 2),
+        (0, 0, 0),
+        (0, 0, 0),
+        (1, 1, 1),
+    ),
+    (
+        (2, 8, 8, 16, 16),
+        (8, 16, 3, 3, 3),
+        (3, 3, 3),
+        (2, 2, 2),
+        (1, 1, 1),
+        (0, 0, 0),
+        (1, 1, 1),
+    ),
+    (
+        (1, 16, 8, 8, 8),
+        (16, 8, 3, 3, 3),
+        (3, 3, 3),
+        (1, 1, 1),
+        (1, 1, 1),
+        (0, 0, 0),
+        (1, 1, 1),
+    ),
+    (
+        (2, 16, 10, 10, 10),
+        (16, 32, 2, 2, 2),
+        (2, 2, 2),
+        (2, 2, 2),
+        (1, 1, 1),
+        (0, 0, 0),
+        (1, 1, 1),
+    ),
 ]
 
 
@@ -178,6 +224,10 @@ class SlowConvTranspose3dBenchmark(OperatorBenchmark):
 
 @pytest.mark.slow_conv_transpose3d
 def test_slow_conv_transpose3d():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("MUSA lacks the native slow_conv_transpose3d reference")
     bench = SlowConvTranspose3dBenchmark(
         op_name="slow_conv_transpose3d",
         case_fn=_case_fn,
@@ -186,7 +236,6 @@ def test_slow_conv_transpose3d():
         # flag_gems.slow_conv_transpose3d may not exist until the candidate is
         # generated; Benchmark._candidate_call still finds the process-local KernelGen
         # override for this op_name.
-        gems_op=getattr(flag_gems, "slow_conv_transpose3d", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
