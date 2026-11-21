@@ -585,7 +585,8 @@ from .index_copy_ import (  # noqa: F401  (registered via _FULL_CONFIG)
 from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
-from .index_reduce import index_reduce, index_reduce_, index_reduce_out
+from .index_reduce import index_reduce_
+from .index_reduce_functional import index_reduce, index_reduce_out
 from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inverse import inverse
