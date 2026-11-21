@@ -58,6 +58,7 @@ from .gemm_utils import (
     gemm_replay_benchmarker,
     gemm_storage_is_wide,
     gemm_tuning_key,
+    supports_hcu_features,
     supports_hcu_options,
     try_gemm_candidate,
 )
@@ -1879,6 +1880,8 @@ class SharedMMConfig:
 
     def supports(self, a, b, c, *, async_load=True):
         """Check vector alignment, storage disjointness and address bounds."""
+        if not _shared_address_supported(self.address_mode):
+            return False
         if any(t.ndim != 2 for t in (a, b, c)):
             return False
         m, k = a.shape
@@ -1928,19 +1931,14 @@ class SharedMMConfig:
         )
 
 
-_SHARED_ADDRESS_HCU_OPTIONS = dict(
-    coalesce_lgkm_waits=True,
-    combine_shifted_disjoint_or=True,
-    buffer_store_split_immediate=True,
-    buffer_store_preserve_masked_base=True,
-)
-
-
 @cache
-def _shared_address_supported():
-    return supports_hcu_options(
-        (*_SHARED_ADDRESS_HCU_OPTIONS, "buffer_store_scalar_offset")
-    )
+def _shared_address_supported(mode="scalar"):
+    if mode == "direct":
+        return True
+    options = ("coalesce_lgkm_waits",)
+    if mode == "scalar":
+        options += ("buffer_store_address_mode",)
+    return supports_hcu_options(options)
 
 
 @cache
@@ -1968,22 +1966,19 @@ def _shared_compile_parameters(config, transposed_b):
                 "compiler does not support physical record-pitch selection"
             )
         options["normalize_buffer_record_pitch"] = False
+    # The historical "fold" candidate selects native wait coalescing. Its
+    # scalar-address flag was false, so immediate/base store options were inert.
+    # Keep the candidate identity while checking/setting each real capability.
     if config.address_mode != "direct":
-        options.update(
-            **_SHARED_ADDRESS_HCU_OPTIONS,
-            buffer_store_scalar_offset=config.address_mode == "scalar",
-        )
+        options["coalesce_lgkm_waits"] = True
+    if config.address_mode == "scalar":
+        options["buffer_store_address_mode"] = "scalar-fold"
     if not config.local_prefetch:
         options["schedule_hint"] = "none"
     if config.pair_columns:
         options["mmac_pair_columns"] = True
-        # Packed A with folded addresses uses the same paired output
-        # lowering as the unpacked folded path.
-        if not config.a_row_padding or config.address_mode == "fold":
-            if supports_hcu_options(("buffer_store_factor_offsets",)):
-                options["buffer_store_factor_offsets"] = True
-            if supports_hcu_options(("pack_bf16_rounds",)):
-                options["pack_bf16_rounds"] = True
+        if supports_hcu_options(("buffer_store_factor_offsets",)):
+            options["buffer_store_factor_offsets"] = True
     # Cache immutable items; callers never share a mutable options dictionary.
     return tuple(options.items())
 
@@ -2160,7 +2155,7 @@ def _shared_packed_a_candidates(m, n, k, compute_units):
     if (
         tall_tiles <= compute_units <= 2 * tall_tiles
         and m * (k + tall.a_row_padding) <= k * n
-        and _shared_address_supported()
+        and _shared_address_supported(tall.address_mode)
     ):
         return (tall,)
     return ()
@@ -2369,13 +2364,9 @@ _COOPERATIVE_HCU_OPTIONS = dict(
     mmac_transposed=True,
     mmac_pair_columns=True,
     disable_llvm_loop_unroll=True,
-    structured_register_prepack_address=True,
-    structured_register_unclamped_column=True,
     priority_after_first_mmac=True,
-    buffer_store_scalar_offset=True,
+    buffer_store_address_mode="scalar",
     interleave_global_lds_reads=True,
-    interleave_global_lds_reads_fences=True,
-    tupled_register_fences=True,
 )
 if supports_hcu_options(("mmac_operand_reuse",)):
     _COOPERATIVE_HCU_OPTIONS["mmac_operand_reuse"] = True
@@ -2389,7 +2380,8 @@ def _cooperative_supported():
         return False
     gpu = getattr(tle, "gpu", None)
     return (
-        supports_hcu_options(_COOPERATIVE_HCU_OPTIONS)
+        supports_hcu_features(("readonly_interleave",))
+        and supports_hcu_options(_COOPERATIVE_HCU_OPTIONS)
         and all(
             callable(op)
             for op in (
@@ -3264,8 +3256,9 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False, expanded=False):
         return ()
     local_configs = local_split_mm_configs()
     shared_configs = shared_mm_configs() if _shared_supported() else ()
-    if shared_configs and not _shared_address_supported():
-        shared_configs = tuple(c for c in shared_configs if c.address_mode == "direct")
+    shared_configs = tuple(
+        c for c in shared_configs if _shared_address_supported(c.address_mode)
+    )
     if expanded and shared_configs and not splitk_pool:
         compute_units = torch_device_fn.get_device_properties(
             a.device

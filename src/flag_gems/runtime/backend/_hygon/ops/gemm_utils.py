@@ -101,6 +101,17 @@ class GemmChoiceCache:
             self._choices.clear()
 
 
+def supports_hcu_features(features):
+    """Check behavior contracts without depending on internal tuning flags."""
+    try:
+        from triton.backends.hcu.compiler import HIPBackend
+
+        query = getattr(HIPBackend, "get_codegen_capabilities", None)
+        return callable(query) and set(features).issubset(query())
+    except (ImportError, AttributeError):
+        return False
+
+
 def supports_hcu_options(options):
     try:
         from triton.backends.hcu.compiler import HIPOptions
