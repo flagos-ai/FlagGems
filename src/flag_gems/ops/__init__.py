@@ -1087,6 +1087,7 @@ from flag_gems.ops.leaky_relu import (
     leaky_relu,
     leaky_relu_,
     leaky_relu_backward,
+    leaky_relu_backward_,
     leaky_relu_out,
 )
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -2843,6 +2844,7 @@ __all__ = [
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_backward",
+    "leaky_relu_backward_",
     "leaky_relu_out",
     "lerp_scalar",
     "lerp_scalar_",

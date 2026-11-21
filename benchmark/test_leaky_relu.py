@@ -81,3 +81,17 @@ def test_leaky_relu_backward():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.leaky_relu_backward_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_leaky_relu_backward_():
+    bench = LeakyReluBackwardBenchmark(
+        op_name="leaky_relu_backward_",
+        torch_op=torch.ops.aten.leaky_relu_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.leaky_relu_backward_)
+    bench.run()

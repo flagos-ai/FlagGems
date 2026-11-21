@@ -141,6 +141,19 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
     return grad_input
 
 
+def leaky_relu_backward_(grad_output, self, negative_slope=0.01, self_is_result=False):
+    """In-place variant of ``leaky_relu_backward``.
+
+    The backward result is written into ``grad_output`` and the same tensor is
+    returned. A scratch buffer is used internally because the autotuned kernel
+    must not read back a partially transformed buffer.
+    """
+    logger.debug("GEMS LEAKY_RELU_BACKWARD_")
+    grad_input = leaky_relu_backward(grad_output, self, negative_slope, self_is_result)
+    grad_output.copy_(grad_input)
+    return grad_output
+
+
 def leaky_relu_(A, negative_slope=0.01):
     logger.debug("GEMS LEAKY_RELU_")
     if not A.is_contiguous():
