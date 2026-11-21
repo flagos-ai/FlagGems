@@ -164,3 +164,16 @@ def test_remainder_scalar_tensor(shape, dtype):
     res_out = flag_gems.remainder(scalar, inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.remainder_scalar
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_remainder_scalar_float(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    divisor = scalar if scalar != 0 else 1.0
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.remainder(ref_inp, divisor)
+    res_out = flag_gems.remainder(inp, divisor)
+    utils.gems_assert_close(res_out, ref_out, dtype)
