@@ -702,7 +702,8 @@ from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indice
 from .max_unpool3d import max_unpool3d  # noqa: F401
 from .maximum import maximum
 from .mean import mean, mean_dim
-from .median import median, median_dim, median_dim_values, median_out
+from .median import median, median_dim, median_out
+from .median_dim_values import median_dim_values
 from .min import min, min_dim
 from .minimum import minimum
 from .miopen_batch_norm import miopen_batch_norm
