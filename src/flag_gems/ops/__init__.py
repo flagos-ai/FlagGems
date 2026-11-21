@@ -1237,7 +1237,7 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.mH import mH
 from flag_gems.ops.min import min, min_dim
-from flag_gems.ops.minimum import minimum
+from flag_gems.ops.minimum import minimum, minimum_backward
 from flag_gems.ops.miopen_batch_norm import miopen_batch_norm
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
@@ -3013,6 +3013,7 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "minimum_backward",
     "miopen_batch_norm",
     "miopen_batch_norm_backward",
     "mish",
