@@ -1,0 +1,30 @@
+{
+  "cases": 207,
+  "complete_timing": 207,
+  "new_correct": 161,
+  "qualified_fg_pairs": 150,
+  "qualified_fg_das_pairs": 149,
+  "target90": 122,
+  "regressions": [],
+  "source_fingerprints": {
+    "src/flag_gems/runtime/backend/_hygon/ops/mm.py": "13b60c5fdae220fe2be36663685f88121f2aa2243ab1d8258e7095c54a8d74c2",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_bank_kernels.py": "005dd99095708e5cf05684b8e9fa9db98668c9ac82ec8415cc59e14e84eb570b",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_bank_tail_kernels.py": "360acee0da75174ccb3c129d681cdbea50c7cd512e2d3cc00c3bffd5e3cbe690",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_cache_kernels.py": "9f66972de6ce1ff7d7eaa284b010657dbbfd3efc7a6318d9d7e868ca598aa8a4",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_config.py": "11586a3c94854cfbbea4fabe5f1b96dee20b5a6ae055d36ee31c3b3290bd2430",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_fast_split_kernels.py": "85fadf12a30ab5e210ac2d8c718e9e7fb66be3bc14207dde572bff301a5964ef",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_kernels.py": "419261edee1297ae0462d24cb7aac68ee5b923eed05976dc0cb0e882e03e273d",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_coalesced.py": "a20e239fd86ae6c50a4000eacbb47fb68ce6ebf474d78e15cd8ed8e0add0f168",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_coopfast.py": "431dfe7bb5d8cf0e294399b3bf844e399632aed67028a94e2e2a0eff37460cd4",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_operands.py": "f90a0db56fe4438c18c28a79e6ed4ec4813bdf5b9a1ef4e0f57ee07fdc1bf09e",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_peel.py": "19e60f80e94ad0cb2d77532d5a043d5d45a3a3ddbc0a2391e46d17eefba27bef",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_pipeline.py": "fdca4ae73569a32fa22173c3d7dff84701c836d08d73d8bd9ab590f6a6f737dc",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_prefetch.py": "6ffd0a2341b32967f99229fae082211e570cc17336485343e20b04b187ba46c1",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_rawpipe.py": "c7d88c8a9f69362e7097e93f227c5542f7838ead19a2f9f05bd37c815e1008bc",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_reshape.py": "dccaad95af455372a045785993876d3fe0db71c617e71947f885d198d3c2cd37",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_mmac_swizzle.py": "3f1597021222bf63431285847837d69118e70359d478e82b4d0e2976a027218f",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_native_fp32_kernels.py": "5b9f7de5987409ae8f5692b87d0a922955af57831e9a046ac2815f295562a95f",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_outer_kernels.py": "c84594250af8f98c19cfaba613dd8e1a212d6cae34b7c96c7893f1ef866a597a",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm_split_kernels.py": "1c95d6d957e5f780606cfb01fc4846a0b630275c21f1f7092d3b31c3c64ee4bd"
+  }
+}

@@ -1,0 +1,5385 @@
+[
+  {
+    "case": 940000,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            512,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 57,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940001,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            10,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            512,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 58,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940002,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            16
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            16,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            16
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 59,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940003,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            1536
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            1536,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 60,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940004,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            1152
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1152,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            1152,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            1152
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 61,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940005,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            128,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            128,
+            16
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            128
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 62,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940006,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            512,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 63,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940007,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            512,
+            64
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 64,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940008,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            490,
+            64
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            64,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            64,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            64
+          ],
+          "storage_offset": 0,
+          "contiguous": false,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 65,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940009,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "shape": [
+            10,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 0
+        },
+        {
+          "shape": [
+            512,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "stride": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "contiguous": true,
+          "alias_group": 1
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 66,
+        "model": "MatterGen",
+        "owner": "万"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940046,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            13,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            2
+          ],
+          "storage_offset": 81920,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 400,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6136766175386165929
+  },
+  {
+    "case": 940047,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            2,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            1,
+            16
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 401,
+        "model": "MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4710480936036309487
+  },
+  {
+    "case": 940048,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            119,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 402,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6482756703971239001
+  },
+  {
+    "case": 940049,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            18,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            3,
+            2
+          ],
+          "storage_offset": 131072,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 403,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4275241557019985066
+  },
+  {
+    "case": 940050,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            64,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            32,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 404,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 516183049628284894
+  },
+  {
+    "case": 940051,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            7,
+            9
+          ],
+          "storage_offset": 0,
+          "stride": [
+            180,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            9,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 405,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7336162757066780131
+  },
+  {
+    "case": 940052,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            14,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            20,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            9
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            9,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 406,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4635291172438831426
+  },
+  {
+    "case": 940053,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            10,
+            7
+          ],
+          "storage_offset": 0,
+          "stride": [
+            7,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            7,
+            2
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 407,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6329599794905971106
+  },
+  {
+    "case": 940054,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            2,
+            16
+          ],
+          "stride": [
+            1,
+            2
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            16,
+            7
+          ],
+          "stride": [
+            1,
+            16
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 408,
+        "model": "MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3657348021412845902
+  },
+  {
+    "case": 940055,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            79,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 409,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4634752354471524273
+  },
+  {
+    "case": 940056,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            64,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            128
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 410,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6453855109930059549
+  },
+  {
+    "case": 940057,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            24,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            3,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 411,
+        "model": "DPA-3; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3597016903156628138
+  },
+  {
+    "case": 940058,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            7,
+            9
+          ],
+          "storage_offset": 0,
+          "stride": [
+            9,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            9,
+            9
+          ],
+          "storage_offset": 0,
+          "stride": [
+            9,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 412,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3477517525695723297
+  },
+  {
+    "case": 940059,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            57
+          ],
+          "storage_offset": 0,
+          "stride": [
+            57,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            57,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            512
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 413,
+        "model": "MatterGen",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 764694627201926243
+  },
+  {
+    "case": 940060,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            12,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            5,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            89
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 414,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6582389140340722508
+  },
+  {
+    "case": 940061,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            56,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 415,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6871093413426978914
+  },
+  {
+    "case": 940062,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            28,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 416,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1430689896739043851
+  },
+  {
+    "case": 940063,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            14,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            20,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            5
+          ],
+          "storage_offset": 1024,
+          "stride": [
+            5,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 417,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8573701418643017515
+  },
+  {
+    "case": 940064,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            17,
+            4
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            4,
+            4
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            4,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 418,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 310563316681724352
+  },
+  {
+    "case": 940065,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            20,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            3,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            3
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 419,
+        "model": "La-Proteina; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4334479312565482551
+  },
+  {
+    "case": 940066,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            62
+          ],
+          "storage_offset": 0,
+          "stride": [
+            62,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            62,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 420,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7975440531361618644
+  },
+  {
+    "case": 940067,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            10,
+            7
+          ],
+          "storage_offset": 0,
+          "stride": [
+            28,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            7,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 421,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6722602107151258128
+  },
+  {
+    "case": 940068,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            26,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 49152,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 422,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 720398365839506165
+  },
+  {
+    "case": 940069,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            28,
+            37
+          ],
+          "storage_offset": 0,
+          "stride": [
+            740,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            37,
+            18
+          ],
+          "storage_offset": 0,
+          "stride": [
+            18,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 423,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7599663585930203037
+  },
+  {
+    "case": 940070,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1024,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            32,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 424,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6052464917802498265
+  },
+  {
+    "case": 940071,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            4,
+            229
+          ],
+          "storage_offset": 0,
+          "stride": [
+            229,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            229,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            512
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 425,
+        "model": "MatterGen",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4873637021278450425
+  },
+  {
+    "case": 940072,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            238,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            7
+          ],
+          "storage_offset": 0,
+          "stride": [
+            7,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 426,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4873758349099425989
+  },
+  {
+    "case": 940073,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            158,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 427,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6386591421311249390
+  },
+  {
+    "case": 940074,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            142,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            2
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 428,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7166939670313747885
+  },
+  {
+    "case": 940075,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            223,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            9
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            9,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 429,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5557088918878648050
+  },
+  {
+    "case": 940076,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            57,
+            18
+          ],
+          "storage_offset": 0,
+          "stride": [
+            72,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            18,
+            36
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            36,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 430,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5390036462660166651
+  },
+  {
+    "case": 940077,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [
+            173,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "requires_grad": true,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            2
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 431,
+        "model": "GenScore; La-Proteina; MatterGen; Protenix",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3141973235096804781
+  },
+  {
+    "case": 940078,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            51,
+            20
+          ],
+          "storage_offset": 0,
+          "stride": [
+            20,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            20,
+            7
+          ],
+          "storage_offset": 81920,
+          "stride": [
+            7,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 432,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5962466469328283831
+  },
+  {
+    "case": 940079,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1024,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            128
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 433,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5951882088240030222
+  },
+  {
+    "case": 940080,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            20,
+            13
+          ],
+          "storage_offset": 0,
+          "stride": [
+            13,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            13,
+            4
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            4,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 434,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 2556975691415441206
+  },
+  {
+    "case": 940081,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            37,
+            7
+          ],
+          "storage_offset": 0,
+          "stride": [
+            7,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            7,
+            3
+          ],
+          "storage_offset": 131072,
+          "stride": [
+            3,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 435,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4893473743304892617
+  },
+  {
+    "case": 940082,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            158,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2,
+            3
+          ],
+          "storage_offset": 4096,
+          "stride": [
+            3,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 436,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8224890665862626869
+  },
+  {
+    "case": 940083,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            55,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 437,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 2629764028799856531
+  },
+  {
+    "case": 940084,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            96,
+            11
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            11,
+            11
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 438,
+        "model": "DPA-3; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8400478247507744782
+  },
+  {
+    "case": 940085,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            14,
+            18
+          ],
+          "storage_offset": 0,
+          "stride": [
+            18,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            18,
+            18
+          ],
+          "storage_offset": 0,
+          "stride": [
+            18,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 439,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3153649815947897254
+  },
+  {
+    "case": 940086,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            82,
+            13
+          ],
+          "storage_offset": 0,
+          "stride": [
+            13,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            13,
+            20
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            13
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 440,
+        "model": "La-Proteina; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 9211526069185565550
+  },
+  {
+    "case": 940087,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            4,
+            246
+          ],
+          "storage_offset": 0,
+          "stride": [
+            246,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            246,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 441,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1388257574360005376
+  },
+  {
+    "case": 940088,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            2,
+            45
+          ],
+          "stride": [
+            1,
+            2
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            45,
+            20
+          ],
+          "stride": [
+            1,
+            45
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 442,
+        "model": "MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3743722852582639548
+  },
+  {
+    "case": 940089,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            20,
+            13
+          ],
+          "storage_offset": 0,
+          "stride": [
+            52,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            13,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 443,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 2001772832891568765
+  },
+  {
+    "case": 940090,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            57,
+            18
+          ],
+          "storage_offset": 0,
+          "stride": [
+            72,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            18,
+            18
+          ],
+          "storage_offset": 1024,
+          "stride": [
+            18,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 444,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4578958171798432529
+  },
+  {
+    "case": 940091,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            34,
+            8
+          ],
+          "storage_offset": 0,
+          "stride": [
+            8,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            8,
+            8
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            8,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 445,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3624752437331471538
+  },
+  {
+    "case": 940092,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            52,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            5
+          ],
+          "storage_offset": 49152,
+          "stride": [
+            5,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 446,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8258384716962975560
+  },
+  {
+    "case": 940093,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            64,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            1,
+            4096
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 447,
+        "model": "MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7417553024256435760
+  },
+  {
+    "case": 940094,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            223,
+            5
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            5,
+            5
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            5,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 448,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6020924996344932582
+  },
+  {
+    "case": 940095,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            24,
+            11
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            11,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            89
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 449,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4586355785958114060
+  },
+  {
+    "case": 940096,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2529,
+            26
+          ],
+          "storage_offset": 0,
+          "stride": [
+            52,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            26,
+            52
+          ],
+          "storage_offset": 4096,
+          "stride": [
+            52,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 450,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7156706152219312667
+  },
+  {
+    "case": 940097,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            752,
+            349
+          ],
+          "storage_offset": 0,
+          "stride": [
+            349,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            349,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            89
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 451,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1451190665171087468
+  },
+  {
+    "case": 940098,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            226,
+            290
+          ],
+          "storage_offset": 0,
+          "stride": [
+            290,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            290,
+            290
+          ],
+          "storage_offset": 0,
+          "stride": [
+            290,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 452,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3328277059312336868
+  },
+  {
+    "case": 940099,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            405,
+            162
+          ],
+          "storage_offset": 0,
+          "stride": [
+            162,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            162,
+            54
+          ],
+          "storage_offset": 81920,
+          "stride": [
+            54,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 453,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1314010822390468643
+  },
+  {
+    "case": 940100,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            115408,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            32,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 454,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5980724129788200225
+  },
+  {
+    "case": 940101,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            98304,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            128
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1,
+            64
+          ],
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 455,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5402680494948983403
+  },
+  {
+    "case": 940102,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            222,
+            296
+          ],
+          "storage_offset": 0,
+          "stride": [
+            5920,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            296,
+            148
+          ],
+          "storage_offset": 0,
+          "stride": [
+            148,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 456,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1878209623861216880
+  },
+  {
+    "case": 940103,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            453,
+            145
+          ],
+          "storage_offset": 0,
+          "stride": [
+            580,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            145,
+            290
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            290,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 457,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8993308521438832465
+  },
+  {
+    "case": 940104,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            830,
+            79
+          ],
+          "storage_offset": 0,
+          "stride": [
+            79,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            79,
+            79
+          ],
+          "storage_offset": 49152,
+          "stride": [
+            79,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 458,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7265980470188071744
+  },
+  {
+    "case": 940105,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            314,
+            209
+          ],
+          "storage_offset": 0,
+          "stride": [
+            209,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            209,
+            70
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            70,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 459,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7895216271679076028
+  },
+  {
+    "case": 940106,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            543,
+            121
+          ],
+          "storage_offset": 0,
+          "stride": [
+            121,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            121,
+            121
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            121,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 460,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7471279621392524220
+  },
+  {
+    "case": 940107,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            587,
+            112
+          ],
+          "storage_offset": 0,
+          "stride": [
+            112,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            112,
+            56
+          ],
+          "storage_offset": 131072,
+          "stride": [
+            56,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 461,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8788462597913696716
+  },
+  {
+    "case": 940108,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            23,
+            724
+          ],
+          "stride": [
+            1,
+            23
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            724,
+            317
+          ],
+          "stride": [
+            1,
+            724
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 462,
+        "model": "MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8975876868316714917
+  },
+  {
+    "case": 940109,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            7608,
+            34
+          ],
+          "storage_offset": 0,
+          "stride": [
+            34,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            34,
+            221
+          ],
+          "storage_offset": 0,
+          "stride": [
+            221,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 463,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5361750649046477916
+  },
+  {
+    "case": 940110,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            9093,
+            29
+          ],
+          "storage_offset": 0,
+          "stride": [
+            29,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            29,
+            62
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            29
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 464,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4058616401262855290
+  },
+  {
+    "case": 940111,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            36,
+            1832
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1832,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1832,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            512
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 465,
+        "model": "MatterGen",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1441084311251150227
+  },
+  {
+    "case": 940112,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1308,
+            200
+          ],
+          "storage_offset": 0,
+          "stride": [
+            200,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            200,
+            327
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            200
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 466,
+        "model": "La-Proteina; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1124159127498697635
+  },
+  {
+    "case": 940113,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1788,
+            37
+          ],
+          "storage_offset": 0,
+          "stride": [
+            37,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            37,
+            37
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            37,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 467,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5248048566781525955
+  },
+  {
+    "case": 940114,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [
+            5544,
+            12
+          ],
+          "storage_offset": 0,
+          "stride": [
+            12,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "requires_grad": true,
+          "shape": [
+            12,
+            12
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            12
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 468,
+        "model": "GenScore; La-Proteina; MatterGen; Protenix",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 2616608936055776391
+  },
+  {
+    "case": 940115,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            453,
+            145
+          ],
+          "storage_offset": 0,
+          "stride": [
+            580,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            145,
+            145
+          ],
+          "storage_offset": 1024,
+          "stride": [
+            145,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 469,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4892824097175857048
+  },
+  {
+    "case": 940116,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            314,
+            209
+          ],
+          "storage_offset": 0,
+          "stride": [
+            836,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            209,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 470,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8356801793580390535
+  },
+  {
+    "case": 940117,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            66,
+            3944
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3944,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            3944,
+            44
+          ],
+          "storage_offset": 0,
+          "stride": [
+            44,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 471,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 683413246347754802
+  },
+  {
+    "case": 940118,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1536,
+            171
+          ],
+          "storage_offset": 0,
+          "stride": [
+            171,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            171,
+            171
+          ],
+          "storage_offset": 0,
+          "stride": [
+            171,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 472,
+        "model": "DPA-3; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3949292688478731058
+  },
+  {
+    "case": 940119,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            887,
+            74
+          ],
+          "storage_offset": 0,
+          "stride": [
+            74,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            74,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 473,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1251530404568175900
+  },
+  {
+    "case": 940120,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1788,
+            37
+          ],
+          "storage_offset": 0,
+          "stride": [
+            37,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            37,
+            73
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            73,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 474,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1874886017365391302
+  },
+  {
+    "case": 940121,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2529,
+            26
+          ],
+          "storage_offset": 0,
+          "stride": [
+            52,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            26,
+            26
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            26,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 475,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4610097563660672087
+  },
+  {
+    "case": 940122,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            15216,
+            69
+          ],
+          "storage_offset": 0,
+          "stride": [
+            69,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            69,
+            441
+          ],
+          "storage_offset": 0,
+          "stride": [
+            441,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 476,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7190974974875410200
+  },
+  {
+    "case": 940123,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            4344,
+            483
+          ],
+          "storage_offset": 0,
+          "stride": [
+            483,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            483,
+            483
+          ],
+          "storage_offset": 0,
+          "stride": [
+            483,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 477,
+        "model": "DPA-3; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3285157064735298267
+  },
+  {
+    "case": 940124,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            7152,
+            147
+          ],
+          "storage_offset": 0,
+          "stride": [
+            147,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            147,
+            147
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            147,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 478,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 528583796130430498
+  },
+  {
+    "case": 940125,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            91,
+            2896
+          ],
+          "stride": [
+            1,
+            91
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "shape": [
+            2896,
+            1267
+          ],
+          "stride": [
+            1,
+            2896
+          ],
+          "storage_offset": 0,
+          "requires_grad": false
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 479,
+        "model": "MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8559066284332038333
+  },
+  {
+    "case": 940126,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            905,
+            1159
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1159,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1159,
+            1159
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1159,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 480,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5018783329000559091
+  },
+  {
+    "case": 940127,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2172,
+            483
+          ],
+          "storage_offset": 0,
+          "stride": [
+            483,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            483,
+            483
+          ],
+          "storage_offset": 16384,
+          "stride": [
+            483,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 481,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7696393175129962099
+  },
+  {
+    "case": 940128,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1619,
+            648
+          ],
+          "storage_offset": 0,
+          "stride": [
+            648,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            648,
+            216
+          ],
+          "storage_offset": 81920,
+          "stride": [
+            216,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 482,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8138510218878393243
+  },
+  {
+    "case": 940129,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            3547,
+            296
+          ],
+          "storage_offset": 0,
+          "stride": [
+            296,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            296,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 483,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3651057632899336927
+  },
+  {
+    "case": 940130,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2346,
+            447
+          ],
+          "storage_offset": 0,
+          "stride": [
+            447,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            447,
+            223
+          ],
+          "storage_offset": 131072,
+          "stride": [
+            223,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 484,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5472278678878761699
+  },
+  {
+    "case": 940131,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            7152,
+            147
+          ],
+          "storage_offset": 0,
+          "stride": [
+            147,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            147,
+            293
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            293,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 485,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7877234720121675310
+  },
+  {
+    "case": 940132,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            4693,
+            447
+          ],
+          "storage_offset": 0,
+          "stride": [
+            447,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            447,
+            447
+          ],
+          "storage_offset": 49152,
+          "stride": [
+            447,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 486,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 944335551808892752
+  },
+  {
+    "case": 940133,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2560,
+            819
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3276,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            819,
+            1638
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            1638,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 487,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6974038191684249788
+  },
+  {
+    "case": 940134,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1774,
+            1182
+          ],
+          "storage_offset": 0,
+          "stride": [
+            4728,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1182,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 488,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6590451545414906277
+  },
+  {
+    "case": 940135,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            18187,
+            58
+          ],
+          "storage_offset": 0,
+          "stride": [
+            58,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            58,
+            124
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            58
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 489,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 3434722806047982906
+  },
+  {
+    "case": 940136,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            202,
+            10362
+          ],
+          "storage_offset": 0,
+          "stride": [
+            10362,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            10362,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            512
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 490,
+        "model": "MatterGen",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6583687437827801172
+  },
+  {
+    "case": 940137,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            10114,
+            104
+          ],
+          "storage_offset": 0,
+          "stride": [
+            208,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            104,
+            104
+          ],
+          "storage_offset": 2048,
+          "stride": [
+            104,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 491,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6687014220714299782
+  },
+  {
+    "case": 940138,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            10114,
+            104
+          ],
+          "storage_offset": 0,
+          "stride": [
+            208,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            104,
+            207
+          ],
+          "storage_offset": 4096,
+          "stride": [
+            207,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 492,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 7891081372231024495
+  },
+  {
+    "case": 940139,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1774,
+            1182
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1182,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1182,
+            394
+          ],
+          "storage_offset": 32768,
+          "stride": [
+            394,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 493,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 64605010276314054
+  },
+  {
+    "case": 940140,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            133,
+            7888
+          ],
+          "storage_offset": 0,
+          "stride": [
+            7888,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            7888,
+            89
+          ],
+          "storage_offset": 0,
+          "stride": [
+            89,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 494,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 5300987822210527241
+  },
+  {
+    "case": 940141,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2560,
+            819
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3276,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            819,
+            819
+          ],
+          "storage_offset": 1024,
+          "stride": [
+            819,
+            1
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 495,
+        "model": "DPA-3",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 1423624208990698754
+  },
+  {
+    "case": 940142,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2127,
+            986
+          ],
+          "storage_offset": 0,
+          "stride": [
+            986,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            986,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            89
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 496,
+        "model": "MACE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 6604182737036345267
+  },
+  {
+    "case": 940143,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2615,
+            401
+          ],
+          "storage_offset": 0,
+          "stride": [
+            401,
+            1
+          ]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            401,
+            654
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            401
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 497,
+        "model": "La-Proteina; MatterSim",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 4304131383556888160
+  },
+  {
+    "case": 940144,
+    "operator": "aten::mm",
+    "metadata": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [
+            31360,
+            67
+          ],
+          "storage_offset": 0,
+          "stride": [
+            67,
+            1
+          ]
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.float32",
+          "requires_grad": true,
+          "shape": [
+            67,
+            67
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            67
+          ]
+        }
+      ],
+      {}
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 498,
+        "model": "GenScore; La-Proteina; MatterGen; Protenix",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 8614491549646739629
+  }
+]
