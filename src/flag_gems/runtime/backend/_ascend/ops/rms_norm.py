@@ -32,6 +32,21 @@ logger = logging.getLogger(__name__)
 # the kernel, see triton-ascend docs migration_guide/migrate_from_gpu.md.
 MAX_CORE_DIM = 65535
 
+# A (rows, cols) tile larger than this fails to compile on Ascend with
+# MLIRCompilationError, measured identically for float32 and bfloat16, so the
+# limit counts elements rather than bytes. Sweeping hidden sizes 64..8192, every
+# tile at or below this bound compiles and the fastest row block is always the
+# one that fills it.
+MAX_TILE_ELEMENTS = 8192
+
+# The element bound alone is not enough: a tall, narrow tile costs far more
+# Unified Buffer than its element count suggests, because each row is padded out
+# to the 32-byte access granularity. At N=2 the element bound allows 4096 rows
+# and the compiler then asks for 3539200 bits against 1572864 available. Cap the
+# row block at the largest value that was ever fastest in the sweep, which keeps
+# every measured shape at its optimum and stays clear of that regime.
+MAX_TILE_ROWS = 32
+
 
 @libentry()
 @triton.jit(do_not_specialize=["eps", "M"])
@@ -72,6 +87,57 @@ def rms_norm_kernel(
             tl.store(y_row + cols * y_stride_c, y, mask=mask)
 
         tl.store(INV_RMS + row, rrms)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps", "M"])
+def rms_norm_rows_kernel(
+    Y,  # pointer to the output
+    INV_RMS,  # pointer to inverse rms
+    X,  # pointer to the input
+    W,  # pointer to the weights
+    y_stride_r,
+    y_stride_c,
+    x_stride_r,  # how much to increase the pointer when moving by 1 row
+    x_stride_c,  # how much to increase the pointer when moving by 1 col
+    M,  # number of rows in X
+    N,  # number of columns in X
+    eps,  # epsilon to avoid division by zero
+    ROWS: tl.constexpr,  # rows handled per tile
+    BLOCK_N: tl.constexpr,  # >= N, so one tile spans a whole row
+):
+    """Several rows per tile, for hidden sizes small enough that one tile spans
+    a whole row.
+
+    One row per program leaves the vector unit idle when the row is short: a
+    512-wide row moves 512 elements per pass where the hardware wants thousands.
+    Batching rows fills the tile and turns the access into one contiguous run.
+    The reduction stays elementwise-identical to rms_norm_kernel, so this only
+    changes how work is grouped.
+    """
+    cols = tl.arange(0, BLOCK_N)
+    col_mask = cols < N
+    # The weights are the same for every row, so hoist them out of the loop.
+    w = tl.load(W + cols, col_mask, other=0.0)
+
+    num_tiles = tl.cdiv(M, ROWS)
+    # The grid is capped at MAX_CORE_DIM, so each program walks several tiles.
+    for tile in range(ext.program_id(0), num_tiles, ext.num_programs(0)):
+        rows = tile * ROWS + tl.arange(0, ROWS)
+        row_mask = rows < M
+        mask = row_mask[:, None] & col_mask[None, :]
+
+        # int64: the element offset of the last tile easily exceeds int32.
+        x_off = rows[:, None].to(tl.int64) * x_stride_r + cols[None, :] * x_stride_c
+        x = tl.load(X + x_off, mask, other=0.0).to(tl.float32)
+
+        var = tl.sum(x * x / N, axis=1)
+        rrms = 1 / tl.sqrt(var + eps)
+
+        y = (x * rrms[:, None]).to(Y.dtype.element_ty) * w[None, :]
+        y_off = rows[:, None].to(tl.int64) * y_stride_r + cols[None, :] * y_stride_c
+        tl.store(Y + y_off, y, mask)
+        tl.store(INV_RMS + rows, rrms, row_mask)
 
 
 @libentry()
@@ -229,7 +295,17 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
             )
         return y, inv_rms
 
-    BLOCK_SIZE = min(triton.next_power_of_2(N), 12064)
+    block_n = triton.next_power_of_2(N)
+    rows_per_tile = min(MAX_TILE_ELEMENTS // block_n, MAX_TILE_ROWS)
+    if rows_per_tile >= 2:
+        num_tiles = triton.cdiv(M, rows_per_tile)
+        with torch_device_fn.device(x.device):
+            rms_norm_rows_kernel[min(num_tiles, MAX_CORE_DIM),](
+                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, rows_per_tile, block_n
+            )
+        return y, inv_rms
+
+    BLOCK_SIZE = min(block_n, 12064)
 
     with torch_device_fn.device(x.device):
         rms_norm_kernel[min(M, MAX_CORE_DIM),](
