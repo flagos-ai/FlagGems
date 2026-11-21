@@ -38,6 +38,18 @@ def layer_norm(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     logger.debug("GEMS_HYGON LAYERNORM_FORWARD")
 
+    if not normalized_shape:
+        raise RuntimeError("Expected normalized_shape to be at least 1-dimensional")
+    if len(normalized_shape) > input.ndim or tuple(
+        input.shape[-len(normalized_shape) :]
+    ) != tuple(normalized_shape):
+        raise RuntimeError(
+            "Expected input with trailing dimensions matching normalized_shape"
+        )
+    for name, tensor in (("weight", weight), ("bias", bias)):
+        if tensor is not None and tuple(tensor.shape) != tuple(normalized_shape):
+            raise RuntimeError(f"Expected {name} shape to match normalized_shape")
+
     N = math.prod(normalized_shape)
     M = input.numel() // N
     input = input.contiguous()
@@ -49,19 +61,53 @@ def layer_norm(
     rstd = torch.empty_like(mean)
     tile_n = triton.next_power_of_2(N)
 
+    # Scalar constexpr options retain libentry's cached launch binding.
+    # Eight Welford streams align with the loaded CPU boxing moments order.
+    moment_options = {}
+    if input.dtype == torch.float32:
+        depth = max(1, (triton.cdiv(N // 8, 16) - 1).bit_length())
+        moment_options = {
+            "USE_CASCADE": True,
+            "MOMENTS_N": N,
+            "MOMENTS_DEPTH": depth,
+            "MOMENTS_STACK": triton.next_power_of_2(depth),
+            "enable_fp_fusion": False,
+        }
+
     with torch_device_fn.device(input.device):
         if N <= 128:
             tile_m = triton.cdiv(1024, tile_n)
             layer_norm_persistent_kernel_multiline[(triton.cdiv(M, tile_m),)](
-                input, output, weight, bias, mean, rstd, M, N, eps, tile_m, tile_n
+                input,
+                output,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                tile_m,
+                tile_n,
+                **moment_options,
             )
         elif N <= 8192:
             layer_norm_persistent_kernel[(M,)](
-                input, output, weight, bias, mean, rstd, M, N, eps, tile_n
+                input,
+                output,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                tile_n,
+                **moment_options,
             )
         else:
             layer_norm_loop_kernel[(M,)](
-                input, output, weight, bias, mean, rstd, M, N, eps
+                input, output, weight, bias, mean, rstd, M, N, eps, **moment_options
             )
     return output, mean, rstd
 
