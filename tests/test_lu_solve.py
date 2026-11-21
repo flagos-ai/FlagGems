@@ -160,8 +160,13 @@ def test_lu_solve_out_non_contiguous(dtype):
 def test_lu_solve_dtype_mismatch():
     n, nrhs = 4, 2
     B, LU, pivots = _make_inputs(n, nrhs, torch.float32)
+    LU64 = LU.double()
+    if LU64.dtype != torch.float64:
+        # Some device builds (kunlunxin/torch_xmlir) silently convert float64
+        # tensors to float32, so a mismatched pair cannot be created.
+        pytest.skip("device silently converts float64 tensors to another dtype")
     with pytest.raises(ValueError, match="same dtype"):
-        flag_gems.lu_solve(B, LU.double(), pivots)
+        flag_gems.lu_solve(B, LU64, pivots)
 
 
 @pytest.mark.lu_solve

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from collections import namedtuple
 
 from flag_gems.runtime import torch_device_fn
 
@@ -21,6 +22,10 @@ from .linalg_lu_factor import _check_linalg_lu_factor, _linalg_lu_factor
 from .lu_unpack import lu_unpack
 
 logger = logging.getLogger(__name__)
+
+# Same result type as the generic implementation: callers (and the tests)
+# read the components by name, matching torch.linalg.lu.
+LinalgLUResult = namedtuple("LinalgLUResult", ["P", "L", "U"])
 
 
 def _resolve_linalg_lu_out_args(P, L, U, out):
@@ -43,7 +48,7 @@ def linalg_lu(input, *, pivot=True):
     with torch_device_fn.device(input.device):
         lu, pivots = _linalg_lu_factor(input, pivot)
         P, L, U = lu_unpack(lu, pivots, unpack_data=True, unpack_pivots=True)
-    return P, L, U
+    return LinalgLUResult(P, L, U)
 
 
 def linalg_lu_out(input, *, pivot=True, P=None, L=None, U=None, out=None):
@@ -68,4 +73,4 @@ def linalg_lu_out(input, *, pivot=True, P=None, L=None, U=None, out=None):
     if u_out.shape != U_res.shape:
         u_out.resize_(U_res.shape)
     copy_(u_out, U_res)
-    return (p_out, l_out, u_out)
+    return LinalgLUResult(p_out, l_out, u_out)
