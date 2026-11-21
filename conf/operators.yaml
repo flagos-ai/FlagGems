@@ -3170,6 +3170,18 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: cauchy_backward_
+  description: First-order autograd rule for cauchy_ implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - cauchy_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: ccol_indices
   description: Returns the compressed column pointer array of a sparse CSC tensor
     as a zero-copy alias of the internal ccol storage, shaped `batch_dims + (ncols
