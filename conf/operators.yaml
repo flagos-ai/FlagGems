@@ -12608,6 +12608,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: linalg_solve_ex_backward
+  description: 'The backward computation of `_linalg_solve_ex`, exercised through
+    the autograd of the forward operator. Saves the LU factorization and pivots
+    and replays them to produce grad_A = -gB X^H and grad_B = A^{-H} gX with a
+    fused Triton triangular solve.'
+  for:
+  - _linalg_solve_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: linalg_solve_triangular
   description: 'Solves a triangular system of linear equations with a unique solution,
     returning

@@ -471,6 +471,20 @@ def _linalg_solve_ex(A, B, *, left=True, check_errors=False):
         - info: (*,) int32 tensor, 0 = success, >0 = singular at that pivot
     """
     logger.debug("GEMS _LINALG_SOLVE_EX")
+
+    # Mirror ``flag_gems.lu_unpack``: when a gradient is needed, run the
+    # forward through the autograd wrapper so this entry records a node whose
+    # backward is the fused Triton solve. Only float32/float64 have a Triton
+    # kernel, so complex inputs keep the vendor-redispatch path below and the
+    # native generated node. Grad mode is off inside the wrapper's ``forward``,
+    # so this check cannot recurse.
+    if (
+        A.dtype in _TRITON_DTYPES
+        and torch.is_grad_enabled()
+        and (A.requires_grad or B.requires_grad)
+    ):
+        return _LinalgSolveExFunction.apply(A, B, left, check_errors)
+
     vector_rhs, B_mat = _check_solve_ex_args(A, B, left)
 
     n = A.shape[-1]
@@ -583,3 +597,525 @@ def _linalg_solve_ex(A, B, *, left=True, check_errors=False):
         info = info[(0,) * offset + index]
 
     return result, LU, pivots, info
+
+
+@triton.jit
+def _perm(PIV, TRANS: tl.constexpr, N: tl.constexpr, BLOCK_N: tl.constexpr):
+    """Row permutation implied by the saved pivots, per lane, no cross-lane ops.
+
+    For a left solve the transpositions act on the *output* (``A^T = U^T L^T
+    P``), so the returned index is a destination: register row ``r`` of the
+    solved tile belongs at output row ``idx[r]``.  For a right solve they act on
+    the *input* (``A = P^T L U``), so ``idx[r]`` is the source row of ``gX`` to
+    read into register row ``r``.  Either way the caller folds ``idx`` into an
+    address, which removes the two cross-lane reductions that exchanging rows
+    of the register tile would need per pivot.
+    """
+    idx = tl.arange(0, BLOCK_N)
+    if TRANS:
+        # Descending over the swap chain, composed in reverse.
+        for t in tl.static_range(0, N):
+            k = N - 1 - t
+            p = tl.load(PIV + k).to(tl.int32) - 1
+            if p != k:
+                idx = tl.where(idx == k, p, tl.where(idx == p, k, idx))
+    else:
+        # Ascending, applied in the natural forward order.
+        for k in tl.static_range(0, N):
+            p = tl.load(PIV + k).to(tl.int32) - 1
+            if p != k:
+                idx = tl.where(idx == k, p, tl.where(idx == p, k, idx))
+    return idx
+
+
+@triton.jit
+def _solve_from_lu(
+    s, LU, LU_R, LU_C, TRANS: tl.constexpr, N: tl.constexpr, BLOCK_N: tl.constexpr
+):
+    """Solve ``A^T x = b`` (TRANS) or ``A x = b`` in registers from LU factors.
+
+    The pivot transpositions are *not* handled here: :func:`_perm` supplies them
+    as an address permutation.  Two things keep the substitution chain short:
+    the whole ``BLOCK_N x BLOCK_N`` factor block is loaded once into registers,
+    so no step performs a dependent global load; and each step performs a single
+    cross-lane reduction -- the pivot row is selected inside the same
+    ``tl.where`` that applies the rank-1 update.
+    """
+    rows = tl.arange(0, BLOCK_N)
+    rmask = rows < N
+    r2 = rows[:, None]
+    c2 = rows[None, :]
+    lu = tl.load(
+        LU + r2 * LU_R + c2 * LU_C,
+        mask=rmask[:, None] & rmask[None, :],
+        other=0.0,
+    )
+    diag = tl.sum(tl.where(r2 == c2, lu, 0.0), axis=1)
+
+    if TRANS:
+        # A^T = U^T L^T P:  U^T forward, then L^T back.
+        for i in tl.static_range(0, N):
+            col = tl.sum(tl.where(c2 == i, lu, 0.0), axis=1)
+            uii = tl.sum(tl.where(rows == i, diag, 0.0), axis=0)
+            cm = tl.where(rmask & (rows < i), col, 0.0)
+            xi = tl.sum(tl.where(r2 == i, s, -cm[:, None] * s), axis=0) / uii
+            s = tl.where(r2 == i, xi[None, :], s)
+        for t in tl.static_range(0, N):
+            i = N - 1 - t
+            col = tl.sum(tl.where(c2 == i, lu, 0.0), axis=1)
+            cm = tl.where(rmask & (rows > i), col, 0.0)
+            xi = tl.sum(tl.where(r2 == i, s, -cm[:, None] * s), axis=0)
+            s = tl.where(r2 == i, xi[None, :], s)
+    else:
+        # A = P^T L U:  L forward, then U back (the pivots are already folded
+        # into the gX load address).
+        for i in tl.static_range(0, N):
+            row = tl.sum(tl.where(r2 == i, lu, 0.0), axis=0)
+            rm = tl.where(rmask & (rows < i), row, 0.0)
+            xi = tl.sum(tl.where(r2 == i, s, -rm[:, None] * s), axis=0)
+            s = tl.where(r2 == i, xi[None, :], s)
+        for t in tl.static_range(0, N):
+            i = N - 1 - t
+            row = tl.sum(tl.where(r2 == i, lu, 0.0), axis=0)
+            uii = tl.sum(tl.where(rows == i, diag, 0.0), axis=0)
+            rm = tl.where(rmask & (rows > i), row, 0.0)
+            xi = tl.sum(tl.where(r2 == i, s, -rm[:, None] * s), axis=0) / uii
+            s = tl.where(r2 == i, xi[None, :], s)
+    return s
+
+
+@triton.jit
+def _grad_a(s, xt, TRANS: tl.constexpr):
+    """``-sum_c P[i, c] Q[j, c]`` with the minus sign folded in."""
+    if TRANS:
+        # grad_A = -(gB @ X^H):  grad_A[i, j] = -sum_c gB[i, c] * X[j, c]
+        return -tl.sum(s[:, None, :] * xt[None, :, :], axis=2)
+    # grad_A = -(X^H @ gB):  grad_A[i, j] = -sum_c X[c, i] * gB[c, j]
+    # with xt[a, c] = X[c, a] and s[j, c] = gB[c, j].
+    return -tl.sum(xt[:, None, :] * s[None, :, :], axis=2)
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def _linalg_solve_ex_backward_fast_kernel(
+    LU,
+    PIV,
+    GX,
+    XS,
+    GA,
+    GB,
+    D0: tl.constexpr,
+    D1: tl.constexpr,
+    LU_B0: tl.constexpr,
+    LU_R: tl.constexpr,
+    LU_C: tl.constexpr,
+    PIV_B0: tl.constexpr,
+    GX_B0: tl.constexpr,
+    XS_B0: tl.constexpr,
+    GA_B0: tl.constexpr,
+    GB_B0: tl.constexpr,
+    GX_R: tl.constexpr,
+    GX_C: tl.constexpr,
+    XS_R: tl.constexpr,
+    XS_C: tl.constexpr,
+    GA_R: tl.constexpr,
+    GA_C: tl.constexpr,
+    GB_R: tl.constexpr,
+    GB_C: tl.constexpr,
+    TRANS: tl.constexpr,
+    N: tl.constexpr,
+    NRHS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Uniform-batch fast path: only the six pointers are runtime arguments."""
+    pid = tl.program_id(0)
+    i0 = pid % D0
+    rest = pid // D0
+    i1 = rest % D1
+    i2 = rest // D1
+
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_K)
+    r2 = rows[:, None]
+    c2 = cols[None, :]
+    rmask = rows < N
+    m2 = (rows < N)[:, None] & (cols < NRHS)[None, :]
+
+    off = i0 + i1 * D0 + i2 * D0 * D1
+    lu_p = LU + off * LU_B0
+    piv_p = PIV + off * PIV_B0
+    gx_p = GX + off * GX_B0
+    xs_p = XS + off * XS_B0
+    ga_p = GA + off * GA_B0
+    gb_p = GB + off * GB_B0
+
+    # Pivot transpositions: a destination index for a left solve (applied to
+    # the stores), a source index for a right solve (applied to this load).
+    perm = _perm(piv_p, TRANS, N, BLOCK_N)
+    dst_rows = perm if TRANS else rows
+    src_rows = rows if TRANS else perm
+    s = tl.load(gx_p + src_rows[:, None] * GX_R + c2 * GX_C, mask=m2, other=0.0)
+    s = _solve_from_lu(s, lu_p, LU_R, LU_C, TRANS, N, BLOCK_N)
+    xt = tl.load(xs_p + r2 * XS_R + c2 * XS_C, mask=m2, other=0.0)
+
+    ga_tile = _grad_a(s, xt, TRANS)
+    tl.store(
+        ga_p + dst_rows[:, None] * GA_R + rows[None, :] * GA_C,
+        ga_tile,
+        mask=rmask[:, None] & rmask[None, :],
+    )
+    tl.store(gb_p + dst_rows[:, None] * GB_R + c2 * GB_C, s, mask=m2)
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def _linalg_solve_ex_backward_general_kernel(
+    LU,
+    PIV,
+    GX,
+    XS,
+    GA,
+    GB,
+    LU_R,
+    LU_C,
+    LU_B0,
+    LU_B1,
+    LU_B2,
+    GX_R,
+    GX_C,
+    GX_B0,
+    GX_B1,
+    GX_B2,
+    XS_R,
+    XS_C,
+    XS_B0,
+    XS_B1,
+    XS_B2,
+    PIV_B0,
+    PIV_B1,
+    PIV_B2,
+    GA_R,
+    GA_C,
+    GA_B0,
+    GA_B1,
+    GA_B2,
+    GB_R,
+    GB_C,
+    GB_B0,
+    GB_B1,
+    GB_B2,
+    D0,
+    D1,
+    TRANS: tl.constexpr,
+    N: tl.constexpr,
+    NRHS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """General path: explicit strides, zero strides on broadcast axes."""
+    pid = tl.program_id(0)
+    i0 = pid % D0
+    rest = pid // D0
+    i1 = rest % D1
+    i2 = rest // D1
+
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_K)
+    r2 = rows[:, None]
+    c2 = cols[None, :]
+    rmask = rows < N
+    cmask = cols < NRHS
+    m2 = rmask[:, None] & cmask[None, :]
+
+    lu_p = LU + (i0 * LU_B0 + i1 * LU_B1 + i2 * LU_B2)
+    piv_p = PIV + (i0 * PIV_B0 + i1 * PIV_B1 + i2 * PIV_B2)
+    gx_p = GX + (i0 * GX_B0 + i1 * GX_B1 + i2 * GX_B2)
+    xs_p = XS + (i0 * XS_B0 + i1 * XS_B1 + i2 * XS_B2)
+    ga_p = GA + (i0 * GA_B0 + i1 * GA_B1 + i2 * GA_B2)
+    gb_p = GB + (i0 * GB_B0 + i1 * GB_B1 + i2 * GB_B2)
+
+    # Pivot transpositions: a destination index for a left solve (folded into
+    # the stores), a source index for a right solve (folded into this load).
+    perm = _perm(piv_p, TRANS, N, BLOCK_N)
+    dst_rows = perm if TRANS else rows
+    src_rows = rows if TRANS else perm
+
+    s = tl.load(gx_p + src_rows[:, None] * GX_R + c2 * GX_C, mask=m2, other=0.0)
+    s = _solve_from_lu(s, lu_p, LU_R, LU_C, TRANS, N, BLOCK_N)
+    xt = tl.load(xs_p + r2 * XS_R + c2 * XS_C, mask=m2, other=0.0)
+
+    ga_tile = _grad_a(s, xt, TRANS)
+    tl.store(
+        ga_p + dst_rows[:, None] * GA_R + rows[None, :] * GA_C,
+        ga_tile,
+        mask=rmask[:, None] & rmask[None, :],
+    )
+    tl.store(gb_p + dst_rows[:, None] * GB_R + c2 * GB_C, s, mask=m2)
+
+
+# Launch plans keyed by everything that can change the argument tuple. The
+# backward is a single small kernel, so building ~30 stride/batch arguments per
+# call cost several times the kernel itself; the plan is immutable and cheap to
+# reuse.
+_LAUNCH_PLAN_CACHE = {}
+
+
+def _axes(shape, strides, own, nb):
+    """Three right-aligned batch strides; 0 on broadcast or missing axes."""
+    a = strides[own - 1] if (nb >= 1 and own >= 1 and shape[own - 1] != 1) else 0
+    b = strides[own - 2] if (nb >= 2 and own >= 2 and shape[own - 2] != 1) else 0
+    c = strides[own - 3] if (nb >= 3 and own >= 3 and shape[own - 3] != 1) else 0
+    return a, b, c
+
+
+def _tight(shape, nb, inner):
+    """Batch strides of a contiguous tensor whose innermost block is ``inner``."""
+    a = b = c = 0
+    if nb >= 1:
+        a = inner
+    if nb >= 2:
+        b = inner * shape[nb - 1]
+    if nb >= 3:
+        c = inner * shape[nb - 1] * shape[nb - 2]
+    return a, b, c
+
+
+def _linalg_solve_ex_backward_run(grad_result, result, A, LU, pivots, left, vector):
+    """Gradients of the solve with respect to A and B, in one kernel launch.
+
+    Mirrors ``linalg_solve_backward`` in
+    ``torch/csrc/autograd/FunctionsManual.cpp`` but replays the LU factors this
+    file's forward already saved, so the backward never refactorizes and needs
+    no framework matmul or second launch.
+
+    The kernel argument tuple is a pure function of the shapes, dtypes and
+    layouts, and the kernel itself is only a few microseconds, so the plan is
+    cached and reused instead of rebuilding ~30 stride entries per call.
+    """
+    n = A.shape[-1]
+    gX = grad_result.unsqueeze(-1) if vector else grad_result
+    X = result.unsqueeze(-1) if vector else result
+
+    ab = A.shape[:-2]
+    xb = gX.shape[:-2]
+    same = ab == xb
+    # Infer the output batch tuple without touching tensor data.
+    batch = ab if same else torch.broadcast_shapes(ab, xb)  # allow-torch-compute
+    # Number of right-hand sides: gX is (n, k) for a left solve and (k, n) for
+    # a right one, so the k axis is the *second to last* dimension there.
+    nrhs = gX.shape[-1] if left else gX.shape[-2]
+
+    dtype = A.dtype
+    device = A.device
+    ga = torch.empty(batch + (n, n), dtype=dtype, device=device)
+    if left:
+        gb = torch.empty(batch + (n, nrhs), dtype=dtype, device=device)
+    else:
+        gb = torch.empty(batch + (nrhs, n), dtype=dtype, device=device)
+
+    key = (
+        n,
+        nrhs,
+        batch,
+        left,
+        same,
+        A.stride(),
+        LU.stride(),
+        pivots.stride(),
+        gX.stride(),
+        X.stride(),
+        ga.stride(),
+        gb.stride(),
+    )
+    plan = _LAUNCH_PLAN_CACHE.get(key)
+    if plan is None:
+        nb = len(batch)
+        total = 1
+        for d in batch:
+            total *= d
+        d0 = batch[-1] if nb >= 1 else 1
+        d1 = batch[-2] if nb >= 2 else 1
+        block_n = max(triton.next_power_of_2(n), 1)
+        block_k = max(triton.next_power_of_2(nrhs), 1)
+
+        if left:
+            gx_r, gx_c = gX.stride(-2), gX.stride(-1)
+            xs_r, xs_c = X.stride(-2), X.stride(-1)
+            gb_r, gb_c = gb.stride(-2), gb.stride(-1)
+        else:
+            gx_r, gx_c = gX.stride(-1), gX.stride(-2)
+            xs_r, xs_c = X.stride(-1), X.stride(-2)
+            gb_r, gb_c = gb.stride(-1), gb.stride(-2)
+
+        fast = (
+            same
+            and LU.stride(-1) in (1, n)
+            and pivots.is_contiguous()
+            and gX.is_contiguous()
+            and X.is_contiguous()
+        )
+        if fast:
+            nn = n * n
+            nk = n * nrhs
+            args = (
+                # D0, D1 then LU_B0, LU_R, LU_C, PIV_B0, GX_B0, XS_B0, GA_B0, GB_B0
+                _tight(batch, nb, nn)[0],
+                LU.stride(-2),
+                LU.stride(-1),
+                _tight(batch, nb, n)[0],
+                _tight(batch, nb, nk)[0],
+                _tight(batch, nb, nk)[0],
+                _tight(batch, nb, nn)[0],
+                _tight(batch, nb, nk)[0],
+                # GX_R, GX_C, XS_R, XS_C, GA_R, GA_C, GB_R, GB_C
+                gx_r,
+                gx_c,
+                xs_r,
+                xs_c,
+                ga.stride(-2),
+                ga.stride(-1),
+                gb_r,
+                gb_c,
+            )
+            meta = dict(TRANS=left, N=n, NRHS=nrhs, BLOCK_N=block_n, BLOCK_K=block_k)
+            plan = ("fast", total, d0, d1, args, meta)
+        else:
+            lu_s, lu_h = LU.stride(), LU.shape
+            pv_s, pv_h = pivots.stride(), pivots.shape
+            gx_s, gx_h = gX.stride(), gX.shape
+            xs_s, xs_h = X.stride(), X.shape
+            ga_s, ga_h = ga.stride(), ga.shape
+            gb_s, gb_h = gb.stride(), gb.shape
+            args = (
+                LU.stride(-2),
+                LU.stride(-1),
+                *_axes(lu_h, lu_s, LU.dim() - 2, nb),
+                gx_r,
+                gx_c,
+                *_axes(gx_h, gx_s, gX.dim() - 2, nb),
+                xs_r,
+                xs_c,
+                *_axes(xs_h, xs_s, X.dim() - 2, nb),
+                *_axes(pv_h, pv_s, pivots.dim() - 1, nb),
+                ga.stride(-2),
+                ga.stride(-1),
+                *_axes(ga_h, ga_s, ga.dim() - 2, nb),
+                gb_r,
+                gb_c,
+                *_axes(gb_h, gb_s, gb.dim() - 2, nb),
+                d0,
+                d1,
+            )
+            meta = dict(TRANS=left, N=n, NRHS=nrhs, BLOCK_N=block_n, BLOCK_K=block_k)
+            plan = ("general", total, d0, d1, args, meta)
+        _LAUNCH_PLAN_CACHE[key] = plan
+
+    kind, total, d0, d1, args, meta = plan
+    if kind == "fast":
+        _linalg_solve_ex_backward_fast_kernel[(total,)](
+            LU, pivots, gX, X, ga, gb, d0, d1, *args, **meta, num_warps=1
+        )
+    else:
+        _linalg_solve_ex_backward_general_kernel[(total,)](
+            LU, pivots, gX, X, ga, gb, *args, **meta, num_warps=1
+        )
+
+    if vector:
+        gb = gb.squeeze(-1)
+    return ga, gb
+
+
+def _linalg_solve_ex_backward(
+    grad_result, result, A, LU, pivots, left, needs_A, needs_B, vector_case
+):
+    """Gradients of :func:`_linalg_solve_ex` with respect to ``A`` and ``B``.
+
+    ``left``/``needs_*``/``vector_case`` describe the forward call and which
+    inputs require a gradient; the two gradients themselves come from
+    :func:`_linalg_solve_ex_backward_run`, which solves the adjoint system from
+    the saved factors and forms ``grad_A`` with a fused reduction.
+
+    The gradients are returned in the joint broadcast batch. When only one of
+    ``A``/``B`` was expanded, autograd reduces the result onto the smaller input
+    itself, exactly as it does for the generated native node.
+    """
+    if grad_result is None or LU.numel() == 0 or grad_result.numel() == 0:
+        # Nothing to solve: an empty batch or an undefined upstream gradient
+        # yields a zero of the right shape.
+        grad_A = torch.zeros_like(A) if needs_A else None
+        grad_B = torch.zeros_like(result) if needs_B else None
+        return grad_A, grad_B
+
+    grad_A, grad_B = _linalg_solve_ex_backward_run(
+        grad_result, result, A, LU, pivots, left, vector_case
+    )
+    return (grad_A if needs_A else None), (grad_B if needs_B else None)
+
+
+class _LinalgSolveExFunction(torch.autograd.Function):
+    """Autograd wrapper pairing the fused forward with the fused backward.
+
+    ``aten::_linalg_solve_ex`` has no standalone backward schema: PyTorch
+    generates ``LinalgSolveExBackward0`` from ``derivatives.yaml``, and that
+    node saves A/LU/pivots/result and calls the composite
+    ``linalg_solve_backward`` helper (``lu_solve`` plus a matmul). This wrapper
+    keeps the same saved state while computing both gradients with the fused
+    Triton kernel.
+
+    Only ``result`` is differentiable (``output_differentiability`` is
+    ``[True, False, False, False]``), so ``LU``/``pivots``/``info`` are marked
+    non-differentiable and never receive a fabricated gradient.
+    """
+
+    @staticmethod
+    def forward(ctx, A, B, left, check_errors):
+        with torch.no_grad():
+            result, LU, pivots, info = _linalg_solve_ex(
+                A, B, left=left, check_errors=check_errors
+            )
+        ctx.save_for_backward(A, LU, pivots, result)
+        ctx.left = left
+        ctx.vector_case = _is_vector_rhs(A, B)
+        ctx.mark_non_differentiable(LU, pivots, info)
+        return result, LU, pivots, info
+
+    @staticmethod
+    def backward(ctx, grad_result, grad_LU, grad_pivots, grad_info):
+        A, LU, pivots, result = ctx.saved_tensors
+        grad_A, grad_B = _linalg_solve_ex_backward(
+            grad_result,
+            result,
+            A,
+            LU,
+            pivots,
+            ctx.left,
+            ctx.needs_input_grad[0],
+            ctx.needs_input_grad[1],
+            ctx.vector_case,
+        )
+        return grad_A, grad_B, None, None
+
+
+def linalg_solve_ex_backward(
+    grad_result, result, A, B, LU, pivots, *, left=True, needs_input_grad=(True, True)
+):
+    """Return gradients matching A and B, using result, LU and pivots from FlagGems _linalg_solve_ex."""
+    if A.dtype not in _TRITON_DTYPES:
+        raise TypeError("linalg_solve_ex_backward only supports float32 and float64")
+    needs_A, needs_B = needs_input_grad
+    if grad_result is None or not result.numel():
+        return torch.zeros_like(A) if needs_A else None, (
+            torch.zeros_like(B) if needs_B else None
+        )
+
+    from flag_gems.ops.sum_to_size import sum_to_size
+
+    grad_A, grad_B = _linalg_solve_ex_backward(
+        grad_result, result, A, LU, pivots, left, needs_A, needs_B, _is_vector_rhs(A, B)
+    )
+    if grad_A is not None and grad_A.shape != A.shape:
+        grad_A = sum_to_size(grad_A, A.shape)
+    if grad_B is not None and grad_B.shape != B.shape:
+        grad_B = sum_to_size(grad_B, B.shape)
+    return grad_A, grad_B
