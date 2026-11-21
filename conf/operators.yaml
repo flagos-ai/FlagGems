@@ -6220,6 +6220,23 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: exp_backward
+  description: |
+    Backward pass for `exp`: the gradient with respect to the input is
+    `grad_output * exp(x)`. Each intermediate (exp recompute, grad mul) is
+    rounded to the storage dtype, matching ATen's per-op rounding order
+    bit-exactly. Exposed through a `torch.autograd.Function` bridge because
+    this Torch build has no standalone `aten::exp_backward` schema.
+  for:
+  - exp_backward
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: exp_out
   description: A variant of `exp2()`, with `out` specified.
   for:
