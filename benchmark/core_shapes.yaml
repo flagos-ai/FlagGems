@@ -1456,6 +1456,14 @@ addmm:
   shape_desc: B, M, N, K
   accuracy_shapes: *id002
   quick_shapes: *id003
+addr_backward:
+  # Aligned, rectangular and tail tiles cover all three fused gradient regions.
+  shapes:
+  - [64, 64]
+  - [65, 129]
+  - [256, 192]
+  - [1024, 1024]
+  shape_desc: M, N
 mv:
   shapes: &id004
   - [1, 2048]
