@@ -267,10 +267,17 @@ def generate_index_put_row_kernel(
     code.writeline("):")
 
     with code.indent():
+        # Keep every value used by the tile masks a block.  With a scalar
+        # `row` the GCU300 backend drops the scalar term when it combines
+        # mask0/index_mask with the block mask, so programs from the z-chunk
+        # grid (row >= M) additionally scatters `other=0`-loaded values into
+        # element 0.  A [1, 1] block mirrors the tiled kernel's
+        # BLOCK_SIZE0 == 1 layout without keeping the row loop.
         code.writeline("row = tl.program_id(0) + tl.program_id(2) * tl.num_programs(0)")
-        code.writeline("mask0 = row < M")
+        code.writeline("rows = row + tl.arange(0, 1)[:, None]")
+        code.writeline("mask0 = rows < M")
         code.newline()
-        code.writeline("cur_idx = row")
+        code.writeline("cur_idx = rows")
         for i in range(index_rank - 1, -1, -1):
             code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
             code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
@@ -544,7 +551,26 @@ def index_put(inp, indices, values, accumulate=False):
 
     if values.device != inp.device:
         values = values.to(inp.device)
-    if need_permute and values.ndim == len(perm):
+    if len(tensor_dims) > 1:
+        # ATen merges the broadcast of all tensor indices into one dimension:
+        # it lands at the first tensor-indexed position when those dims are
+        # contiguous and at position 0 otherwise.  Move it to the front, which
+        # is the layout the kernel (and target_shape) expects.
+        contiguous = tensor_dims == list(
+            range(tensor_dims[0], tensor_dims[0] + len(tensor_dims))
+        )
+        if contiguous:
+            index_value_dim = sum(
+                1 for d in none_dims + remaining_dims if d < tensor_dims[0]
+            )
+        else:
+            index_value_dim = 0
+        if index_value_dim != 0:
+            order = [index_value_dim] + [
+                i for i in range(values.ndim) if i != index_value_dim
+            ]
+            values = values.permute(order)
+    elif need_permute and values.ndim == len(perm):
         values = values.permute(perm)
     values = torch.broadcast_to(values, target_shape)
 
