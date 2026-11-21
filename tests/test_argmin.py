@@ -45,3 +45,20 @@ def test_argmin(shape, dim, keepdim, dtype):
     res_out = flag_gems.argmin(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.argmin
+@pytest.mark.parametrize("shape", [(1,), (1, 1), (3, 5), (2, 3), (7, 4097)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+def test_argmin_k1_tail_mask(shape, dtype):
+    # Shapes whose M x N is smaller than the BLOCK_M x BLOCK_N tile used by
+    # argmin_kernel_opt_k1; tail rows/cols must be neither read nor written.
+    if dtype in utils.INT_DTYPES:
+        inp = torch.randint(-1024, 1024, size=shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.argmin(utils.to_reference(inp), dim=-1)
+    res_out = flag_gems.argmin(inp, dim=-1)
+
+    utils.gems_assert_equal(res_out, ref_out)
