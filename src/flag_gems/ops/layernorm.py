@@ -642,10 +642,13 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     bias = None if bias is None else bias.contiguous()
     y = torch.empty_like(input)
 
-    # NOTE: when the input is half-precision(either float16 or bfloat16)
-    # these statistical data saved for backward is in single precision
-    mean = torch.empty(M, dtype=input.dtype, device=input.device)
-    rstd = torch.empty(M, dtype=input.dtype, device=input.device)
+    # NOTE: ATen keeps these statistics in the accumulation dtype, which is
+    # float32 for fp16/bfloat16 input. Allocating them in the input dtype
+    # rounds mean/rstd before the backward pass and loses precision in the
+    # affine weight gradient.
+    stats_dtype = torch.promote_types(input.dtype, torch.float32)
+    mean = torch.empty(M, dtype=stats_dtype, device=input.device)
+    rstd = torch.empty(M, dtype=stats_dtype, device=input.device)
 
     with torch_device_fn.device(input.device):
         if N <= 128:
