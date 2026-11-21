@@ -43,3 +43,27 @@ def test_rsqrt_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+class HygonRsqrtBenchmark(base.UnaryPointwiseBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (65535,),
+            (65536,),
+            (65537,),
+            (256, 256),
+            (512, 512),
+            (1024, 1024),
+            (2048, 2048),
+            (8388608,),
+        ]
+        self.shape_desc = "N"
+
+
+@pytest.mark.rsqrt
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon launch sizes")
+def test_hygon_rsqrt_contiguous():
+    bench = HygonRsqrtBenchmark(
+        op_name="rsqrt", torch_op=torch.rsqrt, dtypes=[torch.float32]
+    )
+    bench.run()
