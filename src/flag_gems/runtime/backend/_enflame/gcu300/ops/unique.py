@@ -802,7 +802,9 @@ def ops_unique_flat(in0: torch.Tensor, return_inverse: bool, return_counts: bool
     """
     x = in0.ravel()
     n = x.numel()
-    sorted_data, sorted_indices = torch.sort(x)
+    # The tiled kernels this replaces are unusable on GCU300, so this
+    # corrective fallback deliberately uses the (working) device ops.
+    sorted_data, sorted_indices = torch.sort(x)  # allow-torch-compute
     ne = torch.empty(n, dtype=torch.bool, device=x.device)
     ne[0] = True
     ne[1:] = sorted_data[1:] != sorted_data[:-1]
@@ -811,11 +813,12 @@ def ops_unique_flat(in0: torch.Tensor, return_inverse: bool, return_counts: bool
     counts = None
     if return_counts:
         tail = torch.full((1,), n, dtype=torch.int64, device=x.device)
-        ends = torch.cat([idx[1:], tail], dim=0)
+        ends = torch.cat([idx[1:], tail], dim=0)  # allow-torch-compute
         counts = ends - idx
     inverse_indices = None
     if return_inverse:
-        rank = (torch.cumsum(ne.to(torch.int32), 0) - 1).to(torch.int64)
+        cumsum = torch.cumsum(ne.to(torch.int32), 0)  # allow-torch-compute
+        rank = (cumsum - 1).to(torch.int64)
         inverse_indices = torch.empty(n, dtype=torch.int64, device=x.device)
         inverse_indices.scatter_(0, sorted_indices.to(torch.int64), rank)
     return data_out, inverse_indices, counts
