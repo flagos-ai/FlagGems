@@ -410,6 +410,21 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     return filtered_configs
 
 
+def _prune_mm_general_tma_configs(configs, named_args, **kwargs):
+    """Keep the tiny-M tile out of the general MMA config space for larger M.
+
+    BLOCK_M=16 only helps decode-sized batches.  For every larger dynamic-M
+    shape emitted by Inductor/CUDA graphs those 108 candidates are still
+    compiled and benchmarked before the first kernel launch, which dominates
+    Hopper mm/mm_out cold start (issue #7164).
+    """
+    M = named_args.get("M")
+    if M is None or int(M) <= 32:
+        return list(configs)
+    pruned = [cfg for cfg in configs if cfg.kwargs["BLOCK_M"] >= 32]
+    return pruned or list(configs)
+
+
 @libentry()
 @libtuner(
     configs=matmul_get_configs(),
@@ -417,6 +432,7 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     strategy=["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    prune_configs_by={"early_config_prune": _prune_mm_general_tma_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_general_tma",
     policy="flagtune",
