@@ -473,8 +473,8 @@ def _backward_geometry(inp, dim):
     return outer, reduction, inner
 
 
-def max_backward(grad_output, self, result, indices, dim):
-    """Gradient of ``torch.max(self, dim, keepdim)`` with respect to ``self``.
+def max_backward(grad_output, self, result, indices=None, dim=None):
+    """Gradient of torch.max, with saved indices for the dim overload.
 
     ``grad_output`` holds the upstream gradient of the values output (already
     squeezed when the forward used ``keepdim=True``) and ``indices`` holds the
@@ -486,6 +486,10 @@ def max_backward(grad_output, self, result, indices, dim):
     it. Non-contiguous ``self`` is fine because only its geometry is used and the
     result is freshly allocated in the standard layout.
     """
+    if dim is None:
+        return evenly_distribute_backward(grad_output, self, result)
+    if indices is None:
+        raise ValueError("max_backward requires indices when dim is specified")
     logger.debug("GEMS MAX_BACKWARD")
     outer, reduction, inner = _backward_geometry(self, dim)
     dim = dim + self.ndim if dim < 0 else dim

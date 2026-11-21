@@ -1632,3 +1632,19 @@ def median_dim_values(inp, dim=0, keepdim=False, *, values, indices):
     _copy_out(result.values, values, "values")
     _copy_out(result.indices, indices, "indices")
     return MedianResult(values=values, indices=indices)
+
+
+def median_backward(grad_output, inp, value, indices=None, dim=None):
+    """Return the median gradient; the dim overload requires its saved indices."""
+    if dim is None:
+        return _median_backward(grad_output, _anonymous(inp).contiguous(), value)
+    if indices is None:
+        raise ValueError("median_backward requires indices when dim is specified")
+    shape = tuple(inp.shape)
+    if inp.ndim:
+        if not -inp.ndim <= dim < inp.ndim:
+            raise IndexError(f"Dimension out of range: {dim}")
+        dim %= inp.ndim
+    reduction_size = shape[dim] if shape else 0
+    inner_size = math.prod(shape[dim + 1 :])
+    return _median_dim_backward(grad_output, indices, shape, reduction_size, inner_size)

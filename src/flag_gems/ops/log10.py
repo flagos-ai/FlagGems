@@ -66,22 +66,7 @@ class Log10Function(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         (x,) = ctx.saved_tensors
-        if not (x.is_contiguous() and grad_output.is_contiguous()):
-            return _log10_backward_strided(grad_output, x)
-        grad_input = torch.empty_like(x)
-        n = x.numel()
-        if n:
-            block_size = 512
-            with torch_device_fn.device(x.device):
-                _log10_backward_kernel[(triton.cdiv(n, block_size),)](
-                    grad_output,
-                    x,
-                    grad_input,
-                    n,
-                    BLOCK=block_size,
-                    LARGE=n > 2147483647,
-                )
-        return grad_input
+        return log10_backward(grad_output, x)
 
 
 def log10(A):
@@ -99,3 +84,27 @@ def log10_(A):
 def log10_out(A, out):
     logger.debug("GEMS LOG10_OUT")
     return log10_func(A, out0=out)
+
+
+def log10_backward(grad_output, x):
+    """Return the first-order gradient of log10 for real inputs."""
+    if x.is_complex() or grad_output.is_complex():
+        raise NotImplementedError(
+            "FlagGems log10 backward does not support complex inputs"
+        )
+    if not (x.is_contiguous() and grad_output.is_contiguous()):
+        return _log10_backward_strided(grad_output, x)
+    grad_input = torch.empty_like(x)
+    n = x.numel()
+    if n:
+        block_size = 512
+        with torch_device_fn.device(x.device):
+            _log10_backward_kernel[(triton.cdiv(n, block_size),)](
+                grad_output,
+                x,
+                grad_input,
+                n,
+                BLOCK=block_size,
+                LARGE=n > 2147483647,
+            )
+    return grad_input
