@@ -131,16 +131,14 @@ def _b_transposed_layout(b: torch.Tensor) -> bool:
     return _is_transposed_contiguous_2d(b)
 
 
-def _is_supported_ppu_b_layout(a: torch.Tensor, b: torch.Tensor) -> bool:
-    """Return whether B has a PPU-validated NN or NT storage layout.
+def _is_supported_ppu_b_layout(b: torch.Tensor) -> bool:
+    """Accept dense NN and NT layouts, including partial reduction tiles.
 
-    The transpose-stride path is compiler-correct for native 128-wide PPU K
-    tiles.  Keep other reduction tails on the generic stride-aware kernel.
-    Every shape in the target MM trace satisfies this alignment.
+    Per-operand alignment controls AIU candidate legality through
+    ``_aiu_load_mask``. The kernels handle M/N/K tails with tile-dependent
+    masks or descriptor boundary checks; K alignment is not a layout gate.
     """
-    return b.is_contiguous() or (
-        _is_transposed_contiguous_2d(b) and a.shape[1] % 128 == 0
-    )
+    return b.is_contiguous() or _is_transposed_contiguous_2d(b)
 
 
 def _ppu_mm_configs():
@@ -1819,7 +1817,7 @@ def _can_use_ppu_gemm(
         and out.dtype == output_dtype
         and a.device == b.device == out.device
         and a.is_contiguous()
-        and _is_supported_ppu_b_layout(a, b)
+        and _is_supported_ppu_b_layout(b)
         and out.is_contiguous()
     ):
         return False
