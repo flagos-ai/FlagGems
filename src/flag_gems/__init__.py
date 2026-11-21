@@ -1227,6 +1227,7 @@ _FULL_CONFIG = (
         None,
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
+    ("clone_backward", clone_backward),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col2im", col2im),
     ("col_indices", col_indices, None, (AUTOGRAD_DISPATCH_KEY,)),

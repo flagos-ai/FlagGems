@@ -3602,6 +3602,18 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: clone_backward
+  description: Computes the gradient of `clone` with respect to its input, returning
+    a freshly allocated copy of `grad_output` (the identity VJP).
+  for:
+    - clone_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: coalesce
   description: 'De-duplicates a sparse COO tensor: groups the stored coordinates by
     their linear index, sorts unique coordinates ascending and sums duplicated values.

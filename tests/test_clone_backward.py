@@ -1,0 +1,50 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+@pytest.mark.clone_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clone_backward(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    # A non-uniform upstream gradient distinguishes a real pass-through from a
+    # gradient of ones.
+    out_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_grad = utils.to_reference(out_grad, True)
+
+    ref_out = torch.ops.aten.clone(ref_inp)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    res_in_grad = flag_gems.clone_backward(out_grad, inp)
+
+    # clone is a pure copy, so its gradient is the upstream gradient verbatim;
+    # that makes the comparison exact rather than tolerance based.
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    # Compare against the reference-side grad_output so the expectation lives on
+    # the same device under --ref=cpu, where gems_assert_equal moves only res.
+    utils.gems_assert_equal(res_in_grad, utils.to_reference(out_grad))
+    # The result must be a fresh allocation, never an alias of grad_output.
+    if out_grad.numel():
+        assert res_in_grad.untyped_storage().data_ptr() != (
+            out_grad.untyped_storage().data_ptr()
+        )
