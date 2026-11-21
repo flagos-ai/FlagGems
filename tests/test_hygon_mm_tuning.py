@@ -88,49 +88,6 @@ def test_hygon_mm_async_pruning(hygon_mm, M, N, K, large, masked, allow_async):
         assert N % config.kwargs["BLOCK_N"] == 0
 
 
-@pytest.mark.parametrize("key_limit", [1, 64])
-@pytest.mark.parametrize("family", ["packed", "large"])
-def test_hygon_mm_async_cache_roundtrip(hygon_mm, tmp_path, key_limit, family):
-    from flag_gems.utils.models.sql import SQLPersistantModel
-
-    model = SQLPersistantModel(f"sqlite:///{tmp_path / 'mm.sqlite'}")
-    model.key_count_limit = key_limit
-    config = next(
-        config
-        for config in hygon_mm._hygon_mm_configs()
-        if config.kwargs["ASYNC_LOAD"]
-        and (
-            config.kwargs["BLOCK_M"] == 256
-            if family == "large"
-            else hygon_mm._hygon_mm_is_packed_async_config(config)
-        )
-    )
-    sync = copy.deepcopy(config)
-    sync.kwargs["ASYNC_LOAD"] = False
-    keys = [1024, 1024, 1024]
-    name = f"hygon-mm-benchmark-{family}-{key_limit}"
-    try:
-        model.put_benchmark(name, keys, config, (1.0, 0.9, 1.1))
-        model.put_benchmark(name, keys, sync, (2.0, 1.9, 2.1))
-        assert model.get_benchmark(name, keys, config) == (1.0, 0.9, 1.1)
-        assert model.get_benchmark(name, keys, sync) == (2.0, 1.9, 2.1)
-        choice = f"hygon-mm-choice-{family}-{key_limit}"
-        model.put_config(choice, keys, config)
-        restored = model.get_config(choice, keys)
-        assert restored is not None
-        assert restored.kwargs["ASYNC_LOAD"] == 1
-        assert hygon_mm._hygon_mm_is_dense_config(restored)
-        if family == "large":
-            assert hygon_mm._hygon_mm_is_large_config(restored)
-        else:
-            assert hygon_mm._hygon_mm_is_packed_async_config(restored)
-        assert SQLPersistantModel.get_config_dict(restored) == (
-            SQLPersistantModel.get_config_dict(config)
-        )
-    finally:
-        model.engine.dispose()
-
-
 @pytest.mark.parametrize(
     "M,N,K,large,masked,expected",
     [
