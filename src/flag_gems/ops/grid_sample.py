@@ -4834,10 +4834,16 @@ def grid_sample(
                 block_h = max(4, block_h // 2)
                 block_w = max(4, block_w // 2)
 
-            # Calculate actual grid size
-            num_h_blocks = (H_out + block_h - 1) // block_h
-            num_w_blocks = (W_out + block_w - 1) // block_w
-            grid_size = (N * C, num_h_blocks * num_w_blocks)
+            # The tile size is chosen by the autotuner, so derive the grid from the
+            # selected config instead of a block size computed here that the kernel
+            # never receives.
+            def grid_size(META):
+                return (
+                    N * C,
+                    triton.cdiv(H_out, META["BLOCK_H"])
+                    * triton.cdiv(W_out, META["BLOCK_W"]),
+                )
+
         else:
             # Original kernels use 1D grid (for bicubic or small outputs)
             grid_size = (N * C * H_out * W_out,)
@@ -5001,11 +5007,15 @@ def grid_sample(
                 block_h = max(MIN_BLOCK_DIMENSION, block_h // 2)
                 block_w = max(MIN_BLOCK_DIMENSION, block_w // 2)
 
-            # Calculate actual grid size
-            num_d_blocks = (D_out + block_d - 1) // block_d
-            num_h_blocks = (H_out + block_h - 1) // block_h
-            num_w_blocks = (W_out + block_w - 1) // block_w
-            grid_size = (N * C, num_d_blocks * num_h_blocks * num_w_blocks)
+            # As in the 2D path: the autotuner owns the tile size.
+            def grid_size(META):
+                return (
+                    N * C,
+                    triton.cdiv(D_out, META["BLOCK_D"])
+                    * triton.cdiv(H_out, META["BLOCK_H"])
+                    * triton.cdiv(W_out, META["BLOCK_W"]),
+                )
+
         else:
             # Original kernels use 1D grid (for small outputs or very large outputs)
             grid_size = (N * C * D_out * H_out * W_out,)

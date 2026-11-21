@@ -845,6 +845,39 @@ class TestGridSampleExtremeSizes:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    )
+    @pytest.mark.grid_sample
+    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
+    def test_repeated_calls_cover_full_output(self, mode, padding_mode):
+        """Every call, not just the first, must fill the whole output.
+
+        The tiled kernels get their block size from the autotuner, so the launch
+        grid has to follow the selected config. Autotune benchmarks every config
+        on the same output buffer, which hides a mismatch on the first call; later
+        calls reuse the cached config and leave part of the output unwritten.
+        """
+
+        dtype = torch.float32
+        input_shape = (1, 3, 512, 512)
+        grid_shape = (1, 512, 512, 2)
+
+        x = create_tensor(input_shape, dtype)
+        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.clamp(grid, -0.9, 0.9)
+
+        y_torch = torch.nn.functional.grid_sample(
+            x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
+        )
+
+        for _ in range(3):
+            y_gems = grid_sample(
+                x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
+            )
+            assert_close(y_gems, y_torch, dtype=dtype)
+
     # Phase 3: Extra large size tests (2048×2048, 4096×4096)
     @pytest.mark.grid_sample
     @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
