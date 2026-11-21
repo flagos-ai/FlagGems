@@ -12,6 +12,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+_cudnn_convolution_transpose_backward:
+  - META:
+      BLOCK_M: 16
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_M: 16
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_M: 16
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_M: 32
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_M: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_M: 32
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_M: 64
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_M: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_M: 64
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_M: 128
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_M: 128
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_M: 128
+    num_warps: 8
+    num_stages: 3
+
 _conj_copy:
   - META:
       BLOCK_SIZE: 512
