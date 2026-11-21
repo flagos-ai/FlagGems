@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_scatter_pa_cache_value:
+  shapes:
+    - [8, 4096]
+    - [8, 536832]
+  shape_desc: "Tokens, cache pages"
