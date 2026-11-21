@@ -182,6 +182,13 @@ def mul_kernel(
     flagtune_op_id="flaggems/mul",
     flagtune_variant="scalar",
     policy="flagtune",
+    # mul_ runs this kernel in-place (output_ptr aliases x_ptr). Autotuning
+    # benchmarks each candidate repeatedly on that same buffer, so without
+    # restoring it every trial compounds the multiply and a small factor such
+    # as 0.001 underflows to 0. Restoring output_ptr between trials keeps the
+    # input pristine; it is harmless for out-of-place callers that pass a fresh
+    # buffer.
+    restore_value=["output_ptr"],
 )
 @triton.jit(do_not_specialize=["scalar"])
 def mul_scalar_kernel(

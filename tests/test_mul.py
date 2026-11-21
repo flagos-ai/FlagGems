@@ -185,6 +185,35 @@ def test_mul_tensor_scalar_(shape, scalar, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.mul_
+@pytest.mark.parametrize("scalar", [0.001])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mul_tensor_scalar_inplace_tuning(dtype, scalar, monkeypatch):
+    """Regression test for #6784.
+
+    Autotuning (e.g. FlagTree cost-model mode) benchmarks the in-place kernel
+    on the caller's buffer. Unless the aliased output is restored between
+    trials, every trial multiplies that buffer again, so a small factor such as
+    0.001 underflows to 0 and ``x.mul_(0.001)`` returns zeros. Force a fresh
+    benchmark pass and check the in-place result stays exact.
+    """
+    libentry = importlib.import_module("flag_gems.utils.libentry")
+    mul_ops = importlib.import_module(flag_gems.mul.__module__)
+
+    inp = torch.randn((128, 257), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True)
+    ref_out = ref_inp.mul_(scalar)
+
+    # Ignore timings cached by earlier runs so the tuning pass really executes.
+    monkeypatch.setattr(libentry.BenchmarkCache, "get", lambda self, config: None)
+    with mul_ops.mul_scalar_kernel.fn.use_run_mode(
+        libentry.LibTunerRunMode.FORCE_POLICY
+    ):
+        res_out = flag_gems.mul_(inp, scalar)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.mul
 @pytest.mark.parametrize(
     "shape_a, shape_b",
