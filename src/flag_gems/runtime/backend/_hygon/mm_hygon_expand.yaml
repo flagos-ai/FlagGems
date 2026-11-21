@@ -13,6 +13,13 @@
 # limitations under the License.
 
 
+# Expanded tuning is opt-in (for example FLAGTUNE_INCLUDE=mm,mv with
+# USE_FLAGTUNE_COST_MODEL=0); ordinary Default tuning is unchanged.
+# Profiles derive their stage/wave choices from the allowed launch ranges.
+# Those ranges are not independent Cartesian-product axes. First use of an
+# unseen tuning key pays compilation and replay search; cached launches reuse
+# the selected configuration.
+#
 # Regular gfx936 MM geometry and the existing default launch baselines,
 # 2486 candidates after copy/layout alias and profile-specific allocation checks.
 # Launch ranges are allowed values; each named profile derives one stage/wave

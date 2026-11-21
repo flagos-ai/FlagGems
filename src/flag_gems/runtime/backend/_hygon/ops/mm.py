@@ -3563,10 +3563,11 @@ def mm(a, b):
     # Matrix-vector boundaries use the Hygon-tuned mv family. This is a
     # generic dimension rule (not a model-shape special case) and avoids
     # launching a 2-D tile kernel with one entirely wasted output axis.
-    if N == 1 and c_dtype != torch.float64:
-        return mv(a, b[:, 0]).reshape(M, 1).to(c_dtype)
-    if M == 1 and c_dtype != torch.float64:
-        return mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c_dtype)
+    if a.dtype == b.dtype and c_dtype != torch.float64:
+        if N == 1:
+            return mv(a, b[:, 0]).reshape(M, 1)
+        if M == 1:
+            return mv(b.transpose(0, 1), a[0]).reshape(1, N)
 
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     _dispatch_hygon_mm(a, b, c)
@@ -3697,19 +3698,24 @@ def mm_out(a, b, *, out):
         return c
     if K == 0:
         return c.zero_()
-    if N == 1 and a.dtype != torch.float64 and b.dtype != torch.float64:
+    if (M == 1 or N == 1) and a.dtype != torch.float64 and b.dtype != torch.float64:
         if _hygon_mm_direct_mv_out(a, b, c, M, N):
-            _mv_out(a, b[:, 0], c[:, 0])
+            if N == 1:
+                _mv_out(a, b[:, 0], c[:, 0])
+            else:
+                _mv_out(b.transpose(0, 1), a[0], c[0])
             torch.autograd.graph.increment_version(c)
             return c
-        c.copy_(mv(a, b[:, 0]).reshape(M, 1).to(c.dtype))
-        return c
-    if M == 1 and a.dtype != torch.float64 and b.dtype != torch.float64:
-        if _hygon_mm_direct_mv_out(a, b, c, M, N):
-            _mv_out(b.transpose(0, 1), a[0], c[0])
-            torch.autograd.graph.increment_version(c)
-            return c
-        c.copy_(mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c.dtype))
+        if a.dtype == b.dtype == c.dtype:
+            value = mv(a, b[:, 0]) if N == 1 else mv(b.transpose(0, 1), a[0])
+            value = value.reshape(M, N)
+        else:
+            # A low-precision MV temporary would round before conversion to
+            # the requested output dtype. Keep the MM computation in that
+            # dtype, with a temporary to preserve alias and copy_ semantics.
+            value = torch.empty((M, N), device=c.device, dtype=c.dtype)
+            _dispatch_hygon_mm(a, b, value)
+        c.copy_(value)
         return c
 
     _dispatch_hygon_mm(a, b, c)

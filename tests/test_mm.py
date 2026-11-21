@@ -96,6 +96,69 @@ def test_mm_broadcast_stride_zero(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
+def _singleton_precision_operands(M, N, a_dtype, b_dtype, column_major):
+    a = torch.zeros((M, 17), dtype=a_dtype, device=flag_gems.device)
+    b = torch.zeros(
+        (N, 17) if column_major else (17, N),
+        dtype=b_dtype,
+        device=flag_gems.device,
+    )
+    if column_major:
+        b = b.t()
+    # Each exact FP32 result is 131008: storing through FP16 first overflows.
+    a[:, 0] = 65504
+    b[0, :] = 2
+    return a, b
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon MV shortcut")
+@pytest.mark.parametrize("M,N", [(3, 1), (1, 3), (1, 1)])
+@pytest.mark.parametrize(
+    "a_dtype,b_dtype",
+    [(torch.float16, torch.float32), (torch.float32, torch.float16)],
+)
+@pytest.mark.parametrize("column_major", [False, True])
+def test_mm_hygon_singleton_mixed_dtype(M, N, a_dtype, b_dtype, column_major):
+    a, b = _singleton_precision_operands(M, N, a_dtype, b_dtype, column_major)
+    reference = torch.mm(a.float(), b.float())
+    result = flag_gems.mm(a, b)
+    assert result.dtype == torch.float32
+    torch.testing.assert_close(result, reference, rtol=0, atol=0)
+
+
+@pytest.mark.mm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon MV shortcut")
+@pytest.mark.parametrize("M,N", [(3, 1), (1, 3)])
+@pytest.mark.parametrize("column_major", [False, True])
+@pytest.mark.parametrize(
+    "a_dtype,b_dtype,layout",
+    [
+        (torch.float16, torch.float32, "dense"),
+        (torch.float16, torch.float16, "strided"),
+        (torch.float32, torch.float16, "alias"),
+    ],
+)
+def test_mm_out_hygon_singleton_output_precision(
+    M, N, column_major, a_dtype, b_dtype, layout
+):
+    a, b = _singleton_precision_operands(M, N, a_dtype, b_dtype, column_major)
+    reference = torch.mm(a.float(), b.float())
+    storage = torch.full((M, 2 * N), -19.0, device=a.device)
+    if layout == "alias":
+        out = a[:, :N]
+    elif layout == "strided":
+        out = storage[:, ::2]
+    else:
+        out = torch.empty((M, N), device=a.device)
+    version = out._version
+    assert flag_gems.mm_out(a, b, out=out) is out
+    torch.testing.assert_close(out, reference, rtol=0, atol=0)
+    assert out._version == version + 1
+    if layout == "strided":
+        assert torch.all(storage[:, 1::2] == -19)
+
+
 @pytest.mark.mm
 def test_mm_out_vllm_tma_column_major_weight():
     """Regression test for vLLM Inductor mm_out with a column-major BF16 weight."""
