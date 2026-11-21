@@ -11,7 +11,72 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Kunlunxin (TritonXPU) implementation of ``aten::masked_scatter_backward``.
+
+Why a vendor file exists at all
+-------------------------------
+The generic implementation (``src/flag_gems/ops/masked_scatter_backward.py``)
+synchronises its two phases with a cross-CTA ticket barrier::
+
+    barrier = tl.atomic_add(counter_ptr, 1, sem="acq_rel")   # line 76
+    if barrier == tl.num_programs(0) - 1:
+        ...
+
+**Consuming the result of ``tl.atomic_add`` does not compile on TritonXPU.**
+``tritonxpu-create-gm2lm{atomic-sim=true}`` rewrites (and destroys) the
+``tt.atomic_rmw`` op without rewiring its result, so the pass pipeline aborts
+with ``'tt.atomic_rmw' op operation destroyed but still has uses``, surfaced to
+Python as ``OutOfResources: uni_sram PassManager::run failed``.  Isolated
+single-variable probe (grid=4, one atomic on a scalar):
+
+    discard the result          -> OK
+    use it in arithmetic        -> FAIL   (acq_rel and default sem alike)
+    use it as an ``if`` predicate -> FAIL
+
+Consequence on HEAD: every single case of ``masked_scatter_backward`` fails.
+``N <= 110592`` dies in ``_msb_count_kernel``; larger ``N`` delegates to
+``flag_gems.ops.masked_select`` (module-level import, so the live vendor
+``masked_select`` override is bypassed) and dies on the very same construct at
+``ops/masked_select.py:92``.
+
+Design of this implementation
+-----------------------------
+No atomics anywhere.  The cross-block exclusive scan is done by a dedicated
+single-program kernel between the counting and the writing launch, so the
+inter-block ordering comes from launch boundaries instead of a device barrier.
+
+Everything else follows the backend's measured constraints:
+
+* **One discrete store per program, everywhere.**  A masked discrete store is
+  not honoured on this backend (the whole tile is written) and a *compound*
+  mask on a discrete store additionally writes the wrong payload.  So every
+  store is fully unmasked and inactive lanes are redirected, by address, into
+  a scratch tail that is appended to the output allocation
+  (``tl.where(active, pos, SCRATCH + lane)``).  Addresses are unique inside a
+  program, so no address is written twice.  A program that issues a *second*
+  discrete store loses writes on this backend (measured: the ``[count, numel)``
+  zero fill silently dropped 1-152 lanes, deterministic per input), so no
+  kernel in this file has more than one store and the zero padding is always
+  a host-side ``torch.zeros`` (device memset).
+* **The compaction store is the only discrete access.**  It is irreducible for
+  a stream compaction; reads stay stride-1 block DMA and the zero padding of
+  the ``[count, numel)`` tail is a host-side device memset.
+* **Shape scalars are ``tl.constexpr``.**  ``N``/``NUMEL``/``SCRATCH`` are
+  compile-time constants so no runtime i32 scalar enters an address expression
+  (measured 15-30x cliff elsewhere) and the tail mask folds away completely
+  whenever ``N % BLOCK == 0``.
+* **Tile widths.** ``_BLOCK = 8192`` for the pipeline and ``BLOCK <= 8192`` for
+  the single-launch path.  BLOCK=16384 is ~11% faster end-to-end on the huge
+  cells but is NOT used: a single program issuing two 16384-lane unmasked
+  discrete stores wedged the card (``wait for noc idle timeout`` /
+  ``kl3ChannelCheckErrors`` / ``KL_XID_KERNEL_EXCEPTION`` / ``status=299``;
+  the driver recovered it with an automatic ``m3 mode1 reset``), while the same
+  kernel at BLOCK <= 8192 has been exercised hundreds of times without a fault.
+* Tile widths are always powers of two and never below 64.
+"""
+
 import logging
+import os
 
 import torch
 import triton
@@ -21,6 +86,65 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+try:
+    import triton.experimental.tle as tle
+
+    _TLE_OK = True
+except ImportError:
+    tle = None
+    _TLE_OK = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Raw cluster payload (cub-style block compaction): confines the compaction
+# scatter to on-chip memory (per-core scalar compact + __shared__ cross-core
+# scan) and writes each block out with one contiguous LM2GM, so the global
+# store stays affine instead of the ~2ns/elem triton gather store. Only the
+# large-shape path takes this; the small single-launch path is already fast.
+# Value movement is bit-reinterpreted, so it is dtype-agnostic; two width
+# variants (4-byte / 2-byte) cover fp32 and fp16/bf16.
+_RAW_BLOCK = 16384
+# The flat count pass reuses _msb_count_kernel at this block width.
+_RAW_MIN_NUMEL = 8192  # below this the single-launch path wins; no raw path
+
+_RAW_VIEW_DTYPE = {
+    torch.float32: torch.int32,
+    torch.float16: torch.int16,
+    torch.bfloat16: torch.int16,
+}
+
+if _TLE_OK:
+    # Both entries live in the precompiled device object
+    # `payload/obj/msb_pack.o` (built from payload/src/msb_pack.xpu + the shared
+    # compaction primitives by payload/gen_payloads.py). It ships as machine
+    # code -- the C++ source is not in the tree.
+    _MSB_OBJ = os.path.join(os.path.dirname(_HERE), "payload", "obj", "msb_pack.o")
+
+    @tle.raw.dialect("xpu3", object=_MSB_OBJ, arch=3)
+    def msb_pack_b32(grad, mask, out, bases, n, bid): ...
+
+    @tle.raw.dialect("xpu3", object=_MSB_OBJ, arch=3)
+    def msb_pack_b16(grad, mask, out, bases, n, bid): ...
+
+    @triton.jit(do_not_specialize=["n"])
+    def _msb_pack_b32_kernel(Grad, Mask, Out, Bases, n):
+        pid = tl.program_id(0)
+        tle.raw.call(msb_pack_b32, (Grad, Mask, Out, Bases, n, pid))
+
+    @triton.jit(do_not_specialize=["n"])
+    def _msb_pack_b16_kernel(Grad, Mask, Out, Bases, n):
+        pid = tl.program_id(0)
+        tle.raw.call(msb_pack_b16, (Grad, Mask, Out, Bases, n, pid))
+
+
+def _raw_ok(dtype):
+    return (
+        _TLE_OK
+        and (os.environ.get("TRITON_XPU_ARCH", "3") == "3")
+        and (dtype in _RAW_VIEW_DTYPE)
+    )
+
 
 # Element budget for the single-launch path.  Above it the three-kernel
 # (count -> scan -> write) pipeline is used.  MUST stay <= 8192: the tile width
@@ -43,6 +167,21 @@ def _msb_single_kernel(
     SCRATCH: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
+    """Single-launch compaction for ``max(N, NUMEL) <= BLOCK``.
+
+    The host pre-zeroes ``out[0, NUMEL)`` (``torch.zeros``); this kernel then
+    issues exactly one unmasked discrete store: active lanes receive the
+    compacted gradient at ``pos``, *all* inactive lanes are parked in the
+    scratch tail (``SCRATCH + lane``) so the store stays unmasked.  Addresses
+    are unique inside the program, so no address is written twice.
+
+    A single-store body is mandatory: a program that issues two discrete
+    stores loses writes on this backend.  In measurement the second store
+    (the ``[count, NUMEL)`` zero fill, whether ``tl.where``-addressed or a
+    tile-wide ``tl.zeros``) silently dropped 1-152 lanes, ``OutOfResources``-
+    free and deterministic per input.  Hence the pad is produced by the
+    host-side device memset instead of a second triton store.
+    """
     lane = tl.arange(0, BLOCK)
     valid = lane < N
     m = tl.load(mask_ptr + lane, mask=valid)
@@ -178,6 +317,10 @@ def masked_scatter_backward(grad_output, mask, sizes):
     with torch_device_fn.device(device):
         if max(n, numel) <= _SP_MAX:
             block = max(64, triton.next_power_of_2(max(n, numel)))
+            # ``torch.zeros``: the zero padding must not come from a second
+            # triton store in the same program (see the module docstring), so
+            # the host pre-zeroes with a device memset and the kernel below
+            # issues its single store.
             out = torch.zeros(numel + block, dtype=dtype, device=device)
             _msb_single_kernel[(1,)](
                 grad_flat,
@@ -186,6 +329,37 @@ def masked_scatter_backward(grad_output, mask, sizes):
                 N=n,
                 SCRATCH=numel,
                 BLOCK=block,
+            )
+            return out[:numel].view(sizes)
+
+        # Raw cluster payload: cub-style block compaction. Confines the
+        # compaction scatter to on-chip memory and writes each block out with a
+        # contiguous LM2GM, so it beats the triton gather-store pipeline below.
+        # Fully device-side: block counts -> device exclusive scan -> payload,
+        # with NO host round-trip (`.cpu()`/`.item()` would serialize a ~40us
+        # D2H sync into every call). Memory-safe for any input: the output is
+        # over-allocated to max(numel, n) + one block so a compaction of up to n
+        # active lanes never writes OOB, and the [total, numel) tail stays zero.
+        if _raw_ok(dtype) and n >= _RAW_MIN_NUMEL:
+            rblock = _RAW_BLOCK
+            n_blocks = triton.cdiv(n, rblock)
+            npb = triton.next_power_of_2(n_blocks)
+            counts = torch.empty(npb, dtype=torch.int32, device=device)
+            offsets = torch.empty(npb, dtype=torch.int32, device=device)
+            _msb_count_kernel[(npb,)](mask_flat, counts, N=n, BLOCK=rblock)
+            _msb_scan_kernel[(1,)](counts, offsets, NP=npb)
+            bases = offsets.to(torch.int64)
+            out = torch.zeros(max(numel, n) + rblock, dtype=dtype, device=device)
+            vdt = _RAW_VIEW_DTYPE[dtype]
+            kern = (
+                _msb_pack_b32_kernel if dtype == torch.float32 else _msb_pack_b16_kernel
+            )
+            kern[(n_blocks,)](
+                grad_flat.view(vdt),
+                mask_flat.view(torch.uint8),
+                out.view(vdt),
+                bases,
+                n,
             )
             return out[:numel].view(sizes)
 

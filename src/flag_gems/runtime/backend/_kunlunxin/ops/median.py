@@ -1087,6 +1087,12 @@ def _median_dim_impl(inp, dim, keepdim, out=None):
     with torch_device_fn.device(inp.device):
         rows = _reduction_rows(inp, dim, M, N)
         out_values, out_indices = _median_key_select(rows, N)
+        # The kernels write flat (M,) results while the destination may be
+        # 0-dim (flat median.out) or keepdim-shaped.  Reshape the flat
+        # staging tensors to the destination shape before the DMA copy;
+        # _copy_from cannot expand (M,) down to a 0-dim destination.
+        out_values = out_values.reshape(values.shape)
+        out_indices = out_indices.reshape(indices.shape)
         torch.ops.aten._copy_from(out_values, values, False)
         torch.ops.aten._copy_from(out_indices, indices, False)
 

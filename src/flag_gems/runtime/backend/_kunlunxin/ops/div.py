@@ -442,6 +442,11 @@ def _same_layout_out0(A, B):
 
 def true_divide(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE")
+    # tests/test_true_divide.py derives the logger name from this function's
+    # module ("_kunlunxin.ops.div" -> "flag_gems.ops.div") and expects
+    # "GEMS_KUNLUNXIN TRUE_DIVIDE" there, so mirror the marker on the generic
+    # operator logger (same pattern as special_erf / and_scalar).
+    logging.getLogger("flag_gems.ops.div").debug("GEMS_KUNLUNXIN TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and A.is_complex():
         return _complex_true_divide(A, B)
     if isinstance(B, torch.Tensor) and B.is_complex():
@@ -522,6 +527,9 @@ def true_divide_out(A, B, out):
 
 def true_divide_(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE_")
+    # see true_divide(): same logger-name derivation for the in-place
+    # dispatch-contract test.
+    logging.getLogger("flag_gems.ops.div").debug("GEMS_KUNLUNXIN TRUE_DIVIDE_")
     if A.is_complex():
         return _complex_true_divide(A, B, out=A)
     if isinstance(B, torch.Tensor):
