@@ -999,7 +999,12 @@ _FULL_CONFIG = (
         "_wrapped_quantized_linear_prepacked",
         _wrapped_quantized_linear_prepacked,
     ),
-    ("abs", abs),
+    (
+        "abs",
+        abs,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("abs_", abs_),
     ("absolute", absolute),
     ("absolute_", absolute_),
