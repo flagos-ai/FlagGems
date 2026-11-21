@@ -773,6 +773,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .or_scalar import or_scalar
 from .or_tensor import or_tensor
+from .orgqr import orgqr, orgqr_out
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .pad_sequence import pad_sequence
@@ -1822,6 +1823,8 @@ __all__ = [
     "ones_like",
     "or_scalar",
     "or_tensor",
+    "orgqr",
+    "orgqr_out",
     "ormqr",
     "outplace_fused_experts",
     "pad",
