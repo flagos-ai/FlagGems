@@ -1,34 +1,24 @@
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v2.3.0
-  hooks:
-  - id: check-yaml
-  - id: end-of-file-fixer
-  - id: trailing-whitespace
-  - id: flake8
-    args: ["--ignore=F405,E731,W503,E203,F401,E402,F811", "--max-line-length=120"]
-    # F405 : Name may be undefined, or defined from star imports: module
-    # E731 : Do not assign a lambda expression, use a def
-    # W503 : Line break before binary operator
-    # E203 : Whitespace before ':'
-    # F401 : Imported but unused (for __init__.py export)
-    # E402 : Module level import not at top of file (dynamic backend dispatch)
-    # F811 : Redefinition of name (backend op override)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
 
-- repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: v13.0.0
-  hooks:
-    - id: clang-format
-      files: \.(cpp|h|cc|c|hpp)$
-      exclude: ^third_party/
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        args: [--max-line-length=120]
 
-- repo: https://github.com/pycqa/isort
-  rev: 5.12.0
-  hooks:
-    - id: isort
-      args: ["--profile", "black"]
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
 
-- repo: https://github.com/psf/black.git
-  rev: 23.7.0
-  hooks:
-    - id: black
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
