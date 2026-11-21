@@ -36,8 +36,12 @@ from flag_gems.utils.shape_utils import (
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
-_BAD_TILE_SIZE_1D = 32768
-_BAD_TILE_SIZE_1D_FALLBACK = 16384
+# 1D tile upper bounds for the XPU lowering. A tile of 64 KiB (32768 bf16
+# elements) or more is mis-lowered on xpu3 and silently produces wrong values,
+# so cap by bytes as well as by elements. The element bound keeps the previous
+# 32768-element fallback for the 1-byte dtypes.
+_BAD_TILE_BYTES_1D = 32768
+_BAD_TILE_MAX_ELEMS_1D = 16384
 
 
 def _type_name(type) -> str:
@@ -837,7 +841,8 @@ class WrapperGenerator:
                 "   num_ctas = 12 # XPU BLOCK_NUM",
                 "   num_tiles = 12 # XPU BLOCK_NUM",
             ]
-            code.writeline("_geo = _PW_GEO_CACHE.get(num_tasks)")
+            code.writeline("_geo_key = (num_tasks, out0.element_size())")
+            code.writeline("_geo = _PW_GEO_CACHE.get(_geo_key)")
             code.writeline("if _geo is None:")
             with code.indent():
                 if self.config.num_ctas_1d > 0:
@@ -859,8 +864,12 @@ class WrapperGenerator:
                 code.writeline(
                     "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
                 )
-                code.writeline(f"if tile_size == {_BAD_TILE_SIZE_1D}: # XPU BAD TILE")
-                code.writeline(f"    tile_size = {_BAD_TILE_SIZE_1D_FALLBACK}")
+                code.writeline(
+                    f"max_tile_size = min({_BAD_TILE_BYTES_1D} // out0.element_size(),"
+                    f" {_BAD_TILE_MAX_ELEMS_1D}) # XPU BAD TILE"
+                )
+                code.writeline("if tile_size > max_tile_size: # XPU BAD TILE")
+                code.writeline("    tile_size = max_tile_size")
                 code.writeline("    num_tiles = triton.cdiv(num_tasks, tile_size)")
                 code.writeline("    num_ctas = num_tiles")
 
@@ -869,7 +878,7 @@ class WrapperGenerator:
                 code.writeline("one_tile_per_cta = tiles_per_cta==1")
                 code.writeline("grid = (num_ctas, 1, 1)")
                 code.writeline(
-                    "_geo = _PW_GEO_CACHE[num_tasks] = ("
+                    "_geo = _PW_GEO_CACHE[_geo_key] = ("
                     "num_ctas, tile_size, tiles_per_cta, num_warps, one_tile_per_cta, grid)"
                 )
             code.writeline(
@@ -1040,6 +1049,21 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
+                if not self.config.isCloseVectorization and schema.num_input_tensors():
+                    # bool -> f32 lowers fine; only narrow integer inputs hit the
+                    # vector-widen bug, and keeping bool out avoids disabling
+                    # vectorization for mask operands.
+                    _widen = [
+                        f"({self.input_name(i)}.dtype.is_floating_point is False"
+                        f" and {self.input_name(i)}.dtype != torch.bool"
+                        f" and {self.input_name(i)}.element_size() < out0.element_size())"
+                        for i in range(schema.num_input_tensors())
+                    ]
+                    code.writeline(
+                        "isCloseVectorization="
+                        + " or ".join(_widen)
+                        + ", # XPU int widen"
+                    )
                 if self.config.isCloseInterleave:
                     code.writeline("isCloseInterleave=True,")
                 if self.config.isCloseDtypeConvert:

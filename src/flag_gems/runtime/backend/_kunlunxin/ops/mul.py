@@ -73,6 +73,11 @@ def mul(A, B):
             Ar = torch.view_as_real(A.resolve_conj())
             if isinstance(B, torch.Tensor):
                 Br = B.unsqueeze(-1)
+                # 0-dim A: a (2,) x (1,) 1-D tile broadcast hits an XPU LLVM
+                # translation bug (unrealized_conversion_cast). Materialize the
+                # scalar side so both operands have the same shape.
+                if A.dim() == 0:
+                    Br = Br.expand(Ar.shape).contiguous()
                 out_real = mul_func(Ar, Br)
             else:
                 out_real = mul_func_scalar(Ar, B)
@@ -81,6 +86,8 @@ def mul(A, B):
             Br = torch.view_as_real(B.resolve_conj())
             if isinstance(A, torch.Tensor):
                 Ar = A.unsqueeze(-1)
+                if B.dim() == 0:
+                    Ar = Ar.expand(Br.shape).contiguous()
                 out_real = mul_func(Ar, Br)
             else:
                 out_real = mul_func_scalar(Br, A)
