@@ -5494,6 +5494,25 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: div_backward
+  description: |
+    Backward pass of `div` (true division): given the upstream gradient and the
+    two forward operands, produce the input gradients
+    `grad_self = grad / other` and
+    `grad_other = -grad * (self / other) / other`.
+    ATen drives these through the `DivBackward0` autograd node; this Torch build
+    has no standalone `aten::div_backward` schema, so the Triton kernel is
+    exposed as an explicit entry point plus a `torch.autograd.Function`
+    bridge (same pattern as `digamma_backward`).
+  for:
+  - div_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6'
 - id: div_mode
   description: 'Divides each element of the `input` by the corresponding element of
     `other`.

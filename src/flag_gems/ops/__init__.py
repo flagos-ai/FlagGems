@@ -821,6 +821,7 @@ from flag_gems.ops.div import (
     floor_divide_,
     true_divide_out,
 )
+from flag_gems.ops.div_backward import div_backward
 from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
@@ -2562,6 +2563,7 @@ __all__ = [
     "dim_arange",
     "dimV",
     "dist",
+    "div_backward",
     "div_mode",
     "div_mode_",
     "divide",
