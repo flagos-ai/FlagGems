@@ -28,9 +28,15 @@ def empty_permuted_input_fn(shape, dtype, device):
     yield shape, list(reversed(range(len(shape))))
 
 
+class _AllocationBenchmark(base.GenericBenchmark):
+    # torch.empty / torch.empty_permuted only allocate storage; the native
+    # baseline launches no device kernel, so --kernel-check is not applicable.
+    baseline_launches_kernel = False
+
+
 @pytest.mark.empty_permuted
 def test_empty_permuted():
-    bench = base.GenericBenchmark(
+    bench = _AllocationBenchmark(
         op_name="empty_permuted",
         torch_op=torch.empty_permuted,
         dtypes=consts.FLOAT_DTYPES,
@@ -41,7 +47,7 @@ def test_empty_permuted():
 
 @pytest.mark.empty
 def test_empty():
-    bench = base.GenericBenchmark(
+    bench = _AllocationBenchmark(
         op_name="empty",
         torch_op=torch.empty,
         dtypes=consts.FLOAT_DTYPES,

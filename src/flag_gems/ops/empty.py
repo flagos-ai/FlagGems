@@ -81,10 +81,12 @@ def empty(
         device=device,
         pin_memory=pin_memory,
     )
-    # Skip triton kernel for complex dtypes — triton cannot canonicalize complex
-    # pointer types on some backends, and empty() returns uninitialized memory
-    # anyway so skipping the store is functionally safe for all backends.
-    if dtype.is_complex:
+    # Skip the Triton kernel for dtype categories that Triton cannot lower to a
+    # pointer type: complex dtypes on some backends, and float8_e8m0fnu, which
+    # is missing from Triton's dtype canonicalisation table (issue #7586).
+    # empty() returns uninitialized memory, so skipping the dummy store is
+    # functionally safe for all backends.
+    if dtype.is_complex or dtype == getattr(torch, "float8_e8m0fnu", None):
         return out
     N = volume(shape)
     # Skip kernel launch for zero-element tensors to avoid invalid grid size on

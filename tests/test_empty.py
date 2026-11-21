@@ -84,3 +84,24 @@ def test_empty_default_dtype():
     assert res_out.dtype == torch.get_default_dtype()
     assert res_out.device.type == flag_gems.device
     assert res_out.is_contiguous()
+
+
+@pytest.mark.empty
+@pytest.mark.skipif(
+    not hasattr(torch, "float8_e8m0fnu"),
+    reason="torch.float8_e8m0fnu is unavailable in this PyTorch build",
+)
+def test_empty_float8_e8m0fnu():
+    # Issue #7586: Triton cannot canonicalize an e8m0 pointer, so the dummy
+    # store must be skipped while the allocation metadata stays native.
+    dtype = torch.float8_e8m0fnu
+    shape = (16, 16)
+
+    ref_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.empty(shape, dtype=dtype, device=flag_gems.device)
+
+    assert res_out.shape == ref_out.shape
+    assert res_out.dtype == dtype
+    assert res_out.device == ref_out.device
+    assert res_out.stride() == ref_out.stride()
+    assert res_out.is_contiguous()

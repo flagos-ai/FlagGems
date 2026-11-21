@@ -854,8 +854,8 @@ def pytest_sessionfinish(session, exitstatus):
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and getattr(Config, "kernel_check", False):
         # Per-operator check: every operator must have at least one record
-        # where invoked_kernel is True.  This prevents a kernel-launching
-        # operator in the same file from masking a no-kernel operator.
+        # where invoked_kernel is True, unless the benchmark declares that its
+        # baseline is allocation-only (not_applicable).
         from collections import defaultdict
 
         by_operator = defaultdict(list)
@@ -865,7 +865,9 @@ def pytest_sessionfinish(session, exitstatus):
         no_kernel_ops = sorted(
             op
             for op, records in by_operator.items()
-            if not any(r.get("invoked_kernel") for r in records)
+            if not any(
+                r.get("invoked_kernel") or r.get("not_applicable") for r in records
+            )
         )
         if no_kernel_ops and session.exitstatus == pytest.ExitCode.OK:
             import sys

@@ -102,6 +102,10 @@ class Benchmark:
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     MAX_BACKWARD_ELEMENTS = MAX_BACKWARD_ELEMENTS
     EPS = 1e-7
+    # Baselines that only allocate or alias storage (empty, empty_permuted,
+    # real, ...) do not launch a device kernel, so --kernel-check is not
+    # applicable to them.
+    baseline_launches_kernel = True
     """
     the base class for the operations benchmark
     """
@@ -881,6 +885,9 @@ class Benchmark:
         The result is cached per Benchmark instance so the profiling overhead
         is incurred at most once, even when multiple cases share the same op.
         """
+        if not self.baseline_launches_kernel:
+            self._base_kernel_verified = True
+            return
         if hasattr(self, "_base_kernel_verified"):
             if not self._base_kernel_verified:
                 pytest.skip(
@@ -929,6 +936,12 @@ class Benchmark:
                 "status": "failed",
             }
             Config.kernel_check_records.append(record)
+            if not self.baseline_launches_kernel:
+                record["not_applicable"] = True
+                record["status"] = "passed"
+                Config.executed_case_ids.add(case.case_id)
+                executed.append(case.case_id)
+                continue
             try:
                 args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
                 fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
@@ -965,6 +978,11 @@ class Benchmark:
                 "status": "failed",
             }
             Config.kernel_check_records.append(record)
+            if not self.baseline_launches_kernel:
+                record["not_applicable"] = True
+                record["status"] = "passed"
+                executed.append(case_id)
+                continue
             try:
                 input_iter = self.get_input_iter(dtype)
                 input_data = next(input_iter)
