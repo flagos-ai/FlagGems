@@ -788,7 +788,6 @@ def _flash_attn_bwd_varlen_dq_fused(
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
             dp = tl.where(drop_mask, dp * drop_scale, 0.0)
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
 
         ds = p * (dp - Di[:, None]) * sm_scale
         dq = dq + tl.dot(ds.to(q.dtype), k)
@@ -1039,6 +1038,7 @@ def _flash_attn_bwd_varlen_dkv(
         p = tl.exp(s - Li[:, None])
         dp = tl.dot(do, tl.trans(v)).to(tl.float32)
 
+        p_drop = p
         if IS_DROPOUT:
             rng_off = (
                 base_offset
@@ -1050,11 +1050,11 @@ def _flash_attn_bwd_varlen_dkv(
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
             dp = tl.where(drop_mask, dp * drop_scale, 0.0)
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            p_drop = tl.where(drop_mask, p * drop_scale, 0.0)
 
         ds = p * (dp - Di[:, None]) * sm_scale
         dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-        dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+        dv = dv + tl.dot(tl.trans(p_drop.to(q.dtype)), do)
 
     tl.store(
         dK
