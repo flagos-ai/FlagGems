@@ -1554,6 +1554,50 @@ def _scaled_dot_product_attention_math(
     return output, weights
 
 
+def _scaled_dot_product_attention_math_for_mps(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    dropout_mask=None,
+    *,
+    scale=None,
+):
+    """Vendor MPS-style math entry.
+
+    The generic ``_fused_attn_kernel`` produces wrong weights/output on XPU3
+    for several fp16/bf16 shapes, so route to the vendor Triton two-pass
+    kernels and materialize the weights with the top-left causal alignment
+    that the aten math contract expects.
+    """
+    logger.debug("GEMS_KUNLUNXIN _SCALED_DOT_PRODUCT_ATTENTION_MATH_FOR_MPS")
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math_for_mps: dropout > 0 is not "
+            "supported"
+        )
+    if attn_mask is not None:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math_for_mps: attn_mask is not supported"
+        )
+    if dropout_mask is not None:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math_for_mps: dropout_mask is not supported"
+        )
+    output, weights = scaled_dot_product_attention_forward(
+        query,
+        key,
+        value,
+        is_causal=is_causal,
+        scale=scale,
+        causal_offset=0,
+        return_weights=True,
+    )
+    return output, weights
+
+
 def _scaled_dot_product_cudnn_attention(
     query,
     key,
