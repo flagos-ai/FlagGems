@@ -23,8 +23,10 @@ from torch.autograd.function import once_differentiable
 
 from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.libentry import LibTunerRunMode
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
+from ..bmm.gemm import launch_compact_gemm
 from ..bmm.splitk import launch_small_splitk, small_splitk_count
 from .kernels import _TUNERS, _bias_kernel, _pack_b, _small_contiguous_baddbmm
 
@@ -98,6 +100,12 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
                 a, b, out, bias, alpha, beta, splits=splits, bias_strides=bias_strides
             )
             return out
+        if (
+            alpha == beta == 1
+            and _TUNERS["matmul"].fn._run_mode == LibTunerRunMode.NORMAL
+            and launch_compact_gemm(a, b, out, bias)
+        ):
+            return out
         algorithm = _algorithm(batch, m, n, k, a.dtype)
         if algorithm == "packed":
             packed = torch.empty((batch, n, k), device=b.device, dtype=b.dtype)
@@ -139,8 +147,8 @@ def _forward_checked(bias, a, b, beta, alpha, shape, bias_strides):
         and alpha == beta == 1
         and bias.shape == shape
         and a.is_contiguous()
-        and b.is_contiguous()
         and bias.is_contiguous()
+        and (b.is_contiguous() or b.stride() == (k * n, 1, k))
         and torch_device_fn.current_device() == a.device.index
     ):
         out = torch.empty(shape, device=a.device, dtype=a.dtype)
@@ -156,6 +164,7 @@ def _forward_checked(bias, a, b, beta, alpha, shape, bias_strides):
             k,
             batch,
             tn,
+            not b.is_contiguous(),
             num_warps=4 if fp32 else 2,
             num_stages=2,
             matrix_instr_nonkdim=16,

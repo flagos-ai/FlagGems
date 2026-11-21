@@ -974,3 +974,31 @@ def dense_addmm_small_fp32(
         False,
         False,
     )
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def short_k_addmm(
+    A,
+    B,
+    Bias,
+    Out,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    COLUMN_B: tl.constexpr,
+):
+    row = tl.program_id(1)
+    n = tl.program_id(0) * BN + tl.arange(0, BN)
+    k = tl.arange(0, BK)
+    a = tl.load(A + row * K + k, k < K, 0).to(tl.float32)
+    if COLUMN_B:
+        b_ptrs = B + k[:, None] + n[None, :] * K
+    else:
+        b_ptrs = B + k[:, None] * N + n[None, :]
+    b = tl.load(b_ptrs, (k[:, None] < K) & (n[None, :] < N), 0).to(tl.float32)
+    acc = tl.sum(a[:, None] * b, axis=0)
+    offsets = row * N + n
+    bias = tl.load(Bias + offsets, n < N, 0).to(tl.float32)
+    tl.store(Out + offsets, acc + bias, n < N)

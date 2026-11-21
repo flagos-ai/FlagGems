@@ -267,6 +267,42 @@ def _splitk_launch_key(tensors, partial_args, finish_args, alpha, beta):
     return signatures, partial_args, finish_args, type(alpha), type(beta)
 
 
+@libentry(cache_binding=True)
+@triton.jit
+def _dot_long_k(
+    A,
+    B,
+    Bias,
+    Out,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BK: tl.constexpr,
+    AB: tl.constexpr,
+    AM: tl.constexpr,
+    BB: tl.constexpr,
+    BN: tl.constexpr,
+    OB: tl.constexpr,
+    OM: tl.constexpr,
+    ON: tl.constexpr,
+    CB: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    ALPHA: tl.constexpr,
+    BETA: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+):
+    batch = tl.program_id(1).to(tl.int64)
+    idx = tl.program_id(0)
+    row, col = (idx // N).to(tl.int64), (idx % N).to(tl.int64)
+    k = tl.arange(0, BK)
+    a = tl.load(A + batch * AB + row * AM + k, k < K, 0).to(tl.float32)
+    b = tl.load(B + batch * BB + col * BN + k, k < K, 0).to(tl.float32)
+    acc = ALPHA * tl.sum(a * b, axis=0)
+    if HAS_BIAS and BETA != 0:
+        acc += BETA * tl.load(Bias + batch * CB + row * CM + col * CN).to(tl.float32)
+    tl.store(Out + batch * OB + row * OM + col * ON, acc)
+
+
 def launch_small_splitk(
     a, b, out, bias=None, alpha=1, beta=0, *, splits=None, bias_strides=None
 ):
@@ -278,6 +314,39 @@ def launch_small_splitk(
         splits = small_splitk_count(batch, m, n, k, a.dtype)
     if not splits:
         return False
+    if (
+        m <= 4
+        and 64 <= batch * m * n <= 2048
+        and k <= 8192
+        and a.stride(-1) == b.stride(-2) == 1
+        and _small_partials.fn._run_mode == LibTunerRunMode.NORMAL
+        and type(alpha) in (int, float, bool)
+        and type(beta) in (int, float, bool)
+    ):
+        ab, am, _ = _batch_strides(a)
+        bb, _, bn = _batch_strides(b)
+        if bias_strides is None:
+            bias_strides = _batch_strides(bias) if bias is not None else (0, 0, 0)
+        _dot_long_k[(m * n, batch)](
+            a,
+            b,
+            bias if bias is not None else out,
+            out,
+            n,
+            k,
+            triton.next_power_of_2(k),
+            ab,
+            am,
+            bb,
+            bn,
+            *_batch_strides(out),
+            *bias_strides,
+            alpha,
+            beta,
+            bias is not None,
+            num_warps=4,
+        )
+        return True
     partials = torch.empty((splits, batch, m, n), dtype=torch.float32, device=a.device)
     args = (m, n, k, *_batch_strides(a), *_batch_strides(b), batch, splits)
     finish_args = _reduction_constants(

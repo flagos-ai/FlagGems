@@ -1560,6 +1560,22 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
 # ============================================================================
 
 
+def use_native_cache_flush(monkeypatch, op_name):
+    """Use the same native cache fill for both sides of Hygon BLAS benchmarks."""
+    if flag_gems.vendor_name != "hygon" or op_name not in ("addmm", "bmm", "baddbmm"):
+        return
+
+    original_use_gems = flag_gems.use_gems
+
+    def use_gems_for_blas(*args, **kwargs):
+        # On Hygon, native zero_ redispatches to fill_.Scalar.
+        if kwargs.get("exclude") == ["zero_"]:
+            kwargs["exclude"] = ["zero_", "fill_scalar_", "fill_tensor_"]
+        return original_use_gems(*args, **kwargs)
+
+    monkeypatch.setattr(flag_gems, "use_gems", use_gems_for_blas)
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, bench_cls",
     [
@@ -1593,13 +1609,14 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
         ),
     ],
 )
-def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
+def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls, monkeypatch):
     bench = bench_cls(
         input_fn=input_fn,
         op_name=op_name,
         torch_op=torch_op,
         dtypes=consts.FP16_BF16_DTYPES,
     )
+    use_native_cache_flush(monkeypatch, op_name)
     bench.run()
 
 

@@ -37,6 +37,8 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_bmm(monkeypatch):
+    from .test_blas_perf_parallel import use_native_cache_flush
+
     bench = base.BlasBenchmark(
         op_name="bmm",
         input_fn=_input_fn,
@@ -44,6 +46,7 @@ def test_bmm(monkeypatch):
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
+    use_native_cache_flush(monkeypatch, bench.op_name)
     bench.run()
 
 

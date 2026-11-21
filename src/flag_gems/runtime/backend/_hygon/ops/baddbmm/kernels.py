@@ -21,79 +21,7 @@ import triton.language as tl
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
-if HAS_TLE:
-    import triton.experimental.tle.language as tle
-
-
-@triton.jit
-def baddbmm_kernel(
-    A,
-    B,
-    Bias,
-    Out,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    AB: tl.constexpr,
-    AM: tl.constexpr,
-    AK: tl.constexpr,
-    BB: tl.constexpr,
-    BK: tl.constexpr,
-    BN: tl.constexpr,
-    CB: tl.constexpr,
-    CM: tl.constexpr,
-    CN: tl.constexpr,
-    OB: tl.constexpr,
-    OM: tl.constexpr,
-    ON: tl.constexpr,
-    ALPHA: tl.constexpr,
-    BETA: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    STAGE_SHARED: tl.constexpr = False,
-    UNROLL: tl.constexpr = 1,
-    BATCH: tl.constexpr = 1,
-):
-    pid, batch = tl.program_id(0), tl.program_id(1)
-    gm, gn = tl.cdiv(M, BLOCK_M), tl.cdiv(N, BLOCK_N)
-    group = pid // (GROUP_M * gn)
-    size = tl.minimum(gm - group * GROUP_M, GROUP_M)
-    pm = group * GROUP_M + pid % (GROUP_M * gn) % size
-    pn = pid % (GROUP_M * gn) // size
-    rm = pm * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pn * BLOCK_N + tl.arange(0, BLOCK_N)
-    rows = tl.max_contiguous(tl.multiple_of(rm, BLOCK_M), BLOCK_M)
-    cols = tl.max_contiguous(tl.multiple_of(rn, BLOCK_N), BLOCK_N)
-    rk = tl.arange(0, BLOCK_K)
-    ap = A + batch * AB + rows[:, None] * AM + rk[None, :] * AK
-    bp = B + batch * BB + rk[:, None] * BK + cols[None, :] * BN
-    if STAGE_SHARED:
-        shared_b = tle.gpu.alloc(
-            (BLOCK_K, BLOCK_N), B.dtype.element_ty, scope=tle.gpu.smem
-        )
-        local_b = tle.gpu.local_ptr(shared_b)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-    for ki in tl.range(tl.cdiv(K, BLOCK_K), loop_unroll_factor=UNROLL):
-        am = ((M % BLOCK_M == 0) | (rm < M))[:, None]
-        bn = ((N % BLOCK_N == 0) | (rn < N))[None, :]
-        km = (K % BLOCK_K == 0) | (rk + ki * BLOCK_K < K)
-        a = tl.load(ap, am & km[None, :], 0)
-        b = tl.load(bp, bn & km[:, None], 0)
-        if STAGE_SHARED:
-            tl.store(local_b, b)
-            b = tl.load(local_b)
-        acc = tl.dot(a, b, acc, input_precision="ieee", out_dtype=tl.float32)
-        ap += BLOCK_K * AK
-        bp += BLOCK_K * BK
-    mask = (rm[:, None] < M) & (rn[None, :] < N)
-    acc *= ALPHA
-    if BETA != 0:
-        acc += BETA * tl.load(
-            Bias + batch * CB + rm[:, None] * CM + rn[None, :] * CN, mask, 0
-        ).to(tl.float32)
-    tl.store(Out + batch * OB + rm[:, None] * OM + rn[None, :] * ON, acc, mask)
+from ..bmm.gemm import baddbmm_kernel
 
 
 def _prune_configs(configs, named_args, **kwargs):
@@ -506,7 +434,6 @@ def _bias_kernel(
     tl.store(Out + batch * OB + row * OM + col * ON, val, x < M * N)
 
 
-@libentry(cache_binding=True)
 @triton.jit
 def _small_contiguous_baddbmm(
     A,
@@ -518,6 +445,7 @@ def _small_contiguous_baddbmm(
     K: tl.constexpr,
     BATCH: tl.constexpr,
     TN: tl.constexpr,
+    B_COLUMN_MAJOR: tl.constexpr,
 ):
     baddbmm_kernel(
         A,
@@ -531,8 +459,8 @@ def _small_contiguous_baddbmm(
         K,
         1,
         K * N,
-        N,
-        1,
+        1 if B_COLUMN_MAJOR else N,
+        K if B_COLUMN_MAJOR else 1,
         M * N,
         N,
         1,

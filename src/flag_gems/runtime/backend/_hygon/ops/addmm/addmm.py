@@ -25,6 +25,7 @@ from flag_gems.utils import broadcastable_to
 from flag_gems.utils.libentry import LibTunerRunMode
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
+from ..bmm.gemm import launch_compact_gemm
 from ..bmm.splitk import launch_small_splitk, small_splitk_count
 from .kernels import (
     _transpose_addmm_b,
@@ -37,6 +38,7 @@ from .kernels import (
     dense_addmm_medium,
     dense_addmm_small,
     dense_addmm_small_fp32,
+    short_k_addmm,
 )
 
 logger = logging.getLogger(__name__)
@@ -243,6 +245,57 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     min_dim = min(m, n, k)
     small = 128 <= min_dim and max_dim <= 512
     half = dtype in (torch.float16, torch.bfloat16)
+    # A tile along N keeps both layouts parallel when M is small.
+    if half and 0 < m <= 4 and 1024 <= n <= 8192 and 0 < k <= 512:
+        column_b = mat2.stride() == (1, k)
+        if (
+            (column_b or mat2.is_contiguous())
+            and _scalar_eq(alpha, 1)
+            and _scalar_eq(beta, 1)
+            and mat2.dtype == dtype == bias.dtype
+            and mat2.device == device == bias.device
+            and bias.shape == (m, n)
+            and mat1.is_contiguous()
+            and bias.is_contiguous()
+        ):
+            guard = (
+                nullcontext()
+                if torch_device_fn.current_device() == device.index
+                else torch_device_fn.device(device)
+            )
+            with guard:
+                bn = 32 if k <= 256 else 16
+                short_k_addmm[(triton.cdiv(n, bn), m)](
+                    mat1,
+                    mat2,
+                    bias,
+                    out,
+                    n,
+                    k,
+                    bn,
+                    triton.next_power_of_2(k),
+                    column_b,
+                    num_warps=4,
+                )
+            return out
+    if (
+        half
+        and 256 <= m <= 1024
+        and 128 <= n <= 1024
+        and 128 <= k <= 4096
+        and _scalar_eq(alpha, 1)
+        and _scalar_eq(beta, 1)
+        and mat2.dtype == dtype == bias.dtype
+        and mat2.device == device == bias.device
+    ):
+        guard = (
+            nullcontext()
+            if torch_device_fn.current_device() == device.index
+            else torch_device_fn.device(device)
+        )
+        with guard:
+            if launch_compact_gemm(mat1, mat2, out, bias):
+                return out
     # Keep the dense epilogue in the existing small and medium tile domains.
     medium = (
         half

@@ -34,6 +34,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import LibTuner, LibTunerRunMode, _TritonOutOfResources
 
 from . import regular
+from .gemm import launch_compact_gemm
 from .splitk import launch_small_splitk, launch_splitk
 
 logger = logging.getLogger(__name__)
@@ -832,6 +833,10 @@ def _dispatch_bmm(A, B, out):
             )
             return out
         if launch_small_splitk(A, B, out):
+            return out
+        if (
+            _TUNER is None or _TUNER._run_mode == LibTunerRunMode.NORMAL
+        ) and launch_compact_gemm(A, B, out):
             return out
         if _launch_autotuned(A, B, out):
             return out
