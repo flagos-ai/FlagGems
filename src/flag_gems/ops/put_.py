@@ -232,6 +232,7 @@ def put_stage_narrow_kernel(
 
 
 _TRAP_AMDGCN = tl.constexpr(runtime.device.vendor_name == "amd")
+_TRAP_NVIDIA = tl.constexpr(runtime.device.vendor_name == "nvidia")
 
 
 @triton.jit
@@ -242,6 +243,10 @@ def _trap_if(cond):
     an out-of-range index silently dropped in normal builds. Emitting the PTX
     ``trap`` instruction directly keeps the check active in every build while
     still reporting the failure asynchronously, the way ATen's CUDA kernel does.
+
+    On backends without a usable device-trap inline asm (e.g. kunlunxin), fall
+    back to ``tl.device_assert`` (active only under TRITON_DEBUG); the kernel
+    already masks the write on index validity, so memory stays safe regardless.
     """
     if _TRAP_AMDGCN:
         # AMDGCN has no PTX; cond is uniform (a reduction), so test one lane.
@@ -253,7 +258,7 @@ def _trap_if(cond):
             is_pure=False,
             pack=1,
         )
-    else:
+    elif _TRAP_NVIDIA:
         tl.inline_asm_elementwise(
             asm="{ .reg .pred p; setp.ne.b32 p, $1, 0; @p trap; mov.u32 $0, 0; }",
             constraints="=r,r",
@@ -262,6 +267,12 @@ def _trap_if(cond):
             is_pure=False,
             pack=1,
         )
+    else:
+        # Backends without a device-trap inline asm (e.g. kunlunxin): the portable
+        # assert reports the out-of-range index. It is compiled out unless
+        # TRITON_DEBUG=1, but the kernel already masks the write on index validity,
+        # so an out-of-range index cannot corrupt memory even when it is stripped.
+        tl.device_assert(cond == 0, "put_(): index out of range")
 
 
 @libentry()
