@@ -34,8 +34,7 @@ RANDOM_SHAPES = [(1,), (20, 320, 15)]
 @pytest.mark.parametrize("dtype", RANDOM_INT_DTYPES)
 def test_random_(shape, dtype):
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = x.random_()
+    res_out = x.random_()
     assert res_out is x
     if dtype == torch.bool:
         assert ((x == 0) | (x == 1)).all()
@@ -60,8 +59,7 @@ def test_random_from(shape, dtype, from_to):
     if dtype == torch.uint8 and not (0 <= from_ and to <= 256):
         pytest.skip("range not representable in uint8")
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = x.random_(from_, to)
+    res_out = x.random_(from_, to)
     assert res_out is x
     assert (x >= from_).all()
     assert (x < to).all()
