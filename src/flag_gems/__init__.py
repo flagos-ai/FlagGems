@@ -2716,6 +2716,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "nested_tensor_from_mask_backward",
     "only_enable",
     "use_gems",
 ]
