@@ -78,3 +78,49 @@ def test_perf_mode(dtype):
         dtypes=[dtype],
     )
     bench.run()
+
+
+def _mode_backward_values(inp, dim=-1):
+    """Native reference of the timed chain: only the `values` output is timed.
+
+    `is_backward=True` makes the harness time `torch.autograd.grad` on the
+    result, so the `indices` output is dropped here. Native `torch.mode`
+    generates `ModeBackward0`, which scatters the values gradient onto those
+    indices.
+    """
+    return torch.mode(inp, dim=dim).values
+
+
+def _mode_backward_gems(inp, dim=-1):
+    """Same chain through `flag_gems.mode`, whose `ModeFunction` owns the
+    backward and launches the Triton scatter kernel."""
+    return flag_gems.mode(inp, dim=dim).values
+
+
+@pytest.mark.mode_backward
+@pytest.mark.mode
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_perf_mode_backward(dtype):
+    """Autograd latency of the mode backward.
+
+    ATen exposes no `mode_backward` operator to intercept, so the candidate is
+    the `flag_gems.mode` public entry whose `torch.autograd.Function` backward
+    launches the Triton kernel. The baseline is native `torch.mode` autograd on
+    the same inputs. `ModeBenchmark` resolves the same default core shapes as
+    the forward benchmark, so both cover the identical case set.
+
+    Only floating dtypes are benchmarked: `indices` is integral and carries no
+    gradient, so integer inputs have no backward to time.
+    """
+    bench = ModeBenchmark(
+        input_fn=_input_fn,
+        op_name="mode",
+        torch_op=_mode_backward_values,
+        gems_op=_mode_backward_gems,
+        dtypes=[dtype],
+        is_backward=True,
+    )
+    bench.run()

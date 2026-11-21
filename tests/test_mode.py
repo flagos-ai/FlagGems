@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.mode import mode_backward
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -287,3 +288,188 @@ def test_mode_ascend_dispatch(dtype):
     assert flag_gems.mode.__module__.endswith("_ascend.ops.mode")
     inp = torch.tensor([[3, 1, 3, 1, 2]], dtype=dtype, device=flag_gems.device)
     _assert_mode_matches(inp, -1, True)
+
+
+# ---------------------------------------------------------------------------
+# Backward
+#
+# `torch.mode` has no independent ATen backward schema: `derivatives.yaml`
+# generates the values gradient as `value_selecting_reduction_backward`, which
+# scatters the upstream gradient onto the int64 mode indices the forward
+# returned and zeroes the rest. `indices` is an integer output and carries no
+# gradient. The tests below cover that contract through the public
+# `flag_gems.mode` autograd entry and through the `mode_backward` helper, with
+# the `mode_backward` marker.
+# ---------------------------------------------------------------------------
+
+
+def _distinct_mode_input(shape, dim, dtype):
+    """Strictly increasing integers along ``dim``.
+
+    Every value is distinct and exactly representable in FP16, FP32 and BF16 up
+    to the ranks used below, so the mode is the minimum and its index is unique.
+    That keeps the forward's tie-breaking out of the comparison.
+    """
+    n_reduce = shape[dim]
+    offset = torch.arange(n_reduce, device=flag_gems.device).reshape(
+        [1] * dim + [n_reduce] + [1] * (len(shape) - dim - 1)
+    )
+    return offset.expand(shape).contiguous().to(dtype)
+
+
+def _distinct_shape_for(dtype):
+    """Reduction extent whose integer values are still exact in ``dtype``."""
+    if dtype == torch.bfloat16:
+        return (128, 256)
+    if dtype == torch.float16:
+        return (512, 1024)
+    return (1024, 4096)
+
+
+QUICK_BACKWARD_SHAPES = [(1, 2), (64, 64)]
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mode_backward_autograd(dtype, dim, keepdim):
+    """Autograd through `flag_gems.mode` matches native `torch.mode`."""
+    shape = (
+        _distinct_shape_for(dtype) if not cfg.QUICK_MODE else QUICK_BACKWARD_SHAPES[1]
+    )
+    if dim >= len(shape):
+        pytest.skip("dim outside this rank")
+    inp = _distinct_mode_input(shape, dim, dtype)
+    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
+    inp = inp.requires_grad_(True)
+
+    res_values, res_indices = flag_gems.mode(inp, dim=dim, keepdim=keepdim)
+    ref_values, ref_indices = torch.mode(ref_inp, dim=dim, keepdim=keepdim)
+
+    assert not res_indices.requires_grad
+    assert res_indices.dtype == torch.int64
+    utils.gems_assert_close(res_values, ref_values, dtype)
+    utils.gems_assert_equal(res_indices, ref_indices)
+
+    out_grad = torch.randn(res_values.shape, dtype=dtype, device=flag_gems.device)
+    (res_grad,) = torch.autograd.grad(res_values, inp, out_grad)
+    (ref_grad,) = torch.autograd.grad(
+        ref_values, ref_inp, utils.to_reference(out_grad, True)
+    )
+
+    assert res_grad.shape == inp.shape
+    assert res_grad.dtype == inp.dtype
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+@pytest.mark.parametrize("dim", [0, 1, 2])
+def test_mode_backward_matches_value_selecting_helper(dtype, dim, keepdim):
+    """`mode_backward` is exactly `aten::value_selecting_reduction_backward`."""
+    shape = (9, 200, 2560) if not cfg.QUICK_MODE else (2, 3, 5)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    values, indices = flag_gems.mode(inp, dim=dim, keepdim=keepdim)
+    out_grad = torch.randn_like(values)
+
+    res_grad = mode_backward(out_grad, dim, indices, list(shape), keepdim)
+    ref_grad = torch.ops.aten.value_selecting_reduction_backward(
+        out_grad, dim, indices, list(shape), keepdim
+    )
+    assert res_grad.shape == inp.shape
+    assert res_grad.dtype == inp.dtype
+    assert res_grad.stride() == ref_grad.stride()
+    assert torch.equal(res_grad, ref_grad)
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_mode_backward_gradient_attribution(dtype, keepdim):
+    """Only the positions the forward selected receive gradient."""
+    shape = (300, 257)
+    inp = _distinct_mode_input(shape, 1, dtype).requires_grad_(True)
+    values, indices = flag_gems.mode(inp, dim=1, keepdim=keepdim)
+    out_grad = torch.randn_like(values)
+    (grad,) = torch.autograd.grad(values, inp, out_grad)
+
+    assert torch.count_nonzero(grad) == indices.numel()
+    index = indices if keepdim else indices.unsqueeze(1)
+    upstream = out_grad if keepdim else out_grad.unsqueeze(1)
+    expected = torch.zeros(shape, dtype=dtype, device=flag_gems.device).scatter(
+        1, index, upstream
+    )
+    assert torch.equal(grad, expected)
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mode_backward_repeated_values(dtype):
+    """Repeated mode values scatter onto the index the forward reported."""
+    data = [[3, 3, 3, 0, 0], [0, 3, 3, 3, 0], [0, 1, 3, 3, 3], [1, 2, 3, 4, 5]]
+    inp = torch.tensor(data, dtype=dtype, device=flag_gems.device)
+    values, indices = flag_gems.mode(inp, dim=1)
+    out_grad = torch.randn_like(values)
+    grad = mode_backward(out_grad, 1, indices, list(inp.shape), False)
+
+    # The candidate gradient places `out_grad` exactly at the reported index.
+    expected = torch.zeros_like(inp).scatter(
+        1, indices.unsqueeze(1), out_grad.unsqueeze(1)
+    )
+    assert torch.equal(grad, expected)
+    # the reported index must actually hold a mode value
+    gathered = inp.gather(1, indices.unsqueeze(1)).squeeze(1)
+    assert torch.equal(gathered, values)
+    utils.gems_assert_close(
+        values, torch.mode(utils.to_reference(inp, True), dim=1).values, dtype
+    )
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mode_backward_expanded_grad(dtype):
+    """A broadcast upstream gradient is expanded before the scatter."""
+    inp = _distinct_mode_input((7, 13), 1, dtype).requires_grad_(True)
+    ref_inp = utils.to_reference(inp.detach(), True).requires_grad_(True)
+    res_values, _ = flag_gems.mode(inp, dim=1)
+    ref_values, _ = torch.mode(ref_inp, dim=1)
+    out_grad = torch.randn(1, dtype=dtype, device=flag_gems.device).expand(7)
+
+    (res_grad,) = torch.autograd.grad(res_values, inp, out_grad)
+    (ref_grad,) = torch.autograd.grad(
+        ref_values, ref_inp, utils.to_reference(out_grad, True)
+    )
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mode_backward_dim0_noncontiguous(dtype):
+    """`dim=0` on a transposed input writes the standard-layout gradient."""
+    # Distinct values along the reduced axis keep the mode index unique while
+    # the transposed view keeps the input non-contiguous.
+    inp = _distinct_mode_input((96, 64), 1, dtype).t().requires_grad_(True)
+    ref_inp = utils.to_reference(inp.detach(), True).requires_grad_(True)
+    res_values, _ = flag_gems.mode(inp, dim=0)
+    ref_values, _ = torch.mode(ref_inp, dim=0)
+    out_grad = torch.randn(res_values.shape, dtype=dtype, device=flag_gems.device)
+    (res_grad,) = torch.autograd.grad(res_values, inp, out_grad)
+    (ref_grad,) = torch.autograd.grad(
+        ref_values, ref_inp, utils.to_reference(out_grad, True)
+    )
+    assert res_grad.is_contiguous()
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.mode_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mode_backward_empty_rows(dtype):
+    """Zero outer elements produce an empty gradient of the input shape."""
+    inp = torch.randn((0, 5), dtype=dtype, device=flag_gems.device).requires_grad_(True)
+    values, indices = flag_gems.mode(inp, dim=1)
+    grad = mode_backward(torch.randn_like(values), 1, indices, list(inp.shape), False)
+    assert grad.shape == inp.shape
+    assert grad.dtype == dtype
+    assert grad.numel() == 0
