@@ -77,8 +77,11 @@ class StridedBuffer:
                 def get_dtype_bytes(dtype):
                     if dtype.is_floating_point:
                         return int(torch.finfo(dtype).bits / 8)
-                    else:
-                        return int(torch.iinfo(dtype).bits / 8)
+                    if dtype == torch.bool:
+                        # torch.iinfo() has no entry for bool, but its storage
+                        # width is one byte (Issue #8298 / #8306).
+                        return 1
+                    return int(torch.iinfo(dtype).bits / 8)
 
                 offset = get_dtype_bytes(self.dtype) * offset
             else:
