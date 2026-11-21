@@ -100,8 +100,13 @@ def fft_ifftshift(self, dim=None):
                 seen.add(d)
         dims_list = tmp
 
-    # Handle scalars or empty tensors quickly
-    if x.ndim == 0 or x.numel() == 0:
+    # An empty tensor matches ATen (an empty clone). A 0-dim input must raise
+    # exactly like ATen (#8390): with shifts=None it cannot infer a shift for a
+    # rank-0 tensor, and a silent clone changes the observable behaviour of
+    # torch.fft.ifftshift for scalar input.
+    if x.ndim == 0:
+        raise RuntimeError("`shifts` required")
+    if x.numel() == 0:
         return x.clone()
 
     device = x.device
