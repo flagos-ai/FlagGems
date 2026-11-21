@@ -637,11 +637,24 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    # _sparse_addmm has no dedicated Autograd kernel in ATen, so the device
+    # override alone would leave the native SparseAddmmBackward0 in charge.  The
+    # autograd.Function wrapper inside _sparse_addmm supplies the backward and
+    # the Autograd fallthrough lets that wrapper own the differentiable path
+    # (cf. the log1p / adaptive_avg_pool3d precedent).  The fallthrough is a
+    # per-key implementation, so it has to ride in the same entry as the sparse
+    # device keys: a second entry under "_sparse_addmm" re-registers (and
+    # overwrites) the device implementation, and a synthetic key such as
+    # "_sparse_addmm.autograd" does not name a real operator.
     (
         "_sparse_addmm",
         _sparse_addmm,
         None,
-        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+        (
+            (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+            SPARSE_DISPATCH_KEY,
+            SPARSE_CSR_DISPATCH_KEY,
+        ),
     ),
     (
         "_sparse_addmm.out",
@@ -2717,5 +2730,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "sparse_addmm_backward",
     "use_gems",
 ]

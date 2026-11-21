@@ -19820,6 +19820,22 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5.0'
+- id: sparse_addmm_backward
+  description: The backward computation of _sparse_addmm, exercised through
+    the autograd of the forward operator. grad_self is beta * grad_output
+    reduced over the bias broadcast; grad_mat1 is alpha * (grad_output @
+    mat2.T) sampled at mat1's stored pattern and returned in mat1's own sparse
+    layout; grad_mat2 is alpha * mat1.T @ grad_output over the stored entries
+    only.
+  for:
+  - _sparse_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: sparse_addmm_out
   description: |
     A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)
