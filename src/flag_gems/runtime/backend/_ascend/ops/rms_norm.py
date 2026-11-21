@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.rms_norm import compensated_rrms, split_fp32
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -34,7 +35,7 @@ MAX_CORE_DIM = 65535
 
 
 @libentry()
-@triton.jit(do_not_specialize=["eps", "M"])
+@triton.jit(do_not_specialize=["eps", "M", "inv_n_hi", "inv_n_lo", "eps_lo"])
 def rms_norm_kernel(
     Y,  # pointer to the output
     INV_RMS,  # pointer to inverse rms
@@ -47,6 +48,9 @@ def rms_norm_kernel(
     M,  # number of rows in X
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
+    inv_n_hi,  # high part of 1 / N
+    inv_n_lo,  # low part of 1 / N
+    eps_lo,  # low part of eps
     BLOCK_SIZE: tl.constexpr,
 ):
     # The grid is capped at MAX_CORE_DIM, so each program handles several rows.
@@ -54,14 +58,17 @@ def rms_norm_kernel(
         x_row = X + row * x_stride_r
         y_row = Y + row * y_stride_r
 
-        var = 0.0
+        # Accumulate the plain square sum and divide once, instead of scaling
+        # every block by 1/N first: one rounding per block is saved and the
+        # compensated reciprocal below needs the unscaled sum.
+        square_sum = 0.0
         for off in range(0, N, BLOCK_SIZE):
             cols = off + tl.arange(0, BLOCK_SIZE)
             mask = cols < N
             x = tl.load(x_row + cols, mask, other=0.0).to(tl.float32)
-            var += tl.sum(x * x / N)
+            square_sum += tl.sum(x * x)
 
-        rrms = 1 / tl.sqrt(var + eps)
+        rrms = compensated_rrms(square_sum, inv_n_hi, inv_n_lo, eps, eps_lo)
 
         for off in range(0, N, BLOCK_SIZE):
             cols = off + tl.arange(0, BLOCK_SIZE)
@@ -230,10 +237,26 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
         return y, inv_rms
 
     BLOCK_SIZE = min(triton.next_power_of_2(N), 12064)
+    inv_n_hi, inv_n_lo = split_fp32(1.0 / N)
+    _, eps_lo = split_fp32(eps)
 
     with torch_device_fn.device(x.device):
         rms_norm_kernel[min(M, MAX_CORE_DIM),](
-            y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
+            y,
+            inv_rms,
+            x,
+            weight,
+            N,
+            1,
+            N,
+            1,
+            M,
+            N,
+            eps,
+            inv_n_hi,
+            inv_n_lo,
+            eps_lo,
+            BLOCK_SIZE,
         )
 
     return y, inv_rms
