@@ -3508,6 +3508,19 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: clamp_backward
+  description: The backward computation of `clamp()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - clamp
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: clamp_max
   description: 'Clamps all elements in `input` to be smaller or equal `max`.
 
