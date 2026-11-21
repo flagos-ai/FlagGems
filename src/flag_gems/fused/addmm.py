@@ -5,15 +5,21 @@ import triton.language as tl
 
 @triton.jit
 def addmm_kernel(
-    c_ptr,
+    bias_ptr,
     a_ptr,
     b_ptr,
     out_ptr,
     M,
     N,
     K,
-    alpha,
     beta,
+    alpha,
+    stride_a_m,
+    stride_a_k,
+    stride_b_k,
+    stride_b_n,
+    stride_out_m,
+    stride_out_n,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -25,40 +31,72 @@ def addmm_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
+    a_ptrs = a_ptr + offs_m[:, None] * stride_a_m + offs_k[None, :] * stride_a_k
+    b_ptrs = b_ptr + offs_k[:, None] * stride_b_k + offs_n[None, :] * stride_b_n
+
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
     for k in range(0, K, BLOCK_K):
         a = tl.load(
-            a_ptr + offs_m[:, None] * K + (k + offs_k)[None, :],
-            mask=(k + offs_k)[None, :] < K,
+            a_ptrs, mask=(offs_m[:, None] < M) & (offs_k[None, :] < K), other=0.0
         )
         b = tl.load(
-            b_ptr + (k + offs_k)[:, None] * N + offs_n[None, :],
-            mask=(k + offs_k)[:, None] < K,
+            b_ptrs, mask=(offs_k[:, None] < K) & (offs_n[None, :] < N), other=0.0
         )
         acc += tl.dot(a, b)
+        a_ptrs += BLOCK_K * stride_a_k
+        b_ptrs += BLOCK_K * stride_b_k
 
-    c = tl.load(
-        c_ptr + offs_m[:, None] * N + offs_n[None, :],
-        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
-    )
-    out_val = beta * c + alpha * acc
-    tl.store(
-        out_ptr + offs_m[:, None] * N + offs_n[None, :],
-        out_val,
-        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
-    )
+    acc = acc * alpha
+    bias = tl.load(bias_ptr + offs_n[None, :], mask=offs_n[None, :] < N, other=0.0)
+    acc = acc + bias * beta
+
+    out_ptrs = out_ptr + offs_m[:, None] * stride_out_m + offs_n[None, :] * stride_out_n
+    tl.store(out_ptrs, acc, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))
 
 
-def addmm(c: torch.Tensor, a: torch.Tensor, b: torch.Tensor, alpha=1.0, beta=1.0):
+def addmm(
+    input: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    alpha: float = 1.0,
+    beta: float = 1.0,
+):
+    """
+    torch.addmm(input, a, b, beta=beta, alpha=alpha)
+    out = beta * input + alpha * (a @ b)
+    Restriction: input(bias) only support shape (N,)
+    """
+    assert a.dim() == 2 and b.dim() == 2
     M, K = a.shape
     K2, N = b.shape
-    assert K == K2
-    assert c.shape == (M, N)
-    out = torch.empty_like(c)
+    assert K == K2, "K dimension mismatch between a and b"
+    assert input.shape == (N,), f"input bias must be shape ({N},), got {input.shape}"
 
-    BLOCK_M = 64
-    BLOCK_N = 64
+    out = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    BLOCK_M = 32
+    BLOCK_N = 32
     BLOCK_K = 32
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-    addmm_kernel[grid](c, a, b, out, M, N, K, alpha, beta, BLOCK_M, BLOCK_N, BLOCK_K)
+
+    addmm_kernel[grid](
+        input,
+        a,
+        b,
+        out,
+        M,
+        N,
+        K,
+        beta,
+        alpha,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+    )
     return out
