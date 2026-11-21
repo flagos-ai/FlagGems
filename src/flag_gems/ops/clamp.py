@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -84,10 +85,30 @@ def clamp_func_max(x, maxi):
     return tl.minimum(maxi, x.to(tl.float32))
 
 
+class ClampMinFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, mini):
+        ctx.save_for_backward(A)
+        ctx.mini = mini
+        return clamp_func_min(A, mini)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::clamp_min`` has no standalone backward operator, so the
+        # gradient runs a Triton kernel from
+        # ``flag_gems.ops.clamp_min_backward``.
+        (A,) = ctx.saved_tensors
+        from flag_gems.ops.clamp_min_backward import clamp_min_backward
+
+        return clamp_min_backward(grad_output, A, ctx.mini), None
+
+
 def clamp_min(A, mini):
     logger.debug("GEMS CLAMP_MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return ClampMinFunction.apply(A, mini)
     return clamp_func_min(A, mini)
 
 
