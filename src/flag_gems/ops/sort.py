@@ -289,8 +289,13 @@ def radix_sort(arr, k_bits=8, descending=False):
             k_bits,
             descending,
         )
+        # Keep the histogram prefix sums in the int64 dtype produced by cumsum.
+        # Their values are non-negative and bounded by n, which the assertion
+        # above caps at 2**30, so the 64-bit kernel argument is exact. The
+        # former int64 -> uint32 cast lowered to a device copy_ that some
+        # backends do not implement (e.g. MetaX/MACA reports
+        # "copy_" not implemented for 'UInt32').
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
-        ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
         arr_in = torch.clone(arr)
