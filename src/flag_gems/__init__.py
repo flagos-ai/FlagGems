@@ -1003,7 +1003,12 @@ _FULL_CONFIG = (
     ("abs_", abs_),
     ("absolute", absolute),
     ("absolute_", absolute_),
-    ("acos", acos),
+    (
+        "acos",
+        acos,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("acos_", acos_),
     ("acosh", acosh),
     ("acosh_", acosh_),
