@@ -3322,6 +3322,30 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: celu_backward
+  description: First-order autograd rule for celu implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - celu
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
+- id: celu_backward_
+  description: First-order autograd rule for celu_ implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - celu_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: chain_matmul
   description: Computes the product of a chain of 2-D matrices using an optimal (minimum-flop)
     parenthesization.
