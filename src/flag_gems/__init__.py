@@ -1095,7 +1095,12 @@ _FULL_CONFIG = (
     ("as_strided_copy", as_strided_copy),
     ("as_strided_copy.out", as_strided_copy_out),
     ("as_strided_scatter", as_strided_scatter),
-    ("asin", asin),
+    (
+        "asin",
+        asin,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("asin_", asin_),
     ("asinh", asinh),
     ("asinh.out", asinh_out),

@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -35,5 +37,17 @@ def test_asin_():
         torch_op=torch.asin_,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.asin_backward
+def test_asin_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="asin_backward",
+        torch_op=torch.asin,
+        gems_op=flag_gems.asin,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
