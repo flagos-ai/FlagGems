@@ -9849,7 +9849,7 @@ ops:
   description: 'Per-channel grouped NT GEMM with unpadded rows, FP32 row/column scales
     and
 
-    caller-owned BF16 output. Supports matching signed INT8 operands on PPU
+    caller-owned BF16 output. Supports matching signed INT8 operands on Ascend, PPU,
 
     and MetaX, plus E4M3FN/FNUZ operands on MetaX. Uses packed expert indices
 
