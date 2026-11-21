@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import importlib
+import logging
 
 import pytest
 import torch
@@ -386,4 +387,68 @@ class TestMetaXGroupedGEMM:
             expected = grouped_gemm_cpu_reference(*args[:4], lengths)
             args[4].fill_(float("nan"))
             assert flag_gems.grouped_gemm_w8a8(*args) is None
+            gems_assert_equal(args[4].cpu(), expected)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="requires the Hygon implementation"
+)
+class TestHygonGroupedGEMM:
+    test_grouped_gemm_w8a8 = TestPPUGroupedGEMM.test_grouped_gemm_w8a8
+    test_grouped_gemm_w8a8_int8_extremes = (
+        TestPPUGroupedGEMM.test_grouped_gemm_w8a8_int8_extremes
+    )
+    test_grouped_gemm_w8a8_pipeline = TestPPUGroupedGEMM.test_grouped_gemm_w8a8_pipeline
+    test_grouped_gemm_w8a8_int8_cancellation = (
+        TestMetaXGroupedGEMM.test_grouped_gemm_w8a8_int8_cancellation
+    )
+    test_grouped_gemm_w8a8_sparse_changing_groups = (
+        TestMetaXGroupedGEMM.test_grouped_gemm_w8a8_sparse_changing_groups
+    )
+
+    @pytest.mark.grouped_gemm_w8a8
+    def test_grouped_gemm_w8a8_gate_up(self):
+        lengths = [1, 2, 0, 3, 0, 0]
+        args = make_grouped_gemm_case(lengths, 512, 6144, flag_gems.device)
+        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+        assert flag_gems.grouped_gemm_w8a8(*args) is None
+        gems_assert_equal(args[4].cpu(), expected)
+
+    @pytest.mark.grouped_gemm_w8a8
+    def test_grouped_gemm_w8a8_split_k_fallback(self, monkeypatch, caplog):
+        op = flag_gems.grouped_gemm_w8a8
+        module = importlib.import_module(op.__module__)
+        monkeypatch.setattr(module, "_HAS_GEMV", False)
+
+        lengths = [1, 2, 0, 3, 0, 0]
+        args = make_grouped_gemm_case(lengths, 512, 6144, flag_gems.device)
+        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+        with caplog.at_level(logging.DEBUG, logger=module.__name__):
+            assert op(*args) is None
+
+        assert (
+            module.__name__,
+            logging.DEBUG,
+            "GEMS_HYGON GROUPED_GEMM_W8A8",
+        ) in caplog.record_tuples
+        gems_assert_equal(args[4].cpu(), expected)
+
+    @pytest.mark.grouped_gemm_w8a8
+    def test_grouped_gemm_w8a8_changing_expert_rows(self):
+        for lengths, n, k in (
+            ([0, 257, 0, 511], 64, 128),
+            ([256, 0, 512, 0], 128, 256),
+            ([256, 0, 512, 0], 64, 128),
+            ([0, 257, 0, 511], 128, 256),
+            ([2] * 256, 68, 128),
+            ([0, 511] + [0] * 253 + [1], 68, 128),
+            ([0, 3, 0, 11] + [0] * 12, 68, 128),
+            ([7, 0, 7, 0] + [0] * 12, 68, 128),
+            ([0, 257, 0, 511], 68, 128),
+            ([4] * 128, 32, 4096),
+            ([0, 511] + [0] * 125 + [1], 32, 4096),
+        ):
+            args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
+            expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+            flag_gems.grouped_gemm_w8a8(*args)
             gems_assert_equal(args[4].cpu(), expected)
