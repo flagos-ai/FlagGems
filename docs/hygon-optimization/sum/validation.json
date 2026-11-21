@@ -1,0 +1,6 @@
+{
+  "operator": "aten::sum",
+  "source_commit": "da5683b0ce8551a9fa3870ca7faf05559f34c7c2",
+  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
+  "status": "official-master branch prepared; focused hardware retest pending"
+}

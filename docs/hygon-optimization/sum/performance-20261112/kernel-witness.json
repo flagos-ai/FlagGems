@@ -1,0 +1,1069 @@
+{
+  "cases": {
+    "sum-row0636": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0637": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0638": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0639": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0640": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0641": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1})": 5000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1})": 5000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0642": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_hygon_tail_kernel": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_hygon_tail_kernel": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel": 5000
+        }
+      }
+    },
+    "sum-row0643": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0644": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0645": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<128, 4, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<128, 4, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        }
+      }
+    },
+    "sum-row0646": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<128, 4, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<128, 4, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        }
+      }
+    },
+    "sum-row0647": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000,
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1})": 1000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1})": 1000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000,
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "old": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000,
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000,
+          "kernel:sum_dim_kernel_non_inner": 1000
+        }
+      }
+    },
+    "sum-row0648": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<128, 4, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<128, 4, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_non_inner": 1000
+        }
+      }
+    },
+    "sum-row0649": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0650": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0651": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0652": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0653": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0654": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0655": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0656": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0657": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0658": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0659": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel": 5000
+        }
+      }
+    },
+    "sum-row0660": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1})": 5000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1} const&)::{lambda(int, bool)#1})": 5000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4> >(at::native::ReduceOp<long, at::native::func_wrapper_t<long, at::native::sum_functor<long, long, long>::operator()(at::TensorIterator&)::{lambda(long, long)#1}>, unsigned int, long, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0661": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_non_inner": 5000
+        }
+      }
+    },
+    "sum-row0662": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0663": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0664": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-row0665": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-row0666": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-fallback-width": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-fallback-stride": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "old": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 5000,
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 5000,
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-extension-0": {
+      "experiment_id": "official-confirm-20261112-1720",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 5000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 5000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 5000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 5000
+        }
+      }
+    },
+    "sum-extension-1": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_kernel_1": 1000,
+          "kernel:sum_kernel_2": 1000
+        },
+        "das": {
+          "memory:Memset": 1000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "memory:Memset": 1000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_kernel_1": 1000,
+          "kernel:sum_kernel_2": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-extension-2": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-extension-3": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-extension-4": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_kernel_1": 1000,
+          "kernel:sum_kernel_2": 1000
+        },
+        "das": {
+          "memory:Memset": 1000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "memory:Memset": 1000,
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_kernel_1": 1000,
+          "kernel:sum_kernel_2": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-extension-5": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-extension-6": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator()(at::TensorIterator&)::{lambda(float, float)#1}>, unsigned int, float, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    },
+    "sum-extension-7": {
+      "experiment_id": "official-threeway-v2-20261112-1601",
+      "roles": {
+        "aa": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "das": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "das_repeat": {
+          "kernel:void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4> >(at::native::ReduceOp<double, at::native::func_wrapper_t<double, at::native::sum_functor<double, double, double>::operator()(at::TensorIterator&)::{lambda(double, double)#1}>, unsigned int, double, 4, 4>)": 1000
+        },
+        "new": {
+          "kernel:sum_short_rows_kernel": 1000
+        },
+        "old": {
+          "kernel:sum_dim_kernel_inner": 1000
+        },
+        "old_repeat": {
+          "kernel:sum_dim_kernel_inner": 1000
+        }
+      }
+    }
+  },
+  "source_accounting_files": {
+    "official-threeway-v2-20261112-1601": [
+      {
+        "path": "sum-group-00/aa/accounting-0.json",
+        "sha256": "63198be4a88d6f8199c5c70f3787103364f029672b1ee6d1827f3f01790c4b73"
+      },
+      {
+        "path": "sum-group-00/aa/accounting-1.json",
+        "sha256": "ef0b6e0fa8917bc49570d565f1027113643d7eb7c8415075388f514f1742ff51"
+      },
+      {
+        "path": "sum-group-00/das/accounting-0.json",
+        "sha256": "2ce8ed352faad7e920c1e9db0adceb37c5780ffca491ec16544f60982e663b4b"
+      },
+      {
+        "path": "sum-group-00/das/accounting-1.json",
+        "sha256": "414dd3598cd8e3b8d9c30b8f90ebd96bf62b90a0abb114ca524923af43086696"
+      },
+      {
+        "path": "sum-group-00/das_repeat/accounting-0.json",
+        "sha256": "0fcaa9cfc73b3c4e6f53efa49ef62ce0c25b9b71ae9f77614c813e961cd4854e"
+      },
+      {
+        "path": "sum-group-00/das_repeat/accounting-1.json",
+        "sha256": "a03573f247ced0bd4a507edbead8713d1b5a487988685c7f719e606075872334"
+      },
+      {
+        "path": "sum-group-00/new/accounting-0.json",
+        "sha256": "7c924deca030109508199a46004436e0311659da0fa2a1ea8d59669a056ee337"
+      },
+      {
+        "path": "sum-group-00/new/accounting-1.json",
+        "sha256": "690a4debdb19a9851c94bd000c8ae5730b2a3a89461de80c5f7831b3e2e62304"
+      },
+      {
+        "path": "sum-group-00/old/accounting-0.json",
+        "sha256": "46539d3978b883a1907cd448b11470f4e690dc621bf7155b88049156444e9830"
+      },
+      {
+        "path": "sum-group-00/old/accounting-1.json",
+        "sha256": "28cecae8134e21852a8502da821868cb3119fd7ad83b6e35a7c06dca79b95bd8"
+      },
+      {
+        "path": "sum-group-00/old_repeat/accounting-0.json",
+        "sha256": "c5a36b5f8dbf2e31ea06fce6ab58164986121325ceb270ac0d250251c9a81e11"
+      },
+      {
+        "path": "sum-group-00/old_repeat/accounting-1.json",
+        "sha256": "89e1175e537a87fd5c53141124c26b7426ec200b0cfd9e8f509cae168f59f64e"
+      }
+    ],
+    "official-confirm-20261112-1720": [
+      {
+        "path": "sum-group-00/aa/accounting-0.json",
+        "sha256": "aa743ead8b3e86549cd132b5f3fe75f906f77c7e280bdd75a3ee1ce53a4e7a86"
+      },
+      {
+        "path": "sum-group-00/aa/accounting-1.json",
+        "sha256": "384e6e3e8c0af918108cc55db1bea44ad802750f99fef044d8013b2be373c3e6"
+      },
+      {
+        "path": "sum-group-00/das/accounting-0.json",
+        "sha256": "8d9955ca57b5fcd59c2311932861bc12030e48cf8d884c6fbd00ed30dcf28f20"
+      },
+      {
+        "path": "sum-group-00/das/accounting-1.json",
+        "sha256": "619ec49fbbb877ea04ccbebc82ad78e5a36759cf431fabf27e125206abf33860"
+      },
+      {
+        "path": "sum-group-00/das_repeat/accounting-0.json",
+        "sha256": "4957d6ed20d43233cb2bce9ef79b9a2ee3b03838d9010c2952694454b480bd4f"
+      },
+      {
+        "path": "sum-group-00/das_repeat/accounting-1.json",
+        "sha256": "dbca0871eb687a7c3b127427ea8f3163fe40ed727ebab397072a0112756f9d61"
+      },
+      {
+        "path": "sum-group-00/new/accounting-0.json",
+        "sha256": "bf0858eb2fe1d0fcf02ee71299ccc6bb92556b9f2e575472c96880605c6c7895"
+      },
+      {
+        "path": "sum-group-00/new/accounting-1.json",
+        "sha256": "69f6020a7c115ae3b78201a80b83886891e818d8e98706054fc24ecd3f37cb75"
+      },
+      {
+        "path": "sum-group-00/old/accounting-0.json",
+        "sha256": "53658be5e733437f94705f1271cb464d42a2b691de6628b644b4d997f88f09e4"
+      },
+      {
+        "path": "sum-group-00/old/accounting-1.json",
+        "sha256": "dcc870b12fd1871c4e8950c9faa71b6a7a6aa75f15b0c99fbf01337bb13ec855"
+      },
+      {
+        "path": "sum-group-00/old_repeat/accounting-0.json",
+        "sha256": "8563d5e6b246a505213be22dbd22beecd5322d19bfa818933d7d7c52dc1cd5b8"
+      },
+      {
+        "path": "sum-group-00/old_repeat/accounting-1.json",
+        "sha256": "4c431fb675b4af5ec468e05f655a7c3a184029289e135b4e3adb871451c73795"
+      }
+    ]
+  }
+}
