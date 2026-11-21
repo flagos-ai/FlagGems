@@ -19,18 +19,18 @@ import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import base, consts
+from .conftest import Config
 
-pytestmark = [
-    pytest.mark.skipif(
-        flag_gems.vendor_name == "ascend",
-        reason="CANN scatter_reduce falls back to CPU, so NPU events are unavailable",
-    ),
-    pytest.mark.skipif(
-        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-    ),
-]
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+skip_ascend_two = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="CANN scatter_reduce falls back to CPU, so NPU events are unavailable",
+)
 
 REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
+LEGACY_REDUCE_MODES = ("add", "multiply")
 # None exercises the schema default by omitting the include_self keyword.
 INCLUDE_SELF_CASES = (None, False)
 
@@ -56,20 +56,36 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return scatter_reduce_more_shapes(super().set_more_shapes())
 
 
-def scatter_reduce_input_fn_factory(*, use_out=False, is_inplace=False):
+class LegacyScatterReduceTiming:
+    def _time_callable(self, fn, xs):
+        if flag_gems.vendor_name == "ascend" and Config.mode == consts.BenchMode.KERNEL:
+            from triton.backends.ascend.testing import do_bench_npu
+
+            # Ascend's two legacy entries only record the Gems device latency.
+            return do_bench_npu(fn, warmup=2, active=5)
+        return super()._time_callable(fn, xs)
+
+
+class LegacyScatterReduceBenchmark(LegacyScatterReduceTiming, TensorSelectBenchmark):
+    pass
+
+
+def scatter_reduce_input_fn_factory(*, use_out=False, is_inplace=False, legacy=False):
     """Yield every parameter combination in one benchmark record per dtype."""
+    reduce_modes = LEGACY_REDUCE_MODES if legacy else REDUCE_MODES
+    include_self_cases = (None,) if legacy else INCLUDE_SELF_CASES
 
     def inner(shape, dtype, device):
-        for reduce in REDUCE_MODES:
-            for include_self in INCLUDE_SELF_CASES:
+        for reduce in reduce_modes:
+            for include_self in include_self_cases:
                 inp = torch.randn(shape, dtype=dtype, device=device)
                 dim = -1
                 index = torch.randint(
                     0, shape[dim], shape, dtype=torch.long, device=device
                 )
-                if is_inplace and reduce == "sum":
+                if is_inplace and reduce in ("add", "sum"):
                     src = torch.zeros(shape, dtype=dtype, device=device)
-                elif is_inplace and reduce == "prod":
+                elif is_inplace and reduce in ("multiply", "prod"):
                     src = torch.ones(shape, dtype=dtype, device=device)
                 else:
                     src = torch.randn(shape, dtype=dtype, device=device)
@@ -92,13 +108,18 @@ def gather_scatter_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.scatter_reduce
+@pytest.mark.skip_native(
+    vendors="ascend",
+    reason="Native aten::scatter.reduce has no valid NPU kernel timing",
+)
 def test_scatter_reduce_optest():
-    """Report every functional scatter_reduce case under the optest operator ID."""
+    """Benchmark the legacy tensor-source aten::scatter.reduce overload."""
 
-    bench = TensorSelectBenchmark(
+    bench = LegacyScatterReduceBenchmark(
         op_name="scatter_reduce",
-        torch_op=torch.ops.aten.scatter_reduce,
-        input_fn=scatter_reduce_input_fn_factory(),
+        torch_op=torch.ops.aten.scatter.reduce,
+        gems_op=flag_gems.scatter,
+        input_fn=scatter_reduce_input_fn_factory(legacy=True),
         get_gbps=gather_scatter_gbps,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -106,6 +127,7 @@ def test_scatter_reduce_optest():
 
 
 @pytest.mark.scatter_reduce_two
+@skip_ascend_two
 def test_scatter_reduce():
     """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
     bench = TensorSelectBenchmark(
@@ -119,6 +141,7 @@ def test_scatter_reduce():
 
 
 @pytest.mark.scatter_reduce_two_
+@skip_ascend_two
 def test_scatter_reduce_():
     """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
     bench = TensorSelectBenchmark(
@@ -133,6 +156,7 @@ def test_scatter_reduce_():
 
 
 @pytest.mark.scatter_reduce_two_out
+@skip_ascend_two
 def test_scatter_reduce_out():
     """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""
     bench = TensorSelectBenchmark(
