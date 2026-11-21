@@ -1,40 +1,14 @@
-import logging
-import os
-
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
-
-@libentry()
-@libtuner(
-    configs=runtime.ops_get_configs("bmm", pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("bmm"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("bmm")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        "log",
-        "log",
-        "log",
-        "align32",
-        "align32",
-    ],
-)
-@triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit
 def bmm_kernel(
-    A,
+    a_ptr,
+    b_ptr,
+    c_ptr,
     B,
-    O,
     M,
     N,
     K,
@@ -44,162 +18,105 @@ def bmm_kernel(
     stride_bb,
     stride_bk,
     stride_bn,
-    stride_ob,
-    stride_om,
-    stride_on,
-    TILE_M: tl.constexpr,
-    TILE_N: tl.constexpr,
-    TILE_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    DIVISIBLE_M: tl.constexpr,
-    DIVISIBLE_N: tl.constexpr,
-    DIVISIBLE_K: tl.constexpr,
+    stride_cb,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
-    # batch offsets
-    pid_b = tle.program_id(2)
-    A += pid_b * stride_ab
-    B += pid_b * stride_bb
-    O += pid_b * stride_ob
+    pid = tl.program_id(axis=0)
+    total_mn = tl.cdiv(M, BLOCK_M) * tl.cdiv(N, BLOCK_N)
+    batch_idx = pid // total_mn
+    rem = pid % total_mn
+    pid_m = rem // tl.cdiv(N, BLOCK_N)
+    pid_n = rem % tl.cdiv(N, BLOCK_N)
 
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
-
-    if GROUP_M == 1:
-        pid_m, pid_n = pidx, pidy
-    else:
-        # reorder CTAs
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
-        pid = pidx + pidy * gridx
-
-        num_CTA_per_group = gridy * GROUP_M
-
-        group_id = pid // num_CTA_per_group
-        inner_group_id = pid % num_CTA_per_group
-        GROUP_SIZE = tl.where(
-            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
-        )
-        pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
-        pid_n = inner_group_id // GROUP_SIZE
-
-    offs_m = pid_m * TILE_M + tl.arange(0, TILE_M)
-    offs_n = pid_n * TILE_N + tl.arange(0, TILE_N)
-    offs_k = tl.arange(0, TILE_K)
-
-    if not DIVISIBLE_M:
-        mask_m = offs_m < M
-    if not DIVISIBLE_N:
-        mask_n = offs_n < N
-
-    a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-    o_ptrs = O + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
-
-    num_iters = tl.cdiv(K, TILE_K)
-    o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for _ in range(num_iters):
-        if DIVISIBLE_K:
-            if DIVISIBLE_M:
-                mask_a = None
-            else:
-                mask_a = mask_m[:, None]
-            if DIVISIBLE_N:
-                mask_b = None
-            else:
-                mask_b = mask_n[None, :]
-        else:
-            mask_k = offs_k < K
-            if DIVISIBLE_M:
-                mask_a = mask_k[None, :]
-            else:
-                mask_a = mask_m[:, None] & mask_k[None, :]
-            if DIVISIBLE_N:
-                mask_b = mask_k[:, None]
-            else:
-                mask_b = mask_k[:, None] & mask_n[None, :]
-
-        a = tl.load(a_ptrs, mask_a)
-        b = tl.load(b_ptrs, mask_b)
-
-        offs_k += TILE_K
-        a_ptrs += TILE_K * stride_ak
-        b_ptrs += TILE_K * stride_bk
-
-        o += tl.dot(a, b, allow_tf32=False)
-
-    if DIVISIBLE_M and DIVISIBLE_N:
-        mask_c = None
-    elif DIVISIBLE_M and not DIVISIBLE_N:
-        mask_c = mask_n[None, :]
-    elif not DIVISIBLE_M and DIVISIBLE_N:
-        mask_c = mask_m[:, None]
-    else:
-        mask_c = mask_m[:, None] & mask_n[None, :]
-    tl.store(o_ptrs, o, mask_c)
-
-
-def bmm(A, B):
-    logger.debug("GEMS BMM")
-    assert A.shape[0] == B.shape[0], "Batch dim mismatch"
-    assert A.shape[2] == B.shape[1], "K dim mismatch"
-    batch, M, K = A.shape
-    _, _, N = B.shape
-    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
-
-    grid_fn = lambda meta: (
-        triton.cdiv(meta["M"], meta["TILE_M"]),
-        triton.cdiv(meta["N"], meta["TILE_N"]),
-        batch,
+    offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = (
+        a_ptr
+        + batch_idx * stride_ab
+        + offs_am[:, None] * stride_am
+        + offs_k[None, :] * stride_ak
     )
-    with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](
-            A,
+    b_ptrs = (
+        b_ptr
+        + batch_idx * stride_bb
+        + offs_k[:, None] * stride_bk
+        + offs_bn[None, :] * stride_bn
+    )
+
+    mask_am = offs_am < M
+    mask_bn = offs_bn < N
+    mask_c = mask_am[:, None] & mask_bn[None, :]
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        k_offs = k * BLOCK_K
+        mask_k = offs_k + k_offs < K
+        a = tl.load(a_ptrs, mask=mask_am[:, None] & mask_k[None, :], other=0.0)
+        b = tl.load(b_ptrs, mask=mask_k[:, None] & mask_bn[None, :], other=0.0)
+        acc += tl.dot(a, b)
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+
+    c_val = acc.to(tl.float16)
+    c_ptrs = (
+        c_ptr
+        + batch_idx * stride_cb
+        + offs_am[:, None] * stride_cm
+        + offs_bn[None, :] * stride_cn
+    )
+    tl.store(c_ptrs, c_val, mask=mask_c)
+
+
+def grid_bmm(B, M, N, BLOCK_M, BLOCK_N):
+    return (B * triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+
+
+class BMMFunc(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        B, M, K = a.shape
+        B2, K2, N = b.shape
+        assert B == B2 and K == K2
+        c = torch.empty((B, M, N), device=a.device, dtype=a.dtype)
+        BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
+        bmm_kernel[grid_bmm(B, M, N, BLOCK_M, BLOCK_N)](
+            a,
+            b,
+            c,
             B,
-            out,
             M,
             N,
             K,
-            A.stride(0),
-            A.stride(1),
-            A.stride(2),
-            B.stride(0),
-            B.stride(1),
-            B.stride(2),
-            out.stride(0),
-            out.stride(1),
-            out.stride(2),
+            a.stride(0),
+            a.stride(1),
+            a.stride(2),
+            b.stride(0),
+            b.stride(1),
+            b.stride(2),
+            c.stride(0),
+            c.stride(1),
+            c.stride(2),
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            num_stages=3,
+            num_warps=4,
         )
-    return out
+        ctx.save_for_backward(a, b)
+        return c
+
+    @staticmethod
+    def backward(ctx, dc):
+        a, b = ctx.saved_tensors
+        da = torch.bmm(dc, b.transpose(-1, -2))
+        db = torch.bmm(a.transpose(-1, -2), dc)
+        return da, db
 
 
-def bmm_out(A, B, out):
-    logger.debug("GEMS BMM_OUT")
-    assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
-    assert A.shape[2] == B.shape[1], "K dim mismatch"
-    batch, M, K = A.shape
-    _, _, N = B.shape
-
-    grid_fn = lambda meta: (
-        triton.cdiv(meta["M"], meta["TILE_M"]),
-        triton.cdiv(meta["N"], meta["TILE_N"]),
-        batch,
-    )
-    with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](
-            A,
-            B,
-            out,
-            M,
-            N,
-            K,
-            A.stride(0),
-            A.stride(1),
-            A.stride(2),
-            B.stride(0),
-            B.stride(1),
-            B.stride(2),
-            out.stride(0),
-            out.stride(1),
-            out.stride(2),
-        )
-    return out
+def bmm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return BMMFunc.apply(a, b)
