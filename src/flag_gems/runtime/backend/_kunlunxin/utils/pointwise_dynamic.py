@@ -1050,8 +1050,12 @@ class WrapperGenerator:
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
                 if not self.config.isCloseVectorization and schema.num_input_tensors():
+                    # bool -> f32 lowers fine; only narrow integer inputs hit the
+                    # vector-widen bug, and keeping bool out avoids disabling
+                    # vectorization for mask operands.
                     _widen = [
                         f"({self.input_name(i)}.dtype.is_floating_point is False"
+                        f" and {self.input_name(i)}.dtype != torch.bool"
                         f" and {self.input_name(i)}.element_size() < out0.element_size())"
                         for i in range(schema.num_input_tensors())
                     ]
