@@ -109,3 +109,61 @@ def test_repeat_interleave_self_tensor(shape, dim, dtype):
     res_out = flag_gems.repeat_interleave_self_tensor(inp, repeats, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave_tensor
+@pytest.mark.parametrize("shape", utils.UT_SHAPES_1D)
+@pytest.mark.parametrize("dtype", [torch.int32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
+def test_repeat_interleave_tensor_output_size(shape, dtype):
+    # a supplied output_size must be honored — same result as the
+    # discovering path, without the device→host read
+    repeats = torch.randint(0, 30, shape, dtype=dtype, device=flag_gems.device)
+    ref_repeats = utils.to_reference(repeats)
+    ref_out = torch.repeat_interleave(ref_repeats)
+
+    res_out = flag_gems.repeat_interleave_tensor(
+        repeats, output_size=ref_out.numel()
+    )
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave_self_tensor
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_repeat_interleave_self_tensor_output_size(shape, dim, dtype):
+    # the self_tensor path dropped output_size before reaching
+    # the values kernel; passing it must change nothing but the sync
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_repeats = utils.to_reference(repeats)
+
+    ref_out = torch.repeat_interleave(ref_inp, ref_repeats, dim)
+    res_out = flag_gems.repeat_interleave_self_tensor(
+        inp, repeats, dim, output_size=ref_out.shape[dim]
+    )
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave_tensor
+@pytest.mark.parametrize("shape", utils.UT_SHAPES_1D)
+def test_repeat_interleave_dispatch_output_size(shape):
+    # torch.repeat_interleave(..., output_size=...)
+    # is the public entry point where the argument was originally dropped;
+    # this goes through aten dispatch, not the private flag_gems API
+    repeats = torch.randint(1, 10, shape, dtype=torch.int64, device=flag_gems.device)
+    ref_repeats = utils.to_reference(repeats)
+    ref_out = torch.repeat_interleave(ref_repeats)
+    n = ref_out.numel()
+
+    with flag_gems.use_gems(include=["repeat_interleave"]):
+        res_out = torch.repeat_interleave(repeats, output_size=n)
+
+    utils.gems_assert_equal(res_out, ref_out)
