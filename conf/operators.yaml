@@ -19415,6 +19415,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: 5.5.0
+- id: slow_conv2d_forward_backward
+  description: 'The backward computation of the slow reference 2-D convolution forward,
+    exercised through the autograd of the forward operator.
+
+    '
+  for:
+  - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: slow_conv_dilated2d
   description: Applies a 2D dilated convolution over an input signal composed of several
     input planes, using the slow (non-cuDNN) reference path. The operator takes `kernel_size`,
