@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+a5_permute_copy:
+  shapes:
+    - [4096, 4]
+    - [1024, 16, 128]
+    - [3, 17]
+  shape_desc: "input shape"
