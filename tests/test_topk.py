@@ -104,7 +104,9 @@ def test_topk_3d_lastdim(shape, topk, dtype):
 
 @pytest.mark.topk
 def test_topk_radix_tle_config_uses_large_fp32_shape_heuristic():
-    topk_op = import_module(flag_gems.topk.__module__)
+    # This heuristic belongs to the generic radix kernel. Architecture
+    # overrides can implement top-k without using that private helper.
+    topk_op = import_module("flag_gems.ops.topk")
 
     assert topk_op._get_topk_radix_tle_config(torch.float32, 32768, 256, 256) == (
         1024,
