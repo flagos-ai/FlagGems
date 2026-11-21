@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""FP16/BF16 MThreads BMM kernel for B=4, M=15, N=160, K=1024.
+"""FP16/BF16 MThreads BMM kernel for small-M shapes.
 
 The kernel mirrors the geometry selected by the native MUSA library:
 BM64 x BN64 x BK128 payloads and one CTA per (batch, N tile).  SQMMA on
@@ -230,8 +230,12 @@ def _launch_with_descriptors(
     out: torch.Tensor,
     *,
     trans_b: bool,
+    batch: int,
+    m: int,
+    n: int,
+    k: int,
 ) -> torch.Tensor:
-    grid = (triton.cdiv(160, 64), 4)
+    grid = (triton.cdiv(n, 64), batch)
     _bmm_bm64_bn64_bk128_s2_small_m_ws_kernel[grid](
         a_desc,
         b_desc,
@@ -239,9 +243,9 @@ def _launch_with_descriptors(
         out.stride(0),
         out.stride(1),
         out.stride(2),
-        M=15,
-        N=160,
-        K=1024,
+        M=m,
+        N=n,
+        K=k,
         BLOCK_K=128,
         NUM_SLOTS=2,
         TRANS_B=trans_b,
@@ -259,7 +263,9 @@ def bmm_bm64_bn64_bk128_s2_small_m_ws_out(
     b: torch.Tensor,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    trans_b = b.stride(0) == 160 * 1024 and b.stride(1) == 1 and b.stride(2) == 1024
+    batch, m, k = a.shape
+    n = b.shape[2]
+    trans_b = b.stride(0) == n * k and b.stride(1) == 1 and b.stride(2) == k
     a_desc, b_desc = _descriptors(a, b, trans_b=trans_b)
     with torch_device_fn.device(a.device):
         _launch_with_descriptors(
@@ -267,5 +273,9 @@ def bmm_bm64_bn64_bk128_s2_small_m_ws_out(
             b_desc,
             out,
             trans_b=trans_b,
+            batch=batch,
+            m=m,
+            n=n,
+            k=k,
         )
     return out
