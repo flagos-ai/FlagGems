@@ -29,6 +29,34 @@ from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _minimum_with_nan(a, b):
+    return tl.minimum(a, b, propagate_nan=tl.PropagateNan.ALL)
+
+
+@triton.jit
+def _maximum_with_nan(a, b):
+    return tl.maximum(a, b, propagate_nan=tl.PropagateNan.ALL)
+
+
+@triton.jit
+def _reduce_min_with_nan(x):
+    if x.dtype.is_floating():
+        if x.dtype.primitive_bitwidth < 32:
+            x = x.to(tl.float32)
+        return tl.reduce(x, 0, _minimum_with_nan)
+    return tl.min(x, 0)
+
+
+@triton.jit
+def _reduce_max_with_nan(x):
+    if x.dtype.is_floating():
+        if x.dtype.primitive_bitwidth < 32:
+            x = x.to(tl.float32)
+        return tl.reduce(x, 0, _maximum_with_nan)
+    return tl.max(x, 0)
+
+
 @libentry()
 @triton.jit
 def aminmax_kernel_1(
@@ -48,8 +76,8 @@ def aminmax_kernel_1(
     min_val = tl.load(inp_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(inp_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    min_val = _reduce_min_with_nan(min_val)
+    max_val = _reduce_max_with_nan(max_val)
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
@@ -71,8 +99,8 @@ def aminmax_kernel_2(
     min_val = tl.load(min_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(max_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    min_val = _reduce_min_with_nan(min_val)
+    max_val = _reduce_max_with_nan(max_val)
 
     tl.store(min_out, min_val)
     tl.store(max_out, max_val)
@@ -128,6 +156,11 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         # The whole-tensor kernels use flat offsets, so materialize strided views.
         inp = contiguous(inp)
         M = inp.numel()
+        if M == 0:
+            raise RuntimeError(
+                "aminmax(): cannot compute aminmax over an empty dimension "
+                "as the operation has no identity."
+            )
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -142,13 +175,10 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
                 min_out = min_out.squeeze()
                 max_out = max_out.squeeze()
         else:
-            if not keepdim:
-                min_out = torch.empty([], dtype=dtype, device=inp.device)
-                max_out = torch.empty([], dtype=dtype, device=inp.device)
-            else:
-                shape = [1] * inp.dim()
-                min_out = torch.empty(shape, dtype=dtype, device=inp.device)
-                max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            # A global reduction retains every reduced dimension when requested.
+            shape = (1,) * inp.ndim if keepdim else ()
+            min_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            max_out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
             aminmax_kernel_1[(mid_size, 1)](
