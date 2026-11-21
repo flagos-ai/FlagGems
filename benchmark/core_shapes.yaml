@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+linear_a5_projection:
+  shapes:
+    - [1, 4096, 64]
+    - [1, 128, 128]
+    - [8, 6144, 128]
+  shape_desc: "M, K, N"
