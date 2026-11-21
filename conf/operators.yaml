@@ -13670,6 +13670,20 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: masked_fill_backward
+  description: The backward computation of `masked_fill()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - masked_fill.Scalar
+  - masked_fill.Tensor
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.4'
 - id: masked_fill_scalar
   description: Fills elements of given tensor with `value` where `mask` is True.
   for:

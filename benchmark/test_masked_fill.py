@@ -77,3 +77,53 @@ def test_masked_fill_scalar_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def _backward_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    mask = utils.generate_tensor_input(shape, dtype, device) < 0.3
+    value = 1024
+
+    yield inp, mask, value
+
+
+def _backward_tensor_value_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    mask = utils.generate_tensor_input(shape, dtype, device) < 0.3
+    value = torch.tensor(1024, dtype=dtype, device=device)
+
+    yield inp, mask, value
+
+
+@pytest.mark.masked_fill_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_masked_fill_backward():
+    """Backward of the Scalar overload: only ``input`` needs a gradient."""
+    bench = base.GenericBenchmark(
+        op_name="masked_fill",
+        input_fn=_backward_input_fn,
+        torch_op=torch.masked_fill,
+        gems_op=flag_gems.masked_fill,
+        is_backward=True,
+    )
+
+    bench.run()
+
+
+@pytest.mark.masked_fill_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_masked_fill_backward_tensor_value():
+    """Backward of the Tensor overload: ``input`` and 0-dim ``value``."""
+    bench = base.GenericBenchmark(
+        op_name="masked_fill",
+        input_fn=_backward_tensor_value_input_fn,
+        torch_op=torch.masked_fill,
+        gems_op=flag_gems.masked_fill,
+        is_backward=True,
+    )
+
+    bench.run()
