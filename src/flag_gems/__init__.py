@@ -1632,7 +1632,12 @@ _FULL_CONFIG = (
     ("kaiser_window.periodic", kaiser_window_periodic),
     ("kl_div", kl_div),
     ("kron", kron),
-    ("kthvalue", kthvalue),
+    (
+        "kthvalue",
+        kthvalue,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("l1_loss", l1_loss),
     ("lcm", lcm),
     ("lcm_", lcm_),
