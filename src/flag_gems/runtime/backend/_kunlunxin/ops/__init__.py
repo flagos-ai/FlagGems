@@ -979,6 +979,7 @@ from .sqrt import sqrt, sqrt_
 from .square import square, square_out
 from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
+from .sspaddmm import sspaddmm, sspaddmm_out  # noqa: F401
 from .stack import stack
 from .std import std
 from .std_mean import std_mean_correction  # noqa: F401
