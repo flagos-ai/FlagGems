@@ -1345,6 +1345,7 @@ _FULL_CONFIG = (
     ("digamma_", digamma_),
     ("dim", dim),
     ("dist", dist),
+    ("dist_backward", dist_backward),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),

@@ -5494,6 +5494,24 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: dist_backward
+  description: 'Backward pass for `dist`: given the upstream gradient on the scalar
+    distance, computes the gradients flowing into both inputs of the p-norm.
+    p = 1 reduces to the signed gradient, p = 2 to `grad * diff / dist`; the
+    general finite p evaluates `grad * sign(diff) * |diff|**(p - 1) / dist**(p - 1)`
+    in a single Triton launch, and +/-inf norms route the gradient to the
+    extreme element(s).
+
+    '
+  for:
+  - dist_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: div_mode
   description: 'Divides each element of the `input` by the corresponding element of
     `other`.
