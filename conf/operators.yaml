@@ -11480,6 +11480,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: kv_compress_epilog
+  description: Pack a 512-channel KV row into a paged cache using FP8 tiles and a BF16 rotary tail.
+  for:
+  - kv_compress_epilog
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: l1_loss
   description: 'Compute the L1 loss between input and target tensors, i.e. the element-wise
 

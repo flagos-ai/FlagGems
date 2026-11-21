@@ -31,4 +31,6 @@ sorted by ``str.casefold`` (``tools/ci_checks/check_init_exports.py``).
 See ``a5/__init__.py`` for the import rules that apply to modules here.
 """
 
-__all__ = []
+from .kv_compress_epilog import kv_compress_epilog
+
+__all__ = ["kv_compress_epilog"]
