@@ -21,6 +21,35 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.sort
+@pytest.mark.sort_stable
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon empty radix sort regression"
+)
+@pytest.mark.parametrize("stable", [False, True], ids=["default", "stable"])
+@pytest.mark.parametrize(
+    "shape,dim",
+    [
+        pytest.param((0,), -1, id="empty-vector"),
+        pytest.param((3, 0, 2), -2, id="empty-sort-axis"),
+        pytest.param((0, 3), -1, id="empty-batch"),
+    ],
+)
+def test_sort_hygon_empty(shape, dim, stable):
+    inp_cpu = torch.empty(shape, dtype=torch.int64, device="cpu")
+    inp = inp_cpu.to(flag_gems.device)
+    if stable:
+        expected = torch.sort(inp_cpu, dim=dim, stable=True)
+        actual = flag_gems.sort_stable(inp, dim=dim, stable=True)
+    else:
+        expected = torch.sort(inp_cpu, dim=dim)
+        actual = flag_gems.sort(inp, dim=dim)
+
+    for result, reference in zip(actual, expected):
+        assert result.device == inp.device
+        torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+
+
+@pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize(
     "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
