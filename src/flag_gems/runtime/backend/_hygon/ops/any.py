@@ -98,12 +98,20 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def any(inp):
     logger.debug("GEMS_HYGON ANY")
     n_elements = inp.numel()
+    out_dtype = torch.uint8 if inp.dtype == torch.uint8 else torch.bool
+    if n_elements == 0:
+        return torch.zeros([], dtype=out_dtype, device=inp.device)
+
+    if not inp.is_contiguous():
+        # A full reduction can reorder axes to avoid copying dense transposes.
+        inp = dim_compress(inp, tuple(range(inp.ndim)))
+
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    out = torch.empty([], dtype=out_dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
         any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
@@ -112,29 +120,52 @@ def any(inp):
     return out
 
 
+def _normalize_dim(dim, ndim):
+    dim_count = max(ndim, 1)
+    if not -dim_count <= dim < dim_count:
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-dim_count}, {dim_count - 1}], but got {dim})"
+        )
+    return dim % dim_count
+
+
+def _reduce_dims(inp, dims, keepdim):
+    if inp.ndim == 0:
+        return any(inp)
+
+    shape = list(inp.shape)
+    N = math.prod(shape[d] for d in dims)
+    if keepdim:
+        for d in dims:
+            shape[d] = 1
+    else:
+        for d in sorted(dims, reverse=True):
+            del shape[d]
+
+    numel = inp.numel()
+    out_dtype = torch.uint8 if inp.dtype == torch.uint8 else torch.bool
+    if numel == 0:
+        # Empty reductions are false, and an empty output needs no reduction grid.
+        return torch.zeros(shape, dtype=out_dtype, device=inp.device)
+
+    inp = dim_compress(inp, dims)
+    M = numel // N
+    out = torch.empty(shape, dtype=out_dtype, device=inp.device)
+
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    with torch_device_fn.device(inp.device):
+        any_kernel_dim[grid](inp, out, M, N)
+    return out
+
+
 def any_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_HYGON ANY_DIM")
-    shape = list(inp.shape)
     if dim is None:
         out = any(inp)
-        if keepdim:
-            out = torch.reshape(out, [1] * inp.ndim)
-    else:
-        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-        dim = dim % inp.ndim
-        inp = dim_compress(inp, dim)
-        N = shape[dim]
-        shape[dim] = 1
-        M = inp.numel() // N
+        return out.reshape([1] * inp.ndim) if keepdim else out
 
-        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
-            any_kernel_dim[grid](inp, out, M, N)
-        if not keepdim:
-            out = out.squeeze(dim=dim)
-    return out
+    return _reduce_dims(inp, (_normalize_dim(dim, inp.ndim),), keepdim)
 
 
 def any_dims(inp, dim=None, keepdim=False):
@@ -142,22 +173,11 @@ def any_dims(inp, dim=None, keepdim=False):
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
 
-    shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
-    inp = dim_compress(inp, dim)
-    N = 1
-    for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
-
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
-        any_kernel_dim[grid](inp, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
-    return out
+    dims = set()
+    for d in dim:
+        d = _normalize_dim(d, inp.ndim)
+        if d in dims:
+            raise RuntimeError(f"dim {d} appears multiple times in the list of dims")
+        dims.add(d)
+    return _reduce_dims(inp, dims, keepdim)
