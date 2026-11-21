@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import logging
+from contextlib import nullcontext
 
 import torch
 import triton
@@ -358,6 +360,282 @@ def softmax(self, dim, half_to_float=False):
     return softmax_out(self, dim, half_to_float, out=out)
 
 
+# ``grad_input = output * (grad_output - sum(output * grad_output, dim))``.
+# Only the per-row dot ``s = sum(out * grad)`` is a reduction; the apply step is
+# elementwise. ``softmax_backward_kernel_inner`` above gives a whole row to one
+# program and reads both operands twice, so on a row-dominant layout such as the
+# 1-D ``2**20`` core shape the reduction runs inside a single CTA and leaves the
+# rest of the GPU idle. The kernels below keep a row in registers (one pass,
+# minimum traffic) and, when one row is wider than a register tile, split that
+# row across CTAs and fold the per-slice partial sums in a small second kernel.
+_SOFTMAX_BACKWARD_ROW_BLOCK = 8192
+# Below this a split reduction costs more than it saves: the fold kernel is a
+# second launch, and a row of a few thousand elements already saturates a CTA.
+_SOFTMAX_BACKWARD_SPLIT_MIN_N = 32768
+_SOFTMAX_BACKWARD_SPLIT_BLOCK = 4096
+_SOFTMAX_BACKWARD_APPLY_BLOCK = 2048
+# Whole ``N x TILE_K`` slab kept in registers for a non-innermost reduction.
+_SOFTMAX_BACKWARD_SLAB_TILE_K = 32
+_SOFTMAX_BACKWARD_SLAB_ELEMS_PER_THREAD = 16
+_SOFTMAX_BACKWARD_SLAB_MAX_WARPS = 32
+# A reusable empty scope keeps the common launch path allocation-free.
+_SOFTMAX_BACKWARD_NO_CTX = nullcontext()
+
+
+@functools.lru_cache(maxsize=8)
+def _softmax_backward_device_ctx(device_index):
+    """Device scope for a launch, an empty one when already on that device.
+
+    ``torch_device_fn.device`` performs two real driver calls, which is
+    measurable next to a launch of a few microseconds, so it is only entered
+    when the tensors are not already on the current device.
+    """
+    if device_index < 0 or device_index == torch_device_fn.current_device():
+        return _SOFTMAX_BACKWARD_NO_CTX
+    return torch_device_fn.device(device_index)
+
+
+@functools.lru_cache(maxsize=None)
+def _softmax_backward_num_sms(device_index):
+    """SM count is launch-geometry input, not data: query it once per device."""
+    return torch.cuda.get_device_properties(device_index).multi_processor_count
+
+
+def _softmax_backward_num_warps(block):
+    if block <= 128:
+        return 1
+    if block <= 512:
+        return 2
+    if block <= 2048:
+        return 4
+    return 8
+
+
+@libentry()
+@triton.jit
+def softmax_backward_row_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    N,
+    EVEN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    base = pid_m.to(tl.int64) * N
+    cols = tl.arange(0, BLOCK)
+    if EVEN:
+        out_tile = tl.load(out_ptr + base + cols).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + base + cols).to(tl.float32)
+    else:
+        mask = cols < N
+        out_tile = tl.load(out_ptr + base + cols, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + base + cols, mask=mask, other=0.0).to(
+            tl.float32
+        )
+    scale = tl.sum(out_tile * out_grad_tile, 0)
+    result = out_tile * (out_grad_tile - scale)
+    if EVEN:
+        tl.store(in_grad_ptr + base + cols, result.to(in_grad_ptr.dtype.element_ty))
+    else:
+        tl.store(
+            in_grad_ptr + base + cols,
+            result.to(in_grad_ptr.dtype.element_ty),
+            mask=mask,
+        )
+
+
+@libentry()
+@triton.jit
+def softmax_backward_split_reduce_kernel(
+    out_ptr,
+    out_grad_ptr,
+    partial_ptr,
+    N,
+    SPLITS,
+    EVEN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Partial ``sum_n out*grad`` for one contiguous slice of one row."""
+    pid_m = ext.program_id(0)
+    pid_s = ext.program_id(1)
+    cols = pid_s * BLOCK + tl.arange(0, BLOCK)
+    base = pid_m.to(tl.int64) * N
+    if EVEN:
+        out_tile = tl.load(out_ptr + base + cols).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + base + cols).to(tl.float32)
+    else:
+        mask = cols < N
+        out_tile = tl.load(out_ptr + base + cols, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + base + cols, mask=mask, other=0.0).to(
+            tl.float32
+        )
+    tl.store(
+        partial_ptr + pid_m * SPLITS + pid_s,
+        tl.sum(out_tile * out_grad_tile, 0),
+    )
+
+
+@libentry()
+@triton.jit
+def softmax_backward_split_apply_kernel(
+    out_ptr,
+    out_grad_ptr,
+    partial_ptr,
+    in_grad_ptr,
+    N,
+    SPLITS,
+    PADDED_SPLITS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Fold the per-slice partials in one vector load, then apply the gradient."""
+    pid_m = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    splits = tl.arange(0, PADDED_SPLITS)
+    partial = tl.load(
+        partial_ptr + pid_m * SPLITS + splits, mask=splits < SPLITS, other=0.0
+    )
+    scale = tl.sum(partial, 0)
+    base = pid_m.to(tl.int64) * N
+    cols = pid_b * BLOCK + tl.arange(0, BLOCK)
+    mask = cols < N
+    out_tile = tl.load(out_ptr + base + cols, mask=mask, other=0.0).to(tl.float32)
+    out_grad_tile = tl.load(out_grad_ptr + base + cols, mask=mask, other=0.0).to(
+        tl.float32
+    )
+    result = out_tile * (out_grad_tile - scale)
+    tl.store(
+        in_grad_ptr + base + cols,
+        result.to(in_grad_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
+@libentry()
+@triton.jit
+def softmax_backward_strided_slab_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    N,
+    K,
+    NCEIL: tl.constexpr,
+    TILE_K: tl.constexpr,
+    EXACT: tl.constexpr,
+):
+    """Single-pass reduction along a non-innermost axis.
+
+    ``softmax_backward_kernel_non_inner`` walks the reduced axis twice, so it
+    reads both operands twice (five global accesses per element). When the
+    reduced extent is small enough the whole ``NCEIL x TILE_K`` slab fits in
+    registers, and one load feeds both the reduction and the apply: two reads
+    plus one write.
+    """
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    base = pid_m.to(tl.int64) * N * K
+    rows = tl.arange(0, NCEIL)
+    cols = pid_k * TILE_K + tl.arange(0, TILE_K)
+    offsets = base + rows[:, None] * K + cols[None, :]
+    if EXACT:
+        out_tile = tl.load(out_ptr + offsets).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets).to(tl.float32)
+        scale = tl.sum(out_tile * out_grad_tile, 0)
+        tl.store(
+            in_grad_ptr + offsets,
+            (out_tile * (out_grad_tile - scale[None, :])).to(
+                in_grad_ptr.dtype.element_ty
+            ),
+        )
+    else:
+        mask = (rows < N)[:, None] & (cols < K)[None, :]
+        out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        scale = tl.sum(out_tile * out_grad_tile, 0)
+        tl.store(
+            in_grad_ptr + offsets,
+            (out_tile * (out_grad_tile - scale[None, :])).to(
+                in_grad_ptr.dtype.element_ty
+            ),
+            mask=mask,
+        )
+
+
+@functools.lru_cache(maxsize=None)
+def _softmax_backward_slab_warps(num_sms, M, N):
+    """Warp count for the strided slab, or 0 when the slab does not fit."""
+    nceil = triton.next_power_of_2(N)
+    live = nceil * _SOFTMAX_BACKWARD_SLAB_TILE_K
+    warps = max(
+        1,
+        min(
+            _SOFTMAX_BACKWARD_SLAB_MAX_WARPS,
+            -(-live // (_SOFTMAX_BACKWARD_SLAB_ELEMS_PER_THREAD * 32)),
+        ),
+    )
+    if warps * 32 * _SOFTMAX_BACKWARD_SLAB_ELEMS_PER_THREAD < live:
+        return 0
+    return warps
+
+
+def softmax_backward_strided_slab(out, out_grad, in_grad, M, N, K, num_sms):
+    """Return True when the register-resident strided slab handled the call."""
+    warps = _softmax_backward_slab_warps(num_sms, M, N)
+    if warps == 0:
+        return False
+    nceil = triton.next_power_of_2(N)
+    tile_k = _SOFTMAX_BACKWARD_SLAB_TILE_K
+    softmax_backward_strided_slab_kernel[(M, triton.cdiv(K, tile_k))](
+        out,
+        out_grad,
+        in_grad,
+        N,
+        K,
+        NCEIL=nceil,
+        TILE_K=tile_k,
+        EXACT=(nceil == N and K % tile_k == 0),
+        num_warps=warps,
+    )
+    return True
+
+
+def softmax_backward_split(out, out_grad, in_grad, M, N, num_sms):
+    """Split each reduction row across CTAs when only a few rows exist."""
+    per_row = max(1, num_sms // M)
+    block = max(
+        _SOFTMAX_BACKWARD_SPLIT_BLOCK,
+        triton.next_power_of_2(triton.cdiv(N, per_row)),
+    )
+    splits = triton.cdiv(N, block)
+    partial = torch.empty((M, splits), dtype=torch.float32, device=out.device)
+    softmax_backward_split_reduce_kernel[(M, splits)](
+        out,
+        out_grad,
+        partial,
+        N,
+        splits,
+        EVEN=(splits * block == N),
+        BLOCK=block,
+        num_warps=_softmax_backward_num_warps(block),
+    )
+    softmax_backward_split_apply_kernel[
+        (M, triton.cdiv(N, _SOFTMAX_BACKWARD_APPLY_BLOCK))
+    ](
+        out,
+        out_grad,
+        partial,
+        in_grad,
+        N,
+        splits,
+        PADDED_SPLITS=triton.next_power_of_2(splits),
+        BLOCK=_SOFTMAX_BACKWARD_APPLY_BLOCK,
+        num_warps=_softmax_backward_num_warps(_SOFTMAX_BACKWARD_APPLY_BLOCK),
+    )
+    return in_grad
+
+
 def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
     logger.debug("GEMS SOFTMAX_BACKWARD_OUT")
 
@@ -375,9 +653,52 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
         raise RuntimeError(
             f"_softmax_backward_data.out: expected grad_input dtype {input_dtype}, got {grad_input.dtype}"
         )
+    if output.numel() == 0:
+        return grad_input
     K = output.numel() // M // N
 
+    if (
+        K == 1
+        and grad_input.is_cuda
+        and output.is_contiguous()
+        and grad_input.is_contiguous()
+    ):
+        num_sms = _softmax_backward_num_sms(grad_input.get_device())
+        with _softmax_backward_device_ctx(grad_input.get_device()):
+            if N <= _SOFTMAX_BACKWARD_ROW_BLOCK:
+                block = max(16, triton.next_power_of_2(N))
+                softmax_backward_row_kernel[(M,)](
+                    output,
+                    grad_output,
+                    grad_input,
+                    N,
+                    EVEN=(block == N),
+                    BLOCK=block,
+                    num_warps=_softmax_backward_num_warps(block),
+                )
+                return grad_input
+            if N >= _SOFTMAX_BACKWARD_SPLIT_MIN_N and M <= num_sms // 2:
+                return softmax_backward_split(
+                    output, grad_output, grad_input, M, N, num_sms
+                )
+
     with torch_device_fn.device(grad_input.device):
+        if (
+            K > 1
+            and grad_input.is_cuda
+            and output.is_contiguous()
+            and grad_input.is_contiguous()
+            and softmax_backward_strided_slab(
+                output,
+                grad_output,
+                grad_input,
+                M,
+                N,
+                K,
+                _softmax_backward_num_sms(grad_input.get_device()),
+            )
+        ):
+            return grad_input
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_backward_kernel_non_inner[grid](

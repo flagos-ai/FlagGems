@@ -2717,5 +2717,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "softmax_backward",
     "use_gems",
 ]
