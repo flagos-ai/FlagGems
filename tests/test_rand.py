@@ -27,5 +27,5 @@ def test_rand(shape, dtype):
 
     ref_out = utils.to_reference(res_out)
 
-    assert (ref_out <= 1.0).all()
+    assert (ref_out < 1.0).all()
     assert (ref_out >= 0.0).all()
