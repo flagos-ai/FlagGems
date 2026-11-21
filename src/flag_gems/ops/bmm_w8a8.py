@@ -39,7 +39,7 @@ def channel_kernel(
     G: tl.constexpr,
 ):
     p = tl.program_id(0)
-    batch = tl.program_id(1)
+    batch = tl.program_id(1).to(tl.int64)
     nm = tl.cdiv(M, BM)
     nn = tl.cdiv(N, BN)
     group = p // (G * nn)
