@@ -1627,3 +1627,14 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+ceil_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
