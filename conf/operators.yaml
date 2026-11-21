@@ -4460,6 +4460,19 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: cosh_backward
+  description: The backward computation of `cosh()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - cosh
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: cosh_out
   description: This is an variant of `cosh()` that assigns the output to the provided
     `out`.

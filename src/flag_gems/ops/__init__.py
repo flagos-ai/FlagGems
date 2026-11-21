@@ -747,6 +747,7 @@ from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.corrcoef import corrcoef
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
+from flag_gems.ops.cosh_backward import cosh_backward
 from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.cosine_similarity import cosine_similarity
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -2496,6 +2497,7 @@ __all__ = [
     "cos_",
     "cosh",
     "cosh_",
+    "cosh_backward",
     "cosh_out",
     "cosine_embedding_loss",
     "cosine_similarity",
