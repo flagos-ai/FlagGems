@@ -12649,6 +12649,19 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: linalg_svd_backward
+  description: The backward computation of the singular value decomposition, exercised
+    through autograd.
+  for:
+  - _linalg_svd
+  labels:
+  - aten
+  - LinearAlg
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: linalg_svdvals
   description: Computes the singular values of a matrix.
   for:

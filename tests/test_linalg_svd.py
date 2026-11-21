@@ -372,3 +372,299 @@ def test__linalg_svd_driver_checked_before_dtype():
 
     with pytest.raises(RuntimeError, match="unknown svd driver"):
         flag_gems._linalg_svd(inp, full_matrices=False, driver="bogus")
+
+
+# ---------------------------------------------------------------------------
+# aten::_linalg_svd backward
+#
+# ATen registers no _linalg_svd_backward schema: the engine-generated
+# LinalgSvdBackward0 node applies FunctionsManual::svd_backward to the saved
+# factors. The FlagGems module wraps the same forward in a
+# torch.autograd.Function whose backward launches Triton kernels, so these
+# tests differentiate the factors with respect to A and compare against the
+# native autograd rule. The reference is computed in float64 from the *same*
+# factors, which isolates the candidate kernel from the forward SVD's own
+# rounding and from the per-column sign gauge that the two SVD
+# implementations may pick differently.
+# ---------------------------------------------------------------------------
+
+
+def _svd_backward_abs_diff(got, expected):
+    """Move the candidate onto the reference device before comparing.
+
+    ``--ref cpu`` runs the float64 reference on the host, so a candidate
+    tensor still on the GPU would raise a device mismatch instead of a
+    numerical comparison.
+    """
+    return utils.to_reference(got, True) - expected
+
+
+def _svd_backward_reference(U, S, Vh, grad_U, grad_S, grad_Vh):
+    """ATen's first-order real SVD rule, evaluated in float64."""
+    k = S.shape[-1]
+    u = utils.to_reference(U, True)[..., :, :k]
+    vh = utils.to_reference(Vh, True)[..., :k, :]
+    gu = utils.to_reference(grad_U, True)[..., :, :k]
+    gvh = utils.to_reference(grad_Vh, True)[..., :k, :]
+    gs = utils.to_reference(grad_S, True)
+    s = utils.to_reference(S, True)
+    sinv = 1.0 / s
+    gram_u = u.mH @ gu
+    gram_v = vh @ gvh.mH
+    f = 1.0 / (s.unsqueeze(-2) ** 2 - s.unsqueeze(-1) ** 2)
+    f.diagonal(0, -2, -1).zero_()
+    t = (
+        (f * (gram_u - gram_u.mH)) * s.unsqueeze(-2)
+        + s.unsqueeze(-1) * (f * (gram_v - gram_v.mH))
+        + torch.diag_embed(gs)
+    )
+    c = t - gram_u * sinv.unsqueeze(-2) - sinv.unsqueeze(-1) * gram_v.mH
+    grad_a = (
+        u @ c @ vh + (gu * sinv.unsqueeze(-2)) @ vh + (u * sinv.unsqueeze(-2)) @ gvh
+    )
+    return grad_a.to(U.dtype)
+
+
+def _svd_backward_grads(shape, full_matrices, dtype, seed=20261120):
+    """An input matrix plus upstream gradients shaped for the factor layout."""
+    torch.manual_seed(seed)
+    m, n = shape[-2:]
+    k = min(m, n)
+    batch = shape[:-2]
+    a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad_u = torch.randn(
+        batch + (m, m if full_matrices else k), dtype=dtype, device=flag_gems.device
+    )
+    grad_s = torch.randn(batch + (k,), dtype=dtype, device=flag_gems.device)
+    grad_vh = torch.randn(
+        batch + ((n if full_matrices else k), n), dtype=dtype, device=flag_gems.device
+    )
+    if full_matrices:
+        # Both implementations ignore the lanes beyond k; zero them so the
+        # comparison is against the same effective upstream gradient.
+        grad_u = grad_u.clone()
+        grad_u[..., :, k:] = 0
+        grad_vh = grad_vh.clone()
+        grad_vh[..., k:, :] = 0
+    return a, grad_u, grad_s, grad_vh
+
+
+@pytest.mark.linalg_svd_backward
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (3, 3),
+        (8, 8),
+        (32, 32),
+        (64, 64),
+        (5, 3),
+        (32, 16),
+        (16, 32),
+        (128, 128),
+        (2, 8, 8),
+        (4, 32, 32),
+    ],
+)
+@pytest.mark.parametrize("full_matrices", [False, True])
+def test_accuracy_linalg_svd_backward(shape, full_matrices, dtype):
+    if full_matrices and max(shape[-2:]) > 64:
+        pytest.skip("the full_matrices forward path requires max(M, N) <= 64")
+    a, grad_u, grad_s, grad_vh = _svd_backward_grads(shape, full_matrices, dtype)
+
+    gems_a = a.detach().clone().requires_grad_(True)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(gems_a, full_matrices=full_matrices)
+    # The reference is evaluated on the candidate's *own* factors: the two SVD
+    # implementations may choose different per-column signs, and the gradient
+    # of a sign-flipped factor is the sign-flipped gradient. Comparing on the
+    # same factors isolates the backward kernel from the forward's gauge.
+    expected = _svd_backward_reference(
+        res_u.detach(), res_s.detach(), res_vh.detach(), grad_u, grad_s, grad_vh
+    )
+    # The custom autograd node must be the one propagating the gradient.
+    grad_fn = type(res_u.grad_fn).__name__ if res_u.grad_fn is not None else ""
+    assert "LinalgSvdBackward" in grad_fn, grad_fn
+    assert res_s.requires_grad and res_vh.requires_grad
+    (res_grad,) = torch.autograd.grad(
+        (res_u, res_s, res_vh), (gems_a,), (grad_u, grad_s, grad_vh)
+    )
+
+    assert res_grad.shape == expected.shape
+    assert res_grad.dtype == expected.dtype
+    assert torch.isfinite(res_grad).all(), "backward produced non-finite values"
+    # The float32 kernels accumulate f32 tl.dot products; observed relative
+    # error is <= 1.2e-5 on every case, the bound here leaves headroom for
+    # hardware-dependent summation order.
+    diff = _svd_backward_abs_diff(res_grad, expected)
+    rel = float(diff.norm() / expected.norm())
+    assert rel < 5e-4, f"relative error {rel:.3e} exceeds 5e-4"
+
+
+@pytest.mark.linalg_svd_backward
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+def test_accuracy_linalg_svd_backward_matches_native(dtype):
+    """Cross-check against native autograd on the same functional.
+
+    ``torch.linalg.svd`` and the Triton forward may pick different per-column
+    signs. Both differentiate the same scalar functional as long as the
+    upstream gradient lanes are expressed in the corresponding gauge, so the
+    candidate's lanes are sign-mapped before the input gradients are compared.
+    """
+    torch.manual_seed(20261121)
+    a = torch.randn(16, 10, dtype=dtype, device=flag_gems.device)
+    k = min(a.shape[-2:])
+    grad_u = torch.randn(16, k, dtype=dtype, device=flag_gems.device)
+    grad_s = torch.randn(k, dtype=dtype, device=flag_gems.device)
+    grad_vh = torch.randn(k, 10, dtype=dtype, device=flag_gems.device)
+
+    # Native autograd on the reference device. A CPU reference cannot accept
+    # CUDA tensors, so the input and upstream gradients move with it.
+    ref_a = utils.to_reference(a.detach(), False).requires_grad_(True)
+    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_a, full_matrices=False)
+    (ref_grad,) = torch.autograd.grad(
+        (ref_u, ref_s, ref_vh),
+        (ref_a,),
+        (
+            utils.to_reference(grad_u, False),
+            utils.to_reference(grad_s, False),
+            utils.to_reference(grad_vh, False),
+        ),
+    )
+
+    gems_a = a.detach().clone().requires_grad_(True)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(gems_a, full_matrices=False)
+    res_u_ref = utils.to_reference(res_u.detach(), False)
+    sign = torch.sign(torch.sum(ref_u.detach() * res_u_ref, dim=-2))
+    sign = torch.where(sign == 0, torch.ones_like(sign), sign)
+    # The sign was computed on the reference device; move it to the candidate's
+    # device so it can scale the upstream gradient lanes.
+    sign = sign.to(grad_u.device)
+    (res_grad,) = torch.autograd.grad(
+        (res_u, res_s, res_vh),
+        (gems_a,),
+        (grad_u * sign.unsqueeze(-2), grad_s, grad_vh * sign.unsqueeze(-1)),
+    )
+
+    assert torch.isfinite(res_grad).all()
+    got = utils.to_reference(res_grad, True)
+    exp = (
+        ref_grad.to(torch.float64)
+        if utils.TO_CPU
+        else utils.to_reference(ref_grad, True)
+    )
+    rel = float((got - exp).norm() / exp.norm())
+    assert rel < 1e-2, f"relative error against native {rel:.3e} exceeds 1e-2"
+
+
+@pytest.mark.linalg_svd_backward
+@pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
+def test_accuracy_linalg_svd_backward_s_only(dtype):
+    """svdvals-style differentiation: only S carries an upstream gradient."""
+    torch.manual_seed(20261122)
+    shape = (3, 8, 6)
+    a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    k = min(shape[-2:])
+    grad_s = torch.randn(shape[:-2] + (k,), dtype=dtype, device=flag_gems.device)
+
+    gems_a = a.detach().clone().requires_grad_(True)
+    up, s, vh = flag_gems._linalg_svd(gems_a, full_matrices=False)
+    (grad_a,) = torch.autograd.grad((s,), (gems_a,), (grad_s,))
+
+    # float64 on the candidate's own factors: the fp32 product alone already
+    # carries ~2.6e-4 relative rounding, which would mask a kernel error.
+    expected = (
+        utils.to_reference(up.detach(), True)
+        * utils.to_reference(grad_s, True).unsqueeze(-2)
+    ) @ utils.to_reference(vh.detach(), True)
+    assert grad_a.shape == a.shape
+    assert torch.isfinite(grad_a).all()
+    rel = float(_svd_backward_abs_diff(grad_a, expected).norm() / expected.norm())
+    assert rel < 5e-4, f"S-only relative error {rel:.3e} exceeds 5e-4"
+
+
+@pytest.mark.linalg_svd_backward
+def test_accuracy_linalg_svd_backward_none_grads():
+    """A zero upstream gradient for one factor must behave like omitting it."""
+    torch.manual_seed(20261123)
+    a = torch.randn(8, 8, dtype=torch.float32, device=flag_gems.device)
+    grad_s = torch.randn(8, dtype=torch.float32, device=flag_gems.device)
+
+    gems_a = a.detach().clone().requires_grad_(True)
+    up, s, vh = flag_gems._linalg_svd(gems_a, full_matrices=False)
+    (grad_a,) = torch.autograd.grad((s,), (gems_a,), (grad_s,))
+
+    expected = (up.detach() * grad_s.unsqueeze(-2)) @ vh.detach()
+    exp = utils.to_reference(expected, True)
+    rel = float(_svd_backward_abs_diff(grad_a, exp).norm() / exp.norm())
+    assert rel < 5e-4, f"S-only (U/Vh grad omitted) relative error {rel:.3e}"
+
+
+@pytest.mark.linalg_svd_backward
+def test_accuracy_linalg_svd_backward_noncontiguous():
+    """A transposed (non-contiguous) input must produce a correct gradient."""
+    torch.manual_seed(20261124)
+    base = torch.randn(8, 6, dtype=torch.float32, device=flag_gems.device)
+    a = base.t()
+    assert not a.is_contiguous()
+    k = min(a.shape[-2:])
+    grad_u = torch.randn(6, k, dtype=torch.float32, device=flag_gems.device)
+    grad_s = torch.randn(k, dtype=torch.float32, device=flag_gems.device)
+    grad_vh = torch.randn(k, 8, dtype=torch.float32, device=flag_gems.device)
+
+    gems_a = a.detach().clone().requires_grad_(True)
+    up, s, vh = flag_gems._linalg_svd(gems_a, full_matrices=False)
+    (grad_a,) = torch.autograd.grad((up, s, vh), (gems_a,), (grad_u, grad_s, grad_vh))
+
+    expected = _svd_backward_reference(
+        up.detach(), s.detach(), vh.detach(), grad_u, grad_s, grad_vh
+    )
+    assert grad_a.shape == a.shape
+    assert torch.isfinite(grad_a).all()
+    rel = float(_svd_backward_abs_diff(grad_a, expected).norm() / expected.norm())
+    assert rel < 5e-4, f"non-contiguous relative error {rel:.3e} exceeds 5e-4"
+
+
+@pytest.mark.linalg_svd_backward
+def test_accuracy_linalg_svd_backward_repeated_values_nan():
+    """Native returns NaN for repeated singular values; the candidate matches.
+
+    ``F_ij = 1/(s_j^2 - s_i^2)`` is singular when two singular values
+    coincide, and ATen does not guard it. The candidate must not fabricate a
+    finite gradient where native produces NaN.
+    """
+    a = torch.eye(4, dtype=torch.float32, device=flag_gems.device)
+    k = 4
+    gems_a = a.detach().clone().requires_grad_(True)
+    up, s, vh = flag_gems._linalg_svd(gems_a, full_matrices=False)
+    (grad_a,) = torch.autograd.grad(
+        (up, s, vh),
+        (gems_a,),
+        (
+            torch.ones(4, k, dtype=torch.float32, device=flag_gems.device),
+            torch.ones(k, dtype=torch.float32, device=flag_gems.device),
+            torch.ones(k, 4, dtype=torch.float32, device=flag_gems.device),
+        ),
+    )
+    assert torch.isnan(
+        grad_a
+    ).any(), "repeated singular values must reproduce native NaN"
+
+
+@pytest.mark.linalg_svd_backward
+def test_accuracy_linalg_svd_backward_forward_unchanged():
+    """The gradient path must not change the forward values or the no-grad path."""
+    torch.manual_seed(20261125)
+    a = torch.randn(16, 16, dtype=torch.float32, device=flag_gems.device)
+    plain_u, plain_s, plain_vh = flag_gems._linalg_svd(a, full_matrices=True)
+    grad_a = a.detach().clone().requires_grad_(True)
+    grad_u, grad_s, grad_vh = flag_gems._linalg_svd(grad_a, full_matrices=True)
+    # Compare as plain tensors on the host: gems_assert_close() also checks the
+    # device attribute, and under --ref cpu the reference side is on the CPU.
+    for got, plain in (
+        (grad_u, plain_u),
+        (grad_s, plain_s),
+        (grad_vh, plain_vh),
+    ):
+        got_host = got.detach().float().cpu()
+        plain_host = plain.detach().float().cpu()
+        torch.testing.assert_close(got_host, plain_host, atol=1e-4, rtol=1.3e-6)
