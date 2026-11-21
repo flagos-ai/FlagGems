@@ -346,6 +346,12 @@ def _linalg_det(A):
         - pivots is the int32 pivot buffer containing 1-indexed pivot rows
     """
     logger.debug("GEMS _LINALG_DET")
+    # The determinant is differentiable, so route requires-grad inputs through
+    # the autograd wrapper that owns the Triton backward.  The plain path stays
+    # in place for inference, for non-differentiable dtypes and for the
+    # no-grad re-entry from the wrapper's own forward.
+    if torch.is_grad_enabled() and A.requires_grad:
+        return _LinalgDetFunction.apply(A)
     if A.dtype not in (torch.float32, torch.float64):
         raise ValueError(
             f"_linalg_det only supports float32 and float64, got {A.dtype}"
@@ -413,3 +419,154 @@ def _linalg_det(A):
         LU.reshape(A.shape),
         pivots.reshape(batch_shape + (n,)),
     )
+
+
+@libentry()
+@triton.jit
+def _det_backward_kernel(
+    A,
+    DET,
+    GRAD,
+    OUT,
+    N,
+    EPS,
+    BLOCK_N: tl.constexpr,
+):
+    """One program per matrix: one pivoted Gauss-Jordan sweep of ``[A^T | I]``.
+
+    ``aten::_linalg_det`` differentiates only its determinant output, and the
+    first-order rule is ``grad_A = grad * det(A) * A^{-T}``.  After the sweep the
+    right block of the augmented pair holds ``A^{-T}``, so the whole backward is
+    a single launch that writes only the gradient: no factorization output, no
+    substitution pass and no intermediate tensor in HBM.
+
+    The pivot row is not physically interchanged into row k.  The permutation is
+    carried as loop state and applied once to the row index of the final store,
+    which halves the tile-wide work per elimination step: the deferred form needs
+    only the pivot row of each block, where a physical interchange would also
+    need the displaced row k of both blocks.
+
+    The deferred permutation is exact: at step k the sweep normalizes physical
+    row ``pr_k`` to ``e_k`` and eliminates column k from every other row, so the
+    accumulated left multiplier is ``A^{-T}`` itself, and the right block holds
+    ``A^{-T}`` with logical row k sitting in physical row ``pr_k``.  Physical row
+    i therefore belongs at destination row ``pos[i]``, the step that consumed it.
+    """
+    pid = tle.program_id(0)
+    base = pid * N * N
+    rows = tl.arange(0, BLOCK_N)
+    rmask = rows < N
+    tile = rmask[:, None] & rmask[None, :]
+
+    # c = det(A) * grad_output scales the inverse; applied once at the store so
+    # the elimination neither underflows nor overflows on the determinant.
+    coef = tl.load(DET + pid) * tl.load(GRAD + pid)
+
+    # w = A^T: element (i, j) is A[j, i], a transposed read of the row-major
+    # input, which keeps the gradient store row-coalesced.
+    w = tl.load(A + base + rows[None, :] * N + rows[:, None], mask=tile, other=0.0)
+    # Right block starts as the identity; after the sweep it holds A^{-T}.
+    r = tl.where(rows[:, None] == rows[None, :], w * 0.0 + 1.0, w * 0.0)
+
+    # Rows not yet used as a pivot, and the destination row of each physical row.
+    active = rmask
+    pos = tl.zeros((BLOCK_N,), dtype=tl.int32)
+
+    for k in range(0, N):
+        # Column k of the left block drives both the pivot search and the
+        # elimination factors.
+        colv = tl.sum(tl.where(rows[None, :] == k, w, 0.0), axis=1)
+        # Partial pivoting over unused rows; ties resolve to the smallest row
+        # index (the ATen / LAPACK idamax convention).
+        score = tl.where(active, tl.abs(colv), -1.0)
+        best = tl.max(score, axis=0)
+        pr = tl.min(tl.where(score == best, rows, BLOCK_N), axis=0)
+        # A fully zero column (singular matrix) picks the smallest unused row;
+        # the epsilon nudge is the ATen divide guard.
+        pr = tl.where(best < 0.0, tl.min(tl.where(active, rows, BLOCK_N), axis=0), pr)
+        pivot = tl.sum(tl.where(rows == pr, colv, 0.0), axis=0)
+        safe = tl.where(pivot == 0.0, EPS, pivot)
+        # Normalized pivot row of both blocks, read before the update.
+        un = tl.sum(tl.where(rows[:, None] == pr, w, 0.0), axis=0) / safe
+        vn = tl.sum(tl.where(rows[:, None] == pr, r, 0.0), axis=0) / safe
+        # The elimination factor is the raw column entry; the pivot row's own
+        # entry is irrelevant because the select below replaces that whole row.
+        mult = tl.where(rows == pr, colv * 0.0, colv)
+        # Implicit interchange: one select for the pivot row, one fused
+        # multiply-add for every other row.
+        w = tl.where(rows[:, None] == pr, un[None, :], w - mult[:, None] * un[None, :])
+        r = tl.where(rows[:, None] == pr, vn[None, :], r - mult[:, None] * vn[None, :])
+        active = active & (rows != pr)
+        pos = tl.where(rows == pr, k, pos)
+
+    # Physical row i holds logical row pos[i]; columns stay contiguous so the
+    # scatter is still a coalesced full-row store.
+    tl.store(OUT + base + pos[:, None] * N + rows[None, :], coef * r, mask=tile)
+
+
+# The sweep keeps two live n x n register tiles, so the fused path stops at the
+# largest default benchmark matrix.  Bigger matrices need a blocked variant.
+_DET_BACKWARD_MAX_N = 128
+
+
+class _LinalgDetFunction(torch.autograd.Function):
+    """Autograd wrapper giving ``_linalg_det`` a Triton backward.
+
+    Only the determinant output is differentiable in ATen
+    (``output_differentiability: [True, False, False]``), so the saved LU and
+    pivot outputs stay plain non-differentiable results.
+    """
+
+    @staticmethod
+    def forward(ctx, A):
+        # autograd.Function.forward runs with grad disabled, so the public entry
+        # below takes its plain (non-recursive) implementation path.
+        result, LU, pivots = _linalg_det(A)
+        ctx.save_for_backward(A, result)
+        # Mirror ATen's output_differentiability [True, False, False].
+        ctx.mark_non_differentiable(LU, pivots)
+        return result, LU, pivots
+
+    @staticmethod
+    def backward(ctx, grad_result, grad_LU, grad_pivots):
+        A, det = ctx.saved_tensors
+        return linalg_det_backward(grad_result, A, det)
+
+
+def linalg_det_backward(grad_result, A, det):
+    """Return the matrix gradient using the saved determinant of a real matrix."""
+    if A.dtype not in (torch.float32, torch.float64):
+        raise TypeError("linalg_det_backward only supports float32 and float64")
+    if grad_result is None:
+        return None
+    n = A.shape[-1]
+    if n > _DET_BACKWARD_MAX_N:
+        raise NotImplementedError(
+            "_linalg_det backward currently supports matrices up to "
+            f"{_DET_BACKWARD_MAX_N} x {_DET_BACKWARD_MAX_N}, got {n} x {n}"
+        )
+    grad_input = torch.empty(
+        A.shape,
+        dtype=A.dtype,
+        device=A.device,
+        memory_format=torch.contiguous_format,
+    )
+    if n == 0 or A.numel() == 0:
+        return grad_input
+    batch = math.prod(A.shape[:-2]) if A.dim() > 2 else 1
+    block_n = triton.next_power_of_2(n)
+    # Two live tiles: the warp count follows their combined area.
+    num_warps = min(8, max(1, (block_n * block_n * 8) // 8192))
+    with torch_device_fn.device(A.device):
+        _det_backward_kernel[(batch,)](
+            A.contiguous().reshape(-1),
+            det.contiguous().reshape(-1),
+            grad_result.contiguous().reshape(-1),
+            grad_input.reshape(-1),
+            n,
+            torch.finfo(A.dtype).eps,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            num_stages=1,
+        )
+    return grad_input

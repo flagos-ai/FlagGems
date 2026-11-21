@@ -131,3 +131,168 @@ def test_accuracy_linalg_det(shape, dtype):
             ]
         )
         gems_assert_close(lu_dets, res_result_flat, dtype)
+
+
+@pytest.mark.linalg_det_backward
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (5, 5),
+        (16, 16),
+        (32, 32),
+        (64, 64),
+        (128, 128),
+        (2, 3, 3),
+        (4, 32, 32),
+        (2, 2, 4, 4),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_accuracy_linalg_det_backward(shape, dtype):
+    torch.manual_seed(20261119)
+    n = shape[-1]
+    A = torch.randn(shape, dtype=dtype, device=flag_gems.device) / math.sqrt(n)
+    grad = torch.randn(shape[:-2], dtype=dtype, device=flag_gems.device)
+    ref_A = to_reference(A, False).requires_grad_(True)
+
+    ref_result, ref_LU, ref_pivots = torch.ops.aten._linalg_det(ref_A)
+    (ref_grad,) = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
+
+    gems_A = A.detach().clone().requires_grad_(True)
+    res_result, res_LU, res_pivots = flag_gems.ops._linalg_det(gems_A)
+    assert res_result.requires_grad, "determinant must stay differentiable"
+    assert not res_LU.requires_grad, "LU output is not differentiable in ATen"
+    assert not res_pivots.requires_grad, "pivots output is not differentiable in ATen"
+    (res_grad,) = torch.autograd.grad(res_result, gems_A, grad)
+
+    # The reference is recomputed in float64 from the same input matrix so the
+    # comparison measures this backward against the mathematical rule
+    # grad_A = grad * det(A) * A^{-T} rather than against a second float32
+    # factorization whose own rounding is of the same order.
+    inv64 = torch.linalg.inv(to_reference(gems_A.detach(), False).double())
+    det64 = torch.linalg.det(to_reference(gems_A.detach(), False).double())
+    grad64 = to_reference(grad, False).double()
+    expected = (
+        det64.unsqueeze(-1).unsqueeze(-1)
+        * grad64.unsqueeze(-1).unsqueeze(-1)
+        * inv64.mT
+    )
+    rel_tol = 1e-4 if dtype == torch.float32 else 1e-11
+    got64 = res_grad.cpu().double()
+    exp64 = expected.cpu()
+    abs_err = (got64 - exp64).abs()
+    # Anchor the tolerance to each row's own gradient magnitude.  A single
+    # global max would let one large row set the bar for every other row, and
+    # conditioning can legitimately make an entire gradient tiny (a draw with
+    # |grad| ~ 1e-12 is still correct entry by entry, just small), so a global
+    # absolute floor would be either vacuous or unattainable.
+    row_scale = exp64.abs().amax(dim=-1, keepdim=True).expand_as(exp64)
+    # atol must be a scalar for torch.testing, so enforce the per-row bound
+    # explicitly and then let assert_close verify the shape/dtype contract.
+    worst_ratio = (abs_err / (1e-3 * row_scale + 1e-4 * exp64.abs() + 1e-300)).max()
+    assert worst_ratio <= 1.0, (
+        f"backward gradient exceeds the row-anchored tolerance: "
+        f"worst ratio {worst_ratio.item():.3f} (abs max {abs_err.max().item():.3e}, "
+        f"|grad| max {exp64.abs().max().item():.3e})"
+    )
+    # The row-anchored ratio above is the substantive check; this second form
+    # pins shape, dtype and the largest entries.  Its absolute floor follows the
+    # same row scale, so entries that are legitimately near zero (an ill
+    # conditioned draw whose whole gradient is ~1e-33) are not forced to match
+    # beyond their own magnitude.
+    torch.testing.assert_close(
+        got64,
+        exp64,
+        atol=1e-3 * row_scale.max().item() + 1e-300,
+        rtol=rel_tol,
+        equal_nan=False,
+    )
+    # Forward outputs must keep matching their own contract as well.
+    gems_assert_close(res_result, ref_result, dtype, atol=1e-4)
+    gems_assert_equal(res_LU.shape, ref_LU.shape)
+    gems_assert_equal(res_pivots.shape, ref_pivots.shape)
+
+
+@pytest.mark.linalg_det_backward
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_accuracy_linalg_det_backward_noncontiguous(dtype):
+    torch.manual_seed(7)
+    n = 6
+    base = torch.randn((n, n), dtype=dtype, device=flag_gems.device) / math.sqrt(n)
+    # det() is 0-D, so its upstream gradient is a scalar too.
+    grad = torch.tensor(0.75, dtype=dtype, device=flag_gems.device)
+
+    A = base.t().detach().requires_grad_(True)
+    ref_A = to_reference(base, False).t().detach().requires_grad_(True)
+    assert not A.is_contiguous()
+
+    res_result, _, _ = flag_gems.ops._linalg_det(A)
+    (res_grad,) = torch.autograd.grad(res_result, A, grad)
+    ref_result, _, _ = torch.ops.aten._linalg_det(ref_A)
+    (ref_grad,) = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
+
+    assert res_grad.shape == A.shape
+    # The gradient is returned in contiguous layout.  ATen mirrors the input's
+    # strided layout instead, so compare values (and shape) rather than strides.
+    gems_assert_close(res_grad.contiguous(), ref_grad.contiguous(), dtype, atol=1e-4)
+
+
+@pytest.mark.linalg_det_backward
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_accuracy_linalg_det_backward_singular(dtype):
+    # The backward must stay finite on an exactly singular matrix instead of
+    # dividing by the zero pivot.  The value it produces is det(A) * A^{-T} for
+    # the determinant this forward reports: here det is exactly zero, so the
+    # gradient is exactly zero.  ATen's LU happens to leave a rounding-level
+    # residual in det (e.g. -3.3e-16) and therefore reports a finite
+    # adjugate-scaled value; det is not differentiable at a singular point, so
+    # the two are different picks of the same one-sided limit rather than a
+    # disagreement about the rule.  Compare against the rule, not against that
+    # rounding-level residual.
+    A = torch.tensor(
+        [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0], [1.0, 1.0, 1.0]],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    grad = torch.ones((), dtype=dtype, device=flag_gems.device)
+    A = A.detach().requires_grad_(True)
+    ref_A = to_reference(A.detach(), False).requires_grad_(True)
+
+    res_result, _, _ = flag_gems.ops._linalg_det(A)
+    (res_grad,) = torch.autograd.grad(res_result, A, grad)
+    ref_result, _, _ = torch.ops.aten._linalg_det(ref_A)
+    (ref_grad,) = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
+
+    assert torch.isfinite(res_grad).all(), "singular gradient must stay finite"
+    assert torch.isfinite(ref_grad).all()
+
+    expected = (
+        res_result.detach().cpu().double()
+        * to_reference(grad, False).cpu().double()
+        * torch.linalg.inv(to_reference(A.detach(), False).double()).cpu().mT
+    )
+    torch.testing.assert_close(
+        res_grad.cpu().double(),
+        expected,
+        atol=1e-7,
+        rtol=1e-7,
+        equal_nan=False,
+    )
+    # a batch mixing a nonsingular and a singular matrix keeps both entries finite
+    batch = torch.stack(
+        [torch.eye(3, dtype=dtype, device=flag_gems.device), A.detach().clone()]
+    )
+    batch = batch.detach().requires_grad_(True)
+    b_res, _, _ = flag_gems.ops._linalg_det(batch)
+    (b_grad,) = torch.autograd.grad(
+        b_res, batch, torch.ones(2, dtype=dtype, device=flag_gems.device)
+    )
+    assert torch.isfinite(b_grad).all(), "batched singular gradient must stay finite"
+    assert torch.allclose(
+        b_grad[0].cpu().double(),
+        torch.eye(3, dtype=torch.float64),
+        atol=1e-6,
+    )

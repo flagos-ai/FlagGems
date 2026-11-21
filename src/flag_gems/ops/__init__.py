@@ -288,7 +288,7 @@ from flag_gems.ops._is_any_true import _is_any_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
-from flag_gems.ops._linalg_det import _linalg_det
+from flag_gems.ops._linalg_det import _linalg_det, linalg_det_backward
 from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
@@ -2869,6 +2869,7 @@ __all__ = [
     "linalg_cross",
     "linalg_cross_out",
     "linalg_det",
+    "linalg_det_backward",
     "linalg_det_out",
     "linalg_eig",
     "linalg_eigh",
