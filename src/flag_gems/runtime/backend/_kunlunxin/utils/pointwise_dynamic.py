@@ -1056,7 +1056,9 @@ class WrapperGenerator:
                         for i in range(schema.num_input_tensors())
                     ]
                     code.writeline(
-                        "isCloseVectorization=" + " or ".join(_widen) + ", # XPU int widen"
+                        "isCloseVectorization="
+                        + " or ".join(_widen)
+                        + ", # XPU int widen"
                     )
                 if self.config.isCloseInterleave:
                     code.writeline("isCloseInterleave=True,")
