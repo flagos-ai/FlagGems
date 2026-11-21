@@ -55,9 +55,10 @@ def _upsample_nearest_exact2d_backward_kernel(
     ow = idx % OW
     oh = idx // OW
 
-    # Compute corresponding input indices
-    ih = (oh * reciprocal_scale_h).to(tl.int32)
-    iw = (ow * reciprocal_scale_w).to(tl.int32)
+    # Compute corresponding input indices, using the "nearest exact" formula
+    # from PyTorch: src_index = min(floor((dst_index + 0.5) * (IN / OUT)), IN - 1)
+    ih = tl.floor((oh.to(tl.float32) + 0.5) * reciprocal_scale_h).to(tl.int32)
+    iw = tl.floor((ow.to(tl.float32) + 0.5) * reciprocal_scale_w).to(tl.int32)
 
     # Clamp to valid range
     ih = tl.minimum(ih, IH - 1)
