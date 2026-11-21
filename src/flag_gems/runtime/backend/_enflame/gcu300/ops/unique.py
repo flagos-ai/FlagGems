@@ -791,6 +791,39 @@ def simple_unique_flat(
     )
 
 
+def ops_unique_flat(in0: torch.Tensor, return_inverse: bool, return_counts: bool):
+    """Unique over sort + pointwise ops, for inputs the flat kernels cannot run.
+
+    The GCU300 tiled kernels either fail to compile ("ran out of registers")
+    or fault on the largest shapes (the prefix-sum tile overflows local
+    memory), so this path reproduces the same result with ops that are
+    supported on the backend.  ``int64`` cumsum is broken on GCU300 while the
+    unique count fits in ``int32`` for real inputs, hence the cast.
+    """
+    x = in0.ravel()
+    n = x.numel()
+    # The tiled kernels this replaces are unusable on GCU300, so this
+    # corrective fallback deliberately uses the (working) device ops.
+    sorted_data, sorted_indices = torch.sort(x)  # allow-torch-compute
+    ne = torch.empty(n, dtype=torch.bool, device=x.device)
+    ne[0] = True
+    ne[1:] = sorted_data[1:] != sorted_data[:-1]
+    idx = ne.nonzero(as_tuple=False).flatten().to(torch.int64)
+    data_out = sorted_data.index_select(0, idx)
+    counts = None
+    if return_counts:
+        tail = torch.full((1,), n, dtype=torch.int64, device=x.device)
+        ends = torch.cat([idx[1:], tail], dim=0)  # allow-torch-compute
+        counts = ends - idx
+    inverse_indices = None
+    if return_inverse:
+        cumsum = torch.cumsum(ne.to(torch.int32), 0)  # allow-torch-compute
+        rank = (cumsum - 1).to(torch.int64)
+        inverse_indices = torch.empty(n, dtype=torch.int64, device=x.device)
+        inverse_indices.scatter_(0, sorted_indices.to(torch.int64), rank)
+    return data_out, inverse_indices, counts
+
+
 def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
@@ -798,23 +831,36 @@ def _unique2(
     return_counts: bool = False,
 ):
     logger.debug("GEMS_ENFLAME _UNIQUE2")
+    # aten::_unique2 always returns three tensors; an empty input yields empty
+    # int64 outputs. Short-circuit before the flat kernels (whose tile size is
+    # derived from numel) can be launched for a zero-element input.
+    if in0.numel() == 0:
+        data_out = torch.empty(0, dtype=in0.dtype, device=in0.device)
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device).view_as(
+            in0
+        )
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+        return data_out, inverse_indices, counts
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data, sorted_indices.to(torch.int32), return_inverse, return_counts
         )
-    elif return_inverse:
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices.to(torch.int32), return_counts
-        )
     else:
-        sorted_data, _ = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts
+        # Large inputs: the tiled flat kernels are unusable on GCU300 (see
+        # ops_unique_flat), so use the sort + pointwise implementation.
+        data_out, inverse_indices, counts = ops_unique_flat(
+            in0, return_inverse, return_counts
         )
-    return (
-        data_out,
-        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
-        counts,
-    )
+    # Keep the ATen return contract: the auxiliary outputs are empty int64
+    # tensors when they are not requested, and counts is int64 (the kernels
+    # below compute it in int32 because GCU300 has no 64-bit arithmetic).
+    if inverse_indices is None:
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        inverse_indices = inverse_indices.view_as(in0)
+    if counts is None:
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        counts = counts.to(torch.int64)
+    return data_out, inverse_indices, counts
