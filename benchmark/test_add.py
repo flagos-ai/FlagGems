@@ -45,3 +45,26 @@ def test_add_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+class AddBackwardBenchmark(base.BinaryPointwiseBenchmark):
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
+            other = torch.randn(shape, dtype=dtype, device=self.device)
+            # A non-unit alpha makes both native and FlagGems execute the scaled
+            # second-input gradient instead of benchmarking an identity-only path.
+            yield inp, other, {"alpha": 0.5}
+
+
+@pytest.mark.add_backward
+def test_add_backward():
+    bench = AddBackwardBenchmark(
+        op_name="add",
+        torch_op=torch.add,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # The Autograd fallthrough routes torch.add through AddFunction, so the
+    # candidate measures the same registered path used by applications.
+    bench.run()
