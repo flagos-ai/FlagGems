@@ -91,6 +91,15 @@ def _unsupported_reason(exc, *, dtype=None, other_dtype=None, stage=None, scalin
         and "f8E5M2 type" in text
     ):
         return f"Ascend {stage} does not support {dtype}: {text[-1600:]}"
+    # TX8 has no fp8e5m2 -> f32 lowering: the E5M2 probe dies in --mk-to-tx81.
+    if (
+        flag_gems.vendor_name == "tsingmicro"
+        and str(dtype) == "torch.float8_e5m2"
+        and "failed to legalize" in text
+        and "f8E5M2" in text
+    ):
+        return f"TX8 {stage} does not support {dtype}: {text[-1600:]}"
+
     # MACA rejects these generated, aligned native FP8 inputs. Record an
     # unavailable baseline, not a skipped Gems benchmark or a claim that the
     # device cannot run FP8. Require both operand types and the native stage;
