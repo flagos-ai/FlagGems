@@ -98,9 +98,7 @@ def all(inp):
     BLOCK_SIZE = min(triton.next_power_of_2(n_elements), buf_len_per_core)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
     with torch_device_fn.device(inp.device):
-        all_global_kernel[(1, 1)](
-            inp, out, n_elements, BLOCK_SIZE, buffer_size_limit=2048
-        )
+        all_global_kernel[(1, 1)](inp, out, n_elements, BLOCK_SIZE, buffer_size_limit=2048)
     return out
 
 

@@ -45,9 +45,7 @@ def to_reference(inp, upcast=False):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_arctanh_tensor(shape, dtype):
-    x = (
-        torch.rand(shape, device=flag_gems.device, dtype=torch.float32) * 1.8 - 0.9
-    ).to(dtype)
+    x = (torch.rand(shape, device=flag_gems.device, dtype=torch.float32) * 1.8 - 0.9).to(dtype)
     ref_x = to_reference(x)
 
     ref_out = torch.ops.aten.arctanh(ref_x)
@@ -62,9 +60,7 @@ def test_arctanh_tensor(shape, dtype):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_arctanh_out(shape, dtype):
-    x = (
-        torch.rand(shape, device=flag_gems.device, dtype=torch.float32) * 1.8 - 0.9
-    ).to(dtype)
+    x = (torch.rand(shape, device=flag_gems.device, dtype=torch.float32) * 1.8 - 0.9).to(dtype)
     ref_x = to_reference(x)
     act_x = x.clone()
 

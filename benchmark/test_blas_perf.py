@@ -5,13 +5,7 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import (
-    COMPLEX_DTYPES,
-    DEFAULT_METRICS,
-    FLOAT_DTYPES,
-    BenchLevel,
-    model_shapes,
-)
+from benchmark.attri_util import COMPLEX_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, BenchLevel, model_shapes
 from benchmark.conftest import Config
 from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, SkipVersion
 
@@ -65,18 +59,10 @@ class BlasBenchmark(Benchmark):
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
         elif self.op_name == "addmm":
-            total_flops = (
-                args[0].shape[0] * args[1].shape[1] * (args[1].shape[0] * 2 + 1)
-            )
+            total_flops = args[0].shape[0] * args[1].shape[1] * (args[1].shape[0] * 2 + 1)
         # total_flops bxnxpx2m
         elif self.op_name == "bmm":
-            total_flops = (
-                args[0].shape[0]
-                * args[0].shape[1]
-                * args[1].shape[2]
-                * 2
-                * args[0].shape[2]
-            )
+            total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[2] * 2 * args[0].shape[2]
         return total_flops
 
 
@@ -103,12 +89,7 @@ class BaddbmmBenchmark(BlasBenchmark):
     def get_tflops(self, op, *args, **kwargs):
         # shape(b,m,k)(b,k,n)
         # total_flops = b * m * n * (2 * k + 1)
-        total_flops = (
-            args[1].shape[0]
-            * args[1].shape[1]
-            * args[2].shape[2]
-            * (args[1].shape[2] * 2 + 1)
-        )
+        total_flops = args[1].shape[0] * args[1].shape[1] * args[2].shape[2] * (args[1].shape[2] * 2 + 1)
         return total_flops
 
 
@@ -126,9 +107,7 @@ class GroupmmBenchmark(BlasBenchmark):
 
     def get_tflops(self, op, *args, **kwargs):
         groups, N, K = args[1].shape
-        size_per_group = torch.diff(
-            args[2], prepend=torch.zeros(1, device="cuda", dtype=torch.int32)
-        )
+        size_per_group = torch.diff(args[2], prepend=torch.zeros(1, device="cuda", dtype=torch.int32))
         total_flops = 0
         for i in range(groups):
             total_flops += size_per_group[i].item() * N * K * 2
@@ -175,14 +154,10 @@ def baddbmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=device, requires_grad=True)
 
     if b_column_major:
-        inp2 = torch.randn(
-            [b, n, k], dtype=cur_dtype, device=device, requires_grad=True
-        )
+        inp2 = torch.randn([b, n, k], dtype=cur_dtype, device=device, requires_grad=True)
         inp2 = inp2.transpose(1, 2).contiguous()
     else:
-        inp2 = torch.randn(
-            [b, k, n], dtype=cur_dtype, device=device, requires_grad=True
-        )
+        inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=device, requires_grad=True)
 
     bias = torch.randn([b, m, n], dtype=cur_dtype, device=device, requires_grad=True)
 
@@ -232,9 +207,7 @@ def group_mm_input_fn(groups, N, K, cur_dtype, device):
 
     mat_a = torch.cat([x for x in group_A_list], dim=0)
     mat_b = torch.stack([x for x in group_B_list], dim=0)
-    offs = torch.tensor(
-        [sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device="cuda"
-    )
+    offs = torch.tensor([sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device="cuda")
 
     yield mat_a, mat_b, offs
 
@@ -265,11 +238,7 @@ def get_w8a8_block_fp8_dtype():
 
 def rand_fp8_tensor(shape, device, dtype):
     finfo = torch.finfo(dtype)
-    return (
-        torch.randn(shape, device=device, dtype=torch.float32)
-        .clamp(min=finfo.min, max=finfo.max)
-        .to(dtype)
-    )
+    return torch.randn(shape, device=device, dtype=torch.float32).clamp(min=finfo.min, max=finfo.max).to(dtype)
 
 
 class W8A8BlockFP8MatmulBenchmark(Benchmark):
@@ -281,9 +250,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
 
     def __init__(self, *args, block_size=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.block_size = (
-            W8A8_BLOCK_FP8_BLOCK_SIZE[:] if block_size is None else list(block_size)
-        )
+        self.block_size = W8A8_BLOCK_FP8_BLOCK_SIZE[:] if block_size is None else list(block_size)
         self.shape_desc = "M, N, K"
 
     def set_shapes(self, shape_file_path=None):
@@ -293,9 +260,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         fp8_dtype = get_w8a8_block_fp8_dtype()
         if fp8_dtype is None:
-            raise RuntimeError(
-                "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
-            )
+            raise RuntimeError("w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support")
 
         block_n, block_k = self.block_size
         for m, n, k in self.shapes:
@@ -304,11 +269,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
 
             A = rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
             B = rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
-            As = (
-                0.01
-                * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
-                + 0.005
-            ).contiguous()
+            As = (0.01 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device) + 0.005).contiguous()
             Bs = (
                 0.01
                 * torch.rand(
@@ -380,9 +341,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     if op_name == "grouped_mm":
         FLOAT_DTYPES = [torch.bfloat16]
 
-    bench = bench_cls(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
-    )
+    bench = bench_cls(input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES)
 
     if op_name == "grouped_mm":
         gems_op = flag_gems.group_mm
@@ -399,9 +358,7 @@ def test_perf_w8a8_block_fp8_matmul():
     if not VLLM_W8A8_BLOCK_FP8_AVAILABLE:
         pytest.skip("w8a8_block_fp8_matmul benchmark requires vLLM baseline operator")
     if get_w8a8_block_fp8_dtype() is None:
-        pytest.skip(
-            "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
-        )
+        pytest.skip("w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support")
 
     bench = W8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",

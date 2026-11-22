@@ -37,9 +37,7 @@ def test_perf_aten_log2_():
     # Define input generation logic matching the operator arguments
     def log2__input_fn(shape, dtype, device):
         # Generate and yield inputs as required by the operator
-        inp = (
-            torch.randn(shape, dtype=dtype, device=flag_gems.device) + 0.1
-        )  # Adding 0.1 to avoid log2(0)
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device) + 0.1  # Adding 0.1 to avoid log2(0)
         yield inp,
 
     # Initialize benchmark

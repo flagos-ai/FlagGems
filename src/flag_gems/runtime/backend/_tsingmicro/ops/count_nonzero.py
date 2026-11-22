@@ -92,9 +92,7 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
 
 @libentry()
 @triton.jit
-def count_nonzero_combin_kernel(
-    x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr
-):
+def count_nonzero_combin_kernel(x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)
     pid_y = tle.program_id(1)
     cols_offsets = pid_y * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -121,9 +119,7 @@ def count_nonzero(x, dim=None):
         if combin_shape[dim] != 1:
             combin = torch.zeros(combin_shape, dtype=torch.int64, device=x.device)
             grid = (triton.cdiv(numel, shape[dim]), combin_shape[dim], 1)
-            count_nonzero_combin_kernel[grid](
-                x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE
-            )
+            count_nonzero_combin_kernel[grid](x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE)
             x = combin
             shape = x.shape
             numel = x.numel()

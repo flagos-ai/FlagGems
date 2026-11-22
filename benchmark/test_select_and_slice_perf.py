@@ -6,12 +6,7 @@ import torch
 
 import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import (
-    GenericBenchmark,
-    GenericBenchmark2DOnly,
-    generate_tensor_input,
-    vendor_name,
-)
+from benchmark.performance_utils import GenericBenchmark, GenericBenchmark2DOnly, generate_tensor_input, vendor_name
 from flag_gems.utils import shape_utils
 
 
@@ -20,9 +15,7 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
-        if (
-            vendor_name == "kunlunxin"
-        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        if vendor_name == "kunlunxin":  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
             return []
         shapes = super().set_more_shapes()
         shapes = [
@@ -514,9 +507,7 @@ def test_index_add_():
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
     for i, shape in enumerate(indices_shape):
-        index = np.random.choice(
-            np.arange(input_shape[i]), size=shape, replace=accumulate
-        )
+        index = np.random.choice(np.arange(input_shape[i]), size=shape, replace=accumulate)
         indices.append(torch.tensor(index, device=flag_gems.device))
     return indices
 
@@ -527,16 +518,12 @@ def gen_indices_bool(input_shape, indices_shape, accumulate, is_bool):
     if is_bool:
         mask_shape = indices_shape[0]
 
-        mask = torch.randint(
-            0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device
-        )
+        mask = torch.randint(0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device)
         return [mask]
 
     else:
         for i, shape in enumerate(indices_shape):
-            index = np.random.choice(
-                np.arange(input_shape[i]), size=shape, replace=accumulate
-            )
+            index = np.random.choice(np.arange(input_shape[i]), size=shape, replace=accumulate)
             indices.append(torch.tensor(index, device=flag_gems.device))
         return indices
 
@@ -544,21 +531,15 @@ def gen_indices_bool(input_shape, indices_shape, accumulate, is_bool):
 def index_put_input_fn(accumulate):
     def inner(shapes, dtype, device):
         input_shape, indices_shape, values_shape, is_bool = shapes
-        inp = torch.randn(
-            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
         indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
 
         if is_bool:
             K = indices[0].sum().item()
-            values = torch.randn(
-                (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
-            )
+            values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
         else:
-            values = torch.randn(
-                values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-            )
+            values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
         yield inp, indices, values, accumulate
 
     return inner
@@ -692,9 +673,7 @@ class IndexAccBenchmark(GenericBenchmark):
 
 def index_input_fn(shapes, dtype, device):
     input_shape, indices_shape = shapes
-    inp = torch.randn(
-        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     indices = gen_indices(input_shape, indices_shape, True)
     yield inp, indices
 
@@ -715,21 +694,15 @@ def test_index_acc_perf():
 def index_put_impl_input_fn(accumulate, unsafe=False):
     def inner(shapes, dtype, device):
         input_shape, indices_shape, values_shape, is_bool = shapes
-        inp = torch.randn(
-            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
         indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
 
         if is_bool:
             K = indices[0].sum().item()
-            values = torch.randn(
-                (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
-            )
+            values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
         else:
-            values = torch.randn(
-                values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-            )
+            values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
         yield inp, indices, values, accumulate, unsafe
 
     return inner

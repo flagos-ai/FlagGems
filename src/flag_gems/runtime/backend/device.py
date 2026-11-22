@@ -54,14 +54,8 @@ class DeviceDetector(object):
             self.vendor_name = self.info.vendor_name
             self.name = self.info.device_name
             self.vendor = vendors.get_all_vendors()[self.vendor_name]
-            self.dispatch_key = (
-                self.name.upper()
-                if self.info.dispatch_key is None
-                else self.info.dispatch_key
-            )
-            self.device_count = backend.gen_torch_device_object(
-                self.vendor_name
-            ).device_count()
+            self.dispatch_key = self.name.upper() if self.info.dispatch_key is None else self.info.dispatch_key
+            self.device_count = backend.gen_torch_device_object(self.vendor_name).device_count()
             self.support_fp64 = self.vendor not in UNSUPPORT_FP64
             self.support_bf16 = self.vendor not in UNSUPPORT_BF16
             self.support_int64 = self.vendor not in UNSUPPORT_INT64

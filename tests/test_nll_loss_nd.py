@@ -53,13 +53,9 @@ def test_nll_loss_nd(shape, dtype, ignore_index, reduction, weight):
         ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
     )
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.nll_loss(
-            inp, target, weight, reduction=reduction, ignore_index=ignore_index
-        )
+        res_out = torch.nn.functional.nll_loss(inp, target, weight, reduction=reduction, ignore_index=ignore_index)
     reduce_dim = 1 if reduction == "none" else target.numel()
-    utils.gems_assert_close(
-        res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)

@@ -88,9 +88,7 @@ def round_func(input, decimals=0):
         return input.clone()
 
     if not input.is_contiguous():
-        raise ValueError(
-            "round Triton kernel currently supports only contiguous tensors."
-        )
+        raise ValueError("round Triton kernel currently supports only contiguous tensors.")
 
     n_elements = input.numel()
     if n_elements == 0:
@@ -142,9 +140,7 @@ def round_out(input, *, decimals=0, out=None):
         return out
 
     if not input.is_contiguous():
-        raise ValueError(
-            "round Triton kernel currently supports only contiguous tensors."
-        )
+        raise ValueError("round Triton kernel currently supports only contiguous tensors.")
 
     n_elements = input.numel()
     if n_elements == 0:
@@ -185,9 +181,7 @@ def round_(input, *, decimals=0):
         return input
 
     if not input.is_contiguous():
-        raise ValueError(
-            "round Triton kernel currently supports only contiguous tensors."
-        )
+        raise ValueError("round Triton kernel currently supports only contiguous tensors.")
 
     n_elements = input.numel()
     if n_elements == 0:

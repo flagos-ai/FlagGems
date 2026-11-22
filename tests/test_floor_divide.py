@@ -102,14 +102,10 @@ def test_floor_divide_int_(shape, dtype):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
 
-    inp1 = torch.randint(
-        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
-    ).to(
+    inp1 = torch.randint(torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu").to(
         flag_gems.device,
     )
-    inp2 = torch.randint(
-        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
-    ).to(
+    inp2 = torch.randint(torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu").to(
         flag_gems.device,
     )
 

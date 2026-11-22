@@ -49,9 +49,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
     if output_size is not None and output_size != output_shape[dim]:
         raise RuntimeError(
-            "repeat_interleave: Invalid output_size, expected {} but got {}".format(
-                output_shape[dim], output_size
-            )
+            "repeat_interleave: Invalid output_size, expected {} but got {}".format(output_shape[dim], output_size)
         )
 
     output = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)

@@ -66,9 +66,7 @@ class CatKernelGenerator(IndentedBuffer):
             filepath = code_cache_dir() / filename
             write_atomic(filepath, self.getvalue())
 
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{key}", filepath
-            )
+            spec = importlib.util.spec_from_file_location(f"_gen_module_{key}", filepath)
             m = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(m)
             overload = getattr(m, self.wrapper_name)
@@ -93,9 +91,7 @@ class CatKernelGenerator(IndentedBuffer):
         self.newline()
 
     def gen_wrapper(self):
-        self.writeline(
-            f"def {self.wrapper_name}(tensors, dim, high_num, low_cat_accum):"
-        )
+        self.writeline(f"def {self.wrapper_name}(tensors, dim, high_num, low_cat_accum):")
         with self.indent():
             self.writeline("device = tensors[0].device")
             self.writeline("dtype = tensors[0].dtype")
@@ -110,14 +106,10 @@ class CatKernelGenerator(IndentedBuffer):
                 self.writeline(f"in{i}_stride_low = tensors[{i}].stride(-1)")
             self.writeline("out_stride_high = out.stride(dim - 1)")
             self.writeline("out_stride_low = out.stride(-1)")
-            self.writeline(
-                "grid = lambda meta: (TOTAL_CORE_NUM // meta['num_warps'], )"
-            )
+            self.writeline("grid = lambda meta: (TOTAL_CORE_NUM // meta['num_warps'], )")
             self.writeline("with torch_device_fn.device(device):")
             with self.indent():
-                self.writeline(
-                    f"{self.kernel_name}[grid]({self.gen_kernel_args(is_declare=False)})"
-                )
+                self.writeline(f"{self.kernel_name}[grid]({self.gen_kernel_args(is_declare=False)})")
             self.writeline("return out")
         self.newline()
         self.newline()
@@ -129,19 +121,15 @@ class CatKernelGenerator(IndentedBuffer):
             self.writeline("configs=[")
             with self.indent():
                 if self.MODE == 0:
-                    self.writeline(
-                        """
+                    self.writeline("""
         triton.Config({'BLOCK_LOW': 2 ** i}, num_stages=1, num_warps=1) for i in range(7, 12)
-                        """
-                    )
+                        """)
                 elif self.MODE == 1:
-                    self.writeline(
-                        """
+                    self.writeline("""
         triton.Config({'BLOCK_HIGH': i, 'BLOCK_LOW': 2 ** j}, num_stages=1, num_warps=1)
         for i in [6, 11, 22]
         for j in range(8, 12)
-                        """
-                    )
+                        """)
                 self.writeline("],")
             self.writeline("key=['high_num', 'out_cat_num'],")
             self.writeline("strategy=['log', 'log'],")
@@ -155,9 +143,7 @@ class CatKernelGenerator(IndentedBuffer):
             self.writeline("pid = tl.program_id(0)")
             self.writeline("programs_num = tl.num_programs(0)")
             if self.MODE == 0:
-                self.writeline(
-                    "tiles_per_tensor = tl.cdiv(high_num * tl.cdiv(out_cat_num, tensor_num), BLOCK_LOW)"
-                )
+                self.writeline("tiles_per_tensor = tl.cdiv(high_num * tl.cdiv(out_cat_num, tensor_num), BLOCK_LOW)")
                 self.writeline("num_tiles = tiles_per_tensor * tensor_num")
                 self.writeline("tiles_per_cta = tl.cdiv(num_tiles, programs_num)")
                 self.writeline("for i in range(tiles_per_cta):")
@@ -168,21 +154,15 @@ class CatKernelGenerator(IndentedBuffer):
                     for j in range(self.tensor_num):
                         self.writeline(f"if tensor_id == {j}:")
                         with self.indent():
-                            self.writeline(
-                                f"low_cat = low_cat_accum{j + 1} - low_cat_accum{j}"
-                            )
+                            self.writeline(f"low_cat = low_cat_accum{j + 1} - low_cat_accum{j}")
                             self.writeline("offsets = tl.arange(0, BLOCK_LOW)")
                             self.writeline("in_offsets = tile_id * BLOCK_LOW + offsets")
                             self.writeline("mask = in_offsets < high_num * low_cat")
-                            self.writeline(
-                                f"data = tl.load(in{j} + in_offsets, mask=mask)"
-                            )
+                            self.writeline(f"data = tl.load(in{j} + in_offsets, mask=mask)")
                             high_part = "(in_offsets // low_cat) * out_cat_num"
                             low_part = f"low_cat_accum{j} + (in_offsets % low_cat)"
                             self.writeline(f"out_offsets = {high_part} + {low_part}")
-                            self.writeline(
-                                "tl.store(out + out_offsets, data, mask=mask)"
-                            )
+                            self.writeline("tl.store(out + out_offsets, data, mask=mask)")
             elif self.MODE == 1:
                 self.writeline("num_tiles = tl.cdiv(high_num, BLOCK_HIGH)")
                 self.writeline("tiles_per_cta = tl.cdiv(num_tiles, programs_num)")
@@ -191,47 +171,30 @@ class CatKernelGenerator(IndentedBuffer):
                     self.writeline("tile_id = pid + i * programs_num")
                     self.writeline("high_offset = tile_id * BLOCK_HIGH")
                     for j in range(self.tensor_num):
-                        self.writeline(
-                            f"low_cat = low_cat_accum{j + 1}-low_cat_accum{j}"
-                        )
-                        self.writeline(
-                            "for low_offset in range(0, low_cat, BLOCK_LOW):"
-                        )
+                        self.writeline(f"low_cat = low_cat_accum{j + 1}-low_cat_accum{j}")
+                        self.writeline("for low_offset in range(0, low_cat, BLOCK_LOW):")
                         with self.indent():
-                            self.writeline(
-                                "high_offsets = high_offset + tl.arange(0, BLOCK_HIGH)"
-                            )
-                            self.writeline(
-                                "low_offsets = low_offset + tl.arange(0, BLOCK_LOW)"
-                            )
+                            self.writeline("high_offsets = high_offset + tl.arange(0, BLOCK_HIGH)")
+                            self.writeline("low_offsets = low_offset + tl.arange(0, BLOCK_LOW)")
                             high_part = f"high_offsets[:, None] * in{j}_stride_high"
                             low_part = f"low_offsets[None, :] * in{j}_stride_low"
                             self.writeline(f"in_offsets = {high_part} + {low_part}")
                             self.writeline(
                                 "in_mask = (high_offsets < high_num)[:,None] & (low_offsets < low_cat)[None,:]"
                             )
-                            self.writeline(
-                                f"data = tl.load(in{j}+in_offsets, mask=in_mask)"
-                            )
+                            self.writeline(f"data = tl.load(in{j}+in_offsets, mask=in_mask)")
                             high_part = "high_offsets[:, None] * out_stride_high"
                             low_part = f"(low_cat_accum{j} + low_offsets[None, :]) * out_stride_low"
                             self.writeline(f"out_offsets = {high_part} + {low_part}")
-                            self.writeline(
-                                "tl.store(out+out_offsets, data, mask=in_mask)"
-                            )
+                            self.writeline("tl.store(out+out_offsets, data, mask=in_mask)")
 
     def gen_kernel_args(self, is_declare=True):
-        in_args = ", ".join(
-            f"in{i}" if is_declare else f"tensors[{i}]" for i in range(self.tensor_num)
-        )
+        in_args = ", ".join(f"in{i}" if is_declare else f"tensors[{i}]" for i in range(self.tensor_num))
         low_cat_accum_args = ", ".join(
-            f"low_cat_accum{i}" if is_declare else f"low_cat_accum[{i}]"
-            for i in range(self.tensor_num + 1)
+            f"low_cat_accum{i}" if is_declare else f"low_cat_accum[{i}]" for i in range(self.tensor_num + 1)
         )
         stride_args = (
-            ", ".join(
-                f"in{i}_stride_high, in{i}_stride_low" for i in range(self.tensor_num)
-            )
+            ", ".join(f"in{i}_stride_high, in{i}_stride_low" for i in range(self.tensor_num))
             + ", out_stride_high, out_stride_low"
         )
 
@@ -249,16 +212,12 @@ class CatKernelGenerator(IndentedBuffer):
         self.gen_kernel()
 
 
-def cat(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
+def cat(tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
     logger.debug("GEMS_CAMBRICON CAT")
 
     # Check empty inputs.
     if len(tensors) == 0:
-        raise RuntimeError(
-            "Expected a non-empty list or tuple/list of non-empty torch.Tensor"
-        )
+        raise RuntimeError("Expected a non-empty list or tuple/list of non-empty torch.Tensor")
     if len(tensors) == 1:
         return tensors[0]
 
@@ -290,12 +249,8 @@ def cat(
     valid_tensors = []
 
     for _, tensor in enumerate(tensors):
-        assert (
-            tensor.ndim == ndim
-        ), f"Requires same ndim of inputs, but got {ndim} and {tensor.ndim}"
-        assert (
-            tensor.device == device
-        ), f"Requires same device of inputs, but got {device} and {tensor.device}"
+        assert tensor.ndim == ndim, f"Requires same ndim of inputs, but got {ndim} and {tensor.ndim}"
+        assert tensor.device == device, f"Requires same device of inputs, but got {device} and {tensor.device}"
         for d_idx, (size, base_size) in enumerate(zip(tensor.shape, shape)):
             assert (
                 dim == d_idx or size == base_size

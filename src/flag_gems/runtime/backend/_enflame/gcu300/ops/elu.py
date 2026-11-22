@@ -8,9 +8,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False], promotion_methods=[(0, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def elu_forward_kernel(x, alpha, scale, input_scale):
     return tl.where(

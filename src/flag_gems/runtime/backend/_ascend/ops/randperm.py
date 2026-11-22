@@ -87,9 +87,7 @@ def bitonic_sortbykey_kernel(
     chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val)
     chunk_index_val = tl.load(chunk_index + cols, mask=mask)
 
-    sorted_chunk_x, sorted_chunk_index = argsort(
-        chunk_x_val, chunk_index_val, 0, descending=DESCENDING
-    )
+    sorted_chunk_x, sorted_chunk_index = argsort(chunk_x_val, chunk_index_val, 0, descending=DESCENDING)
     tl.store(y_ptr + cols, sorted_chunk_x, mask=cols < N)
     tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < N)
 
@@ -188,11 +186,7 @@ def radix_sortbykey_scatter_kernel(
     pid0 = tl.program_id(0)
     portion_id_i64 = portion_id
     portion_id_i64 = portion_id_i64.to(tl.int64)
-    key_offset = (
-        portion_id_i64 * portion_size
-        + pid0.to(tl.int64) * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
-    )
+    key_offset = portion_id_i64 * portion_size + pid0.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     key_mask = key_offset < n_elements
     value_data = tl.load(value_in + key_offset, mask=key_mask)
@@ -212,24 +206,18 @@ def radix_sortbykey_scatter_kernel(
         bin_of_bucket = tl.sum(key_elem_mask)
         partial_counter = bin_of_bucket | LOOKBACK_PARTIAL_MASK
         tl.store(
-            d_lookback
-            + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins
-            + bin_id,
+            d_lookback + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins + bin_id,
             partial_counter,
             cache_modifier=".cg",
         )
         bin_offset = p * (bins + 1) + bin_id
-        prefix_offsets = tl.load(
-            digit_hist + bin_offset + portion_id * passes * (bins + 1)
-        )
+        prefix_offsets = tl.load(digit_hist + bin_offset + portion_id * passes * (bins + 1))
         bk = pid0 - 1
 
         inc_sum = bin_of_bucket
 
         while bk >= 0:
-            rd_lbk_offset = (
-                (portion_id * passes + p) * max_tiles_per_portion + bk
-            ) * bins + bin_id
+            rd_lbk_offset = ((portion_id * passes + p) * max_tiles_per_portion + bk) * bins + bin_id
             partial_prefix = tl.load(d_lookback + rd_lbk_offset, volatile=True)
             max_wait = 1000
             wait_count = 0
@@ -245,9 +233,7 @@ def radix_sortbykey_scatter_kernel(
 
         global_counter = inc_sum | LOOKBACK_GLOBAL_MASK
         tl.store(
-            d_lookback
-            + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins
-            + bin_id,
+            d_lookback + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins + bin_id,
             global_counter,
             cache_modifier=".cg",
         )
@@ -257,18 +243,14 @@ def radix_sortbykey_scatter_kernel(
                 digit_hist + bin_offset + (portion_id + 1) * passes * (bins + 1),
                 inc_bucket_offset,
             )
-        global_offsets = (
-            inc_bucket_offset - bin_of_bucket.to(tl.int64) + key_block_rank.to(tl.int64)
-        )
+        global_offsets = inc_bucket_offset - bin_of_bucket.to(tl.int64) + key_block_rank.to(tl.int64)
         tl.store(key_out + global_offsets, key_data, mask=key_digit_mask)
         tl.store(value_out + global_offsets, value_data, mask=key_digit_mask)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
-def duplicate_keys_shuffle_kernel(
-    value_in, n_elements, philox_seed, philox_offset, BLOCK_SIZE: tl.constexpr
-):
+def duplicate_keys_shuffle_kernel(value_in, n_elements, philox_seed, philox_offset, BLOCK_SIZE: tl.constexpr):
     pid0 = tl.program_id(0)
     offset_range = tl.arange(0, BLOCK_SIZE)
     value_offset = pid0.to(tl.int64) * BLOCK_SIZE + offset_range
@@ -319,13 +301,9 @@ def sort_by_key(key, value, valid_bits):
         hist_dtype = torch.int64 if num_portions > 1 else torch.int32
         grid_hist = (triton.cdiv(n_elements, BLOCK_SIZE), bins // bins_per_sgement)
 
-        digit_hist_slice = torch.empty(
-            (passes, bins + 1, grid_hist[0]), dtype=hist_dtype, device=key.device
-        )
+        digit_hist_slice = torch.empty((passes, bins + 1, grid_hist[0]), dtype=hist_dtype, device=key.device)
 
-        digit_hist = torch.empty(
-            (num_portions, passes, bins + 1), dtype=hist_dtype, device=key.device
-        )
+        digit_hist = torch.empty((num_portions, passes, bins + 1), dtype=hist_dtype, device=key.device)
         d_lookback = torch.empty(
             num_portions * passes * bins * max_tiles_per_portion,
             dtype=torch.int32,
@@ -365,9 +343,7 @@ def sort_by_key(key, value, valid_bits):
             v_out = value_out_q if p % 2 == 0 else value_out_p
             # step3
             for portion_id in range(num_portions):
-                portion_items = min(
-                    n_elements - portion_id * portion_size, portion_size
-                )
+                portion_items = min(n_elements - portion_id * portion_size, portion_size)
                 tiles_per_portion = triton.cdiv(portion_items, BLOCK_SIZE)
                 grid_scatter = (tiles_per_portion, grid_hist[1])
                 with torch_device_fn.device(key.device):
@@ -417,9 +393,7 @@ def sort_by_key(key, value, valid_bits):
         k_out = torch.empty_like(key)
         v_out = torch.empty_like(value)
         with torch_device_fn.device(key.device):
-            bitonic_sortbykey_kernel[grid](
-                k_out, v_out, key, value, n_elements, BLOCK_SIZE, False
-            )
+            bitonic_sortbykey_kernel[grid](k_out, v_out, key, value, n_elements, BLOCK_SIZE, False)
         return v_out
 
 
@@ -473,9 +447,7 @@ def randperm(
         keymin = _MIN_INT64_VAL
         keymax = _MAX_INT64_VAL
 
-    rand_key = torch.randint(
-        low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
-    )
+    rand_key = torch.randint(low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device)
     # breakpoint()
     perm_range = sort_by_key(rand_key, in_range, valid_bits)
     return perm_range

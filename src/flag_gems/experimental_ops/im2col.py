@@ -68,16 +68,10 @@ def im2col_kernel(
     base_out = (n.to(tl.int64) * rows_total * L).to(tl.int64)
 
     # Compute input pointers
-    ptrs_in = (
-        x_ptr + base_in + ((c.to(tl.int64) * H + ih.to(tl.int64)) * W + iw.to(tl.int64))
-    )
+    ptrs_in = x_ptr + base_in + ((c.to(tl.int64) * H + ih.to(tl.int64)) * W + iw.to(tl.int64))
 
     # Compute output pointers
-    ptrs_out = (
-        out_ptr
-        + base_out
-        + (row_offsets[:, None].to(tl.int64) * L + col_offsets[None, :].to(tl.int64))
-    )
+    ptrs_out = out_ptr + base_out + (row_offsets[:, None].to(tl.int64) * L + col_offsets[None, :].to(tl.int64))
 
     mask = mask_rows[:, None] & mask_cols[None, :] & in_bounds
 
@@ -88,11 +82,7 @@ def im2col_kernel(
 def _parse_2tuple(x, name):
     if isinstance(x, int):
         return (x, x)
-    if (
-        isinstance(x, (list, tuple))
-        and len(x) == 2
-        and all(isinstance(v, int) for v in x)
-    ):
+    if isinstance(x, (list, tuple)) and len(x) == 2 and all(isinstance(v, int) for v in x):
         return (int(x[0]), int(x[1]))
     raise ValueError(f"{name} must be an int or a tuple/list of two ints")
 

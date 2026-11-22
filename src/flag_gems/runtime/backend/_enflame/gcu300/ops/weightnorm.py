@@ -13,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -55,9 +53,7 @@ def weight_norm_kernel_last(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_first(
     output,
@@ -97,9 +93,7 @@ def weight_norm_kernel_first(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -148,9 +142,7 @@ def weight_norm_bwd_kernel_last(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -209,17 +201,13 @@ def weight_norm_interface(v, g, dim=0):
         N = math.prod(v.shape[1:])
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
         with torch_device_fn.device(v.device):
-            weight_norm_kernel_first[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-            )
+            weight_norm_kernel_first[grid](output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny)
     elif dim == v.ndim - 1:
         M = math.prod(v.shape[:-1])
         N = v.shape[dim]
         grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
         with torch_device_fn.device(v.device):
-            weight_norm_kernel_last[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-            )
+            weight_norm_kernel_last[grid](output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny)
     return output, norm
 
 

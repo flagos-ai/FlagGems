@@ -119,18 +119,12 @@ class Benchmark:
     def set_metrics(self, user_desired_metrics: Optional[List[str]]):
         # Validate user-specified metrics
         if user_desired_metrics:
-            invalid_metrics = [
-                metric for metric in user_desired_metrics if metric not in self.metrics
-            ]
+            invalid_metrics = [metric for metric in user_desired_metrics if metric not in self.metrics]
             if invalid_metrics:
-                raise ValueError(
-                    f"Invalid metrics: {', '.join(invalid_metrics)} for operation: '{self.op_name}'"
-                )
+                raise ValueError(f"Invalid metrics: {', '.join(invalid_metrics)} for operation: '{self.op_name}'")
             unsatisfied_metrics = check_metric_dependencies(user_desired_metrics)
             if unsatisfied_metrics:
-                raise ValueError(
-                    f"Unsatisfied metric dependencies: {', '.join(unsatisfied_metrics)}"
-                )
+                raise ValueError(f"Unsatisfied metric dependencies: {', '.join(unsatisfied_metrics)}")
 
         self.to_bench_metrics = user_desired_metrics or self.metrics
         if (
@@ -149,19 +143,13 @@ class Benchmark:
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
         # Validate user-specified dtypes
-        if user_desired_dtypes and not all(
-            dtype in self.dtypes for dtype in user_desired_dtypes
-        ):
-            invalid_dtypes = [
-                dtype for dtype in user_desired_dtypes if dtype not in self.dtypes
-            ]
+        if user_desired_dtypes and not all(dtype in self.dtypes for dtype in user_desired_dtypes):
+            invalid_dtypes = [dtype for dtype in user_desired_dtypes if dtype not in self.dtypes]
             raise ValueError(
                 f"Given dtype(s) '{', '.join(str(dtype) for dtype in invalid_dtypes)}'"
                 f"can't be supported by this op '{self.op_name}'"
             )
-        self.to_bench_dtypes = (
-            user_desired_dtypes if user_desired_dtypes else self.dtypes
-        )
+        self.to_bench_dtypes = user_desired_dtypes if user_desired_dtypes else self.dtypes
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
@@ -173,22 +161,14 @@ class Benchmark:
             with open(shape_file_path, "r") as file:
                 yaml_config = yaml.safe_load(file)
                 if self.op_name in yaml_config:
-                    self.shapes = yaml_config[self.op_name].get(
-                        "shapes", self.DEFAULT_SHAPES
-                    )
-                    self.shape_desc = yaml_config[self.op_name].get(
-                        "shape_desc", self.DEFAULT_SHAPE_DESC
-                    )
+                    self.shapes = yaml_config[self.op_name].get("shapes", self.DEFAULT_SHAPES)
+                    self.shape_desc = yaml_config[self.op_name].get("shape_desc", self.DEFAULT_SHAPE_DESC)
                 else:
                     for cls in type(self).__mro__:
                         class_name = cls.__name__
                         if class_name in yaml_config:
-                            self.shapes = yaml_config[class_name].get(
-                                "shapes", self.DEFAULT_SHAPES
-                            )
-                            self.shape_desc = yaml_config[class_name].get(
-                                "shape_desc", self.DEFAULT_SHAPE_DESC
-                            )
+                            self.shapes = yaml_config[class_name].get("shapes", self.DEFAULT_SHAPES)
+                            self.shape_desc = yaml_config[class_name].get("shape_desc", self.DEFAULT_SHAPE_DESC)
                             break
                     else:
                         self.shapes = self.DEFAULT_SHAPES
@@ -199,9 +179,7 @@ class Benchmark:
                     # isin oom  # nonzero oot
                     import math
 
-                    self.shapes = [
-                        shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
-                    ]
+                    self.shapes = [shape for shape in self.shapes if math.prod(shape) < 1024 * 1024]
 
             # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
             if (
@@ -224,13 +202,9 @@ class Benchmark:
                         # isin shapelimit
                         import math
 
-                        self.shapes = [
-                            shape for shape in self.shapes if math.prod(shape) < 2**28
-                        ]
+                        self.shapes = [shape for shape in self.shapes if math.prod(shape) < 2**28]
         except yaml.YAMLError as e:
-            raise ValueError(
-                f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
-            )
+            raise ValueError(f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}")
 
     def set_more_shapes(self) -> Optional[List[List[int]]]:
         """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
@@ -284,9 +258,7 @@ class Benchmark:
             dout = torch.randn_like(out)
             # fn = lambda: out.backward(dout, retain_graph=True)
             xs = list(filter(lambda x: torch.is_tensor(x) and x.requires_grad, args))
-            fn = lambda: torch.autograd.grad(
-                (out,), xs, grad_outputs=(dout,), retain_graph=True
-            )
+            fn = lambda: torch.autograd.grad((out,), xs, grad_outputs=(dout,), retain_graph=True)
         if Config.mode == BenchMode.OPERATOR:
             for i in range(Config.warm_up):
                 fn()
@@ -298,11 +270,7 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         elif Config.mode == BenchMode.KERNEL:
-            do_bench = (
-                triton.musa_testing.do_bench
-                if device == "musa"
-                else triton.testing.do_bench
-            )
+            do_bench = triton.musa_testing.do_bench if device == "musa" else triton.testing.do_bench
             latency = do_bench(
                 fn,
                 warmup=Config.warm_up,
@@ -326,9 +294,7 @@ class Benchmark:
 
     def get_gbps(self, args, latency=None):
         # """Return the dynamic input iterator for each Operator."""
-        raise NotImplementedError(
-            "Each Benchmark must implement its own input iterator."
-        )
+        raise NotImplementedError("Each Benchmark must implement its own input iterator.")
 
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
@@ -342,9 +308,7 @@ class Benchmark:
 
     def get_input_iter(self, dtype) -> Generator:
         # """Return the dynamic input iterator for each Operator."""
-        raise NotImplementedError(
-            "Each Benchmark must implement its own input iterator."
-        )
+        raise NotImplementedError("Each Benchmark must implement its own input iterator.")
 
     def get_inputs(self, dtype):
         if self._input_iter is None:
@@ -370,12 +334,7 @@ class Benchmark:
                 kwargs.update(item)
         if self.is_backward:
             args = [
-                (
-                    a.clone().requires_grad_()
-                    if torch.is_tensor(a) and torch.is_floating_point(a)
-                    else a
-                )
-                for a in args
+                (a.clone().requires_grad_() if torch.is_tensor(a) and torch.is_floating_point(a) else a) for a in args
             ]
         return args, kwargs
 
@@ -403,10 +362,7 @@ class Benchmark:
                     done = True
                     continue
                 except (RuntimeError, Exception) as e:
-                    print(
-                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
-                        "dtype={dtype} err=<<<{e}>>>"
-                    )
+                    print(f"\033[31mFAILED\033[0m: Operator={self.op_name} " "dtype={dtype} err=<<<{e}>>>")
                     pytest.fail(str(e))
 
                 metric = BenchmarkMetrics()
@@ -414,40 +370,25 @@ class Benchmark:
                     args, kwargs = self.unpack_to_args_kwargs(input)
                     metric.shape_detail = self.record_shapes(*args, **kwargs)
                     if "latency_base" in self.to_bench_metrics:
-                        metric.latency_base = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
+                        metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
                     if "latency" in self.to_bench_metrics:
                         if self.gems_op:
-                            metric.latency = self.get_latency(
-                                self.gems_op, *args, **kwargs
-                            )
+                            metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
                         else:
                             if self.op_name == "zero_":
                                 with flag_gems.use_gems():
-                                    metric.latency = self.get_latency(
-                                        self.torch_op, *args, **kwargs
-                                    )
+                                    metric.latency = self.get_latency(self.torch_op, *args, **kwargs)
                             else:
                                 # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
                                 with flag_gems.use_gems(exclude=["zero_"]):
-                                    metric.latency = self.get_latency(
-                                        self.torch_op, *args, **kwargs
-                                    )
+                                    metric.latency = self.get_latency(self.torch_op, *args, **kwargs)
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
+                        metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
                         metric.gbps = self.get_gbps(args, latency=metric.latency)
                     if "tflops" in self.to_bench_metrics:
-                        metric.tflops = (
-                            self.get_tflops(self.torch_op, *args, **kwargs)
-                            / metric.latency
-                            / 1e12
-                            * 1e3
-                        )
+                        metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs) / metric.latency / 1e12 * 1e3
                         # utilization = metric.tflops / metric.latency / 1e12 * 1e3
                 except (RuntimeError, Exception) as e:
                     metric.error_msg = str(e)

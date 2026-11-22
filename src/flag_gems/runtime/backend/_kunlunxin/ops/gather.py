@@ -87,19 +87,13 @@ def generate_gather_kernel(
             code.writeline("out,")
             code.writeline("index,")
 
-            stride_args = ", ".join(
-                f"inp_stride_{i}: tl.constexpr" for i in range(rank)
-            )
+            stride_args = ", ".join(f"inp_stride_{i}: tl.constexpr" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for inp")
 
-            stride_args = ", ".join(
-                f"index_stride_{i}: tl.constexpr" for i in range(rank)
-            )
+            stride_args = ", ".join(f"index_stride_{i}: tl.constexpr" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for index")
 
-            shape_args = ", ".join(
-                f"index_shape_{i}: tl.constexpr" for i in range(rank)
-            )
+            shape_args = ", ".join(f"index_shape_{i}: tl.constexpr" for i in range(rank))
             code.writeline(f"{shape_args}, # shape for index")
 
             code.writeline("dim: tl.constexpr,")
@@ -115,12 +109,8 @@ def generate_gather_kernel(
     with code.indent():
         code.writeline("pid_x = tle.program_id(0)")
         code.writeline("pid_y = tle.program_id(1)")
-        code.writeline(
-            "rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]"
-        )
-        code.writeline(
-            "cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]"
-        )
+        code.writeline("rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]")
+        code.writeline("cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]")
         code.writeline("rows_mask = rows_offsets < M")
         code.writeline("cols_mask = cols_offsets < N")
 

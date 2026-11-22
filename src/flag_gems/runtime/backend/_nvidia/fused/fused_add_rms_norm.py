@@ -48,9 +48,7 @@ def fused_add_rms_norm_kernel(
 
 
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
-    print(
-        "\n .......test for mutibackend specific fused op fused_add_rms_norm ........\n"
-    )
+    print("\n .......test for mutibackend specific fused op fused_add_rms_norm ........\n")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -61,7 +59,5 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     weight = weight.contiguous()
 
     with torch_device_fn.device(x.device):
-        fused_add_rms_norm_kernel[M,](
-            x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        fused_add_rms_norm_kernel[M,](x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
     return x, residual

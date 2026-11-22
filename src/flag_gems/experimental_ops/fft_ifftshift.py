@@ -68,11 +68,7 @@ def fft_ifftshift(*args, **kwargs):
         x = args[0]
     else:
         # try kwargs
-        x = (
-            kwargs.get("input", None)
-            or kwargs.get("self", None)
-            or kwargs.get("tensor", None)
-        )
+        x = kwargs.get("input", None) or kwargs.get("self", None) or kwargs.get("tensor", None)
     if x is None:
         raise ValueError("fft_ifftshift expects at least one tensor argument as input.")
 
@@ -115,9 +111,7 @@ def fft_ifftshift(*args, **kwargs):
     out_strides = torch.tensor(list(out.stride()), device=device, dtype=torch.int64)
 
     # Per-dimension add amount = floor(size/2) if dimension is included, else 0
-    add_list = [
-        (sizes[d].item() // 2) if d in set(dims_list) else 0 for d in range(x.ndim)
-    ]
+    add_list = [(sizes[d].item() // 2) if d in set(dims_list) else 0 for d in range(x.ndim)]
     adds = torch.tensor(add_list, device=device, dtype=torch.int64)
 
     n_elements = x.numel()

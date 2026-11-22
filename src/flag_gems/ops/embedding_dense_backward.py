@@ -103,14 +103,10 @@ def embedding_dense_backward(
         or indices.device.type != flag_gems.device
         or grad_output.device != indices.device
     ):
-        raise ValueError(
-            f"Inputs must be {flag_gems.device} tensors on the same device."
-        )
+        raise ValueError(f"Inputs must be {flag_gems.device} tensors on the same device.")
 
     device = grad_output.device
-    assert (
-        grad_output.dim() >= 2
-    ), "grad_output must have embedding dimension as the last dim."
+    assert grad_output.dim() >= 2, "grad_output must have embedding dimension as the last dim."
 
     D = grad_output.shape[-1]
     go = grad_output.contiguous().view(-1, D)  # (N, D)

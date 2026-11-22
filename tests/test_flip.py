@@ -50,9 +50,7 @@ def test_flip_with_non_dense_input(shape, dtype, dims):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape_dialted, dtype=dtype, device=flag_gems.device)[::2, ::2]
     else:
-        inp = torch.randint(-1000, 1000, shape_dialted, device=flag_gems.device).to(
-            dtype
-        )[::2, ::2]
+        inp = torch.randint(-1000, 1000, shape_dialted, device=flag_gems.device).to(dtype)[::2, ::2]
     ref_inp = utils.to_reference(inp, False)
 
     with flag_gems.use_gems():

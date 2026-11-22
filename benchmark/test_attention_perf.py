@@ -52,9 +52,7 @@ def torch_sparse_attention(q, kv, attn_sink, topk_idxs, softmax_scale):
     idx_expanded = topk_idxs[:, :, :, None].expand(batch, seq_len, topk, dim).long()
     gathered_kv = torch.gather(kv_expanded, 2, idx_expanded)
 
-    scores = (
-        torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * softmax_scale
-    )
+    scores = torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * softmax_scale
     sink = attn_sink[None, None, :, None].expand(batch, seq_len, heads, 1)
     attn = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)
 
@@ -94,9 +92,7 @@ class SparseAttentionBenchmark(Benchmark):
             yield q, kv, attn_sink, topk_idxs, 1.0 / math.sqrt(dim)
 
 
-def torch_flash_attention_forward(
-    q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
-):
+def torch_flash_attention_forward(q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs):
     return torch.ops.aten._flash_attention_forward(
         q,
         k,
@@ -113,9 +109,7 @@ def torch_flash_attention_forward(
     )
 
 
-def gems_flash_attention_forward(
-    q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
-):
+def gems_flash_attention_forward(q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs):
     return flag_gems.ops.flash_attention_forward(
         q,
         k,
@@ -227,19 +221,13 @@ class FlashAttentionForwardBenchmark(GenericBenchmark):
                         )
                     )
             for is_causal in (False, True):
-                self.shapes.append(
-                    (4, 4, 4, 1, 519, 128, is_causal, 0.0, False, None, None, True)
-                )
+                self.shapes.append((4, 4, 4, 1, 519, 128, is_causal, 0.0, False, None, None, True))
 
         # Split-KV like cases (q_seq_len=1, num_head_k < num_head).
         for is_causal in (False, True):
-            self.shapes.append(
-                (1, 4, 1, 1, 1024, 128, is_causal, 0.0, False, None, None, False)
-            )
+            self.shapes.append((1, 4, 1, 1, 1024, 128, is_causal, 0.0, False, None, None, False))
             if supports_alibi:
-                self.shapes.append(
-                    (1, 4, 1, 1, 1024, 128, is_causal, 0.0, False, None, None, True)
-                )
+                self.shapes.append((1, 4, 1, 1, 1024, 128, is_causal, 0.0, False, None, None, True))
 
         # Sliding window attention.
         for batch, num_head, q_seq_len, kv_seq_len in (
@@ -265,14 +253,10 @@ class FlashAttentionForwardBenchmark(GenericBenchmark):
                         False,
                     )
                 )
-        self.shapes.append(
-            (8, 32, 32, 1024, 1024, 192, False, 0.0, False, 256, 0, False)
-        )
+        self.shapes.append((8, 32, 32, 1024, 1024, 192, False, 0.0, False, 256, 0, False))
 
         for is_causal in (False, True):
-            self.shapes.append(
-                (1, 1, 1, 1024, 1024, 128, is_causal, 0.2, True, None, None, False)
-            )
+            self.shapes.append((1, 1, 1, 1024, 1024, 128, is_causal, 0.2, True, None, None, False))
 
     def set_more_shapes(self):
         return None
@@ -294,15 +278,9 @@ def flash_attention_forward_input_fn(config, dtype, device):
         use_alibi,
     ) = config
 
-    q = torch.empty(
-        (batch, q_seq_len, num_head, head_size), device=device, dtype=dtype
-    ).uniform_(-0.05, 0.05)
-    k = torch.empty(
-        (batch, kv_seq_len, num_head_k, head_size), device=device, dtype=dtype
-    ).uniform_(-0.05, 0.05)
-    v = torch.empty(
-        (batch, kv_seq_len, num_head_k, head_size), device=device, dtype=dtype
-    ).uniform_(-0.05, 0.05)
+    q = torch.empty((batch, q_seq_len, num_head, head_size), device=device, dtype=dtype).uniform_(-0.05, 0.05)
+    k = torch.empty((batch, kv_seq_len, num_head_k, head_size), device=device, dtype=dtype).uniform_(-0.05, 0.05)
+    v = torch.empty((batch, kv_seq_len, num_head_k, head_size), device=device, dtype=dtype).uniform_(-0.05, 0.05)
     scale = float(1.0 / math.sqrt(head_size))
 
     extra_kwargs = {}
@@ -314,9 +292,7 @@ def flash_attention_forward_input_fn(config, dtype, device):
             }
         )
     if use_alibi:
-        extra_kwargs["alibi_slopes"] = (
-            torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
-        )
+        extra_kwargs["alibi_slopes"] = torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
 
     yield q, k, v, scale, is_causal, dropout_p, return_debug_mask, extra_kwargs
 
@@ -354,9 +330,7 @@ def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
         value = torch.randn(shape, device=device, dtype=dtype)
         yield query, key, value, None, dropout_p, is_causal
 
-    def sdpa_flash(
-        query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=is_causal
-    ):
+    def sdpa_flash(query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=is_causal):
         from torch.nn.attention import SDPBackend, sdpa_kernel
 
         with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
@@ -422,19 +396,15 @@ def test_perf_flash_mla():
         dv = 512
         causal = True
         block_size = 64
-        cache_seqlens = torch.tensor(
-            [seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device
-        )
+        cache_seqlens = torch.tensor([seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device)
         max_seqlen = cache_seqlens.max().item()
         max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
 
         q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
-        block_table = torch.arange(
-            b * max_seqlen_pad // block_size, dtype=torch.int32, device=device
-        ).view(b, max_seqlen_pad // block_size)
-        blocked_k = torch.randn(
-            [block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device
+        block_table = torch.arange(b * max_seqlen_pad // block_size, dtype=torch.int32, device=device).view(
+            b, max_seqlen_pad // block_size
         )
+        blocked_k = torch.randn([block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device)
         yield q, block_table, blocked_k, max_seqlen_pad, block_size, b, s_q, cache_seqlens, h_q, h_kv, d, dv, causal
 
     def scaled_dot_product_attention(query, key, value, h_q, h_kv, is_causal=False):
@@ -448,9 +418,7 @@ def test_perf_flash_mla():
             s_q = query.shape[-2]
             s_k = key.shape[-2]
             attn_bias = torch.zeros(s_q, s_k, dtype=query.dtype, device=query.device)
-            temp_mask = torch.ones(
-                s_q, s_k, dtype=torch.bool, device=query.device
-            ).tril(diagonal=s_k - s_q)
+            temp_mask = torch.ones(s_q, s_k, dtype=torch.bool, device=query.device).tril(diagonal=s_k - s_q)
             attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
             attn_bias.to(query.dtype)
             attn_weight += attn_bias
@@ -629,9 +597,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
             return
 
         num_seqs = len(cu_query_lens) - 1
-        max_query_len = max(
-            map(lambda x, y: x - y, cu_query_lens[1:], cu_query_lens[:-1])
-        )
+        max_query_len = max(map(lambda x, y: x - y, cu_query_lens[1:], cu_query_lens[:-1]))
         max_kv_len = max(seqused_k)
         window_size = (-1, -1)
         scale = head_size**-0.5
@@ -656,9 +622,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
                 device=device,
             )
             value_cache = torch.randn_like(key_cache)
-            cu_query_lens = torch.tensor(
-                cu_query_lens, dtype=torch.int32, device=device
-            )
+            cu_query_lens = torch.tensor(cu_query_lens, dtype=torch.int32, device=device)
             seqused_k = torch.tensor(seqused_k, dtype=torch.int32, device=device)
 
             max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
@@ -673,12 +637,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
             causal = True
 
             if alibi:
-                alibi_slopes = (
-                    torch.ones(
-                        num_seqs, num_query_heads, device=device, dtype=torch.float32
-                    )
-                    * 0.3
-                )
+                alibi_slopes = torch.ones(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
             else:
                 alibi_slopes = None
 
@@ -835,9 +794,7 @@ class GetSchedulerMetadataBenchmark(GenericBenchmark):
 def test_perf_get_scheduler_metadata():
     try:
         os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
-        from vllm.vllm_flash_attn.flash_attn_interface import (
-            get_scheduler_metadata as vllm_get_scheduler_metadata,
-        )
+        from vllm.vllm_flash_attn.flash_attn_interface import get_scheduler_metadata as vllm_get_scheduler_metadata
     except ImportError:
         pytest.skip("vllm is not available, skipping performance test")
 
@@ -851,9 +808,7 @@ def test_perf_get_scheduler_metadata():
             headdim,
             headdim_v,
         ) = shape
-        cache_seqlens = torch.randint(
-            1, max_seqlen_k + 1, (batch_size,), dtype=torch.int32, device=device
-        )
+        cache_seqlens = torch.randint(1, max_seqlen_k + 1, (batch_size,), dtype=torch.int32, device=device)
 
         yield (
             batch_size,
@@ -960,9 +915,7 @@ def torch_concat_and_cache_mla_ref(
 
     if kv_cache_dtype != "auto":
         scale_val = scale.item() if scale is not None else 1.0
-        kv_cache.copy_(
-            (temp_cache / scale_val).to(torch.float8_e4m3fn).view(torch.uint8)
-        )
+        kv_cache.copy_((temp_cache / scale_val).to(torch.float8_e4m3fn).view(torch.uint8))
     else:
         kv_cache.copy_(temp_cache)
 
@@ -1065,18 +1018,14 @@ def test_perf_reshape_and_cache_flash():
         num_slots = block_size * num_blocks
         slot_mapping_lst = random.sample(range(num_slots), num_tokens)
         slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
-        qkv = torch.randn(
-            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
-        )
+        qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype, device=device)
         _, key, value = qkv.unbind(dim=1)
 
         key_value_cache_shape = (num_blocks, 2, block_size, num_heads, head_size)
         scale = head_size**-0.5
         key_caches: list[torch.Tensor] = []
         value_caches: list[torch.Tensor] = []
-        key_value_cache = torch.empty(
-            size=key_value_cache_shape, dtype=dtype, device=device
-        )
+        key_value_cache = torch.empty(size=key_value_cache_shape, dtype=dtype, device=device)
         key_value_cache.uniform_(-scale, scale)
         key_caches.append(key_value_cache[:, 0])
         value_caches.append(key_value_cache[:, 1])
@@ -1157,9 +1106,7 @@ def test_perf_reshape_and_cache():
         slot_mapping_lst = random.sample(range(num_slots), num_tokens)
         slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
 
-        qkv = torch.randn(
-            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
-        )
+        qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype, device=device)
         _, key, value = qkv.unbind(dim=1)
 
         scale = head_size**-0.5
@@ -1324,9 +1271,7 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
             return
 
         num_seqs = len(cu_query_lens) - 1
-        max_query_len = max(
-            map(lambda x, y: x - y, cu_query_lens[1:], cu_query_lens[:-1])
-        )
+        max_query_len = max(map(lambda x, y: x - y, cu_query_lens[1:], cu_query_lens[:-1]))
         max_kv_len = max(seqused_k)
         window_size = (-1, -1)
         scale = head_size**-0.5
@@ -1342,9 +1287,7 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
                 device=device,
             )
             out = torch.empty_like(query)
-            lse = torch.empty(
-                (num_query_heads, cu_query_lens[-1]), dtype=torch.float, device=device
-            )
+            lse = torch.empty((num_query_heads, cu_query_lens[-1]), dtype=torch.float, device=device)
             # lse = None
             key_cache = torch.randn(
                 num_blocks,
@@ -1355,9 +1298,7 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
                 device=device,
             )
             value_cache = torch.randn_like(key_cache)
-            cu_query_lens = torch.tensor(
-                cu_query_lens, dtype=torch.int32, device=device
-            )
+            cu_query_lens = torch.tensor(cu_query_lens, dtype=torch.int32, device=device)
             seqused_k = torch.tensor(seqused_k, dtype=torch.int32, device=device)
 
             max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
@@ -1372,12 +1313,7 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
             causal = True
 
             if alibi:
-                alibi_slopes = (
-                    torch.ones(
-                        num_seqs, num_query_heads, device=device, dtype=torch.float32
-                    )
-                    * 0.3
-                )
+                alibi_slopes = torch.ones(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
             else:
                 alibi_slopes = None
 

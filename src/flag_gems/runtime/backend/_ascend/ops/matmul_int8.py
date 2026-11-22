@@ -136,9 +136,7 @@ def torch_matmul(a, b):
     print(f"{a.dtype=} {b.dtype=}")
     # b is (N, K), npu_quant_matmul expects (K, N), so transpose
     scale = torch.ones(1, dtype=torch.float32, device=a.device)
-    result = torch_npu.npu_quant_matmul(
-        a, b.t().contiguous(), scale, output_dtype=torch.float16
-    )
+    result = torch_npu.npu_quant_matmul(a, b.t().contiguous(), scale, output_dtype=torch.float16)
     return result.to(torch.bfloat16)
 
 
@@ -165,9 +163,7 @@ def matmul_int8(a, b):
     c_dtype = get_output_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=a.device, dtype=c_dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),)
     matmul_kernel[grid](
         a,
         b,

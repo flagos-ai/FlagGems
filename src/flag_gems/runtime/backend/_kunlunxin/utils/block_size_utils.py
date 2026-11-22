@@ -26,10 +26,7 @@ def heur_m_block_size(args):
     # if triton.next_power_of_2(triton.cdiv(args["M"], cluster_num)) < core_num:
     #     return triton.next_power_of_2(triton.cdiv(args["M"], cluster_num))
     # else:
-    return (
-        triton.cdiv(triton.cdiv(buf_len_per_core, args["ELEMENT_SIZE"]), args["N"])
-        * core_num
-    )
+    return triton.cdiv(triton.cdiv(buf_len_per_core, args["ELEMENT_SIZE"]), args["N"]) * core_num
 
 
 def heur_n_block_size(args):

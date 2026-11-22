@@ -97,20 +97,10 @@ from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
 from .polar import polar
-from .pow import (
-    pow_scalar,
-    pow_tensor_scalar,
-    pow_tensor_scalar_,
-    pow_tensor_tensor,
-    pow_tensor_tensor_,
-)
+from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_scalar_, pow_tensor_tensor, pow_tensor_tensor_
 from .reciprocal import reciprocal, reciprocal_
 from .relu import relu, relu_
-from .repeat_interleave import (
-    repeat_interleave_self_int,
-    repeat_interleave_self_tensor,
-    repeat_interleave_tensor,
-)
+from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_self_tensor, repeat_interleave_tensor
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
@@ -125,12 +115,7 @@ from .sub import sub, sub_
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .to import to_dtype
-from .unique import (
-    _unique2,
-    simple_unique_flat,
-    sorted_indices_unique_flat,
-    sorted_quick_unique_flat,
-)
+from .unique import _unique2, simple_unique_flat, sorted_indices_unique_flat, sorted_quick_unique_flat
 from .upsample_nearest2d import upsample_nearest2d
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out

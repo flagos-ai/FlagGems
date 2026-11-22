@@ -194,18 +194,14 @@ class RmsNorm(torch.autograd.Function):
         dx = torch.empty_like(x)
 
         with torch_device_fn.device(x.device):
-            rms_norm_grad_dx_kernel[M,](
-                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
+            rms_norm_grad_dx_kernel[M,](x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
 
         ROW_BLOCK_SIZE = 16
         COL_BLOCK_SIZE = 256
         row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
         col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
 
-        partial_buffer = torch.empty(
-            (row_block_num, N), dtype=torch.float32, device=x.device
-        )
+        partial_buffer = torch.empty((row_block_num, N), dtype=torch.float32, device=x.device)
 
         with torch_device_fn.device(x.device):
             rms_norm_grad_dw_kernel[row_block_num, col_block_num](

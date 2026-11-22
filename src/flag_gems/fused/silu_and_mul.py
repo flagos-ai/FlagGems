@@ -17,9 +17,7 @@ def silu_and_mul_kernel(x, y):
     return x_silu * y
 
 
-@pointwise_dynamic(
-    promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")], num_outputs=2
-)
+@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")], num_outputs=2)
 @triton.jit
 def silu_and_mul_grad_kernel(x, y, dgrad):
     x_fp32 = x.to(tl.float32)

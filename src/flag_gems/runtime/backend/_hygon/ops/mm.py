@@ -83,12 +83,8 @@ def mm_kernel(
     for start_k in range(0, prev_k_mult, BLOCK_K):
         rk = start_k + offs_k
 
-        a = tl.load(
-            a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak)
-        )
-        b = tl.load(
-            b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn)
-        )
+        a = tl.load(a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak))
+        b = tl.load(b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn))
 
         if a.dtype != b.dtype:
             a = a.to(c_ptr.dtype.element_ty)
@@ -166,9 +162,7 @@ def mm(a, b):
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(a.device):
         mm_kernel[grid](
             a,
@@ -202,9 +196,7 @@ def mm_out(a, b, *, out):
     # allocates output
     c = out
     # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(a.device):
         mm_kernel[grid](
             a,

@@ -75,9 +75,7 @@ def masked_select(input: torch.Tensor, mask: torch.Tensor):
 
     counts = torch.empty(num_blocks, dtype=torch.int32, device=device)
     grid = (num_blocks,)
-    _masked_select_count_kernel[grid](
-        msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE
-    )
+    _masked_select_count_kernel[grid](msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE)
 
     # Compute per-block exclusive offsets and total number of selected elements
     if num_blocks == 1:
@@ -114,9 +112,7 @@ def masked_select_out(input: torch.Tensor, mask: torch.Tensor, out: torch.Tensor
 
     counts = torch.empty(num_blocks, dtype=torch.int32, device=device)
     grid = (num_blocks,)
-    _masked_select_count_kernel[grid](
-        msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE
-    )
+    _masked_select_count_kernel[grid](msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE)
 
     # Compute per-block exclusive offsets and total number of selected elements
     if num_blocks == 1:
@@ -133,7 +129,5 @@ def masked_select_out(input: torch.Tensor, mask: torch.Tensor, out: torch.Tensor
         raise RuntimeError("out tensor dtype must match input dtype")
     out.resize_(total_selected)
 
-    _masked_select_scatter_kernel[grid](
-        inp_flat, msk_flat_i32, block_offsets, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    _masked_select_scatter_kernel[grid](inp_flat, msk_flat_i32, block_offsets, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out

@@ -8,9 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}")
 
 
 @libentry()
@@ -154,9 +152,7 @@ def index_add_(inp, dim, index, src, alpha=1):
         )
 
         with torch_device_fn.device(inp.device):
-            index_add_kernel[grid](
-                inp_work, inp_work, index, src_work, M, N, alpha, inp_len
-            )
+            index_add_kernel[grid](inp_work, inp_work, index, src_work, M, N, alpha, inp_len)
 
         # Restore original dimension order and copy back
         order = list(range(inp_work.ndim - 1))
@@ -174,9 +170,7 @@ def index_add_(inp, dim, index, src, alpha=1):
         )
 
         with torch_device_fn.device(inp.device):
-            index_add_kernel[grid](
-                inp_contig, inp_contig, index, src, M, N, alpha, inp_len
-            )
+            index_add_kernel[grid](inp_contig, inp_contig, index, src, M, N, alpha, inp_len)
 
         # Copy back if input wasn't contiguous
         if not inp.is_contiguous():

@@ -7,9 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def _tril_kernel(
-    in_ptr, out_ptr, M, N, B, diag, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
+def _tril_kernel(in_ptr, out_ptr, M, N, B, diag, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     pid_b = tl.program_id(2)

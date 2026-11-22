@@ -23,9 +23,7 @@ _log10__kernel = log10_
 
 def log10_(*args, **kwargs):
     if len(args) == 0:
-        raise TypeError(
-            "log10_ expects at least one positional argument: a torch.Tensor."
-        )
+        raise TypeError("log10_ expects at least one positional argument: a torch.Tensor.")
     x = args[0]
     if not isinstance(x, torch.Tensor):
         raise TypeError("log10_ expects a torch.Tensor as its first argument.")

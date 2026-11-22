@@ -16,9 +16,7 @@ vendor_name = flag_gems.vendor_name
 
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", utils.UT_SHAPES_1D)
-@pytest.mark.parametrize(
-    "is_conj", [(False, False), (False, True), (True, False), (True, True)]
-)
+@pytest.mark.parametrize("is_conj", [(False, False), (False, True), (True, False), (True, True)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_vdot(M, is_conj, dtype, stride):
@@ -59,13 +57,9 @@ def test_vdot(M, is_conj, dtype, stride):
 
     with flag_gems.use_gems():
         if flag_gems.vendor_name == "mthreads":
-            res_out = torch.vdot(
-                inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
-            )
+            res_out = torch.vdot(inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device))
         elif flag_gems.vendor_name == "tsingmicro":
-            res_out = torch.vdot(
-                inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
-            )
+            res_out = torch.vdot(inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device))
         else:
             res_out = torch.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)

@@ -168,9 +168,7 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
     if x.dtype == torch.complex64:
         # Input separate real/imaginary parts (avoid view(), get float32 tensor directly with .real/.imag)
         x_real = x.real  # shape same as x, dtype=float32 (real part separate storage)
-        x_img = (
-            x.imag
-        )  # shape same as x, dtype=float32 (imaginary part separate storage)
+        x_img = x.imag  # shape same as x, dtype=float32 (imaginary part separate storage)
 
         # Output still use view() to convert to float32 pointer (only for kernel storage, no change to output structure)
         output_view = output.view(torch.float32)
@@ -209,24 +207,18 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
                 # Use 1D kernel for small 2D tensors
                 BLOCK_SIZE = 256
                 grid = (triton.cdiv(n_elements_total, BLOCK_SIZE),)
-                resolve_conj_kernel_1d[grid](
-                    x_real, x_img, output_view, n_elements_total, is_conj, BLOCK_SIZE
-                )
+                resolve_conj_kernel_1d[grid](x_real, x_img, output_view, n_elements_total, is_conj, BLOCK_SIZE)
         elif len(shape) == 3:
             # Use 1D kernel for 3D tensors (flatten processing)
             n_elements_total = x.numel()
             BLOCK_SIZE = min(1024, n_elements_total)
             grid = (triton.cdiv(n_elements_total, BLOCK_SIZE),)
-            resolve_conj_kernel_1d[grid](
-                x_real, x_img, output_view, n_elements_total, is_conj, BLOCK_SIZE
-            )
+            resolve_conj_kernel_1d[grid](x_real, x_img, output_view, n_elements_total, is_conj, BLOCK_SIZE)
         else:
             # Use general 1D kernel for 1D or other dimensions
             BLOCK_SIZE = 1024 if n_elements_total > 1000000 else 256
             grid = (triton.cdiv(n_elements_total, BLOCK_SIZE),)
-            resolve_conj_kernel_1d[grid](
-                x_real, x_img, output_view, n_elements_total, is_conj, BLOCK_SIZE
-            )
+            resolve_conj_kernel_1d[grid](x_real, x_img, output_view, n_elements_total, is_conj, BLOCK_SIZE)
 
         # Output is still complex tensor, structure unchanged
         return output

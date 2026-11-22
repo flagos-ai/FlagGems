@@ -68,12 +68,8 @@ def test_arccosh_out(shape, dtype, layout):
     else:
         dims = len(shape)
         perm = list(reversed(range(dims)))
-        ref_base = torch.empty(
-            tuple(reversed(shape)), dtype=dtype, device=ref_input.device
-        )
-        act_base = torch.empty(
-            tuple(reversed(shape)), dtype=dtype, device=flag_gems.device
-        )
+        ref_base = torch.empty(tuple(reversed(shape)), dtype=dtype, device=ref_input.device)
+        act_base = torch.empty(tuple(reversed(shape)), dtype=dtype, device=flag_gems.device)
         ref_out = ref_base.permute(perm)
         act_out = act_base.permute(perm)
 

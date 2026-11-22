@@ -42,15 +42,11 @@ def sinh_(*args, **kwargs):
         return x
 
     if not x.is_contiguous():
-        raise RuntimeError(
-            "sinh_ Triton kernel currently supports only contiguous tensors"
-        )
+        raise RuntimeError("sinh_ Triton kernel currently supports only contiguous tensors")
 
     supported_dtypes = (torch.float16, torch.float32, torch.bfloat16)
     if x.dtype not in supported_dtypes:
-        raise RuntimeError(
-            f"sinh_ Triton kernel supports dtypes {supported_dtypes}, but got {x.dtype}"
-        )
+        raise RuntimeError(f"sinh_ Triton kernel supports dtypes {supported_dtypes}, but got {x.dtype}")
 
     n_elements = x.numel()
     BLOCK_SIZE = 1024

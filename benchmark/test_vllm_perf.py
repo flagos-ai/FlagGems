@@ -41,9 +41,7 @@ def to_int8(tensor: torch.Tensor):
 
 def to_fp8(tensor: torch.Tensor):
     finfo = torch.finfo(torch.float8_e4m3fn)
-    return torch.round(tensor.clamp(min=finfo.min, max=finfo.max)).to(
-        dtype=torch.float8_e4m3fn
-    )
+    return torch.round(tensor.clamp(min=finfo.min, max=finfo.max)).to(dtype=torch.float8_e4m3fn)
 
 
 class CutlassScaledMMPerfKit:
@@ -81,9 +79,7 @@ class CutlassScaledMMPerfKit:
         if_use_bias = [True, False]
         dtypes = [(torch.int8, torch.float16), (torch.float8_e4m3fn, torch.bfloat16)]
 
-        combinations = product(
-            mnk, scale_shape_types, scale_shape_types, if_use_bias, dtypes
-        )
+        combinations = product(mnk, scale_shape_types, scale_shape_types, if_use_bias, dtypes)
         return combinations
 
     @classmethod
@@ -96,18 +92,10 @@ class CutlassScaledMMPerfKit:
             if a_scale_category == "matrix" and count[0] < cls.num_perf_cases:
                 count[0] += 1
                 cls.block_params.append(param)
-            elif (
-                a_scale_category == "scalar"
-                and b_scale_category == "scalar"
-                and count[1] < cls.num_perf_cases
-            ):
+            elif a_scale_category == "scalar" and b_scale_category == "scalar" and count[1] < cls.num_perf_cases:
                 count[1] += 1
                 cls.scalar_only_params.append(param)
-            elif (
-                a_scale_category == "vector"
-                and b_scale_category == "vector"
-                and count[2] < cls.num_perf_cases
-            ):
+            elif a_scale_category == "vector" and b_scale_category == "vector" and count[2] < cls.num_perf_cases:
                 count[2] += 1
                 cls.vector_only_params.append(param)
             elif count[3] < cls.num_perf_cases:
@@ -132,9 +120,7 @@ class CutlassScaledMMPerfKit:
                 "scalar",
                 "vector",
             ] and b_scale_category in ["scalar", "vector"]
-            is_block_dequant = (
-                a_scale_category == "matrix" and b_scale_category == "matrix"
-            )
+            is_block_dequant = a_scale_category == "matrix" and b_scale_category == "matrix"
 
             if not (is_scalar_or_vector_dequant or is_block_dequant):
                 continue
@@ -175,9 +161,7 @@ class CutlassScaledMMPerfKit:
 class CutlassScaledMMBenchmark(Benchmark):
     def __init__(self):
         extended_dtypes = ["scalar_only", "vector_only", "scalar_and_vector", "block"]
-        super().__init__(
-            "cutlass_scaled_mm", torch.ops._C.cutlass_scaled_mm, extended_dtypes
-        )
+        super().__init__("cutlass_scaled_mm", torch.ops._C.cutlass_scaled_mm, extended_dtypes)
         self.set_gems(flag_gems.cutlass_scaled_mm)
         self.kit = CutlassScaledMMPerfKit
         self.kit.init_perf_params()
@@ -197,25 +181,16 @@ class CutlassScaledMMBenchmark(Benchmark):
 
             if in_dtype == torch.int8:
                 a = to_int8(torch.randn((M, K), device=flag_gems.device))
-                b = to_int8(
-                    torch.randn((K, N), device=flag_gems.device).t().contiguous().t()
-                    * 5
-                )
+                b = to_int8(torch.randn((K, N), device=flag_gems.device).t().contiguous().t() * 5)
             else:
                 a = to_fp8(torch.randn((M, K), device=flag_gems.device))
-                b = to_fp8(
-                    torch.randn((K, N), device=flag_gems.device).t().contiguous().t()
-                )
+                b = to_fp8(torch.randn((K, N), device=flag_gems.device).t().contiguous().t())
 
             a_scale_shape = self.kit.get_scale_shape(M, N, K, a_scale_category)
             b_scale_shape = self.kit.get_scale_shape(M, N, K, b_scale_category, False)
 
-            scale_a = torch.randn(
-                a_scale_shape, device=flag_gems.device, dtype=torch.float32
-            )
-            scale_b = torch.randn(
-                b_scale_shape, device=flag_gems.device, dtype=torch.float32
-            )
+            scale_a = torch.randn(a_scale_shape, device=flag_gems.device, dtype=torch.float32)
+            scale_b = torch.randn(b_scale_shape, device=flag_gems.device, dtype=torch.float32)
 
             scale_a = scale_a.contiguous()
             # convert scale_b to col-major
@@ -243,9 +218,7 @@ def test_cutlass_scaled_mm_benchmark():
 
 # ---------------------- fused_moe op test ----------------------
 try:
-    from vllm.model_executor.layers.fused_moe.fused_moe import (
-        fused_experts_impl as vllm_fused_experts_impl,
-    )
+    from vllm.model_executor.layers.fused_moe.fused_moe import fused_experts_impl as vllm_fused_experts_impl
 
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
@@ -307,9 +280,7 @@ class FusedMoEBenchmark(Benchmark):
             dtype=dtype,
         )
 
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -422,24 +393,14 @@ class FusedMoEFP8Benchmark(Benchmark):
                     dtype=torch.float16,
                 )
             )
-            w2_fp8[e] = to_fp8(
-                torch.randn(
-                    hidden_size, intermediate_size, device=device, dtype=torch.float16
-                )
-            )
+            w2_fp8[e] = to_fp8(torch.randn(hidden_size, intermediate_size, device=device, dtype=torch.float16))
 
         # Synthetic per-expert scales (representative of real quantization)
-        w1_scale = (
-            torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
-        )
-        w2_scale = (
-            torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
-        )
+        w1_scale = torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
+        w2_scale = torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
 
         # Routing
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -548,9 +509,7 @@ class FusedMoEFP8BlockwiseBenchmark(Benchmark):
             + 0.01
         )
 
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(torch.float32)
@@ -566,9 +525,7 @@ class FusedMoEFP8BlockwiseBenchmark(Benchmark):
         )
 
 
-def _vllm_fused_moe_fp8_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _vllm_fused_moe_fp8_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper to call vllm fused_experts_impl with FP8."""
     return vllm_fused_experts_impl(
         hidden_states.clone(),
@@ -584,9 +541,7 @@ def _vllm_fused_moe_fp8_wrapper(
     )
 
 
-def _gems_fused_moe_fp8_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _gems_fused_moe_fp8_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper to call FlagGems fused_experts_impl with FP8."""
     return flag_gems.fused_experts_impl(
         hidden_states,
@@ -600,9 +555,7 @@ def _gems_fused_moe_fp8_wrapper(
     )
 
 
-def _vllm_fused_moe_fp8_blockwise_wrapper(
-    hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids
-):
+def _vllm_fused_moe_fp8_blockwise_wrapper(hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids):
     """Wrapper to call vllm fused_experts_impl with block-wise FP8."""
     return vllm_fused_experts_impl(
         hidden_states.clone(),
@@ -619,9 +572,7 @@ def _vllm_fused_moe_fp8_blockwise_wrapper(
     )
 
 
-def _gems_fused_moe_fp8_blockwise_wrapper(
-    hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids
-):
+def _gems_fused_moe_fp8_blockwise_wrapper(hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids):
     """Wrapper to call FlagGems fused_experts_impl with block-wise FP8."""
     return flag_gems.fused_experts_impl(
         hidden_states,
@@ -738,31 +689,14 @@ class FusedMoEINT8Benchmark(Benchmark):
                 )
                 * 50
             )
-            w2_int8[e] = to_int8(
-                torch.randn(
-                    hidden_size, intermediate_size, device=device, dtype=torch.float16
-                )
-                * 50
-            )
+            w2_int8[e] = to_int8(torch.randn(hidden_size, intermediate_size, device=device, dtype=torch.float16) * 50)
 
         # Synthetic per-channel scales [E, output_dim]
-        w1_scale = (
-            torch.rand(
-                num_experts, intermediate_size * 2, device=device, dtype=torch.float32
-            )
-            * 0.01
-            + 0.001
-        )
-        w2_scale = (
-            torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32)
-            * 0.01
-            + 0.001
-        )
+        w1_scale = torch.rand(num_experts, intermediate_size * 2, device=device, dtype=torch.float32) * 0.01 + 0.001
+        w2_scale = torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32) * 0.01 + 0.001
 
         # Routing
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -778,9 +712,7 @@ class FusedMoEINT8Benchmark(Benchmark):
         )
 
 
-def _vllm_fused_moe_int8_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _vllm_fused_moe_int8_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper to call vllm fused_experts_impl with INT8."""
     return vllm_fused_experts_impl(
         hidden_states.clone(),
@@ -797,9 +729,7 @@ def _vllm_fused_moe_int8_wrapper(
     )
 
 
-def _gems_fused_moe_int8_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _gems_fused_moe_int8_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper to call FlagGems fused_experts_impl with INT8."""
     return flag_gems.fused_experts_impl(
         hidden_states,
@@ -894,31 +824,14 @@ class FusedMoEINT8W8A16Benchmark(Benchmark):
                 )
                 * 50
             )
-            w2_int8[e] = to_int8(
-                torch.randn(
-                    hidden_size, intermediate_size, device=device, dtype=torch.float16
-                )
-                * 50
-            )
+            w2_int8[e] = to_int8(torch.randn(hidden_size, intermediate_size, device=device, dtype=torch.float16) * 50)
 
         # Per-channel scales [E, output_dim]
-        w1_scale = (
-            torch.rand(
-                num_experts, intermediate_size * 2, device=device, dtype=torch.float32
-            )
-            * 0.01
-            + 0.001
-        )
-        w2_scale = (
-            torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32)
-            * 0.01
-            + 0.001
-        )
+        w1_scale = torch.rand(num_experts, intermediate_size * 2, device=device, dtype=torch.float32) * 0.01 + 0.001
+        w2_scale = torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32) * 0.01 + 0.001
 
         # Routing
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -934,9 +847,7 @@ class FusedMoEINT8W8A16Benchmark(Benchmark):
         )
 
 
-def _vllm_fused_moe_int8_w8a16_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _vllm_fused_moe_int8_w8a16_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Baseline: dequantize INT8 weights to bf16, then run FlagGems bf16
     fused_moe.  Measures the overhead of the dequant + bf16 path.
 
@@ -955,9 +866,7 @@ def _vllm_fused_moe_int8_w8a16_wrapper(
     )
 
 
-def _gems_fused_moe_int8_w8a16_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _gems_fused_moe_int8_w8a16_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper to call FlagGems fused_experts_impl with INT8 W8A16."""
     return flag_gems.fused_experts_impl(
         hidden_states,
@@ -1062,23 +971,11 @@ class FusedMoEINT4W4A16Benchmark(Benchmark):
             )
 
         # Per-channel scales [E, output_dim]
-        w1_scale = (
-            torch.rand(
-                num_experts, intermediate_size * 2, device=device, dtype=torch.float32
-            )
-            * 0.01
-            + 0.001
-        )
-        w2_scale = (
-            torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32)
-            * 0.01
-            + 0.001
-        )
+        w1_scale = torch.rand(num_experts, intermediate_size * 2, device=device, dtype=torch.float32) * 0.01 + 0.001
+        w2_scale = torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32) * 0.01 + 0.001
 
         # Routing
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -1094,9 +991,7 @@ class FusedMoEINT4W4A16Benchmark(Benchmark):
         )
 
 
-def _vllm_fused_moe_int4_w4a16_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _vllm_fused_moe_int4_w4a16_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper baseline: dequantize INT4 weights to bf16, then run FlagGems
     bf16 fused_moe.  This measures the overhead of the dequant + bf16 path so
     we can compare it against the dedicated INT4 dispatch path.
@@ -1117,9 +1012,7 @@ def _vllm_fused_moe_int4_w4a16_wrapper(
     )
 
 
-def _gems_fused_moe_int4_w4a16_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
-):
+def _gems_fused_moe_int4_w4a16_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
     """Wrapper to call FlagGems fused_experts_impl with INT4 W4A16."""
     return flag_gems.fused_experts_impl(
         hidden_states,
@@ -1236,9 +1129,7 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
         w3_q, w3_scale, _ = quantize_weights_moe(w3_fp16, num_experts, quant_config)
 
         # Routing
-        gating = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -1300,11 +1191,7 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
         # w2_fp16: [E, H, I]
         intermediate_size = int(w2_fp16.shape[2])
         topk = int(topk)
-        per_dispatch_flops = (
-            2.0 * hidden_size * n_w1
-            + 2.0 * hidden_size * n_w1
-            + 2.0 * hidden_size * intermediate_size
-        )
+        per_dispatch_flops = 2.0 * hidden_size * n_w1 + 2.0 * hidden_size * n_w1 + 2.0 * hidden_size * intermediate_size
         total_flops = num_tokens * topk * per_dispatch_flops
         return total_flops
 
@@ -1440,11 +1327,7 @@ def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm():
 
 
 try:
-    from vllm.utils.deep_gemm import (
-        get_num_sms,
-        get_paged_mqa_logits_metadata,
-        has_deep_gemm,
-    )
+    from vllm.utils.deep_gemm import get_num_sms, get_paged_mqa_logits_metadata, has_deep_gemm
 
     DEEPGEMM_AVAILABLE = has_deep_gemm()
 except ImportError:
@@ -1490,9 +1373,7 @@ class GetPagedMqaLogitsMetadataBenchmark(Benchmark):
         )
 
         if next_n > 1:
-            context_lens = (
-                context_lens.unsqueeze(1).expand(batch_size, next_n).contiguous()
-            )
+            context_lens = context_lens.unsqueeze(1).expand(batch_size, next_n).contiguous()
 
         num_sms = get_num_sms()
 
@@ -1516,9 +1397,7 @@ def test_get_paged_mqa_logits_metadata_benchmark():
 
 # ---------------------- flashmla_sparse op test ----------------------
 try:
-    from vllm.v1.attention.ops.flashmla import (
-        flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd,
-    )
+    from vllm.v1.attention.ops.flashmla import flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd
 
     HAS_VLLM_FLASHMLA_SPARSE = True
 except ImportError:
@@ -1549,9 +1428,7 @@ _flashmla_sparse_counter = 0
 
 class FlashmlaSparseBenchmark(Benchmark):
     def __init__(self):
-        super().__init__(
-            "flash_mla_sparse_fwd", vllm_flash_mla_sparse_fwd, [torch.bfloat16]
-        )
+        super().__init__("flash_mla_sparse_fwd", vllm_flash_mla_sparse_fwd, [torch.bfloat16])
         self.set_gems(flag_gems.flash_mla_sparse_fwd)
 
     def set_shapes(self, shape_file_path=None):
@@ -1570,30 +1447,22 @@ class FlashmlaSparseBenchmark(Benchmark):
     def get_performance_test_params_flashmla():
         cases = (
             [
-                Flashmla_Sparse_Test_Param(
-                    4096, s_kv, 2048, h_q=128, d_qk=576, have_attn_sink=True
-                )
+                Flashmla_Sparse_Test_Param(4096, s_kv, 2048, h_q=128, d_qk=576, have_attn_sink=True)
                 for s_kv in [8192, 32768, 65536, 98304, 131072]
             ]
             + [
-                Flashmla_Sparse_Test_Param(
-                    4096, s_kv, 512, h_q=64, d_qk=512, have_attn_sink=True
-                )
+                Flashmla_Sparse_Test_Param(4096, s_kv, 512, h_q=64, d_qk=512, have_attn_sink=True)
                 for s_kv in [8192, 32768, 49152, 65536]
             ]
             + [
-                Flashmla_Sparse_Test_Param(
-                    4096, s_kv, 1024, h_q=128, d_qk=512, have_attn_sink=True
-                )
+                Flashmla_Sparse_Test_Param(4096, s_kv, 1024, h_q=128, d_qk=512, have_attn_sink=True)
                 for s_kv in [8192, 32768, 49152, 65536]
             ]
         )
         return cases
 
     @staticmethod
-    def _randperm_batch(
-        batch_size: int, perm_range: torch.Tensor, perm_size: int, paddings: List[int]
-    ) -> torch.Tensor:
+    def _randperm_batch(batch_size: int, perm_range: torch.Tensor, perm_size: int, paddings: List[int]) -> torch.Tensor:
         """
         Generate random permutations in batch
         The return tensor, denoted as `res`, has a shape of [batch_size, perm_size]. `0 <= res[i, :] < perm_range[i]`
@@ -1607,8 +1476,7 @@ class FlashmlaSparseBenchmark(Benchmark):
         perm_range_max = max(int(torch.max(perm_range).item()), perm_size)
         rand = torch.rand(batch_size, perm_range_max, dtype=torch.float32)
         rand[
-            torch.arange(0, perm_range_max).broadcast_to(batch_size, perm_range_max)
-            >= perm_range.view(batch_size, 1)
+            torch.arange(0, perm_range_max).broadcast_to(batch_size, perm_range_max) >= perm_range.view(batch_size, 1)
         ] = float("-inf")
         res = rand.topk(perm_size, dim=-1, sorted=True).indices.to(torch.int32)
         if len(paddings) == 1:
@@ -1640,14 +1508,8 @@ class FlashmlaSparseBenchmark(Benchmark):
         FlashmlaSparseBenchmark._init_seed(_flashmla_sparse_counter)
         _flashmla_sparse_counter = _flashmla_sparse_counter + 1
 
-        q = (
-            torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10
-            + (random.random() - 0.5) / 10
-        )
-        kv = (
-            torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10
-            + (random.random() - 0.5) / 10
-        )
+        q = torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10 + (random.random() - 0.5) / 10
+        kv = torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10 + (random.random() - 0.5) / 10
         q = q.clamp_(-10, 10)
         kv = kv.clamp_(-10, 10)
         invalid_indices_candidate = [
@@ -1668,9 +1530,9 @@ class FlashmlaSparseBenchmark(Benchmark):
         ).view(s_q, h_kv, topk)
         if is_all_indices_invalid:
             all_indices_invalid_mask = torch.randn(s_q, device="cpu") < -2
-            indices[
-                all_indices_invalid_mask[:, None, None].broadcast_to(indices.shape)
-            ] = random.choice(invalid_indices_candidate)
+            indices[all_indices_invalid_mask[:, None, None].broadcast_to(indices.shape)] = random.choice(
+                invalid_indices_candidate
+            )
         indices = indices.to(device)
 
         attn_sink = None
@@ -1682,9 +1544,7 @@ class FlashmlaSparseBenchmark(Benchmark):
 
         topk_length = None
         if have_topk_length:
-            topk_length = torch.randint(
-                0, max(topk + 1, 64), (s_q,), dtype=torch.int32, device=device
-            ).clamp_max(topk)
+            topk_length = torch.randint(0, max(topk + 1, 64), (s_q,), dtype=torch.int32, device=device).clamp_max(topk)
         yield (q, kv, indices, 0.5, param.d_v, attn_sink, topk_length)
 
 

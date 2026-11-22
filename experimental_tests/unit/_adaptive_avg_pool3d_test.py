@@ -7,12 +7,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.experimental_ops._adaptive_avg_pool3d import (
-    _adaptive_avg_pool3d as gems__adaptive_avg_pool3d,
-)
-from flag_gems.experimental_ops._adaptive_avg_pool3d import (
-    _adaptive_avg_pool3d_out as gems__adaptive_avg_pool3d_out,
-)
+from flag_gems.experimental_ops._adaptive_avg_pool3d import _adaptive_avg_pool3d as gems__adaptive_avg_pool3d
+from flag_gems.experimental_ops._adaptive_avg_pool3d import _adaptive_avg_pool3d_out as gems__adaptive_avg_pool3d_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -100,9 +96,7 @@ def test__adaptive_avg_pool3d_out(shape, output_size, dtype):
     out_shape = (shape[0], shape[1], output_size[0], output_size[1], output_size[2])
     # Keep reference buffer aligned with upcast dtype
     ref_out_buf = torch.empty(out_shape, dtype=ref_x.dtype, device=ref_x.device)
-    ref_out = torch.ops.aten._adaptive_avg_pool3d.out(
-        ref_x, output_size, out=ref_out_buf
-    )
+    ref_out = torch.ops.aten._adaptive_avg_pool3d.out(ref_x, output_size, out=ref_out_buf)
 
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():

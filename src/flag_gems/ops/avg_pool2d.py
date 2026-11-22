@@ -98,9 +98,7 @@ def avg_pool2d_forward_kernel(
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
 
             input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=0.0
-            )
+            current_val = tl.load(input_base_ptr + input_offset, mask=in_mask, other=0.0)
 
             sum_acc += tl.where(in_mask, current_val, 0.0)
             count_acc += in_mask.to(tl.int32)
@@ -117,14 +115,10 @@ def avg_pool2d_forward_kernel(
     out_base_ptr = output_ptr + pid_nc * out_h * out_w
     out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
+    output_block_ptr = out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
 
     out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
-    tl.store(
-        output_block_ptr, output_vals.to(output_ptr.type.element_ty), mask=out_mask
-    )
+    tl.store(output_block_ptr, output_vals.to(output_ptr.type.element_ty), mask=out_mask)
 
 
 @libentry()
@@ -208,13 +202,9 @@ def avg_pool2d_backward_kernel(
             out_mask = h_out_mask & w_out_mask
 
             if divisor_override != 0:
-                divisor = tl.full(
-                    (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
-                )
+                divisor = tl.full((BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
             elif COUNT_INCLUDE_PAD:
-                divisor = tl.full(
-                    (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
-                )
+                divisor = tl.full((BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32)
             else:
                 h_start = h_out * stride_h - padding_h
                 w_start = w_out * stride_w - padding_w
@@ -234,18 +224,14 @@ def avg_pool2d_backward_kernel(
 
             divisor = tl.where(divisor == 0, 1.0, divisor)
 
-            grad_out_ptr = (
-                grad_output_base_ptr + h_out * out_stride_h + w_out * out_stride_w
-            )
+            grad_out_ptr = grad_output_base_ptr + h_out * out_stride_h + w_out * out_stride_w
             grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
             grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
             # grad_to_add = grad_out_val.to(tl.float32) / divisor.to(tl.float32)
             # grad_acc += tl.where(out_mask, grad_to_add, 0.0)
 
     grad_input_store_ptr = (
-        grad_input_block_ptr
-        + h_in_offsets[:, None] * in_stride_h
-        + w_in_offsets[None, :] * in_stride_w
+        grad_input_block_ptr + h_in_offsets[:, None] * in_stride_h + w_in_offsets[None, :] * in_stride_w
     )
     in_write_mask = (h_in_offsets[:, None] < in_h) & (w_in_offsets[None, :] < in_w)
     tl.store(
@@ -301,23 +287,15 @@ def avg_pool2d(
 
     input = input.contiguous()
 
-    kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
-        kernel_size, stride, padding
-    )
+    kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(kernel_size, stride, padding)
     dilation_h, dilation_w = 1, 1
 
     in_n, in_c, in_h, in_w = input.shape
 
-    out_h = pool2d_output_size(
-        in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode
-    )
-    out_w = pool2d_output_size(
-        in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode
-    )
+    out_h = pool2d_output_size(in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode)
+    out_w = pool2d_output_size(in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode)
 
-    output = torch.empty(
-        (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
-    )
+    output = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype)
 
     if output.numel() == 0:
         return output
@@ -371,9 +349,7 @@ def avg_pool2d_backward(
 
     grad_output = grad_output.contiguous()
 
-    kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
-        kernel_size, stride, padding
-    )
+    kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(kernel_size, stride, padding)
     dilation_h, dilation_w = 1, 1
 
     in_n, in_c, in_h, in_w = input.shape

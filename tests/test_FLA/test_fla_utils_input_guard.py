@@ -106,9 +106,7 @@ class TestInputGuardContiguous:
 
     def test_multiple_non_contiguous_kwargs(self):
         _skip_if_no_device()
-        _capture(
-            x=_non_contiguous(_device()), y=_non_contiguous(_device(), shape=(2, 6))
-        )
+        _capture(x=_non_contiguous(_device()), y=_non_contiguous(_device(), shape=(2, 6)))
         assert _captured["kwargs"]["x"].is_contiguous()
         assert _captured["kwargs"]["y"].is_contiguous()
 

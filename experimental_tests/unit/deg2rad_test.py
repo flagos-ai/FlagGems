@@ -9,9 +9,7 @@ import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.deg2rad import deg2rad as gems_deg2rad  # noqa: E402
-from flag_gems.experimental_ops.deg2rad import (  # noqa: E402
-    deg2rad_out as gems_deg2rad_out,
-)
+from flag_gems.experimental_ops.deg2rad import deg2rad_out as gems_deg2rad_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

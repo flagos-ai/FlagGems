@@ -7,11 +7,7 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-from flag_gems.utils.shape_utils import (
-    MemOverlap,
-    has_internal_overlapping,
-    restride_dim,
-)
+from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping, restride_dim
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -42,9 +38,7 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
-        code.writeline(
-            'return triton.next_power_of_2(triton.cdiv(triton.cdiv(args["N"], 12), 4))'
-        )  # LOOP = 4
+        code.writeline('return triton.next_power_of_2(triton.cdiv(triton.cdiv(args["N"], 12), 4))')  # LOOP = 4
     code.newline()
     code.newline()
 
@@ -143,12 +137,8 @@ def generate_scatter_kernel(
                     code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
             #   2. Use offsets to scatter
-            code.writeline(
-                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
-            )
-            code.writeline(
-                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
-            )
+            code.writeline("cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)")
+            code.writeline("cur_index = tl.load(index + idx_offsets, mask=mask, other=0)")
             code.writeline("if INT32_OFFSET:")
             with code.indent():
                 code.writeline("cur_index = cur_index.to(tl.int32)")
@@ -159,14 +149,10 @@ def generate_scatter_kernel(
             code.newline()
             code.writeline("if IS_ADD: ")
             with code.indent():
-                code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
-                )
+                code.writeline("tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')")
             code.writeline("elif IS_MUL: ")
             with code.indent():
-                code.writeline(
-                    "tl.atomic_mul(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
-                )
+                code.writeline("tl.atomic_mul(out + inp_offsets, cur_src, mask=mask, sem='relaxed')")
 
             code.writeline("else: ")
             with code.indent():
@@ -325,9 +311,7 @@ def scatter(inp, dim, index, src, reduce=None):
     out = inp.clone()
 
     if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
+        assert inp.dtype not in (torch.bfloat16,), "Unsupported operation: reduce scatter bfloat tensors."
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -362,9 +346,7 @@ def scatter_(inp, dim, index, src, reduce=None):
     out = inp
 
     if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
+        assert inp.dtype not in (torch.bfloat16,), "Unsupported operation: reduce scatter bfloat tensors."
 
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes

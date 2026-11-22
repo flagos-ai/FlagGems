@@ -4,9 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def hardtanh_kernel(
-    x_ptr, out_ptr, n_elements, min_val, max_val, BLOCK_SIZE: tl.constexpr
-):
+def hardtanh_kernel(x_ptr, out_ptr, n_elements, min_val, max_val, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -23,9 +21,7 @@ def hardtanh_kernel(
     tl.store(out_ptr + offsets, y, mask=mask)
 
 
-def _launch_hardtanh(
-    input: torch.Tensor, output: torch.Tensor, min_val: float, max_val: float
-):
+def _launch_hardtanh(input: torch.Tensor, output: torch.Tensor, min_val: float, max_val: float):
     assert input.is_cuda and output.is_cuda, "Tensors must be on CUDA device"
     assert input.device == output.device, "Input and output must be on the same device"
     assert input.dtype == output.dtype, "Input and output must have the same dtype"

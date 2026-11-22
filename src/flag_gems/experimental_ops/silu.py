@@ -37,13 +37,9 @@ def _silu_impl(x: torch.Tensor, out: torch.Tensor = None):
         if not out.is_cuda:
             raise ValueError("Output tensor must be on CUDA device.")
         if out.shape != x.shape:
-            raise ValueError(
-                f"Output shape {out.shape} does not match input shape {x.shape}."
-            )
+            raise ValueError(f"Output shape {out.shape} does not match input shape {x.shape}.")
         if out.dtype != x.dtype:
-            raise TypeError(
-                f"Output dtype {out.dtype} does not match input dtype {x.dtype}."
-            )
+            raise TypeError(f"Output dtype {out.dtype} does not match input dtype {x.dtype}.")
 
     x_contig = x.contiguous()
     out_contig = out if out.is_contiguous() else torch.empty_like(x_contig)

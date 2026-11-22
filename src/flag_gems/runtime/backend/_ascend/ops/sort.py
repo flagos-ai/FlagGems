@@ -39,9 +39,7 @@ def sort_kernel(
         in_val = tl.load(in_ptr, mask=mask, other=mask_val).to(tl.int32)
     index_val = tl.arange(0, BLOCK_SIZE)
 
-    sorted_in_val, sorted_index_val = argsort(
-        in_val, index_val, 0, descending=DESCENDING
-    )
+    sorted_in_val, sorted_index_val = argsort(in_val, index_val, 0, descending=DESCENDING)
     tl.store(out_ptr, sorted_in_val, mask=mask)
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
 

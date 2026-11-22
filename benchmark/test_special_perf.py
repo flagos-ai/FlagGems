@@ -5,13 +5,7 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    BenchLevel,
-)
+from benchmark.attri_util import BOOL_DTYPES, COMPLEX_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from benchmark.performance_utils import (
     Benchmark,
     Config,
@@ -278,9 +272,7 @@ special_operations = [
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench_cls = TopKBenchmark if op_name == "topk" else GenericBenchmarkExcluse1D
-    bench = bench_cls(
-        input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
-    )
+    bench = bench_cls(input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op)
     bench.run()
 
 
@@ -294,9 +286,7 @@ def test_isin_perf():
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             # assume_unique set to True
             uniq_elements = torch.unique(generate_tensor_input(shape, dtype, device))
-            uniq_test_elements = torch.unique(
-                generate_tensor_input(shape, dtype, device)
-            )
+            uniq_test_elements = torch.unique(generate_tensor_input(shape, dtype, device))
             yield uniq_elements, uniq_test_elements, {"assume_unique": True}
 
     bench = GenericBenchmark2DOnly(
@@ -768,9 +758,7 @@ def test_contiguous():
         if dtype in FLOAT_DTYPES:
             inp = torch.randn(shape, dtype=dtype, device=device)
         else:
-            inp = torch.randint(
-                low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
-            ).to(device)
+            inp = torch.randint(low=-10000, high=10000, size=shape, dtype=dtype, device="cpu").to(device)
         inp = inp[::2]
         yield inp,
 
@@ -799,9 +787,7 @@ def test_rwkv_mm_sparsity():
         sparsity_levels = [0.9]
         for target_sparsity in sparsity_levels:
             k_sparse = torch.randn(n, dtype=dtype, device=device)
-            threshold = torch.quantile(
-                k_sparse.abs().to(torch.float32), target_sparsity
-            ).to(dtype)
+            threshold = torch.quantile(k_sparse.abs().to(torch.float32), target_sparsity).to(dtype)
             k_sparse = torch.relu(k_sparse - threshold)
             yield k_sparse, V_
 
@@ -843,12 +829,8 @@ def test_rwkv_ka_fusion():
 
     def torch_rwkv_ka(k, kk, a, ka, H, N):
         T, C = k.shape
-        assert (
-            C == H * N and kk.shape == (C,) and a.shape == (T, C) and ka.shape == (C,)
-        )
-        o_kk = torch.nn.functional.normalize(
-            (k * kk).view(T, H, N), dim=-1, p=2.0
-        ).view(T, H * N)
+        assert C == H * N and kk.shape == (C,) and a.shape == (T, C) and ka.shape == (C,)
+        o_kk = torch.nn.functional.normalize((k * kk).view(T, H, N), dim=-1, p=2.0).view(T, H * N)
         o_k = k * (1 + (a - 1) * ka)
         o_kka = o_kk * a
 
@@ -881,9 +863,7 @@ def test_moe_sum():
             requires_grad=False,
         )
 
-        output_tensor = torch.empty(
-            num_tokens, hidden_size, dtype=dtype, device=device, requires_grad=False
-        )
+        output_tensor = torch.empty(num_tokens, hidden_size, dtype=dtype, device=device, requires_grad=False)
         yield input_tensor, output_tensor
 
     def torch_op(input_tensor, output_tensor):
@@ -908,9 +888,7 @@ def test_moe_align_block_size_triton():
         num_experts = shape[0]
         block_size = shape[1]
         dtype = torch.int32
-        topk_ids = torch.randint(
-            0, num_experts, (shape[2], shape[3]), dtype=dtype, device=device
-        )
+        topk_ids = torch.randint(0, num_experts, (shape[2], shape[3]), dtype=dtype, device=device)
         max_num_tokens_padded = ((num_experts + WARP_SIZE - 1) // WARP_SIZE) * WARP_SIZE
 
         # padded_num_experts in vllm._custom_ops.moe_align_block_size
@@ -1013,9 +991,7 @@ def test_perf_replication_pad3d():
 def torch_per_token_group_quant_fp8_ref(x, group_size, scale_ue8m0):
     dtype = flag_gems.SUPPORTED_FP8_DTYPE
     eps = 1e-10
-    assert (
-        x.shape[-1] % group_size == 0
-    ), "the last dimension of `x` cannot be divisible by `group_size`"
+    assert x.shape[-1] % group_size == 0, "the last dimension of `x` cannot be divisible by `group_size`"
     assert x.is_contiguous(), "`x` is not contiguous"
 
     finfo = torch.finfo(dtype)
@@ -1272,9 +1248,7 @@ def test_unfold_backward():
         input_sizes, dim, size, step = config
         d = dim % len(input_sizes)
         num_windows = (input_sizes[d] - size) // step + 1
-        grad_shape = (
-            list(input_sizes[:d]) + [num_windows] + list(input_sizes[d + 1 :]) + [size]
-        )
+        grad_shape = list(input_sizes[:d]) + [num_windows] + list(input_sizes[d + 1 :]) + [size]
         grad_in = torch.randn(grad_shape, dtype=dtype, device=device)
         yield grad_in, list(input_sizes), dim, size, step
 
@@ -1358,9 +1332,7 @@ def test_assert_async():
 @pytest.mark.lift_fresh_copy
 def test_lift_fresh_copy():
     bench = GenericBenchmark(
-        input_fn=lambda shape, dtype, device: (
-            iter([(torch.randn(shape, dtype=dtype, device=device),)])
-        ),
+        input_fn=lambda shape, dtype, device: (iter([(torch.randn(shape, dtype=dtype, device=device),)])),
         op_name="lift_fresh_copy",
         torch_op=torch.ops.aten.lift_fresh_copy,
         dtypes=FLOAT_DTYPES,
@@ -1396,9 +1368,7 @@ def test_margin_ranking_loss():
     def margin_ranking_loss_input_fn(shape, dtype, device):
         inp1 = torch.randn(shape, dtype=dtype, device=device)
         inp2 = torch.randn(shape, dtype=dtype, device=device)
-        target = (
-            torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1
-        ).to(dtype)
+        target = (torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1).to(dtype)
         yield inp1, inp2, target, 0.5, 1
 
     bench = GenericBenchmark(

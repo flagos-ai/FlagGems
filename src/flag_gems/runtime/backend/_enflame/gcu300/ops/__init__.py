@@ -115,13 +115,7 @@ from .ones_like import ones_like
 from .outer import outer
 from .pad import pad
 from .polar import polar
-from .pow import (
-    pow_scalar,
-    pow_tensor_scalar,
-    pow_tensor_scalar_,
-    pow_tensor_tensor,
-    pow_tensor_tensor_,
-)
+from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_scalar_, pow_tensor_tensor, pow_tensor_tensor_
 from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
@@ -131,11 +125,7 @@ from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
 from .relu import relu, relu_
 from .repeat import repeat
-from .repeat_interleave import (
-    repeat_interleave_self_int,
-    repeat_interleave_self_tensor,
-    repeat_interleave_tensor,
-)
+from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_self_tensor, repeat_interleave_tensor
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .select_scatter import select_scatter

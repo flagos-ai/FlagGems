@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.huber_loss import (  # noqa: E402
-    huber_loss as gems_huber_loss,
-)
-from flag_gems.experimental_ops.huber_loss import (  # noqa: E402
-    huber_loss_out as gems_huber_loss_out,
-)
+from flag_gems.experimental_ops.huber_loss import huber_loss as gems_huber_loss  # noqa: E402
+from flag_gems.experimental_ops.huber_loss import huber_loss_out as gems_huber_loss_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -83,9 +79,7 @@ def test_huber_loss_out(shape, dtype, reduction, delta):
     ref_self = to_reference(self_tensor)
     ref_target = to_reference(target_tensor)
     ref_out = torch.empty(out_shape, dtype=dtype, device=ref_self.device)
-    torch.ops.aten.huber_loss.out(
-        ref_self, ref_target, reduction, float(delta), out=ref_out
-    )
+    torch.ops.aten.huber_loss.out(ref_self, ref_target, reduction, float(delta), out=ref_out)
 
     with flag_gems.use_gems():
         act_self = self_tensor.clone()

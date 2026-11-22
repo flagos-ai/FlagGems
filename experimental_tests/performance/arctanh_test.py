@@ -44,9 +44,7 @@ def to_reference(inp, upcast=False):
 def test_perf_aten_arctanh():
     # Define input generation logic matching the operator arguments
     def arctanh_input_fn(shape, dtype, device):
-        inp = (
-            torch.rand(shape, device=flag_gems.device, dtype=torch.float32) * 1.8 - 0.9
-        ).to(dtype)
+        inp = (torch.rand(shape, device=flag_gems.device, dtype=torch.float32) * 1.8 - 0.9).to(dtype)
         yield inp,
 
     # Initialize benchmark

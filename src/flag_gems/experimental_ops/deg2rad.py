@@ -44,9 +44,7 @@ def deg2rad(*args, **kwargs):
         raise AssertionError("deg2rad expects CUDA tensors")
 
     if x.is_complex():
-        raise NotImplementedError(
-            "Complex tensors are not supported in this Triton implementation"
-        )
+        raise NotImplementedError("Complex tensors are not supported in this Triton implementation")
 
     # Determine result dtype: keep floating dtype; promote integer/bool to float32
     if x.is_floating_point():
@@ -86,14 +84,10 @@ def deg2rad_out(*args, **kwargs):
         raise AssertionError("deg2rad_out expects CUDA tensors")
 
     if x.is_complex() or out.is_complex():
-        raise NotImplementedError(
-            "Complex tensors are not supported in this Triton implementation"
-        )
+        raise NotImplementedError("Complex tensors are not supported in this Triton implementation")
 
     if out.numel() != x.numel():
-        raise RuntimeError(
-            "deg2rad_out: 'out' must have the same number of elements as 'input'"
-        )
+        raise RuntimeError("deg2rad_out: 'out' must have the same number of elements as 'input'")
 
     if out.device != x.device:
         raise RuntimeError("deg2rad_out: 'out' must be on the same device as 'input'")

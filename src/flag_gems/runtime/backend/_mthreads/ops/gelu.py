@@ -9,9 +9,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
@@ -28,11 +26,7 @@ def gelu_none(x):
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_tanh(x):
-    output = (
-        0.5
-        * x
-        * (1 + fast_tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
-    )
+    output = 0.5 * x * (1 + fast_tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
     return output
 
 
@@ -42,11 +36,7 @@ def gelu_backward_none(x, dy):
     scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
     scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
     x_fp32 = x.to(tl.float32)
-    dydx = (
-        scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2))
-        + 0.5 * erf(scale1 * x_fp32)
-        + 0.5
-    )
+    dydx = scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2)) + 0.5 * erf(scale1 * x_fp32) + 0.5
     dx = dydx * dy
     return dx
 
@@ -57,9 +47,7 @@ def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)
     # 0.79788456 = math.sqrt(2 / math.pi)
     tanh_out = fast_tanh(0.79788456 * x * (1 + 0.044715 * pow(x_fp32, 2)))
-    dydx = 0.5 * x * (
-        (1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
-    ) + 0.5 * (1 + tanh_out)
+    dydx = 0.5 * x * ((1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))) + 0.5 * (1 + tanh_out)
     dx = dydx * dy
     return dx
 

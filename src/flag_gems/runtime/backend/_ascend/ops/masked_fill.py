@@ -45,18 +45,14 @@ def masked_fill_kernel(
 
         # 再在需要填充的位置覆盖写入 value
         value_to_write = tl.full([BLOCK_SIZE_SUB], value, dtype=input_vals.dtype)
-        overwrite_vals = tl.where(
-            fill_mask_vals, value_to_write, tl.load(out + offsets, mask=mask, other=0)
-        )
+        overwrite_vals = tl.where(fill_mask_vals, value_to_write, tl.load(out + offsets, mask=mask, other=0))
         tl.store(out + offsets, overwrite_vals, mask=mask)
 
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
-def masked_fill_kernel_self(
-    inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr
-):
+def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr):
     pid = tle.program_id(axis=0)
     base_offset = pid * BLOCK_SIZE
 
@@ -85,9 +81,7 @@ def masked_fill_kernel_self(
 def masked_fill(inp, mask, value):
     logger.debug("GEMS_ASCEND MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0)
-        or isinstance(value, int)
-        or isinstance(value, float)
+        (torch.is_tensor(value) and value.ndim == 0) or isinstance(value, int) or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
@@ -98,11 +92,7 @@ def masked_fill(inp, mask, value):
 
     if inp.ndim == 0:
         # inp is a single-value
-        return (
-            torch.tensor(value, dtype=inp.dtype, device=inp.device)
-            if mask.item()
-            else inp.clone()
-        )
+        return torch.tensor(value, dtype=inp.dtype, device=inp.device) if mask.item() else inp.clone()
 
     inp = inp.contiguous()
     mask = mask.contiguous()
@@ -120,9 +110,7 @@ def masked_fill(inp, mask, value):
 def masked_fill_(inp, mask, value):
     logger.debug("GEMS_ASCEND MASKED FILL_")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0)
-        or isinstance(value, int)
-        or isinstance(value, float)
+        (torch.is_tensor(value) and value.ndim == 0) or isinstance(value, int) or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar

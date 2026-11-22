@@ -49,15 +49,11 @@ def test_erfinv__benchmark_tensor(shape, dtype):
     act_in = x.clone()
 
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.erfinv_(ref_in), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.erfinv_(ref_in), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_erfinv_(act_in), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_erfinv_(act_in), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -72,9 +68,7 @@ def test_erfinv__benchmark_tensor(shape, dtype):
 def test_erfinv__noncontiguous_performance(dtype):
     quantiles = [0.5, 0.2, 0.8]
 
-    base = torch.empty((128, 128), device=flag_gems.device, dtype=dtype).uniform_(
-        -0.95, 0.95
-    )
+    base = torch.empty((128, 128), device=flag_gems.device, dtype=dtype).uniform_(-0.95, 0.95)
     base_ref = base.clone()
     base_act = base.clone()
 
@@ -82,15 +76,11 @@ def test_erfinv__noncontiguous_performance(dtype):
     act_in = base_act.t()[::2, ::2]
 
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.erfinv_(ref_in), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.erfinv_(ref_in), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_erfinv_(act_in), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_erfinv_(act_in), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

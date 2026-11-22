@@ -4,34 +4,26 @@ Accuracy tests for mHC (Manifold Constrained Hyper-Connection) operators.
 Tests both mhc_post and mhc_pre against PyTorch reference implementations,
 and optionally compares with TileLang implementations.
 """
+
 from itertools import product
 
 import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.mhc.hc_split_sinkhorn import (
-    hc_split_sinkhorn,
-    mhc_split_sinkhorn_torch_ref,
-)
+from flag_gems.fused.mhc.hc_split_sinkhorn import hc_split_sinkhorn, mhc_split_sinkhorn_torch_ref
 from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
 from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
 from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
 
 
-def generate_mhc_post_data(
-    n: int, h: int, hc_mult: int = 4, device: str = flag_gems.device
-):
+def generate_mhc_post_data(n: int, h: int, hc_mult: int = 4, device: str = flag_gems.device):
     torch.manual_seed(42)
     x = torch.randn((n, h), dtype=torch.bfloat16, device=device)
     residual = torch.randn((n, hc_mult, h), dtype=torch.bfloat16, device=device)
     post_layer_mix = torch.randn((n, hc_mult, 1), dtype=torch.float32, device=device)
-    comb_res_mix = torch.randn(
-        (n, hc_mult, hc_mult), dtype=torch.float32, device=device
-    )
-    return dict(
-        x=x, residual=residual, post_layer_mix=post_layer_mix, comb_res_mix=comb_res_mix
-    )
+    comb_res_mix = torch.randn((n, hc_mult, hc_mult), dtype=torch.float32, device=device)
+    return dict(x=x, residual=residual, post_layer_mix=post_layer_mix, comb_res_mix=comb_res_mix)
 
 
 MHC_POST_CONFIGS = list(
@@ -160,9 +152,7 @@ def test_mhc_pre_vs_ref(n, hidden_size, hc_mult):
     """Test Triton mhc_pre against PyTorch CPU reference."""
     data = generate_mhc_pre_data(n, hc_mult, hidden_size)
     post_triton, comb_triton, li_triton = mhc_pre(**data)
-    data_cpu = {
-        k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in data.items()
-    }
+    data_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
     post_ref, comb_ref, li_ref = mhc_pre_ref(**data_cpu)
 
     torch.testing.assert_close(post_triton.cpu(), post_ref, rtol=1e-2, atol=1e-2)

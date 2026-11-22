@@ -128,8 +128,7 @@ def weight_norm_except_dim_bwd_kernel(
         v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
         grad_value = tl.load(grad + v_offsets, mask=mask).to(tl.float32)
         v_grad_value = g_value * (
-            grad_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+            grad_value / (norm_value + eps) - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
         )
         tl.store(v_grad + v_offsets, v_grad_value, mask=mask)
 

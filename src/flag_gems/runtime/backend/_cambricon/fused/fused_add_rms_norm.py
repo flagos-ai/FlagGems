@@ -61,12 +61,8 @@ def fused_add_rms_norm_kernel(
             row_mask = m_offset < ub
             col_mask = cols < N_COLS
             mask = row_mask[:, None] & col_mask[None, :]
-            x = tl.load(mx_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(
-                tl.float32
-            )
-            r = tl.load(mr_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(
-                tl.float32
-            )
+            x = tl.load(mx_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(tl.float32)
+            r = tl.load(mr_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(tl.float32)
             xpr = x + r
             tl.store(mr_ptr[:, None] + cols[None, :], xpr, mask=mask)
             _mean += xpr * xpr
@@ -82,9 +78,7 @@ def fused_add_rms_norm_kernel(
             col_mask = cols < N_COLS
             mask = row_mask[:, None] & col_mask[None, :]
 
-            xpr = tl.load(mr_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(
-                tl.float32
-            )
+            xpr = tl.load(mr_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(tl.float32)
             w = tl.load(w_ptr + cols, mask=col_mask, other=0.0).to(tl.float32)
             y = xpr * rrms[:, None]
             y = y * w
@@ -113,7 +107,5 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     weight = weight.contiguous()
 
     with torch_device_fn.device(x.device):
-        fused_add_rms_norm_kernel[TOTAL_CORE_NUM,](
-            x, residual, weight, eps, x.stride(dim - 1), M, N
-        )
+        fused_add_rms_norm_kernel[TOTAL_CORE_NUM,](x, residual, weight, eps, x.stride(dim - 1), M, N)
     return x, residual

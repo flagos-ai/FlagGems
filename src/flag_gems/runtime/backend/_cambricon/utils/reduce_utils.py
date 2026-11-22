@@ -15,9 +15,7 @@ def cfggen_reduce_op2():
     block_size = [2048, 4096, 8192, 16384, 32768]
     num_stage = [1, 3]
     configs = [
-        triton.Config(
-            {"BLOCK_SIZE": m, "ITER_NUM": math.log2(m) + 1}, num_warps=1, num_stages=s
-        )
+        triton.Config({"BLOCK_SIZE": m, "ITER_NUM": math.log2(m) + 1}, num_warps=1, num_stages=s)
         for m in block_size
         for s in num_stage
     ]
@@ -70,9 +68,5 @@ def prune_reduce_config(configs, named_args, **kwargs):
             pruned_configs.append(config)
     # If M < 1024, append the default config.
     if len(pruned_configs) == 0:
-        pruned_configs.append(
-            triton.Config(
-                {"BLOCK_SIZE": next_power_of_two(M)}, num_warps=1, num_stages=1
-            )
-        )
+        pruned_configs.append(triton.Config({"BLOCK_SIZE": next_power_of_two(M)}, num_warps=1, num_stages=1))
     return pruned_configs

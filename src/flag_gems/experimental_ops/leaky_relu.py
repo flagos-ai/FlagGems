@@ -4,9 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _leaky_relu_kernel(
-    x_ptr, y_ptr, n_elements, negative_slope, BLOCK_SIZE: tl.constexpr
-):
+def _leaky_relu_kernel(x_ptr, y_ptr, n_elements, negative_slope, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -22,9 +20,7 @@ def _leaky_relu_kernel(
     tl.store(y_ptr + offsets, y, mask=mask)
 
 
-def _launch_leaky_relu_kernel(
-    x: torch.Tensor, out: torch.Tensor, negative_slope: float
-):
+def _launch_leaky_relu_kernel(x: torch.Tensor, out: torch.Tensor, negative_slope: float):
     if not x.is_cuda or not out.is_cuda:
         raise ValueError("Input and output tensors must be on CUDA device.")
     if x.numel() != out.numel():
@@ -50,9 +46,7 @@ def leaky_relu(input: torch.Tensor, negative_slope: float = 0.01):
     return _launch_leaky_relu_kernel(input, out, negative_slope)
 
 
-def leaky_relu_out(
-    input: torch.Tensor, negative_slope: float = 0.01, out: torch.Tensor = None
-):
+def leaky_relu_out(input: torch.Tensor, negative_slope: float = 0.01, out: torch.Tensor = None):
     """
     ATen: ('leaky_relu.out', <Autograd.disable: False>)
     """

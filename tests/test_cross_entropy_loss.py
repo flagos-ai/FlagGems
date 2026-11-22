@@ -28,9 +28,7 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def testcross_entropy_loss_indices(
-    shape, dtype, weight, ignore_index, reduction, label_smoothing
-):
+def testcross_entropy_loss_indices(shape, dtype, weight, ignore_index, reduction, label_smoothing):
     dim = 1
     up_limit = shape[dim] - 1
     target_shape = list(shape)

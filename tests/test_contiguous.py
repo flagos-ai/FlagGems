@@ -16,9 +16,7 @@ def test_accuracy_contiguous(shape, dtype):
     if dtype in utils.FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(
-            low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
+        inp = torch.randint(low=-10000, high=10000, size=shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
     inp = inp[::2]
     assert inp.is_contiguous() is False

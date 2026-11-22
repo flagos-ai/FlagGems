@@ -193,9 +193,7 @@ def write_atomic(
     path = Path(path_)
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = (
-        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
-    )
+    tmp_path = path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
     tmp_path.replace(path)

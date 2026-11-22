@@ -49,15 +49,11 @@ def test_log10__benchmark_tensor(shape, dtype):
     act_input = base.clone()
 
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.log10_(ref_input), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.log10_(ref_input), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_log10_(act_input), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_log10_(act_input), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -79,15 +75,11 @@ def test_log10__tensor_noncontiguous_performance(shape, dtype):
     act_input = base_t.clone()
 
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.log10_(ref_input), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.log10_(ref_input), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_log10_(act_input), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_log10_(act_input), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

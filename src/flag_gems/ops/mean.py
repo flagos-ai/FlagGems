@@ -23,9 +23,7 @@ def mean_kernel_1(
     BLOCK_SIZE: tl.constexpr,
 ):
     # accumulation dtype
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -44,9 +42,7 @@ def mean_kernel_1(
 @libentry()
 @triton.jit
 def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
-        mid.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(mid.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = mid.dtype.element_ty
@@ -93,9 +89,7 @@ def mean_dim_kernel_non_inner_vec(
 ):
     # Determine accumulation and load behavior
     input_dtype = input_ptr.dtype.element_ty
-    if tl.constexpr(input_dtype == tl.float16) or tl.constexpr(
-        input_dtype == tl.bfloat16
-    ):
+    if tl.constexpr(input_dtype == tl.float16) or tl.constexpr(input_dtype == tl.bfloat16):
         ACC_DTYPE = tl.float32
         # VEC_SIZE should be 4 or 8 for vectorization
     else:
@@ -107,11 +101,7 @@ def mean_dim_kernel_non_inner_vec(
 
     # Each thread handles VEC_SIZE consecutive elements
     k_base = pid_k * BLOCK_SIZE_K * VEC_SIZE
-    k_offsets = (
-        k_base
-        + tl.arange(0, BLOCK_SIZE_K)[:, None] * VEC_SIZE
-        + tl.arange(0, VEC_SIZE)[None, :]
-    )
+    k_offsets = k_base + tl.arange(0, BLOCK_SIZE_K)[:, None] * VEC_SIZE + tl.arange(0, VEC_SIZE)[None, :]
     # Shape: [BLOCK_SIZE_K, VEC_SIZE]
     k_mask = k_offsets < K
 
@@ -251,9 +241,7 @@ def mean_dim_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -302,9 +290,7 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         try:
             dim = list(dim)
         except TypeError:
-            raise TypeError(
-                f"dim must be an int, iterable of ints, or [], got {type(dim)}"
-            )
+            raise TypeError(f"dim must be an int, iterable of ints, or [], got {type(dim)}")
 
     dim = [d % inp.ndim for d in dim]
     # -------------------------------------------------

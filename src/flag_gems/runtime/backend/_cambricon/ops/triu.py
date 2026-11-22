@@ -119,11 +119,7 @@ def _check_batch_contiguous(tensor, allow_zero_stride=True):
 
     expected_stride = tensor.size(-1) * tensor.size(-2)
     for i in range(dims - 3, -1, -1):
-        if (
-            allow_zero_stride
-            and i == 0
-            and (tensor.stride(i) == 0 or tensor.size(i) == 1)
-        ):
+        if allow_zero_stride and i == 0 and (tensor.stride(i) == 0 or tensor.size(i) == 1):
             continue
 
         if tensor.stride(i) != expected_stride:
@@ -141,17 +137,13 @@ def triu(A, diagonal=0):
 
     can_use_directly, A_input = _check_batch_contiguous(A, allow_zero_stride=False)
 
-    out = torch.empty(
-        A.shape, dtype=A.dtype, device=A.device, memory_format=torch.contiguous_format
-    )
+    out = torch.empty(A.shape, dtype=A.dtype, device=A.device, memory_format=torch.contiguous_format)
 
     M, N = A_input.shape[-2:]
     use_int64_index = not can_use_int32_index(A_input)
     with torch_device_fn.device(A_input.device):
         if len(A_input.shape) == 2:
-            grid = lambda meta: (
-                min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),
-            )
+            grid = lambda meta: (min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),)
             # A large value for n_block_size can lead to insufficient MLU resources,
             # causing the compilation to fail. Therefore, a conservative upper limit of 8192
             # is currently set, but the actual maximum achievable value should be confirmed
@@ -176,9 +168,7 @@ def triu(A, diagonal=0):
                 triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
                 triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
             )
-            triu_batch_kernel[grid](
-                B, out, batch, M * N, N, diagonal, INT64_INDEX=use_int64_index
-            )
+            triu_batch_kernel[grid](B, out, batch, M * N, N, diagonal, INT64_INDEX=use_int64_index)
             out = out.view(A.shape)
     return out
 
@@ -193,18 +183,13 @@ def triu_(A, diagonal=0):
     can_use_directly, A_to_use = _check_batch_contiguous(A, allow_zero_stride=True)
 
     if not can_use_directly:
-        logger.debug(
-            "Input tensor does not satisfy contiguity requirements, "
-            "using temporary tensor for computation"
-        )
+        logger.debug("Input tensor does not satisfy contiguity requirements, " "using temporary tensor for computation")
 
         result_temp = torch.empty_like(A_to_use, memory_format=torch.contiguous_format)
         use_int64_index = not can_use_int32_index(A_to_use)
         with torch_device_fn.device(A.device):
             if len(A.shape) == 2:
-                grid = lambda meta: (
-                    min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),
-                )
+                grid = lambda meta: (min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),)
                 # A large value for n_block_size can lead to insufficient MLU resources,
                 # causing the compilation to fail. Therefore, a conservative upper limit of 8192
                 # is currently set, but the actual maximum achievable value should be confirmed
@@ -244,9 +229,7 @@ def triu_(A, diagonal=0):
         use_int64_index = not can_use_int32_index(A)
         with torch_device_fn.device(A.device):
             if len(A.shape) == 2:
-                grid = lambda meta: (
-                    min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),
-                )
+                grid = lambda meta: (min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),)
                 # A large value for n_block_size can lead to insufficient MLU resources,
                 # causing the compilation to fail. Therefore, a conservative upper limit of 8192
                 # is currently set, but the actual maximum achievable value should be confirmed
@@ -271,7 +254,5 @@ def triu_(A, diagonal=0):
                     triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
                     triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
                 )
-                triu_batch_kernel[grid](
-                    B, B, batch, M * N, N, diagonal, INT64_INDEX=use_int64_index
-                )
+                triu_batch_kernel[grid](B, B, batch, M * N, N, diagonal, INT64_INDEX=use_int64_index)
     return A

@@ -75,12 +75,8 @@ def _normalize_slice_params(size, start, end, step):
 
 
 def _slice_scatter_impl(input, src, out, dim=0, start=None, end=None, step=1):
-    assert (
-        input.is_cuda and src.is_cuda and out.is_cuda
-    ), "All tensors must be CUDA tensors"
-    assert (
-        input.is_contiguous() and src.is_contiguous() and out.is_contiguous()
-    ), "Tensors must be contiguous"
+    assert input.is_cuda and src.is_cuda and out.is_cuda, "All tensors must be CUDA tensors"
+    assert input.is_contiguous() and src.is_contiguous() and out.is_contiguous(), "Tensors must be contiguous"
     assert input.dtype == src.dtype == out.dtype, "All tensors must have the same dtype"
     assert input.shape == out.shape, "Output must have same shape as input"
 
@@ -122,9 +118,7 @@ def _slice_scatter_impl(input, src, out, dim=0, start=None, end=None, step=1):
 
     # 2) Scatter src into the sliced region
     if expected_src_numel > 0:
-        grid_scatter = lambda meta: (
-            triton.cdiv(expected_src_numel, meta["BLOCK_SIZE"]),
-        )
+        grid_scatter = lambda meta: (triton.cdiv(expected_src_numel, meta["BLOCK_SIZE"]),)
         _slice_scatter_kernel[grid_scatter](
             src,
             out,
@@ -143,14 +137,10 @@ def _slice_scatter_impl(input, src, out, dim=0, start=None, end=None, step=1):
 
 def slice_scatter(input, src, dim=0, start=None, end=None, step=1):
     out = torch.empty_like(input)
-    return _slice_scatter_impl(
-        input, src, out, dim=dim, start=start, end=end, step=step
-    )
+    return _slice_scatter_impl(input, src, out, dim=dim, start=start, end=end, step=step)
 
 
 def slice_scatter_out(input, src, dim=0, start=None, end=None, step=1, out=None):
     if out is None:
         out = torch.empty_like(input)
-    return _slice_scatter_impl(
-        input, src, out, dim=dim, start=start, end=end, step=step
-    )
+    return _slice_scatter_impl(input, src, out, dim=dim, start=start, end=end, step=step)

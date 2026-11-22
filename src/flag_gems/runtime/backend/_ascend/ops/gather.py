@@ -65,9 +65,7 @@ def gather_flat_fixed(inp: torch.Tensor, dim: int, index: torch.Tensor, out=None
     inp_strided = restride_dim(inp, dim, index.shape)
     if dim == -1:
         dim = inp_strided.dim() - 1
-    base_offset = compute_base_offset(index.shape, inp_strided.stride(), dim).to(
-        torch.int64
-    )
+    base_offset = compute_base_offset(index.shape, inp_strided.stride(), dim).to(torch.int64)
     base_offset = base_offset.npu()
     grid = lambda META: (triton.cdiv(N, META["BLOCK_SIZE"]),)
     _gather_flat_kernel_fixed[grid](
@@ -152,9 +150,7 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     is_last_dim = dim == inp.dim() - 1
 
     total_bytes = (
-        inp.size(-1) * inp.element_size()
-        + index.size(-1) * index.element_size()
-        + index.size(-1) * inp.element_size()
+        inp.size(-1) * inp.element_size() + index.size(-1) * index.element_size() + index.size(-1) * inp.element_size()
     )
 
     if is_last_dim and inp.dim() == 2 and total_bytes < UB_SIZE_BYTES:

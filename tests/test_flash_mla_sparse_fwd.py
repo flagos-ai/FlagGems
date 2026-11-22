@@ -10,16 +10,12 @@ import flag_gems
 random.seed(42)
 
 try:
-    from vllm.v1.attention.ops.flashmla import (
-        flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd,
-    )
+    from vllm.v1.attention.ops.flashmla import flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd
 
     HAS_VLLM_FLASHMLA_SPARSE = True
 except ImportError:
     HAS_VLLM_FLASHMLA_SPARSE = False
-    print(
-        "vLLM not installed, the native pytorch implementation of FlashMLA for comparison"
-    )
+    print("vLLM not installed, the native pytorch implementation of FlashMLA for comparison")
     torch.set_float32_matmul_precision("high")
 
 
@@ -48,9 +44,7 @@ _flashmla_sparse_counter = 0
 class FlashmlaSparseTestKit:
     # used by torch vertion flashmla_sparse
     @staticmethod
-    def _merge_two_lse(
-        lse0: torch.Tensor, lse1: Optional[torch.Tensor], s_q: int, h_q: int
-    ) -> torch.Tensor:
+    def _merge_two_lse(lse0: torch.Tensor, lse1: Optional[torch.Tensor], s_q: int, h_q: int) -> torch.Tensor:
         if lse1 is None:
             return lse0
 
@@ -85,18 +79,14 @@ class FlashmlaSparseTestKit:
         """
         indices = indices.clone().squeeze(1)
         if topk_length is not None:
-            mask = torch.arange(topk, device=topk_length.device).unsqueeze(
-                0
-            ).broadcast_to(s_q, topk) >= topk_length.unsqueeze(1)
+            mask = torch.arange(topk, device=topk_length.device).unsqueeze(0).broadcast_to(
+                s_q, topk
+            ) >= topk_length.unsqueeze(1)
             indices[mask] = -1
         invalid_mask = (indices < 0) | (indices >= s_kv)
         indices[invalid_mask] = 0
         q = q.float()
-        gathered_kv = (
-            kv.index_select(dim=0, index=indices.flatten())
-            .reshape(s_q, topk, d_qk)
-            .float()
-        )
+        gathered_kv = kv.index_select(dim=0, index=indices.flatten()).reshape(s_q, topk, d_qk).float()
         P = q @ gathered_kv.transpose(1, 2)
         P *= sm_scale
         P[invalid_mask.unsqueeze(1).broadcast_to(P.shape)] = float("-inf")
@@ -107,9 +97,7 @@ class FlashmlaSparseTestKit:
         lse_for_o = FlashmlaSparseTestKit._merge_two_lse(orig_lse, attn_sink, s_q, h_q)
         if not torch.is_inference_mode_enabled():
             lse_for_o = lse_for_o.clone()
-        lse_for_o[lse_for_o == float("-inf")] = float(
-            "+inf"
-        )  # So that corresponding O will be 0
+        lse_for_o[lse_for_o == float("-inf")] = float("+inf")  # So that corresponding O will be 0
         s_for_o = torch.exp(P - lse_for_o.unsqueeze(-1))
         out = s_for_o @ gathered_kv[..., :d_v]
 
@@ -151,12 +139,8 @@ class FlashmlaSparseTestKit:
 
         FlashmlaSparseTestKit._init_seed(42)
 
-        q = torch.randn((S, H, DQK), dtype=dtype, device=device).requires_grad_(
-            requires_grad
-        )
-        kv = torch.randn((SKV, HKV, DQK), dtype=dtype, device=device).requires_grad_(
-            requires_grad
-        )
+        q = torch.randn((S, H, DQK), dtype=dtype, device=device).requires_grad_(requires_grad)
+        kv = torch.randn((SKV, HKV, DQK), dtype=dtype, device=device).requires_grad_(requires_grad)
 
         indices = torch.full((S, HKV, topk), SKV, dtype=torch.int32, device=device)
         for t in range(S):
@@ -196,9 +180,7 @@ class FlashmlaSparseTestKit:
         return cases
 
     @staticmethod
-    def _randperm_batch(
-        batch_size: int, perm_range: torch.Tensor, perm_size: int, paddings: List[int]
-    ) -> torch.Tensor:
+    def _randperm_batch(batch_size: int, perm_range: torch.Tensor, perm_size: int, paddings: List[int]) -> torch.Tensor:
         """
         Generate random permutations in batch
         The return tensor, denoted as `res`, has a shape of [batch_size, perm_size]. `0 <= res[i, :] < perm_range[i]`
@@ -212,8 +194,7 @@ class FlashmlaSparseTestKit:
         perm_range_max = max(int(torch.max(perm_range).item()), perm_size)
         rand = torch.rand(batch_size, perm_range_max, dtype=torch.float32)
         rand[
-            torch.arange(0, perm_range_max).broadcast_to(batch_size, perm_range_max)
-            >= perm_range.view(batch_size, 1)
+            torch.arange(0, perm_range_max).broadcast_to(batch_size, perm_range_max) >= perm_range.view(batch_size, 1)
         ] = float("-inf")
         res = rand.topk(perm_size, dim=-1, sorted=True).indices.to(torch.int32)
         if len(paddings) == 1:
@@ -245,14 +226,8 @@ class FlashmlaSparseTestKit:
         FlashmlaSparseTestKit._init_seed(_flashmla_sparse_counter)
         _flashmla_sparse_counter = _flashmla_sparse_counter + 1
 
-        q = (
-            torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10
-            + (random.random() - 0.5) / 10
-        )
-        kv = (
-            torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10
-            + (random.random() - 0.5) / 10
-        )
+        q = torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10 + (random.random() - 0.5) / 10
+        kv = torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10 + (random.random() - 0.5) / 10
         q = q.clamp_(-10, 10)
         kv = kv.clamp_(-10, 10)
         invalid_indices_candidate = [
@@ -273,9 +248,9 @@ class FlashmlaSparseTestKit:
         ).view(s_q, h_kv, topk)
         if is_all_indices_invalid:
             all_indices_invalid_mask = torch.randn(s_q, device="cpu") < -2
-            indices[
-                all_indices_invalid_mask[:, None, None].broadcast_to(indices.shape)
-            ] = random.choice(invalid_indices_candidate)
+            indices[all_indices_invalid_mask[:, None, None].broadcast_to(indices.shape)] = random.choice(
+                invalid_indices_candidate
+            )
         indices = indices.to(device)
 
         attn_sink = None
@@ -287,9 +262,7 @@ class FlashmlaSparseTestKit:
 
         topk_length = None
         if have_topk_length:
-            topk_length = torch.randint(
-                0, max(topk + 1, 64), (s_q,), dtype=torch.int32, device=device
-            ).clamp_max(topk)
+            topk_length = torch.randint(0, max(topk + 1, 64), (s_q,), dtype=torch.int32, device=device).clamp_max(topk)
         return q, kv, indices, attn_sink, topk_length
 
 
@@ -314,9 +287,7 @@ def test_flashmla_sparse(param: Flashmla_Sparse_Test_Param):
     sm_scale = param.d_qk**-0.5
 
     if HAS_VLLM_FLASHMLA_SPARSE:
-        ref_output, ref_max_logbits, ref_lse = vllm_flash_mla_sparse_fwd(
-            q, kv, indices, sm_scale, param.d_v
-        )
+        ref_output, ref_max_logbits, ref_lse = vllm_flash_mla_sparse_fwd(q, kv, indices, sm_scale, param.d_v)
     else:
         (
             ref_output,
@@ -349,22 +320,16 @@ def test_flashmla_sparse(param: Flashmla_Sparse_Test_Param):
 
     # Accuracy comparison
     flag_gems.testing.assert_close(your_output, ref_output, param.dtype, atol=1e-2)
-    flag_gems.testing.assert_close(
-        your_max_logbits, ref_max_logbits, torch.float32, atol=1e-4
-    )
+    flag_gems.testing.assert_close(your_max_logbits, ref_max_logbits, torch.float32, atol=1e-4)
     flag_gems.testing.assert_close(your_lse, ref_lse, torch.float32, atol=1e-4)
 
 
 @pytest.mark.flash_mla_sparse_fwd
-@pytest.mark.parametrize(
-    "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
-)
+@pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla())
 def test_flash_mla_sparse_flashmla(param: Flashmla_Sparse_Test_Param):
     """Sparse MLA forward propagation test from FlashMLA"""
     # Create input
-    q, kv, indices, attn_sink, topk_length = FlashmlaSparseTestKit.make_input_flashmla(
-        param
-    )
+    q, kv, indices, attn_sink, topk_length = FlashmlaSparseTestKit.make_input_flashmla(param)
     sm_scale = 0.5
 
     if HAS_VLLM_FLASHMLA_SPARSE:
@@ -401,9 +366,5 @@ def test_flash_mla_sparse_flashmla(param: Flashmla_Sparse_Test_Param):
     torch.testing.assert_close(
         your_output, ref_output, atol=8e-4, rtol=3.01 / 128, equal_nan=False
     )  # cos_diff_tol=7e-6
-    torch.testing.assert_close(
-        your_max_logbits, ref_max_logbits, atol=1e-6, rtol=2.01 / 65536, equal_nan=False
-    )
-    torch.testing.assert_close(
-        your_lse, ref_lse, atol=1e-6, rtol=2.01 / 65536, equal_nan=False
-    )
+    torch.testing.assert_close(your_max_logbits, ref_max_logbits, atol=1e-6, rtol=2.01 / 65536, equal_nan=False)
+    torch.testing.assert_close(your_lse, ref_lse, atol=1e-6, rtol=2.01 / 65536, equal_nan=False)

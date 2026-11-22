@@ -36,9 +36,7 @@ def index_select_kernel(
 
             out_mask = rows_mask and (cols_offsets < index_len)
 
-            indices = tl.load(
-                index + cols_offsets, mask=(cols_offsets < index_len), other=0
-            )
+            indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
             inp_off = rows_offsets * N + indices[None, :]
             out_off = rows_offsets * index_len + cols_offsets[None, :]
 

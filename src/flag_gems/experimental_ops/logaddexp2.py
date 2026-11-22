@@ -104,9 +104,7 @@ def logaddexp2_out(x, y, out):
 
     # Shape and dtype checks
     if out.shape != bx.shape:
-        raise ValueError(
-            f"out tensor has shape {out.shape}, expected {bx.shape} from broadcast"
-        )
+        raise ValueError(f"out tensor has shape {out.shape}, expected {bx.shape} from broadcast")
     # We allow dtype differences; computation will write to out's dtype
 
     # Prepare contiguous buffers

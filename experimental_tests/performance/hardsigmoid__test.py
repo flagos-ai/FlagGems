@@ -8,9 +8,7 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.hardsigmoid_ import (  # noqa: E402
-    hardsigmoid_ as gems_hardsigmoid_,
-)
+from flag_gems.experimental_ops.hardsigmoid_ import hardsigmoid_ as gems_hardsigmoid_  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -59,9 +57,7 @@ def test_hardsigmoid__benchmark_tensor(shape, dtype):
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_hardsigmoid_(x), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_hardsigmoid_(x), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

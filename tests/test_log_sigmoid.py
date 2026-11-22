@@ -14,9 +14,7 @@ SPECIAL_VALUES = [float("-inf"), float("inf"), -300]
 def test_log_sigmoid(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if len(shape) == 1:
-        special_inputs = torch.tensor(
-            SPECIAL_VALUES, dtype=dtype, device=flag_gems.device
-        )
+        special_inputs = torch.tensor(SPECIAL_VALUES, dtype=dtype, device=flag_gems.device)
         inp = torch.cat((inp, special_inputs))
     ref_inp = utils.to_reference(inp, True)
 

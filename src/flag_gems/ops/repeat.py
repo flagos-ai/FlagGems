@@ -84,10 +84,8 @@ def generate_functional_repeat_wrapper(
         code.writeline("sizes_shape = list(sizes)")
         code.newline()
 
-        code.writeline(
-            "assert(sizes_rank >= in0_rank), \
-                'Number of dimensions of repeat dims can not be smaller than number of dimensions of tensor'"
-        )
+        code.writeline("assert(sizes_rank >= in0_rank), \
+                'Number of dimensions of repeat dims can not be smaller than number of dimensions of tensor'")
         code.writeline("if (sizes_rank > in0_rank): ")
         with code.indent():
             code.writeline("diff = sizes_rank - in0_rank")
@@ -107,19 +105,14 @@ def generate_functional_repeat_wrapper(
                 code.writeline("is_empty = True")
             code.writeline("out_shape.append(in0_shape[i] * sizes_shape[i])")
         code.newline()
-        code.writeline(
-            "out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)"
-        )
+        code.writeline("out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)")
 
         code.writeline("in0 = in0.reshape(in0_shape)")
         code.writeline("if not is_empty: ")
         with code.indent():
             # call destination_passing_func
             output_names: str = output_ref_for_wrapper()
-            call_str = (
-                f"{output_names} = {destination_passing_func_name}"
-                f"({parameter_ref_for_wrapper()})"
-            )
+            call_str = f"{output_names} = {destination_passing_func_name}" f"({parameter_ref_for_wrapper()})"
             code.writeline(call_str)
 
         return_str = "return out0"
@@ -152,9 +145,7 @@ def generate_destination_passing_repeat_wrapper(
             code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 4")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
-            code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
-            )
+            code.writeline("tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)")
         else:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
@@ -245,9 +236,7 @@ def generate_repeat_kernel(
             code.writeline(f"{task_space_args}, # task_space")
 
             task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
-            code.writeline(
-                f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
-            )
+            code.writeline(f"{task_space_args2}, # task_space2 used when input and output tensor has different shape")
 
             # number of tasks, used to compute mask
             code.writeline("num_tasks: int,")
@@ -297,9 +286,7 @@ def generate_repeat_kernel(
 
             # loads
             code.writeline("# loads")
-            ptrs_expr: str = " + ".join(
-                f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
-            )
+            ptrs_expr: str = " + ".join(f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank))
             ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
             load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
             code.writeline(load_stmt)
@@ -343,9 +330,7 @@ def generate_repeat_kernel(
 
                 # loads
                 code.writeline("# loads")
-                ptrs_expr: str = " + ".join(
-                    f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
-                )
+                ptrs_expr: str = " + ".join(f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank))
                 ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
                 load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
                 code.writeline(load_stmt)
@@ -358,9 +343,7 @@ def generate_repeat_kernel(
 
                 # stores
                 code.writeline("# stores")
-                ptrs_expr: str = " + ".join(
-                    f"i{j} * out0_stride{j}" for j in range(rank)
-                )
+                ptrs_expr: str = " + ".join(f"i{j} * out0_stride{j}" for j in range(rank))
                 ptrs_expr: str = f"out0_ptr + {ptrs_expr}"
                 store_stmt: str = f"tl.store({ptrs_expr}, out0, mask=mask)"
                 code.writeline(store_stmt)
@@ -377,12 +360,8 @@ def generate_code(
 ) -> IndentedBuffer:
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
-    code = generate_functional_repeat_wrapper(
-        wrapper_name, destination_passing_func_name, code
-    )
-    code = generate_destination_passing_repeat_wrapper(
-        rank, destination_passing_func_name, kernel_name, code
-    )
+    code = generate_functional_repeat_wrapper(wrapper_name, destination_passing_func_name, code)
+    code = generate_destination_passing_repeat_wrapper(rank, destination_passing_func_name, kernel_name, code)
     code = generate_repeat_kernel(rank, kernel_name, code)
     return code
 

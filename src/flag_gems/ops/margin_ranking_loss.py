@@ -11,9 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _margin_ranking_loss_kernel(
-    x1_ptr, x2_ptr, target_ptr, out_ptr, n_elements, margin, BLOCK_SIZE: tl.constexpr
-):
+def _margin_ranking_loss_kernel(x1_ptr, x2_ptr, target_ptr, out_ptr, n_elements, margin, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -36,9 +34,7 @@ def margin_ranking_loss(*args, **kwargs):
     logger.debug("GEMS MARGIN_RANKING_LOSS")
     # Parse inputs: (input1, input2, target, margin=0.0, reduction='mean')
     if len(args) < 3 and not all(k in kwargs for k in ("self", "other", "target")):
-        raise TypeError(
-            "margin_ranking_loss requires at least three positional arguments: input1, input2, target"
-        )
+        raise TypeError("margin_ranking_loss requires at least three positional arguments: input1, input2, target")
 
     # Positional extraction
     if len(args) >= 3:
@@ -105,9 +101,7 @@ def margin_ranking_loss(*args, **kwargs):
     # Launch Triton kernel
     BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    _margin_ranking_loss_kernel[grid](
-        x1_c, x2_c, tgt_c, out, n_elements, float(margin), BLOCK_SIZE=BLOCK_SIZE
-    )
+    _margin_ranking_loss_kernel[grid](x1_c, x2_c, tgt_c, out, n_elements, float(margin), BLOCK_SIZE=BLOCK_SIZE)
 
     # Apply reduction
     if reduction == "none":

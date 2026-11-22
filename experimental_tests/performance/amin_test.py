@@ -52,15 +52,11 @@ def test_amin_tensor_reduce_2d_performance(shape, dtype, dim, keepdim):
 
     if dim is None and not keepdim:
         # PyTorch reference implementation
-        ms_torch, _, _ = triton.testing.do_bench(
-            lambda: torch.ops.aten.amin(ref_x), rep=100, quantiles=quantiles
-        )
+        ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.amin(ref_x), rep=100, quantiles=quantiles)
 
         # Triton implementation
         with flag_gems.use_gems():
-            ms_triton, _, _ = triton.testing.do_bench(
-                lambda: gems_amin(x), rep=100, quantiles=quantiles
-            )
+            ms_triton, _, _ = triton.testing.do_bench(lambda: gems_amin(x), rep=100, quantiles=quantiles)
     else:
         use_dim = list(range(len(shape))) if dim is None else dim
         # PyTorch reference implementation
@@ -97,15 +93,11 @@ def test_amin_tensor_reduce_3d_performance(shape, dtype, dim, keepdim):
 
     if dim is None and not keepdim:
         # PyTorch reference implementation
-        ms_torch, _, _ = triton.testing.do_bench(
-            lambda: torch.ops.aten.amin(ref_x), rep=100, quantiles=quantiles
-        )
+        ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.amin(ref_x), rep=100, quantiles=quantiles)
 
         # Triton implementation
         with flag_gems.use_gems():
-            ms_triton, _, _ = triton.testing.do_bench(
-                lambda: gems_amin(x), rep=100, quantiles=quantiles
-            )
+            ms_triton, _, _ = triton.testing.do_bench(lambda: gems_amin(x), rep=100, quantiles=quantiles)
     else:
         use_dim = list(range(len(shape))) if dim is None else dim
         # PyTorch reference implementation
@@ -170,9 +162,7 @@ def test_amin_out_reduce_2d_performance(shape, dtype, dim, keepdim):
 
         # Triton implementation
         with flag_gems.use_gems():
-            ms_triton, _, _ = triton.testing.do_bench(
-                lambda: gems_amin_out(x, act_out_t), rep=100, quantiles=quantiles
-            )
+            ms_triton, _, _ = triton.testing.do_bench(lambda: gems_amin_out(x, act_out_t), rep=100, quantiles=quantiles)
     else:
         use_dim = list(range(len(shape))) if dim is None else dim
         out_shape = test_compute_out_shape(shape, use_dim, keepdim)
@@ -242,9 +232,7 @@ def test_amin_out_reduce_3d_performance(shape, dtype, dim, keepdim):
 
         # Triton implementation
         with flag_gems.use_gems():
-            ms_triton, _, _ = triton.testing.do_bench(
-                lambda: gems_amin_out(x, act_out_t), rep=100, quantiles=quantiles
-            )
+            ms_triton, _, _ = triton.testing.do_bench(lambda: gems_amin_out(x, act_out_t), rep=100, quantiles=quantiles)
     else:
         use_dim = list(range(len(shape))) if dim is None else dim
         out_shape = test_compute_out_shape(shape, use_dim, keepdim)

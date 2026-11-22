@@ -59,16 +59,8 @@ def conv2d(
 
     # 传入数值padding给supported判断
     if _ixdnn_supported(weight.shape, pad_tuple, dilation, bias):
-        if (
-            kh == 3
-            and kw == 3
-            and stride == (1, 1)
-            and dilation == (1, 1)
-            and groups == 1
-        ):
-            out = _implicit_gemm_conv3x3_kernel(
-                x, weight, bias, stride, pad_tuple, dilation, groups
-            )
+        if kh == 3 and kw == 3 and stride == (1, 1) and dilation == (1, 1) and groups == 1:
+            out = _implicit_gemm_conv3x3_kernel(x, weight, bias, stride, pad_tuple, dilation, groups)
         else:
             out = F.conv2d(x, weight, bias, stride, pad_tuple, dilation, groups)
     else:

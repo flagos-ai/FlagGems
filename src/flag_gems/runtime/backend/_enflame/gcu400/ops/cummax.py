@@ -18,9 +18,7 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def tl_cummax(input, index, axis=0):
-    return tl.associative_scan(
-        (input, index), axis, tle.maximum_with_index_tie_break_right
-    )
+    return tl.associative_scan((input, index), axis, tle.maximum_with_index_tie_break_right)
 
 
 @triton.jit
@@ -59,9 +57,7 @@ def add_base_max_kernel(
         last_part_max_index_via_max = tl.load(partial_max_indices_ptrs)
 
         final_vals = tl.maximum(out_vals, last_part_max_via_max)
-        final_indices = tl.where(
-            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
-        )
+        final_indices = tl.where(out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -87,10 +83,9 @@ def scan_part_max_kernel(
     min_value = get_dtype_min(inp.type.element_ty)
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -105,9 +100,7 @@ def scan_part_max_kernel(
 
     if tl.constexpr(NEED_PARTIAL):
         # tl.max do not support max_indices_tie_break_right
-        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
-            inp_vals, in_indices_vals, axis=0
-        )
+        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(inp_vals, in_indices_vals, axis=0)
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -132,9 +125,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False
     need_partial = True if part_num >= 2 else False
     if need_partial:
         partial_max = torch.empty(part_num, dtype=dtype, device=inp.device)
-        partial_max_indices = torch.empty(
-            part_num, dtype=torch.int64, device=inp.device
-        )
+        partial_max_indices = torch.empty(part_num, dtype=torch.int64, device=inp.device)
     else:
         partial_max = None
         partial_max_indices = None
@@ -164,9 +155,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False
             use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
-            add_base_max_kernel[grid](
-                out, out_indices, partial_max, partial_max_indices, n_ele, BLOCK_SIZE
-            )
+            add_base_max_kernel[grid](out, out_indices, partial_max, partial_max_indices, n_ele, BLOCK_SIZE)
 
 
 @libentry()
@@ -201,10 +190,9 @@ def scan_part_max_abc_kernel(
     inp_ptrs = inp + offset
     min_value = get_dtype_min(inp.type.element_ty)
     inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -219,9 +207,7 @@ def scan_part_max_abc_kernel(
 
     if tl.constexpr(NEED_PARTIAL):
         # tl.max do not support max_indices_tie_break_right
-        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
-            inp_vals, in_indices_vals, axis=0
-        )
+        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(inp_vals, in_indices_vals, axis=0)
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -275,9 +261,7 @@ def add_base_max_abc_kernel(
         last_part_max_index_via_max = tl.load(partial_max_index_ptrs)
 
         final_vals = tl.maximum(out_vals, last_part_max_via_max)
-        final_indices = tl.where(
-            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
-        )
+        final_indices = tl.where(out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -291,9 +275,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     need_partial = True if part_num >= 2 else False
     if need_partial:
         partial_max = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
-        partial_max_indices = torch.empty(
-            A, part_num, C, dtype=torch.int64, device=inp.device
-        )
+        partial_max_indices = torch.empty(A, part_num, C, dtype=torch.int64, device=inp.device)
     else:
         partial_max = None
         partial_max_indices = None
@@ -370,10 +352,9 @@ def scan_part_max_abc_loop_kernel(
         offset = ac_offset + b_idx * C
 
         inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
-        if (
-            tl.constexpr(inp_vals.dtype.is_int64())
-            or tl.constexpr(inp_vals.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+            inp_vals.dtype.is_fp64()
+        ):
             vals = inp_vals
         elif tl.constexpr(inp_vals.dtype.is_int()):
             vals = inp_vals.to(tl.int32)
@@ -389,9 +370,7 @@ def scan_part_max_abc_loop_kernel(
         prev_max_val_idx_b = tl.broadcast_to(prev_max_val_idx, (BLOCK_SIZE,))
 
         # update result from prev val and idx
-        cummax_indices = tl.where(
-            result >= prev_max_val_b, cummax_indices, prev_max_val_idx_b
-        )
+        cummax_indices = tl.where(result >= prev_max_val_b, cummax_indices, prev_max_val_idx_b)
         result = tl.maximum(result, prev_max_val_b)
 
         # update global max val and idx

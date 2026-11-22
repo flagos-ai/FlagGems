@@ -47,9 +47,7 @@ def test_perf_aten_expand():
         # Generate input tensor and output size
         input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         # Create output size based on the input shape
-        out_size = tuple(
-            s if s != -1 else input_tensor.size(i) for i, s in enumerate(shape)
-        )
+        out_size = tuple(s if s != -1 else input_tensor.size(i) for i, s in enumerate(shape))
         yield input_tensor, out_size
 
     # Initialize benchmark

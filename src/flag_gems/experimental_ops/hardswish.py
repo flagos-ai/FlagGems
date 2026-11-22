@@ -41,9 +41,7 @@ def _parse_input_tensor(*args, **kwargs) -> torch.Tensor:
         return kwargs["self"]
     if "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
         return kwargs["input"]
-    raise ValueError(
-        "Expected input tensor as the first positional argument or as 'self'/'input' keyword argument."
-    )
+    raise ValueError("Expected input tensor as the first positional argument or as 'self'/'input' keyword argument.")
 
 
 def _parse_out_tensor(*args, **kwargs) -> torch.Tensor:
@@ -51,9 +49,7 @@ def _parse_out_tensor(*args, **kwargs) -> torch.Tensor:
         return args[1]
     if "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
         return kwargs["out"]
-    raise ValueError(
-        "Expected 'out' tensor as the second positional argument or as 'out' keyword argument."
-    )
+    raise ValueError("Expected 'out' tensor as the second positional argument or as 'out' keyword argument.")
 
 
 def _ensure_cuda_tensor(t: torch.Tensor, name: str):

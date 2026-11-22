@@ -103,9 +103,7 @@ def max_kernel_dim(
         rindex = roffset + rbase
         rmask = rindex < N
         r1 = rindex
-        inp = tl.load(
-            in_ptr + (r1 + (N * xindex)), rmask & xmask, other=float("-inf")
-        ).to(tl.float32)
+        inp = tl.load(in_ptr + (r1 + (N * xindex)), rmask & xmask, other=float("-inf")).to(tl.float32)
         inpb = tl.broadcast_to(inp, [BLOCK_M, BLOCK_N])
         _max = tl.maximum(_max, inpb)
     tmp2 = tl.max(_max, axis=1, return_indices=False)[:, None]
@@ -159,9 +157,7 @@ def any(inp):
         out = torch.empty([], dtype=torch.uint8, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            max_kernel_1[(mid_size, 1)](
-                inp_uint8, mid, n_elements, block_size, buffer_size_limit=2048
-            )
+            max_kernel_1[(mid_size, 1)](inp_uint8, mid, n_elements, block_size, buffer_size_limit=2048)
             if mid_size == 1:
                 return mid.view(torch.bool).reshape([])
 
@@ -172,9 +168,7 @@ def any(inp):
         out = torch.empty([], dtype=torch.bool, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            any_kernel_1[(mid_size, 1)](
-                inp, mid, n_elements, block_size, buffer_size_limit=2048
-            )
+            any_kernel_1[(mid_size, 1)](inp, mid, n_elements, block_size, buffer_size_limit=2048)
             if mid_size == 1:
                 return mid.reshape([])
             any_kernel_2[(1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)

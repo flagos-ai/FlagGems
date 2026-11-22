@@ -3,13 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    POINTWISE_SHAPES,
-    SCALARS,
-    gems_assert_equal,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES, POINTWISE_SHAPES, SCALARS, gems_assert_equal, to_reference
 
 
 @pytest.mark.clip

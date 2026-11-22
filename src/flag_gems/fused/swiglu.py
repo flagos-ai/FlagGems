@@ -4,9 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def swiglu_fwd_kernel(
-    x_ptr, out_ptr, rows, D, BLOCK_ROW: tl.constexpr, BLOCK_COL: tl.constexpr
-):
+def swiglu_fwd_kernel(x_ptr, out_ptr, rows, D, BLOCK_ROW: tl.constexpr, BLOCK_COL: tl.constexpr):
     pid_row = tl.program_id(0)
     pid_col = tl.program_id(1)
 
@@ -35,9 +33,7 @@ def swiglu_fwd_kernel(
 
 
 @triton.jit
-def swiglu_bwd_kernel(
-    dout_ptr, x_ptr, dx_ptr, rows, D, BLOCK_ROW: tl.constexpr, BLOCK_COL: tl.constexpr
-):
+def swiglu_bwd_kernel(dout_ptr, x_ptr, dx_ptr, rows, D, BLOCK_ROW: tl.constexpr, BLOCK_COL: tl.constexpr):
     pid_row = tl.program_id(0)
     pid_col = tl.program_id(1)
 

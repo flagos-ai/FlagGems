@@ -77,9 +77,7 @@ def _get_iinfo_val(
 
 
 @triton.jit
-def get_topk_bubble_res(
-    buffer, buffer_ind, k, axis, mask_val, DESCENDING, BLOCK_M, BLOCK_N
-):
+def get_topk_bubble_res(buffer, buffer_ind, k, axis, mask_val, DESCENDING, BLOCK_M, BLOCK_N):
     kep_buffer_n = buffer
     topk_buffer_index_n = buffer_ind
     ret = tl.empty([BLOCK_M, k], dtype=buffer.dtype)
@@ -194,12 +192,8 @@ def topk_bubble_kernel(
         m_offset = m_offset_val[:, None]
         m_offset_mask = m_offset < M
 
-        topk_buffer_n = tl.full(
-            [TILE_M, TILE_N_NUM * k], value=mask_val, dtype=inp_ptr.dtype.element_ty
-        )
-        topk_buffer_index_n = tl.full(
-            [TILE_M, TILE_N_NUM * k], value=0, dtype=out_index_ptr.dtype.element_ty
-        )
+        topk_buffer_n = tl.full([TILE_M, TILE_N_NUM * k], value=mask_val, dtype=inp_ptr.dtype.element_ty)
+        topk_buffer_index_n = tl.full([TILE_M, TILE_N_NUM * k], value=0, dtype=out_index_ptr.dtype.element_ty)
         for n_block_ind in tl.range(0, TILE_N_NUM):
             n_st = n_block_ind * TILE_N
             n_offset = n_st + tl.arange(0, TILE_N)[None, :]
@@ -351,9 +345,7 @@ if HAS_TLE:
 
             selected_u = selected_scalar.to(x_utype)
             desired = desired | (selected_u << digit_pos)
-            desired_mask = desired_mask | (
-                tl.full((), RADIX_MASK, dtype=x_utype) << digit_pos
-            )
+            desired_mask = desired_mask | (tl.full((), RADIX_MASK, dtype=x_utype) << digit_pos)
             k_to_find = k_to_find - counts_gt_scalar
 
         thr_key = desired
@@ -382,9 +374,7 @@ if HAS_TLE:
             nv_mma_shared_layout=False,
         )
         tl.store(tle_gpu.gpu.local_ptr(smem_write_count, (0,)), 0)
-        write_count_ptrs = tle_gpu.gpu.local_ptr(
-            smem_write_count, (tl.zeros([BLOCK_N], dtype=tl.int32),)
-        )
+        write_count_ptrs = tle_gpu.gpu.local_ptr(smem_write_count, (tl.zeros([BLOCK_N], dtype=tl.int32),))
 
         for t in tl.range(0, n_tiles):
             offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -396,9 +386,7 @@ if HAS_TLE:
             idx_key = (n_cols - offs_n).to(x_ultype)
             packed = (x_key.to(x_ultype) << 16) | idx_key
             take_gt = mask_n & (x_key > thr_key)
-            pos = tl.atomic_add(
-                write_count_ptrs, one, mask=take_gt, sem="relaxed", scope="cta"
-            )
+            pos = tl.atomic_add(write_count_ptrs, one, mask=take_gt, sem="relaxed", scope="cta")
             write_mask = take_gt & (pos < K_PAD)
             dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
             tl.store(dst_ptrs, packed, mask=write_mask)
@@ -413,9 +401,7 @@ if HAS_TLE:
             idx_key = (n_cols - offs_n).to(x_ultype)
             packed = (x_key.to(x_ultype) << 16) | idx_key
             take_eq = mask_n & (x_key == thr_key)
-            pos = tl.atomic_add(
-                write_count_ptrs, one, mask=take_eq, sem="relaxed", scope="cta"
-            )
+            pos = tl.atomic_add(write_count_ptrs, one, mask=take_eq, sem="relaxed", scope="cta")
             write_mask = take_eq & (pos < K_PAD)
             dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
             tl.store(dst_ptrs, packed, mask=write_mask)
@@ -531,12 +517,8 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
         chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
-        stage1_out = torch.empty(
-            batch_size * chunk_num * k, device=x.device, dtype=x.dtype
-        )
-        stage1_out_idx = torch.empty(
-            batch_size * chunk_num * k, device=x.device, dtype=torch.int64
-        )
+        stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
+        stage1_out_idx = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=torch.int64)
 
         stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)

@@ -33,9 +33,7 @@ def rms_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
-        in_ptr.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(in_ptr.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = in_ptr.dtype.element_ty
@@ -72,9 +70,7 @@ def rms_norm_loop_kernel(
     eps,
     TILE_N: tl.constexpr,
 ):
-    if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
-        in_ptr.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(in_ptr.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = in_ptr.dtype.element_ty
@@ -267,18 +263,14 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     dx = torch.empty_like(x)
 
     with torch_device_fn.device(x.device):
-        rms_norm_grad_dx_kernel[M,](
-            x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        rms_norm_grad_dx_kernel[M,](x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
 
     ROW_BLOCK_SIZE = 16
     COL_BLOCK_SIZE = 256
     row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
     col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
 
-    partial_buffer = torch.empty(
-        (row_block_num, N), dtype=torch.float32, device=x.device
-    )
+    partial_buffer = torch.empty((row_block_num, N), dtype=torch.float32, device=x.device)
 
     with torch_device_fn.device(x.device):
         rms_norm_grad_dw_kernel[row_block_num, col_block_num](
@@ -295,11 +287,7 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
             ROW_BLOCK_SIZE,
             COL_BLOCK_SIZE,
         )
-        dw = (
-            torch.sum(partial_buffer, dim=0, dtype=torch.float32)
-            .to(x.dtype)
-            .reshape(-1)
-        )
+        dw = torch.sum(partial_buffer, dim=0, dtype=torch.float32).to(x.dtype).reshape(-1)
 
     return dx, dw
 

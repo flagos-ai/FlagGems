@@ -50,9 +50,7 @@ def zero(*args, **kwargs):
     elif "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
         target = kwargs["out"]
     else:
-        raise ValueError(
-            "zero expects a Tensor as the first argument or in kwargs as 'self', 'input', or 'out'"
-        )
+        raise ValueError("zero expects a Tensor as the first argument or in kwargs as 'self', 'input', or 'out'")
     return _launch_zero_kernel(target)
 
 
@@ -65,7 +63,5 @@ def zero_out(*args, **kwargs):
     elif len(args) >= 1 and isinstance(args[0], torch.Tensor):
         out = args[0]
     else:
-        raise ValueError(
-            "zero_out expects an output Tensor as the first positional argument or 'out' kwarg"
-        )
+        raise ValueError("zero_out expects an output Tensor as the first positional argument or 'out' kwarg")
     return _launch_zero_kernel(out)

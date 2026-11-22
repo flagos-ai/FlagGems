@@ -122,9 +122,5 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
     if not wb_none:
-        utils.gems_assert_close(
-            res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0]
-        )
-        utils.gems_assert_close(
-            res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0]
-        )
+        utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0])
+        utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])

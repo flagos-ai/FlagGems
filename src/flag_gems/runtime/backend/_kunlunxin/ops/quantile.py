@@ -74,12 +74,8 @@ def quantile_kernel(
     q_lower = tl.floor(q_block).to(tl.int32)
     q_upper = tl.ceil(q_block).to(tl.int32)
 
-    inp_lower = tl.load(
-        inp + offsets_N[:, None] * M + q_lower[None, :], mask_N[:, None], 0.0
-    )
-    inp_upper = tl.load(
-        inp + offsets_N[:, None] * M + q_upper[None, :], mask_N[:, None], 0.0
-    )
+    inp_lower = tl.load(inp + offsets_N[:, None] * M + q_lower[None, :], mask_N[:, None], 0.0)
+    inp_upper = tl.load(inp + offsets_N[:, None] * M + q_upper[None, :], mask_N[:, None], 0.0)
 
     if interpolation == "linear":
         q_frac = q_block - q_lower
@@ -100,9 +96,7 @@ def quantile_kernel(
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask_out)
 
 
-def quantile(
-    inp, q, dim=None, keepdim=False, interpolation="linear", out=None
-) -> Tensor:
+def quantile(inp, q, dim=None, keepdim=False, interpolation="linear", out=None) -> Tensor:
     logger.debug("GEMS QUANTILE DIM")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
@@ -142,9 +136,7 @@ def quantile(
     with torch_device_fn.device(inp.device):
         quantile_kernel[grid](inp, q, output, N, M, Q, interpolation=interpolation)
 
-    output = output.permute(
-        (-1,) + tuple(range(0, inp.ndim - 1))
-    )  # Same as torch.quantile()
+    output = output.permute((-1,) + tuple(range(0, inp.ndim - 1)))  # Same as torch.quantile()
     if keepdim:
         output = output.unsqueeze(dim + 1)
     if Q == 1:

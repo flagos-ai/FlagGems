@@ -10,9 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 def _flatten_dim(shape: Sequence[int], dim: int):
@@ -88,9 +86,7 @@ def any_kernel_dim_strided(
         col_mask = cols < N
         active = acc == 0
         mask = row_mask[:, None] & col_mask[None, :] & active[:, None]
-        vals = tl.load(
-            base_ptr[:, None] + cols[None, :] * STRIDE_REDUCE, mask=mask, other=0.0
-        )
+        vals = tl.load(base_ptr[:, None] + cols[None, :] * STRIDE_REDUCE, mask=mask, other=0.0)
         block_any = tl.max(vals != 0, axis=1).to(tl.int1)
         acc = acc | block_any
     tl.store(out + rows, acc, mask=row_mask)
@@ -162,9 +158,7 @@ def any(inp):
     return out
 
 
-def triton_any_dim_strided(
-    inp: torch.Tensor, dim: int, keepdim: bool = False
-) -> torch.Tensor:
+def triton_any_dim_strided(inp: torch.Tensor, dim: int, keepdim: bool = False) -> torch.Tensor:
     dim = dim % inp.ndim
     shape = list(inp.shape)
     dim, n, inner, outer = _flatten_dim(shape, dim)

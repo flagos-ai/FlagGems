@@ -12,9 +12,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, should_enable_sqmma
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @libentry()
@@ -61,9 +59,7 @@ def bmm_kernel(
 
         group_id = pid // num_CTA_per_group
         inner_group_id = pid % num_CTA_per_group
-        GROUP_SIZE = tl.where(
-            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
-        )
+        GROUP_SIZE = tl.where((group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M)
         pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
         pid_n = inner_group_id // GROUP_SIZE
 
@@ -189,22 +185,14 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def bmm_sqmma(
-    A, B, elem_type, batch, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
-):
+def bmm_sqmma(A, B, elem_type, batch, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages):
     device = "musa"
     ab_type = elem_type
     c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
     C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
-    desc_a = create_tma_device_descriptor(
-        A.reshape(batch * M, K), BLOCK_M, BLOCK_K, device
-    )
-    desc_b = create_tma_device_descriptor(
-        B.reshape(batch * K, N), BLOCK_K, BLOCK_N, device
-    )
-    desc_c = create_tma_device_descriptor(
-        C.reshape(batch * M, N), BLOCK_M, BLOCK_N, device
-    )
+    desc_a = create_tma_device_descriptor(A.reshape(batch * M, K), BLOCK_M, BLOCK_K, device)
+    desc_b = create_tma_device_descriptor(B.reshape(batch * K, N), BLOCK_K, BLOCK_N, device)
+    desc_c = create_tma_device_descriptor(C.reshape(batch * M, N), BLOCK_M, BLOCK_N, device)
     bmm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), batch, 1)](
         desc_a,
         desc_b,

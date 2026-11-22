@@ -9,9 +9,7 @@ import triton
 
 import flag_gems
 from flag_gems.experimental_ops.pixel_shuffle import pixel_shuffle as gems_pixel_shuffle
-from flag_gems.experimental_ops.pixel_shuffle import (
-    pixel_shuffle_out as gems_pixel_shuffle_out,
-)
+from flag_gems.experimental_ops.pixel_shuffle import pixel_shuffle_out as gems_pixel_shuffle_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -67,9 +65,7 @@ def test_pixel_shuffle_benchmark(shape_r, dtype):
 
     # FlagGems implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_pixel_shuffle(x, r), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_pixel_shuffle(x, r), rep=100, quantiles=quantiles)
 
     speedup = ms_torch / ms_triton
     print(f"pixel_shuffle {shape} r={r} {dtype}:")

@@ -5,10 +5,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
@@ -65,9 +62,7 @@ def bernoulli_(self, p=0.5, *, generator=None):
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     with torch_device_fn.device(self.device):
         bernoulli_kernel[grid_fn](self, N, p, philox_seed, philox_offset)
     return self

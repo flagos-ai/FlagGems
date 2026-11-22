@@ -33,9 +33,7 @@ def _scaled_dot_product_attention(query, key, value, h_q, h_kv, is_causal=False)
         s_q = query.shape[-2]
         s_k = key.shape[-2]
         attn_bias = torch.zeros(s_q, s_k, dtype=query.dtype, device=query.device)
-        temp_mask = torch.ones(s_q, s_k, dtype=torch.bool, device=query.device).tril(
-            diagonal=s_k - s_q
-        )
+        temp_mask = torch.ones(s_q, s_k, dtype=torch.bool, device=query.device).tril(diagonal=s_k - s_q)
         attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
         attn_bias.to(query.dtype)
         attn_weight += attn_bias
@@ -97,19 +95,15 @@ def test_flash_mla(monkeypatch, seqlen, dtype):
     dv = 512
     causal = True
     block_size = 64
-    cache_seqlens = torch.tensor(
-        [seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device
-    )
+    cache_seqlens = torch.tensor([seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device)
     max_seqlen = cache_seqlens.max().item()
     max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
 
     q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
-    block_table = torch.arange(
-        b * max_seqlen_pad // block_size, dtype=torch.int32, device=device
-    ).view(b, max_seqlen_pad // block_size)
-    blocked_k = torch.randn(
-        [block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device
+    block_table = torch.arange(b * max_seqlen_pad // block_size, dtype=torch.int32, device=device).view(
+        b, max_seqlen_pad // block_size
     )
+    blocked_k = torch.randn([block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device)
 
     ref_q = utils.to_reference(q)
     ref_block_table = utils.to_reference(block_table)

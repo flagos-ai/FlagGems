@@ -26,15 +26,8 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             )
             il = input.shape[-1]
             kernel_size = weight.shape[-1]
-            padding_width = math.ceil(
-                (stride_width * (il - 1) + 1 + dilation_width * (kernel_size - 1) - il)
-                / 2
-            )
-            ol = int(
-                (il + 2 * padding_width - dilation_width * (kernel_size - 1) - 1)
-                / stride_width
-                + 1
-            )
+            padding_width = math.ceil((stride_width * (il - 1) + 1 + dilation_width * (kernel_size - 1) - il) / 2)
+            ol = int((il + 2 * padding_width - dilation_width * (kernel_size - 1) - 1) / stride_width + 1)
             return conv2d(
                 input.unsqueeze(-1),
                 weight.unsqueeze(-1),
@@ -57,9 +50,7 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                 groups,
             ).squeeze(-1)
         else:
-            raise ValueError(
-                f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
-            )
+            raise ValueError(f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed.")
     elif isinstance(padding, (list, tuple)):
         padding_width = padding[0]
     else:

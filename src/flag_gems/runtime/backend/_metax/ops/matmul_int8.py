@@ -162,9 +162,7 @@ def matmul_int8(a, b):
     c_dtype = get_output_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=a.device, dtype=c_dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),)
     matmul_kernel[grid](
         a,
         b,

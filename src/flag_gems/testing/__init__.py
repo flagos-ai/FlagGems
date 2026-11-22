@@ -54,9 +54,7 @@ def _maybe_move_to_cpu(res, ref):
     # torch.isclose allocates an auxiliary tensor roughly the size of the inputs,
     # so ensure we have enough headroom; otherwise compare on CPU.
     HUGE_TENSOR_BYTES = 1 << 30  # 1 GiB
-    if (free_mem is not None and required >= free_mem) or (
-        required >= HUGE_TENSOR_BYTES
-    ):
+    if (free_mem is not None and required >= free_mem) or (required >= HUGE_TENSOR_BYTES):
         return res.cpu(), ref.cpu()
     return res, ref
 
@@ -68,9 +66,7 @@ def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
     ref = ref.to(dtype)
     res, ref = _maybe_move_to_cpu(res, ref)
     rtol = RESOLUTION[dtype]
-    torch.testing.assert_close(
-        res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
-    )
+    torch.testing.assert_close(res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan)
 
 
 def assert_equal(res, ref, equal_nan=False):

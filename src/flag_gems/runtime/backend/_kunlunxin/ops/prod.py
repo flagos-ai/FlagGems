@@ -63,14 +63,10 @@ def prod(inp, *, dtype=None):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        prod_kernel_mid[(mid_size, 1, 1)](
-            inp, mid, M, block_size, buffer_size_limit=2048
-        )
+        prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
         if mid_size == 1:
             return mid.reshape([])
-        prod_kernel_result[(1, 1, 1)](
-            mid, out, mid_size, block_mid, buffer_size_limit=2048
-        )
+        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
     return out
 
 

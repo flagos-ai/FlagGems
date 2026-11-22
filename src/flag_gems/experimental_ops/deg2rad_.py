@@ -40,12 +40,7 @@ def deg2rad_(*args, **kwargs):
 
     # If not CUDA or not contiguous or unsupported dtype, fallback to PyTorch scalar multiply in-place
     factor = 0.017453292519943295  # pi / 180
-    if (
-        (x.device.type != "cuda")
-        or (not x.is_contiguous())
-        or x.is_complex()
-        or (not x.is_floating_point())
-    ):
+    if (x.device.type != "cuda") or (not x.is_contiguous()) or x.is_complex() or (not x.is_floating_point()):
         x.mul_(factor)
         return x
 

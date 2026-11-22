@@ -35,9 +35,7 @@ def logical_xor_(*args, **kwargs):
     if not isinstance(self, torch.Tensor):
         raise TypeError("logical_xor_: first argument must be a torch.Tensor")
     if self.dtype is not torch.bool:
-        raise RuntimeError(
-            "logical_xor_: in-place logical operations require self to have dtype torch.bool"
-        )
+        raise RuntimeError("logical_xor_: in-place logical operations require self to have dtype torch.bool")
 
     if not self.is_cuda:
         raise RuntimeError("logical_xor_: tensor must be on CUDA device")
@@ -53,9 +51,7 @@ def logical_xor_(*args, **kwargs):
     try:
         other_bc = torch.broadcast_to(other_t, self.shape).contiguous()
     except Exception as e:
-        raise RuntimeError(
-            f"logical_xor_: cannot broadcast 'other' to shape {tuple(self.shape)}: {e}"
-        )
+        raise RuntimeError(f"logical_xor_: cannot broadcast 'other' to shape {tuple(self.shape)}: {e}")
 
     # Work on a contiguous copy if self is not contiguous, then copy back
     work_self = self if self.is_contiguous() else self.contiguous()

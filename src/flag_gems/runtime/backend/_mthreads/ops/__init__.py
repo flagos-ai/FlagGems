@@ -28,11 +28,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .repeat import repeat
-from .repeat_interleave import (
-    repeat_interleave_self_int,
-    repeat_interleave_self_tensor,
-    repeat_interleave_tensor,
-)
+from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_self_tensor, repeat_interleave_tensor
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
 from .tile import tile

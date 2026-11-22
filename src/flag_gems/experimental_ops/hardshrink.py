@@ -20,9 +20,7 @@ def hardshrink_kernel(x_ptr, out_ptr, n_elements, lambd, BLOCK_SIZE: tl.constexp
 def _hardshrink_launch(x: torch.Tensor, lambd: float, out: torch.Tensor):
     assert x.is_cuda, "Input tensor must be on CUDA device"
     assert out.is_cuda, "Output tensor must be on CUDA device"
-    assert (
-        x.numel() == out.numel()
-    ), "Input and output must have the same number of elements"
+    assert x.numel() == out.numel(), "Input and output must have the same number of elements"
     assert x.dtype == out.dtype, "Input and output must have the same dtype"
     assert x.is_floating_point(), "hardshrink only supports floating point dtypes"
 
@@ -39,9 +37,7 @@ def hardshrink(x: torch.Tensor, lambd: float = 0.5) -> torch.Tensor:
     return out
 
 
-def hardshrink_out(
-    x: torch.Tensor, lambd: float = 0.5, out: torch.Tensor = None
-) -> torch.Tensor:
+def hardshrink_out(x: torch.Tensor, lambd: float = 0.5, out: torch.Tensor = None) -> torch.Tensor:
     x_c = x.contiguous()
     if out is None:
         out = torch.empty_like(x_c)

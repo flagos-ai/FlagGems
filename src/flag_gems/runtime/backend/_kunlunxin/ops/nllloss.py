@@ -227,9 +227,7 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     out = torch.empty(shape, dtype=self.dtype, device=self.device)
     ignore_weight_tgt = None
     if reduction == 1:
-        ignore_weight_tgt = torch.zeros(
-            target.shape, dtype=self.dtype, device=self.device
-        )
+        ignore_weight_tgt = torch.zeros(target.shape, dtype=self.dtype, device=self.device)
 
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
     with torch_device_fn.device(self.device):

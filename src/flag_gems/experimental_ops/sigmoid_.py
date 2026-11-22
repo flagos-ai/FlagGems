@@ -43,11 +43,7 @@ def sigmoid_(*args, **kwargs):
     # Fallback for unsupported cases
     if x.numel() == 0:
         return x
-    if (
-        (not x.is_cuda)
-        or (not x.is_contiguous())
-        or x.dtype not in (torch.float16, torch.bfloat16, torch.float32)
-    ):
+    if (not x.is_cuda) or (not x.is_contiguous()) or x.dtype not in (torch.float16, torch.bfloat16, torch.float32):
         return torch.ops.aten.sigmoid_(x)
 
     n_elements = x.numel()

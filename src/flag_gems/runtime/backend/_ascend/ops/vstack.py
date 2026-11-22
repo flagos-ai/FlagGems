@@ -51,18 +51,10 @@ def vstack_kernel(
 
     # using mask and mathematical operations to select parameters
     base_exc_row_idx = (
-        mask0 * exc_row_offset0
-        + mask1 * exc_row_offset1
-        + mask2 * exc_row_offset2
-        + mask3 * exc_row_offset3
+        mask0 * exc_row_offset0 + mask1 * exc_row_offset1 + mask2 * exc_row_offset2 + mask3 * exc_row_offset3
     )
 
-    local_row = (
-        mask0 * local_row0
-        + mask1 * local_row1
-        + mask2 * local_row2
-        + mask3 * local_row3
-    )
+    local_row = mask0 * local_row0 + mask1 * local_row1 + mask2 * local_row2 + mask3 * local_row3
 
     end_idx = local_row * row_stride.to(tl.int64)
     idx = (pid_x * BLOCK_SIZE + col_idx).to(tl.int64)
@@ -99,11 +91,7 @@ def vstack(tensors: list):
     device = tensors[0].device
     dtype = tensors[0].dtype
     for tensor in tensors:
-        assert (
-            tensor.device == device
-            and tensor.dtype == dtype
-            and tensors[0].shape[1:] == tensor.shape[1:]
-        )
+        assert tensor.device == device and tensor.dtype == dtype and tensors[0].shape[1:] == tensor.shape[1:]
 
     c_tensors = [t.contiguous() for t in tensors]
     # Calculate the output shape
@@ -132,9 +120,7 @@ def vstack(tensors: list):
                 array_row_offset += c_tensors[tensor_idx].shape[0]
                 max_rows = max(max_rows, c_tensors[tensor_idx].shape[0])
             else:
-                empty_tensor = torch.empty(
-                    0, dtype=c_tensors[0].dtype, device=c_tensors[0].device
-                )
+                empty_tensor = torch.empty(0, dtype=c_tensors[0].dtype, device=c_tensors[0].device)
                 itensors.append(empty_tensor)
                 local_row.append(local_row[-1])
                 exclusive_row.append(exclusive_row[-1])
@@ -158,9 +144,7 @@ def vstack(tensors: list):
                 exclusive_row[0],  # 0
                 exclusive_row[1],  # 0 + tensor[0]的shape[0]
                 exclusive_row[2],  # 0 + tensor[0]的shape[0] + tensor[1]的shape[0]
-                exclusive_row[
-                    3
-                ],  # 0 + tensor[0]的shape[0] + tensor[1]的shape[0] + tensor[2]的shape[0]
+                exclusive_row[3],  # 0 + tensor[0]的shape[0] + tensor[1]的shape[0] + tensor[2]的shape[0]
                 total_row_offset,
                 row_stride,  # stride(0)
                 max_tile_elems,

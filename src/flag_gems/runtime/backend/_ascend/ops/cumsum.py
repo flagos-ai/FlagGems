@@ -42,10 +42,9 @@ def scan_part_sum_kernel(
 
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -112,10 +111,9 @@ def scan_part_sum_abc_kernel(
     mask = b_idx < B
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -195,9 +193,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
-        scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
-        )
+        scan_part_sum_abc_kernel[grid](inp, out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
@@ -316,9 +312,7 @@ def reduce_then_scan_block_sum_kernel_row(
         x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N).to(acc_dtype)
         acc += x
     block_sum = tl.sum(acc, 0)
-    tl.store(
-        block_sum_ptr + pid_m * num_programs_n + pid_n, block_sum, cache_modifier=".cg"
-    )
+    tl.store(block_sum_ptr + pid_m * num_programs_n + pid_n, block_sum, cache_modifier=".cg")
 
 
 @triton.jit
@@ -349,18 +343,14 @@ def reduce_then_scan_block_scan_kernel_row(
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
     acc_dtype: tl.constexpr = get_scan_accum_type(in_ptr.type.element_ty)
 
-    prefix = tl.load(
-        previous_sum_ptr + pid_m * num_tiles_n + pid_n - 1, mask=pid_n > 0, other=0
-    ).to(acc_dtype)
+    prefix = tl.load(previous_sum_ptr + pid_m * num_tiles_n + pid_n - 1, mask=pid_n > 0, other=0).to(acc_dtype)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
         x = tl.load(in_ptr + pid_m * N + offsets, mask=mask).to(acc_dtype)
         tile_scan = prefix + tl.cumsum(x, 0)
         prefix += tl.sum(x, 0)
-        tl.store(
-            out_ptr + pid_m * N + offsets, tile_scan, mask=mask, cache_modifier=".cg"
-        )
+        tl.store(out_ptr + pid_m * N + offsets, tile_scan, mask=mask, cache_modifier=".cg")
 
 
 def cumsum(inp, dim=1, *, dtype=None):

@@ -210,9 +210,7 @@ def local_quick_unique_flat_impl_int64(
         )
     else:
         # local_unique: scatter_(to=cumsum, sorted_data)
-        tl.store(
-            local_unique_ptr + (offset + local_unique_offset), a, mask=local_unique_mask
-        )
+        tl.store(local_unique_ptr + (offset + local_unique_offset), a, mask=local_unique_mask)
 
     # tile_sum
     tile_sum_mask = (r == tile_size - 1) & (global_pid < global_ctas_num)
@@ -273,12 +271,7 @@ def global_quick_unique_flat_impl_int64(
 
     # load tile_sum
     p = tl.arange(0, next_power_global_ctas_num)
-    pre_tile_sum_mask = (
-        (p >= global_pid - ctas_num)
-        & (p < global_pid)
-        & (p >= 0)
-        & (p < global_ctas_num)
-    )
+    pre_tile_sum_mask = (p >= global_pid - ctas_num) & (p < global_pid) & (p >= 0) & (p < global_ctas_num)
     pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
     cur_tile_sum_mask = global_pid < global_ctas_num
     cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=cur_tile_sum_mask)
@@ -367,9 +360,7 @@ def sorted_quick_unique_flat_int64(sorted_data: torch.Tensor, return_counts: boo
     tile_size = min(8192, next_power_num_tasks)
     global_ctas_num = triton.cdiv(num_tasks, tile_size)
     if global_ctas_num <= 8192:
-        tile_size = max(
-            32, min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks)
-        )
+        tile_size = max(32, min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks))
         global_ctas_num = triton.cdiv(num_tasks, tile_size)
     next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
     ctas_num = global_ctas_num if global_ctas_num < 65536 else 2048
@@ -428,9 +419,7 @@ def sorted_quick_unique_flat_int64(sorted_data: torch.Tensor, return_counts: boo
         )
         out_size = tile_sum[-1].item()
         if return_counts:
-            data_out = torch.empty(
-                (out_size,), dtype=sorted_data.dtype, device=sorted_data.device
-            )
+            data_out = torch.empty((out_size,), dtype=sorted_data.dtype, device=sorted_data.device)
             idx = idx[:out_size]
             counts = origin_idx[:out_size]
             quick_output_flat_kernel_int64[grid](
@@ -538,12 +527,7 @@ def global_cumsum_flat_impl_int64(
 
     # load tile_sum
     p = tl.arange(0, next_power_global_ctas_num)
-    pre_tile_sum_mask = (
-        (p >= global_pid - ctas_num)
-        & (p < global_pid)
-        & (p >= 0)
-        & (p < global_ctas_num)
-    )
+    pre_tile_sum_mask = (p >= global_pid - ctas_num) & (p < global_pid) & (p >= 0) & (p < global_ctas_num)
     pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
 
     # cumsum
@@ -642,9 +626,7 @@ def global_cumsum_flat_kernel_int64(
             )
 
 
-def sorted_indices_unique_flat_int64(
-    sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool
-):
+def sorted_indices_unique_flat_int64(sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool):
     num_tasks = sorted_data.numel()
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
     tile_size = min(8192, next_power_num_tasks)
@@ -720,7 +702,11 @@ def sorted_indices_unique_flat_int64(
                 num_warps=num_warps,
             )
 
-    return data_out[:out_size], inverse_indices, counts  # 不需要转换为 int64，已经是 int64
+    return (
+        data_out[:out_size],
+        inverse_indices,
+        counts,
+    )  # 不需要转换为 int64，已经是 int64
 
 
 def simple_unique_flat_int64(
@@ -735,18 +721,14 @@ def simple_unique_flat_int64(
     # allocate tensor - 关键修改：int32 -> int64
     data_out = torch.empty_like(sorted_data)
     if return_inverse:
-        inverse_indices = torch.empty_like(
-            sorted_data, dtype=torch.int64
-        )  # int32 -> int64
+        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)  # int32 -> int64
     else:
         inverse_indices = None
     if return_counts:
         idx = torch.empty_like(sorted_data, dtype=torch.int64)  # int32 -> int64
     else:
         idx = None
-    unique_size = torch.empty(
-        [1], dtype=torch.int64, device=sorted_data.device
-    )  # int32 -> int64
+    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)  # int32 -> int64
 
     # launch kernel
     with torch_device_fn.device(sorted_data.device.index):
@@ -794,14 +776,10 @@ def _unique2_int64(
         )
     elif return_inverse:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_indices_unique_flat_int64(
-            sorted_data, sorted_indices, return_counts
-        )
+        data_out, inverse_indices, counts = sorted_indices_unique_flat_int64(sorted_data, sorted_indices, return_counts)
     else:
         sorted_data, _ = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_quick_unique_flat_int64(
-            sorted_data, return_counts
-        )
+        data_out, inverse_indices, counts = sorted_quick_unique_flat_int64(sorted_data, return_counts)
     return (
         data_out,
         inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),

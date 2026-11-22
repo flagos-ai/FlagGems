@@ -44,9 +44,7 @@ def rsqrt_(*args, **kwargs):
         raise AssertionError("Input tensor must be contiguous")
 
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-        raise TypeError(
-            "rsqrt_ only supports floating point tensors (float16, bfloat16, float32, float64)"
-        )
+        raise TypeError("rsqrt_ only supports floating point tensors (float16, bfloat16, float32, float64)")
 
     n_elements = x.numel()
     if n_elements == 0:

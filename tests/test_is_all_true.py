@@ -22,9 +22,7 @@ def test_is_all_true(shape, kind):
         inp = torch.zeros(shape, dtype=torch.bool, device=flag_gems.device)
     else:
         # Mixed: random boolean values
-        inp = torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._is_all_true(ref_inp)

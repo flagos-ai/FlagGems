@@ -21,19 +21,11 @@ def test_logical_and(shape, dtype):
         inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     elif dtype in utils.ALL_INT_DTYPES:
-        inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-        inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+        inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     elif dtype in utils.BOOL_TYPES:
-        inp1 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-        inp2 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp1 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+        inp2 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp1 = utils.to_reference(inp1)
     ref_inp2 = utils.to_reference(inp2)
 
@@ -59,19 +51,11 @@ def test_logical_and_(shape, dtype):
         inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     elif dtype in utils.ALL_INT_DTYPES:
-        inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-        inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+        inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     elif dtype in utils.BOOL_TYPES:
-        inp1 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-        inp2 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp1 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+        inp2 = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
     ref_inp1 = utils.to_reference(inp1.clone())
     ref_inp2 = utils.to_reference(inp2)

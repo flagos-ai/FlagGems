@@ -119,7 +119,5 @@ class AddMMFunc(torch.autograd.Function):
         return dc, da, db, None, None
 
 
-def addmm(
-    c: torch.Tensor, a: torch.Tensor, b: torch.Tensor, alpha=1.0, beta=1.0
-) -> torch.Tensor:
+def addmm(c: torch.Tensor, a: torch.Tensor, b: torch.Tensor, alpha=1.0, beta=1.0) -> torch.Tensor:
     return AddMMFunc.apply(c, a, b, alpha, beta)

@@ -10,9 +10,7 @@ from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeImplicitAutograd)
 
 
 @libentry()
@@ -59,9 +57,7 @@ def tile_kernel_2d(
     inp_offs_n = offs_n % inp_shape1
 
     # Load from input
-    inp_ptrs = (
-        inp_ptr + inp_offs_m[:, None] * inp_stride0 + inp_offs_n[None, :] * inp_stride1
-    )
+    inp_ptrs = inp_ptr + inp_offs_m[:, None] * inp_stride0 + inp_offs_n[None, :] * inp_stride1
     data = tl.load(inp_ptrs, mask=mask, other=0.0)
 
     # Store to output
@@ -156,20 +152,10 @@ def tile_kernel_3d(
     inp_n = offs_n % inp_shape1
     inp_k = offs_k % inp_shape2
 
-    inp_ptrs = (
-        inp_ptr
-        + inp_m * inp_stride0
-        + inp_n[:, None] * inp_stride1
-        + inp_k[None, :] * inp_stride2
-    )
+    inp_ptrs = inp_ptr + inp_m * inp_stride0 + inp_n[:, None] * inp_stride1 + inp_k[None, :] * inp_stride2
     data = tl.load(inp_ptrs, mask=mask, other=0.0)
 
-    out_ptrs = (
-        out_ptr
-        + m_idx * out_stride0
-        + offs_n[:, None] * out_stride1
-        + offs_k[None, :] * out_stride2
-    )
+    out_ptrs = out_ptr + m_idx * out_stride0 + offs_n[:, None] * out_stride1 + offs_k[None, :] * out_stride2
     tl.store(out_ptrs, data, mask=mask)
 
 
@@ -425,8 +411,7 @@ def tile(inp: torch.Tensor, dims) -> torch.Tensor:
             # 3D case
             grid = lambda META: (
                 out_shape[0],
-                triton.cdiv(out_shape[1], META["BLOCK_N"])
-                * triton.cdiv(out_shape[2], META["BLOCK_K"]),
+                triton.cdiv(out_shape[1], META["BLOCK_N"]) * triton.cdiv(out_shape[2], META["BLOCK_K"]),
             )
             tile_kernel_3d[grid](
                 inp,
@@ -449,8 +434,7 @@ def tile(inp: torch.Tensor, dims) -> torch.Tensor:
             num_mn = out_shape[0] * out_shape[1]
             grid = lambda META: (
                 num_mn,
-                triton.cdiv(out_shape[2], META["BLOCK_K"])
-                * triton.cdiv(out_shape[3], META["BLOCK_L"]),
+                triton.cdiv(out_shape[2], META["BLOCK_K"]) * triton.cdiv(out_shape[3], META["BLOCK_L"]),
             )
             tile_kernel_4d[grid](
                 inp,

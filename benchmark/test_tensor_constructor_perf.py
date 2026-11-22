@@ -98,9 +98,7 @@ def linspace_input_fn(shape, dtype, device):
 
 def logspace_input_fn(shape, dtype, device):
     base = 1.05
-    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(
-        base
-    )  # calculate the max limit according to dtype
+    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(base)  # calculate the max limit according to dtype
     end = int(limit)
     yield {
         "start": 0,
@@ -202,9 +200,7 @@ tensor_constructor_inplace_operations = [
     ],
 )
 def test_tensor_constructor_inplace_benchmark(op_name, torch_op, input_fn):
-    bench = GenericBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, is_inplace=True
-    )
+    bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op, is_inplace=True)
     bench.run()
 
 
@@ -236,9 +232,7 @@ def one_hot_input_fn(shape, dtype, device):
     if numel == 0:
         return
 
-    num_classes_list = (
-        [16, 64] if Config.bench_level != BenchLevel.COMPREHENSIVE else [16, 64, 256]
-    )
+    num_classes_list = [16, 64] if Config.bench_level != BenchLevel.COMPREHENSIVE else [16, 64, 256]
     max_output_elems = 100_000_000
 
     for num_classes in num_classes_list:

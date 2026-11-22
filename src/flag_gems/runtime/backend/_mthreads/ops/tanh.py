@@ -12,9 +12,7 @@ from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 pow = tl_extra_shim.pow
 fast_tanh = tl_extra_shim.fast_tanh
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])

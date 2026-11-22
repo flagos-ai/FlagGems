@@ -65,19 +65,13 @@ def cat_copy_func_kernel_4(
     dim_idx = (idx // dim_prod_post) % dim_size_in
     post_idx = idx % dim_prod_post
 
-    out_idx = (
-        pre_idx * dim_size_out * dim_prod_post
-        + (dim_idx + dim_offset) * dim_prod_post
-        + post_idx
-    )
+    out_idx = pre_idx * dim_size_out * dim_prod_post + (dim_idx + dim_offset) * dim_prod_post + post_idx
 
     data = tl.load(in_ptr + idx, mask=mask)
     tl.store(out_ptr + out_idx, data, mask=mask)
 
 
-def cat(
-    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
+def cat(A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
     logger.debug("GEMS CAT")
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
@@ -104,9 +98,7 @@ def cat(
     inp0_shape = inp_shapes[0]
     for s in inp_shapes[1:]:
         if len(s) != len(inp0_shape):
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
-            )
+            raise RuntimeError(f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}")
     for tensor_idx, inp_shape in enumerate(inp_shapes):
         for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
             if idx != dim and length != common_length:

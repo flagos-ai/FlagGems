@@ -407,23 +407,16 @@ class StackKernelCode(IndentedBuffer):
             """
 
         def add_indent(cleaned_str, indent_size):
-            return "\n".join(
-                [f"{' ' * indent_size}{line}" for line in cleaned_str.split("\n")]
-            )
+            return "\n".join([f"{' ' * indent_size}{line}" for line in cleaned_str.split("\n")])
 
         tensors = ", ".join([f"in_{idx}" for idx in range(tensor_num)])
         load_form_inputs = textwrap.dedent(
             """\
             if tensor_idx == 0:
                 buffer[low_idx,:] = tl.load(in_0+load_start+LOW_OFFSET)\n"""
-            + "\n".join(
-                [
-                    f"""\
+            + "\n".join([f"""\
             elif tensor_idx == {idx}:
-                buffer[low_idx,:] = tl.load(in_{idx}+load_start+LOW_OFFSET)"""
-                    for idx in range(1, tensor_num - 1)
-                ]
-            )
+                buffer[low_idx,:] = tl.load(in_{idx}+load_start+LOW_OFFSET)""" for idx in range(1, tensor_num - 1)])
             + "\n"
             + f"""\
             else:
@@ -434,16 +427,10 @@ class StackKernelCode(IndentedBuffer):
             kernel_name=self.kernel_name,
             tensors=tensors,
             low_gt_64_code="\n".join(
-                [
-                    f"{' ' * 8}buffer[:,{idx},:]=tl.load(in_{idx}+offset+buffer_offset)"
-                    for idx in range(tensor_num)
-                ]
+                [f"{' ' * 8}buffer[:,{idx},:]=tl.load(in_{idx}+offset+buffer_offset)" for idx in range(tensor_num)]
             ),
             low_le_64_code="\n".join(
-                [
-                    f"{' ' * 8}buffer[{idx},:,:]=tl.load(in_{idx}+offset+buffer_offset)"
-                    for idx in range(tensor_num)
-                ]
+                [f"{' ' * 8}buffer[{idx},:,:]=tl.load(in_{idx}+offset+buffer_offset)" for idx in range(tensor_num)]
             ),
             load_and_store_code=add_indent(load_form_inputs, 8),
             low_num_gt_0_last_core_code=add_indent(load_form_inputs, 16),
@@ -480,9 +467,7 @@ class StackKernelCode(IndentedBuffer):
         # generate wrapper function.
         self.__wrapper()
 
-    def __call__(
-        self, tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-    ) -> torch.Tensor:
+    def __call__(self, tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
         assert dim != 0, "StackKernel template does not optimize `dim=0`."
         tensor_num = len(tensors)
         inp0_shape = list(tensors[0].shape)
@@ -500,9 +485,7 @@ class StackKernelCode(IndentedBuffer):
             file_name = f"{cache_dir()}/stack_{key}_pid_{self.pid}.py"
             write_atomic(file_name, self.getvalue())
             # load
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{key}_pid_{self.pid}", file_name
-            )
+            spec = importlib.util.spec_from_file_location(f"_gen_module_{key}_pid_{self.pid}", file_name)
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
@@ -513,9 +496,7 @@ class StackKernelCode(IndentedBuffer):
         return overload(tensors, dim)
 
 
-def stack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
+def stack(tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
     logger.debug("GEMS_CAMBRICON STACK")
 
     if len(tensors) == 0:
@@ -540,7 +521,5 @@ def stack(
     out_shape = inp0_shape[:dim] + [len(tensors)] + inp0_shape[dim:]
     if dim == 0:
         return vstack(tensors).view(out_shape)
-    tensors = [
-        tensor if tensor.is_contiguous() else tensor.contiguous() for tensor in tensors
-    ]
+    tensors = [tensor if tensor.is_contiguous() else tensor.contiguous() for tensor in tensors]
     return StackKernelCode()(tensors, dim)

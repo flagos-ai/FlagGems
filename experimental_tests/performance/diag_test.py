@@ -40,9 +40,7 @@ def to_reference(inp, upcast=False):
 
 
 @pytest.mark.diag
-@pytest.mark.parametrize(
-    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
-)
+@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_benchmark_tensor(shape, dtype, diagonal):
@@ -54,15 +52,11 @@ def test_diag_benchmark_tensor(shape, dtype, diagonal):
     ref_x = x.clone()
 
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.diag(ref_x, diagonal), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.diag(ref_x, diagonal), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_diag(x, diagonal), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_diag(x, diagonal), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -73,9 +67,7 @@ def test_diag_benchmark_tensor(shape, dtype, diagonal):
 
 
 @pytest.mark.diag
-@pytest.mark.parametrize(
-    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
-)
+@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_benchmark_out(shape, dtype, diagonal):

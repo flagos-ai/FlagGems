@@ -145,12 +145,12 @@ def test_fused_moe_vs_ref(config, dtype):
 
     # Generate inputs with controlled magnitude to avoid numerical blow-up
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
-    w1 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
-    w2 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    w1 = torch.randn(num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype) * (
+        1.0 / hidden_size**0.5
+    )
+    w2 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=dtype) * (
+        1.0 / intermediate_size**0.5
+    )
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -184,9 +184,7 @@ def test_fused_moe_vs_ref(config, dtype):
 
 
 try:
-    from vllm.model_executor.layers.fused_moe.fused_moe import (
-        fused_experts_impl as vllm_fused_experts_impl,
-    )
+    from vllm.model_executor.layers.fused_moe.fused_moe import fused_experts_impl as vllm_fused_experts_impl
 
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
@@ -206,12 +204,12 @@ def test_fused_moe_vs_vllm(config, dtype):
 
     # Generate inputs with controlled magnitude to avoid numerical blow-up
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
-    w1 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
-    w2 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    w1 = torch.randn(num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype) * (
+        1.0 / hidden_size**0.5
+    )
+    w2 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=dtype) * (
+        1.0 / intermediate_size**0.5
+    )
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -266,9 +264,9 @@ def test_accuracy_fused_moe_fp8(config):
         device=device,
         dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
-    w2_fp32 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    w2_fp32 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32) * (
+        1.0 / intermediate_size**0.5
+    )
 
     # Per-tensor quantization of weights
     finfo = torch.finfo(torch.float8_e4m3fn)
@@ -325,9 +323,7 @@ def test_accuracy_fused_moe_fp8(config):
     for e in range(num_experts):
         w2_deq[e] = (w2_fp8[e].float() * w2_scales[e]).to(dtype)
 
-    ref = torch_fused_moe_quantized_reference(
-        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="fp8"
-    )
+    ref = torch_fused_moe_quantized_reference(hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="fp8")
 
     torch.cuda.synchronize()
 
@@ -466,9 +462,7 @@ def torch_per_token_group_quant_fp8(
 
     finfo = torch.finfo(dtype)
     x_reshaped = x.reshape(x.numel() // group_size, group_size)
-    amax = (
-        x_reshaped.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
-    )
+    amax = x_reshaped.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
     x_scales = amax / finfo.max
     x_quant = (x_reshaped / x_scales).clamp(min=finfo.min, max=finfo.max).to(dtype)
     x_quant = x_quant.reshape(x.shape)
@@ -532,10 +526,7 @@ def torch_w8a8_block_fp8_moe(
                 output_dtype=hidden_states.dtype,
             )
 
-    return (
-        out.view(batch_size, -1, w2.shape[1])
-        * flat_weights.view(batch_size, -1, 1).to(out.dtype)
-    ).sum(dim=1)
+    return (out.view(batch_size, -1, w2.shape[1]) * flat_weights.view(batch_size, -1, 1).to(out.dtype)).sum(dim=1)
 
 
 @pytest.mark.fused_experts_impl
@@ -648,9 +639,9 @@ def test_fused_moe_int8(config):
         device=device,
         dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
-    w2_fp32 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    w2_fp32 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32) * (
+        1.0 / intermediate_size**0.5
+    )
 
     eps = 1e-10
 
@@ -690,9 +681,7 @@ def test_fused_moe_int8(config):
     w1_deq = (w1_int8.float() * w1_scale_full).to(dtype)
     w2_deq = (w2_int8.float() * w2_scale_full).to(dtype)
 
-    ref = torch_fused_moe_quantized_reference(
-        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="int8"
-    )
+    ref = torch_fused_moe_quantized_reference(hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="int8")
 
     torch.cuda.synchronize()
 
@@ -760,9 +749,9 @@ def test_fused_moe_int8_w8a16(config):
         device=device,
         dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
-    w2_fp32 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    w2_fp32 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32) * (
+        1.0 / intermediate_size**0.5
+    )
 
     eps = 1e-10
     # Per-channel quantization
@@ -835,9 +824,9 @@ def test_fused_moe_int4_w4a16(config):
         device=device,
         dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
-    w2_fp32 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    w2_fp32 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32) * (
+        1.0 / intermediate_size**0.5
+    )
 
     eps = 1e-10
     int4_max = 7
@@ -908,12 +897,12 @@ def test_fused_moe_inplace(config, dtype):
     torch.manual_seed(0)
 
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
-    w1 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
-    w2 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    w1 = torch.randn(num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype) * (
+        1.0 / hidden_size**0.5
+    )
+    w2 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=dtype) * (
+        1.0 / intermediate_size**0.5
+    )
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
@@ -965,12 +954,12 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     torch.manual_seed(0)
 
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
-    w1 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
-    w2 = torch.randn(
-        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    w1 = torch.randn(num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype) * (
+        1.0 / hidden_size**0.5
+    )
+    w2 = torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=dtype) * (
+        1.0 / intermediate_size**0.5
+    )
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
@@ -1009,8 +998,6 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     torch.testing.assert_close(result_default, ref, rtol=rtol, atol=atol)
 
     # The apply_on_input result will differ but should be finite and nonzero
-    assert torch.isfinite(
-        result_on_input
-    ).all(), "result_on_input has non-finite values"
+    assert torch.isfinite(result_on_input).all(), "result_on_input has non-finite values"
 
     assert result_on_input.abs().sum() > 0, "result_on_input is all zeros"

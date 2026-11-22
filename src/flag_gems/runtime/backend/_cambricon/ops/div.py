@@ -15,26 +15,20 @@ fmod = tl_extra_shim.fmod
 trunc = tl_extra_shim.trunc
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func(x, y, inplace):
     return x / y
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_tensor_scalar(x, y, inplace):
     y = y.to(x.dtype)
     return x / y
 
 
-@pointwise_dynamic(
-    is_tensor=[False, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
-)
+@pointwise_dynamic(is_tensor=[False, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_scalar_tensor(x, y, inplace):
     x = x.to(y.dtype)
@@ -81,17 +75,13 @@ def trunc_div_func(x, y, inplace):
     return trunc(div_rn(x, y))
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y, inplace):
     return trunc(div_rn(x, tl.cast(y, x.dtype)))
 
 
-@pointwise_dynamic(
-    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y, inplace):
     return trunc(div_rn(tl.cast(x, y.dtype), y))
@@ -104,17 +94,13 @@ def trunc_div_int_func(x, y, inplace):
     return x // y
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_int_func_tensor_scalar(x, y, inplace):
     return x // y
 
 
-@pointwise_dynamic(
-    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_int_func_scalar_tensor(x, y, inplace):
     return x // y
@@ -221,9 +207,7 @@ def floor_div_func(x, y, inplace):
         return _float_floordiv(x, y)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
@@ -232,9 +216,7 @@ def floor_div_func_tensor_scalar(x, y, inplace):
         return _float_floordiv(x, y)
 
 
-@pointwise_dynamic(
-    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
@@ -304,17 +286,13 @@ def rem_tt(x, y, inplace):
     return _remainder(x, y)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def rem_ts(x, y, inplace):
     return _remainder(x, y)
 
 
-@pointwise_dynamic(
-    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def rem_st(x, y, inplace):
     return _remainder(x, y)

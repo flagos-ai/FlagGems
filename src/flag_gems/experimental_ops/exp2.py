@@ -19,9 +19,7 @@ def exp2(x: torch.Tensor) -> torch.Tensor:
         raise ValueError("exp2: input tensor must be on CUDA device")
     supported_dtypes = (torch.float16, torch.bfloat16, torch.float32)
     if x.dtype not in supported_dtypes:
-        raise TypeError(
-            f"exp2: unsupported dtype {x.dtype}. Supported: {supported_dtypes}"
-        )
+        raise TypeError(f"exp2: unsupported dtype {x.dtype}. Supported: {supported_dtypes}")
     x_contig = x.contiguous()
     out = torch.empty_like(x_contig)
     n_elements = out.numel()
@@ -39,9 +37,7 @@ def exp2_out(x: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
         raise TypeError("exp2_out: input and out must have the same dtype")
     supported_dtypes = (torch.float16, torch.bfloat16, torch.float32)
     if x.dtype not in supported_dtypes:
-        raise TypeError(
-            f"exp2_out: unsupported dtype {x.dtype}. Supported: {supported_dtypes}"
-        )
+        raise TypeError(f"exp2_out: unsupported dtype {x.dtype}. Supported: {supported_dtypes}")
     x_contig = x.contiguous()
     out_contig = out.contiguous()
     n_elements = out_contig.numel()

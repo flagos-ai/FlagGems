@@ -8,9 +8,7 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.threshold_ import (  # noqa: E402
-    threshold_ as gems_threshold_,
-)
+from flag_gems.experimental_ops.threshold_ import threshold_ as gems_threshold_  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

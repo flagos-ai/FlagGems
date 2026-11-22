@@ -112,9 +112,7 @@ def conv3d_forward_kernel(
     pid_group = tl.program_id(2)
 
     # caculate in_n out_depth out_height out_weight value in kernel
-    ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(
-        0, BLOCK_NI_DO_HO_WO
-    )
+    ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(0, BLOCK_NI_DO_HO_WO)
     ni_do_ho_offset = ni_do_ho_wo_offset // out_width
     ni_do_offset = ni_do_ho_offset // out_height
     in_n_point_value = ni_do_offset // out_depth
@@ -126,13 +124,8 @@ def conv3d_forward_kernel(
     # [in_n, groups, in_c, input_height, input_width] and [groups, out_c, in_c, weight_height, weight_width]
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
-    input_pointer += (
-        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
-    )[:, None]
-    weight_pointer += (
-        weight_n_stride * output_c_offset
-        + weight_n_stride * pid_group * out_per_group_c
-    )[None, :]
+    input_pointer += (input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c)[:, None]
+    weight_pointer += (weight_n_stride * output_c_offset + weight_n_stride * pid_group * out_per_group_c)[None, :]
 
     accum = tl.zeros((BLOCK_NI_DO_HO_WO, BLOCK_CO), dtype=tl.float32)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
@@ -145,17 +138,9 @@ def conv3d_forward_kernel(
         w = dhw % weight_width
 
         input_c_offset = c + tl.arange(0, BLOCK_CI)
-        input_depth_offset = (
-            d * dilation_depth - padding_depth + stride_depth * output_depth_point_value
-        )
-        input_height_offset = (
-            h * dilation_height
-            - padding_height
-            + stride_height * output_height_point_value
-        )
-        input_width_offset = (
-            w * dilation_width - padding_width + stride_width * output_width_point_value
-        )
+        input_depth_offset = d * dilation_depth - padding_depth + stride_depth * output_depth_point_value
+        input_height_offset = h * dilation_height - padding_height + stride_height * output_height_point_value
+        input_width_offset = w * dilation_width - padding_width + stride_width * output_width_point_value
 
         curr_input_pointer = (
             input_pointer
@@ -182,17 +167,13 @@ def conv3d_forward_kernel(
             & (0 <= input_width_offset)[:, None]
             & (input_width_offset < input_width)[:, None]
         )
-        weight_mask = (input_c_offset < weight_c)[:, None] & (
-            output_c_offset < out_per_group_c
-        )[None, :]
+        weight_mask = (input_c_offset < weight_c)[:, None] & (output_c_offset < out_per_group_c)[None, :]
 
         input_block = tl.load(curr_input_pointer, mask=input_mask)
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
-    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
-        None, :
-    ]
+    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[None, :]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
     bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
     accum += bias
@@ -223,9 +204,7 @@ def conv3d_forward_kernel(
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS CONV3D")
     assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
-    assert (
-        bias is None or bias.ndim == 1
-    ), "Bias must be 1D, received shape {bias.shape}"
+    assert bias is None or bias.ndim == 1, "Bias must be 1D, received shape {bias.shape}"
 
     assert (
         input.shape[1] == groups * weight.shape[1]
@@ -256,54 +235,16 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             kernel_size_d = weight.shape[-3]
             kernel_size_h = weight.shape[-2]
             kernel_size_w = weight.shape[-1]
-            padding_depth = math.ceil(
-                (
-                    stride_depth * (id - 1)
-                    + 1
-                    + dilation_depth * (kernel_size_d - 1)
-                    - id
-                )
-                / 2
-            )
-            padding_height = math.ceil(
-                (
-                    stride_height * (ih - 1)
-                    + 1
-                    + dilation_height * (kernel_size_h - 1)
-                    - ih
-                )
-                / 2
-            )
-            padding_width = math.ceil(
-                (
-                    stride_width * (iw - 1)
-                    + 1
-                    + dilation_width * (kernel_size_w - 1)
-                    - iw
-                )
-                / 2
-            )
-            od = int(
-                (id + 2 * padding_depth - dilation_depth * (kernel_size_d - 1) - 1)
-                / stride_depth
-                + 1
-            )
-            oh = int(
-                (ih + 2 * padding_height - dilation_height * (kernel_size_h - 1) - 1)
-                / stride_height
-                + 1
-            )
-            ow = int(
-                (iw + 2 * padding_width - dilation_width * (kernel_size_w - 1) - 1)
-                / stride_width
-                + 1
-            )
+            padding_depth = math.ceil((stride_depth * (id - 1) + 1 + dilation_depth * (kernel_size_d - 1) - id) / 2)
+            padding_height = math.ceil((stride_height * (ih - 1) + 1 + dilation_height * (kernel_size_h - 1) - ih) / 2)
+            padding_width = math.ceil((stride_width * (iw - 1) + 1 + dilation_width * (kernel_size_w - 1) - iw) / 2)
+            od = int((id + 2 * padding_depth - dilation_depth * (kernel_size_d - 1) - 1) / stride_depth + 1)
+            oh = int((ih + 2 * padding_height - dilation_height * (kernel_size_h - 1) - 1) / stride_height + 1)
+            ow = int((iw + 2 * padding_width - dilation_width * (kernel_size_w - 1) - 1) / stride_width + 1)
         elif padding == "valid":
             padding_depth = padding_height = padding_width = 0
         else:
-            raise ValueError(
-                f"Unsupported padding string: {padding}, only'valild'/'same' are allowed."
-            )
+            raise ValueError(f"Unsupported padding string: {padding}, only'valild'/'same' are allowed.")
     elif isinstance(padding, (list, tuple)):
         padding_depth, padding_height, padding_width = padding
     else:
@@ -311,16 +252,10 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
-    out_depth = conv3d_output_size(
-        input_depth, weight_depth, stride_depth, padding_depth, dilation_depth
-    )
+    out_depth = conv3d_output_size(input_depth, weight_depth, stride_depth, padding_depth, dilation_depth)
 
-    out_height = conv3d_output_size(
-        input_height, weight_height, stride_height, padding_height, dilation_height
-    )
-    out_width = conv3d_output_size(
-        input_width, weight_width, stride_width, padding_width, dilation_width
-    )
+    out_height = conv3d_output_size(input_height, weight_height, stride_height, padding_height, dilation_height)
+    out_width = conv3d_output_size(input_width, weight_width, stride_width, padding_width, dilation_width)
 
     output_dtype = input.dtype
     output = torch.empty(
@@ -333,9 +268,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # BLOCK_CO along the out_c,
     # one group per cat
     grid = lambda META: (
-        triton.cdiv(
-            in_n * out_depth * out_height * out_width, META["BLOCK_NI_DO_HO_WO"]
-        ),
+        triton.cdiv(in_n * out_depth * out_height * out_width, META["BLOCK_NI_DO_HO_WO"]),
         triton.cdiv(out_c // groups, META["BLOCK_CO"]),
         groups,
     )

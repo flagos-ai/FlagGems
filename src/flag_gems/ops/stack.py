@@ -56,17 +56,13 @@ def stack_copy_func_kernel_4(
     pre_idx = idx // dim_prod_post
     post_idx = idx % dim_prod_post
 
-    out_idx = (
-        pre_idx * dim_size_out * dim_prod_post + dim_offset * dim_prod_post + post_idx
-    )
+    out_idx = pre_idx * dim_size_out * dim_prod_post + dim_offset * dim_prod_post + post_idx
 
     data = tl.load(in_ptr + idx, mask=mask)
     tl.store(out_ptr + out_idx, data, mask=mask)
 
 
-def stack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
+def stack(tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
     logger.debug("GEMS STACK")
 
     if len(tensors) == 0:

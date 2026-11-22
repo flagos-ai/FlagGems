@@ -110,8 +110,7 @@ def per_token_group_quant_fp8(
     # dtype: The dype of output tensor. Note that only `torch.float8_e4m3fn`
     fp8_dtype = SUPPORTED_FP8_DTYPE if dtype is None else dtype
     assert x.shape[-1] % group_size == 0, (
-        f"the last dimension of `x` {x.shape[-1]} must be divisible "
-        f"by `group_size` {group_size}"
+        f"the last dimension of `x` {x.shape[-1]} must be divisible " f"by `group_size` {group_size}"
     )
     assert x.stride(-1) == 1, "`x` groups must be contiguous"
 

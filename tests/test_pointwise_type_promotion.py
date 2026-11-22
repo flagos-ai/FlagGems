@@ -5,14 +5,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    POINTWISE_SHAPES,
-    SCALARS,
-    gems_assert_close,
-    gems_assert_equal,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES, POINTWISE_SHAPES, SCALARS, gems_assert_close, gems_assert_equal, to_reference
 
 if flag_gems.vendor_name == "kunlunxin":
     pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")

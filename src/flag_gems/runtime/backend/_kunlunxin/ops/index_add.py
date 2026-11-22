@@ -41,19 +41,11 @@ def index_add_kernel(
 ):
     pid_x = tl.program_id(axis=0)  # block_x
     pid_y = tl.program_id(axis=1)  # block_y
-    rows_offsets = (
-        pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    )  # block_x * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols_offsets = pid_y * BLOCK_N + tl.arange(
-        0, BLOCK_N
-    )  # block_y * BLOCK_N + tl.arange(0, BLOCK_N)
+    rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]  # block_x * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)  # block_y * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    rows_mask = (
-        rows_offsets < M
-    )  # rows_mask = block_x * BLOCK_M + tl.arange(0, BLOCK_M) < M
-    index_mask = (
-        cols_offsets < N
-    )  # index_mask = block_y * BLOCK_N + tl.arange(0, BLOCK_N) < N
+    rows_mask = rows_offsets < M  # rows_mask = block_x * BLOCK_M + tl.arange(0, BLOCK_M) < M
+    index_mask = cols_offsets < N  # index_mask = block_y * BLOCK_N + tl.arange(0, BLOCK_N) < N
     block_mask = rows_mask and index_mask  # block_mask = rows_mask and index_mask
 
     cur_indices = tl.load(
@@ -85,9 +77,7 @@ def index_add(inp, dim, index, src, alpha=1):
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
+    assert inp.ndim == src.ndim, "Self and source should have the same number of dimensions"
     assert (
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
@@ -128,9 +118,7 @@ def index_add_(inp, dim, index, src, alpha=1):
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
+    assert inp.ndim == src.ndim, "Self and source should have the same number of dimensions"
     assert (
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"

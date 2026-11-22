@@ -6,10 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import device, get_heuristic_config, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 
@@ -29,9 +26,7 @@ def high_precision_fast_sin_cos(x):
     s_c4 = 2.755731922398589e-6
     s_c5 = -2.505210838544172e-8
 
-    sin_x = x * (
-        s_c0 + x2 * (s_c1 + x2 * (s_c2 + x2 * (s_c3 + x2 * (s_c4 + x2 * s_c5))))
-    )
+    sin_x = x * (s_c0 + x2 * (s_c1 + x2 * (s_c2 + x2 * (s_c3 + x2 * (s_c4 + x2 * s_c5)))))
 
     # --- COS: 6th-order minimax (Q(x²)) ---
     c_c0 = 1.0

@@ -61,16 +61,12 @@ def sparse_attn_triton_kernel(
         # -- gather indices --
         raw_offs = t * BLOCK + offs_blk  # (BLOCK,)
         idx_mask = raw_offs < topk
-        idxs = tl.load(
-            idx_base + raw_offs * stride_idxk, mask=idx_mask, other=-1
-        )  # (BLOCK,)
+        idxs = tl.load(idx_base + raw_offs * stride_idxk, mask=idx_mask, other=-1)  # (BLOCK,)
         valid_mask = idxs != -1  # (BLOCK,)
 
         # -- gather KV block: (BLOCK, D) --
         kv_ptrs = kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
-        kv_block = tl.load(
-            kv_ptrs, mask=valid_mask[:, None], other=0.0
-        )  # (BLOCK, D) bf16
+        kv_block = tl.load(kv_ptrs, mask=valid_mask[:, None], other=0.0)  # (BLOCK, D) bf16
 
         # -- scores: Q @ KV^T -> (H, BLOCK) via GEMM --
         acc_s = tl.dot(q_block, tl.trans(kv_block))  # (H, D) @ (D, BLOCK) = (H, BLOCK)

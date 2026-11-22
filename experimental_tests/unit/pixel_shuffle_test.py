@@ -8,9 +8,7 @@ import torch
 
 import flag_gems
 from flag_gems.experimental_ops.pixel_shuffle import pixel_shuffle as gems_pixel_shuffle
-from flag_gems.experimental_ops.pixel_shuffle import (
-    pixel_shuffle_out as gems_pixel_shuffle_out,
-)
+from flag_gems.experimental_ops.pixel_shuffle import pixel_shuffle_out as gems_pixel_shuffle_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

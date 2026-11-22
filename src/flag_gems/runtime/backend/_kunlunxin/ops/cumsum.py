@@ -31,10 +31,9 @@ def scan_part_sum_kernel(
 
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -101,10 +100,9 @@ def scan_part_sum_abc_kernel(
     mask = b_idx < B
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -188,9 +186,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     if inp.shape[1] > 8192:
         os.environ["TRITONXPU_OTHER_SIM"] = "1"
         os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-        scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
-        )
+        scan_part_sum_abc_kernel[grid](inp, out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
         if "TRITONXPU_OTHER_SIM" in os.environ:
             del os.environ["TRITONXPU_OTHER_SIM"]
@@ -199,9 +195,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
     else:
         with torch_device_fn.device(inp.device):
-            scan_part_sum_abc_kernel[grid](
-                inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
-            )
+            scan_part_sum_abc_kernel[grid](inp, out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)

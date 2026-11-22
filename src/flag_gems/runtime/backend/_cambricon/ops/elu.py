@@ -8,9 +8,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False, False], promotion_methods=[(0, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def elu_forward_kernel(x, alpha, scale, input_scale, inplace):
     return tl.where(
@@ -20,9 +18,7 @@ def elu_forward_kernel(x, alpha, scale, input_scale, inplace):
     )
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False, True], promotion_methods=[(0, 4, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False, True], promotion_methods=[(0, 4, "DEFAULT")])
 @triton.jit
 def elu_backward_kernel_with_self(grad_output, alpha, scale, input_scale, x):
     x_fp32 = x.to(tl.float32)
@@ -34,9 +30,7 @@ def elu_backward_kernel_with_self(grad_output, alpha, scale, input_scale, x):
     return grad_input
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False, True], promotion_methods=[(0, 4, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False, True], promotion_methods=[(0, 4, "DEFAULT")])
 @triton.jit
 def elu_backward_kernel_with_result(grad_output, alpha, scale, input_scale, y):
     grad_input = tl.where(
@@ -60,10 +54,6 @@ def elu_(A, alpha=1.0, scale=1.0, input_scale=1.0):
 def elu_backward(grad_output, alpha, scale, input_scale, is_result, self_or_result):
     logger.debug("GEMS ELU BACKWARD")
     if is_result:
-        return elu_backward_kernel_with_result(
-            grad_output, alpha, scale, input_scale, self_or_result
-        )
+        return elu_backward_kernel_with_result(grad_output, alpha, scale, input_scale, self_or_result)
     else:
-        return elu_backward_kernel_with_self(
-            grad_output, alpha, scale, input_scale, self_or_result
-        )
+        return elu_backward_kernel_with_self(grad_output, alpha, scale, input_scale, self_or_result)

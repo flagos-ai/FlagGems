@@ -9,9 +9,7 @@ import flag_gems
 device = flag_gems.device
 
 
-@pytest.mark.parametrize(
-    "prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"]
-)
+@pytest.mark.parametrize("prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"])
 @pytest.mark.parametrize(
     "url",
     [
@@ -26,9 +24,7 @@ def test_accuracy_llava(prompt, url):
     torch.manual_seed(1234)
     model.to(device).eval()
     image = Image.open(requests.get(url, stream=True).raw)
-    inputs = processor(text=prompt, images=image, return_tensors="pt").to(
-        device=flag_gems.device
-    )
+    inputs = processor(text=prompt, images=image, return_tensors="pt").to(device=flag_gems.device)
 
     with torch.no_grad():
         ref_output = model(**inputs).logits
@@ -54,6 +50,4 @@ def test_accuracy_llava(prompt, url):
             eps=1e-6,
         )
         succeed = score >= 0.99
-    assert (
-        succeed
-    ), f"LLAVA FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_output}\nRES: {res_output}"
+    assert succeed, f"LLAVA FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_output}\nRES: {res_output}"

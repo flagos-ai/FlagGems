@@ -6,10 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +20,7 @@ def safe_fast_log_f32(x):
     exponent = (bits >> 23) - 127
     mantissa = (bits & 0x7FFFFF).to(tl.float32) * (1.0 / 8388608.0) + 1.0
     m1 = mantissa - 1.0
-    return (
-        m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333 - m1 * 0.25)))
-        + exponent.to(tl.float32) * 0.6931471805599453
-    )
+    return m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333 - m1 * 0.25))) + exponent.to(tl.float32) * 0.6931471805599453
 
 
 @triton.jit
@@ -36,13 +30,10 @@ def safe_fast_log_f64(x):
     x = tl.minimum(tl.maximum(x, min_normal), max_u)
     bits = x.to(tl.int64, bitcast=True)
     exponent = (bits >> 52) - 1023
-    mantissa = (bits & 0x000FFFFFFFFFFFFF).to(tl.float64) * (
-        1.0 / 4503599627370496.0
-    ) + 1.0
+    mantissa = (bits & 0x000FFFFFFFFFFFFF).to(tl.float64) * (1.0 / 4503599627370496.0) + 1.0
     m1 = mantissa - 1.0
     return (
-        m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333333333 - m1 * 0.25)))
-        + exponent.to(tl.float64) * 0.6931471805599453
+        m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333333333 - m1 * 0.25))) + exponent.to(tl.float64) * 0.6931471805599453
     )
 
 
@@ -148,9 +139,7 @@ def fused_exponential_kernel_f32_unroll8(
     key=["N"],
 )
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
-def fused_exponential_kernel_f32(
-    out_ptr, N, inv_lambd, eps_minus, philox_seed, philox_offset, BLOCK: tl.constexpr
-):
+def fused_exponential_kernel_f32(out_ptr, N, inv_lambd, eps_minus, philox_seed, philox_offset, BLOCK: tl.constexpr):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -232,9 +221,7 @@ def fused_exponential_kernel_f32_small(
     key=["N"],
 )
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
-def fused_exponential_kernel_f64(
-    out_ptr, N, inv_lambd, eps_minus, philox_seed, philox_offset, BLOCK: tl.constexpr
-):
+def fused_exponential_kernel_f64(out_ptr, N, inv_lambd, eps_minus, philox_seed, philox_offset, BLOCK: tl.constexpr):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -288,35 +275,23 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
         UNROLL = 2
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
         increment = triton.cdiv(N, UNROLL)
-        philox_seed, philox_offset = philox_backend_seed_offset(
-            increment, generator=generator
-        )
+        philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
         with torch_device_fn.device(device):
-            fused_exponential_kernel_f64[grid](
-                out, N, inv_lambd, eps_minus, philox_seed, philox_offset
-            )
+            fused_exponential_kernel_f64[grid](out, N, inv_lambd, eps_minus, philox_seed, philox_offset)
     elif dtype in (torch.float16, torch.bfloat16) and N < 65536:
         UNROLL = 4
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
         increment = triton.cdiv(N, UNROLL)
-        philox_seed, philox_offset = philox_backend_seed_offset(
-            increment, generator=generator
-        )
+        philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
         with torch_device_fn.device(device):
-            fused_exponential_kernel_f32_small[grid](
-                out, N, inv_lambd, eps_minus, philox_seed, philox_offset
-            )
+            fused_exponential_kernel_f32_small[grid](out, N, inv_lambd, eps_minus, philox_seed, philox_offset)
     else:
         UNROLL = 8
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
         increment = triton.cdiv(N, UNROLL)
-        philox_seed, philox_offset = philox_backend_seed_offset(
-            increment, generator=generator
-        )
+        philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
         with torch_device_fn.device(device):
-            fused_exponential_kernel_f32_unroll8[grid](
-                out, N, inv_lambd, eps_minus, philox_seed, philox_offset
-            )
+            fused_exponential_kernel_f32_unroll8[grid](out, N, inv_lambd, eps_minus, philox_seed, philox_offset)
 
     if not inplace:
         x.copy_(out)

@@ -22,12 +22,8 @@ def flip(A: torch.Tensor, dims) -> torch.Tensor:
     for dim in dims:
         assert (
             dim >= -A.dim() and dim < A.dim()
-        ), "Dimension out of range (expected to be in range of [{}, {}], but got {})".format(
-            -A.dim(), A.dim() - 1, dim
-        )
-        assert not flip_dims_b[
-            dim
-        ], "dim {} appears multiple times in the list of dims".format(dim)
+        ), "Dimension out of range (expected to be in range of [{}, {}], but got {})".format(-A.dim(), A.dim() - 1, dim)
+        assert not flip_dims_b[dim], "dim {} appears multiple times in the list of dims".format(dim)
         flip_dims_b[dim] = True
     n = 0
     offset = 0

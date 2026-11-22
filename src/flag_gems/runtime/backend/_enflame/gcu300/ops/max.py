@@ -263,9 +263,7 @@ def max(inp):
     if mid_size > 4 * 24:
         num_stages = 3
     with torch_device_fn.device(inp.device):
-        max_kernel_1[(min(mid_size, 24), 1, 1)](
-            inp, mid, M, block_size, num_stages=num_stages, num_warps=1
-        )
+        max_kernel_1[(min(mid_size, 24), 1, 1)](inp, mid, M, block_size, num_stages=num_stages, num_warps=1)
         max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, num_warps=1)
     return out.to(return_dtype)
 

@@ -6,10 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +81,7 @@ def dropout_backward_kernel(
 ):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offset < N
-    m = tl.load(
-        dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first"
-    )
+    m = tl.load(dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first")
     dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
     dx = dy * m * scale
     tl.store(DX + offset, dx, mask=mask, eviction_policy="evict_first")
@@ -120,9 +115,7 @@ def dropout(input, p, train=True):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
         philox_seed = philox_seed % (2 ^ 32)
         philox_offset = philox_offset % (2 ^ 32)
-        dropout_forward_kernel[grid_fn](
-            input, out, mask, N, p, philox_seed, philox_offset
-        )
+        dropout_forward_kernel[grid_fn](input, out, mask, N, p, philox_seed, philox_offset)
     return out, mask
 
 

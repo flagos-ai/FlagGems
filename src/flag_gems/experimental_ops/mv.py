@@ -55,14 +55,10 @@ def _launch_mv_kernel(A: torch.Tensor, x: torch.Tensor, y: torch.Tensor):
 
 def mv(A: torch.Tensor, x: torch.Tensor):
     # Validate inputs
-    assert isinstance(A, torch.Tensor) and isinstance(
-        x, torch.Tensor
-    ), "Inputs must be tensors"
+    assert isinstance(A, torch.Tensor) and isinstance(x, torch.Tensor), "Inputs must be tensors"
     assert A.ndim == 2 and x.ndim == 1, "mv expects A: 2D tensor and x: 1D tensor"
     assert A.shape[1] == x.shape[0], "Incompatible dimensions for mv"
-    assert (
-        A.is_cuda and x.is_cuda and A.device == x.device
-    ), "All tensors must be on the same CUDA device"
+    assert A.is_cuda and x.is_cuda and A.device == x.device, "All tensors must be on the same CUDA device"
 
     # Determine output dtype following PyTorch's type promotion
     out_dtype = torch.result_type(A, x)
@@ -86,13 +82,9 @@ def mv(A: torch.Tensor, x: torch.Tensor):
 def mv_out(A: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
     # Validate inputs
     assert (
-        isinstance(A, torch.Tensor)
-        and isinstance(x, torch.Tensor)
-        and isinstance(out, torch.Tensor)
+        isinstance(A, torch.Tensor) and isinstance(x, torch.Tensor) and isinstance(out, torch.Tensor)
     ), "Inputs must be tensors"
-    assert (
-        A.ndim == 2 and x.ndim == 1 and out.ndim == 1
-    ), "Shapes must be A: [M, N], x: [N], out: [M]"
+    assert A.ndim == 2 and x.ndim == 1 and out.ndim == 1, "Shapes must be A: [M, N], x: [N], out: [M]"
     assert A.shape[1] == x.shape[0], "Incompatible dimensions for mv.out"
     assert out.shape[0] == A.shape[0], "Output shape must match rows of A"
     assert A.is_cuda and x.is_cuda and out.is_cuda, "All tensors must be CUDA tensors"

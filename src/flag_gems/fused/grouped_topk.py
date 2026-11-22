@@ -105,9 +105,7 @@ def group_idx_and_topk_triton(
     )
 
     group_scores_f32 = group_scores.to(tl.float32)
-    is_finite = (group_scores_f32 == group_scores_f32) & (
-        group_scores_f32 != float("inf")
-    )
+    is_finite = (group_scores_f32 == group_scores_f32) & (group_scores_f32 != float("inf"))
     group_scores_f32 = tl.where(is_finite & valid_group, group_scores_f32, neg_inf)
 
     max_group_score = tl.max(group_scores_f32, axis=0)
@@ -128,12 +126,8 @@ def group_idx_and_topk_triton(
 
         newly = tl.sum(is_max.to(tl.int32), axis=0)
 
-        pre_count_equal_to_top_value = tl.where(
-            need, count_equal_to_top_value, pre_count_equal_to_top_value
-        )
-        count_equal_to_top_value = tl.where(
-            need, count_equal_to_top_value + newly, count_equal_to_top_value
-        )
+        pre_count_equal_to_top_value = tl.where(need, count_equal_to_top_value, pre_count_equal_to_top_value)
+        count_equal_to_top_value = tl.where(need, count_equal_to_top_value + newly, count_equal_to_top_value)
         topk_group_value = tl.where(need, max_val, topk_group_value)
 
     num_equalto_topkth_group = target_num_min - pre_count_equal_to_top_value
@@ -144,18 +138,14 @@ def group_idx_and_topk_triton(
     eq_i = group_eq.to(tl.int32)
     prefix_eq = tl.cumsum(eq_i, axis=0) - eq_i
 
-    group_selected = (
-        group_gt | (group_eq & (prefix_eq < num_equalto_topkth_group))
-    ) & valid_group
+    group_selected = (group_gt | (group_eq & (prefix_eq < num_equalto_topkth_group))) & valid_group
 
     expert_offsets = tl.arange(0, BLOCK_EXPERT)
     valid_expert = expert_offsets < num_experts
     expert_group = expert_offsets // num_experts_per_group
 
     expert_in_group = expert_group[:, None] == group_offsets[None, :]
-    expert_selected = (
-        tl.sum((expert_in_group & group_selected[None, :]).to(tl.int32), axis=1) > 0
-    ) & valid_expert
+    expert_selected = (tl.sum((expert_in_group & group_selected[None, :]).to(tl.int32), axis=1) > 0) & valid_expert
 
     scored = tl.load(
         scores_ptr + pid * stride_scores_token + expert_offsets,
@@ -197,9 +187,7 @@ def group_idx_and_topk_triton(
         topk_vals = tl.where(pos_range == i, selected_score, topk_vals)
         topk_idx = tl.where(pos_range == i, selected_idx.to(tl.int32), topk_idx)
 
-        selection_scores = tl.where(
-            expert_offsets == selected_idx, neg_inf, selection_scores
-        )
+        selection_scores = tl.where(expert_offsets == selected_idx, neg_inf, selection_scores)
 
     if renormalize == 1:
         topk_sum = tl.sum(topk_vals, axis=0) + 1e-20
@@ -256,9 +244,7 @@ def grouped_topk(
     if bias.ndim != 1:
         bias = bias.flatten()
     if len(bias) != num_experts:
-        raise ValueError(
-            f"bias length ({len(bias)}) must match num_experts ({num_experts})"
-        )
+        raise ValueError(f"bias length ({len(bias)}) must match num_experts ({num_experts})")
 
     num_experts_per_group = num_experts // n_group
 

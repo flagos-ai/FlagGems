@@ -132,9 +132,7 @@ def _attn_fwd_inner(
 # we need to generate more configs.
 configs = runtime.get_tuned_config("attention")
 SMALL_HEAD_DIM_CONFIGS = [
-    triton.Config(
-        {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": 0}, num_stages=s, num_warps=w
-    )
+    triton.Config({"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": 0}, num_stages=s, num_warps=w)
     for BM in [64, 128]
     for BN in [16, 32]
     for s in [2, 3, 4]
@@ -197,15 +195,9 @@ def _attn_fwd(
     head_id = off_hz % q_head_num
     kv_head_id = head_id // GROUP_HEAD
 
-    q_offset = (
-        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
-    )
-    o_offset = (
-        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
-    )
-    kv_offset = (
-        batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
-    )
+    q_offset = batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
+    o_offset = batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
+    kv_offset = batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
 
     offs_headsize = tl.arange(0, HEAD_DIM)
 
@@ -214,30 +206,12 @@ def _attn_fwd(
     q_load_mask = offs_m < Q_CTX
     offs_n = tl.arange(0, BLOCK_N)
 
-    Q_block_ptr = (
-        Q
-        + q_offset
-        + offs_m[:, None] * stride_q_seqlen
-        + offs_headsize[None, :] * stride_q_headsize
-    )
-    K_block_ptr = (
-        K
-        + kv_offset
-        + offs_n[None, :] * stride_k_seqlen
-        + offs_headsize[:, None] * stride_k_headsize
-    )
-    V_block_ptr = (
-        V
-        + kv_offset
-        + offs_n[:, None] * stride_v_seqlen
-        + offs_headsize[None, :] * stride_v_headsize
-    )
+    Q_block_ptr = Q + q_offset + offs_m[:, None] * stride_q_seqlen + offs_headsize[None, :] * stride_q_headsize
+    K_block_ptr = K + kv_offset + offs_n[None, :] * stride_k_seqlen + offs_headsize[:, None] * stride_k_headsize
+    V_block_ptr = V + kv_offset + offs_n[:, None] * stride_v_seqlen + offs_headsize[None, :] * stride_v_headsize
 
     if HAS_ATTN_MASK:
-        attn_mask_offset = (
-            batch_id.to(tl.int64) * stride_attn_mask_batch
-            + head_id.to(tl.int64) * stride_attn_mask_head
-        )
+        attn_mask_offset = batch_id.to(tl.int64) * stride_attn_mask_batch + head_id.to(tl.int64) * stride_attn_mask_head
         mask_block_ptr = (
             attn_mask
             + attn_mask_offset
@@ -247,12 +221,7 @@ def _attn_fwd(
     else:
         mask_block_ptr = None
 
-    O_block_ptr = (
-        Out
-        + o_offset
-        + offs_m[:, None] * stride_o_seqlen
-        + offs_headsize[None, :] * stride_o_headsize
-    )
+    O_block_ptr = Out + o_offset + offs_m[:, None] * stride_o_seqlen + offs_headsize[None, :] * stride_o_headsize
 
     # initialize pointer to m and l
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
@@ -330,9 +299,7 @@ def _attn_fwd(
 
 
 @triton.jit
-def _attn_bwd_preprocess(
-    O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
-):
+def _attn_bwd_preprocess(O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     mask = off_m < Q_CTX
 
@@ -396,16 +363,10 @@ def _attn_bwd_dkdv(
         offs_m = curr_m + tl.arange(0, BLOCK_M1)  # (BLOCK_M1, )
         offs_m_mask = offs_m < Q_CTX  # (BLOCK_M1, )
 
-        qT_ptrs = (
-            Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d
-        )  # (BLOCK_DMODEL, BLOCK_M1)
-        do_ptrs = (
-            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-        )  # (BLOCK_M1, BLOCK_DMODEL)
+        qT_ptrs = Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d  # (BLOCK_DMODEL, BLOCK_M1)
+        do_ptrs = DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d  # (BLOCK_M1, BLOCK_DMODEL)
 
-        qT = tl.load(
-            qT_ptrs, mask=offs_m_mask[None, :], other=0.0
-        )  # (BLOCK_DMODEL, BLOCK_M1)
+        qT = tl.load(qT_ptrs, mask=offs_m_mask[None, :], other=0.0)  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
@@ -417,9 +378,7 @@ def _attn_bwd_dkdv(
         pT = tl.math.exp2(qkT - m)
         # pT = tl.math.exp2(qkT - m[None, :])
 
-        mask = (offs_m < Q_CTX)[None, :] & (offs_n < KV_CTX)[
-            :, None
-        ]  # (BLOCK_N1, BLOCK_M1)
+        mask = (offs_m < Q_CTX)[None, :] & (offs_n < KV_CTX)[:, None]  # (BLOCK_N1, BLOCK_M1)
         # Autoregressive masking.
         if MASK:
             mask &= offs_m[None, :] >= offs_n[:, None]
@@ -440,12 +399,8 @@ def _attn_bwd_dkdv(
         dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
         dsT = dsT.to(qT.dtype)
         qT = tl.where(offs_m_mask[None, :], qT, 0.0)  # (BLOCK_DMODEL, BLOCK_M1)
-        dsT = tl.where(
-            offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
-        )  # (BLOCK_N1, BLOCK_M1)
-        dk += tl.dot(
-            dsT, tl.trans(qT)
-        )  # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
+        dsT = tl.where(offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0)  # (BLOCK_N1, BLOCK_M1)
+        dk += tl.dot(dsT, tl.trans(qT))  # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
         # Increment pointers.
         curr_m += step_m
     return dk, dv
@@ -889,12 +844,7 @@ def scaled_dot_product_attention_backward(
         sm_scale = scale
 
     assert do.is_contiguous()
-    assert (
-        query.is_contiguous()
-        and key.is_contiguous()
-        and value.is_contiguous()
-        and o.is_contiguous()
-    )
+    assert query.is_contiguous() and key.is_contiguous() and value.is_contiguous() and o.is_contiguous()
     assert query.stride() == o.stride() == do.stride()
     assert key.stride() == value.stride()
 
@@ -947,11 +897,7 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
-    )
+    max_block_n1 = max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward]) if config_backward else 128
     grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
     # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
     # logger.info(f"{M.shape=}")
@@ -1093,9 +1039,7 @@ def flash_attention_forward(
     disable_splitkv=False,
 ):
     logger.debug("GEMS FLASH_ATTENTION_FORWARD")
-    assert (
-        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
-    ), "varlen is not supported yet."
+    assert cumulative_sequence_length_q is None and cumulative_sequence_length_k is None, "varlen is not supported yet."
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
@@ -1306,15 +1250,11 @@ def flash_attn_varlen_func(
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
         logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
-        assert (
-            cu_seqlens_k is not None or seqused_k is not None
-        ), "cu_seqlens_k or seqused_k must be provided"
+        assert cu_seqlens_k is not None or seqused_k is not None, "cu_seqlens_k or seqused_k must be provided"
         assert (
             cu_seqlens_k is None or seqused_k is None
         ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
-        assert (
-            block_table is None or seqused_k is not None
-        ), "seqused_k must be provided if block_table is provided"
+        assert block_table is None or seqused_k is not None, "seqused_k must be provided if block_table is provided"
         if softmax_scale is None:
             softmax_scale = q.shape[-1] ** (-0.5)
         # custom op does not support non-tuple input
@@ -1325,12 +1265,8 @@ def flash_attn_varlen_func(
             real_window_size = (window_size[0], window_size[1])
         q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
         dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
-        max_seqlen_q = (
-            max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
-        )
-        max_seqlen_k = (
-            max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
-        )
+        max_seqlen_q = max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+        max_seqlen_k = max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
         out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
             q,
             k,
@@ -1488,15 +1424,11 @@ def flash_attn_varlen_opt_func(
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
         logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
-        assert (
-            cu_seqlens_k is not None or seqused_k is not None
-        ), "cu_seqlens_k or seqused_k must be provided"
+        assert cu_seqlens_k is not None or seqused_k is not None, "cu_seqlens_k or seqused_k must be provided"
         assert (
             cu_seqlens_k is None or seqused_k is None
         ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
-        assert (
-            block_table is None or seqused_k is not None
-        ), "seqused_k must be provided if block_table is provided"
+        assert block_table is None or seqused_k is not None, "seqused_k must be provided if block_table is provided"
         if softmax_scale is None:
             softmax_scale = q.shape[-1] ** (-0.5)
         # custom op does not support non-tuple input
@@ -1507,12 +1439,8 @@ def flash_attn_varlen_opt_func(
             real_window_size = (window_size[0], window_size[1])
         # q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
         # dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
-        max_seqlen_q = (
-            max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
-        )
-        max_seqlen_k = (
-            max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
-        )
+        max_seqlen_q = max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+        max_seqlen_k = max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
         out, q, k, v, softmax_lse, *_ = mha_varlan_fwd_opt(
             q,
             k,

@@ -94,9 +94,7 @@ def cfggen():
     warps = [1]
     num_stages = [1, 3]
     configs = [
-        triton.Config(
-            {"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w, num_stages=s
-        )
+        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w, num_stages=s)
         for m in block_m
         for n in block_n
         for w in warps
@@ -183,13 +181,9 @@ class SkipLayerNorm(torch.autograd.Function):
         y = torch.empty_like(x)
 
         if N < MAX_C_MLU_SKIP_LAYERNORM_FORWARD:
-            grid = lambda META: (
-                min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
-            )
+            grid = lambda META: (min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),)
             with torch.cuda.device(x.device):
-                skip_layer_norm_middle_n_kernel[grid](
-                    y, x, residual, weight, bias, M, eps, N
-                )
+                skip_layer_norm_middle_n_kernel[grid](y, x, residual, weight, bias, M, eps, N)
         else:
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
             with torch_device_fn.device(x.device):

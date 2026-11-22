@@ -47,9 +47,7 @@ def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=Non
     if layout != torch.strided:
         raise ValueError("Currently only strided layout is supported for eye_m.")
 
-    out = torch.empty(
-        (n, m), dtype=dtype, device=device, layout=layout, pin_memory=pin_memory
-    )
+    out = torch.empty((n, m), dtype=dtype, device=device, layout=layout, pin_memory=pin_memory)
     BLOCK_SIZE = 32
     grid = (triton.cdiv(n, BLOCK_SIZE), triton.cdiv(m, BLOCK_SIZE))
 

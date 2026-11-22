@@ -25,9 +25,7 @@ def where_self_out(condition, self, other, out=None):
     if result_type == torch.int64:
         result_type = torch.int32
     if out is not None:
-        assert (
-            out.dtype == result_type
-        ), f"Expected out type to be {result_type}, but got {out.dtype}."
+        assert out.dtype == result_type, f"Expected out type to be {result_type}, but got {out.dtype}."
 
     c, a, b = list(
         map(

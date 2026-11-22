@@ -182,9 +182,7 @@ def test_sub_complex_int_scalar(shape, complex_dtype):
     inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
 
     ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = (
-        utils.to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
-    )
+    ref_inp2 = utils.to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
 
     ref_out = torch.sub(ref_inp1, ref_inp2)
     with flag_gems.use_gems():

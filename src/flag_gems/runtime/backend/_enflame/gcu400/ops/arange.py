@@ -25,9 +25,7 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     tl.store(y_ptr + cols, arange_val, mask=mask < size)
 
 
-def arange_start(
-    start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
-):
+def arange_start(start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None):
     logger.debug("GEMS ARANGE")
     if dtype is torch.int64:
         sgn = (step > 0) - (step < 0)
@@ -47,9 +45,7 @@ def arange_start(
         pin_memory = False
 
     if device is None:
-        device = (
-            runtime.device.name
-        )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
+        device = runtime.device.name  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
     arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
@@ -57,6 +53,4 @@ def arange_start(
 
 
 def arange(end, *, dtype=None, layout=None, device=None, pin_memory=None):
-    return arange_start(
-        0, end, 1, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
-    )
+    return arange_start(0, end, 1, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory)

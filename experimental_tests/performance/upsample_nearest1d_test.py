@@ -8,12 +8,8 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.upsample_nearest1d import (
-    upsample_nearest1d as gems_upsample_nearest1d,
-)
-from flag_gems.experimental_ops.upsample_nearest1d import (
-    upsample_nearest1d_out as gems_upsample_nearest1d_out,
-)
+from flag_gems.experimental_ops.upsample_nearest1d import upsample_nearest1d as gems_upsample_nearest1d
+from flag_gems.experimental_ops.upsample_nearest1d import upsample_nearest1d_out as gems_upsample_nearest1d_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -113,9 +109,7 @@ def test_upsample_nearest1d_vec_output_size_performance(shape, dtype, size_mode)
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.upsample_nearest1d.vec(
-            ref_x, output_size, scale_factors
-        ),
+        lambda: torch.ops.aten.upsample_nearest1d.vec(ref_x, output_size, scale_factors),
         rep=100,
         quantiles=quantiles,
     )
@@ -123,9 +117,7 @@ def test_upsample_nearest1d_vec_output_size_performance(shape, dtype, size_mode)
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: torch.ops.aten.upsample_nearest1d.vec(
-                x, output_size, scale_factors
-            ),
+            lambda: torch.ops.aten.upsample_nearest1d.vec(x, output_size, scale_factors),
             rep=100,
             quantiles=quantiles,
         )
@@ -153,9 +145,7 @@ def test_upsample_nearest1d_vec_scale_performance(shape, dtype, scale):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.upsample_nearest1d.vec(
-            ref_x, output_size, scale_factors
-        ),
+        lambda: torch.ops.aten.upsample_nearest1d.vec(ref_x, output_size, scale_factors),
         rep=100,
         quantiles=quantiles,
     )
@@ -163,9 +153,7 @@ def test_upsample_nearest1d_vec_scale_performance(shape, dtype, scale):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: torch.ops.aten.upsample_nearest1d.vec(
-                x, output_size, scale_factors
-            ),
+            lambda: torch.ops.aten.upsample_nearest1d.vec(x, output_size, scale_factors),
             rep=100,
             quantiles=quantiles,
         )

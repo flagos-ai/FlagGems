@@ -158,9 +158,7 @@ def mhc_post_kernel_generic(
     acc = c_i * d_vals
     for j in tl.static_range(0, HC):
         a_ji = tl.load(a_ptr + a_base + j * HC + pid_i).to(tl.float32)
-        b_j = tl.load(b_ptr + b_base + j * H + h_off, mask=h_mask, other=0.0).to(
-            tl.float32
-        )
+        b_j = tl.load(b_ptr + b_base + j * H + h_off, mask=h_mask, other=0.0).to(tl.float32)
         acc += a_ji * b_j
 
     tl.store(out_ptr + out_base + h_off, acc.to(tl.bfloat16), mask=h_mask)

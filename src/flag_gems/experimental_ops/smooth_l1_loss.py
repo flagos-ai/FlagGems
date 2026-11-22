@@ -111,9 +111,7 @@ def _launch_smooth_l1_elementwise(x, y, out_buf, beta):
     BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
-    smooth_l1_elementwise_kernel[grid](
-        x, y, out_buf, n_elements, beta, BLOCK_SIZE=BLOCK_SIZE
-    )
+    smooth_l1_elementwise_kernel[grid](x, y, out_buf, n_elements, beta, BLOCK_SIZE=BLOCK_SIZE)
 
 
 def _prepare_tensors_for_elementwise(x, y, dtype=None):
@@ -136,9 +134,7 @@ def _prepare_tensors_for_elementwise(x, y, dtype=None):
 
 
 def smooth_l1_loss(*args, **kwargs):
-    x, y, reduction, beta, _, leftover = _parse_smooth_l1_args(
-        args, kwargs, out_variant=False
-    )
+    x, y, reduction, beta, _, leftover = _parse_smooth_l1_args(args, kwargs, out_variant=False)
     if leftover:
         raise TypeError(f"Unexpected keyword arguments: {list(leftover.keys())}")
 
@@ -161,9 +157,7 @@ def smooth_l1_loss(*args, **kwargs):
 
 
 def smooth_l1_loss_out(*args, **kwargs):
-    x, y, reduction, beta, out, leftover = _parse_smooth_l1_args(
-        args, kwargs, out_variant=True
-    )
+    x, y, reduction, beta, out, leftover = _parse_smooth_l1_args(args, kwargs, out_variant=True)
     if leftover:
         raise TypeError(f"Unexpected keyword arguments: {list(leftover.keys())}")
 

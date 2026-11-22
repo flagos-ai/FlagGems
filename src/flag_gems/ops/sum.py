@@ -23,9 +23,7 @@ def sum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -44,9 +42,7 @@ def sum_kernel_1(
 @libentry()
 @triton.jit
 def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
-        mid.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(mid.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = mid.dtype.element_ty
@@ -213,9 +209,7 @@ def sum_dim_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -352,9 +346,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                 for d in dims_to_reduce:
                     out_shape[d % inp.ndim] = 1
             else:
-                sorted_dims_to_remove = sorted(
-                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
-                )
+                sorted_dims_to_remove = sorted(dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True)
                 for d in sorted_dims_to_remove:
                     index_to_remove = d % inp.ndim
                     out_shape.pop(index_to_remove)

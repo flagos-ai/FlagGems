@@ -40,9 +40,7 @@ def selu_(*args, **kwargs):
     elif "x" in kwargs and torch.is_tensor(kwargs["x"]):
         x = kwargs["x"]
     else:
-        raise ValueError(
-            "selu_ expects a Tensor as the first argument or under 'input'/'self'/'x' keyword."
-        )
+        raise ValueError("selu_ expects a Tensor as the first argument or under 'input'/'self'/'x' keyword.")
 
     supported_dtypes = {torch.float16, torch.bfloat16, torch.float32}
     if (not x.is_contiguous()) or (x.dtype not in supported_dtypes):

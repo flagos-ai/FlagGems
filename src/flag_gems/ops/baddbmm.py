@@ -17,13 +17,17 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("baddbmm", pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("baddbmm"),
+    configs=(
+        runtime.ops_get_configs("baddbmm", pre_hook=None)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else runtime.get_tuned_config("baddbmm")
+    ),
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config("baddbmm")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config("baddbmm")["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=10,
 )
@@ -69,9 +73,7 @@ def baddbmm_kernel(
         num_CTA_per_group = gridy * GROUP_M
         group_id = pid // num_CTA_per_group
         inner_group_id = pid % num_CTA_per_group
-        GROUP_SIZE = tl.where(
-            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
-        )
+        GROUP_SIZE = tl.where((group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M)
         pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
         pid_n = inner_group_id // GROUP_SIZE
 

@@ -29,13 +29,9 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     input = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_i = utils.to_reference(input, True)
     output_size = tuple([int(input.shape[i + 2] * scale[i]) for i in range(2)])
-    ref_out = torch._C._nn._upsample_bicubic2d_aa(
-        ref_i, output_size=output_size, align_corners=align_corners
-    )
+    ref_out = torch._C._nn._upsample_bicubic2d_aa(ref_i, output_size=output_size, align_corners=align_corners)
     with flag_gems.use_gems():
-        res_out = torch._C._nn._upsample_bicubic2d_aa(
-            input, output_size=output_size, align_corners=align_corners
-        )
+        res_out = torch._C._nn._upsample_bicubic2d_aa(input, output_size=output_size, align_corners=align_corners)
 
     def span(scale):
         support = 2 if (scale >= 1.0) else 2.0 / scale
@@ -113,9 +109,7 @@ def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
     ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_upsample_bicubic2d_aa_backward(
-    N, C, H_in, W_in, H_out, W_out, align_corners, dtype
-):
+def test_upsample_bicubic2d_aa_backward(N, C, H_in, W_in, H_out, W_out, align_corners, dtype):
     shape = (N, C, H_in, W_in)
 
     grad_shape = (N, C, H_out, W_out)

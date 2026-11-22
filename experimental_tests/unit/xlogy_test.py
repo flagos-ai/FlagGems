@@ -8,16 +8,10 @@ import torch
 import triton  # noqa: F401
 
 import flag_gems
-from flag_gems.experimental_ops.xlogy import (
-    xlogy_OutScalar_Other as gems_xlogy_OutScalar_Other,
-)
-from flag_gems.experimental_ops.xlogy import (
-    xlogy_OutScalar_Self as gems_xlogy_OutScalar_Self,
-)
+from flag_gems.experimental_ops.xlogy import xlogy_OutScalar_Other as gems_xlogy_OutScalar_Other
+from flag_gems.experimental_ops.xlogy import xlogy_OutScalar_Self as gems_xlogy_OutScalar_Self
 from flag_gems.experimental_ops.xlogy import xlogy_OutTensor as gems_xlogy_OutTensor
-from flag_gems.experimental_ops.xlogy import (
-    xlogy_Scalar_Other as gems_xlogy_Scalar_Other,
-)
+from flag_gems.experimental_ops.xlogy import xlogy_Scalar_Other as gems_xlogy_Scalar_Other
 from flag_gems.experimental_ops.xlogy import xlogy_Scalar_Self as gems_xlogy_Scalar_Self
 from flag_gems.experimental_ops.xlogy import xlogy_Tensor as gems_xlogy_Tensor
 

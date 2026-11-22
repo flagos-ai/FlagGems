@@ -13,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
-def multinomial_with_replacement(
-    cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr = 128
-):
+def multinomial_with_replacement(cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr = 128):
     # The computation is arranged in a 2d grid of blocks, each producing
     # a batch of samples for a particular distribution.
     #            <------------------- grid.x --------------------->
@@ -87,7 +85,5 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     increment = n_dist * n_samples
     philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
-    multinomial_with_replacement[grid](
-        cum_prob, out, n_categories, n_samples, philox_seed, philox_offset
-    )
+    multinomial_with_replacement[grid](cum_prob, out, n_categories, n_samples, philox_seed, philox_offset)
     return out

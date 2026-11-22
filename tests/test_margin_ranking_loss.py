@@ -15,19 +15,13 @@ def test_margin_ranking_loss(shape, dtype, margin, reduction):
     input1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     input2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    target = (
-        torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1
-    ).to(dtype)
+    target = (torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1).to(dtype)
 
     ref_input1 = utils.to_reference(input1)
     ref_input2 = utils.to_reference(input2)
     ref_target = utils.to_reference(target)
-    ref_out = torch.ops.aten.margin_ranking_loss(
-        ref_input1, ref_input2, ref_target, margin, reduction
-    )
+    ref_out = torch.ops.aten.margin_ranking_loss(ref_input1, ref_input2, ref_target, margin, reduction)
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.margin_ranking_loss(
-            input1, input2, target, margin, reduction
-        )
+        res_out = torch.ops.aten.margin_ranking_loss(input1, input2, target, margin, reduction)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

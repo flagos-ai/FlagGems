@@ -220,14 +220,10 @@ def moe_align_block_size_triton(
     cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=topk_ids.device)
     tokens_per_thread = triton.next_power_of_2(ceil_div(numel, num_experts))
 
-    block_size_sorted = triton.next_power_of_2(
-        ceil_div(numel_sorted_token_ids, num_experts)
-    )
+    block_size_sorted = triton.next_power_of_2(ceil_div(numel_sorted_token_ids, num_experts))
     block_size_expert = triton.next_power_of_2(ceil_div(numel_expert_ids, num_experts))
 
-    tokens_cnts = torch.zeros(
-        (num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device
-    )
+    tokens_cnts = torch.zeros((num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device)
     num_experts_next_power_of_2 = triton.next_power_of_2(num_experts)
     block_expert = triton.cdiv(num_experts, 32) * 32
 
@@ -305,13 +301,9 @@ def moe_align_block_size(
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     if pad_sorted_ids:
         max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
-    sorted_ids = torch.empty(
-        (max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device
-    )
+    sorted_ids = torch.empty((max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device)
     max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_size)
-    expert_ids = torch.empty(
-        (max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device
-    )
+    expert_ids = torch.empty((max_num_m_blocks,), dtype=torch.int32, device=topk_ids.device)
     num_tokens_post_pad = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
 
     moe_align_block_size_triton(

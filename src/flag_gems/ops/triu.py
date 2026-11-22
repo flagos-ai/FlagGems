@@ -91,11 +91,7 @@ def _check_batch_contiguous(tensor, allow_zero_stride=True):
 
     expected_stride = tensor.size(-1) * tensor.size(-2)
     for i in range(dims - 3, -1, -1):
-        if (
-            allow_zero_stride
-            and i == 0
-            and (tensor.stride(i) == 0 or tensor.size(i) == 1)
-        ):
+        if allow_zero_stride and i == 0 and (tensor.stride(i) == 0 or tensor.size(i) == 1):
             continue
 
         if tensor.stride(i) != expected_stride:
@@ -113,9 +109,7 @@ def triu(A, diagonal=0):
 
     can_use_directly, A_input = _check_batch_contiguous(A, allow_zero_stride=False)
 
-    out = torch.empty(
-        A.shape, dtype=A.dtype, device=A.device, memory_format=torch.contiguous_format
-    )
+    out = torch.empty(A.shape, dtype=A.dtype, device=A.device, memory_format=torch.contiguous_format)
 
     M, N = A_input.shape[-2:]
 
@@ -146,10 +140,7 @@ def triu_(A, diagonal=0):
     can_use_directly, A_to_use = _check_batch_contiguous(A, allow_zero_stride=True)
 
     if not can_use_directly:
-        logger.debug(
-            "Input tensor does not satisfy contiguity requirements, "
-            "using temporary tensor for computation"
-        )
+        logger.debug("Input tensor does not satisfy contiguity requirements, " "using temporary tensor for computation")
 
         result_temp = torch.empty_like(A_to_use, memory_format=torch.contiguous_format)
 

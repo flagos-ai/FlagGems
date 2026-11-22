@@ -3,13 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
-    DEFAULT_METRICS,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-)
+from benchmark.attri_util import BOOL_DTYPES, COMPLEX_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
@@ -133,9 +127,7 @@ def test_general_binary_pointwise(op_name, torch_op, dtypes):
     ],
 )
 def test_general_inplace_binary_pointwise(op_name, torch_op, dtypes):
-    bench = BinaryPointwiseBenchmark(
-        op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
-    )
+    bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True)
     bench.run()
 
 

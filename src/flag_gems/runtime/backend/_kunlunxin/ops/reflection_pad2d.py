@@ -82,9 +82,7 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
     if not isinstance(padding, (list, tuple)):
         raise ValueError("padding must be a sequence")
     if len(padding) != 4:
-        raise ValueError(
-            "padding must be a sequence of length 4: (pad_left, pad_right, pad_top, pad_bottom)"
-        )
+        raise ValueError("padding must be a sequence of length 4: (pad_left, pad_right, pad_top, pad_bottom)")
     pad_left, pad_right, pad_top, pad_bottom = [int(p) for p in padding]
 
     # Validate padding values
@@ -100,15 +98,11 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
     W_in = int(x.shape[-1])
     # Validate reflection padding constraints
     if H_in < 2 or W_in < 2:
-        raise ValueError(
-            "input spatial dimensions must be at least 2 for reflection padding when padding > 0"
-        )
+        raise ValueError("input spatial dimensions must be at least 2 for reflection padding when padding > 0")
     if H_in <= 0 or W_in <= 0:
         raise ValueError("spatial dimensions must be > 0")
     if pad_left >= W_in or pad_right >= W_in or pad_top >= H_in or pad_bottom >= H_in:
-        raise ValueError(
-            "padding values must be less than the input spatial dimensions for reflection padding"
-        )
+        raise ValueError("padding values must be less than the input spatial dimensions for reflection padding")
 
     H_out = H_in + pad_top + pad_bottom
     W_out = W_in + pad_left + pad_right
@@ -118,19 +112,13 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
 
     # Handle output tensor
     if out is None:
-        out = torch.empty(
-            (*leading_shape, H_out, W_out), device=x.device, dtype=x.dtype
-        )
+        out = torch.empty((*leading_shape, H_out, W_out), device=x.device, dtype=x.dtype)
     else:
         expected_shape = (*leading_shape, H_out, W_out)
         if tuple(out.shape) != expected_shape:
-            raise ValueError(
-                f"out tensor has shape {tuple(out.shape)}, expected {expected_shape}"
-            )
+            raise ValueError(f"out tensor has shape {tuple(out.shape)}, expected {expected_shape}")
         if out.dtype != x.dtype:
-            raise ValueError(
-                f"out dtype {out.dtype} does not match input dtype {x.dtype}"
-            )
+            raise ValueError(f"out dtype {out.dtype} does not match input dtype {x.dtype}")
         if out.device != x.device:
             raise ValueError("out must be on the same device as input")
         out = out.contiguous()
@@ -146,9 +134,7 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
     BLOCK_HW = 256
     grid = (B, triton.cdiv(H_out * W_out, BLOCK_HW))
     with torch_device_fn.device(x.device):
-        reflection_pad2d_kernel[grid](
-            x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out, BLOCK_HW=BLOCK_HW
-        )
+        reflection_pad2d_kernel[grid](x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out, BLOCK_HW=BLOCK_HW)
     return out
 
 

@@ -91,6 +91,4 @@ def rrelu_with_noise_backward(
 ):
     logger.debug("GEMS RRELU_WITH_NOISE_BACKWARD")
     out = torch.empty_like(grad_output)
-    return _launch_rrelu_with_noise_backward(
-        grad_output, input, noise, lower, upper, training, out
-    )
+    return _launch_rrelu_with_noise_backward(grad_output, input, noise, lower, upper, training, out)

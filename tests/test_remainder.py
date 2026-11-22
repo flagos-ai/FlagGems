@@ -60,12 +60,12 @@ def test_remainder(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_remainder_(shape, dtype):
-    inp1 = torch.randint(
-        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
-    inp2 = torch.randint(
-        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+    inp1 = torch.randint(torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = torch.randint(torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
     if cfg.TO_CPU:
         inp1 = replace_zeros(inp1.clone())
         inp2 = replace_zeros(inp2)

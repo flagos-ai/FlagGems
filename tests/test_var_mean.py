@@ -36,13 +36,9 @@ def test_var_mean(shape, dim, correction, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_var, ref_mean = torch.var_mean(
-        ref_inp, dim, correction=correction, keepdim=keepdim
-    )
+    ref_var, ref_mean = torch.var_mean(ref_inp, dim, correction=correction, keepdim=keepdim)
     with flag_gems.use_gems():
-        res_var, res_mean = torch.var_mean(
-            inp, dim, correction=correction, keepdim=keepdim
-        )
+        res_var, res_mean = torch.var_mean(inp, dim, correction=correction, keepdim=keepdim)
 
     utils.gems_assert_close(res_mean, ref_mean, dtype)
     utils.gems_assert_close(res_var, ref_var, dtype)

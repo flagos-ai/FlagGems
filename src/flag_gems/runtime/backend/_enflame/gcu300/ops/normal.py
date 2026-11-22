@@ -14,33 +14,25 @@ logger = logging.getLogger(__name__)
 UNROLL = 4
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, True], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_tensor_tensor(val, std, mean):
     return val * std + mean
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, True], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_tensor_float(val, std, mean):
     return val * std + mean
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_float_tensor(val, std, mean):
     return val * std + mean
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_float_float(val, std, mean):
     return val * std + mean
@@ -52,9 +44,7 @@ def normal_distribution(shape, device, *, generator=None):
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     philox_seed = philox_seed % (2 ^ 32)
     philox_offset = philox_offset % (2 ^ 32)
     with torch_device_fn.device(device):

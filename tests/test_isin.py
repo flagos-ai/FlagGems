@@ -53,8 +53,6 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     ref_inp0 = utils.to_reference(inp0, False)
     with flag_gems.use_gems():
         res0_out = torch.isin(inp0, inp2, assume_unique=assume_unique, invert=invert)
-    ref0_out = torch.isin(
-        ref_inp0, ref_inp2, assume_unique=assume_unique, invert=invert
-    )
+    ref0_out = torch.isin(ref_inp0, ref_inp2, assume_unique=assume_unique, invert=invert)
 
     utils.gems_assert_equal(res0_out, ref0_out)

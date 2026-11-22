@@ -173,11 +173,7 @@ def kron_kernel(
     b = tl.load(b_ptr + b_idx, mask=mask)
     c = a * b
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
+    c_idx = batch_id * c_batch_stride + offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
 
 
@@ -264,11 +260,7 @@ def kron(A, B):
                 out_batch1,
                 BLOCK_SIZE=indice_tile_size,
             )
-            grid = lambda meta: (
-                batch_size
-                * triton.cdiv(M, meta["BLOCK_M"])
-                * triton.cdiv(N, meta["BLOCK_N"]),
-            )
+            grid = lambda meta: (batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
 
             kron_kernel[grid](
                 A_view,
@@ -295,19 +287,13 @@ def kron(A, B):
 
     else:
         if batch_size != 1:
-            batch_indices = torch.empty(
-                batch_size * 2, device=A.device, dtype=torch.int64
-            )
+            batch_indices = torch.empty(batch_size * 2, device=A.device, dtype=torch.int64)
             for i in range(batch_size):
                 a_idx, b_idx = calculate_indices(i, A_prepared.shape, B_prepared.shape)
                 batch_indices[i * 2] = a_idx
                 batch_indices[i * 2 + 1] = b_idx
             with torch_device_fn.device(A.device):
-                grid = lambda meta: (
-                    batch_size
-                    * triton.cdiv(M, meta["BLOCK_M"])
-                    * triton.cdiv(N, meta["BLOCK_N"]),
-                )
+                grid = lambda meta: (batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
                 kron_kernel[grid](
                     A_view,
                     B_view,
@@ -332,11 +318,7 @@ def kron(A, B):
                 )
         else:
             with torch_device_fn.device(A.device):
-                grid = lambda meta: (
-                    batch_size
-                    * triton.cdiv(M, meta["BLOCK_M"])
-                    * triton.cdiv(N, meta["BLOCK_N"]),
-                )
+                grid = lambda meta: (batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
                 kron_kernel_for_batch_size_1[grid](
                     A_view,
                     B_view,

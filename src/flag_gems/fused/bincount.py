@@ -153,11 +153,7 @@ def _fused_bincount_launch(
 ):
     max_tensor = torch.zeros(1, dtype=torch.int64, device=input_contig.device)
     is_fp64 = out_dtype == torch.float64
-    compute_dtype = (
-        torch.float64
-        if is_fp64
-        else (torch.float32 if weights_contig is not None else torch.int64)
-    )
+    compute_dtype = torch.float64 if is_fp64 else (torch.float32 if weights_contig is not None else torch.int64)
     if weights_contig is None:
         compute_dtype = torch.int64
 
@@ -270,11 +266,7 @@ def bincount(input, weights=None, minlength=0):
         num_warps,
     )
 
-    if (
-        weights is not None
-        and weights.dtype != torch.float64
-        and weights.dtype != torch.float32
-    ):
+    if weights is not None and weights.dtype != torch.float64 and weights.dtype != torch.float32:
         output = output.to(dtype=weights.dtype)
 
     return output

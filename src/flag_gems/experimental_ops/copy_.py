@@ -27,9 +27,7 @@ def _tl_dtype_from_torch(dtype: torch.dtype):
 
 
 @triton.jit
-def _copy_kernel(
-    dst_ptr, src_ptr, n_elements, BLOCK_SIZE: tl.constexpr, DST_DTYPE: tl.constexpr
-):
+def _copy_kernel(dst_ptr, src_ptr, n_elements, BLOCK_SIZE: tl.constexpr, DST_DTYPE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -40,9 +38,7 @@ def _copy_kernel(
 
 
 @triton.jit
-def _fill_kernel(
-    dst_ptr, scalar_value, n_elements, BLOCK_SIZE: tl.constexpr, DST_DTYPE: tl.constexpr
-):
+def _fill_kernel(dst_ptr, scalar_value, n_elements, BLOCK_SIZE: tl.constexpr, DST_DTYPE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -53,13 +49,9 @@ def _fill_kernel(
 
 def _launch_copy_tensor(dst: torch.Tensor, src: torch.Tensor):
     assert dst.is_cuda and src.is_cuda, "Triton copy_ supports CUDA tensors only."
-    assert (
-        dst.is_contiguous() and src.is_contiguous()
-    ), "Only contiguous tensors are supported."
+    assert dst.is_contiguous() and src.is_contiguous(), "Only contiguous tensors are supported."
     n_elements = dst.numel()
-    assert (
-        src.numel() == n_elements
-    ), "Source and destination must have the same number of elements."
+    assert src.numel() == n_elements, "Source and destination must have the same number of elements."
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     DST_DTYPE = _tl_dtype_from_torch(dst.dtype)
     _copy_kernel[grid](

@@ -73,17 +73,13 @@ def mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     assert a.is_contiguous(), "A must be contiguous"
     assert b.is_contiguous(), "B must be contiguous"
-    assert (
-        a.dtype == torch.float16 and b.dtype == torch.float16
-    ), "Only fp16 supported for Iluvatar TensorCore"
+    assert a.dtype == torch.float16 and b.dtype == torch.float16, "Only fp16 supported for Iluvatar TensorCore"
     M, K = a.shape
     K2, N = b.shape
     assert K == K2, "K dimension mismatch"
 
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
 
     _mm_kernel[grid](
         a,

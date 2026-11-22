@@ -44,9 +44,7 @@ def test_cummin(shape, dtype):
         with flag_gems.use_gems():
             res_out = torch.cummin(inp, dim=dim)
 
-    utils.gems_assert_close(
-        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim]
-    )
+    utils.gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
     utils.gems_assert_equal(res_out.indices, ref_out.indices)
 
 
@@ -80,7 +78,5 @@ def test_cummin_with_nan(shape, dtype, nan_ratio):
         with flag_gems.use_gems():
             res_out = torch.cummin(inp, dim=dim)
 
-    utils.gems_assert_close(
-        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
-    )
+    utils.gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True)
     utils.gems_assert_equal(res_out.indices, ref_out.indices)

@@ -58,19 +58,14 @@ class VstackKernelCode(IndentedBuffer):
         self.deal_num = math.ceil(self.total_size / TOTAL_CORE_NUM)
         self.input_num = len(self.inputs)
         flag = (self.total_size / self.input_num) == self.idxs[1]
-        if (
-            self.total_size < self.vstack_small_limit
-            and self.input_num <= TOTAL_CORE_NUM
-            and flag
-        ):
+        if self.total_size < self.vstack_small_limit and self.input_num <= TOTAL_CORE_NUM and flag:
             self.is_small = True
         else:
             self.is_small = False
 
     def __imports(self):
         """Generate imports for the kernel code."""
-        self.tpl(
-            """
+        self.tpl("""
 import math
 import torch
 import triton
@@ -80,8 +75,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime.backend import vendor_module
 TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
 MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
-        """
-        )
+        """)
 
     def __wrapper(self):
         """Generate wrapper function for the kernel code."""
@@ -156,18 +150,14 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                     for i in range(self.input_num):
                         self.writeline(f"if pid_x == {i} and pid_x == i:")
                         with self.indent():
-                            self.writeline(
-                                f"for num in range(0, idx_{i + 1} - idx_{i}, BLOCK_SIZE):"
-                            )
+                            self.writeline(f"for num in range(0, idx_{i + 1} - idx_{i}, BLOCK_SIZE):")
                             with self.indent():
                                 self.writeline("in_offset = num + block")
                                 self.writeline(f"dst_offset = idx_{i} + num + block")
                                 self.writeline(
                                     f"x = tl.load(input_{i} + in_offset, mask = in_offset < idx_{i + 1} - idx_{i})"
                                 )
-                                self.writeline(
-                                    f"tl.store(output + dst_offset, x, mask = dst_offset < idx_{i + 1})"
-                                )
+                                self.writeline(f"tl.store(output + dst_offset, x, mask = dst_offset < idx_{i + 1})")
             self.writeline("else:")
             with self.indent():
                 self.writeline("condidate_num = idx_1")
@@ -184,18 +174,12 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                             with self.indent():
                                 self.writeline("offset = idx_1 - idx_0 - condidate_num")
                                 self.writeline("deal_rem = deal_num - per_fetch_num")
-                                self.writeline(
-                                    "for i in range(0, deal_num, BLOCK_SIZE):"
-                                )
+                                self.writeline("for i in range(0, deal_num, BLOCK_SIZE):")
                                 with self.indent():
                                     self.writeline("in_offset = offset + i + block")
                                     self.writeline("dst_offset = in_offset")
-                                    self.writeline(
-                                        "x = tl.load(input_0 + in_offset, mask=in_offset < idx_1 - idx_0)"
-                                    )
-                                    self.writeline(
-                                        "tl.store(output + dst_offset, x, mask=dst_offset<idx_1)"
-                                    )
+                                    self.writeline("x = tl.load(input_0 + in_offset, mask=in_offset < idx_1 - idx_0)")
+                                    self.writeline("tl.store(output + dst_offset, x, mask=dst_offset<idx_1)")
                             if self.input_num > 1:
                                 self.writeline("else:")
                                 with self.indent():
@@ -203,47 +187,27 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                         idx = i + 1
                                         self.writeline(f"if input_iter == {i}:")
                                         with self.indent():
-                                            self.writeline(
-                                                f"offset = idx_{idx} - idx_{i} - condidate_num"
-                                            )
+                                            self.writeline(f"offset = idx_{idx} - idx_{i} - condidate_num")
                                             self.writeline("if need_num != deal_num:")
                                             with self.indent():
-                                                self.writeline(
-                                                    "deal_rem = deal_num - per_fetch_num"
-                                                )
-                                                self.writeline(
-                                                    "for i in range(0, need_num, BLOCK_SIZE):"
-                                                )
+                                                self.writeline("deal_rem = deal_num - per_fetch_num")
+                                                self.writeline("for i in range(0, need_num, BLOCK_SIZE):")
                                                 with self.indent():
-                                                    self.writeline(
-                                                        "in_offset = offset + i + block"
-                                                    )
-                                                    self.writeline(
-                                                        f"dst_offset = idx_{i} + in_offset"
-                                                    )
+                                                    self.writeline("in_offset = offset + i + block")
+                                                    self.writeline(f"dst_offset = idx_{i} + in_offset")
                                                     self.writeline(
                                                         f"x = tl.load(input_{i} + in_offset, mask=in_offset < need_num)"
                                                     )
-                                                    self.writeline(
-                                                        f"tl.store(output + dst_offset, x, \
-                                                            mask=dst_offset<idx_{i}+per_fetch_num)"
-                                                    )
+                                                    self.writeline(f"tl.store(output + dst_offset, x, \
+                                                            mask=dst_offset<idx_{i}+per_fetch_num)")
                                             self.writeline("else:")
                                             with self.indent():
-                                                self.writeline(
-                                                    "for i in range(0, need_num, BLOCK_SIZE):"
-                                                )
+                                                self.writeline("for i in range(0, need_num, BLOCK_SIZE):")
                                                 with self.indent():
-                                                    self.writeline(
-                                                        "in_offset = offset + i + block"
-                                                    )
-                                                    self.writeline(
-                                                        f"dst_offset = idx_{i} + in_offset"
-                                                    )
-                                                    self.writeline(
-                                                        f"x = tl.load(input_{i} + in_offset, \
-                                                            mask=in_offset < idx_{idx}-idx_{i})"
-                                                    )
+                                                    self.writeline("in_offset = offset + i + block")
+                                                    self.writeline(f"dst_offset = idx_{i} + in_offset")
+                                                    self.writeline(f"x = tl.load(input_{i} + in_offset, \
+                                                            mask=in_offset < idx_{idx}-idx_{i})")
                                                     self.writeline(
                                                         f"tl.store(output + dst_offset, x, mask=dst_offset<idx_{idx})"
                                                     )
@@ -255,31 +219,21 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                 idx = i + 1
                                 input_idx = i - 1
                                 if self.input_num == 2:
-                                    self.writeline(
-                                        f"condidate_num = idx_{idx} - idx_{i}"
-                                    )
+                                    self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
                                 else:
                                     if i == 1:
                                         self.writeline(f"if input_iter == {input_idx}:")
                                         with self.indent():
-                                            self.writeline(
-                                                f"condidate_num = idx_{idx} - idx_{i}"
-                                            )
+                                            self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
                                     else:
                                         if i < self.input_num - 1:
-                                            self.writeline(
-                                                f"elif input_iter == {input_idx}:"
-                                            )
+                                            self.writeline(f"elif input_iter == {input_idx}:")
                                             with self.indent():
-                                                self.writeline(
-                                                    f"condidate_num = idx_{idx} - idx_{i}"
-                                                )
+                                                self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
                                         else:
                                             self.writeline("else:")
                                             with self.indent():
-                                                self.writeline(
-                                                    f"condidate_num = idx_{idx} - idx_{i}"
-                                                )
+                                                self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
 
                             self.writeline("input_iter += 1")
 
@@ -313,9 +267,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
         if is_declare:
             return f"{extra_args_str}, output, total_size, input_num, deal_num, is_small, BLOCK_SIZE: tl.constexpr"
         else:
-            return (
-                f"{extra_args_str}, output, total_size, input_num, deal_num, is_small"
-            )
+            return f"{extra_args_str}, output, total_size, input_num, deal_num, is_small"
 
     def __call__(self, tensors: list) -> torch.Tensor:
         # get overload kernel.
@@ -332,9 +284,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
             filepath = cache_dir() / file_name
             write_atomic(filepath, self.getvalue())
             # load
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{key}_pid_{self.pid}", filepath
-            )
+            spec = importlib.util.spec_from_file_location(f"_gen_module_{key}_pid_{self.pid}", filepath)
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m

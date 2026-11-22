@@ -23,9 +23,7 @@ def test_max(shape, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -39,9 +37,7 @@ def test_max(shape, dtype):
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_max_all_neg_inf(shape, dtype):
-    inp = torch.full(
-        shape, fill_value=float("-inf"), dtype=dtype, device=flag_gems.device
-    )
+    inp = torch.full(shape, fill_value=float("-inf"), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -59,9 +55,7 @@ def test_max_all_neg_inf(shape, dtype):
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + [[1]])
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_max_int(shape, dtype):
-    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-        flag_gems.device
-    )
+    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -76,13 +70,9 @@ def test_max_int(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 def test_max_uncontiguous(shape, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device="cpu")[::2, ::2].to(
-            flag_gems.device
-        )
+        inp = torch.randn(shape, dtype=dtype, device="cpu")[::2, ::2].to(flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu")[
-            ::2, ::2
-        ].to(flag_gems.device)
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu")[::2, ::2].to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -102,9 +92,7 @@ def test_max_dim(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
@@ -124,9 +112,7 @@ def test_max_dim_big_shape(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)

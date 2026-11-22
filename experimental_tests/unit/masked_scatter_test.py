@@ -7,12 +7,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.experimental_ops.masked_scatter import (
-    masked_scatter as gems_masked_scatter,
-)
-from flag_gems.experimental_ops.masked_scatter import (
-    masked_scatter_out as gems_masked_scatter_out,
-)
+from flag_gems.experimental_ops.masked_scatter import masked_scatter as gems_masked_scatter
+from flag_gems.experimental_ops.masked_scatter import masked_scatter_out as gems_masked_scatter_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -78,9 +74,7 @@ def test_masked_scatter_out(shape, dtype):
     ref_mask = to_reference(mask)
     ref_source = to_reference(source)
     ref_outbuf = torch.empty_like(ref_self)
-    ref_out = torch.ops.aten.masked_scatter.out(
-        ref_self, ref_mask, ref_source, out=ref_outbuf
-    )
+    ref_out = torch.ops.aten.masked_scatter.out(ref_self, ref_mask, ref_source, out=ref_outbuf)
 
     act_self = self.clone()
     act_mask = mask.clone()

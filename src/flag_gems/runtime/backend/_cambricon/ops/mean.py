@@ -14,9 +14,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
-@libtuner(
-    configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"]
-)
+@libtuner(configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"])
 @triton.jit
 def mean_kernel_1(
     inp,
@@ -67,9 +65,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
     task_num = tl.cdiv(M, BLOCK_M)
     iter_num = tl.cdiv(task_num, num_prog)
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Mean_ptr = Mean + pid
         row_mask = pid < M

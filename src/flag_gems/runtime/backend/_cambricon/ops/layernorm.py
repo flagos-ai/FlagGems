@@ -273,12 +273,8 @@ def input_backward_kernel(
 
     for row in range(row_start, M, step):
         row_off = row + tl.arange(0, BLOCK_ROW_SIZE)
-        mean = tl.load(Mean + row_off, mask=row_off < M, other=0.0)[:, None].to(
-            tl.float32
-        )
-        rstd = tl.load(Rstd + row_off, mask=row_off < M, other=0.0)[:, None].to(
-            tl.float32
-        )
+        mean = tl.load(Mean + row_off, mask=row_off < M, other=0.0)[:, None].to(tl.float32)
+        rstd = tl.load(Rstd + row_off, mask=row_off < M, other=0.0)[:, None].to(tl.float32)
 
         row_mask = row_off[:, None] < M
         off = row_off[:, None] * N
@@ -368,12 +364,8 @@ def weight_bias_backward_kernel(
             mask = row_mask and col_mask
             dy = tl.load(new_dY + rows[:, None] * N, mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + rows[:, None] * N, mask, other=0.0).to(tl.float32)
-            mean = tl.load(Mean + rows, mask=rows < M, other=0.0)[:, None].to(
-                tl.float32
-            )
-            rstd = tl.load(Rstd + rows, mask=rows < M, other=0.0)[:, None].to(
-                tl.float32
-            )
+            mean = tl.load(Mean + rows, mask=rows < M, other=0.0)[:, None].to(tl.float32)
+            rstd = tl.load(Rstd + rows, mask=rows < M, other=0.0)[:, None].to(tl.float32)
             x_hat = (x - mean) * rstd
             accW += dy * x_hat
             accB += dy
@@ -504,13 +496,9 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     mean = torch.empty(M, dtype=acc_type, device=input.device)
     rstd = torch.empty(M, dtype=acc_type, device=input.device)
     if N <= MAX_C_MLU_LAYERNORM_FORWARD:
-        grid = lambda META: (
-            min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
-        )
+        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),)
         with torch_device_fn.device(input.device):
-            layer_norm_kernel_middle_n[grid](
-                input, y, weight, bias, mean, rstd, M, eps, N
-            )
+            layer_norm_kernel_middle_n[grid](input, y, weight, bias, mean, rstd, M, eps, N)
     else:
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
         with torch_device_fn.device(input.device):
@@ -544,20 +532,14 @@ def layer_norm_backward(
         if weight is None:
             weight_grad = None
         else:
-            weight_grad = torch.zeros(
-                (weight.shape[0],), dtype=torch.float, device=weight.device
-            )
+            weight_grad = torch.zeros((weight.shape[0],), dtype=torch.float, device=weight.device)
         if bias is None:
             bias_grad = None
         else:
-            bias_grad = torch.zeros(
-                (weight.shape[0],), dtype=torch.float, device=weight.device
-            )
+            bias_grad = torch.zeros((weight.shape[0],), dtype=torch.float, device=weight.device)
         # enqueue kernel using forward pass heuristics
         # also compute partial sums for DW and DB
-        grid = lambda META: (
-            min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
-        )
+        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),)
         with torch_device_fn.device(input.device):
             layer_norm_backward_kernel_middle_n[grid](
                 in_grad,
@@ -577,9 +559,7 @@ def layer_norm_backward(
             bias_grad = bias_grad.to(input.dtype)
     else:
         in_grad = torch.empty_like(input)
-        grid = lambda META: (
-            min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
-        )
+        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),)
         input_backward_kernel[grid](
             grad_out,
             input,
@@ -594,9 +574,7 @@ def layer_norm_backward(
             return in_grad, None, None
 
         with torch_device_fn.device(input.device):
-            grid = lambda META: (
-                min(triton.cdiv(N, META["BLOCK_COL_SIZE"]), TOTAL_CORE_NUM),
-            )
+            grid = lambda META: (min(triton.cdiv(N, META["BLOCK_COL_SIZE"]), TOTAL_CORE_NUM),)
             weight_grad = None if weight is None else torch.empty_like(weight)
             bias_grad = None if bias is None else torch.empty_like(bias)
             weight_bias_backward_kernel[grid](

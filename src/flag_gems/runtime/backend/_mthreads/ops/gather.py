@@ -11,9 +11,7 @@ from flag_gems.ops.gather import gather_backward as default_gather_backward
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}")
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 
@@ -74,11 +72,7 @@ def _use_triton_kernel(
     if not inp.is_contiguous() or not index.is_contiguous():
         return False
     if out is not None:
-        if (
-            out.device != inp.device
-            or out.dtype != inp.dtype
-            or not out.is_contiguous()
-        ):
+        if out.device != inp.device or out.dtype != inp.dtype or not out.is_contiguous():
             return False
 
     if index.shape[:-1] != inp.shape[:-1]:

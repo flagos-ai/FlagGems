@@ -39,9 +39,7 @@ def generate_test_params():
 )
 @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("renormalize", [False, True])
-def test_topk_softmax(
-    num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize
-):
+def test_topk_softmax(num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize):
     if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
         # torch musa unsupport uint32
         index_dtype = torch.int64
@@ -54,9 +52,7 @@ def test_topk_softmax(
     torch.manual_seed(42)
     device = flag_gems.device
 
-    gating_output = torch.randn(
-        num_tokens, num_experts, dtype=torch.float32, device=device
-    )
+    gating_output = torch.randn(num_tokens, num_experts, dtype=torch.float32, device=device)
 
     vllm_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
     vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
@@ -82,15 +78,9 @@ def test_topk_softmax(
         renormalize,
     )
 
-    assert torch.allclose(
-        gems_weights, vllm_weights, atol=1e-5
-    ), "topk_weights mismatch"
-    assert torch.equal(
-        gems_indices.cpu(), vllm_indices.cpu()
-    ), "topk_indices mismatch (fp32)"
-    assert torch.equal(
-        gems_token_expert.cpu(), vllm_token_expert.cpu()
-    ), "token_expert_indices mismatch"
+    assert torch.allclose(gems_weights, vllm_weights, atol=1e-5), "topk_weights mismatch"
+    assert torch.equal(gems_indices.cpu(), vllm_indices.cpu()), "topk_indices mismatch (fp32)"
+    assert torch.equal(gems_token_expert.cpu(), vllm_token_expert.cpu()), "token_expert_indices mismatch"
 
     if renormalize:
         sums = gems_weights.sum(dim=-1)

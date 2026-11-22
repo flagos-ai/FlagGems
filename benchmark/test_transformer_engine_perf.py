@@ -40,9 +40,7 @@ class TexGluBenchmark(Benchmark):
                 continue
             supported.append(shape)
         if not supported:
-            pytest.skip(
-                "No geglu shapes satisfy the constraints of FlagGems implementation."
-            )
+            pytest.skip("No geglu shapes satisfy the constraints of FlagGems implementation.")
         self.shapes = supported
 
 

@@ -8,12 +8,8 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.upsample_nearest3d import (
-    upsample_nearest3d as gems_upsample_nearest3d,
-)
-from flag_gems.experimental_ops.upsample_nearest3d import (
-    upsample_nearest3d_out as gems_upsample_nearest3d_out,
-)
+from flag_gems.experimental_ops.upsample_nearest3d import upsample_nearest3d as gems_upsample_nearest3d
+from flag_gems.experimental_ops.upsample_nearest3d import upsample_nearest3d_out as gems_upsample_nearest3d_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -82,9 +78,7 @@ def test_upsample_nearest3d_base_performance(shape, dtype, output_size):
 @pytest.mark.parametrize("use_size", [True, False])
 @pytest.mark.parametrize("output_size", [(3, 5, 6)])
 @pytest.mark.parametrize("scale_factors", [[2.0, 2.0, 2.0], [1.5, 2.0, 3.0]])
-def test_upsample_nearest3d_vec_performance(
-    shape, dtype, use_size, output_size, scale_factors
-):
+def test_upsample_nearest3d_vec_performance(shape, dtype, use_size, output_size, scale_factors):
     quantiles = [0.5, 0.2, 0.8]
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -147,9 +141,7 @@ def test_upsample_nearest3d_benchmark_out(shape, dtype, output_size):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.upsample_nearest3d.out(
-            ref_inp, output_size, None, None, None, out=ref_out_buf
-        ),
+        lambda: torch.ops.aten.upsample_nearest3d.out(ref_inp, output_size, None, None, None, out=ref_out_buf),
         rep=100,
         quantiles=quantiles,
     )
@@ -157,9 +149,7 @@ def test_upsample_nearest3d_benchmark_out(shape, dtype, output_size):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_upsample_nearest3d_out(
-                inp, output_size, None, None, None, act_out_buf
-            ),
+            lambda: gems_upsample_nearest3d_out(inp, output_size, None, None, None, act_out_buf),
             rep=100,
             quantiles=quantiles,
         )

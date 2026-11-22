@@ -70,9 +70,7 @@ def _fht_kernel(
                 tl.store(base_scratch + offsets, x, mask=mask)
                 tl.debug_barrier()
                 partner = offsets ^ stride
-                x_partner = tl.load(
-                    base_scratch + partner, mask=partner < DIM, other=0.0
-                )
+                x_partner = tl.load(base_scratch + partner, mask=partner < DIM, other=0.0)
                 is_upper = (offsets & stride) == 0
                 x = tl.where(is_upper, x + x_partner, x_partner - x)
 
@@ -113,12 +111,8 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         x = torch.nn.functional.pad(x, (0, 8 - dim_og % 8))
     dim = x.shape[1]
 
-    assert (
-        dim % 8 == 0
-    ), "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
-    assert (
-        dim <= 65536
-    ), "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
+    assert dim % 8 == 0, "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
+    assert dim <= 65536, "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
 
     # For butterfly we need next power of 2
     log_n = math.ceil(math.log2(dim)) if dim > 1 else 1

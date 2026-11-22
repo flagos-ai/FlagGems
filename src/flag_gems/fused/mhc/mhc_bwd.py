@@ -70,23 +70,15 @@ def _mhc_bwd_kernel(
 
         for i in range(N_STREAM):
             for j in range(N_STREAM):
-                r_val = tl.load(
-                    out_ptr + base_out + i * out_stride_i + j * out_stride_j
-                )
-                dr_val = tl.load(
-                    dout_ptr + base_dout + i * dout_stride_i + j * dout_stride_j
-                )
+                r_val = tl.load(out_ptr + base_out + i * out_stride_i + j * out_stride_j)
+                dr_val = tl.load(dout_ptr + base_dout + i * dout_stride_i + j * dout_stride_j)
 
         base_res = seq_idx * res_stride_s
 
         for i in range(N_STREAM):
             for j in range(N_STREAM):
-                r_val = tl.load(
-                    out_ptr + base_out + i * out_stride_i + j * out_stride_j
-                )
-                dr_val = tl.load(
-                    dout_ptr + base_dout + i * dout_stride_i + j * dout_stride_j
-                )
+                r_val = tl.load(out_ptr + base_out + i * out_stride_i + j * out_stride_j)
+                dr_val = tl.load(dout_ptr + base_dout + i * dout_stride_i + j * dout_stride_j)
                 tl.store(
                     res_ptr + base_res + i * res_stride_i + j * res_stride_j,
                     dr_val * r_val,
@@ -210,14 +202,7 @@ def _mhc_bwd_kernel_n4(
 
     # r_normsq = dot(r, r)
     r_normsq = (
-        r1_0 * r1_0
-        + r1_1 * r1_1
-        + r1_2 * r1_2
-        + r1_3 * r1_3
-        + r2_0 * r2_0
-        + r2_1 * r2_1
-        + r2_2 * r2_2
-        + r2_3 * r2_3
+        r1_0 * r1_0 + r1_1 * r1_1 + r1_2 * r1_2 + r1_3 * r1_3 + r2_0 * r2_0 + r2_1 * r2_1 + r2_2 * r2_2 + r2_3 * r2_3
     )
 
     # CG iterations (2 * n_stream = 8 iterations for n_stream=4)
@@ -464,9 +449,7 @@ def mhc_bwd_ref(
     return res
 
 
-def sinkhorn_forward(
-    M: torch.Tensor, iters: int = 20
-) -> tuple[torch.Tensor, torch.Tensor]:
+def sinkhorn_forward(M: torch.Tensor, iters: int = 20) -> tuple[torch.Tensor, torch.Tensor]:
     """Sinkhorn normalization forward pass.
 
     Args:

@@ -14,9 +14,7 @@ logger = logging.getLogger("flag_gems." + __name__)
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
-def index_select_kernel(
-    inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
+def index_select_kernel(inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid_x = tle.program_id(axis=0)
     pid_y = tle.program_id(axis=1)
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -76,9 +74,7 @@ def index_select(inp, dim, index):
     if inp.ndim == 2 and dim == 0:
         BLOCK_SIZE = min(triton.next_power_of_2(M), 4096)
         if dim == 0:
-            index_select_2d_opt_kernel[(index_len,)](
-                inp, out, M, N, index, BLOCK_SIZE=BLOCK_SIZE
-            )
+            index_select_2d_opt_kernel[(index_len,)](inp, out, M, N, index, BLOCK_SIZE=BLOCK_SIZE)
 
             return out
     else:

@@ -15,9 +15,7 @@ from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
-EXPAND_CONFIG_FILENAME = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
-)
+EXPAND_CONFIG_FILENAME = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml"))
 _SHARED_MEM_SAFETY_MARGIN_BYTES = 1024
 
 
@@ -26,9 +24,7 @@ def _get_shared_memory_limit_bytes():
     try:
         if not torch.cuda.is_available():
             return None
-        return torch.cuda.get_device_properties(
-            torch.cuda.current_device()
-        ).shared_memory_per_block_optin
+        return torch.cuda.get_device_properties(torch.cuda.current_device()).shared_memory_per_block_optin
     except Exception:
         return None
 
@@ -61,12 +57,7 @@ def is_tma_compatible(a, b, N, K):
         and b.dtype in (torch.float16, torch.bfloat16)
         and N % 8 == 0
         and K % 8 == 0
-    ) or (
-        a.dtype in (torch.float32,)
-        and b.dtype in (torch.float32,)
-        and N % 4 == 0
-        and K % 4 == 0
-    )
+    ) or (a.dtype in (torch.float32,) and b.dtype in (torch.float32,) and N % 4 == 0 and K % 4 == 0)
 
 
 @triton.jit
@@ -265,19 +256,21 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=matmul_tma_set_block_size_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=(
+        runtime.ops_get_configs(
+            "mm_general_tma",
+            pre_hook=matmul_tma_set_block_size_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else matmul_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -369,12 +362,8 @@ def general_mm(a, b, c, M, N, K):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
+    if hasattr(triton.tools.tensor_descriptor, "TensorDescriptor") and is_tma_compatible(a, b, N, K):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -441,21 +430,21 @@ def general_mm(a, b, c, M, N, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        triton.Config(
-            {"BLOCK_M": 32, "BLOCK_K": 256},
-        )
-    ],
+    configs=(
+        runtime.ops_get_configs("gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [
+            triton.Config(
+                {"BLOCK_M": 32, "BLOCK_K": 256},
+            )
+        ]
+    ),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=10,
 )

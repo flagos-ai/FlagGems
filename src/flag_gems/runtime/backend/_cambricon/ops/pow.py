@@ -11,9 +11,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 _pow = tl_extra_shim.pow
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")]
-)
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func(x, exponent, inplace):
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
@@ -29,9 +27,7 @@ def pow_tensor_tensor_(A, exponent):
     return pow_func(A, exponent, True, out0=A)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_tensor_scalar(x, exponent, inplace):
     return _pow(x.to(tl.float32), exponent.to(tl.float32))

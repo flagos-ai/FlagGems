@@ -87,7 +87,5 @@ def hardtanh_(*args, **kwargs):
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     # Launch Triton kernel
-    hardtanh___kernel[grid](
-        x, n_elements, float(min_val), float(max_val), BLOCK_SIZE=BLOCK_SIZE  # in-place
-    )
+    hardtanh___kernel[grid](x, n_elements, float(min_val), float(max_val), BLOCK_SIZE=BLOCK_SIZE)  # in-place
     return x

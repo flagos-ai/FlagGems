@@ -9,9 +9,7 @@ import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.erfinv import erfinv as gems_erfinv  # noqa: E402
-from flag_gems.experimental_ops.erfinv import (  # noqa: E402
-    erfinv_out as gems_erfinv_out,
-)
+from flag_gems.experimental_ops.erfinv import erfinv_out as gems_erfinv_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

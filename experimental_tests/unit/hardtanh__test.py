@@ -8,9 +8,7 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.hardtanh_ import (  # noqa: E402
-    hardtanh_ as gems_hardtanh_,
-)
+from flag_gems.experimental_ops.hardtanh_ import hardtanh_ as gems_hardtanh_  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

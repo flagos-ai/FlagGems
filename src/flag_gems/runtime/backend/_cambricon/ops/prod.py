@@ -44,8 +44,7 @@ def prod_kernel_mid(
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, int(ITER_NUM), 1):
         _tmp[: BLOCK_SIZE // (2**x)] = (
-            _tmp[: BLOCK_SIZE // (2**x)]
-            * _tmp[BLOCK_SIZE // (2**x) : (BLOCK_SIZE // (2**x)) * 2]
+            _tmp[: BLOCK_SIZE // (2**x)] * _tmp[BLOCK_SIZE // (2**x) : (BLOCK_SIZE // (2**x)) * 2]
         )
 
     mid_ptr = mid + pid
@@ -61,13 +60,10 @@ def prod_kernel_result(mid, out, mid_size: tl.constexpr, loop_num: tl.constexpr)
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, loop_num, 1):
         mid_val[: mid_size // (2**x)] = (
-            mid_val[: mid_size // (2**x)]
-            * mid_val[mid_size // (2**x) : (mid_size // (2**x)) * 2]
+            mid_val[: mid_size // (2**x)] * mid_val[mid_size // (2**x) : (mid_size // (2**x)) * 2]
         )
 
-    prod_val = tl.reduce(
-        mid_val[: mid_size // (2 ** (loop_num - 1))], axis=0, combine_fn=reduce_mul
-    )
+    prod_val = tl.reduce(mid_val[: mid_size // (2 ** (loop_num - 1))], axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
 
 

@@ -57,14 +57,10 @@ sizes_2d_nr = [1] if QUICK_MODE else [1, 5, 1024]
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
 POINTWISE_SHAPES = (
-    [(2, 19, 7)]
-    if QUICK_MODE
-    else [(), (1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
+    [(2, 19, 7)] if QUICK_MODE else [(), (1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
 )
 SPECIAL_SHAPES = (
-    [(2, 19, 7)]
-    if QUICK_MODE
-    else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
+    [(2, 19, 7)] if QUICK_MODE else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
 )
 
 FP8_QUANT_SHAPES = {
@@ -77,9 +73,7 @@ FP8_QUANT_SHAPES = {
 
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
-REDUCTION_SMALL_SHAPES = (
-    [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 2560, 3)]
-)
+REDUCTION_SMALL_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 2560, 3)]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
@@ -194,11 +188,7 @@ KRON_SHAPES = [
 ]
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
-FLOAT_DTYPES = (
-    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
-    if bf16_is_supported
-    else PRIMARY_FLOAT_DTYPES
-)
+FLOAT_DTYPES = PRIMARY_FLOAT_DTYPES + [torch.bfloat16] if bf16_is_supported else PRIMARY_FLOAT_DTYPES
 
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
@@ -235,9 +225,7 @@ def to_cpu(res, ref):
 
 def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
     res = to_cpu(res, ref)
-    flag_gems.testing.assert_close(
-        res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim, atol=atol
-    )
+    flag_gems.testing.assert_close(res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim, atol=atol)
 
 
 def gems_assert_equal(res, ref, equal_nan=False):

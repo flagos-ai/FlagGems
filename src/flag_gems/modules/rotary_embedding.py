@@ -45,20 +45,14 @@ def gems_rope_forward(
     if use_c_extension:
         logger.debug("GEMS CUSTOM ROPE FORWARD(C EXTENSION)")
         if inplace:
-            torch.ops.flag_gems.rotary_embedding_inplace(
-                query, key, cos, sin, position_ids, rotary_interleaved
-            )
+            torch.ops.flag_gems.rotary_embedding_inplace(query, key, cos, sin, position_ids, rotary_interleaved)
             return query, key
         else:
-            return torch.ops.flag_gems.rotary_embedding(
-                query, key, cos, sin, position_ids, rotary_interleaved
-            )
+            return torch.ops.flag_gems.rotary_embedding(query, key, cos, sin, position_ids, rotary_interleaved)
     else:
         logger.debug("GEMS CUSTOM ROPE FORWARD")
         # Fallback to pure python implementation
-        return flag_gems.apply_rotary_pos_emb(
-            query, key, cos, sin, position_ids, rotary_interleaved, inplace
-        )
+        return flag_gems.apply_rotary_pos_emb(query, key, cos, sin, position_ids, rotary_interleaved, inplace)
 
 
 class GemsRope(nn.Module):
@@ -108,12 +102,7 @@ class GemsRope(nn.Module):
         """
         return 1.0 / (
             self.base
-            ** (
-                torch.arange(
-                    0, self.rotary_dim, 2, dtype=torch.float32, device=self.device
-                )
-                / self.rotary_dim
-            )
+            ** (torch.arange(0, self.rotary_dim, 2, dtype=torch.float32, device=self.device) / self.rotary_dim)
         )
 
     def _set_cos_sin_cache(self):
@@ -122,9 +111,7 @@ class GemsRope(nn.Module):
         Can be overridden in subclasses for NTK, YaRN, etc.
         """
         inv_freq = self._compute_inv_freq()
-        t = torch.arange(
-            self.max_position_embeddings, device=self.device, dtype=torch.float32
-        )
+        t = torch.arange(self.max_position_embeddings, device=self.device, dtype=torch.float32)
         freqs = torch.outer(t, inv_freq)  # [max_position_embeddings, rotary_dim // 2]
 
         self.register_buffer(
@@ -156,24 +143,14 @@ class GemsRope(nn.Module):
 
 
 # Inverse dim formula to find dim based on number of rotations
-def yarn_find_correction_dim(
-    num_rotations, dim, base=10000, max_position_embeddings=2048
-):
-    return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (
-        2 * math.log(base)
-    )
+def yarn_find_correction_dim(num_rotations, dim, base=10000, max_position_embeddings=2048):
+    return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (2 * math.log(base))
 
 
 # Find dim range bounds based on rotations
-def yarn_find_correction_range(
-    low_rot, high_rot, dim, base=10000, max_position_embeddings=2048
-):
-    low = math.floor(
-        yarn_find_correction_dim(low_rot, dim, base, max_position_embeddings)
-    )
-    high = math.ceil(
-        yarn_find_correction_dim(high_rot, dim, base, max_position_embeddings)
-    )
+def yarn_find_correction_range(low_rot, high_rot, dim, base=10000, max_position_embeddings=2048):
+    low = math.floor(yarn_find_correction_dim(low_rot, dim, base, max_position_embeddings))
+    high = math.ceil(yarn_find_correction_dim(high_rot, dim, base, max_position_embeddings))
     return max(low, 0), min(high, dim - 1)  # Clamp values just in case
 
 
@@ -237,22 +214,12 @@ class GemsDeepseekYarnRoPE(GemsRope):
     def _compute_inv_freq(self) -> torch.Tensor:
         freq_extra = 1.0 / (
             self.base
-            ** (
-                torch.arange(
-                    0, self.rotary_dim, 2, dtype=torch.float32, device=self.device
-                )
-                / self.rotary_dim
-            )
+            ** (torch.arange(0, self.rotary_dim, 2, dtype=torch.float32, device=self.device) / self.rotary_dim)
         )
         freq_inter = 1.0 / (
             self.scaling_factor
             * self.base
-            ** (
-                torch.arange(
-                    0, self.rotary_dim, 2, dtype=torch.float32, device=self.device
-                )
-                / self.rotary_dim
-            )
+            ** (torch.arange(0, self.rotary_dim, 2, dtype=torch.float32, device=self.device) / self.rotary_dim)
         )
 
         low, high = yarn_find_correction_range(
@@ -273,9 +240,7 @@ class GemsDeepseekYarnRoPE(GemsRope):
         inv_freq = self._compute_inv_freq()
         # self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-        t = torch.arange(
-            self.max_position_embeddings, device=self.device, dtype=torch.float32
-        )
+        t = torch.arange(self.max_position_embeddings, device=self.device, dtype=torch.float32)
         freqs = torch.outer(t, inv_freq)  # [max_position_embeddings, rotary_dim // 2]
 
         _mscale = float(
@@ -283,9 +248,5 @@ class GemsDeepseekYarnRoPE(GemsRope):
             / yarn_get_mscale(self.scaling_factor, self.mscale_all_dim)
         )
 
-        self.register_buffer(
-            "cos_cached", (freqs.cos() * _mscale).to(self.dtype), persistent=False
-        )
-        self.register_buffer(
-            "sin_cached", (freqs.sin() * _mscale).to(self.dtype), persistent=False
-        )
+        self.register_buffer("cos_cached", (freqs.cos() * _mscale).to(self.dtype), persistent=False)
+        self.register_buffer("sin_cached", (freqs.sin() * _mscale).to(self.dtype), persistent=False)

@@ -75,9 +75,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
         x_2d = x.reshape(M, N)
         residual_2d = residual.reshape(M, N)
         residual_2d.add_(x_2d)
-        rrms = (
-            (residual_2d.float() * residual_2d.float()).mean(dim=1, keepdim=True) + eps
-        ).rsqrt()
+        rrms = ((residual_2d.float() * residual_2d.float()).mean(dim=1, keepdim=True) + eps).rsqrt()
         x_2d.copy_((residual_2d.float() * rrms).to(x.dtype) * weight.reshape(1, N))
         return x, residual
 
@@ -89,7 +87,5 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
         BLOCK_SIZE_M = (M + 128 - 1) // 128
 
     with torch_device_fn.device(x.device):
-        fused_add_rms_norm_kernel[grid](
-            x, residual, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE_M, BLOCK_SIZE_N
-        )
+        fused_add_rms_norm_kernel[grid](x, residual, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE_M, BLOCK_SIZE_N)
     return x, residual

@@ -7,12 +7,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.experimental_ops.slice_backward import (
-    slice_backward as gems_slice_backward,
-)
-from flag_gems.experimental_ops.slice_backward import (
-    slice_backward_out as gems_slice_backward_out,
-)
+from flag_gems.experimental_ops.slice_backward import slice_backward as gems_slice_backward
+from flag_gems.experimental_ops.slice_backward import slice_backward_out as gems_slice_backward_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -76,13 +72,9 @@ def test_slice_backward_tensor(shape, dtype):
             grad_output_ref = to_reference(grad_output)
             grad_output_act = grad_output.clone()
 
-            ref_out = torch.ops.aten.slice_backward(
-                grad_output_ref, input_sizes, dim, start, end, step
-            )
+            ref_out = torch.ops.aten.slice_backward(grad_output_ref, input_sizes, dim, start, end, step)
             with flag_gems.use_gems():
-                act_out = gems_slice_backward(
-                    grad_output_act, input_sizes, dim, start, end, step
-                )
+                act_out = gems_slice_backward(grad_output_act, input_sizes, dim, start, end, step)
 
             gems_assert_close(act_out, ref_out, dtype=dtype)
 
@@ -128,17 +120,13 @@ def test_slice_backward_out(shape, dtype):
             grad_output_ref = to_reference(grad_output)
             grad_output_act = grad_output.clone()
 
-            ref_out_buf = torch.empty(
-                input_sizes, device=grad_output_ref.device, dtype=dtype
-            )
+            ref_out_buf = torch.empty(input_sizes, device=grad_output_ref.device, dtype=dtype)
             act_out_buf = torch.empty(input_sizes, device=flag_gems.device, dtype=dtype)
 
             ref_out = torch.ops.aten.slice_backward.out(
                 grad_output_ref, input_sizes, dim, start, end, step, out=ref_out_buf
             )
             with flag_gems.use_gems():
-                act_out = gems_slice_backward_out(
-                    grad_output_act, input_sizes, dim, start, end, step, act_out_buf
-                )
+                act_out = gems_slice_backward_out(grad_output_act, input_sizes, dim, start, end, step, act_out_buf)
 
             gems_assert_close(act_out, ref_out, dtype=dtype)

@@ -73,36 +73,9 @@ def maximum_kernel(
     li = li // s0
 
     # Compute element offsets for each tensor using strides (in elements)
-    off_a = (
-        i0 * sa0
-        + i1 * sa1
-        + i2 * sa2
-        + i3 * sa3
-        + i4 * sa4
-        + i5 * sa5
-        + i6 * sa6
-        + i7 * sa7
-    )
-    off_b = (
-        i0 * sb0
-        + i1 * sb1
-        + i2 * sb2
-        + i3 * sb3
-        + i4 * sb4
-        + i5 * sb5
-        + i6 * sb6
-        + i7 * sb7
-    )
-    off_o = (
-        i0 * so0
-        + i1 * so1
-        + i2 * so2
-        + i3 * so3
-        + i4 * so4
-        + i5 * so5
-        + i6 * so6
-        + i7 * so7
-    )
+    off_a = i0 * sa0 + i1 * sa1 + i2 * sa2 + i3 * sa3 + i4 * sa4 + i5 * sa5 + i6 * sa6 + i7 * sa7
+    off_b = i0 * sb0 + i1 * sb1 + i2 * sb2 + i3 * sb3 + i4 * sb4 + i5 * sb5 + i6 * sb6 + i7 * sb7
+    off_o = i0 * so0 + i1 * so1 + i2 * so2 + i3 * so3 + i4 * so4 + i5 * so5 + i6 * so6 + i7 * so7
 
     a_vals = tl.load(a_ptr + off_a, mask=mask, other=0)
     b_vals = tl.load(b_ptr + off_b, mask=mask, other=0)
@@ -113,9 +86,7 @@ def maximum_kernel(
 def _as_tensor_on_device(x, device, dtype=None):
     if torch.is_tensor(x):
         return (
-            x.to(device=device, dtype=dtype)
-            if (dtype is not None and x.dtype != dtype) or (x.device != device)
-            else x
+            x.to(device=device, dtype=dtype) if (dtype is not None and x.dtype != dtype) or (x.device != device) else x
         )
     return torch.tensor(x, device=device, dtype=dtype)
 

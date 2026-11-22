@@ -12,19 +12,7 @@ from collections import OrderedDict
 from functools import cached_property
 from itertools import starmap
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Final,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    overload,
-)
+from typing import Any, Callable, Dict, Final, Iterator, List, Optional, Tuple, Type, Union, overload
 
 import triton
 
@@ -69,9 +57,7 @@ FLAGGEMS_DB_URL = os.getenv("FLAGGEMS_DB_URL", None)
 
 
 class Cache(object):
-    def __init__(
-        self, table_name: str, model: PersistantModel, *args, **kwargs
-    ) -> Cache:
+    def __init__(self, table_name: str, model: PersistantModel, *args, **kwargs) -> Cache:
         super().__init__(*args, **kwargs)
         self.table_name: Final[str] = table_name
         self.model: Final[PersistantModel] = model
@@ -82,9 +68,7 @@ class ConfigCache(Cache):
     `ConfigCache` is used to store the relationship between keys and their known best configurations.
     """
 
-    def __init__(
-        self, table_name: str, model: PersistantModel, *args, **kwargs
-    ) -> ConfigCache:
+    def __init__(self, table_name: str, model: PersistantModel, *args, **kwargs) -> ConfigCache:
         super().__init__(table_name, model, *args, **kwargs)
 
     def __contains__(self, key: Tuple[Union[int, float, str], ...]) -> bool:
@@ -96,17 +80,13 @@ class ConfigCache(Cache):
             raise KeyError(f"Key {key} not found in ConfigCache.")
         return ret
 
-    def __setitem__(
-        self, key: Tuple[Union[int, float, str], ...], config: triton.Config
-    ) -> None:
+    def __setitem__(self, key: Tuple[Union[int, float, str], ...], config: triton.Config) -> None:
         self.set(key, config)
 
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
         return self.model.get_config(self.table_name, key)
 
-    def set(
-        self, key: Tuple[Union[int, float, str], ...], config: triton.Config
-    ) -> None:
+    def set(self, key: Tuple[Union[int, float, str], ...], config: triton.Config) -> None:
         return self.model.put_config(self.table_name, key, config)
 
 
@@ -131,9 +111,7 @@ class BenchmarkCache(Cache):
     def __getitem__(self, config: triton.Config) -> Tuple[float]:
         ret: Optional[Tuple[float, float, float]] = self.get(config)
         if ret is None:
-            raise KeyError(
-                f"Config {config} not found in BenchmarkCache for key {self.key}."
-            )
+            raise KeyError(f"Config {config} not found in BenchmarkCache for key {self.key}.")
         return ret
 
     def __setitem__(self, config: triton.Config, benchmark: Tuple[float]) -> None:
@@ -172,22 +150,16 @@ class LibCache(object):
         else:
             self.db_url: str = db_url
         self.config_cache_pool: Dict[str, ConfigCache] = {}
-        self.benchmark_cache_pool: Dict[
-            Tuple[str, Tuple[Union[int, float, str], ...]], BenchmarkCache
-        ] = {}
+        self.benchmark_cache_pool: Dict[Tuple[str, Tuple[Union[int, float, str], ...]], BenchmarkCache] = {}
         self.model: PersistantModel = SQLPersistantModel(self.db_url)
 
     @overload
-    def __getitem__(self, key: str) -> ConfigCache:
-        ...
+    def __getitem__(self, key: str) -> ConfigCache: ...
 
     @overload
-    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache:
-        ...
+    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache: ...
 
-    def __getitem__(
-        self, key: Union[str, Tuple[Union[int, float, str], ...]]
-    ) -> Union[BenchmarkCache, ConfigCache]:
+    def __getitem__(self, key: Union[str, Tuple[Union[int, float, str], ...]]) -> Union[BenchmarkCache, ConfigCache]:
         if isinstance(key, str):
             return self.get_config(key)
         elif isinstance(key, tuple):
@@ -195,9 +167,7 @@ class LibCache(object):
         else:
             assert False, f"the type of key '{key.__class__.__name__}' is unacceptable"
 
-    def get_benchmark(
-        self, table: str, key: Tuple[Union[int, float, str], ...]
-    ) -> BenchmarkCache:
+    def get_benchmark(self, table: str, key: Tuple[Union[int, float, str], ...]) -> BenchmarkCache:
         ret = self.benchmark_cache_pool.get((table, key))
         if ret is None:
             ret = BenchmarkCache(table, self.model, key)
@@ -289,9 +259,7 @@ class LibTuner(triton.runtime.Autotuner):
         assert len(strategy) == len(
             self.keys
         ), f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
-        strategy: List[Callable[[Any], Any]] = [
-            LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy
-        ]
+        strategy: List[Callable[[Any], Any]] = [LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy]
         self.strategy: List[Callable[[Any], Any]] = strategy
         self.config_table_name: str = f"{self.__name__}_{self.kernel_hash}"
         self.benchmark_table_name: str = f"{self.__name__}_{self.cache_key}_benchmark"
@@ -306,15 +274,11 @@ class LibTuner(triton.runtime.Autotuner):
 
     @cached_property
     def kernel_hash(self) -> str:
-        return hashlib.md5(
-            f"{self.cache_key}{self.configs_hash}".encode("utf-8")
-        ).hexdigest()[:32]
+        return hashlib.md5(f"{self.cache_key}{self.configs_hash}".encode("utf-8")).hexdigest()[:32]
 
     @cached_property
     def configs_hash(self) -> str:
-        return hashlib.md5(
-            ",".join(map(lambda config: str(config), self.configs)).encode("utf-8")
-        ).hexdigest()[:32]
+        return hashlib.md5(",".join(map(lambda config: str(config), self.configs)).encode("utf-8")).hexdigest()[:32]
 
     def get_key(self, args):
         if self.strategy is None:
@@ -338,9 +302,7 @@ class LibTuner(triton.runtime.Autotuner):
         args: Tuple[Any],
         kwargs: Dict[str, Any],
     ) -> Tuple[triton.Config, Dict[str, float]]:
-        raise NotImplementedError(
-            f"`policy` isn't implemented in {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"`policy` isn't implemented in {self.__class__.__name__}")
 
     @classmethod
     def register(cls, name: str):
@@ -547,9 +509,7 @@ def default_policy(
     or by creating a new subclass of `LibTuner` and overriding the `policy` method to have
     more control over the autotuning process.
     """
-    timings: Dict[triton.Config, float] = {
-        config: bench_fn(config) for config in configs
-    }
+    timings: Dict[triton.Config, float] = {config: bench_fn(config) for config in configs}
     best_config: triton.Config = min(timings, key=timings.get)
     return best_config, timings
 
@@ -566,9 +526,7 @@ def libtuner(
     rep=100,
     use_cuda_graph=False,
     do_bench=None,
-    strategy: Union[
-        str, Callable[[Any], Any], List[Union[str, Callable[[Any], Any]]]
-    ] = "default",
+    strategy: Union[str, Callable[[Any], Any], List[Union[str, Callable[[Any], Any]]]] = "default",
     policy: Union[str, Type[LibTuner]] = "default",
 ):
     """Decorator for triton library autotuner.
@@ -622,14 +580,10 @@ class LibEntry(triton.KernelInterface):
             fn = fn.fn
         self.jit_function: triton.runtime.JITFunction = fn
         self.specialize_indices = [
-            p.num
-            for p in self.jit_function.params
-            if not p.is_constexpr and not p.do_not_specialize
+            p.num for p in self.jit_function.params if not p.is_constexpr and not p.do_not_specialize
         ]
         self.do_not_specialize_indices = [
-            p.num
-            for p in self.jit_function.params
-            if not p.is_constexpr and p.do_not_specialize
+            p.num for p in self.jit_function.params if not p.is_constexpr and p.do_not_specialize
         ]
         self.lock = multiprocessing.Lock()
         self.signature = fn.signature
@@ -667,10 +621,7 @@ class LibEntry(triton.KernelInterface):
         param_names = list(self.signature.parameters.keys())
         for i, arg in enumerate(args):
             hashable_arg = arg
-            if (
-                hasattr(arg, "__class__")
-                and arg.__class__.__name__ == "TensorDescriptor"
-            ):
+            if hasattr(arg, "__class__") and arg.__class__.__name__ == "TensorDescriptor":
                 # Create a hashable representation of TensorDescriptor
                 hashable_arg = (
                     "TensorDescriptor",
@@ -734,9 +685,7 @@ class LibEntry(triton.KernelInterface):
                         constexprs = {**constexprs, **config.kwargs}
                         tune_constexprs = {**tune_constexprs, **config.kwargs}
                         if config.pre_hook is not None:
-                            launch_pre_hooks.append(
-                                (config.pre_hook, config.all_kwargs())
-                            )
+                            launch_pre_hooks.append((config.pre_hook, config.all_kwargs()))
                     elif isinstance(fn, triton.runtime.Heuristics):
                         for v, heur in fn.values.items():
                             heur_constexprs[v] = heur(
@@ -751,11 +700,7 @@ class LibEntry(triton.KernelInterface):
                         raise RuntimeError("Invalid Runtime Function")
                     fn = fn.fn
                 for p in self.jit_function.params:
-                    if (
-                        p.is_constexpr
-                        and p.name not in constexprs
-                        and (p.default is not inspect._empty)
-                    ):
+                    if p.is_constexpr and p.name not in constexprs and (p.default is not inspect._empty):
                         constexprs[p.name] = p.default
                 cache[entry_key] = (
                     kernel,

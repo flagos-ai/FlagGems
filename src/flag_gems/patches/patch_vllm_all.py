@@ -159,9 +159,7 @@ def custom_gems_flash_attention_impl_forward(
     assert output is not None, "Output tensor must be provided."
 
     if output_scale is not None:
-        raise NotImplementedError(
-            "fused output quantization is not yet supported" " for FlashAttentionImpl"
-        )
+        raise NotImplementedError("fused output quantization is not yet supported" " for FlashAttentionImpl")
 
     if attn_metadata is None:
         # Profiling run.
@@ -183,9 +181,7 @@ def custom_gems_flash_attention_impl_forward(
 
     # TODO: Support FP8
     if self.kv_cache_dtype.startswith("fp8"):
-        raise NotImplementedError(
-            "FP8 quantization is not yet supported for FlashAttentionImpl"
-        )
+        raise NotImplementedError("FP8 quantization is not yet supported for FlashAttentionImpl")
         # key_cache = key_cache.view(torch.float8_e4m3fn)
         # value_cache = value_cache.view(torch.float8_e4m3fn)
         # num_tokens, num_heads, head_size = query.shape
@@ -198,8 +194,7 @@ def custom_gems_flash_attention_impl_forward(
     # Compute attention and update output up to `num_actual_tokens`.
     # use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
     use_local_attn = (
-        getattr(self, "use_irope", False)
-        and getattr(attn_metadata, "local_attn_metadata", None) is not None
+        getattr(self, "use_irope", False) and getattr(attn_metadata, "local_attn_metadata", None) is not None
     )
     if not attn_metadata.use_cascade or use_local_attn:
         if use_local_attn:
@@ -301,12 +296,8 @@ def custom_moe_grouped_topk(
     )
 
 
-def custom_topk_softmax(
-    topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False
-):
-    flag_gems.topk_softmax(
-        topk_weights, topk_indices, token_expert_indices, gating_output, renormalize
-    )
+def custom_topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False):
+    flag_gems.topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output, renormalize)
 
 
 def custom_moe_sum(input: torch.Tensor, output: torch.Tensor):
@@ -321,9 +312,7 @@ def custom_apply_repetition_penalties(
     output_mask: torch.Tensor,
     repetition_penalties: torch.Tensor,
 ):
-    return flag_gems.apply_repetition_penalties(
-        logits, prompt_mask, output_mask, repetition_penalties
-    )
+    return flag_gems.apply_repetition_penalties(logits, prompt_mask, output_mask, repetition_penalties)
 
 
 def custom_get_scheduler_metadata(
@@ -423,9 +412,7 @@ def custom_concat_and_cache_mla(
     kv_cache_dtype: str,
     scale: torch.Tensor,
 ) -> None:
-    return flag_gems.concat_and_cache_mla(
-        kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
-    )
+    return flag_gems.concat_and_cache_mla(kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale)
 
 
 def custom_gems_flashattn_mla_forward_decode(
@@ -443,9 +430,7 @@ def custom_gems_flashattn_mla_forward_decode(
     if type(q) is tuple:
         q_nope, q_pe = q
     else:
-        q_nope, q_pe = torch.split(
-            q, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
-        )
+        q_nope, q_pe = torch.split(q, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
 
     if self.kv_cache_dtype.startswith("fp8"):
         raise NotImplementedError("FP8 FlashAttention MLA not yet supported")

@@ -97,9 +97,7 @@ def layer_norm_persistent_kernel_multiline(
     n_mask = n_offsets < N
     mask = m_mask[:, None] & n_mask
 
-    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
-        tl.float32
-    )
+    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(tl.float32)
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -202,9 +200,7 @@ def layer_norm_loop_kernel(
 
     for start_n in range(TILE_N, N, TILE_N):
         n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
-            tl.float32
-        )
+        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(tl.float32)
         if weight_ptr is None:
             w = 1
         else:

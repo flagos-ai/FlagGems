@@ -50,15 +50,11 @@ def test_silu_benchmark_tensor(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_input = input_tensor.clone()
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.silu(ref_input), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.silu(ref_input), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_silu(input_tensor), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_silu(input_tensor), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

@@ -41,13 +41,7 @@ def digamma_kernel_(
     t4 = t2 * t2
     t6 = t4 * t2
     t8 = t4 * t4
-    series = (
-        (-0.5 * r)
-        + (-1.0 / 12.0) * t2
-        + (1.0 / 120.0) * t4
-        + (-1.0 / 252.0) * t6
-        + (1.0 / 240.0) * t8
-    )
+    series = (-0.5 * r) + (-1.0 / 12.0) * t2 + (1.0 / 120.0) * t4 + (-1.0 / 252.0) * t6 + (1.0 / 240.0) * t8
     psi_y = tl.log(y) + s + series
 
     # Apply reflection if needed

@@ -21,9 +21,7 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     device = slopes.device
     slopes = slopes.unsqueeze(-1).unsqueeze(-1)
     if causal:
-        return (
-            torch.arange(-seqlen_k + 1, 1, device=device, dtype=torch.float32) * slopes
-        )
+        return torch.arange(-seqlen_k + 1, 1, device=device, dtype=torch.float32) * slopes
 
     row_idx = torch.arange(seqlen_q, device=device, dtype=torch.long).unsqueeze(-1)
     col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
@@ -71,38 +69,23 @@ def test_flash_attn_varlen_func(
         assert num_query_heads % num_kv_heads == 0
         max_query_len = max(query_lens)
         max_kv_len = max(kv_lens)
-        window_size = (
-            (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
-        )
+        window_size = (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
         scale = head_size**-0.5
         query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
-        key_cache = torch.randn(
-            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
-        )
+        key_cache = torch.randn(num_blocks, block_size, num_kv_heads, head_size, dtype=dtype)
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-            dim=0, dtype=torch.int32
-        )
+        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(dim=0, dtype=torch.int32)
         seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
-        block_tables = torch.randint(
-            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
-        )
+        block_tables = torch.randint(0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32)
 
         causal = True
 
         if alibi:
             # alibi_slopes = torch.rand(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
-            alibi_slopes = (
-                torch.ones(
-                    num_seqs, num_query_heads, device=device, dtype=torch.float32
-                )
-                * 0.3
-            )
-            attn_bias = attn_bias_from_alibi_slopes(
-                alibi_slopes, max_query_len, max_kv_len, causal=causal
-            )
+            alibi_slopes = torch.ones(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
+            attn_bias = attn_bias_from_alibi_slopes(alibi_slopes, max_query_len, max_kv_len, causal=causal)
         else:
             alibi_slopes, attn_bias = None, None  # noqa: F841
 
@@ -126,9 +109,7 @@ def test_flash_attn_varlen_func(
     if HAS_VLLM:
         import vllm.vllm_flash_attn.flash_attn_interface as vllm_
 
-        vllm_window = (
-            None if sliding_window is None else [sliding_window, sliding_window]
-        )
+        vllm_window = None if sliding_window is None else [sliding_window, sliding_window]
         if vllm_window is None:
             vllm_window = [-1, -1]
 
@@ -205,38 +186,27 @@ def test_flash_attn_varlen_func_none_paged(
         assert num_query_heads % num_kv_heads == 0
         max_query_len = max(query_lens)
         max_kv_len = max(kv_lens)
-        window_size = (
-            (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
-        )
+        window_size = (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
         scale = head_size**-0.5
         query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
         total_kv_tokens = sum(kv_lens)
         key_cache = torch.randn(total_kv_tokens, num_kv_heads, head_size, dtype=dtype)
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-            dim=0, dtype=torch.int32
-        )
+        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(dim=0, dtype=torch.int32)
         block_tables = None
 
         causal = True
 
         if alibi:
             # alibi_slopes = torch.rand(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
-            alibi_slopes = (
-                torch.ones(
-                    num_seqs, num_query_heads, device=device, dtype=torch.float32
-                )
-                * 0.3
-            )
-            attn_bias = attn_bias_from_alibi_slopes(
-                alibi_slopes, max_query_len, max_kv_len, causal=causal
-            )
+            alibi_slopes = torch.ones(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
+            attn_bias = attn_bias_from_alibi_slopes(alibi_slopes, max_query_len, max_kv_len, causal=causal)
         else:
             alibi_slopes, attn_bias = None, None  # noqa: F841
 
-        cu_kv_lens = torch.tensor(
-            [0] + kv_lens, dtype=torch.int32, device=query.device
-        ).cumsum(dim=0, dtype=torch.int32)
+        cu_kv_lens = torch.tensor([0] + kv_lens, dtype=torch.int32, device=query.device).cumsum(
+            dim=0, dtype=torch.int32
+        )
         output = flag_gems.ops.flash_attn_varlen_func(
             q=query,
             k=key_cache,
@@ -258,15 +228,13 @@ def test_flash_attn_varlen_func_none_paged(
     if HAS_VLLM:
         import vllm.vllm_flash_attn.flash_attn_interface as vllm_
 
-        vllm_window = (
-            None if sliding_window is None else [sliding_window, sliding_window]
-        )
+        vllm_window = None if sliding_window is None else [sliding_window, sliding_window]
         if vllm_window is None:
             vllm_window = [-1, -1]
 
-        cu_kv_lens = torch.tensor(
-            [0] + kv_lens, dtype=torch.int32, device=query.device
-        ).cumsum(dim=0, dtype=torch.int32)
+        cu_kv_lens = torch.tensor([0] + kv_lens, dtype=torch.int32, device=query.device).cumsum(
+            dim=0, dtype=torch.int32
+        )
         vllm_out = vllm_.flash_attn_varlen_func(
             q=query,  # [sum_q, num_q_heads, head_size]
             k=key_cache,  # paged KV cache: [num_blocks, block_size, num_kv_heads, head_size]

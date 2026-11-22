@@ -18,20 +18,8 @@ from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
-from .normal import (
-    normal_,
-    normal_distribution,
-    normal_float_tensor,
-    normal_tensor_float,
-    normal_tensor_tensor,
-)
-from .pow import (
-    pow_scalar,
-    pow_tensor_scalar,
-    pow_tensor_scalar_,
-    pow_tensor_tensor,
-    pow_tensor_tensor_,
-)
+from .normal import normal_, normal_distribution, normal_float_tensor, normal_tensor_float, normal_tensor_tensor
+from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_scalar_, pow_tensor_tensor, pow_tensor_tensor_
 from .randn import randn
 from .randn_like import randn_like
 from .rms_norm import rms_norm

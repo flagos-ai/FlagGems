@@ -23,9 +23,7 @@ def test_min(shape, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.min(ref_inp)
@@ -40,9 +38,7 @@ def test_min(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_min_all_inf(shape, dtype):
     # ensure that padding value used in min is inf, not max value
-    inp = torch.full(
-        shape, fill_value=float("inf"), dtype=dtype, device=flag_gems.device
-    )
+    inp = torch.full(shape, fill_value=float("inf"), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.min(ref_inp)
@@ -62,9 +58,7 @@ def test_min_dim(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out_value, ref_out_index = torch.min(ref_inp, dim=dim, keepdim=keepdim)

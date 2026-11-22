@@ -9,9 +9,7 @@ import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.hardtanh import hardtanh as gems_hardtanh  # noqa: E402
-from flag_gems.experimental_ops.hardtanh import (  # noqa: E402
-    hardtanh_out as gems_hardtanh_out,
-)
+from flag_gems.experimental_ops.hardtanh import hardtanh_out as gems_hardtanh_out  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

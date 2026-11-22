@@ -27,9 +27,7 @@ def test_rms_norm(shape, dtype):
     np_weight = np.random.uniform(-0.1, 0.1, layer_shape).astype(np.float32)
 
     inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    weight = torch.tensor(
-        np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    weight = torch.tensor(np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True)
 
     eps = 1e-5
 
@@ -46,15 +44,11 @@ def test_rms_norm(shape, dtype):
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
     res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
-    res_grad = torch.tensor(
-        np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    res_grad = torch.tensor(np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_grad = utils.to_reference(res_grad)
 
     res_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), res_grad)
-    ref_grad, ref_weight_grad = torch.autograd.grad(
-        ref_out, (ref_inp, ref_weight), ref_grad
-    )
+    ref_grad, ref_weight_grad = torch.autograd.grad(ref_out, (ref_inp, ref_weight), ref_grad)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_grad, ref_grad, dtype)

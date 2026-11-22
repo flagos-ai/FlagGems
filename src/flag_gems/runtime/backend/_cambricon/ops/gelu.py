@@ -47,9 +47,7 @@ def gelu_none_kernel(X_ptr, OUT_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 @triton.jit
 def gelu_tanh(x, inplace):
     x_f32 = x.to(tl.float32)
-    output = 0.5 * x_f32 + 0.5 * x_f32 * fast_tanh(
-        x_f32 * 0.79788456 + x_f32 * 0.79788456 * 0.044715 * x_f32 * x_f32
-    )
+    output = 0.5 * x_f32 + 0.5 * x_f32 * fast_tanh(x_f32 * 0.79788456 + x_f32 * 0.79788456 * 0.044715 * x_f32 * x_f32)
     return output
 
 
@@ -72,11 +70,7 @@ def gelu_backward_tanh(x, dy):
     c1 = 0.79788456
     c2 = 0.044715
     tanh_out = fast_tanh(c1 * x_fp32 + c1 * x_fp32 * c2 * x_fp32 * x_fp32)
-    dydx = (
-        0.5 * ((x - x * tanh_out * tanh_out) * (c1 + 0.1070322243 * x_fp32 * x_fp32))
-        + 0.5
-        + 0.5 * tanh_out
-    )
+    dydx = 0.5 * ((x - x * tanh_out * tanh_out) * (c1 + 0.1070322243 * x_fp32 * x_fp32)) + 0.5 + 0.5 * tanh_out
     dx = dydx * dy
     return dx
 
@@ -91,9 +85,7 @@ def gelu(self, *, approximate="none"):
         N = A.numel()
         if N == 0:
             return out
-        grid_fn = lambda meta: (
-            min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-        )
+        grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
         with torch_device_fn.device(A.device):
             gelu_none_kernel[grid_fn](A, out, N)
         return out
@@ -116,9 +108,7 @@ def gelu_(A, *, approximate="none"):
         N = A_contig.numel()
         if N == 0:
             return A
-        grid_fn = lambda meta: (
-            min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-        )
+        grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
         with torch_device_fn.device(A.device):
             gelu_none_kernel[grid_fn](A_contig, A_contig, N)
         if not A.is_contiguous():

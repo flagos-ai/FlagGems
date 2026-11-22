@@ -24,15 +24,7 @@ def erf_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
             + t
             * (
                 -0.18628806
-                + t
-                * (
-                    0.27886807
-                    + t
-                    * (
-                        -1.13520398
-                        + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277))
-                    )
-                )
+                + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277))))
             )
         )
     )
@@ -57,11 +49,7 @@ def erf_(*args, **kwargs):
         x = kwargs["input"]
     elif "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
         x = kwargs["self"]
-    elif (
-        "args" in kwargs
-        and isinstance(kwargs["args"], (list, tuple))
-        and kwargs["args"]
-    ):
+    elif "args" in kwargs and isinstance(kwargs["args"], (list, tuple)) and kwargs["args"]:
         x = kwargs["args"][0]
     if x is None:
         raise TypeError("erf_ expects a tensor as its first argument")

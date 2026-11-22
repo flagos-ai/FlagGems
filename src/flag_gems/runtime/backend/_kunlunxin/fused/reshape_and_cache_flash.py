@@ -42,10 +42,7 @@ def reshape_and_cache_flash_kernel(
     head_idx = i // head_size
     head_offset = i % head_size
     tgt_key_value_idx = (
-        block_idx * block_stride
-        + block_offset * num_heads * head_size
-        + head_idx * head_size
-        + head_offset
+        block_idx * block_stride + block_offset * num_heads * head_size + head_idx * head_size + head_offset
     )
 
     tgt_key = tl.load(key + src_key_idx, mask=mask)

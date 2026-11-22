@@ -14,25 +14,19 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
-def index_select_kernel(
-    inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
+def index_select_kernel(inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid_x = tle.program_id(axis=0)
     pid_y = tle.program_id(axis=1)
     num_pid_x = tle.num_programs(axis=0)
     loop_count = tl.cdiv(M, num_pid_x)
     for loop in range(0, loop_count):
-        rows_offsets = (pid_x * loop_count + loop) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        rows_offsets = (pid_x * loop_count + loop) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         rows_mask = rows_offsets < M
         cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
 
         out_mask = rows_mask and (cols_offsets < index_len)
 
-        indices = tl.load(
-            index + cols_offsets, mask=(cols_offsets < index_len), other=0
-        )
+        indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
         inp_off = rows_offsets * N + indices[None, :]
         out_off = rows_offsets * index_len + cols_offsets[None, :]
 

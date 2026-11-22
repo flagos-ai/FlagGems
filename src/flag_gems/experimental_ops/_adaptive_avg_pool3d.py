@@ -84,12 +84,7 @@ def adaptive_avg_pool3d_kernel(
         while hi < h1:
             wi = w0
             while wi < w1:
-                in_idx = (
-                    base_nc
-                    + di * stride_in_d_i64
-                    + hi * stride_in_h_i64
-                    + wi * stride_in_w_i64
-                )
+                in_idx = base_nc + di * stride_in_d_i64 + hi * stride_in_h_i64 + wi * stride_in_w_i64
                 val = tl.load(in_ptr + in_idx)
                 acc += tl.cast(val, tl.float32)
                 wi += 1
@@ -114,9 +109,7 @@ def _normalize_output_size_3d(output_size):
         output_size = tuple(output_size)
     if isinstance(output_size, (list, tuple)):
         if len(output_size) != 3:
-            raise ValueError(
-                "output_size for _adaptive_avg_pool3d must have 3 elements (D_out, H_out, W_out)"
-            )
+            raise ValueError("output_size for _adaptive_avg_pool3d must have 3 elements (D_out, H_out, W_out)")
         return tuple(int(x) for x in output_size)
     raise TypeError("output_size must be a sequence of three integers")
 
@@ -126,9 +119,7 @@ def _prepare_5d_input(t):
         return t, False
     if t.dim() == 4:
         return t.unsqueeze(0), True  # add N=1
-    raise ValueError(
-        "input for _adaptive_avg_pool3d must be 4D (C,D,H,W) or 5D (N,C,D,H,W)"
-    )
+    raise ValueError("input for _adaptive_avg_pool3d must be 4D (C,D,H,W) or 5D (N,C,D,H,W)")
 
 
 def _launch_adaptive_avg_pool3d_kernel(x, out):
@@ -175,9 +166,7 @@ def _adaptive_avg_pool3d(input: torch.Tensor, output_size):
 
     N, C, D_in, H_in, W_in = x5d.shape
     out_shape_5d = (N, C, D_out, H_out, W_out)
-    out5d = torch.empty(
-        out_shape_5d, device=x5d.device, dtype=x5d.dtype, layout=x5d.layout
-    )
+    out5d = torch.empty(out_shape_5d, device=x5d.device, dtype=x5d.dtype, layout=x5d.layout)
 
     _launch_adaptive_avg_pool3d_kernel(x5d, out5d)
 
@@ -206,14 +195,10 @@ def _adaptive_avg_pool3d_out(input: torch.Tensor, output_size, out: torch.Tensor
     # Validate shape
     expected_shape = (x5d.size(0), x5d.size(1), D_out, H_out, W_out)
     if tuple(out5d.shape) != expected_shape:
-        raise ValueError(
-            f"out has incorrect shape. Expected {expected_shape}, got {tuple(out5d.shape)}"
-        )
+        raise ValueError(f"out has incorrect shape. Expected {expected_shape}, got {tuple(out5d.shape)}")
 
     if out5d.device != x5d.device or out5d.dtype != x5d.dtype:
-        raise ValueError(
-            "out must be on the same device and have the same dtype as input"
-        )
+        raise ValueError("out must be on the same device and have the same dtype as input")
 
     _launch_adaptive_avg_pool3d_kernel(x5d, out5d)
 

@@ -8,10 +8,7 @@ Usage:
 import pytest
 import torch
 
-from flag_gems.fused.mhc.hc_split_sinkhorn import (
-    hc_split_sinkhorn,
-    mhc_split_sinkhorn_torch_ref,
-)
+from flag_gems.fused.mhc.hc_split_sinkhorn import hc_split_sinkhorn, mhc_split_sinkhorn_torch_ref
 from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
 from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
 from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
@@ -33,15 +30,9 @@ class MHCPostBenchmark(Benchmark):
         for n, h in self.shapes:
             hc_mult = 4
             x = torch.randn((n, h), dtype=torch.bfloat16, device=self.device)
-            residual = torch.randn(
-                (n, hc_mult, h), dtype=torch.bfloat16, device=self.device
-            )
-            post_layer_mix = torch.randn(
-                (n, hc_mult, 1), dtype=torch.float32, device=self.device
-            )
-            comb_res_mix = torch.randn(
-                (n, hc_mult, hc_mult), dtype=torch.float32, device=self.device
-            )
+            residual = torch.randn((n, hc_mult, h), dtype=torch.bfloat16, device=self.device)
+            post_layer_mix = torch.randn((n, hc_mult, 1), dtype=torch.float32, device=self.device)
+            comb_res_mix = torch.randn((n, hc_mult, hc_mult), dtype=torch.float32, device=self.device)
             yield x, residual, post_layer_mix, comb_res_mix
 
 
@@ -93,9 +84,7 @@ class MHCPreBenchmark(Benchmark):
                 .bfloat16()
             )
             fn = (
-                torch.randn(
-                    (hc_mult3, hc_mult, hidden_size), dtype=torch.float, device=device
-                )
+                torch.randn((hc_mult3, hc_mult, hidden_size), dtype=torch.float, device=device)
                 * 1e-4
                 * (1 + torch.arange(hc_mult, device=device).mul(0.01).view(1, -1, 1))
             ).flatten(1, 2)
@@ -152,9 +141,7 @@ class MHCSplitSinkhornBenchmark(Benchmark):
             device = self.device
 
             torch.manual_seed(42)
-            mixes = torch.randn(
-                (batch, seqlen, mix_hc), dtype=torch.float32, device=device
-            )
+            mixes = torch.randn((batch, seqlen, mix_hc), dtype=torch.float32, device=device)
             hc_scale = torch.randn((3,), dtype=torch.float32, device=device) * 0.1
             hc_base = torch.randn((mix_hc,), dtype=torch.float32, device=device) * 0.1
 

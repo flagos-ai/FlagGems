@@ -35,18 +35,8 @@ def bmm_kernel(
     offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
-    a_ptrs = (
-        a_ptr
-        + batch_idx * stride_ab
-        + offs_am[:, None] * stride_am
-        + offs_k[None, :] * stride_ak
-    )
-    b_ptrs = (
-        b_ptr
-        + batch_idx * stride_bb
-        + offs_k[:, None] * stride_bk
-        + offs_bn[None, :] * stride_bn
-    )
+    a_ptrs = a_ptr + batch_idx * stride_ab + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + batch_idx * stride_bb + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
 
     mask_am = offs_am < M
     mask_bn = offs_bn < N
@@ -63,12 +53,7 @@ def bmm_kernel(
         b_ptrs += BLOCK_K * stride_bk
 
     c_val = acc.to(tl.float16)
-    c_ptrs = (
-        c_ptr
-        + batch_idx * stride_cb
-        + offs_am[:, None] * stride_cm
-        + offs_bn[None, :] * stride_cn
-    )
+    c_ptrs = c_ptr + batch_idx * stride_cb + offs_am[:, None] * stride_cm + offs_bn[None, :] * stride_cn
     tl.store(c_ptrs, c_val, mask=mask_c)
 
 

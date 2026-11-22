@@ -47,9 +47,7 @@ def to_reference(inp, upcast=False):
 def test_erf__tensor(shape, dtype, noncontig):
     device = "cuda"  # noqa: F841
     if noncontig:
-        base = torch.randn(
-            (shape[1], shape[0]), device=flag_gems.device, dtype=torch.float32
-        )
+        base = torch.randn((shape[1], shape[0]), device=flag_gems.device, dtype=torch.float32)
         input_tensor = base.transpose(0, 1).to(dtype)
     else:
         input_tensor = torch.randn(shape, device=flag_gems.device, dtype=dtype)

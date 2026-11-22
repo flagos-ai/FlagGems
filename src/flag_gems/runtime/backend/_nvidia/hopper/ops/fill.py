@@ -69,9 +69,7 @@ def fill_tensor(input, value):
         return fill_scalar(input, value.item())
     logger.debug("GEMS_HOPPER FILL_TENSOR")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     out = torch.empty_like(input)
     n_elements = out.numel()
     grid = (triton.cdiv(n_elements, 1024),)
@@ -87,9 +85,7 @@ def fill_tensor_out(input, value, *, out=None):
     if not value.is_cuda:
         return fill_scalar_out(input, value.item(), out=out)
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     n_elements = out.numel()
     grid = (triton.cdiv(n_elements, 1024),)
     with torch_device_fn.device(input.device):
@@ -102,9 +98,7 @@ def fill_tensor_(self, value):
         return fill_scalar_(self, value.item())
     logger.debug("GEMS_HOPPER FILL_TENSOR_")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     n_elements = self.numel()
     grid = (triton.cdiv(n_elements, 1024),)
     with torch_device_fn.device(self.device):

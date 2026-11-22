@@ -97,9 +97,9 @@ CODEGEN_COFIGS = {
         prefer_1d_tile=True,
     ),
     vendors.ENFLAME: CodeGenConfig(
-        32 * 1024
-        if ENFLAME_GCU300_4SIPS != 1
-        else 64 * 1024,  # base for bpe8, which means base*2 for bpe4, base*4 for bpe2
+        (
+            32 * 1024 if ENFLAME_GCU300_4SIPS != 1 else 64 * 1024
+        ),  # base for bpe8, which means base*2 for bpe4, base*4 for bpe2
         (12, 1, 1) if ENFLAME_GCU300_4SIPS != 1 else (1, 1, 1),
         2 if ENFLAME_GCU300_4SIPS != 1 else 4,
         True,

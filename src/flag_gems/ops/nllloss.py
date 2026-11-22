@@ -358,9 +358,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
 
     grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
     with torch_device_fn.device(self.device):
-        nll_loss2d_forward_kernel[grid](
-            self, target, weight, out, ignore_index, N, C, D, reduction
-        )
+        nll_loss2d_forward_kernel[grid](self, target, weight, out, ignore_index, N, C, D, reduction)
 
     # redution: 0-None, 1-mean, 2-sum
     if reduction == 0:

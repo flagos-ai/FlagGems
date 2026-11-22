@@ -13,9 +13,7 @@ import triton.language.extra.libdevice as tldevice
 
 def get_exp():
     """Return exp implementation (fast or accurate) based on env flag."""
-    return (
-        tldevice.fast_expf if os.environ.get("FLA_USE_FAST_OPS", "0") == "1" else tl.exp
-    )
+    return tldevice.fast_expf if os.environ.get("FLA_USE_FAST_OPS", "0") == "1" else tl.exp
 
 
 # Default exported exp to be imported by kernels.

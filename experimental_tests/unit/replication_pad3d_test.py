@@ -8,12 +8,10 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.replication_pad3d import (  # noqa: E402
-    replication_pad3d as gems_replication_pad3d,
-)
-from flag_gems.experimental_ops.replication_pad3d import (  # noqa: E402
+from flag_gems.experimental_ops.replication_pad3d import replication_pad3d as gems_replication_pad3d  # noqa: E402
+from flag_gems.experimental_ops.replication_pad3d import (
     replication_pad3d_out as gems_replication_pad3d_out,
-)
+)  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -44,13 +42,9 @@ def to_reference(inp, upcast=False):
 
 
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize(
-    "shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)]
-)
+@pytest.mark.parametrize("shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)]
-)
+@pytest.mark.parametrize("padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)])
 def test_replication_pad3d_tensor(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
@@ -63,13 +57,9 @@ def test_replication_pad3d_tensor(shape, dtype, padding):
 
 
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize(
-    "shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)]
-)
+@pytest.mark.parametrize("shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)]
-)
+@pytest.mark.parametrize("padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)])
 def test_replication_pad3d_out(shape, dtype, padding):
     def test__out_shape(s, p):
         return (s[0], s[1], s[2] + p[4] + p[5], s[3] + p[2] + p[3], s[4] + p[0] + p[1])

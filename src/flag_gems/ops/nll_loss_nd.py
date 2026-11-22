@@ -56,9 +56,7 @@ def nll_loss_nd_forward_kernel(
     # none
     if REDUCTION == 0:
         out_offset = pid_n * S + s_offsets
-        tl.store(
-            out_ptr + out_offset, loss_val.to(out_ptr.dtype.element_ty), mask=mask_s
-        )
+        tl.store(out_ptr + out_offset, loss_val.to(out_ptr.dtype.element_ty), mask=mask_s)
     else:
         block_loss_sum = tl.sum(loss_val, axis=0)
         # mean
@@ -75,9 +73,7 @@ def nll_loss_nd_forward_kernel(
             if old_cnt == total_programs - 1.0:
                 total_loss = tl.load(scratch_ptr)
                 total_weight = tl.load(scratch_ptr + 1)
-                final_val = tl.where(
-                    total_weight == 0.0, 0.0, total_loss / total_weight
-                )
+                final_val = tl.where(total_weight == 0.0, 0.0, total_loss / total_weight)
                 tl.store(out_ptr, final_val.to(out_ptr.dtype.element_ty))
         # Sum
         else:
@@ -126,9 +122,7 @@ def nll_loss_nd_backward_kernel(
 
     if REDUCTION == 0:  # none
         out_grad_offsets = pid_n * stride_go_n + s_offsets * stride_go_s
-        out_grad = tl.load(grad_out_ptr + out_grad_offsets, mask=valid, other=0.0).to(
-            tl.float32
-        )
+        out_grad = tl.load(grad_out_ptr + out_grad_offsets, mask=valid, other=0.0).to(tl.float32)
     else:  # mean or sum
         out_grad = tl.load(grad_out_ptr).to(tl.float32)
 
@@ -160,9 +154,7 @@ def nll_loss_nd_forward(
 ):
     logger.debug("GEMS NLL LOSS ND FWD")
     if input.dim() < 3:
-        out, total_weight = nll_loss_2d(
-            input, target, weight=weight, reduction=reduction, ignore_index=ignore_index
-        )
+        out, total_weight = nll_loss_2d(input, target, weight=weight, reduction=reduction, ignore_index=ignore_index)
         return out, total_weight
     else:
         N = input.shape[0]
@@ -172,9 +164,7 @@ def nll_loss_nd_forward(
         inp = input.reshape(N, C, S)
 
         if target.numel() != N * S:
-            raise ValueError(
-                f"Target size {target.shape} doesn't match input size (N={N}, S={S})"
-            )
+            raise ValueError(f"Target size {target.shape} doesn't match input size (N={N}, S={S})")
         else:
             tgt = target.reshape(N, S)
 
@@ -251,9 +241,7 @@ def nll_loss_nd_forward(
                 if reduction == 1:
                     total_weight = scratch[1]
                 else:
-                    total_weight = torch.empty(
-                        [], device=input.device, dtype=input.dtype
-                    )
+                    total_weight = torch.empty([], device=input.device, dtype=input.dtype)
 
                 return out, total_weight
 

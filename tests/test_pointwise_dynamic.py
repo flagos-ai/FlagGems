@@ -7,12 +7,7 @@ import triton
 
 import flag_gems
 from flag_gems.utils import get_device_properties
-from flag_gems.utils.pointwise_dynamic import (
-    CodeGenConfig,
-    ComplexMode,
-    FunctionSchema,
-    pointwise_dynamic,
-)
+from flag_gems.utils.pointwise_dynamic import CodeGenConfig, ComplexMode, FunctionSchema, pointwise_dynamic
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
@@ -160,9 +155,7 @@ def test_dynamic_function_without_non_tensor_args(use_block_pointer):
         prefer_1d_tile=False,
     )
 
-    @pointwise_dynamic(
-        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
-    )
+    @pointwise_dynamic(num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config)
     @triton.jit
     def add(x, y):
         return x + y
@@ -569,16 +562,8 @@ def test_dynamic_function_with_nd_buffer_expand(use_1d_tile, use_block_pointer):
         return alpha * x + y, alpha * x - y
 
     M, N, K = 40, 60, 80
-    x = (
-        torch.randn([1, K // 2, N // 2], device="cuda")
-        .permute(0, 2, 1)
-        .expand([M // 2, N // 2, K // 2])
-    )
-    y = (
-        torch.randn([1, K // 2, M // 2], device="cuda")
-        .permute(2, 0, 1)
-        .expand([M // 2, N // 2, K // 2])
-    )
+    x = torch.randn([1, K // 2, N // 2], device="cuda").permute(0, 2, 1).expand([M // 2, N // 2, K // 2])
+    y = torch.randn([1, K // 2, M // 2], device="cuda").permute(2, 0, 1).expand([M // 2, N // 2, K // 2])
     alpha = 2.0
     o = torch.empty([M // 2, N // 2, K // 2], device="cuda")
     out0, out1 = axpyaxmy(x, y, alpha, out0=o)
@@ -765,9 +750,7 @@ def test_dynamic_function_gsl(use_block_pointer):
         prefer_1d_tile=False,
     )
 
-    @pointwise_dynamic(
-        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
-    )
+    @pointwise_dynamic(num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config)
     @triton.jit
     def add(x, y):
         return x + y
@@ -817,9 +800,7 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
         prefer_1d_tile=use_1d_tile,
     )
 
-    @pointwise_dynamic(
-        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
-    )
+    @pointwise_dynamic(num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config)
     @triton.jit
     def add(x, y):
         return x + y
@@ -866,9 +847,7 @@ def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer)
         prefer_1d_tile=use_1d_tile,
     )
 
-    @pointwise_dynamic(
-        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
-    )
+    @pointwise_dynamic(num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config)
     @triton.jit
     def f(x, y):
         return x * 2.0 + y
@@ -913,9 +892,7 @@ def test_dynamic_function_with_multithread(use_block_pointer):
         expected_outs = [item * alpha for item in inputs]
         outs = []
         for item in inputs:
-            out_future = executor.submit(
-                f_for_concurrency_test, item, alpha, use_block_pointer
-            )
+            out_future = executor.submit(f_for_concurrency_test, item, alpha, use_block_pointer)
             outs.append(out_future)
         outs = [item.result() for item in outs]
 
@@ -928,16 +905,12 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
     shape = [128]
     alpha = 2.0
     ctx = multiprocessing.get_context("spawn")
-    with concurrent.futures.ProcessPoolExecutor(
-        max_workers=8, mp_context=ctx
-    ) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=ctx) as executor:
         inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
         expected_outs = [item * alpha for item in inputs]
         outs = []
         for item in inputs:
-            out_future = executor.submit(
-                f_for_concurrency_test, item, alpha, use_block_pointer
-            )
+            out_future = executor.submit(f_for_concurrency_test, item, alpha, use_block_pointer)
             outs.append(out_future)
         outs = [item.result() for item in outs]
 
@@ -952,9 +925,7 @@ COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_complex_elementwise_tensor_tensor(dtype):
-    @pointwise_dynamic(
-        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-    )
+    @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
     @triton.jit
     def add_func(x, y, alpha):
         return x + y * alpha
@@ -973,16 +944,12 @@ def test_complex_elementwise_tensor_tensor(dtype):
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_complex_elementwise_tensor_scalar(dtype):
-    @pointwise_dynamic(
-        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-    )
+    @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
     @triton.jit
     def add_tt(x, y, alpha):
         return x + y * alpha
 
-    @pointwise_dynamic(
-        is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-    )
+    @pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
     @triton.jit
     def add_ts(x, y, alpha):
         return x + y * alpha
@@ -1004,9 +971,7 @@ def test_complex_elementwise_tensor_scalar(dtype):
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_complex_elementwise_broadcast(dtype):
-    @pointwise_dynamic(
-        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-    )
+    @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
     @triton.jit
     def add_func(x, y, alpha):
         return x + y * alpha
@@ -1022,9 +987,7 @@ def test_complex_elementwise_broadcast(dtype):
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_complex_elementwise_mixed_real_complex(dtype):
-    @pointwise_dynamic(
-        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-    )
+    @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
     @triton.jit
     def add_func(x, y, alpha):
         return x + y * alpha
@@ -1136,9 +1099,7 @@ def test_complex_cross_broadcast(dtype):
 def test_complex_real_inputs_bypass(dtype):
     """When all inputs are real, complex-registered kernel should still work."""
 
-    @pointwise_dynamic(
-        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
-    )
+    @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
     @triton.jit
     def add_func(x, y, alpha):
         return x + y * alpha

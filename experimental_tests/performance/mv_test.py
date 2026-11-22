@@ -54,15 +54,11 @@ def test_mv_benchmark_tensor(shape, dtype):
     ref_mat = mat.clone()
     ref_vec = vec.clone()
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.mv(ref_mat, ref_vec), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.mv(ref_mat, ref_vec), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_mv(mat, vec), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_mv(mat, vec), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

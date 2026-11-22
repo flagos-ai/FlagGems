@@ -32,18 +32,12 @@ def slice_scatter_kernel(
     dim_idx = (idx // dim_prod_post) % dim_size
     post_idx = idx % dim_prod_post
 
-    slice_mask = (
-        (dim_idx >= start)
-        & (dim_idx < start + src_dim_size * step)
-        & ((dim_idx - start) % step == 0)
-    )
+    slice_mask = (dim_idx >= start) & (dim_idx < start + src_dim_size * step) & ((dim_idx - start) % step == 0)
 
     inp_data = tl.load(inp_ptr + idx, mask=mask)
 
     src_dim_idx = (dim_idx - start) // step
-    src_idx = (
-        pre_idx * src_dim_size * dim_prod_post + src_dim_idx * dim_prod_post + post_idx
-    )
+    src_idx = pre_idx * src_dim_size * dim_prod_post + src_dim_idx * dim_prod_post + post_idx
     src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask)
     result = tl.where(slice_mask, src_data, inp_data)
     tl.store(out_ptr + idx, result, mask=mask)
@@ -63,16 +57,12 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
 
     valid_shape = list(inp.shape)
     valid_shape[dim] = triton.cdiv(end - start, step)
-    assert (
-        list(src.shape) == valid_shape
-    ), "Expected src to have a size equal to the slice of self"
+    assert list(src.shape) == valid_shape, "Expected src to have a size equal to the slice of self"
 
     if has_internal_overlapping(inp) == MemOverlap.Yes:
         out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
     else:
-        out = torch.empty_strided(
-            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-        )
+        out = torch.empty_strided(inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device)
 
     inp = inp.contiguous()
     src = src.contiguous()

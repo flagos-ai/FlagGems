@@ -41,9 +41,7 @@ def _unfold_backward_kernel(
     tl.atomic_add(grad_out_ptr + out_id, vals_f32, mask=mask)
 
 
-def unfold_backward(
-    grad_in: torch.Tensor, input_sizes, dim: int, size: int, step: int
-) -> torch.Tensor:
+def unfold_backward(grad_in: torch.Tensor, input_sizes, dim: int, size: int, step: int) -> torch.Tensor:
     logger.debug("GEMS UNFOLD BACKWARD")
     if step <= 0:
         raise ValueError("step must be > 0")

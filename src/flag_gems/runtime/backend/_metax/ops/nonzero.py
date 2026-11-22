@@ -32,9 +32,7 @@ def generate_nonzero_kernel(
 ) -> IndentedBuffer:
     # the decorators
     code.writeline("@libentry()")
-    code.writeline(
-        "@triton.heuristics(runtime.get_heuristic_config('elementwise_generic'))"
-    )
+    code.writeline("@triton.heuristics(runtime.get_heuristic_config('elementwise_generic'))")
     code.writeline("@triton.jit")
 
     # signature
@@ -70,9 +68,7 @@ def generate_nonzero_kernel(
             for i in range(rank - 1, -1, -1):
                 code.writeline(f"remainder = idx_flat % dim{i}_size")
                 code.writeline(f"idx_flat //= dim{i}_size")
-                code.writeline(
-                    f"tl.store(out + out_offset * ndim + {i}, remainder, mask=nonzero_mask)"
-                )
+                code.writeline(f"tl.store(out + out_offset * ndim + {i}, remainder, mask=nonzero_mask)")
                 code.newline()
 
         code.newline()
@@ -104,9 +100,7 @@ def generate_destination_passing_wrapper(
     code.writeline(wrapper_signature)
 
     with code.indent():
-        code.writeline(
-            'grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)'
-        )
+        code.writeline('grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)')
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
         with code.indent():

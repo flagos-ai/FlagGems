@@ -8,9 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}")
 
 
 @libentry()
@@ -115,15 +113,11 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     logger.debug("GEMS_MTHREADS ONE_HOT")
 
     if tensor.dtype != torch.int64:
-        raise RuntimeError(
-            "one_hot is only applicable to index tensor of type LongTensor."
-        )
+        raise RuntimeError("one_hot is only applicable to index tensor of type LongTensor.")
 
     if tensor.numel() == 0:
         if num_classes <= 0:
-            raise RuntimeError(
-                "Can not infer total number of classes from empty tensor."
-            )
+            raise RuntimeError("Can not infer total number of classes from empty tensor.")
         shape = (*tensor.shape, num_classes)
         return torch.empty(shape, device=tensor.device, dtype=torch.int64)
 
@@ -157,9 +151,7 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     # Choose kernel based on num_classes
     with torch_device_fn.device(tensor.device):
         if num_classes <= 16:
-            out = torch.empty(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
+            out = torch.empty(num_elements * num_classes, device=tensor.device, dtype=torch.int64)
             BLOCK_SIZE = 128
             grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
             one_hot_kernel_16[grid](
@@ -170,9 +162,7 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
                 BLOCK_SIZE=BLOCK_SIZE,
             )
         elif num_classes <= 32:
-            out = torch.empty(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
+            out = torch.empty(num_elements * num_classes, device=tensor.device, dtype=torch.int64)
             BLOCK_SIZE = 128
             grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
             one_hot_kernel_32[grid](
@@ -183,9 +173,7 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
                 BLOCK_SIZE=BLOCK_SIZE,
             )
         elif num_classes <= 64:
-            out = torch.empty(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
+            out = torch.empty(num_elements * num_classes, device=tensor.device, dtype=torch.int64)
             BLOCK_SIZE = 128
             grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
             one_hot_kernel_64[grid](
@@ -197,9 +185,7 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
             )
         else:
             # For large num_classes, use zeros + set ones
-            out = torch.zeros(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
+            out = torch.zeros(num_elements * num_classes, device=tensor.device, dtype=torch.int64)
             BLOCK_SIZE = 1024
             grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
             one_hot_set_one_kernel[grid](

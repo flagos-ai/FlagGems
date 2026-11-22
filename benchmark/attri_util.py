@@ -87,11 +87,7 @@ ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "shape_detail",
 }
 
-DEFAULT_METRICS = [
-    metric
-    for metric in ["latency_base", "latency", "speedup"]
-    if metric in ALL_AVAILABLE_METRICS
-]
+DEFAULT_METRICS = [metric for metric in ["latency_base", "latency", "speedup"] if metric in ALL_AVAILABLE_METRICS]
 
 
 def check_metric_dependencies(
@@ -125,9 +121,7 @@ def check_metric_dependencies(
     return unsatisfied_metrics
 
 
-def get_recommended_shapes(
-    op_name: str, op_specified_shapes: Optional[List[Tuple[int, ...]]]
-):
+def get_recommended_shapes(op_name: str, op_specified_shapes: Optional[List[Tuple[int, ...]]]):
     def _shapes_sort(shapes):
         shapes = [shape if isinstance(shape, tuple) else (shape,) for shape in shapes]
         return sorted(shapes, key=lambda x: torch.tensor(x).prod().item())
@@ -213,29 +207,16 @@ class BenchmarkResult:
         # legacy_shape_str = (
         #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
         # )
-        latency_base_str = (
-            f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
-        )
+        latency_base_str = f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
         latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
         speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
-        torch_gbps_str = (
-            f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
-        )
+        torch_gbps_str = f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
         gems_gbps_str = f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
         if metrics.tflops and metrics.tflops != 0.0:
-            tflops_str = (
-                f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
-            )
-        shape_detail_str = (
-            metrics.shape_detail if metrics.shape_detail is not None else "N/A"
-        )
+            tflops_str = f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
+        shape_detail_str = metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
-        data_line = (
-            f"{status:<10}"
-            f"{latency_base_str:>20}"
-            f"{latency_str:>20}"
-            f"{speedup_str:>20}"
-        )
+        data_line = f"{status:<10}" f"{latency_base_str:>20}" f"{latency_str:>20}" f"{speedup_str:>20}"
         if metrics.tflops and metrics.tflops != 0.0:
             data_line += f"{tflops_str:>20}"
         if metrics.gbps is not None:
@@ -245,20 +226,12 @@ class BenchmarkResult:
         return data_line
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
-        first_shape = (
-            metrics.shape_detail[0] if isinstance(metrics.shape_detail, list) else None
-        )
-        to_record_shape = (
-            tuple(first_shape) if isinstance(first_shape, torch.Size) else None
-        )
+        first_shape = metrics.shape_detail[0] if isinstance(metrics.shape_detail, list) else None
+        to_record_shape = tuple(first_shape) if isinstance(first_shape, torch.Size) else None
 
         if to_record_shape in LEGACY_NON_BLAS_SHAPES:
             metrics.legacy_shape = to_record_shape[-1]
-        elif (
-            isinstance(to_record_shape, tuple)
-            and len(to_record_shape) == 2
-            and to_record_shape[0] == 1024
-        ):
+        elif isinstance(to_record_shape, tuple) and len(to_record_shape) == 2 and to_record_shape[0] == 1024:
             metrics.legacy_shape = to_record_shape[-1]
         else:
             metrics.legacy_shape = None

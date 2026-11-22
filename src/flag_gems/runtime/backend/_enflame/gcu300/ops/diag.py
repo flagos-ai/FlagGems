@@ -10,9 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def diag_1d_to_2d_kernel(
-    data_ptr, output_ptr, N, M, stride, diagonal: tl.constexpr, BLOCK_SIZE: tl.constexpr
-):
+def diag_1d_to_2d_kernel(data_ptr, output_ptr, N, M, stride, diagonal: tl.constexpr, BLOCK_SIZE: tl.constexpr):
     idx = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
@@ -51,9 +49,7 @@ def diag_2d_to_1d_kernel(
         row_idx = col_idx - diagonal
     mask = (row_idx < N) & (col_idx < M)
 
-    diag_value = tl.load(
-        data_ptr + row_idx * stride0 + col_idx * stride1, mask=mask, other=0
-    )
+    diag_value = tl.load(data_ptr + row_idx * stride0 + col_idx * stride1, mask=mask, other=0)
     tl.store(output_ptr + idx, diag_value, mask=mask)
 
 
@@ -68,9 +64,7 @@ def diag_1d_to_2d(x, diagonal=0):
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
 
     with torch_device_fn.device(x.device):
-        diag_1d_to_2d_kernel[grid](
-            x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE
-        )
+        diag_1d_to_2d_kernel[grid](x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE)
     return output
 
 
@@ -90,9 +84,7 @@ def diag_2d_to_1d(x, diagonal=0):
     grid = lambda meta: (triton.cdiv(diag_len, BLOCK_SIZE),)
 
     with torch_device_fn.device(x.device):
-        diag_2d_to_1d_kernel[grid](
-            x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE
-        )
+        diag_2d_to_1d_kernel[grid](x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE)
     return output
 
 

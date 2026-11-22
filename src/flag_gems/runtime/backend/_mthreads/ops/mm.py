@@ -21,9 +21,7 @@ logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.mm")
 
 
 def is_supported_sqmma_layout(tensor):
-    return tensor.is_contiguous() or (
-        tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
-    )
+    return tensor.is_contiguous() or (tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0])
 
 
 def is_sqmma_compatible(a, b, N, K):
@@ -108,12 +106,8 @@ def mm_kernel(
     # loop peeling
     rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
     mask_k = rk < K
-    a = tl.load(
-        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :]
-    )
-    b = tl.load(
-        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None]
-    )
+    a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :])
+    b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None])
     if a.dtype != b.dtype:
         a = a.to(C.dtype.element_ty)
         b = b.to(C.dtype.element_ty)
@@ -214,9 +208,7 @@ def mm_fma(a, b):
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(a.device):
         mm_kernel[grid](
             a,
@@ -275,9 +267,7 @@ def mm_out(a, b, *, out):
     if N == 1:
         return gemv_mm(a, b, c, M, K)
     # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(a.device):
         mm_kernel[grid](
             a,
@@ -307,15 +297,9 @@ def sqmma_descriptor_pre_hook_v31(nargs):
     block_k = nargs["BLOCK_K"]
     device = c.device
 
-    nargs["a_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor_v31(a, block_m, block_k, device)
-    )
-    nargs["b_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor_v31(b, block_k, block_n, device)
-    )
-    nargs["c_desc_ptr"].copy_(
-        create_tma_device_descriptor_v31(c, block_m, block_n, device)
-    )
+    nargs["a_desc_ptr"].copy_(get_cached_tma_device_descriptor_v31(a, block_m, block_k, device))
+    nargs["b_desc_ptr"].copy_(get_cached_tma_device_descriptor_v31(b, block_k, block_n, device))
+    nargs["c_desc_ptr"].copy_(create_tma_device_descriptor_v31(c, block_m, block_n, device))
 
 
 def sqmma_descriptor_pre_hook(nargs):
@@ -327,12 +311,8 @@ def sqmma_descriptor_pre_hook(nargs):
     block_k = nargs["BLOCK_K"]
     device = c.device
 
-    nargs["a_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(a, block_m, block_k, device)
-    )
-    nargs["b_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(b, block_k, block_n, device)
-    )
+    nargs["a_desc_ptr"].copy_(get_cached_tma_device_descriptor(a, block_m, block_k, device))
+    nargs["b_desc_ptr"].copy_(get_cached_tma_device_descriptor(b, block_k, block_n, device))
     nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
 
 

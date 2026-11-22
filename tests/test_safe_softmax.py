@@ -10,9 +10,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [-1, 0])
-@pytest.mark.parametrize(
-    "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
-)
+@pytest.mark.parametrize("dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16])
 def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
     x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
     if dtype_arg_sel == "none":

@@ -40,9 +40,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 def masked_fill(inp, mask, value):
     logger.debug("METAX GEMS MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0)
-        or isinstance(value, int)
-        or isinstance(value, float)
+        (torch.is_tensor(value) and value.ndim == 0) or isinstance(value, int) or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
@@ -53,11 +51,7 @@ def masked_fill(inp, mask, value):
 
     if inp.ndim == 0:
         # inp is a single-value
-        return (
-            torch.tensor(value, dtype=inp.dtype, device=inp.device)
-            if mask.item()
-            else inp.clone()
-        )
+        return torch.tensor(value, dtype=inp.dtype, device=inp.device) if mask.item() else inp.clone()
 
     inp = inp.contiguous()
     mask = mask.contiguous()
@@ -75,9 +69,7 @@ def masked_fill(inp, mask, value):
 def masked_fill_(inp, mask, value):
     logger.debug("METAX GEMS MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0)
-        or isinstance(value, int)
-        or isinstance(value, float)
+        (torch.is_tensor(value) and value.ndim == 0) or isinstance(value, int) or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar

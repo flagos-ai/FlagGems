@@ -48,9 +48,7 @@ def topk_gating_softmax_kernel(
             mask=valid_rows,
         )
 
-        probs = tl.where(
-            cols[None, :] == (curr_arg[:, None] - start_expert), -float("inf"), probs
-        )
+        probs = tl.where(cols[None, :] == (curr_arg[:, None] - start_expert), -float("inf"), probs)
 
 
 def topk_softmax(

@@ -7,9 +7,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.pixel_unshuffle
-@pytest.mark.parametrize(
-    "shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)]
-)
+@pytest.mark.parametrize("shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pixel_unshuffle(shape_factor, dtype):
     shape, downscale_factor = shape_factor
@@ -25,9 +23,7 @@ def test_pixel_unshuffle(shape_factor, dtype):
 
 
 @pytest.mark.pixel_unshuffle_out
-@pytest.mark.parametrize(
-    "shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)]
-)
+@pytest.mark.parametrize("shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pixel_unshuffle_out(shape_factor, dtype):
     shape, downscale_factor = shape_factor
@@ -39,14 +35,10 @@ def test_pixel_unshuffle_out(shape_factor, dtype):
     ref_input = utils.to_reference(input_tensor, True)
 
     out_ref = torch.empty(out_shape, dtype=ref_input.dtype, device=ref_input.device)
-    ref_out = torch.ops.aten.pixel_unshuffle.out(
-        ref_input, downscale_factor, out=out_ref
-    )
+    ref_out = torch.ops.aten.pixel_unshuffle.out(ref_input, downscale_factor, out=out_ref)
 
     out_act = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
-        act_out = torch.ops.aten.pixel_unshuffle.out(
-            input_tensor, downscale_factor, out=out_act
-        )
+        act_out = torch.ops.aten.pixel_unshuffle.out(input_tensor, downscale_factor, out=out_act)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

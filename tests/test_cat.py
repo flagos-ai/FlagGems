@@ -18,9 +18,7 @@ CAT_SHAPES = [
 def gen_cat_shapes_dim(shapes):
     results = []
     for tensor_shapes in shapes:
-        assert all(
-            [len(s) == len(tensor_shapes[0]) for s in tensor_shapes]
-        ), "All tensor rank must agree."
+        assert all([len(s) == len(tensor_shapes[0]) for s in tensor_shapes]), "All tensor rank must agree."
 
         assert all(
             [s[-1] == tensor_shapes[0][-1] for s in tensor_shapes]
@@ -29,9 +27,7 @@ def gen_cat_shapes_dim(shapes):
         rank = len(tensor_shapes[0])
         results.append([tensor_shapes, 0])
         for dim in range(1, rank):
-            results.append(
-                [[(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes], dim]
-            )
+            results.append([[(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes], dim])
             results.append(
                 [
                     [(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes],
@@ -48,12 +44,7 @@ def test_cat(shape, dim, dtype):
     if dtype in utils.FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
-        inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
-                flag_gems.device
-            )
-            for s in shape
-        ]
+        inp = [torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(flag_gems.device) for s in shape]
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.cat(ref_inp, dim)
 

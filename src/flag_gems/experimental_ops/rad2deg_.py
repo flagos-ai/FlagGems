@@ -23,9 +23,7 @@ def rad2deg_(*args, **kwargs):
     if not isinstance(x, torch.Tensor):
         raise TypeError("rad2deg_ expects a torch.Tensor")
     if not x.is_floating_point():
-        raise TypeError(
-            "rad2deg_ only supports floating point tensors for in-place operation"
-        )
+        raise TypeError("rad2deg_ only supports floating point tensors for in-place operation")
     if not x.is_cuda:
         raise AssertionError("Input tensor must be on CUDA device")
 

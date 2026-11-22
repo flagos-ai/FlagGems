@@ -23,16 +23,12 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
 
     valid_shape = list(inp.shape)
     valid_shape[dim] = triton.cdiv(end - start, step)
-    assert (
-        list(src.shape) == valid_shape
-    ), "Expected src to have a size equal to the slice of self"
+    assert list(src.shape) == valid_shape, "Expected src to have a size equal to the slice of self"
 
     if has_internal_overlapping(inp) == MemOverlap.Yes:
         out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
     else:
-        out = torch.empty_strided(
-            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-        )
+        out = torch.empty_strided(inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device)
 
     ndim = inp.ndim
     copy_slice(inp, out0=out)

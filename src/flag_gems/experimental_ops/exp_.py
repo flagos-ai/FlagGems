@@ -31,10 +31,7 @@ def exp_(*args, **kwargs):
     elif "self" in kwargs:
         x = kwargs["self"]
     else:
-        raise ValueError(
-            "exp_ expects a tensor as the first positional argument "
-            "or 'input'/'self' keyword."
-        )
+        raise ValueError("exp_ expects a tensor as the first positional argument " "or 'input'/'self' keyword.")
 
     # Handle empty tensors quickly
     if x.numel() == 0:

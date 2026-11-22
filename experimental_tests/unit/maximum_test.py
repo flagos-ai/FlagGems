@@ -9,9 +9,7 @@ import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.maximum import maximum as gems_maximum  # noqa: E402
-from flag_gems.experimental_ops.maximum import (  # noqa: E402
-    maximum_out as gems_maximum_out,
-)
+from flag_gems.experimental_ops.maximum import maximum_out as gems_maximum_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

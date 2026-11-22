@@ -28,9 +28,7 @@ QUANTILE_FLOAT_DTYPES = [torch.float32]
 
 
 @pytest.mark.quantile
-@pytest.mark.skipif(
-    utils.SkipVersion("triton", "<3.0"), reason="Skipping Triton version."
-)
+@pytest.mark.skipif(utils.SkipVersion("triton", "<3.0"), reason="Skipping Triton version.")
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
 @pytest.mark.parametrize("dtype", QUANTILE_FLOAT_DTYPES)
 @pytest.mark.parametrize("q", QUANTILE_Q)
@@ -49,9 +47,7 @@ def test_quantile(shape, dtype, q, interpolation):
 
 
 @pytest.mark.quantile
-@pytest.mark.skipif(
-    utils.SkipVersion("triton", "<3.0"), reason="Skipping Triton version."
-)
+@pytest.mark.skipif(utils.SkipVersion("triton", "<3.0"), reason="Skipping Triton version.")
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -64,13 +60,9 @@ def test_quantile_dim(shape, dim, keepdim, dtype, q, interpolation):
     q = torch.tensor(q, dtype=dtype, device=inp.device)
     ref_q = utils.to_reference(q)
 
-    ref_out = torch.quantile(
-        ref_inp, ref_q, dim=dim, keepdim=keepdim, interpolation=interpolation
-    )
+    ref_out = torch.quantile(ref_inp, ref_q, dim=dim, keepdim=keepdim, interpolation=interpolation)
     with flag_gems.use_gems():
-        res_out = torch.quantile(
-            inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
-        )
+        res_out = torch.quantile(inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation)
 
     if isinstance(dim, int):
         dim = [dim]

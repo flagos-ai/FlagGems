@@ -8,12 +8,12 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.native_dropout_backward import (  # noqa: E402
+from flag_gems.experimental_ops.native_dropout_backward import (
     native_dropout_backward as gems_native_dropout_backward,
-)
-from flag_gems.experimental_ops.native_dropout_backward import (  # noqa: E402
+)  # noqa: E402
+from flag_gems.experimental_ops.native_dropout_backward import (
     native_dropout_backward_out as gems_native_dropout_backward_out,
-)
+)  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -74,17 +74,13 @@ def test_native_dropout_backward_out(shape, dtype, scale):
     ref_grad = to_reference(grad_output)
     ref_mask = to_reference(mask)
     ref_out_tensor = torch.empty_like(ref_grad)
-    ref_out = torch.ops.aten.native_dropout_backward.out(
-        ref_grad, ref_mask, float(scale), out=ref_out_tensor
-    )
+    ref_out = torch.ops.aten.native_dropout_backward.out(ref_grad, ref_mask, float(scale), out=ref_out_tensor)
 
     act_grad = grad_output.clone()
     act_mask = mask.clone()
     act_out_tensor = torch.empty_like(act_grad)
     with flag_gems.use_gems():
-        act_out = gems_native_dropout_backward_out(
-            act_grad, act_mask, float(scale), act_out_tensor
-        )
+        act_out = gems_native_dropout_backward_out(act_grad, act_mask, float(scale), act_out_tensor)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
     gems_assert_close(act_out_tensor, ref_out_tensor, dtype=dtype)

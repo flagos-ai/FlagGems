@@ -90,39 +90,25 @@ def kernel_bucket_sort_topk(  # grid(B, BS)
     TS = tl.cdiv(S, BS)
     for s in range(TS):
         input_idx = s * BS + tl.arange(0, BS)
-        input_mask = (
-            (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
-        )
-        input = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(
-            tl.float32
-        )
+        input_mask = (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
+        input = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(tl.float32)
         inval_int16 = convert_to_uint16(input)
         s_histogram += inval_int16.to(tl.int32).histogram(HISTOGRAM_SIZE)
 
     s_histogram = s_histogram.cumsum(0, reverse=True)  # Suffix sum
 
-    mv_idx = (
-        tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE
-    )  # Construct offset index matrix
+    mv_idx = tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE  # Construct offset index matrix
 
-    cond = (s_histogram > l_new_topk) & (
-        (s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0)
-    )
+    cond = (s_histogram > l_new_topk) & ((s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0))
     l_threshold_bin_id = cond.argmax(0)
 
-    l_new_topk -= tl.where(
-        tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0
-    ).max(0)
+    l_new_topk -= tl.where(tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0).max(0)
     sum = 0
     thre_bin_sum = 0
     for s in range(TS):
         input_idx = s * BS + tl.arange(0, BS)
-        input_mask = (
-            (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
-        )
-        input = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(
-            tl.float32
-        )
+        input_mask = (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
+        input = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(tl.float32)
         inval_int16 = convert_to_uint16(input)
         # inval_int16 = tl.where(input_mask, inval_int16, 0)
         # This method would slow down the speed, so using other=float("-inf") saves time.
@@ -174,40 +160,26 @@ def kernel_bucket_sort_topk(  # grid(B, BS)
         for s in range(ss):
             s_input_idx = s * BSS + tl.arange(0, BSS)
             s_input_idx_mask = s_input_idx < thre_bin_sum
-            input_idx = tl.load(
-                s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1
-            )
+            input_idx = tl.load(s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1)
             s_input_mask = s_input_idx_mask
-            s_input = tl.load(s_base + input_idx, s_input_mask, other=padding_num).to(
-                tl.float32
-            )
+            s_input = tl.load(s_base + input_idx, s_input_mask, other=padding_num).to(tl.float32)
             inval_int32 = (
                 convert_to_uint32(s_input) >> (24 - round * 8)
             ) & 0xFF  # Ensure all bits except the last eight are zero
             s_histogram += inval_int32.to(tl.int32).histogram(HISTOGRAM_SIZE)
         s_histogram = s_histogram.cumsum(0, reverse=True)  # Suffix sum
-        mv_idx = (
-            tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE
-        )  # Construct offset index matrix
-        cond = (s_histogram > l_new_topk) & (
-            (s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0)
-        )
+        mv_idx = tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE  # Construct offset index matrix
+        cond = (s_histogram > l_new_topk) & ((s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0))
         l_threshold_bin_id = cond.argmax(0)
-        l_new_topk -= tl.where(
-            tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0
-        ).max(0)
+        l_new_topk -= tl.where(tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0).max(0)
         thre_bin_sum, old_thre_bin_sum = 0, thre_bin_sum
 
         for s in range(ss):
             s_input_idx = s * BSS + tl.arange(0, BSS)
             s_input_idx_mask = s_input_idx < old_thre_bin_sum
-            input_idx = tl.load(
-                s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1
-            )
+            input_idx = tl.load(s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1)
             s_input_mask = s_input_idx_mask
-            s_input = tl.load(s_base + input_idx, s_input_mask, other=padding_num).to(
-                tl.float32
-            )
+            s_input = tl.load(s_base + input_idx, s_input_mask, other=padding_num).to(tl.float32)
             inval_int32 = (convert_to_uint32(s_input) >> (24 - round * 8)) & 0xFF
 
             over_thre = inval_int32.to(tl.int32) > l_threshold_bin_id
@@ -238,13 +210,9 @@ def kernel_bucket_sort_topk(  # grid(B, BS)
         for s in range(ss):
             s_input_idx = s * BSS + tl.arange(0, BSS)
             s_input_idx_mask = s_input_idx < l_new_topk
-            input_idx = tl.load(
-                s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1
-            )
+            input_idx = tl.load(s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1)
             s_input_mask = s_input_idx_mask
-            tl.store(
-                indices_base + sum + tl.arange(0, BSS), input_idx, mask=s_input_mask
-            )
+            tl.store(indices_base + sum + tl.arange(0, BSS), input_idx, mask=s_input_mask)
             sum += BSS
 
 
@@ -254,9 +222,7 @@ def bucket_sort_topk_triton(inputs, starts, ends, topk):
     HISTOGRAM_SIZE = 256
     SMEM_INPUT_SIZE = 4096
     indices = torch.full((B, topk), -1, dtype=torch.int32, device=inputs.device)
-    s_input_idx = torch.zeros(
-        B, SMEM_INPUT_SIZE, dtype=torch.int32, device=inputs.device
-    )
+    s_input_idx = torch.zeros(B, SMEM_INPUT_SIZE, dtype=torch.int32, device=inputs.device)
     grid = (B,)
     kernel_bucket_sort_topk[grid](
         inputs,
@@ -471,9 +437,7 @@ def _tle_process_histogram_step(
     final_bin_size = tl.load(s_final_bin_size_ptr)
     tl.store(s_step_thresholds_ptr + step_idx, threshold_bin_idx)
 
-    use_final = (
-        (step_idx < 3) & (threshold_bin_idx >= 0) & (final_bin_size <= FINAL_SORT_ITEMS)
-    )
+    use_final = (step_idx < 3) & (threshold_bin_idx >= 0) & (final_bin_size <= FINAL_SORT_ITEMS)
     if use_final:
         tl.store(s_final_cnt_ptr, 0)
 
@@ -774,9 +738,7 @@ def _tle_final_select_radix(
             next_prefix_sum = prefix_sum + counts
             threshold_mask = (prefix_sum < k_to_find) & (next_prefix_sum >= k_to_find)
             threshold_init = tl.full((), RADIX_SIZE_FINAL, dtype=tl.int32)
-            threshold_bin = tl.min(
-                tl.where(threshold_mask, bins, threshold_init), axis=0
-            ).to(tl.int32)
+            threshold_bin = tl.min(tl.where(threshold_mask, bins, threshold_init), axis=0).to(tl.int32)
             threshold_bin = tl.where(
                 threshold_bin == RADIX_SIZE_FINAL,
                 RADIX_SIZE_FINAL - 1,
@@ -788,9 +750,7 @@ def _tle_final_select_radix(
             ).to(tl.int32)
 
             desired = desired | (threshold_bin.to(tl.uint32) << digit_pos)
-            desired_mask = desired_mask | (
-                tl.full((), RADIX_MASK_FINAL, dtype=tl.uint32) << digit_pos
-            )
+            desired_mask = desired_mask | (tl.full((), RADIX_MASK_FINAL, dtype=tl.uint32) << digit_pos)
             k_to_find = k_to_find - counts_lt
 
         thr_key = desired
@@ -877,11 +837,7 @@ def kernel_tle_bucket_sort_topk(
     row_len = row_end - row_start
 
     auto_aligned = (
-        (stride_xn == 1)
-        & (stride_outn == 1)
-        & (row_start == 0)
-        & (row_end == seq_len)
-        & (seq_len % BLOCK_SIZE == 0)
+        (stride_xn == 1) & (stride_outn == 1) & (row_start == 0) & (row_end == seq_len) & (seq_len % BLOCK_SIZE == 0)
     )
     assume_aligned = auto_aligned
     if assume_aligned:
@@ -1029,9 +985,7 @@ def kernel_tle_bucket_sort_topk(
                 logit_i = logit_i_bits.to(tl.float32, bitcast=True)
                 out_rank = tl.zeros([BLOCK_SIZE], dtype=tl.int32)
                 for j in tl.range(0, final_cnt):
-                    logit_j_bits = tl.load(
-                        tle.gpu.local_ptr(s_histogram, (FINAL_SORT_ITEMS + j,))
-                    )
+                    logit_j_bits = tl.load(tle.gpu.local_ptr(s_histogram, (FINAL_SORT_ITEMS + j,)))
                     logit_j = logit_j_bits.to(tl.float32, bitcast=True)
                     better = (logit_i < logit_j) | ((logit_i == logit_j) & (pos < j))
                     out_rank = out_rank + (valid & better).to(tl.int32)
@@ -1049,9 +1003,7 @@ def kernel_tle_bucket_sort_topk(
     for flush_chunk in tl.static_range(flush_chunks):
         pos = flush_chunk * BLOCK_SIZE + lane
         mask = pos < K
-        out_vals = tl.load(
-            tle.gpu.local_ptr(s_out_indices, (pos,)), mask=mask, other=-1
-        )
+        out_vals = tl.load(tle.gpu.local_ptr(s_out_indices, (pos,)), mask=mask, other=-1)
         tl.store(out_row + pos * stride_outn, out_vals, mask=mask)
 
 

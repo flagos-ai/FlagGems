@@ -56,9 +56,7 @@ def test_erfinv__tensor(shape, dtype):
 @pytest.mark.erfinv_
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_erfinv__noncontiguous(dtype):
-    base = torch.empty((128, 128), device=flag_gems.device, dtype=dtype).uniform_(
-        -0.95, 0.95
-    )
+    base = torch.empty((128, 128), device=flag_gems.device, dtype=dtype).uniform_(-0.95, 0.95)
     base_ref = base.clone()
     base_act = base.clone()
 

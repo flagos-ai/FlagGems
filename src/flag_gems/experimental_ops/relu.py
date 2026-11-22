@@ -36,9 +36,7 @@ def relu(input: torch.Tensor) -> torch.Tensor:
         raise TypeError("relu does not support complex tensors.")
 
     if not input.is_cuda:
-        raise RuntimeError(
-            "Triton kernels require CUDA tensors. Move the tensor to a CUDA device."
-        )
+        raise RuntimeError("Triton kernels require CUDA tensors. Move the tensor to a CUDA device.")
 
     dtype = input.dtype
 

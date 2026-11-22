@@ -17,11 +17,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 def cfggen():
     block_m = [1, 2, 4, 8]
     block_n = [128, 1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1)
-        for m in block_m
-        for n in block_n
-    ]
+    configs = [triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1) for m in block_m for n in block_n]
     return configs
 
 
@@ -68,9 +64,7 @@ def index_add(inp, dim, index, src, alpha=1):
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
+    assert inp.ndim == src.ndim, "Self and source should have the same number of dimensions"
     assert (
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
@@ -164,26 +158,16 @@ def generate_index_add_kernel(
 
             # index add
             code.writeline("pre_idx = (src_offset // pre_cal).to(tl.int64)")
-            code.writeline(
-                "dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)"
-            )
-            code.writeline(
-                "src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)"
-            )
-            code.writeline(
-                'assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"'
-            )
+            code.writeline("dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)")
+            code.writeline("src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)")
+            code.writeline('assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"')
             code.writeline(
                 "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
             )
 
             code.writeline("input_mask = input_idx < inp_numel")
-            code.writeline(
-                "add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha"
-            )
-            code.writeline(
-                "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
-            )
+            code.writeline("add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha")
+            code.writeline("tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')")
             # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
             # code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
             # code.writeline("tl.store(out + input_idx, cur_out + add_on, mask=input_mask)")
@@ -317,9 +301,7 @@ def index_add_(inp, dim, index, src, alpha=1):
     assert index.numel() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
-    assert (
-        inp.ndim == src.ndim
-    ), "Self and source should have the same number of dimensions"
+    assert inp.ndim == src.ndim, "Self and source should have the same number of dimensions"
     assert (
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"

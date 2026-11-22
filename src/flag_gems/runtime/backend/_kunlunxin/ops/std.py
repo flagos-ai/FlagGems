@@ -23,18 +23,14 @@ def _std_map_kernel(X, Tmp_sum, Tmp_sum_sq, N, BLOCK_N: tl.constexpr):
 
 
 @triton.jit
-def _std_reduce_kernel(
-    Tmp_sum, Tmp_sum_sq, Out, N, correction, BLOCK_NUM, BLOCK_SIZE: tl.constexpr
-):
+def _std_reduce_kernel(Tmp_sum, Tmp_sum_sq, Out, N, correction, BLOCK_NUM, BLOCK_SIZE: tl.constexpr):
     total_sum_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
     total_sum_sq_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
     for off in range(0, BLOCK_NUM, BLOCK_SIZE):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < BLOCK_NUM
         tmp_sum_vals = tl.load(Tmp_sum + offset, mask=mask, other=0.0).to(tl.float32)
-        tmp_sum_sq_vals = tl.load(Tmp_sum_sq + offset, mask=mask, other=0.0).to(
-            tl.float32
-        )
+        tmp_sum_sq_vals = tl.load(Tmp_sum_sq + offset, mask=mask, other=0.0).to(tl.float32)
         total_sum_acc += tmp_sum_vals
         total_sum_sq_acc += tmp_sum_sq_vals
     total_sum = tl.sum(total_sum_acc, axis=0)
@@ -131,9 +127,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         BLOCK_NUM = triton.cdiv(N, BLOCK_N_MAP)
         tmp_sum = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
         tmp_sum_sq = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
-        _std_map_kernel[(BLOCK_NUM,)](
-            x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP
-        )
+        _std_map_kernel[(BLOCK_NUM,)](x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP)
         out = torch.empty([], device=x.device, dtype=x.dtype)
         BLOCK_SIZE_REDUCE = 1024
         _std_reduce_kernel[(1,)](
@@ -148,9 +142,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         return out.view([1] * input_ndim) if keepdim else out
 
     else:
-        logger.warning(
-            f"GEMS std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
-        )
+        logger.warning(f"GEMS std: Using compatible but non-optimal path for dim={dim} (dim_compress).")
 
         if isinstance(dim, int):
             dim_list = [dim]
@@ -172,9 +164,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
             output_shape_kept[d] = 1
 
         if M * N > 0 and (N - effective_correction <= 0):
-            final_shape = [
-                s for i, s in enumerate(original_shape) if i not in dim_list_normalized
-            ]
+            final_shape = [s for i, s in enumerate(original_shape) if i not in dim_list_normalized]
             return torch.full(
                 final_shape if not keepdim else output_shape_kept,
                 float("nan"),
@@ -188,8 +178,6 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
         grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
-        _std_fused_dim_kernel[grid](
-            x_view, out.view(M), stride_x_row, stride_x_col, M, N, effective_correction
-        )
+        _std_fused_dim_kernel[grid](x_view, out.view(M), stride_x_row, stride_x_col, M, N, effective_correction)
 
         return out.squeeze(dim=tuple(dim_list_normalized)) if not keepdim else out

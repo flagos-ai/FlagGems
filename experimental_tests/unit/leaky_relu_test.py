@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.leaky_relu import (  # noqa: E402
-    leaky_relu as gems_leaky_relu,
-)
-from flag_gems.experimental_ops.leaky_relu import (  # noqa: E402
-    leaky_relu_out as gems_leaky_relu_out,
-)
+from flag_gems.experimental_ops.leaky_relu import leaky_relu as gems_leaky_relu  # noqa: E402
+from flag_gems.experimental_ops.leaky_relu import leaky_relu_out as gems_leaky_relu_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

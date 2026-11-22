@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.masked_select import (  # noqa: E402
-    masked_select as gems_masked_select,
-)
-from flag_gems.experimental_ops.masked_select import (  # noqa: E402
-    masked_select_out as gems_masked_select_out,
-)
+from flag_gems.experimental_ops.masked_select import masked_select as gems_masked_select  # noqa: E402
+from flag_gems.experimental_ops.masked_select import masked_select_out as gems_masked_select_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

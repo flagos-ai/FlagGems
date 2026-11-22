@@ -134,11 +134,7 @@ def kron_kernel(
     b = tl.load(b_ptr + b_idx, mask=mask)
     c = a * b
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
+    c_idx = batch_id * c_batch_stride + offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
 
 
@@ -185,11 +181,7 @@ def kron(A, B):
     b_batch_stride = M2 * N2
     c_batch_stride = M * N
     with torch_device_fn.device(A.device):
-        grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
-        )
+        grid = lambda meta: (batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
 
         kron_kernel[grid](
             A_view,

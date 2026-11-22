@@ -34,9 +34,7 @@ def heaviside_(*args, **kwargs):
         # Fallback to kwargs if provided
         x = kwargs.get("input", kwargs.get("self", None))
         values = kwargs.get("values", None)
-    assert (
-        x is not None and values is not None
-    ), "heaviside_ requires two arguments: input tensor and values."
+    assert x is not None and values is not None, "heaviside_ requires two arguments: input tensor and values."
 
     # Ensure CUDA tensors
     assert x.is_cuda, "Input tensor must be on CUDA device."
@@ -49,9 +47,7 @@ def heaviside_(*args, **kwargs):
         v_tensor = values.to(device=x.device, dtype=x.dtype)
 
     v_tensor = v_tensor.expand_as(x).contiguous()
-    assert (
-        v_tensor.is_cuda and v_tensor.is_contiguous()
-    ), "Values tensor must be CUDA and contiguous after expansion."
+    assert v_tensor.is_cuda and v_tensor.is_contiguous(), "Values tensor must be CUDA and contiguous after expansion."
 
     n_elements = x.numel()
     BLOCK_SIZE = 1024

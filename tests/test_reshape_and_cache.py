@@ -39,9 +39,7 @@ def create_kv_caches_with_random(
     value_caches: list[torch.Tensor] = []
 
     for _ in range(num_layers):
-        value_cache = torch.empty(
-            size=value_cache_shape, dtype=torch_dtype, device=device
-        )
+        value_cache = torch.empty(size=value_cache_shape, dtype=torch_dtype, device=device)
         if cache_dtype in ["auto", "half", "bfloat16", "float"]:
             value_cache.uniform_(-scale, scale)
         else:

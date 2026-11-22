@@ -206,28 +206,20 @@ def apply_rotary_pos_emb(
         k_embed: (*, k_heads, head_dim)
     """
     logger.debug("GEMS ROTARY_POS_EMBEDDING")
-    assert (
-        k.shape[-1] == q.shape[-1]
-    ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"
+    assert k.shape[-1] == q.shape[-1], f"q and k must have the same last dimension, got {q.shape} and {k.shape}"
     assert (
         cos.shape[-1] == sin.shape[-1]
     ), f"cos and sin must have the same last dimension, got {cos.shape} and {sin.shape}"
-    assert (
-        cos.shape[-1] * 2 == q.shape[-1]
-    ), f"cos/sin dim must be half of q/k dim, got {cos.shape} and {q.shape}"
+    assert cos.shape[-1] * 2 == q.shape[-1], f"cos/sin dim must be half of q/k dim, got {cos.shape} and {q.shape}"
     assert cos.stride(-1) == 1, "cos must be contiguous at the last dimension"
     assert sin.stride(-1) == 1, "sin must be contiguous at the last dimension"
 
     q_shape = q.shape
     k_shape = k.shape
 
-    assert (
-        q.shape[:-2] == k.shape[:-2]
-    ), f"q and k must have the same length, got {q.shape[:-2]} and {k.shape[:-2]}"
+    assert q.shape[:-2] == k.shape[:-2], f"q and k must have the same length, got {q.shape[:-2]} and {k.shape[:-2]}"
     if position_ids is None:
-        assert (
-            len(q.shape) == 4
-        ), f"q must have 4 dimensions if position_ids is not provided, got {q.shape}"
+        assert len(q.shape) == 4, f"q must have 4 dimensions if position_ids is not provided, got {q.shape}"
         seq_len = q.shape[-3]
     else:
         assert (

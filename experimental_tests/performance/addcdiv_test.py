@@ -99,9 +99,7 @@ def test_addcdiv_benchmark_out(shape, dtype, value):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.addcdiv.out(
-            ref_x, ref_a, ref_b, value=value, out=ref_out_buf
-        ),
+        lambda: torch.ops.aten.addcdiv.out(ref_x, ref_a, ref_b, value=value, out=ref_out_buf),
         rep=100,
         quantiles=quantiles,
     )

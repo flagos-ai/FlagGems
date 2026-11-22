@@ -22,9 +22,7 @@ def gelu_none_and_mul_kernel(x, y):
     return x_gelu * y
 
 
-@pointwise_dynamic(
-    promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")], num_outputs=2
-)
+@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")], num_outputs=2)
 @triton.jit
 def gelu_none_and_mul_grad_kernel(x, y, dgrad):
     RCP_SQRT_2: tl.constexpr = 0.7071067811
@@ -34,15 +32,7 @@ def gelu_none_and_mul_grad_kernel(x, y, dgrad):
     x_gelu = 0.5 * x_fp32 * (1 + erf(x_fp32 * RCP_SQRT_2))
 
     d_gelu = dgrad * y
-    dx = (
-        d_gelu
-        * 0.5
-        * (
-            1.0
-            + erf(x_fp32 * RCP_SQRT_2)
-            + x_fp32 * COEFF * tl.exp(-0.5 * x_fp32 * x_fp32)
-        )
-    )
+    dx = d_gelu * 0.5 * (1.0 + erf(x_fp32 * RCP_SQRT_2) + x_fp32 * COEFF * tl.exp(-0.5 * x_fp32 * x_fp32))
 
     dy = dgrad * x_gelu
 
@@ -53,22 +43,11 @@ def gelu_none_and_mul_grad_kernel(x, y, dgrad):
 @triton.jit
 def gelu_tanh_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
-    x_gelu = (
-        0.5
-        * x_fp32
-        * (
-            1
-            + tanh(
-                x_fp32 * 0.79788456 * (1 + 0.044715 * pow(x_fp32.to(tl.float32), 2.0))
-            )
-        )
-    )
+    x_gelu = 0.5 * x_fp32 * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * pow(x_fp32.to(tl.float32), 2.0))))
     return x_gelu * y
 
 
-@pointwise_dynamic(
-    promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")], num_outputs=2
-)
+@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")], num_outputs=2)
 @triton.jit
 def gelu_tanh_and_mul_grad_kernel(x, y, dgrad):
     x_fp32 = x.to(tl.float32)
@@ -83,12 +62,7 @@ def gelu_tanh_and_mul_grad_kernel(x, y, dgrad):
 
     term1 = 0.5 * (1 + tanh_result)
     tanh_sq = tanh_result * tanh_result
-    term2 = (
-        0.5
-        * x_fp32
-        * (1 - tanh_sq)
-        * (sqrt_2_over_pi * (1 + 3 * 0.044715 * x_fp32 * x_fp32))
-    )
+    term2 = 0.5 * x_fp32 * (1 - tanh_sq) * (sqrt_2_over_pi * (1 + 3 * 0.044715 * x_fp32 * x_fp32))
     dx = dgrad * y_fp32 * (term1 + term2)
 
     return dx, dy

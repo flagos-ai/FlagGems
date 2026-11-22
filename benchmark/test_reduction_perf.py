@@ -105,10 +105,7 @@ forward_operations = [
 
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
-    [
-        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
-        for name, op, dtype in forward_operations
-    ],
+    [pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None)) for name, op, dtype in forward_operations],
 )
 def test_general_reduction(op_name, torch_op, dtypes):
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
@@ -117,9 +114,7 @@ def test_general_reduction(op_name, torch_op, dtypes):
 
 @pytest.mark.is_all_true
 def test_is_all_true():
-    bench = IsAllTrueBenchmark(
-        op_name="is_all_true", torch_op=torch._is_all_true, dtypes=BOOL_DTYPES
-    )
+    bench = IsAllTrueBenchmark(op_name="is_all_true", torch_op=torch._is_all_true, dtypes=BOOL_DTYPES)
     bench.run()
 
 
@@ -290,16 +285,10 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
         if SkipVersion("torch", "<2.5"):
             if op_name in ["nll_loss"]:
-                pytest.skip(
-                    "INT16 is not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
-                )
+                pytest.skip("INT16 is not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5")
             if op_name in ["nonzero"]:
-                pytest.skip(
-                    "Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
-                )
-    bench = GenericBenchmark2DOnly(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
-    )
+                pytest.skip("Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5")
+    bench = GenericBenchmark2DOnly(input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     if op_name == "cross_entropy_loss":
         bench.set_gems(flag_gems.cross_entropy_loss)
     bench.run()
@@ -518,9 +507,7 @@ def test_max_pool2d_backward():
     def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
         # For torch baseline, we use torch forward to get compatible indices
         output, _ = torch.nn.functional.max_pool2d_with_indices(input, **kwargs)
-        grad_input = torch.autograd.grad(
-            outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
-        )
+        grad_input = torch.autograd.grad(outputs=(output,), inputs=(input,), grad_outputs=(grad_output,))
         return grad_input[0]
 
     bench = MaxPool2dBenchmark(

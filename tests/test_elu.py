@@ -60,9 +60,7 @@ def test_elu_backward(shape, dtype, is_result):
     ref_grad_out = utils.to_reference(res_grad_out, True)
     ref_self_or_result = utils.to_reference(res_self_or_result, True)
 
-    ref_in_grad = torch.ops.aten.elu_backward(
-        ref_grad_out, alpha, scale, input_scale, is_result, ref_self_or_result
-    )
+    ref_in_grad = torch.ops.aten.elu_backward(ref_grad_out, alpha, scale, input_scale, is_result, ref_self_or_result)
 
     with flag_gems.use_gems():
         res_in_grad = torch.ops.aten.elu_backward(

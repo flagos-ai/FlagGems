@@ -69,9 +69,7 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
     return torch_result
 
 
-@pytest.mark.skipif(
-    torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
-)
+@pytest.mark.skipif(torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
@@ -139,9 +137,7 @@ def test_scaled_dot_product_attention_legacy(
     scale = float(1.0 / np.sqrt(head_size))
 
     # forward
-    torch_result = torch_sdpa(
-        ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
-    )
+    torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa)
 
     if flag_gems.vendor_name == "cambricon":
         gems_result = flag_gems.scaled_dot_product_attention(
@@ -171,9 +167,7 @@ def test_scaled_dot_product_attention_legacy(
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(
-    torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
-)
+@pytest.mark.skipif(torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported")
 @pytest.mark.scaled_dot_product_attention_backward
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
@@ -237,9 +231,7 @@ def test_scaled_dot_product_attention_legacy_legacy_backward(
     scale = float(1.0 / np.sqrt(head_size))
 
     # forward
-    torch_result = torch_sdpa(
-        ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
-    )
+    torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa)
 
     if flag_gems.vendor_name == "cambricon":
         gems_result = flag_gems.scaled_dot_product_attention(
@@ -299,9 +291,7 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
 
     device = torch_device_fn.current_device()
 
-    q, k, v = make_input(
-        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device)
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
@@ -333,9 +323,7 @@ def test_scaled_dot_product_attention_nonsquare_qk(
 
     device = torch_device_fn.current_device()
 
-    q, k, v = make_input(
-        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device)
 
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)

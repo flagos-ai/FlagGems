@@ -103,9 +103,7 @@ def write_back_kernel(
 
 @libentry()
 @triton.jit
-def masked_select_single_pass_kernel(
-    inp_ptr, mask_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr
-):
+def masked_select_single_pass_kernel(inp_ptr, mask_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp = tl.load(inp_ptr + offsets, mask=offsets < N)
@@ -131,9 +129,7 @@ def masked_select(inp, mask):
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
 
-    assert broadcastable(
-        inp_shape, mask_shape
-    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    assert broadcastable(inp_shape, mask_shape), "The shapes of the `mask` and the `input` tensor must be broadcastable"
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()
@@ -149,9 +145,7 @@ def masked_select(inp, mask):
             masked_select_out_size[(1,)](mask, out_size, N)
         out = torch.empty(out_size, dtype=inp.dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
-            masked_select_single_pass_kernel[(1,)](
-                inp, mask, out, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-            )
+            masked_select_single_pass_kernel[(1,)](inp, mask, out, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
         return out
 
     # max degree of parallelism

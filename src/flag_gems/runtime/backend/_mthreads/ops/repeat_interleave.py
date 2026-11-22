@@ -11,17 +11,13 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}")
 
 # repeat_interleave.self_{int,Tensor} are CompositeImplicitAutograd;
 # Direct coverage will cause the gradient to break;
 # Redispatch to this keyset to run the decomposed forward (and backward)
 # when gradients may be needed.
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeImplicitAutograd)
 
 
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
@@ -57,9 +53,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
     if output_size is not None and output_size != output_shape[dim]:
         raise RuntimeError(
-            "repeat_interleave: Invalid output_size, expected {} but got {}".format(
-                output_shape[dim], output_size
-            )
+            "repeat_interleave: Invalid output_size, expected {} but got {}".format(output_shape[dim], output_size)
         )
 
     output = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
@@ -79,9 +73,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
 
 @triton.jit
-def repeat_interleave_tensor_kernel(
-    repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
-):
+def repeat_interleave_tensor_kernel(repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
@@ -160,9 +152,7 @@ def fused_repeat_interleave_dim0_kernel(
         col_mask = col_offsets < row_size
 
         # Load from input
-        cur_inp = tl.load(
-            inp_ptr + inp_row_offset + col_offsets, mask=col_mask, other=0.0
-        )
+        cur_inp = tl.load(inp_ptr + inp_row_offset + col_offsets, mask=col_mask, other=0.0)
 
         # Store to each output row
         for cur_row in range(0, num_of_rows):
@@ -262,9 +252,7 @@ def fused_repeat_interleave_1d_bsearch_kernel(
         col_offsets = col_offset + tl.arange(0, BLOCK_SIZE)
         col_mask = col_offsets < row_size
 
-        cur_inp = tl.load(
-            inp_ptr + inp_row_offset + col_offsets, mask=col_mask, other=0.0
-        )
+        cur_inp = tl.load(inp_ptr + inp_row_offset + col_offsets, mask=col_mask, other=0.0)
         tl.store(out_ptr + out_row_offset + col_offsets, cur_inp, mask=col_mask)
 
 
@@ -335,9 +323,7 @@ def fused_repeat_interleave_large_row_kernel(
         col_mask = col_offsets < row_size
 
         # Load from input and store to output
-        cur_inp = tl.load(
-            inp_ptr + inp_row_offset + col_offsets, mask=col_mask, other=0.0
-        )
+        cur_inp = tl.load(inp_ptr + inp_row_offset + col_offsets, mask=col_mask, other=0.0)
         tl.store(out_ptr + out_row_offset + col_offsets, cur_inp, mask=col_mask)
 
 
@@ -468,9 +454,7 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
 
     if repeats.ndim == 0 or (repeats.ndim == 1 and repeats.size(0) == 1):
-        return repeat_interleave_self_int(
-            inp, repeats.item(), dim=dim, output_size=output_size
-        )
+        return repeat_interleave_self_int(inp, repeats.item(), dim=dim, output_size=output_size)
     elif repeats.ndim > 1:
         raise RuntimeError("repeats must be 0-dim or 1-dim tensor")
 
@@ -479,12 +463,8 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
         dim = dim + len(inp_shape)
 
     if repeats.size(0) != inp_shape[dim]:
-        raise RuntimeError(
-            "repeats must have the same size as input along dim, but got \
-                repeats.size(0) = {} and input.size({}) = {}".format(
-                repeats.size(0), dim, inp_shape[dim]
-            )
-        )
+        raise RuntimeError("repeats must have the same size as input along dim, but got \
+                repeats.size(0) = {} and input.size({}) = {}".format(repeats.size(0), dim, inp_shape[dim]))
 
     # Use fused kernel for dim=0
     if dim == 0:

@@ -2,9 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.runtime.backend._iluvatar.ops.conv2d.conv2d_implicit_gemm import (
-    _ixdnn_supported,
-)
+from flag_gems.runtime.backend._iluvatar.ops.conv2d.conv2d_implicit_gemm import _ixdnn_supported
 
 SHAPE_CONV2D = [
     ((2, 16, 32, 32), (32, 16, 3, 3), 1),
@@ -20,9 +18,7 @@ SHAPE_CONV2D = [
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
-def test_conv2d_padding(
-    monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
-):
+def test_conv2d_padding(monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
@@ -50,9 +46,7 @@ def test_conv2d_padding(
     w = torch.randn(kernel, dtype=dtype, device=flag_gems.device, requires_grad=True)
     if bias:
         b_shape = (kernel[0],)
-        b = torch.randn(
-            b_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
+        b = torch.randn(b_shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     else:
         b = None
 
@@ -60,8 +54,6 @@ def test_conv2d_padding(
     ref_inp = inp.detach().cpu()
     ref_w = w.detach().cpu()
     ref_b = b.detach().cpu() if b is not None else None
-    ref_out = torch.nn.functional.conv2d(
-        ref_inp, ref_w, ref_b, stride, padding, dilation, groups
-    )
+    ref_out = torch.nn.functional.conv2d(ref_inp, ref_w, ref_b, stride, padding, dilation, groups)
 
     torch.testing.assert_close(gemm_out.cpu(), ref_out, atol=1e-2, rtol=1e-2)

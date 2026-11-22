@@ -45,20 +45,14 @@ def addr_kernel(
     vec1 = tl.load(vec1_ptrs, mask=mask_m, other=0.0).to(tl.float32)
     vec2 = tl.load(vec2_ptrs, mask=mask_n, other=0.0).to(tl.float32)
 
-    input_ptrs = (
-        input_ptr + offs_m[:, None] * stride_input_m + offs_n[None, :] * stride_input_n
-    )
+    input_ptrs = input_ptr + offs_m[:, None] * stride_input_m + offs_n[None, :] * stride_input_n
 
     mask_2d = mask_m[:, None] & mask_n[None, :]
     input_val = tl.load(input_ptrs, mask=mask_2d, other=0.0).to(tl.float32)
 
     result = beta * input_val + alpha * (vec1[:, None] * vec2[None, :])
 
-    output_ptrs = (
-        output_ptr
-        + offs_m[:, None] * stride_output_m
-        + offs_n[None, :] * stride_output_n
-    )
+    output_ptrs = output_ptr + offs_m[:, None] * stride_output_m + offs_n[None, :] * stride_output_n
     tl.store(output_ptrs, result, mask=mask_2d)
 
 

@@ -11,9 +11,7 @@ _isnan = tl_extra_shim.isnan
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False], promotion_methods=[(0, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def nan_to_num_func(x, nan, posinf, neginf):
     x_nan = _isnan(x.to(tl.float32))

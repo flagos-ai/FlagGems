@@ -95,11 +95,7 @@ def config_prune(configs, named_args, **kwargs):
                 continue
             if BLOCK_N >= 2048 and TILE_N < 8:
                 continue
-            if (
-                BLOCK_N < MAX_C_MLU_CUMSUM
-                and BLOCK_M < M
-                and BLOCK_M <= (MAX_C_MLU_CUMSUM // BLOCK_N * 2)
-            ):
+            if BLOCK_N < MAX_C_MLU_CUMSUM and BLOCK_M < M and BLOCK_M <= (MAX_C_MLU_CUMSUM // BLOCK_N * 2):
                 continue
         # BLOCK_M can only be 1 when BLOCK_N is at its maximum
         if BLOCK_N == MAX_C_MLU_CUMSUM and BLOCK_M > 1:
@@ -149,13 +145,12 @@ def config_prune(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0 and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]),
     },
 )
 @triton.jit
@@ -186,9 +181,7 @@ def cumsum_blelloch(
         # Load data into NRAM
         in_block = tl.load(x_ptrs, mask=mask, other=0.0).to(tl.dtype(DTYPE))
 
-        x_block = cumsum_blelloch_impl(
-            in_block, DTYPE, BLOCK_M, BLOCK_N, 1, TILE_N, TILE_NUM
-        )
+        x_block = cumsum_blelloch_impl(in_block, DTYPE, BLOCK_M, BLOCK_N, 1, TILE_N, TILE_NUM)
         # Add last block partial sum to current block
         x_block = tl.reshape(x_block, (BLOCK_M, BLOCK_N))
         kep_tmp = kep[:, BLOCK_N - 1, :]
@@ -273,13 +266,12 @@ def config_prune_mid(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0 and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]),
     },
 )
 @triton.jit
@@ -314,22 +306,16 @@ def cumsum_kernel_mid(
         * K
         + k_offset[None, None, :]
     )
-    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[
-        None, None, :
-    ] < K
+    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[None, None, :] < K
     x_ptrs = inp + offsets
     y_ptrs = out + offsets
 
     # Load data into NRAM
     in_block = tl.load(x_ptrs, mask=mask, other=0.0).to(tl.dtype(DTYPE))
 
-    x_block = cumsum_blelloch_impl(
-        in_block, DTYPE, BLOCK_M, BLOCK_N, BLOCK_K, TILE_N, TILE_NUM
-    )
+    x_block = cumsum_blelloch_impl(in_block, DTYPE, BLOCK_M, BLOCK_N, BLOCK_K, TILE_N, TILE_NUM)
     tl.store(y_ptrs, x_block, mask=mask)
-    prefix_sum_offsets = (
-        m_offset[:, None] * num_jobs_n * K + pid_n * K + k_offset[None, :]
-    )
+    prefix_sum_offsets = m_offset[:, None] * num_jobs_n * K + pid_n * K + k_offset[None, :]
     prefix_sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
     prefix_sum_ptrs = prefix_sum + prefix_sum_offsets
     tl.store(prefix_sum_ptrs, x_block[:, BLOCK_N - 1, :], prefix_sum_mask)
@@ -389,9 +375,7 @@ def cumsum_kernel_result(
         * K
         + k_offset[None, None, :]
     )
-    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[
-        None, None, :
-    ] < K
+    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[None, None, :] < K
     x_ptrs = inp + offsets
     y_ptrs = out + offsets
 
@@ -399,9 +383,7 @@ def cumsum_kernel_result(
     x_block = tl.load(x_ptrs, mask=mask, other=0.0).to(tl.dtype(DTYPE))
 
     if pid_n > 0:
-        sum_offsets = (
-            m_offset[:, None] * num_jobs_n * K + (pid_n - 1) * K + k_offset[None, :]
-        )
+        sum_offsets = m_offset[:, None] * num_jobs_n * K + (pid_n - 1) * K + k_offset[None, :]
         sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
         sum_ptrs = prefix_sum + sum_offsets
         sum_block = tl.load(sum_ptrs, mask=sum_mask, other=0.0).to(tl.dtype(DTYPE))
@@ -439,27 +421,17 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
         # result BLOCK_N must be same as mid BLOCK_N
         mid_out = torch.empty_like(inp, dtype=dtype)
         BLOCK_N = get_reduction_dim_block_size(N)
-        prefix_sum_inp = torch.empty(
-            M, triton.cdiv(N, BLOCK_N), K, dtype=dtype, device=inp.device
-        )
-        prefix_sum = torch.empty(
-            M, triton.cdiv(N, BLOCK_N), K, dtype=dtype, device=inp.device
-        )
+        prefix_sum_inp = torch.empty(M, triton.cdiv(N, BLOCK_N), K, dtype=dtype, device=inp.device)
+        prefix_sum = torch.empty(M, triton.cdiv(N, BLOCK_N), K, dtype=dtype, device=inp.device)
         grid = lambda meta: (
             triton.cdiv(M, meta["BLOCK_M"]),
             triton.cdiv(N, BLOCK_N),
             triton.cdiv(K, meta["BLOCK_K"]),
         )
         with torch_device_fn.device(inp.device):
-            cumsum_kernel_mid[grid](
-                inp, mid_out, prefix_sum_inp, M, N, K, BLOCK_N, dtypestr
-            )
-            cumsum_blelloch[blelloch_grid](
-                prefix_sum_inp, prefix_sum, M, triton.cdiv(N, BLOCK_N), K, dtypestr
-            )
-            cumsum_kernel_result[grid](
-                mid_out, prefix_sum, out, M, N, K, BLOCK_N, dtypestr
-            )
+            cumsum_kernel_mid[grid](inp, mid_out, prefix_sum_inp, M, N, K, BLOCK_N, dtypestr)
+            cumsum_blelloch[blelloch_grid](prefix_sum_inp, prefix_sum, M, triton.cdiv(N, BLOCK_N), K, dtypestr)
+            cumsum_kernel_result[grid](mid_out, prefix_sum, out, M, N, K, BLOCK_N, dtypestr)
     else:
         with torch_device_fn.device(inp.device):
             cumsum_blelloch[blelloch_grid](inp, out, M, N, K, dtypestr)

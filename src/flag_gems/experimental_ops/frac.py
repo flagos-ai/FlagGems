@@ -46,16 +46,12 @@ def frac_kernel(
 
 def _launch_frac(x: torch.Tensor, out: torch.Tensor):
     assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
-    assert (
-        x.numel() == out.numel()
-    ), "Input and output must have the same number of elements"
+    assert x.numel() == out.numel(), "Input and output must have the same number of elements"
     assert x.dtype == out.dtype, "Input and output must have the same dtype"
     if not x.is_floating_point():
         raise NotImplementedError("frac is only implemented for floating point dtypes")
     if x.is_complex():
-        raise NotImplementedError(
-            "frac is not implemented for complex dtypes in this Triton kernel"
-        )
+        raise NotImplementedError("frac is not implemented for complex dtypes in this Triton kernel")
 
     n_elements = x.numel()
     if n_elements == 0:

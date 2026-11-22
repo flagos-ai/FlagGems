@@ -8,9 +8,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
@@ -39,13 +37,9 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
     return src.expand(target_shape)
 
 
-def copy(
-    template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
-):
+def copy(template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False):
     logger.debug("GEMS_CAMBRICON COPY (functional)")
-    out = torch.empty_strided(
-        template.size(), template.stride(), dtype=template.dtype, device=template.device
-    )
+    out = torch.empty_strided(template.size(), template.stride(), dtype=template.dtype, device=template.device)
     copy_(out, src, non_blocking=bool(non_blocking))
     return out
 
@@ -75,25 +69,17 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         ):
             return dst
         # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, dst, src, non_blocking)
 
     if src.numel() > 2**31 - 1 or dst.numel() > 2**31 - 1:
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, dst, src, non_blocking)
 
     if not _can_use_triton(dst, src):
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, dst, src, non_blocking)
 
     if dst.numel() == 0:
         # Respect PyTorch behaviour: empty tensors should still validate broadcast.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, dst, src, non_blocking)
 
     logger.debug("GEMS_CAMBRICON COPY_")
 
@@ -103,9 +89,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         raise RuntimeError(str(exc)) from exc
 
     if torch.Size(broadcast_shape) != dst.shape:
-        raise RuntimeError(
-            f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
-        )
+        raise RuntimeError(f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}")
 
     expanded_src = _expand_like(src, dst.shape)
 

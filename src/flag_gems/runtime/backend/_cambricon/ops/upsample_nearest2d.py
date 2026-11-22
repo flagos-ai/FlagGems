@@ -14,9 +14,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device = device.name
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"])
 @triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d"))
 @triton.jit
 def upsample_nearest2d_kernel(
@@ -58,11 +56,7 @@ def upsample_nearest2d_kernel(
 def configs2():
     block_h = [8, 16, 32, 64, 128, 256]
     num_stage = [1, 3]
-    return [
-        triton.Config({"BLOCK_H": bh}, num_warps=1, num_stages=s)
-        for s in num_stage
-        for bh in block_h
-    ]
+    return [triton.Config({"BLOCK_H": bh}, num_warps=1, num_stages=s) for s in num_stage for bh in block_h]
 
 
 @triton.autotune(configs=configs2(), key=["N", "C", "OH", "OW"])
@@ -103,11 +97,7 @@ def upsample_nearest2d_kernel_opt(
 
         data = tl.load(ptr_i + offset_i, mask=(ih[:, None] < IH))
 
-        tmp = (
-            data.reshape(BLOCK_H // 2, OW // 2, 1)
-            .broadcast_to(BLOCK_H // 2, OW // 2, 2)
-            .reshape(BLOCK_H // 2, 1, OW)
-        )
+        tmp = data.reshape(BLOCK_H // 2, OW // 2, 1).broadcast_to(BLOCK_H // 2, OW // 2, 2).reshape(BLOCK_H // 2, 1, OW)
         tmp1 = tmp.broadcast_to(BLOCK_H // 2, 2, OW).reshape(BLOCK_H, OW)
 
         tl.store(ptr_o + offset_o, tmp1, mask=(oh[:, None] < OH))
@@ -150,11 +140,7 @@ def upsample_nearest2d_kernel_opt_tile_h(
 
         data = tl.load(ptr_i + offset_i, mask=(ih[:, None] < IH))
 
-        tmp = (
-            data.reshape(BLOCK_H // 2, OW // 2, 1)
-            .broadcast_to(BLOCK_H // 2, OW // 2, 2)
-            .reshape(BLOCK_H // 2, 1, OW)
-        )
+        tmp = data.reshape(BLOCK_H // 2, OW // 2, 1).broadcast_to(BLOCK_H // 2, OW // 2, 2).reshape(BLOCK_H // 2, 1, OW)
         tmp1 = tmp.broadcast_to(BLOCK_H // 2, 2, OW).reshape(BLOCK_H, OW)
 
         tl.store(ptr_o + offset_o, tmp1, mask=(oh[:, None] < OH))
@@ -184,20 +170,11 @@ def upsample_nearest2d(
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
 
     with torch_device_fn.device(input.device):
-        if (
-            reciprocal_scale_h == 0.5
-            and reciprocal_scale_w == 0.5
-            and IH / OH == 0.5
-            and IW / OW == 0.5
-        ):
+        if reciprocal_scale_h == 0.5 and reciprocal_scale_w == 0.5 and IH / OH == 0.5 and IW / OW == 0.5:
             if N * C > 48:
-                upsample_nearest2d_kernel_opt[TOTAL_CORE_NUM,](
-                    output, input, N, C, OH, OW, IH, IW
-                )
+                upsample_nearest2d_kernel_opt[TOTAL_CORE_NUM,](output, input, N, C, OH, OW, IH, IW)
             else:
-                upsample_nearest2d_kernel_opt_tile_h[TOTAL_CORE_NUM,](
-                    output, input, N, C, OH, OW, IH, IW
-                )
+                upsample_nearest2d_kernel_opt_tile_h[TOTAL_CORE_NUM,](output, input, N, C, OH, OW, IH, IW)
         else:
             total_threads = N * C * OH * OW
 

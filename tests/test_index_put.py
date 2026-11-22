@@ -61,31 +61,23 @@ def gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool):
 
     if is_bool:
         mask_shape = indices_shape[0]
-        mask = torch.randint(
-            0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device
-        )
+        mask = torch.randint(0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device)
         return [mask]
 
     for i, shape in enumerate(indices_shape):
         # np.random.choice can accept tuple as size parameter
-        index = np.random.choice(
-            np.arange(input_shape[i]), size=shape, replace=accumulate
-        )
+        index = np.random.choice(np.arange(input_shape[i]), size=shape, replace=accumulate)
         indices.append(torch.tensor(index, device=flag_gems.device))
 
     return indices
 
 
 @pytest.mark.index_put
-@pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
-)
+@pytest.mark.parametrize("input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, dtype):
     accumulate = False
-    inp = torch.randn(
-        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
@@ -95,13 +87,9 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
         else:
             K = indices[0].sum().item()
 
-        values = torch.randn(
-            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
     else:
-        values = torch.randn(
-            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     ref_inp = utils.to_reference(inp)
     ref_indices = [utils.to_reference(index) for index in indices]
@@ -113,9 +101,7 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
 
 
 @pytest.mark.index_put
-@pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE
-)
+@pytest.mark.parametrize("input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, dtype):
     utils.init_seed(0)
@@ -125,9 +111,7 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
         torch.mlu.manual_seed_all(24)
 
     accumulate = True
-    inp = torch.randn(
-        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
@@ -136,13 +120,9 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
             K = indices[0].to(device="cpu").sum().item()
         else:
             K = indices[0].sum().item()
-        values = torch.randn(
-            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
     else:
-        values = torch.randn(
-            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_indices = [utils.to_reference(index) for index in indices]
@@ -154,15 +134,11 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
 
 
 @pytest.mark.index_put_
-@pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
-)
+@pytest.mark.parametrize("input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool, dtype):
     accumulate = False
-    inp = torch.randn(
-        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
@@ -171,13 +147,9 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
             K = indices[0].to(device="cpu").sum().item()
         else:
             K = indices[0].sum().item()
-        values = torch.randn(
-            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
     else:
-        values = torch.randn(
-            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     ref_inp = utils.to_reference(inp)
     ref_indices = [utils.to_reference(index) for index in indices]
@@ -189,9 +161,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
 
 
 @pytest.mark.index_put_
-@pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE
-)
+@pytest.mark.parametrize("input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, dtype):
     utils.init_seed(0)
@@ -215,9 +185,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
         torch.mlu.manual_seed_all(42)
 
     accumulate = True
-    inp = torch.randn(
-        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
@@ -226,13 +194,9 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
             K = indices[0].to(device="cpu").sum().item()
         else:
             K = indices[0].sum().item()
-        values = torch.randn(
-            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
     else:
-        values = torch.randn(
-            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
 
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_indices = [utils.to_reference(index) for index in indices]
@@ -255,9 +219,7 @@ def test_index_put_error_all_none(dtype):
     indices = [None, None]
     values = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(
-        ValueError, match="At least one non-None index tensor is required"
-    ):
+    with pytest.raises(ValueError, match="At least one non-None index tensor is required"):
         flag_gems.index_put(inp, indices, values, accumulate=False)
 
 
@@ -268,9 +230,7 @@ def test_index_put__error_all_none(dtype):
     indices = [None, None]
     values = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(
-        ValueError, match="At least one non-None index tensor is required"
-    ):
+    with pytest.raises(ValueError, match="At least one non-None index tensor is required"):
         flag_gems.index_put_(inp, indices, values, accumulate=False)
 
 
@@ -299,9 +259,7 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
     accumulate = False
     inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
 
-    tensor_dims = [
-        input_shape[i] for i, is_none in enumerate(indices_config) if is_none == 0
-    ]
+    tensor_dims = [input_shape[i] for i, is_none in enumerate(indices_config) if is_none == 0]
     min_dim = min(tensor_dims)
     idx_len = random.randint(3, min(min_dim, 32))
     unique_pool = torch.randperm(min_dim, device=flag_gems.device)[:idx_len]

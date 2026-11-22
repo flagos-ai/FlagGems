@@ -32,15 +32,11 @@ def test_argmax(shape, dim, keepdim, dtype):
 
     if is_empty_tensor:
         if dim is None:
-            pytest.skip(
-                "PyTorch reference requires dim specification for empty tensor."
-            )
+            pytest.skip("PyTorch reference requires dim specification for empty tensor.")
 
         dim_index = dim % rank
         if shape[dim_index] == 0:
-            pytest.skip(
-                f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
-            )
+            pytest.skip(f"PyTorch reference prohibits reduction on zero-sized dimension ({dim}).")
 
     if is_empty_tensor:
         inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)

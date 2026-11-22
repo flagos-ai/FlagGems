@@ -67,13 +67,9 @@ def _prepare_tensors(self, other, out=None):
         # Out dtype/shape should be able to hold result
         expected_shape = b_self.shape
         if out.shape != expected_shape:
-            raise ValueError(
-                f"Output tensor has shape {out.shape}, expected {expected_shape}."
-            )
+            raise ValueError(f"Output tensor has shape {out.shape}, expected {expected_shape}.")
         if out.dtype != result_dtype:
-            raise ValueError(
-                f"Output tensor has dtype {out.dtype}, expected {result_dtype}."
-            )
+            raise ValueError(f"Output tensor has dtype {out.dtype}, expected {result_dtype}.")
         # If out is contiguous, write directly; otherwise use a temporary
         if out.is_contiguous():
             return b_self.contiguous(), b_other.contiguous(), out, out

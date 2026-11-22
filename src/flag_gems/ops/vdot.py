@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def compute_vdot(
-    inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj
-):
+def compute_vdot(inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj):
     # # Given inp storage: [inp_real, inp_imag], other: [other_real, other_imag]
 
     # # Case 1: inp_is_conj = False, other_is_conj = False
@@ -79,16 +77,10 @@ def vdot_kernel_complex(
         inp_real = tl.load(inp_ptr + real_offset * inp_stride, mask=mask, other=0.0)
         inp_imag = tl.load(inp_ptr + real_offset * inp_stride + 1, mask=mask, other=0.0)
 
-        other_real = tl.load(
-            other_ptr + real_offset * other_stride, mask=mask, other=0.0
-        )
-        other_imag = tl.load(
-            other_ptr + real_offset * other_stride + 1, mask=mask, other=0.0
-        )
+        other_real = tl.load(other_ptr + real_offset * other_stride, mask=mask, other=0.0)
+        other_imag = tl.load(other_ptr + real_offset * other_stride + 1, mask=mask, other=0.0)
 
-        out_real, out_imag = compute_vdot(
-            inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj
-        )
+        out_real, out_imag = compute_vdot(inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj)
         acc_real += out_real
         acc_imag += out_imag
 
@@ -138,12 +130,8 @@ def dot_kernel(
         cur_offsets = current_start + offsets
         mask = cur_offsets < n_elements
 
-        inp = tl.load(inp_ptr + inp_stride * cur_offsets, mask=mask, other=0.0).to(
-            tl.float32
-        )
-        other = tl.load(
-            other_ptr + other_stride * cur_offsets, mask=mask, other=0.0
-        ).to(tl.float32)
+        inp = tl.load(inp_ptr + inp_stride * cur_offsets, mask=mask, other=0.0).to(tl.float32)
+        other = tl.load(other_ptr + other_stride * cur_offsets, mask=mask, other=0.0).to(tl.float32)
 
         acc += tl.sum(inp * other)
 
@@ -194,12 +182,8 @@ def dot_kernel_fp32(
 def vdot(input: Tensor, other: Tensor):
     logger.debug("GEMS VDOT")
 
-    assert (
-        input.dtype == other.dtype
-    ), f"Input tensors must have the same dtype. Got {input.dtype} and {other.dtype}."
-    assert (
-        input.ndim == 1 and other.ndim == 1
-    ), f"Input tensors must be 1D. Got {input.ndim}D and {other.ndim}D."
+    assert input.dtype == other.dtype, f"Input tensors must have the same dtype. Got {input.dtype} and {other.dtype}."
+    assert input.ndim == 1 and other.ndim == 1, f"Input tensors must be 1D. Got {input.ndim}D and {other.ndim}D."
     assert (
         input.size() == other.size()
     ), f"Input tensors must have the same size. Got {input.size()} and {other.size()}."
@@ -226,16 +210,12 @@ def vdot(input: Tensor, other: Tensor):
         n_elements = inp_real.numel()
         n_complex = inp.numel()
 
-        block_size = runtime.get_heuristic_config("vdot")["BLOCK_SIZE"](
-            {"n_elements": n_elements}
-        )
+        block_size = runtime.get_heuristic_config("vdot")["BLOCK_SIZE"]({"n_elements": n_elements})
         num_blocks = triton.cdiv(n_complex, block_size)
 
         grid_size = min(num_blocks, 1024)
 
-        partial_real_sums = torch.empty(
-            grid_size, dtype=inp_real.dtype, device=inp.device
-        )
+        partial_real_sums = torch.empty(grid_size, dtype=inp_real.dtype, device=inp.device)
         grid = (grid_size,)
         vdot_kernel_complex[grid](
             inp_real,
@@ -271,9 +251,7 @@ def vdot(input: Tensor, other: Tensor):
         return output
     else:
         n_elements = inp.numel()
-        block_size = runtime.get_heuristic_config("vdot")["BLOCK_SIZE"](
-            {"n_elements": n_elements}
-        )
+        block_size = runtime.get_heuristic_config("vdot")["BLOCK_SIZE"]({"n_elements": n_elements})
 
         num_blocks = triton.cdiv(n_elements, block_size)
         grid_size = min(num_blocks, 1024)

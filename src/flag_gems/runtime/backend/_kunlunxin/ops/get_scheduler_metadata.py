@@ -49,11 +49,7 @@ def tile_size_fwd_sm8x(
             use_8_warps = sm86_or_89 or varlen_and_split
             kBlockM = 128
             if use_8_warps:
-                kBlockN = (
-                    (96 if is_local else 112)
-                    if varlen_and_split
-                    else (96 if is_local else 128)
-                )
+                kBlockN = (96 if is_local else 112) if varlen_and_split else (96 if is_local else 128)
             else:
                 kBlockN = 48 if is_local else 64
             kNWarps = 8 if use_8_warps else 4
@@ -265,11 +261,7 @@ def _vllm_num_splits_heuristic(
 ) -> int:
     if total_mblocks >= 0.8 * num_sm:
         size_l2 = 50 * 1024 * 1024
-        if (
-            size_one_kv_head > size_l2
-            and num_m_blocks >= num_sm * 2
-            and not is_causal_or_local
-        ):
+        if size_one_kv_head > size_l2 and num_m_blocks >= num_sm * 2 and not is_causal_or_local:
             return min((size_one_kv_head + size_l2 - 1) // size_l2, max_splits)
         else:
             return 1
@@ -336,9 +328,7 @@ def _prepare_pass1_kernel(
         nxt = tl.load(cu_seqlens_q_ptr + b_offs + 1, mask=mask, other=0)
         q_len = nxt - cur
     else:
-        q_len = tl.full(
-            [BLOCK_SIZE_B], max_seqlen_q, dtype=tl.int32
-        )  # max_seqlen_q constexpr
+        q_len = tl.full([BLOCK_SIZE_B], max_seqlen_q, dtype=tl.int32)  # max_seqlen_q constexpr
     q_len = q_len * qhead_per_khead
     m_blocks = (q_len + BLOCK_M - 1) // BLOCK_M
 
@@ -451,12 +441,8 @@ def get_scheduler_metadata(
 
     # check parameters
     supported_dtypes = (torch.half, torch.bfloat16)
-    assert (
-        qkv_dtype in supported_dtypes
-    ), "FlashAttention only supports fp16 and bf16 data type"
-    assert (
-        num_heads % num_heads_k == 0
-    ), "Number of heads in key/value must divide number of heads in query"
+    assert qkv_dtype in supported_dtypes, "FlashAttention only supports fp16 and bf16 data type"
+    assert num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query"
 
     # is_causal & window_size implementation
     effective_is_causal = is_causal
@@ -468,11 +454,7 @@ def get_scheduler_metadata(
     if effective_window_right >= max_seqlen_q - 1:
         effective_window_right = -1
 
-    if (
-        max_seqlen_q == 1
-        and effective_window_left == -1
-        and effective_window_right == -1
-    ):
+    if max_seqlen_q == 1 and effective_window_left == -1 and effective_window_right == -1:
         if (headdim <= 64 or headdim > 128) or page_size is None:
             effective_is_causal = False
 
@@ -480,9 +462,7 @@ def get_scheduler_metadata(
         effective_window_right = 0
 
     final_is_causal = effective_window_left < 0 and effective_window_right == 0
-    final_is_local = (
-        effective_window_left >= 0 or effective_window_right >= 0
-    ) and not final_is_causal
+    final_is_local = (effective_window_left >= 0 or effective_window_right >= 0) and not final_is_causal
 
     major, minor = get_device_capability()
     arch = major * 10 + minor
@@ -520,23 +500,17 @@ def get_scheduler_metadata(
             num_heads_k=num_heads_k,
         )
     )
-    qhead_per_khead = (
-        1 if not pack_gqa else (num_heads + num_heads_k - 1) // num_heads_k
-    )
+    qhead_per_khead = 1 if not pack_gqa else (num_heads + num_heads_k - 1) // num_heads_k
     num_head_k = num_heads_k if pack_gqa else num_heads
 
     # TODO: implement use_one_mma_wg (Hopper+ only)
 
     seqlen_q = (
-        seqused_q
-        if seqused_q is not None
-        else torch.full((batch_size,), max_seqlen_q, dtype=dtype, device=device)
+        seqused_q if seqused_q is not None else torch.full((batch_size,), max_seqlen_q, dtype=dtype, device=device)
     )
     seqlen_k = seqused_k
     seqlen_knew = (
-        torch.full((batch_size,), max_seqlen_k_new, dtype=dtype, device=device)
-        if max_seqlen_k_new > 0
-        else None
+        torch.full((batch_size,), max_seqlen_k_new, dtype=dtype, device=device) if max_seqlen_k_new > 0 else None
     )
 
     num_m_blocks = torch.empty_like(seqlen_q)
@@ -584,9 +558,7 @@ def get_scheduler_metadata(
         is_bf16 = qkv_dtype == torch.bfloat16
 
         if not (is_fp16 or is_bf16):
-            raise ValueError(
-                f"不支持的数据类型: {qkv_dtype}. FlashAttention只支持: torch.float16, torch.bfloat16"
-            )
+            raise ValueError(f"不支持的数据类型: {qkv_dtype}. FlashAttention只支持: torch.float16, torch.bfloat16")
 
         d_rounded = round_up_headdim(headdim)
         dv_rounded = round_up_headdimv(headdim_v)
@@ -645,13 +617,9 @@ def get_scheduler_metadata(
     is_varlen = True
 
     if arch >= 90:
-        scheduler_needs_semaphore = (
-            (final_is_causal or final_is_local) and (final_num_splits == 1)
-        ) or is_varlen
+        scheduler_needs_semaphore = ((final_is_causal or final_is_local) and (final_num_splits == 1)) or is_varlen
     else:
-        scheduler_needs_semaphore = (final_is_causal and not is_varlen) or (
-            is_varlen and final_num_splits > 1
-        )
+        scheduler_needs_semaphore = (final_is_causal and not is_varlen) or (is_varlen and final_num_splits > 1)
 
     if use_dynamic_split:
         final_num_splits_for_sem_check = eff_num_splits

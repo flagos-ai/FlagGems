@@ -27,16 +27,10 @@ config_ = CodeGenConfig(
 )
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")], config=config_
-)
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit
 def angle_func(real, imag):
-    real_last, imag_last = (
-        (real.to(tl.float32), imag.to(tl.float32))
-        if real.dtype == tl.float16
-        else (real, imag)
-    )
+    real_last, imag_last = (real.to(tl.float32), imag.to(tl.float32)) if real.dtype == tl.float16 else (real, imag)
     result = atan2(imag_last, real_last)
     return result
 

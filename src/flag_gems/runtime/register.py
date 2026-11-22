@@ -43,9 +43,7 @@ class Register:
             self.for_each()
         else:
             self.vendor_unused_ops_list = self.get_vendor_unused_op()
-            self.exclude_ops = (
-                list(user_exclude_ops or []) + self.vendor_unused_ops_list
-            )
+            self.exclude_ops = list(user_exclude_ops or []) + self.vendor_unused_ops_list
             self.config = config
             self.config_filter()
             self.for_each()
@@ -72,10 +70,7 @@ class Register:
             for config_item in self.config:
                 op_name, func = config_item[0], config_item[1]
                 func_name = func.__name__ if hasattr(func, "__name__") else str(func)
-                if (
-                    func_name not in self.include_ops
-                    and op_name not in self.include_ops
-                ):
+                if func_name not in self.include_ops and op_name not in self.include_ops:
                     continue
                 if len(config_item) > 2:
                     condition_func = config_item[2]
@@ -86,9 +81,7 @@ class Register:
                 self.include_config.append((op_name, func))
 
         if not self.include_config:
-            warnings.warn(
-                "only_enable failed: No op to register. Check if include is correct."
-            )
+            warnings.warn("only_enable failed: No op to register. Check if include is correct.")
             return
 
     def config_filter(self):
@@ -98,9 +91,7 @@ class Register:
         self.config = [
             (item[0], item[1])
             for item in self.config
-            if enabled(item)
-            and item[1].__name__ not in self.exclude_ops
-            and item[0] not in self.cpp_patched_ops
+            if enabled(item) and item[1].__name__ not in self.exclude_ops and item[0] not in self.cpp_patched_ops
         ]
 
     def get_vendor_unused_op(self):
@@ -118,9 +109,7 @@ class Register:
             import torch
 
             try:
-                self.torch_ops_map["aten::" + key] = torch.library.get_kernel(
-                    "aten::" + key, device_key
-                )
+                self.torch_ops_map["aten::" + key] = torch.library.get_kernel("aten::" + key, device_key)
             except Exception:
                 pass
             try:

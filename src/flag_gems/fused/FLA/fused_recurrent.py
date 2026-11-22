@@ -118,11 +118,7 @@ def fused_recurrent_gated_delta_rule_fwd_sp_for_qwen3_next_kernel(
             else:
                 i_t = 0
             p_h0 = (
-                h0
-                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
-                    tl.int64
-                )
-                * stride_init_state_token
+                h0 + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64) * stride_init_state_token
             )
         else:
             p_h0 = h0 + bos * HV * K * V
@@ -157,11 +153,7 @@ def fused_recurrent_gated_delta_rule_fwd_sp_for_qwen3_next_kernel(
         # keep the states for multi-query tokens
         if INPLACE_FINAL_STATE:
             p_ht = (
-                ht
-                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
-                    tl.int64
-                )
-                * stride_final_state_token
+                ht + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64) * stride_final_state_token
             )
         else:
             p_ht = ht + (bos + i_t) * stride_final_state_token
@@ -268,11 +260,7 @@ def fused_recurrent_gated_delta_rule_fwd_kernel(
             else:
                 i_t = 0
             p_h0 = (
-                h0
-                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
-                    tl.int64
-                )
-                * stride_init_state_token
+                h0 + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64) * stride_init_state_token
             )
         else:
             p_h0 = h0 + bos * HV * K * V
@@ -311,11 +299,7 @@ def fused_recurrent_gated_delta_rule_fwd_kernel(
         # keep the states for multi-query tokens
         if INPLACE_FINAL_STATE:
             p_ht = (
-                ht
-                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
-                    tl.int64
-                )
-                * stride_final_state_token
+                ht + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64) * stride_final_state_token
             )
         else:
             p_ht = ht + (bos + i_t) * stride_final_state_token
@@ -425,9 +409,7 @@ def fused_recurrent_gated_delta_rule_large_t_fwd_kernel(
             else:
                 i_t = 0
             # Load state index and check for PAD_SLOT_ID (-1)
-            state_idx = tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
-                tl.int64
-            )
+            state_idx = tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64)
             # Skip if state index is invalid (PAD_SLOT_ID = -1)
             if state_idx < 0:
                 return
@@ -469,9 +451,7 @@ def fused_recurrent_gated_delta_rule_large_t_fwd_kernel(
         # keep the states for multi-query tokens
         if INPLACE_FINAL_STATE:
             # Load state index and check for PAD_SLOT_ID (-1)
-            final_state_idx = tl.load(
-                ssm_state_indices + i_n * stride_indices_seq + i_t
-            ).to(tl.int64)
+            final_state_idx = tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64)
             # Only store if state index is valid (not PAD_SLOT_ID)
             if final_state_idx >= 0:
                 p_ht = ht + final_state_idx * stride_final_state_token

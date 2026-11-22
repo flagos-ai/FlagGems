@@ -36,16 +36,9 @@ def max_kernel_float_once(
     strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
-@triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    }
-)
+@triton.heuristics(values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM})
 @triton.jit
-def max_kernel_float(
-    inp, out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def max_kernel_float(inp, out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     res = -float("inf")
@@ -76,16 +69,9 @@ def max_kernel_float(
     strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
-@triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    }
-)
+@triton.heuristics(values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM})
 @triton.jit
-def max_kernel_int(
-    inp, out, M, FILL_VALUE, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def max_kernel_int(inp, out, M, FILL_VALUE, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     res = FILL_VALUE
@@ -115,16 +101,9 @@ def max_kernel_int(
     strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
-@triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    }
-)
+@triton.heuristics(values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM})
 @triton.jit
-def max_kernel_int64_1(
-    inp, mid, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def max_kernel_int64_1(inp, mid, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     FILL_VALUE = -(2**63)
@@ -235,9 +214,7 @@ def max(inp):
             out = torch.empty([], dtype=dtype, device=device)
             # Because atomic op don't support i64, use two kernels.
             max_kernel_int64_1[(mid_size, 1, 1)](inp, mid, M, enable_soft_i64=True)
-            max_kernel_int64_2[(1, 1, 1)](
-                mid, out, BLOCK_NUM=mid_size, enable_soft_i64=True
-            )
+            max_kernel_int64_2[(1, 1, 1)](mid, out, BLOCK_NUM=mid_size, enable_soft_i64=True)
         else:
             fill_value = torch.iinfo(dtype).min
             out = torch.full([], -(2**31), dtype=torch.int32, device=device)

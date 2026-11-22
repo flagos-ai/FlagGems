@@ -28,17 +28,13 @@ def cos_(*args, **kwargs):
     elif "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
         x = kwargs["input"]
     else:
-        raise TypeError(
-            "cos_ expects a single Tensor argument (positional or keyword 'input')."
-        )
+        raise TypeError("cos_ expects a single Tensor argument (positional or keyword 'input').")
 
     # Fallback to PyTorch for unsupported cases
     if (
         (not x.is_cuda)
         or (not x.is_contiguous())
-        or (
-            x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
-        )
+        or (x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64))
     ):
         return torch.cos_(x)
 

@@ -186,9 +186,7 @@ def group_norm_kernel(
                 channel_offset = group_start_channel + c_idx
                 # 连续访问HW维度的数据
                 base_offset = batch_offset + channel_offset * HW + hw_offsets
-                X_vals = tl.load(X + base_offset, mask=hw_mask, other=0.0).to(
-                    tl.float32
-                )
+                X_vals = tl.load(X + base_offset, mask=hw_mask, other=0.0).to(tl.float32)
                 X_sum += tl.sum(X_vals)
 
     mean = X_sum / num_elements
@@ -203,9 +201,7 @@ def group_norm_kernel(
             if c_idx < group_size and (group_start_channel + c_idx) < C:
                 channel_offset = group_start_channel + c_idx
                 base_offset = batch_offset + channel_offset * HW + hw_offsets
-                X_vals = tl.load(X + base_offset, mask=hw_mask, other=mean).to(
-                    tl.float32
-                )
+                X_vals = tl.load(X + base_offset, mask=hw_mask, other=mean).to(tl.float32)
                 x_centered = X_vals - mean
                 X_var_sum += tl.sum(x_centered * x_centered)
 
@@ -223,9 +219,7 @@ def group_norm_kernel(
                 base_offset = batch_offset + channel_offset * HW + hw_offsets
 
                 # 加载数据
-                X_vals = tl.load(X + base_offset, mask=hw_mask, other=0.0).to(
-                    tl.float32
-                )
+                X_vals = tl.load(X + base_offset, mask=hw_mask, other=0.0).to(tl.float32)
 
                 # 归一化并应用仿射变换
                 x_normalized = (X_vals - mean) * rstd
@@ -276,9 +270,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     return y, mean, rstd
 
 
-def group_norm_backward(
-    grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
-):
+def group_norm_backward(grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask):
     logger.debug("ASCEND GEMS GROUPNORM BACKWARD")
     grad_out = grad_out.contiguous()
     input = input.contiguous()

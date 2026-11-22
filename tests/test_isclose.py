@@ -17,11 +17,7 @@ def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
         pytest.skip("Skiping bool isclose test on tsingmicro platform")
 
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
-    rtol = (
-        torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * 0.0001
-        if not zero_tol
-        else 0
-    )
+    rtol = torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * 0.0001 if not zero_tol else 0
 
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -36,10 +32,7 @@ def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
         atol = (
-            torch.finfo(dtype).tiny
-            * torch.randint(0, 4, (1,), device=flag_gems.device).item()
-            if not zero_tol
-            else 0
+            torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device=flag_gems.device).item() if not zero_tol else 0
         )
     else:
         inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
@@ -68,10 +61,7 @@ def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
                 rtol = 0
         else:
             atol = (
-                (
-                    torch.finfo(torch.float16).eps
-                    * torch.randint(0, 10, (1,), device=flag_gems.device).item()
-                )
+                (torch.finfo(torch.float16).eps * torch.randint(0, 10, (1,), device=flag_gems.device).item())
                 if not zero_tol
                 else 0
             )
@@ -86,9 +76,7 @@ def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     ref_flat = ref_out.view(-1)
     res_flat = res_out.view(-1)
     if inp1.numel() > 2 and dtype in [torch.int64, torch.int32]:
-        assert (
-            res_flat[1] == ref_flat[1] and res_flat[2] == ref_flat[2]
-        ), "res vs ref: {} vs {}, {} vs {}".format(
+        assert res_flat[1] == ref_flat[1] and res_flat[2] == ref_flat[2], "res vs ref: {} vs {}, {} vs {}".format(
             res_flat[1], ref_flat[1], res_flat[2], ref_flat[2]
         )
 

@@ -45,14 +45,10 @@ def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
     ref_weight = utils.to_reference(res_weight, True)
     ref_bias = utils.to_reference(res_bias, True)
 
-    ref_out = torch.nn.functional.group_norm(
-        ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
-    )
+    ref_out = torch.nn.functional.group_norm(ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps)
 
     with flag_gems.use_gems():
-        res_out = torch.group_norm(
-            res_inp, num_groups, weight=res_weight, bias=res_bias, eps=eps
-        )
+        res_out = torch.group_norm(res_inp, num_groups, weight=res_weight, bias=res_bias, eps=eps)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -131,11 +127,7 @@ def test_group_norm_backward(N, C, H, W, num_groups, dtype, wb_none):
             num_groups,
             output_mask,
         )
-    utils.gems_assert_close(
-        res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HxW
-    )
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HxW)
     if not wb_none:
-        utils.gems_assert_close(
-            res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HxW
-        )
+        utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HxW)
         utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HxW)

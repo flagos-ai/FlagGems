@@ -18,9 +18,7 @@ def copy_func(x):
     return x
 
 
-def stack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
+def stack(tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
     logger.debug("GEMS STACK")
 
     if len(tensors) == 0:
@@ -47,9 +45,7 @@ def stack(
     out_shape = inp0_shape[:dim] + [len(tensors)] + inp0_shape[dim:]
     out0 = torch.empty(out_shape, dtype=tensors[0].dtype, device=tensors[0].device)
     out0_strides = out0.stride()
-    out0_offsets = list(
-        itertools.accumulate([out0_strides[dim] for _ in inp_shapes[:-1]], initial=0)
-    )
+    out0_offsets = list(itertools.accumulate([out0_strides[dim] for _ in inp_shapes[:-1]], initial=0))
 
     for a, out0_offset in zip(tensors, out0_offsets):
         a = a.reshape(in0_shape)

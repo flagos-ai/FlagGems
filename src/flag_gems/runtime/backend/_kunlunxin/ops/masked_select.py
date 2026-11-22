@@ -37,9 +37,7 @@ def masked_select_kernel(
 
     inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
     select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(tl.int1)
-    out_offset = (
-        tl.load(prefix_sum_ptr + offsets, mask=(select_mask & mask), other=0.0) - 1
-    )
+    out_offset = tl.load(prefix_sum_ptr + offsets, mask=(select_mask & mask), other=0.0) - 1
 
     tl.store(out_ptr + out_offset, inp, mask=(select_mask & mask))
 
@@ -50,9 +48,7 @@ def masked_select(inp, mask):
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
 
-    assert broadcastable(
-        inp_shape, mask_shape
-    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    assert broadcastable(inp_shape, mask_shape), "The shapes of the `mask` and the `input` tensor must be broadcastable"
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()

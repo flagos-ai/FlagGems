@@ -31,22 +31,16 @@ SHAPE_CONV3D = [
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
-def test_conv3d(
-    monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
-):
+def test_conv3d(monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
-    weight = torch.randn(
-        kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device, requires_grad=False)
     if bias is True:
-        bias = torch.randn(
-            [weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        bias = torch.randn([weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=False)
         bias_ref = utils.to_reference(bias, True)
     else:
         bias = None
@@ -84,22 +78,16 @@ def test_conv3d(
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
-def test_conv3d_padding(
-    monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
-):
+def test_conv3d_padding(monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
-    weight = torch.randn(
-        kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device, requires_grad=False)
     if bias is True:
-        bias = torch.randn(
-            [weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        bias = torch.randn([weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=False)
         bias_ref = utils.to_reference(bias, True)
     else:
         bias = None

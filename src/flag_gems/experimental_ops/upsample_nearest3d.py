@@ -56,20 +56,8 @@ def upsample_nearest3d_kernel(
     iw_src = tl.minimum((ow_f * scale_w).to(tl.int32), IW - 1)
 
     # Compute input/output offsets using strides
-    in_offset = (
-        n * in_stride_n
-        + c * in_stride_c
-        + id_src * in_stride_d
-        + ih_src * in_stride_h
-        + iw_src * in_stride_w
-    )
-    out_offset = (
-        n * out_stride_n
-        + c * out_stride_c
-        + od * out_stride_d
-        + oh * out_stride_h
-        + ow * out_stride_w
-    )
+    in_offset = n * in_stride_n + c * in_stride_c + id_src * in_stride_d + ih_src * in_stride_h + iw_src * in_stride_w
+    out_offset = n * out_stride_n + c * out_stride_c + od * out_stride_d + oh * out_stride_h + ow * out_stride_w
 
     vals = tl.load(in_ptr + in_offset, mask=mask, other=0)
     tl.store(out_ptr + out_offset, vals, mask=mask)
@@ -77,9 +65,7 @@ def upsample_nearest3d_kernel(
 
 def _ensure_5d_input(x: torch.Tensor):
     if x.dim() != 5:
-        raise ValueError(
-            f"Expected 5D input [N, C, D, H, W], but got shape {tuple(x.shape)}"
-        )
+        raise ValueError(f"Expected 5D input [N, C, D, H, W], but got shape {tuple(x.shape)}")
     return x
 
 
@@ -102,9 +88,7 @@ def _normalize_scale_factors(scales):
         return None
     if isinstance(scales, (list, tuple)):
         if len(scales) != 3:
-            raise ValueError(
-                "scale_factors must have length 3: (scale_d, scale_h, scale_w)"
-            )
+            raise ValueError("scale_factors must have length 3: (scale_d, scale_h, scale_w)")
         return tuple(float(s) if s is not None else None for s in scales)
     else:
         raise ValueError("scale_factors must be a sequence of 3 floats")
@@ -124,9 +108,7 @@ def _compute_out_size_and_kernel_scales(ID, IH, IW, output_size, scales_tuple):
     else:
         sd, sh, sw = scales_tuple
         if sd is None or sh is None or sw is None:
-            raise ValueError(
-                "All scale factors (scale_d, scale_h, scale_w) must be provided when output_size is None"
-            )
+            raise ValueError("All scale factors (scale_d, scale_h, scale_w) must be provided when output_size is None")
         if sd <= 0.0 or sh <= 0.0 or sw <= 0.0:
             raise ValueError("Scale factors must be positive")
         OD = int(torch.floor(torch.tensor(ID * sd)).item())
@@ -191,9 +173,7 @@ def _launch_upsample_nearest3d(
     return output
 
 
-def upsample_nearest3d(
-    input: torch.Tensor, output_size=None, scales_d=None, scales_h=None, scales_w=None
-):
+def upsample_nearest3d(input: torch.Tensor, output_size=None, scales_d=None, scales_h=None, scales_w=None):
     x = _ensure_5d_input(input)
     output_size = _normalize_output_size(output_size)
     scales_tuple = None
@@ -204,12 +184,8 @@ def upsample_nearest3d(
             None if scales_w is None else float(scales_w),
         )
     N, C, ID, IH, IW = x.shape
-    OD, OH, OW, ksd, ksh, ksw = _compute_out_size_and_kernel_scales(
-        ID, IH, IW, output_size, scales_tuple
-    )
-    out = torch.empty(
-        (N, C, OD, OH, OW), dtype=x.dtype, device=x.device, layout=x.layout
-    )
+    OD, OH, OW, ksd, ksh, ksw = _compute_out_size_and_kernel_scales(ID, IH, IW, output_size, scales_tuple)
+    out = torch.empty((N, C, OD, OH, OW), dtype=x.dtype, device=x.device, layout=x.layout)
     return _launch_upsample_nearest3d(x, out, ksd, ksh, ksw)
 
 
@@ -220,12 +196,8 @@ def upsample_nearest3d_vec(input: torch.Tensor, output_size=None, scale_factors=
     if output_size is None:
         scales_tuple = _normalize_scale_factors(scale_factors)
     N, C, ID, IH, IW = x.shape
-    OD, OH, OW, ksd, ksh, ksw = _compute_out_size_and_kernel_scales(
-        ID, IH, IW, output_size, scales_tuple
-    )
-    out = torch.empty(
-        (N, C, OD, OH, OW), dtype=x.dtype, device=x.device, layout=x.layout
-    )
+    OD, OH, OW, ksd, ksh, ksw = _compute_out_size_and_kernel_scales(ID, IH, IW, output_size, scales_tuple)
+    out = torch.empty((N, C, OD, OH, OW), dtype=x.dtype, device=x.device, layout=x.layout)
     return _launch_upsample_nearest3d(x, out, ksd, ksh, ksw)
 
 
@@ -247,21 +219,15 @@ def upsample_nearest3d_out(
             None if scales_w is None else float(scales_w),
         )
     N, C, ID, IH, IW = x.shape
-    OD, OH, OW, ksd, ksh, ksw = _compute_out_size_and_kernel_scales(
-        ID, IH, IW, output_size, scales_tuple
-    )
+    OD, OH, OW, ksd, ksh, ksw = _compute_out_size_and_kernel_scales(ID, IH, IW, output_size, scales_tuple)
 
     if out is None:
         raise ValueError("Argument 'out' must be provided for upsample_nearest3d_out")
     if out.device != x.device or out.dtype != x.dtype:
-        raise ValueError(
-            "Output tensor 'out' must have the same device and dtype as input"
-        )
+        raise ValueError("Output tensor 'out' must have the same device and dtype as input")
     expected_shape = (N, C, OD, OH, OW)
     if tuple(out.shape) != expected_shape:
-        raise ValueError(
-            f"Output tensor 'out' must have shape {expected_shape}, but got {tuple(out.shape)}"
-        )
+        raise ValueError(f"Output tensor 'out' must have shape {expected_shape}, but got {tuple(out.shape)}")
 
     _launch_upsample_nearest3d(x, out, ksd, ksh, ksw)
     return out

@@ -7,9 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def asinh_kernel_(
-    x_ptr, n_elements, BLOCK_SIZE: tl.constexpr, COMPUTE_FP32: tl.constexpr
-):
+def asinh_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr, COMPUTE_FP32: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -50,17 +48,13 @@ def asinh_(*args, **kwargs):
         n_elements = x.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         with torch_device_fn.device(x.device):
-            asinh_kernel_[grid](
-                x, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32
-            )
+            asinh_kernel_[grid](x, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32)
         return x
     else:
         y = x.contiguous()
         n_elements = y.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         with torch_device_fn.device(y.device):
-            asinh_kernel_[grid](
-                y, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32
-            )
+            asinh_kernel_[grid](y, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32)
         x.copy_(y)
         return x

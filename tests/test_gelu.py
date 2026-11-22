@@ -35,13 +35,9 @@ def test_gelu_backward(shape, dtype, approximate):
     ref_inp = utils.to_reference(res_inp, True)
     ref_out = utils.to_reference(res_out, True)
 
-    ref_in_grad = torch.ops.aten.gelu_backward(
-        ref_out, ref_inp, approximate=approximate
-    )
+    ref_in_grad = torch.ops.aten.gelu_backward(ref_out, ref_inp, approximate=approximate)
     with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.gelu_backward(
-            res_out, res_inp, approximate=approximate
-        )
+        res_in_grad = torch.ops.aten.gelu_backward(res_out, res_inp, approximate=approximate)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 

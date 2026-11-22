@@ -131,10 +131,7 @@ def _fused_backward_kernel(
             valid = iw_in_range & ih_in_range
             oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
             g = tl.load(
-                grad_out_ptr
-                + go_nc_base
-                + oh_safe.to(tl.int64) * W_out
-                + ow_safe.to(tl.int64),
+                grad_out_ptr + go_nc_base + oh_safe.to(tl.int64) * W_out + ow_safe.to(tl.int64),
                 mask=valid,
                 other=0.0,
             )
@@ -217,9 +214,7 @@ def _pass1_w_gather_nchw_kernel(
         tw_x = tl.load(total_wx_ptr + ow_safe, mask=in_range, other=1.0)
         wx = tl.where(in_range & (tw_x != 0.0), raw_wx / tw_x, 0.0)
 
-        g = tl.load(
-            grad_out_ptr + go_base + ow_safe.to(tl.int64), mask=in_range, other=0.0
-        )
+        g = tl.load(grad_out_ptr + go_base + ow_safe.to(tl.int64), mask=in_range, other=0.0)
         accum += wx * g
 
     tl.store(buf_ptr + buf_base + iws.to(tl.int64), accum, mask=iw_mask)
@@ -289,11 +284,7 @@ def _compute_scale(input_size, output_size, align_corners, scale=None):
     if align_corners:
         return float(input_size - 1) / (output_size - 1) if output_size > 1 else 0.0
     else:
-        return (
-            (1.0 / scale)
-            if (scale is not None and scale > 0)
-            else float(input_size) / output_size
-        )
+        return (1.0 / scale) if (scale is not None and scale > 0) else float(input_size) / output_size
 
 
 # Threshold: when total elements (across the larger of input / output spatial)
@@ -314,8 +305,7 @@ def _upsample_bicubic2d_aa_backward(
     H_out, W_out = output_size
 
     assert grad_output.shape == (N, C, H_out, W_out), (
-        f"grad_output shape {grad_output.shape} != "
-        f"expected ({N}, {C}, {H_out}, {W_out})"
+        f"grad_output shape {grad_output.shape} != " f"expected ({N}, {C}, {H_out}, {W_out})"
     )
 
     NC = N * C
@@ -359,9 +349,7 @@ def _upsample_bicubic2d_aa_backward(
         # ============================================================
         # FUSED PATH — single kernel launch, no intermediate buffer
         # ============================================================
-        grad_in_flat = torch.empty(
-            NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
-        )
+        grad_in_flat = torch.empty(NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device)
         grid = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
         _fused_backward_kernel[grid](
             grad_out_flat,
@@ -394,12 +382,8 @@ def _upsample_bicubic2d_aa_backward(
         # ============================================================
 
         # Phase 0: precompute weight sums
-        total_wy = torch.empty(
-            max(H_out, 1), dtype=torch.float32, device=grad_output.device
-        )
-        total_wx = torch.empty(
-            max(W_out, 1), dtype=torch.float32, device=grad_output.device
-        )
+        total_wy = torch.empty(max(H_out, 1), dtype=torch.float32, device=grad_output.device)
+        total_wx = torch.empty(max(W_out, 1), dtype=torch.float32, device=grad_output.device)
         if H_out > 0:
             _precompute_weight_sums_kernel[(H_out,)](
                 total_wy,
@@ -422,9 +406,7 @@ def _upsample_bicubic2d_aa_backward(
             )
 
         # Phase 1: W-gather -> buf [NC, H_out, W_in]
-        buf = torch.empty(
-            NC, H_out, W_in, dtype=torch.float32, device=grad_output.device
-        )
+        buf = torch.empty(NC, H_out, W_in, dtype=torch.float32, device=grad_output.device)
         grid1 = (NC * H_out, triton.cdiv(W_in, BLOCK_IW))
         _pass1_w_gather_nchw_kernel[grid1](
             grad_out_flat,
@@ -442,9 +424,7 @@ def _upsample_bicubic2d_aa_backward(
         )
 
         # Phase 2: H-gather -> grad_in [NC, H_in, W_in]
-        grad_in_flat = torch.empty(
-            NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
-        )
+        grad_in_flat = torch.empty(NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device)
         grid2 = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
         _pass2_h_gather_nchw_kernel[grid2](
             buf,

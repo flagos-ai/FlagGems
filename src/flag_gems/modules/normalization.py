@@ -41,9 +41,7 @@ def gems_rms_forward(
             return x, residual
         else:
             logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
-            return flag_gems.fused_add_rms_norm(
-                x, residual, list(weight.size()), weight, eps
-            )
+            return flag_gems.fused_add_rms_norm(x, residual, list(weight.size()), weight, eps)
     else:
         if use_c_extension:
             logger.debug("GEMS CUSTOM RMS_NORM(C EXTENSION)")
@@ -86,9 +84,7 @@ class GemsRMSNorm(nn.Module):
         self.eps = eps
         self.elementwise_affine = elementwise_affine
         if self.elementwise_affine:
-            self.weight = Parameter(
-                torch.empty(self.normalized_shape, **factory_kwargs)
-            )
+            self.weight = Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
         else:
             self.register_parameter("weight", None)
         self.reset_parameters()
@@ -115,7 +111,4 @@ class GemsRMSNorm(nn.Module):
         """
         Extra information about the module.
         """
-        return (
-            "{normalized_shape}, eps={eps}, "
-            "elementwise_affine={elementwise_affine}".format(**self.__dict__)
-        )
+        return "{normalized_shape}, eps={eps}, " "elementwise_affine={elementwise_affine}".format(**self.__dict__)

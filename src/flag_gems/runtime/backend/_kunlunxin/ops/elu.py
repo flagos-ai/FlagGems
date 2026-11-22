@@ -8,9 +8,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False], promotion_methods=[(0, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def elu_forward_kernel(x, alpha, scale, input_scale):
     return tl.where(
@@ -20,9 +18,7 @@ def elu_forward_kernel(x, alpha, scale, input_scale):
     )
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, False, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, False, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def elu_backward_kernel(grad_output, x, alpha, scale, input_scale):
     x_fp32 = x.to(tl.float32)
@@ -44,7 +40,5 @@ def elu_(A, alpha=1.0, scale=1.0, input_scale=1.0):
 
 def elu_backward(grad_output, alpha, scale, input_scale, is_result, self_or_result):
     logger.debug("GEMS ELU BACKWARD")
-    grad_input = elu_backward_kernel(
-        grad_output, self_or_result, alpha, scale, input_scale
-    )
+    grad_input = elu_backward_kernel(grad_output, self_or_result, alpha, scale, input_scale)
     return grad_input

@@ -46,7 +46,7 @@ def get_device_properties(
 
 
 def get_device_capability(
-    device: Optional[Union[torch.device, str, int]] = None
+    device: Optional[Union[torch.device, str, int]] = None,
 ) -> Tuple[int, int]:
     return (8, 0)
 

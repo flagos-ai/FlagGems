@@ -4,12 +4,7 @@ import pytest
 import torch
 
 from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from benchmark.performance_utils import (
-    Benchmark,
-    Config,
-    GenericBenchmark,
-    generate_tensor_input,
-)
+from benchmark.performance_utils import Benchmark, Config, GenericBenchmark, generate_tensor_input
 
 
 class ConcatBenchmark(Benchmark):
@@ -81,9 +76,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
     ],
 )
 def test_concat_benchmark(op_name, torch_op, input_fn, dtype):
-    bench = ConcatBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtype
-    )
+    bench = ConcatBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtype)
     bench.run()
 
 
@@ -160,9 +153,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
-        pytest.param(
-            "tile", torch.tile, tile_input_fn, FLOAT_DTYPES, marks=pytest.mark.tile
-        ),
+        pytest.param("tile", torch.tile, tile_input_fn, FLOAT_DTYPES, marks=pytest.mark.tile),
         pytest.param(
             "repeat",
             torch.Tensor.repeat,
@@ -194,7 +185,5 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     ],
 )
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
-    bench = TensorRepeatBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
-    )
+    bench = TensorRepeatBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()

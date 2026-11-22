@@ -133,9 +133,7 @@ def compute_global_hist_kernel(
                 arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
                 arr = convert_to_uint_preverse_order(arr, descending)
                 key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
-                matches = tl.where(
-                    mask, (bin_indices[:, None] == key), False
-                )  # (TILE_R, TILE_N)
+                matches = tl.where(mask, (bin_indices[:, None] == key), False)  # (TILE_R, TILE_N)
                 acc += matches
             local_sum = tl.sum(acc, axis=1)
             tl.atomic_add(
@@ -225,25 +223,17 @@ def sweep(
         pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
         tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
-        local_ex_cumsum = (
-            tl.cumsum(matches.to(tl.uint32), axis=0) - matches
-        )  # (TILE_N, )
-        ex_cumsum_in_bin = (
-            exclusive_prefix + local_ex_cumsum
-        )  # global ex_cumsum_in_bin (TILE_N, )
+        local_ex_cumsum = tl.cumsum(matches.to(tl.uint32), axis=0) - matches  # (TILE_N, )
+        ex_cumsum_in_bin = exclusive_prefix + local_ex_cumsum  # global ex_cumsum_in_bin (TILE_N, )
 
         # ex_cumsum_bins (m, n_passes, r)
-        ex_cumsum_bins = tl.load(
-            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
-        )  # scalar
+        ex_cumsum_bins = tl.load(excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index)  # scalar
         pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
 
         # scatter
         tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
         if associate_arr_ptr is not None:
-            associate_arr = tl.load(
-                associate_arr_ptr + pid_m * N + n_offsets, mask=mask
-            )
+            associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
             tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
 
@@ -277,9 +267,7 @@ def count_kernel(
     for i in range(num_bins):
         bin_mask = (key == i) & mask
         count = tl.sum(bin_mask.to(tl.int32))
-        out_offset = (
-            (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
-        )
+        out_offset = (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
         tl.store(counts_ptr + out_offset, count)
 
 
@@ -318,9 +306,7 @@ def scatter_kernel(
         bin_mask = (key == i) & mask
         local_rank = tl.cumsum(bin_mask.to(tl.int32), axis=0) - 1
 
-        offset_idx = (
-            (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
-        )
+        offset_idx = (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
         global_start = tl.load(global_offsets_ptr + offset_idx)
 
         dest_idx = row_start + global_start + local_rank
@@ -336,11 +322,7 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     arr_in = arr
     arr_out = torch.empty_like(arr_in)
 
-    indices = (
-        torch.arange(N, device=arr.device, dtype=torch.int64)
-        .broadcast_to(arr.shape)
-        .clone()
-    )
+    indices = torch.arange(N, device=arr.device, dtype=torch.int64).broadcast_to(arr.shape).clone()
     idx_in = indices
     idx_out = torch.empty_like(idx_in)
 
@@ -360,9 +342,7 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     grid = (M * grid_n,)
 
     with torch_device_fn.device(arr.device):
-        counts = torch.empty(
-            (M, grid_n, num_bins), device=arr.device, dtype=torch.int32
-        )
+        counts = torch.empty((M, grid_n, num_bins), device=arr.device, dtype=torch.int32)
 
         for p in range(num_passes):
             bit_offset = p * k_bits
@@ -379,15 +359,10 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
             )
 
             total_counts_per_bin = counts.sum(dim=1)
-            bin_global_starts = (
-                torch.cumsum(total_counts_per_bin, dim=1) - total_counts_per_bin
-            )
+            bin_global_starts = torch.cumsum(total_counts_per_bin, dim=1) - total_counts_per_bin
             block_prefix_sum = torch.cumsum(counts, dim=1) - counts
             global_offsets = (
-                bin_global_starts.unsqueeze(1)
-                .broadcast_to(block_prefix_sum.shape)
-                .clone()
-                + block_prefix_sum
+                bin_global_starts.unsqueeze(1).broadcast_to(block_prefix_sum.shape).clone() + block_prefix_sum
             )
 
             scatter_kernel[grid](
@@ -430,9 +405,7 @@ def radix_sort(arr, k_bits=8, descending=False):
     grid_for_global_hist = (m * grid_n, 1, 1)
 
     with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
-        )
+        global_hist = torch.zeros((m, n_passes, num_bins), device=arr.device, dtype=torch.int32)
         compute_global_hist_kernel[grid_for_global_hist](
             arr,
             global_hist,
@@ -450,11 +423,7 @@ def radix_sort(arr, k_bits=8, descending=False):
 
         # sort
         arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
-        )
+        indices_in = torch.arange(0, n, dtype=torch.int64, device=arr_in.device).broadcast_to(arr.shape).contiguous()
         arr_out = torch.empty_like(arr)
         indices_out = torch.empty_like(indices_in)
 
@@ -464,9 +433,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_n = triton.cdiv(n, TILE_N)
         grid_for_sweep = (m * grid_n, grid_r)
 
-        status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
-        )
+        status = torch.empty((m, num_bins, grid_n), device=arr.device, dtype=torch.uint32)
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
@@ -523,9 +490,7 @@ def sort_kernel(
         in_val = tl.load(in_ptr, mask=mask, other=mask_val).to(tl.int32)
     index_val = tl.arange(0, BLOCK_SIZE)
 
-    sorted_in_val, sorted_index_val = argsort(
-        in_val, index_val, 0, descending=DESCENDING
-    )
+    sorted_in_val, sorted_index_val = argsort(in_val, index_val, 0, descending=DESCENDING)
     tl.store(out_ptr, sorted_in_val, mask=mask)
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
 

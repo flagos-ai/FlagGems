@@ -14,11 +14,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 2**k}, num_stages=s, num_warps=1)
-        for k in range(11, 17, 1)
-        for s in [1, 3]
-    ],
+    configs=[triton.Config({"BLOCK_SIZE": 2**k}, num_stages=s, num_warps=1) for k in range(11, 17, 1) for s in [1, 3]],
     key=[
         "tile_size",
     ],
@@ -50,9 +46,7 @@ def get_ne_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SIZE": k}, num_stages=s, num_warps=1)
-        for k in [32, 256, 1024, 2048, 4096]
-        for s in [1, 3]
+        triton.Config({"BLOCK_SIZE": k}, num_stages=s, num_warps=1) for k in [32, 256, 1024, 2048, 4096] for s in [1, 3]
     ],
     key=[
         "tile_size",
@@ -101,11 +95,7 @@ def get_unique_out_kernel(
 
 
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 2**k}, num_stages=s, num_warps=1)
-        for k in range(7, 14, 1)
-        for s in [1, 3]
-    ],
+    configs=[triton.Config({"BLOCK_SIZE": 2**k}, num_stages=s, num_warps=1) for k in range(7, 14, 1) for s in [1, 3]],
     key=[
         "tile_size",
     ],
@@ -145,9 +135,7 @@ def sorted_unique_flat(
     return_counts: bool,
 ):
     num_tasks = sorted_data.numel()
-    grid = lambda meta: (
-        min(triton.cdiv(num_tasks, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-    )
+    grid = lambda meta: (min(triton.cdiv(num_tasks, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 
     # allocate tensor
     ne_out = torch.empty_like(sorted_data, dtype=torch.bool)
@@ -211,9 +199,7 @@ def _unique2(
 ):
     logger.debug("GEMS_CAMBRICON _UNIQUE2")
     sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
-    data_out, inverse_indices, counts = sorted_unique_flat(
-        sorted_data, sorted_indices, return_inverse, return_counts
-    )
+    data_out, inverse_indices, counts = sorted_unique_flat(sorted_data, sorted_indices, return_inverse, return_counts)
     return (
         data_out,
         inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),

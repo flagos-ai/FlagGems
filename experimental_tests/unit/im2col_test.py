@@ -93,9 +93,7 @@ def test_im2col_out(shape, dtype, kernel_size, dilation, padding, stride):
     out_ref = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     out_act = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.im2col.out(
-        ref_x, kernel_size, dilation, padding, stride, out=out_ref
-    )
+    ref_out = torch.ops.aten.im2col.out(ref_x, kernel_size, dilation, padding, stride, out=out_ref)
 
     with flag_gems.use_gems():
         act_out = gems_im2col_out(x, kernel_size, dilation, padding, stride, out_act)

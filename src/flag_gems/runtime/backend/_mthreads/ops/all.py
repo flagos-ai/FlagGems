@@ -67,9 +67,7 @@ def all_kernel_dim_strided(
         cols = cols.to(tl.int64)
         col_mask = cols < N
         mask = row_mask[:, None] and col_mask[None, :]
-        vals = tl.load(
-            base_ptr[:, None] + cols[None, :] * STRIDE_REDUCE, mask, other=1.0
-        )
+        vals = tl.load(base_ptr[:, None] + cols[None, :] * STRIDE_REDUCE, mask, other=1.0)
         acc = acc and (vals != 0)
     all_val = tl.reduce(acc, axis=1, combine_fn=reduce_all)
     tl.store(out + rows, all_val, mask=row_mask)
@@ -83,9 +81,7 @@ def _flatten_dim(shape: Sequence[int], dim: int):
     return dim, n, inner, outer
 
 
-def triton_all_dim_strided(
-    inp: torch.Tensor, dim: int, keepdim: bool = False
-) -> torch.Tensor:
+def triton_all_dim_strided(inp: torch.Tensor, dim: int, keepdim: bool = False) -> torch.Tensor:
     dim = dim % inp.ndim
     shape = list(inp.shape)
     dim, n, inner, outer = _flatten_dim(shape, dim)

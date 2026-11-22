@@ -108,20 +108,14 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    BLOCK_SIZE = builtins.min(
-        64 * 128, triton.next_power_of_2(N)
-    )  # core_num * buffer_size_limit
+    BLOCK_SIZE = builtins.min(64 * 128, triton.next_power_of_2(N))  # core_num * buffer_size_limit
     x = x.contiguous()
     residual = residual.contiguous()
     weight = weight.contiguous()
 
     with torch_device_fn.device(x.device):
         if N > 64 * 128:
-            fused_add_rmsnorm_kernel_tile[M,](
-                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
+            fused_add_rmsnorm_kernel_tile[M,](x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
         else:
-            fused_add_rmsnorm_kernel[M,](
-                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
+            fused_add_rmsnorm_kernel[M,](x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
     return x, residual

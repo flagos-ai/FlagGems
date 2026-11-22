@@ -20,9 +20,7 @@ def test_angle(shape, dtype):
     if dtype in utils.BOOL_TYPES:
         inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
     elif dtype in utils.ALL_INT_DTYPES:
-        inp = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
+        inp = torch.randint(low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu").to(flag_gems.device)
     elif dtype in utils.COMPLEX_DTYPES + utils.FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
 

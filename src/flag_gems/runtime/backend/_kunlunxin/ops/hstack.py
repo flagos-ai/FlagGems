@@ -19,7 +19,7 @@ def copy_func(x):
 
 
 def hstack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
+    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
     logger.debug("GEMS HSTACK")
 
@@ -41,30 +41,22 @@ def hstack(
         if tensor.ndim == 0:
             tensor = tensor.view(1)
         if tensor.ndim != tensors[0].ndim:
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {tensors[0].ndim} and {tensor.ndim}"
-            )
+            raise RuntimeError(f"Tensors must have same number of dimensions: got {tensors[0].ndim} and {tensor.ndim}")
 
         inp_shape = tensor.shape
         inp_shapes.append(inp_shape)
 
         for i in range(len(inp_shape)):
             if i != dim and inp_shape[i] != inp0_shape[i]:
-                raise RuntimeError(
-                    f"Sizes of tensors must match except in dimension {dim}. \
+                raise RuntimeError(f"Sizes of tensors must match except in dimension {dim}. \
                         Expected size {inp0_shape[i]} but got size {inp_shape[i]} \
-                        for tensor number {tensor_num + 1} in the list."
-                )
+                        for tensor number {tensor_num + 1} in the list.")
 
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
 
     out0 = torch.empty(out_shape, dtype=tensors[0].dtype, device=tensors[0].device)
     out0_strides = out0.stride()
-    out0_offsets = list(
-        itertools.accumulate(
-            [s[dim] * out0_strides[dim] for s in inp_shapes[:-1]], initial=0
-        )
-    )
+    out0_offsets = list(itertools.accumulate([s[dim] * out0_strides[dim] for s in inp_shapes[:-1]], initial=0))
 
     for a, out0_offset in zip(tensors, out0_offsets):
         in_view = StridedBuffer(a, a.shape, a.stride())

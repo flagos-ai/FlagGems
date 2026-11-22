@@ -6,14 +6,9 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
@@ -48,9 +43,7 @@ def dropout_forward_kernel(
     mask3 = r3 > p
     p = 1.0 / (1.0 - p)
 
-    off_0 = ((tl.program_id(0) * BLOCK * UNROLL).to(tl.int64) + tl.arange(0, BLOCK)).to(
-        tl.int64
-    )
+    off_0 = ((tl.program_id(0) * BLOCK * UNROLL).to(tl.int64) + tl.arange(0, BLOCK)).to(tl.int64)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
@@ -86,13 +79,9 @@ def dropout_backward_kernel(
     scale,
     BLOCK: tl.constexpr,
 ):
-    offset = ((tl.program_id(0) * BLOCK).to(tl.int64) + tl.arange(0, BLOCK)).to(
-        tl.int64
-    )
+    offset = ((tl.program_id(0) * BLOCK).to(tl.int64) + tl.arange(0, BLOCK)).to(tl.int64)
     mask = offset < N
-    m = tl.load(
-        dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first"
-    )
+    m = tl.load(dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first")
     dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
     dx = dy * m * scale
     tl.store(DX + offset, dx, mask=mask, eviction_policy="evict_first")
@@ -124,9 +113,7 @@ def dropout(input, p, train=True):
     increment = triton.cdiv(N, UNROLL)
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
-        dropout_forward_kernel[grid_fn](
-            input, out, mask, N, p, philox_seed, philox_offset
-        )
+        dropout_forward_kernel[grid_fn](input, out, mask, N, p, philox_seed, philox_offset)
     return out, mask
 
 

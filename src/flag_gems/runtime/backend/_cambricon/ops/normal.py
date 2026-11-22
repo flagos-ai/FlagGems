@@ -15,33 +15,25 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 UNROLL = 4
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, True], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_tensor_tensor(val, std, mean):
     return val * std + mean
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, True], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_tensor_float(val, std, mean):
     return val * std + mean
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_float_tensor(val, std, mean):
     return val * std + mean
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def transform_func_float_float(val, std, mean):
     return val * std + mean
@@ -51,14 +43,10 @@ def normal_distribution(shape, device, *, generator=None, out=None):
     if out is None:
         out = torch.empty(shape, device=device, dtype=torch.float32)
     N = volume(shape)
-    grid_fn = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
-    )
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

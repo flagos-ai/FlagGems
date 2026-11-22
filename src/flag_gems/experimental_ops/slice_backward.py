@@ -81,9 +81,7 @@ def _launch_slice_backward_kernel(grad, input_sizes, dim, start, end, step, out)
     out_c = out.contiguous()
 
     # Normalize parameters
-    dim, start_n, step_n = _normalize_slice_params(
-        list(input_sizes), int(dim), start, end, step
-    )
+    dim, start_n, step_n = _normalize_slice_params(list(input_sizes), int(dim), start, end, step)
 
     # Compute inner, gdim, odim
     sizes = list(input_sizes)

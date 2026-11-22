@@ -49,22 +49,16 @@ def test_take_benchmark_tensor(in_shape, idx_shape, dtype):
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(in_shape, device=flag_gems.device, dtype=dtype)
-    idx = torch.randint(
-        0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64
-    )
+    idx = torch.randint(0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64)
 
     ref_x = x.clone()
     ref_idx = idx.clone()
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.take(ref_x, ref_idx), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.take(ref_x, ref_idx), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_take(x, idx), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_take(x, idx), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -82,9 +76,7 @@ def test_take_benchmark_out(in_shape, idx_shape, dtype):
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(in_shape, device=flag_gems.device, dtype=dtype)
-    idx = torch.randint(
-        0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64
-    )
+    idx = torch.randint(0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64)
 
     out_ref = torch.empty(idx_shape, device=flag_gems.device, dtype=dtype)
     out_act = torch.empty(idx_shape, device=flag_gems.device, dtype=dtype)
@@ -100,9 +92,7 @@ def test_take_benchmark_out(in_shape, idx_shape, dtype):
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_take_out(x, idx, out_act), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_take_out(x, idx, out_act), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

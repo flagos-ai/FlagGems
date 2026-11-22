@@ -43,9 +43,7 @@ def isin_by_comparation_impl(
     block = tl.full([BLOCK_M, BLOCK_N], value=(1 if invert else 0), dtype=tl.int1)
 
     # 加载 in0，每行一个元素
-    in0 = tl.load(
-        in0_ravel_ptr + in0_offsets, row_mask[:, None], other=0
-    )  # [BLOCK_M, 1]
+    in0 = tl.load(in0_ravel_ptr + in0_offsets, row_mask[:, None], other=0)  # [BLOCK_M, 1]
 
     # 遍历 in1 的列
     for col_off in range(0, N, BLOCK_N):
@@ -56,9 +54,7 @@ def isin_by_comparation_impl(
         mask = row_mask[:, None] & col_mask[None, :]
 
         # 加载 in1 的一块
-        in1 = tl.load(
-            in1_ravel_ptr + cols[None, :], col_mask[None, :], other=0
-        )  # [1, BLOCK_N]
+        in1 = tl.load(in1_ravel_ptr + cols[None, :], col_mask[None, :], other=0)  # [1, BLOCK_N]
 
         if invert:
             block = tl.where(mask, block & (in0 != in1), block)
@@ -221,15 +217,11 @@ def isin_by_search(
 ):
     # unique or sort or ravel
     if unique_in0:
-        in0_ravel, unique_order, _ = _unique2(
-            in0, sorted=True, return_inverse=True, return_counts=False
-        )
+        in0_ravel, unique_order, _ = _unique2(in0, sorted=True, return_inverse=True, return_counts=False)
     else:
         in0_ravel = in0.contiguous().ravel()
     if unique_in1:
-        in1_ravel, _, _ = _unique2(
-            in1, sorted=True, return_inverse=False, return_counts=False
-        )
+        in1_ravel, _, _ = _unique2(in1, sorted=True, return_inverse=False, return_counts=False)
     else:
         in1_ravel, _ = torch.sort(in1.ravel())
     # launch kernel func

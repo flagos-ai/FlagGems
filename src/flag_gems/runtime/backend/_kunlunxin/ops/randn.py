@@ -5,10 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))

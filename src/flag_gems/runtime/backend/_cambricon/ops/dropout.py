@@ -8,10 +8,7 @@ from triton.language.extra.mlu.libdevice import philox as _philox
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -99,9 +96,7 @@ def dropout_backward_kernel(
     for block_offset in range(block_start, N, step):
         off = block_offset + tl.arange(0, UNROLL * BLOCK)
         valid = off < N
-        mask = tl.load(
-            dropout_mask + off, mask=valid, other=0, eviction_policy="evict_first"
-        )
+        mask = tl.load(dropout_mask + off, mask=valid, other=0, eviction_policy="evict_first")
         dy = tl.load(DY + off, mask=valid, other=0.0, eviction_policy="evict_first")
         dx = dy * mask * scale
         tl.store(DX + off, dx, mask=valid, eviction_policy="evict_first")
@@ -123,9 +118,7 @@ def dropout(input, p, train=True):
     out = torch.empty_like(input)
     mask = torch.empty_like(input, dtype=torch.bool)
     N = input.numel()
-    grid_fn = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
-    )
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
     increment = triton.cdiv(N, UNROLL)
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
@@ -146,9 +139,7 @@ def dropout_backward(grad_output, mask, scale):
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()
-    grid_fn = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
-    )
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
     with torch_device_fn.device(grad_output.device):
         dropout_backward_kernel[grid_fn](
             grad_output,

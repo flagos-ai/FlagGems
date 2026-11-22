@@ -12,9 +12,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # UNROLL = 4
 
 
-def rand_like(
-    x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
-):
+def rand_like(x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None):
     logger.debug("GEMS RAND_LIKE")
     if device is None:
         device = x.device
@@ -33,11 +31,7 @@ def rand_like(
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(x.device):
         if UNROLL <= 4:
-            rand_kernel_1[(grid_fn,)](
-                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
-            )
+            rand_kernel_1[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
         else:
-            rand_kernel_2[(grid_fn,)](
-                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
-            )
+            rand_kernel_2[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
     return out

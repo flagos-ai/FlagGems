@@ -10,9 +10,7 @@ from .ones import ones_kernel
 logger = logging.getLogger("flag_gems." + __name__)
 
 
-def ones_like(
-    x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
-):
+def ones_like(x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None):
     logger.debug("METAX GEMS ONES_LIKE")
     if device is None:
         device = x.device

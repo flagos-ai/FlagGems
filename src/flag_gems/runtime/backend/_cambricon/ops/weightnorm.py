@@ -17,9 +17,7 @@ MAX_N = 31744
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -82,20 +80,14 @@ def config_prune_for_first(configs, named_args, **kwargs):
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
             else:
-                max_block_m_without_pipe = (
-                    MAX_NRAM_SIZE // 4 // (3 * BLOCK_COL_SIZE + 1)
-                )
-                BLOCK_ROW_SIZE = config.kwargs[
-                    "BLOCK_ROW_SIZE"
-                ] = max_block_m_without_pipe
+                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (3 * BLOCK_COL_SIZE + 1)
+                BLOCK_ROW_SIZE = config.kwargs["BLOCK_ROW_SIZE"] = max_block_m_without_pipe
                 num_stages = config.num_stages = 1
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
 
                 config = copy.deepcopy(config)
-                max_block_m_without_pipe = (
-                    MAX_NRAM_SIZE // 4 // (6 * BLOCK_COL_SIZE + 4)
-                )
+                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_COL_SIZE + 4)
                 num_stages = config.num_stages = 3
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
@@ -199,9 +191,7 @@ def weight_norm_kernel_first(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -241,8 +231,7 @@ def weight_norm_bwd_kernel_last(
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_grad_value = g_value * (
-            w_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+            w_value / (norm_value + eps) - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
         )
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
@@ -251,9 +240,7 @@ def weight_norm_bwd_kernel_last(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -293,8 +280,7 @@ def weight_norm_bwd_kernel_first(
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_grad_value = g_value * (
-            w_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+            w_value / (norm_value + eps) - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
         )
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
@@ -320,9 +306,7 @@ def weight_norm_interface(v, g, dim=0):
         N = v.shape[dim]
         grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
         with torch_device_fn.device(v.device):
-            weight_norm_kernel_last[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-            )
+            weight_norm_kernel_last[grid](output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny)
     return output, norm
 
 

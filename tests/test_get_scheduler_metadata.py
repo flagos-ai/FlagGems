@@ -26,15 +26,11 @@ device = flag_gems.device
 @pytest.mark.parametrize("headdim", [64, 128])
 @pytest.mark.parametrize("num_splits_static", [0, 4])
 @pytest.mark.parametrize("seed", [42])
-def test_scheduler_metadata_correctness(
-    batch_size, max_seqlen_k, headdim, num_splits_static, seed
-):
+def test_scheduler_metadata_correctness(batch_size, max_seqlen_k, headdim, num_splits_static, seed):
     device = torch_device_fn.current_device()
     utils.init_seed(seed)
 
-    seqused_k = torch.randint(
-        1, max_seqlen_k, (batch_size,), dtype=torch.int32, device=device
-    )
+    seqused_k = torch.randint(1, max_seqlen_k, (batch_size,), dtype=torch.int32, device=device)
     num_heads, num_heads_k = 32, 8
     headdim_v = headdim
     qkv_dtype = torch.float16

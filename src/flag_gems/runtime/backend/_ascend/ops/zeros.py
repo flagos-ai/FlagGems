@@ -22,9 +22,7 @@ def zeros_kernel(
     pid = tle.program_id(axis=0)
 
     for sub_block_start_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
-        sub_offset = (
-            pid * BLOCK_SIZE + sub_block_start_idx + tl.arange(0, BLOCK_SIZE_SUB)
-        )
+        sub_offset = pid * BLOCK_SIZE + sub_block_start_idx + tl.arange(0, BLOCK_SIZE_SUB)
         mask = sub_offset < n_elements
         tl.store(output_ptr + sub_offset, 0.0, mask=mask)
 

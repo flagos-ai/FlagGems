@@ -33,13 +33,9 @@ if __name__ == "__main__":
     actual = round(get_lines(info_file), 3)
 
     if actual < expected:
-        print(
-            f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, failed"
-        )
+        print(f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, failed")
         print("\n================================================================")
         sys.exit(1)
 
-    print(
-        f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, passed"
-    )
+    print(f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, passed")
     print("\n================================================================")

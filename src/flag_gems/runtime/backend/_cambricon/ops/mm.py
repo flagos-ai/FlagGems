@@ -78,12 +78,8 @@ def mm_kernel(
             b = tl.load(B, mask=(rn < N)[None, :], other=0.0)
         else:
             k_remaining = K - k * (BLOCK_K * SPLIT_K)
-            a = tl.load(
-                A, mask=(rk[None, :] < k_remaining) & (rm < M)[:, None], other=0.0
-            )
-            b = tl.load(
-                B, mask=(rk[:, None] < k_remaining) & (rn < N)[None, :], other=0.0
-            )
+            a = tl.load(A, mask=(rk[None, :] < k_remaining) & (rm < M)[:, None], other=0.0)
+            b = tl.load(B, mask=(rk[:, None] < k_remaining) & (rn < N)[None, :], other=0.0)
 
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)

@@ -313,9 +313,7 @@ def celoss_indices_bwd(
             * out_grad[:, None]
             * mean_num
         )
-        inp_grad_ptrs = (
-            inp_grad_ptr + pid_n * C * D + offset_d[:, None] * C + offset_c[None, :]
-        )
+        inp_grad_ptrs = inp_grad_ptr + pid_n * C * D + offset_d[:, None] * C + offset_c[None, :]
         tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask[:, None])
 
 
@@ -502,9 +500,7 @@ def celoss_indices_smooth_bwd(
 
         grad = w_sum / final_sum * tl.exp(inp - final_max) - smooth * w[None, :]
         inp_grad = grad * out_grad[:, None] * mean_num
-        inp_grad_ptrs = (
-            inp_grad_ptr + pid_n * C * D + offset_d[:, None] * C + offset_c[None, :]
-        )
+        inp_grad_ptrs = inp_grad_ptr + pid_n * C * D + offset_d[:, None] * C + offset_c[None, :]
         tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
 
 
@@ -654,9 +650,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 sum_and_scale[(1,)](out, out_reduce, N * D, False, scale=N * D)
             else:
                 wgt_sum = torch.empty([], dtype=torch.float32, device=inp.device)
-                sum_and_scale[(1,)](
-                    out, out_reduce, N * D, True, scale=w_tgt, mean_num=wgt_sum
-                )
+                sum_and_scale[(1,)](out, out_reduce, N * D, True, scale=w_tgt, mean_num=wgt_sum)
             out = out_reduce
         elif reduction == "sum":  # SUM
             out_reduce = torch.empty([], dtype=inp.dtype, device=inp.device)
@@ -687,11 +681,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         D = ctx.D
         ignore_index = ctx.ignore_index
         label_smoothing = ctx.label_smoothing
-        mean_num = (
-            1 / ctx.mean_num.item()
-            if isinstance(ctx.mean_num, torch.Tensor)
-            else 1 / ctx.mean_num
-        )
+        mean_num = 1 / ctx.mean_num.item() if isinstance(ctx.mean_num, torch.Tensor) else 1 / ctx.mean_num
 
         shape = ctx.shape
         out_grad = out_grad.broadcast_to(shape).contiguous()
@@ -704,9 +694,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 os.environ["TRITONXPU_OTHER_SIM"] = "1"
                 os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
                 os.environ["TRITONXPU_CLOSE_OPTIMIZE"] = "1"
-            celoss_probability_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D
-            )
+            celoss_probability_bwd[grid](out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D)
             if shape != [1]:
                 if "TRITONXPU_OTHER_SIM" in os.environ:
                     del os.environ["TRITONXPU_OTHER_SIM"]
@@ -715,9 +703,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 if "TRITONXPU_CLOSE_OPTIMIZE" in os.environ:
                     del os.environ["TRITONXPU_CLOSE_OPTIMIZE"]
         elif label_smoothing == 0:
-            celoss_indices_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, C, D
-            )
+            celoss_indices_bwd[grid](out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, C, D)
         else:
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
@@ -745,9 +731,5 @@ class CrossEntropyLoss(torch.autograd.Function):
         return inp_grad, None, None, None, None, None
 
 
-def cross_entropy_loss(
-    inp, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
-):
-    return CrossEntropyLoss.apply(
-        inp, target, weight, reduction, ignore_index, label_smoothing
-    )
+def cross_entropy_loss(inp, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0):
+    return CrossEntropyLoss.apply(inp, target, weight, reduction, ignore_index, label_smoothing)

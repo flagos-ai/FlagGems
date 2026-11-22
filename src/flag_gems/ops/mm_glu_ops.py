@@ -54,9 +54,7 @@ def triton_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     M, K = a.shape[-2], a.shape[-1]
     _, N = b.shape[-2], b.shape[-1]
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
     _triton_mm_kernel[grid](
         a,
         b,
@@ -118,9 +116,7 @@ def _triton_addmm_kernel(
         )
     else:
         bias = tl.load(
-            bias_ptr
-            + offs_m[:, None] * stride_bias_m
-            + offs_n[None, :] * stride_bias_n,
+            bias_ptr + offs_m[:, None] * stride_bias_m + offs_n[None, :] * stride_bias_n,
             mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
             other=0.0,
         )
@@ -158,9 +154,7 @@ def triton_addmm(
     _, N = mat2.shape[-2], mat2.shape[-1]
     c = torch.empty((M, N), device=bias.device, dtype=bias.dtype)
     bias_is_1d = bias.dim() == 1
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
     _triton_addmm_kernel[grid](
         bias,
         mat1,
@@ -222,27 +216,18 @@ def _triton_bmm_kernel(
     offs_k = tl.arange(0, BLOCK_K)
 
     a = tl.load(
-        a_ptr
-        + pid_b * stride_ab
-        + offs_m[:, None] * stride_am
-        + offs_k[None, :] * stride_ak,
+        a_ptr + pid_b * stride_ab + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak,
         mask=(pid_b < B) & (offs_m[:, None] < M) & (offs_k[None, :] < K),
         other=0.0,
     )
     b = tl.load(
-        b_ptr
-        + pid_b * stride_bb
-        + offs_k[:, None] * stride_bk
-        + offs_n[None, :] * stride_bn,
+        b_ptr + pid_b * stride_bb + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn,
         mask=(pid_b < B) & (offs_k[:, None] < K) & (offs_n[None, :] < N),
         other=0.0,
     )
     acc = tl.dot(a, b)
     tl.store(
-        c_ptr
-        + pid_b * stride_cb
-        + offs_m[:, None] * stride_cm
-        + offs_n[None, :] * stride_cn,
+        c_ptr + pid_b * stride_cb + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn,
         acc,
         mask=(pid_b < B) & (offs_m[:, None] < M) & (offs_n[None, :] < N),
     )
@@ -253,9 +238,7 @@ def triton_bmm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     B, M, K = a.shape
     _, _, N = b.shape
     c = torch.empty((B, M, N), device=a.device, dtype=a.dtype)
-    grid = lambda meta: (
-        B * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
+    grid = lambda meta: (B * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
     _triton_bmm_kernel[grid](
         a,
         b,
@@ -297,9 +280,7 @@ def _triton_glu_kernel(
     off_n = tl.arange(0, BLOCK_N)
     half_N = N // 2
 
-    a = tl.load(
-        x_ptr + off_m * stride_xm + off_n * stride_xn, mask=off_n < half_N, other=0.0
-    )
+    a = tl.load(x_ptr + off_m * stride_xm + off_n * stride_xn, mask=off_n < half_N, other=0.0)
     b = tl.load(
         x_ptr + off_m * stride_xm + (off_n + half_N) * stride_xn,
         mask=off_n < half_N,

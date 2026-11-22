@@ -7,12 +7,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.experimental_ops.upsample_nearest3d import (
-    upsample_nearest3d as gems_upsample_nearest3d,
-)
-from flag_gems.experimental_ops.upsample_nearest3d import (
-    upsample_nearest3d_out as gems_upsample_nearest3d_out,
-)
+from flag_gems.experimental_ops.upsample_nearest3d import upsample_nearest3d as gems_upsample_nearest3d
+from flag_gems.experimental_ops.upsample_nearest3d import upsample_nearest3d_out as gems_upsample_nearest3d_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -94,13 +90,9 @@ def test_upsample_nearest3d_out(shape, dtype, output_size):
     ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_inp.device)
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.upsample_nearest3d.out(
-        ref_inp, output_size, None, None, None, out=ref_out_buf
-    )
+    ref_out = torch.ops.aten.upsample_nearest3d.out(ref_inp, output_size, None, None, None, out=ref_out_buf)
 
     with flag_gems.use_gems():
-        act_out = gems_upsample_nearest3d_out(
-            inp, output_size, None, None, None, act_out_buf
-        )
+        act_out = gems_upsample_nearest3d_out(inp, output_size, None, None, None, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)

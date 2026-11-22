@@ -43,9 +43,7 @@ def unsqueeze(*args, **kwargs):
     else:
         x = kwargs.get("self", kwargs.get("input", None))
         dim = kwargs.get("dim", None)
-    assert isinstance(
-        x, torch.Tensor
-    ), "unsqueeze expects a torch.Tensor as the first argument."
+    assert isinstance(x, torch.Tensor), "unsqueeze expects a torch.Tensor as the first argument."
     assert isinstance(dim, int), "unsqueeze expects an integer 'dim' argument."
     assert x.is_cuda, "Input tensor must be on CUDA device."
 

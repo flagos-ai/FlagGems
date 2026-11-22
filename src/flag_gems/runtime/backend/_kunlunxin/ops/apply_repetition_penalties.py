@@ -47,22 +47,13 @@ def _repetition_penalty_kernel(
 def apply_repetition_penalties(logits, prompt_mask, output_mask, repetition_penalties):
     logger.debug("GEMS APPLY REPETITION PENALTIES")
     assert logits.is_contiguous(), "logits must be contiguous"
-    assert (
-        prompt_mask.is_contiguous() and prompt_mask.dtype == torch.bool
-    ), "prompt_mask must be contiguous bool tensor"
-    assert (
-        output_mask.is_contiguous() and output_mask.dtype == torch.bool
-    ), "output_mask must be contiguous bool tensor"
-    assert (
-        repetition_penalties.is_contiguous()
-    ), "repetition_penalties must be contiguous"
+    assert prompt_mask.is_contiguous() and prompt_mask.dtype == torch.bool, "prompt_mask must be contiguous bool tensor"
+    assert output_mask.is_contiguous() and output_mask.dtype == torch.bool, "output_mask must be contiguous bool tensor"
+    assert repetition_penalties.is_contiguous(), "repetition_penalties must be contiguous"
     assert logits.dim() == 2, f"logits must be 2D, got {logits.dim()}D"
+    assert logits.shape == prompt_mask.shape == output_mask.shape, "shape mismatch between logits and masks"
     assert (
-        logits.shape == prompt_mask.shape == output_mask.shape
-    ), "shape mismatch between logits and masks"
-    assert (
-        repetition_penalties.dim() == 1
-        and repetition_penalties.numel() == logits.shape[0]
+        repetition_penalties.dim() == 1 and repetition_penalties.numel() == logits.shape[0]
     ), "repetition_penalties must be 1D with length equal to num_seqs"
 
     num_seqs, vocab_size = logits.shape

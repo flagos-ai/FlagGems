@@ -56,9 +56,7 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
     ref_weight = to_reference(weight, True)
 
     # Reference computation using PyTorch native rms_norm
-    ref_out = torch.nn.functional.rms_norm(
-        ref_inp, normalized_shape=[shape[-1]], weight=ref_weight, eps=eps
-    )
+    ref_out = torch.nn.functional.rms_norm(ref_inp, normalized_shape=[shape[-1]], weight=ref_weight, eps=eps)
 
     # FlagGems computation
     with flag_gems.use_gems():

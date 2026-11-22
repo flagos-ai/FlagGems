@@ -8,9 +8,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def clamp_func_tensor(x, mini, maxi, inplace):
     return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
@@ -52,25 +50,19 @@ def clamp_tensor_(A, mini=None, maxi=None):
         return clamp_func_tensor(A, mini, maxi, True, out0=A)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def clamp_func(x, mini, maxi, inplace):
     return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min(x, mini, inplace):
     return tl.maximum(mini, x.to(tl.float32))
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_max(x, maxi, inplace):
     return tl.minimum(maxi, x.to(tl.float32))

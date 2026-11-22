@@ -6,17 +6,13 @@ import torch
 
 from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 
-from .torch_src.sparse_mla_fwd import (
-    ref_sparse_mla_fwd_interface,  # , sparse_mla_fwd_interface
-)
+from .torch_src.sparse_mla_fwd import ref_sparse_mla_fwd_interface  # , sparse_mla_fwd_interface
 
 try:
     from ..accuracy_utils import gems_assert_close, init_seed, to_reference
 except ImportError:
     # Accuracy check function
-    def gems_assert_close(
-        actual, expected, dtype, equal_nan=False, atol=None, rtol=None
-    ):
+    def gems_assert_close(actual, expected, dtype, equal_nan=False, atol=None, rtol=None):
         # For bfloat16 and float16, use more relaxed tolerance
         if atol is None:
             if dtype in [torch.bfloat16, torch.float16]:
@@ -36,16 +32,10 @@ except ImportError:
 
         print(f"Max difference: {max_diff}")
         print(f"Mean difference: {mean_diff}")
-        print(
-            f"Actual range: [{torch.min(actual).item():.6f}, {torch.max(actual).item():.6f}]"
-        )
-        print(
-            f"Expected range: [{torch.min(expected).item():.6f}, {torch.max(expected).item():.6f}]"
-        )
+        print(f"Actual range: [{torch.min(actual).item():.6f}, {torch.max(actual).item():.6f}]")
+        print(f"Expected range: [{torch.min(expected).item():.6f}, {torch.max(expected).item():.6f}]")
 
-        torch.testing.assert_close(
-            actual, expected, atol=atol, rtol=rtol, equal_nan=equal_nan
-        )
+        torch.testing.assert_close(actual, expected, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
     def init_seed(seed):
         torch.manual_seed(seed)
@@ -83,12 +73,8 @@ def make_sparse_mla_input(
     SKV = seq_len_kv
     HKV = num_kv_heads
 
-    q = torch.randn((B, S, H, DQK), dtype=dtype, device=device).requires_grad_(
-        requires_grad
-    )
-    kv = torch.randn((B, SKV, HKV, DQK), dtype=dtype, device=device).requires_grad_(
-        requires_grad
-    )
+    q = torch.randn((B, S, H, DQK), dtype=dtype, device=device).requires_grad_(requires_grad)
+    kv = torch.randn((B, SKV, HKV, DQK), dtype=dtype, device=device).requires_grad_(requires_grad)
 
     indices = torch.full((B, S, HKV, topk), SKV, dtype=torch.int32, device=device)
     for b in range(B):
@@ -152,9 +138,7 @@ def test_sparse_mla_forward(
     ref_kv = to_reference(kv, False)
     ref_indices = to_reference(indices, False)
 
-    ref_output = reference_sparse_mla_implementation(
-        ref_q, ref_kv, ref_indices, d_v=d_v
-    )
+    ref_output = reference_sparse_mla_implementation(ref_q, ref_kv, ref_indices, d_v=d_v)
 
     # Your operator implementation
     your_output, your_lse = triton_sparse_mla_fwd_interface(q, kv, indices, d_v=d_v)
@@ -213,9 +197,7 @@ def test_sparse_mla_forward_edge_cases(config):
     )
 
     # Reference implementation
-    ref_output = reference_sparse_mla_implementation(
-        to_reference(q), to_reference(kv), to_reference(indices), d_v=d_v
-    )
+    ref_output = reference_sparse_mla_implementation(to_reference(q), to_reference(kv), to_reference(indices), d_v=d_v)
 
     # Your operator implementation
     your_output, your_lse = triton_sparse_mla_fwd_interface(q, kv, indices, d_v=d_v)
@@ -262,9 +244,7 @@ def test_sparse_mla_device_compatibility():
         config["num_heads"],
         d_v,
     )
-    assert (
-        your_output.shape == expected_shape
-    ), f"Output shape incorrect: {your_output.shape} != {expected_shape}"
+    assert your_output.shape == expected_shape, f"Output shape incorrect: {your_output.shape} != {expected_shape}"
 
 
 if __name__ == "__main__":

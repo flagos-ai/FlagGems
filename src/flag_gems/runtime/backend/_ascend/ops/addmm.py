@@ -80,9 +80,7 @@ def addmm_kernel(
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     logger.debug("GEMS_ASCEND ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible input shape"
+    assert broadcastable_to(bias.shape, (mat1.shape[0], mat2.shape[1])), "Incompatible input shape"
     M, K = mat1.shape
     _, N = mat2.shape
 

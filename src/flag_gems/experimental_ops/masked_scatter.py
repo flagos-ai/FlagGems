@@ -103,17 +103,13 @@ def _launch_masked_scatter(
     # 1) Count number of True mask elements per block
     counts = torch.empty(n_blocks, dtype=torch.int32, device=device)
     grid = (n_blocks,)
-    _masked_scatter_count_kernel[grid](
-        m_flat, counts, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    _masked_scatter_count_kernel[grid](m_flat, counts, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
     # 2) Compute exclusive prefix sums of per-block counts
     counts_prefix = torch.cumsum(counts, dim=0)
     total_true = int(counts_prefix[-1].item()) if n_blocks > 0 else 0
     if s_flat.numel() < total_true:
-        raise ValueError(
-            f"source has fewer elements ({s_flat.numel()}) than required by mask ({total_true})"
-        )
+        raise ValueError(f"source has fewer elements ({s_flat.numel()}) than required by mask ({total_true})")
     prefix_exclusive = counts_prefix - counts  # int32, same device
 
     # 3) Apply masked_scatter using per-block prefix offsets
@@ -137,7 +133,5 @@ def masked_scatter(input: torch.Tensor, mask: torch.Tensor, source: torch.Tensor
     return _launch_masked_scatter(input, mask, source, out_tensor=None)
 
 
-def masked_scatter_out(
-    input: torch.Tensor, mask: torch.Tensor, source: torch.Tensor, out: torch.Tensor
-):
+def masked_scatter_out(input: torch.Tensor, mask: torch.Tensor, source: torch.Tensor, out: torch.Tensor):
     return _launch_masked_scatter(input, mask, source, out_tensor=out)

@@ -63,9 +63,7 @@ def calculate_indices(batch_idx, shape_a, shape_b):
 
 @triton.autotune(
     configs=[
-        triton.Config(
-            {"BLOCK_M": 512, "BLOCK_N": 512, "BLOCK_TILE_M": 128, "BLOCK_TILE_N": 64}
-        ),
+        triton.Config({"BLOCK_M": 512, "BLOCK_N": 512, "BLOCK_TILE_M": 128, "BLOCK_TILE_N": 64}),
         # triton.Config(
         #     {"BLOCK_M": 512, "BLOCK_N": 2048, "BLOCK_TILE_M": 64, "BLOCK_TILE_N": 64}
         # ),
@@ -133,39 +131,25 @@ def kron_kernel(
             tile_offset_m = tile_m * BLOCK_TILE_M
             tile_offset_n = tile_n * BLOCK_TILE_N
 
-            current_offs_m = (
-                block_m * BLOCK_M + tile_offset_m + tl.arange(0, BLOCK_TILE_M)
-            )
-            current_offs_n = (
-                block_n * BLOCK_N + tile_offset_n + tl.arange(0, BLOCK_TILE_N)
-            )
+            current_offs_m = block_m * BLOCK_M + tile_offset_m + tl.arange(0, BLOCK_TILE_M)
+            current_offs_n = block_n * BLOCK_N + tile_offset_n + tl.arange(0, BLOCK_TILE_N)
 
-            tile_mask = (
-                (current_offs_m[:, None] < M)
-                & (current_offs_n[None, :] < N)
-                & is_valid_batch
-            )
+            tile_mask = (current_offs_m[:, None] < M) & (current_offs_n[None, :] < N) & is_valid_batch
 
             a_row = current_offs_m[:, None] // M2
             a_col = current_offs_n[None, :] // N2
             b_row = current_offs_m[:, None] % M2
             b_col = current_offs_n[None, :] % N2
 
-            a_idx = (
-                a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-            )
-            b_idx = (
-                b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
-            )
+            a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
+            b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
 
             a = tl.load(a_ptr + a_idx, mask=tile_mask)
             b = tl.load(b_ptr + b_idx, mask=tile_mask)
             c = a * b
 
             c_idx = (
-                batch_id * c_batch_stride
-                + current_offs_m[:, None] * c_stride_0
-                + current_offs_n[None, :] * c_stride_1
+                batch_id * c_batch_stride + current_offs_m[:, None] * c_stride_0 + current_offs_n[None, :] * c_stride_1
             )
 
             tl.store(c_ptr + c_idx, c, mask=tile_mask)
@@ -216,11 +200,7 @@ def kron(A, B):
     c_batch_stride = M * N
 
     with torch_device_fn.device(A.device):
-        grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
-        )
+        grid = lambda meta: (batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
 
         kron_kernel[grid](
             A_view,

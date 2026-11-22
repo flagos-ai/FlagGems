@@ -8,12 +8,8 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.slice_backward import (
-    slice_backward as gems_slice_backward,
-)
-from flag_gems.experimental_ops.slice_backward import (
-    slice_backward_out as gems_slice_backward_out,
-)
+from flag_gems.experimental_ops.slice_backward import slice_backward as gems_slice_backward
+from flag_gems.experimental_ops.slice_backward import slice_backward_out as gems_slice_backward_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -75,16 +71,12 @@ def test_slice_backward_benchmark_tensor(shape, dtype):
                 continue
             grad_shape = list(input_sizes)
             grad_shape[dim] = length
-            grad_output_ref = torch.randn(
-                grad_shape, device=flag_gems.device, dtype=dtype
-            )
+            grad_output_ref = torch.randn(grad_shape, device=flag_gems.device, dtype=dtype)
             grad_output_act = grad_output_ref.clone()
 
             # PyTorch reference implementation
             ms_torch, _, _ = triton.testing.do_bench(
-                lambda: torch.ops.aten.slice_backward(
-                    grad_output_ref, input_sizes, dim, start, end, step
-                ),
+                lambda: torch.ops.aten.slice_backward(grad_output_ref, input_sizes, dim, start, end, step),
                 rep=100,
                 quantiles=quantiles,
             )
@@ -92,9 +84,7 @@ def test_slice_backward_benchmark_tensor(shape, dtype):
             # Triton implementation
             with flag_gems.use_gems():
                 ms_triton, _, _ = triton.testing.do_bench(
-                    lambda: gems_slice_backward(
-                        grad_output_act, input_sizes, dim, start, end, step
-                    ),
+                    lambda: gems_slice_backward(grad_output_act, input_sizes, dim, start, end, step),
                     rep=100,
                     quantiles=quantiles,
                 )
@@ -146,9 +136,7 @@ def test_slice_backward_benchmark_out(shape, dtype):
                 continue
             grad_shape = list(input_sizes)
             grad_shape[dim] = length
-            grad_output_ref = torch.randn(
-                grad_shape, device=flag_gems.device, dtype=dtype
-            )
+            grad_output_ref = torch.randn(grad_shape, device=flag_gems.device, dtype=dtype)
             grad_output_act = grad_output_ref.clone()
 
             ref_out_buf = torch.empty(input_sizes, device=flag_gems.device, dtype=dtype)
@@ -166,9 +154,7 @@ def test_slice_backward_benchmark_out(shape, dtype):
             # Triton implementation
             with flag_gems.use_gems():
                 ms_triton, _, _ = triton.testing.do_bench(
-                    lambda: gems_slice_backward_out(
-                        grad_output_act, input_sizes, dim, start, end, step, act_out_buf
-                    ),
+                    lambda: gems_slice_backward_out(grad_output_act, input_sizes, dim, start, end, step, act_out_buf),
                     rep=100,
                     quantiles=quantiles,
                 )

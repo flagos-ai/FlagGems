@@ -40,9 +40,7 @@ def linspace_kernel(
         tl.store(out_ptr + idx * out_stride0, out_val, mask=mask)
 
 
-def linspace(
-    start, end, steps, *, dtype=None, layout=None, device=None, pin_memory=None
-) -> torch.Tensor:
+def linspace(start, end, steps, *, dtype=None, layout=None, device=None, pin_memory=None) -> torch.Tensor:
     logger.debug("GEMS_CAMBRICON LINSPACE")
     assert steps >= 1, "steps must be >= 1"
 
@@ -64,7 +62,5 @@ def linspace(
         step_size = (float(end) - float(start)) / (steps - 1)
         block_size = triton.cdiv(steps, TOTAL_CORE_NUM)
         grid = (TOTAL_CORE_NUM,)
-        linspace_kernel[grid](
-            out, out.stride(0), start, mid, end, step_size, steps, BLOCK_SIZE=block_size
-        )
+        linspace_kernel[grid](out, out.stride(0), start, mid, end, step_size, steps, BLOCK_SIZE=block_size)
         return out

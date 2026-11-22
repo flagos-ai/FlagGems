@@ -33,9 +33,7 @@ def softshrink_kernel(x_ptr, out_ptr, n_elements, lambd, BLOCK_SIZE: tl.constexp
 
 def _check_supported_dtype(t: torch.Tensor):
     if t.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise TypeError(
-            f"Unsupported dtype {t.dtype}. Supported dtypes are float16, bfloat16, and float32."
-        )
+        raise TypeError(f"Unsupported dtype {t.dtype}. Supported dtypes are float16, bfloat16, and float32.")
 
 
 def _launch_softshrink_kernel(x: torch.Tensor, out: torch.Tensor, lambd: float):
@@ -67,13 +65,9 @@ def softshrink_out(input: torch.Tensor, lambd: float = 0.5, out: torch.Tensor = 
     if out is None:
         raise ValueError("Argument 'out' must be provided for softshrink_out.")
     if input.shape != out.shape:
-        raise ValueError(
-            f"Shape mismatch: input.shape={input.shape}, out.shape={out.shape}"
-        )
+        raise ValueError(f"Shape mismatch: input.shape={input.shape}, out.shape={out.shape}")
     if input.dtype != out.dtype:
-        raise TypeError(
-            f"Dtype mismatch: input.dtype={input.dtype}, out.dtype={out.dtype}"
-        )
+        raise TypeError(f"Dtype mismatch: input.dtype={input.dtype}, out.dtype={out.dtype}")
     _check_supported_dtype(input)
 
     x = input.contiguous()

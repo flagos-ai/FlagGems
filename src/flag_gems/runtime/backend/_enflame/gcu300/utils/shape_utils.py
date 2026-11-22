@@ -22,11 +22,7 @@ def heuristics_for_tile_size(max_tile_size, *sizes):
     for i in range(ndim):
         size = sizes[ndim - 1 - i]
         tile_size = min(max_tile_size, triton.next_power_of_2(size))
-        if (
-            ENFLAME_GCU300_4SIPS != 1
-            and triton.next_power_of_2(size) <= 512 * 1024
-            and max_tile_size > 1
-        ):
+        if ENFLAME_GCU300_4SIPS != 1 and triton.next_power_of_2(size) <= 512 * 1024 and max_tile_size > 1:
             tile_size = min(max_tile_size // 2, tile_size)
         if max_tile_size > 1:
             tile_size = max(2, tile_size)
@@ -36,9 +32,7 @@ def heuristics_for_tile_size(max_tile_size, *sizes):
 
 
 # This function is used to get the tile sizes with the constraint of MMU memory(512MB)
-def heuristics_for_tile_size_with_mmu_constraint(
-    max_tile_size, element_size, strides, *sizes
-):
+def heuristics_for_tile_size_with_mmu_constraint(max_tile_size, element_size, strides, *sizes):
     mmu_size_left = MMU_LIMIT
     ndim = len(sizes)
     tile_sizes = [0] * ndim
@@ -57,9 +51,7 @@ def heuristics_for_tile_size_with_mmu_constraint(
         # Adjust tile_size based on MMU memory constraint
         mem_cost = (tile_size - 1) * stride * element_size
         if mem_cost > mmu_size_left:
-            tile_size = prev_power_of_2(
-                max(1, mmu_size_left // (stride * element_size))
-            )
+            tile_size = prev_power_of_2(max(1, mmu_size_left // (stride * element_size)))
             mem_cost = (tile_size - 1) * stride * element_size
 
         mmu_size_left -= mem_cost

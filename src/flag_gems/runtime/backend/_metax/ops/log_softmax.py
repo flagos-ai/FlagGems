@@ -94,12 +94,7 @@ def log_softmax_backward_kernel(
     scale = tl.sum(out_grad_all, 1)
     # use for loop to split N dim to reduce register cost
     for n in range(0, tl.cdiv(BLOCK_N, BLOCK_N_SPLIT)):
-        offsets = (
-            m_offset[:, None] * N * K
-            + n_split_offset[None, :] * K
-            + n * BLOCK_N_SPLIT * K
-            + pid_k
-        )
+        offsets = m_offset[:, None] * N * K + n_split_offset[None, :] * K + n * BLOCK_N_SPLIT * K + pid_k
         mask = m_offset[:, None] < M and n_split_offset[None, :] + n * BLOCK_N_SPLIT < N
         out_ptrs = out_ptr + offsets
         out = tl.load(out_ptrs, mask=mask).to(tl.float32)

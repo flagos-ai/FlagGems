@@ -29,9 +29,7 @@ def test_add(shape, alpha, dtype):
 @pytest.mark.add
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
-@pytest.mark.parametrize(
-    "other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"]
-)
+@pytest.mark.parametrize("other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"])
 def test_add_complex(shape, complex_dtype, other_type):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
 
@@ -53,9 +51,7 @@ def test_add_complex(shape, complex_dtype, other_type):
         raise ValueError(f"Unknown other_type: {other_type}")
 
     ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = (
-        utils.to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
-    )
+    ref_inp2 = utils.to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
 
     ref_out = torch.add(ref_inp1, ref_inp2)
     with flag_gems.use_gems():

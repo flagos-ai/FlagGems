@@ -9,9 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _soft_margin_loss_elementwise_kernel(
-    x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
-):
+def _soft_margin_loss_elementwise_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -30,9 +28,7 @@ def _soft_margin_loss_elementwise_kernel(
 
 
 @triton.jit
-def _soft_margin_loss_sum_kernel(
-    x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
-):
+def _soft_margin_loss_sum_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -72,17 +68,11 @@ def _normalize_reduction(reduction):
 
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
     if not (input.is_cuda and target.is_cuda):
-        raise AssertionError(
-            "soft_margin_loss: input and target must be CUDA tensors for Triton kernel."
-        )
+        raise AssertionError("soft_margin_loss: input and target must be CUDA tensors for Triton kernel.")
     if input.device != target.device:
-        raise AssertionError(
-            "soft_margin_loss: input and target must be on the same device."
-        )
+        raise AssertionError("soft_margin_loss: input and target must be on the same device.")
     if input.numel() != target.numel():
-        raise AssertionError(
-            "soft_margin_loss: input and target must have the same number of elements."
-        )
+        raise AssertionError("soft_margin_loss: input and target must have the same number of elements.")
     if not input.is_contiguous():
         input = input.contiguous()
     if not target.is_contiguous():
@@ -103,9 +93,7 @@ def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"
             return out
         BLOCK_SIZE = 1024
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _soft_margin_loss_elementwise_kernel[grid](
-            input, target, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        _soft_margin_loss_elementwise_kernel[grid](input, target, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return out
     else:
         # reduction = 'sum' or 'mean' (1=mean, 2=sum)
@@ -114,15 +102,11 @@ def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"
             if red == 2:
                 return torch.zeros((), device=input.device, dtype=input.dtype)
             else:
-                return torch.full(
-                    (), float("nan"), device=input.device, dtype=input.dtype
-                )
+                return torch.full((), float("nan"), device=input.device, dtype=input.dtype)
         tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
         BLOCK_SIZE = 1024
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _soft_margin_loss_sum_kernel[grid](
-            input, target, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        _soft_margin_loss_sum_kernel[grid](input, target, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         if red == 2:
             # sum
             return tmp_sum.to(dtype=input.dtype)
@@ -154,26 +138,20 @@ def soft_margin_loss_out(
             raise AssertionError("soft_margin_loss_out: out must be a CUDA tensor.")
         if red == 0:
             if out.numel() != n_elements:
-                raise AssertionError(
-                    "soft_margin_loss_out: for reduction='none', out must match input shape."
-                )
+                raise AssertionError("soft_margin_loss_out: for reduction='none', out must match input shape.")
         else:
             if out.numel() != 1:
                 raise AssertionError(
                     "soft_margin_loss_out: for reduction='sum' or 'mean', out must be a scalar tensor."
                 )
         if out.device != input.device:
-            raise AssertionError(
-                "soft_margin_loss_out: out must be on the same device as input."
-            )
+            raise AssertionError("soft_margin_loss_out: out must be on the same device as input.")
 
     if red == 0:
         if n_elements > 0:
             BLOCK_SIZE = 1024
             grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-            _soft_margin_loss_elementwise_kernel[grid](
-                input, target, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-            )
+            _soft_margin_loss_elementwise_kernel[grid](input, target, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return out
     else:
         if n_elements == 0:
@@ -185,9 +163,7 @@ def soft_margin_loss_out(
         tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
         BLOCK_SIZE = 1024
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _soft_margin_loss_sum_kernel[grid](
-            input, target, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        _soft_margin_loss_sum_kernel[grid](input, target, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         if red == 2:
             out.fill_(tmp_sum.to(dtype=input.dtype))
         else:

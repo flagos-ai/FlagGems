@@ -68,15 +68,11 @@ def load_enable_config_from_yaml(yaml_path, key="include"):
     try:
         data = yaml.safe_load(yaml_path.read_text())
     except Exception as err:
-        warnings.warn(
-            f"load_enable_config_from_yaml: unexpected error reading {yaml_path}: {err}"
-        )
+        warnings.warn(f"load_enable_config_from_yaml: unexpected error reading {yaml_path}: {err}")
         return []
 
     if key not in ("include", "exclude"):
-        warnings.warn(
-            f"load_enable_config_from_yaml: key must be 'include' or 'exclude', got: {key}"
-        )
+        warnings.warn(f"load_enable_config_from_yaml: key must be 'include' or 'exclude', got: {key}")
         return []
 
     if data is None:
@@ -86,9 +82,7 @@ def load_enable_config_from_yaml(yaml_path, key="include"):
         operator_list = list(set(data.get(key, [])))
         return operator_list
 
-    warnings.warn(
-        f"load_enable_config_from_yaml: yaml {yaml_path} must be a mapping with 'include'/'exclude' lists"
-    )
+    warnings.warn(f"load_enable_config_from_yaml: yaml {yaml_path} must be a mapping with 'include'/'exclude' lists")
     return []
 
 
@@ -101,9 +95,7 @@ def get_default_enable_config(vendor_name=None, arch_name=None):
         if arch_name:
             candidates.append(vendor_dir / arch_name / "enable_configs.yaml")
         candidates.append(vendor_dir / "enable_configs.yaml")
-    candidates.append(
-        base_dir / "_nvidia" / "enable_configs.yaml"
-    )  # use nvidia as default
+    candidates.append(base_dir / "_nvidia" / "enable_configs.yaml")  # use nvidia as default
     return candidates
 
 
@@ -125,9 +117,7 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
     yaml_candidates = []
     # If set to "default" or None (for include type),
     # load from default YAML config files based on vendor and architecture
-    if user_setting_info == "default" or (
-        user_setting_type == "include" and user_setting_info is None
-    ):
+    if user_setting_info == "default" or (user_setting_type == "include" and user_setting_info is None):
         # Lazily infer vendor/arch if not provided.
         vendor_name = _runtime.device.vendor_name
         arch_event = _runtime.backend.BackendArchEvent()
@@ -145,14 +135,10 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
         if operator_list:
             return operator_list
         else:
-            warnings.warn(
-                f"resolve_user_setting: {user_setting_type} yaml not found: {yaml_path}"
-            )
+            warnings.warn(f"resolve_user_setting: {user_setting_type} yaml not found: {yaml_path}")
 
     # If no operators found in any YAML, warn and return empty list
-    warnings.warn(
-        f"resolve_user_setting: no {user_setting_type} ops found; returning empty list"
-    )
+    warnings.warn(f"resolve_user_setting: no {user_setting_type} ops found; returning empty list")
     return []
 
 

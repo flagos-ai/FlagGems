@@ -46,9 +46,7 @@ def test_perf_aten_unsqueeze():
     def unsqueeze_input_fn(shape, dtype, device):
         # Generate and yield inputs as required by the operator
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        for dim in range(
-            len(shape) + 1
-        ):  # Yielding all possible dimensions for unsqueeze
+        for dim in range(len(shape) + 1):  # Yielding all possible dimensions for unsqueeze
             yield inp, dim
 
     # Initialize benchmark

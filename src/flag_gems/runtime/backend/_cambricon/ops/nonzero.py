@@ -71,9 +71,7 @@ def nonzero(inp, *, as_tuple=False):
     prefix_sum = inp_bool.cumsum(axis=0)
     num_nonzeros = n_elements
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
-    grid = lambda meta: (
-        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-    )
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(inp.device):
         nonzero_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
 

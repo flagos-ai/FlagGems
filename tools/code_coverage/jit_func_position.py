@@ -51,21 +51,14 @@ class DecoratorFinder(ast.NodeVisitor):
             if hasattr(stmt, "lineno"):
                 end_line = max(
                     end_line,
-                    stmt.lineno
-                    + (
-                        stmt.end_lineno - stmt.lineno
-                        if hasattr(stmt, "end_lineno")
-                        else 0
-                    ),
+                    stmt.lineno + (stmt.end_lineno - stmt.lineno if hasattr(stmt, "end_lineno") else 0),
                 )
         return end_line
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a list of arguments.")
-    parser.add_argument(
-        "files", nargs="+", help="List of files or arguments to process"
-    )
+    parser.add_argument("files", nargs="+", help="List of files or arguments to process")
     args = parser.parse_args()
 
     for filename in args.files:
@@ -85,7 +78,5 @@ if __name__ == "__main__":
             print(filename)
             for item in finder.functions_with_decorator:
                 logging.debug(item)
-                logging.debug(
-                    f"{filename} {item['name']}  {item['start_line']}:{item['end_line']}"
-                )
+                logging.debug(f"{filename} {item['name']}  {item['start_line']}:{item['end_line']}")
                 print(f"--- {item['start_line']} : {item['end_line']}")

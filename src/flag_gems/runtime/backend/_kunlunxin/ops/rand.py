@@ -6,10 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
@@ -167,11 +164,7 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         if UNROLL <= 4:
-            rand_kernel_1[(grid_fn,)](
-                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
-            )
+            rand_kernel_1[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
         else:
-            rand_kernel_2[(grid_fn,)](
-                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
-            )
+            rand_kernel_2[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
     return out

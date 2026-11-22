@@ -6,12 +6,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    UPSAMPLE_SHAPES_1D,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES, UPSAMPLE_SHAPES_1D, gems_assert_close, to_reference
 
 random.seed(time.time() // 100)
 

@@ -5,10 +5,7 @@ import pytest
 import torch
 
 # Import your operator
-from flag_gems.fused.DSA.bin_topk import (
-    bucket_sort_topk,  # Replace with actual module name
-)
-from flag_gems.fused.DSA.bin_topk import HAS_TLE
+from flag_gems.fused.DSA.bin_topk import HAS_TLE, bucket_sort_topk  # Replace with actual module name
 
 
 def assert_set_similar(actual, expected, dtype, equal_nan=False):
@@ -43,9 +40,7 @@ def assert_set_similar(actual, expected, dtype, equal_nan=False):
         return
 
     # For floating point numbers, use standard comparison
-    torch.testing.assert_close(
-        actual, expected, atol=1e-2, rtol=1e-2, equal_nan=equal_nan
-    )
+    torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2, equal_nan=equal_nan)
 
 
 def init_seed(seed):
@@ -72,18 +67,14 @@ def make_topk_input(
     device: torch.device,
 ):
     init_seed(1234)
-    inputs = torch.randn(
-        (batch_size, seq_len), dtype=dtype, device=device
-    ).requires_grad_(False)
+    inputs = torch.randn((batch_size, seq_len), dtype=dtype, device=device).requires_grad_(False)
 
     # Create starts and ends (support variable length sequences)
     starts = torch.zeros(batch_size, dtype=torch.int32, device=device)
 
     # Simulate variable length sequences: each batch has different sequence length
     min_len = max(1, seq_len // 2)
-    ends = torch.randint(
-        min_len, seq_len + 1, (batch_size,), dtype=torch.int32, device=device
-    )
+    ends = torch.randint(min_len, seq_len + 1, (batch_size,), dtype=torch.int32, device=device)
 
     return inputs, starts, ends
 
@@ -121,17 +112,13 @@ def debug_topk_results(actual, expected, inputs, test_name=""):
         print(f"Batch {i}:")
         print(f"  Actual indices: {sorted(actual_set)[:m]}...")  # Only show first 10
         print(f"  Expected indices: {sorted(expected_set)[:m]}...")
-        print(
-            f"  Intersection: {len(intersection)}/{len(expected_set)} = {len(intersection) / len(expected_set):.4f}"
-        )
+        print(f"  Intersection: {len(intersection)}/{len(expected_set)} = {len(intersection) / len(expected_set):.4f}")
 
         # Check quality of actually selected values
         actual_values = inputs[i, actual[i]].cpu().numpy()
         expected_values = inputs[i, expected[i]].cpu().numpy()
 
-        print(
-            f"  Actual top values: {np.sort(actual_values)[-m:][::-1]}"
-        )  # Top 5 largest values
+        print(f"  Actual top values: {np.sort(actual_values)[-m:][::-1]}")  # Top 5 largest values
         print(f"  Expected top values: {np.sort(expected_values)[-m:][::-1]}")
 
 
@@ -156,9 +143,7 @@ def test_bucket_sort_topk_public_entrypoint_matches_torch_topk(starts_list, ends
     starts = torch.tensor(starts_list, dtype=torch.int32, device=device)
     ends = torch.tensor(ends_list, dtype=torch.int32, device=device)
 
-    ref_indices = reference_topk_implementation(
-        to_reference(inputs), to_reference(starts), to_reference(ends), topk
-    )
+    ref_indices = reference_topk_implementation(to_reference(inputs), to_reference(starts), to_reference(ends), topk)
     actual_indices = bucket_sort_topk(inputs, starts, ends, topk)
 
     assert actual_indices.shape == (batch_size, topk)
@@ -166,17 +151,13 @@ def test_bucket_sort_topk_public_entrypoint_matches_torch_topk(starts_list, ends
     assert_set_similar(actual_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skip("RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel")
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize("batch_size", [1, 4, 16])
 @pytest.mark.parametrize("seq_len", [256, 1024, 8192])
 @pytest.mark.parametrize("topk", [16, 64, 256])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_bucket_sort_topk_forward(
-    batch_size: int, seq_len: int, topk: int, dtype: torch.dtype
-):
+def test_bucket_sort_topk_forward(batch_size: int, seq_len: int, topk: int, dtype: torch.dtype):
     """Bucket sort topk forward propagation test"""
     if topk > seq_len:
         pytest.skip("topk cannot be larger than seq_len")
@@ -185,25 +166,19 @@ def test_bucket_sort_topk_forward(
     inputs, starts, ends = make_topk_input(batch_size, seq_len, dtype, device)
 
     # Reference implementation
-    ref_indices = reference_topk_implementation(
-        to_reference(inputs), to_reference(starts), to_reference(ends), topk
-    )
+    ref_indices = reference_topk_implementation(to_reference(inputs), to_reference(starts), to_reference(ends), topk)
 
     # Your operator implementation
     your_indices = bucket_sort_topk(inputs, starts, ends, topk)
 
     # Debug output
-    debug_topk_results(
-        your_indices, ref_indices, inputs, f"forward_b{batch_size}_s{seq_len}_k{topk}"
-    )
+    debug_topk_results(your_indices, ref_indices, inputs, f"forward_b{batch_size}_s{seq_len}_k{topk}")
 
     # Accuracy comparison - using custom topk comparison logic
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skip("RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel")
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
     "config",
@@ -219,9 +194,7 @@ def test_bucket_sort_topk_edge_cases(config):
     """Bucket sort topk edge case tests"""
     dtype = torch.float32
 
-    inputs, starts, ends = make_topk_input(
-        config["batch_size"], config["seq_len"], dtype, device
-    )
+    inputs, starts, ends = make_topk_input(config["batch_size"], config["seq_len"], dtype, device)
 
     # Reference implementation
     ref_indices = reference_topk_implementation(
@@ -236,9 +209,7 @@ def test_bucket_sort_topk_edge_cases(config):
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skip("RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel")
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
     "config",
@@ -257,9 +228,7 @@ def test_bucket_sort_topk_large_scale(config):
     """Bucket sort topk large-scale tests"""
     dtype = torch.float32
 
-    inputs, starts, ends = make_topk_input(
-        config["batch_size"], config["seq_len"], dtype, device
-    )
+    inputs, starts, ends = make_topk_input(config["batch_size"], config["seq_len"], dtype, device)
 
     # Reference implementation
     ref_indices = reference_topk_implementation(
@@ -274,9 +243,7 @@ def test_bucket_sort_topk_large_scale(config):
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skip("RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel")
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_variable_length():
     """Test variable length sequence processing"""
@@ -293,9 +260,7 @@ def test_bucket_sort_topk_variable_length():
     ends = torch.tensor([100, 500, 800, 1024], dtype=torch.int32, device=device)
 
     # Reference implementation
-    ref_indices = reference_topk_implementation(
-        to_reference(inputs), to_reference(starts), to_reference(ends), topk
-    )
+    ref_indices = reference_topk_implementation(to_reference(inputs), to_reference(starts), to_reference(ends), topk)
 
     # Your operator implementation
     your_indices = bucket_sort_topk(inputs, starts, ends, topk)
@@ -305,9 +270,7 @@ def test_bucket_sort_topk_variable_length():
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skip("RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel")
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_correctness():
     """Correctness test - using your original test logic"""

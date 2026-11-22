@@ -8,9 +8,7 @@ import torch
 import triton  # noqa: F401
 
 import flag_gems
-from flag_gems.experimental_ops.xlogy_ import (
-    xlogy__Scalar_Other as gems_xlogy__Scalar_Other,
-)
+from flag_gems.experimental_ops.xlogy_ import xlogy__Scalar_Other as gems_xlogy__Scalar_Other
 from flag_gems.experimental_ops.xlogy_ import xlogy__Tensor as gems_xlogy__Tensor
 
 # Add parent directory to path to import flag_gems

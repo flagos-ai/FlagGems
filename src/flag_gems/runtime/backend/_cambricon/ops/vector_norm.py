@@ -25,9 +25,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     if task_num % num_prog != 0:
         iter_num = iter_num + 1
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Out_ptr = Out + pid
         row_mask = pid < M
@@ -54,15 +52,10 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     reset_to_zero=["Out"],
 )
 @triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    },
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
 )
 @triton.jit
-def l2_norm_kernel_1(
-    X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def l2_norm_kernel_1(X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
 
@@ -107,9 +100,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     if task_num % num_prog != 0:
         iter_num = iter_num + 1
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Out_ptr = Out + pid
         row_mask = pid < M
@@ -135,15 +126,10 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    },
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
 )
 @triton.jit
-def max_norm_kernel_1(
-    X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def max_norm_kernel_1(X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
 
@@ -179,9 +165,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     if task_num % num_prog != 0:
         iter_num = iter_num + 1
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Out_ptr = Out + pid
         row_mask = pid < M
@@ -207,15 +191,10 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    },
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
 )
 @triton.jit
-def min_norm_kernel_1(
-    X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def min_norm_kernel_1(X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
 
@@ -250,9 +229,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     if task_num % num_prog != 0:
         iter_num = iter_num + 1
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Out_ptr = Out + pid
         row_mask = pid < M
@@ -278,15 +255,10 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     reset_to_zero=["Out"],
 )
 @triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    },
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
 )
 @triton.jit
-def l0_norm_kernel_1(
-    X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def l0_norm_kernel_1(X, Out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
 
@@ -319,9 +291,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     iter_num = tl.cdiv(task_num, num_prog)
 
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Out_ptr = Out + pid
         row_mask = pid < M
@@ -347,15 +317,10 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     reset_to_zero=["Out"],
 )
 @triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    },
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
 )
 @triton.jit(do_not_specialize=["ord"])
-def l1_norm_kernel_1(
-    X, Out, M, ord, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def l1_norm_kernel_1(X, Out, M, ord, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
 
@@ -409,9 +374,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             x = dim_compress(x, dim)
             M = x.numel()
 
-            grid = lambda meta: (
-                min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-            )
+            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
             out = torch.zeros(shape, dtype=torch.float, device=x.device)
             if ord == 2:
                 l2_norm_kernel_1[grid](x, out, M)

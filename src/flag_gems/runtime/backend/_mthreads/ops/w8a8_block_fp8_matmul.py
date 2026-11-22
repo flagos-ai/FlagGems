@@ -13,9 +13,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
-logger = logging.getLogger(
-    "flag_gems.runtime.backend._mthreads.ops.w8a8_block_fp8_matmul"
-)
+logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.w8a8_block_fp8_matmul")
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(
         os.path.dirname(__file__),
@@ -28,9 +26,7 @@ SQMMA_ON = False
 
 
 def is_supported_sqmma_layout(tensor):
-    return tensor.is_contiguous() or (
-        tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
-    )
+    return tensor.is_contiguous() or (tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0])
 
 
 def is_sqmma_compatible(a, b, output_dtype, n, k):
@@ -74,17 +70,17 @@ def matmul_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=(
+        runtime.ops_get_configs("w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else matmul_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config("w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -171,12 +167,8 @@ def sqmma_descriptor_pre_hook(nargs):
     block_k = nargs["BLOCK_K"]
     device = c.device
 
-    nargs["a_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(a, block_m, block_k, device)
-    )
-    nargs["b_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(b, block_k, block_n, device)
-    )
+    nargs["a_desc_ptr"].copy_(get_cached_tma_device_descriptor(a, block_m, block_k, device))
+    nargs["b_desc_ptr"].copy_(get_cached_tma_device_descriptor(b, block_k, block_n, device))
     nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
 
 
@@ -198,19 +190,21 @@ def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else sqmma_get_configs(),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general_tma",
+            pre_hook=sqmma_descriptor_pre_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else sqmma_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -291,16 +285,10 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
             mask=col_offset < N,
             other=0.0,
         )
-        acc += (
-            tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-            * a_s[:, None]
-            * b_s[None, :]
-        )
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False) * a_s[:, None] * b_s[None, :]
         offs_k += BLOCK_K
 
-    tl._experimental_descriptor_store(
-        c_desc_ptr, acc.to(c_store_dtype), [offs_am, offs_bn]
-    )
+    tl._experimental_descriptor_store(c_desc_ptr, acc.to(c_store_dtype), [offs_am, offs_bn])
 
 
 def general_w8a8_block_fp8_matmul(
@@ -321,9 +309,7 @@ def general_w8a8_block_fp8_matmul(
         N,
         K,
     )
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
 
     with torch_device_fn.device(a.device):
         w8a8_block_fp8_matmul_kernel[grid](

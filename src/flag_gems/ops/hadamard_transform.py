@@ -60,9 +60,7 @@ def _butterfly_stage_1d(x, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr):
 
 
 @triton.jit
-def _butterfly_stage_2d(
-    x, ROWS: tl.constexpr, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr
-):
+def _butterfly_stage_2d(x, ROWS: tl.constexpr, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr):
     """One butterfly stage on a 2D (ROWS, BLOCK_SIZE) tensor."""
     GRP: tl.constexpr = BLOCK_SIZE // (2 * STRIDE)
     if STRIDE == 1:
@@ -147,9 +145,7 @@ def _fht_kernel_256_4row_native(
     x2 = x2 * SCALE
     x3 = x3 * SCALE
 
-    tl.store(
-        OUT_ptr + row0 * stride_out_row + col_offs, x0, eviction_policy="evict_first"
-    )
+    tl.store(OUT_ptr + row0 * stride_out_row + col_offs, x0, eviction_policy="evict_first")
     tl.store(
         OUT_ptr + row1 * stride_out_row + col_offs,
         x1,
@@ -200,9 +196,7 @@ def _fht_kernel_256_1d_native(
     x = _butterfly_stage_1d(x, 256, 1)
 
     x = x * SCALE
-    tl.store(
-        OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first"
-    )
+    tl.store(OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first")
 
 
 # ============================================================
@@ -237,9 +231,7 @@ def _fht_kernel_512_1d_native(
     x = _butterfly_stage_1d(x, 512, 1)
 
     x = x * SCALE
-    tl.store(
-        OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first"
-    )
+    tl.store(OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first")
 
 
 # ============================================================
@@ -269,9 +261,7 @@ def _fht_kernel_1d_native(
         x = _butterfly_stage_1d(x, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev))
 
     x = x * SCALE
-    tl.store(
-        OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first"
-    )
+    tl.store(OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first")
 
 
 # ============================================================
@@ -309,9 +299,7 @@ def _fht_kernel_2d_native(
 
     # Reversed butterfly: stride N/2, N/4, ..., 2, 1
     for s_rev in tl.static_range(LOG_N):
-        x = _butterfly_stage_2d(
-            x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev)
-        )
+        x = _butterfly_stage_2d(x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev))
 
     x = x * SCALE
     tl.store(out_ptrs, x, mask=load_mask, eviction_policy="evict_first")
@@ -393,20 +381,14 @@ def _fht_kernel_2d(
     x = tl.load(in_ptrs, mask=load_mask, other=0.0).to(tl.float32)
 
     for s_rev in tl.static_range(LOG_N):
-        x = _butterfly_stage_2d(
-            x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev)
-        )
+        x = _butterfly_stage_2d(x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev))
 
     x = x * scale
 
     if INPUT_IS_FP16:
-        tl.store(
-            out_ptrs, x.to(tl.float16), mask=load_mask, eviction_policy="evict_first"
-        )
+        tl.store(out_ptrs, x.to(tl.float16), mask=load_mask, eviction_policy="evict_first")
     elif INPUT_IS_BF16:
-        tl.store(
-            out_ptrs, x.to(tl.bfloat16), mask=load_mask, eviction_policy="evict_first"
-        )
+        tl.store(out_ptrs, x.to(tl.bfloat16), mask=load_mask, eviction_policy="evict_first")
     else:
         tl.store(out_ptrs, x, mask=load_mask, eviction_policy="evict_first")
 
@@ -443,9 +425,7 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         stride_x = x_flat.stride(0)
         stride_out = n  # out is freshly allocated, always contiguous
 
-        _launch_kernel(
-            x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out
-        )
+        _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out)
 
         return out.reshape(shapes_og)
 
@@ -463,12 +443,8 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         x_flat = F.pad(x_flat, (0, 8 - dim_og % 8))
     dim = x_flat.shape[1]
 
-    assert (
-        dim % 8 == 0
-    ), "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
-    assert (
-        dim <= 65536
-    ), "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
+    assert dim % 8 == 0, "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
+    assert dim <= 65536, "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
 
     # For butterfly we need next power of 2
     log_n = math.ceil(math.log2(dim)) if dim > 1 else 1
@@ -482,9 +458,7 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     stride_x = x_flat.stride(0)
     stride_out = n
 
-    _launch_kernel(
-        x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out
-    )
+    _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out)
 
     # Trim padding back to original dim
     if n != dim_og:
@@ -492,9 +466,7 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     return out.reshape(shapes_og)
 
 
-def _launch_kernel(
-    x, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out
-):
+def _launch_kernel(x, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out):
     """Dispatch to the appropriate kernel. Separated for fast-path sharing."""
     # Dispatch strategy (v43):
     # - dim=256, fp16/bf16: 4-row ILP native (warps=2) — test 2-warp occupancy

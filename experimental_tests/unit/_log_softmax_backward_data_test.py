@@ -57,9 +57,7 @@ def test__log_softmax_backward_data_tensor(shape_dim, dtype):
     ref_grad_output = to_reference(grad_output)
     ref_output = to_reference(output)
 
-    ref_out = torch.ops.aten._log_softmax_backward_data(
-        ref_grad_output, ref_output, dim, dtype
-    )
+    ref_out = torch.ops.aten._log_softmax_backward_data(ref_grad_output, ref_output, dim, dtype)
 
     with flag_gems.use_gems():
         act_out = gems__log_softmax_backward_data(grad_output, output, dim, dtype)
@@ -83,14 +81,10 @@ def test__log_softmax_backward_data_out(shape_dim, dtype):
     ref_output = to_reference(output)
 
     ref_out_buf = torch.empty_like(ref_grad_output)
-    ref_out = torch.ops.aten._log_softmax_backward_data.out(
-        ref_grad_output, ref_output, dim, dtype, out=ref_out_buf
-    )
+    ref_out = torch.ops.aten._log_softmax_backward_data.out(ref_grad_output, ref_output, dim, dtype, out=ref_out_buf)
 
     act_out_buf = torch.empty_like(x)
     with flag_gems.use_gems():
-        act_out = gems__log_softmax_backward_data_out(
-            grad_output, output, dim, dtype, act_out_buf
-        )
+        act_out = gems__log_softmax_backward_data_out(grad_output, output, dim, dtype, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)

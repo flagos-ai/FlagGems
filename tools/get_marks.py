@@ -38,13 +38,9 @@ def get_decorators(source_code):
                     elif isinstance(decorator, ast.Call):
                         # Handle decorators with arguments like @deco(arg)
                         if isinstance(decorator.func, ast.Name):
-                            decorators_info[node.name].append(
-                                f"{decorator.func.id}(...)"
-                            )
+                            decorators_info[node.name].append(f"{decorator.func.id}(...)")
                         elif isinstance(decorator.func, ast.Attribute):
-                            full_name = (
-                                f"{decorator.func.value}.{decorator.func.attr}(...)"
-                            )
+                            full_name = f"{decorator.func.value}.{decorator.func.attr}(...)"
                             decorators_info[node.name].append(full_name)
 
     return decorators_info

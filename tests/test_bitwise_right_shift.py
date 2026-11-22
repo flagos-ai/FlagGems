@@ -21,9 +21,7 @@ BITWISE_SHAPES = [
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
 def test_bitwise_right_shift(shapes, dtype):
     shape_a, shape_b = shapes
-    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
-        flag_gems.device
-    )
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(flag_gems.device)
     res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_a = utils.to_reference(res_a)
     ref_b = utils.to_reference(res_b)
@@ -47,9 +45,7 @@ INPLACE_BITWISE_SHAPES = [
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
 def test_bitwise_right_shift_(shapes, dtype):
     shape_a, shape_b = shapes
-    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
-        flag_gems.device
-    )
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(flag_gems.device)
     res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_a = utils.to_reference(res_a.clone())
     ref_b = utils.to_reference(res_b)

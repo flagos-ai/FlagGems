@@ -64,13 +64,9 @@ def threshold_out(input: torch.Tensor, threshold, value, out: torch.Tensor):
     if input.device.type != "cuda" or out.device.type != "cuda":
         raise RuntimeError("This Triton implementation requires CUDA tensors.")
     if out.shape != input.shape:
-        raise RuntimeError(
-            f"out shape {out.shape} must match input shape {input.shape}"
-        )
+        raise RuntimeError(f"out shape {out.shape} must match input shape {input.shape}")
     if out.dtype != input.dtype:
-        raise RuntimeError(
-            f"out dtype {out.dtype} must match input dtype {input.dtype}"
-        )
+        raise RuntimeError(f"out dtype {out.dtype} must match input dtype {input.dtype}")
 
     x = input.contiguous()
     n_elements = x.numel()

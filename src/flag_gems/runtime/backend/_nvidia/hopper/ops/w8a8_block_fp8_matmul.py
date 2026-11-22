@@ -12,9 +12,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger(
-    "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul"
-)
+logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul")
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(
@@ -63,8 +61,7 @@ def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]
             return result
 
     logger.warning(
-        "Using default W8A8 Block FP8 kernel config. Performance might "
-        "be sub-optimal! Config file not found at %s",
+        "Using default W8A8 Block FP8 kernel config. Performance might " "be sub-optimal! Config file not found at %s",
         cfg_file,
     )
     return None
@@ -157,19 +154,21 @@ def matmul_tma_set_block_size_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general",
-        pre_hook=None,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=None),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general",
+            pre_hook=None,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else _get_placeholder_tuner_configs(pre_hook=None)
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config("w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -249,19 +248,21 @@ def w8a8_block_fp8_matmul_kernel_general(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_tma",
-        pre_hook=matmul_tma_set_block_size_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=matmul_tma_set_block_size_hook),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general_tma",
+            pre_hook=matmul_tma_set_block_size_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else _get_placeholder_tuner_configs(pre_hook=matmul_tma_set_block_size_hook)
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -355,19 +356,11 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
     use_flagtune = os.environ.get("USE_FLAGTUNE") == "1"
-    fixed_meta = (
-        None
-        if use_flagtune
-        else _get_fixed_matmul_meta(M, N, K, block_n=group_n, block_k=group_k)
-    )
+    fixed_meta = None if use_flagtune else _get_fixed_matmul_meta(M, N, K, block_n=group_n, block_k=group_k)
 
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    if hasattr(triton.tools.tensor_descriptor, "TensorDescriptor") and is_tma_compatible(a, b, N, K):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]

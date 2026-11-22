@@ -41,9 +41,7 @@ device = flag_gems.device
 @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
 @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
 @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
-def test_instance_norm(
-    shape, dtype, has_weight_bias, use_input_stats, has_running_stats
-):
+def test_instance_norm(shape, dtype, has_weight_bias, use_input_stats, has_running_stats):
     if use_input_stats is False and has_running_stats is False:
         return
 
@@ -107,12 +105,10 @@ def test_instance_norm(
     ref_grad = utils.to_reference(out_grad, True)
 
     if has_weight_bias:
-        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_in_grad, ref_weight_grad, ref_bias_grad = torch.autograd.grad(
             ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
         )
-        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-            res_out, (inp, weight, bias), out_grad
-        )
+        res_in_grad, res_weight_grad, res_bias_grad = torch.autograd.grad(res_out, (inp, weight, bias), out_grad)
     else:
         (ref_in_grad,) = torch.autograd.grad(ref_out, (ref_inp,), ref_grad)
         (res_in_grad,) = torch.autograd.grad(res_out, (inp,), out_grad)
@@ -124,9 +120,5 @@ def test_instance_norm(
         utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
 
         if has_weight_bias:
-            utils.gems_assert_close(
-                res_weight_grad, ref_weight_grad, dtype, reduce_dim=B * N
-            )
-            utils.gems_assert_close(
-                res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N
-            )
+            utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B * N)
+            utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)

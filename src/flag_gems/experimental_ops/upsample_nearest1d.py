@@ -39,9 +39,7 @@ def _upsample_nearest1d_kernel(
     j_from_output = tl.minimum((offs_w * W_IN) // W_OUT, W_IN - 1)
 
     # Using explicit scale factor when provided: j = floor(offs_w / scale) = floor(offs_w * inv_scale)
-    j_from_scale = tl.minimum(
-        (offs_w.to(tl.float32) * inv_scale).to(tl.int32), W_IN - 1
-    )
+    j_from_scale = tl.minimum((offs_w.to(tl.float32) * inv_scale).to(tl.int32), W_IN - 1)
 
     cond = use_scale != 0
     j = tl.where(cond, j_from_scale, j_from_output)
@@ -56,9 +54,7 @@ def _upsample_nearest1d_kernel(
     tl.store(out_ptr + out_idx, val, mask=mask)
 
 
-def _upsample_nearest1d_impl(
-    input: torch.Tensor, output_size=None, scales=None, out: torch.Tensor = None
-):
+def _upsample_nearest1d_impl(input: torch.Tensor, output_size=None, scales=None, out: torch.Tensor = None):
     if not input.is_cuda:
         raise ValueError("Input tensor must be on CUDA device.")
     if input.dim() != 3:
@@ -70,9 +66,7 @@ def _upsample_nearest1d_impl(
 
     if output_size is not None:
         if not isinstance(output_size, (list, tuple)) or len(output_size) != 1:
-            raise ValueError(
-                "output_size must be a sequence of length 1 for 1D upsampling."
-            )
+            raise ValueError("output_size must be a sequence of length 1 for 1D upsampling.")
         W_out = int(output_size[0])
     else:
         # derive from scales
@@ -100,9 +94,7 @@ def _upsample_nearest1d_impl(
         if not out.is_cuda:
             raise ValueError("Output tensor must be on CUDA device.")
         if list(out.shape) != [N, C, W_out]:
-            raise ValueError(
-                f"Output tensor has incorrect shape, expected ({N}, {C}, {W_out})."
-            )
+            raise ValueError(f"Output tensor has incorrect shape, expected ({N}, {C}, {W_out}).")
         if out.dtype != input.dtype:
             raise ValueError("Output tensor must have the same dtype as input.")
 
@@ -134,20 +126,14 @@ def _upsample_nearest1d_impl(
 
 
 def upsample_nearest1d(input: torch.Tensor, output_size=None, scales=None):
-    return _upsample_nearest1d_impl(
-        input, output_size=output_size, scales=scales, out=None
-    )
+    return _upsample_nearest1d_impl(input, output_size=output_size, scales=scales, out=None)
 
 
 def upsample_nearest1d_vec(input: torch.Tensor, output_size=None, scales=None):
     # scales expected to be a sequence; pass through as-is
-    return _upsample_nearest1d_impl(
-        input, output_size=output_size, scales=scales, out=None
-    )
+    return _upsample_nearest1d_impl(input, output_size=output_size, scales=scales, out=None)
 
 
-def upsample_nearest1d_out(
-    input: torch.Tensor, output_size=None, scales=None, *, out: torch.Tensor
-):
+def upsample_nearest1d_out(input: torch.Tensor, output_size=None, scales=None, *, out: torch.Tensor):
     _upsample_nearest1d_impl(input, output_size=output_size, scales=scales, out=out)
     return out

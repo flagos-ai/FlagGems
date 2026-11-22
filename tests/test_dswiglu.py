@@ -13,9 +13,7 @@ except ImportError:
     TE_AVAILABLE = False
 
 
-def generate_input(
-    shape: tuple[int, ...], dtype: torch.dtype, device: torch.device
-) -> torch.Tensor:
+def generate_input(shape: tuple[int, ...], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     return torch.randn(shape, dtype=dtype, device=device).contiguous()
 
 

@@ -331,8 +331,7 @@ def test_hash_changes_when_dependency_modified():
     modified_hash = main_kernel.kernel_hash
 
     assert original_hash != modified_hash, (
-        f"Expected different hashes when sub-function changes, "
-        f"but got same hash: {original_hash}"
+        f"Expected different hashes when sub-function changes, " f"but got same hash: {original_hash}"
     )
     original_hash = modified_hash
 
@@ -353,8 +352,7 @@ def test_hash_changes_when_dependency_modified():
 
     modified_hash = main_kernel.kernel_hash
     assert original_hash != modified_hash, (
-        f"Expected different hashes when sub-function changes, "
-        f"but got same hash: {original_hash}"
+        f"Expected different hashes when sub-function changes, " f"but got same hash: {original_hash}"
     )
 
 
@@ -369,12 +367,8 @@ def test_hash_changes_when_dependency_modified():
 def test_libcache_vllm_signal_scenario():
     def child_process():
         cache = libcache["test_vllm_operator"]
-        cache[(128, 256, "torch.float32")] = triton.Config(
-            {"TILE_SIZE": 64}, num_warps=4
-        )
-        cache[(256, 512, "torch.float32")] = triton.Config(
-            {"TILE_SIZE": 128}, num_warps=8
-        )
+        cache[(128, 256, "torch.float32")] = triton.Config({"TILE_SIZE": 64}, num_warps=4)
+        cache[(256, 512, "torch.float32")] = triton.Config({"TILE_SIZE": 128}, num_warps=8)
         while True:
             time.sleep(0.1)
 
@@ -404,9 +398,7 @@ def test_libcache_vllm_signal_scenario():
     if flag_gems.vendor_name != "cambricon":
         # TODO: (cambricon) Sqlite DO NOT approve that data can be written into
         # db file correctly, expecially in multiprocessing circumstances.
-        assert (
-            cache_saved
-        ), f"Test documented current behavior: cache_saved={cache_saved}"
+        assert cache_saved, f"Test documented current behavior: cache_saved={cache_saved}"
 
     if process.is_alive():
         os.kill(process.pid, signal.SIGKILL)
@@ -414,8 +406,7 @@ def test_libcache_vllm_signal_scenario():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads"
-    or True,  # TODO: skip currently due to libcache table rename
+    flag_gems.vendor_name == "mthreads" or True,  # TODO: skip currently due to libcache table rename
     reason=" Cannot re-initialize MUSA in forked subprocess",
 )
 def test_libcache_concurrent_write_on_signal():
@@ -429,9 +420,7 @@ def test_libcache_concurrent_write_on_signal():
 
     def child_process_main(process_id):
         cache = libcache[TABLE_NAME]
-        cache[(f"key_from_proc_{process_id}",)] = triton.Config(
-            {}, num_warps=process_id + 1
-        )
+        cache[(f"key_from_proc_{process_id}",)] = triton.Config({}, num_warps=process_id + 1)
         while True:
             time.sleep(0.1)
 
@@ -449,9 +438,7 @@ def test_libcache_concurrent_write_on_signal():
             pass
 
     ctx = multiprocessing.get_context("fork")
-    processes = [
-        ctx.Process(target=child_process_main, args=(i,)) for i in range(NUM_PROCESSES)
-    ]
+    processes = [ctx.Process(target=child_process_main, args=(i,)) for i in range(NUM_PROCESSES)]
     for p in processes:
         p.start()
 
@@ -474,8 +461,7 @@ def test_libcache_concurrent_write_on_signal():
                     pass  # Table might not exist if saving failed
 
         assert total_entries == NUM_PROCESSES, (
-            f"Expected {NUM_PROCESSES} entries from concurrent processes, "
-            f"but found {total_entries}."
+            f"Expected {NUM_PROCESSES} entries from concurrent processes, " f"but found {total_entries}."
         )
 
     finally:

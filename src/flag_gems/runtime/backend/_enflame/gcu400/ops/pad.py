@@ -106,16 +106,11 @@ def generate_functional_padding_wrapper(
         with code.indent():
             code.writeline("dst_shape[i] += pad_before[i] + pad_after[i]")
 
-        code.writeline(
-            ("out0 = torch.empty(dst_shape, device=in0.device, dtype=in0.dtype)")
-        )
+        code.writeline(("out0 = torch.empty(dst_shape, device=in0.device, dtype=in0.dtype)"))
 
         # call destination_passing_func
         output_names: str = output_ref_for_wrapper()
-        call_str = (
-            f"{output_names} = {destination_passing_func_name}"
-            f"({parameter_ref_for_wrapper()})"
-        )
+        call_str = f"{output_names} = {destination_passing_func_name}" f"({parameter_ref_for_wrapper()})"
         code.writeline(call_str)
 
         return_str = "return out0"
@@ -280,48 +275,34 @@ def generate_pad_kernel(
         code.writeline("if_pad_false_mask = tl.zeros((BLOCK_SIZE, ), dtype=tl.int32)")
         code.writeline("if_pad_true_mask = tl.full((BLOCK_SIZE, ), 1, dtype=tl.int32)")
 
-        code.writeline(
-            "cond = (dst_index_0 >= valid_dim0_start and dst_index_0 < valid_dim0_end) "
-        )
+        code.writeline("cond = (dst_index_0 >= valid_dim0_start and dst_index_0 < valid_dim0_end) ")
 
         for i in range(1, rank):
-            code.writeline(
-                f"cond &= (dst_index_{i} >= valid_dim{i}_start and dst_index_{i} < valid_dim{i}_end)"
-            )
+            code.writeline(f"cond &= (dst_index_{i} >= valid_dim{i}_start and dst_index_{i} < valid_dim{i}_end)")
 
-        code.writeline(
-            "if_pad = tl.where(cond, if_pad_false_mask, if_pad_true_mask).to(tl.int1)"
-        )
+        code.writeline("if_pad = tl.where(cond, if_pad_false_mask, if_pad_true_mask).to(tl.int1)")
 
         for i in range(rank):
             code.writeline(f"src_index_{i} = dst_index_{i} - valid_dim{i}_start ")
 
         for i in range(rank):
-            code.writeline(
-                f"src_index_{i} = tl.where(src_index_{i} < 0, 0, src_index_{i})"
-            )
+            code.writeline(f"src_index_{i} = tl.where(src_index_{i} < 0, 0, src_index_{i})")
 
         code.newline()
         code.writeline("if IS_REFLECT: ")
         with code.indent():
             for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
-                        valid_dim{i}_start - dst_index_{i}, src_index_{i})"""
-                )
+                code.writeline(f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
+                        valid_dim{i}_start - dst_index_{i}, src_index_{i})""")
             for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
-                    (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"""
-                )
+                code.writeline(f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
+                    (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})""")
 
         code.newline()
         code.writeline("if IS_REPLICATE: ")
         with code.indent():
             for i in range(rank):
-                code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, 0, src_index_{i})"
-                )
+                code.writeline(f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, 0, src_index_{i})")
             for i in range(rank):
                 code.writeline(
                     f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, x_shape{i} - 1, src_index_{i})"
@@ -331,15 +312,11 @@ def generate_pad_kernel(
         code.writeline("if IS_CIRCULAR: ")
         with code.indent():
             for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
-                        dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"""
-                )
+                code.writeline(f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
+                        dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})""")
             for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
-                        dst_index_{i} - valid_dim{i}_end, src_index_{i})"""
-                )
+                code.writeline(f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
+                        dst_index_{i} - valid_dim{i}_end, src_index_{i})""")
 
         code.newline()
 
@@ -353,14 +330,10 @@ def generate_pad_kernel(
 
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
-            code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=(not if_pad) and load_cond, other=value)"
-            )
+            code.writeline("x_val = tl.load(in0_ptr + src_offset, mask=(not if_pad) and load_cond, other=value)")
         code.writeline("else: ")
         with code.indent():
-            code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)"
-            )
+            code.writeline("x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)")
         code.writeline("tl.store(out0_ptr + offset, x_val, mask=offset < out_elem_cnt)")
 
     return code
@@ -378,12 +351,8 @@ def generate_code(
 
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
-    code = generate_functional_padding_wrapper(
-        wrapper_name, destination_passing_func_name, code
-    )
-    code = generate_destination_passing_padding_wrapper(
-        rank, destination_passing_func_name, kernel_name, code
-    )
+    code = generate_functional_padding_wrapper(wrapper_name, destination_passing_func_name, code)
+    code = generate_destination_passing_padding_wrapper(rank, destination_passing_func_name, kernel_name, code)
     code = generate_pad_kernel(rank, kernel_name, code)
     return code
 
@@ -451,9 +420,7 @@ def pad(self, pad, mode="constant", value=None):
 
     if mode == "reflect":
         ndim //= 2
-        assert (
-            len(pad) == 2 * ndim
-        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+        assert len(pad) == 2 * ndim, f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
 
         for i in range(ndim):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
@@ -468,15 +435,11 @@ def pad(self, pad, mode="constant", value=None):
 
     if mode == "circular":
         ndim //= 2
-        assert (
-            len(pad) == 2 * ndim
-        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+        assert len(pad) == 2 * ndim, f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
         for i in range(ndim):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
             input_size = self.shape[ndim - i - 1]
-            assert (
-                pad_l <= input_size and pad_r <= input_size
-            ), "Padding value causes wrapping around more than once."
+            assert pad_l <= input_size and pad_r <= input_size, "Padding value causes wrapping around more than once."
 
     out = _pad_func(self, pad, mode, float(value))
     return out

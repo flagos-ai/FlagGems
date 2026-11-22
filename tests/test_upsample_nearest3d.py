@@ -12,9 +12,7 @@ random.seed(time.time() // 100)
 
 
 @pytest.mark.upsample_nearest3d
-@pytest.mark.parametrize(
-    "scale", [(2, 2, 2), (1.5, 2.1, 3.7), (0.5, 0.5, 0.5), (0.3, 1.3, 0.7)]
-)
+@pytest.mark.parametrize("scale", [(2, 2, 2), (1.5, 2.1, 3.7), (0.5, 0.5, 0.5), (0.3, 1.3, 0.7)])
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES_3D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_upsample_nearest3d(dtype, shape, scale):

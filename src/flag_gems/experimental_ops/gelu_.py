@@ -93,9 +93,7 @@ def gelu_(*args, **kwargs):
         elif approx_str in ("none", "false"):
             use_tanh = False
         else:
-            raise ValueError(
-                f"Unsupported approximate mode: {approx}. Use 'none' or 'tanh'."
-            )
+            raise ValueError(f"Unsupported approximate mode: {approx}. Use 'none' or 'tanh'.")
 
     if not x.is_cuda:
         raise AssertionError("Input tensor must be on CUDA device for Triton kernel.")

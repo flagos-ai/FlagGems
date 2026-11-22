@@ -92,9 +92,7 @@ def max_pool2d_forward_kernel(
             w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
             input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=min_val
-            )
+            current_val = tl.load(input_base_ptr + input_offset, mask=in_mask, other=min_val)
             current_idx = h_in * in_w + w_in
 
             is_new_max = current_val > max_val_acc
@@ -105,12 +103,8 @@ def max_pool2d_forward_kernel(
     indices_base_ptr = indices_ptr + pid_nc * out_h * out_w
     out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-    indices_block_ptr = (
-        indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
+    output_block_ptr = out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
+    indices_block_ptr = indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
 
     out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
@@ -173,28 +167,20 @@ def max_pool2d_backward_kernel(
             numerator_h = h_in_offsets[:, None] + padding_h - kh * dilation_h
             numerator_w = w_in_offsets[None, :] + padding_w - kw * dilation_w
 
-            valid_map_mask = (numerator_h % stride_h == 0) & (
-                numerator_w % stride_w == 0
-            )
+            valid_map_mask = (numerator_h % stride_h == 0) & (numerator_w % stride_w == 0)
             h_out = numerator_h // stride_h
             w_out = numerator_w // stride_w
-            out_bounds_mask = (
-                (h_out >= 0) & (h_out < out_h) & (w_out >= 0) & (w_out < out_w)
-            )
+            out_bounds_mask = (h_out >= 0) & (h_out < out_h) & (w_out >= 0) & (w_out < out_w)
             load_mask = valid_map_mask & out_bounds_mask
 
             safe_h_out = tl.where(load_mask, h_out, 0)
             safe_w_out = tl.where(load_mask, w_out, 0)
             out_offsets = safe_h_out * out_stride_h + safe_w_out
 
-            indices_block = tl.load(
-                indices_base_ptr + out_offsets, mask=load_mask, other=-1
-            )
+            indices_block = tl.load(indices_base_ptr + out_offsets, mask=load_mask, other=-1)
             match_mask = indices_block == current_input_flat_idx
 
-            grad_block = tl.load(
-                grad_output_base_ptr + out_offsets, mask=match_mask, other=0.0
-            )
+            grad_block = tl.load(grad_output_base_ptr + out_offsets, mask=match_mask, other=0.0)
             grad_acc += grad_block
 
     grad_input_base_ptr = grad_input_ptr + nc_idx * in_h * in_w
@@ -219,17 +205,11 @@ def _parse_pool_params(kernel_size, stride, padding, dilation):
     dilation_h, dilation_w = _parse_param(dilation, "dilation", default=(1, 1))
 
     if stride_h <= 0 or stride_w <= 0:
-        raise ValueError(
-            f"stride must be positive, but got stride=({stride_h}, {stride_w})"
-        )
+        raise ValueError(f"stride must be positive, but got stride=({stride_h}, {stride_w})")
     if padding_h < 0 or padding_w < 0:
-        raise ValueError(
-            f"padding must be non-negative, but got padding=({padding_h}, {padding_w})"
-        )
+        raise ValueError(f"padding must be non-negative, but got padding=({padding_h}, {padding_w})")
     if dilation_h <= 0 or dilation_w <= 0:
-        raise ValueError(
-            f"dilation must be positive, but got dilation=({dilation_h}, {dilation_w})"
-        )
+        raise ValueError(f"dilation must be positive, but got dilation=({dilation_h}, {dilation_w})")
 
     return (
         kernel_h,
@@ -267,19 +247,11 @@ def max_pool2d_with_indices(
     ) = params
 
     in_n, in_c, in_h, in_w = input.shape
-    out_h = max_pool2d_output_size(
-        in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode
-    )
-    out_w = max_pool2d_output_size(
-        in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode
-    )
+    out_h = max_pool2d_output_size(in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode)
+    out_w = max_pool2d_output_size(in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode)
 
-    output = torch.empty(
-        (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
-    )
-    indices = torch.empty(
-        (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int32
-    )
+    output = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype)
+    indices = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int32)
 
     if output.numel() == 0:
         return output, indices

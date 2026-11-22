@@ -43,9 +43,7 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     if num_classes == -1:
         num_classes = int(tensor.max().item()) + 1
 
-    out = torch.empty(
-        (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
-    )
+    out = torch.empty((*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64)
     BLOCK_N = triton.next_power_of_2(num_classes)
     BLOCK_N = min(BLOCK_N, 128)
     BLOCK_M = 32

@@ -40,9 +40,7 @@ def masked_select(inp, mask):
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
 
-    assert broadcastable(
-        inp_shape, mask_shape
-    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    assert broadcastable(inp_shape, mask_shape), "The shapes of the `mask` and the `input` tensor must be broadcastable"
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()

@@ -186,8 +186,7 @@ def weight_norm_bwd_kernel_last(
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_grad_value = g_value * (
-            w_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+            w_value / (norm_value + eps) - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
         )
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
@@ -252,8 +251,7 @@ def weight_norm_bwd_kernel_first(
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_grad_value = g_value * (
-            w_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+            w_value / (norm_value + eps) - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
         )
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
@@ -272,17 +270,13 @@ def weight_norm_interface(v, g, dim=0):
         N = math.prod(v.shape[1:])
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
         with torch_device_fn.device(v.device):
-            weight_norm_kernel_first[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-            )
+            weight_norm_kernel_first[grid](output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny)
     elif dim == v.ndim - 1:
         M = math.prod(v.shape[:-1])
         N = v.shape[dim]
         grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
         with torch_device_fn.device(v.device):
-            weight_norm_kernel_last[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-            )
+            weight_norm_kernel_last[grid](output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny)
     return output, norm
 
 

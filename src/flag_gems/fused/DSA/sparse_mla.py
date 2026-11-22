@@ -102,15 +102,11 @@ def triton_sparse_mla_fwd(
         mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)
 
         if tl.max(mask_ids, axis=0) > 0:
-            kv_ptr = (
-                kv_base + offs_d[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
-            )
+            kv_ptr = kv_base + offs_d[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
             kv_msk = mask_d[:, None] & mask_ids[None, :]
             kv_blk = tl.load(kv_ptr, kv_msk, other=0.0).to(tl.float16)  # [DP, BK]
 
-            tkv_ptr = (
-                tkv_base + offs_td[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
-            )
+            tkv_ptr = tkv_base + offs_td[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
             tkv_msk = mask_td[:, None] & mask_ids[None, :]
             tkv_blk = tl.load(tkv_ptr, tkv_msk, other=0.0).to(tl.float16)  # [TDP, BK]
 
@@ -128,9 +124,7 @@ def triton_sparse_mla_fwd(
             # alpha = tl.math.exp(max_log - new_max).to(tl.float16)
             sum_exp = sum_exp * alpha + sum_qk
             acc = acc * alpha[:, None]
-            acc = tl.dot(
-                exp_qk, kv_blk.trans(), acc, out_dtype=tl.float16
-            )  # [BH, BK] @ [BK, DP] = [BH, DP]
+            acc = tl.dot(exp_qk, kv_blk.trans(), acc, out_dtype=tl.float16)  # [BH, BK] @ [BK, DP] = [BH, DP]
 
             max_log = new_max.to(tl.float16)
 
@@ -149,9 +143,7 @@ def triton_sparse_mla_fwd(
     tl.store(l_ptr, fin_log.to(q_blk.dtype), l_msk)
 
 
-def triton_sparse_mla_fwd_interface(
-    q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512
-):
+def triton_sparse_mla_fwd_interface(q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512):
     logger.debug("GEMS SPARSE_MLA_FWD_INTERFACE")
     is_causal = True
     assert return_p_sum is False, "This kernel file is for fwd only"

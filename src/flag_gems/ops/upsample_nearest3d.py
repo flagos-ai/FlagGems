@@ -59,23 +59,17 @@ def upsample_nearest3d_kernel(
     if SAME_D:
         id = od
     else:
-        id = tl.minimum(
-            tl.math.floor(od.to(tl.float32) * reciprocal_scale_d).to(tl.int32), ID - 1
-        )
+        id = tl.minimum(tl.math.floor(od.to(tl.float32) * reciprocal_scale_d).to(tl.int32), ID - 1)
 
     if SAME_H:
         ih = oh
     else:
-        ih = tl.minimum(
-            tl.math.floor(oh.to(tl.float32) * reciprocal_scale_h).to(tl.int32), IH - 1
-        )
+        ih = tl.minimum(tl.math.floor(oh.to(tl.float32) * reciprocal_scale_h).to(tl.int32), IH - 1)
 
     if SAME_W:
         iw = ow
     else:
-        iw = tl.minimum(
-            tl.math.floor(ow.to(tl.float32) * reciprocal_scale_w).to(tl.int32), IW - 1
-        )
+        iw = tl.minimum(tl.math.floor(ow.to(tl.float32) * reciprocal_scale_w).to(tl.int32), IW - 1)
 
     offset_o = nc_iter * (OD * OH * OW) + idx
     offset_i = nc_iter * (ID * IH * IW) + (id * IH * IW + ih * IW + iw)
@@ -109,12 +103,7 @@ def upsample_nearest3d(
     def calculate_scale(in_sz, out_sz, s):
         if s is not None:
             return float(torch.tensor(1.0 / s, dtype=torch.float32).item())
-        return float(
-            (
-                torch.tensor(in_sz, dtype=torch.float32)
-                / torch.tensor(out_sz, dtype=torch.float32)
-            ).item()
-        )
+        return float((torch.tensor(in_sz, dtype=torch.float32) / torch.tensor(out_sz, dtype=torch.float32)).item())
 
     reciprocal_scale_d = calculate_scale(ID, OD, scales_d)
     reciprocal_scale_h = calculate_scale(IH, OH, scales_h)

@@ -44,9 +44,7 @@ def aminmax_kernel_1(
 
 @libentry()
 @triton.jit
-def aminmax_kernel_2(
-    min_inp, max_inp, min_out, max_out, mid_size, BLOCK_MID: tl.constexpr
-):
+def aminmax_kernel_2(min_inp, max_inp, min_out, max_out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     min_ptrs = min_inp + offset
     max_ptrs = max_inp + offset
@@ -141,9 +139,7 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
                 M,
                 block_size,
             )
-            aminmax_kernel_2[(1, 1)](
-                min_mid, max_mid, min_out, max_out, mid_size, block_mid
-            )
+            aminmax_kernel_2[(1, 1)](min_mid, max_mid, min_out, max_out, mid_size, block_mid)
         return min_out, max_out
     else:
         if isinstance(dim, int):

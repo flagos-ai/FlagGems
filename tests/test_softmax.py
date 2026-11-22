@@ -63,14 +63,8 @@ def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
     ref_grad = utils.to_reference(res_grad, True)
     ref_out = utils.to_reference(res_out, True)
 
-    ref_in_grad = torch.ops.aten._softmax_backward_data(
-        ref_grad, ref_out, dim, ref_grad.dtype
-    )
+    ref_in_grad = torch.ops.aten._softmax_backward_data(ref_grad, ref_out, dim, ref_grad.dtype)
     with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten._softmax_backward_data(
-            res_grad, res_out, dim, dtype
-        )
+        res_in_grad = torch.ops.aten._softmax_backward_data(res_grad, res_out, dim, dtype)
 
-    utils.gems_assert_close(
-        res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True
-    )
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True)

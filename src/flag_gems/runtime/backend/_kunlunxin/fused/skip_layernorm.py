@@ -141,9 +141,7 @@ class SkipLayerNorm(torch.autograd.Function):
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = builtins.min(
-            64 * 64, triton.next_power_of_2(N)
-        )  # core_num * buffer_size_limit
+        BLOCK_SIZE = builtins.min(64 * 64, triton.next_power_of_2(N))  # core_num * buffer_size_limit
         x = x.contiguous()
         residual = residual.contiguous()
         weight = weight.contiguous()
@@ -170,9 +168,7 @@ class SkipLayerNorm(torch.autograd.Function):
                     isCloseUnrollControl=True,
                 )
             else:
-                skip_layer_norm_kernel[M,](
-                    y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
-                )
+                skip_layer_norm_kernel[M,](y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE)
         return y
 
         BLOCK_SIZE = triton.next_power_of_2(N)

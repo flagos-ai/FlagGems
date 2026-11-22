@@ -13,9 +13,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 MinOut = namedtuple("min", ["values", "indices"])
 
@@ -123,9 +121,7 @@ def min_kernel(
         local_argmin = local_argmin.to(tl.int32)
         update = local_min < min_values
         min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(
-            update, (start_n + local_argmin).to(tl.int32), argmin_values
-        )
+        argmin_values = tl.where(update, (start_n + local_argmin).to(tl.int32), argmin_values)
 
     out_value_ptrs = out_value + rows
     out_index_ptrs = out_index + rows
@@ -149,12 +145,8 @@ def min(inp):
     num_warps_mid = builtins.min(8, max(1, block_mid // 128))
 
     with torch_device_fn.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](
-            inp, mid, M, block_size, num_warps=num_warps_block, num_stages=2
-        )
-        min_kernel_2[(1, 1, 1)](
-            mid, out, mid_size, block_mid, num_warps=num_warps_mid, num_stages=2
-        )
+        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, num_warps=num_warps_block, num_stages=2)
+        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, num_warps=num_warps_mid, num_stages=2)
     return out
 
 

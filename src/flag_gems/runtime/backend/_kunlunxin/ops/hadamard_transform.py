@@ -162,9 +162,7 @@ class HadamardTransformFn(torch.autograd.Function):
     def backward(ctx, grad_output):
         # Hadamard matrix is symmetric: backward = forward with same scale
         return (
-            _hadamard_transform_fwd(
-                grad_output.contiguous(), ctx._hadamard_transform_scale
-            ),
+            _hadamard_transform_fwd(grad_output.contiguous(), ctx._hadamard_transform_scale),
             None,
         )
 

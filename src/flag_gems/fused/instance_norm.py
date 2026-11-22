@@ -102,9 +102,7 @@ def instance_norm_persistent_kernel_multiline(
     n_mask = n_offsets < N
     mask = m_mask[:, None] & n_mask
 
-    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
-        tl.float32
-    )
+    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(tl.float32)
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -210,9 +208,7 @@ def instance_norm_loop_kernel(
 
     for start_n in range(TILE_N, N, TILE_N):
         n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
-            tl.float32
-        )
+        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(tl.float32)
         out = w * (x - m) * rstd + b
         tl.store(out_ptr + pid * N + n_offsets, out)
 
@@ -291,15 +287,9 @@ def update_running_stats_kernel(
         bid = b * BLOCK_BATCH_SIZE + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
         row_mask = bid < B
         mask = row_mask and col_mask[None, :]
-        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
-            tl.float32
-        )
-        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
-            tl.float32
-        )
-        var = (
-            (1 / (rstd * rstd) + eps) * N / (N - 1)
-        )  # NOTE: use unbiased var to update running_var
+        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(tl.float32)
+        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(tl.float32)
+        var = (1 / (rstd * rstd) + eps) * N / (N - 1)  # NOTE: use unbiased var to update running_var
 
         new_mean += tl.sum(mean, axis=0)
         new_var += tl.sum(var, axis=0)
@@ -464,18 +454,14 @@ class InstanceNorm(torch.autograd.Function):
 
         has_running_stats = running_mean is not None
         if has_running_stats:
-            assert (
-                N > 1
-            ), f"Expected more than 1 spatial element when training, got input size {x.shape}"
+            assert N > 1, f"Expected more than 1 spatial element when training, got input size {x.shape}"
             assert (
                 running_mean is not None and running_var is not None
             ), "running_mean and running_var should not both be None"
             assert (
                 running_mean.shape == running_var.shape and running_mean.shape[0] == C
             ), f"running_mean and running_var should have shape as {[C,]}"
-            assert (
-                running_mean.dtype == running_var.dtype
-            ), "running_mean and running_var should have the same dtype"
+            assert running_mean.dtype == running_var.dtype, "running_mean and running_var should have the same dtype"
         if not use_input_stats:
             assert (
                 has_running_stats
@@ -588,7 +574,7 @@ class InstanceNorm(torch.autograd.Function):
     def backward(ctx, out_grad):
         logger.debug("GEMS INSTANCENORM BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
+        x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
         C = ctx.C
@@ -614,9 +600,7 @@ class InstanceNorm(torch.autograd.Function):
                 grid = lambda meta: (C, 1, 1)
                 weight_grad = torch.empty_like(weight)
                 bias_grad = torch.empty_like(weight)
-                weight_bias_backward_kernel[grid](
-                    out_grad, x, mean, rstd, weight_grad, bias_grad, M, N, B, C
-                )
+                weight_bias_backward_kernel[grid](out_grad, x, mean, rstd, weight_grad, bias_grad, M, N, B, C)
             else:
                 weight_grad = None
                 bias_grad = None
@@ -650,6 +634,4 @@ def instance_norm(
         output tensor of shape :math:`(N, C, *)`
     """
 
-    return InstanceNorm.apply(
-        input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps
-    )
+    return InstanceNorm.apply(input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps)

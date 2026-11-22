@@ -50,9 +50,7 @@ def clamp_tensor_(A, mini=None, maxi=None):
         return clamp_func_tensor(A, mini, maxi, out0=A)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def clamp_func(x, mini, maxi):
     return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))

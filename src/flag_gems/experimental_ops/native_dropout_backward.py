@@ -25,12 +25,8 @@ def _native_dropout_backward_kernel(
     tl.store(out_ptr + offsets, out, mask=in_bounds)
 
 
-def _launch_native_dropout_backward(
-    grad_output: torch.Tensor, mask: torch.Tensor, scale: float, out: torch.Tensor
-):
-    assert (
-        grad_output.is_cuda and mask.is_cuda and out.is_cuda
-    ), "All tensors must be CUDA tensors"
+def _launch_native_dropout_backward(grad_output: torch.Tensor, mask: torch.Tensor, scale: float, out: torch.Tensor):
+    assert grad_output.is_cuda and mask.is_cuda and out.is_cuda, "All tensors must be CUDA tensors"
     assert (
         grad_output.numel() == mask.numel() == out.numel()
     ), "grad_output, mask, and out must have the same number of elements"
@@ -40,9 +36,7 @@ def _launch_native_dropout_backward(
         torch.float32,
     ), "Supported dtypes: float16, bfloat16, float32"
     assert out.dtype == grad_output.dtype, "Output dtype must match grad_output dtype"
-    assert (
-        grad_output.device == mask.device == out.device
-    ), "All tensors must be on the same device"
+    assert grad_output.device == mask.device == out.device, "All tensors must be on the same device"
 
     go = grad_output.contiguous()
     m = mask.contiguous()
@@ -54,18 +48,14 @@ def _launch_native_dropout_backward(
     n_elements = go.numel()
     BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    _native_dropout_backward_kernel[grid](
-        go, m, out_contig, n_elements, float(scale), BLOCK_SIZE=BLOCK_SIZE
-    )
+    _native_dropout_backward_kernel[grid](go, m, out_contig, n_elements, float(scale), BLOCK_SIZE=BLOCK_SIZE)
 
     if out_contig.data_ptr() != out.data_ptr():
         out.copy_(out_contig)
     return out
 
 
-def native_dropout_backward(
-    grad_output: torch.Tensor, mask: torch.Tensor, scale: float
-):
+def native_dropout_backward(grad_output: torch.Tensor, mask: torch.Tensor, scale: float):
     """
     Wrapper for aten::native_dropout_backward
     Computes grad_input = grad_output * mask.to(grad_output.dtype) * scale
@@ -74,9 +64,7 @@ def native_dropout_backward(
     return _launch_native_dropout_backward(grad_output, mask, scale, out)
 
 
-def native_dropout_backward_out(
-    grad_output: torch.Tensor, mask: torch.Tensor, scale: float, out: torch.Tensor
-):
+def native_dropout_backward_out(grad_output: torch.Tensor, mask: torch.Tensor, scale: float, out: torch.Tensor):
     """
     Wrapper for aten::native_dropout_backward.out
     Writes result into 'out'

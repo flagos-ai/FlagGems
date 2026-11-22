@@ -20,9 +20,7 @@ def _paged_mqa_logits_metadata_kernel(
     mask = offsets < batch_size
 
     # 2. Load effective context lengths from global memory to SRAM
-    ctx_lens = tl.load(
-        context_lens_ptr + offsets * context_lens_stride, mask=mask, other=0
-    )
+    ctx_lens = tl.load(context_lens_ptr + offsets * context_lens_stride, mask=mask, other=0)
 
     # 3. Compute num_segs and mask out-of-bounds
     num_segs = (ctx_lens + split_kv - 1) // split_kv
@@ -55,9 +53,7 @@ def _paged_mqa_logits_metadata_kernel(
     tl.store(schedule_metadata_ptr + out_idx + 1, kv_split_idx)
 
 
-def get_paged_mqa_logits_metadata(
-    context_lens: torch.Tensor, block_size: int, num_sms: int
-) -> torch.Tensor:
+def get_paged_mqa_logits_metadata(context_lens: torch.Tensor, block_size: int, num_sms: int) -> torch.Tensor:
     SPLIT_KV = 256
     device = context_lens.device
 

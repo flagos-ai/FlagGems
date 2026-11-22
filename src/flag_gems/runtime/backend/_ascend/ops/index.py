@@ -31,12 +31,8 @@ def index_kernel_func(
             for loop_idx in range(0, loop_num):
                 inner_offset = loop_idx * MAX_DATA_SIZE + tl.arange(0, MAX_DATA_SIZE)
                 mask = inner_offset < stride
-                cur_value = tl.load(
-                    input_ptr + in_start_index + inner_offset, mask=mask
-                )
-                tl.store(
-                    out_ptr + out_start_offset + inner_offset, cur_value, mask=mask
-                )
+                cur_value = tl.load(input_ptr + in_start_index + inner_offset, mask=mask)
+                tl.store(out_ptr + out_start_offset + inner_offset, cur_value, mask=mask)
 
 
 def index_wrapper(input, indices, out):

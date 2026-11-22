@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.special_xlog1py import (  # noqa: E402
-    special_xlog1py as gems_special_xlog1py,
-)
-from flag_gems.experimental_ops.special_xlog1py import (  # noqa: E402
-    special_xlog1py_out as gems_special_xlog1py_out,
-)
+from flag_gems.experimental_ops.special_xlog1py import special_xlog1py as gems_special_xlog1py  # noqa: E402
+from flag_gems.experimental_ops.special_xlog1py import special_xlog1py_out as gems_special_xlog1py_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -115,9 +111,7 @@ def test_special_xlog1py_self_scalar_out(shape, dtype, self_scalar):
     with flag_gems.use_gems():
         act_other = other.clone()
         act_out = torch.empty_like(act_other)
-        torch.ops.aten.special_xlog1py.self_scalar_out(
-            self_scalar, act_other, out=act_out
-        )
+        torch.ops.aten.special_xlog1py.self_scalar_out(self_scalar, act_other, out=act_out)
     gems_assert_close(act_out, ref_out, dtype=dtype, equal_nan=False)
 
 
@@ -133,7 +127,5 @@ def test_special_xlog1py_other_scalar_out(shape, dtype, other_scalar):
     with flag_gems.use_gems():
         act_self = self.clone()
         act_out = torch.empty_like(act_self)
-        torch.ops.aten.special_xlog1py.other_scalar_out(
-            act_self, other_scalar, out=act_out
-        )
+        torch.ops.aten.special_xlog1py.other_scalar_out(act_self, other_scalar, out=act_out)
     gems_assert_close(act_out, ref_out, dtype=dtype, equal_nan=False)

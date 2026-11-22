@@ -25,12 +25,7 @@ def i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     t = x_f32 / 3.75
     y = t * t
     p_small = 1.0 + y * (
-        3.5156229
-        + y
-        * (
-            3.0899424
-            + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))
-        )
+        3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813))))
     )
 
     # Large region: |x| > 3.75
@@ -43,15 +38,7 @@ def i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
             + yb
             * (
                 -0.00157565
-                + yb
-                * (
-                    0.00916281
-                    + yb
-                    * (
-                        -0.02057706
-                        + yb * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))
-                    )
-                )
+                + yb * (0.00916281 + yb * (-0.02057706 + yb * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))))
             )
         )
     )
@@ -68,9 +55,7 @@ def i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise ValueError(f"Input and output must be {flag_gems.device} tensors")
-    assert (
-        out.numel() == x.numel()
-    ), "Input and output must have the same number of elements"
+    assert out.numel() == x.numel(), "Input and output must have the same number of elements"
     assert out.device == x.device, "Input and output must be on the same device"
 
     x_in = x
@@ -114,14 +99,10 @@ def i0(x: torch.Tensor):
 def i0_out(x: torch.Tensor, out: torch.Tensor):
     logger.debug("GEMS I0_OUT")
     if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
-        raise ValueError(
-            f"i0_out: input and output tensors must be on {flag_gems.device} device"
-        )
+        raise ValueError(f"i0_out: input and output tensors must be on {flag_gems.device} device")
     if not out.is_floating_point():
         raise TypeError("i0_out: output tensor must be a floating point type")
     if x.numel() != out.numel():
-        raise ValueError(
-            "i0_out: input and output must have the same number of elements"
-        )
+        raise ValueError("i0_out: input and output must have the same number of elements")
     _launch_i0(out, x)
     return out

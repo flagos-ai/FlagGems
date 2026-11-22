@@ -36,15 +36,9 @@ def geglu_kernel(
 
     mask = (offs_m[:, None] < M) & (offs_h[None, :] < H)
 
-    input_a_ptr = (
-        input_ptr + offs_m[:, None] * stride_in_m + offs_h[None, :] * stride_in_h
-    )
-    input_b_ptr = (
-        input_ptr + offs_m[:, None] * stride_in_m + (offs_h[None, :] + H) * stride_in_h
-    )
-    output_ptr = (
-        output_ptr + offs_m[:, None] * stride_out_m + offs_h[None, :] * stride_out_h
-    )
+    input_a_ptr = input_ptr + offs_m[:, None] * stride_in_m + offs_h[None, :] * stride_in_h
+    input_b_ptr = input_ptr + offs_m[:, None] * stride_in_m + (offs_h[None, :] + H) * stride_in_h
+    output_ptr = output_ptr + offs_m[:, None] * stride_out_m + offs_h[None, :] * stride_out_h
 
     x_a = tl.load(input_a_ptr, mask=mask, other=0.0).to(tl.float32)
     x_b = tl.load(input_b_ptr, mask=mask, other=0.0).to(tl.float32)
@@ -79,27 +73,11 @@ def dgeglu_kernel(
 
     mask = (offs_m[:, None] < M) & (offs_h[None, :] < H)
 
-    grad_out_ptr = (
-        grad_out_ptr
-        + offs_m[:, None] * stride_grad_out_m
-        + offs_h[None, :] * stride_grad_out_h
-    )
-    input_a_ptr = (
-        input_ptr + offs_m[:, None] * stride_in_m + offs_h[None, :] * stride_in_h
-    )
-    input_b_ptr = (
-        input_ptr + offs_m[:, None] * stride_in_m + (offs_h[None, :] + H) * stride_in_h
-    )
-    grad_a_ptr = (
-        grad_in_ptr
-        + offs_m[:, None] * stride_grad_in_m
-        + offs_h[None, :] * stride_grad_in_h
-    )
-    grad_b_ptr = (
-        grad_in_ptr
-        + offs_m[:, None] * stride_grad_in_m
-        + (offs_h[None, :] + H) * stride_grad_in_h
-    )
+    grad_out_ptr = grad_out_ptr + offs_m[:, None] * stride_grad_out_m + offs_h[None, :] * stride_grad_out_h
+    input_a_ptr = input_ptr + offs_m[:, None] * stride_in_m + offs_h[None, :] * stride_in_h
+    input_b_ptr = input_ptr + offs_m[:, None] * stride_in_m + (offs_h[None, :] + H) * stride_in_h
+    grad_a_ptr = grad_in_ptr + offs_m[:, None] * stride_grad_in_m + offs_h[None, :] * stride_grad_in_h
+    grad_b_ptr = grad_in_ptr + offs_m[:, None] * stride_grad_in_m + (offs_h[None, :] + H) * stride_grad_in_h
 
     grad_out = tl.load(grad_out_ptr, mask=mask, other=0.0).to(tl.float32)
     x_a = tl.load(input_a_ptr, mask=mask, other=0.0).to(tl.float32)
@@ -110,9 +88,7 @@ def dgeglu_kernel(
 
     # dgelu/dx
     sech2 = 1 - pow(tanh_out, 2)
-    dgelu = 0.5 * (1 + tanh_out) + 0.5 * x_a * sech2 * 0.79788456 * (
-        1 + 3 * 0.044715 * pow(x_a, 2)
-    )
+    dgelu = 0.5 * (1 + tanh_out) + 0.5 * x_a * sech2 * 0.79788456 * (1 + 3 * 0.044715 * pow(x_a, 2))
 
     grad_a = grad_out * x_b * dgelu
     grad_b = grad_out * gelu_out

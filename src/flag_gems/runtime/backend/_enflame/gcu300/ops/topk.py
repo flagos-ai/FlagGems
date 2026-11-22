@@ -97,9 +97,7 @@ def topk_stage1_kernel(
             cols = tl.arange(0, CHUNK_SIZE)
             mask = (chunk_offset + cols) < N
 
-            mask_val = _get_finfo_val(
-                x_ptr_cur.dtype.element_ty, return_max=not DESCENDING
-            )
+            mask_val = _get_finfo_val(x_ptr_cur.dtype.element_ty, return_max=not DESCENDING)
             x_val = tl.load(x_ptr_cur + cols, mask=mask, other=mask_val).to(tl.float32)
             for k_idx in range(k):
                 if DESCENDING:
@@ -150,12 +148,8 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     left = core.reshape(left, x.shape)
     right = core.reshape(right, x.shape)
 
-    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(
-        ids.dtype
-    )
-    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(
-        ids.dtype
-    )
+    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(ids.dtype)
+    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(ids.dtype)
     left_idx = core.reshape(left_idx, ids.shape)
     right_idx = core.reshape(right_idx, ids.shape)
 
@@ -198,9 +192,7 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
 
 @triton.jit
-def _bitonic_merge(
-    x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr
-):
+def _bitonic_merge(x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr):
     """
     order_type 0 == ascending
     order_type 1 == descending
@@ -215,9 +207,7 @@ def _bitonic_merge(
     # a stride of 2) at this stage
     if order == 2:
         shape: core.constexpr = [n_outer * 2 ** (n_dims - 1 - stage), 2, 2**stage]
-        flip = core.reshape(
-            core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape
-        )
+        flip = core.reshape(core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape)
     else:
         flip = order
     # perform `stage` rounds of `compare-and-swap`
@@ -262,21 +252,13 @@ def topk_stage2_kernel(
             cols = tl.arange(0, BLOCK_SIZE)
             mask = cols < N
 
-            mask_val = _get_finfo_val(
-                chunk_x.dtype.element_ty, return_max=not DESCENDING
-            )
+            mask_val = _get_finfo_val(chunk_x.dtype.element_ty, return_max=not DESCENDING)
             mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
-            chunk_x_val = tl.load(chunk_x_cur + cols, mask=mask, other=mask_val).to(
-                tl.float32
-            )
-            chunk_index_val = tl.load(
-                chunk_index_cur + cols, mask=mask, other=mask_index_val
-            ).to(tl.int32)
+            chunk_x_val = tl.load(chunk_x_cur + cols, mask=mask, other=mask_val).to(tl.float32)
+            chunk_index_val = tl.load(chunk_index_cur + cols, mask=mask, other=mask_index_val).to(tl.int32)
 
-            sorted_chunk_x, sorted_chunk_index = argsort(
-                chunk_x_val, chunk_index_val, 0, descending=DESCENDING
-            )
+            sorted_chunk_x, sorted_chunk_index = argsort(chunk_x_val, chunk_index_val, 0, descending=DESCENDING)
             tl.store(y_ptr_cur + cols, sorted_chunk_x, mask=cols < k)
             tl.store(index_ptr_cur + cols, sorted_chunk_index, mask=cols < k)
 
@@ -316,9 +298,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
     stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
-    stage1_out_idx = torch.empty(
-        batch_size * chunk_num * k, device=x.device, dtype=torch.int32
-    )
+    stage1_out_idx = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=torch.int32)
 
     out_shape = x.shape[:-1] + (k,)
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)

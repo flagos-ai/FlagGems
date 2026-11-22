@@ -7,11 +7,7 @@ import torch
 import flag_gems
 import flag_gems.fused as fused
 from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import (
-    GenericBenchmark,
-    GenericBenchmarkExcluse1D,
-    binary_input_fn,
-)
+from benchmark.performance_utils import GenericBenchmark, GenericBenchmarkExcluse1D, binary_input_fn
 
 from .performance_utils import Benchmark, SkipVersion, vendor_name
 
@@ -153,12 +149,8 @@ def test_perf_apply_rotary_pos_emb():
 
     def rope_input_fn(shape, dtype, device):
         seq_len = shape[0]
-        q = torch.randn(
-            (batch_size, seq_len, q_heads, head_dim), dtype=dtype, device=device
-        )
-        k = torch.randn(
-            (batch_size, seq_len, k_heads, head_dim), dtype=dtype, device=device
-        )
+        q = torch.randn((batch_size, seq_len, q_heads, head_dim), dtype=dtype, device=device)
+        k = torch.randn((batch_size, seq_len, k_heads, head_dim), dtype=dtype, device=device)
         cos, sin = get_rope_cos_sin(seq_len, head_dim, dtype, device=device)
         yield q, k, cos, sin
 
@@ -201,13 +193,9 @@ class TopKSoftmaxBenchmark(Benchmark):
         gating_output = torch.randn(num_tokens, num_experts, device=device, dtype=dtype)
 
         for renormalize in (False, True):
-            topk_weights = torch.empty(
-                num_tokens, k, device=device, dtype=torch.float32
-            )
+            topk_weights = torch.empty(num_tokens, k, device=device, dtype=torch.float32)
             topk_indices = torch.empty(num_tokens, k, device=device, dtype=torch.int32)
-            token_expert_indices = torch.empty(
-                num_tokens, k, device=device, dtype=torch.int32
-            )
+            token_expert_indices = torch.empty(num_tokens, k, device=device, dtype=torch.int32)
 
             yield (
                 topk_weights,

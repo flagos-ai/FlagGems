@@ -11,9 +11,7 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"])
 @triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d"))
 @triton.jit
 def upsample_nearest2d_kernel(

@@ -12,9 +12,7 @@ def _init_vllm():
     try:
         from vllm._custom_ops import apply_repetition_penalties as fn
 
-        t, m = torch.randn(2, 1024, device="cuda"), torch.zeros(
-            2, 1024, dtype=torch.bool, device="cuda"
-        )
+        t, m = torch.randn(2, 1024, device="cuda"), torch.zeros(2, 1024, dtype=torch.bool, device="cuda")
         fn(t, m, m, torch.full((2,), 1.2, device="cuda"))
         return fn, True
     except (ImportError, RuntimeError):
@@ -22,9 +20,7 @@ def _init_vllm():
         def fallback(logits, pm, om, pens):
             for i in range(logits.shape[0]):
                 m = pm[i] | om[i]
-                logits[i][m] = torch.where(
-                    logits[i][m] > 0, logits[i][m] / pens[i], logits[i][m] * pens[i]
-                )
+                logits[i][m] = torch.where(logits[i][m] > 0, logits[i][m] / pens[i], logits[i][m] * pens[i])
 
         return fallback, True
 
@@ -47,9 +43,7 @@ _REP_PENALTY_CFG = {
 
 
 @pytest.mark.apply_repetition_penalties
-@pytest.mark.skipif(
-    not _VLLM_OK or not torch.cuda.is_available(), reason="need VLLM+CUDA"
-)
+@pytest.mark.skipif(not _VLLM_OK or not torch.cuda.is_available(), reason="need VLLM+CUDA")
 @pytest.mark.parametrize("shape", _REP_PENALTY_CFG["shapes"])
 @pytest.mark.parametrize("penalty", _REP_PENALTY_CFG["penalties"])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -74,9 +68,7 @@ def test_apply_repetition_penalty(shape, penalty, dtype, mask_mode):
     ref = utils.to_reference(logits_vllm, True).to(dtype)
 
     with flag_gems.use_gems():
-        flag_gems.apply_repetition_penalties(
-            logits, prompt_mask, output_mask, penalties
-        )
+        flag_gems.apply_repetition_penalties(logits, prompt_mask, output_mask, penalties)
     res = utils.to_reference(logits, True).to(dtype)
 
     utils.gems_assert_close(res, ref, dtype)
@@ -88,6 +80,4 @@ def test_apply_repetition_penalty(shape, penalty, dtype, mask_mode):
             utils.to_reference(logits, True), utils.to_reference(logits_ori, True)
         ), "In-place not working"
     elif mask_mode == "empty":
-        utils.gems_assert_close(
-            res, utils.to_reference(logits_ori, True).to(dtype), dtype
-        )
+        utils.gems_assert_close(res, utils.to_reference(logits_ori, True).to(dtype), dtype)

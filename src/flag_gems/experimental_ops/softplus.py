@@ -36,9 +36,7 @@ def _softplus_launch(x: torch.Tensor, beta: float, threshold: float, out: torch.
     assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
     assert x.is_contiguous(), "Input tensor must be contiguous"
     assert out.is_contiguous(), "Output tensor must be contiguous"
-    assert (
-        x.numel() == out.numel()
-    ), "Input and output must have the same number of elements"
+    assert x.numel() == out.numel(), "Input and output must have the same number of elements"
     assert x.dtype in (
         torch.float16,
         torch.bfloat16,
@@ -48,9 +46,7 @@ def _softplus_launch(x: torch.Tensor, beta: float, threshold: float, out: torch.
 
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    softplus_kernel[grid](
-        x, out, n_elements, float(beta), float(threshold), BLOCK_SIZE=1024
-    )
+    softplus_kernel[grid](x, out, n_elements, float(beta), float(threshold), BLOCK_SIZE=1024)
     return out
 
 
@@ -98,12 +94,7 @@ def softplus_out(*args, **kwargs):
     # Ensure contiguous buffers for kernel execution
     x_c = x.contiguous() if not x.is_contiguous() else x
     out_c_needs_copyback = False
-    if (
-        (not out.is_contiguous())
-        or (out.shape != x.shape)
-        or (out.dtype != x.dtype)
-        or (out.device != x.device)
-    ):
+    if (not out.is_contiguous()) or (out.shape != x.shape) or (out.dtype != x.dtype) or (out.device != x.device):
         out_c = torch.empty_like(x_c)
         out_c_needs_copyback = True
     else:

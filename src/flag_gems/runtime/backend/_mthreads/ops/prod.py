@@ -10,9 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @triton.jit
@@ -45,8 +43,7 @@ def _prune_reduction_configs(configs, named_args, **meta):
     filtered = [
         cfg
         for cfg in configs
-        if min_block_m <= cfg.kwargs["BLOCK_M"] <= max_block_m
-        and cfg.kwargs["BLOCK_N"] <= max(256, n_cap)
+        if min_block_m <= cfg.kwargs["BLOCK_M"] <= max_block_m and cfg.kwargs["BLOCK_N"] <= max(256, n_cap)
     ]
     return filtered or configs
 
@@ -276,22 +273,16 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     if n == 64 and stride_reduce == 1 and stride_outer == n:
         grid_64 = (triton.cdiv(m, 8),)
         with torch_device_fn.device(inp.device):
-            prod_kernel_dim_64[grid_64](
-                inp, out_flat, m, inner, stride_outer, BLOCK_M=8, num_warps=2
-            )
+            prod_kernel_dim_64[grid_64](inp, out_flat, m, inner, stride_outer, BLOCK_M=8, num_warps=2)
         return _reshape_output(out_flat, shape, dim, keepdim)
 
     key = (m, n, str(dtype), str(out_flat.dtype))
     config = prod_kernel_dim.cache.get(key, None)
     if m * n >= 64 * 1024 * 1024 and config is None:
         if dtype in (torch.float16, torch.bfloat16):
-            config = triton.Config(
-                {"BLOCK_M": 64, "BLOCK_N": 256}, num_warps=8, num_stages=2
-            )
+            config = triton.Config({"BLOCK_M": 64, "BLOCK_N": 256}, num_warps=8, num_stages=2)
         else:
-            config = triton.Config(
-                {"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=1
-            )
+            config = triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=1)
         prod_kernel_dim.cache[key] = config
 
     if config is not None:
@@ -334,9 +325,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
         return _reshape_output(out_flat, shape, dim, keepdim)
 
     if n <= 64:
-        prod_kernel_dim.cache[key] = triton.Config(
-            {"BLOCK_M": 8, "BLOCK_N": 64}, num_warps=2, num_stages=1
-        )
+        prod_kernel_dim.cache[key] = triton.Config({"BLOCK_M": 8, "BLOCK_N": 64}, num_warps=2, num_stages=1)
 
     grid = lambda meta: (triton.cdiv(m, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):

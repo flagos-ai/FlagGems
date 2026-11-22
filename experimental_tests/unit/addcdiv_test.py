@@ -79,9 +79,7 @@ def test_addcdiv_out(shape, dtype, value):
     ref_b = to_reference(b)
     ref_out_buf = torch.empty_like(ref_x)
 
-    ref_out = torch.ops.aten.addcdiv.out(
-        ref_x, ref_a, ref_b, value=value, out=ref_out_buf
-    )
+    ref_out = torch.ops.aten.addcdiv.out(ref_x, ref_a, ref_b, value=value, out=ref_out_buf)
 
     act_out_buf = torch.empty_like(x)
     with flag_gems.use_gems():

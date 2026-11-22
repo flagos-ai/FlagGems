@@ -7,9 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 def conv2d_output_size(
@@ -108,13 +106,8 @@ def conv2d_forward_kernel(
     # [in_n, groups, in_c, input_height, input_width] and [groups, out_c, in_c, weight_height, weight_width]
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
-    input_pointer += (
-        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
-    )[:, None]
-    weight_pointer += (
-        weight_n_stride * output_c_offset
-        + weight_n_stride * pid_group * out_per_group_c
-    )[None, :]
+    input_pointer += (input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c)[:, None]
+    weight_pointer += (weight_n_stride * output_c_offset + weight_n_stride * pid_group * out_per_group_c)[None, :]
 
     accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
@@ -125,14 +118,8 @@ def conv2d_forward_kernel(
         w = hw % weight_width
 
         input_c_offset = c + tl.arange(0, BLOCK_CI)
-        input_height_offset = (
-            h * dilation_height
-            - padding_height
-            + stride_height * output_height_point_value
-        )
-        input_width_offset = (
-            w * dilation_width - padding_width + stride_width * output_width_point_value
-        )
+        input_height_offset = h * dilation_height - padding_height + stride_height * output_height_point_value
+        input_width_offset = w * dilation_width - padding_width + stride_width * output_width_point_value
 
         curr_input_pointer = (
             input_pointer
@@ -155,17 +142,13 @@ def conv2d_forward_kernel(
             & (0 <= input_width_offset)[:, None]
             & (input_width_offset < input_width)[:, None]
         )
-        weight_mask = (input_c_offset < weight_c)[:, None] & (
-            output_c_offset < out_per_group_c
-        )[None, :]
+        weight_mask = (input_c_offset < weight_c)[:, None] & (output_c_offset < out_per_group_c)[None, :]
 
         input_block = tl.load(curr_input_pointer, mask=input_mask)
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
-    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
-        None, :
-    ]
+    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[None, :]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
     bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
     accum += bias
@@ -258,23 +241,19 @@ def conv2d_backward_kernel_weight(
 
     # caculate init pointer info of tensors
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
-    out_grad_pointer += (output_c_offset * output_c_stride)[None, :] + (
-        pid_groups[None] * output_c_stride * out_c
-    )[:, None]
-
-    weight_pointer += (
-        pid_groups * weight_n_stride * out_c + output_c_offset * weight_n_stride
-    )[None, :] + (
-        ci_point_value * weight_c_stride
-        + weight_height_point_value * weight_height_stride
-        + weight_width_point_value * weight_width_stride
-    )[
+    out_grad_pointer += (output_c_offset * output_c_stride)[None, :] + (pid_groups[None] * output_c_stride * out_c)[
         :, None
     ]
 
-    input_pointer += (ci_point_value * input_c_stride[None])[:, None] + (
-        pid_groups[None] * input_c_stride * input_c
-    )[None, :]
+    weight_pointer += (pid_groups * weight_n_stride * out_c + output_c_offset * weight_n_stride)[None, :] + (
+        ci_point_value * weight_c_stride
+        + weight_height_point_value * weight_height_stride
+        + weight_width_point_value * weight_width_stride
+    )[:, None]
+
+    input_pointer += (ci_point_value * input_c_stride[None])[:, None] + (pid_groups[None] * input_c_stride * input_c)[
+        None, :
+    ]
 
     # calculate the values of the input based on the width and height of the output by looping
     accum = tl.zeros((BLOCK_CI_HK_WK, BLOCK_CO), dtype=tl.float32)
@@ -286,29 +265,15 @@ def conv2d_backward_kernel_weight(
                 # caculate input pointer to [cin*kh*kw, *] out_grad pointer to [*, out_c], N*hout*wout as reduce dim
                 curr_out_grad_pointer = (
                     out_grad_pointer
-                    + (
-                        output_n_offset * output_n_stride
-                        + h * output_height_stride
-                        + w * output_width_stride
-                    )[:, None]
+                    + (output_n_offset * output_n_stride + h * output_height_stride + w * output_width_stride)[:, None]
                 )
-                out_grad_mask = (output_n_offset < in_n)[:, None] & (
-                    output_c_offset < out_c
-                )[None, :]
+                out_grad_mask = (output_n_offset < in_n)[:, None] & (output_c_offset < out_c)[None, :]
 
                 curr_out_grad = tl.load(curr_out_grad_pointer, mask=out_grad_mask)
 
-                input_height_offset = (
-                    weight_height_point_value * dilation_height
-                    - padding_height
-                    + stride_height * h
-                )
+                input_height_offset = weight_height_point_value * dilation_height - padding_height + stride_height * h
 
-                input_width_offset = (
-                    weight_width_point_value * dilation_width
-                    - padding_width
-                    + stride_width * w
-                )
+                input_width_offset = weight_width_point_value * dilation_width - padding_width + stride_width * w
 
                 curr_input_pointer = (
                     input_pointer
@@ -342,9 +307,7 @@ class Conv2d(torch.autograd.Function):
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
         logger.debug("GEMS_MTHREADS CONV2D")
         assert weight.ndim == 4, "Weights must be 4D, received shape {weight.shape}"
-        assert (
-            bias is None or bias.ndim == 1
-        ), "Bias must be 1D, received shape {bias.shape}"
+        assert bias is None or bias.ndim == 1, "Bias must be 1D, received shape {bias.shape}"
 
         assert (
             input.shape[1] == groups * weight.shape[1]
@@ -370,12 +333,8 @@ class Conv2d(torch.autograd.Function):
 
         in_n, _, input_height, input_width = input.shape
         out_c, weight_c, weight_height, weight_width = weight.shape
-        out_height = conv2d_output_size(
-            input_height, weight_height, stride_height, padding_height, dilation_height
-        )
-        out_width = conv2d_output_size(
-            input_width, weight_width, stride_width, padding_width, dilation_width
-        )
+        out_height = conv2d_output_size(input_height, weight_height, stride_height, padding_height, dilation_height)
+        out_width = conv2d_output_size(input_width, weight_width, stride_width, padding_width, dilation_width)
 
         output_dtype = input.dtype
         output = torch.empty(
@@ -441,7 +400,7 @@ class Conv2d(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logger.debug("GEMS_MTHREADS CONV2D VJP")
-        (weight, input, bias) = ctx.saved_tensors
+        weight, input, bias = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
         in_n, input_height, input_width = ctx.input_info
@@ -460,19 +419,13 @@ class Conv2d(torch.autograd.Function):
         revert_weight = torch.flip(revert_weight, dims=[2, 3]).contiguous()
 
         if groups != 1:
-            revert_weight = revert_weight.reshape(
-                groups, out_c, weight_c, weight_height, weight_width
-            )
+            revert_weight = revert_weight.reshape(groups, out_c, weight_c, weight_height, weight_width)
             revert_weight = revert_weight.transpose(1, 2)
-            revert_weight = revert_weight.reshape(
-                groups * weight_c, out_c, weight_height, weight_width
-            ).contiguous()
+            revert_weight = revert_weight.reshape(groups * weight_c, out_c, weight_height, weight_width).contiguous()
         else:
             revert_weight = revert_weight.transpose(0, 1).contiguous()
 
-        new_out_height = out_grad.shape[2] + (stride_height - 1) * (
-            out_grad.shape[2] - 1
-        )
+        new_out_height = out_grad.shape[2] + (stride_height - 1) * (out_grad.shape[2] - 1)
         new_out_width = out_grad.shape[3] + (stride_width - 1) * (out_grad.shape[3] - 1)
 
         new_out = torch.zeros(
@@ -488,9 +441,7 @@ class Conv2d(torch.autograd.Function):
         if stride_height > 1 or stride_width > 1:
             for i in range(out_grad.shape[2]):
                 for j in range(out_grad.shape[3]):
-                    new_out[:, :, i * (stride_height), j * (stride_width)] = out_grad[
-                        :, :, i, j
-                    ]
+                    new_out[:, :, i * (stride_height), j * (stride_width)] = out_grad[:, :, i, j]
         else:
             new_out = out_grad
 
@@ -504,9 +455,7 @@ class Conv2d(torch.autograd.Function):
         )
 
         grid = lambda META: (
-            triton.cdiv(
-                out_grad.shape[0] * input_height * input_width, META["BLOCK_NI_HO_WO"]
-            ),
+            triton.cdiv(out_grad.shape[0] * input_height * input_width, META["BLOCK_NI_HO_WO"]),
             triton.cdiv(int(weight_c), META["BLOCK_CO"]),
             groups,
         )
@@ -547,9 +496,7 @@ class Conv2d(torch.autograd.Function):
         )
 
         grid_weight = lambda meta: (
-            triton.cdiv(
-                weight_c * weight_height * weight_width, meta["BLOCK_CI_HK_WK"]
-            ),
+            triton.cdiv(weight_c * weight_height * weight_width, meta["BLOCK_CI_HK_WK"]),
             groups,
             triton.cdiv(out_c, meta["BLOCK_CO"]),
         )

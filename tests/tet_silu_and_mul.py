@@ -22,9 +22,7 @@ def test_silu_and_mul(shape, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
 
-    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
-        ref_out, (ref_inp1, ref_inp2), ref_grad
-    )
+    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(ref_out, (ref_inp1, ref_inp2), ref_grad)
 
     res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
 

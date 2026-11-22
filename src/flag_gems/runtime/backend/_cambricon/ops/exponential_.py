@@ -7,10 +7,7 @@ from triton.language.extra.mlu.libdevice import philox as _philox
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -86,15 +83,11 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     is_double = dtype in (torch.float64,)
     UNROLL = 2 if is_double else 4
     N = x.numel()
-    grid_fn = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
-    )
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch_device_fn.device(device):

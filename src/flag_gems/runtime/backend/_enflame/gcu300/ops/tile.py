@@ -126,19 +126,14 @@ def generate_functional_tile_wrapper(
                 code.writeline("is_empty = True")
             code.writeline("out_shape.append(in0_shape[i] * dims_shape[i])")
         code.newline()
-        code.writeline(
-            "out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)"
-        )
+        code.writeline("out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)")
 
         code.writeline("in0 = in0.reshape(in0_shape)")
         code.writeline("if not is_empty: ")
         with code.indent():
             # call destination_passing_func
             output_names: str = output_ref_for_wrapper()
-            call_str = (
-                f"{output_names} = {destination_passing_func_name}"
-                f"({parameter_ref_for_wrapper()})"
-            )
+            call_str = f"{output_names} = {destination_passing_func_name}" f"({parameter_ref_for_wrapper()})"
             code.writeline(call_str)
 
         return_str = "return out0"
@@ -205,9 +200,7 @@ def gcu_generate_functional_tile_wrapper(
         code.writeline("reshape_len = len(in0_shape)")
         code.writeline("if reshape_len > 4: ")
         with code.indent():
-            code.writeline(
-                "assert(insertCount == 1 and insertIdx >=0), 'broadcast dim count is error'"
-            )
+            code.writeline("assert(insertCount == 1 and insertIdx >=0), 'broadcast dim count is error'")
             code.writeline("limit = 1024 * 1024 * 16")
             code.writeline("in0_merge_shape = []")
             code.writeline("out_merge_shape = []")
@@ -249,18 +242,13 @@ def gcu_generate_functional_tile_wrapper(
             code.writeline("assert(len(in0_shape) <= 4), 'merged shape is error'")
 
         code.writeline("in0 = in0.reshape(in0_shape)")
-        code.writeline(
-            "out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)"
-        )
+        code.writeline("out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)")
         code.writeline("if not is_empty: ")
         with code.indent():
             code.writeline("out0 = out0.reshape(reshape_out_shape)")
             # call destination_passing_func
             output_names: str = output_ref_for_wrapper()
-            call_str = (
-                f"{output_names} = {destination_passing_func_name}"
-                f"({parameter_ref_for_wrapper()})"
-            )
+            call_str = f"{output_names} = {destination_passing_func_name}" f"({parameter_ref_for_wrapper()})"
             code.writeline(call_str)
             code.writeline("out0 = out0.reshape(out_shape)")
         return_str = "return out0"
@@ -292,9 +280,7 @@ def generate_destination_passing_tile_wrapper(
             code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 4")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
-            code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
-            )
+            code.writeline("tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)")
         else:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
@@ -369,9 +355,7 @@ def gcu_generate_destination_passing_tile_wrapper(
             max_grid_size = 24
 
         if rank > 0:
-            code.writeline(
-                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
-            )
+            code.writeline(f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)")
             code.writeline("tile_size = math.prod(tile_sizes)")
             code.writeline(
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
@@ -406,9 +390,7 @@ def gcu_generate_destination_passing_tile_wrapper(
                 code.writeline("in0, out0, ")
 
             if rank > 0:
-                s = ", ".join(
-                    f"in_strides[{j}] if in0_shape[{j}] > 1 else 0" for j in range(rank)
-                )
+                s = ", ".join(f"in_strides[{j}] if in0_shape[{j}] > 1 else 0" for j in range(rank))
                 code.writeline(f"{s}, # stride for in0")
 
                 s = ", ".join(f"out0_strides[{j}]" for j in range(rank))
@@ -468,9 +450,7 @@ def generate_tile_kernel(
             code.writeline(f"{task_space_args}, # task_space")
 
             task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
-            code.writeline(
-                f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
-            )
+            code.writeline(f"{task_space_args2}, # task_space2 used when input and output tensor has different shape")
 
             # number of tasks, used to compute mask
             code.writeline("num_tasks: int,")
@@ -520,9 +500,7 @@ def generate_tile_kernel(
 
             # loads
             code.writeline("# loads")
-            ptrs_expr: str = " + ".join(
-                f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
-            )
+            ptrs_expr: str = " + ".join(f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank))
             ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
             load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
             code.writeline(load_stmt)
@@ -566,9 +544,7 @@ def generate_tile_kernel(
 
                 # loads
                 code.writeline("# loads")
-                ptrs_expr: str = " + ".join(
-                    f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
-                )
+                ptrs_expr: str = " + ".join(f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank))
                 ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
                 load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
                 code.writeline(load_stmt)
@@ -581,9 +557,7 @@ def generate_tile_kernel(
 
                 # stores
                 code.writeline("# stores")
-                ptrs_expr: str = " + ".join(
-                    f"i{j} * out0_stride{j}" for j in range(rank)
-                )
+                ptrs_expr: str = " + ".join(f"i{j} * out0_stride{j}" for j in range(rank))
                 ptrs_expr: str = f"out0_ptr + {ptrs_expr}"
                 store_stmt: str = f"tl.store({ptrs_expr}, out0, mask=mask)"
                 code.writeline(store_stmt)
@@ -643,9 +617,7 @@ def gcu_generate_tile_kernel(
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
             code.writeline("tiles_per_cta,")
-            tile_size_args = ", ".join(
-                f"tile_size{i}: tl.constexpr" for i in range(rank)
-            )
+            tile_size_args = ", ".join(f"tile_size{i}: tl.constexpr" for i in range(rank))
             code.writeline(f"{tile_size_args}, ")
             # code.writeline("tile_size: tl.constexpr,")
 
@@ -720,9 +692,7 @@ def gcu_generate_tile_kernel(
                 f"out0_bptr = tl.make_block_ptr("
                 f"out0_ptr, ({shape}), ({out_strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
-            code.writeline(
-                f"tl.store(out0_bptr, out0.to(out0_bptr.type.element_ty), boundary_check=({order}))"
-            )
+            code.writeline(f"tl.store(out0_bptr, out0.to(out0_bptr.type.element_ty), boundary_check=({order}))")
 
         # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
         code.writeline("else: # grid-stride-loop style kernel")
@@ -740,9 +710,7 @@ def gcu_generate_tile_kernel(
 
                 code.writeline("# tile offsets")
                 for i in range(rank):
-                    code.writeline(
-                        f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)"
-                    )
+                    code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
                 shape = _tuple_content(tuple(f"s{i}" for i in range(rank)))
                 offsets = _tuple_content(tuple(f"offset{i}" for i in range(rank)))
@@ -772,17 +740,13 @@ def gcu_generate_tile_kernel(
                     "automatically cast the value to the pointer's dtype"
                 )
 
-                out_strides = _tuple_content(
-                    tuple(f"out0_stride{j}" for j in range(rank))
-                )
+                out_strides = _tuple_content(tuple(f"out0_stride{j}" for j in range(rank)))
                 code.writeline(
                     f"out0_bptr = tl.make_block_ptr("
                     f"out0_ptr, ({shape}), ({out_strides}), ({offsets}), "
                     f"({tile_sizes}), order=({order}))"
                 )
-                code.writeline(
-                    f"tl.store(out0_bptr, out0.to(out0_bptr.type.element_ty), boundary_check=({order}))"
-                )
+                code.writeline(f"tl.store(out0_bptr, out0.to(out0_bptr.type.element_ty), boundary_check=({order}))")
     return code
 
 
@@ -795,12 +759,8 @@ def generate_code(
 ) -> IndentedBuffer:
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
-    code = generate_functional_tile_wrapper(
-        wrapper_name, destination_passing_func_name, code
-    )
-    code = generate_destination_passing_tile_wrapper(
-        rank, destination_passing_func_name, kernel_name, code
-    )
+    code = generate_functional_tile_wrapper(wrapper_name, destination_passing_func_name, code)
+    code = generate_destination_passing_tile_wrapper(rank, destination_passing_func_name, kernel_name, code)
     code = generate_tile_kernel(rank, kernel_name, code)
     return code
 
@@ -814,12 +774,8 @@ def gcu_generate_code(
 ) -> IndentedBuffer:
     # the only runtime determined factor is the rank of the task space
     code = gcu_generate_imports(code)
-    code = gcu_generate_functional_tile_wrapper(
-        wrapper_name, destination_passing_func_name, code
-    )
-    code = gcu_generate_destination_passing_tile_wrapper(
-        rank, destination_passing_func_name, kernel_name, code
-    )
+    code = gcu_generate_functional_tile_wrapper(wrapper_name, destination_passing_func_name, code)
+    code = gcu_generate_destination_passing_tile_wrapper(rank, destination_passing_func_name, kernel_name, code)
     code = gcu_generate_tile_kernel(rank, kernel_name, code)
     return code
 

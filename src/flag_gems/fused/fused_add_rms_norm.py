@@ -76,7 +76,5 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     weight = weight.contiguous()
 
     with torch_device_fn.device(x.device):
-        fused_add_rms_norm_kernel[M,](
-            x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        fused_add_rms_norm_kernel[M,](x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
     return x, residual

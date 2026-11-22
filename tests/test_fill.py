@@ -51,18 +51,12 @@ def test_fill_tensor_out(value, shape, dtype):
     out_tensor = torch.empty_like(x)
     ref_out_tensor = torch.empty_like(ref_x)
 
-    ref_result_tensor = torch.ops.aten.fill.Tensor_out(
-        ref_x, ref_value_tensor, out=ref_out_tensor
-    )
+    ref_result_tensor = torch.ops.aten.fill.Tensor_out(ref_x, ref_value_tensor, out=ref_out_tensor)
     with flag_gems.use_gems():
-        res_result_tensor = torch.ops.aten.fill.Tensor_out(
-            x, value_tensor, out=out_tensor
-        )
+        res_result_tensor = torch.ops.aten.fill.Tensor_out(x, value_tensor, out=out_tensor)
 
     utils.gems_assert_equal(res_result_tensor, ref_result_tensor)
-    assert (
-        res_result_tensor is out_tensor
-    ), "fill.Tensor_out should return the out tensor"
+    assert res_result_tensor is out_tensor, "fill.Tensor_out should return the out tensor"
 
 
 @pytest.mark.fill_scalar_out

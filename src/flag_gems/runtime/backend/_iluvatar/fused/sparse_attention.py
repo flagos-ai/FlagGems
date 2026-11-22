@@ -74,18 +74,14 @@ def sparse_attn_triton_kernel(
 
         # -- gather KV block: (BLOCK, D) --
         safe_idxs = tl.maximum(idxs, 0)
-        kv_ptrs = (
-            kv_base + safe_idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
-        )
+        kv_ptrs = kv_base + safe_idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
         kv_block = tl.load(kv_ptrs)  # (BLOCK, D) bf16
 
         # -- scores: Q @ KV^T -> (H, BLOCK) via GEMM --
         acc_s = tl.dot(q_block, tl.trans(kv_block))  # (H, D) @ (D, BLOCK) = (H, BLOCK)
         acc_s = acc_s * scale
         # mask invalid positions to -large via arithmetic (avoid tl.where)
-        mask_bias = (
-            idx_mask.to(tl.float32) - 1.0
-        ) * 1e30  # 0 for valid, -1e30 for invalid
+        mask_bias = (idx_mask.to(tl.float32) - 1.0) * 1e30  # 0 for valid, -1e30 for invalid
         acc_s = acc_s + mask_bias[None, :]  # broadcast: (H, BLOCK)
 
         # -- online softmax update --
@@ -138,9 +134,7 @@ def sparse_attn_triton(
 
     # Pad attn_sink to H_padded elements for safe kernel indexing
     if attn_sink.shape[0] < H_padded:
-        attn_sink_padded = torch.zeros(
-            H_padded, dtype=attn_sink.dtype, device=attn_sink.device
-        )
+        attn_sink_padded = torch.zeros(H_padded, dtype=attn_sink.dtype, device=attn_sink.device)
         attn_sink_padded[: attn_sink.shape[0]] = attn_sink
     else:
         attn_sink_padded = attn_sink

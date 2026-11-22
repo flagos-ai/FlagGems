@@ -66,12 +66,8 @@ def quantile_kernel(
     q_lower = tl.floor(q_block).to(tl.int32)
     q_upper = tl.ceil(q_block).to(tl.int32)
 
-    inp_lower = tl.load(
-        inp + offsets_N[:, None] * M + q_lower[None, :], mask_N[:, None], 0.0
-    )
-    inp_upper = tl.load(
-        inp + offsets_N[:, None] * M + q_upper[None, :], mask_N[:, None], 0.0
-    )
+    inp_lower = tl.load(inp + offsets_N[:, None] * M + q_lower[None, :], mask_N[:, None], 0.0)
+    inp_upper = tl.load(inp + offsets_N[:, None] * M + q_upper[None, :], mask_N[:, None], 0.0)
 
     if interpolation == "linear":
         q_frac = q_block - q_lower
@@ -149,9 +145,7 @@ def quantile_bitonic_kernel(
     tl.store(out_ptr, out_vals.to(ctype), mask=mask_Q)
 
 
-def quantile(
-    inp, q, dim=None, keepdim=False, interpolation="linear", out=None
-) -> Tensor:
+def quantile(inp, q, dim=None, keepdim=False, interpolation="linear", out=None) -> Tensor:
     logger.debug("GEMS QUANTILE")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
@@ -226,9 +220,7 @@ def quantile(
             triton.cdiv(N, meta["BLOCK_N"]),
         )
         with torch_device_fn.device(inp.device):
-            quantile_kernel[grid](
-                sorted_vals, q, output, N, M, Q, interpolation=interpolation
-            )
+            quantile_kernel[grid](sorted_vals, q, output, N, M, Q, interpolation=interpolation)
 
     if Q == 1:
         output = output.squeeze(-1)

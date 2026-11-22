@@ -188,23 +188,15 @@ if __name__ == "__main__":
             for block_size in block_sizes:
                 # print(f"Testing shape {shape} with block_size {block_size} and scale_fmt {scale_fmt}")
                 if shape[-1] % block_size != 0:
-                    print(
-                        f"Skipping shape {shape} with block_size {block_size} due to incompatible dimensions."
-                    )
+                    print(f"Skipping shape {shape} with block_size {block_size} due to incompatible dimensions.")
                     continue
                 x = torch.randn(shape, dtype=torch.bfloat16, device="cuda")
 
                 y_ref, s_ref = act_quant(x, block_size=block_size, scale_fmt=scale_fmt)
-                y_triton, s_triton = act_quant_triton(
-                    x, block_size=block_size, scale_fmt=scale_fmt
-                )
-                torch.testing.assert_close(
-                    y_ref.float(), y_triton.float(), rtol=1e-2, atol=1e-2
-                )
+                y_triton, s_triton = act_quant_triton(x, block_size=block_size, scale_fmt=scale_fmt)
+                torch.testing.assert_close(y_ref.float(), y_triton.float(), rtol=1e-2, atol=1e-2)
                 torch.testing.assert_close(s_ref, s_triton, rtol=1e-5, atol=1e-5)
-                print(
-                    f"Shape {str(shape):20s} | scale_fmt:{scale_fmt} | block_size:{block_size} | PASS"
-                )
+                print(f"Shape {str(shape):20s} | scale_fmt:{scale_fmt} | block_size:{block_size} | PASS")
 
     print("=" * 60)
 
@@ -213,9 +205,7 @@ if __name__ == "__main__":
         for shape in test_shape:
             for block_size in block_sizes:
                 if shape[-1] % block_size != 0:
-                    print(
-                        f"Skipping shape {shape} with block_size {block_size} due to incompatible dimensions."
-                    )
+                    print(f"Skipping shape {shape} with block_size {block_size} due to incompatible dimensions.")
                     continue
                 x = torch.randn(shape, dtype=torch.bfloat16, device="cuda")
                 ref_time = triton.testing.do_bench(
@@ -225,9 +215,7 @@ if __name__ == "__main__":
                 )
 
                 triton_time = triton.testing.do_bench(
-                    lambda: act_quant_triton(
-                        x, block_size=block_size, scale_fmt=scale_fmt
-                    ),
+                    lambda: act_quant_triton(x, block_size=block_size, scale_fmt=scale_fmt),
                     warmup=50,
                     rep=200,
                 )
@@ -238,9 +226,7 @@ if __name__ == "__main__":
                     f"TileLang: {ref_time:.3f} ms | Triton: {triton_time:.3f} ms | "
                     f"Speedup: {ref_time / triton_time:.2f}x"
                 )
-    print(
-        f"Average speedup: {sum(su) / len(su):.2f}x, max speedup: {max(su):.2f}x, min speedup: {min(su):.2f}x"
-    )
+    print(f"Average speedup: {sum(su) / len(su):.2f}x, max speedup: {max(su):.2f}x, min speedup: {min(su):.2f}x")
 
     # x = torch.randn(4096*4, 40960, dtype=torch.bfloat16, device="cuda")
 

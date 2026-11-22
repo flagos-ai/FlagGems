@@ -26,9 +26,7 @@ def test_accuracy_rwkv_kafusion(T, dtype):
     ref_a = utils.to_reference(a, True)
     ref_ka = utils.to_reference(ka, True)
 
-    ref_o_kk = torch.nn.functional.normalize(
-        (ref_k * ref_kk).view(T, H, N), dim=-1, p=2.0
-    ).view(T, H * N)
+    ref_o_kk = torch.nn.functional.normalize((ref_k * ref_kk).view(T, H, N), dim=-1, p=2.0).view(T, H * N)
     ref_o_k = ref_k * (1 + (ref_a - 1) * ref_ka)
     ref_o_kka = ref_o_kk * ref_a
 

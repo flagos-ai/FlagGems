@@ -44,9 +44,7 @@ def rwkv_ka_fusion_kernel(
         tl.store(o_kka_ptr + offs, okka, mask=offs < T * C)
 
 
-def rwkv_ka_fusion(
-    k: torch.Tensor, kk: torch.Tensor, a: torch.Tensor, ka: torch.Tensor, H: int, N: int
-):
+def rwkv_ka_fusion(k: torch.Tensor, kk: torch.Tensor, a: torch.Tensor, ka: torch.Tensor, H: int, N: int):
     if k.dim() == 1:
         T = 1
         C = k.shape[0]
@@ -60,8 +58,6 @@ def rwkv_ka_fusion(
     BLOCK_SIZE = 1 * C
     grid = lambda meta: (triton.cdiv(T * C, BLOCK_SIZE),)
     N_size = triton.next_power_of_2(N)
-    rwkv_ka_fusion_kernel[grid](
-        k, kk, a, ka, o_k, o_kk, o_kka, T, C, H, N, N_size, BLOCK_SIZE
-    )
+    rwkv_ka_fusion_kernel[grid](k, kk, a, ka, o_k, o_kk, o_kka, T, C, H, N, N_size, BLOCK_SIZE)
 
     return o_k, o_kk, o_kka

@@ -9,9 +9,7 @@ import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.negative import negative as gems_negative  # noqa: E402
-from flag_gems.experimental_ops.negative import (  # noqa: E402
-    negative_out as gems_negative_out,
-)
+from flag_gems.experimental_ops.negative import negative_out as gems_negative_out  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

@@ -98,9 +98,7 @@ def test_log10_noncontiguous(dtype):
 @pytest.mark.log10
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_log10_int_promotes_to_float(dtype):
-    inp = torch.randint(1, 100, (128, 64), dtype=dtype, device="cpu").to(
-        flag_gems.device
-    )
+    inp = torch.randint(1, 100, (128, 64), dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.log10(ref_inp)

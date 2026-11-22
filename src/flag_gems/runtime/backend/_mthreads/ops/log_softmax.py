@@ -56,9 +56,7 @@ def log_softmax_kernel_non_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
             mask = (n_offsets[:, None] < N) & (k_offsets < K)
-            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
-                tl.float32
-            )
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(tl.float32)
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
             z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
@@ -73,9 +71,7 @@ def log_softmax_kernel_non_inner(
             n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
             offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
             mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
-            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
-                tl.float32
-            )
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(tl.float32)
             o = inp - m[None, :] - tl.log(z)[None, :]
             tl.store(output_ptr + offsets, o, mask=mask)
 
@@ -180,9 +176,7 @@ def log_softmax_kernel_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             offset = m_offset[:, None] * N + n_offsets[None, :]
             mask = (m_offset[:, None] < M) & (n_offsets[None, :] < N)
-            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
-                tl.float32
-            )
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(tl.float32)
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
             z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
@@ -196,9 +190,7 @@ def log_softmax_kernel_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             offset = m_offset[:, None] * N + n_offsets[None, :]
             mask = (m_offset[:, None] < M) & (n_offsets[None, :] < N)
-            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
-                tl.float32
-            )
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(tl.float32)
             out = inp - m[:, None] - tl.log(z)[:, None]
             tl.store(output_ptr + offset, out, mask=mask)
 
@@ -310,9 +302,7 @@ def log_softmax_backward_kernel_inner(
         offsets = m_offsets[:, None] * N + n_offsets
         for _ in range(0, N, TILE_N):
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(
-                out_ptr + offsets, mask=mask, eviction_policy="evict_first"
-            ).to(tl.float32)
+            out_tile = tl.load(out_ptr + offsets, mask=mask, eviction_policy="evict_first").to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[:, None]
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)

@@ -43,9 +43,7 @@ def floor_(input):
     if x.is_complex():
         raise TypeError("floor_ is not supported for complex tensors.")
     if not x.is_contiguous():
-        raise ValueError(
-            "floor_ Triton kernel currently supports only contiguous tensors."
-        )
+        raise ValueError("floor_ Triton kernel currently supports only contiguous tensors.")
 
     n_elements = x.numel()
     if n_elements == 0:

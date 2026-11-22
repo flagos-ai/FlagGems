@@ -14,9 +14,7 @@ random.seed(time.time() // 100)
 
 def get_dim1_dim2(o_rank):
     dims = list(range(-o_rank, o_rank))
-    return [
-        p for p in itertools.permutations(dims, 2) if (p[0] % o_rank) != (p[1] % o_rank)
-    ]
+    return [p for p in itertools.permutations(dims, 2) if (p[0] % o_rank) != (p[1] % o_rank)]
 
 
 def get_shape_and_dims():

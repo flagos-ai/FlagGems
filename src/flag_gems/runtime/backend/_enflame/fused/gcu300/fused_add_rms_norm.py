@@ -75,7 +75,5 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
         BLOCK_SIZE_M = (M + 128 - 1) // 128
 
     with torch_device_fn.device(x.device):
-        fused_add_rms_norm_kernel[grid](
-            x, residual, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE_M, BLOCK_SIZE_N
-        )
+        fused_add_rms_norm_kernel[grid](x, residual, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE_M, BLOCK_SIZE_N)
     return x, residual

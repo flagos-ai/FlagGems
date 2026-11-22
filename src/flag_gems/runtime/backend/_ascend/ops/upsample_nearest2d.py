@@ -87,7 +87,5 @@ def upsample_nearest2d(
     total_threads = N * C * OH * OW
     grid = lambda META: (triton.cdiv(total_threads, META["BLOCK_SIZE"]),)
     with torch_device_fn.device(input.device):
-        upsample_nearest2d_kernel[grid](
-            output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
-        )
+        upsample_nearest2d_kernel[grid](output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w)
     return output

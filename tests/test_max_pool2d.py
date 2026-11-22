@@ -36,13 +36,9 @@ random.seed(time.time() // 100)
 
 
 @pytest.mark.max_pool2d_with_indices
-@pytest.mark.parametrize(
-    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
-)
+@pytest.mark.parametrize("shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_max_pool2d_with_indices(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
+def test_max_pool2d_with_indices(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
 
@@ -68,13 +64,9 @@ def test_max_pool2d_with_indices(
 
 
 @pytest.mark.max_pool2d_backward
-@pytest.mark.parametrize(
-    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
-)
+@pytest.mark.parametrize("shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_max_pool2d_backward(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
+def test_max_pool2d_backward(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_out, _ = torch.nn.functional.max_pool2d_with_indices(

@@ -86,9 +86,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 @libentry()
 @triton.jit
-def count_nonzero_kernel_xpu(
-    x_ptr, out_ptr, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
+def count_nonzero_kernel_xpu(x_ptr, out_ptr, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid_x = tl.program_id(0)
     row = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     row_mask = row < M

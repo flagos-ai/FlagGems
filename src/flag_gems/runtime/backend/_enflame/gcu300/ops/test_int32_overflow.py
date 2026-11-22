@@ -12,9 +12,7 @@ import torch
 from .unique import _unique2
 
 
-def verify_unique_result(
-    in0, sorted_flag=True, return_inverse=True, return_counts=True, verbose=True
-):
+def verify_unique_result(in0, sorted_flag=True, return_inverse=True, return_counts=True, verbose=True):
     """
     验证 _unique2 的结果是否与 PyTorch 原生实现一致
     """
@@ -44,15 +42,11 @@ def verify_unique_result(
             mismatch_idx = torch.where(triton_out != torch_out)[0][:10]
             print(f"  前10个不匹配位置: {mismatch_idx.tolist()}")
             for idx in mismatch_idx:
-                print(
-                    f"    位置 {idx}: triton={triton_out[idx].item()}, torch={torch_out[idx].item()}"
-                )
+                print(f"    位置 {idx}: triton={triton_out[idx].item()}, torch={torch_out[idx].item()}")
 
     # 比较 inverse_indices
     if return_inverse:
-        triton_inverse_flat = (
-            triton_inverse.ravel() if triton_inverse is not None else None
-        )
+        triton_inverse_flat = triton_inverse.ravel() if triton_inverse is not None else None
         torch_inverse_flat = torch_inverse.ravel()
 
         if triton_inverse_flat is not None:
@@ -60,9 +54,7 @@ def verify_unique_result(
                 diff_count = (triton_inverse_flat != torch_inverse_flat).sum().item()
                 errors.append(f"inverse_indices 不匹配: {diff_count} 个元素不同")
                 if verbose:
-                    mismatch_idx = torch.where(
-                        triton_inverse_flat != torch_inverse_flat
-                    )[0][:10]
+                    mismatch_idx = torch.where(triton_inverse_flat != torch_inverse_flat)[0][:10]
                     print(f"  前10个不匹配位置: {mismatch_idx.tolist()}")
                     for idx in mismatch_idx:
                         triton_val = triton_inverse_flat[idx].item()
@@ -73,16 +65,12 @@ def verify_unique_result(
                 if triton_inverse_flat is not None:
                     negative_count = (triton_inverse_flat < 0).sum().item()
                     if negative_count > 0:
-                        errors.append(
-                            f"  inverse_indices 中有 {negative_count} 个负数值（可能是 int32 溢出）"
-                        )
+                        errors.append(f"  inverse_indices 中有 {negative_count} 个负数值（可能是 int32 溢出）")
 
                     max_val = triton_inverse_flat.max().item()
                     min_val = triton_inverse_flat.min().item()
                     if max_val > 2**31 - 1 or min_val < -(2**31):
-                        errors.append(
-                            f"  inverse_indices 范围超出 int32: min={min_val}, max={max_val}"
-                        )
+                        errors.append(f"  inverse_indices 范围超出 int32: min={min_val}, max={max_val}")
 
     # 比较 counts
     if return_counts:
@@ -93,18 +81,14 @@ def verify_unique_result(
                 mismatch_idx = torch.where(triton_counts != torch_counts)[0][:10]
                 print(f"  前10个不匹配位置: {mismatch_idx.tolist()}")
                 for idx in mismatch_idx:
-                    print(
-                        f"    位置 {idx}: triton={triton_counts[idx].item()}, torch={torch_counts[idx].item()}"
-                    )
+                    print(f"    位置 {idx}: triton={triton_counts[idx].item()}, torch={torch_counts[idx].item()}")
 
             # 检查 counts 的总和是否等于输入元素数
             triton_sum = triton_counts.sum().item()
             torch_sum = torch_counts.sum().item()
             expected_sum = in0.numel()
             if triton_sum != expected_sum:
-                errors.append(
-                    f"  triton counts 总和 {triton_sum} != 输入元素数 {expected_sum}"
-                )
+                errors.append(f"  triton counts 总和 {triton_sum} != 输入元素数 {expected_sum}")
             if torch_sum != expected_sum:
                 errors.append(f"  torch counts 总和 {torch_sum} != 输入元素数 {expected_sum}")
 
@@ -136,9 +120,7 @@ def test_various_sizes(device="cuda"):
         try:
             # 生成随机数据，控制 unique 数量
             num_unique = min(size // 10 + 1, 100000)  # 控制 unique 值数量
-            data = torch.randint(
-                0, num_unique, (size,), dtype=torch.int64, device=device
-            )
+            data = torch.randint(0, num_unique, (size,), dtype=torch.int64, device=device)
 
             errors = verify_unique_result(data, verbose=True)
 
@@ -164,9 +146,7 @@ def test_edge_cases(device="cuda"):
         ("全不同元素", torch.arange(10000, dtype=torch.int64, device=device)),
         (
             "已排序数据",
-            torch.sort(
-                torch.randint(0, 1000, (10000,), dtype=torch.int64, device=device)
-            )[0],
+            torch.sort(torch.randint(0, 1000, (10000,), dtype=torch.int64, device=device))[0],
         ),
         (
             "逆序数据",
@@ -223,9 +203,7 @@ def test_int32_overflow_specific(device="cuda"):
         print(f"\n  测试: {total_size:,} 元素, 约 {num_unique:,} unique 值")
         try:
             # 生成数据确保有指定数量的 unique 值
-            data = torch.randint(
-                0, num_unique, (total_size,), dtype=torch.int64, device=device
-            )
+            data = torch.randint(0, num_unique, (total_size,), dtype=torch.int64, device=device)
 
             errors = verify_unique_result(data, verbose=True)
             if errors:
@@ -291,14 +269,10 @@ def detailed_debug(device="cuda"):
     data = torch.randint(0, num_unique, (size,), dtype=torch.int64, device=device)
 
     # Triton 结果
-    triton_out, triton_inverse, triton_counts = _unique2(
-        data, sorted=True, return_inverse=True, return_counts=True
-    )
+    triton_out, triton_inverse, triton_counts = _unique2(data, sorted=True, return_inverse=True, return_counts=True)
 
     # PyTorch 结果
-    torch_out, torch_inverse, torch_counts = torch.unique(
-        data, sorted=True, return_inverse=True, return_counts=True
-    )
+    torch_out, torch_inverse, torch_counts = torch.unique(data, sorted=True, return_inverse=True, return_counts=True)
 
     print("\nTriton 结果:")
     print(f"  unique 值数量: {triton_out.numel()}")

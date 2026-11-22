@@ -138,9 +138,7 @@ class ConcatAndCacheMla(torch.autograd.Function):
         BLOCK_SIZE = min(kv_lora_rank, 512)
 
         assert kv_cache.dim() == 3, "kv_cache must be a 3D tensor"
-        assert (
-            kv_cache.size(2) == kv_lora_rank + pe_dim
-        ), "kv_cache's last dimension must match kv_lora_rank + pe_dim"
+        assert kv_cache.size(2) == kv_lora_rank + pe_dim, "kv_cache's last dimension must match kv_lora_rank + pe_dim"
         with torch_device_fn.device(device):
             concat_and_cache_mla_kernel[grid](
                 kv_c,
@@ -170,6 +168,4 @@ def concat_and_cache_mla(
     scale: torch.Tensor,
 ) -> None:
     logger.debug("GEMS CONCAT_AND_CACHE_MLA")
-    return ConcatAndCacheMla.apply(
-        kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
-    )
+    return ConcatAndCacheMla.apply(kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale)

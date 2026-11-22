@@ -7,9 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def arctanh_kernel_(
-    x_ptr, n_elements, BLOCK_SIZE: tl.constexpr, COMPUTE_IN_FP32: tl.constexpr
-):
+def arctanh_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr, COMPUTE_IN_FP32: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)

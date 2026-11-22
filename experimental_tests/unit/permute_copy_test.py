@@ -9,9 +9,7 @@ import triton  # noqa: F401
 
 import flag_gems
 from flag_gems.experimental_ops.permute_copy import permute_copy as gems_permute_copy
-from flag_gems.experimental_ops.permute_copy import (
-    permute_copy_out as gems_permute_copy_out,
-)
+from flag_gems.experimental_ops.permute_copy import permute_copy_out as gems_permute_copy_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

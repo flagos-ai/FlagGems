@@ -149,9 +149,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
 
         with torch_device_fn.device(x.device):
             var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-            var_mean_kernel_2[(1,)](
-                acc, average, count, var, mean, N, correction, BLOCK_NUM
-            )
+            var_mean_kernel_2[(1,)](acc, average, count, var, mean, N, correction, BLOCK_NUM)
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]

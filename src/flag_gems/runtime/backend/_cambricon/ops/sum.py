@@ -15,9 +15,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
-@libtuner(
-    configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"]
-)
+@libtuner(configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"])
 @triton.jit
 def sum_kernel_1(
     inp,
@@ -25,9 +23,7 @@ def sum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -63,9 +59,7 @@ def sum_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     elif tl.constexpr(inp.dtype.element_ty == tl.int1):
         cdtype = tl.int32
@@ -199,9 +193,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                 for d in dims_to_reduce:
                     out_shape[d % inp.ndim] = 1
             else:
-                sorted_dims_to_remove = sorted(
-                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
-                )
+                sorted_dims_to_remove = sorted(dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True)
                 for d in sorted_dims_to_remove:
                     index_to_remove = d % inp.ndim
                     out_shape.pop(index_to_remove)

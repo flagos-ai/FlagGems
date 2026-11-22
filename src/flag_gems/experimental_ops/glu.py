@@ -64,17 +64,14 @@ def _normalize_dim(dim: int, ndim: int) -> int:
     if not (0 <= dim < ndim):
         actual_dim = dim - ndim if dim >= ndim else dim
         raise IndexError(
-            f"Dimension out of range (expected to be in range of "
-            f"[{-ndim}, {ndim - 1}], but got {actual_dim})"
+            f"Dimension out of range (expected to be in range of " f"[{-ndim}, {ndim - 1}], but got {actual_dim})"
         )
     return dim
 
 
 def _check_dtype_supported(dtype: torch.dtype):
     if dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise TypeError(
-            f"Unsupported dtype {dtype}. Supported dtypes are: float16, bfloat16, float32."
-        )
+        raise TypeError(f"Unsupported dtype {dtype}. Supported dtypes are: float16, bfloat16, float32.")
 
 
 def _glu_launch(x: torch.Tensor, dim: int, out: torch.Tensor = None) -> torch.Tensor:
@@ -87,9 +84,7 @@ def _glu_launch(x: torch.Tensor, dim: int, out: torch.Tensor = None) -> torch.Te
     dim = _normalize_dim(dim, ndim)
     size_dim = x.size(dim)
     if size_dim % 2 != 0:
-        raise RuntimeError(
-            f"glu: dimension {dim} size must be even, but got {size_dim}."
-        )
+        raise RuntimeError(f"glu: dimension {dim} size must be even, but got {size_dim}.")
 
     half = size_dim // 2
 
@@ -108,9 +103,7 @@ def _glu_launch(x: torch.Tensor, dim: int, out: torch.Tensor = None) -> torch.Te
                 f"glu_out: provided out has wrong shape. Expected {tuple(out_shape)}, got {tuple(out.shape)}."
             )
         if out.dtype != x.dtype:
-            raise RuntimeError(
-                f"glu_out: dtype mismatch. out.dtype={out.dtype}, expected {x.dtype}."
-            )
+            raise RuntimeError(f"glu_out: dtype mismatch. out.dtype={out.dtype}, expected {x.dtype}.")
         if not out.is_contiguous():
             raise RuntimeError("glu_out: output tensor must be contiguous.")
     out = out.contiguous()
@@ -143,9 +136,7 @@ def glu(input: torch.Tensor, dim: int = -1) -> torch.Tensor:
     return _glu_launch(input, dim, out=None)
 
 
-def glu_out(
-    input: torch.Tensor, dim: int = -1, out: torch.Tensor = None
-) -> torch.Tensor:
+def glu_out(input: torch.Tensor, dim: int = -1, out: torch.Tensor = None) -> torch.Tensor:
     if out is None:
         raise RuntimeError("glu_out: 'out' tensor must be provided.")
     return _glu_launch(input, dim, out=out)

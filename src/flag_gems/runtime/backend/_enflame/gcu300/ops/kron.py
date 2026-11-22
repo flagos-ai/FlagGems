@@ -120,11 +120,7 @@ def kron_stride_constant_kernel(
     b = tl.load(b_ptr + b_idx, mask=mask)
     c = a * b
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
+    c_idx = batch_id * c_batch_stride + offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
 
 
@@ -186,11 +182,7 @@ def kron_kernel(
     b = tl.load(b_ptr + b_idx, mask=mask)
     c = a * b
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
+    c_idx = batch_id * c_batch_stride + offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
 
 
@@ -241,36 +233,20 @@ def kron(A, B):
     FlagOfNotUseDMA |= torch.any(torch.tensor(A_view.stride()) <= 0)
     FlagOfNotUseDMA |= (
         lambda s: len(s) >= 2
-        and not all(
-            (max(a, b) % min(a, b) == 0 and a != b)
-            for i, a in enumerate(s)
-            for b in s[i + 1 :]
-        )
+        and not all((max(a, b) % min(a, b) == 0 and a != b) for i, a in enumerate(s) for b in s[i + 1 :])
     )([x for x in A_view.stride() if x != 0])
     FlagOfNotUseDMA |= torch.any(torch.tensor(B_view.stride()) <= 0)
     FlagOfNotUseDMA |= (
         lambda s: len(s) >= 2
-        and not all(
-            (max(a, b) % min(a, b) == 0 and a != b)
-            for i, a in enumerate(s)
-            for b in s[i + 1 :]
-        )
+        and not all((max(a, b) % min(a, b) == 0 and a != b) for i, a in enumerate(s) for b in s[i + 1 :])
     )([x for x in B_view.stride() if x != 0])
     FlagOfNotUseDMA |= torch.any(torch.tensor(C_reshaped.stride()) <= 0)
     FlagOfNotUseDMA |= (
         lambda s: len(s) >= 2
-        and not all(
-            (max(a, b) % min(a, b) == 0 and a != b)
-            for i, a in enumerate(s)
-            for b in s[i + 1 :]
-        )
+        and not all((max(a, b) % min(a, b) == 0 and a != b) for i, a in enumerate(s) for b in s[i + 1 :])
     )([x for x in C_reshaped.stride() if x != 0])
     with torch_device_fn.device(A.device):
-        grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
-        )
+        grid = lambda meta: (batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
         if FlagOfNotUseDMA:
             kron_stride_constant_kernel[grid](
                 A_view,

@@ -85,20 +85,14 @@ class ConfigLoader(object):
             self.default_heuristics_config = self.get_default_heuristics_config()
             try:
                 if backend.BackendArchEvent().has_arch:
-                    self.arch_specialized_yaml_config = (
-                        backend.BackendArchEvent().autotune_configs
-                    )
-                    self.arch_heuristics_config = (
-                        backend.BackendArchEvent().heuristics_configs
-                    )
+                    self.arch_specialized_yaml_config = backend.BackendArchEvent().autotune_configs
+                    self.arch_heuristics_config = backend.BackendArchEvent().heuristics_configs
             except Exception as err:
                 print(f"[INFO] : {err}")
 
             if self.vendor_heuristics_config is None:
                 vendorname = self.device.vendor_name
-                warnings.warn(
-                    f"The {vendorname} configuration of heuristics_config is None"
-                )
+                warnings.warn(f"The {vendorname} configuration of heuristics_config is None")
             # gen_key is an identifier that indicates whether the current config needs to be generated automatically
             self.gen_key = "gen"
             # loaded_triton_config is wrapped in triton.Config according to primitive_yaml_config
@@ -303,24 +297,12 @@ class ConfigLoader(object):
 
     def _build_expand_registry(self):
         return {
-            "bmm": self._build_single_expand_spec(
-                "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
-            ),
-            "addmm": self._build_single_expand_spec(
-                "addmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
-            ),
-            "baddbmm": self._build_single_expand_spec(
-                "baddbmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
-            ),
-            "mv": self._build_single_expand_spec(
-                "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
-            ),
-            "w8a8_block_fp8_general": self._build_single_expand_spec(
-                "w8a8_block_fp8_general"
-            ),
-            "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
-                "w8a8_block_fp8_general_tma"
-            ),
+            "bmm": self._build_single_expand_spec("bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH),
+            "addmm": self._build_single_expand_spec("addmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH),
+            "baddbmm": self._build_single_expand_spec("baddbmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH),
+            "mv": self._build_single_expand_spec("mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH),
+            "w8a8_block_fp8_general": self._build_single_expand_spec("w8a8_block_fp8_general"),
+            "w8a8_block_fp8_general_tma": self._build_single_expand_spec("w8a8_block_fp8_general_tma"),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
@@ -388,9 +370,7 @@ class ConfigLoader(object):
             else:
                 cur_entry = iteration_plan[current_step]
                 cur_key = cur_entry["key"]
-                key_config = self._resolve_iteration_values(
-                    gen_config, cur_entry["source"]
-                )
+                key_config = self._resolve_iteration_values(gen_config, cur_entry["source"])
                 for single_value in key_config:
                     new_config = copy.deepcopy(cur_config)
                     if cur_entry["kind"] == "meta_field":
@@ -414,20 +394,14 @@ class ConfigLoader(object):
 
         if isinstance(meta_config, dict):
             for meta_key, source in meta_config.items():
-                iteration_plan.append(
-                    {"key": meta_key, "source": source, "kind": "meta_field"}
-                )
+                iteration_plan.append({"key": meta_key, "source": source, "kind": "meta_field"})
         else:
-            iteration_plan.append(
-                {"key": "META", "source": meta_config, "kind": "meta_block"}
-            )
+            iteration_plan.append({"key": "META", "source": meta_config, "kind": "meta_block"})
 
         for key, source in param_config.items():
             if key == "META":
                 continue
-            iteration_plan.append(
-                {"key": key, "source": source, "kind": "config_field"}
-            )
+            iteration_plan.append({"key": key, "source": source, "kind": "config_field"})
 
         current_config = {"META": {}}
         current_config.update(self.triton_config_default)
@@ -469,10 +443,7 @@ class ConfigLoader(object):
 
             strategy = default_strategy
             if isinstance(strategy_config, dict):
-                strategy = [
-                    strategy_config.get(k, default_strategy[idx])
-                    for idx, k in enumerate(key)
-                ]
+                strategy = [strategy_config.get(k, default_strategy[idx]) for idx, k in enumerate(key)]
 
             ranges = {}
 
@@ -499,10 +470,7 @@ class ConfigLoader(object):
         if op_name in self.loaded_triton_config:
             return self.loaded_triton_config[op_name]
 
-        if (
-            self.arch_specialized_yaml_config
-            and op_name in self.arch_specialized_yaml_config
-        ):
+        if self.arch_specialized_yaml_config and op_name in self.arch_specialized_yaml_config:
             current_op_configs = self.arch_specialized_yaml_config[op_name]
         elif op_name in self.vendor_primitive_yaml_config:
             current_op_configs = self.vendor_primitive_yaml_config[op_name]

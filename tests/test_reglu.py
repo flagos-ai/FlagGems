@@ -38,9 +38,7 @@ def test_reglu(shape, dtype):
         pytest.skip("reglu does not support 0-dim scalar tensors.")
 
     if shape[-1] % 2 != 0:
-        pytest.skip(
-            f"reglu requires the last dimension to be even, but got shape {shape}."
-        )
+        pytest.skip(f"reglu requires the last dimension to be even, but got shape {shape}.")
 
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 

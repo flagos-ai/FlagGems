@@ -17,9 +17,7 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
-_FN_BF16_CACHE: weakref.WeakKeyDictionary[
-    torch.Tensor, tuple[int, torch.Tensor]
-] = weakref.WeakKeyDictionary()
+_FN_BF16_CACHE: weakref.WeakKeyDictionary[torch.Tensor, tuple[int, torch.Tensor]] = weakref.WeakKeyDictionary()
 
 
 def _get_fn_bf16_cached(fn: torch.Tensor) -> torch.Tensor:
@@ -93,118 +91,58 @@ def _mhc_pre_fused_kernel_hc_mult_4_impl(
 
     # ══ pre_mix: indices 0..3 ══
     pre_mix_0 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 0) * rms_inv * scale_0
-            + tl.load(hc_base_ptr + 0)
-        )
-        + hc_pre_eps
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 0) * rms_inv * scale_0 + tl.load(hc_base_ptr + 0)) + hc_pre_eps
     )
     pre_mix_1 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 1) * rms_inv * scale_0
-            + tl.load(hc_base_ptr + 1)
-        )
-        + hc_pre_eps
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 1) * rms_inv * scale_0 + tl.load(hc_base_ptr + 1)) + hc_pre_eps
     )
     pre_mix_2 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 2) * rms_inv * scale_0
-            + tl.load(hc_base_ptr + 2)
-        )
-        + hc_pre_eps
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 2) * rms_inv * scale_0 + tl.load(hc_base_ptr + 2)) + hc_pre_eps
     )
     pre_mix_3 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 3) * rms_inv * scale_0
-            + tl.load(hc_base_ptr + 3)
-        )
-        + hc_pre_eps
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 3) * rms_inv * scale_0 + tl.load(hc_base_ptr + 3)) + hc_pre_eps
     )
 
     # ══ post_mix: indices 4..7 ══
     post_0 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 4) * rms_inv * scale_1
-            + tl.load(hc_base_ptr + 4)
-        )
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 4) * rms_inv * scale_1 + tl.load(hc_base_ptr + 4))
         * hc_post_mult_value
     )
     tl.store(post_mix_ptr + pid_n * 4 + 0, post_0)
     post_1 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 5) * rms_inv * scale_1
-            + tl.load(hc_base_ptr + 5)
-        )
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 5) * rms_inv * scale_1 + tl.load(hc_base_ptr + 5))
         * hc_post_mult_value
     )
     tl.store(post_mix_ptr + pid_n * 4 + 1, post_1)
     post_2 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 6) * rms_inv * scale_1
-            + tl.load(hc_base_ptr + 6)
-        )
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 6) * rms_inv * scale_1 + tl.load(hc_base_ptr + 6))
         * hc_post_mult_value
     )
     tl.store(post_mix_ptr + pid_n * 4 + 2, post_2)
     post_3 = (
-        tl.sigmoid(
-            tl.load(gemm_out_ptr + go_base + 7) * rms_inv * scale_1
-            + tl.load(hc_base_ptr + 7)
-        )
+        tl.sigmoid(tl.load(gemm_out_ptr + go_base + 7) * rms_inv * scale_1 + tl.load(hc_base_ptr + 7))
         * hc_post_mult_value
     )
     tl.store(post_mix_ptr + pid_n * 4 + 3, post_3)
 
     # ══ comb_mix: indices 8..23 → 4x4 Sinkhorn ══
     cb = 8
-    cm_00 = tl.load(gemm_out_ptr + go_base + cb + 0) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 0
-    )
-    cm_01 = tl.load(gemm_out_ptr + go_base + cb + 1) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 1
-    )
-    cm_02 = tl.load(gemm_out_ptr + go_base + cb + 2) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 2
-    )
-    cm_03 = tl.load(gemm_out_ptr + go_base + cb + 3) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 3
-    )
-    cm_10 = tl.load(gemm_out_ptr + go_base + cb + 4) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 4
-    )
-    cm_11 = tl.load(gemm_out_ptr + go_base + cb + 5) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 5
-    )
-    cm_12 = tl.load(gemm_out_ptr + go_base + cb + 6) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 6
-    )
-    cm_13 = tl.load(gemm_out_ptr + go_base + cb + 7) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 7
-    )
-    cm_20 = tl.load(gemm_out_ptr + go_base + cb + 8) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 8
-    )
-    cm_21 = tl.load(gemm_out_ptr + go_base + cb + 9) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 9
-    )
-    cm_22 = tl.load(gemm_out_ptr + go_base + cb + 10) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 10
-    )
-    cm_23 = tl.load(gemm_out_ptr + go_base + cb + 11) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 11
-    )
-    cm_30 = tl.load(gemm_out_ptr + go_base + cb + 12) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 12
-    )
-    cm_31 = tl.load(gemm_out_ptr + go_base + cb + 13) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 13
-    )
-    cm_32 = tl.load(gemm_out_ptr + go_base + cb + 14) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 14
-    )
-    cm_33 = tl.load(gemm_out_ptr + go_base + cb + 15) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 15
-    )
+    cm_00 = tl.load(gemm_out_ptr + go_base + cb + 0) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 0)
+    cm_01 = tl.load(gemm_out_ptr + go_base + cb + 1) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 1)
+    cm_02 = tl.load(gemm_out_ptr + go_base + cb + 2) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 2)
+    cm_03 = tl.load(gemm_out_ptr + go_base + cb + 3) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 3)
+    cm_10 = tl.load(gemm_out_ptr + go_base + cb + 4) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 4)
+    cm_11 = tl.load(gemm_out_ptr + go_base + cb + 5) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 5)
+    cm_12 = tl.load(gemm_out_ptr + go_base + cb + 6) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 6)
+    cm_13 = tl.load(gemm_out_ptr + go_base + cb + 7) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 7)
+    cm_20 = tl.load(gemm_out_ptr + go_base + cb + 8) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 8)
+    cm_21 = tl.load(gemm_out_ptr + go_base + cb + 9) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 9)
+    cm_22 = tl.load(gemm_out_ptr + go_base + cb + 10) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 10)
+    cm_23 = tl.load(gemm_out_ptr + go_base + cb + 11) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 11)
+    cm_30 = tl.load(gemm_out_ptr + go_base + cb + 12) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 12)
+    cm_31 = tl.load(gemm_out_ptr + go_base + cb + 13) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 13)
+    cm_32 = tl.load(gemm_out_ptr + go_base + cb + 14) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 14)
+    cm_33 = tl.load(gemm_out_ptr + go_base + cb + 15) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + 15)
 
     # ── Sinkhorn iteration ──
     rm = tl.maximum(tl.maximum(cm_00, cm_01), tl.maximum(cm_02, cm_03))
@@ -515,10 +453,7 @@ def mhc_pre_generic_kernel(
 
     for i in tl.static_range(HC):
         post_i = (
-            tl.sigmoid(
-                tl.load(gemm_out_ptr + go_base + HC + i) * rms_inv * scale_1
-                + tl.load(hc_base_ptr + HC + i)
-            )
+            tl.sigmoid(tl.load(gemm_out_ptr + go_base + HC + i) * rms_inv * scale_1 + tl.load(hc_base_ptr + HC + i))
             * hc_post_mult_value
         )
         tl.store(post_mix_ptr + pid_n * HC + i, post_i)
@@ -527,17 +462,13 @@ def mhc_pre_generic_kernel(
     for i in tl.static_range(HC):
         for j in tl.static_range(HC):
             idx = i * HC + j
-            v = tl.load(
-                gemm_out_ptr + go_base + cb + idx
-            ) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + idx)
+            v = tl.load(gemm_out_ptr + go_base + cb + idx) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + idx)
             tl.store(comb_mix_ptr + comb_base + idx, v)
 
     for i in tl.static_range(HC):
         row_max = tl.load(comb_mix_ptr + comb_base + i * HC + 0)
         for j in tl.static_range(1, HC):
-            row_max = tl.maximum(
-                row_max, tl.load(comb_mix_ptr + comb_base + i * HC + j)
-            )
+            row_max = tl.maximum(row_max, tl.load(comb_mix_ptr + comb_base + i * HC + j))
 
         row_sum = 0.0
         for j in tl.static_range(HC):
@@ -548,9 +479,7 @@ def mhc_pre_generic_kernel(
         inv_row_sum = 1.0 / row_sum
         for j in tl.static_range(HC):
             v = tl.load(comb_mix_ptr + comb_base + i * HC + j)
-            tl.store(
-                comb_mix_ptr + comb_base + i * HC + j, v * inv_row_sum + hc_sinkhorn_eps
-            )
+            tl.store(comb_mix_ptr + comb_base + i * HC + j, v * inv_row_sum + hc_sinkhorn_eps)
 
     for j in tl.static_range(HC):
         col_sum = 0.0
@@ -587,10 +516,7 @@ def mhc_pre_generic_kernel(
 
         for k in tl.static_range(HC):
             pre_k = (
-                tl.sigmoid(
-                    tl.load(gemm_out_ptr + go_base + k) * rms_inv * scale_0
-                    + tl.load(hc_base_ptr + k)
-                )
+                tl.sigmoid(tl.load(gemm_out_ptr + go_base + k) * rms_inv * scale_0 + tl.load(hc_base_ptr + k))
                 + hc_pre_eps
             )
             rk = tl.load(
@@ -657,12 +583,8 @@ def mhc_pre(
 
     # ── Step 2: Fused sqrsum + norm + mix + sinkhorn + weighted sum ──
     post_mix = torch.empty(num_tokens, hc_mult, dtype=torch.float32, device=device)
-    comb_mix = torch.empty(
-        num_tokens, hc_mult * hc_mult, dtype=torch.float32, device=device
-    )
-    layer_input = torch.empty(
-        num_tokens, hidden_size, dtype=torch.bfloat16, device=device
-    )
+    comb_mix = torch.empty(num_tokens, hc_mult * hc_mult, dtype=torch.float32, device=device)
+    layer_input = torch.empty(num_tokens, hidden_size, dtype=torch.bfloat16, device=device)
 
     if hc_mult == 4:
         mhc_pre_fused_kernel_hc_mult_4[(num_tokens,)](
@@ -749,9 +671,7 @@ def mhc_pre_ref(
     hc_mult = residual.shape[-2]
     residual_flat = residual.flatten(-2, -1).float()
     sqrsum = residual_flat.square().sum(-1)
-    mixes = (
-        residual_flat @ fn.T * (sqrsum.unsqueeze(-1) / fn.shape[-1] + rms_eps).rsqrt()
-    )
+    mixes = residual_flat @ fn.T * (sqrsum.unsqueeze(-1) / fn.shape[-1] + rms_eps).rsqrt()
     hc_scale_expanded = torch.cat(
         [
             hc_scale[0].expand(hc_mult),
@@ -761,12 +681,8 @@ def mhc_pre_ref(
     )
     mixes = mixes * hc_scale_expanded + hc_base
     pre_mix = mixes[:, :hc_mult].sigmoid().unsqueeze(-1) + hc_pre_eps
-    post_mix = (
-        mixes[:, hc_mult : 2 * hc_mult].sigmoid() * hc_post_mult_value
-    ).unsqueeze(-1)
+    post_mix = (mixes[:, hc_mult : 2 * hc_mult].sigmoid() * hc_post_mult_value).unsqueeze(-1)
     res_mix = mixes[:, 2 * hc_mult :].view(-1, hc_mult, hc_mult)
-    res_mix = sinkhorn_normalize_ref(
-        res_mix, repeat=sinkhorn_repeat, eps=hc_sinkhorn_eps
-    )
+    res_mix = sinkhorn_normalize_ref(res_mix, repeat=sinkhorn_repeat, eps=hc_sinkhorn_eps)
     layer_input = (residual * pre_mix).sum(-2).bfloat16()
     return post_mix, res_mix, layer_input

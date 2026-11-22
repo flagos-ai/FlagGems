@@ -149,19 +149,13 @@ def amax(inp, dim=None, keepdim=False):
         else:
             outdtype = torch.float32
             if not keepdim:
-                out = torch.full(
-                    [], torch.finfo(outdtype).min, dtype=outdtype, device=inp.device
-                )
+                out = torch.full([], torch.finfo(outdtype).min, dtype=outdtype, device=inp.device)
             else:
                 shape = list(inp.shape)
                 for i in range(0, inp.dim()):
                     shape[i] = 1
-                out = torch.full(
-                    shape, torch.finfo(outdtype).min, dtype=outdtype, device=inp.device
-                )
-            grid = lambda meta: (
-                min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-            )
+                out = torch.full(shape, torch.finfo(outdtype).min, dtype=outdtype, device=inp.device)
+            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
             with torch_device_fn.device(inp.device):
                 amax_kernel_1[grid](inp, out, M, INT64_INDEX=use_int64_index)
             return out.to(dtype)
@@ -184,9 +178,7 @@ def amax(inp, dim=None, keepdim=False):
         with torch_device_fn.device(inp.device):
             if N > 1048576:
                 out = torch.empty(shape, dtype=dtype, device=inp.device)
-                grid = lambda meta: (
-                    min(triton.cdiv(M, meta["BLOCK_M"]), TOTAL_CORE_NUM),
-                )
+                grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), TOTAL_CORE_NUM),)
                 amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
             else:
                 out = torch.full(

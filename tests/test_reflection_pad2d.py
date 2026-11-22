@@ -7,9 +7,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
-)
+@pytest.mark.parametrize("shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
     "padding",

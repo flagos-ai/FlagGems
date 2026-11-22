@@ -59,9 +59,7 @@ def test__log_softmax_backward_data_benchmark_tensor(shape_dim, dtype):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten._log_softmax_backward_data(
-            grad_output, output, dim, dtype
-        ),
+        lambda: torch.ops.aten._log_softmax_backward_data(grad_output, output, dim, dtype),
         rep=100,
         quantiles=quantiles,
     )
@@ -99,9 +97,7 @@ def test__log_softmax_backward_data_benchmark_out(shape_dim, dtype):
     ref_out_buf = torch.empty_like(x)
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten._log_softmax_backward_data.out(
-            grad_output, output, dim, dtype, out=ref_out_buf
-        ),
+        lambda: torch.ops.aten._log_softmax_backward_data.out(grad_output, output, dim, dtype, out=ref_out_buf),
         rep=100,
         quantiles=quantiles,
     )
@@ -111,9 +107,7 @@ def test__log_softmax_backward_data_benchmark_out(shape_dim, dtype):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems__log_softmax_backward_data_out(
-                grad_output, output, dim, dtype, act_out_buf
-            ),
+            lambda: gems__log_softmax_backward_data_out(grad_output, output, dim, dtype, act_out_buf),
             rep=100,
             quantiles=quantiles,
         )

@@ -8,12 +8,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
-from ..utils import (
-    MAX_NRAM_SIZE,
-    TOTAL_CORE_NUM,
-    cfggen_reduce_op,
-    count_divisible_by_2,
-)
+from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM, cfggen_reduce_op, count_divisible_by_2
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -47,9 +42,7 @@ def var_mean_welford_kernel(
     task_num = tl.cdiv(M, BLOCK_M)
     iter_num = tl.cdiv(task_num, num_prog)
     for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
         Var_ptr = Var + pid
         Mean_ptr = Mean + pid
@@ -102,9 +95,7 @@ def prune_varmean_config(configs, named_args, **kwargs):
             pruned_configs.append(config)
     # If M < 512, append the default config.
     if len(pruned_configs) == 0:
-        pruned_configs.append(
-            triton.Config({"BLOCK_SIZE": 512}, num_warps=1, num_stages=1)
-        )
+        pruned_configs.append(triton.Config({"BLOCK_SIZE": 512}, num_warps=1, num_stages=1))
     return pruned_configs
 
 
@@ -116,15 +107,10 @@ def prune_varmean_config(configs, named_args, **kwargs):
     reset_to_zero=["Acc", "Average", "Count"],
 )
 @triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["M"]
-        <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
-    },
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
 )
 @triton.jit
-def var_mean_kernel_1(
-    X, Acc, Average, Count, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
-):
+def var_mean_kernel_1(X, Acc, Average, Count, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr):
     # Map the program id to the row of X it should compute.
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE

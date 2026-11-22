@@ -125,9 +125,7 @@ def argmax_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-        local_max, local_argmax = tl.max(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_max, local_argmax = tl.max(inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
         # if return indices is not supported, call a tl.argmax in addition
         # local_argmax = tl.argmax(inp_vals, 1)
         update = local_max > max_values
@@ -161,9 +159,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             with torch_device_fn.device(inp.device):
                 argmax_kernel_once[(1, 1, 1)](inp, out, M)
         else:
-            grid = lambda meta: (
-                min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-            )
+            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
             mid_size = TOTAL_CORE_NUM
             real_size = torch.empty([], dtype=torch.int32, device=inp.device)
             mid_value = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
@@ -177,9 +173,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                     M,
                     INT64_INDEX=use_int64_index,
                 )
-                argmax_kernel_2[(1, 1, 1)](
-                    mid_value, mid_index, out, real_size, mid_size
-                )
+                argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, real_size, mid_size)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"

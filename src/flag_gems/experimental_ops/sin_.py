@@ -38,9 +38,7 @@ def sin_(*args, **kwargs):
     if not x.is_cuda:
         raise ValueError("Input tensor must be on CUDA device")
     if not x.is_contiguous():
-        raise ValueError(
-            "Input tensor must be contiguous for this Triton implementation"
-        )
+        raise ValueError("Input tensor must be contiguous for this Triton implementation")
 
     # Fallback for unsupported dtypes
     if not x.is_floating_point() or x.dtype not in (

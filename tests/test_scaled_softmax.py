@@ -25,9 +25,7 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("query_seq_len", [64, 128])
 @pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
 @pytest.mark.parametrize("scale_factor", [0.1])
-def test_scaled_softmax_forward(
-    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
-):
+def test_scaled_softmax_forward(batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype):
     try:
         from transformer_engine.pytorch import cpp_extensions as tex
     except ImportError:
@@ -54,9 +52,7 @@ def test_scaled_softmax_forward(
 @pytest.mark.parametrize("query_seq_len", [64, 128])
 @pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
 @pytest.mark.parametrize("scale_factor", [0.1])
-def test_scaled_softmax_backward(
-    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
-):
+def test_scaled_softmax_backward(batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype):
     try:
         from transformer_engine.pytorch import cpp_extensions as tex
     except ImportError:
@@ -80,6 +76,4 @@ def test_scaled_softmax_backward(
     in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
     in_grad_ref = utils.to_reference(in_grad_ref)
 
-    utils.gems_assert_close(
-        in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]
-    )
+    utils.gems_assert_close(in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1])

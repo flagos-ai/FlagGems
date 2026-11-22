@@ -87,9 +87,7 @@ def _launch_replication_pad1d_kernel(input: torch.Tensor, padding, out: torch.Te
 
     # Validate output shape
     if tuple(out.shape) != expected_out_shape:
-        raise ValueError(
-            f"Output tensor has incorrect shape. Expected {expected_out_shape}, got {tuple(out.shape)}"
-        )
+        raise ValueError(f"Output tensor has incorrect shape. Expected {expected_out_shape}, got {tuple(out.shape)}")
 
     grid = (triton.cdiv(W_out, 256), B * C)
     with torch_device_fn.device(input.device):

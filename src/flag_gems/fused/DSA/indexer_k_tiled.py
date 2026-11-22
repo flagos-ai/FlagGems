@@ -40,9 +40,7 @@ def triton_lighting_indexer_k_tiled(
 
     offs_cu = tl.arange(0, BQ) + i_sh * BQ
     mask_cu = offs_cu < CU
-    bos_vec, eos_vec = tl.load(
-        cu_bg_seqlens + offs_cu, mask_cu, 1000000000
-    ) + i_k * TK, tl.load(
+    bos_vec, eos_vec = tl.load(cu_bg_seqlens + offs_cu, mask_cu, 1000000000) + i_k * TK, tl.load(
         cu_ed_seqlens + offs_cu, mask_cu, -1000000000
     )  # [BQ]
     eos_vec = tl.minimum(eos_vec, bos_vec + (i_k + 1) * TK)
@@ -79,9 +77,7 @@ def triton_lighting_indexer_k_tiled(
             acc = tl.dot(q_blk, k_blk, out_dtype=tl.float16)  # [BQ*H, BK]
             acc = tl.maximum(acc, 0.0) * w_blk[:, None]
             out_blk = acc.trans().reshape(BK, BQ, H).sum(-1).trans()  # [BQ, BK]
-            out_ptr = (
-                o_base + offs_boq[:, None] * stride_lm + offs_bk[None, :] * stride_ln
-            )
+            out_ptr = o_base + offs_boq[:, None] * stride_lm + offs_bk[None, :] * stride_ln
             out_msk = (
                 mask_boq[:, None]
                 & mask_bk[None, :]
@@ -91,9 +87,7 @@ def triton_lighting_indexer_k_tiled(
             tl.store(out_ptr, out_blk.to(tl.float16), out_msk)
 
 
-def triton_lighting_indexer_k_tiled_interface(
-    q, kv, weights, cu_seqlen_ks, cu_seqlen_ke
-):
+def triton_lighting_indexer_k_tiled_interface(q, kv, weights, cu_seqlen_ks, cu_seqlen_ke):
     Q, H, D = q.shape[0], q.shape[1], q.shape[2]
     K = kv.shape[0]
     CU = cu_seqlen_ks.shape[0]

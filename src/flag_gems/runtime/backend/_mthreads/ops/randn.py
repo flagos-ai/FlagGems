@@ -6,10 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 try:
@@ -26,9 +23,7 @@ except AttributeError:
 
 
 device_ = device
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @triton.heuristics(runtime.get_heuristic_config("randn"))
@@ -54,9 +49,7 @@ def randn_kernel(
     r3 = uint_to_uniform_float(r3)
     n0, n1 = pair_uniform_to_normal(r0, r1)
     n2, n3 = pair_uniform_to_normal(r2, r3)
-    off_0 = ((tl.program_id(0) * BLOCK * 4).to(tl.int64) + tl.arange(0, BLOCK)).to(
-        tl.int64
-    )
+    off_0 = ((tl.program_id(0) * BLOCK * 4).to(tl.int64) + tl.arange(0, BLOCK)).to(tl.int64)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK

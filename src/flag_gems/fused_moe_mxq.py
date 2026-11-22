@@ -159,18 +159,11 @@ def fused_moe_kernel_gptq_awq(
         k_mask = k_indices < K
 
         # Load activation: A[token_id, k_indices]
-        a = tl.load(
-            A + (token_id * stride_am + k_indices * stride_ak), mask=k_mask, other=0.0
-        ).to(tl.float32)
+        a = tl.load(A + (token_id * stride_am + k_indices * stride_ak), mask=k_mask, other=0.0).to(tl.float32)
 
         # Load weight values: W[expert_id, offs_n, k_indices]
         w = tl.load(
-            B
-            + (
-                expert_id * stride_be_c
-                + offs_n[None, :] * stride_bn_c
-                + k_indices[:, None] * stride_bk_c
-            ),
+            B + (expert_id * stride_be_c + offs_n[None, :] * stride_bn_c + k_indices[:, None] * stride_bk_c),
             mask=k_mask[:, None] & n_mask[None, :],
             other=0.0,
         )
@@ -184,12 +177,7 @@ def fused_moe_kernel_gptq_awq(
         # Load scales: scales[expert_id, offs_n, group]
         scale_group = k_indices // group_size
         scales = tl.load(
-            B_scale
-            + (
-                expert_id * stride_bse_c
-                + offs_n[None, :] * stride_bsn_c
-                + scale_group[:, None] * stride_bsk_c
-            ),
+            B_scale + (expert_id * stride_bse_c + offs_n[None, :] * stride_bsn_c + scale_group[:, None] * stride_bsk_c),
             mask=k_mask[:, None] & n_mask[None, :],
             other=1.0,
         ).to(tl.float32)
@@ -199,11 +187,7 @@ def fused_moe_kernel_gptq_awq(
             if has_zp:
                 zp = tl.load(
                     B_zp
-                    + (
-                        expert_id * stride_bze_c
-                        + offs_n[None, :] * stride_bzn_c
-                        + scale_group[:, None] * stride_bzk_c
-                    ),
+                    + (expert_id * stride_bze_c + offs_n[None, :] * stride_bzn_c + scale_group[:, None] * stride_bzk_c),
                     mask=k_mask[:, None] & n_mask[None, :],
                     other=0.0,
                 ).to(tl.float32)
@@ -214,11 +198,7 @@ def fused_moe_kernel_gptq_awq(
             if has_zp:
                 zp = tl.load(
                     B_zp
-                    + (
-                        expert_id * stride_bze_c
-                        + offs_n[None, :] * stride_bzn_c
-                        + scale_group[:, None] * stride_bzk_c
-                    ),
+                    + (expert_id * stride_bze_c + offs_n[None, :] * stride_bzn_c + scale_group[:, None] * stride_bzk_c),
                     mask=k_mask[:, None] & n_mask[None, :],
                     other=0.0,
                 ).to(tl.float32)
@@ -309,14 +289,9 @@ def fused_moe_kernel_fp16_swiglu(
         for kb in range(tl.cdiv(K, BLOCK_SIZE_K)):
             k_offs = kb * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
             k_mask = k_offs < K
-            a_vals = tl.load(
-                A + token_id * stride_am + k_offs, mask=k_mask, other=0.0
-            ).to(tl.float32)
+            a_vals = tl.load(A + token_id * stride_am + k_offs, mask=k_mask, other=0.0).to(tl.float32)
             w_gate = tl.load(
-                B_gate
-                + expert_id * stride_gate_e
-                + n * stride_gate_n
-                + k_offs * stride_gate_k,
+                B_gate + expert_id * stride_gate_e + n * stride_gate_n + k_offs * stride_gate_k,
                 mask=k_mask,
                 other=0.0,
             ).to(tl.float32)
@@ -331,9 +306,7 @@ def fused_moe_kernel_fp16_swiglu(
         for kb in range(tl.cdiv(K, BLOCK_SIZE_K)):
             k_offs = kb * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
             k_mask = k_offs < K
-            a_vals = tl.load(
-                A + token_id * stride_am + k_offs, mask=k_mask, other=0.0
-            ).to(tl.float32)
+            a_vals = tl.load(A + token_id * stride_am + k_offs, mask=k_mask, other=0.0).to(tl.float32)
             w_up = tl.load(
                 B_up + expert_id * stride_up_e + n * stride_up_n + k_offs * stride_up_k,
                 mask=k_mask,
@@ -352,14 +325,9 @@ def fused_moe_kernel_fp16_swiglu(
             base_n = nb * 32
             n_offs = base_n + tl.arange(0, 32)
             n_mask = n_offs < N
-            inter_vals = tl.load(
-                inter_ptr + inter_off + n_offs, mask=n_mask, other=0.0
-            ).to(tl.float32)
+            inter_vals = tl.load(inter_ptr + inter_off + n_offs, mask=n_mask, other=0.0).to(tl.float32)
             w_down = tl.load(
-                B_down
-                + expert_id * stride_down_e
-                + k * stride_down_k
-                + n_offs * stride_down_n,
+                B_down + expert_id * stride_down_e + k * stride_down_k + n_offs * stride_down_n,
                 mask=n_mask,
                 other=0.0,
             ).to(tl.float32)
@@ -431,9 +399,7 @@ def prepare_moe_inputs(
 
     # Pad to block size
     block_size_m = 32  # Default block size
-    num_tokens_post_padded = (
-        (num_tokens * topk + block_size_m - 1) // block_size_m
-    ) * block_size_m
+    num_tokens_post_padded = ((num_tokens * topk + block_size_m - 1) // block_size_m) * block_size_m
 
     return sorted_token_ids, expert_ids, num_tokens_post_padded, block_size_m
 
@@ -469,9 +435,7 @@ def quantize_weights_moe(
 
     # Reshape for per-group quantization along the last dimension
     # weights shape: (E, n_out, k_in) -> (E, n_out, num_groups, group_size)
-    weights_reshaped = weights.view(
-        num_experts, n_out, num_groups, quant_config.group_size
-    )
+    weights_reshaped = weights.view(num_experts, n_out, num_groups, quant_config.group_size)
     w_min = weights_reshaped.min(dim=-1, keepdim=True)[0]
     w_max = weights_reshaped.max(dim=-1, keepdim=True)[0]
     scale = (w_max - w_min) / ((2**w_bits) - 1)
@@ -514,12 +478,8 @@ def get_default_config(block_size_m=1, block_size_n=128, block_size_k=64):
 def get_autotune_config():
     """Get autotuning configurations for MoE kernel with reduced sizes for H20."""
     return [
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 64}, num_stages=2, num_warps=4
-        ),
+        triton.Config({"BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 64}, num_stages=2, num_warps=4),
     ]
 
 
@@ -663,10 +623,7 @@ def invoke_fused_moe(
     if W2_q is None:
         # Determine if we should skip dequantization (FP16 mode with unit scales)
         is_fp16_w1_only = (
-            quant_config.mode.value == "fp16"
-            and W1_q is not None
-            and W1_scales is not None
-            and W1_zeros is None
+            quant_config.mode.value == "fp16" and W1_q is not None and W1_scales is not None and W1_zeros is None
         )
 
         # For FP16 W1-only: skip INT8 offset (use_int8_w8a16=False)
@@ -829,9 +786,7 @@ def fused_moe(
     # Prepare routing information
     if topk_weights is None or topk_ids is None:
         # Create dummy routing for testing
-        topk_weights = (
-            torch.ones(num_tokens, top_k, device=x.device, dtype=x.dtype) / top_k
-        )
+        topk_weights = torch.ones(num_tokens, top_k, device=x.device, dtype=x.dtype) / top_k
         topk_ids = torch.randint(0, num_experts, (num_tokens, top_k), device=x.device)
 
     # Create dispatch arrays for MoE
@@ -841,9 +796,7 @@ def fused_moe(
 
     # Create token indices: [0,0,1,1,...] where each token repeats top_k times
     token_indices = torch.arange(num_tokens, device=x.device, dtype=torch.int64)
-    sorted_token_ids = (
-        token_indices.unsqueeze(1).expand(num_tokens, top_k).contiguous().view(-1)
-    )
+    sorted_token_ids = token_indices.unsqueeze(1).expand(num_tokens, top_k).contiguous().view(-1)
 
     # Expert IDs: [e0_0, e0_1, ..., e1_0, e1_1, ...]
     flat_expert_ids = topk_ids.view(-1)
@@ -859,9 +812,7 @@ def fused_moe(
 
     # Pad to block size
     block_size_m = 32
-    num_tokens_post_padded = (
-        (num_tokens * top_k + block_size_m - 1) // block_size_m
-    ) * block_size_m
+    num_tokens_post_padded = ((num_tokens * top_k + block_size_m - 1) // block_size_m) * block_size_m
 
     # Quantize weights if not pre-quantized
     if w1_q is not None and w1_scales is not None:
@@ -892,9 +843,7 @@ def fused_moe(
             W3_scales = w3_scales.contiguous()
             W3_zeros = w3_zeros.contiguous() if w3_zeros is not None else None
         else:
-            W3_q, W3_scales, W3_zeros = quantize_weights_moe(
-                w3, num_experts, quant_config
-            )
+            W3_q, W3_scales, W3_zeros = quantize_weights_moe(w3, num_experts, quant_config)
     else:
         W3_q, W3_scales, W3_zeros = None, None, None
 
@@ -975,15 +924,9 @@ class FusedMoELinear(torch.nn.Module):
         self.quant_config = quant_config or QuantConfig()
 
         # SwiGLU MoE weights
-        self.w1 = torch.nn.Parameter(
-            torch.randn(num_experts, inter_dim, hidden_dim, requires_grad=False)
-        )
-        self.w3 = torch.nn.Parameter(
-            torch.randn(num_experts, inter_dim, hidden_dim, requires_grad=False)
-        )
-        self.w2 = torch.nn.Parameter(
-            torch.randn(num_experts, hidden_dim, inter_dim, requires_grad=False)
-        )
+        self.w1 = torch.nn.Parameter(torch.randn(num_experts, inter_dim, hidden_dim, requires_grad=False))
+        self.w3 = torch.nn.Parameter(torch.randn(num_experts, inter_dim, hidden_dim, requires_grad=False))
+        self.w2 = torch.nn.Parameter(torch.randn(num_experts, hidden_dim, inter_dim, requires_grad=False))
 
         self._packed = False
 

@@ -49,9 +49,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     return code
 
 
-def generate_index_kernel(
-    inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
-):
+def generate_index_kernel(inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer):
     code.writeline("@libentry()")
     code.writeline("@libtuner(")
     with code.indent():
@@ -86,15 +84,11 @@ def generate_index_kernel(
     with code.indent():
         code.writeline("pid0 = tl.program_id(axis=0)")
         code.writeline("pid1 = tl.program_id(axis=1)")
-        code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
-        )
+        code.writeline("offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]")
         if inp_rank == indices_len:
             code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
         else:
-            code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
-            )
+            code.writeline("offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]")
         code.newline()
         code.writeline("cur_idx = offset0")
         for i in range(index_rank - 1, -1, -1):
@@ -109,28 +103,18 @@ def generate_index_kernel(
         code.writeline("mask0 = offset0 < M")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
-            code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
-            )
+            code.writeline(f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)")
         code.newline()
-        index_mask = [
-            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
-            for i in range(indices_len)
-        ]
+        index_mask = [f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})" for i in range(indices_len)]
         code.writeline(f"index_mask = {' & '.join(index_mask)}")
         code.writeline("mask1 = offset1 < N")
         code.writeline("mask = index_mask & mask0 & mask1")
         code.newline()
         comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
-        comp += [
-            f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
-        ]
+        comp += [f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)]
         code.writeline(f"input_offset = {' + '.join(comp)}")
         comp = [f"indices_idx{i} * out_stride{i}" for i in range(index_rank)]
-        comp += [
-            f"input_idx{indices_len + i} * out_stride{index_rank + i}"
-            for i in range(inp_rank - indices_len)
-        ]
+        comp += [f"input_idx{indices_len + i} * out_stride{index_rank + i}" for i in range(inp_rank - indices_len)]
         code.writeline(f"out_offset = {' + '.join(comp)}")
         code.newline()
         code.writeline("cur_value = tl.load(input_ptr + input_offset , mask = mask)")
@@ -158,9 +142,7 @@ def generate_index_wrapper(
         code.writeline("  else:")
         code.writeline("    input = input.to(torch.int32)")
         for i in range(indices_len):
-            code.writeline(
-                f"if indices[{i}] is not None and indices[{i}].dtype == torch.int64:"
-            )
+            code.writeline(f"if indices[{i}] is not None and indices[{i}].dtype == torch.int64:")
             code.writeline(f"   indices[{i}] = indices[{i}].to(torch.int32)")
         code.writeline("if out.dtype == torch.int64:")
         code.writeline("  if isinstance(out, StridedBuffer):")
@@ -195,9 +177,7 @@ def generate_index_wrapper(
             args += [f"input_stride[{i}]," for i in range(inp_rank)]
             for i in range(indices_len):
                 args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
-            args += [
-                f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)
-            ]
+            args += [f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)]
             args += ["M,", "N,"]
             code.writelines(args)
         code.writeline(")")
@@ -222,9 +202,7 @@ def generate_code(
     index_rank = tensor_indices[0].ndim
     code = generate_imports(code)
     generate_index_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
-    generate_index_wrapper(
-        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
-    )
+    generate_index_wrapper(inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code)
     return code
 
 
@@ -288,10 +266,7 @@ def index(inp, indices):
         raise ValueError("at least one index must be provided")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
-        for index in indices
+        (index.to(inp.device) if index is not None and index.device != inp.device else index) for index in indices
     ]
 
     # Step 1: Process indices (convert bool/int8 to long, handle None)
@@ -305,9 +280,7 @@ def index(inp, indices):
                 nonzero = index.nonzero()
                 k = len(processed_indices)
                 if k + index.ndim > inp.ndim:
-                    raise IndexError(
-                        f"too many indices for tensor of dimension {inp.ndim}"
-                    )
+                    raise IndexError(f"too many indices for tensor of dimension {inp.ndim}")
                 # Check shape matches
                 for j in range(index.ndim):
                     if index.shape[j] != inp.shape[k + j]:
@@ -321,9 +294,7 @@ def index(inp, indices):
             elif index.dtype in [torch.long, torch.int, torch.int32, torch.int64]:
                 processed_indices.append(index)
             else:
-                raise TypeError(
-                    "tensors used as indices must be long, int, byte or bool tensors"
-                )
+                raise TypeError("tensors used as indices must be long, int, byte or bool tensors")
         else:
             processed_indices.append(None)
 
@@ -331,9 +302,7 @@ def index(inp, indices):
 
     # Check indices count
     if len(indices) > inp.ndim:
-        raise IndexError(
-            f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
-        )
+        raise IndexError(f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})")
 
     # Save for later use
     has_any_tensor = any(idx is not None for idx in indices)

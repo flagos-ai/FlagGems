@@ -352,15 +352,9 @@ def mha_varlan_fwd(
     total_q = q.size(0)
 
     assert leftpad_k is None, "leftpad_k is not supported."
-    assert (
-        head_size <= 256
-    ), "FlashAttention forward only supports head dimension at most 256"
-    assert (
-        head_size % 8 == 0
-    ), "head_size must be a multiple of 8, this is ensured by padding!"
-    assert (
-        num_heads % num_heads_k == 0
-    ), "Number of heads in key/value must divide number of heads in query"
+    assert head_size <= 256, "FlashAttention forward only supports head dimension at most 256"
+    assert head_size % 8 == 0, "head_size must be a multiple of 8, this is ensured by padding!"
+    assert num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query"
 
     assert q.shape == (total_q, num_heads, head_size)
     if is_paged:
@@ -397,9 +391,7 @@ def mha_varlan_fwd(
             batch_size,
             num_heads,
         )
-        alibi_slopes_batch_stride = (
-            alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
-        )
+        alibi_slopes_batch_stride = alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
         is_alibi = True
     else:
         alibi_slopes_batch_stride = 0
@@ -424,9 +416,7 @@ def mha_varlan_fwd(
             is_dropout = True
             increment = batch_size * num_heads * 32
             philox_seed, philox_offset = philox_backend_seed_offset(increment)
-            philox_args = torch.tensor(
-                [philox_seed, philox_offset], dtype=torch.int64, device=q_device
-            )
+            philox_args = torch.tensor([philox_seed, philox_offset], dtype=torch.int64, device=q_device)
         else:
             is_dropout = False
             philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
@@ -529,9 +519,7 @@ def mha_varlan_fwd(
 
         # We assess which phase the requests are likely to be in and set the config accordingly.
         total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
+        num_sms = torch_device_fn.get_device_properties(flag_gems.device).multi_processor_count
         avg_rows_per_sm = total_rows / num_sms
         avg_rows_per_batch = total_q / batch_size
         avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
@@ -561,9 +549,7 @@ def mha_varlan_fwd(
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
-            out = out.reshape(
-                batch_size, max_seqlen_q, num_heads_k, head_size
-            ).transpose(1, 2)
+            out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(1, 2)
             if out_ is not None:
                 out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
                 out = out_
@@ -699,15 +685,9 @@ def mha_varlan_fwd_opt(
     total_q = q.size(0)
 
     assert leftpad_k is None, "leftpad_k is not supported."
-    assert (
-        head_size <= 256
-    ), "FlashAttention forward only supports head dimension at most 256"
-    assert (
-        head_size % 8 == 0
-    ), "head_size must be a multiple of 8, this is ensured by padding!"
-    assert (
-        num_heads % num_heads_k == 0
-    ), "Number of heads in key/value must divide number of heads in query"
+    assert head_size <= 256, "FlashAttention forward only supports head dimension at most 256"
+    assert head_size % 8 == 0, "head_size must be a multiple of 8, this is ensured by padding!"
+    assert num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query"
 
     assert q.shape == (total_q, num_heads, head_size)
     if is_paged:
@@ -744,9 +724,7 @@ def mha_varlan_fwd_opt(
             batch_size,
             num_heads,
         )
-        alibi_slopes_batch_stride = (
-            alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
-        )
+        alibi_slopes_batch_stride = alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
         is_alibi = True
     else:
         alibi_slopes_batch_stride = 0
@@ -772,9 +750,7 @@ def mha_varlan_fwd_opt(
             is_dropout = True
             increment = batch_size * num_heads * 32
             philox_seed, philox_offset = philox_backend_seed_offset(increment)
-            philox_args = torch.tensor(
-                [philox_seed, philox_offset], dtype=torch.int64, device=q_device
-            )
+            philox_args = torch.tensor([philox_seed, philox_offset], dtype=torch.int64, device=q_device)
         else:
             is_dropout = False
             # philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
@@ -878,9 +854,7 @@ def mha_varlan_fwd_opt(
 
         # We assess which phase the requests are likely to be in and set the config accordingly.
         total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
+        num_sms = torch_device_fn.get_device_properties(flag_gems.device).multi_processor_count
         avg_rows_per_sm = total_rows / num_sms
         avg_rows_per_batch = total_q / batch_size
         avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
@@ -910,9 +884,7 @@ def mha_varlan_fwd_opt(
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
-            out = out.reshape(
-                batch_size, max_seqlen_q, num_heads_k, head_size
-            ).transpose(1, 2)
+            out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(1, 2)
             if out_ is not None:
                 out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
                 out = out_
@@ -963,12 +935,8 @@ def mha_fwd(
         assert out.size() == (batch_size, seqlen_q, num_heads, head_size)
         CHECK_DEVICE(out)
 
-    assert (
-        head_size % 8 == 0
-    ), "head_size must be a multiple of 8, this is ensured by padding!"
-    assert (
-        num_heads % num_heads_k == 0
-    ), "Number of heads in key/value must divide number of heads in query"
+    assert head_size % 8 == 0, "head_size must be a multiple of 8, this is ensured by padding!"
+    assert num_heads % num_heads_k == 0, "Number of heads in key/value must divide number of heads in query"
     if window_size_left >= seqlen_k:
         window_size_left = -1
     if window_size_right >= seqlen_k:
@@ -1002,9 +970,7 @@ def mha_fwd(
     seqlen_q_rounded = round_multiple(seqlen_q, 128)
     seqlen_k_rounded = round_multiple(seqlen_k, 32)
 
-    assert (
-        head_size <= 256
-    ), "FlashAttention forward only supports head dimension at most 256"
+    assert head_size <= 256, "FlashAttention forward only supports head dimension at most 256"
     assert head_size == head_size_rounded, "head_size must be rounded to 32"
 
     def splits_heuristic(num_tasks, num_sms, n_blocks):
@@ -1025,15 +991,11 @@ def mha_fwd(
 
     with torch_device_fn.device(q_device):
         # Set softmax params
-        lse = torch.empty(
-            (batch_size, num_heads, seqlen_q), dtype=torch.float, device=q_device
-        )
+        lse = torch.empty((batch_size, num_heads, seqlen_q), dtype=torch.float, device=q_device)
 
         if out is not None:
             if seqlenq_ngroups_swapped:
-                out = out.reshape(
-                    batch_size, num_heads_k, q_groups, head_size
-                ).transpose(1, 2)
+                out = out.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         else:
             out = torch.empty_like(q, dtype=v.dtype)
 
@@ -1042,9 +1004,7 @@ def mha_fwd(
             is_dropout = True
             increment = batch_size * num_heads * 32
             philox_seed, philox_offset = philox_backend_seed_offset(increment)
-            philox_args = torch.tensor(
-                [philox_seed, philox_offset], dtype=torch.int64, device=q_device
-            )
+            philox_args = torch.tensor([philox_seed, philox_offset], dtype=torch.int64, device=q_device)
         else:
             is_dropout = False
             philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
@@ -1083,9 +1043,7 @@ def mha_fwd(
                 batch_size,
                 num_heads,
             )
-            alibi_slopes_batch_stride = (
-                alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
-            )
+            alibi_slopes_batch_stride = alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
             is_alibi = True
         else:
             alibi_slopes_batch_stride = 0
@@ -1096,9 +1054,7 @@ def mha_fwd(
 
         # Do kernel dispatching
         def dispatch(B, H, Q, K, D, params):
-            num_sms = torch_device_fn.get_device_properties(
-                "cuda"
-            ).multi_processor_count
+            num_sms = torch_device_fn.get_device_properties("cuda").multi_processor_count
 
             # Try bh parallel
             # if B * H > 0.8 * num_sms:
@@ -1116,12 +1072,8 @@ def mha_fwd(
 
                 if n_splits > 1:
                     logger.debug("kernel: flash_fwd_splitkv")
-                    lse_splits = torch.empty(
-                        (n_splits, B, H, Q), dtype=torch.float, device=q_device
-                    )
-                    out_splits = torch.empty(
-                        (n_splits, B, H, Q, D), dtype=torch.float, device=q_device
-                    )
+                    lse_splits = torch.empty((n_splits, B, H, Q), dtype=torch.float, device=q_device)
+                    out_splits = torch.empty((n_splits, B, H, Q, D), dtype=torch.float, device=q_device)
                     grid = lambda args: (
                         triton.cdiv(Q, args["BLOCK_M"]),
                         n_splits,
@@ -1261,12 +1213,8 @@ def mha_fwd(
             # print(kernel.asm['ttgir'])
 
         if seqlenq_ngroups_swapped:
-            out = out.transpose(1, 2).reshape(
-                (batch_size, 1, num_heads_k * seqlen_q, head_size)
-            )
-            q = q.transpose(1, 2).reshape(
-                (batch_size, 1, num_heads_k * seqlen_q, head_size)
-            )
+            out = out.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
+            q = q.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
             lse = lse.reshape((batch_size, num_heads_k * seqlen_q, 1))
 
         unused = torch.empty((), dtype=torch.int64, device=q_device)

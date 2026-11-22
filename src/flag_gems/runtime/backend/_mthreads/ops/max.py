@@ -14,9 +14,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 MaxOut = namedtuple("max", ["values", "indices"])
 
@@ -105,9 +103,7 @@ def max_kernel_small(
     dtype = inp.type.element_ty
     acc_type = tl.float32 if (dtype is tl.float16 or dtype is tl.bfloat16) else dtype
     min_value = get_dtype_min(dtype)
-    vals = tl.load(inp + offsets, mask=row_mask & col_mask, other=min_value).to(
-        acc_type
-    )
+    vals = tl.load(inp + offsets, mask=row_mask & col_mask, other=min_value).to(acc_type)
     row_max, row_argmax = tl.max(
         vals,
         axis=0,
@@ -170,9 +166,7 @@ def max_kernel(
         local_argmax = local_argmax.to(tl.int32)
         update = local_max > max_values
         max_values = tl.where(update, local_max, max_values)
-        argmax_values = tl.where(
-            update, (start_n + local_argmax).to(tl.int32), argmax_values
-        )
+        argmax_values = tl.where(update, (start_n + local_argmax).to(tl.int32), argmax_values)
 
     out_value_ptrs = out_value + rows
     out_index_ptrs = out_index + rows
@@ -201,12 +195,8 @@ def max(inp):
     num_warps_mid = builtins.min(8, builtins.max(1, block_mid // 128))
 
     with torch_device_fn.device(inp.device):
-        max_kernel_1[(mid_size, 1, 1)](
-            inp, mid, M, block_size, num_warps=num_warps_block, num_stages=2
-        )
-        max_kernel_2[(1, 1, 1)](
-            mid, out, mid_size, block_mid, num_warps=num_warps_mid, num_stages=2
-        )
+        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, num_warps=num_warps_block, num_stages=2)
+        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, num_warps=num_warps_mid, num_stages=2)
     return out
 
 

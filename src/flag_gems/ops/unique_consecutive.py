@@ -198,12 +198,7 @@ def global_cumsum_consecutive_impl(
 
     # load tile_sum for previous tiles
     p = tl.arange(0, next_power_global_ctas_num)
-    pre_tile_sum_mask = (
-        (p >= global_pid - ctas_num)
-        & (p < global_pid)
-        & (p >= 0)
-        & (p < global_ctas_num)
-    )
+    pre_tile_sum_mask = (p >= global_pid - ctas_num) & (p < global_pid) & (p >= 0) & (p < global_ctas_num)
     pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
 
     # cumsum within tile
@@ -314,16 +309,8 @@ def simple_unique_consecutive_flat(
 
     # allocate tensors
     data_out = torch.empty_like(data)
-    inverse_indices = (
-        torch.empty(num_tasks, dtype=torch.int64, device=data.device)
-        if return_inverse
-        else None
-    )
-    idx = (
-        torch.empty(num_tasks, dtype=torch.int64, device=data.device)
-        if return_counts
-        else None
-    )
+    inverse_indices = torch.empty(num_tasks, dtype=torch.int64, device=data.device) if return_inverse else None
+    idx = torch.empty(num_tasks, dtype=torch.int64, device=data.device) if return_counts else None
     unique_size = torch.empty([1], dtype=torch.int64, device=data.device)
 
     # launch kernel
@@ -389,16 +376,8 @@ def large_unique_consecutive_flat(
     ne_result = torch.empty(num_tasks, dtype=torch.bool, device=data.device)
     tile_sum = torch.empty(global_ctas_num, dtype=torch.int64, device=data.device)
     data_out = torch.empty_like(data)
-    inverse_indices = (
-        torch.empty(num_tasks, dtype=torch.int64, device=data.device)
-        if return_inverse
-        else None
-    )
-    idx = (
-        torch.empty(num_tasks, dtype=torch.int64, device=data.device)
-        if return_counts
-        else None
-    )
+    inverse_indices = torch.empty(num_tasks, dtype=torch.int64, device=data.device) if return_inverse else None
+    idx = torch.empty(num_tasks, dtype=torch.int64, device=data.device) if return_counts else None
 
     # launch kernels
     with torch_device_fn.device(data.device.index):
@@ -486,27 +465,15 @@ def unique_consecutive(
     if num_tasks == 0:
         # Handle empty input
         output = torch.empty(0, dtype=input.dtype, device=input.device)
-        inverse_indices = (
-            torch.empty(0, dtype=torch.int64, device=input.device)
-            if return_inverse
-            else None
-        )
-        counts = (
-            torch.empty(0, dtype=torch.int64, device=input.device)
-            if return_counts
-            else None
-        )
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=input.device) if return_inverse else None
+        counts = torch.empty(0, dtype=torch.int64, device=input.device) if return_counts else None
         return output, inverse_indices, counts
 
     # Choose algorithm based on input size
     if num_tasks <= 8192:
-        output, inverse_indices, counts = simple_unique_consecutive_flat(
-            flat_input, return_inverse, return_counts
-        )
+        output, inverse_indices, counts = simple_unique_consecutive_flat(flat_input, return_inverse, return_counts)
     else:
-        output, inverse_indices, counts = large_unique_consecutive_flat(
-            flat_input, return_inverse, return_counts
-        )
+        output, inverse_indices, counts = large_unique_consecutive_flat(flat_input, return_inverse, return_counts)
 
     # Reshape inverse_indices to match input shape
     if inverse_indices is not None:

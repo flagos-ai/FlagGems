@@ -9,9 +9,7 @@ import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.mse_loss import mse_loss as gems_mse_loss  # noqa: E402
-from flag_gems.experimental_ops.mse_loss import (  # noqa: E402
-    mse_loss_out as gems_mse_loss_out,
-)
+from flag_gems.experimental_ops.mse_loss import mse_loss_out as gems_mse_loss_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

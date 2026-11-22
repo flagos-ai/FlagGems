@@ -8,12 +8,8 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops._adaptive_avg_pool3d import (
-    _adaptive_avg_pool3d as gems__adaptive_avg_pool3d,
-)
-from flag_gems.experimental_ops._adaptive_avg_pool3d import (
-    _adaptive_avg_pool3d_out as gems__adaptive_avg_pool3d_out,
-)
+from flag_gems.experimental_ops._adaptive_avg_pool3d import _adaptive_avg_pool3d as gems__adaptive_avg_pool3d
+from flag_gems.experimental_ops._adaptive_avg_pool3d import _adaptive_avg_pool3d_out as gems__adaptive_avg_pool3d_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -119,9 +115,7 @@ def test__adaptive_avg_pool3d_benchmark_out(shape, output_size, dtype):
     ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten._adaptive_avg_pool3d.out(
-            ref_x, output_size, out=ref_out_buf
-        ),
+        lambda: torch.ops.aten._adaptive_avg_pool3d.out(ref_x, output_size, out=ref_out_buf),
         rep=100,
         quantiles=quantiles,
     )

@@ -21,28 +21,23 @@ logger = logging.getLogger("flag_gems." + __name__)
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.heuristics(
     {
-        "UPGRADE": lambda args: math.ceil(
-            (args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])
-        ).bit_length()
+        "UPGRADE": lambda args: math.ceil((args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])).bit_length()
         > 31,
     }
 )
 @triton.heuristics(
     {
-        "UPGRADE_A_OFFS": lambda args: math.ceil(args["M"] * args["K"]).bit_length()
-        > 31,
+        "UPGRADE_A_OFFS": lambda args: math.ceil(args["M"] * args["K"]).bit_length() > 31,
     }
 )
 @triton.heuristics(
     {
-        "UPGRADE_B_OFFS": lambda args: math.ceil(args["K"] * args["N"]).bit_length()
-        > 31,
+        "UPGRADE_B_OFFS": lambda args: math.ceil(args["K"] * args["N"]).bit_length() > 31,
     }
 )
 @triton.heuristics(
     {
-        "UPGRADE_C_OFFS": lambda args: math.ceil(args["M"] * args["N"]).bit_length()
-        > 31,
+        "UPGRADE_C_OFFS": lambda args: math.ceil(args["M"] * args["N"]).bit_length() > 31,
     }
 )
 @triton.jit

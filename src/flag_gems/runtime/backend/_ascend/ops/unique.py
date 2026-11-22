@@ -297,13 +297,9 @@ def global_quick_unique_flat_impl(
             p_idx = chunk_start + p
 
             # 计算mask：需要确保索引在 [start_idx, end_idx) 范围内
-            pre_tile_sum_mask = (
-                (p_idx < end_idx) & (p_idx >= start_idx) & (p_idx < global_ctas_num)
-            )
+            pre_tile_sum_mask = (p_idx < end_idx) & (p_idx >= start_idx) & (p_idx < global_ctas_num)
 
-            pre_tile_sum = tl.load(
-                tile_sum_ptr + p_idx, mask=pre_tile_sum_mask, other=0
-            )
+            pre_tile_sum = tl.load(tile_sum_ptr + p_idx, mask=pre_tile_sum_mask, other=0)
             total_sum += tl.sum(pre_tile_sum)
 
     cur_tile_sum_mask = global_pid < global_ctas_num
@@ -421,9 +417,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         origin_idx = None
         idx = None
         counts = None
-    tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device
-    )
+    tile_sum = torch.empty((global_ctas_num,), dtype=torch.int64, device=sorted_data.device)
     data_out = None
     if not return_counts:
         data_out = torch.empty_like(sorted_data)
@@ -460,9 +454,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         )
         out_size = tile_sum[-1].item()
         if return_counts:
-            data_out = torch.empty(
-                (out_size,), dtype=sorted_data.dtype, device=sorted_data.device
-            )
+            data_out = torch.empty((out_size,), dtype=sorted_data.dtype, device=sorted_data.device)
             idx = idx[:out_size]
             counts = origin_idx[:out_size]
             quick_output_flat_kernel[grid](
@@ -623,9 +615,7 @@ def global_cumsum_flat_impl(
                 & (p_idx < global_ctas_num)
             )
 
-            pre_tile_sum = tl.load(
-                tile_sum_ptr + p_idx, mask=pre_tile_sum_mask, other=0
-            )
+            pre_tile_sum = tl.load(tile_sum_ptr + p_idx, mask=pre_tile_sum_mask, other=0)
             chunk_sum += tl.sum(pre_tile_sum)
 
     # cumsum
@@ -726,9 +716,7 @@ def global_cumsum_flat_kernel(
             )
 
 
-def sorted_indices_unique_flat(
-    sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool
-):
+def sorted_indices_unique_flat(sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool):
     num_tasks = sorted_data.numel()
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
     if num_tasks >= 167772160:
@@ -742,9 +730,7 @@ def sorted_indices_unique_flat(
     grid = (ctas_num, 1, 1)
     # allocate tensor
     ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
-    tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device
-    )
+    tile_sum = torch.empty((global_ctas_num,), dtype=torch.int64, device=sorted_data.device)
     data_out = torch.empty_like(sorted_data)
     inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
     idx = None
@@ -862,14 +848,10 @@ def _unique2(
         )
     elif return_inverse:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices, return_counts
-        )
+        data_out, inverse_indices, counts = sorted_indices_unique_flat(sorted_data, sorted_indices, return_counts)
     else:
         sorted_data, _ = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts
-        )
+        data_out, inverse_indices, counts = sorted_quick_unique_flat(sorted_data, return_counts)
     return (
         data_out,
         inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),

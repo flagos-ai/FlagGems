@@ -35,9 +35,7 @@ def run_benchmark_command(markers_str, shape_file, args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run benchmark for given operators list and corresponding shapes."
-    )
+    parser = argparse.ArgumentParser(description="Run benchmark for given operators list and corresponding shapes.")
     parser.add_argument(
         "--shape-file",
         type=str,

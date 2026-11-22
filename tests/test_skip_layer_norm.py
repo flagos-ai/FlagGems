@@ -38,8 +38,6 @@ def test_skip_layernorm(shape, dtype):
         bias=ref_bias,
         eps=eps,
     )
-    res_out = flag_gems.skip_layer_norm(
-        inp, residual, list(layer_shape), weight=weight, bias=bias, eps=eps
-    )
+    res_out = flag_gems.skip_layer_norm(inp, residual, list(layer_shape), weight=weight, bias=bias, eps=eps)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

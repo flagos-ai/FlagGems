@@ -70,9 +70,7 @@ def test_elu_out(shape, dtype, params):
     act_input = base.clone()
 
     ref_outbuf = torch.empty_like(ref_input)
-    ref_res = torch.ops.aten.elu.out(
-        ref_input, alpha, scale, input_scale, out=ref_outbuf
-    )
+    ref_res = torch.ops.aten.elu.out(ref_input, alpha, scale, input_scale, out=ref_outbuf)
 
     act_outbuf = torch.empty_like(act_input)
     with flag_gems.use_gems():

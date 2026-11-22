@@ -136,12 +136,8 @@ def test_addmm_correctness():
 @pytest.mark.mm
 def test_bmm_correctness():
     B, M, N, K = 8, 128, 128, 128
-    a = torch.randn(
-        (B, M, K), dtype=torch.float16, device=flag_gems.device
-    ).contiguous()
-    b = torch.randn(
-        (B, K, N), dtype=torch.float16, device=flag_gems.device
-    ).contiguous()
+    a = torch.randn((B, M, K), dtype=torch.float16, device=flag_gems.device).contiguous()
+    b = torch.randn((B, K, N), dtype=torch.float16, device=flag_gems.device).contiguous()
     ref = torch.bmm(a, b)
     res = flag_gems.bmm(a, b)
     torch.testing.assert_close(res, ref, atol=1e-2, rtol=1e-2)

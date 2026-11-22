@@ -69,11 +69,7 @@ def _launch_permute_copy(x: torch.Tensor, dims, out: torch.Tensor = None):
     assert x.is_cuda, "Input tensor must be on CUDA device for Triton kernels."
     dims = _normalize_dims(dims, x.dim())
     out_shape = [x.size(d) for d in dims]
-    n_elements = int(
-        torch.tensor(out_shape, dtype=torch.int64).prod().item()
-        if len(out_shape) > 0
-        else 1
-    )
+    n_elements = int(torch.tensor(out_shape, dtype=torch.int64).prod().item() if len(out_shape) > 0 else 1)
 
     if out is None:
         out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
@@ -81,13 +77,9 @@ def _launch_permute_copy(x: torch.Tensor, dims, out: torch.Tensor = None):
         if not out.is_cuda:
             raise ValueError("Output tensor must be on CUDA device.")
         if tuple(out.shape) != tuple(out_shape):
-            raise ValueError(
-                f"Output shape {tuple(out.shape)} does not match expected {tuple(out_shape)}."
-            )
+            raise ValueError(f"Output shape {tuple(out.shape)} does not match expected {tuple(out_shape)}.")
         if out.dtype != x.dtype:
-            raise ValueError(
-                f"Output dtype {out.dtype} must match input dtype {x.dtype}."
-            )
+            raise ValueError(f"Output dtype {out.dtype} must match input dtype {x.dtype}.")
         if out.device != x.device:
             raise ValueError("Input and output must be on the same device.")
 

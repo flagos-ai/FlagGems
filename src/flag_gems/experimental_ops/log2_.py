@@ -36,9 +36,7 @@ def log2_(*args, **kwargs):
         return x
 
     # Fallback for non-CUDA tensors or unsupported dtypes
-    if (not x.is_cuda) or (
-        x.dtype not in (torch.float16, torch.bfloat16, torch.float32)
-    ):
+    if (not x.is_cuda) or (x.dtype not in (torch.float16, torch.bfloat16, torch.float32)):
         # Use PyTorch's implementation as a fallback
         x.log2_()
         return x

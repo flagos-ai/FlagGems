@@ -47,9 +47,7 @@ class StridedBuffer:
     And can also be used in triton kernels since it also has dtype & data_ptr().
     """
 
-    def __init__(
-        self, base: torch.Tensor, shape=None, strides=None, dtype=None, offset=0
-    ):
+    def __init__(self, base: torch.Tensor, shape=None, strides=None, dtype=None, offset=0):
         self._base = base
         self.dtype = dtype or base.dtype
         self.offset = offset

@@ -34,13 +34,9 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
     ref_weight = utils.to_reference(weight, True)
-    ref_out = torch.nn.functional.conv1d(
-        ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
-    )
+    ref_out = torch.nn.functional.conv1d(ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1)
 
-    res_out = flag_gems.conv1d(
-        inp, weight, bias=None, stride=stride, padding=padding, dilation=1
-    )
+    res_out = flag_gems.conv1d(inp, weight, bias=None, stride=stride, padding=padding, dilation=1)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -58,13 +54,9 @@ def test_accuracy_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dt
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
     ref_weight = utils.to_reference(weight, True)
-    ref_out = torch.nn.functional.conv1d(
-        ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
-    )
+    ref_out = torch.nn.functional.conv1d(ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1)
 
-    res_out = flag_gems.conv1d(
-        inp, weight, bias=None, stride=stride, padding=padding, dilation=1
-    )
+    res_out = flag_gems.conv1d(inp, weight, bias=None, stride=stride, padding=padding, dilation=1)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -95,8 +87,6 @@ def test_accuracy_conv1d_dilation(shape, kernel, stride, padding, dtype, dilatio
         dilation=dilation,
     )
 
-    res_out = flag_gems.conv1d(
-        inp, weight, bias=None, stride=stride, padding=padding, dilation=dilation
-    )
+    res_out = flag_gems.conv1d(inp, weight, bias=None, stride=stride, padding=padding, dilation=dilation)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

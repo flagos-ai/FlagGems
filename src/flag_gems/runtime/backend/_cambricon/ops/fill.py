@@ -70,9 +70,7 @@ def fill_tensor_kernel(
 def fill_tensor(input, value):
     logger.debug("GEMS_CAMBRICON FILL TENSOR")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     out = torch.empty_like(input)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)
@@ -113,9 +111,7 @@ def fill_scalar_out(input, value, *, out=None):
 def fill_tensor_out(input, value, *, out=None):
     logger.debug("GEMS_CAMBRICON FILL_TENSOR_OUT")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     if out is None:
         return fill_tensor(input, value)
     N = out.numel()
@@ -129,9 +125,7 @@ def fill_tensor_out(input, value, *, out=None):
 def fill_tensor_(self, value):
     logger.debug("GEMS_CAMBRICON FILL_TENSOR_")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     N = self.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 

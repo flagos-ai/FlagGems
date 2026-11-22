@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def reflection_pad1d_kernel(
-    in_ptr, out_ptr, B, W_in, pad_left, W_out, BLOCK_W: tl.constexpr
-):
+def reflection_pad1d_kernel(in_ptr, out_ptr, B, W_in, pad_left, W_out, BLOCK_W: tl.constexpr):
     pid_b = tl.program_id(axis=0)
     pid_w = tl.program_id(axis=1)
 
@@ -52,9 +50,7 @@ def _copy_rows_kernel(in_ptr, out_ptr, B, W, BLOCK_W: tl.constexpr):
 
 def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = None):
     if not isinstance(padding, (list, tuple)) or len(padding) != 2:
-        raise ValueError(
-            "padding must be a sequence of length 2: (pad_left, pad_right)"
-        )
+        raise ValueError("padding must be a sequence of length 2: (pad_left, pad_right)")
     pad_left, pad_right = int(padding[0]), int(padding[1])
     if pad_left < 0 or pad_right < 0:
         raise ValueError("padding values must be >= 0")
@@ -75,13 +71,9 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
     else:
         expected_shape = (*leading_shape, W_out)
         if tuple(out.shape) != expected_shape:
-            raise ValueError(
-                f"out tensor has shape {tuple(out.shape)}, expected {expected_shape}"
-            )
+            raise ValueError(f"out tensor has shape {tuple(out.shape)}, expected {expected_shape}")
         if out.dtype != x.dtype:
-            raise ValueError(
-                f"out dtype {out.dtype} does not match input dtype {x.dtype}"
-            )
+            raise ValueError(f"out dtype {out.dtype} does not match input dtype {x.dtype}")
         if out.device != x.device:
             raise ValueError("out must be on the same device as input")
         out = out.contiguous()
@@ -89,9 +81,7 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
     # No padding: just copy
     if pad_left == 0 and pad_right == 0:
         if W_out != W_in:
-            raise RuntimeError(
-                "Internal error: W_out should equal W_in when no padding"
-            )
+            raise RuntimeError("Internal error: W_out should equal W_in when no padding")
         grid = (B, triton.cdiv(W_in, 256))
         with torch_device_fn.device(x.device):
             _copy_rows_kernel[grid](x, out, B, W_in, BLOCK_W=256)
@@ -99,13 +89,9 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
 
     # Validate reflection padding constraints
     if W_in < 2:
-        raise ValueError(
-            "input width must be at least 2 for reflection padding when padding > 0"
-        )
+        raise ValueError("input width must be at least 2 for reflection padding when padding > 0")
     if pad_left >= W_in or pad_right >= W_in:
-        raise ValueError(
-            "padding values must be less than the input width for reflection padding"
-        )
+        raise ValueError("padding values must be less than the input width for reflection padding")
 
     grid = (B, triton.cdiv(W_out, 256))
     with torch_device_fn.device(x.device):

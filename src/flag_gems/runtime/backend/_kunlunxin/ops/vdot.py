@@ -12,9 +12,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit
-def compute_vdot(
-    inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj
-):
+def compute_vdot(inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj):
     # # Given inp storage: [inp_real, inp_imag], other: [other_real, other_imag]
 
     # # Case 1: inp_is_conj = False, other_is_conj = False
@@ -99,9 +97,7 @@ def vdot_kernel_complex(
     other_imag = tl.where(mask, other_imag, 0.0)
 
     # Compute based on conjugate flags
-    out_real, out_imag = compute_vdot(
-        inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj
-    )
+    out_real, out_imag = compute_vdot(inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj)
 
     tl.store(out_ptr, out_real)
     tl.store(out_ptr + 1, out_imag)
@@ -151,12 +147,8 @@ def dot_kernel(
 def vdot(input: Tensor, other: Tensor):
     logger.debug("GEMS VDOT")
 
-    assert (
-        input.dtype == other.dtype
-    ), f"Input tensors must have the same dtype. Got {input.dtype} and {other.dtype}."
-    assert (
-        input.ndim == 1 and other.ndim == 1
-    ), f"Input tensors must be 1D. Got {input.ndim}D and {other.ndim}D."
+    assert input.dtype == other.dtype, f"Input tensors must have the same dtype. Got {input.dtype} and {other.dtype}."
+    assert input.ndim == 1 and other.ndim == 1, f"Input tensors must be 1D. Got {input.ndim}D and {other.ndim}D."
     assert (
         input.size() == other.size()
     ), f"Input tensors must have the same size. Got {input.size()} and {other.size()}."

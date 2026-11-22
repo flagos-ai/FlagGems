@@ -8,9 +8,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def clip_func(x, mini, maxi):
     return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))

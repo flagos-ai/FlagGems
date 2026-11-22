@@ -23,9 +23,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 @triton.jit
 def tl_cummin(input, index, axis=0):
-    return tl.associative_scan(
-        (input, index), axis, tle.minimum_with_index_tie_break_right
-    )
+    return tl.associative_scan((input, index), axis, tle.minimum_with_index_tie_break_right)
 
 
 @triton.jit
@@ -64,9 +62,7 @@ def add_base_min_kernel(
         last_part_min_index_via_min = tl.load(partial_min_indices_ptrs)
 
         final_vals = tl.minimum(out_vals, last_part_min_via_min)
-        final_indices = tl.where(
-            out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min
-        )
+        final_indices = tl.where(out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -92,10 +88,9 @@ def scan_part_min_kernel(
     max_value = get_dtype_max(inp.type.element_ty)
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -110,9 +105,7 @@ def scan_part_min_kernel(
 
     if tl.constexpr(NEED_PARTIAL):
         # tl.min do not support min_indices_tie_break_right
-        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
-            inp_vals, in_indices_vals, axis=0
-        )
+        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(inp_vals, in_indices_vals, axis=0)
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -137,9 +130,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False
     need_partial = True if part_num >= 2 else False
     if need_partial:
         partial_min = torch.empty(part_num, dtype=dtype, device=inp.device)
-        partial_min_indices = torch.empty(
-            part_num, dtype=torch.int64, device=inp.device
-        )
+        partial_min_indices = torch.empty(part_num, dtype=torch.int64, device=inp.device)
     else:
         partial_min = None
         partial_min_indices = None
@@ -169,9 +160,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False
             use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
-            add_base_min_kernel[grid](
-                out, out_indices, partial_min, partial_min_indices, n_ele, BLOCK_SIZE
-            )
+            add_base_min_kernel[grid](out, out_indices, partial_min, partial_min_indices, n_ele, BLOCK_SIZE)
 
 
 @libentry()
@@ -206,10 +195,9 @@ def scan_part_min_abc_kernel(
     inp_ptrs = inp + offset
     max_value = get_dtype_max(inp.type.element_ty)
     inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -224,9 +212,7 @@ def scan_part_min_abc_kernel(
 
     if tl.constexpr(NEED_PARTIAL):
         # tl.min do not support min_indices_tie_break_right
-        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
-            inp_vals, in_indices_vals, axis=0
-        )
+        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(inp_vals, in_indices_vals, axis=0)
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -280,9 +266,7 @@ def add_base_min_abc_kernel(
         last_part_min_index_via_min = tl.load(partial_min_index_ptrs)
 
         final_vals = tl.minimum(out_vals, last_part_min_via_min)
-        final_indices = tl.where(
-            out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min
-        )
+        final_indices = tl.where(out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -296,9 +280,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     need_partial = True if part_num >= 2 else False
     if need_partial:
         partial_min = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
-        partial_min_indices = torch.empty(
-            A, part_num, C, dtype=torch.int64, device=inp.device
-        )
+        partial_min_indices = torch.empty(A, part_num, C, dtype=torch.int64, device=inp.device)
     else:
         partial_min = None
         partial_min_indices = None
@@ -365,13 +347,9 @@ def scan_part_min_abc_loop_kernel(
 
     # init
     max_value = get_dtype_max(inp.type.element_ty)
-    if tl.constexpr(inp.type.element_ty.is_fp16()) or tl.constexpr(
-        inp.type.element_ty.is_bf16()
-    ):
+    if tl.constexpr(inp.type.element_ty.is_fp16()) or tl.constexpr(inp.type.element_ty.is_bf16()):
         compute_dtype = tl.float32
-    elif tl.constexpr(inp.type.element_ty.is_int8()) or tl.constexpr(
-        inp.type.element_ty.is_int16()
-    ):
+    elif tl.constexpr(inp.type.element_ty.is_int8()) or tl.constexpr(inp.type.element_ty.is_int16()):
         compute_dtype = tl.int32
     else:
         compute_dtype = inp.type.element_ty

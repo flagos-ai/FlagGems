@@ -51,9 +51,7 @@ def test_w8a8_block_fp8_matmul(M, N, K):
     num_n_groups = (N + block_n - 1) // block_n
 
     As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(torch.float32)
-    Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(
-        torch.float32
-    )
+    Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(torch.float32)
 
     A_ref = A.to(torch.float32)
     B_ref = B.to(torch.float32)
@@ -75,15 +73,11 @@ def test_w8a8_block_fp8_matmul(M, N, K):
             k_start = k_group * block_k
             k_end = min(k_start + block_k, K)
             scale = Bs_ref[n_group, k_group]  # scalar
-            B_scaled[n_start:n_end, k_start:k_end] = (
-                B_ref[n_start:n_end, k_start:k_end] * scale
-            )
+            B_scaled[n_start:n_end, k_start:k_end] = B_ref[n_start:n_end, k_start:k_end] * scale
 
     ref_out = torch.matmul(A_scaled, B_scaled.T)
     ref_out = utils.to_reference(ref_out, True)
     with flag_gems.use_gems():
-        res_out = flag_gems.w8a8_block_fp8_matmul(
-            A, B, As, Bs, block_size, output_dtype=torch.float16
-        )
+        res_out = flag_gems.w8a8_block_fp8_matmul(A, B, As, Bs, block_size, output_dtype=torch.float16)
     ref_out_fp16 = ref_out.to(torch.float16)
     utils.gems_assert_close(res_out, ref_out_fp16, dtype=torch.float16, reduce_dim=K)

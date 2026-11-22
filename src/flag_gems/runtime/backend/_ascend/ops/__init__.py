@@ -43,13 +43,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .polar import polar
-from .pow import (
-    pow_scalar,
-    pow_tensor_scalar,
-    pow_tensor_scalar_,
-    pow_tensor_tensor,
-    pow_tensor_tensor_,
-)
+from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_scalar_, pow_tensor_tensor, pow_tensor_tensor_
 from .randperm import randperm
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg

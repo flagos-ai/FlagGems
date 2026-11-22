@@ -7,14 +7,10 @@ from flag_gems.runtime import torch_device_fn
 
 from .zeros import zeros_kernel
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
-def zeros_like(
-    x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
-):
+def zeros_like(x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None):
     logger.debug("GEMS_MTHREADS ZEROS_LIKE")
     if device is None:
         device = x.device

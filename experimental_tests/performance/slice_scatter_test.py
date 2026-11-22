@@ -9,9 +9,7 @@ import triton
 
 import flag_gems
 from flag_gems.experimental_ops.slice_scatter import slice_scatter as gems_slice_scatter
-from flag_gems.experimental_ops.slice_scatter import (
-    slice_scatter_out as gems_slice_scatter_out,
-)
+from flag_gems.experimental_ops.slice_scatter import slice_scatter_out as gems_slice_scatter_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -198,9 +196,7 @@ def test_slice_scatter_out_2d_performance(shape, dtype, dim, mode):
     out_act = torch.empty_like(x)
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.slice_scatter.out(
-            x.clone(), src.clone(), dim, s, e, step, out=out_ref
-        ),
+        lambda: torch.ops.aten.slice_scatter.out(x.clone(), src.clone(), dim, s, e, step, out=out_ref),
         rep=100,
         quantiles=quantiles,
     )
@@ -208,9 +204,7 @@ def test_slice_scatter_out_2d_performance(shape, dtype, dim, mode):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_slice_scatter_out(
-                x.clone(), src.clone(), dim, s, e, step, out_act
-            ),
+            lambda: gems_slice_scatter_out(x.clone(), src.clone(), dim, s, e, step, out_act),
             rep=100,
             quantiles=quantiles,
         )
@@ -256,9 +250,7 @@ def test_slice_scatter_out_3d_performance(shape, dtype, dim, mode):
     out_act = torch.empty_like(x)
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.slice_scatter.out(
-            x.clone(), src.clone(), dim, s, e, step, out=out_ref
-        ),
+        lambda: torch.ops.aten.slice_scatter.out(x.clone(), src.clone(), dim, s, e, step, out=out_ref),
         rep=100,
         quantiles=quantiles,
     )
@@ -266,9 +258,7 @@ def test_slice_scatter_out_3d_performance(shape, dtype, dim, mode):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_slice_scatter_out(
-                x.clone(), src.clone(), dim, s, e, step, out_act
-            ),
+            lambda: gems_slice_scatter_out(x.clone(), src.clone(), dim, s, e, step, out_act),
             rep=100,
             quantiles=quantiles,
         )

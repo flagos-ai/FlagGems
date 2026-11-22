@@ -5,10 +5,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 try:
@@ -25,9 +22,7 @@ except AttributeError:
 
 
 device_ = device
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @triton.heuristics(runtime.get_heuristic_config("randn"))
@@ -62,9 +57,7 @@ def normal_kernel(
     n2 = n2 * std + mean
     n3 = n3 * std + mean
 
-    off_0 = ((tl.program_id(0) * BLOCK * 4).to(tl.int64) + tl.arange(0, BLOCK)).to(
-        tl.int64
-    )
+    off_0 = ((tl.program_id(0) * BLOCK * 4).to(tl.int64) + tl.arange(0, BLOCK)).to(tl.int64)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
@@ -84,9 +77,7 @@ def normal_(self, mean=0, std=1, *, generator=None):
     N = volume(shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     with torch_device_fn.device(device):
         normal_kernel[grid_fn](self, N, mean, std, philox_seed, philox_offset)
     return self

@@ -41,11 +41,7 @@ def to_reference(inp, upcast=False):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_exp__tensor(shape, dtype):
-    base = (
-        torch.empty(shape, device=flag_gems.device, dtype=torch.float32)
-        .uniform_(-6.0, 6.0)
-        .to(dtype)
-    )
+    base = torch.empty(shape, device=flag_gems.device, dtype=torch.float32).uniform_(-6.0, 6.0).to(dtype)
     ref_input = to_reference(base)
     act_input = base.clone()
 

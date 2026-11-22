@@ -67,9 +67,7 @@ def test_triu_(shape, diagonal, dtype):
 
     assert res is inp, "triu_ should return the input tensor itself to support chaining"
 
-    assert (
-        inp.data_ptr() == original_data_ptr
-    ), "triu_ should modify in-place, data pointer should not change"
+    assert inp.data_ptr() == original_data_ptr, "triu_ should modify in-place, data pointer should not change"
 
     assert (
         inp.stride() == original_stride
@@ -80,8 +78,7 @@ def test_triu_(shape, diagonal, dtype):
 
     if should_modify:
         assert not torch.allclose(inp, inp_original), (
-            "triu_ in-place modification not implemented, "
-            "the original tensor remains unchanged!"
+            "triu_ in-place modification not implemented, " "the original tensor remains unchanged!"
         )
 
 
@@ -115,14 +112,10 @@ def test_triu_inplace_noncontiguous(shape, diagonal, dtype):
         f"Expected {original_stride}, got {inp.stride()}"
     )
 
-    assert (
-        inp.data_ptr() == original_data_ptr
-    ), "triu_ should modify in-place, data pointer should not change"
+    assert inp.data_ptr() == original_data_ptr, "triu_ should modify in-place, data pointer should not change"
 
     M, N = inp.shape[-2], inp.shape[-1]
     should_modify = any(j < i + diagonal for i in range(M) for j in range(N))
 
     if should_modify:
-        assert not torch.allclose(
-            inp, inp_original
-        ), "triu_ should modify non-contiguous tensor in-place"
+        assert not torch.allclose(inp, inp_original), "triu_ should modify non-contiguous tensor in-place"

@@ -74,9 +74,7 @@ def test_nmsnorm_performace(shape, dtype):
     # PyTorch baseline using native rms_norm
     start_time = time.time()
     for _ in range(100):
-        _ = torch.nn.functional.rms_norm(
-            ref_inp, normalized_shape=[shape[-1]], weight=ref_weight
-        )
+        _ = torch.nn.functional.rms_norm(ref_inp, normalized_shape=[shape[-1]], weight=ref_weight)
     torch.cuda.synchronize()
     end_time = time.time()
 

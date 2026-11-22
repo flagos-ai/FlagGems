@@ -67,9 +67,7 @@ SPECIAL_CATEGORY_SOURCES: Dict[str, Dict[str, Set[str]]] = {
         "conv1d": {"torch.nn.functional.conv1d"},
         "conv2d": {"torch.nn.functional.conv2d"},
         "conv3d": {"torch.nn.functional.conv3d"},
-        "scaled_dot_product_attention": {
-            "torch.nn.functional.scaled_dot_product_attention"
-        },
+        "scaled_dot_product_attention": {"torch.nn.functional.scaled_dot_product_attention"},
     },
     "vllm": {
         "flash_attn_varlen_func": {"vllm.flash_attn_varlen_func"},
@@ -109,16 +107,12 @@ def _collect_registration_pairs(init_module: Path) -> Sequence[Tuple[str, str]]:
 
     if visitor.full_config is None:
         raise RuntimeError(
-            "Unable to locate the registration tuple in flag_gems.enable; "
-            "has the initialization code changed?"
+            "Unable to locate the registration tuple in flag_gems.enable; " "has the initialization code changed?"
         )
 
     tuple_node = visitor.full_config
     if not isinstance(tuple_node, (ast.List, ast.Tuple)):
-        raise RuntimeError(
-            "Unexpected AST node for registration entries: "
-            f"{tuple_node.__class__.__name__}"
-        )
+        raise RuntimeError("Unexpected AST node for registration entries: " f"{tuple_node.__class__.__name__}")
 
     pairs: List[Tuple[str, str]] = []
     for entry in tuple_node.elts:  # type: ignore[attr-defined]
@@ -228,9 +222,7 @@ def _build_entries(
     return entries
 
 
-def _format_output(
-    category_maps: Dict[str, Dict[str, Set[str]]], mode: str, format: str
-) -> str:
+def _format_output(category_maps: Dict[str, Dict[str, Set[str]]], mode: str, format: str) -> str:
     entries = _build_entries(category_maps)
     counts = {kind: len(mapping) for kind, mapping in category_maps.items()}
     names = sorted({e[0] for e in entries})
@@ -264,10 +256,7 @@ def _format_output(
 
     if format in ["json", "yaml"]:
         payload = {
-            "entries": [
-                {"name": name, "source": source, "kind": kind}
-                for name, source, kind in entries
-            ],
+            "entries": [{"name": name, "source": source, "kind": kind} for name, source, kind in entries],
             "counts": {**counts, "total": len(names)},
         }
         if format == "json":

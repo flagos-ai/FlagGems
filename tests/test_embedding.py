@@ -27,12 +27,8 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_indices = torch.randint(
-        0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
-    )
-    res_embedding = torch.randn(
-        (EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True
-    )
+    res_indices = torch.randint(0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False)
+    res_embedding = torch.randn((EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True)
     ref_embedding = utils.to_reference(res_embedding)
     ref_indices = utils.to_reference(res_indices)
 
@@ -57,9 +53,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 @pytest.mark.parametrize("padding_idx", [-1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_embedding_backward(
-    EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype
-):
+def test_embedding_backward(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -94,20 +88,14 @@ def test_embedding_backward(
         (1, 3, 64, 128),
     ],
 )
-@pytest.mark.parametrize(
-    "padding_idx, scale_grad_by_freq", [(-1, False), (0, True), (5, False)]
-)
+@pytest.mark.parametrize("padding_idx, scale_grad_by_freq", [(-1, False), (0, True), (5, False)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("seed", [42])
-def test_embedding_dense_backward(
-    Batch, M, N, embeddingsize, padding_idx, scale_grad_by_freq, dtype, seed
-):
+def test_embedding_dense_backward(Batch, M, N, embeddingsize, padding_idx, scale_grad_by_freq, dtype, seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     grad_output = torch.randn((Batch, M, N), device=flag_gems.device, dtype=dtype)
-    indices = torch.randint(
-        0, embeddingsize, (Batch, M), device=flag_gems.device, dtype=torch.long
-    )
+    indices = torch.randint(0, embeddingsize, (Batch, M), device=flag_gems.device, dtype=torch.long)
 
     if padding_idx >= 0 and embeddingsize > 0:
         mask = torch.rand((Batch, M), device=flag_gems.device) < 0.25

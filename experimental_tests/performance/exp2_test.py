@@ -51,15 +51,11 @@ def test_perf_exp2_tensor(shape, dtype):
     ref_x = to_reference(x)
 
     # PyTorch reference benchmark
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.exp2(ref_x), rep=100, quantiles=[0.5, 0.2, 0.8]
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.exp2(ref_x), rep=100, quantiles=[0.5, 0.2, 0.8])
 
     # Triton implementation benchmark
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_exp2(x), rep=100, quantiles=[0.5, 0.2, 0.8]
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_exp2(x), rep=100, quantiles=[0.5, 0.2, 0.8])
 
     speedup = ms_torch / ms_triton
     print(
@@ -87,9 +83,7 @@ def test_perf_exp2_out(shape, dtype):
     # Triton implementation benchmark
     act_out = torch.empty_like(x)
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_exp2_out(x, act_out), rep=100, quantiles=[0.5, 0.2, 0.8]
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_exp2_out(x, act_out), rep=100, quantiles=[0.5, 0.2, 0.8])
 
     speedup = ms_torch / ms_triton
     print(

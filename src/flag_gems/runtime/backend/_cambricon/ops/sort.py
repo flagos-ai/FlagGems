@@ -229,28 +229,18 @@ def sweep(
                 pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
                 tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
-                local_ex_cumsum = (
-                    tl.cumsum(matches.to(tl.uint32), axis=0) - matches
-                )  # (TILE_N, )
-                ex_cumsum_in_bin = (
-                    exclusive_prefix + local_ex_cumsum
-                )  # global ex_cumsum_in_bin (TILE_N, )
+                local_ex_cumsum = tl.cumsum(matches.to(tl.uint32), axis=0) - matches  # (TILE_N, )
+                ex_cumsum_in_bin = exclusive_prefix + local_ex_cumsum  # global ex_cumsum_in_bin (TILE_N, )
 
                 # ex_cumsum_bins (m, n_passes, r)
-                ex_cumsum_bins = tl.load(
-                    excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
-                )  # scalar
+                ex_cumsum_bins = tl.load(excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index)  # scalar
                 pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
 
                 # scatter
                 tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
                 if associate_arr_ptr is not None:
-                    associate_arr = tl.load(
-                        associate_arr_ptr + pid_m * N + n_offsets, mask=mask
-                    )
-                    tl.store(
-                        associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches
-                    )
+                    associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
+                    tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
 
 def radix_sort(arr, k_bits=8, descending=False):
@@ -280,9 +270,7 @@ def radix_sort(arr, k_bits=8, descending=False):
     grid_for_global_hist = (S, grid_n, M_PER_SPLIT)
 
     with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
-        )
+        global_hist = torch.zeros((m, n_passes, num_bins), device=arr.device, dtype=torch.int32)
         # launch compute_global_hist_kernel with M_PER_SPLIT passed
         compute_global_hist_kernel[grid_for_global_hist](
             arr,
@@ -315,11 +303,7 @@ def radix_sort(arr, k_bits=8, descending=False):
 
         # sort
         arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
-        )
+        indices_in = torch.arange(0, n, dtype=torch.int64, device=arr_in.device).broadcast_to(arr.shape).contiguous()
         arr_out = torch.empty_like(arr)
         indices_out = torch.empty_like(indices_in)
 
@@ -331,9 +315,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         # grid_for_sweep using same S (splits)
         grid_for_sweep = (S, grid_n, grid_r)
 
-        status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
-        )
+        status = torch.empty((m, num_bins, grid_n), device=arr.device, dtype=torch.uint32)
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits

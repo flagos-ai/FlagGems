@@ -22,9 +22,7 @@ def where_self_out(condition, self, other, out=None):
     logger.debug("GEMS_CAMBRICON WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     if out is not None:
-        assert (
-            out.dtype == result_type
-        ), f"Expected out type to be {result_type}, but got {out.dtype}."
+        assert out.dtype == result_type, f"Expected out type to be {result_type}, but got {out.dtype}."
 
     c, a, b = list(
         map(

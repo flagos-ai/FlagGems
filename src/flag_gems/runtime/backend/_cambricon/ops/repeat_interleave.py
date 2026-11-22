@@ -26,9 +26,7 @@ def repeat_interleave_self_int_forward(inp, repeats, dim=None, *, output_size=No
 
     if output_size is not None and output_size != output_shape[dim]:
         raise RuntimeError(
-            "repeat_interleave: Invalid output_size, expected {} but got {}".format(
-                output_shape[dim], output_size
-            )
+            "repeat_interleave: Invalid output_size, expected {} but got {}".format(output_shape[dim], output_size)
         )
 
     output = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
@@ -69,9 +67,7 @@ class RepeatInterleaveSelfIntFn(torch.autograd.Function):
         ctx.repeats = repeats
         ctx.output_size = output_size
 
-        out = repeat_interleave_self_int_forward(
-            inp, repeats, dim=dim, output_size=output_size
-        )
+        out = repeat_interleave_self_int_forward(inp, repeats, dim=dim, output_size=output_size)
         return out
 
     @staticmethod
@@ -99,9 +95,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
 
 @triton.jit
-def repeat_interleave_tensor_kernel(
-    repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
-):
+def repeat_interleave_tensor_kernel(repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
@@ -161,9 +155,7 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
 
     if repeats.ndim == 0 or (repeats.ndim == 1 and repeats.size(0) == 1):
-        return repeat_interleave_self_int(
-            inp, repeats.item(), dim=dim, output_size=output_size
-        )
+        return repeat_interleave_self_int(inp, repeats.item(), dim=dim, output_size=output_size)
     elif repeats.ndim > 1:
         raise RuntimeError("repeats must be 0-dim or 1-dim tensor")
 
@@ -172,12 +164,8 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
         dim = dim + len(inp_shape)
 
     if repeats.size(0) != inp_shape[dim]:
-        raise RuntimeError(
-            "repeats must have the same size as input along dim, but got \
-                repeats.size(0) = {} and input.size({}) = {}".format(
-                repeats.size(0), dim, inp_shape[dim]
-            )
-        )
+        raise RuntimeError("repeats must have the same size as input along dim, but got \
+                repeats.size(0) = {} and input.size({}) = {}".format(repeats.size(0), dim, inp_shape[dim]))
 
     indices = repeat_interleave_tensor(repeats)
     res = torch.index_select(inp, dim, indices)

@@ -69,12 +69,8 @@ def triton_flash_mla_sparse_fwd(
     kv_base = kv + i_g * stride_kvg
     tkv_base = kv_base + D * stride_kvd
     t_base = indices + i_sq * stride_tm + i_g * stride_tg
-    attn_sink_ptr = (
-        attn_sink + i_gbh * (BH * stride_attn_sink_h) if HAVE_ATTN_SINK else 0
-    )
-    topk_length_ptr = (
-        topk_length + i_sq * stride_topk_length_s if HAVE_TOPK_LENGTH else 0
-    )
+    attn_sink_ptr = attn_sink + i_gbh * (BH * stride_attn_sink_h) if HAVE_ATTN_SINK else 0
+    topk_length_ptr = topk_length + i_sq * stride_topk_length_s if HAVE_TOPK_LENGTH else 0
     if not output_idx_i64:
         o_base = output + i_sq * stride_om + i_gbh * (BH * stride_oh)
     else:
@@ -124,24 +120,16 @@ def triton_flash_mla_sparse_fwd(
         # if mask_ids.max(0) > 0:
         if ck * BK <= max_col:
             # step2: gather kv with indices
-            kv_ptr = (
-                kv_base + offs_d[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
-            )
+            kv_ptr = kv_base + offs_d[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
             kv_msk = mask_d[:, None] & mask_ids[None, :]
             kv_blk = tl.load(kv_ptr, kv_msk, other=0.0).to(tl.float32)  # [DP, BK]
 
             # step3: (q @ kv) * sm_scale
             qk = tl.dot(q_blk, kv_blk)
             if TDP > 0:
-                tkv_ptr = (
-                    tkv_base
-                    + offs_td[:, None] * stride_kvd
-                    + kv_ids[None, :] * stride_kvn
-                )
+                tkv_ptr = tkv_base + offs_td[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
                 tkv_msk = mask_td[:, None] & mask_ids[None, :]
-                tkv_blk = tl.load(tkv_ptr, tkv_msk, other=0.0).to(
-                    tl.float32
-                )  # [TDP, BK]
+                tkv_blk = tl.load(tkv_ptr, tkv_msk, other=0.0).to(tl.float32)  # [TDP, BK]
                 qk = tl.dot(tq_blk, tkv_blk, qk) * sm_scale
             else:
                 qk = qk * sm_scale
@@ -202,9 +190,7 @@ def triton_flash_mla_sparse_fwd(
         out_vals = acc / sum_exp[:, None]
 
     # step11: store output
-    o_ptr = (
-        o_base + offs_h[:, None] * stride_oh + offs_od[None, :] * stride_od
-    )  # [BH, DP]
+    o_ptr = o_base + offs_h[:, None] * stride_oh + offs_od[None, :] * stride_od  # [BH, DP]
     o_msk = mask_h[:, None] & mask_od[None, :]
     tl.store(o_ptr, out_vals.to(q_blk.dtype), o_msk)
 
@@ -274,9 +260,7 @@ def flash_mla_sparse_fwd(
     NH = triton.cdiv(G, BH)
     BK = 16  # used to be out of memory for 32
     output = torch.zeros((SQ, H, D), device=q.device, dtype=q.dtype)
-    max_logits = torch.full(
-        (SQ, H), float("-inf"), device=q.device, dtype=torch.float32
-    )
+    max_logits = torch.full((SQ, H), float("-inf"), device=q.device, dtype=torch.float32)
     lse = torch.full((SQ, H), float("-inf"), device=q.device, dtype=torch.float32)
     INT32_MAX = 2147483647
     q_idx_i64 = q.numel() > INT32_MAX

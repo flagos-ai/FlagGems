@@ -40,9 +40,7 @@ def generate_gather_kernel(
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline(
-        '@libtuner(configs=runtime.get_tuned_config("gather"), key=["N"], strategy=["log"])'
-    )
+    code.writeline('@libtuner(configs=runtime.get_tuned_config("gather"), key=["N"], strategy=["log"])')
     code.writeline("@triton.jit")
 
     # signature
@@ -94,13 +92,9 @@ def generate_gather_kernel(
 
         # Use offsets to gather
         if large_input:
-            code.writeline(
-                "cur_index = tl.load(index + index_offsets, mask=mask, other=0)"
-            )
+            code.writeline("cur_index = tl.load(index + index_offsets, mask=mask, other=0)")
         else:
-            code.writeline(
-                "cur_index = tl.load(index + index_offsets, mask=mask, other=0).to(tl.int32)"
-            )
+            code.writeline("cur_index = tl.load(index + index_offsets, mask=mask, other=0).to(tl.int32)")
 
         code.writeline("inp_offsets += cur_index * stride_dim")
 

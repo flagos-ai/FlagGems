@@ -72,15 +72,9 @@ def tensor_cache(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]
                 len(args) == len(last_args)
                 and len(kwargs) == len(last_kwargs)
                 and all(a is b for a, b in zip(args, last_args))
-                and all(
-                    k in last_kwargs and v is last_kwargs[k] for k, v in kwargs.items()
-                )
+                and all(k in last_kwargs and v is last_kwargs[k] for k, v in kwargs.items())
             ):
-                cache_entries = (
-                    cache_entries[:i]
-                    + cache_entries[i + 1 :]
-                    + [(args, kwargs, last_result)]
-                )
+                cache_entries = cache_entries[:i] + cache_entries[i + 1 :] + [(args, kwargs, last_result)]
                 return last_result
 
         result = fn(*args, **kwargs)
@@ -100,13 +94,8 @@ def input_guard(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        contiguous_args = (
-            i if not isinstance(i, torch.Tensor) else i.contiguous() for i in args
-        )
-        contiguous_kwargs = {
-            k: (v if not isinstance(v, torch.Tensor) else v.contiguous())
-            for k, v in kwargs.items()
-        }
+        contiguous_args = (i if not isinstance(i, torch.Tensor) else i.contiguous() for i in args)
+        contiguous_kwargs = {k: (v if not isinstance(v, torch.Tensor) else v.contiguous()) for k, v in kwargs.items()}
 
         tensor = None
         for arg in args:

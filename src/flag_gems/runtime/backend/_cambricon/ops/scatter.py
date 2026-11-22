@@ -41,9 +41,7 @@ def generate_scatter_kernel(
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline(
-        '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"],'
-    )
+    code.writeline('@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"],')
     code.writeline('          restore_value=["out"], )')
 
     code.writeline("@triton.jit")
@@ -106,9 +104,7 @@ def generate_scatter_kernel(
         if large_tensor:
             code.writeline("cur_index = tl.load(index + offsets, mask=mask, other=0)")
         else:
-            code.writeline(
-                "cur_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int32)"
-            )
+            code.writeline("cur_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int32)")
         code.writeline("inp_offsets += cur_index * stride_dim")
 
         code.newline()
@@ -281,9 +277,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
     N = index.numel()
 
-    large_tensor = (src.numel() * src.element_size() > 2**31) or (
-        out.numel() * out.element_size() > 2**31
-    )
+    large_tensor = (src.numel() * src.element_size() > 2**31) or (out.numel() * out.element_size() > 2**31)
 
     # <rank>_<dim>_<large_tensor> is part of the key of overloads
     _scatter_func(
@@ -310,9 +304,7 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     N = index.numel()
 
-    large_tensor = (src.numel() * src.element_size() > 2**31) or (
-        out.numel() * out.element_size() > 2**31
-    )
+    large_tensor = (src.numel() * src.element_size() > 2**31) or (out.numel() * out.element_size() > 2**31)
 
     _scatter_func(
         src,

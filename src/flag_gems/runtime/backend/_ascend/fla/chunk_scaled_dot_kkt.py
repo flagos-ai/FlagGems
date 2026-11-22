@@ -60,9 +60,7 @@ def chunk_scaled_dot_kkt_fwd_kernel(
         o_t = tl.arange(0, BT)
         o_t_fp32 = o_t.to(tl.float32)
 
-        p_beta = tl.make_block_ptr(
-            beta + i_h * bt_stride + bos, (T,), (1,), (i_t * BT,), (BT,), (0,)
-        )
+        p_beta = tl.make_block_ptr(beta + i_h * bt_stride + bos, (T,), (1,), (i_t * BT,), (BT,), (0,))
         b_beta = tl.load(p_beta, boundary_check=(0,))
 
         b_A = tl.zeros([BT, BT], dtype=tl.float32)
@@ -79,9 +77,7 @@ def chunk_scaled_dot_kkt_fwd_kernel(
             b_A += tl.dot(b_k, tl.trans(b_k))
 
         if USE_G:
-            p_g = tl.make_block_ptr(
-                g_cumsum + i_h * bt_stride + bos, (T,), (1,), (i_t * BT,), (BT,), (0,)
-            )
+            p_g = tl.make_block_ptr(g_cumsum + i_h * bt_stride + bos, (T,), (1,), (i_t * BT,), (BT,), (0,))
             b_g = tl.load(p_g, boundary_check=(0,))
             b_g_diff = b_g[:, None] - b_g[None, :]
             b_A *= safe_exp(b_g_diff)
@@ -136,9 +132,7 @@ def chunk_scaled_dot_kkt_fwd(
     BT = chunk_size
     if cu_seqlens is not None:
         cu_seqlens = cu_seqlens.cpu()
-        chunk_indices = (
-            prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
-        )
+        chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
         chunk_indices = chunk_indices.npu()
         cu_seqlens = cu_seqlens.npu()
     else:

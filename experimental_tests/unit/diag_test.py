@@ -40,9 +40,7 @@ def to_reference(inp, upcast=False):
 
 
 @pytest.mark.diag
-@pytest.mark.parametrize(
-    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
-)
+@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_tensor(shape, dtype, diagonal):
@@ -58,9 +56,7 @@ def test_diag_tensor(shape, dtype, diagonal):
 
 
 @pytest.mark.diag
-@pytest.mark.parametrize(
-    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
-)
+@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_out(shape, dtype, diagonal):

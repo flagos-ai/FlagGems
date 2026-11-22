@@ -40,11 +40,7 @@ def _eye_impl(n, m=None, dtype=None, device=None, out: torch.Tensor = None):
         if dtype is None:
             dtype = torch.get_default_dtype()
         if device is None:
-            device = (
-                torch.device("cuda")
-                if torch.cuda.is_available()
-                else torch.device("cpu")
-            )
+            device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         out = torch.empty((n, m), dtype=dtype, device=device)
     else:
         if out.dim() != 2:

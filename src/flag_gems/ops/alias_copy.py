@@ -51,13 +51,9 @@ def alias_copy_out(x: torch.Tensor, out: torch.Tensor):
     if x.dtype != out.dtype:
         raise RuntimeError("alias_copy_out: dtype of input and output must match.")
     if x.numel() != out.numel():
-        raise RuntimeError(
-            "alias_copy_out: input and output must have the same number of elements."
-        )
+        raise RuntimeError("alias_copy_out: input and output must have the same number of elements.")
     if x.device != out.device:
-        raise RuntimeError(
-            "alias_copy_out: input and output must be on the same device."
-        )
+        raise RuntimeError("alias_copy_out: input and output must be on the same device.")
     if not out.is_contiguous():
         raise RuntimeError("alias_copy_out: output tensor must be contiguous.")
     src = x.contiguous() if not x.is_contiguous() else x

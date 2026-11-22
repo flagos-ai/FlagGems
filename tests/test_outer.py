@@ -21,9 +21,7 @@ else:
 
 
 @pytest.mark.outer
-@pytest.mark.parametrize(
-    "M, N", MN_SHAPES + ([(32, 131072)] if flag_gems.vendor_name == "cambricon" else [])
-)
+@pytest.mark.parametrize("M, N", MN_SHAPES + ([(32, 131072)] if flag_gems.vendor_name == "cambricon" else []))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_outer(M, N, dtype):
     inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -38,9 +36,7 @@ def test_outer(M, N, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
 
-    ref_in1_grad, ref_in2_grad = torch.autograd.grad(
-        ref_out, (ref_inp1, ref_inp2), ref_grad
-    )
+    ref_in1_grad, ref_in2_grad = torch.autograd.grad(ref_out, (ref_inp1, ref_inp2), ref_grad)
     res_in1_grad, res_in2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
     utils.gems_assert_close(res_in1_grad, ref_in1_grad, dtype, reduce_dim=N)
     utils.gems_assert_close(res_in2_grad, ref_in2_grad, dtype, reduce_dim=M)

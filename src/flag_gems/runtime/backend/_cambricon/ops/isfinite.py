@@ -28,9 +28,7 @@ def isfinite(
     logger.debug("GEMS_CAMBRICON ISFINITE")
     if A.is_floating_point():
         legal_dtype = [torch.float32, torch.float16, torch.bfloat16]
-        assert (
-            A.dtype in legal_dtype
-        ), f"isfinite input float dtype should in {str(legal_dtype)}, get {str(A.dtype)}"
+        assert A.dtype in legal_dtype, f"isfinite input float dtype should in {str(legal_dtype)}, get {str(A.dtype)}"
         return isfinite_func(A)
     else:
         return torch.full(A.shape, True, dtype=torch.bool, device=A.device)

@@ -30,9 +30,7 @@ def create_kv_caches_with_random_flash(
     value_caches: list[torch.Tensor] = []
 
     for _ in range(num_layers):
-        key_value_cache = torch.empty(
-            size=key_value_cache_shape, dtype=torch_dtype, device=device
-        )
+        key_value_cache = torch.empty(size=key_value_cache_shape, dtype=torch_dtype, device=device)
 
         if cache_dtype in ["auto", "half", "bfloat16", "float"]:
             key_value_cache.uniform_(-scale, scale)
@@ -72,9 +70,7 @@ def test_reshape_and_cache_flash(
         num_slots = block_size * num_blocks
         slot_mapping_lst = random.sample(range(num_slots), num_tokens)
         slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
-        qkv = torch.randn(
-            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
-        )
+        qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype, device=device)
         _, key, value = qkv.unbind(dim=1)
 
         # Create the KV caches.

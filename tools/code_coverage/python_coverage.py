@@ -36,9 +36,7 @@ def process_coverage_file(xml_file):
             line_missing_branches = line.attrib.get("missing-branches")
 
             if line_branch == "true":
-                line_condition_coverage = (
-                    line_condition_coverage.split()[1].strip("()").split("/")
-                )
+                line_condition_coverage = line_condition_coverage.split()[1].strip("()").split("/")
                 taken = int(line_condition_coverage[0])
                 for _ in range(taken):
                     print(f"BRDA:{line_number},{0},{branch_index},{line_hits}")

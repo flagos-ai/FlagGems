@@ -60,25 +60,11 @@ def dreglu_kernel(
     pid_n = tl.program_id(axis=1)
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    grad_output_ptr += (
-        offs_m[:, None] * stride_grad_out_m + offs_n[None, :] * stride_grad_out_n
-    )
-    input_ptr_a = (
-        input_ptr + offs_m[:, None] * stride_in_m + offs_n[None, :] * stride_in_n
-    )
-    input_ptr_b = (
-        input_ptr + offs_m[:, None] * stride_in_m + (offs_n[None, :] + N) * stride_in_n
-    )
-    grad_input_ptr_a = (
-        grad_input_ptr
-        + offs_m[:, None] * stride_grad_in_m
-        + offs_n[None, :] * stride_grad_in_n
-    )
-    grad_input_ptr_b = (
-        grad_input_ptr
-        + offs_m[:, None] * stride_grad_in_m
-        + (offs_n[None, :] + N) * stride_grad_in_n
-    )
+    grad_output_ptr += offs_m[:, None] * stride_grad_out_m + offs_n[None, :] * stride_grad_out_n
+    input_ptr_a = input_ptr + offs_m[:, None] * stride_in_m + offs_n[None, :] * stride_in_n
+    input_ptr_b = input_ptr + offs_m[:, None] * stride_in_m + (offs_n[None, :] + N) * stride_in_n
+    grad_input_ptr_a = grad_input_ptr + offs_m[:, None] * stride_grad_in_m + offs_n[None, :] * stride_grad_in_n
+    grad_input_ptr_b = grad_input_ptr + offs_m[:, None] * stride_grad_in_m + (offs_n[None, :] + N) * stride_grad_in_n
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
     grad_out = tl.load(grad_output_ptr, mask=mask, other=0.0).to(tl.float32)
     block_a = tl.load(input_ptr_a, mask=mask, other=0.0).to(tl.float32)
@@ -114,9 +100,7 @@ def reglu_kernel(
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     x_ptr_a = x_ptr + offs_m[:, None] * stride_x_m + offs_n[None, :] * stride_x_n
-    x_ptr_b = (
-        x_ptr + offs_m[:, None] * stride_x_m + (offs_n[None, :] + N_OUT) * stride_x_n
-    )
+    x_ptr_b = x_ptr + offs_m[:, None] * stride_x_m + (offs_n[None, :] + N_OUT) * stride_x_n
     y_ptr = y_ptr + offs_m[:, None] * stride_y_m + offs_n[None, :] * stride_y_n
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N_OUT)
     block_a = tl.load(x_ptr_a, mask=mask, other=0.0)
@@ -132,20 +116,14 @@ def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.
         raise ValueError("Input tensor must have at least 1 dimension.")
     last_dim = shape[-1]
     if last_dim % 2 != 0:
-        raise ValueError(
-            f"The last dimension of the input tensor must be even, but got {last_dim}."
-        )
+        raise ValueError(f"The last dimension of the input tensor must be even, but got {last_dim}.")
     N_OUT = last_dim // 2
     M = input_tensor.numel() // last_dim
     if input_tensor.numel() == 0:
         output_shape = (*shape[:-1], N_OUT)
-        return torch.empty(
-            output_shape, device=input_tensor.device, dtype=input_tensor.dtype
-        )
+        return torch.empty(output_shape, device=input_tensor.device, dtype=input_tensor.dtype)
     input_2d = input_tensor.contiguous().view(M, last_dim)
-    output_2d = torch.empty(
-        (M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype
-    )
+    output_2d = torch.empty((M, N_OUT), device=input_tensor.device, dtype=input_tensor.dtype)
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]),
         triton.cdiv(N_OUT, META["BLOCK_N"]),
@@ -171,9 +149,7 @@ def dreglu(
 ) -> torch.Tensor:
     shape = input_tensor.shape
     if shape[:-1] != grad_output.shape[:-1] or shape[-1] != 2 * grad_output.shape[-1]:
-        raise ValueError(
-            f"Shape mismatch: input {shape} vs grad_output {grad_output.shape}"
-        )
+        raise ValueError(f"Shape mismatch: input {shape} vs grad_output {grad_output.shape}")
     M = grad_output.numel() // grad_output.shape[-1]
     N = grad_output.shape[-1]
     grad_output_2d = grad_output.contiguous().view(M, N)

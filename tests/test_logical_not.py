@@ -16,9 +16,7 @@ def test_logical_not(shape, dtype):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     elif dtype in utils.ALL_INT_DTYPES:
-        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
+        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     elif dtype in utils.BOOL_TYPES:
         inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
 

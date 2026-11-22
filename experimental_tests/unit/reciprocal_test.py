@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.reciprocal import (  # noqa: E402
-    reciprocal as gems_reciprocal,
-)
-from flag_gems.experimental_ops.reciprocal import (  # noqa: E402
-    reciprocal_out as gems_reciprocal_out,
-)
+from flag_gems.experimental_ops.reciprocal import reciprocal as gems_reciprocal  # noqa: E402
+from flag_gems.experimental_ops.reciprocal import reciprocal_out as gems_reciprocal_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

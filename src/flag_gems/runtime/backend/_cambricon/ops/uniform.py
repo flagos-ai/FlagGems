@@ -6,10 +6,7 @@ from triton.language.extra.mlu.libdevice import philox as _philox
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
@@ -58,16 +55,10 @@ UNROLL = 4
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     logger.debug("GEMS_CAMBRICON UNIFORM")
     N = volume(self.shape)
-    grid_fn = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
-    )
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     with torch_device_fn.device(self.device):
-        uniform_kernel[grid_fn](
-            self, N, philox_seed, philox_offset, from_, to, num_warps=1, num_stages=3
-        )
+        uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to, num_warps=1, num_stages=3)
     return self

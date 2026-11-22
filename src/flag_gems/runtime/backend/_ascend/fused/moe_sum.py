@@ -145,9 +145,7 @@ def moe_sum_kernel_topk2(
 
         # Fully unrolled for topk=2
         val0 = tl.load(base, mask=valid_mask, other=0.0, care_padding=False)
-        val1 = tl.load(
-            base + hidden_size, mask=valid_mask, other=0.0, care_padding=False
-        )
+        val1 = tl.load(base + hidden_size, mask=valid_mask, other=0.0, care_padding=False)
 
         result = val0.to(tl.float32) + val1.to(tl.float32)
 
@@ -176,11 +174,7 @@ def moe_sum(
 
     # Check contiguous pattern
     is_contiguous = (
-        in_s2 == 1
-        and in_s1 == hidden_size
-        and in_s0 == topk * hidden_size
-        and out_s1 == 1
-        and out_s0 == hidden_size
+        in_s2 == 1 and in_s1 == hidden_size and in_s0 == topk * hidden_size and out_s1 == 1 and out_s0 == hidden_size
     )
 
     def grid(meta):

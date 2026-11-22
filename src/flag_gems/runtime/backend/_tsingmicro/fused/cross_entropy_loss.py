@@ -16,10 +16,7 @@ TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": 2**n}, num_warps=1, num_stages=3)
-        for n in range(10, 17, 2)
-    ],
+    configs=[triton.Config({"BLOCK_C": 2**n}, num_warps=1, num_stages=3) for n in range(10, 17, 2)],
     key=["C"],
 )
 @triton.jit
@@ -51,9 +48,7 @@ def softmax_forward_kernel(
             offset_d = tl.arange(0, D)
             offset_c = tl.arange(0, C)
 
-            inp_ptrs = (
-                inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-            )
+            inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
             inp = tl.load(inp_ptrs).to(tl.float32)
             final_max = tl.max(inp, axis=0)
             final_sum = tl.sum(tl.exp(inp - final_max[None, :]), axis=0)
@@ -70,13 +65,9 @@ def softmax_forward_kernel(
 
             for off in range(0, C, BLOCK_C):
                 offset_c = off + tl.arange(0, BLOCK_C)
-                inp_ptrs = (
-                    inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-                )
+                inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
                 inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
-                inp = tl.load(inp_ptrs, mask=inp_mask, other=-float("inf")).to(
-                    tl.float32
-                )
+                inp = tl.load(inp_ptrs, mask=inp_mask, other=-float("inf")).to(tl.float32)
                 cur_max = tl.maximum(tmp_max, inp)
                 cur_exp = tl.exp(inp - cur_max)
                 tmp_sum = tmp_sum * tl.exp(tmp_max - cur_max) + cur_exp
@@ -95,11 +86,7 @@ def softmax_forward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s)
-        for num in [4, 8, 16, 48]
-        for s in [0, 3]
-    ],
+    configs=[triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s) for num in [4, 8, 16, 48] for s in [0, 3]],
     key=["C"],
     restore_value=["final_max_ptr"],
 )
@@ -143,11 +130,7 @@ def max_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s)
-        for num in [4, 8, 16, 48]
-        for s in [0, 3]
-    ],
+    configs=[triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s) for num in [4, 8, 16, 48] for s in [0, 3]],
     key=["C"],
     reset_to_zero=["final_sum_ptr"],
 )
@@ -195,10 +178,7 @@ def softmax_forward_with_max_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_N": 2**n}, num_warps=4, num_stages=0)
-        for n in range(4, 11, 2)
-    ],
+    configs=[triton.Config({"BLOCK_N": 2**n}, num_warps=4, num_stages=0) for n in range(4, 11, 2)],
     key=["N"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -453,15 +433,8 @@ def single_celoss_indice_bwd(
     inp = tl.load(inp_ptrs, mask=inp_mask, other=-float("inf")).to(tl.float32)
 
     minus_one = offset_c[:, None] == tgt[None, :]
-    inp_grad = (
-        (tl.exp(inp - final_max[None, :]) / final_sum[None, :] - minus_one)
-        * w_tgt
-        * out_grad
-        * mean_num
-    )
-    inp_grad_ptrs = (
-        inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-    )
+    inp_grad = (tl.exp(inp - final_max[None, :]) / final_sum[None, :] - minus_one) * w_tgt * out_grad * mean_num
+    inp_grad_ptrs = inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
     tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
 
 
@@ -645,9 +618,7 @@ def celoss_probability_bwd(
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
-    out_grad = tl.load(out_grad_ptrs, mask=offset_d < D, other=0).to(tl.float32)[
-        None, :
-    ]
+    out_grad = tl.load(out_grad_ptrs, mask=offset_d < D, other=0).to(tl.float32)[None, :]
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -794,9 +765,7 @@ def celoss_indices_smooth_bwd(
 
         grad = w_sum / final_sum * tl.exp(inp - final_max) - smooth * w[:, None]
         inp_grad = grad * out_grad * mean_num
-        inp_grad_ptrs = (
-            inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        )
+        inp_grad_ptrs = inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
 
 
@@ -849,23 +818,17 @@ class CrossEntropyLoss(torch.autograd.Function):
             final_sum = torch.zeros(shape, dtype=torch.float32, device=inp.device)
             with torch_device_fn.device(inp.device):
                 if C <= (32 * 1000) or C > (2048 * 1000):
-                    softmax_forward_kernel[(TOTAL_CORE_NUM,)](
-                        inp, final_max, final_sum, N, C, D
-                    )
+                    softmax_forward_kernel[(TOTAL_CORE_NUM,)](inp, final_max, final_sum, N, C, D)
                 else:
                     grid = lambda meta: (
                         triton.cdiv(TOTAL_CORE_NUM, meta["C_TILE_NUM"]),
                         meta["C_TILE_NUM"],
                     )
                     max_kernel[grid](inp, final_max, N, C, D)
-                    softmax_forward_with_max_kernel[grid](
-                        inp, final_max, final_sum, N, C, D
-                    )
+                    softmax_forward_with_max_kernel[grid](inp, final_max, final_sum, N, C, D)
 
                 grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
-                nllloss_without_weight_kernel[grid](
-                    inp, tgt, final_max, final_sum, out, ignore_index, N, C, D
-                )
+                nllloss_without_weight_kernel[grid](inp, tgt, final_max, final_sum, out, ignore_index, N, C, D)
             if reduction == 1:
                 if ignore_index < 0 or ignore_index >= C:
                     mean_num = 1 / C
@@ -897,9 +860,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             final_max = torch.empty(shape, dtype=torch.float32, device=inp.device)
             final_sum = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch_device_fn.device(inp.device):
-                softmax_forward_kernel[(TOTAL_CORE_NUM,)](
-                    inp, final_max, final_sum, N, C, D
-                )
+                softmax_forward_kernel[(TOTAL_CORE_NUM,)](inp, final_max, final_sum, N, C, D)
                 nllloss_with_weight_kernel[(N,)](
                     inp,
                     tgt,
@@ -953,9 +914,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         inp_grad = torch.zeros(inp.shape, dtype=inp.dtype, device=inp.device)
         grid = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), N)
         if tgt.ndim == inp.ndim:
-            celoss_probability_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D
-            )
+            celoss_probability_bwd[grid](out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D)
         elif label_smoothing == 0:
             if final_sum is not None:
                 is_has_weight = weight is not None
@@ -998,9 +957,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         return inp_grad, None, None, None, None, None
 
 
-def cross_entropy_loss(
-    inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
-):
+def cross_entropy_loss(inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0):
     return CrossEntropyLoss.apply(
         inp,
         target,

@@ -6,15 +6,11 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def native_per_token_group_quant_fp8(
-    x, group_size, eps=1e-10, dtype=None, scale_ue8m0=False
-):
+def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None, scale_ue8m0=False):
     if dtype is None:
         dtype = flag_gems.SUPPORTED_FP8_DTYPE
 
-    assert (
-        x.shape[-1] % group_size == 0
-    ), "the last dimension of `x` cannot be divisible by `group_size`"
+    assert x.shape[-1] % group_size == 0, "the last dimension of `x` cannot be divisible by `group_size`"
     assert x.is_contiguous(), "`x` is not contiguous"
 
     finfo = torch.finfo(dtype)
@@ -47,13 +43,9 @@ def test_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed, scale
     x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
 
-    ref_out, ref_scale = native_per_token_group_quant_fp8(
-        ref_x, group_size, scale_ue8m0=scale_ue8m0
-    )
+    ref_out, ref_scale = native_per_token_group_quant_fp8(ref_x, group_size, scale_ue8m0=scale_ue8m0)
     with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(
-            x, group_size, scale_ue8m0=scale_ue8m0
-        )
+        out, scale = flag_gems.per_token_group_quant_fp8(x, group_size, scale_ue8m0=scale_ue8m0)
 
     utils.gems_assert_close(scale, ref_scale, dtype=torch.float32)
 

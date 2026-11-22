@@ -68,9 +68,7 @@ def argmax_kernel_non_inner(
     pid_k = tle.program_id(1)
     k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -83,9 +81,7 @@ def argmax_kernel_non_inner(
         mask = k_offset < K and n_offset[:, None] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_max, local_argmax = tl.max(inp_vals, 0, return_indices=True, return_indices_tie_break_left=True)
         offset_index = pid_m * K + k_offset
         out_index_ptrs = out_index + offset_index
         mask1 = k_offset < K
@@ -100,9 +96,7 @@ def argmax_kernel_non_inner(
             mask = k_offset < K and n_offset[:, None] < N
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-            )
+            local_max, local_argmax = tl.max(inp_vals, 0, return_indices=True, return_indices_tie_break_left=True)
             update = local_max > max_values
             max_values = tl.where(update, local_max, max_values)
             argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
@@ -141,9 +135,7 @@ def argmax_kernel(
             mask = m_offset[:, None] < M and n_offset[None, :] < N
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-            )
+            local_max, local_argmax = tl.max(inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
             # if return indices is not supported, call a tl.argmax in addition
             # local_argmax = tl.argmax(inp_vals, 1)
             update = local_max > max_values

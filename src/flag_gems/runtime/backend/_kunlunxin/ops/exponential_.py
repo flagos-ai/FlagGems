@@ -7,10 +7,7 @@ from triton.language.extra.xpu.libdevice import log2
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # def heur_block(args):
@@ -121,15 +118,11 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(
-        increment, generator=generator
-    )
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=generator)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch_device_fn.device(device):
-        fused_exponential_kernel[grid_fn](
-            x_, N, is_double, lambd, eps, philox_seed, philox_offset
-        )
+        fused_exponential_kernel[grid_fn](x_, N, is_double, lambd, eps, philox_seed, philox_offset)
     if not inplace:
         x.copy_(x_)
     return x

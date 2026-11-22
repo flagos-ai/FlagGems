@@ -13,9 +13,7 @@ if cfg.QUICK_MODE:
 else:
     DIMS_LIST = [0, 1, [0, 1], [1, 0]]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
-    KEEPDIM_DIMS_SHAPE = list(
-        zip([True, False] * 2, DIMS_LIST, utils.REDUCTION_SHAPES + [(7, 4, 11, 1)])
-    )
+    KEEPDIM_DIMS_SHAPE = list(zip([True, False] * 2, DIMS_LIST, utils.REDUCTION_SHAPES + [(7, 4, 11, 1)]))
 
 
 @pytest.mark.aminmax

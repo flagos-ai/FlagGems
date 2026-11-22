@@ -49,18 +49,8 @@ def _bmm_kernel(
     offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    a_base = (
-        a_ptr
-        + pid_batch * stride_ab
-        + offs_am[:, None] * stride_am
-        + offs_k[None, :] * stride_ak
-    )
-    b_base = (
-        b_ptr
-        + pid_batch * stride_bb
-        + offs_k[:, None] * stride_bk
-        + offs_bn[None, :] * stride_bn
-    )
+    a_base = a_ptr + pid_batch * stride_ab + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_base = b_ptr + pid_batch * stride_bb + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k_step in range(0, tl.cdiv(K, BLOCK_K)):
@@ -72,12 +62,7 @@ def _bmm_kernel(
 
     offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_ptrs = (
-        c_ptr
-        + pid_batch * stride_cb
-        + offs_cm[:, None] * stride_cm
-        + offs_cn[None, :] * stride_cn
-    )
+    c_ptrs = c_ptr + pid_batch * stride_cb + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
     tl.store(c_ptrs, acc.to(tl.float16))
 
 

@@ -7,9 +7,7 @@ import torch
 
 import flag_gems
 from flag_gems.experimental_ops._unsafe_view import _unsafe_view as gems__unsafe_view
-from flag_gems.experimental_ops._unsafe_view import (
-    _unsafe_view_out as gems__unsafe_view_out,
-)
+from flag_gems.experimental_ops._unsafe_view import _unsafe_view_out as gems__unsafe_view_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

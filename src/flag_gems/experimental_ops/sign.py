@@ -29,9 +29,7 @@ def _launch_sign_kernel(x: torch.Tensor, out: torch.Tensor):
 
 def sign(x: torch.Tensor):
     if x.is_complex():
-        raise NotImplementedError(
-            "Complex dtypes are not supported by this Triton sign kernel."
-        )
+        raise NotImplementedError("Complex dtypes are not supported by this Triton sign kernel.")
     out = torch.empty_like(x)
     _launch_sign_kernel(x.contiguous(), out.contiguous())
     return out
@@ -39,9 +37,7 @@ def sign(x: torch.Tensor):
 
 def sign_out(x: torch.Tensor, out: torch.Tensor):
     if x.is_complex() or out.is_complex():
-        raise NotImplementedError(
-            "Complex dtypes are not supported by this Triton sign kernel."
-        )
+        raise NotImplementedError("Complex dtypes are not supported by this Triton sign kernel.")
     if out.shape != x.shape:
         raise ValueError("Output tensor must have the same shape as input tensor.")
     if out.dtype != x.dtype:

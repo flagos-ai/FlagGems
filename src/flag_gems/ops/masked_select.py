@@ -13,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def masked_select_single_pass_kernel(
-    inp_ptr, mask_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr
-):
+def masked_select_single_pass_kernel(inp_ptr, mask_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp = tl.load(inp_ptr + offsets, mask=offsets < N)
@@ -34,9 +32,7 @@ def masked_select_single_pass(inp, mask, out, N):
         num_warps = 8
     else:
         num_warps = 16
-    masked_select_single_pass_kernel[(1,)](
-        inp, mask, out, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-    )
+    masked_select_single_pass_kernel[(1,)](inp, mask, out, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
     return out
 
 
@@ -80,9 +76,7 @@ def mask_part_sum_kernel(
         part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask)
         final_sum = tl.sum(part_sums, axis=0)
         pre_sums = tl.cumsum(part_sums, axis=0)
-        tl.store(
-            part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask
-        )
+        tl.store(part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask)
         tl.store(part_sums_ptr + np, final_sum)
 
 
@@ -131,9 +125,7 @@ def masked_select(inp, mask):
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
 
-    assert broadcastable(
-        inp_shape, mask_shape
-    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    assert broadcastable(inp_shape, mask_shape), "The shapes of the `mask` and the `input` tensor must be broadcastable"
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()

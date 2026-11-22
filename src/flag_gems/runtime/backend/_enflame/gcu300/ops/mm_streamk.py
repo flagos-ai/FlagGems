@@ -148,11 +148,7 @@ def mac_loop(
         while end < stop_loading_iter:
             while tl.atomic_cas(locks + next_pid, 1, 1) != 1:
                 pass
-            P_ptr = (
-                P
-                + next_pid * BLOCK_M * BLOCK_N
-                + (rm1[:, None] * BLOCK_N + rn1[None, :])
-            )
+            P_ptr = P + next_pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
             acc += tl.load(P_ptr, cache_modifier=".cg")
             end += iters_per_pid + (next_pid < iters_remaining)
             next_pid += 1
@@ -200,9 +196,7 @@ def first_wave(
     while start_iter < last_iter:
         iter_offset_in_tile = start_iter % iters_per_tile
         # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
-        end_iter = tl.minimum(
-            start_iter + (iters_per_tile - iter_offset_in_tile), last_iter
-        )
+        end_iter = tl.minimum(start_iter + (iters_per_tile - iter_offset_in_tile), last_iter)
 
         tile_id = start_iter // iters_per_tile
 
@@ -215,18 +209,8 @@ def first_wave(
         ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
         rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
-        A_base = (
-            A
-            + ram[:, None] * stride_am
-            + rk[None, :] * stride_ak
-            + BLOCK_K * stride_ak * iter_offset_in_tile
-        )
-        B_base = (
-            B
-            + rk[:, None] * stride_bk
-            + rbn[None, :] * stride_bn
-            + BLOCK_K * stride_bk * iter_offset_in_tile
-        )
+        A_base = A + ram[:, None] * stride_am + rk[None, :] * stride_ak + BLOCK_K * stride_ak * iter_offset_in_tile
+        B_base = B + rk[:, None] * stride_bk + rbn[None, :] * stride_bn + BLOCK_K * stride_bk * iter_offset_in_tile
 
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
@@ -303,9 +287,7 @@ def first_wave_for_bf16(
     while start_iter < last_iter:
         iter_offset_in_tile = start_iter % iters_per_tile
         # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
-        end_iter = tl.minimum(
-            start_iter + (iters_per_tile - iter_offset_in_tile), last_iter
-        )
+        end_iter = tl.minimum(start_iter + (iters_per_tile - iter_offset_in_tile), last_iter)
 
         tile_id = start_iter // iters_per_tile
 
@@ -318,18 +300,8 @@ def first_wave_for_bf16(
         ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
         rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
-        A_base = (
-            A
-            + ram[:, None] * stride_am
-            + rk[None, :] * stride_ak
-            + BLOCK_K * stride_ak * iter_offset_in_tile
-        )
-        B_base = (
-            B
-            + rk[:, None] * stride_bk
-            + rbn[None, :] * stride_bn
-            + BLOCK_K * stride_bk * iter_offset_in_tile
-        )
+        A_base = A + ram[:, None] * stride_am + rk[None, :] * stride_ak + BLOCK_K * stride_ak * iter_offset_in_tile
+        B_base = B + rk[:, None] * stride_bk + rbn[None, :] * stride_bn + BLOCK_K * stride_bk * iter_offset_in_tile
 
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
@@ -352,9 +324,7 @@ def first_wave_for_bf16(
 
         # the first situation: not the starting parts. only need to store the data on P
         if start_iter % iters_per_tile != 0:
-            P_ptr = (
-                P + pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
-            )
+            P_ptr = P + pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
             tl.store(P_ptr, acc, cache_modifier=".cg")
             # tl.debug_barrier()
             tl.atomic_xchg(locks + pid, 1)
@@ -365,11 +335,7 @@ def first_wave_for_bf16(
             while end < stop_loading_iter:
                 while tl.atomic_cas(locks + next_pid, 1, 1) != 1:
                     pass
-                P_ptr = (
-                    P
-                    + next_pid * BLOCK_M * BLOCK_N
-                    + (rm1[:, None] * BLOCK_N + rn1[None, :])
-                )
+                P_ptr = P + next_pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
                 acc += tl.load(P_ptr, cache_modifier=".cg")
                 end += iters_per_pid + (next_pid < iters_remaining)
                 next_pid += 1
@@ -427,12 +393,8 @@ def classic_mm(
     # loop peeling
     rk = prev_multiple + tl.arange(0, BLOCK_K)
     mask_k = rk < K
-    a = tl.load(
-        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :]
-    )
-    b = tl.load(
-        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None]
-    )
+    a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :])
+    b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None])
     if a.dtype != b.dtype:
         a = a.to(C.dtype.element_ty)
         b = b.to(C.dtype.element_ty)
@@ -486,9 +448,7 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
 
         if a.dtype == torch.bfloat16:
             locks = torch.zeros((tiles_per_wave,), device=a.device, dtype=torch.int32)
-            P = torch.empty(
-                (tiles_per_wave, BLOCK_M, BLOCK_N), device=a.device, dtype=torch.float32
-            )
+            P = torch.empty((tiles_per_wave, BLOCK_M, BLOCK_N), device=a.device, dtype=torch.float32)
             # with torch_device_fn.device(a.device):
             first_wave_for_bf16[(tiles_per_wave,)](
                 a,
@@ -519,9 +479,7 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
             # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
             # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
         else:
-            locks = torch.zeros(
-                (number_cooperative_tiles,), device=a.device, dtype=torch.int32
-            )
+            locks = torch.zeros((number_cooperative_tiles,), device=a.device, dtype=torch.int32)
             first_wave[(tiles_per_wave,)](
                 a,
                 b,

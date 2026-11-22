@@ -7,12 +7,8 @@ import pytest  # noqa: E402
 import torch  # noqa: E402
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.zeros_like import (  # noqa: E402
-    zeros_like as gems_zeros_like,
-)
-from flag_gems.experimental_ops.zeros_like import (  # noqa: E402
-    zeros_like_out as gems_zeros_like_out,
-)
+from flag_gems.experimental_ops.zeros_like import zeros_like as gems_zeros_like  # noqa: E402
+from flag_gems.experimental_ops.zeros_like import zeros_like_out as gems_zeros_like_out  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -111,9 +107,7 @@ def test_zeros_like_out_overload(shape, in_dtype, out_dtype, memfmt_case):
             if memfmt_case == "contiguous"
             else (torch.channels_last if inp.ndim == 4 else torch.contiguous_format)
         )
-        ref_out = torch.ops.aten.zeros_like.out(
-            ref_inp, memory_format=memfmt, out=out_ref
-        )
+        ref_out = torch.ops.aten.zeros_like.out(ref_inp, memory_format=memfmt, out=out_ref)
         with flag_gems.use_gems():
             act_out = gems_zeros_like_out(act_inp, out_act, memory_format=memfmt)
 

@@ -57,18 +57,10 @@ def flash_mla_attn_kernel(
     cur_head = cur_head_id * BLOCK_H + tl.arange(0, BLOCK_H)
 
     offs_d_ckv = tl.arange(0, HEAD_DIM_V)
-    offs_q_nope = (
-        cur_batch_id * stride_q_bs
-        + cur_head[:, None] * stride_q_h
-        + offs_d_ckv[None, :]
-    )
+    offs_q_nope = cur_batch_id * stride_q_bs + cur_head[:, None] * stride_q_h + offs_d_ckv[None, :]
 
     offs_d_kpe = tl.arange(HEAD_DIM_V, HEAD_DIM)
-    offs_q_pe = (
-        cur_batch_id * stride_q_bs
-        + cur_head[:, None] * stride_q_h
-        + offs_d_kpe[None, :]
-    )
+    offs_q_pe = cur_batch_id * stride_q_bs + cur_head[:, None] * stride_q_h + offs_d_kpe[None, :]
 
     if EVEN_H:
         q_nope = tl.load(Q_ptr + offs_q_nope)
@@ -141,9 +133,7 @@ def flash_mla_attn_kernel(
 
         e_sum = e_sum * re_scale + tl.sum(p, 1)
 
-    offs_o = (
-        cur_batch_id * stride_o_b + cur_head[:, None] * stride_o_h + offs_d_ckv[None, :]
-    )
+    offs_o = cur_batch_id * stride_o_b + cur_head[:, None] * stride_o_h + offs_d_ckv[None, :]
     if EVEN_H:
         tl.store(
             O + offs_o,

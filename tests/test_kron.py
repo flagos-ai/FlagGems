@@ -8,17 +8,11 @@ from . import accuracy_utils as utils
 
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", utils.KRON_SHAPES)
-@pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
-)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES)
 def test_kron(shape, dtype):
     if dtype in utils.INT_DTYPES:
-        inp1 = torch.randint(
-            low=-10, high=10, size=shape[0], dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-        inp2 = torch.randint(
-            low=-10, high=10, size=shape[1], dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
+        inp1 = torch.randint(low=-10, high=10, size=shape[0], dtype=dtype, device="cpu").to(flag_gems.device)
+        inp2 = torch.randint(low=-10, high=10, size=shape[1], dtype=dtype, device="cpu").to(flag_gems.device)
     elif dtype in utils.FLOAT_DTYPES:
         inp1 = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)

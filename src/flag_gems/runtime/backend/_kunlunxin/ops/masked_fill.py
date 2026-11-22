@@ -22,9 +22,7 @@ def masked_fill_kernel_heur_block_size(args):
 #     },
 # )
 @triton.jit
-def masked_fill_kernel(
-    inp, expand_mask, value, out, N: tl.constexpr, BLOCK_SIZE: tl.constexpr
-):
+def masked_fill_kernel(inp, expand_mask, value, out, N: tl.constexpr, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
@@ -61,9 +59,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 def masked_fill(inp, mask, value):
     logger.debug("GEMS MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0)
-        or isinstance(value, int)
-        or isinstance(value, float)
+        (torch.is_tensor(value) and value.ndim == 0) or isinstance(value, int) or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
@@ -74,11 +70,7 @@ def masked_fill(inp, mask, value):
 
     if inp.ndim == 0:
         # inp is a single-value
-        return (
-            torch.tensor(value, dtype=inp.dtype, device=inp.device)
-            if mask.item()
-            else inp.clone()
-        )
+        return torch.tensor(value, dtype=inp.dtype, device=inp.device) if mask.item() else inp.clone()
 
     inp = inp.contiguous()
     mask = mask.contiguous()
@@ -116,9 +108,7 @@ def masked_fill(inp, mask, value):
 def masked_fill_(inp, mask, value):
     logger.debug("GEMS MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0)
-        or isinstance(value, int)
-        or isinstance(value, float)
+        (torch.is_tensor(value) and value.ndim == 0) or isinstance(value, int) or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
@@ -148,9 +138,7 @@ def masked_fill_(inp, mask, value):
 
     grid = 12
     BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(N, grid))
-    masked_fill_kernel_self[grid,](
-        inp, expand_mask.to(torch.int), value, N, BLOCK_SIZE, buffer_size_limit=2048
-    )
+    masked_fill_kernel_self[grid,](inp, expand_mask.to(torch.int), value, N, BLOCK_SIZE, buffer_size_limit=2048)
     if "TRITONXPU_OTHER_SIM" in os.environ:
         del os.environ["TRITONXPU_OTHER_SIM"]
     if "TRITONXPU_STORE_MASK_SIM" in os.environ:

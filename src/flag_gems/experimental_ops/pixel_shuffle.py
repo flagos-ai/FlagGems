@@ -72,17 +72,13 @@ def pixel_shuffle_kernel(
 
 def _check_and_get_shapes_strides(x: torch.Tensor, upscale_factor: int):
     if x.dim() != 4:
-        raise RuntimeError(
-            f"pixel_shuffle expects a 4D tensor (N, C, H, W), but got {x.dim()}D"
-        )
+        raise RuntimeError(f"pixel_shuffle expects a 4D tensor (N, C, H, W), but got {x.dim()}D")
     if upscale_factor <= 0:
         raise RuntimeError("upscale_factor must be > 0")
     N, C_in, H, W = x.shape
     r2 = upscale_factor * upscale_factor
     if C_in % r2 != 0:
-        raise RuntimeError(
-            f"Input channel dimension {C_in} is not divisible by upscale_factor^2={r2}"
-        )
+        raise RuntimeError(f"Input channel dimension {C_in} is not divisible by upscale_factor^2={r2}")
     C_out = C_in // r2
     H_out = H * upscale_factor
     W_out = W * upscale_factor
@@ -90,9 +86,7 @@ def _check_and_get_shapes_strides(x: torch.Tensor, upscale_factor: int):
     return (N, C_in, H, W, C_out, H_out, W_out, in_strides)
 
 
-def _launch_pixel_shuffle_kernel(
-    x: torch.Tensor, out: torch.Tensor, upscale_factor: int
-):
+def _launch_pixel_shuffle_kernel(x: torch.Tensor, out: torch.Tensor, upscale_factor: int):
     N, C_in, H, W = x.shape
     C_out = C_in // (upscale_factor * upscale_factor)
     H_out = H * upscale_factor
@@ -131,9 +125,7 @@ def pixel_shuffle(self: torch.Tensor, upscale_factor: int):
         raise RuntimeError("pixel_shuffle: input must be a CUDA tensor")
     if not isinstance(upscale_factor, int):
         raise TypeError("pixel_shuffle: upscale_factor must be an integer")
-    N, C_in, H, W, C_out, H_out, W_out, _ = _check_and_get_shapes_strides(
-        self, upscale_factor
-    )
+    N, C_in, H, W, C_out, H_out, W_out, _ = _check_and_get_shapes_strides(self, upscale_factor)
     out = torch.empty(
         (N, C_out, H_out, W_out),
         dtype=self.dtype,
@@ -149,9 +141,7 @@ def pixel_shuffle_out(self: torch.Tensor, upscale_factor: int, out: torch.Tensor
         raise RuntimeError("pixel_shuffle_out: input and out must be CUDA tensors")
     if not isinstance(upscale_factor, int):
         raise TypeError("pixel_shuffle_out: upscale_factor must be an integer")
-    N, C_in, H, W, C_out, H_out, W_out, _ = _check_and_get_shapes_strides(
-        self, upscale_factor
-    )
+    N, C_in, H, W, C_out, H_out, W_out, _ = _check_and_get_shapes_strides(self, upscale_factor)
     expected_shape = (N, C_out, H_out, W_out)
     if tuple(out.shape) != expected_shape:
         raise RuntimeError(

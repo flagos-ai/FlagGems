@@ -11,9 +11,7 @@ from flag_gems.ops.celu import celu_ as default_celu_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 exp = tl_extra_shim.exp
@@ -93,9 +91,7 @@ def celu_kernel(
     tl.store(out_ptr + offsets, out, mask=mask)
 
 
-def _use_triton_kernel(
-    A: torch.Tensor, alpha, *, is_inplace: bool
-) -> Tuple[bool, float]:
+def _use_triton_kernel(A: torch.Tensor, alpha, *, is_inplace: bool) -> Tuple[bool, float]:
     if not isinstance(A, torch.Tensor):
         return False, 0.0
     if A.device.type != "musa" or A.dtype not in _SUPPORTED_DTYPES:
@@ -103,9 +99,7 @@ def _use_triton_kernel(
     if not A.is_contiguous() or A.numel() == 0:
         return False, 0.0
     try:
-        alpha_value = (
-            float(alpha) if not isinstance(alpha, torch.Tensor) else float(alpha.item())
-        )
+        alpha_value = float(alpha) if not isinstance(alpha, torch.Tensor) else float(alpha.item())
     except Exception:
         return False, 0.0
     if not math.isfinite(alpha_value):

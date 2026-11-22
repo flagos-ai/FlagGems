@@ -308,9 +308,7 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     N = math.prod(normalized_shape)
 
     # BLOCK_SIZE = triton.next_power_of_2(N)
-    BLOCK_SIZE = builtins.min(
-        64 * 128, triton.next_power_of_2(N)
-    )  # core_num * buffer_size_limit
+    BLOCK_SIZE = builtins.min(64 * 128, triton.next_power_of_2(N))  # core_num * buffer_size_limit
 
     x = x.contiguous()
     weight = weight.contiguous()
@@ -319,13 +317,9 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
 
     with torch_device_fn.device(x.device):
         if N > 64 * 128:
-            rms_norm_kerne_tile[M,](
-                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
-            )
+            rms_norm_kerne_tile[M,](y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE)
         else:
-            rms_norm_kernel[M,](
-                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
-            )
+            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE)
 
     return y, inv_rms
 
@@ -384,9 +378,7 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
     col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
 
-    partial_buffer = torch.empty(
-        (row_block_num, N), dtype=torch.float32, device=x.device
-    )
+    partial_buffer = torch.empty((row_block_num, N), dtype=torch.float32, device=x.device)
 
     with torch_device_fn.device(x.device):
         rms_norm_grad_dw_kernel[row_block_num, col_block_num](

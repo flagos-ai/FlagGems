@@ -28,11 +28,7 @@ except Exception:
     SPARSE_ATTENTION_MTHREADS_BASELINE_AVAILABLE = False
 
 try:
-    from vllm.utils.deep_gemm import (
-        fp8_gemm_nt,
-        is_deep_gemm_supported,
-        transform_sf_into_required_layout,
-    )
+    from vllm.utils.deep_gemm import fp8_gemm_nt, is_deep_gemm_supported, transform_sf_into_required_layout
 
     DEEPGEMM_AVAILABLE = is_deep_gemm_supported()
 except Exception:
@@ -137,9 +133,7 @@ class ParallelBenchmarkMixin:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
         sys.stderr.write(
-            "[error_shape] "
-            f"op={self.op_name} failed_shape={normalized_shape} "
-            f"saved_to={error_shape_path}\n"
+            "[error_shape] " f"op={self.op_name} failed_shape={normalized_shape} " f"saved_to={error_shape_path}\n"
         )
         sys.stderr.flush()
 
@@ -155,26 +149,17 @@ class ParallelBenchmarkMixin:
             else:
                 if self.op_name == "zero_":
                     with flag_gems.use_gems():
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
+                        metric.latency = self.get_latency(self.torch_op, *args, **kwargs)
                 else:
                     with flag_gems.use_gems(exclude=["zero_"]):
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
+                        metric.latency = self.get_latency(self.torch_op, *args, **kwargs)
         if "speedup" in self.to_bench_metrics:
             metric.speedup = metric.latency_base / metric.latency
         if "gbps" in self.to_bench_metrics:
             metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
             metric.gbps = self.get_gbps(args, latency=metric.latency)
         if "tflops" in self.to_bench_metrics:
-            metric.tflops = (
-                self.get_tflops(self.torch_op, *args, **kwargs)
-                / metric.latency
-                / 1e12
-                * 1e3
-            )
+            metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs) / metric.latency / 1e12 * 1e3
         return metric
 
     def _run_inputs(self, input_items):
@@ -226,14 +211,7 @@ class ParallelBenchmarkMixin:
                 heads_padded = max(16, 1 << (max(1, int(heads)) - 1).bit_length())
                 # The sparse attention kernel processes top-k indices in BLOCK=64
                 # chunks and pads H to at least 16 / next power of two.
-                return (
-                    max(1, int(batch))
-                    * max(1, int(seq_len))
-                    * topk_aligned
-                    * heads_padded
-                    * max(1, int(dim))
-                    * 4
-                )
+                return max(1, int(batch)) * max(1, int(seq_len)) * topk_aligned * heads_padded * max(1, int(dim)) * 4
 
             if self.op_name in {
                 "mm",
@@ -282,9 +260,7 @@ class ParallelBenchmarkMixin:
 
         def select_bucket_by_min_cost():
             nonlocal next_start_bucket
-            ordered = list(range(next_start_bucket, num_buckets)) + list(
-                range(0, next_start_bucket)
-            )
+            ordered = list(range(next_start_bucket, num_buckets)) + list(range(0, next_start_bucket))
             target = min(ordered, key=lambda i: bucket_costs[i])
             next_start_bucket = (target + 1) % num_buckets
             return target
@@ -316,9 +292,7 @@ class ParallelBenchmarkMixin:
         shape_entry["shape_desc"] = shape_entry.get("shape_desc", self.shape_desc)
         yaml_config[shape_key] = shape_entry
 
-        tmp_shape_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        )
+        tmp_shape_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8")
         try:
             yaml.safe_dump(yaml_config, tmp_shape_file)
             tmp_shape_file.flush()
@@ -326,9 +300,7 @@ class ParallelBenchmarkMixin:
         finally:
             tmp_shape_file.close()
 
-        tmp_result_file = tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".pkl", delete=False
-        )
+        tmp_result_file = tempfile.NamedTemporaryFile(mode="wb", suffix=".pkl", delete=False)
         try:
             tmp_result_file.flush()
             tmp_result_path = tmp_result_file.name
@@ -361,9 +333,7 @@ class ParallelBenchmarkMixin:
         env = os.environ.copy()
         visible_devices_env = _parallel_visible_devices_env()
         if visible_devices_env is None:
-            pytest.fail(
-                f"--parallel is not supported on device type '{flag_gems.device}'."
-            )
+            pytest.fail(f"--parallel is not supported on device type '{flag_gems.device}'.")
         env[visible_devices_env] = str(gpu_id)
         env[PARALLEL_WORKER_ENV] = "1"
         env[PARALLEL_RESULT_FILE_ENV] = tmp_result_path
@@ -433,10 +403,7 @@ class ParallelBenchmarkMixin:
                         sys.stdout.write(completed["stdout"])
                     if completed["stderr"]:
                         sys.stderr.write(completed["stderr"])
-                    pytest.fail(
-                        "parallel benchmark worker failed with "
-                        f"return code {completed['returncode']}"
-                    )
+                    pytest.fail("parallel benchmark worker failed with " f"return code {completed['returncode']}")
 
                 result_payload = completed["result_payload"]
                 if result_payload is None:
@@ -448,12 +415,8 @@ class ParallelBenchmarkMixin:
                     group_size = self.get_parallel_metric_group_size(shape)
                     next_cursor = cursor + group_size
                     if next_cursor > len(chunk_metrics):
-                        pytest.fail(
-                            "parallel benchmark worker returned incomplete metrics"
-                        )
-                    for metric_order, metric in enumerate(
-                        chunk_metrics[cursor:next_cursor]
-                    ):
+                        pytest.fail("parallel benchmark worker returned incomplete metrics")
+                    for metric_order, metric in enumerate(chunk_metrics[cursor:next_cursor]):
                         merged_metrics.append((shape_index, metric_order, metric))
                     cursor = next_cursor
 
@@ -510,9 +473,7 @@ class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, blas_perf.BaddbmmBenchmar
         return 1
 
 
-class ParallelMvAndOuterBenchmark(
-    ParallelBenchmarkMixin, blas_perf.MvAndOuterBenchmark
-):
+class ParallelMvAndOuterBenchmark(ParallelBenchmarkMixin, blas_perf.MvAndOuterBenchmark):
     pass
 
 
@@ -528,9 +489,7 @@ class ParallelAddrBenchmark(ParallelBenchmarkMixin, blas_perf.AddrBenchmark):
     pass
 
 
-class ParallelW8A8BlockFP8MatmulBenchmark(
-    ParallelBenchmarkMixin, blas_perf.W8A8BlockFP8MatmulBenchmark
-):
+class ParallelW8A8BlockFP8MatmulBenchmark(ParallelBenchmarkMixin, blas_perf.W8A8BlockFP8MatmulBenchmark):
     SHAPE_CONFIG_KEYS = ("w8a8_block_fp8_matmul", "BlasBenchmark")
 
     def set_more_shapes(self):
@@ -552,9 +511,7 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
 
         for shape_key in self._get_shape_config_keys():
             if shape_key in yaml_config:
-                self.shapes = yaml_config[shape_key].get(
-                    "shapes", blas_perf.Benchmark.DEFAULT_SHAPES
-                )
+                self.shapes = yaml_config[shape_key].get("shapes", blas_perf.Benchmark.DEFAULT_SHAPES)
                 break
         else:
             self.shapes = blas_perf.Benchmark.DEFAULT_SHAPES
@@ -578,8 +535,7 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
                 normalized_shapes.append(shape)
             else:
                 raise ValueError(
-                    "w8a8_block_fp8_matmul benchmark expects shapes in (M, N, K) "
-                    "or (B, M, N, K) format."
+                    "w8a8_block_fp8_matmul benchmark expects shapes in (M, N, K) " "or (B, M, N, K) format."
                 )
 
         self.shapes = normalized_shapes
@@ -599,17 +555,13 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = [
-            (m, n, k)
-            for m, n, k in self.shapes
-            if n % DEEPGEMM_N_MULTIPLE == 0 and k % DEEPGEMM_K_MULTIPLE == 0
+            (m, n, k) for m, n, k in self.shapes if n % DEEPGEMM_N_MULTIPLE == 0 and k % DEEPGEMM_K_MULTIPLE == 0
         ]
 
     def get_input_iter(self, cur_dtype):
         fp8_dtype = blas_perf.get_w8a8_block_fp8_dtype()
         if fp8_dtype is None:
-            raise RuntimeError(
-                "DeepGEMM benchmark requires CUDA device with FP8 support"
-            )
+            raise RuntimeError("DeepGEMM benchmark requires CUDA device with FP8 support")
 
         block_n, block_k = self.block_size
         recipe = (1, 128, 128)
@@ -620,11 +572,7 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
 
             A = blas_perf.rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
             B = blas_perf.rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
-            As = (
-                0.01
-                * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
-                + 0.005
-            ).contiguous()
+            As = (0.01 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device) + 0.005).contiguous()
             Bs = (
                 0.01
                 * torch.rand(
@@ -683,12 +631,7 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
         if "speedup" in self.to_bench_metrics:
             metric.speedup = metric.latency_base / metric.latency
         if "tflops" in self.to_bench_metrics:
-            metric.tflops = (
-                self.get_tflops(self.torch_op, *dg_args, **dg_kwargs)
-                / metric.latency
-                / 1e12
-                * 1e3
-            )
+            metric.tflops = self.get_tflops(self.torch_op, *dg_args, **dg_kwargs) / metric.latency / 1e12 * 1e3
         return metric
 
     def get_tflops(self, op, *args, **kwargs):
@@ -726,9 +669,7 @@ def torch_sparse_attention(q, kv, attn_sink, topk_idxs, softmax_scale):
     idx_expanded = topk_idxs[:, :, :, None].expand(batch, seq_len, topk, dim).long()
     gathered_kv = torch.gather(kv_expanded, 2, idx_expanded)
 
-    scores = (
-        torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * softmax_scale
-    )
+    scores = torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * softmax_scale
     sink = attn_sink[None, None, :, None].expand(batch, seq_len, heads, 1)
     attn = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)
 
@@ -761,17 +702,14 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, blas_perf.Benchma
         for shape_key in self.SHAPE_CONFIG_KEYS + (self.op_name,):
             if shape_key in yaml_config:
                 self.shapes = yaml_config[shape_key].get("shapes", self.DEFAULT_SHAPES)
-                self.shape_desc = yaml_config[shape_key].get(
-                    "shape_desc", self.DEFAULT_SHAPE_DESC
-                )
+                self.shape_desc = yaml_config[shape_key].get("shape_desc", self.DEFAULT_SHAPE_DESC)
                 break
 
         self.shapes = [tuple(shape) for shape in self.shapes]
         for shape in self.shapes:
             if len(shape) != 6:
                 raise ValueError(
-                    "sparse_attention benchmark expects shapes in "
-                    "(batch, seq_len, kv_len, topk, heads, dim) format."
+                    "sparse_attention benchmark expects shapes in " "(batch, seq_len, kv_len, topk, heads, dim) format."
                 )
 
     def get_input_iter(self, cur_dtype):
@@ -858,9 +796,7 @@ def test_perf_w8a8_block_fp8_matmul():
     if not blas_perf.VLLM_W8A8_BLOCK_FP8_AVAILABLE:
         pytest.skip("w8a8_block_fp8_matmul benchmark requires vLLM baseline operator")
     if blas_perf.get_w8a8_block_fp8_dtype() is None:
-        pytest.skip(
-            "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
-        )
+        pytest.skip("w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support")
 
     bench = ParallelW8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",
@@ -876,9 +812,7 @@ def test_perf_w8a8_block_fp8_matmul_deepgemm():
     if not DEEPGEMM_AVAILABLE:
         pytest.skip("DeepGEMM is not available on this platform")
     if blas_perf.get_w8a8_block_fp8_dtype() is None:
-        pytest.skip(
-            "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
-        )
+        pytest.skip("w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support")
 
     bench = ParallelW8A8BlockFP8DeepGemmBenchmark(
         op_name="w8a8_block_fp8_matmul_deepgemm",
@@ -893,9 +827,7 @@ def test_perf_w8a8_block_fp8_matmul_deepgemm():
 @pytest.mark.sparse_attention
 def test_perf_sparse_attention():
     if not SPARSE_ATTENTION_MTHREADS_BASELINE_AVAILABLE:
-        pytest.skip(
-            "sparse_attention benchmark requires mthreads sparse_attention baseline"
-        )
+        pytest.skip("sparse_attention benchmark requires mthreads sparse_attention baseline")
 
     bench = ParallelSparseAttentionBenchmark(
         op_name="sparse_attention",

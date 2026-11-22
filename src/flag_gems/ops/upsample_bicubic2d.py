@@ -146,10 +146,7 @@ def _upsample_bicubic2d_row_kernel(
     acc += (v0 * wx0 + v1 * wx1 + v2 * wx2 + v3 * wx3) * wy3
 
     out_offset = (
-        n_64 * out_strideN
-        + c_64 * out_strideC
-        + y_out.to(tl.int64) * out_strideH
-        + x_out.to(tl.int64) * out_strideW
+        n_64 * out_strideN + c_64 * out_strideC + y_out.to(tl.int64) * out_strideH + x_out.to(tl.int64) * out_strideW
     )
     tl.store(out_ptr + out_offset, acc.to(out_ptr.dtype.element_ty), mask=mask)
 
@@ -173,9 +170,7 @@ def upsample_bicubic2d(
 
     if output_size is not None:
         if len(output_size) != 2:
-            raise ValueError(
-                "output_size must be a sequence of two ints (H_out, W_out)"
-            )
+            raise ValueError("output_size must be a sequence of two ints (H_out, W_out)")
         H_out, W_out = int(output_size[0]), int(output_size[1])
     else:
         if len(scale_factors) == 2:

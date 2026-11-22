@@ -146,11 +146,7 @@ def embedding_backward(
     grad_inputs = torch.zeros(
         (num_weights, grad_outputs.shape[-1]),
         device=grad_outputs.device,
-        dtype=(
-            torch.float32
-            if grad_outputs.dtype is torch.bfloat16
-            else grad_outputs.dtype
-        ),
+        dtype=(torch.float32 if grad_outputs.dtype is torch.bfloat16 else grad_outputs.dtype),
     )
 
     if scale_grad_by_freq:
@@ -191,11 +187,5 @@ def embedding_backward(
 
     if scale_grad_by_freq:
         with torch_device_fn.device(grad_outputs.device):
-            embedding_grad_scale_kernel[M,](
-                grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
-            )
-    return (
-        grad_inputs.to(torch.bfloat16)
-        if grad_outputs.dtype is torch.bfloat16
-        else grad_inputs
-    )
+            embedding_grad_scale_kernel[M,](grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE)
+    return grad_inputs.to(torch.bfloat16) if grad_outputs.dtype is torch.bfloat16 else grad_inputs

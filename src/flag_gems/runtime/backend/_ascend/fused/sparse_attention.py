@@ -77,9 +77,7 @@ def sparse_attn_triton_kernel(
             sub_start = block_start + s * BLOCK_SUB
             raw_offs = sub_start + offs_blk  # (BLOCK_SUB,)
             idx_mask = raw_offs < topk
-            idxs = tl.load(
-                idx_base + raw_offs * stride_idxk, mask=idx_mask, other=0
-            )  # (BLOCK_SUB,)
+            idxs = tl.load(idx_base + raw_offs * stride_idxk, mask=idx_mask, other=0)  # (BLOCK_SUB,)
 
             # Clamp negative indices to 0 (matching PyTorch behavior on NPU)
             idxs = tl.where(idxs < 0, 0, idxs)
@@ -90,17 +88,11 @@ def sparse_attn_triton_kernel(
             valid_mask = idx_mask & index_valid  # (BLOCK_SUB,)
 
             # -- gather KV block: (BLOCK_SUB, D) --
-            kv_ptrs = (
-                kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
-            )
-            kv_block = tl.load(
-                kv_ptrs, mask=valid_mask[:, None], other=0.0
-            )  # (BLOCK_SUB, D) bf16
+            kv_ptrs = kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
+            kv_block = tl.load(kv_ptrs, mask=valid_mask[:, None], other=0.0)  # (BLOCK_SUB, D) bf16
 
             # -- scores: Q @ KV^T -> (H, BLOCK_SUB) via GEMM --
-            acc_s = tl.dot(
-                q_block, tl.trans(kv_block)
-            )  # (H, D) @ (D, BLOCK_SUB) = (H, BLOCK_SUB)
+            acc_s = tl.dot(q_block, tl.trans(kv_block))  # (H, D) @ (D, BLOCK_SUB) = (H, BLOCK_SUB)
             acc_s = acc_s * scale
             # mask invalid positions to -inf
             mask_bias = tl.where(valid_mask, 0.0, float("-inf"))  # (BLOCK_SUB,)
@@ -116,9 +108,7 @@ def sparse_attn_triton_kernel(
 
             # -- accumulate output: acc_o = acc_o * correction + P @ KV --
             acc_o = acc_o * correction[:, None]
-            acc_o += tl.dot(
-                p.to(tl.bfloat16), kv_block
-            )  # (H, BLOCK_SUB) @ (BLOCK_SUB, D) = (H, D)
+            acc_o += tl.dot(p.to(tl.bfloat16), kv_block)  # (H, BLOCK_SUB) @ (BLOCK_SUB, D) = (H, D)
 
             scores_sum = tl.sum(p, axis=1)  # (H,)
             sum_exp = sum_exp * correction + scores_sum

@@ -59,12 +59,8 @@ def skip_layer_norm_kernel(
             var = tl.sum(_var, axis=0) / N
             rstd = 1 / tl.sqrt(var + eps)
 
-            w = tl.load(W + tl.arange(0, BLOCK_SIZE_N), mask=mask, other=0.0).to(
-                tl.float32
-            )
-            b = tl.load(B + tl.arange(0, BLOCK_SIZE_N), mask=mask, other=0.0).to(
-                tl.float32
-            )
+            w = tl.load(W + tl.arange(0, BLOCK_SIZE_N), mask=mask, other=0.0).to(tl.float32)
+            b = tl.load(B + tl.arange(0, BLOCK_SIZE_N), mask=mask, other=0.0).to(tl.float32)
 
             x_hat = (x - mean) * rstd
             y = w * x_hat + b

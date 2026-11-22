@@ -4,9 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def trunc_kernel(
-    x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, DTYPE_CODE: tl.constexpr
-):
+def trunc_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, DTYPE_CODE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -97,9 +95,7 @@ def trunc(input: torch.Tensor):
 def trunc_out(input: torch.Tensor, out: torch.Tensor):
     assert input.shape == out.shape, "input and out must have the same shape"
     assert input.dtype == out.dtype, "input and out must have the same dtype"
-    assert (
-        input.device.type == "cuda" and out.device.type == "cuda"
-    ), "Tensors must be on CUDA device"
+    assert input.device.type == "cuda" and out.device.type == "cuda", "Tensors must be on CUDA device"
 
     if input.is_complex():
         in_r = torch.view_as_real(input)

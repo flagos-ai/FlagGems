@@ -55,8 +55,7 @@ def test_pow_tensor_tensor_(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "scalar",
-    utils.SCALARS
-    + ([1, 2, 3, 4, 5, 8] if flag_gems.vendor_name == "cambricon" else []),
+    utils.SCALARS + ([1, 2, 3, 4, 5, 8] if flag_gems.vendor_name == "cambricon" else []),
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pow_tensor_scalar(scalar, shape, dtype):

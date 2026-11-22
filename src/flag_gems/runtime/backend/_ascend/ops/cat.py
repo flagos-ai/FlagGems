@@ -27,9 +27,7 @@ def copy_func(x):
     return x
 
 
-def cat(
-    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
+def cat(A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0) -> torch.Tensor:
     logger.debug("GEMS_ASCEND CAT")
 
     if len(A) == 0:
@@ -46,9 +44,7 @@ def cat(
     inp0_shape = inp_shapes[0]
     for s in inp_shapes[1:]:
         if len(s) != len(inp0_shape):
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
-            )
+            raise RuntimeError(f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}")
     # Same size check
     for tensor_idx, inp_shape in enumerate(inp_shapes):
         for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
@@ -65,11 +61,7 @@ def cat(
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
     out0 = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
     out0_strides = out0.stride()
-    out0_offsets = list(
-        itertools.accumulate(
-            [s[dim] * out0_strides[dim] for s in inp_shapes[:-1]], initial=0
-        )
-    )
+    out0_offsets = list(itertools.accumulate([s[dim] * out0_strides[dim] for s in inp_shapes[:-1]], initial=0))
 
     for a, out0_offset in zip(A, out0_offsets):
         in_view = StridedBuffer(a, a.shape, a.stride())

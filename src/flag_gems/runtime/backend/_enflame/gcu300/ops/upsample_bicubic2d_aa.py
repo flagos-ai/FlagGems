@@ -45,12 +45,8 @@ def upsample_bicubic2d_aa_kernel(
     center_h = (oh + 0.5) * reciprocal_scale_h
     span_start_w = tl.maximum(center_w - support_w + 0.5, 0).to(tl.int32)
     span_start_h = tl.maximum(center_h - support_h + 0.5, 0).to(tl.int32)
-    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(
-        tl.int32
-    )
-    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(
-        tl.int32
-    )
+    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(tl.int32)
+    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(tl.int32)
     start_minus_center_w = span_start_w - center_w
     start_minus_center_h = span_start_h - center_h
     invscale_w = 1.0
@@ -185,9 +181,7 @@ def upsample_bicubic2d_aa_kernel(
 
     for n in range(0, N, 1):
         for c in range(0, C, 1):
-            offset_base = (
-                (n * C + c) * IH + span_start_h[:, None]
-            ) * IW + span_start_w[None, :]
+            offset_base = ((n * C + c) * IH + span_start_h[:, None]) * IW + span_start_w[None, :]
 
             data00 = tl.load(
                 ptr_i + (offset_base + 0 * IW + 0),
@@ -402,12 +396,8 @@ def general_interpolate_bicubic2d_aa_kernel(
     center_h = (oh + 0.5) * reciprocal_scale_h
     span_start_w = tl.maximum(center_w - support_w + 0.5, 0).to(tl.int32)
     span_start_h = tl.maximum(center_h - support_h + 0.5, 0).to(tl.int32)
-    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(
-        tl.int32
-    )
-    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(
-        tl.int32
-    )
+    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(tl.int32)
+    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(tl.int32)
 
     invscale_w = 1.0 / reciprocal_scale_w if (reciprocal_scale_w >= 1.0) else 1.0
     invscale_h = 1.0 / reciprocal_scale_h if (reciprocal_scale_h >= 1.0) else 1.0
@@ -448,8 +438,7 @@ def general_interpolate_bicubic2d_aa_kernel(
                     weight_x_total += weight_x
                     data = tl.load(
                         ptr_i + (offset_base + y * IW + x),
-                        mask=(span_start_h[:, None] + y < IH)
-                        & (span_start_w[None, :] + x < IW),
+                        mask=(span_start_h[:, None] + y < IH) & (span_start_w[None, :] + x < IW),
                         other=0,
                     )
                     buffer += data * weight_x[None, :]

@@ -15,8 +15,7 @@ if cfg.QUICK_MODE:
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
     REGULAR_DIM_SHAPE_STRIDES = list(
-        (random.randint(0, len(shape) - 1), shape, stride)
-        for shape, stride in utils.CONTIGUOUS_SHAPE_STRIDES_2D
+        (random.randint(0, len(shape) - 1), shape, stride) for shape, stride in utils.CONTIGUOUS_SHAPE_STRIDES_2D
     )
 
 random.seed(time.time() // 100)
@@ -49,26 +48,18 @@ def test_slice_scatter(shape, stride, dim, dtype, start, end, step):
 
     ref_inp = utils.to_reference(inp)
     ref_src = utils.to_reference(src)
-    ref_out = torch.slice_scatter(
-        ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
-    )
+    ref_out = torch.slice_scatter(ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step)
 
     if flag_gems.vendor_name == "kunlunxin":
         from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
 
-        res_out = kl_ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+        res_out = kl_ops.slice_scatter(inp, dim=dim, src=src, start=start, end=end, step=step)
     elif flag_gems.vendor_name == "cambricon":
         from flag_gems.runtime.backend._cambricon import ops as cam_ops
 
-        res_out = cam_ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+        res_out = cam_ops.slice_scatter(inp, dim=dim, src=src, start=start, end=end, step=step)
     else:
-        res_out = flag_gems.ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+        res_out = flag_gems.ops.slice_scatter(inp, dim=dim, src=src, start=start, end=end, step=step)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -84,18 +75,12 @@ def testslice_scatter_with_self_overlapping_input():
     dim = 1
     ref_inp = utils.to_reference(inp)
     ref_src = utils.to_reference(src)
-    ref_out = torch.slice_scatter(
-        ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
-    )
+    ref_out = torch.slice_scatter(ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step)
     if flag_gems.vendor_name == "kunlunxin":
         from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
 
-        res_out = kl_ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+        res_out = kl_ops.slice_scatter(inp, dim=dim, src=src, start=start, end=end, step=step)
     else:
-        res_out = flag_gems.ops.slice_scatter(
-            inp, dim=dim, src=src, start=start, end=end, step=step
-        )
+        res_out = flag_gems.ops.slice_scatter(inp, dim=dim, src=src, start=start, end=end, step=step)
 
     utils.gems_assert_equal(res_out, ref_out)

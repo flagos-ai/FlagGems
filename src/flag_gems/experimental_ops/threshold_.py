@@ -44,9 +44,7 @@ def threshold_(*args, **kwargs):
         raise ValueError("threshold_ requires at least (input, threshold) arguments")
 
     if not x.is_cuda:
-        raise ValueError(
-            "Input tensor must be on CUDA device for Triton kernel execution"
-        )
+        raise ValueError("Input tensor must be on CUDA device for Triton kernel execution")
     if x.is_complex():
         raise ValueError("Complex dtypes are not supported by this kernel")
     if not x.is_contiguous():

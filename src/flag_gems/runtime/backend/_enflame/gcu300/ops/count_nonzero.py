@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def count_nonzero_kernel_1(
-    x_ptr, out_ptr, numel, ng, ng_per_block: tl.constexpr, BLOCK_SIZE: tl.constexpr
-):
+def count_nonzero_kernel_1(x_ptr, out_ptr, numel, ng, ng_per_block: tl.constexpr, BLOCK_SIZE: tl.constexpr):
     pid_x = tl.program_id(0)
     pid = pid_x * ng_per_block
     sum = 0
@@ -36,9 +34,7 @@ def count_nonzero_kernel_1(
 
 @libentry()
 @triton.jit
-def count_nonzero_kernel_1_atomic_add(
-    in_ptr, out_ptr, NP: tl.constexpr, BLOCK_SIZE: tl.constexpr
-):
+def count_nonzero_kernel_1_atomic_add(in_ptr, out_ptr, NP: tl.constexpr, BLOCK_SIZE: tl.constexpr):
     sum = 0
     for start_n in range(0, NP, BLOCK_SIZE):
         offset = start_n + tl.arange(0, BLOCK_SIZE)
@@ -51,9 +47,7 @@ def count_nonzero_kernel_1_atomic_add(
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
-def count_nonzero_kernel(
-    x_ptr, out_ptr, N, numel, ng, ng_per_block: tl.constexpr, BLOCK_SIZE: tl.constexpr
-):
+def count_nonzero_kernel(x_ptr, out_ptr, N, numel, ng, ng_per_block: tl.constexpr, BLOCK_SIZE: tl.constexpr):
     pid_x = tl.program_id(0)
     pid = pid_x * ng_per_block
     for start_ng in range(0, ng_per_block, 1):
@@ -88,9 +82,7 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
 
 @libentry()
 @triton.jit
-def count_nonzero_combin_kernel(
-    x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr
-):
+def count_nonzero_combin_kernel(x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
     cols_offsets = pid_y * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -118,9 +110,7 @@ def count_nonzero(x, dim=None):
 
             grid = (triton.cdiv(numel, shape[dim]), combin_shape[dim], 1)
 
-            count_nonzero_combin_kernel[grid](
-                x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE
-            )
+            count_nonzero_combin_kernel[grid](x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE)
             x = combin
             shape = x.shape
             numel = x.numel()
@@ -144,9 +134,7 @@ def count_nonzero(x, dim=None):
         else:
             ng_per_block = 1
             grid = (ng,)
-        count_nonzero_kernel[grid](
-            x, out, shape[dim], numel, ng, ng_per_block=ng_per_block
-        )
+        count_nonzero_kernel[grid](x, out, shape[dim], numel, ng, ng_per_block=ng_per_block)
 
         out = out.to(torch.int64)
         return out
@@ -167,14 +155,10 @@ def count_nonzero(x, dim=None):
 
         out_t = torch.zeros(out_ng, dtype=torch.int32, device=x.device)
 
-        count_nonzero_kernel_1[grid](
-            x, out_t, numel, ng, ng_per_block=ng_per_block, BLOCK_SIZE=BLOCK_SIZE
-        )
+        count_nonzero_kernel_1[grid](x, out_t, numel, ng, ng_per_block=ng_per_block, BLOCK_SIZE=BLOCK_SIZE)
 
         out = torch.zeros(1, dtype=torch.int32, device=x.device)
-        count_nonzero_kernel_1_atomic_add[(1,)](
-            out_t, out, NP=out_ng, BLOCK_SIZE=BLOCK_SIZE
-        )
+        count_nonzero_kernel_1_atomic_add[(1,)](out_t, out, NP=out_ng, BLOCK_SIZE=BLOCK_SIZE)
 
         out = out.to(torch.int64)
         return out[0]

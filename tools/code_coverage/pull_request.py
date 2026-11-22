@@ -35,9 +35,7 @@ def show_diff(args):
 
 if __name__ == "__main__":
     # Setup command-line argument parsing
-    parser = argparse.ArgumentParser(
-        description="Fetch pull request details from GitHub."
-    )
+    parser = argparse.ArgumentParser(description="Fetch pull request details from GitHub.")
     subparsers = parser.add_subparsers()
 
     # Subparser for 'files' command

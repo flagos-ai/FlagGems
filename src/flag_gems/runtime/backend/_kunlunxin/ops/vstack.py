@@ -13,9 +13,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_block_size(args):
-    return triton.next_power_of_2(
-        triton.cdiv(args["max_tile_elems"], 12)
-    )  # cluster_num
+    return triton.next_power_of_2(triton.cdiv(args["max_tile_elems"], 12))  # cluster_num
 
 
 @libentry()
@@ -85,11 +83,7 @@ def vstack(tensors: list):
     device = tensors[0].device
     dtype = tensors[0].dtype
     for tensor in tensors:
-        assert (
-            tensor.device == device
-            and tensor.dtype == dtype
-            and tensors[0].shape[1:] == tensor.shape[1:]
-        )
+        assert tensor.device == device and tensor.dtype == dtype and tensors[0].shape[1:] == tensor.shape[1:]
 
     c_tensors = [t.contiguous() for t in tensors]
     # Calculate the output shape
@@ -118,9 +112,7 @@ def vstack(tensors: list):
                 array_row_offset += c_tensors[tensor_idx].shape[0]
                 max_rows = max(max_rows, c_tensors[tensor_idx].shape[0])
             else:
-                empty_tensor = torch.empty(
-                    0, dtype=c_tensors[0].dtype, device=c_tensors[0].device
-                )
+                empty_tensor = torch.empty(0, dtype=c_tensors[0].dtype, device=c_tensors[0].device)
                 itensors.append(empty_tensor)
                 local_row.append(local_row[-1])
                 exclusive_row.append(exclusive_row[-1])

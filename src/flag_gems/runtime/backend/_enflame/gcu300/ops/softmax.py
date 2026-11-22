@@ -100,9 +100,7 @@ def softmax_kernel_inner(
         offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            output_ptr.dtype.element_ty
-        )
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(output_ptr.dtype.element_ty)
         m = tl.max(inp, 0)
         e = tl.exp(inp - m)
         z = tl.sum(e, 0)
@@ -256,9 +254,7 @@ def softmax_backward_kernel_inner(
         offsets = m_offsets[:, None] * N + n_offsets
         for _ in range(0, N, TILE_N):
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(
-                out_ptr + offsets, mask=mask, eviction_policy="evict_last"
-            ).to(tl.float32)
+            out_tile = tl.load(out_ptr + offsets, mask=mask, eviction_policy="evict_last").to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             scale += out_tile * out_grad_tile
             n_offsets += TILE_N
@@ -269,9 +265,7 @@ def softmax_backward_kernel_inner(
         offsets = m_offsets[:, None] * N + n_offsets
         for _ in range(0, N, TILE_N):
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(
-                out_ptr + offsets, mask=mask, eviction_policy="evict_first"
-            ).to(tl.float32)
+            out_tile = tl.load(out_ptr + offsets, mask=mask, eviction_policy="evict_first").to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)

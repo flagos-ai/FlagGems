@@ -96,9 +96,7 @@ def layer_norm_persistent_kernel_multiline(
     n_mask = n_offsets < N
     mask = m_mask[:, None] & n_mask
 
-    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
-        tl.float32
-    )
+    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(tl.float32)
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -204,9 +202,7 @@ def layer_norm_loop_kernel(
 
     for start_n in range(TILE_N, N, TILE_N):
         n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
-            tl.float32
-        )
+        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(tl.float32)
         if weight_ptr is None:
             w = 1
         else:
@@ -421,9 +417,7 @@ def layer_norm_backward(
         in_grad = torch.empty_like(input)
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
         with torch_device_fn.device(input.device):
-            layer_norm_backward_kernel[grid](
-                grad_out, input, weight, mean, rstd, in_grad, M, N
-            )
+            layer_norm_backward_kernel[grid](grad_out, input, weight, mean, rstd, in_grad, M, N)
     else:
         in_grad = None
 
@@ -434,7 +428,5 @@ def layer_norm_backward(
     weight_grad = torch.empty_like(weight) if output_mask[1] else None
     bias_grad = torch.empty_like(bias) if output_mask[2] else None
     with torch_device_fn.device(input.device):
-        weight_bias_backward_kernel[grid](
-            grad_out, input, mean, rstd, weight_grad, bias_grad, M, N
-        )
+        weight_bias_backward_kernel[grid](grad_out, input, mean, rstd, weight_grad, bias_grad, M, N)
     return in_grad, weight_grad, bias_grad

@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.hardshrink import (  # noqa: E402
-    hardshrink as gems_hardshrink,
-)
-from flag_gems.experimental_ops.hardshrink import (  # noqa: E402
-    hardshrink_out as gems_hardshrink_out,
-)
+from flag_gems.experimental_ops.hardshrink import hardshrink as gems_hardshrink  # noqa: E402
+from flag_gems.experimental_ops.hardshrink import hardshrink_out as gems_hardshrink_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

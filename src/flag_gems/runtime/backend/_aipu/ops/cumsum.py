@@ -29,10 +29,9 @@ def scan_part_sum_kernel(
 
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -99,10 +98,9 @@ def scan_part_sum_abc_kernel(
     mask = b_idx < B
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+    if (tl.constexpr(inp_vals.dtype.is_int64()) or tl.constexpr(inp_vals.dtype.is_uint64())) or tl.constexpr(
+        inp_vals.dtype.is_fp64()
+    ):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -182,9 +180,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
-        scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
-        )
+        scan_part_sum_abc_kernel[grid](inp, out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
@@ -391,9 +387,7 @@ def normed_cumsum(inp, dim=-1):
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         num_sms = get_device_properties(device).multi_processor_count
-        TILE = (
-            2048 if K >= 2048 else triton.next_power_of_2(K)
-        )  # TODO: _aipu changed TILE from 2048 to this
+        TILE = 2048 if K >= 2048 else triton.next_power_of_2(K)  # TODO: _aipu changed TILE from 2048 to this
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
         n_rows = N // K

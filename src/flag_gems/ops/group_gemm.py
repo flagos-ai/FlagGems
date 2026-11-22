@@ -29,9 +29,7 @@ except ImportError:
 
 
 @triton.jit
-def grouped_launch(
-    pid, m, n, block_m: tl.constexpr, block_n: tl.constexpr, group_m: tl.constexpr
-):
+def grouped_launch(pid, m, n, block_m: tl.constexpr, block_n: tl.constexpr, group_m: tl.constexpr):
     grid_m = tl.cdiv(m, block_m)
     grid_n = tl.cdiv(n, block_n)
 
@@ -173,9 +171,7 @@ def grouped_gemm_tma_kernel(
             loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
-                tile_m_idx, tile_n_idx = grouped_launch(
-                    tile_idx_in_gemm, gm, gn, BLOCK_M, BLOCK_N, GROUP_M
-                )
+                tile_m_idx, tile_n_idx = grouped_launch(tile_idx_in_gemm, gm, gn, BLOCK_M, BLOCK_N, GROUP_M)
 
                 offs_am = tile_m_idx * BLOCK_M
                 offs_bn = tile_n_idx * BLOCK_N
@@ -245,9 +241,7 @@ def grouped_gemm_kernel(
             loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
-                tile_m_idx, tile_n_idx = grouped_launch(
-                    tile_idx_in_gemm, gm, gn, BLOCK_M, BLOCK_N, GROUP_M
-                )
+                tile_m_idx, tile_n_idx = grouped_launch(tile_idx_in_gemm, gm, gn, BLOCK_M, BLOCK_N, GROUP_M)
 
                 offs_am = tile_m_idx * BLOCK_M
                 offs_bn = tile_n_idx * BLOCK_N
@@ -309,9 +303,7 @@ def grouped_gemm_kernel(
 
 
 @libentry()
-@libtuner(
-    configs=get_autotune_config(matmul_tma_set_block_size_hook), key=["M", "N", "K"]
-)
+@libtuner(configs=get_autotune_config(matmul_tma_set_block_size_hook), key=["M", "N", "K"])
 @triton.jit
 def grouped_mm_tma_kernel(
     a_desc,
@@ -348,9 +340,7 @@ def grouped_mm_tma_kernel(
             loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
-                tile_m_idx, tile_n_idx = grouped_launch(
-                    tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M
-                )
+                tile_m_idx, tile_n_idx = grouped_launch(tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M)
 
                 offs_am = group_start + tile_m_idx * BLOCK_M
                 offs_bn = tile_n_idx * BLOCK_N
@@ -370,9 +360,7 @@ def grouped_mm_tma_kernel(
                 else:
                     offs_cm = offs_am + tl.arange(0, BLOCK_M)
                     offs_cn = offs_bn + tl.arange(0, BLOCK_N)
-                    c_ptrs = (
-                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-                    )
+                    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
                     c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
                     tl.store(c_ptrs, c, mask=c_mask)
 
@@ -423,9 +411,7 @@ def grouped_mm_kernel(
             loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
-                tile_m_idx, tile_n_idx = grouped_launch(
-                    tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M
-                )
+                tile_m_idx, tile_n_idx = grouped_launch(tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M)
 
                 offs_am = group_start + tile_m_idx * BLOCK_M
                 offs_bn = tile_n_idx * BLOCK_N
@@ -475,9 +461,7 @@ def grouped_mm_kernel(
                 else:
                     offs_cm = offs_am + tl.arange(0, BLOCK_M)
                     offs_cn = offs_bn + tl.arange(0, BLOCK_N)
-                    c_ptrs = (
-                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-                    )
+                    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
                     c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
                     tl.store(c_ptrs, c, mask=c_mask)
 
@@ -575,9 +559,7 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
         dummy_block = [1, 1]
 
         a_desc = TensorDescriptor(A, A.shape, A.stride(), dummy_block)
-        b_desc = TensorDescriptor(
-            B, [num_groups * K, N], [strideBK, strideBN], dummy_block
-        )
+        b_desc = TensorDescriptor(B, [num_groups * K, N], [strideBK, strideBN], dummy_block)
         c_desc = TensorDescriptor(C, C.shape, C.stride(), dummy_block)
 
         grouped_mm_tma_kernel[(NUM_SMS,)](

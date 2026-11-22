@@ -41,9 +41,7 @@ def erfinv_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
         absz = tl.abs(z)
         t = 1.0 / (1.0 + 0.3275911 * absz)
         # Polynomial for approximation
-        poly = (
-            ((((1.061405429 * t) - 1.453152027) * t) + 1.421413741) * t - 0.284496736
-        ) * t + 0.254829592
+        poly = (((((1.061405429 * t) - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592
         erf_abs = 1.0 - poly * t * tl.exp(-absz * absz)
         erf_z = tl.where(z >= 0.0, erf_abs, -erf_abs)
 
@@ -69,9 +67,7 @@ def erfinv_(*args, **kwargs):
         return x
 
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise TypeError(
-            "erfinv_ Triton kernel supports float16, bfloat16, and float32 tensors."
-        )
+        raise TypeError("erfinv_ Triton kernel supports float16, bfloat16, and float32 tensors.")
 
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)

@@ -17,11 +17,7 @@ def test_rrelu_with_noise_backward(shape, dtype):
     ref_grad = utils.to_reference(grad_output)
     ref_inp = utils.to_reference(inp)
     ref_noise = utils.to_reference(noise)
-    ref_out = torch.ops.aten.rrelu_with_noise_backward(
-        ref_grad, ref_inp, ref_noise, lower, upper, True, False
-    )
+    ref_out = torch.ops.aten.rrelu_with_noise_backward(ref_grad, ref_inp, ref_noise, lower, upper, True, False)
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.rrelu_with_noise_backward(
-            grad_output, inp, noise, lower, upper, True, False
-        )
+        res_out = torch.ops.aten.rrelu_with_noise_backward(grad_output, inp, noise, lower, upper, True, False)
     utils.gems_assert_close(res_out, ref_out, dtype)

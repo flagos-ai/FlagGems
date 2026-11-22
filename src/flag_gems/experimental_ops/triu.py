@@ -51,9 +51,7 @@ def _check_supported_dtype(t: torch.Tensor):
         torch.complex128,
         torch.complex32 if hasattr(torch, "complex32") else None,
     ):
-        raise TypeError(
-            "Complex dtypes are not supported by this Triton triu implementation."
-        )
+        raise TypeError("Complex dtypes are not supported by this Triton triu implementation.")
 
 
 def _launch_triu_kernel(inp: torch.Tensor, out: torch.Tensor, diagonal: int):
@@ -84,18 +82,12 @@ def _launch_triu_kernel(inp: torch.Tensor, out: torch.Tensor, diagonal: int):
 
     # Batch stride: distance between consecutive matrices in flattened batch
     stride_in_b = (
-        M * stride_in_m
-        if len(batch_shape) == 0
-        else inp_c.stride(-3) * inp_c.size(-3)
-        if ndim > 2
-        else M * stride_in_m
+        M * stride_in_m if len(batch_shape) == 0 else inp_c.stride(-3) * inp_c.size(-3) if ndim > 2 else M * stride_in_m
     )
     stride_out_b = (
         M * stride_out_m
         if len(batch_shape) == 0
-        else out_c.stride(-3) * out_c.size(-3)
-        if ndim > 2
-        else M * stride_out_m
+        else out_c.stride(-3) * out_c.size(-3) if ndim > 2 else M * stride_out_m
     )
 
     # For fully contiguous tensors, the above may not equal true batch stride for high dims.
@@ -152,13 +144,9 @@ def triu_out(input: torch.Tensor, diagonal: int = 0, out: torch.Tensor = None):
         out = torch.empty_like(input)
     else:
         if out.shape != input.shape:
-            raise ValueError(
-                f"out tensor must have the same shape as input, got {out.shape} vs {input.shape}"
-            )
+            raise ValueError(f"out tensor must have the same shape as input, got {out.shape} vs {input.shape}")
         if out.dtype != input.dtype:
-            raise TypeError(
-                f"out dtype must match input dtype, got {out.dtype} vs {input.dtype}"
-            )
+            raise TypeError(f"out dtype must match input dtype, got {out.dtype} vs {input.dtype}")
         if not out.is_cuda or out.device != input.device:
             raise ValueError("out must be a CUDA tensor on the same device as input")
     _launch_triu_kernel(input, out, diagonal)

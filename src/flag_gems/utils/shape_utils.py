@@ -252,11 +252,7 @@ def restride_dim(src, dim, shape, step=0, storage_offset=None):
 def cfggen():
     block_m = [1, 2, 4]
     block_n = [256, 1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
-        for m in block_m
-        for n in block_n
-    ]
+    configs = [triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4) for m in block_m for n in block_n]
     return configs
 
 
@@ -301,17 +297,13 @@ def check_tensor_attributes(data_list, is_tensor_list):
     """
     # Check if both lists have the same length
     if len(data_list) != len(is_tensor_list):
-        raise ValueError(
-            "Error: The lists of inputs and is_tensor must have the same length."
-        )
+        raise ValueError("Error: The lists of inputs and is_tensor must have the same length.")
 
     for i, (data, is_tensor) in enumerate(zip(data_list, is_tensor_list)):
         actual_is_tensor = isinstance(data, torch.Tensor)
 
         if actual_is_tensor != is_tensor:
-            raise ValueError(
-                f"Element at index {i} is incorrect. Expected {is_tensor}, but got {actual_is_tensor}."
-            )
+            raise ValueError(f"Element at index {i} is incorrect. Expected {is_tensor}, but got {actual_is_tensor}.")
 
     return True
 

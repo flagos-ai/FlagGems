@@ -37,8 +37,7 @@ def test_trunc_div(shape, dtype):
 
     if not cfg.TO_CPU:
         logging.debug(
-            f"The maximum difference between torch and triton is "
-            f"{torch.max(torch.abs(ref_out - res_out))}"
+            f"The maximum difference between torch and triton is " f"{torch.max(torch.abs(ref_out - res_out))}"
         )
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -67,8 +66,7 @@ def test_trunc_divide_(shape, dtype):
 
     if not cfg.TO_CPU:
         logging.debug(
-            f"The maximum difference between torch and triton is "
-            f"{torch.max(torch.abs(ref_out - res_out))}"
+            f"The maximum difference between torch and triton is " f"{torch.max(torch.abs(ref_out - res_out))}"
         )
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

@@ -29,9 +29,7 @@ SHAPE_DEPTHWISE = [
 @pytest.mark.parametrize("dilation", [[1, 1]])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("bias", [True, False])
-def test_conv_depthwise2d(
-    shape_input, shape_weight, kernel, stride, padding, dilation, dtype, bias
-):
+def test_conv_depthwise2d(shape_input, shape_weight, kernel, stride, padding, dilation, dtype, bias):
     inp = torch.randn(shape_input, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
     torch.backends.cudnn.allow_tf32 = False
@@ -56,7 +54,5 @@ def test_conv_depthwise2d(
     )
 
     with flag_gems.use_gems():
-        res_out = torch.ops.aten._conv_depthwise2d(
-            inp, weight, kernel, bias_tensor, stride, padding, dilation
-        )
+        res_out = torch.ops.aten._conv_depthwise2d(inp, weight, kernel, bias_tensor, stride, padding, dilation)
     utils.gems_assert_close(res_out, ref_out, dtype)

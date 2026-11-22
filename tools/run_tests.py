@@ -397,9 +397,7 @@ def parse_perf_log(op_dir):
     perf_res_file = op_dir / "performance_result.log"
     log_lines = []
     with perf_res_file.open("r") as f:
-        log_lines = [
-            line for line in f.read().strip().split("\n") if line.startswith("[INFO] {")
-        ]
+        log_lines = [line for line in f.read().strip().split("\n") if line.startswith("[INFO] {")]
 
     for line in log_lines:
         item = {}
@@ -531,9 +529,7 @@ def worker_proc(gpu_id, start, count):
         acc = run_accuracy(gpu_id, start, i, count)
         perf = run_benchmark(gpu_id, start, i, count)
 
-        customized_ops = [
-            op[0] for op in flag_gems.runtime.backend.get_customized_ops()
-        ]
+        customized_ops = [op[0] for op in flag_gems.runtime.backend.get_customized_ops()]
         result = {
             "customized": op in customized_ops,
             "accuracy": acc,

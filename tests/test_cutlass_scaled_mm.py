@@ -37,9 +37,7 @@ def to_int8(tensor: torch.Tensor):
 
 def to_fp8(tensor: torch.Tensor):
     finfo = torch.finfo(torch.float8_e4m3fn)
-    return torch.round(tensor.clamp(min=finfo.min, max=finfo.max)).to(
-        dtype=torch.float8_e4m3fn
-    )
+    return torch.round(tensor.clamp(min=finfo.min, max=finfo.max)).to(dtype=torch.float8_e4m3fn)
 
 
 class CutlassScaledMMTestKit:
@@ -73,9 +71,7 @@ class CutlassScaledMMTestKit:
         if_use_bias = [True, False]
         dtypes = [(torch.int8, torch.float16), (torch.float8_e4m3fn, torch.bfloat16)]
 
-        combinations = product(
-            mnk, scale_shape_types, scale_shape_types, if_use_bias, dtypes
-        )
+        combinations = product(mnk, scale_shape_types, scale_shape_types, if_use_bias, dtypes)
         return combinations
 
     @classmethod
@@ -99,9 +95,7 @@ class CutlassScaledMMTestKit:
                 "scalar",
                 "vector",
             ] and b_scale_category in ["scalar", "vector"]
-            is_block_dequant = (
-                a_scale_category == "matrix" and b_scale_category == "matrix"
-            )
+            is_block_dequant = a_scale_category == "matrix" and b_scale_category == "matrix"
 
             if not (is_scalar_or_vector_dequant or is_block_dequant):
                 continue
@@ -190,9 +184,7 @@ def test_cutlass_scaled_mm(p):
 
     if in_dtype == torch.int8:
         a = to_int8(torch.randn((M, K), device=flag_gems.device))
-        b = to_int8(
-            torch.randn((K, N), device=flag_gems.device).t().contiguous().t() * 5
-        )
+        b = to_int8(torch.randn((K, N), device=flag_gems.device).t().contiguous().t() * 5)
     else:
         a = to_fp8(torch.randn((M, K), device=flag_gems.device))
         b = to_fp8(torch.randn((K, N), device=flag_gems.device).t().contiguous().t())
@@ -216,9 +208,7 @@ def test_cutlass_scaled_mm(p):
 
     flag_gems.cutlass_scaled_mm(c, a, b, scale_a, scale_b, bias)
 
-    output_ref = kit.baseline_scaled_mm(
-        a, b, scale_a.view(-1, 1), scale_b.view(1, -1), out_dtype, bias
-    )
+    output_ref = kit.baseline_scaled_mm(a, b, scale_a.view(-1, 1), scale_b.view(1, -1), out_dtype, bias)
 
     if in_dtype == torch.int8:
         rtol, atol = 1e-1, 1.0

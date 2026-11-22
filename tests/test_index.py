@@ -64,9 +64,7 @@ def gen_indices(input_shape, indices_shape, accumulate):
                 size = min(shape[0], common_size)
             else:
                 size = common_size
-            index = np.random.choice(
-                np.arange(input_shape[i]), size=size, replace=accumulate
-            )
+            index = np.random.choice(np.arange(input_shape[i]), size=size, replace=accumulate)
             indices.append(torch.tensor(index, device=flag_gems.device))
     return indices
 
@@ -75,9 +73,7 @@ def gen_indices(input_shape, indices_shape, accumulate):
 @pytest.mark.parametrize("input_shape, indices_shape", INDEX_ACC_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_index(input_shape, indices_shape, dtype):
-    inp = torch.randn(
-        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     try:
         indices = gen_indices(input_shape, indices_shape, True)
     except Exception:

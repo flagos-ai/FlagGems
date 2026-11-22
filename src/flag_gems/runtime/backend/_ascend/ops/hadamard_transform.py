@@ -205,9 +205,7 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     # Scratch buffer: (log_n - 1) segments of (batch, dim_padded) in fp32
     # Stage s writes to segment s (0..log_n-2), last stage writes to output
     n_scratch = max(log_n - 1, 1)
-    scratch = torch.empty(
-        n_scratch, batch, dim_padded, dtype=torch.float32, device=x.device
-    )
+    scratch = torch.empty(n_scratch, batch, dim_padded, dtype=torch.float32, device=x.device)
     seg_stride = batch * dim_padded
 
     # Grid calculation

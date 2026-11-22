@@ -8,12 +8,12 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.native_dropout_backward import (  # noqa: E402
+from flag_gems.experimental_ops.native_dropout_backward import (
     native_dropout_backward as gems_native_dropout_backward,
-)
-from flag_gems.experimental_ops.native_dropout_backward import (  # noqa: E402
+)  # noqa: E402
+from flag_gems.experimental_ops.native_dropout_backward import (
     native_dropout_backward_out as gems_native_dropout_backward_out,
-)
+)  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -59,9 +59,7 @@ def test_native_dropout_backward_benchmark_tensor(shape, dtype, scale):
     ref_mask = mask.clone()
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.native_dropout_backward(
-            ref_grad, ref_mask, float(scale)
-        ),
+        lambda: torch.ops.aten.native_dropout_backward(ref_grad, ref_mask, float(scale)),
         rep=100,
         quantiles=quantiles,
     )
@@ -100,9 +98,7 @@ def test_native_dropout_backward_benchmark_out(shape, dtype, scale):
     ref_out_tensor = torch.empty_like(ref_grad)
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.native_dropout_backward.out(
-            ref_grad, ref_mask, float(scale), out=ref_out_tensor
-        ),
+        lambda: torch.ops.aten.native_dropout_backward.out(ref_grad, ref_mask, float(scale), out=ref_out_tensor),
         rep=100,
         quantiles=quantiles,
     )
@@ -114,9 +110,7 @@ def test_native_dropout_backward_benchmark_out(shape, dtype, scale):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_native_dropout_backward_out(
-                act_grad, act_mask, float(scale), act_out_tensor
-            ),
+            lambda: gems_native_dropout_backward_out(act_grad, act_mask, float(scale), act_out_tensor),
             rep=100,
             quantiles=quantiles,
         )

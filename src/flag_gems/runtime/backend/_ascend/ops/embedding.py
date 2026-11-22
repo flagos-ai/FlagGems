@@ -113,9 +113,7 @@ def embedding_grad_scale_kernel(
 
 class Embedding(torch.autograd.Function):
     @staticmethod
-    def forward(
-        ctx, weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False
-    ):
+    def forward(ctx, weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
         logger.debug("GEMS_ASCEND EMBEDDING FORWARD")
         assert not sparse, "Currently do not support sparse format"
 
@@ -125,9 +123,7 @@ class Embedding(torch.autograd.Function):
         BLOCK_SIZE = triton.next_power_of_2(N)
         indices = indices.contiguous()
         weight = weight.contiguous()
-        output = torch.empty(
-            (*indices.shape, N), device=indices.device, dtype=weight.dtype
-        )
+        output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
 
         with torch_device_fn.device(weight.device):
             embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
@@ -150,11 +146,7 @@ class Embedding(torch.autograd.Function):
         grad_inputs = torch.zeros(
             (ctx.num_weights, grad_outputs.shape[-1]),
             device=grad_outputs.device,
-            dtype=(
-                torch.float32
-                if grad_outputs.dtype is torch.bfloat16
-                else grad_outputs.dtype
-            ),
+            dtype=(torch.float32 if grad_outputs.dtype is torch.bfloat16 else grad_outputs.dtype),
         )
 
         if ctx.scale_grad_by_freq:
@@ -168,9 +160,7 @@ class Embedding(torch.autograd.Function):
             indice_grid = lambda meta: (triton.cdiv(ctx.M, INDICE_BLOCK_SIZE),)
 
             with torch_device_fn.device(grad_outputs.device):
-                indice_freq_kernel[indice_grid](
-                    indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE
-                )
+                indice_freq_kernel[indice_grid](indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE)
         else:
             indice_freq = None
 
@@ -191,15 +181,9 @@ class Embedding(torch.autograd.Function):
 
         if ctx.scale_grad_by_freq:
             with torch_device_fn.device(grad_outputs.device):
-                embedding_grad_scale_kernel[ctx.M,](
-                    grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
-                )
+                embedding_grad_scale_kernel[ctx.M,](grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE)
         return (
-            (
-                grad_inputs.to(torch.bfloat16)
-                if grad_outputs.dtype is torch.bfloat16
-                else grad_inputs
-            ),
+            (grad_inputs.to(torch.bfloat16) if grad_outputs.dtype is torch.bfloat16 else grad_inputs),
             None,
             None,
             None,

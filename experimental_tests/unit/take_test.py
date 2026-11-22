@@ -45,9 +45,7 @@ def to_reference(inp, upcast=False):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_take_tensor(in_shape, idx_shape, dtype):
     x = torch.randn(in_shape, device=flag_gems.device, dtype=dtype)
-    idx = torch.randint(
-        0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64
-    )
+    idx = torch.randint(0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64)
 
     ref_x = to_reference(x)
     ref_idx = to_reference(idx)
@@ -65,9 +63,7 @@ def test_take_tensor(in_shape, idx_shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_take_out(in_shape, idx_shape, dtype):
     x = torch.randn(in_shape, device=flag_gems.device, dtype=dtype)
-    idx = torch.randint(
-        0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64
-    )
+    idx = torch.randint(0, x.numel(), idx_shape, device=flag_gems.device, dtype=torch.int64)
 
     ref_x = to_reference(x)
     ref_idx = to_reference(idx)

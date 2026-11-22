@@ -13,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def masked_scatter_single_pass_kernel(
-    inp_ptr, mask_ptr, src_ptr, N, BLOCK_SIZE: tl.constexpr
-):
+def masked_scatter_single_pass_kernel(inp_ptr, mask_ptr, src_ptr, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
@@ -71,9 +69,7 @@ def mask_part_sum_kernel(
         part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask)
         final_sum = tl.sum(part_sums, axis=0)
         pre_sums = tl.cumsum(part_sums, axis=0)
-        tl.store(
-            part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask
-        )
+        tl.store(part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask)
         tl.store(part_sums_ptr + np, final_sum)
 
 
@@ -133,9 +129,7 @@ def masked_scatter_impl(inp, mask, source, N):
         if BLOCK_SIZE >= 4096:
             num_warps = 16
 
-        masked_scatter_single_pass_kernel[(1,)](
-            inp, mask, source, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-        )
+        masked_scatter_single_pass_kernel[(1,)](inp, mask, source, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
         return inp
 
     BLOCK_SIZE = bracket_next_power_of_2(N, 128, 4096)
@@ -183,9 +177,7 @@ def masked_scatter_impl(inp, mask, source, N):
 def masked_scatter(inp, mask, source):
     logger.debug("GEMS MASKED SCATTER")
 
-    assert broadcastable(
-        inp.shape, mask.shape
-    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    assert broadcastable(inp.shape, mask.shape), "The shapes of the `mask` and the `input` tensor must be broadcastable"
 
     _, mask = torch.broadcast_tensors(inp, mask)
 
@@ -211,9 +203,7 @@ def masked_scatter_(inp, mask, source):
     _, mask = torch.broadcast_tensors(inp, mask)
 
     if not inp.is_contiguous():
-        raise RuntimeError(
-            "in-place operation currently requires contiguous input tensor. "
-        )
+        raise RuntimeError("in-place operation currently requires contiguous input tensor. ")
 
     mask = mask if mask.is_contiguous() else mask.contiguous()
     source = source if source.is_contiguous() else source.contiguous()

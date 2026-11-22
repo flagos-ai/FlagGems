@@ -59,9 +59,7 @@ def heaviside_out(input, values, out):
     if out.dtype != expected_dtype:
         raise ValueError("out tensor dtype must be the result type of input and values")
     if out.shape != expected_shape:
-        raise ValueError(
-            "out tensor shape must be the broadcasted shape of input and values"
-        )
+        raise ValueError("out tensor shape must be the broadcasted shape of input and values")
 
     x = x_b.to(dtype=expected_dtype).contiguous()
     v = v_b.to(dtype=expected_dtype).contiguous()

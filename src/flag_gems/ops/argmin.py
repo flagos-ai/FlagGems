@@ -87,9 +87,7 @@ def argmin_kernel_opt_k1(
         offset = m_offset[:, None] * N + n_offset[None, :]
         inp_vals = tl.load(inp + offset, mask=True)
 
-        local_min, local_argmin = tl.min(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
         update = local_min < min_vals
         min_vals = tl.where(update, local_min, min_vals)
         argmin_vals = tl.where(update, start_n + local_argmin, argmin_vals)
@@ -99,9 +97,7 @@ def argmin_kernel_opt_k1(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("argmin_split_k"), key=["M", "N", "K"]
-)
+@triton.autotune(configs=runtime.get_tuned_config("argmin_split_k"), key=["M", "N", "K"])
 @triton.jit
 def argmin_split_K_kernel_merged(
     inp,
@@ -143,9 +139,7 @@ def argmin_split_K_kernel_merged(
         )
         inp_vals = inp_vals.to(compute_dtype)
 
-        local_min, local_argmin = tl.min(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_min, local_argmin = tl.min(inp_vals, 0, return_indices=True, return_indices_tie_break_left=True)
         local_argmin += start_n
 
         mask = local_min < global_min
@@ -185,9 +179,7 @@ def argmin_kernel(
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         # tl.bfloat is promoted to tl.float32 by tl.min
-        local_min, local_argmin = tl.min(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
         # if return indices is not supported, call a tl.argmin in addition
         # local_argmin = tl.argmin(inp_vals, 1)
         update = local_min < min_values

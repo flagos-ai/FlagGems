@@ -57,16 +57,12 @@ def permute(*args, **kwargs):
 
     ndim = x.dim()
     if len(dims) != ndim:
-        raise ValueError(
-            f"permute(): dims length {len(dims)} does not match tensor ndim {ndim}"
-        )
+        raise ValueError(f"permute(): dims length {len(dims)} does not match tensor ndim {ndim}")
 
     # Normalize negative dims and validate permutation
     dims = tuple([d % ndim for d in dims])
     if len(set(dims)) != ndim:
-        raise ValueError(
-            "permute(): dims must be a permutation of [0..ndim-1] with no repeats"
-        )
+        raise ValueError("permute(): dims must be a permutation of [0..ndim-1] with no repeats")
 
     if not x.is_cuda:
         raise AssertionError("Input tensor must be on CUDA device")

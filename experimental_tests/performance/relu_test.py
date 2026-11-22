@@ -46,12 +46,8 @@ def test_relu_performance(shape, dtype):
     # cast to reference dtype if necessary
     ref_input = input.clone()
 
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: relu(ref_input), rep=100, quantiles=quantiles
-    )
-    ms_triton, _, _ = triton.testing.do_bench(
-        lambda: gems_relu(input), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: relu(ref_input), rep=100, quantiles=quantiles)
+    ms_triton, _, _ = triton.testing.do_bench(lambda: gems_relu(input), rep=100, quantiles=quantiles)
 
     speedup = ms_torch / ms_triton
 

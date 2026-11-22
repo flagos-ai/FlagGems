@@ -65,9 +65,7 @@ def get_info_file_lines(info_file, discard_file):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print(
-            "usage: coverage_diff.py info_file discard_file > python-coverage-discard-diff.info"
-        )
+        print("usage: coverage_diff.py info_file discard_file > python-coverage-discard-diff.info")
         sys.exit(1)
 
     info_file, discard_file = sys.argv[1], sys.argv[2]

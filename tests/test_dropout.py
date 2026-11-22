@@ -52,9 +52,7 @@ def test_dropout(shape, p, dtype):
         zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
         num_zero = torch.sum(zero_equal).item()
         assert abs(num_zero / res_inp.numel() - p) <= 0.05
-        scale_equal = torch.isclose(
-            res_out, ref_inp / one_minus_p, rtol=RESOLUTION[dtype]
-        )
+        scale_equal = torch.isclose(res_out, ref_inp / one_minus_p, rtol=RESOLUTION[dtype])
         assert torch.all(torch.logical_or(zero_equal, scale_equal))
     else:
         assert (

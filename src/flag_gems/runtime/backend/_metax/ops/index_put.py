@@ -48,9 +48,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     return code
 
 
-def generate_index_put_kernel(
-    inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
-):
+def generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer):
     code.writeline("@libentry()")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
@@ -64,9 +62,7 @@ def generate_index_put_kernel(
         args += [f"input_stride{i}," for i in range(inp_rank)]
         for i in range(indices_len):
             args += [f"indices{i}_stride{j}," for j in range(index_rank)]
-        args += [
-            f"values_stride{i}," for i in range(index_rank + inp_rank - indices_len)
-        ]
+        args += [f"values_stride{i}," for i in range(index_rank + inp_rank - indices_len)]
         args += [
             "M,",
             "N,",
@@ -80,15 +76,11 @@ def generate_index_put_kernel(
     with code.indent():
         code.writeline("pid0 = tle.program_id(axis=0)")
         code.writeline("pid1 = tle.program_id(axis=1)")
-        code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
-        )
+        code.writeline("offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]")
         if inp_rank == indices_len:
             code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
         else:
-            code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
-            )
+            code.writeline("offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]")
         code.newline()
         code.writeline("cur_idx = offset0")
         for i in range(index_rank - 1, -1, -1):
@@ -103,36 +95,24 @@ def generate_index_put_kernel(
         code.writeline("mask0 = offset0 < M")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
-            code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
-            )
+            code.writeline(f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)")
         code.newline()
-        index_mask = [
-            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
-            for i in range(indices_len)
-        ]
+        index_mask = [f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})" for i in range(indices_len)]
         code.writeline(f"index_mask = {' & '.join(index_mask)}")
         code.writeline("mask1 = offset1 < N")
         code.writeline("mask = index_mask & mask0 & mask1")
         code.newline()
         comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
-        comp += [
-            f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
-        ]
+        comp += [f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)]
         code.writeline(f"input_offset = {' + '.join(comp)}")
         comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
-        comp += [
-            f"input_idx{indices_len + i} * values_stride{index_rank + i}"
-            for i in range(inp_rank - indices_len)
-        ]
+        comp += [f"input_idx{indices_len + i} * values_stride{index_rank + i}" for i in range(inp_rank - indices_len)]
         code.writeline(f"values_offset = {' + '.join(comp)}")
         code.newline()
         code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
         code.writeline("if IS_ACCUMULATE:")
         with code.indent():
-            code.writeline(
-                "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
-            )
+            code.writeline("tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)")
         code.writeline("else:")
         with code.indent():
             code.writeline("tl.store(input_ptr + input_offset, cur_value, mask=mask)")
@@ -179,10 +159,7 @@ def generate_index_put_wrapper(
             args += [f"input_stride[{i}]," for i in range(inp_rank)]
             for i in range(indices_len):
                 args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
-            args += [
-                f"values_stride[{i}],"
-                for i in range(index_rank + inp_rank - indices_len)
-            ]
+            args += [f"values_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)]
             args += ["M,", "N,", "accumulate==True,"]
             code.writelines(args)
         code.writeline(")")
@@ -207,9 +184,7 @@ def generate_code(
     index_rank = tensor_indices[0].ndim
     code = generate_imports(code)
     generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
-    generate_index_put_wrapper(
-        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
-    )
+    generate_index_put_wrapper(inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code)
     return code
 
 
@@ -279,17 +254,12 @@ def index_put(inp, indices, values, accumulate=False):
         target_shape = (K,) + inp.shape[len(indices) :]
 
         if values.numel() == 1:
-            values = torch.full(
-                target_shape, values.item(), dtype=inp.dtype, device=inp.device
-            )
+            values = torch.full(target_shape, values.item(), dtype=inp.dtype, device=inp.device)
         elif values.numel() == K:
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
-        for index in indices
+        (index.to(inp.device) if index is not None and index.device != inp.device else index) for index in indices
     ]
 
     target_shape = get_max_rank_shape(indices)
@@ -326,17 +296,12 @@ def index_put_(inp, indices, values, accumulate=False):
         target_shape = (K,) + inp.shape[len(indices) :]
 
         if values.numel() == 1:
-            values = torch.full(
-                target_shape, values.item(), dtype=inp.dtype, device=inp.device
-            )
+            values = torch.full(target_shape, values.item(), dtype=inp.dtype, device=inp.device)
         elif values.numel() == K:
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
-        for index in indices
+        (index.to(inp.device) if index is not None and index.device != inp.device else index) for index in indices
     ]
 
     target_shape = get_max_rank_shape(indices)

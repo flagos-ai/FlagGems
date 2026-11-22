@@ -45,9 +45,7 @@ class BenchConfig:
         self.bench_level = BenchLevel.COMPREHENSIVE
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
-        if (
-            vendor_name == "kunlunxin"
-        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        if vendor_name == "kunlunxin":  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
             self.warm_up = 1
             self.repetition = 1
         self.record_log = False
@@ -64,9 +62,7 @@ REGISTERED_MARKS = []
 
 def pytest_addoption(parser):
     parser.addoption(
-        (
-            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
-        ),  # TODO: fix pytest-* common --mode args
+        ("--mode" if vendor_name != "kunlunxin" else "--fg_mode"),  # TODO: fix pytest-* common --mode args
         action="store",
         default="kernel",
         required=False,
@@ -98,9 +94,7 @@ def pytest_addoption(parser):
         help="Number of reps for each benchmark run.",
     )
 
-    parser.addoption(
-        "--query", action="store_true", default=False, help="Enable query mode"
-    )
+    parser.addoption("--query", action="store_true", default=False, help="Enable query mode")
 
     parser.addoption(
         "--metrics",
@@ -119,10 +113,7 @@ def pytest_addoption(parser):
         action="append",
         default=None,
         required=False,
-        choices=[
-            str(ele).split(".")[-1]
-            for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
-        ],
+        choices=[str(ele).split(".")[-1] for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]],
         help=(
             "Specify the data types for benchmarks. "
             "If not specified, the dtype items will vary according to the specified operation's category and name."
@@ -179,13 +170,9 @@ def pytest_configure(config):
     global Config  # noqa: F824
     global REGISTERED_MARKS
 
-    REGISTERED_MARKS = {
-        marker.split(":")[0].strip() for marker in config.getini("markers")
-    }
+    REGISTERED_MARKS = {marker.split(":")[0].strip() for marker in config.getini("markers")}
 
-    mode_value = config.getoption(
-        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
-    )
+    mode_value = config.getoption("--mode" if vendor_name != "kunlunxin" else "--fg_mode")
     Config.mode = BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
@@ -212,10 +199,7 @@ def pytest_configure(config):
     Config.record_log = config.getoption("--record") == "log"
     Config.parallel = int(config.getoption("--parallel") or 0)
     if Config.record_log:
-        cmd_args = [
-            arg.replace(".py", "").replace("=", "_").replace("/", "_")
-            for arg in config.invocation_params.args
-        ]
+        cmd_args = [arg.replace(".py", "").replace("=", "_").replace("/", "_") for arg in config.invocation_params.args]
 
         log_file = "result_{}.log".format("_".join(cmd_args)).replace("_-", "-")
 
@@ -320,9 +304,7 @@ def pytest_collection_modifyitems(session, config, items):
 
             all_marks = list(item.iter_markers())
             op_marks = [
-                mark.name
-                for mark in all_marks
-                if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
+                mark.name for mark in all_marks if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
             ]
 
             data["marks"] = op_marks

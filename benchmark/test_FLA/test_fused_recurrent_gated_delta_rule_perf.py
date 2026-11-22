@@ -15,9 +15,7 @@ except ImportError:  # pragma: no cover - optional dependency guard
     VLLM_AVAILABLE = False
 
 
-def rearrange_mixed_qkv(
-    mixed_qkv, key_dim, value_dim, head_k_dim, head_v_dim, tp_size=1, contiguous=True
-):
+def rearrange_mixed_qkv(mixed_qkv, key_dim, value_dim, head_k_dim, head_v_dim, tp_size=1, contiguous=True):
     query, key, value = torch.split(
         mixed_qkv,
         [
@@ -111,9 +109,7 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
 
         mixed_qkv_dim = (2 * key_dim + value_dim) // tp_size
         total_tokens = B * T
-        mixed_qkv = torch.randn(
-            (total_tokens, mixed_qkv_dim), device=device, dtype=dtype
-        )
+        mixed_qkv = torch.randn((total_tokens, mixed_qkv_dim), device=device, dtype=dtype)
 
         q, k, v = rearrange_mixed_qkv(
             mixed_qkv,
@@ -126,9 +122,7 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
         )
 
         HV_local = v.shape[2]
-        g = torch.nn.functional.logsigmoid(
-            torch.randn((B, T, HV_local), device=device, dtype=dtype)
-        )
+        g = torch.nn.functional.logsigmoid(torch.randn((B, T, HV_local), device=device, dtype=dtype))
         beta = torch.rand(B, T, HV_local, device=device, dtype=dtype).sigmoid()
         cu_seqlens = torch.arange(T + 1, device=device, dtype=torch.long)
         initial_state = torch.zeros((1024, HV_local, K, V), device=device, dtype=dtype)

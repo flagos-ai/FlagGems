@@ -109,9 +109,7 @@ def amax(inp, dim=None, keepdim=False):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
-            amax_kernel_1[(mid_size, 1)](
-                inp, mid, M, block_size, buffer_size_limit=2048
-            )
+            amax_kernel_1[(mid_size, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
             amax_kernel_2[(1, 1)](
                 mid, out, mid_size, block_mid, buffer_size_limit=2048
             )  # max block size is 128k, so mid does not requires int64 index

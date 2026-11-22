@@ -33,9 +33,7 @@ def masked_select_kernel(
         offsets = offset + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
         inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
-        select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(
-            tl.int1
-        )
+        select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(tl.int1)
         select_val, select_num = tl.masked_select(inp, select_mask)
         tl.store(select_val_ptr + offsets, select_val, mask=mask)
         num_select_offset = loop * num_p + pid + tl.arange(0, 1)
@@ -59,9 +57,7 @@ def get_out_kernel(
 
     all_select_num_offset = tl.arange(0, split_n)
     all_select_num_mask = all_select_num_offset < split_n
-    all_select_num = tl.load(
-        select_num_ptr + all_select_num_offset, mask=all_select_num_mask, other=0.0
-    )
+    all_select_num = tl.load(select_num_ptr + all_select_num_offset, mask=all_select_num_mask, other=0.0)
     prefix_select_num = tl.cumsum(all_select_num, 0)
 
     offset_start = pid * BLOCK_SIZE
@@ -72,15 +68,11 @@ def get_out_kernel(
         select_val = tl.load(select_val_ptr + offsets, mask=mask, other=0.0)
         select_num_offset = loop * num_p + pid + tl.arange(0, 1)
         select_num_mask = select_num_offset < split_n
-        select_num = tl.load(
-            select_num_ptr + select_num_offset, mask=select_num_mask, other=0.0
-        )
+        select_num = tl.load(select_num_ptr + select_num_offset, mask=select_num_mask, other=0.0)
         if loop == 0 and pid == 0:
             output_offset = tl.arange(0, BLOCK_SIZE)
         else:
-            output_offset = prefix_select_num[loop * num_p + pid - 1] + tl.arange(
-                0, BLOCK_SIZE
-            )
+            output_offset = prefix_select_num[loop * num_p + pid - 1] + tl.arange(0, BLOCK_SIZE)
         loop += 1
         output_mask = tl.arange(0, BLOCK_SIZE) < select_num
         tl.store(output_ptr + output_offset, select_val, mask=output_mask)
@@ -92,18 +84,14 @@ def masked_select(inp, mask):
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
 
-    assert broadcastable(
-        inp_shape, mask_shape
-    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    assert broadcastable(inp_shape, mask_shape), "The shapes of the `mask` and the `input` tensor must be broadcastable"
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()
     mask = mask.contiguous()
 
     n_elements = inp.numel()
-    grid = lambda meta: (
-        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
-    )
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(inp.device):
         select_val = torch.empty(n_elements, dtype=inp.dtype, device=inp.device)
         select_num = torch.empty(n_elements, dtype=torch.int32, device=inp.device)

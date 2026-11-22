@@ -213,9 +213,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     return y, mean, rstd
 
 
-def group_norm_backward(
-    grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
-):
+def group_norm_backward(grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask):
     logger.debug("GEMS GROUPNORM BACKWARD")
 
     grad_out = grad_out.contiguous()

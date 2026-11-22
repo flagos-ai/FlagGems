@@ -61,15 +61,9 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm_backward(M, N, K, scalar, dtype):
     batch = 2
-    mat1 = torch.randn(
-        (batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
-    mat2 = torch.randn(
-        (batch, K, N), dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
-    bias = torch.randn(
-        (batch, M, N), dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    bias = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
     ref_bias = to_reference(bias, True)
@@ -81,12 +75,8 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_in_bias, ref_in_grad1, ref_in_grad2) = torch.autograd.grad(
-        ref_out, (ref_bias, ref_mat1, ref_mat2), ref_grad
-    )
-    (res_in_bias, res_in_grad1, res_in_grad2) = torch.autograd.grad(
-        res_out, (bias, mat1, mat2), out_grad
-    )
+    ref_in_bias, ref_in_grad1, ref_in_grad2 = torch.autograd.grad(ref_out, (ref_bias, ref_mat1, ref_mat2), ref_grad)
+    res_in_bias, res_in_grad1, res_in_grad2 = torch.autograd.grad(res_out, (bias, mat1, mat2), out_grad)
 
     gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=K)
     gems_assert_close(res_in_grad1, ref_in_grad1, dtype, reduce_dim=N)

@@ -57,12 +57,7 @@ def scaled_softmax_forward_kernel(
 
     query_mask = query_offsets < query_seq_len
 
-    row_start_ptr = (
-        input_ptr
-        + batch_idx * stride_b
-        + attn_head_idx * stride_h
-        + query_offsets * stride_q
-    )
+    row_start_ptr = input_ptr + batch_idx * stride_b + attn_head_idx * stride_h + query_offsets * stride_q
 
     m = tl.full([BLOCK_Q], -float("inf"), dtype=tl.float32)
     exp_sum = tl.zeros([BLOCK_Q], dtype=tl.float32)
@@ -75,9 +70,7 @@ def scaled_softmax_forward_kernel(
         col_mask = k_offsets[None, :] < key_seq_len
         mask = row_mask & col_mask
 
-        s_block = tl.load(
-            block_ptr, mask=mask, other=-float("inf"), cache_modifier=".ca"
-        )
+        s_block = tl.load(block_ptr, mask=mask, other=-float("inf"), cache_modifier=".ca")
         s_block = s_block * scale_factor
 
         m_new = tl.max(s_block, axis=1)
@@ -93,12 +86,7 @@ def scaled_softmax_forward_kernel(
 
     exp_sum_inv = 1.0 / exp_sum
 
-    out_row_start_ptr = (
-        output_ptr
-        + batch_idx * stride_b
-        + attn_head_idx * stride_h
-        + query_offsets * stride_q
-    )
+    out_row_start_ptr = output_ptr + batch_idx * stride_b + attn_head_idx * stride_h + query_offsets * stride_q
 
     for k_block_idx in range(0, tl.cdiv(key_seq_len, BLOCK_K)):
         k_offsets = k_block_idx * BLOCK_K + tl.arange(0, BLOCK_K)
@@ -110,9 +98,7 @@ def scaled_softmax_forward_kernel(
         col_mask = k_offsets[None, :] < key_seq_len
         mask = row_mask & col_mask
 
-        s_block = tl.load(
-            block_ptr_in, mask=mask, other=-float("inf"), eviction_policy="evict_first"
-        )
+        s_block = tl.load(block_ptr_in, mask=mask, other=-float("inf"), eviction_policy="evict_first")
 
         s_block = s_block * scale_factor
         s_block = s_block - m[:, None]
@@ -183,26 +169,11 @@ def scaled_softmax_backward_kernel(
 
     query_mask = query_offsets < query_seq_len
 
-    output_row_ptr = (
-        output_ptr
-        + batch_idx * stride_b
-        + attn_head_idx * stride_h
-        + query_offsets * stride_q
-    )
+    output_row_ptr = output_ptr + batch_idx * stride_b + attn_head_idx * stride_h + query_offsets * stride_q
 
-    grad_output_row_ptr = (
-        grad_output_ptr
-        + batch_idx * stride_b
-        + attn_head_idx * stride_h
-        + query_offsets * stride_q
-    )
+    grad_output_row_ptr = grad_output_ptr + batch_idx * stride_b + attn_head_idx * stride_h + query_offsets * stride_q
 
-    grad_input_row_ptr = (
-        grad_input_ptr
-        + batch_idx * stride_b
-        + attn_head_idx * stride_h
-        + query_offsets * stride_q
-    )
+    grad_input_row_ptr = grad_input_ptr + batch_idx * stride_b + attn_head_idx * stride_h + query_offsets * stride_q
 
     D = tl.zeros([BLOCK_Q], dtype=tl.float32)
 
@@ -240,9 +211,7 @@ def scaled_softmax_backward_kernel(
         tl.store(ptr_dS, dS_block, mask=mask, cache_modifier=".cs")
 
 
-def scaled_softmax_backward(
-    grad_output: torch.Tensor, softmax_results: torch.Tensor, scale_factor: float
-):
+def scaled_softmax_backward(grad_output: torch.Tensor, softmax_results: torch.Tensor, scale_factor: float):
     logger.debug("GEMS SCALED SOFTMAX BACKWARD")
     assert grad_output.dim() == 4, "expected 4D tensor"
     assert softmax_results.dim() == 4, "expected 4D tensor"

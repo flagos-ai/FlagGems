@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
-def index_select_kernel(
-    inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
+def index_select_kernel(inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid_x = tle.program_id(axis=0)
     pid_y = tle.program_id(axis=1)
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]

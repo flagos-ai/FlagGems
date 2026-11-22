@@ -333,12 +333,8 @@ def hc_split_sinkhorn(
         num_tokens = mixes_flat.shape[0]
 
         pre = torch.empty(num_tokens, hc_mult, dtype=torch.float32, device=mixes.device)
-        post = torch.empty(
-            num_tokens, hc_mult, dtype=torch.float32, device=mixes.device
-        )
-        comb = torch.empty(
-            num_tokens, hc_mult * hc_mult, dtype=torch.float32, device=mixes.device
-        )
+        post = torch.empty(num_tokens, hc_mult, dtype=torch.float32, device=mixes.device)
+        comb = torch.empty(num_tokens, hc_mult * hc_mult, dtype=torch.float32, device=mixes.device)
 
         if num_tokens <= 256:
             block_n = 16
@@ -420,12 +416,10 @@ def mhc_split_sinkhorn_torch_ref(
     assert mixes.shape[-1] == mix_hc
 
     pre = torch.sigmoid(mixes[..., :hc_mult] * hc_scale[0] + hc_base[:hc_mult]) + eps
-    post = 2 * torch.sigmoid(
-        mixes[..., hc_mult : 2 * hc_mult] * hc_scale[1] + hc_base[hc_mult : 2 * hc_mult]
+    post = 2 * torch.sigmoid(mixes[..., hc_mult : 2 * hc_mult] * hc_scale[1] + hc_base[hc_mult : 2 * hc_mult])
+    comb = mixes[..., 2 * hc_mult :].view(*outer_shape, hc_mult, hc_mult) * hc_scale[2] + hc_base[2 * hc_mult :].view(
+        hc_mult, hc_mult
     )
-    comb = mixes[..., 2 * hc_mult :].view(*outer_shape, hc_mult, hc_mult) * hc_scale[
-        2
-    ] + hc_base[2 * hc_mult :].view(hc_mult, hc_mult)
 
     row_max = comb.max(dim=-1, keepdim=True).values
     comb = (comb - row_max).exp()

@@ -197,9 +197,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
 
         grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
         with torch_device_fn.device(x.device):
-            var_mean_welford_kernel[grid](
-                x, var, mean, M, N, correction, isCloseUnrollControl=True
-            )
+            var_mean_welford_kernel[grid](x, var, mean, M, N, correction, isCloseUnrollControl=True)
 
     if not keepdim:
         var = var.squeeze(dim=dim)

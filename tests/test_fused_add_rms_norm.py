@@ -42,9 +42,7 @@ def test_fused_add_rms_norm(shape, dtype):
         eps=eps,
     )
 
-    res_out, res_new_residual = flag_gems.fused_add_rms_norm(
-        inp, residual, list(layer_shape), weight=weight, eps=eps
-    )
+    res_out, res_new_residual = flag_gems.fused_add_rms_norm(inp, residual, list(layer_shape), weight=weight, eps=eps)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_new_residual, ref_new_residual, dtype)

@@ -82,13 +82,9 @@ def _multiply_impl(a, b, out=None):
             if not isinstance(out, torch.Tensor) or not out.is_cuda:
                 raise TypeError("out must be a CUDA torch.Tensor")
             if out.shape != out_shape:
-                raise ValueError(
-                    f"out shape {out.shape} does not match broadcasted shape {out_shape}"
-                )
+                raise ValueError(f"out shape {out.shape} does not match broadcasted shape {out_shape}")
             if out.dtype != res_dtype:
-                raise TypeError(
-                    f"out dtype {out.dtype} does not match result dtype {res_dtype}"
-                )
+                raise TypeError(f"out dtype {out.dtype} does not match result dtype {res_dtype}")
             if out.device != device:
                 raise ValueError("out must be on the same CUDA device as inputs")
             out_t = out
@@ -104,13 +100,9 @@ def _multiply_impl(a, b, out=None):
             if not isinstance(out, torch.Tensor) or not out.is_cuda:
                 raise TypeError("out must be a CUDA torch.Tensor")
             if out.shape != out_shape:
-                raise ValueError(
-                    f"out shape {out.shape} does not match input tensor shape {out_shape}"
-                )
+                raise ValueError(f"out shape {out.shape} does not match input tensor shape {out_shape}")
             if out.dtype != res_dtype:
-                raise TypeError(
-                    f"out dtype {out.dtype} does not match result dtype {res_dtype}"
-                )
+                raise TypeError(f"out dtype {out.dtype} does not match result dtype {res_dtype}")
             if out.device != device:
                 raise ValueError("out must be on the same CUDA device as inputs")
             out_t = out

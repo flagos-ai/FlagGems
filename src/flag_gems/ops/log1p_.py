@@ -34,9 +34,7 @@ def log1p_(*args, **kwargs):
         x = kwargs.get("input", None)
 
     if x is None:
-        raise ValueError(
-            "log1p_ expects a tensor as the first argument or keyword 'input'."
-        )
+        raise ValueError("log1p_ expects a tensor as the first argument or keyword 'input'.")
 
     if not isinstance(x, torch.Tensor):
         raise TypeError("log1p_ expects a torch.Tensor as input.")

@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.unsqueeze_copy import (  # noqa: E402
-    unsqueeze_copy as gems_unsqueeze_copy,
-)
-from flag_gems.experimental_ops.unsqueeze_copy import (  # noqa: E402
-    unsqueeze_copy_out as gems_unsqueeze_copy_out,
-)
+from flag_gems.experimental_ops.unsqueeze_copy import unsqueeze_copy as gems_unsqueeze_copy  # noqa: E402
+from flag_gems.experimental_ops.unsqueeze_copy import unsqueeze_copy_out as gems_unsqueeze_copy_out  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 

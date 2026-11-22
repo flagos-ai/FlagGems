@@ -7,10 +7,7 @@ from triton.language.extra.mlu.libdevice import philox as _philox
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
@@ -84,12 +81,8 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
-    )
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
     philox_seed, philox_offset = philox_backend_seed_offset(N)
     with torch_device_fn.device(device):
-        randn_kernel[grid_fn](
-            out, N, philox_seed, philox_offset, num_stages=3, num_warps=1
-        )
+        randn_kernel[grid_fn](out, N, philox_seed, philox_offset, num_stages=3, num_warps=1)
     return out

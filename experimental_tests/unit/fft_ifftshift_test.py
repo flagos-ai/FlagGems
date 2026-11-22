@@ -8,9 +8,7 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.fft_ifftshift import (  # noqa: E402
-    fft_ifftshift as gems_fft_ifftshift,
-)
+from flag_gems.experimental_ops.fft_ifftshift import fft_ifftshift as gems_fft_ifftshift  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -43,9 +41,7 @@ def to_reference(inp, upcast=False):
 
 
 @pytest.mark.fft_ifftshift
-@pytest.mark.parametrize(
-    "shape", [(2, 3), (128, 256), (512, 512), (1024,), (16, 17, 18)]
-)
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512), (1024,), (16, 17, 18)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("dim", [None, [0], [-1]])
 def test_fft_ifftshift_tensor(shape, dtype, dim):

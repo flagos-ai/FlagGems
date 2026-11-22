@@ -12,9 +12,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 UNROLL = 4
 
 
-def randn_like(
-    x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
-):
+def randn_like(x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None):
     logger.debug("GEMS RANDN_LIKE")
     if device is None:
         device = x.device.index

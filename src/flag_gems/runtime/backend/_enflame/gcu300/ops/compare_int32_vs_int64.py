@@ -23,9 +23,7 @@ def compare_results(in0, return_inverse=True, return_counts=True, verbose=True):
 
     # int32 版本
     try:
-        out32, inv32, cnt32 = unique_int32(
-            in0, sorted=True, return_inverse=return_inverse, return_counts=return_counts
-        )
+        out32, inv32, cnt32 = unique_int32(in0, sorted=True, return_inverse=return_inverse, return_counts=return_counts)
         results["int32"] = {
             "out": out32,
             "inverse": inv32,
@@ -42,9 +40,7 @@ def compare_results(in0, return_inverse=True, return_counts=True, verbose=True):
 
     # int64 版本
     try:
-        out64, inv64, cnt64 = unique_int64(
-            in0, sorted=True, return_inverse=return_inverse, return_counts=return_counts
-        )
+        out64, inv64, cnt64 = unique_int64(in0, sorted=True, return_inverse=return_inverse, return_counts=return_counts)
         results["int64"] = {
             "out": out64,
             "inverse": inv64,
@@ -98,18 +94,12 @@ def analyze_differences(results, in0, verbose=True):
     out64 = results["int64"]["out"]
     out_pt = results["pytorch"]["out"]
 
-    print(
-        f"\n  unique 值数量: int32={out32.numel()}, int64={out64.numel()}, pytorch={out_pt.numel()}"
-    )
+    print(f"\n  unique 值数量: int32={out32.numel()}, int64={out64.numel()}, pytorch={out_pt.numel()}")
 
     if out32.numel() != out_pt.numel():
-        issues.append(
-            f"int32 unique 数量不匹配: {out32.numel()} vs pytorch {out_pt.numel()}"
-        )
+        issues.append(f"int32 unique 数量不匹配: {out32.numel()} vs pytorch {out_pt.numel()}")
     if out64.numel() != out_pt.numel():
-        issues.append(
-            f"int64 unique 数量不匹配: {out64.numel()} vs pytorch {out_pt.numel()}"
-        )
+        issues.append(f"int64 unique 数量不匹配: {out64.numel()} vs pytorch {out_pt.numel()}")
 
     # 比较 unique 值
     if not torch.equal(out32, out_pt):
@@ -118,9 +108,7 @@ def analyze_differences(results, in0, verbose=True):
         if verbose and diff <= 10:
             idx = torch.where(out32 != out_pt)[0]
             for i in idx[:5]:
-                print(
-                    f"    位置 {i}: int32={out32[i].item()}, pytorch={out_pt[i].item()}"
-                )
+                print(f"    位置 {i}: int32={out32[i].item()}, pytorch={out_pt[i].item()}")
 
     if not torch.equal(out64, out_pt):
         diff = (out64 != out_pt).sum().item()
@@ -148,9 +136,7 @@ def analyze_differences(results, in0, verbose=True):
 
         # 检查 int32 溢出特征
         if inv32_flat.min().item() < 0:
-            issues.append(
-                f"★ int32 inverse_indices 有负值（可能溢出）: min={inv32_flat.min().item()} ★"
-            )
+            issues.append(f"★ int32 inverse_indices 有负值（可能溢出）: min={inv32_flat.min().item()} ★")
 
         if not torch.equal(inv32_flat, inv_pt_flat):
             diff = (inv32_flat != inv_pt_flat).sum().item()
@@ -195,18 +181,12 @@ def analyze_differences(results, in0, verbose=True):
         cnt32_sum = cnt32.sum().item()
         print(f"    int32: [{cnt32_min}, {cnt32_max}], sum={cnt32_sum}")
         if cnt64 is not None:
-            print(
-                f"    int64: [{cnt64.min().item()}, {cnt64.max().item()}], sum={cnt64.sum().item()}"
-            )
-        print(
-            f"    pytorch: [{cnt_pt.min().item()}, {cnt_pt.max().item()}], sum={cnt_pt.sum().item()}"
-        )
+            print(f"    int64: [{cnt64.min().item()}, {cnt64.max().item()}], sum={cnt64.sum().item()}")
+        print(f"    pytorch: [{cnt_pt.min().item()}, {cnt_pt.max().item()}], sum={cnt_pt.sum().item()}")
 
         expected_sum = in0.numel()
         if cnt32.sum().item() != expected_sum:
-            issues.append(
-                f"★ int32 counts 总和错误: {cnt32.sum().item()} vs 期望 {expected_sum} ★"
-            )
+            issues.append(f"★ int32 counts 总和错误: {cnt32.sum().item()} vs 期望 {expected_sum} ★")
 
         if not torch.equal(cnt32, cnt_pt):
             diff = (cnt32 != cnt_pt).sum().item()
@@ -287,9 +267,7 @@ def run_tests(device="cuda"):
 
         try:
             # 生成测试数据
-            data = torch.randint(
-                0, num_unique, (size,), dtype=torch.int64, device=device
-            )
+            data = torch.randint(0, num_unique, (size,), dtype=torch.int64, device=device)
 
             # 比较结果
             results = compare_results(data, return_inverse=True, return_counts=True)

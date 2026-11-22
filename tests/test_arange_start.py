@@ -28,8 +28,6 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     )
 
     with flag_gems.use_gems():
-        res_out = torch.arange(
-            start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
-        )
+        res_out = torch.arange(start, end, step, dtype=dtype, device=device, pin_memory=pin_memory)
 
     utils.gems_assert_equal(res_out, ref_out)

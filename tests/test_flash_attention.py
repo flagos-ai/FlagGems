@@ -42,9 +42,7 @@ def make_input(
     return q, k, v
 
 
-def torch_flash_fwd(
-    q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs
-):
+def torch_flash_fwd(q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs):
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
@@ -73,9 +71,7 @@ def torch_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
-def gems_flash_fwd(
-    q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs
-):
+def gems_flash_fwd(q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs):
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
@@ -158,9 +154,7 @@ def test_sparse_attention(batch, seq_len, kv_len, topk, heads, dim, seed):
     ref_attn_sink = utils.to_reference(attn_sink, False)
     ref_topk_idxs = utils.to_reference(topk_idxs, False)
 
-    torch_result = sparse_attention_ref(
-        ref_q, ref_kv, ref_attn_sink, ref_topk_idxs, scale
-    )
+    torch_result = sparse_attention_ref(ref_q, ref_kv, ref_attn_sink, ref_topk_idxs, scale)
     gems_result = flag_gems.sparse_attn_triton(q, kv, attn_sink, topk_idxs, scale)
 
     utils.gems_assert_close(gems_result, torch_result, torch.bfloat16, atol=1e-3)
@@ -171,9 +165,7 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     device = slopes.device
     slopes = slopes.unsqueeze(-1).unsqueeze(-1)
     if causal:
-        return (
-            torch.arange(-seqlen_k + 1, 1, device=device, dtype=torch.float32) * slopes
-        )
+        return torch.arange(-seqlen_k + 1, 1, device=device, dtype=torch.float32) * slopes
 
     row_idx = torch.arange(seqlen_q, device=device, dtype=torch.long).unsqueeze(-1)
     col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
@@ -193,21 +185,15 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
 @pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_attention_foward_nonsquare_qk(
-    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
-):
+def test_flash_attention_foward_nonsquare_qk(batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype):
     device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device)
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
 
-    torch_out, torch_lse, _, _, _ = torch_flash_fwd(
-        ref_q, ref_k, ref_v, scale, is_causal
-    )
+    torch_out, torch_lse, _, _, _ = torch_flash_fwd(ref_q, ref_k, ref_v, scale, is_causal)
     gems_out, gems_lse, _, _, _ = gems_flash_fwd(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_out, torch_out, dtype)
@@ -345,9 +331,7 @@ def attention_ref(
     attention = torch.softmax(scores, dim=-1).to(v.dtype)
     # Some rows might be completely masked out so we fill them with zero instead of NaN
     if window_size[0] >= 0 or window_size[1] >= 0:
-        attention = attention.masked_fill(
-            torch.all(local_mask, dim=-1, keepdim=True), 0.0
-        )
+        attention = attention.masked_fill(torch.all(local_mask, dim=-1, keepdim=True), 0.0)
     # We want to mask here so that the attention matrix doesn't have any NaNs
     # Otherwise we'll get NaN in dV
     if query_padding_mask is not None:
@@ -394,9 +378,7 @@ def test_flash_attention_forward_gqa_alibi_softcap(
     dtype,
 ):
     device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device)
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
@@ -404,12 +386,8 @@ def test_flash_attention_forward_gqa_alibi_softcap(
 
     if alibi:
         # alibi_slopes = torch.rand(batch, num_head, device=device, dtype=torch.float32) * 0.3
-        alibi_slopes = (
-            torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
-        )
-        attn_bias = attn_bias_from_alibi_slopes(
-            alibi_slopes, q_seq_len, kv_seq_len, causal=is_causal
-        )
+        alibi_slopes = torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
+        attn_bias = attn_bias_from_alibi_slopes(alibi_slopes, q_seq_len, kv_seq_len, causal=is_causal)
     else:
         alibi_slopes, attn_bias = None, None
 
@@ -470,9 +448,7 @@ def test_flash_attention_foward_splitkv(
     dtype,
 ):
     device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device)
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
@@ -480,12 +456,8 @@ def test_flash_attention_foward_splitkv(
 
     if alibi:
         # alibi_slopes = torch.rand(batch, num_head, device=device, dtype=torch.float32) * 0.3
-        alibi_slopes = (
-            torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
-        )
-        attn_bias = attn_bias_from_alibi_slopes(
-            alibi_slopes, q_seq_len, kv_seq_len, causal=is_causal
-        )
+        alibi_slopes = torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
+        attn_bias = attn_bias_from_alibi_slopes(alibi_slopes, q_seq_len, kv_seq_len, causal=is_causal)
     else:
         alibi_slopes, attn_bias = None, None
 
@@ -529,9 +501,7 @@ def test_flash_attention_foward_splitkv(
     [(1, 1, 128, 2048), (8, 32, 1024, 1024), (8, 32, 1024, 128), (8, 32, 17, 1030)],
 )
 @pytest.mark.parametrize("head_size", [128, 192])
-@pytest.mark.parametrize(
-    ["window_size_left", "window_size_right"], [(256, 0), (128, 128)]
-)
+@pytest.mark.parametrize(["window_size_left", "window_size_right"], [(256, 0), (128, 128)])
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_attention_foward_swa(
@@ -546,9 +516,7 @@ def test_flash_attention_foward_swa(
     dtype,
 ):
     device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device)
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
@@ -599,18 +567,12 @@ def test_flash_attention_foward_swa(
 @pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_dropout(
-    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
-):
+def test_flash_fwd_dropout(batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype):
     device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
+    q, k, v = make_input(batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device)
     scale = float(1.0 / np.sqrt(head_size))
     dropout_p = 0.2
-    _, _, _, _, debug_softmax = gems_flash_fwd(
-        q, k, v, scale, is_causal, dropout_p=dropout_p, return_debug_mask=True
-    )
+    _, _, _, _, debug_softmax = gems_flash_fwd(q, k, v, scale, is_causal, dropout_p=dropout_p, return_debug_mask=True)
 
     dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
     np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)

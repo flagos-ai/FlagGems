@@ -39,9 +39,7 @@ def config_prune(configs, named_args, **kwargs):
     else:
         bs = min(max(in_n_elements // TOTAL_CORE_NUM, 1) * N + 1, max_block_size)
     if (bs + N - 1) // N not in index_block_size:
-        pruned_configs.append(
-            triton.Config(kwargs={"BLOCK_SIZE": bs}, num_stages=1, num_warps=1)
-        )
+        pruned_configs.append(triton.Config(kwargs={"BLOCK_SIZE": bs}, num_stages=1, num_warps=1))
 
     return pruned_configs
 
@@ -101,9 +99,7 @@ def one_batch_index_select_kernel(  # 2D
             remn_num = rem_n_elements % num_jobs
             extra_one = pid < remn_num
 
-            block_offset = iter_start + (
-                (base_num + 1) * pid if extra_one else (base_num * pid + remn_num)
-            )
+            block_offset = iter_start + ((base_num + 1) * pid if extra_one else (base_num * pid + remn_num))
             block_len = base_num + extra_one
 
         in_offsets = block_offset + tl.arange(0, INDEX_BLOCK_SIZE)
@@ -253,10 +249,7 @@ def multi_batch_index_select_kernel(
         c_offsets = block_id_c * block_c + tl.arange(0, block_c)
         c_mask = c_offsets < c_dim
 
-        input_output_mask = (
-            batch_mask[:, None, None]
-            and (index_mask[:, None] and c_mask[None, :])[None, :, :]
-        )
+        input_output_mask = batch_mask[:, None, None] and (index_mask[:, None] and c_mask[None, :])[None, :, :]
 
         index_cur = tl.load(index + index_offsets, mask=index_mask, other=0)
         # TODO: remove dtype_size once contiguous DMA is ensured
@@ -332,9 +325,7 @@ def index_select(inp, dim, index):
             index_block_num = triton.cdiv(index_dim, index_block_size_grid)
             return (min(index_block_num, TOTAL_CORE_NUM),)
 
-        one_batch_index_select_kernel[grid_fn](
-            out, index, index_dim, inp, c_dim, dtype_size, inp_numel
-        )
+        one_batch_index_select_kernel[grid_fn](out, index, index_dim, inp, c_dim, dtype_size, inp_numel)
     else:
         grid = lambda meta: (
             min(

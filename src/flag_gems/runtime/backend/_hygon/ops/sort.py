@@ -174,9 +174,7 @@ def scatter_kernel(
     # Loading it once here ensures stability and correctness.
     src_idx = tl.zeros((BLOCK_N,), dtype=tl.int64)
     if idx_ptr is not None:
-        src_idx = tl.load(
-            idx_ptr + pid_m.to(tl.int64) * N + n_offset, mask=mask, other=0
-        )
+        src_idx = tl.load(idx_ptr + pid_m.to(tl.int64) * N + n_offset, mask=mask, other=0)
 
     # 3. Calculate Local Rank and Scatter
     for b in range(0, NUM_BINS):
@@ -226,11 +224,7 @@ def radix_sort(arr, k_bits=4, descending=False):
     arr_out = torch.empty_like(arr)
 
     # Indices double buffering
-    indices_in = (
-        torch.arange(0, n, dtype=torch.int64, device=arr.device)
-        .broadcast_to(arr.shape)
-        .contiguous()
-    )
+    indices_in = torch.arange(0, n, dtype=torch.int64, device=arr.device).broadcast_to(arr.shape).contiguous()
     indices_out = torch.empty_like(indices_in)
 
     # Count Buffer: (Total_Blocks, num_bins)
@@ -329,9 +323,7 @@ def sort_kernel(
 
     index_val = tl.arange(0, BLOCK_SIZE)
 
-    sorted_in_val, sorted_index_val = argsort(
-        in_val, index_val, 0, descending=DESCENDING
-    )
+    sorted_in_val, sorted_index_val = argsort(in_val, index_val, 0, descending=DESCENDING)
     tl.store(out_ptr, sorted_in_val, mask=mask)
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
 

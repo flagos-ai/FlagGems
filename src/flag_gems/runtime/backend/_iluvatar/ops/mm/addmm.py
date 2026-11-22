@@ -80,19 +80,13 @@ def addmm(
     out = alpha * A @ B + beta * C
     """
     assert a.is_contiguous() and b.is_contiguous() and c.is_contiguous()
-    assert (
-        a.dtype == torch.float16
-        and b.dtype == torch.float16
-        and c.dtype == torch.float16
-    )
+    assert a.dtype == torch.float16 and b.dtype == torch.float16 and c.dtype == torch.float16
     M, K = a.shape
     K2, N = b.shape
     Mc, Nc = c.shape
     assert K == K2 and M == Mc and N == Nc
     out = torch.empty_like(c)
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
 
     _addmm_kernel[grid](
         a,

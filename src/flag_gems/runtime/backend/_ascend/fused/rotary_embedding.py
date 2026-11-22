@@ -42,28 +42,20 @@ def rotary_embedding_rw_kernel(
         + dim_range_y[None, None, :] * stride_state_d
     )
 
-    cos_sim_offset = (
-        token_range[:, None, None] * stride_cos_n
-        + dim_range_x[None, None, :] * stride_cos_d
-    )
+    cos_sim_offset = token_range[:, None, None] * stride_cos_n + dim_range_x[None, None, :] * stride_cos_d
     if rotary_interleaved:
-        sin_sim_offset = (
-            token_range[:, None, None] * stride_cos_n
-            + dim_range_y[None, None, :] * stride_cos_d
-        )
+        sin_sim_offset = token_range[:, None, None] * stride_cos_n + dim_range_y[None, None, :] * stride_cos_d
     else:
         sin_sim_offset = cos_sim_offset
 
     state_x = tl.load(
         state + state_x_offset,
-        mask=(token_range[:, None, None] < num_tokens)
-        & (head_range[None, :, None] < num_heads),
+        mask=(token_range[:, None, None] < num_tokens) & (head_range[None, :, None] < num_heads),
         other=0.0,
     )
     state_y = tl.load(
         state + state_y_offset,
-        mask=(token_range[:, None, None] < num_tokens)
-        & (head_range[None, :, None] < num_heads),
+        mask=(token_range[:, None, None] < num_tokens) & (head_range[None, :, None] < num_heads),
         other=0.0,
     )
 
@@ -84,14 +76,12 @@ def rotary_embedding_rw_kernel(
     tl.store(
         state_out + state_x_offset,
         out_x,
-        mask=(token_range[:, None, None] < num_tokens)
-        & (head_range[None, :, None] < num_heads),
+        mask=(token_range[:, None, None] < num_tokens) & (head_range[None, :, None] < num_heads),
     )
     tl.store(
         state_out + state_y_offset,
         out_y,
-        mask=(token_range[:, None, None] < num_tokens)
-        & (head_range[None, :, None] < num_heads),
+        mask=(token_range[:, None, None] < num_tokens) & (head_range[None, :, None] < num_heads),
     )
 
 
@@ -189,28 +179,20 @@ def apply_rotary_pos_emb(
         k_embed: (*, k_heads, head_dim)
     """
     logger.debug("GEMS_ASCEND ROTARY POS EMBEDDING")
-    assert (
-        k.shape[-1] == q.shape[-1]
-    ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"
+    assert k.shape[-1] == q.shape[-1], f"q and k must have the same last dimension, got {q.shape} and {k.shape}"
     assert (
         cos.shape[-1] == sin.shape[-1]
     ), f"cos and sin must have the same last dimension, got {cos.shape} and {sin.shape}"
-    assert (
-        cos.shape[-1] * 2 == q.shape[-1]
-    ), f"cos/sin dim must be half of q/k dim, got {cos.shape} and {q.shape}"
+    assert cos.shape[-1] * 2 == q.shape[-1], f"cos/sin dim must be half of q/k dim, got {cos.shape} and {q.shape}"
     assert cos.stride(-1) == 1, "cos must be contiguous at the last dimension"
     assert sin.stride(-1) == 1, "sin must be contiguous at the last dimension"
 
     q_shape = q.shape
     k_shape = k.shape
 
-    assert (
-        q.shape[:-2] == k.shape[:-2]
-    ), f"q and k must have the same length, got {q.shape[:-2]} and {k.shape[:-2]}"
+    assert q.shape[:-2] == k.shape[:-2], f"q and k must have the same length, got {q.shape[:-2]} and {k.shape[:-2]}"
     if position_ids is None:
-        assert (
-            len(q.shape) == 4
-        ), f"q must have 4 dimensions if position_ids is not provided, got {q.shape}"
+        assert len(q.shape) == 4, f"q must have 4 dimensions if position_ids is not provided, got {q.shape}"
     else:
         assert (
             position_ids.shape == q.shape[:-2]

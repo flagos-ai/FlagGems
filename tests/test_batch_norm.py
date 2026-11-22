@@ -84,9 +84,7 @@ def test_batch_norm_backward(shape, dtype, affine):
     C = shape[1]
     res_grad = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     res_inp = torch.randn_like(res_grad)
-    res_weight = (
-        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
-    )
+    res_weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
     res_running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
     res_running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
     res_save_mean = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
@@ -144,9 +142,5 @@ def test_batch_norm_backward(shape, dtype, affine):
     reduce_dim = math.prod(shape) // C
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
     if affine:
-        utils.gems_assert_close(
-            res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
-        )
-        utils.gems_assert_close(
-            res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim
-        )
+        utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim)
+        utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim)

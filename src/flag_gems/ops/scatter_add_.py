@@ -147,18 +147,12 @@ def generate_scatter_kernel(
                     code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
             #   2. Use offsets to scatter
-            code.writeline(
-                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
-            )
-            code.writeline(
-                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
-            )
+            code.writeline("cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)")
+            code.writeline("cur_index = tl.load(index + idx_offsets, mask=mask, other=0)")
             code.writeline("dim_offsets = cur_index * stride_dim")
             code.writeline("inp_offsets += dim_offsets")
             code.newline()
-            code.writeline(
-                "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
-            )
+            code.writeline("tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')")
             code.writeline("offsets += BLOCK")
 
     code.newline()
@@ -323,9 +317,7 @@ def scatter_add_0(inp, dim, index, src):
 
 def clip_tensor_to_shape(b, a):
     target_shape = a.shape
-    slices = [
-        slice(0, min(b.shape[i], target_shape[i])) for i in range(len(target_shape))
-    ]
+    slices = [slice(0, min(b.shape[i], target_shape[i])) for i in range(len(target_shape))]
     clipped_b = b[tuple(slices)]
     return clipped_b
 
@@ -350,9 +342,7 @@ def scatter_add_1(x, dim, index, src):
         dtype_convert = True
         x = x.to(torch.float32)
 
-    scatter_add_kernel_1[grid](
-        index_dim_n, inp_dim_n, x, index, src, all_elem, BLOCK_SIZE=256, LOOP=1
-    )
+    scatter_add_kernel_1[grid](index_dim_n, inp_dim_n, x, index, src, all_elem, BLOCK_SIZE=256, LOOP=1)
     if dim != x.ndim - 1:
         order = [i for i in range(x.ndim - 1)]
         order.insert(dim, x.ndim - 1)

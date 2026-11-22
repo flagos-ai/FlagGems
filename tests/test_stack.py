@@ -33,12 +33,7 @@ def test_stack(shape, dim, dtype):
     if dtype in utils.FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
-        inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
-                flag_gems.device
-            )
-            for s in shape
-        ]
+        inp = [torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(flag_gems.device) for s in shape]
 
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.stack(ref_inp, dim)

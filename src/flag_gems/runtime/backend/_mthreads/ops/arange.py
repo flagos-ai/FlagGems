@@ -12,9 +12,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}")
 
 device_ = runtime.device
 _SUPPORTED_DTYPES = {
@@ -142,11 +140,7 @@ def arange_start(
 
     # Handle int64 dtype with float parameters - convert to int
     if dtype is torch.int64:
-        if (
-            isinstance(start, float)
-            or isinstance(end, float)
-            or isinstance(step, float)
-        ):
+        if isinstance(start, float) or isinstance(end, float) or isinstance(step, float):
             start = int(start) if isinstance(start, float) else start
             end = int(end) if isinstance(end, float) else end
             step = int(step) if isinstance(step, float) else step

@@ -36,9 +36,7 @@ def log_(*args, **kwargs):
     if not x.is_floating_point():
         raise TypeError("log_ only supports floating point tensors.")
     if not x.is_contiguous():
-        raise ValueError(
-            "This log_ Triton implementation requires a contiguous tensor."
-        )
+        raise ValueError("This log_ Triton implementation requires a contiguous tensor.")
 
     n_elements = x.numel()
     if n_elements == 0:

@@ -60,19 +60,9 @@ def replication_pad3d_kernel(
     d_in = tl.minimum(d_in, D_in - 1)
 
     # Compute input and output pointers (strided)
-    in_offset = (
-        n * in_stride_n
-        + c * in_stride_c
-        + d_in * in_stride_d
-        + h_in * in_stride_h
-        + w_in * in_stride_w
-    )
+    in_offset = n * in_stride_n + c * in_stride_c + d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
     out_offset = (
-        n * out_stride_n
-        + c * out_stride_c
-        + d_out * out_stride_d
-        + h_out * out_stride_h
-        + w_out * out_stride_w
+        n * out_stride_n + c * out_stride_c + d_out * out_stride_d + h_out * out_stride_h + w_out * out_stride_w
     )
 
     vals = tl.load(in_ptr + in_offset, mask=mask, other=0)
@@ -110,9 +100,7 @@ def _launch_replication_pad3d_kernel(x: torch.Tensor, padding, out: torch.Tensor
     assert x.is_cuda and out.is_cuda, "Tensors must be on CUDA device"
     assert x.dtype == out.dtype, "Input and output dtypes must match"
     assert x.device == out.device, "Input and output must be on the same device"
-    assert x.is_contiguous(
-        memory_format=torch.contiguous_format
-    ), "Input must be contiguous"
+    assert x.is_contiguous(memory_format=torch.contiguous_format), "Input must be contiguous"
     # Output can be non-contiguous; we handle via strides
 
     (

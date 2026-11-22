@@ -95,9 +95,7 @@ def argmin_kernel(
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
             # tl.bfloat is promoted to tl.float32 by tl.min
-            local_min, local_argmin = tl.min(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-            )
+            local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
             # if return indices is not supported, call a tl.argmin in addition
             # local_argmin = tl.argmin(inp_vals, 1)
             update = local_min < min_values

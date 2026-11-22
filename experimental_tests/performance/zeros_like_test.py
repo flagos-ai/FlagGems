@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.zeros_like import (  # noqa: E402
-    zeros_like as gems_zeros_like,
-)
-from flag_gems.experimental_ops.zeros_like import (  # noqa: E402
-    zeros_like_out as gems_zeros_like_out,
-)
+from flag_gems.experimental_ops.zeros_like import zeros_like as gems_zeros_like  # noqa: E402
+from flag_gems.experimental_ops.zeros_like import zeros_like_out as gems_zeros_like_out  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -142,9 +138,7 @@ def test_zeros_like_out_overload_performance(shape, in_dtype, out_dtype, memfmt_
         )
         # PyTorch reference implementation
         ms_torch, _, _ = triton.testing.do_bench(
-            lambda: torch.ops.aten.zeros_like.out(
-                ref_inp, memory_format=memfmt, out=out_ref
-            ),
+            lambda: torch.ops.aten.zeros_like.out(ref_inp, memory_format=memfmt, out=out_ref),
             rep=100,
             quantiles=quantiles,
         )

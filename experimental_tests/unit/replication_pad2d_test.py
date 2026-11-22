@@ -8,12 +8,10 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.replication_pad2d import (  # noqa: E402
-    replication_pad2d as gems_replication_pad2d,
-)
-from flag_gems.experimental_ops.replication_pad2d import (  # noqa: E402
+from flag_gems.experimental_ops.replication_pad2d import replication_pad2d as gems_replication_pad2d  # noqa: E402
+from flag_gems.experimental_ops.replication_pad2d import (
     replication_pad2d_out as gems_replication_pad2d_out,
-)
+)  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

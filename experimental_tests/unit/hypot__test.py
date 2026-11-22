@@ -64,9 +64,7 @@ def test_hypot__tensor(self_shape, other_shape, dtype, contig):
     if contig:
         base_self = torch.randn(self_shape, dtype=dtype, device=flag_gems.device)
     else:
-        src = torch.randn(
-            (self_shape[1], self_shape[0]), dtype=dtype, device=flag_gems.device
-        )
+        src = torch.randn((self_shape[1], self_shape[0]), dtype=dtype, device=flag_gems.device)
         base_self = src.permute(1, 0)
     base_other = torch.randn(other_shape, dtype=dtype, device=flag_gems.device)
 

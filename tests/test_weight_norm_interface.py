@@ -57,17 +57,9 @@ def test_weight_norm_interface_backward(shape, dtype, dim):
     ref_g = utils.to_reference(res_g, True)
     ref_norm = utils.to_reference(res_norm, True)
 
-    ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
-        ref_w_grad, ref_v, ref_g, ref_norm, dim
-    )
+    ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(ref_w_grad, ref_v, ref_g, ref_norm, dim)
     with flag_gems.use_gems():
-        res_v_grad, res_g_grad = torch.ops.aten._weight_norm_interface_backward(
-            res_w_grad, res_v, res_g, res_norm, dim
-        )
+        res_v_grad, res_g_grad = torch.ops.aten._weight_norm_interface_backward(res_w_grad, res_v, res_g, res_norm, dim)
     reduce_size = res_v.numel() // shape[dim]
-    utils.gems_assert_close(
-        res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True
-    )
-    utils.gems_assert_close(
-        res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True
-    )
+    utils.gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True)
+    utils.gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True)

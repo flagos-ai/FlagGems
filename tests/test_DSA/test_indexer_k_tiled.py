@@ -4,13 +4,9 @@ import numpy as np
 import pytest
 import torch
 
-from flag_gems.fused.DSA.indexer_k_tiled import (
-    triton_lighting_indexer_k_tiled_interface,
-)
+from flag_gems.fused.DSA.indexer_k_tiled import triton_lighting_indexer_k_tiled_interface
 
-from .torch_src.fp8_lighting_indexer import (
-    ref_fp8_mqa_logits,  # , mqa_attn_return_logits_interface
-)
+from .torch_src.fp8_lighting_indexer import ref_fp8_mqa_logits  # , mqa_attn_return_logits_interface
 from .utils import generate_random_cu_seqlens
 
 
@@ -29,9 +25,7 @@ def compute_correlation(a, b, label="tensor"):
     return correlation
 
 
-def assert_close_inf(
-    a, b, tolerance=1e-8, tensor_name="tensor", should_raise=True, ks=None, ke=None
-):
+def assert_close_inf(a, b, tolerance=1e-8, tensor_name="tensor", should_raise=True, ks=None, ke=None):
     a_finite = torch.isfinite(a)
     b_finite = torch.isfinite(b)
     if not torch.all(a_finite == b_finite):
@@ -40,9 +34,7 @@ def assert_close_inf(
 
         # Display first few inconsistent positions
         num_to_show = min(10000, len(mismatch_indices))
-        display_error_message(
-            f"{tensor_name} Error: isfinite mask mismatch: {torch.sum(mismatch_mask)} positions"
-        )
+        display_error_message(f"{tensor_name} Error: isfinite mask mismatch: {torch.sum(mismatch_mask)} positions")
 
         for i in range(num_to_show):
             idx = mismatch_indices[i]
@@ -62,9 +54,7 @@ def assert_close_inf(
             )
 
         if len(mismatch_indices) > num_to_show:
-            display_error_message(
-                f"  ... and {len(mismatch_indices) - num_to_show} more positions"
-            )
+            display_error_message(f"  ... and {len(mismatch_indices) - num_to_show} more positions")
 
         if should_raise:
             assert False
@@ -122,14 +112,10 @@ def make_lighting_indexer_input(
     SKV = seq_len_kv
     q = torch.randn((S, H, D), dtype=detype, device=device).requires_grad_(False)
     kv = torch.randn((SKV, D), dtype=detype, device=device).requires_grad_(False)
-    weights = torch.randn((S, H), dtype=torch.float32, device=device).requires_grad_(
-        False
-    )
+    weights = torch.randn((S, H), dtype=torch.float32, device=device).requires_grad_(False)
     # p = (torch.randn(S, SKV, device="cuda", dtype=torch.float32) * 4).softmax(dim=-1)
 
-    ks, ke = generate_random_cu_seqlens(
-        per_cp_seqlen=S, cp_size=3, cp_rank=4, kv_stride=kv_stride, average_q_len=2048
-    )
+    ks, ke = generate_random_cu_seqlens(per_cp_seqlen=S, cp_size=3, cp_rank=4, kv_stride=kv_stride, average_q_len=2048)
 
     return q, kv, weights, ks, ke
 
@@ -144,36 +130,26 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
     # 16.49 GiB is allocated by PyTorch, and 19.59 GiB is reserved by PyTorch
     # but unallocated. If reserved but unallocated memory is large try setting
     # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.
-    return ref_fp8_mqa_logits(
-        q=q, kv=kv, weights=weights, cu_seqlen_ks=ks, cu_seqlen_ke=ke
-    )
+    return ref_fp8_mqa_logits(q=q, kv=kv, weights=weights, cu_seqlen_ks=ks, cu_seqlen_ke=ke)
 
 
-@pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skip("RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel")
 @pytest.mark.triton_lighting_indexer_k_tiled_interface
 @pytest.mark.parametrize("seq_len_q", [1024, 2048, 4096])
 @pytest.mark.parametrize("seq_len_kv", [2048, 4096, 8192])
 @pytest.mark.parametrize("num_heads", [16, 32, 64])
 @pytest.mark.parametrize("qk_dim", [32, 64, 128])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_lighting_indexer_forward(
-    seq_len_q: int, seq_len_kv: int, num_heads: int, qk_dim: int, dtype: torch.dtype
-):
+def test_lighting_indexer_forward(seq_len_q: int, seq_len_kv: int, num_heads: int, qk_dim: int, dtype: torch.dtype):
     # Create input
-    q, kv, weights, ks, ke = make_lighting_indexer_input(
-        seq_len_q, seq_len_kv, num_heads, qk_dim, dtype, device
-    )
+    q, kv, weights, ks, ke = make_lighting_indexer_input(seq_len_q, seq_len_kv, num_heads, qk_dim, dtype, device)
 
     # Reference implementation
     ref_q = to_reference(q, False)
     ref_kv = to_reference(kv, False)
     ref_weights = to_reference(weights, False)
 
-    ref_output, cost_ref = reference_lighting_indexer_implementation(
-        ref_q, ref_kv, ref_weights, ks, ke
-    )
+    ref_output, cost_ref = reference_lighting_indexer_implementation(ref_q, ref_kv, ref_weights, ks, ke)
 
     # Your operator implementation
     your_output = triton_lighting_indexer_k_tiled_interface(q, kv, weights, ks, ke)

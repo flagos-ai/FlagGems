@@ -152,9 +152,7 @@ class BenchmarkDataset(ABC):
         return lora_request, lora_tokenizer_cache[lora_id] or tokenizer
 
     @abstractmethod
-    def sample(
-        self, tokenizer: PreTrainedTokenizerBase, num_requests: int
-    ) -> list[SampleRequest]:
+    def sample(self, tokenizer: PreTrainedTokenizerBase, num_requests: int) -> list[SampleRequest]:
         """
         Abstract method to generate sample requests from the dataset.
 
@@ -172,9 +170,7 @@ class BenchmarkDataset(ABC):
         """
         raise NotImplementedError("sample must be implemented in subclasses.")
 
-    def maybe_oversample_requests(
-        self, requests: list[SampleRequest], num_requests: int
-    ) -> None:
+    def maybe_oversample_requests(self, requests: list[SampleRequest], num_requests: int) -> None:
         """
         Oversamples the list of requests if its size is less than the desired
         number.
@@ -217,9 +213,7 @@ def is_valid_sequence(
     combined_too_long = (prompt_len + output_len) > max_total_len
 
     # Return True if none of the invalid conditions are met
-    return not (
-        prompt_too_short or output_too_short or prompt_too_long or combined_too_long
-    )
+    return not (prompt_too_short or output_too_short or prompt_too_long or combined_too_long)
 
 
 @cache
@@ -266,14 +260,11 @@ def process_image(image: Any) -> Mapping[str, Any]:
         }
 
     if isinstance(image, str):
-        image_url = (
-            image if image.startswith(("http://", "file://")) else f"file://{image}"
-        )
+        image_url = image if image.startswith(("http://", "file://")) else f"file://{image}"
         return {"type": "image_url", "image_url": {"url": image_url}}
 
     raise ValueError(
-        f"Invalid image input {image}. Must be a PIL.Image.Image"
-        " or str or dictionary with raw image bytes."
+        f"Invalid image input {image}. Must be a PIL.Image.Image" " or str or dictionary with raw image bytes."
     )
 
 
@@ -306,19 +297,13 @@ class RandomDataset(BenchmarkDataset):
         **kwargs,
     ) -> list[SampleRequest]:
         # Enforce range_ratio < 1
-        assert (
-            range_ratio < 1.0
-        ), "random_range_ratio must be < 1.0 to ensure a valid sampling range"
+        assert range_ratio < 1.0, "random_range_ratio must be < 1.0 to ensure a valid sampling range"
 
         vocab_size = tokenizer.vocab_size
         num_special_tokens = tokenizer.num_special_tokens_to_add()
         real_input_len = input_len - num_special_tokens
 
-        prefix_token_ids = (
-            np.random.randint(0, vocab_size, size=prefix_len).tolist()
-            if prefix_len > 0
-            else []
-        )
+        prefix_token_ids = np.random.randint(0, vocab_size, size=prefix_len).tolist() if prefix_len > 0 else []
 
         # New sampling logic: [X * (1 - b), X * (1 + b)]
         input_low = int(real_input_len * (1 - range_ratio))
@@ -339,9 +324,7 @@ class RandomDataset(BenchmarkDataset):
 
         requests = []
         for i in range(num_requests):
-            inner_seq = (
-                (offsets[i] + i + np.arange(input_lens[i])) % vocab_size
-            ).tolist()
+            inner_seq = ((offsets[i] + i + np.arange(input_lens[i])) % vocab_size).tolist()
             token_sequence = prefix_token_ids + inner_seq
             prompt = tokenizer.decode(token_sequence)
             # After decoding the prompt we have to encode and decode it again.
@@ -353,9 +336,7 @@ class RandomDataset(BenchmarkDataset):
             # To avoid uncontrolled change of the prompt length,
             # the encoded sequence is truncated before being decode again.
             total_input_len = prefix_len + int(input_lens[i])
-            re_encoded_sequence = tokenizer.encode(prompt, add_special_tokens=False)[
-                :total_input_len
-            ]
+            re_encoded_sequence = tokenizer.encode(prompt, add_special_tokens=False)[:total_input_len]
             prompt = tokenizer.decode(re_encoded_sequence)
             total_input_len = len(re_encoded_sequence)
             requests.append(
@@ -390,11 +371,7 @@ class ShareGPTDataset(BenchmarkDataset):
         with open(self.dataset_path, encoding="utf-8") as f:
             self.data = json.load(f)
         # Filter entries with at least two conversation turns.
-        self.data = [
-            entry
-            for entry in self.data
-            if "conversations" in entry and len(entry["conversations"]) >= 2
-        ]
+        self.data = [entry for entry in self.data if "conversations" in entry and len(entry["conversations"]) >= 2]
         random.seed(self.random_seed)
         random.shuffle(self.data)
 
@@ -490,9 +467,7 @@ class CustomDataset(BenchmarkDataset):
             for _, row in jsonl_data.iterrows():
                 self.data.append(row.to_dict())
         else:
-            raise NotImplementedError(
-                "Only JSONL format is supported for CustomDataset."
-            )
+            raise NotImplementedError("Only JSONL format is supported for CustomDataset.")
 
         random.seed(self.random_seed)
         random.shuffle(self.data)
@@ -581,15 +556,10 @@ class SonnetDataset(BenchmarkDataset):
         # Build the base prompt.
         base_prompt = "Pick as many lines as you can from these poem lines:\n"
         base_msg = [{"role": "user", "content": base_prompt}]
-        base_fmt = tokenizer.apply_chat_template(
-            base_msg, add_generation_prompt=True, tokenize=False
-        )
+        base_fmt = tokenizer.apply_chat_template(base_msg, add_generation_prompt=True, tokenize=False)
         base_offset = len(tokenizer(base_fmt).input_ids)
         if input_len <= base_offset:
-            raise ValueError(
-                f"'input_len' must be higher than the base prompt length "
-                f"({base_offset})."
-            )
+            raise ValueError(f"'input_len' must be higher than the base prompt length " f"({base_offset}).")
 
         # Determine how many poem lines to use.
         num_input_lines = round((input_len - base_offset) / avg_len)
@@ -598,14 +568,10 @@ class SonnetDataset(BenchmarkDataset):
 
         samples = []
         while len(samples) < num_requests:
-            extra_lines = random.choices(
-                self.data, k=num_input_lines - num_prefix_lines
-            )
+            extra_lines = random.choices(self.data, k=num_input_lines - num_prefix_lines)
             prompt = f"{base_prompt}{''.join(prefix_lines + extra_lines)}"
             msg = [{"role": "user", "content": prompt}]
-            prompt_formatted = tokenizer.apply_chat_template(
-                msg, add_generation_prompt=True, tokenize=False
-            )
+            prompt_formatted = tokenizer.apply_chat_template(msg, add_generation_prompt=True, tokenize=False)
             prompt_len = len(tokenizer(prompt_formatted).input_ids)
             if prompt_len <= input_len:
                 samples.append(
@@ -1021,9 +987,7 @@ You are a code completion assistant and your task is to analyze user edits and t
 """  # noqa: E501
 
 
-def _format_zeta_prompt(
-    sample: dict, original_start_marker: str = "<|editable_region_start|>"
-) -> dict:
+def _format_zeta_prompt(sample: dict, original_start_marker: str = "<|editable_region_start|>") -> dict:
     """Format the zeta prompt for the Next Edit Prediction (NEP) dataset.
 
     This function formats examples from the NEP dataset
@@ -1077,9 +1041,7 @@ class NextEditPredictionDataset(HuggingFaceDataset):
                 SampleRequest(
                     prompt=sample["prompt"],
                     prompt_len=len(tokenizer(sample["prompt"]).input_ids),
-                    expected_output_len=len(
-                        tokenizer(sample["expected_output"]).input_ids
-                    ),
+                    expected_output_len=len(tokenizer(sample["expected_output"]).input_ids),
                 )
             )
             if len(samples) >= num_requests:
@@ -1164,9 +1126,7 @@ class ASRDataset(HuggingFaceDataset):
             )
         if skipped:
             logger.warning(
-                "%d samples discarded from dataset due to"
-                " their length being greater than"
-                " what Whisper supports.",
+                "%d samples discarded from dataset due to" " their length being greater than" " what Whisper supports.",
                 skipped,
             )
         self.maybe_oversample_requests(sampled_requests, num_requests)

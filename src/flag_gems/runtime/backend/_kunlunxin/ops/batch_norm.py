@@ -98,17 +98,13 @@ def batch_norm_forward_kernel(
 
                 step = m_step * n_num_steps + n_step + 1
                 new_mean = tl.where(mask, mean + (curr_input - mean) / step, mean)
-                new_var = tl.where(
-                    mask, var + (curr_input - new_mean) * (curr_input - mean), var
-                )
+                new_var = tl.where(mask, var + (curr_input - new_mean) * (curr_input - mean), var)
                 cnt += mask.to(tl.int32)
                 mean = new_mean
                 var = new_var
 
         final_mean = tl.sum(mean * cnt) / (batch_dim * spatial_dim)
-        var = tl.sum(var + cnt * (mean - final_mean) * (mean - final_mean)) / (
-            batch_dim * spatial_dim
-        )
+        var = tl.sum(var + cnt * (mean - final_mean) * (mean - final_mean)) / (batch_dim * spatial_dim)
         inv_std = rsqrt(var + eps)
         mean = final_mean
 
@@ -162,9 +158,7 @@ def batch_norm_forward_kernel(
                 + output_spatial_stride * spatial_offset[None, :]
             )
 
-            curr_input = tl.load(
-                curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
+            curr_input = tl.load(curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]).to(tl.float32)
             output = weight * (curr_input - mean) * inv_std + bias
 
             tl.store(
@@ -257,9 +251,7 @@ def batch_norm_backward_kernel(
             curr_input = tl.load(curr_input_pointer, mask=mask, other=0).to(tl.float32)
 
             curr_pre_lin = ((curr_input - mean) * inv_std).to(tl.float32)
-            curr_output_grad = tl.load(
-                curr_output_grad_pointer, mask=mask, other=0.0
-            ).to(tl.float32)
+            curr_output_grad = tl.load(curr_output_grad_pointer, mask=mask, other=0.0).to(tl.float32)
 
             term1 += curr_pre_lin * curr_output_grad
             term2 += curr_output_grad
@@ -310,19 +302,13 @@ def batch_norm_backward_kernel(
                 + input_grad_spatial_stride * spatial_offset[None, :]
             )
 
-            curr_input = tl.load(
-                curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
+            curr_input = tl.load(curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]).to(tl.float32)
             curr_pre_lin = (curr_input - mean) * inv_std
             curr_output_grad = tl.load(
                 curr_output_grad_pointer,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
             ).to(tl.float32)
-            curr_input_grad = (
-                inv_std
-                * weight
-                * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
-            )
+            curr_input_grad = inv_std * weight * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
             tl.store(
                 curr_input_grad_pointer,
                 curr_input_grad,

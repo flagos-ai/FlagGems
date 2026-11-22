@@ -45,9 +45,7 @@ _expand_kernel = expand
 def expand(*args, **kwargs):
     x = args[0]
     size = args[1]
-    implicit = kwargs.get(  # noqa: F841
-        "implicit", False
-    )  # not used but accepted for signature compatibility
+    implicit = kwargs.get("implicit", False)  # noqa: F841  # not used but accepted for signature compatibility
 
     if not isinstance(size, (list, tuple, torch.Size)):
         raise TypeError("expand size must be a list/tuple/torch.Size of ints")
@@ -60,9 +58,7 @@ def expand(*args, **kwargs):
     in_ndim = len(in_shape)
 
     if in_ndim > out_ndim:
-        raise RuntimeError(
-            f"expand: requested size has fewer dimensions ({out_ndim}) than input ({in_ndim})"
-        )
+        raise RuntimeError(f"expand: requested size has fewer dimensions ({out_ndim}) than input ({in_ndim})")
 
     # Pad input shape/strides on the left to match output ndim
     if in_ndim < out_ndim:
@@ -88,9 +84,7 @@ def expand(*args, **kwargs):
         out_shape.append(int(target))
 
     # Effective input strides: 0 for broadcasted dims, original stride otherwise
-    in_stride_eff = [
-        int(in_strides[d]) if in_shape[d] != 1 else 0 for d in range(out_ndim)
-    ]
+    in_stride_eff = [int(in_strides[d]) if in_shape[d] != 1 else 0 for d in range(out_ndim)]
 
     # Prepare decomposition multipliers: product of sizes to the right for each dim
     out_cumprod_right = [0] * out_ndim
@@ -117,15 +111,9 @@ def expand(*args, **kwargs):
 
     # Create device arrays for shapes/strides with padding for MAX_DIMS
     pad_len = STATIC_MAX - out_ndim
-    out_shape_arr = torch.tensor(
-        out_shape + [1] * pad_len, dtype=torch.int64, device=x.device
-    )
-    out_cumprod_arr = torch.tensor(
-        out_cumprod_right + [1] * pad_len, dtype=torch.int64, device=x.device
-    )
-    in_stride_arr = torch.tensor(
-        in_stride_eff + [0] * pad_len, dtype=torch.int64, device=x.device
-    )
+    out_shape_arr = torch.tensor(out_shape + [1] * pad_len, dtype=torch.int64, device=x.device)
+    out_cumprod_arr = torch.tensor(out_cumprod_right + [1] * pad_len, dtype=torch.int64, device=x.device)
+    in_stride_arr = torch.tensor(in_stride_eff + [0] * pad_len, dtype=torch.int64, device=x.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 

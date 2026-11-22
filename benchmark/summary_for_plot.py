@@ -99,11 +99,7 @@ class SummaryResultOverDtype:
 
 def parse_log(log_file_path: str) -> List[BenchmarkResult]:
     with open(log_file_path, "r") as file:
-        log_lines = [
-            line
-            for line in file.read().strip().split("\n")
-            if line.startswith("[INFO] {")
-        ]
+        log_lines = [line for line in file.read().strip().split("\n") if line.startswith("[INFO] {")]
 
     benchmark_results = []
     for line in log_lines:
@@ -142,11 +138,7 @@ def get_key_by_op_dtype_shape(op_name, dtype, shape):
 
 def parse_log_to_dict(log_file_path: str) -> Dict[int, Any]:
     with open(log_file_path, "r") as file:
-        log_lines = [
-            line
-            for line in file.read().strip().split("\n")
-            if line.startswith("[INFO]")
-        ]
+        log_lines = [line for line in file.read().strip().split("\n") if line.startswith("[INFO]")]
 
     # dict(op_name, dict(dtype, dict(shape, latency))
     benchmark_results = dict()
@@ -179,19 +171,13 @@ def parse_log_to_dict(log_file_path: str) -> Dict[int, Any]:
                 ],
             )
             for result in benchmark_result.result:
-                key = get_key_by_op_dtype_shape(
-                    op_name[0], dtype[0], str(result.shape_detail)
-                )
+                key = get_key_by_op_dtype_shape(op_name[0], dtype[0], str(result.shape_detail))
                 benchmark_results[key] = result.latency
     return benchmark_results
 
 
 def calculate_avg_speedup_over_dtype(metrics):
-    speedups = [
-        metric.speedup
-        for metric in metrics
-        if metric.speedup is not None and metric.error_msg is None
-    ]
+    speedups = [metric.speedup for metric in metrics if metric.speedup is not None and metric.error_msg is None]
     return sum(speedups) / len(speedups) if speedups else 0.0
 
 
@@ -288,9 +274,7 @@ def compare_main(log_file_a, log_file_b):
     result_b = parse_log_to_dict(log_file_b)
     for result in result_a:
         for sub_result in result.result:
-            key = get_key_by_op_dtype_shape(
-                result.op_name, result.dtype, str(sub_result.shape_detail)
-            )
+            key = get_key_by_op_dtype_shape(result.op_name, result.dtype, str(sub_result.shape_detail))
             sub_result.compared_speedup = result_b.get(key, 0) / sub_result.latency
 
     summary_for_plot(result_a)

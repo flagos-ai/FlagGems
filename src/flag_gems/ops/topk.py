@@ -149,12 +149,8 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     left = core.reshape(left, x.shape)
     right = core.reshape(right, x.shape)
 
-    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(
-        ids.dtype
-    )
-    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(
-        ids.dtype
-    )
+    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(ids.dtype)
+    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(ids.dtype)
     left_idx = core.reshape(left_idx, ids.shape)
     right_idx = core.reshape(right_idx, ids.shape)
 
@@ -197,9 +193,7 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
 
 @triton.jit
-def _bitonic_merge(
-    x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr
-):
+def _bitonic_merge(x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr):
     """
     order_type 0 == ascending
     order_type 1 == descending
@@ -214,9 +208,7 @@ def _bitonic_merge(
     # a stride of 2) at this stage
     if order == 2:
         shape: core.constexpr = [n_outer * 2 ** (n_dims - 1 - stage), 2, 2**stage]
-        flip = core.reshape(
-            core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape
-        )
+        flip = core.reshape(core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape)
     else:
         flip = order
     # perform `stage` rounds of `compare-and-swap`
@@ -261,13 +253,9 @@ def topk_stage2_kernel(
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
     chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(tl.float32)
-    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(
-        tl.int32
-    )
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(tl.int32)
 
-    sorted_chunk_x, sorted_chunk_index = argsort(
-        chunk_x_val, chunk_index_val, 0, descending=DESCENDING
-    )
+    sorted_chunk_x, sorted_chunk_index = argsort(chunk_x_val, chunk_index_val, 0, descending=DESCENDING)
     tl.store(y_ptr + cols, sorted_chunk_x, mask=cols < k)
     tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < k)
 
@@ -379,9 +367,7 @@ if HAS_TLE:
 
             selected_u = selected_scalar.to(x_utype)
             desired = desired | (selected_u << digit_pos)
-            desired_mask = desired_mask | (
-                tl.full((), RADIX_MASK, dtype=x_utype) << digit_pos
-            )
+            desired_mask = desired_mask | (tl.full((), RADIX_MASK, dtype=x_utype) << digit_pos)
             k_to_find = k_to_find - counts_gt_scalar
 
         thr_key = desired
@@ -410,9 +396,7 @@ if HAS_TLE:
             nv_mma_shared_layout=False,
         )
         tl.store(tle_gpu.gpu.local_ptr(smem_write_count, (0,)), 0)
-        write_count_ptrs = tle_gpu.gpu.local_ptr(
-            smem_write_count, (tl.zeros([BLOCK_N], dtype=tl.int32),)
-        )
+        write_count_ptrs = tle_gpu.gpu.local_ptr(smem_write_count, (tl.zeros([BLOCK_N], dtype=tl.int32),))
 
         for t in tl.range(0, n_tiles):
             offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -424,9 +408,7 @@ if HAS_TLE:
             idx_key = (n_cols - offs_n).to(x_ultype)
             packed = (x_key.to(x_ultype) << 16) | idx_key
             take_gt = mask_n & (x_key > thr_key)
-            pos = tl.atomic_add(
-                write_count_ptrs, one, mask=take_gt, sem="relaxed", scope="cta"
-            )
+            pos = tl.atomic_add(write_count_ptrs, one, mask=take_gt, sem="relaxed", scope="cta")
             write_mask = take_gt & (pos < K_PAD)
             dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
             tl.store(dst_ptrs, packed, mask=write_mask)
@@ -441,9 +423,7 @@ if HAS_TLE:
             idx_key = (n_cols - offs_n).to(x_ultype)
             packed = (x_key.to(x_ultype) << 16) | idx_key
             take_eq = mask_n & (x_key == thr_key)
-            pos = tl.atomic_add(
-                write_count_ptrs, one, mask=take_eq, sem="relaxed", scope="cta"
-            )
+            pos = tl.atomic_add(write_count_ptrs, one, mask=take_eq, sem="relaxed", scope="cta")
             write_mask = take_eq & (pos < K_PAD)
             dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
             tl.store(dst_ptrs, packed, mask=write_mask)
@@ -540,9 +520,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
     stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
-    stage1_out_idx = torch.empty(
-        batch_size * chunk_num * k, device=x.device, dtype=torch.int64
-    )
+    stage1_out_idx = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=torch.int64)
 
     out_shape = x.shape[:-1] + (k,)
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)

@@ -4,13 +4,7 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
-    DEFAULT_METRICS,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-)
+from benchmark.attri_util import BOOL_DTYPES, COMPLEX_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
 
 vendor_name = flag_gems.vendor_name
@@ -122,9 +116,7 @@ forward_operations = [
 def test_general_unary_pointwise(op_name, torch_op, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
-            pytest.skip(
-                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
-            )
+            pytest.skip("There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -192,12 +184,8 @@ forward_inplace_operations = [
 def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["celu_"] and SkipVersion("torch", "<2.5"):
-            pytest.skip(
-                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
-            )
-    bench = UnaryPointwiseBenchmark(
-        op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
-    )
+            pytest.skip("There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead")
+    bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True)
     bench.run()
 
 
@@ -384,8 +372,7 @@ def test_to_copy():
     bench = ToCopyBenchmark(
         op_name="to_copy",
         torch_op=torch.ops.aten._to_copy,
-        dtypes=[torch.float16, torch.bfloat16]
-        + ([torch.float64] if fp64_is_supported else []),
+        dtypes=[torch.float16, torch.bfloat16] + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()
 
@@ -497,9 +484,7 @@ class BinaryPointwiseBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = generate_tensor_input(shape, cur_dtype, self.device)
-            shift_amount = torch.randint(0, 8, shape, dtype=cur_dtype, device="cpu").to(
-                self.device
-            )
+            shift_amount = torch.randint(0, 8, shape, dtype=cur_dtype, device="cpu").to(self.device)
             yield inp1, shift_amount
 
 
@@ -547,9 +532,7 @@ class RepetitionPenaltyBenchmark(Benchmark):
                 torch.randn(shape, dtype=cur_dtype, device=self.device),
                 torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
                 torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
-                torch.empty(num_seqs, dtype=cur_dtype, device=self.device).uniform_(
-                    1.0, 2.0
-                ),
+                torch.empty(num_seqs, dtype=cur_dtype, device=self.device).uniform_(1.0, 2.0),
             )
 
     def set_gems(self, gems_op):
@@ -568,9 +551,7 @@ UNSUPPORTED_VENDORS = {
 
 @pytest.mark.skipif(SkipVersion("vllm", "<0.4"), reason="vLLM <0.4 not supported")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.skipif(
-    flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
-)
+@pytest.mark.skipif(flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported")
 @pytest.mark.apply_repetition_penalties
 def test_apply_repetition_penalties():
     vllm_ops = pytest.importorskip("vllm._custom_ops")

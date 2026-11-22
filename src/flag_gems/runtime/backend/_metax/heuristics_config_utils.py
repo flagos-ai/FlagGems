@@ -105,10 +105,7 @@ def ones_heur_block_size(args):
 
 
 def ones_heur_num_warps(args):
-    if (
-        args["output_ptr"].dtype == torch.float16
-        or args["output_ptr"].dtype == torch.bfloat16
-    ):
+    if args["output_ptr"].dtype == torch.float16 or args["output_ptr"].dtype == torch.bfloat16:
         return 2
     else:
         return 4
@@ -148,9 +145,7 @@ def randn_heur_num_warps(args):
 
 def softmax_heur_tile_k(args):
     MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    NUM_SMS = torch.cuda.get_device_properties(torch.cuda.current_device()).multi_processor_count
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
     while tile_k <= upper_bound:
@@ -274,10 +269,7 @@ def zeros_heur_block_size(args):
 
 
 def zeros_heur_num_warps(args):
-    if (
-        args["output_ptr"].dtype == torch.float16
-        or args["output_ptr"].dtype == torch.bfloat16
-    ):
+    if args["output_ptr"].dtype == torch.float16 or args["output_ptr"].dtype == torch.bfloat16:
         return 2
     else:
         return 4

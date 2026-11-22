@@ -194,9 +194,7 @@ def scan_op_directory(op_dir: Path) -> List[str]:
             continue
         try:
             rel_path = py_file.relative_to(FLAGGEMS_SRC)
-            module_name = (
-                str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
-            )
+            module_name = str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
             modules.append(module_name)
         except ValueError:
             modules.append(str(py_file))
@@ -447,8 +445,7 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
 
     lines.append("// Kernel registry: op_name -> rank -> KernelInfo")
     lines.append(
-        "inline const std::unordered_map<std::string,"
-        " std::unordered_map<int, KernelInfo>> KERNEL_REGISTRY = {"
+        "inline const std::unordered_map<std::string," " std::unordered_map<int, KernelInfo>> KERNEL_REGISTRY = {"
     )
 
     for op_name in sorted(ops.keys()):
@@ -473,9 +470,7 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
     lines.append(f"constexpr int MAX_RANK = {max_rank};")
     lines.append("")
     lines.append("// Lookup helper — returns nullptr when (op_name, rank) is not found")
-    lines.append(
-        "inline const KernelInfo* get_kernel_info(const std::string& op_name, int rank) {"
-    )
+    lines.append("inline const KernelInfo* get_kernel_info(const std::string& op_name, int rank) {")
     lines.append("    auto op_it = KERNEL_REGISTRY.find(op_name);")
     lines.append("    if (op_it == KERNEL_REGISTRY.end()) return nullptr;")
     lines.append("    auto rank_it = op_it->second.find(rank);")
@@ -572,9 +567,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
     # Helper: resolve the op registry once via static local, then delegate
     # to dispatch_pointwise_impl which takes the pre-resolved registry.
     # This eliminates the string hash map lookup on every call.
-    registry_lookup = (
-        f'    static const auto& registry = KERNEL_REGISTRY.at("{op_name}");\n'
-    )
+    registry_lookup = f'    static const auto& registry = KERNEL_REGISTRY.at("{op_name}");\n'
 
     # Normal wrapper
     all_params = t_params + (s_params_with_comma if ns else "")
@@ -636,9 +629,7 @@ namespace pointwise_dynamic {
         if not op_entries:
             continue
         sample = op_entries[0]
-        header += _generate_wrapper(
-            op_name, sample.num_input_tensors, sample.num_non_tensor_inputs
-        )
+        header += _generate_wrapper(op_name, sample.num_input_tensors, sample.num_non_tensor_inputs)
 
     header += "}  // namespace pointwise_dynamic\n"
     return header
@@ -651,9 +642,7 @@ namespace pointwise_dynamic {
 
 def main():
     """Parse arguments, generate kernels, and emit C++ headers."""
-    parser = argparse.ArgumentParser(
-        description="Pre-build pointwise kernels from FlagGems op files"
-    )
+    parser = argparse.ArgumentParser(description="Pre-build pointwise kernels from FlagGems op files")
 
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument(
@@ -669,9 +658,7 @@ def main():
     )
 
     parser.add_argument("--max-rank", type=int, default=6, help="Maximum tensor rank")
-    parser.add_argument(
-        "--output-dir", type=str, required=True, help="Output directory"
-    )
+    parser.add_argument("--output-dir", type=str, required=True, help="Output directory")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
@@ -722,16 +709,12 @@ def main():
             print("  No @pointwise_dynamic functions found")
             continue
 
-        print(
-            f"  Found {len(pw_functions)} pointwise functions: {list(pw_functions.keys())}"
-        )
+        print(f"  Found {len(pw_functions)} pointwise functions: {list(pw_functions.keys())}")
 
         for func_name, pw_func in pw_functions.items():
             print(f"  Building {func_name}...")
 
-            entries = prebuild_from_function(
-                func_name, pw_func, args.max_rank, verbose=args.verbose
-            )
+            entries = prebuild_from_function(func_name, pw_func, args.max_rank, verbose=args.verbose)
 
             if entries:
                 all_entries.extend(entries)

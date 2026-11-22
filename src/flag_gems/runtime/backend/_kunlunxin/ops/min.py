@@ -174,9 +174,7 @@ def min_dim(inp, dim=None, keepdim=False):
     if inp.dtype in [torch.int16, torch.int32, torch.int64] and M == 4096 and N == 256:
         isCloseCoreTiling = True
     with torch_device_fn.device(inp.device):
-        min_kernel[grid](
-            inp, out_value, out_index, M, N, K, isCloseCoreTiling=isCloseCoreTiling
-        )
+        min_kernel[grid](inp, out_value, out_index, M, N, K, isCloseCoreTiling=isCloseCoreTiling)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)
     return out

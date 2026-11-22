@@ -12,9 +12,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, should_enable_sqmma
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 
 @libentry()
@@ -85,9 +83,7 @@ def addmm_kernel(
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     logger.debug("GEMS_MTHREADS ADDMM(FMA)")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible input shape"
+    assert broadcastable_to(bias.shape, (mat1.shape[0], mat2.shape[1])), "Incompatible input shape"
     M, K = mat1.shape
     _, N = mat2.shape
 
@@ -169,12 +165,8 @@ def addmm_sqmma_kernel(
         )
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_k += BLOCK_SIZE_K
-    bias = tl._experimental_descriptor_load(
-        bias_desc_ptr, [offs_am, offs_bn], [BLOCK_SIZE_M, BLOCK_SIZE_N], input_type
-    )
-    result = (alpha * accumulator.to(output_type) + beta * bias.to(output_type)).to(
-        output_type
-    )
+    bias = tl._experimental_descriptor_load(bias_desc_ptr, [offs_am, offs_bn], [BLOCK_SIZE_M, BLOCK_SIZE_N], input_type)
+    result = (alpha * accumulator.to(output_type) + beta * bias.to(output_type)).to(output_type)
     tl._experimental_descriptor_store(c_desc_ptr, result, [offs_am, offs_bn])
 
 
@@ -205,9 +197,7 @@ def addmm_sqmma(
 ):
     logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = "musa"
-    assert broadcastable_to(
-        Bias.shape, (A.shape[0], B.shape[1])
-    ), "Incompatible input shape"
+    assert broadcastable_to(Bias.shape, (A.shape[0], B.shape[1])), "Incompatible input shape"
     # handle non-contiguous inputs if necessary
     is_transpose_a = False
     is_transpose_b = False

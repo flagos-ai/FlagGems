@@ -51,9 +51,7 @@ def get_block_wise_smm_configs():
 
 
 @triton.jit
-def grouped_launch(
-    pid, M, N, TILE_M: tl.constexpr, TILE_N: tl.constexpr, SWIZZLE_GROUP_M: tl.constexpr
-):
+def grouped_launch(pid, M, N, TILE_M: tl.constexpr, TILE_N: tl.constexpr, SWIZZLE_GROUP_M: tl.constexpr):
     grid_m = tl.cdiv(M, TILE_M)
     grid_n = tl.cdiv(N, TILE_N)
 
@@ -149,9 +147,7 @@ def _block_wise_128_smm_launcher(
     _, N = b.shape
     _M_NPO2 = triton.next_power_of_2(M)
 
-    grid = lambda META: (
-        triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),)
 
     _block_wise_smm_kernel[grid](
         a,
@@ -241,14 +237,10 @@ def _pertensor_or_pertoken_smm_kernel(
     offsets_a = stride_am * offsets_am[:, None] + stride_ak * offsets_k[None, :]
     offsets_b = stride_bk * offsets_k[:, None] + stride_bn * offsets_bn[None, :]
 
-    offsets_scale_am = (
-        tl.arange(0, TILE_SIZE_SCALE_A) + (TILE_SIZE_SCALE_A > 1) * pid_m * TILE_M
-    )
+    offsets_scale_am = tl.arange(0, TILE_SIZE_SCALE_A) + (TILE_SIZE_SCALE_A > 1) * pid_m * TILE_M
     masks_scale_am = offsets_scale_am < M
 
-    offsets_scale_bn = (
-        tl.arange(0, TILE_SIZE_SCALE_B) + (TILE_SIZE_SCALE_B > 1) * pid_n * TILE_N
-    )
+    offsets_scale_bn = tl.arange(0, TILE_SIZE_SCALE_B) + (TILE_SIZE_SCALE_B > 1) * pid_n * TILE_N
     masks_scale_bn = offsets_scale_bn < N
 
     a_ptrs = a_ptr + offsets_a
@@ -311,9 +303,7 @@ def _pertensor_or_pertoken_smm_launcher(
     M, K = a.shape
     _, N = b.shape
 
-    grid = lambda META: (
-        triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),
-    )
+    grid = lambda META: (triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),)
 
     ACC_DTYPE = tl.float32 if a.is_floating_point() else tl.int32
 
@@ -467,17 +457,11 @@ def cutlass_scaled_mm(
     bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     logger.debug("GEMS CUTLASS SCALED MM")
-    assert (
-        a.dim() == 2 and b.dim() == 2 and c.dim() == 2
-    ), "All inputs must be 2D tensors"
+    assert a.dim() == 2 and b.dim() == 2 and c.dim() == 2, "All inputs must be 2D tensors"
 
     assert c.size(0) == a.size(0), "Number of rows in c must equal number of rows in a"
-    assert a.size(1) == b.size(
-        0
-    ), "Number of columns in a must equal number of rows in b"
-    assert b.size(1) == c.size(
-        1
-    ), "Number of columns in b must equal number of columns in c"
+    assert a.size(1) == b.size(0), "Number of columns in a must equal number of rows in b"
+    assert b.size(1) == c.size(1), "Number of columns in b must equal number of columns in c"
 
     assert a.stride(1) == 1 and c.stride(1) == 1, "a and c must be row-major"
 
@@ -487,9 +471,7 @@ def cutlass_scaled_mm(
     assert b.stride(1) % 16 == 0, "Column stride of b must be 16-byte aligned"
 
     if bias is not None:
-        assert bias.numel() == b.size(
-            1
-        ), f"Bias size {bias.numel()} must equal number of columns in b {b.size(1)}"
+        assert bias.numel() == b.size(1), f"Bias size {bias.numel()} must equal number of columns in b {b.size(1)}"
         assert bias.is_contiguous(), "Bias must be contiguous"
         assert bias.dim() == 1, "Bias must be a 1D tensor"
 

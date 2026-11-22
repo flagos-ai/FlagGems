@@ -23,9 +23,7 @@ def test_zero(shape, dtype):
 
 @pytest.mark.zero_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize(
-    "dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES
-)
+@pytest.mark.parametrize("dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES)
 def test_zero_(shape, dtype):
     out = torch.ones(shape, dtype=dtype, device=flag_gems.device)
     ref_out = utils.to_reference(out)

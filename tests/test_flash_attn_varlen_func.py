@@ -70,11 +70,7 @@ def ref_paged_attn(
         mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
         if sliding_window is not None:
             sliding_window_mask = (
-                torch.triu(
-                    empty_mask, diagonal=kv_len - (query_len + sliding_window) + 1
-                )
-                .bool()
-                .logical_not()
+                torch.triu(empty_mask, diagonal=kv_len - (query_len + sliding_window) + 1).bool().logical_not()
             )
             mask |= sliding_window_mask
         if soft_cap is not None:
@@ -142,18 +138,14 @@ def test_flash_attn_varlen_func(
         assert num_query_heads % num_kv_heads == 0
         max_query_len = max(query_lens)
         max_kv_len = max(kv_lens)
-        window_size = (
-            (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
-        )
+        window_size = (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
         scale = head_size**-0.5
         query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
-        key_cache = torch.randn(
-            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
-        )
+        key_cache = torch.randn(num_blocks, block_size, num_kv_heads, head_size, dtype=dtype)
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor(
-            [0] + query_lens, dtype=torch.int32, device=device
-        ).cumsum(dim=0, dtype=torch.int32)
+        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32, device=device).cumsum(
+            dim=0, dtype=torch.int32
+        )
         seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
@@ -169,15 +161,8 @@ def test_flash_attn_varlen_func(
 
         if alibi:
             # alibi_slopes = torch.rand(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
-            alibi_slopes = (
-                torch.ones(
-                    num_seqs, num_query_heads, device=device, dtype=torch.float32
-                )
-                * 0.3
-            )
-            attn_bias = attn_bias_from_alibi_slopes(
-                alibi_slopes, max_query_len, max_kv_len, causal=causal
-            )
+            alibi_slopes = torch.ones(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
+            attn_bias = attn_bias_from_alibi_slopes(alibi_slopes, max_query_len, max_kv_len, causal=causal)
         else:
             alibi_slopes, attn_bias = None, None
 
@@ -287,18 +272,14 @@ def test_flash_attn_varlen_func_swap_qg(
         assert num_query_heads % num_kv_heads == 0
         max_query_len = max(query_lens)
         max_kv_len = max(kv_lens)
-        window_size = (
-            (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
-        )
+        window_size = (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
         scale = head_size**-0.5
         query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
-        key_cache = torch.randn(
-            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
-        )
+        key_cache = torch.randn(num_blocks, block_size, num_kv_heads, head_size, dtype=dtype)
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor(
-            [0] + query_lens, dtype=torch.int32, device=device
-        ).cumsum(dim=0, dtype=torch.int32)
+        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32, device=device).cumsum(
+            dim=0, dtype=torch.int32
+        )
         seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size

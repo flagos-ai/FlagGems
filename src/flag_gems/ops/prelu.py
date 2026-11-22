@@ -84,9 +84,7 @@ def prelu(*args, **kwargs):
                 for d in x.shape[2:]:
                     S *= d
         if weight.numel() != C:
-            raise AssertionError(
-                f"Weight numel ({weight.numel()}) must equal channel dimension size ({C})."
-            )
+            raise AssertionError(f"Weight numel ({weight.numel()}) must equal channel dimension size ({C}).")
         w_is_scalar = False
 
     # Make sure S and C are at least 1 to avoid div/mod by zero in kernel math
@@ -96,7 +94,5 @@ def prelu(*args, **kwargs):
     BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
-    prelu_kernel[grid](
-        x, weight, out, n_elements, S, C, w_is_scalar=w_is_scalar, BLOCK_SIZE=BLOCK_SIZE
-    )
+    prelu_kernel[grid](x, weight, out, n_elements, S, C, w_is_scalar=w_is_scalar, BLOCK_SIZE=BLOCK_SIZE)
     return out

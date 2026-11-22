@@ -23,9 +23,7 @@ def sum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -44,9 +42,7 @@ def sum_kernel_1(
 @libentry()
 @triton.jit
 def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
-        mid.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(mid.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = mid.dtype.element_ty
@@ -85,9 +81,7 @@ def sum_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(inp.dtype.element_ty == tl.bfloat16):
         cdtype = tl.float32
     else:
         cdtype = inp.dtype.element_ty
@@ -211,11 +205,7 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
             dtype = torch.int64
 
     if inp.numel() == 0:
-        dims = (
-            dim
-            if isinstance(dim, (list, tuple))
-            else ([dim] if dim is not None else [])
-        )
+        dims = dim if isinstance(dim, (list, tuple)) else ([dim] if dim is not None else [])
         if keepdim:
             for d in dims:
                 pass  # out shape already correct from caller

@@ -12,9 +12,7 @@ def simple_elementwise_blocksize_heur(args):
 
 def argmax_heur_tile_k(args):
     MAX_TILE_K = 512
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    NUM_SMS = torch.cuda.get_device_properties(torch.cuda.current_device()).multi_processor_count
 
     K = args["K"]
     M = args["M"]
@@ -217,9 +215,7 @@ def randn_heur_num_warps(args):
 
 def softmax_heur_tile_k(args):
     MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    NUM_SMS = torch.cuda.get_device_properties(torch.cuda.current_device()).multi_processor_count
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
     while tile_k <= upper_bound:
@@ -355,9 +351,7 @@ def vdot_heur_block_size(args):
 def mean_heur_tile_k(args):
     MAX_TILE_K = 512
     MAX_GRID_Y = 65535
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    NUM_SMS = torch.cuda.get_device_properties(torch.cuda.current_device()).multi_processor_count
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
     max_tile_k_allowed_by_tile_n = max(1, _MAX_TILE_N_PER_ROW // _MIN_TILE_N)

@@ -23,10 +23,7 @@ def test_allclose(shape, dtype, equal_nan, gen_nan):
         0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01
     )
     if dtype in utils.ALL_FLOAT_DTYPES:
-        atol = (
-            torch.finfo(dtype).tiny
-            * torch.randint(0, 4, (1,), device=flag_gems.device).item()
-        )
+        atol = torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device=flag_gems.device).item()
         inp1 = torch.full(shape, 1.234, dtype=dtype, device=flag_gems.device)
         inp2 = torch.full(shape, 1.234, dtype=dtype, device=flag_gems.device)
         if gen_nan:
@@ -37,17 +34,10 @@ def test_allclose(shape, dtype, equal_nan, gen_nan):
                 device=flag_gems.device,
             )
             # FIXME: Neg doesn't support double on torch_musa, so workaround temporarily.
-            inp1.view(-1)[0] = (
-                (-nan_num.cpu()).to(flag_gems.device) if gen_nan == 3 else nan_num
-            )
-            inp2.view(-1)[0] = (
-                (-nan_num.cpu()).to(flag_gems.device) if gen_nan >= 3 else nan_num
-            )
+            inp1.view(-1)[0] = (-nan_num.cpu()).to(flag_gems.device) if gen_nan == 3 else nan_num
+            inp2.view(-1)[0] = (-nan_num.cpu()).to(flag_gems.device) if gen_nan >= 3 else nan_num
     else:
-        atol = (
-            torch.finfo(torch.float16).eps
-            * torch.randint(0, 10, (1,), device=flag_gems.device).item()
-        )
+        atol = torch.finfo(torch.float16).eps * torch.randint(0, 10, (1,), device=flag_gems.device).item()
         inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
         inp2 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
 

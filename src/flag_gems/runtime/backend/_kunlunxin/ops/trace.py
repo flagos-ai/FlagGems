@@ -56,9 +56,7 @@ def trace(self):
     logger.debug("GEMS TRACE")
 
     if self.ndim != 2:
-        raise RuntimeError(
-            f"trace: expected a 2D tensor, but got a {self.ndim}D tensor"
-        )
+        raise RuntimeError(f"trace: expected a 2D tensor, but got a {self.ndim}D tensor")
 
     M, N = self.shape
     stride0, stride1 = self.stride()

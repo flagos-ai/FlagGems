@@ -8,9 +8,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import tl_extra_shim
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -81,12 +79,7 @@ def _bn_forward_stats_stage1(
     batch_idx = offset // spatial_dim
     spatial_idx = offset - batch_idx * spatial_dim
 
-    ptrs = (
-        input_ptr
-        + feat * input_feat_stride
-        + batch_idx * input_batch_stride
-        + spatial_idx * input_spatial_stride
-    )
+    ptrs = input_ptr + feat * input_feat_stride + batch_idx * input_batch_stride + spatial_idx * input_spatial_stride
     values = tl.load(ptrs, mask=mask, other=0.0).to(tl.float32)
 
     tl.store(partial_sum_ptr + feat * num_blocks + block_id, tl.sum(values, axis=0))
@@ -111,12 +104,8 @@ def _bn_reduce_partial_kernel(
     offset = block_id * BLOCK + tl.arange(0, BLOCK)
     mask = offset < num_blocks
 
-    partial_sum = tl.load(
-        partial_sum_ptr + feat * num_blocks + offset, mask=mask, other=0.0
-    )
-    partial_sq = tl.load(
-        partial_sq_ptr + feat * num_blocks + offset, mask=mask, other=0.0
-    )
+    partial_sum = tl.load(partial_sum_ptr + feat * num_blocks + offset, mask=mask, other=0.0)
+    partial_sq = tl.load(partial_sq_ptr + feat * num_blocks + offset, mask=mask, other=0.0)
 
     tl.atomic_add(sum_ptr + feat, tl.sum(partial_sum, axis=0))
     tl.atomic_add(sum_sq_ptr + feat, tl.sum(partial_sq, axis=0))
@@ -159,10 +148,7 @@ def _bn_fused_train_kernel(
         batch_idx = idx // spatial_dim
         spatial_idx = idx - batch_idx * spatial_dim
         ptrs = (
-            input_ptr
-            + feat * input_feat_stride
-            + batch_idx * input_batch_stride
-            + spatial_idx * input_spatial_stride
+            input_ptr + feat * input_feat_stride + batch_idx * input_batch_stride + spatial_idx * input_spatial_stride
         )
         vals = tl.load(ptrs, mask=mask, other=0.0).to(tl.float32)
         sum_val += tl.sum(vals, axis=0)
@@ -180,9 +166,7 @@ def _bn_fused_train_kernel(
         running_mean = tl.load(running_mean_ptr + feat)
         running_var = tl.load(running_var_ptr + feat)
         unbiased_var = var * total_f / tl.maximum(total_f - 1, 1.0)
-        tl.store(
-            running_mean_ptr + feat, (1 - momentum) * running_mean + momentum * mean
-        )
+        tl.store(running_mean_ptr + feat, (1 - momentum) * running_mean + momentum * mean)
         tl.store(
             running_var_ptr + feat,
             (1 - momentum) * running_var + momentum * unbiased_var,
@@ -197,10 +181,7 @@ def _bn_fused_train_kernel(
         batch_idx = idx // spatial_dim
         spatial_idx = idx - batch_idx * spatial_dim
         input_ptrs = (
-            input_ptr
-            + feat * input_feat_stride
-            + batch_idx * input_batch_stride
-            + spatial_idx * input_spatial_stride
+            input_ptr + feat * input_feat_stride + batch_idx * input_batch_stride + spatial_idx * input_spatial_stride
         )
         output_ptrs = (
             output_ptr
@@ -288,16 +269,10 @@ def _bn_forward_apply_kernel(
     bias = tl.load(bias_ptr + feat).to(tl.float32) if bias_ptr else 0.0
 
     input_ptrs = (
-        input_ptr
-        + feat * input_feat_stride
-        + batch_idx * input_batch_stride
-        + spatial_idx * input_spatial_stride
+        input_ptr + feat * input_feat_stride + batch_idx * input_batch_stride + spatial_idx * input_spatial_stride
     )
     output_ptrs = (
-        output_ptr
-        + feat * output_feat_stride
-        + batch_idx * output_batch_stride
-        + spatial_idx * output_spatial_stride
+        output_ptr + feat * output_feat_stride + batch_idx * output_batch_stride + spatial_idx * output_spatial_stride
     )
 
     values = tl.load(input_ptrs, mask=mask, other=0.0).to(tl.float32)
@@ -344,10 +319,7 @@ def _bn_backward_reduce_kernel(
         + spatial_idx * output_grad_spatial_stride
     )
     input_ptrs = (
-        input_ptr
-        + feat * input_feat_stride
-        + batch_idx * input_batch_stride
-        + spatial_idx * input_spatial_stride
+        input_ptr + feat * input_feat_stride + batch_idx * input_batch_stride + spatial_idx * input_spatial_stride
     )
 
     dy = tl.load(grad_ptrs, mask=mask, other=0.0).to(tl.float32)
@@ -376,12 +348,8 @@ def _bn_backward_reduce_partial_kernel(
     offset = block_id * BLOCK + tl.arange(0, BLOCK)
     mask = offset < num_blocks
 
-    partial_sum = tl.load(
-        partial_sum_ptr + feat * num_blocks + offset, mask=mask, other=0.0
-    )
-    partial_sum_xhat = tl.load(
-        partial_sum_xhat_ptr + feat * num_blocks + offset, mask=mask, other=0.0
-    )
+    partial_sum = tl.load(partial_sum_ptr + feat * num_blocks + offset, mask=mask, other=0.0)
+    partial_sum_xhat = tl.load(partial_sum_xhat_ptr + feat * num_blocks + offset, mask=mask, other=0.0)
 
     tl.atomic_add(sum_dy_ptr + feat, tl.sum(partial_sum, axis=0))
     tl.atomic_add(sum_dy_xhat_ptr + feat, tl.sum(partial_sum_xhat, axis=0))
@@ -435,10 +403,7 @@ def _bn_backward_input_kernel(
         + spatial_idx * output_grad_spatial_stride
     )
     input_ptrs = (
-        input_ptr
-        + feat * input_feat_stride
-        + batch_idx * input_batch_stride
-        + spatial_idx * input_spatial_stride
+        input_ptr + feat * input_feat_stride + batch_idx * input_batch_stride + spatial_idx * input_spatial_stride
     )
     input_grad_ptrs = (
         input_grad_ptr
@@ -499,9 +464,7 @@ def batch_norm(
         if rm is None or rv is None:
             rm, rv = _get_temp_stats(input.device, input.dtype, feat_dim)
         with torch_device_fn.device(input.device):
-            return torch.ops.aten._native_batch_norm_legit.default(
-                input, weight, bias, rm, rv, training, momentum, eps
-            )
+            return torch.ops.aten._native_batch_norm_legit.default(input, weight, bias, rm, rv, training, momentum, eps)
     output = torch.empty_like(input_3d)
     mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
     inv_std = torch.empty_like(mean)
@@ -509,9 +472,7 @@ def batch_norm(
     need_stats = training or running_mean is None or running_var is None
     update_running = training and running_mean is not None and running_var is not None
 
-    small_training = total <= _FALLBACK_ELEMENTS and (
-        training or running_mean is None or running_var is None
-    )
+    small_training = total <= _FALLBACK_ELEMENTS and (training or running_mean is None or running_var is None)
 
     if small_training:
         block = _block_size(total)
@@ -543,9 +504,7 @@ def batch_norm(
     with torch_device_fn.device(input.device):
         if need_stats:
             partial_shape = (feat_dim, num_blocks)
-            partial_sum = torch.empty(
-                partial_shape, device=input.device, dtype=torch.float32
-            )
+            partial_sum = torch.empty(partial_shape, device=input.device, dtype=torch.float32)
             partial_sq = torch.empty_like(partial_sum)
 
             _bn_forward_stats_stage1[(feat_dim, num_blocks)](
@@ -564,9 +523,7 @@ def batch_norm(
                 sum_buf = partial_sum[:, 0].contiguous()
                 sum_sq_buf = partial_sq[:, 0].contiguous()
             else:
-                sum_buf = torch.zeros(
-                    (feat_dim,), device=input.device, dtype=torch.float32
-                )
+                sum_buf = torch.zeros((feat_dim,), device=input.device, dtype=torch.float32)
                 sum_sq_buf = torch.zeros_like(sum_buf)
                 reduce_blocks = triton.cdiv(num_blocks, _REDUCE_BLOCK)
                 _bn_reduce_partial_kernel[(feat_dim, reduce_blocks)](
@@ -594,9 +551,7 @@ def batch_norm(
             )
         else:
             if running_mean is None or running_var is None:
-                raise RuntimeError(
-                    "running_mean and running_var are required in eval mode"
-                )
+                raise RuntimeError("running_mean and running_var are required in eval mode")
             mean.copy_(running_mean)
             inv_std.copy_((running_var + eps).rsqrt())
 
@@ -653,9 +608,7 @@ def batch_norm_backward(
 
     with torch_device_fn.device(input.device):
         partial_shape = (feat_dim, num_blocks)
-        partial_sum = torch.empty(
-            partial_shape, device=input.device, dtype=torch.float32
-        )
+        partial_sum = torch.empty(partial_shape, device=input.device, dtype=torch.float32)
         partial_sum_xhat = torch.empty_like(partial_sum)
 
         _bn_backward_reduce_kernel[(feat_dim, num_blocks)](

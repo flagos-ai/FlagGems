@@ -21,9 +21,7 @@ def test_accuracy_normal_pvalue(shape, dtype):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device)
-    scale = torch.full(
-        size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
-    )
+    scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.distributions.normal.Normal(loc, scale).sample()
     pvalue = scipy.stats.kstest(
@@ -69,9 +67,7 @@ def test_accuracy_rand_pvalue(shape, dtype):
         torch.mlu.manual_seed_all(42)
     with flag_gems.use_gems():
         res_out = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    pvalue = scipy.stats.kstest(
-        res_out.cpu().numpy().flatten(), lambda x: scipy.stats.uniform.cdf(x)
-    ).pvalue
+    pvalue = scipy.stats.kstest(res_out.cpu().numpy().flatten(), lambda x: scipy.stats.uniform.cdf(x)).pvalue
     assert pvalue > 0.05
 
 
@@ -80,7 +76,5 @@ def test_accuracy_rand_pvalue(shape, dtype):
 def test_accuracy_randn_pvalue(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    pvalue = scipy.stats.kstest(
-        res_out.cpu().numpy().flatten(), lambda x: scipy.stats.norm.cdf(x)
-    ).pvalue
+    pvalue = scipy.stats.kstest(res_out.cpu().numpy().flatten(), lambda x: scipy.stats.norm.cdf(x)).pvalue
     assert pvalue > 0.05

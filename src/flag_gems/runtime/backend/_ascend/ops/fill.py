@@ -53,9 +53,7 @@ def fill_tensor(input, value):
         return fill_scalar(input, value.item())
     logger.debug("GEMS_ASCEND FILL")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     out = torch.empty_like(input)
     N = out.numel()
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
@@ -87,9 +85,7 @@ def fill_tensor_(self, value):
         return fill_scalar_(self, value.item())
     logger.debug("GEMS_ASCEND FILL_TENSOR_")
     if value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
+        raise RuntimeError(f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions.")
     N = self.numel()
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)

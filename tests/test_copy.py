@@ -11,9 +11,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    utils.FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else utils.FLOAT_DTYPES,
+    (utils.FLOAT_DTYPES + [torch.int32, torch.int64] if flag_gems.vendor_name == "cambricon" else utils.FLOAT_DTYPES),
 )
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.4"),
@@ -54,9 +52,7 @@ def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
     ref_src = utils.to_reference(src)
-    ref_dst = utils.to_reference(
-        torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
-    )
+    ref_dst = utils.to_reference(torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device))
     res_dst = torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
 
     ref_dst.copy_(ref_src)
@@ -74,9 +70,7 @@ def test_copy_inplace_broadcast():
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
     ref_src = utils.to_reference(src)
-    ref_dst = utils.to_reference(
-        torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
-    )
+    ref_dst = utils.to_reference(torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device))
     res_dst = torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
 
     ref_dst.copy_(ref_src)

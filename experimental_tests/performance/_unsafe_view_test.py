@@ -45,9 +45,7 @@ def test_perf_aten__unsafe_view():
     def _unsafe_view_input_fn(shape, dtype, device):
         input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         # Generate the output size based on the input shape
-        output_size = (
-            torch.prod(torch.tensor(shape)).item(),
-        )  # Flatten the input shape
+        output_size = (torch.prod(torch.tensor(shape)).item(),)  # Flatten the input shape
         yield input_tensor, output_size
 
     # Initialize benchmark

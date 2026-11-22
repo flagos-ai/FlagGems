@@ -21,9 +21,7 @@ def double(in_ptr, out_ptr, n, TILE_SIZE: tl.constexpr):
     flag_gems.vendor_name == "kunlunxin",
     reason="Test Files for Operators Not Pending Testing",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads", reason="torch.complex not impl"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="torch.complex not impl")
 def test_typed_pointer():
     real = torch.randn(10, 10, device=flag_gems.device)
     imag = torch.randn(10, 10, device=flag_gems.device)
@@ -46,9 +44,7 @@ def test_typed_pointer():
     flag_gems.vendor_name == "kunlunxin",
     reason="Test Files for Operators Not Pending Testing",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads", reason="torch.complex not impl"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="torch.complex not impl")
 def test_typed_pointer_reinterpret_with_offset():
     real = torch.randn(100, device=flag_gems.device)
     imag = torch.randn(100, device=flag_gems.device)
@@ -63,9 +59,7 @@ def test_typed_pointer_reinterpret_with_offset():
         1,
     )
     in_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(x, x.dtype.to_real(), 2 * k)
-    out_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(
-        out, out.dtype.to_real(), 2 * k
-    )
+    out_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(out, out.dtype.to_real(), 2 * k)
     double[grid](in_ptr, out_ptr, n, TILE_SIZE)
     torch.testing.assert_close(out[k:], x[k:] * 2.0)
 

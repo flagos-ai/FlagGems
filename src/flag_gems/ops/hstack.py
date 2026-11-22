@@ -65,18 +65,14 @@ def hstack_copy_func_kernel_4(
     dim_idx = (idx // dim_prod_post) % dim_size_in
     post_idx = idx % dim_prod_post
 
-    out_idx = (
-        pre_idx * dim_size_out * dim_prod_post
-        + (dim_idx + dim_offset) * dim_prod_post
-        + post_idx
-    )
+    out_idx = pre_idx * dim_size_out * dim_prod_post + (dim_idx + dim_offset) * dim_prod_post + post_idx
 
     data = tl.load(in_ptr + idx, mask=mask)
     tl.store(out_ptr + out_idx, data, mask=mask)
 
 
 def hstack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
+    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
     logger.debug("GEMS HSTACK")
 
@@ -98,20 +94,16 @@ def hstack(
         if tensor.ndim == 0:
             tensor = tensor.view(1)
         if tensor.ndim != tensors[0].ndim:
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {tensors[0].ndim} and {tensor.ndim}"
-            )
+            raise RuntimeError(f"Tensors must have same number of dimensions: got {tensors[0].ndim} and {tensor.ndim}")
 
         inp_shape = tensor.shape
         inp_shapes.append(inp_shape)
 
         for i in range(len(inp_shape)):
             if i != dim and inp_shape[i] != inp0_shape[i]:
-                raise RuntimeError(
-                    f"Sizes of tensors must match except in dimension {dim}. \
+                raise RuntimeError(f"Sizes of tensors must match except in dimension {dim}. \
                         Expected size {inp0_shape[i]} but got size {inp_shape[i]} \
-                        for tensor number {tensor_num + 1} in the list."
-                )
+                        for tensor number {tensor_num + 1} in the list.")
 
     inp_shapes = [list(_.shape) for _ in tensors]
     inp0_shape = inp_shapes[0]

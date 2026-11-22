@@ -115,9 +115,7 @@ def test_im2col_benchmark_out(shape, dtype, kernel_size, dilation, padding, stri
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.im2col.out(
-            ref_x, kernel_size, dilation, padding, stride, out=out_ref
-        ),
+        lambda: torch.ops.aten.im2col.out(ref_x, kernel_size, dilation, padding, stride, out=out_ref),
         rep=100,
         quantiles=quantiles,
     )

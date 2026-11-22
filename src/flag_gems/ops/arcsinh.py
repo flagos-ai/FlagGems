@@ -33,9 +33,7 @@ def _ensure_cuda_tensor(t):
     if not t.is_cuda:
         raise ValueError("Input tensors must be on CUDA device")
     if t.is_complex():
-        raise NotImplementedError(
-            "Complex dtypes are not supported by this Triton kernel"
-        )
+        raise NotImplementedError("Complex dtypes are not supported by this Triton kernel")
 
 
 def _arcsinh_impl(input_tensor: torch.Tensor, out_tensor: torch.Tensor = None):
@@ -55,14 +53,10 @@ def _arcsinh_impl(input_tensor: torch.Tensor, out_tensor: torch.Tensor = None):
     else:
         _ensure_cuda_tensor(out_tensor)
         if out_tensor.numel() != n_elements:
-            raise ValueError(
-                "Output tensor must have the same number of elements as input"
-            )
+            raise ValueError("Output tensor must have the same number of elements as input")
         # Enforce dtype consistent with promotion
         if out_tensor.dtype != (result_dtype):
-            raise TypeError(
-                f"Output tensor has dtype {out_tensor.dtype}, expected {result_dtype}"
-            )
+            raise TypeError(f"Output tensor has dtype {out_tensor.dtype}, expected {result_dtype}")
         out = out_tensor
 
     # Work with contiguous buffers for the kernel

@@ -28,9 +28,7 @@ def is_cuda_available() -> bool:
 CUDA_AVAILABLE = is_cuda_available()
 
 
-def rearrange_mixed_qkv(
-    mixed_qkv, key_dim, value_dim, head_k_dim, head_v_dim, tp_size=1, contiguous=True
-):
+def rearrange_mixed_qkv(mixed_qkv, key_dim, value_dim, head_k_dim, head_v_dim, tp_size=1, contiguous=True):
     query, key, value = torch.split(
         mixed_qkv,
         [
@@ -89,20 +87,14 @@ class FusedRecurrentGatedDeltaRuleTestKit:
 
         assert key_dim % tp_size == 0, "key_dim must be divisible by tp_size"
         assert value_dim % tp_size == 0, "value_dim must be divisible by tp_size"
-        assert (key_dim // tp_size) % cfg[
-            "K"
-        ] == 0, "(key_dim/tp_size) must be multiple of head_k_dim"
-        assert (value_dim // tp_size) % cfg[
-            "V"
-        ] == 0, "(value_dim/tp_size) must be multiple of head_v_dim"
+        assert (key_dim // tp_size) % cfg["K"] == 0, "(key_dim/tp_size) must be multiple of head_k_dim"
+        assert (value_dim // tp_size) % cfg["V"] == 0, "(value_dim/tp_size) must be multiple of head_v_dim"
 
         # Build mixed_qkv with explicit (T, mixed_qkv_dim) shape. For the non-contiguous
         # branch we slice a strided view from a 3D buffer to simulate a real packing.
         mixed_qkv_dim = (2 * key_dim + value_dim) // tp_size
         total_tokens = B * T  # currently B=1, so this equals T
-        mixed_qkv = torch.randn(
-            (total_tokens, mixed_qkv_dim), device=device, dtype=dtype
-        )
+        mixed_qkv = torch.randn((total_tokens, mixed_qkv_dim), device=device, dtype=dtype)
 
         query, key, value = rearrange_mixed_qkv(
             mixed_qkv,
@@ -118,9 +110,7 @@ class FusedRecurrentGatedDeltaRuleTestKit:
 
         g = F.logsigmoid(torch.randn((B, T, HV_local), device=device, dtype=dtype))
         if cfg["beta_has_dim_v"]:
-            beta = torch.rand(
-                B, T, HV_local, cfg["V"], device=device, dtype=dtype
-            ).sigmoid()
+            beta = torch.rand(B, T, HV_local, cfg["V"], device=device, dtype=dtype).sigmoid()
         else:
             beta = torch.rand(B, T, HV_local, device=device, dtype=dtype).sigmoid()
 

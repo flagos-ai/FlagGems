@@ -7,10 +7,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uniform_float
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -85,9 +82,7 @@ def dropout_backward_kernel(
 ):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offset < N
-    m = tl.load(
-        dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first"
-    )
+    m = tl.load(dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first")
     dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
     dx = dy * m * scale
     store_offset = tl.where(mask, offset, -1)
@@ -120,9 +115,7 @@ def dropout(input, p, train=True):
     increment = triton.cdiv(N, UNROLL)
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
-        dropout_forward_kernel[grid_fn](
-            input, out, mask, N, p, philox_seed, philox_offset
-        )
+        dropout_forward_kernel[grid_fn](input, out, mask, N, p, philox_seed, philox_offset)
     return out, mask
 
 
@@ -137,9 +130,7 @@ def dropout_backward(grad_output, mask, scale):
     os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
 
     with torch_device_fn.device(grad_output.device):
-        dropout_backward_kernel[grid_fn](
-            grad_output, grad_input, mask, N, scale, BLOCK=N
-        )
+        dropout_backward_kernel[grid_fn](grad_output, grad_input, mask, N, scale, BLOCK=N)
 
     if "TRITONXPU_OTHER_SIM" in os.environ:
         del os.environ["TRITONXPU_OTHER_SIM"]

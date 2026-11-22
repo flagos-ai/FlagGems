@@ -61,13 +61,9 @@ def isclose(
     if A.is_quantized or B.is_quantized:
         raise RuntimeError("isclose is not supported for quantized inputs.")
     if rtol < 0:
-        raise RuntimeError(
-            "rtol must be greater than or equal to zero, but got {}".format(rtol)
-        )
+        raise RuntimeError("rtol must be greater than or equal to zero, but got {}".format(rtol))
     if atol < 0:
-        raise RuntimeError(
-            "atol must be greater than or equal to zero, but got {}".format(atol)
-        )
+        raise RuntimeError("atol must be greater than or equal to zero, but got {}".format(atol))
     zero_tol = (rtol == 0) and (atol == 0)
     return isclose_func(A, B, rtol, atol, equal_nan, zero_tol)
 

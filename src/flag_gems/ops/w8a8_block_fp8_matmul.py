@@ -109,13 +109,9 @@ def w8a8_block_fp8_matmul_kernel(
 
 
 @functools.lru_cache
-def get_w8a8_block_fp8_configs(
-    N: int, K: int, block_n: int, block_k: int
-) -> Optional[Dict[int, Any]]:
+def get_w8a8_block_fp8_configs(N: int, K: int, block_n: int, block_k: int) -> Optional[Dict[int, Any]]:
     if not torch.cuda.is_available():
-        logger.debug(
-            "CUDA is unavailable on this backend; using default W8A8 block FP8 config."
-        )
+        logger.debug("CUDA is unavailable on this backend; using default W8A8 block FP8 config.")
         return None
 
     device_name = torch.cuda.get_device_name().replace(" ", "_")
@@ -152,8 +148,7 @@ def get_w8a8_block_fp8_configs(
             return result
 
     logger.warning(
-        "Using default W8A8 Block FP8 kernel config. Performance might "
-        "be sub-optimal! Config file not found at %s",
+        "Using default W8A8 Block FP8 kernel config. Performance might " "be sub-optimal! Config file not found at %s",
         cfg_file,
     )
     return None
@@ -190,9 +185,7 @@ def w8a8_block_fp8_matmul(
         config = _get_default_w8a8_block_fp8_config(block_n, block_k)
 
     def grid(META):
-        return (
-            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-        )
+        return (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),)
 
     w8a8_block_fp8_matmul_kernel[grid](
         A,

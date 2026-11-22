@@ -28,12 +28,8 @@ def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dt
         scale_factors = None
 
     ref_x = utils.to_reference(x, True)
-    ref_out = torch._C._nn.upsample_bicubic2d(
-        ref_x, output_size, align_corners, scale_factors
-    ).to(dtype=dtype)
+    ref_out = torch._C._nn.upsample_bicubic2d(ref_x, output_size, align_corners, scale_factors).to(dtype=dtype)
     with flag_gems.use_gems():
-        res_out = torch._C._nn.upsample_bicubic2d(
-            ref_x, output_size, align_corners, scale_factors
-        )
+        res_out = torch._C._nn.upsample_bicubic2d(ref_x, output_size, align_corners, scale_factors)
 
     utils.gems_assert_close(res_out.to(dtype=dtype), ref_out, dtype, reduce_dim=16)

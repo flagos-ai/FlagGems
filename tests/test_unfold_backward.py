@@ -23,9 +23,7 @@ from . import accuracy_utils as utils
 def test_unfold_backward(input_sizes, dim, size, step, dtype):
     d = dim % len(input_sizes)
     num_windows = (input_sizes[d] - size) // step + 1
-    grad_shape = (
-        list(input_sizes[:d]) + [num_windows] + list(input_sizes[d + 1 :]) + [size]
-    )
+    grad_shape = list(input_sizes[:d]) + [num_windows] + list(input_sizes[d + 1 :]) + [size]
 
     grad_in = torch.randn(grad_shape, dtype=dtype, device=flag_gems.device)
 

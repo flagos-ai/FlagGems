@@ -41,9 +41,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
     if output_size is not None and output_size != output_shape[dim]:
         raise RuntimeError(
-            "repeat_interleave: Invalid output_size, expected {} but got {}".format(
-                output_shape[dim], output_size
-            )
+            "repeat_interleave: Invalid output_size, expected {} but got {}".format(output_shape[dim], output_size)
         )
 
     output = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
@@ -63,9 +61,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
 
 @triton.jit
-def repeat_interleave_tensor_kernel(
-    repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
-):
+def repeat_interleave_tensor_kernel(repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
@@ -82,9 +78,7 @@ def repeat_interleave_tensor_kernel(
 
 
 @triton.jit
-def fused_repeat_and_index_select_kernel(
-    inp, out, M, N, repeats, BLOCK_SIZE: tl.constexpr
-):
+def fused_repeat_and_index_select_kernel(inp, out, M, N, repeats, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
     row_idx_mask = pid > 0
     start_row_idx = tl.load(repeats + pid - 1, mask=row_idx_mask, other=0)
@@ -150,9 +144,7 @@ def fused_repeat_and_index_select(inp, repeats, dim):
     grid = (inp.shape[dim],)
     BLOCK_SIZE = min(triton.next_power_of_2(M), 4096)
 
-    fused_repeat_and_index_select_kernel[grid](
-        inp, out, M, N, repeats, BLOCK_SIZE=BLOCK_SIZE
-    )
+    fused_repeat_and_index_select_kernel[grid](inp, out, M, N, repeats, BLOCK_SIZE=BLOCK_SIZE)
     return out
 
 
@@ -171,9 +163,7 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
 
     if repeats.ndim == 0 or (repeats.ndim == 1 and repeats.size(0) == 1):
-        return repeat_interleave_self_int(
-            inp, repeats.item(), dim=dim, output_size=output_size
-        )
+        return repeat_interleave_self_int(inp, repeats.item(), dim=dim, output_size=output_size)
     elif repeats.ndim > 1:
         raise RuntimeError("repeats must be 0-dim or 1-dim tensor")
 
@@ -182,12 +172,8 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
         dim = dim + len(inp_shape)
 
     if repeats.size(0) != inp_shape[dim]:
-        raise RuntimeError(
-            "repeats must have the same size as input along dim, but got \
-                repeats.size(0) = {} and input.size({}) = {}".format(
-                repeats.size(0), dim, inp_shape[dim]
-            )
-        )
+        raise RuntimeError("repeats must have the same size as input along dim, but got \
+                repeats.size(0) = {} and input.size({}) = {}".format(repeats.size(0), dim, inp_shape[dim]))
 
     if inp.ndim == 2 and dim == 0:
         res = fused_repeat_and_index_select(inp, repeats, dim)

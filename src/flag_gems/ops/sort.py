@@ -129,9 +129,7 @@ def compute_global_hist_kernel(
                 arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
                 arr = convert_to_uint_preverse_order(arr, descending)
                 key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
-                matches = tl.where(
-                    mask, (bin_indices[:, None] == key), False
-                )  # (TILE_R, TILE_N)
+                matches = tl.where(mask, (bin_indices[:, None] == key), False)  # (TILE_R, TILE_N)
                 acc += matches
             local_sum = tl.sum(acc, axis=1)
             tl.atomic_add(
@@ -222,17 +220,11 @@ def sweep(
         pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
         tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
-        local_ex_cumsum = (
-            tl.cumsum(matches.to(tl.uint32), axis=0) - matches
-        )  # (TILE_N, )
-        ex_cumsum_in_bin = (
-            exclusive_prefix + local_ex_cumsum
-        )  # global ex_cumsum_in_bin (TILE_N, )
+        local_ex_cumsum = tl.cumsum(matches.to(tl.uint32), axis=0) - matches  # (TILE_N, )
+        ex_cumsum_in_bin = exclusive_prefix + local_ex_cumsum  # global ex_cumsum_in_bin (TILE_N, )
 
         # ex_cumsum_bins (m, n_passes, r)
-        ex_cumsum_bins = tl.load(
-            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
-        )  # scalar
+        ex_cumsum_bins = tl.load(excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index)  # scalar
         pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
 
         # scatter
@@ -260,9 +252,7 @@ def radix_sort(arr, k_bits=8, descending=False):
     grid_for_global_hist = (m * grid_n, 1, 1)
 
     with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
-        )
+        global_hist = torch.zeros((m, n_passes, num_bins), device=arr.device, dtype=torch.int32)
         compute_global_hist_kernel[grid_for_global_hist](
             arr,
             global_hist,
@@ -280,11 +270,7 @@ def radix_sort(arr, k_bits=8, descending=False):
 
         # sort
         arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
-        )
+        indices_in = torch.arange(0, n, dtype=torch.int64, device=arr_in.device).broadcast_to(arr.shape).contiguous()
         arr_out = torch.empty_like(arr)
         indices_out = torch.empty_like(indices_in)
 
@@ -294,9 +280,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_n = triton.cdiv(n, TILE_N)
         grid_for_sweep = (m * grid_n, grid_r)
 
-        status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
-        )
+        status = torch.empty((m, num_bins, grid_n), device=arr.device, dtype=torch.uint32)
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
@@ -353,9 +337,7 @@ def sort_kernel(
 
     index_val = tl.arange(0, BLOCK_SIZE)
 
-    sorted_in_val, sorted_index_val = argsort(
-        in_val, index_val, 0, descending=DESCENDING
-    )
+    sorted_in_val, sorted_index_val = argsort(in_val, index_val, 0, descending=DESCENDING)
     tl.store(out_ptr, sorted_in_val, mask=mask)
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
 

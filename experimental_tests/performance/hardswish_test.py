@@ -8,12 +8,8 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.hardswish import (  # noqa: E402
-    hardswish as gems_hardswish,
-)
-from flag_gems.experimental_ops.hardswish import (  # noqa: E402
-    hardswish_out as gems_hardswish_out,
-)
+from flag_gems.experimental_ops.hardswish import hardswish as gems_hardswish  # noqa: E402
+from flag_gems.experimental_ops.hardswish import hardswish_out as gems_hardswish_out  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -54,15 +50,11 @@ def test_hardswish_benchmark_tensor(shape, dtype):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     ref_x = x.clone()
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.hardswish(ref_x), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.hardswish(ref_x), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_hardswish(x.clone()), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_hardswish(x.clone()), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

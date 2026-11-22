@@ -8,9 +8,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def addcdiv_kernel(x, t1, t2, value):
     return x + value * (t1 / t2)

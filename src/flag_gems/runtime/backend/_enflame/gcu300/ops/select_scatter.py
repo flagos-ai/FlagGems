@@ -49,16 +49,12 @@ def select_scatter(inp, src, dim, index):
 
     valid_shape = list(inp.shape)
     del valid_shape[dim]
-    assert (
-        list(src.shape) == valid_shape
-    ), "Expected src to have a size equal to the slice of self"
+    assert list(src.shape) == valid_shape, "Expected src to have a size equal to the slice of self"
 
     if has_internal_overlapping(inp) == MemOverlap.Yes:
         out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
     else:
-        out = torch.empty_strided(
-            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-        )
+        out = torch.empty_strided(inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device)
 
     inp = inp.contiguous()
     src = src.contiguous()

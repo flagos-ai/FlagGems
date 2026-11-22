@@ -44,24 +44,16 @@ def to_reference(inp, upcast=False):
 def test_exp__benchmark_tensor(shape, dtype):
     quantiles = [0.5, 0.2, 0.8]
 
-    base = (
-        torch.empty(shape, device=flag_gems.device, dtype=torch.float32)
-        .uniform_(-6.0, 6.0)
-        .to(dtype)
-    )
+    base = torch.empty(shape, device=flag_gems.device, dtype=torch.float32).uniform_(-6.0, 6.0).to(dtype)
     ref_input = base.clone()
     act_input = base.clone()
 
     # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.exp_(ref_input), rep=100, quantiles=quantiles
-    )
+    ms_torch, _, _ = triton.testing.do_bench(lambda: torch.ops.aten.exp_(ref_input), rep=100, quantiles=quantiles)
 
     # Triton implementation
     with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_exp_(act_input), rep=100, quantiles=quantiles
-        )
+        ms_triton, _, _ = triton.testing.do_bench(lambda: gems_exp_(act_input), rep=100, quantiles=quantiles)
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

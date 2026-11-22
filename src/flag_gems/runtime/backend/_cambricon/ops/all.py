@@ -76,8 +76,7 @@ def all_kernel_1(
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, int(ITER_NUM), 1):
         _tmp[: BLOCK_SIZE // (2**x)] = (
-            _tmp[: BLOCK_SIZE // (2**x)]
-            and _tmp[BLOCK_SIZE // (2**x) : (BLOCK_SIZE // (2**x)) * 2]
+            _tmp[: BLOCK_SIZE // (2**x)] and _tmp[BLOCK_SIZE // (2**x) : (BLOCK_SIZE // (2**x)) * 2]
         )
 
     tl.atomic_and(out, _tmp[0].to(tl.int32))

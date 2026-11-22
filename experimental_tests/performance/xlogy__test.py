@@ -45,9 +45,7 @@ def test_perf_aten_xlogy_():
     # Define input generation logic matching the operator arguments
     def xlogy__input_fn(shape, dtype, device):
         inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        inp2 = (
-            torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
-        )  # Ensure no zeros in inp2
+        inp2 = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1  # Ensure no zeros in inp2
         yield inp1, inp2
 
     # Initialize benchmark

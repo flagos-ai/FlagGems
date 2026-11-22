@@ -26,13 +26,7 @@ _triton_cosh_kernel = cosh_
 
 
 def cosh_(*args, **kwargs):
-    x = (
-        args[0]
-        if len(args) > 0
-        else kwargs.get("input", None)
-        or kwargs.get("x", None)
-        or kwargs.get("self", None)
-    )
+    x = args[0] if len(args) > 0 else kwargs.get("input", None) or kwargs.get("x", None) or kwargs.get("self", None)
     if x is None:
         raise ValueError("cosh_ expects a tensor as the first positional argument.")
     if not isinstance(x, torch.Tensor):
@@ -40,13 +34,9 @@ def cosh_(*args, **kwargs):
     if not x.is_cuda:
         raise ValueError("cosh_ Triton kernel requires a CUDA tensor.")
     if not x.is_contiguous():
-        raise ValueError(
-            "cosh_ Triton kernel currently supports contiguous tensors only."
-        )
+        raise ValueError("cosh_ Triton kernel currently supports contiguous tensors only.")
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise TypeError(
-            "cosh_ Triton kernel supports float16, bfloat16, and float32 tensors."
-        )
+        raise TypeError("cosh_ Triton kernel supports float16, bfloat16, and float32 tensors.")
 
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)

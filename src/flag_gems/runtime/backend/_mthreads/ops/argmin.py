@@ -11,9 +11,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}')
 
 # Favor wider column tiles for long rows and more rows per block for tall shapes.
 ARGMIN_REDUCTION_CONFIGS = [
@@ -61,9 +59,7 @@ def argmin_kernel_1(
 
     max_value = get_dtype_max(inp.type.element_ty)
     inp_val = tl.load(inp + offset, mask=mask, other=max_value, cache_modifier=".cg")
-    min_val, min_index = tl.min(
-        inp_val, axis=0, return_indices=True, return_indices_tie_break_left=True
-    )
+    min_val, min_index = tl.min(inp_val, axis=0, return_indices=True, return_indices_tie_break_left=True)
     tl.store(mid_value + pid, min_val)
     tl.store(mid_index + pid, min_index + pid * BLOCK_SIZE)
 
@@ -141,9 +137,7 @@ def argmin_kernel(
         local_argmin = local_argmin.to(tl.int32)
         update = local_min < min_values
         min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(
-            update, (start_n + local_argmin).to(tl.int32), argmin_values
-        )
+        argmin_values = tl.where(update, (start_n + local_argmin).to(tl.int32), argmin_values)
 
     out_index_ptrs = out_index + rows
     tl.store(out_index_ptrs, argmin_values, mask=row_mask)

@@ -24,9 +24,7 @@ def amin_reduce_last_kernel(
     while k < K:
         offs = k + tl.arange(0, BLOCK_SIZE)
         mask = mask_m & (offs < K)
-        vals = tl.load(
-            x_ptr + pid * stride_xm + offs * stride_xk, mask=mask, other=init
-        )
+        vals = tl.load(x_ptr + pid * stride_xm + offs * stride_xk, mask=mask, other=init)
         block_min = tl.min(vals, axis=0)
         acc = tl.minimum(acc, block_min)
         k += BLOCK_SIZE
@@ -57,9 +55,7 @@ def _parse_dims(dim, ndim):
     return norm
 
 
-def _amin_impl(
-    x: torch.Tensor, dim=None, keepdim: bool = False, out: torch.Tensor = None
-):
+def _amin_impl(x: torch.Tensor, dim=None, keepdim: bool = False, out: torch.Tensor = None):
     if not x.is_cuda:
         raise RuntimeError("Triton amin kernel requires CUDA tensors")
     ndim = x.ndim
@@ -69,9 +65,7 @@ def _amin_impl(
         if out is None:
             return x.clone()
         if out.numel() != x.numel():
-            raise RuntimeError(
-                "out tensor has incorrect number of elements for amin with empty dims"
-            )
+            raise RuntimeError("out tensor has incorrect number of elements for amin with empty dims")
         out.copy_(x)
         return out
 
@@ -95,9 +89,7 @@ def _amin_impl(
     K = _prod([input_sizes[i] for i in reduce_dims]) if len(reduce_dims) > 0 else 1
 
     if K == 0:
-        raise RuntimeError(
-            "amin reduction has an empty dimension (no identity for min)"
-        )
+        raise RuntimeError("amin reduction has an empty dimension (no identity for min)")
 
     x_2d = x_perm.view(M, K)
 

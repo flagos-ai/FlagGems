@@ -44,9 +44,7 @@ def xlogy_inplace_scalar_kernel(x_ptr, y_scalar, n_elements, BLOCK_SIZE: tl.cons
 
 def _ensure_supported_dtype(t: torch.Tensor):
     if t.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise TypeError(
-            f"Unsupported dtype {t.dtype}. Supported: float16, bfloat16, float32."
-        )
+        raise TypeError(f"Unsupported dtype {t.dtype}. Supported: float16, bfloat16, float32.")
 
 
 def _ensure_cuda_contiguous(t: torch.Tensor, name: str):
@@ -67,9 +65,7 @@ def xlogy__Tensor(*args, **kwargs):
         raise ValueError("xlogy__Tensor expects (self, other) where both are tensors.")
 
     if not isinstance(other, torch.Tensor):
-        raise TypeError(
-            "xlogy__Tensor expects 'other' to be a Tensor. Use xlogy__Scalar_Other for scalar 'other'."
-        )
+        raise TypeError("xlogy__Tensor expects 'other' to be a Tensor. Use xlogy__Scalar_Other for scalar 'other'.")
 
     _ensure_cuda_contiguous(x, "self")
     _ensure_supported_dtype(x)
@@ -84,9 +80,7 @@ def xlogy__Tensor(*args, **kwargs):
         xlogy_inplace_scalar_kernel[grid](x, y_scalar, n_elements, BLOCK_SIZE=1024)
     else:
         if x.numel() != other.numel() or x.shape != other.shape:
-            raise RuntimeError(
-                "For xlogy__Tensor, 'other' must have the same shape as 'self' or be a scalar tensor."
-            )
+            raise RuntimeError("For xlogy__Tensor, 'other' must have the same shape as 'self' or be a scalar tensor.")
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         xlogy_inplace_tensor_kernel[grid](x, other, n_elements, BLOCK_SIZE=1024)
 
@@ -103,9 +97,7 @@ def xlogy__Scalar_Other(*args, **kwargs):
     if x is None:
         raise ValueError("xlogy__Scalar_Other expects 'self' tensor.")
     if other is None or isinstance(other, torch.Tensor):
-        raise TypeError(
-            "xlogy__Scalar_Other expects 'other' to be a Python scalar (not a Tensor)."
-        )
+        raise TypeError("xlogy__Scalar_Other expects 'other' to be a Python scalar (not a Tensor).")
 
     _ensure_cuda_contiguous(x, "self")
     _ensure_supported_dtype(x)

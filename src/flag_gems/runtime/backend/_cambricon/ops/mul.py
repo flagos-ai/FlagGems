@@ -14,9 +14,7 @@ def mul_func(x, y, inplace):
     return x * y
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def mul_func_scalar(x, y, inplace):
     return x * y
@@ -36,12 +34,8 @@ def mul_complex_kernel(ar, ai, br, bi):
 
 def mul(A, B):
     logger.debug("GEMS_CAMBRICON MUL")
-    A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
-        A, complex
-    )
-    B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(
-        B, complex
-    )
+    A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(A, complex)
+    B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(B, complex)
     if A_is_complex or B_is_complex:
         # 1) A、B both are complex
         if A_is_complex and B_is_complex:
@@ -73,9 +67,7 @@ def mul(A, B):
             Br = torch.view_as_real(B)
             Ar = A.unsqueeze(-1) if isinstance(A, torch.Tensor) else A
             if isinstance(Ar, torch.Tensor):
-                out_real = mul_func(
-                    Ar, Br, False
-                )  # shape broadcasting requires Ar and Br
+                out_real = mul_func(Ar, Br, False)  # shape broadcasting requires Ar and Br
             else:
                 out_real = mul_func_scalar(Br, Ar, False)  # Br is tensor, Ar is scalar
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))

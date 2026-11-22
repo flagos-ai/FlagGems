@@ -8,9 +8,7 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd)
 
 
 @pointwise_dynamic(
@@ -68,17 +66,11 @@ def to_copy(
 ):
     # We only implement the dense strided kernel today; all other layouts fall back to PyTorch.
     if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
-        raise NotImplementedError(
-            "FlagGems to_copy currently supports strided tensors only."
-        )
+        raise NotImplementedError("FlagGems to_copy currently supports strided tensors only.")
     if pin_memory is not None:
-        raise NotImplementedError(
-            "FlagGems to_copy does not yet support pin_memory=True."
-        )
+        raise NotImplementedError("FlagGems to_copy does not yet support pin_memory=True.")
     if x.is_quantized:
-        raise NotImplementedError(
-            "Quantized tensors are not supported in FlagGems to_copy yet."
-        )
+        raise NotImplementedError("Quantized tensors are not supported in FlagGems to_copy yet.")
 
     target_dtype = _resolve_dtype(x, dtype)
     target_device = _resolve_device(x, device)
@@ -97,9 +89,7 @@ def to_copy(
             memory_format=target_memory_format,
         )
 
-    if target_device != x.device or (
-        x.device.type == "cpu" and target_device.type == "cpu"
-    ):
+    if target_device != x.device or (x.device.type == "cpu" and target_device.type == "cpu"):
         # Device transfer (d2h/h2d etc.) relies on PyTorch's implementation.
         return torch.ops.aten._to_copy.default.redispatch(
             _FALLBACK_KEYSET,

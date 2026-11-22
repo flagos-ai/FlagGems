@@ -8,9 +8,7 @@ import torch
 
 import flag_gems
 from flag_gems.experimental_ops.slice_scatter import slice_scatter as gems_slice_scatter
-from flag_gems.experimental_ops.slice_scatter import (
-    slice_scatter_out as gems_slice_scatter_out,
-)
+from flag_gems.experimental_ops.slice_scatter import slice_scatter_out as gems_slice_scatter_out
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -71,9 +69,7 @@ def test_slice_scatter_tensor_2d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.slice_scatter(
-        to_reference(x), to_reference(src), dim, s, e, step
-    )
+    ref_out = torch.ops.aten.slice_scatter(to_reference(x), to_reference(src), dim, s, e, step)
     with flag_gems.use_gems():
         act_out = gems_slice_scatter(x.clone(), src.clone(), dim, s, e, step)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -118,9 +114,7 @@ def test_slice_scatter_tensor_3d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.slice_scatter(
-        to_reference(x), to_reference(src), dim, s, e, step
-    )
+    ref_out = torch.ops.aten.slice_scatter(to_reference(x), to_reference(src), dim, s, e, step)
     with flag_gems.use_gems():
         act_out = gems_slice_scatter(x.clone(), src.clone(), dim, s, e, step)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -161,13 +155,9 @@ def test_slice_scatter_out_2d(shape, dtype, dim, mode):
     ref_src = to_reference(src)
     out_ref = torch.empty_like(ref_x)
     out_act = torch.empty_like(x)
-    ref_out = torch.ops.aten.slice_scatter.out(
-        ref_x, ref_src, dim, s, e, step, out=out_ref
-    )
+    ref_out = torch.ops.aten.slice_scatter.out(ref_x, ref_src, dim, s, e, step, out=out_ref)
     with flag_gems.use_gems():
-        act_out = gems_slice_scatter_out(
-            x.clone(), src.clone(), dim, s, e, step, out_act
-        )
+        act_out = gems_slice_scatter_out(x.clone(), src.clone(), dim, s, e, step, out_act)
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
@@ -202,11 +192,7 @@ def test_slice_scatter_out_3d(shape, dtype, dim, mode):
     ref_src = to_reference(src)
     out_ref = torch.empty_like(ref_x)
     out_act = torch.empty_like(x)
-    ref_out = torch.ops.aten.slice_scatter.out(
-        ref_x, ref_src, dim, s, e, step, out=out_ref
-    )
+    ref_out = torch.ops.aten.slice_scatter.out(ref_x, ref_src, dim, s, e, step, out=out_ref)
     with flag_gems.use_gems():
-        act_out = gems_slice_scatter_out(
-            x.clone(), src.clone(), dim, s, e, step, out_act
-        )
+        act_out = gems_slice_scatter_out(x.clone(), src.clone(), dim, s, e, step, out_act)
     gems_assert_close(act_out, ref_out, dtype=dtype)

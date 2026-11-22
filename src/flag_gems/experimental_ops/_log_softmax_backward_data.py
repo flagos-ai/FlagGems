@@ -55,20 +55,13 @@ def _choose_block_size(K: int) -> int:
     return min(1024, max(1, bs))
 
 
-def _log_softmax_backward_data_impl(
-    grad_output: torch.Tensor, output: torch.Tensor, dim: int
-):
-    assert (
-        grad_output.shape == output.shape
-    ), "grad_output and output must have the same shape"
-    assert (
-        grad_output.device.type == "cuda" and output.device.type == "cuda"
-    ), "Inputs must be CUDA tensors"
+def _log_softmax_backward_data_impl(grad_output: torch.Tensor, output: torch.Tensor, dim: int):
+    assert grad_output.shape == output.shape, "grad_output and output must have the same shape"
+    assert grad_output.device.type == "cuda" and output.device.type == "cuda", "Inputs must be CUDA tensors"
     assert grad_output.device == output.device, "Inputs must be on the same device"
     assert grad_output.dtype == output.dtype, "Inputs must have the same dtype"
     assert (
-        grad_output.is_contiguous(memory_format=torch.contiguous_format)
-        == grad_output.is_contiguous()
+        grad_output.is_contiguous(memory_format=torch.contiguous_format) == grad_output.is_contiguous()
     ), "Unsupported memory format"
 
     if grad_output.dtype not in (torch.float16, torch.bfloat16, torch.float32):
@@ -109,9 +102,7 @@ def _log_softmax_backward_data_impl(
     return grad_input
 
 
-def _log_softmax_backward_data(
-    grad_output: torch.Tensor, output: torch.Tensor, dim: int, input_dtype: torch.dtype
-):
+def _log_softmax_backward_data(grad_output: torch.Tensor, output: torch.Tensor, dim: int, input_dtype: torch.dtype):
     return _log_softmax_backward_data_impl(grad_output, output, dim)
 
 

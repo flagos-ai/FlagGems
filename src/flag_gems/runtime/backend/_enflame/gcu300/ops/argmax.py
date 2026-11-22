@@ -89,9 +89,7 @@ def argmax_kernel(
             mask = m_offset[:, None] < M and n_offset[None, :] < N
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-            )
+            local_max, local_argmax = tl.max(inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
             # if return indices is not supported, call a tl.argmax in addition
             # local_argmax = tl.argmax(inp_vals, 1)
             update = local_max > max_values
@@ -144,9 +142,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 out_shape[dim] = 1
             else:
                 del out_shape[dim]
-            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(
-                torch.int64
-            )
+            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(torch.int64)
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
