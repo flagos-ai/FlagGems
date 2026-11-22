@@ -231,7 +231,7 @@ def test_accuracy_max_pool3d_with_indices_backward_entry(dtype):
         ref_out, ref_inp, to_reference(out_grad, upcast=True)
     )
     gems_assert_close(res_grad, ref_grad, dtype)
-    assert torch.equal(res_indices, ref_indices)
+    utils.gems_assert_equal(res_indices, ref_indices)
 
     # The gradient must be produced from the saved indices alone. The scatter
     # uses atomics, so repeated runs may order a window's contributions
@@ -240,4 +240,4 @@ def test_accuracy_max_pool3d_with_indices_backward_entry(dtype):
     res_grad_other = flag_gems.max_pool3d_with_indices_backward(
         out_grad, other, *params, res_indices
     )
-    gems_assert_close(res_grad, res_grad_other, dtype)
+    gems_assert_close(res_grad, to_reference(res_grad_other), dtype)
