@@ -421,6 +421,62 @@ def _linalg_det(A):
     )
 
 
+@triton.jit
+def _det_singular_adjugate(w, rows, N):
+    """Compute adj(A.T) by rank-revealing Gauss-Jordan elimination."""
+    block: tl.constexpr = w.shape[0]
+    r = (rows[:, None] == rows[None, :]).to(w.dtype)
+    active = rows < N
+    pos = tl.zeros((block,), dtype=tl.int32)
+    scale = tl.full((), 1, w.dtype)
+    missing = 0
+    missing_col = 0
+
+    for k in range(N):
+        col = tl.sum(tl.where(rows[None, :] == k, w, 0.0), axis=1)
+        score = tl.where(active, tl.abs(col), -1.0)
+        best = tl.max(score, axis=0)
+        if best > 0.0:
+            pr = tl.min(tl.where(score == best, rows, block), axis=0)
+            pivot = tl.sum(tl.where(rows == pr, col, 0.0), axis=0)
+            # Moving this pivot to the front of the unused rows contributes
+            # one swap per preceding unused row.
+            swaps = tl.sum((active & (rows < pr)).to(tl.int32), axis=0)
+            scale = scale * tl.where(swaps % 2 == 0, pivot, -pivot)
+            is_pivot = rows[:, None] == pr
+            uw = tl.sum(tl.where(is_pivot, w, 0.0), axis=0) / pivot
+            ur = tl.sum(tl.where(is_pivot, r, 0.0), axis=0) / pivot
+            w = tl.where(is_pivot, uw[None, :], w - col[:, None] * uw[None, :])
+            r = tl.where(is_pivot, ur[None, :], r - col[:, None] * ur[None, :])
+            active = active & (rows != pr)
+            pos = tl.where(rows == pr, k, pos)
+        else:
+            missing += 1
+            missing_col = k
+
+    if missing == 1:
+        # The transformed matrix has an identity column for every pivot
+        # and one residual column v. Its adjugate is the outer product
+        # (e_missing - v) e_missing.T. Compose with the row transformation
+        # and divide by its determinant to recover adj(A.T).
+        pr = tl.min(tl.where(active, rows, block), axis=0)
+        v = tl.sum(tl.where(rows[None, :] == missing_col, w, 0.0), axis=1)
+        left = tl.sum(tl.where((rows == pr)[:, None], r, 0.0), axis=0)
+        right = tl.where(rows == pr, 1.0, -v)
+        scale = tl.where((N - 1 - missing_col) % 2 == 0, scale, -scale)
+        r = scale * right[:, None] * left[None, :]
+        pos = tl.where(rows == pr, missing_col, pos)
+    elif missing == 0:
+        # The saved determinant can underflow even for a full-rank matrix.
+        r = scale * r
+    else:
+        # All (N-1)-order minors vanish when the rank is below N-1.
+        r = tl.full((block, block), 0, w.dtype)
+        pos = rows
+
+    return pos, r
+
+
 @libentry()
 @triton.jit
 def _det_backward_kernel(
@@ -460,48 +516,65 @@ def _det_backward_kernel(
 
     # c = det(A) * grad_output scales the inverse; applied once at the store so
     # the elimination neither underflows nor overflows on the determinant.
-    coef = tl.load(DET + pid) * tl.load(GRAD + pid)
+    det = tl.load(DET + pid)
+    grad = tl.load(GRAD + pid)
 
     # w = A^T: element (i, j) is A[j, i], a transposed read of the row-major
     # input, which keeps the gradient store row-coalesced.
     w = tl.load(A + base + rows[None, :] * N + rows[:, None], mask=tile, other=0.0)
-    # Right block starts as the identity; after the sweep it holds A^{-T}.
-    r = tl.where(rows[:, None] == rows[None, :], w * 0.0 + 1.0, w * 0.0)
+    if det == 0.0:
+        pos, adjugate = _det_singular_adjugate(w, rows, N)
+        tl.store(
+            OUT + base + pos[:, None] * N + rows[None, :],
+            grad * adjugate,
+            mask=tile,
+        )
+    else:
+        # Right block starts as the identity; after the sweep it holds A^{-T}.
+        r = tl.where(rows[:, None] == rows[None, :], w * 0.0 + 1.0, w * 0.0)
 
-    # Rows not yet used as a pivot, and the destination row of each physical row.
-    active = rmask
-    pos = tl.zeros((BLOCK_N,), dtype=tl.int32)
+        # Rows not yet used as a pivot, and the destination row of each physical row.
+        active = rmask
+        pos = tl.zeros((BLOCK_N,), dtype=tl.int32)
 
-    for k in range(0, N):
-        # Column k of the left block drives both the pivot search and the
-        # elimination factors.
-        colv = tl.sum(tl.where(rows[None, :] == k, w, 0.0), axis=1)
-        # Partial pivoting over unused rows; ties resolve to the smallest row
-        # index (the ATen / LAPACK idamax convention).
-        score = tl.where(active, tl.abs(colv), -1.0)
-        best = tl.max(score, axis=0)
-        pr = tl.min(tl.where(score == best, rows, BLOCK_N), axis=0)
-        # A fully zero column (singular matrix) picks the smallest unused row;
-        # the epsilon nudge is the ATen divide guard.
-        pr = tl.where(best < 0.0, tl.min(tl.where(active, rows, BLOCK_N), axis=0), pr)
-        pivot = tl.sum(tl.where(rows == pr, colv, 0.0), axis=0)
-        safe = tl.where(pivot == 0.0, EPS, pivot)
-        # Normalized pivot row of both blocks, read before the update.
-        un = tl.sum(tl.where(rows[:, None] == pr, w, 0.0), axis=0) / safe
-        vn = tl.sum(tl.where(rows[:, None] == pr, r, 0.0), axis=0) / safe
-        # The elimination factor is the raw column entry; the pivot row's own
-        # entry is irrelevant because the select below replaces that whole row.
-        mult = tl.where(rows == pr, colv * 0.0, colv)
-        # Implicit interchange: one select for the pivot row, one fused
-        # multiply-add for every other row.
-        w = tl.where(rows[:, None] == pr, un[None, :], w - mult[:, None] * un[None, :])
-        r = tl.where(rows[:, None] == pr, vn[None, :], r - mult[:, None] * vn[None, :])
-        active = active & (rows != pr)
-        pos = tl.where(rows == pr, k, pos)
+        for k in range(0, N):
+            # Column k of the left block drives both the pivot search and the
+            # elimination factors.
+            colv = tl.sum(tl.where(rows[None, :] == k, w, 0.0), axis=1)
+            # Partial pivoting over unused rows; ties resolve to the smallest row
+            # index (the ATen / LAPACK idamax convention).
+            score = tl.where(active, tl.abs(colv), -1.0)
+            best = tl.max(score, axis=0)
+            pr = tl.min(tl.where(score == best, rows, BLOCK_N), axis=0)
+            # A fully zero column (singular matrix) picks the smallest unused row;
+            # the epsilon nudge is the ATen divide guard.
+            pr = tl.where(
+                best < 0.0, tl.min(tl.where(active, rows, BLOCK_N), axis=0), pr
+            )
+            pivot = tl.sum(tl.where(rows == pr, colv, 0.0), axis=0)
+            safe = tl.where(pivot == 0.0, EPS, pivot)
+            # Normalized pivot row of both blocks, read before the update.
+            un = tl.sum(tl.where(rows[:, None] == pr, w, 0.0), axis=0) / safe
+            vn = tl.sum(tl.where(rows[:, None] == pr, r, 0.0), axis=0) / safe
+            # The elimination factor is the raw column entry; the pivot row's own
+            # entry is irrelevant because the select below replaces that whole row.
+            mult = tl.where(rows == pr, colv * 0.0, colv)
+            # Implicit interchange: one select for the pivot row, one fused
+            # multiply-add for every other row.
+            w = tl.where(
+                rows[:, None] == pr, un[None, :], w - mult[:, None] * un[None, :]
+            )
+            r = tl.where(
+                rows[:, None] == pr, vn[None, :], r - mult[:, None] * vn[None, :]
+            )
+            active = active & (rows != pr)
+            pos = tl.where(rows == pr, k, pos)
 
-    # Physical row i holds logical row pos[i]; columns stay contiguous so the
-    # scatter is still a coalesced full-row store.
-    tl.store(OUT + base + pos[:, None] * N + rows[None, :], coef * r, mask=tile)
+        # Physical row i holds logical row pos[i]; columns stay contiguous so the
+        # scatter is still a coalesced full-row store.
+        tl.store(
+            OUT + base + pos[:, None] * N + rows[None, :], det * grad * r, mask=tile
+        )
 
 
 # The sweep keeps two live n x n register tiles, so the fused path stops at the

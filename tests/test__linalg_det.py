@@ -242,57 +242,35 @@ def test_accuracy_linalg_det_backward_noncontiguous(dtype):
 
 @pytest.mark.linalg_det_backward
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_accuracy_linalg_det_backward_singular(dtype):
-    # The backward must stay finite on an exactly singular matrix instead of
-    # dividing by the zero pivot.  The value it produces is det(A) * A^{-T} for
-    # the determinant this forward reports: here det is exactly zero, so the
-    # gradient is exactly zero.  ATen's LU happens to leave a rounding-level
-    # residual in det (e.g. -3.3e-16) and therefore reports a finite
-    # adjugate-scaled value; det is not differentiable at a singular point, so
-    # the two are different picks of the same one-sided limit rather than a
-    # disagreement about the rule.  Compare against the rule, not against that
-    # rounding-level residual.
-    A = torch.tensor(
-        [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0], [1.0, 1.0, 1.0]],
-        dtype=dtype,
-        device=flag_gems.device,
+@pytest.mark.parametrize(
+    "matrix, cofactors",
+    [
+        (
+            [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0], [1.0, 1.0, 1.0]],
+            [[-2.0, 4.0, -2.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]],
+        ),
+        (
+            [[0.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]],
+            [[6.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        ),
+        (
+            [[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        ),
+    ],
+)
+def test_accuracy_linalg_det_backward_singular(dtype, matrix, cofactors):
+    # The determinant is a polynomial. Its derivative is the cofactor
+    # matrix even when no inverse exists.
+    dev = flag_gems.device
+    singular = torch.tensor(matrix, dtype=dtype, device=dev)
+    identity = torch.eye(3, dtype=dtype, device=dev)
+    inp = torch.stack([identity, singular]).requires_grad_(True)
+    out, _, _ = flag_gems.ops._linalg_det(inp)
+    upstream = torch.tensor([1.0, 0.75], dtype=dtype, device=dev)
+    (got,) = torch.autograd.grad(out, inp, upstream)
+    expected = torch.stack(
+        [identity, 0.75 * torch.tensor(cofactors, dtype=dtype, device=dev)]
     )
-    grad = torch.ones((), dtype=dtype, device=flag_gems.device)
-    A = A.detach().requires_grad_(True)
-    ref_A = to_reference(A.detach(), False).requires_grad_(True)
 
-    res_result, _, _ = flag_gems.ops._linalg_det(A)
-    (res_grad,) = torch.autograd.grad(res_result, A, grad)
-    ref_result, _, _ = torch.ops.aten._linalg_det(ref_A)
-    (ref_grad,) = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
-
-    assert torch.isfinite(res_grad).all(), "singular gradient must stay finite"
-    assert torch.isfinite(ref_grad).all()
-
-    expected = (
-        res_result.detach().cpu().double()
-        * to_reference(grad, False).cpu().double()
-        * torch.linalg.inv(to_reference(A.detach(), False).double()).cpu().mT
-    )
-    torch.testing.assert_close(
-        res_grad.cpu().double(),
-        expected,
-        atol=1e-7,
-        rtol=1e-7,
-        equal_nan=False,
-    )
-    # a batch mixing a nonsingular and a singular matrix keeps both entries finite
-    batch = torch.stack(
-        [torch.eye(3, dtype=dtype, device=flag_gems.device), A.detach().clone()]
-    )
-    batch = batch.detach().requires_grad_(True)
-    b_res, _, _ = flag_gems.ops._linalg_det(batch)
-    (b_grad,) = torch.autograd.grad(
-        b_res, batch, torch.ones(2, dtype=dtype, device=flag_gems.device)
-    )
-    assert torch.isfinite(b_grad).all(), "batched singular gradient must stay finite"
-    assert torch.allclose(
-        b_grad[0].cpu().double(),
-        torch.eye(3, dtype=torch.float64),
-        atol=1e-6,
-    )
+    torch.testing.assert_close(got, expected, atol=1e-6, rtol=1e-6)
