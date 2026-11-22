@@ -686,13 +686,24 @@ def _solve_from_lu(
 
 @triton.jit
 def _grad_a(s, xt, TRANS: tl.constexpr):
-    """``-sum_c P[i, c] Q[j, c]`` with the minus sign folded in."""
+    """Return the negative outer-product sum for the matrix gradient."""
     if TRANS:
-        # grad_A = -(gB @ X^H):  grad_A[i, j] = -sum_c gB[i, c] * X[j, c]
-        return -tl.sum(s[:, None, :] * xt[None, :, :], axis=2)
-    # grad_A = -(X^H @ gB):  grad_A[i, j] = -sum_c X[c, i] * gB[c, j]
-    # with xt[a, c] = X[c, a] and s[j, c] = gB[c, j].
-    return -tl.sum(xt[:, None, :] * s[None, :, :], axis=2)
+        lhs, rhs = s, xt
+    else:
+        lhs, rhs = xt, s
+
+    if lhs.shape[1] <= 4:
+        # Keep narrow right-hand sides in 2D. The broadcasted 3D reduction
+        # can fail layout conversion on the NVIDIA Ampere compiler.
+        cols = tl.arange(0, lhs.shape[1])
+        out = tl.full((lhs.shape[0], rhs.shape[0]), 0, lhs.dtype)
+        for c in tl.static_range(lhs.shape[1]):
+            x = tl.sum(tl.where(cols[None, :] == c, lhs, 0.0), axis=1)
+            y = tl.sum(tl.where(cols[None, :] == c, rhs, 0.0), axis=1)
+            out = out + x[:, None] * y[None, :]
+        return -out
+
+    return -tl.sum(lhs[:, None, :] * rhs[None, :, :], axis=2)
 
 
 @libentry(cache_binding=True)
