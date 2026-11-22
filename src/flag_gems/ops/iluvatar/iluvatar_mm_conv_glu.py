@@ -34,8 +34,8 @@ def _mm_conv_glu_kernel(
         )
         acc += tl.dot(a, w)
 
-    x = acc[:, 0:BLOCK_N]
-    gate = acc[:, BLOCK_N:BLOCK_N*2]
+    x = acc[:, :BLOCK_N]
+    gate = acc[:, BLOCK_N:]
     glu_val = x * tl.sigmoid(gate)
 
     out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < Cout)
