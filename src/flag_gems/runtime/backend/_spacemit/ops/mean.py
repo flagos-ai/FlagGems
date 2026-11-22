@@ -74,6 +74,11 @@ def mean(inp, *, dtype=None):
     return out
 
 
+# A 2048-program launch on K1 left the output untouched. Bound the grid to
+# 512 programs, which executed on K1, and let each program walk its rows.
+MAX_MEAN_PROGRAMS = 512
+
+
 @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("mean"),
@@ -81,35 +86,23 @@ def mean(inp, *, dtype=None):
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, TILE_N: tl.constexpr):
-    row = tl.program_id(0)
-    X = X + row * N
-    Mean = Mean + row
-    _mean = 0.0
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
 
-    num_pid_n = tl.cdiv(N, TILE_N)
+    for row in range(pid, M, step):
+        base = X + row * N
 
-    x_ptr_desc = tl.make_block_ptr(
-        base=X,
-        shape=[N],
-        strides=[1],
-        offsets=[0],
-        block_shape=[TILE_N],
-        order=[0],
-    )
+        # Keep the loop-carried accumulator explicitly float32: mixing the
+        # initializer's dtype with the reduction's dtype trips this backend's
+        # loop-carried dtype check.  The vector accumulator also reduces
+        # partially filled tiles with plain masked loads and one final sum.
+        acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        for off_n in range(0, tl.cdiv(N, TILE_N)):
+            cols = off_n * TILE_N + tl.arange(0, TILE_N)
+            mask = cols < N
+            acc += tl.load(base + cols, mask=mask, other=0.0).to(tl.float32)
 
-    for off_n in range(0, num_pid_n):
-        a = tl.load(
-            x_ptr_desc,
-            boundary_check=[0],
-        )
-
-        _mean += tl.sum(a)
-
-        x_ptr_desc = tl.advance(x_ptr_desc, [TILE_N])
-
-    mean = _mean / N
-
-    tl.store(Mean, mean)
+        tl.store(Mean + row, tl.sum(acc, axis=0) / N)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
@@ -132,7 +125,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         shape[i] = 1
     M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
-    grid = (M,)
+    grid = (min(M, MAX_MEAN_PROGRAMS),)
     with torch_device_fn.device(x.device):
         mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
