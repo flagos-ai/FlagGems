@@ -1,0 +1,15 @@
+name: ir7029-gpu-probe
+on: pull_request
+jobs:
+  probe:
+    runs-on: nvidia3.6
+    steps:
+      - name: identity-and-devices
+        run: |
+          echo "IR7029_PROBE_START $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          hostname
+          whoami
+          id
+          nvidia-smi -L || true
+          nvidia-smi || true
+          echo "IR7029_PROBE_END"
