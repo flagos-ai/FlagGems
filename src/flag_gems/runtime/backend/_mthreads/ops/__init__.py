@@ -617,7 +617,6 @@ if get_device_capability(current_device())[0] >= 3:
         from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
         from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
         from .bmm import bmm, bmm_out  # noqa: F401
-        from .bmm_w8a8 import bmm_w8a8  # noqa: F401
         from .mm import mm, mm_out  # noqa: F401
 
         __all__.extend(
@@ -630,16 +629,16 @@ if get_device_capability(current_device())[0] >= 3:
                 "baddbmm_out",
                 "bmm",
                 "bmm_out",
-                "bmm_w8a8",
                 "mm",
                 "mm_out",
             ]
         )
 
 if _HAS_TENSOR_DESCRIPTOR and get_device_capability(current_device()) >= (3, 1):
+    from .bmm_w8a8_fp8 import bmm_w8a8_fp8  # noqa: F401
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
-    __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+    __all__.extend(["bmm_w8a8_fp8", "mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
 
 if _HAS_TENSOR_DESCRIPTOR:

@@ -82,10 +82,15 @@ FP8_W8A8_BLOCK_SCALE_BMM_SHAPES = [
     (2, 16, 32, 64),
     (4, 64, 64, 128),
     (2, 128, 128, 256),
+    (2, 4, 64, 512),
+    (2, 136, 128, 512),
+    (2, 272, 256, 512),
 ]
 
 
 def _is_fp8e4nv_supported():
+    if flag_gems.bmm_w8a8_fp8.__module__.endswith("_mthreads.ops.bmm_w8a8_fp8"):
+        return True
     if flag_gems.device != "cuda" or FP8_DTYPE is None:
         return False
     major, minor = torch.cuda.get_device_capability()
@@ -198,16 +203,44 @@ def _dequant_b_fp8_per_nk_block(B_fp8, B_scale, block_n=128, block_k=128):
     reason="FP8 BMM W8A8 block-scale requires CUDA fp8e4nv support",
 )
 @pytest.mark.parametrize("batch, M, N, K", FP8_W8A8_BLOCK_SCALE_BMM_SHAPES)
-def test_bmm_w8a8_fp8(batch, M, N, K):
+@pytest.mark.parametrize(
+    "channel_wise",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                not flag_gems.bmm_w8a8_fp8.__module__.endswith(
+                    "_mthreads.ops.bmm_w8a8_fp8"
+                ),
+                reason="channel-wise FP8 BMM requires a registered implementation",
+            ),
+        ),
+    ],
+)
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize("column_major", [False, True])
+def test_bmm_w8a8_fp8(batch, M, N, K, channel_wise, use_out, column_major):
     torch.manual_seed(0)
     A = torch.randn((batch, M, K), dtype=torch.bfloat16, device=flag_gems.device)
     B = torch.randn((batch, K, N), dtype=torch.bfloat16, device=flag_gems.device)
-    A_fp8, A_scale = _quantize_a_fp8_per_mk_block(A)
-    B_fp8, B_scale = _quantize_b_fp8_per_nk_block(B)
-    A_dequant = _dequant_a_fp8_per_mk_block(A_fp8, A_scale)
-    B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale)
+    block_m, block_n, block_k = (1, 1, K) if channel_wise else (128, 128, 128)
+    A_fp8, A_scale = _quantize_a_fp8_per_mk_block(A, block_m, block_k)
+    B_fp8, B_scale = _quantize_b_fp8_per_nk_block(B, block_n, block_k)
+    if column_major:
+        B_fp8 = B_fp8.transpose(1, 2).contiguous().transpose(1, 2)
+    A_dequant = _dequant_a_fp8_per_mk_block(A_fp8, A_scale, block_m, block_k)
+    B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale, block_n, block_k)
 
     ref_out = torch.bmm(A_dequant, B_dequant).to(torch.bfloat16)
-    res_out = flag_gems.bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
+    out = torch.empty_like(ref_out) if use_out else None
+    res_out = flag_gems.bmm_w8a8_fp8(
+        A_fp8,
+        B_fp8,
+        A_scale,
+        B_scale,
+        block_size=(block_m, block_n, block_k),
+        out=out,
+    )
 
     utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)

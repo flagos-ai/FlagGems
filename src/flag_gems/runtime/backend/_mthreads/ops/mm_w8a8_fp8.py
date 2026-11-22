@@ -46,6 +46,24 @@ if HAS_TLE:
     )
 
 _CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "tune_configs.yaml")
+CHANNEL_SMALL_ROWS = 96
+CHANNEL_MIDDLE_ROWS = 192
+CHANNEL_INTERMEDIATE_ROWS = 256
+CHANNEL_MEDIUM_ROWS = 512
+CHANNEL_TRANSITION_ROWS = 1536
+CHANNEL_LARGE_ROWS = 8192
+CHANNEL_LONG_REDUCTION = 2048
+# BM, BN, BK, pipe slots, consumer warps.
+CHANNEL_SMALL_TILE = (32, 64, 512, 3, 4)
+CHANNEL_MIDDLE_TILE = (64, 64, 512, 2, 4)
+CHANNEL_INTERMEDIATE_TILE = (64, 64, 256, 3, 4)
+CHANNEL_MEDIUM_TILE = (128, 128, 128, 4, 8)
+CHANNEL_TRANSITION_TILE = (128, 256, 128, 3, 16)
+CHANNEL_LARGE_TILE = (256, 256, 64, 3, 16)
+CHANNEL_LONG_TILE = (256, 256, 64, 4, 16)
+CHANNEL_SHORT_K_TILE = (256, 256, 256, 1, 16)
+CHANNEL_SMALL_GROUP_M = 2
+CHANNEL_MEDIUM_GROUP_M = 4
 _TUNE_KEY = [
     "M",
     "N",
@@ -152,6 +170,8 @@ if _HAS_WS:
         GM: tl.constexpr,
         ROLE: tl.constexpr,
         FRAGMENTED: tl.constexpr,
+        SA_STRIDE: tl.constexpr = 0,
+        SB_STRIDE: tl.constexpr = 0,
     ):
         TN: tl.constexpr = BN + BN // 4 if FRAGMENTED else BN * NC
         CN: tl.constexpr = BN // 4 if FRAGMENTED and ROLE == 1 else BN
@@ -172,13 +192,16 @@ if _HAS_WS:
             reader.release(block)
         rm = pm * BM + tl.arange(0, BM)
         rn = pn * TN + ROLE * BN + tl.arange(0, CN)
-        acc *= tl.load(SA)
-        acc *= tl.load(SB)
-        tl.store(
-            C + rm[:, None].to(tl.int64) * N + rn[None, :],
-            acc,
-            (rm[:, None] < M) & (rn[None, :] < N),
-        )
+        if SA_STRIDE == 0:
+            acc *= tl.load(SA)
+        else:
+            acc *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)[:, None]
+        if SB_STRIDE == 0:
+            acc *= tl.load(SB)
+        else:
+            acc *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)[None, :]
+        output_ptr = C + rm[:, None].to(tl.int64) * N + rn[None, :]
+        tl.store(output_ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
 
     @triton.jit
     def _produce_skinny(
@@ -325,6 +348,8 @@ if _HAS_WS:
         PW: tl.constexpr,
         STAGES: tl.constexpr,
         GM: tl.constexpr,
+        SA_STRIDE: tl.constexpr = 0,
+        SB_STRIDE: tl.constexpr = 0,
     ):
         aa = tle.gpu.alloc(
             (STAGES, BM, BK), A.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
@@ -401,6 +426,8 @@ if _HAS_WS:
                             GM,
                             0,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -428,6 +455,8 @@ if _HAS_WS:
                             GM,
                             0,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (
@@ -447,6 +476,8 @@ if _HAS_WS:
                             GM,
                             1,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -474,6 +505,8 @@ if _HAS_WS:
                             GM,
                             0,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (
@@ -493,6 +526,8 @@ if _HAS_WS:
                             GM,
                             1,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (
@@ -512,6 +547,8 @@ if _HAS_WS:
                             GM,
                             2,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -539,6 +576,8 @@ if _HAS_WS:
                             GM,
                             0,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (
@@ -558,6 +597,8 @@ if _HAS_WS:
                             GM,
                             1,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (
@@ -577,6 +618,8 @@ if _HAS_WS:
                             GM,
                             2,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (
@@ -596,6 +639,8 @@ if _HAS_WS:
                             GM,
                             3,
                             False,
+                            SA_STRIDE,
+                            SB_STRIDE,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -628,6 +673,7 @@ if _HAS_WS:
             writer.commit(block)
 
     _BASE_WS_JIT = ws_multi_kernel.fn.fn
+    channel_ws_kernel = libentry()(_BASE_WS_JIT)
 
     def _set_fragmented_blocks(args):
         _set_blocks(args)
@@ -769,6 +815,8 @@ def _launch_ws_tuned(kernel, grid, args):
     a, b = args[0], args[1]
     out, sa, sb, m, n, k = args[-6:]
     options = {"enable_backend_opt": True}
+    if kernel is ws_multi_kernel:
+        options.update(SA_STRIDE=0, SB_STRIDE=0)
     if _HAS_WS_SCHEDULER_CONTROL and min(m, n) >= 3072 and k >= 2048:
         # Wider tiles benefit from SQMMA scheduling without max-ILP expansion.
         # Older wheels retain their supported compiler options unchanged.
@@ -1218,6 +1266,77 @@ def _finish_split_k(partial, out, bias, sr, split, epilogue):
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
+    if (
+        _HAS_WS
+        and _HAS_WS_SCHEDULER_CONTROL
+        and (sa_stride != 0 or sb_stride != 0)
+        and n >= CHANNEL_SMALL_TILE[1]
+        and (
+            k >= CHANNEL_SMALL_TILE[2]
+            or (
+                k >= CHANNEL_SHORT_K_TILE[2]
+                and m >= CHANNEL_SMALL_ROWS
+                and n >= CHANNEL_SHORT_K_TILE[1]
+            )
+        )
+        and _supports_tme_layout(a, b)
+        and bias is None
+        and sr is None
+        and out.dtype == torch.bfloat16
+        and out.is_contiguous()
+    ):
+        if k <= CHANNEL_SHORT_K_TILE[2]:
+            tile = CHANNEL_SHORT_K_TILE
+        elif k >= CHANNEL_LONG_REDUCTION and m <= CHANNEL_MEDIUM_ROWS:
+            # Match the existing long-K WS pruning to avoid MP31 barrier failures.
+            tile = CHANNEL_MEDIUM_TILE
+        elif m <= CHANNEL_SMALL_ROWS:
+            tile = CHANNEL_SMALL_TILE
+        elif m <= CHANNEL_MIDDLE_ROWS:
+            tile = CHANNEL_MIDDLE_TILE
+        elif m <= CHANNEL_INTERMEDIATE_ROWS:
+            tile = CHANNEL_INTERMEDIATE_TILE
+        elif m <= CHANNEL_MEDIUM_ROWS:
+            tile = CHANNEL_MEDIUM_TILE
+        elif m <= CHANNEL_TRANSITION_ROWS:
+            tile = CHANNEL_TRANSITION_TILE
+        elif m <= CHANNEL_LARGE_ROWS:
+            tile = CHANNEL_LARGE_TILE
+        else:
+            tile = CHANNEL_LONG_TILE
+        bm, bn, bk, stages, warps = tile
+        group = (
+            CHANNEL_MEDIUM_GROUP_M
+            if tile == CHANNEL_MEDIUM_TILE
+            else CHANNEL_SMALL_GROUP_M
+        )
+        aa = TensorDescriptor(a, [m, k], list(a.stride()), [bm, bk])
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [bn, bk])
+        channel_ws_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
+            aa,
+            bb,
+            out,
+            sa,
+            sb,
+            m,
+            n,
+            k,
+            bm,
+            bn,
+            bk,
+            1,
+            warps,
+            4,
+            stages,
+            group,
+            SA_STRIDE=sa_stride,
+            SB_STRIDE=sb_stride,
+            num_warps=warps,
+            num_stages=1,
+            enable_backend_opt=True,
+            disable_max_ilp_scheduler=True,
+        )
+        return out
     tme_config = _SKINNY_TME_CONFIGS.get((m, n, k))
     if (
         tme_config is not None
