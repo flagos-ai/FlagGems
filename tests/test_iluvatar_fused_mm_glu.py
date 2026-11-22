@@ -2,49 +2,91 @@ import torch
 import pytest
 from flag_gems.ops import mm_conv_glu_fused, iluvatar_addmm, iluvatar_mm, iluvatar_bmm
 
+HAS_ILUVATAR = False
+DEV = None
+try:
+    dev = torch.device("privateuseone:0")
+    # 简单探测设备是否可用
+    _tmp = torch.empty((1,), device=dev)
+    HAS_ILUVATAR = True
+    DEV = dev
+except Exception:
+    HAS_ILUVATAR = False
+
+@pytest.mark.skipif(not HAS_ILUVATAR, reason="No Iluvatar PrivateUse1 device available")
 def test_mm_conv_glu_fused_basic():
+    torch.manual_seed(42)
     M, K, D = 32, 16, 8
-    x = torch.randn(M, K, dtype=torch.float32)
-    w = torch.randn(K, D, dtype=torch.float32)
-    bias = torch.randn(D, dtype=torch.float32)
-    ref_y = x @ w + bias
+    x_cpu = torch.randn(M, K, dtype=torch.float32)
+    w_cpu = torch.randn(K, D, dtype=torch.float32)
+    bias_cpu = torch.randn(D, dtype=torch.float32)
+    ref_y = x_cpu @ w_cpu + bias_cpu
     ref = ref_y[..., :D//2] * torch.sigmoid(ref_y[..., D//2:])
+
+    x = x_cpu.to(DEV).contiguous()
+    w = w_cpu.to(DEV).contiguous()
+    bias = bias_cpu.to(DEV).contiguous()
     out = mm_conv_glu_fused(x, w, bias)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    out_cpu = out.to("cpu")
+    torch.testing.assert_close(out_cpu, ref, atol=1e-2, rtol=1e-2)
 
 @pytest.mark.parametrize("M,K,D", [(65,65,64), (1,17,30), (64,64,128)])
+@pytest.mark.skipif(not HAS_ILUVATAR, reason="No Iluvatar PrivateUse1 device available")
 def test_mm_conv_glu_non_aligned(M,K,D):
     if D % 2 !=0:
         D +=1
-    x = torch.randn(M, K, dtype=torch.float32)
-    w = torch.randn(K, D, dtype=torch.float32)
-    bias = torch.randn(D, dtype=torch.float32)
-    ref_y = x @ w + bias
+    torch.manual_seed(42)
+    x_cpu = torch.randn(M, K, dtype=torch.float32)
+    w_cpu = torch.randn(K, D, dtype=torch.float32)
+    bias_cpu = torch.randn(D, dtype=torch.float32)
+    ref_y = x_cpu @ w_cpu + bias_cpu
     ref = ref_y[..., :D//2] * torch.sigmoid(ref_y[..., D//2:])
+
+    x = x_cpu.to(DEV).contiguous()
+    w = w_cpu.to(DEV).contiguous()
+    bias = bias_cpu.to(DEV).contiguous()
     out = mm_conv_glu_fused(x, w, bias)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    out_cpu = out.to("cpu")
+    torch.testing.assert_close(out_cpu, ref, atol=1e-2, rtol=1e-2)
 
+@pytest.mark.skipif(not HAS_ILUVATAR, reason="No Iluvatar PrivateUse1 device available")
 def test_addmm_interface_order():
-    # FlagGems规范顺序 addmm(bias, mat1, mat2)
+    # FlagGems规范顺序 addmm(bias, mat1, mat2, beta, alpha)
+    torch.manual_seed(42)
     M,N,K = 64,128,32
-    bias = torch.randn(M,N)
-    m1 = torch.randn(M,K)
-    m2 = torch.randn(K,N)
+    bias_cpu = torch.randn(M,N)
+    m1_cpu = torch.randn(M,K)
+    m2_cpu = torch.randn(K,N)
     beta, alpha = 0.5,1.2
-    ref = beta * bias + alpha * (m1 @ m2)
+    ref = beta * bias_cpu + alpha * (m1_cpu @ m2_cpu)
+
+    bias = bias_cpu.to(DEV).contiguous()
+    m1 = m1_cpu.to(DEV).contiguous()
+    m2 = m2_cpu.to(DEV).contiguous()
     out = iluvatar_addmm(bias, m1, m2, beta, alpha)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    out_cpu = out.to("cpu")
+    torch.testing.assert_close(out_cpu, ref, atol=1e-2, rtol=1e-2)
 
+@pytest.mark.skipif(not HAS_ILUVATAR, reason="No Iluvatar PrivateUse1 device available")
 def test_mm_non_aligned():
-    a = torch.randn(65, 33)
-    b = torch.randn(33, 71)
-    ref = a @ b
+    torch.manual_seed(42)
+    a_cpu = torch.randn(65, 33)
+    b_cpu = torch.randn(33, 71)
+    ref = a_cpu @ b_cpu
+    a = a_cpu.to(DEV).contiguous()
+    b = b_cpu.to(DEV).contiguous()
     out = iluvatar_mm(a,b)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    out_cpu = out.to("cpu")
+    torch.testing.assert_close(out_cpu, ref, atol=1e-2, rtol=1e-2)
 
+@pytest.mark.skipif(not HAS_ILUVATAR, reason="No Iluvatar PrivateUse1 device available")
 def test_bmm_non_aligned():
-    a = torch.randn(2, 65, 33)
-    b = torch.randn(2, 33, 71)
-    ref = torch.bmm(a,b)
+    torch.manual_seed(42)
+    a_cpu = torch.randn(2, 65, 33)
+    b_cpu = torch.randn(2, 33, 71)
+    ref = torch.bmm(a_cpu,b_cpu)
+    a = a_cpu.to(DEV).contiguous()
+    b = b_cpu.to(DEV).contiguous()
     out = iluvatar_bmm(a,b)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    out_cpu = out.to("cpu")
+    torch.testing.assert_close(out_cpu, ref, atol=1e-2, rtol=1e-2)

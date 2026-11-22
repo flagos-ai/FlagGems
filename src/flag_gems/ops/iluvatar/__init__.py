@@ -15,18 +15,17 @@ IMPL.impl("iluvatar_mm", iluvatar_mm, "PrivateUse1")
 IMPL.impl("iluvatar_addmm", iluvatar_addmm, "PrivateUse1")
 IMPL.impl("iluvatar_bmm", iluvatar_bmm, "PrivateUse1")
 
-META = torch.library.Library("flag_gems", "IMPL_META")
-@META.impl("iluvatar_mm")
+@torch.library.register_fake("flag_gems::iluvatar_mm")
 def meta_mm(a, b):
     M, _ = a.shape
     _, N = b.shape
     return a.new_empty((M, N))
 
-@META.impl("iluvatar_addmm")
+@torch.library.register_fake("flag_gems::iluvatar_addmm")
 def meta_addmm(bias, mat1, mat2, beta, alpha):
     return bias.new_empty(bias.shape)
 
-@META.impl("iluvatar_bmm")
+@torch.library.register_fake("flag_gems::iluvatar_bmm")
 def meta_bmm(a, b):
     B, M, _ = a.shape
     _, _, N = b.shape

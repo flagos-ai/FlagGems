@@ -32,38 +32,36 @@ def _iluvatar_addmm_kernel(
 
     mask_m = offs_m < M
     mask_n = offs_n < N
-    mask = mask_m[:, None] & mask_n[None, :]
 
     m1_ptrs = mat1_ptr + offs_m[:, None] * stride_m1m + offs_k[None, :] * stride_m1k
     m2_ptrs = mat2_ptr + offs_k[:, None] * stride_m2k + offs_n[None, :] * stride_m2n
-    bias_ptrs = bias_ptr + offs_m[:, None] * stride_bm + offs_n[None, :] * stride_bn
 
     acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        m1 = tl.load(m1_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
-        m2 = tl.load(m2_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+        k_offs = k * BLOCK_SIZE_K
+        mask_k = k_offs + offs_k < K
+        m1 = tl.load(m1_ptrs, mask=mask_m[:, None] & mask_k[None, :], other=0.0)
+        m2 = tl.load(m2_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
         acc += tl.dot(m1, m2)
         m1_ptrs += BLOCK_SIZE_K * stride_m1k
         m2_ptrs += BLOCK_SIZE_K * stride_m2k
 
-    bias_val = tl.load(bias_ptrs, mask=mask, other=0.0)
-    out_val = beta * bias_val + alpha * acc
+    bias_ptrs = bias_ptr + offs_m[:, None] * stride_bm + offs_n[None, :] * stride_bn
+    b = tl.load(bias_ptrs, mask=mask_m[:, None] & mask_n[None, :], other=0.0)
+    acc = beta * b + alpha * acc
 
     out_ptrs = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
-    tl.store(out_ptrs, out_val, mask=mask)
+    tl.store(out_ptrs, acc, mask=mask_m[:, None] & mask_n[None, :])
 
-def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, beta=1.0, alpha=1.0) -> torch.Tensor:
-    """
-    FlagGems 标准接口顺序：addmm(bias, mat1, mat2, beta, alpha)
-    等价公式: out = beta * bias + alpha * (mat1 @ mat2)
-    和上游 aten.addmm 语义对齐，入参顺序遵循项目现有实现
-    """
-    M, K = mat1.shape
-    K2, N = mat2.shape
-    assert K == K2
-    assert bias.shape == (M, N)
-    assert mat1.is_contiguous() and mat2.is_contiguous()
+def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, beta: float = 1.0, alpha: float = 1.0) -> torch.Tensor:
+    """FlagGems standard: addmm(bias, mat1, mat2, beta, alpha)"""
+    assert bias.device.type == "privateuseone"
+    M, N = bias.shape
+    M1, K = mat1.shape
+    K2, N2 = mat2.shape
+    assert M == M1 and N == N2 and K == K2
     out = torch.empty_like(bias)
+
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE_M"]) * triton.cdiv(N, meta["BLOCK_SIZE_N"]), )
     _iluvatar_addmm_kernel[grid](
         bias, mat1, mat2, out,
@@ -73,5 +71,6 @@ def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, b
         mat1.stride(0), mat1.stride(1),
         mat2.stride(0), mat2.stride(1),
         out.stride(0), out.stride(1),
+        BLOCK_SIZE_M=64, BLOCK_SIZE_N=64, BLOCK_SIZE_K=32, GROUP_SIZE_M=8
     )
     return out

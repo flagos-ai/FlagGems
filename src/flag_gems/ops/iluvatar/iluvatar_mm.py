@@ -36,22 +36,24 @@ def _iluvatar_mm_kernel(
 
     acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+        k_offs = k * BLOCK_SIZE_K
+        mask_k = k_offs + offs_k < K
+        a = tl.load(a_ptrs, mask=mask_m[:, None] & mask_k[None, :], other=0.0)
+        b = tl.load(b_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
         acc += tl.dot(a, b)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
 
     c_ptrs = c_ptr + offs_am[:, None] * stride_cm + offs_bn[None, :] * stride_cn
-    c_mask = mask_m[:, None] & mask_n[None, :]
-    tl.store(c_ptrs, acc, mask=c_mask)
+    tl.store(c_ptrs, acc, mask=mask_m[:, None] & mask_n[None, :])
 
 def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    assert a.device.type == "privateuseone"
     M, K = a.shape
     K2, N = b.shape
-    assert K == K2, "dim mismatch"
-    assert a.is_contiguous() and b.is_contiguous()
+    assert K == K2
     out = torch.empty((M, N), device=a.device, dtype=a.dtype)
+
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE_M"]) * triton.cdiv(N, meta["BLOCK_SIZE_N"]), )
     _iluvatar_mm_kernel[grid](
         a, b, out,
@@ -59,5 +61,6 @@ def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         out.stride(0), out.stride(1),
+        BLOCK_SIZE_M=64, BLOCK_SIZE_N=64, BLOCK_SIZE_K=32, GROUP_SIZE_M=8
     )
     return out
