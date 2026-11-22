@@ -14860,6 +14860,18 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: nanmedian_backward
+  description: Triton backward implementation and autograd contract for nanmedian.
+  for:
+  - nanmedian
+  - nanmedian.dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: nanmedian_dim
   description: 'Returns a namedtuple `(values, indices)` where `values` contains the
     median
