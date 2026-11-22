@@ -416,13 +416,10 @@ def test_slow_conv_dilated2d_negative(case):
 @pytest.mark.slow_conv_dilated2d_negative
 def test_slow_conv_dilated2d_rejects_kernel_larger_than_input():
     inp, weight, _ = _make_conv_inputs((1, 3, 2, 2), (4, 3, 3, 3), False, torch.float32)
-    args = ([3, 3], None, [1, 1], [0, 0], [1, 1])
+    # The master contract rejects a nonpositive output extent. CPU ATen
+    # versions can instead return an empty output for this geometry.
     with pytest.raises(RuntimeError):
-        torch.ops.aten.slow_conv_dilated2d(
-            inp.cpu() if _MUSA else inp, weight.cpu() if _MUSA else weight, *args
-        )
-    with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems.slow_conv_dilated2d(inp, weight, *args)
+        flag_gems.slow_conv_dilated2d(inp, weight, [3, 3], None, [1, 1], [0, 0], [1, 1])
 
 
 @pytest.mark.slow_conv_dilated2d_negative
