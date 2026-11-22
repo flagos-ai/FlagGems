@@ -414,6 +414,18 @@ def test_slow_conv_dilated2d_negative(case):
 
 
 @pytest.mark.slow_conv_dilated2d_negative
+def test_slow_conv_dilated2d_rejects_kernel_larger_than_input():
+    inp, weight, _ = _make_conv_inputs((1, 3, 2, 2), (4, 3, 3, 3), False, torch.float32)
+    args = ([3, 3], None, [1, 1], [0, 0], [1, 1])
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.slow_conv_dilated2d(
+            inp.cpu() if _MUSA else inp, weight.cpu() if _MUSA else weight, *args
+        )
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.slow_conv_dilated2d(inp, weight, *args)
+
+
+@pytest.mark.slow_conv_dilated2d_negative
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test_slow_conv_dilated2d_rejects_unsupported_dtype(dtype):
     inp = torch.ones((2, 3, 5, 5), dtype=dtype, device=flag_gems.device)

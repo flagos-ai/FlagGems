@@ -69,6 +69,25 @@ _BENCH_CASES = [
     ((16, 32, 56, 56), (32, 1, 3, 3), (1, 1), (1, 1), (1, 1), 32, "channel", 1.0),
 ]
 
+# The default overload's comprehensive-only geometries from master.
+_MORE_CASES = [
+    ((32, 64, 128, 128), (32, 64, 3, 3), (1, 1), (2, 2), (1, 1), 1, "channel", 1.0),
+    ((16, 32, 32, 32), (32, 32, 3, 5), (2, 1), (1, 2), (1, 2), 1, "channel", 1.0),
+    ((32, 64, 210, 210), (16, 64, 5, 5), (2, 2), (1, 1), (1, 1), 1, "channel", 1.0),
+    ((16, 32, 24, 24), (24, 16, 3, 3), (2, 2), (2, 2), (1, 1), 2, "channel", 1.0),
+    (
+        (2, 16, 16, 16, 16),
+        (16, 16, 3, 3, 3),
+        (1, 1, 1),
+        (1, 1, 1),
+        (1, 1, 1),
+        1,
+        "channel",
+        1.0,
+    ),
+]
+
+
 _BIAS_FORMS = ("none", "channel", "channel_11", "broadcast_1C11")
 
 # The native kernel executes these float types; bf16 is gated by the runtime
@@ -153,7 +172,10 @@ class CudnnConvolutionAddReluBenchmark(OperatorBenchmark):
     # The same descriptors drive listing and execution; these rows apply when
     # the shape file has no entry for this operator.
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
+        cases = _BENCH_CASES
+        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            cases = cases + _MORE_CASES
+        super().set_shapes(shape_file_path, default_shapes=cases)
 
 
 @pytest.mark.cudnn_convolution_add_relu

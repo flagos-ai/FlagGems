@@ -340,6 +340,52 @@ def test_cudnn_convolution_add_relu_master_geometries(case, alpha, has_bias, dty
 
 
 @pytest.mark.cudnn_convolution_add_relu
+@pytest.mark.parametrize(
+    "boundary",
+    tu.selected_cases(
+        ["integer_alpha", "broadcast_bias", "residual_nan_inf"], quick=[]
+    ),
+)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_cudnn_convolution_add_relu_master_boundaries(boundary, dtype):
+    x_shape, w_shape, groups, stride, padding, dilation = _MASTER_CONV_CASES[0]
+    out_shape = _output_shape(x_shape, w_shape, stride, padding, dilation)
+    inp = tu.make_input(dtype, x_shape, ["-1", "1"])
+    weight = tu.make_input(dtype, w_shape, ["-1", "1"])
+    z = tu.make_input(dtype, out_shape, ["-1", "1"])
+    bias = tu.make_input(dtype, (w_shape[0],), ["-1", "1"])
+    alpha = 2 if boundary == "integer_alpha" else 1.0
+
+    # The scalar 0.5 and the 1-D bias already run on this geometry above.
+    if boundary == "broadcast_bias":
+        bias = bias.reshape(1, -1, 1, 1)
+    elif boundary == "residual_nan_inf":
+        bias = None
+        z.zero_()
+        z[0, 0, 0, 0] = float("nan")
+        z[0, 1, 0, 0] = float("inf")
+        z[0, 2, 0, 0] = float("-inf")
+
+    geometry = (list(stride), list(padding), list(dilation), groups)
+    ref = _reference(
+        _reference_input(inp),
+        _reference_input(weight),
+        _reference_input(z),
+        alpha,
+        _reference_input(bias),
+        *geometry,
+    )
+    result = flag_gems.cudnn_convolution_add_relu(
+        inp, weight, z, alpha, bias, *geometry
+    )
+    _assert_result(result, ref, inp.device)
+    if boundary == "residual_nan_inf":
+        assert torch.isnan(result[0, 0, 0, 0])
+        assert torch.isposinf(result[0, 1, 0, 0])
+        assert result[0, 2, 0, 0] == 0
+
+
+@pytest.mark.cudnn_convolution_add_relu
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_cudnn_convolution_add_relu_master_empty_batch(dtype):
     inp = tu.make_input(dtype, (0, 4, 8, 8), ["-1", "1"])
