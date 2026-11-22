@@ -33,9 +33,12 @@ def test_mm_conv_glu_shape_logic():
     # input (2,8), w (8,8) → 2*Cout=8 → Cout=4, output (2,4)
     x = torch.randn(2,8, device="cuda", dtype=torch.float16)
     w = torch.randn(8,8, device="cuda", dtype=torch.float16)
-    mm = torch.matmul(x, w)
-    ref = mm[:, :4] * torch.sigmoid(mm[:, 4:])
     out = iluvatar_mm_conv_glu(x, w)
+    # 参考实现
+    mm = x @ w
+    val = mm[:, :4]
+    gate = mm[:,4:]
+    ref = val * torch.sigmoid(gate)
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
     print("✅ test_mm_conv_glu_shape_logic pass")
 

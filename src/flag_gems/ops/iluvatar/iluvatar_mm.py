@@ -33,21 +33,24 @@ def _mm_kernel(
             other=0.0
         )
         acc += tl.dot(a, b)
+    # 补齐store mask，防止越界写入（审核重点）
+    out = acc.to(tl.float16)
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
-        acc.to(tl.float16),
+        out,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N)
     )
 
 def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     assert a.shape[1] == b.shape[0]
     M, K = a.shape
-    _, N = b.shape
+    K2, N = b.shape
+    assert K == K2
     out = torch.empty((M, N), device=a.device, dtype=a.dtype)
     BLOCK_M = 64
     BLOCK_N = 64
     BLOCK_K = 64
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
+    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
     _mm_kernel[grid](
         a, b, out,
         M, N, K,

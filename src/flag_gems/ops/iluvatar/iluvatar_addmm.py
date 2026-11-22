@@ -35,28 +35,30 @@ def _addmm_kernel(
             mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < N),
             other=0.0
         )
-        acc += tl.dot(a, b) * alpha
-    bias_val = tl.load(
+        acc += tl.dot(a, b)
+    bias = tl.load(
         bias_ptr + offs_m[:, None] * stride_bias_m + offs_n[None, :] * stride_bias_n,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
         other=0.0
     )
-    acc = acc + bias_val * beta
+    out_val = acc * alpha + bias * beta
+    out_val = out_val.to(tl.float16)
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
-        acc.to(tl.float16),
+        out_val,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N)
     )
 
-def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, *, beta=1.0, alpha=1.0) -> torch.Tensor:
+# 对齐torch.addmm(bias, mat1, mat2, *, beta=1, alpha=1)
+def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, beta=1.0, alpha=1.0) -> torch.Tensor:
     M, K = mat1.shape
-    _, N = mat2.shape
-    assert mat1.shape[1] == mat2.shape[0]
+    K2, N = mat2.shape
+    assert K == K2
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     BLOCK_M = 64
     BLOCK_N = 64
     BLOCK_K = 64
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
+    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
     _addmm_kernel[grid](
         bias, mat1, mat2, out,
         M, N, K,

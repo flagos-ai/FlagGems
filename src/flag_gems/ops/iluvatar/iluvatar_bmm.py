@@ -34,21 +34,22 @@ def _bmm_kernel(
             other=0.0
         )
         acc += tl.dot(a, b)
+    out = acc.to(tl.float16)
     tl.store(
         out_ptr + pid_b * stride_ob + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
-        acc.to(tl.float16),
+        out,
         mask=(pid_b < B) & (offs_m[:, None] < M) & (offs_n[None, :] < N)
     )
 
 def iluvatar_bmm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    assert a.shape[2] == b.shape[1]
     B, M, K = a.shape
-    _, _, N = b.shape
+    B2, K2, N = b.shape
+    assert B == B2 and K == K2
     out = torch.empty((B, M, N), device=a.device, dtype=a.dtype)
     BLOCK_M = 64
     BLOCK_N = 64
     BLOCK_K = 64
-    grid = lambda meta: (B, triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
+    grid = (B, triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
     _bmm_kernel[grid](
         a, b, out,
         B, M, N, K,
