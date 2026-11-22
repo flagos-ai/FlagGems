@@ -34,7 +34,6 @@ def _mm_kernel(
         )
         acc += tl.dot(a, b)
 
-    # 重点：store 增加输出mask，修复越界写入
     out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,

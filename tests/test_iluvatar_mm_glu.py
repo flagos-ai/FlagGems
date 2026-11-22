@@ -1,5 +1,4 @@
 import torch
-import pytest
 from flag_gems.ops import iluvatar_mm, iluvatar_bmm, iluvatar_addmm, iluvatar_mm_conv_glu
 
 def test_mm_non_aligned():
@@ -19,7 +18,6 @@ def test_bmm_non_aligned():
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
 
 def test_addmm_correct_order():
-    # PyTorch addmm(bias, mat1, mat2)
     bias = torch.randn(64,128, device="cuda", dtype=torch.float16)
     mat1 = torch.randn(64,32, device="cuda", dtype=torch.float16)
     mat2 = torch.randn(32,128, device="cuda", dtype=torch.float16)
@@ -28,12 +26,10 @@ def test_addmm_correct_order():
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
 
 def test_mm_conv_glu_shape():
-    # 评审重点case：输入(2,8) → w(8,8) → 2*Cout=8 → Cout=4，输出(2,4)
     x = torch.randn(2,8, device="cuda", dtype=torch.float16)
     w = torch.randn(8,8, device="cuda", dtype=torch.float16)
     out = iluvatar_mm_conv_glu(x, w)
     assert out.shape == (2,4)
-    # 参考实现验证 glu: a * sigmoid(b)
     ref_mm = x @ w
     ref_glu = ref_mm[:, :4] * torch.sigmoid(ref_mm[:, 4:])
     torch.testing.assert_close(out, ref_glu, atol=1e-2, rtol=1e-2)

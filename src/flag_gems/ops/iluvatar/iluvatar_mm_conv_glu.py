@@ -28,26 +28,24 @@ def _mm_conv_glu_kernel(
             other=0.0
         )
         w = tl.load(
-            w_ptr + (k + offs_k)[:, None] * stride_wk + offs_n[None, :] * stride_w2c,
-            mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < Cout * 2),
+            w_ptr + (k + offs_k)[:, None] * stride_wk + (offs_n * 2)[None, :] * stride_w2c,
+            mask=((k + offs_k)[:, None] < K) & ((offs_n * 2)[None, :] < Cout * 2),
             other=0.0
         )
         acc += tl.dot(a, w)
 
-    # GLU：前半a，后半gate, out = a * sigmoid(gate)
-    a_part = acc[:, :BLOCK_N]
-    gate_part = acc[:, BLOCK_N:]
-    glu_out = a_part * tl.sigmoid(gate_part)
+    x = acc[:, 0:BLOCK_N]
+    gate = acc[:, BLOCK_N:BLOCK_N*2]
+    glu_val = x * tl.sigmoid(gate)
 
     out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < Cout)
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
-        glu_out.to(tl.float16),
+        glu_val.to(tl.float16),
         mask=out_mask
     )
 
 def iluvatar_mm_conv_glu(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
-    # w shape: [K, 2*Cout]
     assert w.shape[1] % 2 == 0
     M, K = x.shape
     K2, two_cout = w.shape
@@ -55,7 +53,7 @@ def iluvatar_mm_conv_glu(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
     Cout = two_cout // 2
     out = torch.empty((M, Cout), device=x.device, dtype=x.dtype)
 
-    BLOCK_M = 64
+    BLOCK_M = 32
     BLOCK_N = 32
     BLOCK_K = 32
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(Cout, BLOCK_N))

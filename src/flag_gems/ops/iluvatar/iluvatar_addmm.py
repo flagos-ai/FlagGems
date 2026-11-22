@@ -35,7 +35,6 @@ def _addmm_kernel(
         )
         acc += tl.dot(a, b)
 
-    # 加载bias，支持广播
     bias = tl.load(
         bias_ptr + offs_m[:, None] * stride_bm + offs_n[None, :] * stride_bn,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
@@ -50,7 +49,6 @@ def _addmm_kernel(
         mask=out_mask
     )
 
-# 【重点】签名严格对齐 torch.addmm(bias, mat1, mat2)
 def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
     assert mat1.shape[1] == mat2.shape[0]
     M, K = mat1.shape
