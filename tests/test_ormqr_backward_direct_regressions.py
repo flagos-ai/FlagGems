@@ -19,6 +19,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from ._ormqr_backward_reference_fixes import ormqr_fp64_reference
 
 
 @pytest.mark.ormqr_backward
@@ -38,7 +39,7 @@ def test_batched_ormqr_all_parameter_gradients(left, transpose, strided):
             value = storage[..., 1]
         args.append(value.detach().requires_grad_())
     refs = tuple(utils.to_reference(value).detach().requires_grad_() for value in args)
-    expected = torch.ormqr(*refs, left=left, transpose=transpose)
+    expected = ormqr_fp64_reference(*refs, left=left, transpose=transpose)
     actual = flag_gems.ormqr(*args, left=left, transpose=transpose)
     utils.gems_assert_close(actual, expected, torch.float32, reduce_dim=4)
     grad = torch.randn_like(actual)

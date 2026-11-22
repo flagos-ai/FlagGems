@@ -135,8 +135,12 @@ def reference_inputs(op, case, differentiable):
 
 
 def reference_output(op, case, refs):
-    result = case.call(False, *refs, **case.kwargs)
-    return result
+    from ._ormqr_backward_reference_fixes import ormqr_fp64_reference
+
+    # Native CUDA backward uses matmul and inherits the runner's TF32 policy.
+    # An explicit CPU FP64 Householder product keeps the original tolerance
+    # and validates packed reflectors, tau and other independently.
+    return ormqr_fp64_reference(*refs, **case.kwargs)
 
 
 def check_case(op, dtype, shape, strided, variant, dispatch=False, record=False):
