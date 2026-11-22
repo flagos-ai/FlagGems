@@ -21,6 +21,7 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .test_linalg_polar import (
     _assert_output_metadata,
+    _assert_polar_properties,
     _empty_with_dtype,
     _reference_linalg_polar,
 )
@@ -37,14 +38,6 @@ POLAR_SHAPES = (
     ]
 )
 ATOL = 1e-2
-
-
-def _assert_polar_properties(inp, polar_u, polar_h):
-    inp = inp.detach().cpu()
-    polar_u = polar_u.detach().cpu()
-    polar_h = polar_h.detach().cpu()
-    utils.gems_assert_close(polar_u @ polar_h, inp, torch.float32, atol=ATOL)
-    utils.gems_assert_close(polar_h, polar_h.mT, torch.float32, atol=ATOL)
 
 
 @pytest.mark.linalg_polar_out
