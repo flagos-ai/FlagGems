@@ -15211,6 +15211,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: ne_backward_
+  description: Triton backward implementation and autograd contract for ne_.
+  for:
+  - ne_.Tensor
+  - ne_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: ne_scalar
   description: The scalar version of `ne()`.
   for:
