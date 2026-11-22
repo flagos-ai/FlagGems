@@ -800,6 +800,10 @@ def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 def mean_backward(grad_output, input_shape, input_dtype, dim=None):
     """Return the input gradient of mean, using the input shape and reduced axes."""
+    if grad_output.is_complex() or (input_dtype is not None and input_dtype.is_complex):
+        raise NotImplementedError(
+            "FlagGems mean backward does not support complex tensors"
+        )
     input_shape = tuple(input_shape)
     dims = _normalize_mean_dims(dim, len(input_shape))
     return _mean_backward(grad_output, input_shape, input_dtype, dims)

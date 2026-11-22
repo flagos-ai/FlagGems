@@ -380,3 +380,14 @@ def test_mean_backward_rejects_complex(dim, dtype, out_dtype):
             flag_gems.mean(inp, dtype=out_dtype)
         else:
             flag_gems.mean_dim(inp, dim, dtype=out_dtype)
+
+
+@pytest.mark.mean_backward
+@pytest.mark.parametrize(
+    "grad_dtype, input_dtype",
+    [(torch.complex64, torch.float32), (torch.float32, torch.complex64)],
+)
+def test_mean_backward_public_rejects_complex(grad_dtype, input_dtype):
+    grad_output = torch.ones((), dtype=grad_dtype, device="cpu")
+    with pytest.raises(NotImplementedError, match="complex"):
+        flag_gems.mean_backward(grad_output, (2, 3), input_dtype)
