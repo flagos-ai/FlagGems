@@ -16518,6 +16518,17 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: pixel_unshuffle_backward
+  description: Triton backward implementation and autograd contract for pixel_unshuffle.
+  for:
+  - pixel_unshuffle
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: pixel_unshuffle_out
   description: A variant of `pixel_unshuffle` that assigns the output to the `out`
     tensor.
