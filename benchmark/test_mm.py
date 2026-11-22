@@ -132,8 +132,11 @@ class MmBackwardBenchmark(base.BlasBenchmark):
 
 @pytest.mark.mm_backward
 @pytest.mark.skipif(
-    not hasattr(importlib.import_module(flag_gems.mm.__module__), "mm_backward"),
-    reason="mm backward is implemented for the Hopper backend",
+    torch.version.cuda is None
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] != 9
+    or not hasattr(importlib.import_module(flag_gems.mm.__module__), "mm_backward"),
+    reason="FlagGems mm backward requires an NVIDIA Hopper GPU",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

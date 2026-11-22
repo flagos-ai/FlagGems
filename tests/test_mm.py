@@ -511,6 +511,13 @@ def test_mm_ascend_review_out_validation(invalid):
 mm_backward = getattr(
     importlib.import_module(flag_gems.mm.__module__), "mm_backward", None
 )
+requires_hopper_mm_backward = pytest.mark.skipif(
+    torch.version.cuda is None
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] != 9
+    or mm_backward is None,
+    reason="FlagGems mm backward requires an NVIDIA Hopper GPU",
+)
 BACKWARD_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 BACKWARD_MNK_SHAPES = (
@@ -555,9 +562,7 @@ def _grad_inputs(mat1, mat2, needs_input_grad):
 
 
 @pytest.mark.mm_backward
-@pytest.mark.skipif(
-    mm_backward is None, reason="Hopper mm backward is unavailable on this backend"
-)
+@requires_hopper_mm_backward
 @pytest.mark.parametrize("M, N, K", BACKWARD_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 @pytest.mark.parametrize("b_column_major", [False, True])
@@ -618,9 +623,7 @@ def test_mm_backward(M, N, K, dtype, b_column_major, grad_mode):
 
 
 @pytest.mark.mm_backward
-@pytest.mark.skipif(
-    mm_backward is None, reason="Hopper mm backward is unavailable on this backend"
-)
+@requires_hopper_mm_backward
 @pytest.mark.parametrize(
     "M, N, K", BACKWARD_MNK_SHAPES + BACKWARD_DEGENERATE_MNK_SHAPES
 )
@@ -666,9 +669,7 @@ def test_mm_backward_entry(M, N, K, dtype, needs_input_grad):
 
 
 @pytest.mark.mm_backward
-@pytest.mark.skipif(
-    mm_backward is None, reason="Hopper mm backward is unavailable on this backend"
-)
+@requires_hopper_mm_backward
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_mm_backward_autograd(dtype):
     """The direct FlagGems entry must build the Hopper backward node."""
@@ -710,9 +711,7 @@ def test_mm_backward_autograd(dtype):
 
 
 @pytest.mark.mm_backward
-@pytest.mark.skipif(
-    mm_backward is None, reason="Hopper mm backward is unavailable on this backend"
-)
+@requires_hopper_mm_backward
 @pytest.mark.parametrize("M, N, K", BACKWARD_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 @pytest.mark.parametrize("path", ["fused", "tuned"])
@@ -751,9 +750,7 @@ def test_mm_backward_selectable_path(monkeypatch, M, N, K, dtype, path):
 
 
 @pytest.mark.mm_backward
-@pytest.mark.skipif(
-    mm_backward is None, reason="Hopper mm backward is unavailable on this backend"
-)
+@requires_hopper_mm_backward
 @pytest.mark.skipif(
     not torch.cuda.is_available() or flag_gems.device != "cuda",
     reason="CUDA profiler activity is required to attribute the backward kernels.",
