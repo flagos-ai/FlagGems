@@ -635,9 +635,10 @@ if get_device_capability(current_device())[0] >= 3:
         )
 
 if _HAS_TENSOR_DESCRIPTOR and get_device_capability(current_device()) >= (3, 1):
+    from .bmm_w8a8_fp8 import bmm_w8a8_fp8  # noqa: F401
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
-    __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+    __all__.extend(["bmm_w8a8_fp8", "mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
 
 if _HAS_TENSOR_DESCRIPTOR:
