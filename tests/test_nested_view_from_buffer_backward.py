@@ -93,10 +93,9 @@ def test_nested_view_from_buffer_backward(case, dtype):
     grad_output, buffer, sizes, strides, offsets = _make_case(case, dtype)
 
     ref_out = _eager_reference(grad_output, buffer, sizes, strides, offsets)
-    with flag_gems.use_gems():
-        res_out = flag_gems._nested_view_from_buffer_backward(
-            grad_output, buffer, sizes, strides, offsets
-        )
+    res_out = flag_gems._nested_view_from_buffer_backward(
+        grad_output, buffer, sizes, strides, offsets
+    )
 
     assert res_out.shape == buffer.shape
     assert res_out.dtype == dtype
