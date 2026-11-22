@@ -32,7 +32,7 @@ def test_backward(dtype, shape, strided, variant):
 
 @pytest.mark.parametrize("dispatch,record", [(True, False), (False, True)])
 def test_dispatch_and_compute(dispatch, record):
-    dtype = utils.FLOAT_DTYPES[1]
+    dtype = utils.FLOAT_DTYPES[1 if len(utils.FLOAT_DTYPES) > 1 else 0]
     shape, _, _ = next(accuracy_specs("nanmedian_backward"))
     check_case(
         "nanmedian_backward", dtype, shape, record, 0, dispatch=dispatch, record=record
