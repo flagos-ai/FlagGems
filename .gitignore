@@ -41,3 +41,26 @@ scripts/
 # information for Eclipse / Flash Builder.
 *.swp
 FlagGems-compiler-command
+*.bak
+*.swp
+*.swo
+.venv*/
+venv*/
+*.sh
+smoke_*.py
+verify_*.py
+check_*.py
+# Vim swap files
+*.swn
+*.swp
+*.swo
+# Backup files
+*.bak
+*.bak*
+*.bak_review
+# Temporary test scripts
+tmp_*.py
+test_fix.py
+test_all_fix.py
+# Standalone copy
+*standalone_spec-copy.py
