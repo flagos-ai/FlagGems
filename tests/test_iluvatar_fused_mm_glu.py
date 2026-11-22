@@ -42,3 +42,15 @@ def test_bmm_mask():
     ref = torch.bmm(a,b)
     out = iluvatar_bmm(a,b)
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+
+def test_mm_conv_glu_fused():
+    import torch
+    from flag_gems.ops import mm_conv_glu_fused
+    M, K, N = 32, 16, 8
+    x = torch.randn(M, K, device="cuda")
+    w = torch.randn(K, N, device="cuda")
+    bias = torch.randn(N, device="cuda")
+    ref_y = x @ w + bias
+    ref = ref_y[..., :N//2] * torch.sigmoid(ref_y[..., N//2:])
+    out = mm_conv_glu_fused(x, w, bias)
+    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
