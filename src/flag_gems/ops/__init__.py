@@ -1,4 +1,4 @@
-# 移除跨顶层相对导入、删除废弃div_mode导入
+# Iluvatar backend ops
 from .iluvatar.iluvatar_mm import iluvatar_mm
 from .iluvatar.iluvatar_bmm import iluvatar_bmm
 from .iluvatar.iluvatar_addmm import iluvatar_addmm

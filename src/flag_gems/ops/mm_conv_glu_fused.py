@@ -43,6 +43,5 @@ def mm_conv_glu_fused(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> t
         wg.stride(0), wg.stride(1),
         ba.stride(0), bg.stride(0),
         out.stride(0), out.stride(1),
-        BLOCK_M=64, BLOCK_N=64, BLOCK_K=32
     )
     return out

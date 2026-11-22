@@ -28,34 +28,39 @@ def mm_conv_glu_fused_kernel(
 
     mask_m = offs_m < M
     mask_n = offs_n < N
-
-    x_ptrs = x_ptr + offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk
-    wa_ptrs = wa_ptr + offs_k[:, None] * stride_wak + offs_n[None, :] * stride_wan
-    wg_ptrs = wg_ptr + offs_k[:, None] * stride_wgk + offs_n[None, :] * stride_wgn
-
     acc_a = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     acc_g = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        mask_k = offs_k < K
-        x = tl.load(x_ptrs, mask=mask_m[:, None] & mask_k[None, :], other=0.0)
-        wa = tl.load(wa_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
-        wg = tl.load(wg_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
+    for k in tl.range(0, K, BLOCK_K):
+        offs_k_cur = k + offs_k
+        mask_k = offs_k_cur < K
+        x = tl.load(
+            x_ptr + offs_m[:, None] * stride_xm + offs_k_cur[None, :] * stride_xk,
+            mask=mask_m[:, None] & mask_k[None, :], other=0.0
+        )
+        wa = tl.load(
+            wa_ptr + offs_k_cur[:, None] * stride_wak + offs_n[None, :] * stride_wan,
+            mask=mask_k[:, None] & mask_n[None, :], other=0.0
+        )
+        wg = tl.load(
+            wg_ptr + offs_k_cur[:, None] * stride_wgk + offs_n[None, :] * stride_wgn,
+            mask=mask_k[:, None] & mask_n[None, :], other=0.0
+        )
         acc_a += tl.dot(x, wa)
         acc_g += tl.dot(x, wg)
 
-        x_ptrs += BLOCK_K * stride_xk
-        wa_ptrs += BLOCK_K * stride_wak
-        wg_ptrs += BLOCK_K * stride_wgk
-        K -= BLOCK_K
+    # bias add
+    bias_a = tl.load(ba_ptr + offs_n * stride_ban, mask=mask_n, other=0.0)
+    bias_g = tl.load(bg_ptr + offs_n * stride_bgn, mask=mask_n, other=0.0)
+    acc_a += bias_a[None, :]
+    acc_g += bias_g[None, :]
 
-    ba = tl.load(ba_ptr + offs_n * stride_ban, mask=mask_n, other=0.0)
-    bg = tl.load(bg_ptr + offs_n * stride_bgn, mask=mask_n, other=0.0)
-    acc_a = acc_a + ba[None, :]
-    acc_g = acc_g + bg[None, :]
+    # GLU: a * sigmoid(b) 【审核重点修复】
+    glu_val = acc_a * tl.sigmoid(acc_g)
+    glu_val = glu_val.to(tl.float16)
 
-    gate = tl.sigmoid(acc_g)
-    out_val = acc_a * gate
-
-    out_ptrs = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
-    tl.store(out_ptrs, out_val, mask=mask_m[:, None] & mask_n[None, :])
+    mask_out = mask_m[:, None] & mask_n[None, :]
+    tl.store(
+        out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
+        glu_val, mask=mask_out
+    )

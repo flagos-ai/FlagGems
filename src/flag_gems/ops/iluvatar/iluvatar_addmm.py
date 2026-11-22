@@ -8,9 +8,9 @@ def _addmm_kernel(
     M, K, N,
     stride_bm, stride_bn,
     stride_am, stride_ak,
-    stride_bk, stride_bn_,
+    stride_bk, stride_bn2,
     stride_om, stride_on,
-    beta, alpha,
+    alpha, beta,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -22,39 +22,41 @@ def _addmm_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    mask_m = offs_m < M
-    mask_n = offs_n < N
-    mask = mask_m[:, None] & mask_n[None, :]
+    a = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn2
+    bias = bias_ptr + offs_m[:, None] * stride_bm + offs_n[None, :] * stride_bn
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, K, BLOCK_K):
+        a_mask = (offs_m[:, None] < M) & (offs_k[None, :] + k < K)
+        b_mask = (offs_k[:, None] + k < K) & (offs_n[None, :] < N)
+        a_val = tl.load(a, mask=a_mask, other=0.0)
+        b_val = tl.load(b, mask=b_mask, other=0.0)
+        acc += tl.dot(a_val, b_val)
+        a += BLOCK_K * stride_ak
+        b += BLOCK_K * stride_bk
 
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        k_offs = k * BLOCK_K
-        a = tl.load(
-            a_ptr + offs_m[:, None] * stride_am + (k_offs + offs_k)[None, :] * stride_ak,
-            mask=mask_m[:, None] & ((k_offs + offs_k) < K)[None, :],
-            other=0.0
-        )
-        b = tl.load(
-            b_ptr + (k_offs + offs_k)[:, None] * stride_bk + offs_n[None, :] * stride_bn_,
-            mask=((k_offs + offs_k) < K)[:, None] & mask_n[None, :],
-            other=0.0
-        )
-        acc += tl.dot(a, b)
+    bias_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    bias_val = tl.load(bias, mask=bias_mask, other=0.0)
+    acc = acc * alpha + bias_val * beta
 
-    bias = tl.load(bias_ptr + offs_m[:, None] * stride_bm + offs_n[None, :] * stride_bn, mask=mask, other=0.0)
-    acc = acc * alpha + bias * beta
-    out = acc.to(tl.float16)
-    tl.store(out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on, out, mask=mask)
+    out = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
+    out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(out, acc, mask=out_mask)
 
-def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, beta=1.0, alpha=1.0, BLOCK_M=64, BLOCK_N=64, BLOCK_K=64):
+# 关键：对齐项目原有接口：addmm(bias, mat1, mat2, alpha=1, beta=1)
+def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, alpha=1.0, beta=1.0) -> torch.Tensor:
     M, K = mat1.shape
-    Kb, N = mat2.shape
-    assert K == Kb
+    K2, N = mat2.shape
+    assert K == K2
+    assert bias.shape == (M, N)
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    grid_m = (M + BLOCK_M - 1) // BLOCK_M
-    grid_n = (N + BLOCK_N - 1) // BLOCK_N
-    grid = (grid_m, grid_n)
+
+    BLOCK_M = 64
+    BLOCK_N = 64
+    BLOCK_K = 64
+    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
+
     _addmm_kernel[grid](
         bias, mat1, mat2, out,
         M, K, N,
@@ -62,7 +64,7 @@ def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, b
         mat1.stride(0), mat1.stride(1),
         mat2.stride(0), mat2.stride(1),
         out.stride(0), out.stride(1),
-        beta, alpha,
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K
+        alpha, beta,
+        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
     )
     return out
