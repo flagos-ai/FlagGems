@@ -16236,6 +16236,17 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: ormqr_backward
+  description: Triton backward implementation and autograd contract for ormqr.
+  for:
+  - ormqr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: outer
   description: 'Computes outer product of self and the input vector.
 
