@@ -15700,8 +15700,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: nll_loss2d_backward
-  description: 'An internal IR for supporting `torch.nn.NLLLoss2d`, which has been
-    deprecated
+  description: 'An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
 
     and is now integrated into the standard `torch.nn.NLLLoss`.
 
@@ -15713,6 +15712,7 @@ ops:
   labels:
   - aten
   - IR
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
