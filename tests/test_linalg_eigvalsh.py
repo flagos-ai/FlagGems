@@ -56,7 +56,9 @@ def _reference_eigvalsh(inp, UPLO="L"):
         # This image falls back to CPU for eigvalsh and lacks LAPACK.
         import numpy as np
 
-        return torch.from_numpy(np.linalg.eigvalsh(inp.detach().cpu().numpy(), UPLO=UPLO))
+        return torch.from_numpy(
+            np.linalg.eigvalsh(inp.detach().cpu().numpy(), UPLO=UPLO)
+        )
     return torch.ops.aten.linalg_eigvalsh.default(inp, UPLO=UPLO)
 
 
@@ -67,9 +69,7 @@ def test_linalg_eigvalsh(case):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
     inputs = _inputs(case)
-    ref = _reference_eigvalsh(
-        utils.to_reference(inputs[0], True), UPLO=inputs[1]
-    )
+    ref = _reference_eigvalsh(utils.to_reference(inputs[0], True), UPLO=inputs[1])
     res = flag_gems.linalg_eigvalsh(inputs[0], UPLO=inputs[1])
     if flag_gems.vendor_name == "mthreads":
         assert res.device == inputs[0].device

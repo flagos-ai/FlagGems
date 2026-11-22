@@ -152,9 +152,7 @@ def test_cholesky_solve_helper_batch_strides(upper, preexpanded):
     device_factor = factor.to(flag_gems.device)
     if preexpanded:
         device_factor = device_factor.expand(2, 3, 9, 9)
-    expected = _reference_solve(
-        rhs, factor.expand(2, 3, 9, 9), upper
-    )
+    expected = _reference_solve(rhs, factor.expand(2, 3, 9, 9), upper)
     actual = flag_gems._cholesky_solve_helper(device_rhs, device_factor, upper)
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-5)
 
