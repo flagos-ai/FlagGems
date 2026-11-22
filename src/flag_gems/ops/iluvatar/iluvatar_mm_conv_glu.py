@@ -7,7 +7,7 @@ def _mm_conv_glu_kernel(
     a_ptr, w_ptr, out_ptr,
     M, Cout, K,
     stride_am, stride_ak,
-    stride_wk, stride_wcout,
+    stride_wk, stride_w2c,
     stride_om, stride_on,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -28,48 +28,46 @@ def _mm_conv_glu_kernel(
             other=0.0
         )
         w = tl.load(
-            w_ptr + (k + offs_k)[:, None] * stride_wk + (offs_n * 2)[None, :] * stride_wcout,
-            mask=((k + offs_k)[:, None] < K) & ((offs_n * 2)[None, :] < Cout * 2),
+            w_ptr + (k + offs_k)[:, None] * stride_wk + offs_n[None, :] * stride_w2c,
+            mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < Cout * 2),
             other=0.0
         )
         acc += tl.dot(a, w)
 
-    x = acc[:, 0::2]
-    gate = acc[:, 1::2]
-    glu = x * tl.sigmoid(gate)
-    out_val = glu.to(tl.float16)
+    # GLU：前半a，后半gate, out = a * sigmoid(gate)
+    a_part = acc[:, :BLOCK_N]
+    gate_part = acc[:, BLOCK_N:]
+    glu_out = a_part * tl.sigmoid(gate_part)
 
+    out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < Cout)
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
-        out_val,
-        mask=(offs_m[:, None] < M) & (offs_n[None, :] < Cout)
+        glu_out.to(tl.float16),
+        mask=out_mask
     )
 
-def iluvatar_mm_conv_glu(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
-    """
-    MM+GLU fusion: output = a * sigmoid(b)
-    x: [M, K]
-    weight: [K, 2*Cout]
-    return: [M, Cout]
-    example: x.shape (2,8), weight.shape (8,8) → output (2,4)
-    """
+def iluvatar_mm_conv_glu(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    # w shape: [K, 2*Cout]
+    assert w.shape[1] % 2 == 0
     M, K = x.shape
-    K2, Cout2 = weight.shape
+    K2, two_cout = w.shape
     assert K == K2
-    assert Cout2 % 2 == 0
-    Cout = Cout2 // 2
+    Cout = two_cout // 2
     out = torch.empty((M, Cout), device=x.device, dtype=x.dtype)
 
     BLOCK_M = 64
-    BLOCK_N = 16
+    BLOCK_N = 32
     BLOCK_K = 32
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(Cout, meta["BLOCK_N"]))
+    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(Cout, BLOCK_N))
+
     _mm_conv_glu_kernel[grid](
-        x, weight, out,
+        x, w, out,
         M, Cout, K,
         x.stride(0), x.stride(1),
-        weight.stride(0), weight.stride(1),
+        w.stride(0), w.stride(1),
         out.stride(0), out.stride(1),
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
     )
     return out

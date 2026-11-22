@@ -28,15 +28,15 @@ def test_addmm_correct_order():
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
 
 def test_mm_conv_glu_shape():
-    # 评审重点case：输入(2,8) → 输出(2,4)
+    # 评审重点case：输入(2,8) → w(8,8) → 2*Cout=8 → Cout=4，输出(2,4)
     x = torch.randn(2,8, device="cuda", dtype=torch.float16)
-    w = torch.randn(8,8, device="cuda", dtype=torch.float16) # 2*Cout=8 → Cout=4
+    w = torch.randn(8,8, device="cuda", dtype=torch.float16)
     out = iluvatar_mm_conv_glu(x, w)
     assert out.shape == (2,4)
-    mm = torch.matmul(x,w)
-    a,b = mm.chunk(2, dim=-1)
-    ref = a * torch.sigmoid(b)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    # 参考实现验证 glu: a * sigmoid(b)
+    ref_mm = x @ w
+    ref_glu = ref_mm[:, :4] * torch.sigmoid(ref_mm[:, 4:])
+    torch.testing.assert_close(out, ref_glu, atol=1e-2, rtol=1e-2)
 
 if __name__ == "__main__":
     test_mm_non_aligned()
