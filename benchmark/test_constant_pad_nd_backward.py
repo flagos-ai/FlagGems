@@ -64,6 +64,15 @@ def constant_pad_nd_backward_torch_op(grad_output, inp, pad, value):
     return ref_in_grad
 
 
+def constant_pad_nd_backward_gems_op(grad_output, inp, pad, value):
+    # Mirror the reference: both sides build the forward graph and call
+    # autograd.grad, so the comparison covers the same work.
+    res_inp = inp.detach().requires_grad_(True)
+    res_out = flag_gems.constant_pad_nd(res_inp, pad, value)
+    (res_in_grad,) = torch.autograd.grad(res_out, res_inp, grad_output)
+    return res_in_grad
+
+
 class ConstantPadNdBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = PAD_BACKWARD_CASES
@@ -80,7 +89,7 @@ def test_constant_pad_nd_backward():
         build_inputs_fn=constant_pad_nd_backward_build_inputs_fn,
         op_name="constant_pad_nd_backward",
         torch_op=constant_pad_nd_backward_torch_op,
-        gems_op=flag_gems.constant_pad_nd_backward,
+        gems_op=constant_pad_nd_backward_gems_op,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

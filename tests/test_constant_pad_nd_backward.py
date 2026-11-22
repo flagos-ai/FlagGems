@@ -52,8 +52,11 @@ def test_constant_pad_nd_backward(shape, pad, value, dtype):
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
     # The gradient w.r.t. `value` is a sum, but `value` is a scalar, so only
-    # the input gradient is produced here.
-    res_in_grad = flag_gems.constant_pad_nd_backward(out_grad, inp, pad, value)
+    # the input gradient is produced here. Drive it through the autograd of
+    # the forward ``constant_pad_nd`` rather than calling the kernel directly.
+    (res_in_grad,) = torch.autograd.grad(
+        flag_gems.constant_pad_nd(inp, pad, value), inp, out_grad
+    )
 
     assert res_in_grad.shape == inp.shape
     assert res_in_grad.dtype == dtype

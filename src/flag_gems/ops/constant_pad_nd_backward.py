@@ -38,6 +38,8 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,7 @@ logger = logging.getLogger(__name__)
 _MAXDIM = 8
 
 
+@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("_constant_pad_nd_backward"),
     key=["RANK", "n_elem"],
@@ -191,42 +194,43 @@ def constant_pad_nd_backward(grad_output, self, pad, value=0):
     nrank = min(rank, _MAXDIM)
 
     grid = lambda meta: ((numel + meta["BLOCK"] - 1) // meta["BLOCK"],)
-    _constant_pad_nd_backward_kernel[grid](
-        out,
-        grad_output,
-        numel,
-        rs[0],
-        rs[1],
-        rs[2],
-        rs[3],
-        rs[4],
-        rs[5],
-        rs[6],
-        rs[7],
-        os_[0],
-        os_[1],
-        os_[2],
-        os_[3],
-        os_[4],
-        os_[5],
-        os_[6],
-        os_[7],
-        es[0],
-        es[1],
-        es[2],
-        es[3],
-        es[4],
-        es[5],
-        es[6],
-        es[7],
-        ns[0],
-        ns[1],
-        ns[2],
-        ns[3],
-        ns[4],
-        ns[5],
-        ns[6],
-        ns[7],
-        RANK=nrank,
-    )
+    with torch_device_fn.device(self.device):
+        _constant_pad_nd_backward_kernel[grid](
+            out,
+            grad_output,
+            numel,
+            rs[0],
+            rs[1],
+            rs[2],
+            rs[3],
+            rs[4],
+            rs[5],
+            rs[6],
+            rs[7],
+            os_[0],
+            os_[1],
+            os_[2],
+            os_[3],
+            os_[4],
+            os_[5],
+            os_[6],
+            os_[7],
+            es[0],
+            es[1],
+            es[2],
+            es[3],
+            es[4],
+            es[5],
+            es[6],
+            es[7],
+            ns[0],
+            ns[1],
+            ns[2],
+            ns[3],
+            ns[4],
+            ns[5],
+            ns[6],
+            ns[7],
+            RANK=nrank,
+        )
     return out

@@ -3925,17 +3925,18 @@ ops:
   stages:
   - stable: '2.2'
 - id: constant_pad_nd_backward
-  description: Computes the gradient of a constant-padded tensor with respect to its
-    input, cropping the padded region out of `grad_output`.
+  description: The backward computation of `constant_pad_nd()`, exercised through
+    the autograd of the forward operator.
   for:
-    - constant_pad_nd_backward
+  - constant_pad_nd
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - pointwise
+  - KernelGen
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.5.0'
+  - beta: '5.4'
 - id: contiguous
   description: 'Returns a contiguous in memory tensor containing the same data as
     `self` tensor.

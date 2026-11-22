@@ -1291,8 +1291,15 @@ _FULL_CONFIG = (
     ("conj", conj),
     ("conj_physical", conj_physical),
     ("conj_physical_", conj_physical_),
-    ("constant_pad_nd", constant_pad_nd),
-    ("constant_pad_nd_backward", constant_pad_nd_backward),
+    # Autograd fallthrough: the _ConstantPadNdFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and torch.constant_pad_nd() takes the native backward.
+    (
+        "constant_pad_nd",
+        constant_pad_nd,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("conv1d", conv1d),
     ("conv1d.padding", conv1d),
     ("conv2d", conv2d),
