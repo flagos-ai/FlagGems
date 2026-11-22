@@ -16599,6 +16599,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: polygamma_backward
+  description: Triton backward implementation and autograd contract for polygamma.
+  for:
+  - polygamma
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: polygamma_out
   description: A variant of `polygamma` that allows the output to be assigned to the
     `out` tensor.

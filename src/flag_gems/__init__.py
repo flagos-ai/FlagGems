@@ -1972,7 +1972,7 @@ _FULL_CONFIG = (
     ("poisson", poisson),
     ("poisson_nll_loss", poisson_nll_loss),
     ("polar", polar),
-    ("polygamma", polygamma),
+    ("polygamma", polygamma, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("polygamma.out", polygamma_out),
     ("polygamma_", polygamma_),
     ("pow.Scalar", pow_scalar),
