@@ -15734,6 +15734,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: nll_loss2d_forward_backward
+  description: Triton backward implementation and autograd contract for nll_loss2d_forward.
+  for:
+  - nll_loss2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: nll_loss_backward
   description: Compute the negative log likelihood loss. This is the backward case.
   for:
