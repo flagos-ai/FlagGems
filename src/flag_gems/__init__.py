@@ -1910,7 +1910,7 @@ _FULL_CONFIG = (
     ("ne.Tensor", ne),
     ("ne_.Scalar", ne_scalar_),
     ("ne_.Tensor", ne_),
-    ("neg", neg),
+    ("neg", neg, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
