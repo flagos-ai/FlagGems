@@ -16620,6 +16620,19 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: pow_backward
+  description: Triton backward implementation and autograd contract for pow_tensor_tensor.
+  for:
+  - pow.Tensor_Tensor
+  - pow.Tensor_Scalar
+  - pow.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: pow_scalar
   description: 'Takes the power of each element in `input` with `exponent` and returns
     a tensor with the result.
