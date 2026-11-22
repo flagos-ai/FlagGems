@@ -1133,13 +1133,37 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    ("clamp", clamp),
+    # Autograd fallthrough: the ClampFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp",
+        clamp,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
-    ("clamp_max", clamp_max),
+    # Autograd fallthrough: the ClampMaxFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_max",
+        clamp_max,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_max_", clamp_max_),
-    ("clamp_min", clamp_min),
+    # Autograd fallthrough: the ClampMinFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_min",
+        clamp_min,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
@@ -1190,13 +1214,34 @@ _FULL_CONFIG = (
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
-    ("copysign.Scalar", copysign),
-    ("copysign.Tensor", copysign),
+    # Autograd fallthrough: the CopysignFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "copysign.Scalar",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    (
+        "copysign.Tensor",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),
-    ("cosh", cosh),
+    # Autograd fallthrough: the CoshFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and the backward falls back to the native kernel instead of ours.
+    (
+        "cosh",
+        cosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("cosine_embedding_loss", cosine_embedding_loss),
