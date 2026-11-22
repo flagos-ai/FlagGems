@@ -33,7 +33,6 @@ def _mm_kernel(
             other=0.0
         )
         acc += tl.dot(a, b)
-    # store 补齐mask（审核重点：防止越界写）
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
         acc.to(tl.float16),
