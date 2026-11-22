@@ -1,11 +1,12 @@
-# Copyright (c) FlagOS
-from flag_gems.ops.triton_src import mm, addmm, bmm, glu
-from flag_gems.ops.iluvatar_backend import register_iluvatar_ops
+# Copyright (c) 2026 FlagOS
+from .fused_mm_glu import fused_mm_glu
+from .iluvatar_mm import iluvatar_mm
+from .iluvatar_addmm import iluvatar_addmm
+from .iluvatar_bmm import iluvatar_bmm
 
 __all__ = [
-    "mm",
-    "addmm",
-    "bmm",
-    "glu",
-    "register_iluvatar_ops",
+    "fused_mm_glu",
+    "iluvatar_mm",
+    "iluvatar_addmm",
+    "iluvatar_bmm",
 ]
