@@ -443,7 +443,9 @@ def _colliding_coords_case(dim, dtype, device):
     grad_values = torch.tensor([1.0, 0.0], dtype=dtype, device=device)
     shape = (6, 5)
     output = torch.sparse_coo_tensor(indices, values, shape, device=device).coalesce()
-    grad = torch.sparse_coo_tensor(indices, grad_values, shape, device=device).coalesce()
+    grad = torch.sparse_coo_tensor(
+        indices, grad_values, shape, device=device
+    ).coalesce()
     self_tensor = torch.empty(0, dtype=dtype, device=device)
     return grad, output, self_tensor
 
@@ -452,6 +454,7 @@ def _colliding_coords_case(dim, dtype, device):
 # ``sparse_softmax_backward`` so the CI marker selector collects this backward
 # workload set under its own ID (the file itself keeps the upstream
 # ``sparse_softmax_backward_data`` marker).
+
 
 @pytest.mark.sparse_softmax_backward
 @pytest.mark.sparse_softmax_backward_data
@@ -494,7 +497,9 @@ def test__sparse_softmax_backward_data_negative_dim_differs_from_pooled(dim, dty
     """
     grad, output, self_tensor = _colliding_coords_case(dim, dtype, flag_gems.device)
 
-    res = flag_gems._sparse_softmax_backward_data(grad, output, dim, self_tensor).coalesce()
+    res = flag_gems._sparse_softmax_backward_data(
+        grad, output, dim, self_tensor
+    ).coalesce()
     ref = torch.ops.aten._sparse_softmax_backward_data(
         tu.to_reference(grad),
         tu.to_reference(output),
@@ -517,7 +522,7 @@ def test__sparse_softmax_backward_data_negative_dim_differs_from_pooled(dim, dty
                 mask &= idx_ref[s] == idx_ref[s, j]
         pooled[j] = y[j] * (d[j] - (d[mask] * y[mask]).sum(dim=0))
 
-    assert torch.allclose(res._values().cpu(), ref._values().cpu(), rtol=1e-5, atol=1e-5)
-    assert not torch.allclose(
-        res._values().cpu(), pooled.cpu(), rtol=1e-5, atol=1e-5
+    assert torch.allclose(
+        res._values().cpu(), ref._values().cpu(), rtol=1e-5, atol=1e-5
     )
+    assert not torch.allclose(res._values().cpu(), pooled.cpu(), rtol=1e-5, atol=1e-5)
