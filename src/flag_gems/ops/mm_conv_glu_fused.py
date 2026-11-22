@@ -6,8 +6,9 @@ def mm_conv_glu_fused(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> t
     """
     Fused MM + Broadcast Bias + GLU
     Equivalent:
-        y = x @ w + bias
-        out = y[..., :D//2] * torch.sigmoid(y[..., D//2:])
+    full = x @ w + bias
+    out = full[..., :D//2] * torch.sigmoid(full[..., D//2:])
+    Host pre-split weight/bias, avoid Iluvatar triton dynamic slice limitation
     Args:
         x: [M, K]
         w: [K, D], D must be even
@@ -19,8 +20,13 @@ def mm_conv_glu_fused(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> t
     Kk, D = w.shape
     assert K == Kk, "K dim mismatch between x and w"
     assert D % 2 == 0, "GLU requires last dimension D even"
-    assert bias.shape == (D,), "bias shape must be [D]"
+    assert bias.shape == (D,), "bias shape must be [D,]"
     N = D // 2
+
+    wa = w[:, :N].contiguous()
+    wg = w[:, N:].contiguous()
+    ba = bias[:N].contiguous()
+    bg = bias[N:].contiguous()
 
     out = torch.empty((M, N), device=x.device, dtype=x.dtype)
 
@@ -29,14 +35,12 @@ def mm_conv_glu_fused(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> t
         triton.cdiv(N, meta["BLOCK_N"])
     )
     mm_conv_glu_fused_kernel[grid](
-        x, w, bias, out,
+        x, wa, wg, ba, bg, out,
         M, K, N,
         x.stride(0), x.stride(1),
-        w.stride(0), w.stride(1),
-        bias.stride(0),
+        wa.stride(0), wa.stride(1),
+        wg.stride(0), wg.stride(1),
+        ba.stride(0), bg.stride(0),
         out.stride(0), out.stride(1),
-        BLOCK_M=64,
-        BLOCK_N=32,
-        BLOCK_K=64,
     )
     return out
