@@ -15135,14 +15135,13 @@ ops:
   stages:
   - alpha: '5.4'
 - id: native_group_norm_backward
-  description: Alias entry named after the aten symbol `native_group_norm_backward`;
-    the backward case for `group_norm()` (same semantics as the `group_norm_backward`
-    entry).
+  description: Alias entry named after the aten symbol `native_group_norm_backward`; the backward case for `group_norm()` (same semantics as the `group_norm_backward` entry).
   for:
   - native_group_norm_backward
   labels:
   - aten
   - Reduction
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
