@@ -37,7 +37,7 @@ def iluvatar_addmm_kernel(
             other=0.0
         )
         b = tl.load(
-            mat2_ptr + (k + offs_k)[:, None] * stride_m2k + offs_n[None, :] * stride_bn,
+            mat2_ptr + (k + offs_k)[:, None] * stride_m2k + offs_n[None, :] * stride_m2n,
             mask=mask_n[None, :] & ((k + offs_k)[:,None] < K),
             other=0.0
         )
