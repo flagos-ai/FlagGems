@@ -1329,7 +1329,7 @@ _FULL_CONFIG = (
     ("copysign.out", copysign_out),
     # Autograd fallthrough: the CopysignFunction wrapper owns the
     # differentiable path. Without it the device-key override drops ATen's
-    # autograd formula and the backward falls back to the native kernel.
+    # autograd formula and torch.copysign() takes the native backward.
     (
         "copysign.Scalar",
         copysign,

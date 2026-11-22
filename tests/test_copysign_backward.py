@@ -108,11 +108,11 @@ def test_copysign_backward_grad_other_is_zero(dtype):
     other = torch.randn((7, 13), dtype=dtype, device=flag_gems.device).requires_grad_()
     grad = torch.randn(x.shape, dtype=dtype, device=x.device)
 
-    (dx, dother) = torch.autograd.grad(flag_gems.copysign(x, other), (x, other), grad)
+    dx, dother = torch.autograd.grad(flag_gems.copysign(x, other), (x, other), grad)
 
     ref_x = utils.to_reference(x.detach()).requires_grad_()
     ref_other = utils.to_reference(other.detach()).requires_grad_()
-    (ref_dx, ref_dother) = torch.autograd.grad(
+    ref_dx, ref_dother = torch.autograd.grad(
         torch.copysign(ref_x, ref_other), (ref_x, ref_other), utils.to_reference(grad)
     )
 
