@@ -16545,6 +16545,17 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: poisson_backward
+  description: Triton backward implementation and autograd contract for poisson.
+  for:
+  - poisson
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: poisson_nll_loss
   description: Computes the Poisson negative log likelihood loss.
   for:

@@ -1969,7 +1969,7 @@ _FULL_CONFIG = (
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
-    ("poisson", poisson),
+    ("poisson", poisson, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("poisson_nll_loss", poisson_nll_loss),
     ("polar", polar),
     ("polygamma", polygamma),
