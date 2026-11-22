@@ -197,12 +197,19 @@ def test_sparse_addmm_backward_matches_native_autograd(dtype):
 
         grads, _ = _gems_grads(grad_output, bias, mat1, mat2, 1.5, 0.75)
         atol = 1e-4
-        utils.gems_assert_close(grads[0], native[0], dtype, atol=atol)
-        utils.gems_assert_close(grads[2], native[2], dtype, atol=atol)
+        utils.gems_assert_close(
+            grads[0], utils.to_reference(native[0]), dtype, atol=atol
+        )
+        utils.gems_assert_close(
+            grads[2], utils.to_reference(native[2]), dtype, atol=atol
+        )
         # The layouts enumerate stored entries differently, so compare the
         # gradient on the dense grid rather than raw storage order.
         utils.gems_assert_close(
-            grads[1].to_dense(), native[1].to_dense(), dtype, atol=atol
+            grads[1].to_dense(),
+            utils.to_reference(native[1].to_dense()),
+            dtype,
+            atol=atol,
         )
 
 
