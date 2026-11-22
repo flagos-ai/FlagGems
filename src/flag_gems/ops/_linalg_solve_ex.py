@@ -686,24 +686,13 @@ def _solve_from_lu(
 
 @triton.jit
 def _grad_a(s, xt, TRANS: tl.constexpr):
-    """Return the negative outer-product sum for the matrix gradient."""
+    """``-sum_c P[i, c] Q[j, c]`` with the minus sign folded in."""
     if TRANS:
-        lhs, rhs = s, xt
-    else:
-        lhs, rhs = xt, s
-
-    if lhs.shape[1] <= 4:
-        # Keep narrow right-hand sides in 2D. The broadcasted 3D reduction
-        # can fail layout conversion on the NVIDIA Ampere compiler.
-        cols = tl.arange(0, lhs.shape[1])
-        out = tl.full((lhs.shape[0], rhs.shape[0]), 0, lhs.dtype)
-        for c in tl.static_range(lhs.shape[1]):
-            x = tl.sum(tl.where(cols[None, :] == c, lhs, 0.0), axis=1)
-            y = tl.sum(tl.where(cols[None, :] == c, rhs, 0.0), axis=1)
-            out = out + x[:, None] * y[None, :]
-        return -out
-
-    return -tl.sum(lhs[:, None, :] * rhs[None, :, :], axis=2)
+        # grad_A = -(gB @ X^H):  grad_A[i, j] = -sum_c gB[i, c] * X[j, c]
+        return -tl.sum(s[:, None, :] * xt[None, :, :], axis=2)
+    # grad_A = -(X^H @ gB):  grad_A[i, j] = -sum_c X[c, i] * gB[c, j]
+    # with xt[a, c] = X[c, a] and s[j, c] = gB[c, j].
+    return -tl.sum(xt[:, None, :] * s[None, :, :], axis=2)
 
 
 @libentry(cache_binding=True)
@@ -1037,15 +1026,67 @@ def _linalg_solve_ex_backward_run(grad_result, result, A, LU, pivots, left, vect
     return ga, gb
 
 
+@libentry()
+@triton.jit
+def _solve_ex_grad_a_kernel(
+    LHS, RHS, GRAD_A, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr
+):
+    batch = tl.program_id(0).to(tl.int64)
+    offsets = tl.program_id(1) * BLOCK_M + tl.arange(0, BLOCK_M)
+    lhs_base = (batch * N + offsets // N) * K
+    rhs_base = (batch * N + offsets % N) * K
+    cols = tl.arange(0, 32)
+    acc = tl.full((BLOCK_M, 32), 0, GRAD_A.dtype.element_ty)
+    for start in range(tl.cdiv(K, 32)):
+        k = start * 32 + cols
+        mask = (offsets[:, None] < N * N) & (k[None, :] < K)
+        lhs = tl.load(LHS + lhs_base[:, None] + k[None, :], mask, other=0)
+        rhs = tl.load(RHS + rhs_base[:, None] + k[None, :], mask, other=0)
+        acc += lhs * rhs
+    tl.store(GRAD_A + batch * N * N + offsets, -tl.sum(acc, axis=1), offsets < N * N)
+
+
+def _use_separate_solve_backward(device):
+    # CUDA 8.x can fail layout conversion in the fused LU backward kernel.
+    return (
+        device.type == "cuda"
+        and torch.version.cuda is not None
+        and torch.cuda.get_device_capability(device)[0] == 8
+    )
+
+
+def _separate_solve_backward(grad_result, result, A, left, vector, needs_A, needs_B):
+    upstream = grad_result.unsqueeze(-1) if vector else grad_result
+    with torch.no_grad():
+        grad_B, _, _, _ = _linalg_solve_ex(A.transpose(-2, -1), upstream, left=left)
+
+    grad_A = None
+    if needs_A:
+        solved = result.unsqueeze(-1) if vector else result
+        if left:
+            lhs, rhs = grad_B.contiguous(), solved.contiguous()
+        else:
+            lhs = solved.transpose(-2, -1).contiguous()
+            rhs = grad_B.transpose(-2, -1).contiguous()
+        n, k = lhs.shape[-2:]
+        batch_shape = lhs.shape[:-2]
+        grad_A = torch.empty(batch_shape + (n, n), dtype=A.dtype, device=A.device)
+        _solve_ex_grad_a_kernel[(math.prod(batch_shape), triton.cdiv(n * n, 4))](
+            lhs, rhs, grad_A, n, k, 4, num_warps=4
+        )
+    if vector:
+        grad_B = grad_B.squeeze(-1)
+    return grad_A, grad_B if needs_B else None
+
+
 def _linalg_solve_ex_backward(
     grad_result, result, A, LU, pivots, left, needs_A, needs_B, vector_case
 ):
     """Gradients of :func:`_linalg_solve_ex` with respect to ``A`` and ``B``.
 
     ``left``/``needs_*``/``vector_case`` describe the forward call and which
-    inputs require a gradient; the two gradients themselves come from
-    :func:`_linalg_solve_ex_backward_run`, which solves the adjoint system from
-    the saved factors and forms ``grad_A`` with a fused reduction.
+    inputs require a gradient. The fused path solves the adjoint system
+    from the saved factors. CUDA 8.x uses separate solve and reduction kernels.
 
     The gradients are returned in the joint broadcast batch. When only one of
     ``A``/``B`` was expanded, autograd reduces the result onto the smaller input
@@ -1058,6 +1099,10 @@ def _linalg_solve_ex_backward(
         grad_B = torch.zeros_like(result) if needs_B else None
         return grad_A, grad_B
 
+    if _use_separate_solve_backward(A.device):
+        return _separate_solve_backward(
+            grad_result, result, A, left, vector_case, needs_A, needs_B
+        )
     grad_A, grad_B = _linalg_solve_ex_backward_run(
         grad_result, result, A, LU, pivots, left, vector_case
     )
