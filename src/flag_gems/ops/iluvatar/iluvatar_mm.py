@@ -46,7 +46,6 @@ def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     K2, N = b.shape
     assert K == K2
     out = torch.empty((M, N), device=a.device, dtype=a.dtype)
-
     BLOCK_M = 64
     BLOCK_N = 64
     BLOCK_K = 32

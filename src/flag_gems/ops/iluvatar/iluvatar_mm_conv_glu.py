@@ -20,7 +20,6 @@ def _mm_conv_glu_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    # 权重第二维是 2*Cout，一次加载 2*BLOCK_N
     acc = tl.zeros((BLOCK_M, BLOCK_N * 2), dtype=tl.float32)
     for k in range(0, K, BLOCK_K):
         a = tl.load(
@@ -48,7 +47,7 @@ def _mm_conv_glu_kernel(
 
 def iluvatar_mm_conv_glu(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     """
-    MM+GLU融合算子
+    MM+GLU fusion: output = a * sigmoid(b)
     x: [M, K]
     weight: [K, 2*Cout]
     return: [M, Cout]
@@ -62,7 +61,7 @@ def iluvatar_mm_conv_glu(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     out = torch.empty((M, Cout), device=x.device, dtype=x.dtype)
 
     BLOCK_M = 64
-    BLOCK_N = 32
+    BLOCK_N = 16
     BLOCK_K = 32
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(Cout, meta["BLOCK_N"]))
     _mm_conv_glu_kernel[grid](

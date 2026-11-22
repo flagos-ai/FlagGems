@@ -53,7 +53,6 @@ def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor) -
     K2, N = mat2.shape
     assert K == K2
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-
     BLOCK_M = 64
     BLOCK_N = 64
     BLOCK_K = 32
