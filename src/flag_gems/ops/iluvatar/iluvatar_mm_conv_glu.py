@@ -20,6 +20,7 @@ def _mm_conv_glu_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
+    # 权重第二维是 2*Cout，一次加载 2*BLOCK_N
     acc = tl.zeros((BLOCK_M, BLOCK_N * 2), dtype=tl.float32)
     for k in range(0, K, BLOCK_K):
         a = tl.load(
