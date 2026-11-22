@@ -1946,7 +1946,7 @@ _FULL_CONFIG = (
     ("normal.float_Tensor", normal_float_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
-    ("normal_", normal_),
+    ("normal_", normal_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("normal_functional", normal_functional),
     ("not_equal.Scalar", not_equal_scalar),
     ("not_equal.Tensor", not_equal),
