@@ -20,7 +20,6 @@ def test_bmm_non_aligned():
     print("✅ test_bmm_non_aligned pass")
 
 def test_addmm_correct_order():
-    # torch.addmm(bias, mat1, mat2)
     bias = torch.randn(64,128, device="cuda", dtype=torch.float16)
     mat1 = torch.randn(64,32, device="cuda", dtype=torch.float16)
     mat2 = torch.randn(32,128, device="cuda", dtype=torch.float16)
@@ -30,16 +29,15 @@ def test_addmm_correct_order():
     print("✅ test_addmm_correct_order pass")
 
 def test_mm_conv_glu_shape_logic():
-    # input (2,8), w (8,8) → 2*Cout=8 → Cout=4, output (2,4)
     x = torch.randn(2,8, device="cuda", dtype=torch.float16)
     w = torch.randn(8,8, device="cuda", dtype=torch.float16)
+    ref_raw = x @ w
+    ref_val = ref_raw[:, :4]
+    ref_gate = ref_raw[:, 4:]
+    ref_glu = ref_val * torch.sigmoid(ref_gate)
     out = iluvatar_mm_conv_glu(x, w)
-    # 参考实现
-    mm = x @ w
-    val = mm[:, :4]
-    gate = mm[:,4:]
-    ref = val * torch.sigmoid(gate)
-    torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
+    assert out.shape == (2,4), f"shape wrong {out.shape}"
+    torch.testing.assert_close(out, ref_glu, atol=1e-2, rtol=1e-2)
     print("✅ test_mm_conv_glu_shape_logic pass")
 
 if __name__ == "__main__":
