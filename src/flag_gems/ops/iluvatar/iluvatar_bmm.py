@@ -35,25 +35,25 @@ def _iluvatar_bmm_kernel(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_K)):
-        k_offs = k * BLOCK_K
-        mask_k = k_offs + offs_k < K
+        mask_k = offs_k < K
         a = tl.load(a_ptrs, mask=mask_m[:, None] & mask_k[None, :], other=0.0)
         b = tl.load(b_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
         acc += tl.dot(a, b)
         a_ptrs += BLOCK_K * stride_ak
         b_ptrs += BLOCK_K * stride_bk
+        K -= BLOCK_K
 
     c_ptrs = c_base + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
     tl.store(c_ptrs, acc, mask=mask_m[:, None] & mask_n[None, :])
 
 def iluvatar_bmm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     assert a.device.type == "privateuseone"
+    assert b.device.type == "privateuseone"
     B, M, K = a.shape
     B2, K2, N = b.shape
     assert B == B2 and K == K2
     out = torch.empty((B, M, N), device=a.device, dtype=a.dtype)
-
-    grid = lambda meta: (B * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]), )
+    grid = lambda meta: (B * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
     _iluvatar_bmm_kernel[grid](
         a, b, out,
         B, M, N, K,

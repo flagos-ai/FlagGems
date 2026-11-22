@@ -6,13 +6,13 @@ def mm_conv_glu_fused(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> t
     """
     Fused MM + Broadcast Bias + GLU
     Equivalent:
-        full = x @ w + bias
-        out = full[..., :D//2] * torch.sigmoid(full[..., D//2:])
+    full = x @ w + bias
+    out = full[..., :D//2] * torch.sigmoid(full[..., D//2:])
     Host pre-split weight/bias, avoid Iluvatar triton dynamic slice limitation
     Args:
         x: [M, K] privateuseone
         w: [K, D], D must be even
-        bias: [D]
+        bias: [D,]
     Returns:
         out: [M, D//2]
     """
@@ -41,8 +41,7 @@ def mm_conv_glu_fused(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor) -> t
         x.stride(0), x.stride(1),
         wa.stride(0), wa.stride(1),
         wg.stride(0), wg.stride(1),
-        ba.stride(0),
-        bg.stride(0),
+        ba.stride(0), bg.stride(0),
         out.stride(0), out.stride(1),
         BLOCK_M=64, BLOCK_N=64, BLOCK_K=32
     )

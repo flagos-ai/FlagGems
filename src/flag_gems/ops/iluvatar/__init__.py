@@ -23,7 +23,9 @@ def meta_mm(a, b):
 
 @torch.library.register_fake("flag_gems::iluvatar_addmm")
 def meta_addmm(bias, mat1, mat2, beta, alpha):
-    return bias.new_empty(bias.shape)
+    M, _ = mat1.shape
+    _, N = mat2.shape
+    return mat1.new_empty((M, N))
 
 @torch.library.register_fake("flag_gems::iluvatar_bmm")
 def meta_bmm(a, b):

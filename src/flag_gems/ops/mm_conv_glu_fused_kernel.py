@@ -35,23 +35,27 @@ def mm_conv_glu_fused_kernel(
 
     acc_a = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     acc_g = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
     for k in range(0, tl.cdiv(K, BLOCK_K)):
-        k_offs = k * BLOCK_K
-        mask_k = k_offs + offs_k < K
+        mask_k = offs_k < K
         x = tl.load(x_ptrs, mask=mask_m[:, None] & mask_k[None, :], other=0.0)
         wa = tl.load(wa_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
         wg = tl.load(wg_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
         acc_a += tl.dot(x, wa)
         acc_g += tl.dot(x, wg)
+
         x_ptrs += BLOCK_K * stride_xk
         wa_ptrs += BLOCK_K * stride_wak
         wg_ptrs += BLOCK_K * stride_wgk
+        K -= BLOCK_K
 
-    ba = tl.load(ba_ptr + offs_n * stride_ban, mask=offs_n < N, other=0.0)
-    bg = tl.load(bg_ptr + offs_n * stride_bgn, mask=offs_n < N, other=0.0)
-    y_a = acc_a + ba[None, :]
-    y_g = acc_g + bg[None, :]
-    out_val = y_a * tl.sigmoid(y_g)
+    ba = tl.load(ba_ptr + offs_n * stride_ban, mask=mask_n, other=0.0)
+    bg = tl.load(bg_ptr + offs_n * stride_bgn, mask=mask_n, other=0.0)
+    acc_a = acc_a + ba[None, :]
+    acc_g = acc_g + bg[None, :]
+
+    gate = tl.sigmoid(acc_g)
+    out_val = acc_a * gate
 
     out_ptrs = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
     tl.store(out_ptrs, out_val, mask=mask_m[:, None] & mask_n[None, :])
