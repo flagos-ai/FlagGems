@@ -2,7 +2,7 @@
 from .iluvatar_mm import iluvatar_mm
 from .iluvatar_bmm import iluvatar_bmm
 from .iluvatar_addmm import iluvatar_addmm
-from .iluvatar.iluvatar_mm_conv_glu import iluvatar_mm_conv_glu
+from .iluvatar_mm_conv_glu import iluvatar_mm_conv_glu
 
 __all__ = [
     "iluvatar_mm",
