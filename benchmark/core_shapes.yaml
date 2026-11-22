@@ -1627,3 +1627,14 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+nansum_backward:
+  shapes:
+  - - 257
+  - - 32
+    - 128
+  - - 256
+    - 1024
+  - - 1024
+    - 4096
+  shape_desc: Frozen backward30 reduction input shape
