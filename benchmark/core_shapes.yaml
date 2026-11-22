@@ -1627,3 +1627,15 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+nll_loss_backward:
+  shapes:
+  - - 2
+    - 7
+  - - 64
+    - 128
+  - - 512
+    - 1024
+  - - 2048
+    - 1024
+  shape_desc: Frozen backward30 nll input shape
