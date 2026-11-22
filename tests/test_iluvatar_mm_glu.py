@@ -1,5 +1,5 @@
 import torch
-from flag_gems.ops import iluvatar_mm, iluvatar_bmm, iluvatar_addmm, iluvatar_mm_conv_glu
+from flag_gems.ops import iluvatar_mm, iluvatar_bmm, iluvatar_addmm, iluvatar_mm_glu
 
 torch.manual_seed(42)
 device = torch.device("cuda")
@@ -29,20 +29,20 @@ def test_addmm_correct_order():
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
     print("✅ test_addmm_correct_order pass")
 
-def test_mm_conv_glu_shape_logic():
+def test_mm_glu_shape_logic():
     x = torch.randn(2, 8, device=device, dtype=torch.float16)
     w = torch.randn(8, 8, device=device, dtype=torch.float16)
-    out = iluvatar_mm_conv_glu(x, w)
+    out = iluvatar_mm_glu(x, w)
     assert out.shape == (2, 4), f"GLU shape wrong {out.shape}"
     raw = x @ w
     x1, x2 = raw.chunk(2, dim=-1)
     ref = x1 * torch.sigmoid(x2)
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
-    print("✅ test_mm_conv_glu_shape_logic pass")
+    print("✅ test_mm_glu_shape_logic pass")
 
 if __name__ == "__main__":
     test_mm_non_aligned()
     test_bmm_non_aligned()
     test_addmm_correct_order()
-    test_mm_conv_glu_shape_logic()
-    print("\n🎉 All Iluvatar mm/bmm/addmm/mm-conv-glu tests passed!")
+    test_mm_glu_shape_logic()
+    print("\n🎉 All Iluvatar mm/bmm/addmm/mm-glu tests passed!")
