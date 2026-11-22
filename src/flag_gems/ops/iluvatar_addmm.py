@@ -20,6 +20,7 @@ def iluvatar_addmm_kernel(
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
+
     mask_m = offs_m < M
     mask_n = offs_n < N
 
@@ -33,18 +34,16 @@ def iluvatar_addmm_kernel(
     for k in range(0, K, BLOCK_K):
         a = tl.load(
             mat1_ptr + offs_m[:, None] * stride_m1m + (k + offs_k)[None, :] * stride_m1k,
-            mask=mask_m[:, None] & ((k + offs_k)[None,:] < K),
+            mask=mask_m[:, None] & ((k + offs_k)[None, :] < K),
             other=0.0
         )
         b = tl.load(
             mat2_ptr + (k + offs_k)[:, None] * stride_m2k + offs_n[None, :] * stride_m2n,
-            mask=mask_n[None, :] & ((k + offs_k)[:,None] < K),
+            mask=mask_n[None, :] & ((k + offs_k)[:, None] < K),
             other=0.0
         )
         acc += tl.dot(a, b)
-
-    out_val = acc + bias
-    out_val = out_val.to(tl.float16)
+    out_val = acc.to(bias.dtype) + bias
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
         out_val,
@@ -53,15 +52,19 @@ def iluvatar_addmm_kernel(
 
 def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
     """
-    Standard addmm interface: addmm(bias, mat1, mat2)
-    out = bias + mat1 @ mat2
-    align with torch.addmm(input, mat1, mat2)
+    Align torch.addmm(bias, mat1, mat2)
+    bias: [M,N], mat1:[M,K], mat2:[K,N]
     """
-    M, K = mat1.shape
-    K, N = mat2.shape
-    out = torch.empty((M, N), device=bias.device, dtype=bias.dtype)
+    M, N = bias.shape
+    M1, K = mat1.shape
+    K2, N2 = mat2.shape
+    assert M == M1 and N == N2 and K == K2
+    out = torch.empty_like(bias)
 
-    grid = (triton.cdiv(M,64), triton.cdiv(N,64))
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
+    )
     iluvatar_addmm_kernel[grid](
         bias, mat1, mat2, out,
         M, N, K,

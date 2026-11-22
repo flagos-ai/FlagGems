@@ -25,19 +25,20 @@ def iluvatar_mm_kernel(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k in range(0, K, BLOCK_K):
-        ak = tl.load(
+        a = tl.load(
             a_ptr + offs_m[:, None] * stride_am + (k + offs_k)[None, :] * stride_ak,
-            mask=mask_m[:, None] & ((k + offs_k)[None,:] < K),
+            mask=mask_m[:, None] & ((k + offs_k)[None, :] < K),
             other=0.0
         )
-        bk = tl.load(
+        b = tl.load(
             b_ptr + (k + offs_k)[:, None] * stride_bk + offs_n[None, :] * stride_bn,
-            mask=mask_n[None, :] & ((k + offs_k)[:,None] < K),
+            mask=mask_n[None, :] & ((k + offs_k)[:, None] < K),
             other=0.0
         )
-        acc += tl.dot(ak, bk)
+        acc += tl.dot(a, b)
 
-    c_val = acc.to(tl.float16)
+    c_dtype = tl.float16
+    c_val = acc.to(c_dtype)
     tl.store(
         c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn,
         c_val,
@@ -45,12 +46,21 @@ def iluvatar_mm_kernel(
     )
 
 def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    assert a.shape[1] == b.shape[0], "mm dim mismatch"
+    """
+    a: [M, K], b: [K, N]
+    return: [M, N]
+    """
+    assert a.dim() == 2 and b.dim() == 2
+    assert a.shape[1] == b.shape[0]
     M, K = a.shape
-    K, N = b.shape
+    K2, N = b.shape
+    assert K == K2
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
 
-    grid = (triton.cdiv(M, 64), triton.cdiv(N, 64))
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
+    )
     iluvatar_mm_kernel[grid](
         a, b, c,
         M, N, K,

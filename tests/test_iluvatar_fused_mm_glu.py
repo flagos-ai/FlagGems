@@ -3,9 +3,13 @@ import pytest
 from flag_gems.ops import iluvatar_mm, iluvatar_addmm, iluvatar_bmm, fused_mm_glu
 
 def test_glu_shape_correct():
-    x = torch.randn(2,8, device='cuda')
+    x = torch.randn(2, 8, device='cuda')
     y = fused_mm_glu(x)
-    assert y.shape == (2,4)
+    assert y.shape == (2, 4)
+    ref_a = x[..., :4]
+    ref_b = x[..., 4:]
+    ref = ref_a * torch.sigmoid(ref_b)
+    torch.testing.assert_close(y, ref, atol=1e-2, rtol=1e-2)
 
 @pytest.mark.parametrize("M,N,K", [
     (65,65,65),
