@@ -16759,6 +16759,18 @@ ops:
   - LinearAlg
   stages:
   - stable: '2.0'
+- id: prod_backward
+  description: Triton backward implementation and autograd contract for prod.
+  for:
+  - prod
+  - prod.dim_int
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: prod_dim_int
   description: Returns the product of each row of the `input` tensor in the given
     dimension `dim`.
