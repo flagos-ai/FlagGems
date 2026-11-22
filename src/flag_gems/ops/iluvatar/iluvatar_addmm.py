@@ -6,15 +6,14 @@ import triton.language as tl
 def _addmm_kernel(
     bias_ptr, a_ptr, b_ptr, out_ptr,
     M, N, K,
-    stride_bias_m, stride_bias_n,
+    stride_bm, stride_bn,
     stride_am, stride_ak,
-    stride_bk, stride_bn,
+    stride_bk, stride_bn2,
     stride_om, stride_on,
+    beta, alpha,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    alpha: tl.constexpr,
-    beta: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
@@ -31,32 +30,39 @@ def _addmm_kernel(
             other=0.0
         )
         b = tl.load(
-            b_ptr + (k + offs_k)[:, None] * stride_bk + offs_n[None, :] * stride_bn,
+            b_ptr + (k + offs_k)[:, None] * stride_bk + offs_n[None, :] * stride_bn2,
             mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < N),
             other=0.0
         )
         acc += tl.dot(a, b)
+
     bias = tl.load(
-        bias_ptr + offs_m[:, None] * stride_bias_m + offs_n[None, :] * stride_bias_n,
+        bias_ptr + offs_m[:, None] * stride_bm + offs_n[None, :] * stride_bn,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
         other=0.0
     )
     out_val = beta * bias + alpha * acc
+
     tl.store(
         out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
         out_val.to(tl.float16),
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N)
     )
 
-def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, beta: float = 1.0, alpha: float = 1.0) -> torch.Tensor:
+def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, *, beta: float = 1.0, alpha: float = 1.0) -> torch.Tensor:
+    assert bias.is_contiguous()
+    assert mat1.is_contiguous()
+    assert mat2.is_contiguous()
     M, K = mat1.shape
     K2, N = mat2.shape
     assert K == K2
     out = torch.empty((M, N), device=bias.device, dtype=bias.dtype)
+
     BLOCK_M = 64
     BLOCK_N = 64
-    BLOCK_K = 32
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
+    BLOCK_K = 64
+    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
+
     _addmm_kernel[grid](
         bias, mat1, mat2, out,
         M, N, K,
@@ -64,7 +70,9 @@ def iluvatar_addmm(bias: torch.Tensor, mat1: torch.Tensor, mat2: torch.Tensor, b
         mat1.stride(0), mat1.stride(1),
         mat2.stride(0), mat2.stride(1),
         out.stride(0), out.stride(1),
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
-        alpha=alpha, beta=beta
+        beta, alpha,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
     )
     return out

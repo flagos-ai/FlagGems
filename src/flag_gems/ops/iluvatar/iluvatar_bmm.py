@@ -6,9 +6,9 @@ import triton.language as tl
 def _bmm_kernel(
     a_ptr, b_ptr, out_ptr,
     B, M, N, K,
-    stride_ab, stride_am, stride_ak,
+    stride_ba, stride_am, stride_ak,
     stride_bb, stride_bk, stride_bn,
-    stride_ob, stride_om, stride_on,
+    stride_bo, stride_om, stride_on,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -24,7 +24,7 @@ def _bmm_kernel(
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k in range(0, K, BLOCK_K):
         a = tl.load(
-            a_ptr + pid_b * stride_ab + offs_m[:, None] * stride_am + (k + offs_k)[None, :] * stride_ak,
+            a_ptr + pid_b * stride_ba + offs_m[:, None] * stride_am + (k + offs_k)[None, :] * stride_ak,
             mask=(pid_b < B) & (offs_m[:, None] < M) & ((k + offs_k)[None, :] < K),
             other=0.0
         )
@@ -34,28 +34,34 @@ def _bmm_kernel(
             other=0.0
         )
         acc += tl.dot(a, b)
+
     tl.store(
-        out_ptr + pid_b * stride_ob + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
+        out_ptr + pid_b * stride_bo + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
         acc.to(tl.float16),
         mask=(pid_b < B) & (offs_m[:, None] < M) & (offs_n[None, :] < N)
     )
 
 def iluvatar_bmm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    assert a.ndim == 3 and b.ndim == 3
+    assert a.is_contiguous()
+    assert b.is_contiguous()
     B, M, K = a.shape
     B2, K2, N = b.shape
     assert B == B2 and K == K2
     out = torch.empty((B, M, N), device=a.device, dtype=a.dtype)
+
     BLOCK_M = 64
     BLOCK_N = 64
-    BLOCK_K = 32
-    grid = lambda meta: (B, triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
+    BLOCK_K = 64
+    grid = (B, triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
+
     _bmm_kernel[grid](
         a, b, out,
         B, M, N, K,
         a.stride(0), a.stride(1), a.stride(2),
         b.stride(0), b.stride(1), b.stride(2),
         out.stride(0), out.stride(1), out.stride(2),
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
     )
     return out
