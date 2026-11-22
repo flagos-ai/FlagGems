@@ -15525,6 +15525,24 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: nested_view_from_buffer_backward
+  description: |
+    Backward pass for `_nested_view_from_buffer`: restores the flat buffer's gradient
+    from the packed per-component gradients. Each component's gradient chunk is
+    scattered into a zero buffer at its (offset, strides) view; positions not covered
+    by any component stay zero. ATen's own NestedViewFromBufferBackward0 returns a
+    zero-copy view of the upstream gradient storage, so this operator materializes
+    the buffer-shaped gradient instead.
+  for:
+  - _nested_view_from_buffer_backward
+  labels:
+  - aten
+  - KernelGen
+  - NoCPU
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
