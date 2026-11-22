@@ -5,9 +5,9 @@ import triton.language as tl
 @triton.jit
 def _mm_conv_glu_kernel(
     a_ptr, w_ptr, out_ptr,
-    M, K, N,
+    M, Cout, K,
     stride_am, stride_ak,
-    stride_wk, stride_wn,
+    stride_wk, stride_wcout,
     stride_om, stride_on,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -15,54 +15,61 @@ def _mm_conv_glu_kernel(
 ):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
+
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    a = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    w = w_ptr + offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_M, BLOCK_N * 2), dtype=tl.float32)
     for k in range(0, K, BLOCK_K):
-        a_mask = (offs_m[:, None] < M) & (offs_k[None, :] + k < K)
-        w_mask = (offs_k[:, None] + k < K) & (offs_n[None, :] < N)
-        a_val = tl.load(a, mask=a_mask, other=0.0)
-        w_val = tl.load(w, mask=w_mask, other=0.0)
-        acc += tl.dot(a_val, w_val)
-        a += BLOCK_K * stride_ak
-        w += BLOCK_K * stride_wn
+        a = tl.load(
+            a_ptr + offs_m[:, None] * stride_am + (k + offs_k)[None, :] * stride_ak,
+            mask=(offs_m[:, None] < M) & ((k + offs_k)[None, :] < K),
+            other=0.0
+        )
+        w = tl.load(
+            w_ptr + (k + offs_k)[:, None] * stride_wk + (offs_n * 2)[None, :] * stride_wcout,
+            mask=((k + offs_k)[:, None] < K) & ((offs_n * 2)[None, :] < Cout * 2),
+            other=0.0
+        )
+        acc += tl.dot(a, w)
 
-    out = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
-    out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-    tl.store(out, acc, mask=out_mask)
+    x = acc[:, 0::2]
+    gate = acc[:, 1::2]
+    glu = x * tl.sigmoid(gate)
+    out_val = glu.to(tl.float16)
+
+    tl.store(
+        out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
+        out_val,
+        mask=(offs_m[:, None] < M) & (offs_n[None, :] < Cout)
+    )
 
 def iluvatar_mm_conv_glu(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     """
-    Fused MM + GLU:
-    y = mm(x, weight) -> split last dim into a, b; out = a * sigmoid(b)
-    weight.shape = [K, 2*O]
-    output shape = [M, O]
-    example: x (2,8), weight (8,8) => mm output (2,8) -> split (2,4) & (2,4) -> out (2,4)
+    MM+GLU融合算子
+    x: [M, K]
+    weight: [K, 2*Cout]
+    return: [M, Cout]
+    example: x.shape (2,8), weight.shape (8,8) → output (2,4)
     """
     M, K = x.shape
-    Kw, twoO = weight.shape
-    assert K == Kw
-    assert twoO % 2 == 0
-    O = twoO // 2
+    K2, Cout2 = weight.shape
+    assert K == K2
+    assert Cout2 % 2 == 0
+    Cout = Cout2 // 2
+    out = torch.empty((M, Cout), device=x.device, dtype=x.dtype)
 
-    mm_out = torch.empty((M, twoO), device=x.device, dtype=x.dtype)
     BLOCK_M = 64
-    BLOCK_N = 64
-    BLOCK_K = 64
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(twoO, BLOCK_N))
+    BLOCK_N = 32
+    BLOCK_K = 32
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(Cout, meta["BLOCK_N"]))
     _mm_conv_glu_kernel[grid](
-        x, weight, mm_out,
-        M, K, twoO,
+        x, weight, out,
+        M, Cout, K,
         x.stride(0), x.stride(1),
         weight.stride(0), weight.stride(1),
-        mm_out.stride(0), mm_out.stride(1),
+        out.stride(0), out.stride(1),
         BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
     )
-    # 正确GLU：对半切
-    a, b = mm_out.split(O, dim=-1)
-    return a * torch.sigmoid(b)
+    return out

@@ -5,7 +5,7 @@ import triton.language as tl
 @triton.jit
 def _mm_kernel(
     a_ptr, b_ptr, out_ptr,
-    M, K, N,
+    M, N, K,
     stride_am, stride_ak,
     stride_bk, stride_bn,
     stride_om, stride_on,
@@ -20,25 +20,28 @@ def _mm_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    a = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k in range(0, K, BLOCK_K):
-        a_mask = (offs_m[:, None] < M) & (offs_k[None, :] + k < K)
-        b_mask = (offs_k[:, None] + k < K) & (offs_n[None, :] < N)
-        a_val = tl.load(a, mask=a_mask, other=0.0)
-        b_val = tl.load(b, mask=b_mask, other=0.0)
-        acc += tl.dot(a_val, b_val)
-        a += BLOCK_K * stride_ak
-        b += BLOCK_K * stride_bk
+        a = tl.load(
+            a_ptr + offs_m[:, None] * stride_am + (k + offs_k)[None, :] * stride_ak,
+            mask=(offs_m[:, None] < M) & ((k + offs_k)[None, :] < K),
+            other=0.0
+        )
+        b = tl.load(
+            b_ptr + (k + offs_k)[:, None] * stride_bk + offs_n[None, :] * stride_bn,
+            mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < N),
+            other=0.0
+        )
+        acc += tl.dot(a, b)
 
-    out = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
-    out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-    tl.store(out, acc, mask=out_mask)
+    out_val = acc.to(tl.float16)
+    tl.store(
+        out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on,
+        out_val,
+        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N)
+    )
 
 def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    assert a.shape[1] == b.shape[0]
     M, K = a.shape
     K2, N = b.shape
     assert K == K2
@@ -46,12 +49,11 @@ def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     BLOCK_M = 64
     BLOCK_N = 64
-    BLOCK_K = 64
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-
+    BLOCK_K = 32
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
     _mm_kernel[grid](
         a, b, out,
-        M, K, N,
+        M, N, K,
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         out.stride(0), out.stride(1),
