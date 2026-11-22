@@ -3,64 +3,61 @@ import triton
 import triton.language as tl
 
 @triton.jit
-def _iluvatar_mm_kernel(
-    a_ptr, b_ptr, c_ptr,
-    M, N, K,
+def _mm_kernel(
+    a_ptr, b_ptr, out_ptr,
+    M, K, N,
     stride_am, stride_ak,
     stride_bk, stride_bn,
-    stride_cm, stride_cn,
-    BLOCK_SIZE_M: tl.constexpr = 64,
-    BLOCK_SIZE_N: tl.constexpr = 64,
-    BLOCK_SIZE_K: tl.constexpr = 32,
-    GROUP_SIZE_M: tl.constexpr = 8,
+    stride_om, stride_on,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    num_pid_in_group = GROUP_SIZE_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_SIZE_M
-    group_size_m = tl.minimum(num_pid_m - first_pid_m, GROUP_SIZE_M)
-    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
 
-    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
 
-    mask_m = offs_am < M
-    mask_n = offs_bn < N
+    mask_m = offs_m < M
+    mask_n = offs_n < N
 
-    a_ptrs = a_ptr + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
-    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        mask_k = offs_k < K
-        a = tl.load(a_ptrs, mask=mask_m[:, None] & mask_k[None, :], other=0.0)
-        b = tl.load(b_ptrs, mask=mask_k[:, None] & mask_n[None, :], other=0.0)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        k_offs = k * BLOCK_K
+        a = tl.load(
+            a_ptr + offs_m[:, None] * stride_am + (k_offs + offs_k)[None, :] * stride_ak,
+            mask=mask_m[:, None] & ((k_offs + offs_k) < K)[None, :],
+            other=0.0
+        )
+        b = tl.load(
+            b_ptr + (k_offs + offs_k)[:, None] * stride_bk + offs_n[None, :] * stride_bn,
+            mask=((k_offs + offs_k) < K)[:, None] & mask_n[None, :],
+            other=0.0
+        )
         acc += tl.dot(a, b)
-        a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
-        K -= BLOCK_SIZE_K
 
-    c_ptrs = c_ptr + offs_am[:, None] * stride_cm + offs_bn[None, :] * stride_cn
-    tl.store(c_ptrs, acc, mask=mask_m[:, None] & mask_n[None, :])
+    out = acc.to(tl.float16)
+    out_mask = mask_m[:, None] & mask_n[None, :]
+    tl.store(out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on, out, mask=out_mask)
 
-def iluvatar_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    assert a.device.type == "privateuseone"
-    assert b.device.type == "privateuseone"
+def iluvatar_mm(a: torch.Tensor, b: torch.Tensor, BLOCK_M=64, BLOCK_N=64, BLOCK_K=64):
     M, K = a.shape
-    K2, N = b.shape
-    assert K == K2
+    Kb, N = b.shape
+    assert K == Kb
     out = torch.empty((M, N), device=a.device, dtype=a.dtype)
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE_M"]) * triton.cdiv(N, meta["BLOCK_SIZE_N"]),)
-    _iluvatar_mm_kernel[grid](
+    # host侧：python整数上取整，禁止tl.cdiv
+    grid_m = (M + BLOCK_M - 1) // BLOCK_M
+    grid_n = (N + BLOCK_N - 1) // BLOCK_N
+    grid = (grid_m, grid_n)
+    _mm_kernel[grid](
         a, b, out,
-        M, N, K,
+        M, K, N,
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         out.stride(0), out.stride(1),
-        BLOCK_SIZE_M=64, BLOCK_SIZE_N=64, BLOCK_SIZE_K=32, GROUP_SIZE_M=8
+        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K
     )
     return out
