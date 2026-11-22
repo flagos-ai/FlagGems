@@ -15158,6 +15158,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_layer_norm_backward
+  description: Triton backward implementation and autograd contract for layer_norm_backward.
+  for:
+  - native_layer_norm_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: native_multi_head_attention
   description: 'Triton kernel implementation of the native multi-head attention forward
     pass, including the fused qkv projection, scaled dot-product attention and output

@@ -1627,3 +1627,15 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+native_layer_norm_backward:
+  shapes:
+  - - 2
+    - 32
+  - - 32
+    - 128
+  - - 256
+    - 1024
+  - - 1024
+    - 4096
+  shape_desc: Frozen backward30 layer_norm input shape
