@@ -142,6 +142,14 @@ class MedianNoDimBackwardBenchmark(_ForwardShapeBenchmark, MedianNoDimBenchmark)
 
 
 class MedianDimBackwardBenchmark(_ForwardShapeBenchmark, MedianReductionBenchmark):
+    def shape_numel(self, shape_spec):
+        shape = (
+            shape_spec[0]
+            if shape_spec and isinstance(shape_spec[0], (list, tuple))
+            else shape_spec
+        )
+        return super().shape_numel(shape)
+
     def _benchmark_callable(self, op, *args, **kwargs):
         inp = args[0]
         dim = args[1]

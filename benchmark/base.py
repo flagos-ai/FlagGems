@@ -288,10 +288,15 @@ class Benchmark:
         # forward.  Keep at least the shapes that fit within the limit.
         if self.is_backward and self.MAX_BACKWARD_ELEMENTS is not None:
             filtered = [
-                s for s in self.shapes if math.prod(s) <= self.MAX_BACKWARD_ELEMENTS
+                s
+                for s in self.shapes
+                if self.shape_numel(s) <= self.MAX_BACKWARD_ELEMENTS
             ]
             if filtered:
                 self.shapes = filtered
+
+    def shape_numel(self, shape):
+        return math.prod(shape)
 
     def set_more_shapes(self) -> Optional[list[list[Any] | tuple[Any]]]:
         """Base method (optional to override in subclasses).
