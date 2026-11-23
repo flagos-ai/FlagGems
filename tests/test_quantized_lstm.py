@@ -134,16 +134,23 @@ def _tolerance(dtype, seq_len):
 def test_accuracy_quantized_lstm(shape, dtype):
     """Single-layer unidirectional quantized_lstm."""
     seq_len, batch_size, input_size, hidden_size = shape
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
+    utils.init_seed(42)
     torch.backends.quantized.engine = "fbgemm"
 
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device="cuda")
-    h0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device="cuda") * 0.1
-    c0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device="cuda") * 0.1
+    inp = torch.randn(
+        seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
+    )
+    h0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
+    c0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
 
     cell_params, layer_ref = _make_cell_params(
-        input_size, hidden_size, True, "cuda", dtype
+        input_size, hidden_size, True, flag_gems.device, dtype
     )
 
     # The kernel accumulates in fp32 regardless of input dtype, so the
@@ -176,19 +183,26 @@ def test_accuracy_quantized_lstm(shape, dtype):
 def test_accuracy_quantized_lstm_bidirectional(shape, dtype):
     """Bidirectional quantized_lstm, covering the reversed-direction path."""
     seq_len, batch_size, input_size, hidden_size = shape
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
+    utils.init_seed(42)
     torch.backends.quantized.engine = "fbgemm"
 
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device="cuda")
-    h0 = torch.randn(2, batch_size, hidden_size, dtype=dtype, device="cuda") * 0.1
-    c0 = torch.randn(2, batch_size, hidden_size, dtype=dtype, device="cuda") * 0.1
+    inp = torch.randn(
+        seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
+    )
+    h0 = (
+        torch.randn(2, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
+    c0 = (
+        torch.randn(2, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
 
     params = []
     layer_refs = []
     for _ in range(2):
         cell_params, layer_ref = _make_cell_params(
-            input_size, hidden_size, True, "cuda", dtype
+            input_size, hidden_size, True, flag_gems.device, dtype
         )
         params.append(cell_params)
         layer_refs.append(layer_ref)
@@ -224,16 +238,23 @@ def test_accuracy_quantized_lstm_bidirectional(shape, dtype):
 def test_accuracy_quantized_lstm_no_bias(shape, dtype):
     """quantized_lstm with has_biases disabled."""
     seq_len, batch_size, input_size, hidden_size = shape
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
+    utils.init_seed(42)
     torch.backends.quantized.engine = "fbgemm"
 
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device="cuda")
-    h0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device="cuda") * 0.1
-    c0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device="cuda") * 0.1
+    inp = torch.randn(
+        seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
+    )
+    h0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
+    c0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
 
     cell_params, layer_ref = _make_cell_params(
-        input_size, hidden_size, False, "cuda", dtype
+        input_size, hidden_size, False, flag_gems.device, dtype
     )
 
     ref_inp = utils.to_reference(inp, upcast=True)
