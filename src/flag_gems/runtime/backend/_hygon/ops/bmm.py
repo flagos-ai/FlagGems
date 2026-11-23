@@ -155,7 +155,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS BMM")
+    logger.debug("GEMS_HYGON BMM")
     assert A.shape[0] == B.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape
@@ -352,7 +352,7 @@ def _bmm_out_launch(A, B, out):
 
 
 def bmm_out(A, B, out):
-    logger.debug("GEMS BMM_OUT")
+    logger.debug("GEMS_HYGON BMM_OUT")
     assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape
