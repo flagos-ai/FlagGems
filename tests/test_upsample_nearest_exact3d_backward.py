@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 CASES = [
     ((1, 1, 2, 3, 4), (4, 6, 8), (None, None, None)),
@@ -30,7 +31,9 @@ CASES = [
 
 @pytest.mark.upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("input_size,output_size,scales", CASES)
-@pytest.mark.parametrize("dtype", [*utils.FLOAT_DTYPES, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [*utils.FLOAT_DTYPES, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
     grad_output = torch.randn(
         (*input_size[:2], *output_size), dtype=dtype, device=flag_gems.device

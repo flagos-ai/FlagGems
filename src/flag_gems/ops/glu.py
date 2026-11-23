@@ -163,13 +163,13 @@ if HAS_TLE_EXTRACT_TILE:
         stride_xn,
         stride_outn,
         D_P2: tl.constexpr,
-        D2_P2: tl.constexpr,
         ROWS_PER_PROGRAM: tl.constexpr,
         LOOP_STAGES: tl.constexpr,
         LOOP_UNROLL: tl.constexpr,
     ):
         row_start = tl.program_id(0) * ROWS_PER_PROGRAM
-        offs = tl.arange(0, D2_P2)
+        # Both halves must fit even when autotuning adjusts block sizes.
+        offs = tl.arange(0, 2 * D_P2)
         offs_d = tl.arange(0, D_P2)
         # Pad A and B separately so extract_tile's second tile starts at B.
         # For power-of-two D this reduces to the original contiguous offsets.
@@ -280,9 +280,13 @@ if HAS_TLE_EXTRACT_SLICE:
     ):
         col_tiles = tl.cdiv(D, BLOCK_N)
         total_tiles = tl.cdiv(N, BLOCK_M) * col_tiles
-        tiles_per_program = tl.cdiv(total_tiles, tl.num_programs(0))
-        tile_begin = tl.program_id(0) * tiles_per_program
-        tile_end = tl.minimum(tile_begin + tiles_per_program, total_tiles)
+        num_programs = tl.num_programs(0)
+        pid = tl.program_id(0)
+        tiles_per_program = total_tiles // num_programs
+        extra_tiles = total_tiles % num_programs
+        # Give the first extra_tiles programs one extra tile each.
+        tile_begin = pid * tiles_per_program + tl.minimum(pid, extra_tiles)
+        tile_end = (pid + 1) * tiles_per_program + tl.minimum(pid + 1, extra_tiles)
         row_offsets = tl.arange(0, BLOCK_M)
         packed_offsets = tl.arange(0, 2 * BLOCK_N)
         out_offsets = tl.arange(0, BLOCK_N)
@@ -394,7 +398,6 @@ def glu(self, dim=-1):
         x = self.reshape(N, D2)
         out = torch.empty((N, D), device=self.device, dtype=self.dtype)
         d_p2 = _next_pow2(D)
-        d2_p2 = _next_pow2(D2)
 
         if N == 0 or D == 0:
             return out.reshape(self.shape[:-1] + (D,))
@@ -409,7 +412,6 @@ def glu(self, dim=-1):
                 x.stride(0),
                 out.stride(0),
                 D_P2=d_p2,
-                D2_P2=d2_p2,
             )
         return out.reshape(self.shape[:-1] + (D,))
 

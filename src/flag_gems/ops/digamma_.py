@@ -81,6 +81,13 @@ def digamma_(*args, **kwargs):
     x = args[0]
     if not isinstance(x, torch.Tensor):
         raise TypeError("digamma_ expects a torch.Tensor as the first argument")
+    # The kernel promotes integral inputs to float32, so the in-place variant
+    # cannot write the result back -- matching native "result type Float
+    # can't be cast to the desired output type Int".
+    if not torch.is_floating_point(x):
+        raise RuntimeError(
+            f"result type Float can't be cast to the desired output type " f"{x.dtype}"
+        )
 
     # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():
@@ -160,6 +167,14 @@ def digamma(A):
     logger.debug("GEMS DIGAMMA")
     if not isinstance(A, torch.Tensor):
         raise TypeError("digamma expects a torch.Tensor as the first argument")
+
+    # PyTorch promotes integral inputs to float32 for digamma
+    # (INT_TO_FLOAT promotion in native_functions semantics).
+    if A.is_floating_point():
+        output_dtype = A.dtype
+    else:
+        output_dtype = torch.float32
+    A = A.to(output_dtype)
 
     output = torch.empty_like(A)
     n_elements = A.numel()

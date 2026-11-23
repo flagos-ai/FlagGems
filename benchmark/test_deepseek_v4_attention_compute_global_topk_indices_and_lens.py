@@ -18,9 +18,7 @@ import pytest
 import torch
 import yaml
 
-from flag_gems.fused.deepseek_v4_attention_compute_global_topk_indices_and_lens import (
-    compute_global_topk_indices_and_lens,
-)
+from flag_gems import compute_global_topk_indices_and_lens
 
 try:
     from vllm.v1.attention.ops.deepseek_v4_ops import (

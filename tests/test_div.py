@@ -306,6 +306,10 @@ def test_div_scalar_scalar(dtype):
 # Complex
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
@@ -339,6 +343,10 @@ def test_div_complex_complex(shape, complex_dtype):
 # div.Tensor
 # Complex
 @pytest.mark.div_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -386,6 +394,10 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 # Complex
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
@@ -395,6 +407,10 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
 def test_div_tensor_int(shape, complex_dtype):
     if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
         pytest.skip("mthreads does not support complex32 dtype")
@@ -430,6 +446,10 @@ def test_div_tensor_int(shape, complex_dtype):
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
 def test_div_complex_int_scalar(shape, complex_dtype):
     if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
         pytest.skip("mthreads does not support complex32 dtype")
