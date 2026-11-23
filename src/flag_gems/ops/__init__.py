@@ -1739,7 +1739,7 @@ from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.triangular_solve import triangular_solve, triangular_solve_out
 from flag_gems.ops.tril import tril, tril_, tril_out
-from flag_gems.ops.trilinear import _trilinear, _trilinear_out
+from flag_gems.ops.trilinear import _trilinear, _trilinear_backward, _trilinear_out
 from flag_gems.ops.triplet_margin_loss import triplet_margin_loss
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.true_divide import true_divide, true_divide_tensor
@@ -2220,6 +2220,7 @@ __all__ = [
     "_transform_bias_rescale_qkv",
     "_transformer_encoder_layer_fwd",
     "_trilinear",
+    "_trilinear_backward",
     "_trilinear_out",
     "_unique2",
     "_unpack_dual",
