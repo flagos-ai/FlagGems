@@ -68,7 +68,7 @@ def _call_median_dim(inp, dim, keepdim, equal_nan=False, exact_indices=True):
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", [0, -1])
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES
+    "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BYTE_DTYPES
 )
 def test_median_dim(dim, keepdim, dtype):
     inp = _unique_input((9, 7), dim, dtype)

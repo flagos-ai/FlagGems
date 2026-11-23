@@ -21,7 +21,7 @@ from . import accuracy_utils as utils
 
 
 def _make_input(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES + utils.FP8_DTYPES:
+    if dtype in utils.BYTE_DTYPES + utils.FP8_DTYPES:
         return torch.randint(0, 10, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
@@ -31,7 +31,7 @@ def _make_input(shape, dtype):
 @pytest.mark.not_equal
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.FP8_DTYPES
 )
 def test_accuracy_not_equal(shape, dtype):
     inp1 = _make_input(shape, dtype)
@@ -48,7 +48,7 @@ def test_accuracy_not_equal(shape, dtype):
 @pytest.mark.not_equal_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.FP8_DTYPES
 )
 def test_accuracy_not_equal_scalar(shape, dtype):
     inp1 = _make_input(shape, dtype)

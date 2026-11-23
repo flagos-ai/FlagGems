@@ -22,7 +22,7 @@ from . import accuracy_utils as utils
 
 @pytest.mark.lshift_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BYTE_INT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BYTE_DTYPES)
 def test_lshift(shape, dtype):
     inp1 = torch.randint(
         low=0, high=0x00FF, size=shape, dtype=torch.int32, device="cpu"
@@ -42,7 +42,7 @@ def test_lshift(shape, dtype):
 
 
 @pytest.mark.lshift_scalar
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BYTE_INT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BYTE_DTYPES)
 def test_lshift_scalar(dtype):
     inp1 = torch.randint(
         low=0, high=0x00FF, size=(11, 17), dtype=torch.int32, device="cpu"

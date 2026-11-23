@@ -26,13 +26,13 @@ from . import accuracy_utils as utils
     "dtype",
     utils.ALL_FLOAT_DTYPES
     + utils.ALL_INT_DTYPES
-    + utils.BYTE_INT_DTYPES
+    + utils.BYTE_DTYPES
     + utils.BOOL_TYPES,
 )
 def test_logical_not(shape, dtype):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    elif dtype in utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES:
+    elif dtype in utils.ALL_INT_DTYPES + utils.BYTE_DTYPES:
         inp = torch.randint(-1000, 1000, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
@@ -50,15 +50,12 @@ def test_logical_not(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    utils.FLOAT_DTYPES
-    + utils.ALL_INT_DTYPES
-    + utils.BYTE_INT_DTYPES
-    + utils.BOOL_TYPES,
+    utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BYTE_DTYPES + utils.BOOL_TYPES,
 )
 def test_logical_not_(shape, dtype):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    elif dtype in utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES:
+    elif dtype in utils.ALL_INT_DTYPES + utils.BYTE_DTYPES:
         inp = torch.randint(-1000, 1000, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
