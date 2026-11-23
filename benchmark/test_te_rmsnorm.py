@@ -14,8 +14,8 @@
 import pytest
 import torch
 
-from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd as gems_te_rmsnorm_bwd
-from flag_gems.ops.te_rmsnorm import te_rmsnorm_fwd as gems_te_rmsnorm_fwd
+from flag_gems import te_rmsnorm_bwd as gems_te_rmsnorm_bwd
+from flag_gems import te_rmsnorm_fwd as gems_te_rmsnorm_fwd
 
 from . import base, consts
 
