@@ -339,6 +339,7 @@ from .threshold_ import threshold_
 from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .trilinear import _trilinear, _trilinear_out
 from .triu import triu
 from .true_divide import (
     true_divide,
@@ -388,6 +389,8 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_trilinear",
+    "_trilinear_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "absolute_",
