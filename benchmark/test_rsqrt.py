@@ -31,6 +31,18 @@ def test_rsqrt():
     bench.run()
 
 
+@pytest.mark.rsqrt_backward
+def test_rsqrt_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="rsqrt_backward",
+        torch_op=torch.rsqrt,
+        gems_op=flag_gems.rsqrt,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 @pytest.mark.rsqrt_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
