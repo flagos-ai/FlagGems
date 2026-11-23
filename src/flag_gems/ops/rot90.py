@@ -142,7 +142,7 @@ def rot90_2d(inp, k, dims, out):
         )
 
 
-def rot90(input, k=1, dims=[0, 1]):
+def _rot90_impl(input, k=1, dims=[0, 1]):
     """
     Rotate an n-D tensor by 90 degrees in the plane specified by dims.
 
@@ -207,3 +207,28 @@ def rot90(input, k=1, dims=[0, 1]):
         out.copy_(out_transposed.permute(inverse_perm))
 
     return out
+
+
+def rot90_backward(grad, k=1, dims=[0, 1]):
+    """Rotate the output gradient in the opposite direction in one launch."""
+    logger.debug("GEMS ROT90_BACKWARD")
+    return _rot90_impl(grad, -k, dims)
+
+
+class Rot90AutogradFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, k, dims):
+        ctx.k = k
+        ctx.dims = tuple(dims)
+        return _rot90_impl(input, k, dims)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return rot90_backward(grad_output, ctx.k, ctx.dims), None, None
+
+
+def rot90(input, k=1, dims=[0, 1]):
+    logger.debug("GEMS ROT90")
+    if torch.is_grad_enabled() and input.requires_grad:
+        return Rot90AutogradFunction.apply(input, k, dims)
+    return _rot90_impl(input, k, dims)
