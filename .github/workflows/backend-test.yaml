@@ -56,6 +56,11 @@ on:
         required: false
         type: string
         default: ''
+      quick_tests:
+        description: 'Set to true to pass --quick to pytest (reduces test quantity for faster runs).'
+        required: false
+        type: string
+        default: ''
       container_image:
         description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (enflame-tops1106, hygon-dtk2604, iluvatar-corex450, kunlunxin-xre5371, metax-maca3810, mthreads-musa520). See .github/backends.json.'
         required: false
@@ -87,6 +92,10 @@ jobs:
   test:
     if: ${{ inputs.backend != 'enflame-tops1106' && inputs.backend != 'iluvatar-corex450' && inputs.backend != 'kunlunxin-xre5371' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon-dtk2604' && inputs.backend != 'mthreads-musa520' && inputs.backend != 'thead-ppu210' }}
     runs-on: ${{ inputs.runner_label }}
+    # Without an explicit timeout, the runner's default cap cuts daily-mode
+    # shards at ~95 min (ascend-op shards all die at exactly 5700 s). 1440
+    # mirrors ops-test.yaml; adjust down once typical shard duration is known.
+    timeout-minutes: 1440
     concurrency:
       group: >-
         op-test-${{ inputs.backend }}-${{ inputs.pr_id }}-shard${{ inputs.shard_index }}
@@ -128,6 +137,7 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
           TOTAL_SHARDS: ${{ inputs.total_shards }}
           SHARD_INDEX: ${{ inputs.shard_index }}
+          QUICK_TESTS: ${{ inputs.quick_tests }}
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
