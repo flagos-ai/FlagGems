@@ -231,7 +231,6 @@ from ._upsample_nearest_exact1d_backward import (  # noqa: F401
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from ._upsample_nearest_exact3d_backward import (
-    _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
 )
 from ._weight_norm_differentiable_backward import (  # noqa: F401
@@ -1035,9 +1034,6 @@ from .upsample_nearest_exact2d import (
     _upsample_nearest_exact2d_out,
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
-from .upsample_nearest_exact3d_backward_grad_input import (
-    _upsample_nearest_exact3d_backward_grad_input,
-)
 from .upsample_trilinear3d import upsample_trilinear3d
 from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
@@ -1248,7 +1244,6 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
-    "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
     "abs",

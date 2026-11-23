@@ -362,14 +362,6 @@ def _impl(
     return grad_input
 
 
-def _upsample_nearest_exact3d_backward(
-    grad_output, output_size, input_size, scales_d=None, scales_h=None, scales_w=None
-):
-    return _impl(
-        grad_output, output_size, input_size, scales_d, scales_h, scales_w, None
-    )
-
-
 def _upsample_nearest_exact3d_backward_grad_input(
     grad_output,
     output_size,

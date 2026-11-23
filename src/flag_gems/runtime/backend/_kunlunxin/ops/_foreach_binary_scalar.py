@@ -42,7 +42,10 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
-from triton import knobs
+try:
+    from triton import knobs
+except ImportError:
+    knobs = None
 from triton.runtime import driver
 
 from flag_gems.runtime import torch_device_fn
@@ -759,145 +762,66 @@ def _foreach16_kernel_pow(
     BLOCK: tl.constexpr,
     EVEN: tl.constexpr,
 ):
-    """One launch, up to 16 tensors with equal numel.
+    """pow entry: reuses the shared ``_f16_body`` (same as ``_foreach16_kernel``),
+    kept as a separate entry so the pow launcher keeps its own num_warps."""
+    _f16_body(
+        a0,
+        a1,
+        a2,
+        a3,
+        a4,
+        a5,
+        a6,
+        a7,
+        a8,
+        a9,
+        a10,
+        a11,
+        a12,
+        a13,
+        a14,
+        a15,
+        o0,
+        o1,
+        o2,
+        o3,
+        o4,
+        o5,
+        o6,
+        o7,
+        o8,
+        o9,
+        o10,
+        o11,
+        o12,
+        o13,
+        o14,
+        o15,
+        s0,
+        s1,
+        s2,
+        s3,
+        s4,
+        s5,
+        s6,
+        s7,
+        s8,
+        s9,
+        s10,
+        s11,
+        s12,
+        s13,
+        s14,
+        s15,
+        n,
+        fn,
+        NT,
+        OT,
+        BLOCK,
+        EVEN,
+    )
 
-    Every program walks the same ``BLOCK``-element chunk of each live tensor
-    (``NT`` constexpr-guarded), so each pointer stays a kernel argument all the
-    way into the load/store -- the block-DMA analysis can prove stride 1.
-    """
-    off = tl.program_id(0) * BLOCK
-    idx = off + tl.arange(0, BLOCK)
-    if EVEN:
-        if NT > 0:
-            tl.store(o0 + idx, fn(tl.load(a0 + idx).to(OT), s0.to(OT)).to(OT))
-        if NT > 1:
-            tl.store(o1 + idx, fn(tl.load(a1 + idx).to(OT), s1.to(OT)).to(OT))
-        if NT > 2:
-            tl.store(o2 + idx, fn(tl.load(a2 + idx).to(OT), s2.to(OT)).to(OT))
-        if NT > 3:
-            tl.store(o3 + idx, fn(tl.load(a3 + idx).to(OT), s3.to(OT)).to(OT))
-        if NT > 4:
-            tl.store(o4 + idx, fn(tl.load(a4 + idx).to(OT), s4.to(OT)).to(OT))
-        if NT > 5:
-            tl.store(o5 + idx, fn(tl.load(a5 + idx).to(OT), s5.to(OT)).to(OT))
-        if NT > 6:
-            tl.store(o6 + idx, fn(tl.load(a6 + idx).to(OT), s6.to(OT)).to(OT))
-        if NT > 7:
-            tl.store(o7 + idx, fn(tl.load(a7 + idx).to(OT), s7.to(OT)).to(OT))
-        if NT > 8:
-            tl.store(o8 + idx, fn(tl.load(a8 + idx).to(OT), s8.to(OT)).to(OT))
-        if NT > 9:
-            tl.store(o9 + idx, fn(tl.load(a9 + idx).to(OT), s9.to(OT)).to(OT))
-        if NT > 10:
-            tl.store(o10 + idx, fn(tl.load(a10 + idx).to(OT), s10.to(OT)).to(OT))
-        if NT > 11:
-            tl.store(o11 + idx, fn(tl.load(a11 + idx).to(OT), s11.to(OT)).to(OT))
-        if NT > 12:
-            tl.store(o12 + idx, fn(tl.load(a12 + idx).to(OT), s12.to(OT)).to(OT))
-        if NT > 13:
-            tl.store(o13 + idx, fn(tl.load(a13 + idx).to(OT), s13.to(OT)).to(OT))
-        if NT > 14:
-            tl.store(o14 + idx, fn(tl.load(a14 + idx).to(OT), s14.to(OT)).to(OT))
-        if NT > 15:
-            tl.store(o15 + idx, fn(tl.load(a15 + idx).to(OT), s15.to(OT)).to(OT))
-    else:
-        m = idx < n
-        if NT > 0:
-            tl.store(
-                o0 + idx,
-                fn(tl.load(a0 + idx, mask=m).to(OT), s0.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 1:
-            tl.store(
-                o1 + idx,
-                fn(tl.load(a1 + idx, mask=m).to(OT), s1.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 2:
-            tl.store(
-                o2 + idx,
-                fn(tl.load(a2 + idx, mask=m).to(OT), s2.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 3:
-            tl.store(
-                o3 + idx,
-                fn(tl.load(a3 + idx, mask=m).to(OT), s3.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 4:
-            tl.store(
-                o4 + idx,
-                fn(tl.load(a4 + idx, mask=m).to(OT), s4.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 5:
-            tl.store(
-                o5 + idx,
-                fn(tl.load(a5 + idx, mask=m).to(OT), s5.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 6:
-            tl.store(
-                o6 + idx,
-                fn(tl.load(a6 + idx, mask=m).to(OT), s6.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 7:
-            tl.store(
-                o7 + idx,
-                fn(tl.load(a7 + idx, mask=m).to(OT), s7.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 8:
-            tl.store(
-                o8 + idx,
-                fn(tl.load(a8 + idx, mask=m).to(OT), s8.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 9:
-            tl.store(
-                o9 + idx,
-                fn(tl.load(a9 + idx, mask=m).to(OT), s9.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 10:
-            tl.store(
-                o10 + idx,
-                fn(tl.load(a10 + idx, mask=m).to(OT), s10.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 11:
-            tl.store(
-                o11 + idx,
-                fn(tl.load(a11 + idx, mask=m).to(OT), s11.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 12:
-            tl.store(
-                o12 + idx,
-                fn(tl.load(a12 + idx, mask=m).to(OT), s12.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 13:
-            tl.store(
-                o13 + idx,
-                fn(tl.load(a13 + idx, mask=m).to(OT), s13.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 14:
-            tl.store(
-                o14 + idx,
-                fn(tl.load(a14 + idx, mask=m).to(OT), s14.to(OT)).to(OT),
-                mask=m,
-            )
-        if NT > 15:
-            tl.store(
-                o15 + idx,
-                fn(tl.load(a15 + idx, mask=m).to(OT), s15.to(OT)).to(OT),
-                mask=m,
-            )
+
 
 
 _SCRATCH: dict = {}
@@ -946,6 +870,8 @@ _RAW_CACHE: dict = {}
 
 def _raw_launch(jit_fn, grid, const_key, tensors, args, num_warps) -> bool:
     """Launch ``jit_fn`` bypassing the binder; False if the caller must not."""
+    if knobs is None:
+        return False
     # The knob holds a ``HookChain``, never ``None``, and the chain defines no
     # ``__bool__``/``__len__`` -- so it is always truthy and ``is not None`` would
     # reject every call.  An empty ``calls`` list means nobody is profiling; any
@@ -1116,7 +1042,19 @@ def _launch(
     # on the new _f16_body constexpr ladder; route it through the pre-#8028
     # direct-pointer kernel to keep both pow perf and the clamp_max_scalar win.
     if fn is _fpow and len(srcs) > 1:
-        _launch16_pow(srcs, dsts, vals, fn, n)
+        # pow's extern body must route through the direct-pointer kernel, but it
+        # still needs the same uniform-size / slot-count guards as _launch16: the
+        # EVEN path is unmasked and would read/write out of bounds on mixed
+        # numels, and tensors past _K16_SLOTS would be silently dropped.
+        if (
+            len(srcs) <= _K16_SLOTS
+            and all(x == n for x in numels)
+            and n <= _K16_MAX_NUMEL
+        ):
+            _launch16_pow(srcs, dsts, vals, fn, n)
+        else:
+            for s, d, v in zip(srcs, dsts, vals):
+                _launch1(s, d, v, fn)
         return
     if len(srcs) <= _K16_SLOTS and all(x == n for x in numels) and n <= _K16_MAX_NUMEL:
         _launch16(srcs, dsts, vals, fn, n)
