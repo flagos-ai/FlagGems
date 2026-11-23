@@ -129,14 +129,19 @@ def scan_part_sum_abc_kernel(
 
     mask = b_idx < B
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
     ) or tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
+        # The partial sums use the output dtype for integer inputs. Widen
+        # before both the scan and reduction when that dtype is int64.
+        acc_dtype: tl.constexpr = (
+            tl.int64 if partial_sum.type.element_ty == tl.int64 else tl.int32
+        )
+        inp_vals = inp_vals.to(acc_dtype)
     else:
         inp_vals = inp_vals.to(tl.float32)
     result = tl.cumsum(inp_vals, axis=0)
