@@ -109,10 +109,16 @@ def test_fmin_backward_single_input_and_dispatch():
         [1.0, 2.0, float("nan")], device=flag_gems.device, requires_grad=True
     )
     b = torch.tensor([1.0, float("nan"), 3.0], device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.fmin(a, b)
+    result = flag_gems.fmin(a, b)
     result.backward(torch.ones_like(result))
     torch.testing.assert_close(a.grad, torch.tensor([1.0, 1.0, 0.0], device=a.device))
+
+    entries = [entry for entry in flag_gems._FULL_CONFIG if entry[0] == "fmin"]
+    assert len(entries) == 1
+    assert (
+        flag_gems.AUTOGRAD_DISPATCH_KEY,
+        torch.library.fallthrough_kernel,
+    ) in entries[0][3]
 
 
 @pytest.mark.fmin
