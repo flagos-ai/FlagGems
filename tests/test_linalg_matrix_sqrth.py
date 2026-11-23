@@ -20,13 +20,50 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-pytestmark = pytest.mark.skipif(
-    not hasattr(torch.ops.aten, "linalg_matrix_sqrth"),
-    reason=(
-        "linalg_matrix_sqrth requires PyTorch nightly 2026-06-27 or newer, "
-        "or PyTorch 2.15+"
-    ),
-)
+_HAS_ATEN_SQRTH = hasattr(torch.ops.aten, "linalg_matrix_sqrth")
+
+
+@pytest.fixture(autouse=True)
+def _ieee_fp32_matmul():
+    # The reconstruction GEMM must run in IEEE fp32.  Runners that start torch
+    # with TF32 enabled (TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1 is set on CI's
+    # a100-worker-1) turn that GEMM into a 10-bit-mantissa one, which moves the
+    # fp32 result ~5e-4 away from the fp64 reference -- past the
+    # atol=1e-4*reduce_dim budget on (4, 4) float32.  That is an ambient
+    # precision policy, not a property of the kernel under test, so pin both
+    # precision APIs off (torch >= 2.9 new API plus the legacy flag, which older
+    # versions only have) and restore the process state afterwards.  Same
+    # approach as tests/test_chain_matmul.py.
+    saved_precision = None
+    try:
+        saved_precision = torch.backends.cuda.matmul.fp32_precision
+    except (AttributeError, RuntimeError):
+        pass
+    saved_tf32 = None
+    try:
+        saved_tf32 = torch.backends.cuda.matmul.allow_tf32
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "ieee"
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+    except (AttributeError, RuntimeError):
+        pass
+    yield
+    if saved_precision is not None:
+        try:
+            torch.backends.cuda.matmul.fp32_precision = saved_precision
+        except (AttributeError, RuntimeError):
+            pass
+    if saved_tf32 is not None:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = saved_tf32
+        except (AttributeError, RuntimeError):
+            pass
+
 
 DTYPES = [torch.float32, torch.complex64]
 if not QUICK_MODE:
@@ -46,8 +83,25 @@ def _make_hpd(shape, dtype, device):
 
 
 def _reference(inp):
-    ref_inp = utils.to_reference(inp)
-    return torch.ops.aten.linalg_matrix_sqrth(ref_inp)
+    # Compute the reference in the widest precision the reference backend
+    # supports.  The candidate runs in the input dtype, and the CPU reference
+    # kernel under ``--ref cpu`` is a second fp32/complex64 implementation, so
+    # comparing two independent fp32 square-root kernels can differ by ~5e-4
+    # on complex64 (measured in CI's quick-cpu lane) without either side being
+    # wrong.  With the widened reference the check measures the candidate's
+    # own rounding error (~1e-6 on H20, 2200 random draws).
+    ref_inp = utils.to_reference(inp, True)
+    if _HAS_ATEN_SQRTH:
+        return torch.ops.aten.linalg_matrix_sqrth(ref_inp)
+    # PyTorch 2.11 has no aten::linalg_matrix_sqrth.  Reconstruct the same
+    # principal square root from the lower-triangle eigendecomposition the ATen
+    # kernel performs: V diag(sqrt(clamp(lambda, 0))) V^H, Hermitian-projected.
+    if ref_inp.numel() == 0:
+        return ref_inp.clone()
+    eigenvalues, eigenvectors = torch.linalg.eigh(ref_inp, UPLO="L")
+    sqrt_eigenvalues = eigenvalues.clamp_min(0).sqrt()
+    result = (eigenvectors * sqrt_eigenvalues.unsqueeze(-2)) @ eigenvectors.mH
+    return (result + result.mH) * 0.5
 
 
 @pytest.mark.linalg_matrix_sqrth
