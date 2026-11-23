@@ -83,6 +83,56 @@ def test_geometric(shape, dtype):
     utils.gems_assert_close(mean, expected, dtype=torch.float32, atol=0.2)
 
 
+@pytest.mark.geometric_backward_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("noncontiguous", [False, True])
+def test_geometric_backward_(dtype, noncontiguous):
+    inp = torch.randn((8, 12), device=flag_gems.device, dtype=dtype)
+    if noncontiguous:
+        inp = inp.T
+    grad = torch.randn_like(inp)
+    ref = utils.to_reference(inp.detach().clone(), False).requires_grad_()
+    actual = inp.detach().clone().requires_grad_()
+    torch_out = ref.clone().geometric_(0.4)
+    gems_out = flag_gems.geometric_(actual.clone(), 0.4)
+    assert gems_out.data_ptr() != actual.data_ptr()
+    ref_grad = torch.autograd.grad(torch_out, ref, utils.to_reference(grad, False))[0]
+    gems_grad = torch.autograd.grad(gems_out, actual, grad)[0]
+    utils.gems_assert_equal(gems_grad, ref_grad)
+    assert torch.count_nonzero(gems_grad) == 0
+
+
+@pytest.mark.geometric_backward_
+@pytest.mark.parametrize("noncontiguous", [False, True])
+def test_geometric_inplace_version(noncontiguous):
+    x = torch.randn((4, 5), device=flag_gems.device, requires_grad=True)
+    target = x.T if noncontiguous else x
+    saved = (target * target).sum()
+    with torch.no_grad():
+        old_version = target._version
+        flag_gems.geometric_(target, 0.5)
+    assert target._version > old_version
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        saved.backward()
+
+
+@pytest.mark.geometric_backward_
+def test_geometric_inplace_generator_and_identity():
+    leaf = torch.randn((33,), device=flag_gems.device, requires_grad=True)
+    with pytest.raises(RuntimeError, match="leaf Variable that requires grad"):
+        flag_gems.geometric_(leaf, 0.5)
+    receiver = leaf.clone()
+    gen = torch.Generator(device=flag_gems.device).manual_seed(32)
+    state = gen.get_state().clone()
+    version = receiver._version
+    result = flag_gems.geometric_(receiver, 0.5, generator=gen)
+    assert result is receiver
+    assert receiver._version > version
+    assert not torch.equal(gen.get_state(), state)
+    result.sum().backward()
+    assert torch.equal(leaf.grad, torch.zeros_like(leaf))
+
+
 def _check_backend_distribution(inplace, dtype, p):
     # Include a masked tail and enough samples to check both mean and variance.
     x = torch.empty((262147,), device=flag_gems.device, dtype=dtype)

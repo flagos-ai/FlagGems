@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.flip import copy_func
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -76,17 +77,46 @@ def geometric_kernel(
 UNROLL = 4
 
 
+class _GeometricInplace(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, p, generator):
+        ctx.mark_dirty(self)
+        return _geometric_impl(self, p, generator=generator)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.zeros_like(grad_output), None, None
+
+
 def geometric_(self, p=0.5, *, generator=None):
+    if torch.is_grad_enabled() and self.requires_grad:
+        return _GeometricInplace.apply(self, p, generator)
+    result = _geometric_impl(self, p, generator=generator)
+    torch.autograd.graph.increment_version(self)
+    return result
+
+
+def _geometric_impl(self, p, *, generator=None):
     logger.debug("GEMS GEOMETRIC_")
     N = volume(self.shape)
+    if N == 0:
+        return self
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
+    # The kernel writes flat offsets; use a temporary for strided receivers.
+    out = (
+        self
+        if self.is_contiguous()
+        else torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    )
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     with torch_device_fn.device(self.device):
-        geometric_kernel[grid_fn](self, N, p, philox_seed, philox_offset)
+        geometric_kernel[grid_fn](out, N, p, philox_seed, philox_offset)
+        if out is not self:
+            copy_func(out, out0=self)
     return self
 
 
