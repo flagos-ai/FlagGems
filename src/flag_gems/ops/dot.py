@@ -69,12 +69,12 @@ def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
     tl.store(out_ptr, out_val)
 
 
-def dot(x, y):
-    logger.debug("GEMS DOT")
+def _dot_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Forward kernel without the autograd bridge.
 
-    assert x.shape == y.shape, "Input vectors must have the same shape"
-    assert x.dim() == 1, "Input must be 1D tensors"
-
+    ``DotFunction.forward`` calls this directly so the autograd wrapper does
+    not re-enter itself.
+    """
     N = x.shape[0]
 
     # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel,
@@ -107,3 +107,26 @@ def dot(x, y):
             out = out.to(x.dtype)
 
     return out
+
+
+def dot(x, y):
+    logger.debug("GEMS DOT")
+
+    assert x.shape == y.shape, "Input vectors must have the same shape"
+    assert x.dim() == 1, "Input must be 1D tensors"
+
+    # This Torch build has no standalone ``aten::dot_backward`` schema, so
+    # differentiable 1-D inputs are routed through the FlagGems
+    # ``autograd.Function`` bridge to reach the Triton backward kernel
+    # (the deg2rad_backward pattern merged in #9331). Non-differentiable
+    # calls keep their previous behaviour.
+    if (
+        isinstance(x, torch.Tensor)
+        and isinstance(y, torch.Tensor)
+        and (x.requires_grad or y.requires_grad)
+        and torch.is_grad_enabled()
+    ):
+        from flag_gems.ops.dot_backward import DotFunction
+
+        return DotFunction.apply(x, y)
+    return _dot_impl(x, y)
