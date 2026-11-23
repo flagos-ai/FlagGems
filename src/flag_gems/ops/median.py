@@ -1215,6 +1215,248 @@ def _median_direct_dim(inp, dim, output_shape):
     return values, indices
 
 
+_MEDIAN_BACKWARD_SINGLE_PROGRAM = 4096
+_MEDIAN_BACKWARD_BLOCK = 1024
+_MEDIAN_DIM_BACKWARD_BLOCK = 1024
+_MEDIAN_BACKWARD_LAUNCH_CACHE = {}
+
+
+@libentry()
+@triton.jit
+def median_backward_small_kernel(
+    inp,
+    grad_output,
+    value,
+    out,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    """One-program ``evenly_distribute_backward`` for a small flat reduction."""
+    offsets = tl.arange(0, BLOCK)
+    valid = offsets < n_elements
+    # Issue the two 0-D loads first so their cold-miss latency overlaps the
+    # bulk input loads and the cross-lane reduction instead of being
+    # serialized behind them.
+    grad = tl.load(grad_output)
+    median_value = tl.load(value)
+    data = tl.load(inp + offsets, mask=valid, other=0.0)
+    nan_value = median_value != median_value
+    match = valid & ((data == median_value) | ((data != data) & nan_value))
+    count = tl.sum(match.to(tl.int32), axis=0)
+    scale = grad / count.to(grad.dtype)
+    tl.store(out + offsets, scale * match.to(grad.dtype), mask=valid)
+
+
+@libentry()
+@triton.jit
+def median_backward_count_kernel(
+    inp,
+    value,
+    count,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    valid = offsets < n_elements
+    data = tl.load(inp + offsets, mask=valid, other=0.0)
+    median_value = tl.load(value)
+    nan_value = median_value != median_value
+    match = valid & ((data == median_value) | ((data != data) & nan_value))
+    tl.atomic_add(count, tl.sum(match.to(tl.int32), axis=0))
+
+
+@libentry()
+@triton.jit
+def median_backward_write_kernel(
+    inp,
+    grad_output,
+    value,
+    count,
+    out,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    valid = offsets < n_elements
+    data = tl.load(inp + offsets, mask=valid, other=0.0)
+    median_value = tl.load(value)
+    nan_value = median_value != median_value
+    match = valid & ((data == median_value) | ((data != data) & nan_value))
+    grad = tl.load(grad_output)
+    total = tl.load(count)
+    scale = grad / total.to(grad.dtype)
+    tl.store(out + offsets, scale * match.to(grad.dtype), mask=valid)
+
+
+@libentry()
+@triton.jit
+def median_dim_backward_kernel(
+    grad_values,
+    indices,
+    out,
+    total_elements,
+    reduction_size,
+    inner_size,
+    BLOCK: tl.constexpr,
+):
+    """Gather-style ``value_selecting_reduction_backward``.
+
+    Every element of the input gradient is written, so no separate zero-fill
+    launch is needed: an element keeps ``grad_values`` only when its offset
+    along ``dim`` equals the median index the forward saved for that slice.
+    """
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    valid = offsets < total_elements
+    inner_offsets = offsets % inner_size
+    outer_offsets = offsets // (reduction_size * inner_size)
+    dim_offsets = (offsets // inner_size) % reduction_size
+    src = outer_offsets * inner_size + inner_offsets
+    grad = tl.load(grad_values + src, mask=valid, other=0.0)
+    grad_indices = tl.load(indices + src, mask=valid, other=0)
+    tl.store(
+        out + offsets, grad * (dim_offsets == grad_indices).to(grad.dtype), mask=valid
+    )
+
+
+def _median_backward(grad_output, src, value):
+    n_elements = src.numel()
+    grad_input = torch.empty_like(src)
+    if n_elements == 0:
+        return grad_input
+    with torch_device_fn.device(src.device):
+        if n_elements <= _MEDIAN_BACKWARD_SINGLE_PROGRAM:
+            block, num_warps = _median_backward_launch_config(n_elements)
+            median_backward_small_kernel[(1,)](
+                src,
+                grad_output,
+                value,
+                grad_input,
+                n_elements,
+                BLOCK=block,
+                num_warps=num_warps,
+            )
+        else:
+            count = torch.zeros((), dtype=torch.int32, device=src.device)
+            grid = (triton.cdiv(n_elements, _MEDIAN_BACKWARD_BLOCK),)
+            median_backward_count_kernel[grid](
+                src,
+                value,
+                count,
+                n_elements,
+                BLOCK=_MEDIAN_BACKWARD_BLOCK,
+                num_warps=4,
+            )
+            median_backward_write_kernel[grid](
+                src,
+                grad_output,
+                value,
+                count,
+                grad_input,
+                n_elements,
+                BLOCK=_MEDIAN_BACKWARD_BLOCK,
+                num_warps=4,
+            )
+    return grad_input
+
+
+def _median_backward_launch_config(n_elements):
+    """Launch shape for the single-program kernel, memoized per reduction size.
+
+    Four elements per lane measured fastest for the default core shapes: fewer
+    warps lengthen the per-lane load/compare/reduce chain and more warps only
+    add reduction traffic.
+    """
+    config = _MEDIAN_BACKWARD_LAUNCH_CACHE.get(n_elements)
+    if config is None:
+        block = triton.next_power_of_2(n_elements)
+        config = (block, min(32, max(1, block // 128)))
+        _MEDIAN_BACKWARD_LAUNCH_CACHE[n_elements] = config
+    return config
+
+
+def _median_dim_backward(grad_values, indices, input_shape, reduction_size, inner_size):
+    if len(input_shape) == 0:
+        # 0-dim input: median(x, dim=0) is the identity, so is its gradient
+        return grad_values.clone()
+    grad_input = torch.empty(
+        input_shape, dtype=grad_values.dtype, device=grad_values.device
+    )
+    total_elements = grad_input.numel()
+    if total_elements == 0:
+        return grad_input
+    grad_values = grad_values.contiguous()
+    indices = indices.contiguous()
+    with torch_device_fn.device(grad_values.device):
+        median_dim_backward_kernel[
+            (triton.cdiv(total_elements, _MEDIAN_DIM_BACKWARD_BLOCK),)
+        ](
+            grad_values,
+            indices,
+            grad_input,
+            total_elements,
+            reduction_size,
+            inner_size,
+            BLOCK=_MEDIAN_DIM_BACKWARD_BLOCK,
+            num_warps=4,
+        )
+    return grad_input
+
+
+class _Median(torch.autograd.Function):
+    """Autograd entry for the global reduction ``median``.
+
+    PyTorch differentiates the global median by distributing the scalar
+    gradient evenly over every element that equals the median
+    (``evenly_distribute_backward``); NaN elements match a NaN median.
+    """
+
+    @staticmethod
+    def forward(ctx, inp):
+        logger.debug("GEMS MEDIAN_FORWARD")
+        contiguous = _anonymous(inp).contiguous()
+        value = median(contiguous)
+        ctx.save_for_backward(contiguous, value)
+        return value
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        logger.debug("GEMS MEDIAN_BACKWARD")
+        contiguous, value = ctx.saved_tensors
+        return _median_backward(grad_output, contiguous, value)
+
+
+class _MedianDim(torch.autograd.Function):
+    """Autograd entry for ``median(input, dim, keepdim)``.
+
+    ``indices`` is an integer output and carries no gradient; the gradient of
+    ``values`` is scattered back to the element each saved index selected.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        logger.debug("GEMS MEDIAN_DIM_FORWARD")
+        values, indices = median_dim(inp, dim, keepdim)
+        ctx.input_shape = tuple(inp.shape)
+        ctx.reduction_size = inp.shape[dim] if inp.ndim else 0
+        ctx.inner_size = math.prod(inp.shape[dim + 1 :]) if inp.ndim else 1
+        ctx.mark_non_differentiable(indices)
+        ctx.save_for_backward(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        logger.debug("GEMS MEDIAN_DIM_BACKWARD")
+        (indices,) = ctx.saved_tensors
+        grad_input = _median_dim_backward(
+            grad_values,
+            indices,
+            ctx.input_shape,
+            ctx.reduction_size,
+            ctx.inner_size,
+        )
+        return grad_input, None, None
+
+
 def _copy_out(src, out, name):
     if out.device != src.device:
         raise RuntimeError(
@@ -1232,6 +1474,8 @@ def _copy_out(src, out, name):
 
 def median(inp):
     logger.debug("GEMS MEDIAN")
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return _Median.apply(inp)
 
     inp = _anonymous(inp)
     if inp.numel() == 0:
@@ -1267,6 +1511,7 @@ def median(inp):
     return values.reshape(())
 
 
+@torch.no_grad()
 def median_out(inp, *, out):
     logger.debug("GEMS MEDIAN.OUT")
     return _copy_out(median(inp), out, "out")
@@ -1278,6 +1523,9 @@ def median_dim(inp, dim=0, keepdim=False):
     if isinstance(dim, str):
         dim = _name_to_dim(inp, dim)
     dim = _canonical_dim(inp.ndim, dim)
+    if torch.is_grad_enabled() and inp.requires_grad:
+        values, indices = _MedianDim.apply(inp, dim, keepdim)
+        return MedianResult(values, indices)
     names = inp.names if _has_names(inp) else None
     work = _anonymous(inp)
 
@@ -1377,6 +1625,7 @@ def median_dim(inp, dim=0, keepdim=False):
     return MedianResult(values=values, indices=indices)
 
 
+@torch.no_grad()
 def median_dim_values(inp, dim=0, keepdim=False, *, values, indices):
     logger.debug("GEMS MEDIAN.DIM_VALUES")
     result = median_dim(inp, dim=dim, keepdim=keepdim)

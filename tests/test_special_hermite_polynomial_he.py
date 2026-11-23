@@ -10,19 +10,23 @@ from . import accuracy_utils as utils
 # tight atol for both fp32 and fp64 outputs. Devices without float64 support
 # fall back to a float32 evaluation, whose accuracy is limited by float32
 # precision: |He_n(x)| reaches ~1e6 at n=10, so those backends keep a wide atol.
+if flag_gems.vendor_name == "iluvatar" or utils.fp64_is_supported:
+    FLOAT_DTYPES = [torch.float32, torch.float64]
+else:
+    FLOAT_DTYPES = [torch.float32]
 if flag_gems.vendor_name == "iluvatar":
     # The iluvatar kernel evaluates in float32 intermediates.
     ATOL = {torch.float32: 2.0, torch.float64: 0.5}
 elif utils.fp64_is_supported:
     ATOL = {torch.float32: 1e-3, torch.float64: 1e-3}
 else:
-    ATOL = {torch.float32: 0.5, torch.float64: 0.5}
+    ATOL = {torch.float32: 0.5}
 
 
 @pytest.mark.special_hermite_polynomial_he
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # CUDA does not support half/bfloat16 for this special function
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_hermite_polynomial_he(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     # n is a tensor with small integer values (degree of polynomial)
@@ -56,7 +60,7 @@ def test_special_hermite_polynomial_he(shape, dtype):
 
 @pytest.mark.special_hermite_polynomial_he
 # CUDA does not support half/bfloat16 for this special function
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_hermite_polynomial_he_scalar_x(dtype):
     """Scalar x + tensor n: x broadcasts against the n tensor."""
     # n follows the parametrized dtype: an int64/fp64 n tensor yields an fp64

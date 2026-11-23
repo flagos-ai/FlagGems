@@ -198,16 +198,20 @@ def test_quantized_max_pool3d_qint_dtypes(
     ``qint32`` in particular has a 4-byte integer representation, so a kernel
     that assumed a 1-byte ``uint8`` storage would silently corrupt it.
     """
+    prepare_on_cpu = flag_gems.vendor_name == "mthreads" and dtype == torch.qint32
+    input_device = "cpu" if prepare_on_cpu else flag_gems.device
     zero_point = QINT_ZERO_POINTS[dtype]
-    qx = _make_qinput(
-        shape, device=flag_gems.device, zero_point=zero_point, dtype=dtype
-    )
+    qx = _make_qinput(shape, device=input_device, zero_point=zero_point, dtype=dtype)
     ref_inp = qx.to("cpu")
+    if prepare_on_cpu:
+        qx = qx.to(flag_gems.device)
     args = _pool_args(kernel_size, stride, padding, dilation, ceil_mode)
 
     ref_out = torch.quantized_max_pool3d(ref_inp, **args)
     res_out = flag_gems.quantized_max_pool3d(qx, **args)
 
+    if prepare_on_cpu:
+        assert res_out.device == qx.device
     _assert_qpool_equal(res_out, ref_out, dtype=dtype)
 
 
@@ -215,16 +219,20 @@ def test_quantized_max_pool3d_qint_dtypes(
 @pytest.mark.parametrize("dtype", QINT_DTYPES)
 def test_quantized_max_pool3d_out_qint_dtypes(dtype):
     """The ``out=`` path must round-trip every supported dtype, not just quint8."""
+    prepare_on_cpu = flag_gems.vendor_name == "mthreads" and dtype == torch.qint32
+    input_device = "cpu" if prepare_on_cpu else flag_gems.device
     shape = (2, 3, 8, 8, 8)
     zero_point = QINT_ZERO_POINTS[dtype]
-    qx = _make_qinput(
-        shape, device=flag_gems.device, zero_point=zero_point, dtype=dtype
-    )
+    qx = _make_qinput(shape, device=input_device, zero_point=zero_point, dtype=dtype)
     ref_inp = qx.to("cpu")
+    if prepare_on_cpu:
+        qx = qx.to(flag_gems.device)
     args = _pool_args(2, 2, 0, 1, False)
 
     ref_out = torch.quantized_max_pool3d(ref_inp, **args)
-    out_q = _make_qout(ref_out.shape, flag_gems.device, SCALE, zero_point, dtype)
+    out_q = _make_qout(ref_out.shape, input_device, SCALE, zero_point, dtype)
+    if prepare_on_cpu:
+        out_q = out_q.to(flag_gems.device)
 
     res_out = flag_gems.quantized_max_pool3d_out(qx, out=out_q, **args)
 
@@ -462,6 +470,10 @@ def test_quantized_max_pool3d_out(
     _assert_qpool_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool3d_out
 @pytest.mark.parametrize(
     "out_shape", [(1, 1, 1, 1, 1), (4, 4, 4, 4, 4), (1, 2, 3, 3, 4)]
@@ -497,6 +509,10 @@ def test_quantized_max_pool3d_out_resizes(out_shape):
     _assert_qpool_equal(out_q, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool3d_out
 @pytest.mark.parametrize("out_qparams", [(0.9, 7), (1.0, 0), (0.02, 200)])
 def test_quantized_max_pool3d_out_adopts_input_qparams(out_qparams):
@@ -574,6 +590,10 @@ def test_quantized_max_pool3d_out_preserves_storage_offset():
     assert bool((big[0].int_repr() == ZERO_POINT).all())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool3d_out
 def test_quantized_max_pool3d_out_non_contiguous():
     """A non-contiguous ``out`` of the right shape keeps its strides.

@@ -28,7 +28,7 @@ FlagGems
 │   └──flag_gems
 │       ├──utils         // python automatic code generation utilities
 │       ├──ops           // python single operators
-│       ├──fused         // python fused operators
+│       ├──deprecated    // python fused operators
 │       `──testing       // python testing utility
 ├── tests                // python accuracy test files
 ├── benchmark            // python performance test files

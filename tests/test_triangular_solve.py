@@ -22,7 +22,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import flag_gems
 
-from .accuracy_utils import to_reference
+from .accuracy_utils import _SKIP_FP64, to_reference
 
 DTYPES = [
     torch.float32,
@@ -415,7 +415,7 @@ REJECTED_DTYPES = [
     torch.int64,
     torch.bool,
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ]
 
 

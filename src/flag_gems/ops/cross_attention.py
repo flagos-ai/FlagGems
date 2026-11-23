@@ -24,33 +24,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.triton_version_utils import HAS_TLE
-
-if HAS_TLE:
-    from triton.experimental.tle.language import gpu as tle_gpu
-else:
-    tle_gpu = None
-
-
-def _tle_gpu_pipeline_supported() -> bool:
-    """Whether the active backend whitelists the TLE ``gpu.pipeline`` primitive.
-
-    ``HAS_TLE`` only says the TLE package is importable for this vendor; a
-    backend may still reject individual primitives at compile time. Ask the
-    same whitelist the Triton TLE code generator consults.
-    """
-    if not HAS_TLE:
-        return False
-    try:
-        from triton._flagtree_backend import get_active_backend_name
-        from triton.experimental.tle import is_primitive_supported
-
-        return is_primitive_supported(get_active_backend_name(), "gpu.pipeline")
-    except (ImportError, RuntimeError, TypeError, ValueError):
-        return False
-
-
-_HAS_TLE_PIPELINE = _tle_gpu_pipeline_supported()
 
 logger = logging.getLogger(__name__)
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -245,7 +218,7 @@ def _select_gpu_tiling(
             # sequence lengths; not tied to one shape.
             return 64, 32, 4, pipeline_ns
         if query_len >= 1024:
-            # Long-Skv + tiny-D + no-mask: TLE software pipelining with
+            # Long-Skv + tiny-D + no-mask: software pipelining with
             # num_stages=3 hides global-memory latency for the K/V loads and
             # the per-iter online softmax.  A tile-shape sweep on H800
             # (FP16) revealed three regimes that beat the legacy 128/128/4:
@@ -325,7 +298,6 @@ def cross_attention_fwd_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     PIPELINE_NS: tl.constexpr,
-    TLE_PIPELINE: tl.constexpr,
 ):
     query_tile = tl.program_id(0)
     batch_head = tl.program_id(1)
@@ -372,14 +344,8 @@ def cross_attention_fwd_kernel(
     row_max = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
     row_sum = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
-    # TLE software pipelining for the K/V loop. `tle_gpu.pipeline` extends
-    # `tl.range`, so the loop lowers exactly like the legacy `tl.range` form
-    # and any stage count the tiling picks is valid; PIPELINE_NS carries it.
-    # Backends that do not whitelist the `gpu.pipeline` primitive lower the
-    # same loop through `tl.range`.
-    for key_start in (tle_gpu.pipeline if TLE_PIPELINE else tl.range)(
-        0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS
-    ):
+    # Pipeline the K/V loop using the stage count selected by the tiling.
+    for key_start in tl.range(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
         logical_keys = key_start + key_offsets
         valid_keys = logical_keys < KEY_LEN
         key = tl.load(
@@ -525,7 +491,6 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             PIPELINE_NS=pipeline_ns,
-            TLE_PIPELINE=_HAS_TLE_PIPELINE,
             num_stages=2,
             num_warps=num_warps,
         )

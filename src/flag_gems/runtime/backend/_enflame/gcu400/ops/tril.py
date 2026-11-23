@@ -431,7 +431,7 @@ _WIDE_EXACT_ROW_MIN_N = 2048
 _WIDE_EXACT_ROW_MAX_N = 8192
 _WIDE_EXACT_ROW_MIN_ROWS = 256
 _WIDE_EXACT_ROW_ALWAYS_ROW_M = 512
-_TINY_BATCHED_TILE_MIN_BATCH = 128
+_TINY_BATCHED_TILE_MIN_BATCH = 64
 
 
 def _use_wide_exact_row(M: int, N: int, batch: int):
@@ -625,9 +625,9 @@ def _launch_exact_diag0_tile(
 def _launch_tril_inplace_contiguous(
     input: torch.Tensor,
     diagonal: int,
-    block_m: int = 16,
-    block_n: int = 64,
-    num_warps: int = 4,
+    block_m: int = 32,
+    block_n: int = 256,
+    num_warps: int = 2,
     num_stages: int = 2,
 ):
     M, N = input.shape[-2:]
@@ -823,7 +823,7 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
             input_to_use,
             out,
             block_m=16,
-            block_n=128,
+            block_n=256,
             num_warps=4,
         )
     if _use_tiny_batched_tile(M, N, batch):
@@ -981,7 +981,7 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
             out,
             int(diagonal),
             block_m=32,
-            block_n=64,
+            block_n=256,
             num_warps=4,
         )
 
