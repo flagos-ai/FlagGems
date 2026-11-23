@@ -3821,7 +3821,8 @@ ops:
     Backward pass for `conj`: the conjugate is self-inverse, so the input
     gradient is `torch.conj(grad_output)`. The kernel flips the sign bit of
     the imaginary components through an int64 view -- no floating-point
-    arithmetic is involved. Real (non-complex) inputs are returned unchanged.
+    arithmetic is involved. Non-complex gradients raise, matching the
+    complex-only `_conj` entry of the same family.
   for:
   - conj_backward
   labels:
