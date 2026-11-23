@@ -164,6 +164,33 @@ def test_div_backward_broadcast(dtype):
 
 
 @pytest.mark.div_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_backward_zero_denominator(dtype):
+    """A zero denominator drives the gradients to inf/NaN exactly as ATen.
+
+    ``grad_self = grad / 0`` is +/-inf (NaN for a zero upstream gradient) and
+    ``grad_other = -grad * (a/0)/0`` follows the same 0 * inf -> NaN chain as
+    ``DivBackward0``, so the kernel must not clamp or mask the division.
+    """
+    a = torch.rand((2, 3, 64), dtype=dtype, device=flag_gems.device) + 0.5
+    b = torch.zeros((2, 3, 64), dtype=dtype, device=flag_gems.device)
+    b.view(-1)[::2] = 1.0  # alternate zero / nonzero denominators
+    grad = torch.randn((2, 3, 64), dtype=dtype, device=flag_gems.device)
+
+    ref_a = _ref_inputs(a, grad=True)
+    ref_b = _ref_inputs(b, grad=True)
+    ref_grad = _ref_inputs(grad)
+    ref_grad_a, ref_grad_b = torch.autograd.grad(
+        ref_a / ref_b, (ref_a, ref_b), ref_grad
+    )
+
+    res_grad_a, res_grad_b = flag_gems.div_backward(grad, a, b)
+
+    utils.gems_assert_close(res_grad_a, ref_grad_a, dtype)
+    utils.gems_assert_close(res_grad_b, ref_grad_b, dtype)
+
+
+@pytest.mark.div_backward
 def test_div_backward_use_gems_entry():
     """Dispatch path: ``torch.div`` under ``only_enable`` runs the FlagGems
     forward, and pairing it with ``DivFunction`` drives the Triton backward.

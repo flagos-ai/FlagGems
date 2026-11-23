@@ -1276,7 +1276,6 @@ _FULL_CONFIG = (
     ("div_.Scalar_mode", div_mode_),
     ("div_.Tensor", true_divide_),
     ("div_.Tensor_mode", div_mode_),
-    ("div_backward", div_backward),
     ("divide.Scalar", true_divide),
     ("divide.Scalar_mode", div_mode),
     ("divide.Tensor", divide),
