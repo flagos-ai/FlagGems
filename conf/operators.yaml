@@ -11533,17 +11533,7 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: 5.5.0
-- id: layer_norm_backward
-  description: The backward case for `layer_norm()`.
-  for:
-  - native_layer_norm_backward
-  labels:
-  - aten
-  kind:
-  - Reduction
-  stages:
-  - stable: '3.0'
-- id: layernorm
+- id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
   for:
@@ -11554,6 +11544,16 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '1.0'
+- id: layer_norm_backward
+  description: The backward case for `layer_norm()`.
+  for:
+  - native_layer_norm_backward
+  labels:
+  - aten
+  kind:
+  - Reduction
+  stages:
+  - stable: '3.0'
 - id: lcm
   description: Compute the element-wise least common multiple of input tensors.
   for:
