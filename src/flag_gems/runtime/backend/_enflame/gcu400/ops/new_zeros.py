@@ -49,14 +49,15 @@ def _zero_words_nomask(p, N, BLOCK: tl.constexpr):
 # --- TUNING PARAMS START ---
 DIRECT_DEVICE = 1
 # Bucketing rationale: measurements show that for the same shape it is the "number of programs", not just the byte
-# count, that determines throughput —
-# medium buffers (<=8 MiB) are spread over about 12 programs (after rounding up to a power of 2, landing at 8~12,
-# fp16 2 MiB / fp32 4 MiB are both optimal in this bucket), while larger buffers need about 64 programs to be saturated.
-TARGET_PROGRAMS_MEDIUM = 12
+# count, that determines throughput. A program-count sweep on the benchmark shapes (256 / 1M / 96K / 7.9M elements)
+# moves the optimum from 12 to 16 programs for a 4 MiB fp32 buffer (0.0057 -> 0.0038 ms), and a 2 MiB per-program
+# cap keeps the 31 MiB case on the measured best block (262144 int64 slots). Lowering the large-buffer target from
+# 64 to 16 measured identical (2.697 vs 2.699 ms), so it stays at the original value.
+TARGET_PROGRAMS_MEDIUM = 16
 TARGET_PROGRAMS_LARGE = 64
 LARGE_BUFFER_BYTES = 8 * 1024 * 1024
 MIN_PROGRAM_BYTES = 16 * 1024
-MAX_PROGRAM_BYTES = 1024 * 1024
+MAX_PROGRAM_BYTES = 2 * 1024 * 1024
 STORE_BYTES = 8
 NUM_WARPS = 2
 BLOCK_ELEMS_STRIDED = 1024

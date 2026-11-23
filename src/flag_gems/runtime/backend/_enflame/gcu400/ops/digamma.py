@@ -26,9 +26,27 @@ logger = logging.getLogger(__name__)
 # Fixed Grid on GCU400 (48 CTAs); see ops/deg2rad.py for the grid.x limit
 # rationale.
 _GRID_SIZE = 48
-# 4K-element tile per loop iteration: measured best across the whole size range
-# (see _launch for the numbers).
-_BLOCK_SIZE = 4096
+# Tile size is picked per element-count tier: the transcendental-heavy body is
+# latency bound for small inputs (a single oversized tile idles most lanes) and
+# bandwidth bound for large ones (a small tile adds loop overhead). The four
+# tiers below are the measured optima of a full BLOCK sweep on GCU400.
+_TIER_TINY_MAX = 16 * 1024
+_TIER_SMALL_MAX = 64 * 1024
+_TIER_LARGE_MAX = 16 * 1024 * 1024
+_BLOCK_TINY = 512
+_BLOCK_SMALL = 4096
+_BLOCK_MEDIUM = 2048
+_BLOCK_LARGE = 16384
+
+
+def _pick_block_size(num_elements: int) -> int:
+    if num_elements <= _TIER_TINY_MAX:
+        return _BLOCK_TINY
+    if num_elements <= _TIER_SMALL_MAX:
+        return _BLOCK_SMALL
+    if num_elements <= _TIER_LARGE_MAX:
+        return _BLOCK_MEDIUM
+    return _BLOCK_LARGE
 
 
 @libentry()
@@ -58,11 +76,14 @@ def digamma_kernel(
         reflect_mask = x_f32 < 0.5
         xr = tl.where(reflect_mask, 1.0 - x_f32, x_f32)
 
-        # Use recurrence to shift xr to >= 8 for better asymptotic precision
+        # Recurrence shifts xr up to 6 before the asymptotic series. At y = 6
+        # the first omitted term is 1/(132*y^10) ~ 8e-10, far below fp32
+        # resolution, so this keeps full precision while removing two of the
+        # eight costly divisions per element.
         s = tl.zeros_like(x_f32)
         y = xr
-        for _ in range(8):
-            m = y < 8.0
+        for _ in range(6):
+            m = y < 6.0
             s = s - tl.where(m, 1.0 / y, 0.0)
             y = tl.where(m, y + 1.0, y)
 
@@ -80,7 +101,9 @@ def digamma_kernel(
             + (-1.0 / 252.0) * t6
             + (1.0 / 240.0) * t8
         )
-        psi_y = tl.log(y) + s + series
+        # log2 is a native GCU transcendental; multiplying by ln(2) is cheaper
+        # than the generic natural-log lowering and stays within fp32 accuracy.
+        psi_y = tl.math.log2(y) * 0.6931471805599453 + s + series
 
         # Apply reflection if needed
         cot_term = tl.cos(pi * x_f32) / tl.sin(pi * x_f32)
@@ -94,7 +117,7 @@ def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
     n_elements = out_contig.numel()
     if n_elements == 0:
         return
-    block_size = 32768
+    block_size = _pick_block_size(n_elements)
     num_tile = triton.cdiv(n_elements, block_size)
     grid = (min(_GRID_SIZE, num_tile), 1, 1)
     with torch_device_fn.device(out_contig.device.index):
