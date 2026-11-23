@@ -131,8 +131,14 @@ def _assert_orgqr_close(result, reference, input, dtype):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
-    input, tau = _make_orgqr_reflectors(shape, dtype)
-    ref = _reference_orgqr(_reference_reflector(input), _reference_reflector(tau))
+    if flag_gems.vendor_name == "mthreads" and shape[-1] == 0:
+        # Match master: the zero-column Q and reflector vector are empty.
+        input = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        ref = utils.to_reference(torch.empty_like(input))
+        tau = torch.empty((*shape[:-2], 0), dtype=dtype, device=input.device)
+    else:
+        input, tau = _make_orgqr_reflectors(shape, dtype)
+        ref = _reference_orgqr(_reference_reflector(input), _reference_reflector(tau))
     result = flag_gems.orgqr(input, tau)
     _assert_orgqr_close(result, ref, input, dtype)
 
