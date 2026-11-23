@@ -15,52 +15,6 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# torch.dist accuracy shim for the fp32 native reference leg (torch_gcu P21
-# family defect workaround).
-#
-# torch_gcu's native aten::dist on fp32 tensors proxies the CPU fp32 aten
-# reduction (device SUB + DtoH + host reduce -- bit-identical values),
-# whose cascade sum carries a relative error of 3e-6 ~ 1e-5 once the
-# reduction spans ~2**19+ elements (measured 2026-11-18 on the exact gate
-# seeds: n=524288 rel 4.2e-6, n=1e6 rel 9.2e-6 vs an fp64 ground truth).
-# That exceeds the fp32 comparison window of the accuracy suite (atol 1e-4
-# + rtol 1.3e-6) even for a candidate that is within 4e-8 of fp64, so
-# tests comparing flag_gems.dist against torch.dist on GCU fail through
-# no fault of the kernel. The accuracy framework's own to_reference()
-# upcasts references to fp64 whenever it can and only falls back to fp32
-# because gcu400 has no fp64 arithmetic; route fp32 GCU torch.dist calls
-# through the CPU fp64 aten path instead. This reproduces the --ref cpu
-# reference value bit-for-bit (ref_x.to(float64) -> CPU dist), the
-# canonical validation semantics the suite is designed around, at a
-# transfer-bound latency in the same regime as the native implementation.
-# Every other call shape (other dtypes, non-GCU devices, anything but the
-# two-tensor fp32 form) forwards to the original implementation untouched.
-# ---------------------------------------------------------------------------
-def _install_native_dist_reference_shim():
-    current = torch.dist
-    if getattr(current, "_flaggems_gcu_dist_reference", False):
-        return
-
-    def _gcu_dist_reference(input, other, p=2, *args, **kwargs):
-        if (
-            isinstance(input, torch.Tensor)
-            and isinstance(other, torch.Tensor)
-            and input.device.type == "gcu"
-            and other.device.type == "gcu"
-            and input.dtype == torch.float32
-            and other.dtype == torch.float32
-        ):
-            out = current(input.cpu().double(), other.cpu().double(), p)
-            return out.to(input.dtype).to(input.device)
-        return current(input, other, p, *args, **kwargs)
-
-    _gcu_dist_reference._flaggems_gcu_dist_reference = True
-    torch.dist = _gcu_dist_reference
-
-
-_install_native_dist_reference_shim()
-
 BLOCK_SIZE = 8192
 
 # Below this many elements a single program with an internal loop produces

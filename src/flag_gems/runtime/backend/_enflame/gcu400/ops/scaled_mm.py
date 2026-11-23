@@ -18,8 +18,8 @@ import torch
 import triton
 
 from flag_gems import runtime
-from flag_gems.fused.cutlass_scaled_mm import _scaled_mm_fp8_kernel as scaled_mm_kernel
-from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm_fp8 as _csmm
+from flag_gems.deprecated.cutlass_scaled_mm import _scaled_mm_fp8_kernel as scaled_mm_kernel
+from flag_gems.deprecated.cutlass_scaled_mm import cutlass_scaled_mm_fp8 as _csmm
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)

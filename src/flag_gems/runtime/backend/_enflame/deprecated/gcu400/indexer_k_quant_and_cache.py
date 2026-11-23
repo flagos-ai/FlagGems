@@ -205,9 +205,9 @@ def indexer_k_quant_and_cache(
 
 # ---------------------------------------------------------------------------
 # Route the fused package entry point to this backend specialization.
-# ``flag_gems.fused.__init__`` imports the generic module before the backend
+# ``flag_gems.deprecated.__init__`` imports the generic module before the backend
 # registrar loads this file, so the SpecOpRegistrar top-level namespace swap
-# cannot reach ``from flag_gems.fused import indexer_k_quant_and_cache``
+# cannot reach ``from flag_gems.deprecated import indexer_k_quant_and_cache``
 # (the route the accuracy test and the benchmark bind). Rebind the live
 # entry points of the already-imported generic module/package, the same
 # mechanism as ``std_mean`` / ``slow_conv_dilated2d`` / bin_topk in this
@@ -215,10 +215,10 @@ def indexer_k_quant_and_cache(
 # ---------------------------------------------------------------------------
 def _rebind_generic_entry_points():
     impl = indexer_k_quant_and_cache
-    generic_module = sys.modules.get("flag_gems.fused.indexer_k_quant_and_cache")
+    generic_module = sys.modules.get("flag_gems.deprecated.indexer_k_quant_and_cache")
     if generic_module is not None and generic_module is not sys.modules.get(__name__):
         setattr(generic_module, "indexer_k_quant_and_cache", impl)
-    generic_package = sys.modules.get("flag_gems.fused")
+    generic_package = sys.modules.get("flag_gems.deprecated")
     if generic_package is not None and generic_package is not sys.modules.get(__name__):
         setattr(generic_package, "indexer_k_quant_and_cache", impl)
 

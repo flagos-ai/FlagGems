@@ -28,7 +28,7 @@ except ImportError:
     VLLM_AVAILABLE = False
     SM100_AVAILABLE = False
 
-from flag_gems.fused.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
+from flag_gems.deprecated.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
 
 from . import base
 

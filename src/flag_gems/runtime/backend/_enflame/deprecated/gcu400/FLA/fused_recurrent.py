@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.fused.FLA.triton_ops_helper import exp
+from flag_gems.deprecated.FLA.triton_ops_helper import exp
 
 logger = logging.getLogger(__name__)
 

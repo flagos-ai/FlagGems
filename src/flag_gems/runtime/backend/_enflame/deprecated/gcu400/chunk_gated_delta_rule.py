@@ -21,7 +21,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime  # noqa: F401
-from flag_gems.fused.FLA.chunk_gated_delta_direct import (
+from flag_gems.deprecated.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
@@ -31,14 +31,14 @@ from ...gcu400.ops.max import max_dim as _flaggems_max_dim  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-# Resolve the generic wrapper *module* (``flag_gems.fused.chunk_gated_delta_rule``
+# Resolve the generic wrapper *module* (``flag_gems.deprecated.chunk_gated_delta_rule``
 # re-exports the function under the same name, so ``import ... as`` would bind
 # the function instead). The chunk-path fallback below reads
 # ``chunk_gated_delta_rule_fwd`` off this module at call time, matching the
 # generic wrapper's delegation contract (tests monkeypatch that symbol on the
 # generic module and expect the public entry to honor it).
 _chunk_gated_delta_rule_module = importlib.import_module(
-    "flag_gems.fused.chunk_gated_delta_rule"
+    "flag_gems.deprecated.chunk_gated_delta_rule"
 )
 
 

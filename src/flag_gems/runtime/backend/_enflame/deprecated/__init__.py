@@ -234,25 +234,25 @@ elif arch_version == 400 or arch_version == 410:
     ]
 
     # DSA bin_topk is imported directly in tests
-    # (``from flag_gems.fused.DSA.bin_topk import bucket_sort_topk``), so the
+    # (``from flag_gems.deprecated.DSA.bin_topk import bucket_sort_topk``), so the
     # SpecOpRegistrar namespace swap cannot reach it. Patch the attribute of the
     # already-imported module to route those calls to the GCU400 implementation,
     # the same way the kunlunxin backend does.
     def _install_gcu400_bin_topk():
         import sys
 
-        gmod = sys.modules.get("flag_gems.fused.DSA.bin_topk")
+        gmod = sys.modules.get("flag_gems.deprecated.DSA.bin_topk")
         if gmod is not None:
             gmod.bucket_sort_topk = bucket_sort_topk
 
     _install_gcu400_bin_topk()
 
     # Same situation for the DSA lightning indexer: its test imports the
-    # interface straight from ``flag_gems.fused.DSA.indexer_k_tiled``, so the
+    # interface straight from ``flag_gems.deprecated.DSA.indexer_k_tiled``, so the
     # public module is imported here and its attribute redirected to the
     # GCU400 kernel (tile-selected for the DSM budget of this arch).
     def _install_gcu400_indexer_k_tiled():
-        from flag_gems.fused.DSA import indexer_k_tiled as _dsa_indexer
+        from flag_gems.deprecated.DSA import indexer_k_tiled as _dsa_indexer
 
         _dsa_indexer.triton_lighting_indexer_k_tiled_interface = (
             triton_lighting_indexer_k_tiled_interface

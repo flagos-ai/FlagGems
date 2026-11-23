@@ -26,54 +26,6 @@ device = device.name
 logger = logging.getLogger(__name__)
 
 
-def _install_aten_empty_mean_shim():
-    # P21 torch_gcu defect: the native aten::l1_loss kernel aborts the
-    # process on GCU when input and target are both empty and reduction=mean
-    # (topsaten path; pure-torch repro without flag_gems, 2026-11-18: empty
-    # fp32 (0,) tensors -> SIGABRT rc=-6, while none/sum variants return
-    # normally). The accuracy suite keeps its reference on the device
-    # (to_reference), so the abort killed the whole pytest session at
-    # tests/test_l1_loss.py::test_l1_loss_empty[1] before the candidate ever
-    # ran -- and the service accuracy gate runs bare pytest with zero env:
-    # torch_gcu parses ENFLAME_PT_OP_DEBUG_CONFIG at .so load time, so a
-    # module-level env write is too late (bucketize precedent, same day).
-    # Route only the narrow trigger through the CPU-native semantics (mean of
-    # zero elements is NaN, via the torch.full factory -- allocation only, no
-    # compute ops); every other call forwards to the untouched packet, so
-    # equal-shape non-empty calls (every benchmark shape included) and both
-    # use_gems dispatch legs pass straight through with native timing.
-    packet = torch.ops.aten.l1_loss
-    if getattr(packet, "_flaggems_gcu_empty_mean_safe", False):
-        return
-
-    class _EmptyMeanSafeL1Loss:
-        def __call__(self, input, target, reduction=1):
-            if (
-                isinstance(input, torch.Tensor)
-                and isinstance(target, torch.Tensor)
-                and reduction == 1
-                and input.device.type == device
-                and target.device.type == device
-                and input.dtype == target.dtype
-                and input.shape == target.shape
-                and input.numel() == 0
-            ):
-                return torch.full(
-                    (), float("nan"), device=input.device, dtype=input.dtype
-                )
-            return packet(input, target, reduction)
-
-        def __getattr__(self, name):
-            return getattr(packet, name)
-
-    wrapper = _EmptyMeanSafeL1Loss()
-    wrapper._flaggems_gcu_empty_mean_safe = True
-    torch.ops.aten.l1_loss = wrapper
-
-
-_install_aten_empty_mean_shim()
-
-
 # GCU400: 4 DIE x 6 SIP; persistent grids stay at small multiples of 24
 # (get_sm_count() reads 4 from torch_gcu and must not be used here).
 NUM_SIPS = 24

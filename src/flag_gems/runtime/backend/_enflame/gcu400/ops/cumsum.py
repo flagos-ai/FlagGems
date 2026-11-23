@@ -26,68 +26,6 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
-# torch_gcu's native topsatenCumsum only accepts a subset of the aten cumsum
-# contract: inputs narrower than int32 (bool/int8/uint8/int16) and calls with a
-# `dtype=` that differs from the input dtype fail its argument check with a C++
-# terminate (op_aten_cumsum.cc:144 "output tensor's data type must match the
-# input tensor's" -> Check failed: 0), killing the whole process. Plain aten
-# reference legs (accuracy tests, benchmark baseline legs) call torch.cumsum
-# directly, so the abort takes down the entire run.
-#
-# ENFLAME_PT_OP_DEBUG_CONFIG is parsed by torch_gcu at .so load, i.e. before
-# this module is imported, so the env recipe cannot be applied from here; and
-# fallback_cpu=all_ops would move every dtype's baseline leg to the host
-# (measured 394.7 ms vs a few ms on device for fp32 [1024, 65536]), poisoning
-# the speedup metric. Instead install a dispatch-context-aware python shim on
-# torch.cumsum (same mechanism as bucketize__opt.py):
-#
-# - while a FlagGems registration is active (use_gems/enable holds cumsum /
-#   cumsum.out), pass straight through to the native entry: the aten
-#   dispatcher routes to the gcu400 kernel for every dtype, which is exactly
-#   what the benchmark candidate leg must measure;
-# - otherwise (plain aten call), only the combos the native entry rejects
-#   (narrow-int inputs, mismatched dtype=) compute via the CPU reference
-#   implementation and move the result back; every supported combo keeps
-#   running on device so baseline legs stay honest.
-#
-# Non-gcu tensors pass through to the native entry unchanged. The FlagGems op
-# itself is untouched: flag_gems.cumsum keeps running the gcu400 device kernel.
-_ABORT_INPUT_DTYPES = (torch.bool, torch.int8, torch.uint8, torch.int16)
-
-
-def _native_cumsum_rejects(input_dtype, dtype):
-    if input_dtype in _ABORT_INPUT_DTYPES:
-        return True
-    return dtype is not None and dtype != input_dtype
-
-
-def _install_torch_cumsum_shim() -> None:
-    native = getattr(torch, "cumsum", None)
-    if native is None or getattr(native, "_flaggems_gcu400_cumsum_shim", False):
-        return
-
-    def _cumsum_shim(input, dim, *, dtype=None, out=None):
-        if torch.is_tensor(input) and input.device.type == "gcu":
-            import flag_gems
-
-            registrar = getattr(flag_gems, "current_work_registrar", None)
-            keys = getattr(registrar, "all_keys", ()) if registrar is not None else ()
-            registered = "cumsum" in keys or "cumsum.out" in keys
-            if not registered and _native_cumsum_rejects(input.dtype, dtype):
-                result = native(input.detach().cpu(), dim, dtype=dtype)
-                if out is not None:
-                    out.copy_(result)
-                    return out
-                return result.to(input.device)
-        return native(input, dim, dtype=dtype, out=out)
-
-    _cumsum_shim._flaggems_gcu400_cumsum_shim = True
-    torch.cumsum = _cumsum_shim
-
-
-_install_torch_cumsum_shim()
-
-
 # ---------------------------------------------------------------------------
 # Float fast path (fp16/bf16/fp32): triangular-dot prefix scan.
 #

@@ -1577,8 +1577,8 @@ def top_k_per_row_prefill(
 # Generic-module rebinding (test / bench / direct-import routing)
 #
 # SpecOpRegistrar only replaces the top-level ``flag_gems`` entry.
-# ``from flag_gems.fused import top_k_per_row_prefill`` (used by the accuracy
-# test and the benchmark) and ``import flag_gems.fused.top_k_per_row_prefill``
+# ``from flag_gems.deprecated import top_k_per_row_prefill`` (used by the accuracy
+# test and the benchmark) and ``import flag_gems.deprecated.top_k_per_row_prefill``
 # keep resolving to the generic implementation, whose histogram+atomic kernel
 # aborts the enflame compiler (``llvm::cast<DenseElementsAttr>`` assertion in
 # make_gcuir). Rebind the generic module's public entry to this copy, the same
@@ -1588,12 +1588,12 @@ def top_k_per_row_prefill(
 # no-op. The vendor module can execute twice under two module names, and the
 # identity guard only prevents pathological self-rebinding.
 # ---------------------------------------------------------------------------
-_generic_topk_module = sys.modules.get("flag_gems.fused.top_k_per_row_prefill")
+_generic_topk_module = sys.modules.get("flag_gems.deprecated.top_k_per_row_prefill")
 if _generic_topk_module is not None and _generic_topk_module is not sys.modules.get(
     __name__
 ):
     _generic_topk_module.top_k_per_row_prefill = top_k_per_row_prefill
 
-_generic_fused_package = sys.modules.get("flag_gems.fused")
+_generic_fused_package = sys.modules.get("flag_gems.deprecated")
 if _generic_fused_package is not None:
     _generic_fused_package.top_k_per_row_prefill = top_k_per_row_prefill

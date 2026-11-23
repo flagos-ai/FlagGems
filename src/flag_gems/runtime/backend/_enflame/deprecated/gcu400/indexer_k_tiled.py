@@ -13,7 +13,7 @@
 # limitations under the License.
 """GCU400 specialization of the DeepSeek sparse-MLA lightning-indexer logits.
 
-Same math as ``flag_gems.fused.DSA.indexer_k_tiled``:
+Same math as ``flag_gems.deprecated.DSA.indexer_k_tiled``:
 ``logits[q, n] = sum_h relu(q[q, h, :] . kv[n, :]) * w[q, h]`` for ``n`` inside
 the per-query ``[ks[q], ke[q])`` window and ``-inf`` outside.
 
