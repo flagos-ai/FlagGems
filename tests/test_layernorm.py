@@ -174,7 +174,7 @@ def test_layer_norm_backward_mthreads_vendor_dispatch():
     assert flag_gems.layer_norm_backward.__module__.endswith("_mthreads.ops.layernorm")
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.parametrize("shape", LAYER_NORM_FORWARD_SHAPES)
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -215,7 +215,7 @@ def test_layer_norm(shape, dtype, wb_none):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("shape", [(17, 37), (4, 8, 512)])
 def test_layer_norm_fp32_affine(shape, dtype):
@@ -238,7 +238,7 @@ def test_layer_norm_fp32_affine(shape, dtype):
     utils.gems_assert_close(result, ref, dtype)
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.parametrize("shape", LAYER_NORM_MEDIUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_native_layer_norm_statistics(shape, dtype):
@@ -566,7 +566,7 @@ LARGE_LAYERNORM_CASES = (
     ],
 )
 @pytest.mark.parametrize("affine", ["none", "weight", "bias", "both"])
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_contract(dtype, shape, norm, affine):
     torch.manual_seed(42)
@@ -603,7 +603,7 @@ def test_layernorm_contract(dtype, shape, norm, affine):
 
 
 @pytest.mark.parametrize("layout", ["transpose", "slice", "expand"])
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_strides(layout):
     torch.manual_seed(13)
@@ -626,7 +626,7 @@ def test_layernorm_strides(layout):
 @pytest.mark.parametrize(
     "value", [0.0, -0.0, float("nan"), float("inf"), -float("inf"), 10000.0]
 )
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_special_values(value):
     tensor = torch.full((3, 1152), value, device="cuda")
@@ -640,7 +640,7 @@ def test_layernorm_special_values(value):
     )
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_real_shape():
     torch.manual_seed(77)
@@ -655,7 +655,7 @@ def test_layernorm_real_shape():
     )
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_errors():
     torch.manual_seed(42)
@@ -682,7 +682,7 @@ def test_layernorm_errors():
     "width", [320, 384, 576, 768, 1152, 1280, 1536, 2304, 2560, 3072]
 )
 @pytest.mark.parametrize("affine", ["none", "weight", "bias", "both"])
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_exact_segments(dtype, width, affine):
     torch.manual_seed(20261103)
@@ -708,7 +708,7 @@ def test_layernorm_exact_segments(dtype, width, affine):
 @pytest.mark.parametrize("shape,normalized_shape,eps", LAYERNORM_CASES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("affine", [False, True])
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_core_shapes(shape, normalized_shape, eps, dtype, affine):
     torch.manual_seed(20261104)
@@ -727,7 +727,7 @@ def test_layernorm_core_shapes(shape, normalized_shape, eps, dtype, affine):
 
 @pytest.mark.parametrize("shape,normalized_shape", LARGE_LAYERNORM_CASES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_large_normalized_extents(shape, normalized_shape, dtype):
     torch.manual_seed(20261104)
@@ -798,7 +798,7 @@ NVIDIA_PATH_SHAPES = [
 ]
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @pytest.mark.native_layer_norm
 @nvidia_only
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -828,7 +828,7 @@ def test_native_layer_norm_fp32_statistics(shape, dtype):
     utils.gems_assert_close(res_rstd, ref_rstd, torch.float32, reduce_dim=reduce_dim)
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @nvidia_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("shape", NVIDIA_PATH_SHAPES)
@@ -854,7 +854,7 @@ def test_layer_norm_nvidia_paths(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @nvidia_only
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("shape", [(17, 37), (4, 8, 512)])
@@ -880,7 +880,7 @@ def test_layer_norm_fp32_affine_noncontiguous(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 @nvidia_only
 def test_layer_norm_empty_rows():
     """A zero-sized outer dimension returns empty tensors, launching nothing."""
