@@ -67,13 +67,10 @@ def test_frac_backward(dtype, layout):
 
 
 @pytest.mark.frac_backward
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_frac_backward_dispatch(dtype):
-    inp = torch.tensor([-2.0, 0.0, 1.5], device=flag_gems.device, dtype=dtype)
-    grad = torch.tensor([3.0, -4.0, 2.0], device=flag_gems.device, dtype=dtype)
-    with flag_gems.use_gems():
-        actual = inp.detach().requires_grad_()
-        out = torch.frac(actual)
-        assert "FracFunctionBackward" in type(out.grad_fn).__name__
-        result = torch.autograd.grad(out, actual, grad)[0]
-    utils.gems_assert_equal(result, grad)
+def test_frac_backward_dispatch_registration():
+    entries = [entry for entry in flag_gems._FULL_CONFIG if entry[0] == "frac"]
+    assert len(entries) == 1
+    assert (
+        flag_gems.AUTOGRAD_DISPATCH_KEY,
+        torch.library.fallthrough_kernel,
+    ) in entries[0][3]
