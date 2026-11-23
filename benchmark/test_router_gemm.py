@@ -52,8 +52,8 @@ class RouterGemmBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype) -> Generator:
         for m, n, k in self.shapes:
-            x = torch.randn((m, k), dtype=torch.bfloat16, device=self.device)
-            weight = torch.randn((n, k), dtype=torch.bfloat16, device=self.device)
+            x = torch.randn((m, k), dtype=dtype, device=self.device)
+            weight = torch.randn((n, k), dtype=dtype, device=self.device)
             yield x, weight
 
     def get_tflops(self, op, *args, **kwargs):
@@ -69,6 +69,6 @@ def test_perf_router_gemm():
         op_name="router_gemm",
         torch_op=torch_router_gemm,
         gems_op=flag_gems.router_gemm,
-        dtypes=[torch.bfloat16],
+        dtypes=consts.FP16_BF16_DTYPES,
     )
     bench.run()

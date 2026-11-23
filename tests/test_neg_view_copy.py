@@ -326,6 +326,11 @@ def test_neg_view_copy_backward(shape, dtype):
 
 @pytest.mark.neg_view_copy
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="native _neg_view_copy returns a lazy neg view on this device, so the "
+    "unsupported-dtype error is deferred instead of raised at the call site",
+)
 def test_neg_view_copy_rejects_unsupported_dtypes(dtype):
     # The op output is device-independent, but --ref=cpu moves the native
     # reference to CPU; this suite is validated on the device path.

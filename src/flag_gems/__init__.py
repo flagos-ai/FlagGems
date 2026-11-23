@@ -21,6 +21,7 @@ from packaging.version import parse as _parse_version
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -149,6 +150,16 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Double", "default"),
     ),
     (
+        "_cast_Float",
+        cast_Float,
+        lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
+        "_cast_Half",
+        cast_Half,
+        lambda: torch_has_aten_overload("_cast_Half", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
@@ -207,6 +218,11 @@ _FULL_CONFIG = (
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
     ("_efficientzerotensor", _efficientzerotensor),
+    (
+        "_efficientzerotensor.out",
+        _efficientzerotensor_out,
+        lambda: torch_has_aten_overload("_efficientzerotensor", "out"),
+    ),
     ("_embedding_bag", _embedding_bag),
     ("_embedding_bag_backward", _embedding_bag_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
@@ -621,6 +637,18 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    (
+        "_sparse_addmm",
+        _sparse_addmm,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
+    (
+        "_sparse_addmm.out",
+        _sparse_addmm_out,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
     ("_sparse_broadcast_to", sparse_broadcast_to, None, (SPARSE_DISPATCH_KEY,)),
     (
         "_sparse_broadcast_to_copy",
@@ -630,7 +658,49 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    (
+        "_sparse_coo_tensor_with_dims",
+        sparse_coo_tensor_with_dims,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims.out",
+        sparse_coo_tensor_with_dims_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        sparse_coo_tensor_with_dims_and_tensors,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors.out",
+        sparse_coo_tensor_with_dims_and_tensors_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
+    (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     (
         "_sparse_csr_sum",
         sparse_csr_sum,
@@ -649,6 +719,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
     (
         "_sparse_log_softmax",
         _sparse_log_softmax,
@@ -717,6 +788,12 @@ _FULL_CONFIG = (
     (
         "_sparse_mm_reduce_impl",
         _sparse_mm_reduce_impl,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_mm_reduce_impl_backward",
+        _sparse_mm_reduce_impl_backward,
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
@@ -856,7 +933,12 @@ _FULL_CONFIG = (
         _upsample_nearest_exact3d_backward_grad_input,
     ),
     ("_validate_compressed_sparse_indices", _validate_compressed_sparse_indices),
+    ("_validate_sparse_bsc_tensor_args", _validate_sparse_bsc_tensor_args),
     ("_validate_sparse_bsr_tensor_args", _validate_sparse_bsr_tensor_args),
+    (
+        "_validate_sparse_compressed_tensor_args",
+        _validate_sparse_compressed_tensor_args,
+    ),
     ("_validate_sparse_coo_tensor_args", _validate_sparse_coo_tensor_args),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
     ("_validate_sparse_csr_tensor_args", _validate_sparse_csr_tensor_args),
@@ -1408,7 +1490,8 @@ _FULL_CONFIG = (
     ("greater_.Tensor", greater_),
     ("greater_equal.Scalar", greater_equal_scalar),
     ("greater_equal.Tensor", greater_equal),
-    ("greater_equal_.Tensor", greater_equal_),
+    ("greater_equal_.Scalar", greater_equal_scalar_),
+    ("greater_equal_.Tensor", greater_equal_tensor_),
     ("grid_sampler", grid_sampler),
     ("grid_sampler_2d", grid_sampler_2d),
     ("grid_sampler_2d_backward", grid_sampler_2d_backward),
@@ -1458,7 +1541,12 @@ _FULL_CONFIG = (
     ("hypot", hypot),
     ("hypot.out", hypot_out),
     ("hypot_", hypot_),
-    ("i0", i0),
+    (
+        "i0",
+        i0,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("i0.out", i0_out),
     ("i0_", i0_),
     (
@@ -1693,6 +1781,7 @@ _FULL_CONFIG = (
     ("matmul_backward", matmul_backward),
     ("matrix_exp", matrix_exp),
     ("matrix_exp_backward", matrix_exp_backward),
+    ("matrix_H", matrix_H),
     ("matrix_power", matrix_power),
     ("matrix_power.out", matrix_power_out),
     ("max", max),
@@ -2121,6 +2210,7 @@ _FULL_CONFIG = (
     ("sparse_mask", sparse_mask, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_mask.out", sparse_mask_out, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_resize_", sparse_resize_, None, (SPARSE_DISPATCH_KEY,)),
+    ("sparse_resize_and_clear_", sparse_resize_and_clear_, None, [SPARSE_DISPATCH_KEY]),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",

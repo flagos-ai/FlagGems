@@ -175,6 +175,10 @@ def test_quantized_max_pool2d(
     _assert_same_quantized(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool2d
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 def test_quantized_max_pool2d_channels_last(dtype):
@@ -437,6 +441,10 @@ def test_quantized_max_pool2d_default_stride(stride):
     _assert_same_quantized(res_out, ref_out, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool2d
 def test_quantized_max_pool2d_runs_triton_kernel(monkeypatch):
     """Guard: both entry points really launch the Triton kernel.

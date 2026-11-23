@@ -1,0 +1,123 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime.backend._ascend.utils import CORE_NUM
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
+
+erf = tl_extra_shim.erf
+exp = tl_extra_shim.exp
+tanh = tl_extra_shim.tanh
+
+logger = logging.getLogger(__name__)
+
+# Use flat tiles even for strided inputs: multidimensional tiles can expand
+# gather/scatter temporaries beyond Ascend's unified buffer during lowering.
+# The generated flat indexing still respects each tensor's strides and offset.
+# Bound the grid by the core count and process remaining tiles in a loop. A
+# conservative tile also keeps erf/exp/tanh intermediate vectors within the
+# Ascend unified-buffer limit when automatic multi-buffering is enabled.
+gelu_config = CodeGenConfig(
+    max_tile_size=512,
+    max_grid_size=(CORE_NUM, 1, 1),
+    max_num_warps_per_cta=32,
+    prefer_block_pointer=False,
+    prefer_1d_tile=True,
+)
+
+# NOTE: the generic implementation squares its argument with
+# tl_extra_shim.pow(x, 2). The math library that shim resolves to on Ascend has
+# no (float32, int32) overload, so the kernels below multiply instead. That is
+# exact, needs no library call and is faster.
+
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=gelu_config)
+@triton.jit
+def gelu_none(x):
+    scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
+    output = 0.5 * x * (1 + erf(x.to(tl.float32) * scale))
+    return output
+
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=gelu_config)
+@triton.jit
+def gelu_tanh(x):
+    x_fp32 = x.to(tl.float32)
+    output = (
+        0.5 * x * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * x_fp32 * x_fp32)))
+    )
+    return output
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=gelu_config)
+@triton.jit
+def gelu_backward_none(x, dy):
+    scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
+    scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
+    x_fp32 = x.to(tl.float32)
+    scaled_x = scale1 * x_fp32
+    dydx = scale2 * x_fp32 * exp(-scaled_x * scaled_x) + 0.5 * erf(scaled_x) + 0.5
+    dx = dydx * dy
+    return dx
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=gelu_config)
+@triton.jit
+def gelu_backward_tanh(x, dy):
+    x_fp32 = x.to(tl.float32)
+    x_sq = x_fp32 * x_fp32
+    # 0.79788456 = math.sqrt(2 / math.pi)
+    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * x_sq))
+    dydx = 0.5 * x_fp32 * (
+        (1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x_sq)
+    ) + 0.5 * (1 + tanh_out)
+    dx = dydx * dy
+    return dx
+
+
+def gelu(self, *, approximate="none"):
+    logger.debug("GEMS_ASCEND GELU")
+    kernel = gelu_tanh if approximate == "tanh" else gelu_none
+    if self.is_contiguous():
+        return kernel(self)
+    # Ascend empty_like may not preserve a transposed input's strides. Pass
+    # the output explicitly so pointwise_dynamic checks its layout as well.
+    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    return kernel(self, out0=out)
+
+
+def gelu_backward(grad_output, self, *, approximate="none"):
+    logger.debug("GEMS_ASCEND GELU_BACKWARD")
+    kernel = gelu_backward_tanh if approximate == "tanh" else gelu_backward_none
+    if self.is_contiguous() and grad_output.is_contiguous():
+        return kernel(self, grad_output)
+    # Include the output layout even when both inputs share transposed strides.
+    dtype = torch.promote_types(self.dtype, grad_output.dtype)
+    in_grad = torch.empty(self.shape, dtype=dtype, device=self.device)
+    return kernel(self, grad_output, out0=in_grad)
+
+
+def gelu_(A, *, approximate="none"):
+    logger.debug("GEMS_ASCEND GELU_")
+    if approximate == "tanh":
+        out = gelu_tanh(A, out0=A)
+    else:
+        out = gelu_none(A, out0=A)
+    return out

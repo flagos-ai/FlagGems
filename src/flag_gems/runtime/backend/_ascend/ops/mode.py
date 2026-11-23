@@ -208,14 +208,14 @@ def _mode_find_indices_blocked(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["shift"])
 def _mode_radix_histogram(
     X,
     H,
     M: tl.constexpr,
     N: tl.constexpr,
     NT: tl.constexpr,
-    SHIFT: tl.constexpr,
+    shift,
     R: tl.constexpr,
     B: tl.constexpr,
 ):
@@ -227,7 +227,7 @@ def _mode_radix_histogram(
         row = tile // NT
         col = (tile - row * NT) * B + tl.arange(0, B)
         x = tl.load(X + row * N + col, col < N, other=0)
-        key = ((convert_to_uint_preverse_order(x, False) >> SHIFT) & (R - 1)).to(
+        key = ((convert_to_uint_preverse_order(x, False) >> shift) & (R - 1)).to(
             tl.int32
         )
         bins = tl.arange(0, R)
@@ -258,7 +258,7 @@ def _mode_radix_prefix(H, P, M: tl.constexpr, S: tl.constexpr, B: tl.constexpr):
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["shift"])
 def _mode_radix_scatter(
     X,
     Y,
@@ -266,7 +266,7 @@ def _mode_radix_scatter(
     M: tl.constexpr,
     N: tl.constexpr,
     NT: tl.constexpr,
-    SHIFT: tl.constexpr,
+    shift,
     R: tl.constexpr,
     B: tl.constexpr,
 ):
@@ -278,7 +278,7 @@ def _mode_radix_scatter(
         row = tile // NT
         col = (tile - row * NT) * B + tl.arange(0, B)
         x = tl.load(X + row * N + col, col < N, other=0)
-        key = ((convert_to_uint_preverse_order(x, False) >> SHIFT) & (R - 1)).to(
+        key = ((convert_to_uint_preverse_order(x, False) >> shift) & (R - 1)).to(
             tl.int32
         )
         bins = tl.arange(0, R)
@@ -352,6 +352,7 @@ def mode(inp, dim=-1, keepdim=False):
                 source = x
                 target = torch.empty_like(x)
                 scratch = torch.empty_like(x)
+                # Reuse the histogram and scatter kernels across radix passes.
                 for shift in range(0, 32, 4):
                     _mode_radix_histogram[(min(rows * tiles, CORE_NUM),)](
                         source, histogram, rows, n, tiles, shift, bins, block

@@ -45,11 +45,14 @@ def test__logcumsumexp(shape, dtype):
 
     dim = 1 if shape == utils.REDUCTION_SHAPES[-1] else -1
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    use_cpu_reference = flag_gems.vendor_name == "mthreads" and dtype == torch.bfloat16
+    ref_inp = inp.cpu().double() if use_cpu_reference else utils.to_reference(inp, True)
 
     ref_out = torch._logcumsumexp(ref_inp, dim)
     res_out = flag_gems._logcumsumexp(inp, dim)
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
