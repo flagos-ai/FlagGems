@@ -42,8 +42,6 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-_COMPLEX_DTYPES = (torch.complex64, torch.complex128)
-
 # One qword per lane. Each program covers a large contiguous tile so a
 # materializing copy runs close to the HBM wall (~3.7 TB/s on H20-3e).
 _BLOCK_SIZE = 8192
@@ -99,7 +97,7 @@ def conj_physical_backward(grad_output: torch.Tensor) -> torch.Tensor:
         identity semantics for ``conj_physical`` on non-complex tensors.
     """
     logger.debug("GEMS CONJ_PHYSICAL_BACKWARD")
-    if grad_output.dtype not in _COMPLEX_DTYPES:
+    if not grad_output.is_complex():
         # conj_physical(real) is an identity returning `self` itself, so its
         # backward is an aliasing pass-through of grad_output.
         return grad_output

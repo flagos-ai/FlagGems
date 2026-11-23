@@ -19,24 +19,33 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Tests call flag_gems.conj_physical_backward directly instead of the
-# flag_gems.use_gems() context manager: the CI kernelgen-test rules forbid a
-# real use_gems() call from test files, and the wrapper is what the PR exposes.
+# Tests call flag_gems.conj_physical_backward directly instead of the context
+# manager that globally patches ATen dispatch: the CI kernelgen-test rules
+# forbid a real activation call from test files, and the wrapper is what the
+# PR exposes.
+
+# The kernel materializes conj(grad_output) over the interleaved storage, so
+# complex64 and complex128 (FP64 gated on the device, as elsewhere in the
+# repo) are the dtypes under test; complex32 is not exercised (matches the
+# conj family tests).
+COMPLEX_BACKWARD_DTYPES = [
+    torch.complex64,
+    pytest.param(torch.complex128, marks=utils._SKIP_FP64),
+]
+
+# The real-dtype identity path is dtype-independent: fp32/fp64 cover the
+# guard (fp64 skipped on devices without FP64 support).
+REAL_PASSTHROUGH_DTYPES = [
+    torch.float32,
+    pytest.param(torch.float64, marks=utils._SKIP_FP64),
+]
 
 
 @pytest.mark.conj_physical_backward
-@pytest.mark.parametrize(
-    "shape", [(256,), (32, 64), (2, 3, 4), (4096, 4096), (64, 512, 512)]
-)
-# conj_physical_backward keeps the gradient dtype, so complex64 and complex128
-# (FP64 gated on the device, as elsewhere in the repo) are both exercised.
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        torch.complex64,
-        pytest.param(torch.complex128, marks=utils._SKIP_FP64),
-    ],
-)
+@pytest.mark.parametrize("shape", [(256,), (32, 64), (2, 3, 4), (4096, 4096), (64, 512, 512)])
+# conj_physical_backward keeps the gradient dtype; complex64/complex128 are the
+# dtypes under test (FLOAT_DTYPES/INT_DTYPES not applicable, mirroring test_conj.py).
+@pytest.mark.parametrize("dtype", COMPLEX_BACKWARD_DTYPES)
 def test_conj_physical_backward(shape, dtype):
     # complex inputs: gradient is the materialized conjugate of grad_output.
     real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
@@ -51,13 +60,13 @@ def test_conj_physical_backward(shape, dtype):
 
 
 @pytest.mark.conj_physical_backward
-# The identity path is dtype-independent: float32 covers the guard.
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", REAL_PASSTHROUGH_DTYPES)
 def test_conj_physical_backward_real_passthrough(dtype):
     # Real (non-complex) gradients pass through unchanged (aliasing
     # grad_output), matching ATen's identity semantics for conj_physical
     # on non-complex tensors -- this differs from conj_backward, which
-    # raises on real dtypes.
+    # raises on real dtypes. All real dtypes take the same guard, so a
+    # fp32/fp64 sample covers it.
     grad_output = torch.randn((1024,), dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.conj_physical_backward(grad_output)
     ref_out = torch.conj_physical(grad_output)
@@ -67,13 +76,7 @@ def test_conj_physical_backward_real_passthrough(dtype):
 
 
 @pytest.mark.conj_physical_backward
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        torch.complex64,
-        pytest.param(torch.complex128, marks=utils._SKIP_FP64),
-    ],
-)
+@pytest.mark.parametrize("dtype", COMPLEX_BACKWARD_DTYPES)
 def test_conj_physical_backward_non_contiguous(dtype):
     # A transposed view exercises the .contiguous() path in the wrapper.
     base = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)
