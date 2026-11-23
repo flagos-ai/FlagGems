@@ -122,9 +122,8 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
     [(2, 256, 128), (2, 384, 128), (2, 32768, 64), (2, 33024, 128), (513, 4096, 128)],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
-    or not _cuda_fp8_e4m3fn_available(),
-    reason="Backend E4M3FN byte decoding across all kernel paths",
+    not _cuda_fp8_e4m3fn_available(),
+    reason="device cannot store/cast float8_e4m3fn weights",
 )
 def test_rms_norm_w8a16_fp8_encodings(dtype, m, n, group_size):
     # Cover all 256 encodings, including signed zero, subnormals, and NaNs.
@@ -232,9 +231,8 @@ def test_rms_norm_w8a16_fp8(shape):
     ],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("mthreads", "metax", "thead")
-    or not _cuda_fp8_e4m3fn_available(),
-    reason="MThreads/MetaX/THead W8A16 kernel shape and stride coverage",
+    not _cuda_fp8_e4m3fn_available(),
+    reason="device cannot store/cast float8_e4m3fn weights",
 )
 def test_rms_norm_w8a16_fp8_mthreads_shapes(
     dtype, shape, normalized_shape, group_size, strided

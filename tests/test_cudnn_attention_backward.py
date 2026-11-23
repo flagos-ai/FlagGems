@@ -25,6 +25,28 @@ from flag_gems.utils.random_utils import set_philox_state
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+# enflame GCU: `aten::_cudnn_attention_backward` has no PrivateUse1 kernel, so
+# cases that use it as the reference skip individually. The input-validation
+# cases only need the forward (whose aten operator is implemented for GCU) and
+# still run there.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+ATEN_REFERENCE_SKIP_REASON = (
+    "enflame GCU has no kernel registered for this aten operator: "
+    "aten::_cudnn_attention_backward is CUDA-only, there is no PrivateUse1 "
+    "kernel to use as reference"
+)
+
+
+def _skip_without_aten_reference():
+    """Skip cases whose reference is the CUDA-only aten backward."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
+
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()

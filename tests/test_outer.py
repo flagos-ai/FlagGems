@@ -42,7 +42,7 @@ else:
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason=(
-        "enflame aten::outer returns tensors without grad_fn, so the "
+        "enflame torch_gcu aten::outer returns tensors without grad_fn, so the "
         "reference-side autograd.grad is unsupported; an independent CPU float64 "
         "analytic gate covers forward and both input gradients"
     ),

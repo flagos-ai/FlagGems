@@ -58,6 +58,10 @@ pytestmark = [
         not _is_fp8e4nv_supported(),
         reason="fp8e4nv requires device capability >= 8.9",
     ),
+    pytest.mark.skipif(
+        flag_gems.vendor_name == "enflame",
+        reason="the fp8e4nv/FP4 reference semantics rely on CUDA compute capability, unavailable on enflame/GCU",
+    ),
 ]
 
 

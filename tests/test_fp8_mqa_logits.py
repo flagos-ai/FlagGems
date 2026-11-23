@@ -29,7 +29,21 @@ except ImportError:
     fp8_mqa_logits = None
 
 
+try:
+    import vllm  # noqa: F401
+
+    VLLM_AVAILABLE = True
+except ImportError:
+    VLLM_AVAILABLE = False
+
+
 FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+# Vendors listed here have no vLLM/DeepGEMM reference kernel (it is CUDA Hopper
+# only), so they are validated against the dequantized torch reference instead
+# of being skipped as a whole file.
+TORCH_REFERENCE_VENDORS = ("enflame",)
+USE_DEEPGEMM_REFERENCE = flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS
 
 pytestmark = pytest.mark.skipif(
     not FP8_DTYPES,

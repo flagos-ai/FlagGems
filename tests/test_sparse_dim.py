@@ -175,6 +175,13 @@ def test_sparse_dim_disjoint_from_native_neighbors():
 
 
 @pytest.mark.sparse_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::sparse_dim"
+    ),
+)
 def test_sparse_dim_dispatch_sentinel():
     # Registration-path check: a sentinel wrapper on the three dispatch keys
     # (CUDA for strided, SparseCUDA for COO, SparseCsrCUDA for compressed)
@@ -227,6 +234,13 @@ def _resolve_dense_dim():
 
 
 @pytest.mark.sparse_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::sparse_dim"
+    ),
+)
 def test_sparse_dim_coexistence():
     # Combination test: sparse_dim and dense_dim registered side by side on
     # the same three dispatch keys (CUDA + SparseCUDA + SparseCsrCUDA) must

@@ -425,6 +425,8 @@ def test_median_empty_no_dim(dtype):
 def test_median_extra_no_dim_dtypes(dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     inp = _make_input((9,), dtype)
     ref_inp = utils.to_reference(inp)
 

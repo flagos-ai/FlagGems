@@ -26,6 +26,8 @@ ORMQR_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 def test_ormqr(M, N, dtype, left, transpose):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skipping fp32 ormqr test on tsingmicro platform")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
 
     # For ormqr, we need valid Householder reflectors
     # Generate them from a QR decomposition (geqrf)

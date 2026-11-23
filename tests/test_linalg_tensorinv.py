@@ -307,18 +307,6 @@ def test_linalg_tensorinv_singular(A_cpu):
     )
 
 
-def _tensorinv_out_reference(inp, ind):
-    if (
-        flag_gems.vendor_name == "mthreads"
-        and inp.device.type == "cpu"
-        and not torch._C.has_lapack
-    ):
-        import numpy as np
-
-        return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
-    return torch.linalg.tensorinv(inp, ind=ind)
-
-
 @pytest.mark.linalg_tensorinv_out
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND2)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.

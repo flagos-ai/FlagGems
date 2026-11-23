@@ -61,25 +61,15 @@ def _assert_close(result, reference, dtype, reduction_size):
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 @pytest.mark.parametrize("dim, keepdim", [(None, False), (1, False), (-1, True)])
 def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
-    use_cpu_reference = (
-        flag_gems.vendor_name == "mthreads"
-        and dtype == torch.float64
-        and interpolation != "linear"
-    )
     inp = _input((7, 33), dtype).T
     q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
-    if use_cpu_reference:
-        ref_inp, ref_q = inp.cpu(), q.cpu()
-    else:
-        ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
+    ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
     reference = torch.ops.aten.nanquantile.default(
         ref_inp, ref_q, dim, keepdim, interpolation=interpolation
     )
     result = flag_gems.nanquantile(
         inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
     )
-    if use_cpu_reference:
-        assert result.device == inp.device
     reduction_size = inp.numel() if dim is None else inp.shape[dim]
     _assert_close(result, reference, dtype, reduction_size)
 

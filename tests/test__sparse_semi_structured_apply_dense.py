@@ -124,6 +124,20 @@ _SPECIAL_CASES = tu.selected_cases(
 # of a larger buffer whose stride(0) is still packed.
 _MASK_LAYOUTS = ["plain", "offset"]
 
+# The value-comparison families below need the aten reference.  Measured on GCU
+# (enflame): torch.ops.aten._sparse_semi_structured_apply_dense is registered for the
+# CUDA dispatch key only, so this build raises NotImplementedError for both CPU and
+# PrivateUse1 tensors and no reference value can be computed.  The FlagGems kernel
+# itself runs on GCU, so only these reference-dependent cases are skipped and the
+# argument-contract families keep their enflame coverage.
+_ATEN_REFERENCE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten::_sparse_semi_structured_apply_dense has no CPU/PrivateUse1 kernel in "
+        "this build, so the reference value cannot be computed"
+    ),
+)
+
 # Excluded, with no case derived from it: a row-strided mask view (buffer[::2],
 # stride(0) != 8 * size(1)). The mask checks read dim(), size(0), size(1),
 # stride(1), size(2), stride(2) and the dtype only, so the measured build ignores
@@ -224,6 +238,7 @@ def _offset_input(rows, cols, layout, dtype, value_range):
 
 
 @pytest.mark.sparse_semi_structured_apply_dense
+@_ATEN_REFERENCE_SKIP
 @pytest.mark.parametrize("shape,dtype,value_range,layout,mask_pattern", _MAIN_CASES)
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense(
@@ -244,6 +259,7 @@ def test__sparse_semi_structured_apply_dense(
 
 
 @pytest.mark.sparse_semi_structured_apply_dense
+@_ATEN_REFERENCE_SKIP
 @pytest.mark.parametrize("dtype,scenario,mask_pattern", _SPECIAL_CASES)
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense_special_values(
@@ -276,6 +292,7 @@ def test__sparse_semi_structured_apply_dense_special_values(
 
 
 @pytest.mark.sparse_semi_structured_apply_dense
+@_ATEN_REFERENCE_SKIP
 @pytest.mark.parametrize("shape,layout,dtype", _MASK_LAYOUT_CASES)
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense_mask_layout(shape, layout, dtype):
@@ -295,6 +312,7 @@ def test__sparse_semi_structured_apply_dense_mask_layout(shape, layout, dtype):
 
 
 @pytest.mark.sparse_semi_structured_apply_dense
+@_ATEN_REFERENCE_SKIP
 @pytest.mark.parametrize("shape,layout,operand,dtype", _VIEW_CASES)
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense_offset_views(
@@ -421,6 +439,7 @@ def test__sparse_semi_structured_apply_dense_invalid_mask(defect):
         flag_gems._sparse_semi_structured_apply_dense(inp, mask)
 
 
+@_ATEN_REFERENCE_SKIP
 def test_sparse_semi_structured_apply_dense_dispatch():
     """Smoke-test the dispatcher path."""
     x = torch.randn(32, 64, dtype=torch.float16, device=flag_gems.device)

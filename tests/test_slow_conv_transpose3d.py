@@ -63,12 +63,6 @@ def _atol(dtype):
     return 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
 
 
-def _reference_input(tensor, upcast=False):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
-    return utils.to_reference(tensor, upcast)
-
-
 @pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize("shape, weight_shape", SHAPES_AND_WEIGHTS)
 @pytest.mark.parametrize("stride, padding", STRIDE_PADDING)

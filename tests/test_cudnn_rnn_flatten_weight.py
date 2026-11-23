@@ -21,6 +21,30 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+# enflame GCU: the reference used by most cases below is the bare aten operator,
+# which only has a CUDA kernel -- `aten::_cudnn_rnn_flatten_weight` has no
+# PrivateUse1 kernel, so that reference cannot execute on GCU. Those cases skip
+# individually; the ones that only need the FlagGems kernel (rebinding through
+# `flatten_parameters()`, argument validation and the aten-schema dispatch
+# check) still run there.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+ATEN_REFERENCE_SKIP_REASON = (
+    "torch aten not support due to: aten::_cudnn_rnn_flatten_weight "
+    "is CUDA-only, there is no PrivateUse1 kernel to use as reference"
+)
+
+
+def _skip_without_aten_reference():
+    """Skip cases whose reference is the CUDA-only aten operator."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
+
+
 # (input_size, hidden_size, num_layers, bidirectional, bias)
 RECURRENT_CONFIGS = [
     (4, 3, 1, False, True),

@@ -61,6 +61,44 @@ ADAPTIVE_AVG_POOL3D_DISPATCH_CASES = [
 ]
 
 
+# ``aten::_adaptive_avg_pool3d`` (and the public ``adaptive_avg_pool3d`` overloads,
+# which are CompositeImplicitAutograd wrappers around it) has no GCU kernel in
+# torch_gcu: the PrivateUse1 entry is the CPU fallback, so the public overloads
+# never reach the FlagGems kernel here and the arithmetic that runs is the CPU
+# kernel's, which accumulates fp16/bf16 in the input dtype. Against the fp64
+# reference these cases build, that half-precision accumulate is up to 2 ULP off
+# (measured 7.3e-4 on (2, 3, 8, 7, 6) -> (2, 3, 3)), i.e. outside the 1e-4/1e-3
+# tolerance regardless of what the FlagGems kernel does. The FlagGems kernel is
+# covered dtype-for-dtype by the ``flag_gems._adaptive_avg_pool3d`` cases, which
+# match the same fp64 reference bit-exactly, so only the half dtypes of the
+# public overload cases are skipped, and only on enflame.
+_PUBLIC_ATEN_HALF_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame: aten::_adaptive_avg_pool3d has no GCU kernel and runs the CPU "
+        "fallback, which accumulates fp16/bf16 in the input dtype (up to 2 ULP off "
+        "the fp64 reference); the FlagGems kernel is covered by the "
+        "flag_gems._adaptive_avg_pool3d cases"
+    ),
+)
+
+
+def _public_aten_dtypes():
+    """Dtypes for the public aten overload cases.
+
+    fp32 keeps being checked; the half dtypes only re-measure the CPU fallback
+    rather than the FlagGems kernel, so they are skipped on enflame.
+    """
+    return [
+        (
+            pytest.param(dtype, marks=_PUBLIC_ATEN_HALF_SKIP)
+            if dtype in (torch.float16, torch.bfloat16)
+            else dtype
+        )
+        for dtype in utils.FLOAT_DTYPES
+    ]
+
+
 # The underscore implementation has its own yaml id (``_adaptive_avg_pool3d`` /
 # ``_adaptive_avg_pool3d_out``), but pytest rejects ``pytest.mark._adaptive_...``
 # because attribute access starting with an underscore is special-cased. The #6359

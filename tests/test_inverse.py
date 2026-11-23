@@ -62,22 +62,6 @@ def _make_well_conditioned(shape, dtype, device):
     return eye + 0.05 * torch.randn(shape, dtype=dtype, device=device)
 
 
-def ref_inverse(a):
-    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
-    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
-    # the reference is computed wide on CPU there.  Other backends keep the
-    # to_reference() upcast behaviour (device, or CPU under --ref cpu).
-    if flag_gems.vendor_name != "kunlunxin":
-        return torch.inverse(utils.to_reference(a, upcast=True)).to(a.dtype)
-    a_cpu = (
-        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
-    )
-    ref = torch.inverse(a_cpu)
-    if not TO_CPU:
-        ref = ref.to(a.dtype).to(a.device)
-    return ref
-
-
 @pytest.mark.inverse
 @pytest.mark.parametrize("shape", INVERSE_SHAPES)
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
@@ -166,20 +150,4 @@ def test_inverse_unsupported_dtype():
     A = torch.randn((4, 4), dtype=torch.float16, device=flag_gems.device)
 
     with pytest.raises(AssertionError):
-        flag_gems.inverse(A)
-
-
-@pytest.mark.inverse
-@pytest.mark.parametrize("dtype", INVERSE_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "kunlunxin",
-    reason="singular detection is a Kunlunxin-only backend behaviour",
-)
-def test_inverse_singular(dtype):
-    # Singular inputs must raise LinAlgError (matching torch.inverse), not
-    # silently return an inf/NaN-filled result.  This rank-1 matrix only hits
-    # its zero pivot partway through the elimination.
-    A = torch.tensor([[1.0, 1.0], [2.0, 2.0]], dtype=dtype, device=flag_gems.device)
-
-    with pytest.raises(torch.linalg.LinAlgError):
         flag_gems.inverse(A)

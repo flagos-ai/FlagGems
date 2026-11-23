@@ -22,6 +22,18 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .conftest import TO_CPU
 
+# enflame GCU: most cases below use the bare aten operator as the reference,
+# which only has a CUDA kernel -- `aten::cudnn_affine_grid_generator_backward`
+# has no PrivateUse1 kernel, so that reference cannot execute on GCU. Only those
+# cases skip; the ones whose reference is backend independent (the closed-form
+# Jacobian and the dispatch / `.out` contract checks) still run there.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+ATEN_REFERENCE_SKIP_REASON = (
+    "torch aten not support due to: aten::cudnn_affine_grid_generator_backward "
+    "is CUDA-only, there is no PrivateUse1 kernel to use as reference"
+)
+
 # Custom shapes: (N, C, H, W); the spatial (H, W) extent is the reduction
 # dimension, so the shapes also cover the degenerate 1x1 grid and large
 # reduction planes.
@@ -46,6 +58,21 @@ else:
 # cudnn does not support bfloat16 for this operator (CUDNN_STATUS_BAD_PARAM);
 # float16 and float32 are supported (cudnn computes in float32 internally).
 CUDNN_AFFINE_GRID_BACKWARD_DTYPES = [torch.float16, torch.float32]
+
+
+def _skip_without_aten_reference():
+    """Skip cases whose reference is the CUDA-only aten operator.
+
+    Under `--ref cpu` the reference lives on the host, and on GCU the operator
+    has no PrivateUse1 kernel either, so in both cases a bare aten call cannot
+    produce the expected result.
+    """
+    if TO_CPU:
+        pytest.skip(
+            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
 
 
 def _make_grad(shape, dtype):

@@ -19,6 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame/GCU lacks the TransformerEngine reference implementation",
+)
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 

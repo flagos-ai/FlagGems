@@ -92,10 +92,6 @@ def _assert_sss(dense, equal_nan=False):
     return actual, expected
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="semi-structured sparse tensor not supported on this device",
-)
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)
@@ -103,10 +99,6 @@ def test_to_sparse_semi_structured(shape, dtype):
     _assert_sss(_valid_dense(shape, dtype))
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="semi-structured sparse tensor not supported on this device",
-)
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_to_sparse_semi_structured_strided(dtype):
@@ -126,12 +118,10 @@ def test_to_sparse_semi_structured_strided(dtype):
         _assert_sss(t)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="semi-structured sparse tensor not supported on this device",
-)
 @pytest.mark.to_sparse_semi_structured
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize(
+    "dtype", _dtype_params([torch.float16, torch.bfloat16, torch.float32])
+)
 def test_to_sparse_semi_structured_special_values(dtype):
     rows, cols = (32, 64)
     ksparse = 2 if dtype == torch.float32 else 4

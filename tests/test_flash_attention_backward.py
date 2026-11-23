@@ -30,18 +30,6 @@ from flag_gems.utils.random_utils import set_philox_state
 from . import accuracy_utils as utils
 
 
-@pytest.fixture(scope="module", autouse=flag_gems.vendor_name == "hygon")
-def _hygon_reference_threads():
-    # DTK exposes all host CPUs to PyTorch. The per-head FP64 reductions run
-    # faster with one thread inside the CI container's CPU quota.
-    previous = torch.get_num_threads()
-    torch.set_num_threads(1)
-    try:
-        yield
-    finally:
-        torch.set_num_threads(previous)
-
-
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()
     set_philox_state(1234567890, 0, dev)

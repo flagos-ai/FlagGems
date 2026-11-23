@@ -28,6 +28,10 @@ if cfg.QUICK_MODE:
 else:
     ATTN_HEADS = [2, 4, 8, 16, 32]
 
+# Vendors whose reference is the plain torch softmax formulation below instead of
+# NVIDIA TransformerEngine (unavailable on these backends).
+TORCH_REFERENCE_VENDORS = ("enflame", "kunlunxin")
+
 # Make sure every thread has same seed.
 random.seed(time.time() // 100)
 

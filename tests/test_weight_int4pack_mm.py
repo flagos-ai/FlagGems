@@ -131,10 +131,6 @@ def _create_scale_and_zeros(K, N, qGroupSize, dtype, device):
 
 # N must be divisible by 16 for the ATen CPU int4 packer, and qGroupSize even.
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support 4 bit",
-)
-@pytest.mark.skipif(
     _ATEN_CPU_MM is None or _ATEN_CPU_CONVERT is None,
     reason="aten._weight_int4pack_mm_for_cpu not available in this torch build",
 )

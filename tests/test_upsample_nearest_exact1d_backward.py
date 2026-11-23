@@ -45,6 +45,9 @@ SHAPES = (
         (4, 8, 64, 127),
     ]
 )
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported, reason="float64 is not supported on this platform"
+)
 DTYPES = (
     [torch.float32]
     if QUICK_MODE

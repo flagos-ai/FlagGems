@@ -21,16 +21,8 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    QUICK_MODE,
-    fp64_is_supported,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES, QUICK_MODE, gems_assert_close, to_reference
 from .conftest import TO_CPU
-
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 # (batch, input_size, hidden_size)
 SHAPES = (

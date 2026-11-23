@@ -44,6 +44,18 @@ def _skip_if_device_ref_int(dtype):
         )
 
 
+def _skip_if_device_ref_16bit_dim(dtype):
+    # Native aten torch.min(x, dim=...) aborts the whole process (SIGABRT) on
+    # this backend for the 16-bit dtypes float16/bfloat16/int16, for every shape
+    # probed ((1,2), (4096,256), (200,2560,3) x each dim); the float32/int32
+    # device references work. These cases stay covered by the --ref=cpu run.
+    if not cfg.TO_CPU and dtype in (torch.float16, torch.bfloat16, torch.int16):
+        pytest.skip(
+            f"XPU device reference aborts for min(dim) on {dtype}; "
+            "run with --ref=cpu"
+        )
+
+
 def _skip_if_device_ref_all_inf():
     # The XPU (xpu) device reduction initializes with +FLT_MAX, so an all-inf
     # input reduces to +FLT_MAX instead of inf; skipped on the device run
@@ -97,6 +109,7 @@ def test_min_all_inf(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 def test_min_dim(shape, dim, keepdim, dtype):
     _skip_if_device_ref_int(dtype)
+    _skip_if_device_ref_16bit_dim(dtype)
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:

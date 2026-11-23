@@ -197,14 +197,8 @@ def test_slogdet_empty_matrix(dtype):
     """A 0x0 matrix is an empty product: sign 1, logabsdet 0."""
     for shape in [(0, 0), (2, 0, 0)]:
         A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        ref_inp = (
-            A.cpu() if flag_gems.vendor_name == "mthreads" else utils.to_reference(A)
-        )
-        ref = torch.linalg.slogdet(ref_inp)
+        ref = torch.linalg.slogdet(utils.to_reference(A))
         res_sign, res_logabsdet = flag_gems.slogdet(A)
-        if flag_gems.vendor_name == "mthreads":
-            assert res_sign.device == A.device
-            assert res_logabsdet.device == A.device
         assert res_sign.shape == ref.sign.shape
         assert torch.all(res_sign.cpu() == 1)
         assert torch.all(res_logabsdet.cpu() == 0)

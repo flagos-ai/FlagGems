@@ -22,22 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _reference_eigenvalues(inp):
-    try:
-        return torch.linalg.eig(inp).eigenvalues
-    except RuntimeError as error:
-        if (
-            flag_gems.vendor_name != "mthreads"
-            or inp.device.type != "cpu"
-            or "requires compiling PyTorch with LAPACK" not in str(error)
-        ):
-            raise
-
-    import numpy as np
-
-    return torch.from_numpy(np.linalg.eigvals(inp.numpy()).astype(np.complex64))
-
-
 @pytest.mark.linalg_eig
 @pytest.mark.parametrize("shape", [(2, 2), (3, 3), (5, 5), (8, 8), (16, 16)])
 # linalg_eig computes a general (non-symmetric) eigendecomposition; the Triton
@@ -51,10 +35,9 @@ def test_linalg_eig(shape, dtype):
     A @ V == V @ diag(eigenvalues).
     """
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    use_cpu_reference = flag_gems.vendor_name == "mthreads"
-    ref_inp = inp.cpu() if use_cpu_reference else utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp)
 
-    ref_w = _reference_eigenvalues(ref_inp)
+    ref_w, _ = torch.linalg.eig(ref_inp)
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
 
     # Eigenvalues carry no order and no fixed phase, so pair each reference

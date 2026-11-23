@@ -335,6 +335,13 @@ def test_cudnn_batch_norm_out_invalid(bad):
 
 
 @pytest.mark.cudnn_batch_norm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::cudnn_batch_norm"
+    ),
+)
 def test_cudnn_batch_norm_out_registered():
     args = _inputs((2, 3, 17), torch.float32)
     ref = _reference(args, True, 0.1, 1e-5)

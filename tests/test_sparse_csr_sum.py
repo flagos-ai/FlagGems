@@ -150,6 +150,14 @@ def test_sparse_csr_sum_unsorted_columns():
 
 @pytest.mark.sparse_csr_sum
 @pytest.mark.parametrize("dim", [[0], [1]])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend has no kernel for "
+        "aten::_sparse_csr_sum.dim_dtype, which is required to pre-allocate "
+        "the out descriptor"
+    ),
+)
 def test_sparse_csr_sum_out(dim):
     """The out form rewrites the caller's tensor and returns that same object."""
     ref_sp = _make_csr((16, 16), torch.float32, device="cpu")

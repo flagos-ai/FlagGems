@@ -25,6 +25,11 @@ from flag_gems.utils.random_utils import set_philox_state
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame GCU has no kernel registered for this aten operator",
+)
+
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()

@@ -127,18 +127,12 @@ def _native(inp, weight, kernel, bias, stride, padding):
     )
 
 
-def _reference_input(tensor):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.cpu()
-    return utils.to_reference(tensor)
-
-
 def _reference(inp, weight, kernel, bias, stride, padding):
     return _native(
-        _reference_input(inp),
-        _reference_input(weight),
+        utils.to_reference(inp),
+        utils.to_reference(weight),
         kernel,
-        _reference_input(bias),
+        utils.to_reference(bias),
         stride,
         padding,
     )

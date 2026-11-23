@@ -20,6 +20,18 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .conftest import TO_CPU
 
+# enflame GCU: the reference used by most cases below is the bare aten operator,
+# which only has a CUDA kernel -- `aten::cudnn_affine_grid_generator` has no
+# PrivateUse1 kernel, so that reference cannot execute on GCU. Those cases skip
+# one by one; the cases whose expected values are backend independent (the
+# identity lattice and the `.out` contract checks) still run there.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+ATEN_REFERENCE_SKIP_REASON = (
+    "torch aten not support due to: aten::cudnn_affine_grid_generator "
+    "is CUDA-only, there is no PrivateUse1 kernel to use as reference"
+)
+
 # Custom shapes: (N, H, W, C); small edge cases plus odd/prime H, W values.
 if cfg.QUICK_MODE:
     # Single minimal case for --quick CI runs.

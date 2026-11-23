@@ -67,12 +67,6 @@ def _atol(dtype):
     return DEFAULT_ATOL
 
 
-def _reference_input(tensor, upcast=False):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
-    return utils.to_reference(tensor, upcast)
-
-
 @pytest.mark.slow_conv_dilated2d
 @pytest.mark.parametrize("shape_input, shape_weight, kernel", SHAPE_CASES)
 @pytest.mark.parametrize("stride", STRIDES)

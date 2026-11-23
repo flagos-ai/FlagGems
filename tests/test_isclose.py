@@ -99,6 +99,13 @@ def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     ref_flat = ref_out.view(-1)
     res_flat = res_out.view(-1)
     if inp1.numel() > 2 and dtype in [torch.int64, torch.int32]:
+        if flag_gems.vendor_name == "enflame" and cfg.TO_CPU:
+            pytest.skip(
+                "torch_gcu gap: aten::eq between a gcu scalar and a cpu scalar "
+                "(the --ref cpu reference result) throws an uncatchable "
+                "std::runtime_error and aborts the process, so the int32/int64 "
+                "boundary-value assert cannot run with --ref cpu"
+            )
         assert (
             res_flat[1] == ref_flat[1] and res_flat[2] == ref_flat[2]
         ), "res vs ref: {} vs {}, {} vs {}".format(

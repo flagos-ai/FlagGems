@@ -82,8 +82,8 @@ def _run_rms_norm_w8a16_test(shape, quantize_weight, op):
 @pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("shape", W8A16_SHAPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="RMSNorm W8A16 INT8 is only available on Ascend",
+    not hasattr(flag_gems, "rms_norm_w8a16_int8"),
+    reason="RMSNorm W8A16 INT8 is not implemented on this backend",
 )
 def test_rms_norm_w8a16_int8(shape):
     _run_rms_norm_w8a16_test(
@@ -126,8 +126,8 @@ RAGGED_SHAPES = [
 @pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("m,n,group_size", RAGGED_SHAPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="RMSNorm W8A16 INT8 ragged groups are only available on Ascend",
+    not hasattr(flag_gems, "rms_norm_w8a16_int8"),
+    reason="RMSNorm W8A16 INT8 ragged groups are not implemented on this backend",
 )
 def test_rms_norm_w8a16_int8_ragged_shapes(m, n, group_size):
     dtype = torch.bfloat16

@@ -22,8 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
-
 _COMPLEX32_UNSUPPORTED_VENDORS = {"tsingmicro"}
 
 

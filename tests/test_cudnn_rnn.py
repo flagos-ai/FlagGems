@@ -1125,6 +1125,13 @@ def test_cudnn_rnn_packed_bidirectional(dtype):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_cudnn_rnn"
+    ),
+)
 def test_cudnn_rnn_dispatch():
     """Verify that torch.ops.aten._cudnn_rnn dispatches through FlagGems."""
     if TO_CPU:

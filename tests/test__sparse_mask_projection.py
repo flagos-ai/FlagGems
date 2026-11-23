@@ -558,6 +558,12 @@ def _sentinel_coo(shape, dtype):
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 @pytest.mark.parametrize("shape,accumulate_matches", _OUT_CASES)
 def test_sparse_mask_projection_out(shape, accumulate_matches, dtype):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "torch_gcu defect (aten out=): the sparse copy_ on a clone target only updates the stored "
+            "count, not indices/values, so the reference is untrustworthy (a failing case also makes "
+            "native torch abort while building the mismatch message)"
+        )
     inp, mask = _projection_operands(dtype, shape, ["-1", "1"])
     inp_before, mask_before = _raw_snapshot(inp), _raw_snapshot(mask)
     ref_inp, ref_mask = tu.to_reference(inp), tu.to_reference(mask)
@@ -607,6 +613,12 @@ _OUT_LAYOUT_ROWS = tu.selected_cases(
 def test_sparse_mask_projection_out_stored_layout(
     case, shape, sparse_dim, self_positions, mask_positions, accumulate_matches, dtype
 ):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "torch_gcu defect (aten out=): the sparse copy_ on a clone target only updates the stored "
+            "count, not indices/values, so the reference buffer still holds the -99 sentinel; "
+            "all 8 cases of this function fail because of it"
+        )
     del case
     tail = tuple(shape[sparse_dim:])
     inp = _positional_operand(
@@ -723,6 +735,11 @@ def test_sparse_mask_projection_rejects_dense_out(dtype):
 @pytest.mark.sparse_mask_projection
 @pytest.mark.parametrize("dtype", _FP8_DTYPES)
 def test_sparse_mask_projection_rejects_fp8(dtype):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "torch_gcu defect: building an fp8 sparse COO (torch.sparse_coo_tensor with fp8 "
+            "values) aborts (core dumped) on this backend, so the case never reaches the operator call"
+        )
     shape = (4,)
     index = torch.arange(4, device=flag_gems.device).reshape(1, -1)
     operand = torch.sparse_coo_tensor(

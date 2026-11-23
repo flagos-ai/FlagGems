@@ -23,11 +23,24 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# aten::_efficientzerotensor on enflame returns an ordinary allocation
+# (data_ptr != 0, non-zero strides) instead of a ZeroTensor, so it cannot act as
+# the metadata reference and the "reject a ZeroTensor out" path never triggers.
+# Tests that rely on it are skipped there rather than compared against a wrong
+# reference.
+_BACKEND_HAS_ZEROTENSOR_REFERENCE = flag_gems.vendor_name != "enflame"
+_skip_without_zerotensor_reference = pytest.mark.skipif(
+    not _BACKEND_HAS_ZEROTENSOR_REFERENCE,
+    reason="aten::_efficientzerotensor does not build a real ZeroTensor "
+    "on this backend",
+)
+
 
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("shape", [(), (0,), (2, 0, 3), (2, 3), (2, 3, 4, 5)])
+@_skip_without_zerotensor_reference
 def test_efficientzerotensor(dtype, shape):
     ref = torch.ops.aten._efficientzerotensor.default(
         shape, dtype=dtype, device=flag_gems.device
@@ -120,6 +133,45 @@ for _name in ("float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu", "float8_e4m3fnuz
     if _dtype is not None:
         _OUT_DTYPES.append(_dtype)
 
+# enflame GCU has no 64-bit, complex or float8 element types: allocating the ``out``
+# buffer for them aborts the process inside torch_gcu's device transfer instead of
+# raising, so those dtypes cannot be exercised at all -- skip them rather than fail.
+# ``None`` means "no restriction known", so other backends keep the full matrix.
+_DEVICE_SUPPORTED_DTYPES = {
+    "enflame": (
+        torch.bool,
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.float16,
+        torch.float32,
+        torch.bfloat16,
+    ),
+}.get(flag_gems.vendor_name)
+
+
+def _out_dtype_param(dtype):
+    if _DEVICE_SUPPORTED_DTYPES is not None and dtype not in _DEVICE_SUPPORTED_DTYPES:
+        return pytest.param(
+            dtype,
+            marks=pytest.mark.skip(
+                reason="device backend has no support for this dtype"
+            ),
+        )
+    return pytest.param(dtype)
+
+
+_skip_without_complex = pytest.mark.skipif(
+    _DEVICE_SUPPORTED_DTYPES is not None
+    and torch.complex64 not in _DEVICE_SUPPORTED_DTYPES,
+    reason="device backend cannot allocate complex tensors",
+)
+
+
+_OUT_DTYPE_PARAMS = [_out_dtype_param(dtype) for dtype in _OUT_DTYPES]
+
 
 def _assert_zeroed(tensor):
     """Zero check that also survives complex/float8 dispatch under enable()."""
@@ -186,6 +238,7 @@ def test_efficientzerotensor_out_transposed_view():
 
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
+@_skip_without_complex
 def test_efficientzerotensor_out_complex_gapped():
     base = torch.ones((4, 6), dtype=torch.complex64, device=flag_gems.device)
     out = base[::2]
@@ -237,6 +290,7 @@ def test_efficientzerotensor_out_cpu_non_contiguous():
 
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
+@_skip_without_zerotensor_reference
 def test_efficientzerotensor_out_zero_tensor_rejected():
     out = torch.ops.aten._efficientzerotensor.default(
         (2, 3), dtype=torch.float32, device=flag_gems.device
@@ -292,6 +346,7 @@ def _ensure_gems_enabled():
 
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
+@_skip_without_zerotensor_reference
 def test_efficientzerotensor_registered_dispatch_path(caplog):
     """Both overloads must work through the registered aten dispatch path.
 
@@ -400,6 +455,7 @@ def test_efficientzerotensor_out_dispatch_complex(dtype, caplog):
 
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
+@_skip_without_complex
 def test_efficientzerotensor_out_dispatch_complex_non_contiguous():
     _ensure_gems_enabled()
     base = torch.ones((4, 6), dtype=torch.complex64).to(flag_gems.device)

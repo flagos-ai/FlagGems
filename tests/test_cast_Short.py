@@ -17,6 +17,18 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
+
+# The device-side aten reference leg aborts the whole process on complex input
+# (gcu_utils.cpp Check failed); only the --ref=cpu mode (reference leg moved to
+# CPU) can validate complex semantics.
+_SKIP_COMPLEX_ON_DEVICE = pytest.mark.skipif(
+    not utils.TO_CPU and flag_gems.vendor_name in ("kunlunxin", "enflame"),
+    reason="device aten _cast_Short aborts on complex input; run with --ref=cpu",
+)
+
+
 DTYPES = [
     torch.bool,
     torch.uint8,
@@ -62,6 +74,8 @@ def assert_cast(x, non_blocking=False):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Short(shape, dtype, non_blocking):
+    if dtype.is_complex and not utils.TO_CPU and flag_gems.vendor_name == "enflame":
+        pytest.skip("device aten _cast_Short aborts on complex input; use --ref=cpu")
     assert_cast(make_input(shape, dtype), non_blocking)
 
 
@@ -71,6 +85,8 @@ def test_cast_Short(shape, dtype, non_blocking):
     "layout", ["transpose", "slice", "expand", "channels_last", "permuted_slice"]
 )
 def test_cast_Short_strided(dtype, layout):
+    if dtype.is_complex and not utils.TO_CPU and flag_gems.vendor_name == "enflame":
+        pytest.skip("device aten _cast_Short aborts on complex input; use --ref=cpu")
     x = make_input((4, 5, 6, 7), dtype)
     if layout == "transpose":
         x = x.transpose(0, 3)

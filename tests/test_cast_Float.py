@@ -17,6 +17,18 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
+
+# The device-side aten reference leg aborts the whole process on complex input
+# (gcu_utils.cpp Check failed); only the --ref=cpu mode (reference leg moved to
+# CPU) can validate complex semantics.
+_SKIP_COMPLEX_ON_DEVICE = pytest.mark.skipif(
+    not utils.TO_CPU and flag_gems.vendor_name in ("kunlunxin", "enflame"),
+    reason="device aten _cast_Float aborts on complex input; run with --ref=cpu",
+)
+
+
 DTYPES = [
     torch.bool,
     torch.uint8,

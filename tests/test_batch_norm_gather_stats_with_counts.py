@@ -21,6 +21,9 @@ from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+# enflame GCU has no aten kernel for this op (not on CPU either), so the
+# reference comes from the same combined-statistics formula used for kunlunxin.
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
 
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].

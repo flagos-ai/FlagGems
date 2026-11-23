@@ -21,6 +21,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame GCU does not support sparse compressed tensors",
+)
+
 
 def _make_compressed(shape, dtype, layout, blocksize=(16, 16)):
     """Build a compressed sparse tensor of the requested layout on the device."""

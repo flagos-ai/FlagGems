@@ -30,6 +30,32 @@ CUDNN_RNN_SHAPES = [
 ]
 
 
+# torch aten not support due to: aten::_cudnn_rnn_backward only exists for CUDA/cuDNN,
+# GCU (PrivateUse1) has no kernel for it. When that is the case the case runs the
+# autograd reference instead (the path already used for bfloat16), so it is a
+# per-dtype reference choice rather than a reason to skip the module.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+
+@pytest.fixture(autouse=True)
+def isolate_matmul_precision():
+    """Keep the TF32 precision state self-consistent for this module.
+
+    Sibling test modules flip the legacy ``torch.backends.*.allow_tf32`` switches
+    at import time. Mixed with the new ``fp32_precision`` API that the device
+    backend already initialised, torch then refuses to report the matmul
+    precision at all and the ``torch.addmm`` inside ``cudnn_rnn_backward``
+    raises. Pin it through the new API for the duration of each case and restore
+    the previous value afterwards.
+    """
+    previous = torch.backends.cuda.matmul.fp32_precision
+    torch.backends.cuda.matmul.fp32_precision = "ieee"
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.fp32_precision = previous
+
+
 def _cudnn_rnn_backward_ref(
     input,
     weight,

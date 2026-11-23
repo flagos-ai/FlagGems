@@ -39,6 +39,14 @@ import flag_gems
 from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
 
+# The vLLM/DeepGEMM reference kernel is CUDA Hopper only. Vendors listed here
+# are validated against the dequantized torch reference below so that the
+# accuracy cases still run instead of skipping the whole file.
+TORCH_REFERENCE_VENDORS = ("enflame",)
+USE_DEEPGEMM_REFERENCE = (
+    VLLM_AVAILABLE and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS
+)
+
 # Shape configs for QUICK_MODE
 if cfg.QUICK_MODE:
     BATCH_NEXTN_SHAPES = [(4, 1)]

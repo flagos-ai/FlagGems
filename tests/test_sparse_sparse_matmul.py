@@ -139,6 +139,11 @@ def test_sparse_sparse_matmul(M, N, K, sparsity, dtype):
 def test_sparse_sparse_matmul_structure_and_zeros(dtype):
     """The support set is the deterministic intersection pattern and
     structural zeros are preserved (aten contract)."""
+    if flag_gems.vendor_name == "enflame" and dtype in _LOW_PREC_DTYPES:
+        pytest.skip(
+            "aten defect: the reference aten::_sparse_sparse_matmul does not support Half/BFloat16 "
+            'and raises NotImplementedError: "sparse_matmul" not implemented for this dtype'
+        )
     device = flag_gems.device
 
     # A carries an explicit zero at (0, 1); B stores (1, 2). The output must
@@ -179,6 +184,12 @@ def test_sparse_sparse_matmul_structure_and_zeros(dtype):
 @pytest.mark.sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_sparse_sparse_matmul_out(dtype):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "torch_gcu defect: torch.empty(shape, layout=torch.sparse_coo, device='gcu:0') "
+            "returns a tensor that actually lives on the CPU (measured device=cpu), so the out "
+            "buffer disagrees with the reference device; all 3 cases of this function fail"
+        )
     device = flag_gems.device
     a = _make_sparse(16, 12, dtype, device, 0.5, seed=33)
     b = _make_sparse(12, 8, dtype, device, 0.5, seed=44)

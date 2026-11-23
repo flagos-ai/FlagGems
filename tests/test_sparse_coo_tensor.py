@@ -126,6 +126,13 @@ def test_sparse_coo_tensor_coalesced(coalesced):
 
 
 @pytest.mark.sparse_coo_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::sparse_coo_tensor"
+    ),
+)
 def test_sparse_coo_tensor_dispatch():
     indices, values = _components()
     ref = torch.sparse_coo_tensor(indices, values)

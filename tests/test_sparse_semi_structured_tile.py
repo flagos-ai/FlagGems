@@ -176,6 +176,15 @@ def _reference_mask(dense, algorithm):
 
 @pytest.mark.sparse_semi_structured_tile
 @pytest.mark.underscore_sparse_semi_structured_tile
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "Reference leg unavailable on GCU: torch_gcu registers only the CPU "
+        "fallback for aten::_sparse_semi_structured_tile (no GCU kernel) and "
+        "PyTorch ships no CPU kernel for that aten op (CUDA-only), so the "
+        "aten reference packing/mask outputs cannot be produced."
+    ),
+)
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)

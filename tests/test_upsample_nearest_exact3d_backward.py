@@ -59,6 +59,13 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 
 @pytest.mark.upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "aten reference: _upsample_nearest_exact3d_backward has no Byte "
+            "implementation on the enflame backend (the GCU/CPU fallback "
+            "reference raises NotImplementedError for uint8), so the "
+            "reference leg cannot be evaluated"
+        )
     input_size = (1, 2, 3, 4, 5)
     output_size = (7, 6, 9)
     grad_output = torch.randint(

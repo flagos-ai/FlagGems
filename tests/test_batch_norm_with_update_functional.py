@@ -20,8 +20,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
-
 
 @pytest.mark.batch_norm_with_update_functional
 @pytest.mark.parametrize(

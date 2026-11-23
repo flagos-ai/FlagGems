@@ -27,6 +27,11 @@ random.seed(time.time() // 100)
 
 device = flag_gems.device
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="the vLLM grouped_topk reference depends on CUDA, unavailable on enflame/GCU",
+)
+
 if cfg.QUICK_MODE:
     N_TOKEN_LIST = [8]
     N_EXPERT_LIST = [16]
