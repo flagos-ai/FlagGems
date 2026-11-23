@@ -291,7 +291,7 @@ def ldexp_backward(grad_output, self, other):
     ``self`` gradient here.
     """
     logger.debug("GEMS LDEXP_BACKWARD")
-    scale = torch.ldexp(torch.ones_like(self), other)
+    scale = _ldexp_impl(torch.ones_like(self), other)
     grad_self = grad_output * scale
     if other.is_floating_point() and not self.is_complex():
         ln2 = 0.6931471805599453
