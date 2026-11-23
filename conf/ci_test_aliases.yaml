@@ -222,6 +222,7 @@ scatter_reduce_two_: test_scatter_reduce
 bmm_w8a8_fp8: test_bmm
 flash_attn_varlen_opt_func: test_flash_attn_varlen_func
 gru_data: test_gru
+layernorm: test_layer_norm
 list_to_tensor: test__list_to_tensor
 linalg_matrix_norm_out: test_linalg_matrix_norm
 linalg_matrix_rank_hermitian: test_linalg_matrix_rank

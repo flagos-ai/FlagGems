@@ -110,10 +110,10 @@ def test_native_layer_norm():
     bench.run()
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 def test_layer_norm():
     bench = NormBenchmark(
-        op_name="layer_norm",
+        op_name="layernorm",
         input_fn=input_fn,
         torch_op=torch.layer_norm,
         dtypes=consts.FLOAT_DTYPES,
@@ -166,10 +166,10 @@ class LayernormBenchmark(base.Benchmark):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
-@pytest.mark.layer_norm
+@pytest.mark.layernorm
 def test_layernorm():
     bench = LayernormBenchmark(
-        op_name="layer_norm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
+        op_name="layernorm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
     )
     bench.set_gems(lambda *args, **kwargs: flag_gems.layer_norm(*args, **kwargs)[0])
     bench.run()
@@ -268,9 +268,9 @@ def benchmark_manifest_case(record, nodes, replays, samples):
         "count": record["count"],
         "sources": record["sources"],
         "native_us": native_us,
-        "layer_norm_us": candidate_us,
+        "layernorm_us": candidate_us,
         "speedup": native_us / candidate_us,
-        "samples_us": {"native": native_samples, "layer_norm": candidate_samples},
+        "samples_us": {"native": native_samples, "layernorm": candidate_samples},
         "max_abs": max_abs,
         "atol": tolerance,
         "rtol": tolerance,
@@ -355,7 +355,7 @@ def run_manifest_benchmark():
         "src/flag_gems/runtime/backend/_metax/ops/layernorm.py"
     )
     report = {
-        "operator": "layer_norm",
+        "operator": "layernorm",
         "baseline": "device-native torch.nn.functional.layer_norm",
         "torch": torch.__version__,
         "triton": triton.__version__,
