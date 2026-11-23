@@ -5121,6 +5121,25 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: cumsum_backward
+  description: |
+    Backward pass for `cumsum`: the gradient with respect to the input is the reverse
+    cumulative sum of the upstream gradient along the cumulative dimension, i.e.
+    `grad_input[i] = sum_{j >= i} grad_output[j]`. Implemented as a single-pass Triton
+    kernel that walks the reduce axis in reversed index order inside `tl.cumsum`, so no
+    flip kernels or extra full-tensor copies are needed. Accumulation is performed in
+    float32 for numerical stability. Exposed through `torch.autograd.Function` because
+    `aten::cumsum` has no dedicated backward operator.
+  for:
+  - cumsum_backward
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: cumsum_out
   description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
