@@ -45,11 +45,15 @@ def _hygon_dropout(
     c1 = tl.full((m.shape[0], n.shape[0]), 0, tl.uint32) + (offset >> 32).to(tl.uint32)
     if DIM == 128:
         c2 = tl.broadcast_to((m[:, None] // 16 * 16).to(tl.uint32), c0.shape)
-        c3 = tl.broadcast_to(
-            (n[None, :] // 64 * 64 + n[None, :] % 16 // 4 * 4).to(tl.uint32), c0.shape
-        )
     else:
         c2 = tl.broadcast_to(m[:, None].to(tl.uint32), c0.shape)
+    if DIM == 64 or DIM == 128:
+        # Native forward packs sixteen dropout bytes into each Philox result.
+        c3 = tl.broadcast_to(
+            (n[None, :] // 64 * 64 + (n[None, :] % 16 // 4) * 4).to(tl.uint32),
+            c0.shape,
+        )
+    else:
         c3 = tl.broadcast_to(n[None, :].to(tl.uint32), c0.shape)
     k0, k1 = seed.to(tl.uint32), (seed >> 32).to(tl.uint32)
     for _ in tl.static_range(7):
@@ -60,7 +64,7 @@ def _hygon_dropout(
         c0, c1, c2, c3 = hi1 ^ c1 ^ k0, lo1, hi0 ^ c3 ^ k1, lo0
         k0 = (k0 + 0x9E3779B9).to(tl.uint32)
         k1 = (k1 + 0xBB67AE85).to(tl.uint32)
-    if DIM == 128:
+    if DIM == 64 or DIM == 128:
         word = n[None, :] // 16 % 4
         bits = tl.where(
             word == 0, c0, tl.where(word == 1, c1, tl.where(word == 2, c2, c3))
