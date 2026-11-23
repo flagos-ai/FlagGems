@@ -265,6 +265,7 @@ from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
 from .mul import mul, mul_
 from .multinomial import multinomial
+from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
@@ -675,6 +676,7 @@ __all__ = [
     "mul",
     "mul_",
     "multinomial",
+    "mv",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
