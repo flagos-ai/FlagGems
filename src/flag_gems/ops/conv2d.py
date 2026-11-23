@@ -259,7 +259,7 @@ def conv2d_backward_kernel_weight(
     BLOCK_NO: tl.constexpr,
     BLOCK_CI_HK_WK: tl.constexpr,
     BLOCK_CO: tl.constexpr,
-    ACCUM_DTYPE: tl.constexpr,
+    ACCUM_DTYPE: tl.constexpr = tl.float32,
 ):
     # load out_grad n (groups out_c)  ho wo
     # load weight (groups out_c) ci h w

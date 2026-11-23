@@ -21,6 +21,7 @@ from packaging.version import parse as _parse_version
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems import deprecated as _deprecated
 from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
@@ -853,6 +854,36 @@ _FULL_CONFIG = (
         (SPARSE_DISPATCH_KEY,),
     ),
     (
+        "_sparse_sum",
+        _sparse_sum,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim",
+        _sparse_sum_dim,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_dtype",
+        _sparse_sum_dim_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_out",
+        _sparse_sum_dim_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dtype",
+        _sparse_sum_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
         "_sparse_sum_backward",
         _sparse_sum_backward,
         None,
@@ -1076,8 +1107,8 @@ _FULL_CONFIG = (
     ("atan2.out", atan2_out),
     ("atan2_", atan2_),
     ("atan_", atan_),
-    ("atanh", atanh),
-    ("atanh_", atanh_),
+    ("atanh", atanh, None, (f"Autograd{backend_info.dispatch_key}",)),
+    ("atanh_", atanh_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("atleast_1d", atleast_1d),
     ("atleast_1d.Sequence", atleast_1d),
     ("atleast_2d", atleast_2d),
@@ -1339,6 +1370,7 @@ _FULL_CONFIG = (
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
+    ("elu_backward.grad_input", elu_backward_out),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
     ("embedding_bag", embedding_bag),
@@ -1696,6 +1728,10 @@ _FULL_CONFIG = (
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
     ("linalg_pinv", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float_out", linalg_pinv_out),
+    ("linalg_pinv.atol_rtol_tensor", linalg_pinv),
+    ("linalg_pinv.atol_rtol_tensor_out", linalg_pinv_out),
     ("linalg_polar", linalg_polar),
     ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
@@ -2671,6 +2707,15 @@ class use_gems:
         import flag_gems.experimental_ops
 
         return flag_gems.experimental_ops
+
+
+def __getattr__(name):
+    # Deprecated operators that are imported lazily (see flag_gems.deprecated).
+    if name in _deprecated._LAZY_EXPORTS:
+        value = _deprecated._resolve_lazy(name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def all_registered_ops():

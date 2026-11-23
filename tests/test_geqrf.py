@@ -84,6 +84,23 @@ def _reconstruction(a, tau, A):
     return recon / scale
 
 
+def _reference_geqrf(inp):
+    try:
+        return torch.ops.aten.geqrf(inp)
+    except RuntimeError as error:
+        if (
+            flag_gems.vendor_name != "mthreads"
+            or inp.device.type != "cpu"
+            or "requires compiling PyTorch with LAPACK" not in str(error)
+        ):
+            raise
+
+    import numpy as np
+
+    packed, tau = np.linalg.qr(inp.numpy(), mode="raw")
+    return torch.from_numpy(packed.swapaxes(-1, -2)), torch.from_numpy(tau)
+
+
 @pytest.mark.geqrf
 @pytest.mark.parametrize("shape", GEQRF_SHAPES)
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
@@ -91,7 +108,7 @@ def test_geqrf(shape, dtype):
     A = _well_conditioned(shape, dtype, DEVICE)
     ref_A = utils.to_reference(A)
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_A)
+    ref_a, ref_tau = _reference_geqrf(ref_A)
     res_a, res_tau = flag_gems.geqrf(A)
 
     assert res_a.shape == ref_a.shape
@@ -165,6 +182,6 @@ def test_geqrf_zero_and_tiny_sizes():
     # 1x1: no reflection, tau == 0
     A = torch.tensor([[3.0]], dtype=torch.float32, device=DEVICE)
     a, tau = flag_gems.geqrf(A)
-    ref_a, ref_tau = torch.ops.aten.geqrf(utils.to_reference(A))
+    ref_a, ref_tau = _reference_geqrf(utils.to_reference(A))
     assert tau.item() == ref_tau.item() == 0.0
     utils.gems_assert_close(a, ref_a, torch.float32)
