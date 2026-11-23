@@ -306,7 +306,7 @@ from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
-from .scatter_add_ import scatter_add_
+from .scatter_add import scatter_add, scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
@@ -730,6 +730,7 @@ __all__ = [
     "ScaleDotProductAttention",
     "scatter",
     "scatter_",
+    "scatter_add",
     "scatter_add_",
     "scatter_reduce",
     "scatter_reduce_",
