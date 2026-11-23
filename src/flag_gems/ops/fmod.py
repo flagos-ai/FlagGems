@@ -18,12 +18,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sum import sum as gems_sum
+from flag_gems.ops.sum import sum_dim
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.triton_lang_extension import fmod as _fmod
 from flag_gems.utils.triton_lang_extension import trunc as _trunc
-
-from .sum import sum as gems_sum
-from .sum import sum_dim
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +62,15 @@ def fmod_other_grad(grad, x, y):
 def _sum_to_shape(value, shape):
     # An empty broadcast can originate from a size-one input; reducing its
     # empty gradient must produce initialized zeros for that input.
-    if value.numel() == 0 and tuple(value.shape) != tuple(shape):
+    if tuple(value.shape) == tuple(shape):
+        return value
+    if value.numel() == 0:
         return torch.zeros(shape, dtype=value.dtype, device=value.device)
+    # Match native half/bfloat16 reductions by accumulating in float32 and
+    # rounding only after the complete broadcast reduction.
+    original_dtype = value.dtype
+    if value.dtype in (torch.float16, torch.bfloat16):
+        value = value.to(torch.float32)
     # Reduce leading broadcast dimensions first, then retained singleton axes.
     while value.ndim > len(shape):
         if value.ndim == 1:
@@ -74,7 +80,7 @@ def _sum_to_shape(value, shape):
     for axis, size in enumerate(shape):
         if size == 1 and value.shape[axis] != 1:
             value = sum_dim(value, dim=[axis], keepdim=True)
-    return value
+    return value.to(original_dtype)
 
 
 class _FmodTensor(torch.autograd.Function):
