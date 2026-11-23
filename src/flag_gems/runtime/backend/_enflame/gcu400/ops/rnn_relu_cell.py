@@ -197,6 +197,29 @@ def _block(value, limit):
     return max(16, min(limit, triton.next_power_of_2(max(int(value), 1))))
 
 
+def _k_tile(input_size, hidden_size, limit=128):
+    """Largest power of two in [8, limit] dividing both reduction extents.
+
+    A reduction tile that divides both ``input_size`` and ``hidden_size`` lets
+    the kernel run on the caller's tensors unchanged, so the zero padding in
+    :func:`_pad_2d` disappears.  That matters because each pad copy is a full
+    extra kernel launch: with ``input_size = 8`` the old rule always forced a
+    ``BLOCK_K = 16`` tile and the two pad copies made a 1.5 us cell cost 111 us
+    on GCU400 (measured), while the factor aligned tile brings it back to 12 us.
+
+    Returns ``None`` when no such tile exists (e.g. ``input_size = 129``); the
+    caller then falls back to the masked-free padded path.
+    """
+    input_size = max(int(input_size), 1)
+    hidden_size = max(int(hidden_size), 1)
+    tile = limit
+    while tile >= 8:
+        if input_size % tile == 0 and hidden_size % tile == 0:
+            return tile
+        tile //= 2
+    return None
+
+
 def _check_cell_args(name, input, hx, w_ih, w_hh, b_ih, b_hh, gates):
     """Reproduce the ATen shape/dtype contract for a single RNN cell.
 
@@ -294,14 +317,29 @@ def rnn_relu_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
 
     # Tile shape comes from a GCU400 sweep over (BLOCK_B, BLOCK_H, BLOCK_K,
     # num_warps, num_stages) on every benchmarked cell size:
-    #   32x128x64/w2 for small and medium cells (batch <= 64),
-    #   64x128x64/w2 for large cells (batch = 128, hidden >= 512),
-    # where the wide BLOCK_H amortises the weight-tile loads across both dots.
-    # Narrower tiles (16x32) make each tl.dot a rank-deficient MMA and cost up
-    # to 3x on the large cells.
+    #   32x128x128/w4 for small and medium cells (batch <= 64),
+    #   64x128x128/w4 for large cells (batch = 128, hidden >= 512),
+    # where the wide BLOCK_H amortises the weight-tile loads across both dots
+    # and the wide BLOCK_K keeps the reduction inside one tl.dot.  Narrower
+    # tiles (16x32) make each tl.dot a rank-deficient MMA and cost up to 3x on
+    # the large cells.
     block_h = _block(hidden_size, 128)
-    block_b = _block(batch, 64 if hidden_size >= 512 else 32)
-    block_k = _block(max(input_size, hidden_size), 64)
+    # BLOCK_B is capped at 32 on every cell: with the full-K reduction tile the
+    # big cell (batch 128, hidden 512) is parallelism limited, and halving the
+    # batch tile doubles the grid (2x4 -> 4x4 programs) for 4% less time
+    # (measured 27.96 -> 26.74 us, bf16 and fp16 alike).
+    block_b = _block(batch, 32)
+    # Prefer a reduction tile that divides both extents so that no operand has
+    # to be zero padded (each pad copy is an extra kernel launch on GCU).
+    block_k = _k_tile(input_size, hidden_size)
+    if block_k is None:
+        block_k = _block(max(input_size, hidden_size), 64)
+    # A reduction tile that covers the whole K on the bigger cells halves the
+    # number of dots; that only pays off with four warps, because the two live
+    # accumulator tiles already saturate two warps.  Tiny cells (<= 64x64 per
+    # tile) measure the same at two and four warps, and one warp is 7x slower
+    # on them (measured 64 us vs 9.6 us for a 1x8x16 cell).
+    num_warps = 4 if block_h * block_k >= 128 * 128 else 2
 
     # Operands are zero padded to tile multiples so that the kernel can run
     # without hidden-lane masks (see the note in the kernel body).  For the
@@ -353,7 +391,7 @@ def rnn_relu_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
             BLOCK_B=block_b,
             BLOCK_H=block_h,
             BLOCK_K=block_k,
-            num_warps=2,
+            num_warps=num_warps,
             num_stages=1,
         )
     if work is not out:
