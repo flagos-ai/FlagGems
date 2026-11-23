@@ -471,9 +471,10 @@ def test_multilabel_margin_loss_forward_backward_dtypes(dtype):
     loss, _ = flag_gems.multilabel_margin_loss_forward(input, target, 1)
     (input_grad,) = torch.autograd.grad(loss, (input,), torch.ones_like(loss))
 
+    reference = ref_grad.cpu() if cfg.TO_CPU else ref_grad
     utils.gems_assert_close(
         input_grad,
-        ref_grad,
+        reference,
         dtype,
         reduce_dim=shape[0] * shape[1],
     )
