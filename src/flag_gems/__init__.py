@@ -2717,6 +2717,15 @@ class use_gems:
         return flag_gems.experimental_ops
 
 
+def __getattr__(name):
+    # Deprecated operators that are imported lazily (see flag_gems.deprecated).
+    if name in _deprecated._LAZY_EXPORTS:
+        value = _deprecated._resolve_lazy(name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def all_registered_ops():
     return current_work_registrar.get_all_ops()
 
