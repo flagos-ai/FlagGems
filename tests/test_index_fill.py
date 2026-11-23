@@ -19,6 +19,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
@@ -26,7 +27,6 @@ from .accuracy_utils import (
     gems_assert_equal,
     to_reference,
 )
-from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 INDEX_FILL_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4, 8), (2, 3, 5)]
