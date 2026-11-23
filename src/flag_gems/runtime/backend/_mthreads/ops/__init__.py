@@ -72,6 +72,7 @@ from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
+from ._foreach_mul__List import _foreach_mul__List
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -318,6 +319,7 @@ __all__ = [
     "_foreach_minimum__Scalar",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
+    "_foreach_mul__List",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
