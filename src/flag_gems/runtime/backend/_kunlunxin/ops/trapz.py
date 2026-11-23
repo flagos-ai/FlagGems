@@ -44,18 +44,19 @@ def _trapz_epilogue_kernel(
     OUT_DTYPE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    # Masked loads on this backend are unreliable at small M (the tail lanes
-    # of a single under-full program trip an on-device kernel exception,
-    # status 719/714), so every load reads a clamped, always in-bounds
-    # address; only the final store carries the real tail mask.
+    # Masked memory access is unreliable on this backend at small M (the tail
+    # lanes of a single under-full program trip an on-device kernel
+    # exception, status 719/714), observed on both the masked load and the
+    # masked store. Every address is therefore clamped into bounds; the
+    # out-of-range tail lanes redundantly rewrite the same (last) element,
+    # which is harmless since the value is value-identical.
     raw_idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = raw_idx < M
     idx = tl.minimum(raw_idx, M - 1)
     t = tl.load(tmp_ptr + idx)
     first = tl.load(y_ptr + idx * N).to(tl.float32)
     last = tl.load(y_ptr + idx * N + (N - 1)).to(tl.float32)
     r = dx * (t - 0.5 * (first + last))
-    tl.store(out_ptr + idx, r.to(OUT_DTYPE), mask=mask)
+    tl.store(out_ptr + idx, r.to(OUT_DTYPE))
 
 
 @triton.jit
