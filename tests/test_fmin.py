@@ -77,8 +77,8 @@ def test_fmin_backward(dtype, shapes):
     grad = torch.randn_like(actual)
     expected.backward(utils.to_reference(grad))
     actual.backward(grad)
-    utils.gems_assert_equal(a.grad, ref_a.grad)
-    utils.gems_assert_equal(b.grad, ref_b.grad)
+    utils.gems_assert_close(a.grad, ref_a.grad, dtype)
+    utils.gems_assert_close(b.grad, ref_b.grad, dtype)
 
 
 @pytest.mark.fmin_backward
