@@ -27,5 +27,7 @@ def copysign_(input, other):
     modifying the input tensor in place.
     """
     logger.debug("GEMS COPYSIGN_")
+    if not input.is_floating_point():
+        raise NotImplementedError("copysign_ is not implemented for integer inputs")
     copysign_func(input, other, out0=input)
     return input
