@@ -116,9 +116,7 @@
   "add_relu": {
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
   },
-  "add_relu_": {
-    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
-  },
+  "add_relu_": {},
   "add_rms_norm": {},
   "addbmm": {},
   "addbmm_": {},

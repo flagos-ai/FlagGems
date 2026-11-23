@@ -300,18 +300,21 @@ def _launch_gather(inp, idx, out, R, D_in, D_out):
             BLOCK_D = min(triton.next_power_of_2(D_out), 2048)
             ncol_blocks = triton.cdiv(D_out, BLOCK_D)
             if ncol_blocks == 1:
-                # Lanes in flight per program iteration: 16-bit gathers want
-                # 4096 lanes to hide the per-lane gather issue latency; 4-byte
-                # data saturates at 1024 lanes unless the row loop is long
-                # enough (R >= 2**18) that wider tiles amortize better.
-                lanes = 4096 if itemsize < 4 else (4096 if R >= (1 << 18) else 1024)
+                # 2048 lanes per iteration measured best on this backend once
+                # the idx prefetch is off (1024-wide rows: fp16 130 -> 93us,
+                # fp32 101 -> 65us), so keep the tile at 2 rows of 1024 lanes
+                # for wide rows and fall back to the long-row widening only
+                # when the row loop is long enough to amortize it (R >= 2**18).
+                lanes = 2048
+                if R >= (1 << 18):
+                    lanes = 4096 if itemsize < 4 else 2048
                 ROWS = lanes // BLOCK_D
                 ROWS = min(ROWS, _MAX_ROWS_PER_TILE)
                 ROWS = max(ROWS, 1)
-                # Carried idx prefetch pays off for 16-bit data and for
-                # single-row tiles; on fp32 multi-row tiles it measured 13%
-                # slower (1024^3), so keep it off there.
-                PF = (itemsize < 4) or (ROWS == 1)
+                # A carried idx prefetch only pays off for single-row tiles of
+                # 16-bit data (latency bound); on multi-row fp32 tiles it
+                # measured 13% slower (1024^3).
+                PF = (itemsize < 4) and (ROWS == 1)
                 grid = (min(triton.cdiv(R, ROWS), _GRID_CAP),)
                 take_along_dim_row_kernel[grid](
                     inp,
