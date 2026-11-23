@@ -56,9 +56,7 @@ def row_log_softmax_kernel(
     mask = col_offsets < N
     for row_id in tl.range(pid, num_rows, num_pids):
         offsets = row_id * stride_m + col_offsets
-        row = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
-            tl.float32
-        )
+        row = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(tl.float32)
         row_max = tl.max(row, axis=0)
         shifted = row - row_max
         sum_exp = tl.sum(tl.exp(shifted), axis=0)

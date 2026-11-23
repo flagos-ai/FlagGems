@@ -22,6 +22,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import uint_to_uniform_float
@@ -845,7 +846,6 @@ def _fused_dropout(self, p, generator=None):
             **kernel_options,
         )
     return output, mask
-
 
 # Triton Ascend 3.2 crashes when lowering the (BLOCK, 4) broadcast above.
 # Contiguous 1D word lanes also avoid its strided-store UB addressing bug.

@@ -1095,7 +1095,7 @@ from .embedding_bag import _embedding_bag_forward_only
 from .embedding_dense_backward import embedding_dense_backward
 from .embedding_renorm_ import embedding_renorm_
 from .embedding_sparse_backward import embedding_sparse_backward
-from .embedding_spmdm_grad import embedding_spmdm_grad  # noqa: F401
+from .embedding_spmdm_grad import embedding_spmdm_grad
 from .empty_affine_quantized import _empty_affine_quantized, _empty_affine_quantized_out
 from .empty_per_channel_affine_quantized import _empty_per_channel_affine_quantized
 from .empty_permuted import empty_permuted

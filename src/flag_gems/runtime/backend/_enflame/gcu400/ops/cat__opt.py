@@ -245,9 +245,7 @@ def _rowvec_cat_kernel(
         src = In2
     else:
         src = In3
-    sp = tl.where(
-        pid_y == 0, sp0, tl.where(pid_y == 1, sp1, tl.where(pid_y == 2, sp2, sp3))
-    )
+    sp = tl.where(pid_y == 0, sp0, tl.where(pid_y == 1, sp1, tl.where(pid_y == 2, sp2, sp3)))
     o = tl.where(pid_y == 0, o0, tl.where(pid_y == 1, o1, tl.where(pid_y == 2, o2, o3)))
     rows = tl.arange(0, BR)
     cols = tl.arange(0, BC)

@@ -6,6 +6,13 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.linalg_lu_factor import _lu_scale_col
+
+# Use the GCU400 factorization, not the generic one: the generic launcher maps
+# the batch onto grid.y, which the GCU launcher caps at 255, so any batched
+# input with more than 255 matrices died with ``out of resource: grid.y``
+# (e.g. the (1024, 512, 512) benchmark shape).  The sibling module keeps every
+# launch on a flat 1-D grid and chunks oversized batches itself.
+from .linalg_lu_factor import linalg_lu_factor
 from flag_gems.ops.lu_unpack import (
     lu_unpack_l_kernel,
     lu_unpack_p_kernel_large,
@@ -14,13 +21,6 @@ from flag_gems.ops.lu_unpack import (
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-
-# Use the GCU400 factorization, not the generic one: the generic launcher maps
-# the batch onto grid.y, which the GCU launcher caps at 255, so any batched
-# input with more than 255 matrices died with ``out of resource: grid.y``
-# (e.g. the (1024, 512, 512) benchmark shape).  The sibling module keeps every
-# launch on a flat 1-D grid and chunks oversized batches itself.
-from .linalg_lu_factor import linalg_lu_factor
 
 logger = logging.getLogger(__name__)
 

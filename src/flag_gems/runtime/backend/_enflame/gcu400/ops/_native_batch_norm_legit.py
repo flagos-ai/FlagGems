@@ -368,8 +368,7 @@ def _nbn_apply_kernel(
 
 
 def _choose_tile(batch_dim, spatial_dim):
-    """Picks the tile by power of two and element budget; both axes are at least 2
-    wide to avoid a 1-D slice layout crash."""
+    """Picks the tile by power of two and element budget; both axes are at least 2 wide to avoid a 1-D slice layout crash."""
     block_m = max(2, min(BLOCK_M_CAP, triton.next_power_of_2(batch_dim)))
     max_block_n = max(1, TILE_BUDGET // block_m)
     block_n = max(2, min(triton.next_power_of_2(spatial_dim), max_block_n))

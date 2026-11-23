@@ -325,7 +325,9 @@ def rnn_relu_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         work = torch.empty((batch, pad_h), dtype=input.dtype, device=input.device)
 
     with _fixed_block_sizes():
-        _rnn_relu_cell_kernel[(triton.cdiv(batch, block_b), pad_h // block_h)](
+        _rnn_relu_cell_kernel[
+            (triton.cdiv(batch, block_b), pad_h // block_h)
+        ](
             x_arg,
             h_arg,
             w_i_arg,

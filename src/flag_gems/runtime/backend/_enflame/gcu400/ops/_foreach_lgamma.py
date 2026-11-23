@@ -303,8 +303,7 @@ def _foreach_lgamma_kernel(
 def _fast_path(self) -> bool:
     """True selects the 16-slot single launch: non-empty, all contiguous float, single (dtype, device),
     numel inside the int32 flat offset domain. Any AttributeError (non-Tensor elements, empty
-    list) and every other unsatisfied case fall back to the shared ``apply_unary`` path.
-    """
+    list) and every other unsatisfied case fall back to the shared ``apply_unary`` path."""
     try:
         if not self:
             return False

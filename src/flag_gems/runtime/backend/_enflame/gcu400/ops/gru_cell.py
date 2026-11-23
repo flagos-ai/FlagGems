@@ -378,7 +378,9 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     partial_h = hidden_size % block_h != 0
     if partial_h:
         rows = triton.cdiv(batch, block_b) * block_b
-        store_buf = torch.empty((rows, block_h), dtype=input.dtype, device=input.device)
+        store_buf = torch.empty(
+            (rows, block_h), dtype=input.dtype, device=input.device
+        )
         s_ob, s_on = block_h, 1
     else:
         store_buf = out

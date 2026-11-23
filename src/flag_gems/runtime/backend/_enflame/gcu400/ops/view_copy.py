@@ -58,9 +58,7 @@ def view_copy_kernel(
         offsets = tile_id * BLOCK_SIZE + lane_offset
         if MASKED:
             mask = offsets < n_elements
-            tl.store(
-                dst_ptr + offsets, tl.load(src_ptr + offsets, mask=mask), mask=mask
-            )
+            tl.store(dst_ptr + offsets, tl.load(src_ptr + offsets, mask=mask), mask=mask)
         else:
             tl.store(dst_ptr + offsets, tl.load(src_ptr + offsets))
 

@@ -16,8 +16,7 @@ do_bench median w1000/r100, new compiler TopsRider 20261116, L600):
   is a bare exp result rather than a fresh add (1287us; the silu fast-reciprocal precedent does not
   transfer), while the rsqrt(t)^2 body gives 928us at 512M and 35.1us at 16.7M.
   +-inf/NaN/intermediate-overflow semantics are bit-identical to the double-exp body: on exp
-  overflow t=inf, rsqrt(inf)=0 and its square is 0, so the result is still inf, and
-  both bodies return inf for large |x|.
+  overflow t=inf, rsqrt(inf)=0 and its square is 0, so the result is still inf, and both bodies return inf for large |x|.
 EVEN mask-free arm (drops the boundary predicate when N_total % BLOCK == 0): pow2-divisible tiers
 gain 512M fp16 -2.6% and fp32 -4.2%; odd sizes in 16-bit take masked+nw2 (the mask predicate costs
 +12% at nw4), while fp32 masked keeps nw4. The BLOCK/nw ladder is calibrated by boundary probes

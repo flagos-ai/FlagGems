@@ -152,8 +152,7 @@ def embedding_sparse_backward(
     if use_cpu_staging:
         idx_cpu = idx.detach().cpu().contiguous()
         sparse_indices = idx_cpu.view(1, -1)
-        # With no padding every row appears in the output, so grad_output rows are
-        # the COO values and no extra buffer is needed.
+        # With no padding every row appears in the output, so grad_output rows are the COO values and no extra buffer is needed.
         values = go.detach().cpu()
         if has_padding:
             # Under to_dense semantics "drop padding rows" equals "zero those rows"; zeroing by explicit
@@ -186,8 +185,7 @@ def embedding_sparse_backward(
                 )
                 # grid.x hard cap 65535: grow the per-program transfer automatically for large element counts.
                 block_elems = max(
-                    block_elems,
-                    triton.next_power_of_2(triton.cdiv(total, GRID_X_LIMIT)),
+                    block_elems, triton.next_power_of_2(triton.cdiv(total, GRID_X_LIMIT))
                 )
                 _masked_copy_flat_kernel[(triton.cdiv(total, block_elems),)](
                     go,

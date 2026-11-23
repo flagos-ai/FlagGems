@@ -21,6 +21,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

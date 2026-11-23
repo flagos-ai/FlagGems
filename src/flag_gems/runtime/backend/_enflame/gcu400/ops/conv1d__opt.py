@@ -350,6 +350,8 @@ def _select_direct_tiles(OL, C_out_pg, C_in_pg, is_f32):
     return bm, bn, bkc
 
 
+
+
 # Tile table for the 1-D implicit GEMM, reusing the conv2d-measured shapes
 # (num_warps=1 everywhere: w2/w4 split the operand tiles across warps and
 # serialize the dot issue path, 10-13x measured).  fp32 keeps the shallow
@@ -363,6 +365,8 @@ def _select_tiles(M, C_out_pg, KDIM, is_f32):
             return 128, 64, 32
         return 64, 32, 32
     return 128, _next_pow2(C_out_pg, 32, 128), 32
+
+
 
 
 # DSM budget for the static K unroll: each unrolled iteration materializes

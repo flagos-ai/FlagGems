@@ -1110,6 +1110,7 @@ def flash_attn_backward(
             return (t.stride(0), t.stride(2), t.stride(1), t.stride(3))
         return t.stride(0), t.stride(1), t.stride(2), t.stride(3)
 
+
     if H_q % H_k != 0:
         raise ValueError(f"H_q ({H_q}) must be a multiple of H_k ({H_k})")
     group_size = H_q // H_k

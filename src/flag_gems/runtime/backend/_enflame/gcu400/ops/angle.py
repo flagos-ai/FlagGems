@@ -19,10 +19,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 # Absolute import: pointwise_dynamic re-emits this module's imports into the
 # generated kernel cache module, where a relative import cannot be resolved.
 from flag_gems.runtime.backend._enflame.gcu400.ops.arctan2 import _atan2_vec
-from flag_gems.utils import libentry
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -87,9 +88,7 @@ def _choose_block(n_elements: int):
     # more than the lost per-tile width because the atan2 polynomial, not the
     # memory system, is the limiter.
     per_program = max(triton.cdiv(n_elements, _NUM_PROGRAMS), 1)
-    block = 1 << (
-        per_program.bit_length() - 1
-    )  # largest power of two not exceeding per_program
+    block = 1 << (per_program.bit_length() - 1)  # largest power of two not exceeding per_program
     return min(max(block, _MIN_COMPLEX_BLOCK), _COMPLEX_BLOCK), _COMPLEX_WARPS
 
 

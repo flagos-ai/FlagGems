@@ -112,8 +112,7 @@ def _decode_fp8(bits, E4M3: tl.constexpr):
 
 @triton.jit
 def _group_index(cols, GROUP_SIZE: tl.constexpr, LOG_GROUP: tl.constexpr):
-    """Group index: shift for a power of two, else division (GCU has no integer
-    divide, per-lane expansion is costly)."""
+    """Group index: shift for a power of two, else division (GCU has no integer divide, per-lane expansion is costly)."""
     if LOG_GROUP > 0:
         return cols >> LOG_GROUP
     else:

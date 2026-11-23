@@ -69,7 +69,9 @@ def _allocate_outputs(tensors):
     total_numel = 0
     for tensor in tensors:
         total_numel += tensor.numel()
-    flat = torch.empty(total_numel, dtype=tensors[0].dtype, device=tensors[0].device)
+    flat = torch.empty(
+        total_numel, dtype=tensors[0].dtype, device=tensors[0].device
+    )
     first_shape = tensors[0].shape
     if all(tensor.shape == first_shape for tensor in tensors) and len(tensors) > 1:
         return list(flat.view(len(tensors), *first_shape).unbind(0))
@@ -165,9 +167,9 @@ def _foreach_tan(self):
         # Device pointers are stored as int64, so GCU 64-bit support must be enabled or pointers are truncated.
         # numpy hands Triton a ready-made CPU buffer, which is ~25% cheaper than torch.tensor(list) here;
         # the transfer stays synchronous so no caller-visible buffer is shared between calls.
-        metadata = torch.from_numpy(np.asarray(metadata_values, dtype=np.int64)).to(
-            device
-        )
+        metadata = torch.from_numpy(
+            np.asarray(metadata_values, dtype=np.int64)
+        ).to(device)
         max_numel = max(tensor.numel() for tensor in self)
         chunks = triton.cdiv(max_numel, BLOCK_SIZE)
         if MAX_CHUNKS_CAP:

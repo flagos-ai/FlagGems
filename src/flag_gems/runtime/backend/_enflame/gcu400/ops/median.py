@@ -926,7 +926,6 @@ def _result_buffer(inp, output_shape, out_values):
         return out_values
     return torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
 
-
 def _median_small_flat(inp, out_values=None):
     value = _result_buffer(inp, (), out_values)
     block = triton.next_power_of_2(inp.numel())
@@ -1457,7 +1456,8 @@ def median_dim(inp, dim=0, keepdim=False):
         if work.dtype == torch.bool:
             values, indices = _median_bool_dim(work.contiguous(), dim, output_shape)
         elif _use_float_key_select(work.dtype, work.shape[dim]) and not (
-            dim != work.ndim - 1 and work.shape[dim] <= _INT_DIRECT_SORT_MAX_WIDTH
+            dim != work.ndim - 1
+            and work.shape[dim] <= _INT_DIRECT_SORT_MAX_WIDTH
         ):
             values, indices = _median_float_key_select_dim(
                 work, dim, output_shape, keepdim

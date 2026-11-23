@@ -101,9 +101,7 @@ def _fill_word(padding_value, dtype):
 
 
 @triton.jit
-def _pps_flat_tile(
-    data_w, out_w, fill_word, src_base, dst_base, copy_w, lo, hi, BLOCK: tl.constexpr
-):
+def _pps_flat_tile(data_w, out_w, fill_word, src_base, dst_base, copy_w, lo, hi, BLOCK: tl.constexpr):
     """One contiguous word range [lo, hi) of a single t-slab.
 
     Lanes below copy_w load from the packed source run (both sides stay
@@ -590,19 +588,10 @@ def _pad_packed_sequence(data, batch_sizes, batch_first, padding_value, total_le
     # batch_sizes is a small CPU int64 tensor (aten contract). All metadata
     # math (exclusive prefix sum, per-element lengths) stays on the host in
     # numpy so no aten compute op runs on the op path.
-    if (
-        batch_sizes.device.type == "cpu"
-        and batch_sizes.dtype == torch.int64
-        and batch_sizes.is_contiguous()
-    ):
+    if batch_sizes.device.type == "cpu" and batch_sizes.dtype == torch.int64 and batch_sizes.is_contiguous():
         bs_np = batch_sizes.numpy()
     else:
-        bs_np = (
-            batch_sizes.detach()
-            .to(device="cpu", dtype=torch.int64)
-            .contiguous()
-            .numpy()
-        )
+        bs_np = batch_sizes.detach().to(device="cpu", dtype=torch.int64).contiguous().numpy()
 
     offsets_np = np.zeros(num_steps, dtype=np.int64)
     if num_steps > 1:
@@ -653,17 +642,10 @@ def _pad_packed_sequence(data, batch_sizes, batch_first, padding_value, total_le
     # amortization reach the flat-copy bandwidth floor. See _pps_flat_kernel.
     esize = data.element_size()
     feature_words = feature_size * esize // 4
-    word_ok = (
-        esize in (2, 4)
-        and feature_size * esize % 4 == 0
-        and data.storage_offset() * esize % 4 == 0
-    )
+    word_ok = esize in (2, 4) and feature_size * esize % 4 == 0 and data.storage_offset() * esize % 4 == 0
     # int32 word offsets must stay clear of 2**31 (BLOCK headroom included,
     # same slack family as ops/copy.py).
-    words_fit = (
-        num_rows * feature_words <= 2**31 - 2**24
-        and data.numel() * esize // 4 <= 2**31 - 2**24
-    )
+    words_fit = num_rows * feature_words <= 2**31 - 2**24 and data.numel() * esize // 4 <= 2**31 - 2**24
     if num_rows > 0 and word_ok and words_fit and out_stride_b == feature_size:
         slab_words = max_batch * feature_words
         # Sub-divide slabs when T alone cannot fill the 48-program machine.

@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # `grid = cdiv(n, BLOCK)` and BLOCK <= 4096, i.e. tens of thousands of CTAs plus a
 # scratch buffer + `copy_` for the in-place form; both are strictly slower than the
 # capped 48-CTA grid-stride kernel (measured 2026-11-19).
-from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out  # noqa: F401,E402
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out  # noqa: F401
 
 
 @libentry()
@@ -61,7 +61,9 @@ def _leaky_relu_backward_kernel(
                 slope = tl.full([1], negative_slope, grad_output.dtype)
                 grad_input = tl.where(x > 0, grad_output, grad_output * slope)
             else:
-                grad_input = tl.where(x > 0, grad_output, grad_output * negative_slope)
+                grad_input = tl.where(
+                    x > 0, grad_output, grad_output * negative_slope
+                )
             tl.store(grad_input_ptr + off, grad_input)
         else:
             mask = off < n_elements
@@ -71,7 +73,9 @@ def _leaky_relu_backward_kernel(
                 slope = tl.full([1], negative_slope, grad_output.dtype)
                 grad_input = tl.where(x > 0, grad_output, grad_output * slope)
             else:
-                grad_input = tl.where(x > 0, grad_output, grad_output * negative_slope)
+                grad_input = tl.where(
+                    x > 0, grad_output, grad_output * negative_slope
+                )
             tl.store(grad_input_ptr + off, grad_input, mask=mask)
 
 
@@ -145,7 +149,8 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
                     negative_slope,
                     BLOCK_SIZE=block_size,
                     EVEN=even,
-                    NATIVE_SLOPE=self.dtype in (torch.float16, torch.bfloat16),
+                    NATIVE_SLOPE=self.dtype
+                    in (torch.float16, torch.bfloat16),
                     num_warps=num_warps,
                 )
             return grad_input

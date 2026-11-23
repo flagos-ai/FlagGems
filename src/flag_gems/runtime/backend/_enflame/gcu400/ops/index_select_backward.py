@@ -275,7 +275,9 @@ def index_select_backward(grad, self_sizes, dim, index):
     out = torch.zeros(self_sizes, dtype=grad.dtype, device=grad.device)
 
     block_i = min(triton.next_power_of_2(inner), MAX_INNER_BLOCK)
-    block_l = min(triton.next_power_of_2(index_len), max(1, MAX_TILE_ELEMS // block_i))
+    block_l = min(
+        triton.next_power_of_2(index_len), max(1, MAX_TILE_ELEMS // block_i)
+    )
     _isb_scatter_kernel[
         (triton.cdiv(inner, block_i), triton.cdiv(index_len, block_l), outer)
     ](

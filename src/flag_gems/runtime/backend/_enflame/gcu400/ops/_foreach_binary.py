@@ -706,19 +706,7 @@ def _launch_ternary_flat(
 
 
 def _launch_binary_flat(
-    grid,
-    meta,
-    scalar_arg,
-    fn,
-    nt,
-    a_dt,
-    b_dt,
-    out_dt,
-    alpha,
-    b_mode,
-    b_value,
-    block,
-    exact,
+    grid, meta, scalar_arg, fn, nt, a_dt, b_dt, out_dt, alpha, b_mode, b_value, block, exact
 ):
     """``_foreach_binary_flat_kernel[grid](...)`` with a cached direct launcher.
 

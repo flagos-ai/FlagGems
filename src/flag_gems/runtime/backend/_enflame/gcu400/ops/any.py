@@ -224,9 +224,7 @@ def _launch_global(inp):
 
     mid = torch.empty((grid_size,), dtype=torch.bool, device=inp.device)
     with torch_device_fn.device(inp.device):
-        any_global_kernel[(grid_size,)](
-            inp, mid, out, n_total, block, False, num_warps=4
-        )
+        any_global_kernel[(grid_size,)](inp, mid, out, n_total, block, False, num_warps=4)
         block_mid = _np2(grid_size)
         any_reduce_kernel[(1,)](mid, out, grid_size, block_mid, num_warps=1)
     return out

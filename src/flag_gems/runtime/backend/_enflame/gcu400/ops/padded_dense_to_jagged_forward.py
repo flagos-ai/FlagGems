@@ -453,7 +453,9 @@ def _launch_single(dense, offset, output, max_length, inner_size):
         return
     sequence_lanes = max_length * inner_size
     lane_width = dense.element_size()
-    block_max = _SINGLE_BLOCK_MAX_NARROW if lane_width <= 4 else _SINGLE_BLOCK_MAX_WIDE
+    block_max = (
+        _SINGLE_BLOCK_MAX_NARROW if lane_width <= 4 else _SINGLE_BLOCK_MAX_WIDE
+    )
     block_size = min(block_max, _next_pow2(sequence_lanes))
     chunks_per_batch = triton.cdiv(sequence_lanes, block_size)
     total_tasks = dense.size(0) * chunks_per_batch

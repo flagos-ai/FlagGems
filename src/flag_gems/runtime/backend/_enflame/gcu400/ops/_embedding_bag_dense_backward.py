@@ -52,8 +52,7 @@ REDUCE_WORKERS = 48
 def _embedding_bag_zero_fill_kernel(out_ptr, num_elems, BLOCK: tl.constexpr):
     """In-place zeroing: aten zeros/zero_ measured ~9us per call on this machine, and following it
     immediately with a Triton kernel on the same stream adds another ~11us (likely a fallback-path
-    sync), so the built-in narrow-grid zeroing kernel takes the same combination from 29.6us to 11.0us.
-    """
+    sync), so the built-in narrow-grid zeroing kernel takes the same combination from 29.6us to 11.0us."""
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     tl.store(
         out_ptr + offsets,

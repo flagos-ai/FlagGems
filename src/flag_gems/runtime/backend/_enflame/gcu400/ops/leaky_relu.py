@@ -85,7 +85,9 @@ def _leaky_relu_kernel(
             x = tl.load(input_ptr + off, mask=mask)
             if NATIVE_SLOPE:
                 slope = tl.full([1], negative_slope, x.dtype)
-                tl.store(output_ptr + off, tl.where(x >= 0, x, x * slope), mask=mask)
+                tl.store(
+                    output_ptr + off, tl.where(x >= 0, x, x * slope), mask=mask
+                )
             else:
                 tl.store(
                     output_ptr + off,
@@ -158,7 +160,8 @@ def _launch_leaky_relu(input_ptr, output_ptr, n_elements, negative_slope):
                     BLOCK_SIZE=block_size,
                     EVEN=even,
                     PIPE=_pipe_stages(input_ptr.dtype, n_elements),
-                    NATIVE_SLOPE=input_ptr.dtype in (torch.float16, torch.bfloat16),
+                    NATIVE_SLOPE=input_ptr.dtype
+                    in (torch.float16, torch.bfloat16),
                     num_warps=num_warps,
                 )
             return

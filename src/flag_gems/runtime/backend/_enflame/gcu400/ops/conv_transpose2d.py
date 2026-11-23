@@ -1612,7 +1612,9 @@ def _conv_transpose2d_direct(
     # the machine: on tiny outputs (1x32x32x32, 32K elements) it measures 1.25x
     # slower on fp16 and 1.8x slower on fp32 than the narrow non-transposed
     # schedule, which puts 32 CTAs on the same work.
-    use_transposed_dot = weight_height * weight_width <= 9 and output.numel() >= 65536
+    use_transposed_dot = (
+        weight_height * weight_width <= 9 and output.numel() >= 65536
+    )
     if use_transposed_dot:
         (
             block_nhw,

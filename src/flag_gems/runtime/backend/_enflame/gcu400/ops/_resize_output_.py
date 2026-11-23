@@ -54,8 +54,7 @@ _MISMATCH_INDEX = -2  # sentinel: never equal to any real tensor device index (o
 
 def _resize_tensor_inplace(inp: torch.Tensor, size) -> torch.Tensor:
     """In-place equivalent of aten::resize_ that skips aten dispatch (under use_gems
-    resize_ routes to the local set_, which has no capacity check; this version guards it).
-    """
+    resize_ routes to the local set_, which has no capacity check; this version guards it)."""
     new_numel = math.prod(size)
     old_numel = inp.numel()
     storage = inp.untyped_storage()

@@ -690,7 +690,10 @@ def _ctc_loss_grad_reduce_kernel(
         labels = tl.where((states % 2) == 0, BLANK, target_value)
 
         post = tl.load(
-            scratch_post + batch * T * STATE_COUNT_MAX + t * STATE_COUNT_MAX + states,
+            scratch_post
+            + batch * T * STATE_COUNT_MAX
+            + t * STATE_COUNT_MAX
+            + states,
             mask=valid_state,
             other=0.0,
         )

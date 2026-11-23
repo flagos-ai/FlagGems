@@ -257,7 +257,9 @@ def view_as_complex_copy(self: torch.Tensor) -> torch.Tensor:
             # moves the same ~16 KiB of payload regardless of the dtype; work
             # that does not fit one grid row is folded by _launch_grid instead
             # of widening the tile further.
-            block_size = max(_MIN_BLOCK_SIZE, _TILE_BYTES // src_view.element_size())
+            block_size = max(
+                _MIN_BLOCK_SIZE, _TILE_BYTES // src_view.element_size()
+            )
             # Never reserve more lanes than the row can use: the tile is a
             # per-program DSM allocation, so a long row keeps the full payload
             # while a short row only pays for its own length. Splitting a

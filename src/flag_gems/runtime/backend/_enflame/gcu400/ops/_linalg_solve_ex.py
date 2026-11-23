@@ -291,7 +291,9 @@ def _linalg_solve_ex_kernel(
         trail = tl.where(update_mask, trail - lik[:, None] * ak_row[None, :], trail)
         # Column k now carries the multipliers, so fold them into the same
         # tile store instead of leaving the stale pre-pivot values behind.
-        trail = tl.where(trail_mask & (a_cols[None, :] == k), lik[:, None], trail)
+        trail = tl.where(
+            trail_mask & (a_cols[None, :] == k), lik[:, None], trail
+        )
         tl.store(trail_ptrs, trail, mask=trail_mask)
         k += 1
 

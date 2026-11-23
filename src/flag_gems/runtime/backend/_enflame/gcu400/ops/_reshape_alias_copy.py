@@ -220,9 +220,7 @@ def _t2d_eligible(dims, src_strides, itemsize):
     """
     (d0, s0), (d1, s1) = zip(dims, src_strides)
     bm, bn = _t2d_tile(itemsize)
-    return (
-        s0 >= 1 and s1 >= 1 and (s0 == 1 or s1 == 1) and d0 % bm == 0 and d1 % bn == 0
-    )
+    return s0 >= 1 and s1 >= 1 and (s0 == 1 or s1 == 1) and d0 % bm == 0 and d1 % bn == 0
 
 
 def _launch_t2d_copy(src, dst, dims, src_strides, n_elements, itemsize):
@@ -253,10 +251,7 @@ def _launch_t2d_copy(src, dst, dims, src_strides, n_elements, itemsize):
 def _launch_strided_copy(src, dst, dims, src_strides, n_elements):
     rank = len(dims)
     if rank > _MAX_RANK:
-        raise RuntimeError(
-            f"_reshape_alias_copy supports at most {_MAX_RANK} dimensions, "
-            f"got {rank}"
-        )
+        raise RuntimeError(f"_reshape_alias_copy supports at most {_MAX_RANK} dimensions, " f"got {rank}")
     padded_strides = src_strides + [0] * (_MAX_RANK - rank)
     padded_dims = dims + [1] * (_MAX_RANK - rank)
     block = 4096

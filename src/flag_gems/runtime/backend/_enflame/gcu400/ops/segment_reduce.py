@@ -1936,7 +1936,8 @@ def _segment_reduce_backward(
         grad_contig = grad.contiguous()
         buffer = (
             reuse_buffer.reshape(data_contig.shape)
-            if reuse_buffer is not None and reuse_buffer.numel() == data_contig.numel()
+            if reuse_buffer is not None
+            and reuse_buffer.numel() == data_contig.numel()
             else None
         )
         uniform_result = _segment_reduce_uniform_sum_mean_backward(
@@ -1953,18 +1954,12 @@ def _segment_reduce_backward(
         output_contig = output.contiguous()
         buffer = (
             reuse_buffer.reshape(data_contig.shape)
-            if reuse_buffer is not None and reuse_buffer.numel() == data_contig.numel()
+            if reuse_buffer is not None
+            and reuse_buffer.numel() == data_contig.numel()
             else None
         )
         uniform_result = _segment_reduce_uniform_other_backward(
-            data_contig,
-            output_contig,
-            grad_contig,
-            reduce,
-            lengths,
-            axis,
-            initial,
-            buffer,
+            data_contig, output_contig, grad_contig, reduce, lengths, axis, initial, buffer
         )
         if uniform_result is not None:
             return uniform_result
