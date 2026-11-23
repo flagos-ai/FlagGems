@@ -73,6 +73,7 @@ from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._foreach_mul__List import _foreach_mul__List
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_mul_Tensor import _foreach_mul_Tensor
 from ._foreach_neg_ import _foreach_neg_
 from ._foreach_rsqrt import _foreach_rsqrt
@@ -324,6 +325,7 @@ __all__ = [
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
     "_foreach_mul__List",
+    "_foreach_mul__ScalarList",
     "_foreach_mul_Tensor",
     "_foreach_neg_",
     "_foreach_rsqrt",
