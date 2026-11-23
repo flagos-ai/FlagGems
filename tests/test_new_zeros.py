@@ -757,6 +757,15 @@ def test_new_zeros_master_false_extent():
 
 
 @pytest.mark.new_zeros
+def test_new_zeros_master_true_extent():
+    inp = torch.empty(2, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), [True, 2])
+    actual = flag_gems.new_zeros(inp, [True, 2])
+
+    _assert_result_equal(actual, expected)
+
+
+@pytest.mark.new_zeros
 @pytest.mark.parametrize("size", [(), (0,), (2, 3), (1024, 1024)])
 def test_new_zeros_master_out(size):
     inp = torch.empty(2, device=flag_gems.device)
