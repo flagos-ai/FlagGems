@@ -23,6 +23,10 @@ def input_fn(shape, dtype, device):
     yield inp, 1
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cummax
 def test_cummax():
     bench = base.GenericBenchmark2DOnly(

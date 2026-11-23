@@ -80,6 +80,31 @@ CHAIN_SHAPES = [
 # benchmark without changing the measured semantics.
 OUT_CHAIN_SHAPES = CHAIN_SHAPES[:3]
 
+# Chains this backend cannot measure at all, keyed by exact chain shape.
+#
+# torch_gcu's native fp16/bf16 mm wedges (never returns from the device sync,
+# no error) for the single extent combination (M, K, N) = (128, 128, 512); the
+# neighbouring extents 320/384/448/640/1024/2048 all return in ~5 ms, and fp32
+# at the same shapes returns as well, so this is a native kernel-selection bug
+# and not a size or memory-pressure effect. Reproduce with a bare
+# ``torch.mm(randn(128, 128, fp16), randn(128, 512, fp16))``; no FlagGems code
+# is involved.
+#
+# The five-matrix chain below ends in exactly that node -- ((128, 128) @
+# (128, 512)) -- so both the aten baseline and the candidate (long chains ride
+# the native composite) hang, and the benchmark can never finish for fp16/bf16.
+# Dropping the one chain keeps 5-matrix (CORE_CHAINS entry 5) and 6-matrix
+# coverage intact; drop this exclusion once the native mm is fixed.
+_UNMEASURABLE_CHAINS = {
+    ((128, 2048), (2048, 128), (128, 2048), (2048, 128), (128, 512)),
+}
+
+
+def _measurable_chains(chains):
+    if flag_gems.vendor_name != "enflame":
+        return list(chains)
+    return [chain for chain in chains if tuple(chain) not in _UNMEASURABLE_CHAINS]
+
 
 class ChainMatmulBenchmark(base.GenericBenchmark):
     """GenericBenchmark whose shapes are chains of rank-2 matrices."""

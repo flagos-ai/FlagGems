@@ -165,15 +165,26 @@ def quantized_max_pool2d_out_input_fn(shape, dtype, device, comprehensive=True):
 
 @pytest.mark.quantized_max_pool2d
 def test_quantized_max_pool2d():
+    # ``gems_op`` is passed explicitly: on enflame ``use_gems()`` does not
+    # intercept ``torch.quantized_max_pool2d`` (a quantized tensor dispatches
+    # through the backend's quantized subclass), so the timing leg would
+    # silently re-run the native operator and report a meaningless speedup of
+    # ~1.0. The native leg (``torch_op``) stays the accelerator baseline, which
+    # does run on this device for qint8 -- the only dtype benchmarked here.
     bench = QuantizedMaxPool2dBenchmark(
         op_name="quantized_max_pool2d",
         torch_op=torch.quantized_max_pool2d,
+        gems_op=flag_gems.quantized_max_pool2d,
         dtypes=QUANT_DTYPES,
         input_fn=quantized_max_pool2d_input_fn,
     )
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.quantized_max_pool2d_out
 def test_quantized_max_pool2d_out():
     # The out variant writes the pooled result into the caller-provided quantized

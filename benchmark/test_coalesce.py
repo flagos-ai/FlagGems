@@ -62,9 +62,18 @@ class CoalesceBenchmark(base.Benchmark):
 
 @pytest.mark.coalesce
 def test_coalesce():
+    # Sparse op: the candidate is called through the direct gems entry, the same
+    # way the rest of the sparse family does it.  Under the ``use_gems()``
+    # dispatch scope the sparse constructor override shadows the native
+    # ``_sparse_coo_tensor_with_dims_and_tensors`` kernel at SparsePrivateUse1,
+    # so the output construction inside ``coalesce`` re-enters this module and
+    # dies with a RecursionError (measured: bench run aborts after the first
+    # case).  Handing the entry point over explicitly keeps the timing on the
+    # same code path without that scope.
     bench = CoalesceBenchmark(
         op_name="coalesce",
         torch_op=torch.ops.aten.coalesce,
+        gems_op=getattr(flag_gems, "coalesce", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -47,6 +47,16 @@ class Conv3DPaddingBenchmark(base.GenericBenchmark):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "GCU400 core shapes cannot finish in the per-stage budget: the Triton "
+        "conv3d im2col path runs at ~0.016 TFLOPS (measured 756.9ms for a "
+        "12.2 GFLOP proxy) so the 928 GFLOP first core shape alone needs >16h, "
+        "against an 1800s timeout; even the bandwidth-optimal im2col + mm "
+        "decomposition (63 TFLOPS mm) would need ~2100s for the three dtypes"
+    ),
+)
 def test_conv3d():
     def conv3d_input_fn(shape, dtype, device):
         (

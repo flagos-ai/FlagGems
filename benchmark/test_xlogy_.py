@@ -25,6 +25,10 @@ def xlogy_input_fn(shape, dtype, device):
     yield inp1, inp2
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_
 def test_xlogy_():
     bench = base.GenericBenchmark(
@@ -42,6 +46,10 @@ def xlogy_scalar_other_input_fn(shape, dtype, device):
     yield inp, 3.5
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_scalar_other_
 def test_xlogy_scalar_other_():
     bench = base.GenericBenchmark(

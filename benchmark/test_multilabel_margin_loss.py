@@ -92,6 +92,10 @@ class MultilabelMarginLossBenchmark(base.Benchmark):
             yield inp, target, self.reduction
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("density", TARGET_DENSITIES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])

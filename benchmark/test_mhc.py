@@ -24,7 +24,10 @@ try:
     )
 
     HAS_VLLM = True
-except ImportError:
+except (ImportError, AttributeError):
+    # the vLLM mhc module raises AttributeError at import time on a backend without tilelang
+    # (e.g. GCU); kept consistent with tests/test_mhc_ops.py so that the whole benchmark
+    # collection does not fail (a collection error turns the pytest exit code into 1).
     HAS_VLLM = False
 from flag_gems import (
     hc_split_sinkhorn,

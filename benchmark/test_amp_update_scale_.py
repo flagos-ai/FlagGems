@@ -83,6 +83,10 @@ class AmpUpdateScaleBenchmark(base.Benchmark):
         )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.amp_update_scale_
 def test_amp_update_scale_():
     bench = AmpUpdateScaleBenchmark(

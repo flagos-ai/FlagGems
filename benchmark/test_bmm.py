@@ -77,8 +77,19 @@ FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
 
 
 def _is_fp8e4nv_supported():
-    if FP8_DTYPE is None or not torch.cuda.is_available():
+    """fp8e4m3 availability check (see the same-named function in tests/test_bmm.py).
+
+    A non-CUDA backend (e.g. GCU) counts as supported as long as it exposes float8_e4m3fn, so
+    bmm_w8a8_fp8 is not skipped wholesale because the CUDA capability query is always False.
+    """
+    if FP8_DTYPE is None:
         return False
+    # torch_gcu redirects torch.cuda.* to gcu, so the check must be based on the actual vendor,
+    # otherwise non-CUDA backends enter the CUDA capability query, get 0.0, and are mistakenly skipped
+    if flag_gems.device != "cuda":
+        return (
+            flag_gems.vendor_name == "enflame" and flag_gems.device != "cpu"
+        )
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
 
@@ -168,7 +179,13 @@ def _quantize_b_fp8_per_nk_block(B, block_n=128, block_k=128):
 def _triton_bmm_bf16_block_scale_baseline(
     A, B, A_fp8, B_fp8, A_scale, B_scale, out, block_m, block_n, block_k
 ):
-    return triton_bmm_out(A, B, out)
+    """bf16 Triton bmm as the comparison baseline for fp8 W8A8 block-scale.
+
+    It goes through the front-end dispatchable entry instead of the bare kernel in ops/bmm:
+    backends such as GCU expose ops/bmm.bmm_out as a kernel that needs explicit TILE_* meta,
+    so calling it directly raises "missing required positional arguments".
+    """
+    return flag_gems.bmm_out(A, B, out=out)
 
 
 def _gems_bmm_w8a8_fp8(

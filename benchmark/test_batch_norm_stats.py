@@ -34,6 +34,22 @@ class NormStatsBenchmark(base.GenericBenchmarkExcluse1D):
         ]
 
 
+def _substituted_batch_norm_stats(inp, eps):
+    """Substituted (non-contract) torch baseline for vendors without an aten kernel.
+
+    enflame GCU has no aten kernel for batch_norm_stats (not on CPU either), so
+    the baseline is the eager torch decomposition of the same definition: the
+    per-channel mean and 1/sqrt(biased var + eps) in float32. The comparison is
+    therefore GPU kernel vs multi-launch eager decomposition, not vs an aten
+    kernel; the ratio is reported as-is.
+    """
+    reduce_dims = (0,) + tuple(range(2, inp.dim()))
+    inp_f32 = inp.to(torch.float32)
+    mean = inp_f32.mean(dim=reduce_dims)
+    var = inp_f32.var(dim=reduce_dims, unbiased=False)
+    return mean, 1.0 / torch.sqrt(var + eps)
+
+
 def input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     eps = 1e-5
@@ -42,11 +58,17 @@ def input_fn(shape, dtype, device):
 
 @pytest.mark.batch_norm_stats
 def test_batch_norm_stats():
+    torch_op = (
+        _substituted_batch_norm_stats
+        if flag_gems.vendor_name == "enflame"
+        else torch.batch_norm_stats
+    )
     bench = NormStatsBenchmark(
         op_name="batch_norm_stats",
         input_fn=input_fn,
-        torch_op=torch.batch_norm_stats,
+        torch_op=torch_op,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.batch_norm_stats)
 
     bench.run()

@@ -224,6 +224,14 @@ class WeightInt4PackMmBenchmark(base.Benchmark):
             emit_record_logger(result.to_json())
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_convert_weight_to_int4pack, "
+        "which the aten::_weight_int4pack_mm baseline needs to repack the weight; "
+        "the CPU fallback cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.weight_int4pack_mm
 def test_weight_int4pack_mm():
     bench = WeightInt4PackMmBenchmark(

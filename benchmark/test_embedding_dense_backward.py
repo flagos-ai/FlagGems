@@ -51,6 +51,10 @@ def _input_fn(shape, dtype, device):
     (not torch.cuda.is_available()) or (flag_gems.device != "cuda"),
     reason="CUDA backend is not available for this benchmark.",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten 不支持",
+)
 @pytest.mark.embedding_dense_backward
 def test_embedding_dense_backward():
     bench = EmbeddingDenseBackwardBenchmark(

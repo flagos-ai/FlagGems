@@ -39,6 +39,10 @@ def _input_fn(shape, dtype, device):
         },
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.kaiser_window
 def test_kaiser_window():
     bench = base.GenericBenchmark(
@@ -50,6 +54,10 @@ def test_kaiser_window():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.kaiser_window_beta
 def test_kaiser_window_beta():
     bench = base.GenericBenchmark(

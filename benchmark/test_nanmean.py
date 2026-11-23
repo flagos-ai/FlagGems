@@ -45,6 +45,10 @@ class _NanmeanOutBenchmark(base.UnaryReductionBenchmark):
                 yield x, 1, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nanmean
 def test_benchmark_nanmean():
     bench = _NanmeanBenchmark(
@@ -56,6 +60,10 @@ def test_benchmark_nanmean():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nanmean_out
 def test_benchmark_nanmean_out():
     bench = _NanmeanOutBenchmark(

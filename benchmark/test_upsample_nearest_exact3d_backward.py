@@ -65,6 +65,10 @@ class UpsampleNearestExact3dBackwardGradInputBenchmark(
             )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward():
     bench = UpsampleNearestExact3dBackwardBenchmark(
@@ -75,6 +79,10 @@ def test_upsample_nearest_exact3d_backward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.upsample_nearest_exact3d_backward_grad_input
 def test_upsample_nearest_exact3d_backward_grad_input():
     bench = UpsampleNearestExact3dBackwardGradInputBenchmark(

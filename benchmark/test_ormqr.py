@@ -34,6 +34,10 @@ class OrmqrBenchmark(base.GenericBenchmark2DOnly):
         return 2 * m * n * k
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.ormqr
 def test_ormqr():
     def ormqr_input_fn(shape, dtype, device):

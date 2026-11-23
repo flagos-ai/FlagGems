@@ -33,7 +33,15 @@ import flag_gems
 from . import base, consts
 
 
-def _cuda_fp8_available():
+def _fp8_available():
+    """Whether ``float8_e4m3fn`` operands can be materialised on this backend.
+
+    The enflame GCU backend reports no CUDA compute capability; its fp8
+    capability comes from the runtime capability table instead.  Every other
+    vendor keeps the original SM89+ CUDA check unchanged.
+    """
+    if flag_gems.vendor_name == "enflame":
+        return flag_gems.runtime.device.support_fp8 and hasattr(torch, "float8_e4m3fn")
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
     if not hasattr(torch, "float8_e4m3fn"):
@@ -57,8 +65,9 @@ class ScaledGroupedMMV2Benchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def __init__(self):
-        # float8_e4m3fn operands are CUDA-only (sm89+); the operator has no
-        # float16/float32/bfloat16 variant, so the dtype set is hardcoded.
+        # The operator has no float16/float32/bfloat16 variant, so the dtype
+        # set is hardcoded; enflame GCU also serves fp8 via its runtime
+        # capability table rather than an SM89+ CUDA device.
         super().__init__(
             "scaled_grouped_mm_v2",
             torch._scaled_grouped_mm_v2,
@@ -134,9 +143,13 @@ class ScaledGroupedMMV2Benchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_grouped_mm_v2
+@pytest.mark.skip_native(
+    vendors="enflame",
+    reason="aten::_scaled_grouped_mm_v2 native baseline is unavailable on GCU; time the Triton candidate only",
+)
 @pytest.mark.skipif(
     not _native_benchmark_available(),
-    reason="native torch._scaled_grouped_mm_v2 benchmark requires CUDA FP8 on SM89+.",
+    reason="fp8 operands or the native torch op are unavailable on this backend.",
 )
 def test_scaled_grouped_mm_v2_benchmark():
     bench = ScaledGroupedMMV2Benchmark()

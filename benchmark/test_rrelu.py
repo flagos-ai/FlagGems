@@ -20,6 +20,10 @@ import torch
 from . import base, consts
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.rrelu
 def test_rrelu():
     bench = base.UnaryPointwiseBenchmark(
@@ -30,6 +34,10 @@ def test_rrelu():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.rrelu_
 def test_rrelu_inplace():
     bench = base.UnaryPointwiseBenchmark(

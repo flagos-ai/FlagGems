@@ -126,6 +126,13 @@ class ConvertWeightBenchmark(base.Benchmark):
             emit_record_logger(result.to_json())
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_convert_weight_to_int4pack; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.convert_weight_to_int4pack
 def test_convert_weight_to_int4pack():
     # torch_op is the native aten op (the baseline Caeruleann asked for);

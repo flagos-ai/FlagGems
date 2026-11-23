@@ -73,6 +73,10 @@ class ChooseQParamsPerTensorBenchmark(base.GenericBenchmark):
         self.shape_desc = "M, N"
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.choose_qparams_per_tensor
 def test_choose_qparams_per_tensor():
     bench = ChooseQParamsPerTensorBenchmark(

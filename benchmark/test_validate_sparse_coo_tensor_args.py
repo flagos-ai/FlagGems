@@ -42,6 +42,12 @@ class SparseCooValidationBenchmark(base.Benchmark):
 def test_validate_sparse_coo_tensor_args(monkeypatch):
     # Both implementations synchronously report bad coordinates; graph/event
     # timing cannot represent the required device-to-host check.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "aten defect: this benchmark pins is_coalesced=True, so the baseline leg "
+            "aten::_validate_sparse_coo_tensor_args lacks the coalesced-check kernel on gcu "
+            "(DispatchStub: missing kernel for gcu) and cannot be timed"
+        )
     monkeypatch.setattr(base.Config, "mode", consts.BenchMode.OPERATOR)
     bench = SparseCooValidationBenchmark(
         op_name="validate_sparse_coo_tensor_args",

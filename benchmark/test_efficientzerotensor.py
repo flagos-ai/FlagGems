@@ -17,7 +17,31 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+
+def _baseline_builds_zerotensor():
+    """Whether ``aten::_efficientzerotensor`` really builds a ZeroTensor here.
+
+    On enflame the PrivateUse1 path returns an ordinary allocation (``data_ptr != 0``),
+    so timing it against the lazy FlagGems factory would compare two different works and
+    the numbers would be meaningless.
+    """
+    try:
+        probe = torch.ops.aten._efficientzerotensor.default(
+            (2, 3), dtype=torch.float32, device=flag_gems.device
+        )
+    except Exception:
+        return False
+    return probe.data_ptr() == 0
+
+
+_BASELINE_USABLE = _baseline_builds_zerotensor()
+_SKIP_REASON = (
+    "aten::_efficientzerotensor does not build a real ZeroTensor on this backend"
+)
 
 
 class EfficientZeroTensorBenchmark(base.Benchmark):
