@@ -754,9 +754,7 @@ def index_backward(grad_output, indices, input_size):
         else grad_output.dtype
     )
     inp = torch.zeros(input_size, dtype=compute_dtype, device=grad_output.device)
-    out = index_put_(
-        inp, list(indices), grad_output.to(compute_dtype), accumulate=True
-    )
+    out = index_put_(inp, list(indices), grad_output.to(compute_dtype), accumulate=True)
     return out.to(grad_output.dtype)
 
 
