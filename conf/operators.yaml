@@ -14745,6 +14745,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: multilabel_margin_loss_forward_backward
+  description: Computes the input gradient of multilabel_margin_loss_forward with
+    a fused Triton kernel.
+  for:
+  - multilabel_margin_loss_forward
+  labels:
+  - aten
+  - KernelGen
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: multinomial
   description: 'Returns a tensor where each row contains `num_samples` indices sampled
 

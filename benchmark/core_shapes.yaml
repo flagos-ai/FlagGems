@@ -896,6 +896,17 @@ multilabel_margin_loss_forward:
     - [1, 4096]
   shape_desc: "N, C"
 
+# Backward shares the forward's O(N*C^2) shape envelope.
+multilabel_margin_loss_forward_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
 # default 4d-only shapes
 GenericBenchmark4DOnly:
   shapes:

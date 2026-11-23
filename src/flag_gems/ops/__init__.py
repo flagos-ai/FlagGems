@@ -1269,7 +1269,10 @@ from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
 from flag_gems.ops.multilabel_margin_loss_backward import (
     multilabel_margin_loss_backward,
 )
-from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
+from flag_gems.ops.multilabel_margin_loss_forward import (
+    multilabel_margin_loss_forward,
+    multilabel_margin_loss_forward_backward,
+)
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
 from flag_gems.ops.multiply_ import multiply_
@@ -3046,6 +3049,7 @@ __all__ = [
     "multilabel_margin_loss",
     "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
+    "multilabel_margin_loss_forward_backward",
     "multinomial",
     "multiply",
     "multiply_",
