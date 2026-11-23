@@ -424,12 +424,10 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         mid = torch.empty((grid,), device=input.device, dtype=torch.float32)
 
     beta_f = float(beta)
-    # EVEN_N (unmasked fast path) steadily gains 1.27~1.34x on 16-bit and small/medium fp32,
-    # but is 1.35x slower on large-scale fp32 (16.7M: 0.0759ms -> 0.1021ms, interleaved
-    # same-process A/B minimum), so it is explicitly disabled there.
+    # EVEN_N (unmasked fast path) gains 1.27~1.34x on 16-bit and on fp32 as well
+    # once the tile is 16384 (2^24 fp32: 0.0759ms masked -> 0.0688ms unmasked,
+    # same-process sweep).  Only the tile matters here, so no dtype override.
     even_n = n_elements % block_size == 0
-    if input.element_size() >= 4 and n_elements > (1 << 21):
-        even_n = False
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic; acosh.py / sinh.py / atan2_.py precedent for this
     # toolchain family); retrying the launch recompiles and succeeds.
