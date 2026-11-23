@@ -60,3 +60,20 @@ def test_deg2rad_out(shape, dtype):
     flag_gems.deg2rad_out(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.deg2rad_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_deg2rad_out_byte(shape, dtype):
+    # torch promotes integral deg2rad inputs to float32 before scaling.
+    inp = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.empty(shape, dtype=torch.float32, device=ref_inp.device)
+    torch.deg2rad(ref_inp, out=ref_out)
+
+    res_out = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    flag_gems.deg2rad_out(inp, out=res_out)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)

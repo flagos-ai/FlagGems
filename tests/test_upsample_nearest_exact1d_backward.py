@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 from .conftest import QUICK_MODE, TO_CPU
 
 
@@ -43,9 +44,6 @@ SHAPES = (
         (2, 3, 17, 8),
         (4, 8, 64, 127),
     ]
-)
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported, reason="float64 is not supported on this platform"
 )
 DTYPES = (
     [torch.float32]

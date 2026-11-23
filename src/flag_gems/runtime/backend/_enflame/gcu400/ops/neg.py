@@ -56,7 +56,7 @@ def _run_neg(inp, out, N_total):
         BLOCK = 65536
 
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
+    grid_size = min(NUM_BLOCKS, NUM_SIPS)
 
     with torch_device_fn.device(inp.device):
         neg_flat_kernel[(grid_size,)](
@@ -78,6 +78,13 @@ def neg(A):
 
 def neg_(A):
     logger.debug("GEMS_ENFLAME NEG_")
-    inp = A.contiguous()
-    _run_neg(inp, A, inp.numel())
+    if A.is_contiguous():
+        # A contiguous tensor can be negated in place directly on its own storage.
+        _run_neg(A, A, A.numel())
+    else:
+        # A non-contiguous tensor cannot be written back by flat contiguous indices: compute on a contiguous copy with
+        # the same Triton
+        # kernel, then copy back by the original layout, preserving in-place storage alias semantics.
+        contiguous_result = neg(A)
+        A.copy_(contiguous_result)
     return A
