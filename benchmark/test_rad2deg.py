@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -24,6 +26,18 @@ def test_rad2deg():
         op_name="rad2deg",
         torch_op=torch.rad2deg,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.rad2deg_backward
+def test_rad2deg_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="rad2deg_backward",
+        torch_op=torch.rad2deg,
+        gems_op=flag_gems.rad2deg,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
 

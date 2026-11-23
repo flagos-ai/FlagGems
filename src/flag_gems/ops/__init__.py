@@ -1405,7 +1405,7 @@ from flag_gems.ops.quantized_max_pool3d import (
     quantized_max_pool3d,
     quantized_max_pool3d_out,
 )
-from flag_gems.ops.rad2deg import rad2deg, rad2deg_
+from flag_gems.ops.rad2deg import rad2deg, rad2deg_, rad2deg_backward
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
 from flag_gems.ops.randint import randint
@@ -3173,6 +3173,7 @@ __all__ = [
     "quantized_max_pool3d_out",
     "rad2deg",
     "rad2deg_",
+    "rad2deg_backward",
     "rand",
     "rand_like",
     "randint",
