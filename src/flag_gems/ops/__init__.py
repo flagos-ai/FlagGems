@@ -675,6 +675,7 @@ from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ccol_indices import ccol_indices
 from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
+from flag_gems.ops.cdist_forward_backward import cdist_forward_backward
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.chain_matmul import chain_matmul_out
@@ -2429,6 +2430,7 @@ __all__ = [
     "ccol_indices_copy",
     "ccol_indices_copy_out",
     "cdist",
+    "cdist_forward_backward",
     "ceil",
     "ceil_",
     "ceil_out",

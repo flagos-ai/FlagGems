@@ -1198,6 +1198,7 @@ _FULL_CONFIG = (
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
     ("cdist", cdist),
+    ("cdist_forward_backward", cdist_forward_backward),
     ("ceil", ceil),
     ("ceil.out", ceil_out),
     ("ceil_", ceil_),
