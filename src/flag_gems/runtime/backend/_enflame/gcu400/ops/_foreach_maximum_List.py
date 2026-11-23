@@ -49,6 +49,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver as _triton_driver
 
 from flag_gems.ops._foreach_binary import _apply_list
 from flag_gems.utils import libentry
@@ -77,6 +79,9 @@ logger = logging.getLogger(__name__)
 #   * the divisible path uses EXACT mask-free + BLOCK tiered by dtype: fp32 uses 8192
 #     (16384 is slightly worse), 16-bit uses 16384 (8192+EXACT regresses for bf16);
 #   * the non-divisible (ragged) path keeps 8192 + mask and is bit-for-bit identical to historical behavior.
+# 2026-11-23 re-A/B on the same protocol after the host-path rewrite (single-allocation outputs, replay
+# launcher, guard against non-uniform lists): nw8 1.484x, grid96 1.471x and a 16384 fp32 tile 1.444x
+# against 1.49-1.55x for this configuration, i.e. every documented choice still holds.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 BLOCK_SIZE_16BIT = 16384
@@ -174,6 +179,110 @@ def _maximum_grid(self, fixed_grid, block_size):
     return (num_tensors * parts,)
 
 
+def _grid_for(max_numel, num_tensors, fixed_grid, block_size):
+    """``_maximum_grid`` for a caller that already knows the largest element count.
+
+    Same divisibility contract (grid is a multiple of the tensor count) without
+    re-walking ``numel()`` over the list on the hot path.
+    """
+    blocks_per_tensor = triton.cdiv(max_numel, block_size)
+    parts = max(1, min(fixed_grid // num_tensors, blocks_per_tensor))
+    return (num_tensors * parts,)
+
+
+def _empty_output_list(templates, dtype):
+    """Outputs of one out-of-place call, carved out of a single allocation.
+
+    Sixteen ``empty_like`` calls cost ~81us of host time on GCU400, while one
+    allocation plus ``chunk`` costs ~29us, and that gap is the floor difference
+    between this and the native foreach baseline at small shapes.  Chunking the
+    leading axis keeps every output a dense contiguous view, so the fused kernel
+    sees exactly the ``data_ptr``/``numel`` it would otherwise.  ``unbind`` looked
+    2.8us cheaper in a host-only probe but measured 0.0435 -> 0.0671ms on the
+    official bench (GEO 1.546x -> 1.040x), so the slice loop stays ``chunk``.
+    Mixed shapes and 0-dim operands keep the per-tensor allocation, so the
+    operator semantics never depend on the fast arm.
+    """
+    num_tensors = len(templates)
+    first = templates[0]
+    shape = first.shape
+    if shape and all(t.shape == shape for t in templates):
+        try:
+            flat = torch.empty((num_tensors,) + shape, dtype=dtype, device=first.device)
+            return list(flat.chunk(num_tensors))
+        except Exception:
+            pass
+    if dtype is first.dtype:
+        return list(map(torch.empty_like, templates))
+    return [torch.empty_like(t, dtype=dtype) for t in templates]
+
+
+# Replay cache for ``_maximum_list_kernel``: maps a fully specialized launch to
+# ``(CompiledKernel.run, kernel.function, packed_metadata)`` so steady-state calls
+# skip Triton's JIT dispatch.  The key covers everything that selects a compiled
+# variant plus the metadata alignment Triton specializes on; no device-visible
+# data is cached (the metadata is read-only and content-addressed upstream).
+_MAXIMUM_LAUNCH_CACHE = {}
+
+
+def _launch_maximum(grid, num_tensors, meta, a_dt, block, exact):
+    """``_maximum_list_kernel[grid](...)`` with a cached direct launcher.
+
+    The ``kernel[grid]`` entry re-binds the signature, re-derives the Triton
+    specialization key and re-checks the launch hooks on every call; on GCU400
+    that host path costs more than the kernel it launches, and at the small
+    official shapes it dominates the whole call.  A replay that raises, or any
+    installed launch hook (topsprof et al.), falls back to the normal dispatch so
+    instrumentation still observes every launch.
+    """
+    key = (grid, num_tensors, a_dt, block, exact, not (meta.data_ptr() & 15))
+    entry = _MAXIMUM_LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                num_tensors,
+                a_dt,
+                FP32_PROMOTE,
+                block,
+                exact,
+            )
+            return
+        except Exception:
+            _MAXIMUM_LAUNCH_CACHE.pop(key, None)
+    compiled = _maximum_list_kernel[grid](
+        meta,
+        num_tensors,
+        a_dt,
+        FP32_PROMOTE,
+        block,
+        exact,
+        num_warps=NUM_WARPS,
+        num_stages=NUM_STAGES,
+    )
+    if compiled is not None:
+        kernel = compiled[0] if isinstance(compiled, tuple) else compiled
+        _MAXIMUM_LAUNCH_CACHE[key] = (
+            kernel.run,
+            kernel.function,
+            kernel.packed_metadata,
+        )
+
+
 def _run_maximum_cached(self, other):
     """Lean single-launch path for paired contiguous float lists (cached metadata).
 
@@ -204,23 +313,31 @@ def _run_maximum_cached(self, other):
     else:
         block = BLOCK_SIZE
         exact = 0
+    # Correctness guard (2026-11-23): the official accuracy test drives mixed and
+    # sub-tile lists ((16,8)/(7,)/(2,3,4)), and with those the fused launch wrote
+    # uninitialized output -- fp32 max_abs 3.0-3.4, fp16 NaN, at HEAD too (probe:
+    # uniform 3x128 also corrupt, 519.1).  Measured against an elementwise
+    # torch.maximum reference the per-tensor executor is exact on the same lists,
+    # so any list without the uniform, BLOCK-divisible geometry the fused path was
+    # tuned on is handed to it.  Official benchmark shapes (65536 / 262144 / 1M
+    # elements) all satisfy the guard and keep the single launch.
+    if exact == 0:
+        return FALLBACK
+    first_numel = self[0].numel()
+    if first_numel < block or any(t.numel() != first_numel for t in self):
+        return FALLBACK
+    outputs = _empty_output_list(self, dtype)
+    # Address extraction stays in comprehensions: they run the ``data_ptr`` loop in
+    # C, and an explicit single pass that also builds the numel list measured
+    # slower on the official bench, so only the redundant ``numel()`` walk for the
+    # grid is folded into the one below.
     in_ptrs = [tensor.data_ptr() for tensor in self]
-    outputs = [torch.empty_like(tensor) for tensor in self]
     out_ptrs = [tensor.data_ptr() for tensor in outputs]
-    b_ptrs = [o.data_ptr() for o in other]
+    b_ptrs = [tensor.data_ptr() for tensor in other]
     numels = [tensor.numel() for tensor in self]
     meta = _device_meta(in_ptrs + out_ptrs + b_ptrs + numels, self[0].device)
-    grid = _maximum_grid(self, FIXED_GRID, block)
-    _maximum_list_kernel[grid](
-        meta,
-        num_tensors,
-        _TL_DTYPES[dtype],
-        FP32_PROMOTE,
-        block,
-        exact,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-    )
+    grid = _grid_for(max(numels), num_tensors, FIXED_GRID, block)
+    _launch_maximum(grid, num_tensors, meta, _TL_DTYPES[dtype], block, exact)
     return outputs
 
 
