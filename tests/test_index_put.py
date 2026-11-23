@@ -512,9 +512,10 @@ def test_index_put_backward(shape, dim, accumulate, dtype):
     )
 
     res_out = flag_gems.index_put(inp, (index,), values, accumulate=accumulate)
+    ref_index = utils.to_reference(index, False)
     ref_inp = utils.to_reference(inp, True)
     ref_values = utils.to_reference(values, True)
-    ref_out = torch.index_put(ref_inp, (index,), ref_values, accumulate=accumulate)
+    ref_out = torch.index_put(ref_inp, (ref_index,), ref_values, accumulate=accumulate)
 
     out_grad = torch.randn_like(res_out)
     ref_out_grad = utils.to_reference(out_grad, True)
