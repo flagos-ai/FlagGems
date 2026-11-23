@@ -4,8 +4,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import special_log1p
-
 from . import base, consts
 
 
