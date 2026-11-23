@@ -19,37 +19,53 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+LSHIFT_DTYPES = utils.ALL_INT_DTYPES + utils.SMALL_INT_DTYPES
+
 
 @pytest.mark.lshift_tensor
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BYTE_INT_DTYPES)
-def test_lshift(shape, dtype):
-    inp1 = torch.randint(
-        low=0, high=0x00FF, size=shape, dtype=torch.int32, device="cpu"
-    ).to(dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randint(low=0, high=8, size=shape, dtype=torch.int32, device="cpu").to(
-        dtype=dtype, device=flag_gems.device
+# Covers one-, two-, and three-dimensional pointwise inputs.
+@pytest.mark.parametrize("shape", [(1024,), (7, 13), (2, 3, 5)])
+@pytest.mark.parametrize("dtype", LSHIFT_DTYPES)
+def test_lshift_tensor(dtype, shape):
+    value = torch.randint(0, 100, shape, dtype=dtype, device=flag_gems.device)
+    shift = torch.randint(0, 7, shape, dtype=dtype, device=flag_gems.device)
+    expected = torch.ops.aten.__lshift__.Tensor(
+        utils.to_reference(value), utils.to_reference(shift)
     )
-    ref_inp1 = utils.to_reference(inp1)
-    ref_inp2 = utils.to_reference(inp2)
 
-    # Reference: using bitwise_left_shift which is equivalent to __lshift__
-    ref_out = torch.bitwise_left_shift(ref_inp1, ref_inp2)
-    # FlagGems: using << operator which dispatches to aten.__lshift__
-    res_out = flag_gems.__lshift__(inp1, inp2)
+    actual = flag_gems.__lshift__(value, shift)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(actual, expected)
 
 
 @pytest.mark.lshift_scalar
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BYTE_INT_DTYPES)
+@pytest.mark.parametrize("dtype", LSHIFT_DTYPES)
 def test_lshift_scalar(dtype):
-    inp1 = torch.randint(
-        low=0, high=0x00FF, size=(11, 17), dtype=torch.int32, device="cpu"
-    ).to(dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1)
+    value = torch.randint(0, 100, (11, 17), dtype=dtype, device=flag_gems.device)
+    expected = torch.ops.aten.__lshift__.Scalar(utils.to_reference(value), 3)
 
-    ref_out = torch.bitwise_left_shift(ref_inp1, 2)
-    res_out = flag_gems.bitwise_left_shift(inp1, 2)
+    actual = flag_gems.__lshift__(value, 3)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.lshift_tensor_out
+@pytest.mark.lshift_scalar_out
+@pytest.mark.parametrize("dtype", LSHIFT_DTYPES)
+def test_lshift_output_overloads(dtype):
+    value = torch.randint(0, 100, (9, 13), dtype=dtype, device=flag_gems.device)
+    shift = torch.randint(0, 7, value.shape, dtype=dtype, device=flag_gems.device)
+    expected_tensor = torch.ops.aten.__lshift__.Tensor(
+        utils.to_reference(value), utils.to_reference(shift)
+    )
+    expected_scalar = torch.ops.aten.__lshift__.Scalar(utils.to_reference(value), 2)
+    tensor_out = torch.empty_like(value)
+    scalar_out = torch.empty_like(value)
+
+    tensor_result = flag_gems.__lshift__(value, shift, out=tensor_out)
+    scalar_result = flag_gems.__lshift__(value, 2, out=scalar_out)
+
+    assert tensor_result is tensor_out
+    assert scalar_result is scalar_out
+    utils.gems_assert_equal(tensor_out, expected_tensor)
+    utils.gems_assert_equal(scalar_out, expected_scalar)
