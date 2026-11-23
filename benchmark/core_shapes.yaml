@@ -21,6 +21,15 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+to_copy_backward:
+  shapes:
+    - [64]
+    - [1024]
+    - [65536]
+    - [1024, 1024]
+    - [64, 64, 256]
+  shape_desc: "M, N, K"
+
 vdot:
   <<: *single_dim_shapes
 

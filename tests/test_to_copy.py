@@ -21,6 +21,96 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_NVIDIA_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or flag_gems.device != "cuda",
+    reason="to_copy_backward is an NVIDIA general-operator implementation",
+)
+
+_BACKWARD_DTYPE_PAIRS = [
+    (src, dst) for src, dst in itertools.product(utils.FLOAT_DTYPES, repeat=2)
+]
+
+
+@pytest.mark.to_copy_backward
+@_NVIDIA_ONLY
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("src_dtype,dst_dtype", _BACKWARD_DTYPE_PAIRS)
+def test_to_copy_backward(shape, src_dtype, dst_dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    inp = torch.randn(
+        shape, dtype=src_dtype, device=flag_gems.device, requires_grad=True
+    )
+    # Keep the native reference at the source dtype: ``to_reference`` promotes
+    # half and bfloat16 inputs to float64, which changes the expected gradient
+    # dtype for this cast-specific backward.
+    ref_inp = inp.detach().clone().requires_grad_()
+
+    res_out = flag_gems.to_copy(inp, dtype=dst_dtype)
+    ref_out = torch.ops.aten._to_copy(ref_inp, dtype=dst_dtype)
+    grad = torch.randn_like(res_out)
+    ref_grad = grad.detach().clone()
+
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    utils.gems_assert_equal(res_in_grad, ref_in_grad)
+
+    res_direct = flag_gems.to_copy_backward(grad, src_dtype)
+    utils.gems_assert_equal(res_direct, ref_in_grad)
+
+
+@pytest.mark.to_copy_backward
+@_NVIDIA_ONLY
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_to_copy_backward_registered_dispatch(dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    inp = torch.randn(
+        (64, 64), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    dst_dtype = torch.float32 if dtype != torch.float32 else torch.float16
+    grad = torch.randn((64, 64), dtype=dst_dtype, device=flag_gems.device)
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["to_copy"])
+        out = torch.ops.aten._to_copy(inp, dtype=dst_dtype)
+        assert "ToCopyFunction" in type(out.grad_fn).__name__
+        (res_grad,) = torch.autograd.grad(out, inp, grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    expected = torch.ops.aten._to_copy(grad, dtype=dtype)
+    utils.gems_assert_equal(res_grad, expected)
+
+
+@pytest.mark.to_copy_backward
+@_NVIDIA_ONLY
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_to_copy_backward_fused_kernel_count(dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = torch.randn((4096,), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    dst_dtype = torch.float32 if dtype != torch.float32 else torch.float16
+    out = flag_gems.to_copy(inp, dtype=dst_dtype)
+    grad = torch.randn_like(out)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(out, inp, grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "to_copy_backward" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)

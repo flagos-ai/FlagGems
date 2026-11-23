@@ -917,6 +917,11 @@ _FULL_CONFIG = (
         "_to_copy",
         to_copy,
         lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
     ),
     ("_to_sparse_semi_structured", to_sparse_semi_structured),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
