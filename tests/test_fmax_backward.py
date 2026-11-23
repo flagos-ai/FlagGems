@@ -88,7 +88,7 @@ def test_fmax_backward_one_input(dtype, requires_grad):
 
 
 @pytest.mark.fmax_backward
-def test_fmax_backward_dispatch():
+def test_fmax_backward_grad_fn():
     a = torch.tensor(
         [1.0, float("nan"), 2.0], device=flag_gems.device, requires_grad=True
     )
@@ -99,7 +99,8 @@ def test_fmax_backward_dispatch():
     a_ref = utils.to_reference(a).detach().requires_grad_()
     b_ref = utils.to_reference(b).detach().requires_grad_()
     torch.fmax(a_ref, b_ref).backward(utils.to_reference(grad))
-    with flag_gems.use_gems():
-        torch.fmax(a, b).backward(grad)
+    result = flag_gems.fmax(a, b)
+    assert type(result.grad_fn).__name__ == "FmaxFunctionBackward"
+    result.backward(grad)
     utils.gems_assert_equal(a.grad, a_ref.grad)
     utils.gems_assert_equal(b.grad, b_ref.grad)
