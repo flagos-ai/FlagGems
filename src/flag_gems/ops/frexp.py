@@ -24,6 +24,16 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _frexp_grad(grad_output, exponent):
+    # The exponent is integer-valued and nondifferentiable. Its zero value for
+    # signed zero, infinity, and NaN passes the mantissa gradient through.
+    return grad_output.to(tl.float32) * tl.exp2(-exponent.to(tl.float32))
+
+
+_frexp_backward = pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])(_frexp_grad)
+
+
 @pointwise_dynamic(
     promotion_methods=[
         (0, "DEFAULT"),
@@ -107,6 +117,29 @@ def _frexp_func(x):
     return mantissa.to(x.dtype), exponent
 
 
+class FrexpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        mantissa, exponent = _frexp_forward(A)
+        ctx.save_for_backward(exponent)
+        ctx.mark_non_differentiable(exponent)
+        return mantissa, exponent
+
+    @staticmethod
+    def backward(ctx, grad_mantissa, grad_exponent):
+        (exponent,) = ctx.saved_tensors
+        if grad_mantissa is None:
+            return None
+        return _frexp_backward(grad_mantissa, exponent)
+
+
+def _frexp_forward(A):
+    # Preallocate outputs because mantissa uses the input dtype and exponent int32.
+    mantissa = torch.empty_like(A)
+    exponent = torch.empty_like(A, dtype=torch.int32)
+    return _frexp_func(A, out0=mantissa, out1=exponent)
+
+
 def frexp(A):
     logger.debug("GEMS FREXP")
 
@@ -115,21 +148,11 @@ def frexp(A):
             f"frexp(): expected a floating-point tensor, but got {A.dtype}"
         )
 
-    # This implementation converts values to float32 internally.
-    # Therefore, it cannot correctly preserve the precision and range
-    # of float64 inputs.
+    # The forward converts values to float32 internally and does not preserve
+    # float64 precision or range; float64 backward is unsupported as well.
     if A.dtype == torch.float64:
         raise RuntimeError("FlagGems frexp currently does not support float64")
 
-    # Preallocate the outputs explicitly because frexp returns tensors
-    # with different dtypes:
-    # - mantissa: same dtype as the input
-    # - exponent: int32
-    mantissa = torch.empty_like(A)
-    exponent = torch.empty_like(A, dtype=torch.int32)
-
-    return _frexp_func(
-        A,
-        out0=mantissa,
-        out1=exponent,
-    )
+    if torch.is_grad_enabled() and A.requires_grad:
+        return FrexpFunction.apply(A)
+    return _frexp_forward(A)

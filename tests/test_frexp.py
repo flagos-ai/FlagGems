@@ -34,3 +34,85 @@ def test_frexp(shape, dtype):
 
     utils.gems_assert_close(res_mantissa, ref_mantissa, dtype)
     utils.gems_assert_equal(res_exponent, ref_exponent)
+
+
+@pytest.mark.frexp_backward
+@pytest.mark.parametrize("shape", [(), (0,), (257,), (19, 37)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_frexp_backward(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if x.ndim == 2:
+        x = x.t()
+    x.requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.randn_like(x, memory_format=torch.contiguous_format)
+
+    mantissa, exponent = flag_gems.frexp(x)
+    ref_mantissa, ref_exponent = torch.frexp(ref_x)
+    (dx,) = torch.autograd.grad(mantissa, x, grad)
+    (ref_dx,) = torch.autograd.grad(ref_mantissa, ref_x, utils.to_reference(grad))
+
+    assert mantissa.requires_grad
+    assert not exponent.requires_grad
+    utils.gems_assert_close(mantissa, ref_mantissa, dtype)
+    utils.gems_assert_equal(exponent, ref_exponent)
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.frexp_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_frexp_backward_special_values(dtype):
+    x = torch.tensor(
+        [0.0, -0.0, float("inf"), -float("inf"), float("nan"), 1.0, -2.0],
+        dtype=dtype,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.tensor([1, -2, 3, -4, 5, 6, -7], dtype=dtype, device=x.device)
+
+    mantissa, exponent = flag_gems.frexp(x)
+    ref_mantissa, ref_exponent = torch.frexp(ref_x)
+    (dx,) = torch.autograd.grad(mantissa, x, grad)
+    (ref_dx,) = torch.autograd.grad(ref_mantissa, ref_x, utils.to_reference(grad))
+
+    assert not exponent.requires_grad
+    assert torch.equal(torch.isnan(mantissa).cpu(), torch.isnan(ref_mantissa))
+    assert torch.equal(torch.signbit(mantissa).cpu(), torch.signbit(ref_mantissa))
+    utils.gems_assert_equal(exponent, ref_exponent)
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.frexp_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_frexp_backward_expanded_grad(dtype):
+    x = torch.randn((7, 13), dtype=dtype, device=flag_gems.device).requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.randn((7, 1), dtype=dtype, device=x.device).expand_as(x)
+
+    mantissa, exponent = flag_gems.frexp(x)
+    ref_mantissa, _ = torch.frexp(ref_x)
+    (dx,) = torch.autograd.grad(mantissa, x, grad)
+    (ref_dx,) = torch.autograd.grad(ref_mantissa, ref_x, utils.to_reference(grad))
+    assert not exponent.requires_grad
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.frexp_backward
+def test_frexp_backward_dispatch_registration():
+    # ATen's native AutogradCUDA kernel must fall through to the FlagGems
+    # autograd.Function for the mantissa when dispatch is enabled.
+    import flag_gems as gems
+
+    entries = [entry for entry in gems._FULL_CONFIG if entry[0] == "frexp.Tensor"]
+    assert len(entries) == 1
+    assert (gems.AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel) in entries[0][
+        3
+    ]
+
+
+@pytest.mark.frexp_backward
+def test_frexp_backward_float64_unsupported():
+    x = torch.ones(4, dtype=torch.float64, device=flag_gems.device, requires_grad=True)
+    with pytest.raises(RuntimeError, match="does not support float64"):
+        flag_gems.frexp(x)
