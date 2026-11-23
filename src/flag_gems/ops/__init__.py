@@ -926,7 +926,7 @@ from flag_gems.ops.float_power_ import (
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmax import fmax, fmax_out
-from flag_gems.ops.fmin import fmin, fmin_out
+from flag_gems.ops.fmin import fmin, fmin_backward, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fmod_ import fmod_
 from flag_gems.ops.fp8_matmul import fp8_matmul
@@ -2665,6 +2665,7 @@ __all__ = [
     "fmax",
     "fmax_out",
     "fmin",
+    "fmin_backward",
     "fmin_out",
     "fmod_",
     "fmod_scalar",
