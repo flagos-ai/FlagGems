@@ -106,7 +106,7 @@ def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
-    res_out = flag_gems.scatter(inp, dim, index, src, reduce="add")
+    res_out = flag_gems.scatter_reduce(inp, dim, index, src, reduce="sum")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -341,7 +341,7 @@ def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="multiply")
-    res_out = flag_gems.scatter(inp, dim, index, src, reduce="multiply")
+    res_out = flag_gems.scatter_reduce(inp, dim, index, src, reduce="prod")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
