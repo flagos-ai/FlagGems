@@ -27,6 +27,7 @@ from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .affine_grid_generator import affine_grid_generator
 from .all import all, all_dim, all_dims
+from .alpha_dropout import alpha_dropout
 from .alpha_dropout_ import alpha_dropout_
 from .amax import amax
 from .amin import amin
@@ -405,6 +406,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "alpha_dropout",
     "alpha_dropout_",
     "amax",
     "amin",
