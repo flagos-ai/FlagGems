@@ -274,6 +274,7 @@ from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
 from .new_ones import new_ones
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .norm_scalaropt_dim import norm_scalaropt_dim
+from .normal_functional import normal_functional
 from .not_equal import not_equal
 from .ones import ones
 from .ones_like import ones_like
@@ -690,6 +691,7 @@ __all__ = [
     "nonzero_static",
     "nonzero_static_out",
     "norm_scalaropt_dim",
+    "normal_functional",
     "normed_cumsum",
     "not_equal",
     "ones",
