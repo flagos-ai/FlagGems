@@ -63,3 +63,15 @@ def test_baddbmm_backward(dtype, shape, strided, scalars):
     compare_gradients(
         output, reference, inputs, refs, dtype, reduce_dim=max(1, batch * m, m, n, k)
     )
+
+
+@pytest.fixture(autouse=True)
+def _ieee_matmul_reference():
+    # Native cuBLAS VJPs otherwise inherit TF32 from the CI runner. The Triton
+    # kernels use IEEE FP32, as does the existing performance benchmark.
+    previous = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = previous

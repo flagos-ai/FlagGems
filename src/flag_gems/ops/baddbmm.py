@@ -26,6 +26,7 @@ from flag_gems.utils._baddbmm_autograd import (
     fresh_zero_gradient,
     matrix_gradients,
     matrix_plan,
+    scalar_bias_gradient,
 )
 
 from .. import runtime
@@ -263,6 +264,8 @@ def compute_bias_grad(grad, beta, bias):
     # Column-broadcast gradients are fused; this covers all other layouts.
     if grad.numel() == 0:
         return fresh_zero_gradient(bias.shape, bias.dtype, bias.device)
+    if bias.numel() == 1:
+        return scalar_bias_gradient(grad, beta, bias)
     scaled = (
         mul(grad, beta)
         if beta != 1

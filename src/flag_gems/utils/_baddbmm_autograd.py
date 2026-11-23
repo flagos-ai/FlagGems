@@ -190,6 +190,71 @@ def _matrix_gradients_kernel(
 _MATRIX_LAUNCHERS = {}
 
 
+@triton.jit
+def _scalar_bias_partials(
+    G,
+    P,
+    COUNT: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    BETA: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    values = tl.load(
+        G + (offsets // (M * N)) * S0 + ((offsets // N) % M) * S1 + (offsets % N) * S2,
+        offsets < COUNT,
+        other=0,
+    ).to(P.dtype.element_ty)
+    if BETA != 1:
+        # Native baddbmm materializes grad * beta in the input dtype before
+        # autograd reduces broadcast dimensions. Keep that rounding boundary.
+        values = (values * BETA).to(G.dtype.element_ty).to(P.dtype.element_ty)
+    values = tl.where(offsets < COUNT, values, 0)
+    tl.store(P + tl.program_id(0), tl.sum(values, 0))
+
+
+@triton.jit
+def _scalar_bias_finish(P, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
+    offsets = tl.arange(0, BLOCK)
+    acc = tl.full((), 0, P.dtype.element_ty)
+    for start in range(0, COUNT, BLOCK):
+        values = tl.load(P + start + offsets, start + offsets < COUNT, other=0)
+        acc += tl.sum(values, 0)
+    tl.store(Out, acc)
+
+
+def scalar_bias_gradient(grad, beta, bias):
+    # Keep partial sums in opmath precision. Half/BF16 partial storage can
+    # overflow or lose cancellation before the final broadcast reduction.
+    block = 1024
+    count = grad.numel()
+    partial_count = triton.cdiv(count, block)
+    dtype = torch.float64 if grad.dtype == torch.float64 else torch.float32
+    partials = torch.empty((partial_count,), dtype=dtype, device=grad.device)
+    out = torch.empty(bias.shape, dtype=bias.dtype, device=bias.device)
+    _, m, n = grad.shape
+    with torch_device_fn.device(grad.device):
+        _scalar_bias_partials[(partial_count,)](
+            grad,
+            partials,
+            count,
+            m,
+            n,
+            *grad.stride(),
+            float(beta),
+            block,
+            enable_fp_fusion=False,
+        )
+        _scalar_bias_finish[(1,)](
+            partials, out, partial_count, block, enable_fp_fusion=False
+        )
+    return out
+
+
 def _bind_matrix_launch(
     kernel, grid, meta, alpha, beta, flags, tile, dtype, device, shapes, c_dtype
 ):
