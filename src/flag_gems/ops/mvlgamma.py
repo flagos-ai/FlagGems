@@ -45,6 +45,89 @@ _lgamma = getattr(tl_extra_shim, "lgamma", _fallback_lgamma)
 
 
 @triton.jit
+def _logical_offset(linear, shape: tl.constexpr, strides: tl.constexpr):
+    offset = linear * 0
+    for axis in tl.static_range(len(shape) - 1, -1, -1):
+        coordinate = linear % shape.value[axis]
+        linear //= shape.value[axis]
+        offset += coordinate * strides.value[axis]
+    return offset
+
+
+@triton.jit
+def _positive_digamma(x):
+    # Vectorized Cephes digamma for the positive domain enforced by mvlgamma.
+    # The recurrence and polynomial match ATen's native digamma_one routine.
+    psi_10: tl.constexpr = 2.25175258906672110764
+    result = tl.zeros_like(x)
+    y = x
+    for _ in range(10):
+        shift = y < 10.0
+        result -= tl.where(shift, tl.div_rn(1.0, y), 0.0)
+        y = tl.where(shift, y + 1.0, y)
+
+    z = tl.div_rn(1.0, y * y)
+    polynomial = (
+        (
+            (
+                (
+                    (8.33333333333333333333e-2 * z - 8.33333333333333333333e-3) * z
+                    + 3.96825396825396825397e-3
+                )
+                * z
+                - 4.16666666666666666667e-3
+            )
+            * z
+            + 7.57575757575757575758e-3
+        )
+        * z
+        - 2.10927960927960927961e-2
+    ) * z + 8.33333333333333333333e-2
+    asymptotic = (
+        result
+        + tl_extra_shim.log(y)
+        - tl.div_rn(0.5, y)
+        - tl.where(y < 1.0e17, z * polynomial, 0.0)
+    )
+    return tl.where(y == 10.0, result + psi_10, asymptotic)
+
+
+@triton.jit
+def mvlgamma_backward_kernel(
+    grad_output,
+    x,
+    grad_input,
+    n_elements,
+    SHAPE: tl.constexpr,
+    GRAD_STRIDES: tl.constexpr,
+    X_STRIDES: tl.constexpr,
+    IS_CONTIGUOUS: tl.constexpr,
+    P: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    logical = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = logical < n_elements
+    if IS_CONTIGUOUS:
+        grad_offset = logical
+        x_offset = logical
+    else:
+        grad_offset = _logical_offset(logical, SHAPE, GRAD_STRIDES)
+        x_offset = _logical_offset(logical, SHAPE, X_STRIDES)
+
+    grad = tl.load(grad_output + grad_offset, mask=mask, other=0.0)
+    value = tl.load(x + x_offset, mask=mask, other=1.0)
+    value_compute = value.to(tl.float32)
+    derivative = tl.zeros_like(value_compute)
+    for k in tl.static_range(P):
+        argument = (value_compute - 0.5 * k).to(value.dtype)
+        term = _positive_digamma(argument.to(tl.float32)).to(value.dtype)
+        derivative += term.to(tl.float32)
+    derivative = derivative.to(value.dtype)
+    result = (grad.to(tl.float32) * derivative.to(tl.float32)).to(grad.dtype)
+    tl.store(grad_input + logical, result, mask=mask)
+
+
+@triton.jit
 def mvlgamma_kernel(
     x_ptr,
     output_ptr,
@@ -106,10 +189,57 @@ def mvlgamma_kernel(
     tl.store(output_ptr + offsets, result, mask=mask)
 
 
-def mvlgamma(*args, **kwargs):
-    logger.debug("GEMS MVLGAMMA")
-    A = args[0]
-    p = args[1] if len(args) > 1 else kwargs.get("p", 1)
+def mvlgamma_backward(grad_output: torch.Tensor, x: torch.Tensor, p: int):
+    """Compute the mvlgamma input gradient in one tiled Triton kernel."""
+    logger.debug("GEMS MVLGAMMA BACKWARD")
+    if grad_output.device != x.device:
+        raise RuntimeError("mvlgamma_backward: grad_output and x must share a device")
+    if grad_output.dtype != x.dtype:
+        raise RuntimeError("mvlgamma_backward: grad_output and x must share a dtype")
+    if grad_output.shape != x.shape:
+        raise RuntimeError("mvlgamma_backward: grad_output and x must share a shape")
+    if not isinstance(p, int) or not 1 <= p <= 12:
+        raise ValueError("p must be an integer between 1 and 12")
+
+    grad_input = torch.empty_like(x, memory_format=torch.contiguous_format)
+    n_elements = x.numel()
+    if n_elements == 0:
+        return grad_input
+
+    # A 256-element tile balances the sizeable unrolled digamma body with occupancy.
+    block_size = 256
+    grid = (triton.cdiv(n_elements, block_size),)
+    with torch_device_fn.device(x.device):
+        mvlgamma_backward_kernel[grid](
+            grad_output,
+            x,
+            grad_input,
+            n_elements,
+            SHAPE=tuple(x.shape),
+            GRAD_STRIDES=tuple(grad_output.stride()),
+            X_STRIDES=tuple(x.stride()),
+            IS_CONTIGUOUS=x.is_contiguous() and grad_output.is_contiguous(),
+            P=p,
+            BLOCK_SIZE=block_size,
+            num_warps=4,
+        )
+    return grad_input
+
+
+class MvlgammaFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, p):
+        ctx.save_for_backward(x)
+        ctx.p = p
+        return _mvlgamma_impl(x, p)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        return mvlgamma_backward(grad_output, x, ctx.p), None
+
+
+def _mvlgamma_impl(A, p):
 
     if not isinstance(A, torch.Tensor):
         raise TypeError("mvlgamma expects a torch.Tensor as the first argument")
@@ -136,3 +266,13 @@ def mvlgamma(*args, **kwargs):
     with torch_device_fn.device(x.device):
         mvlgamma_kernel[grid](x, output, n_elements, p_tensor, BLOCK_SIZE=1024)
     return output
+
+
+def mvlgamma(*args, **kwargs):
+    logger.debug("GEMS MVLGAMMA")
+    A = args[0]
+    p = args[1] if len(args) > 1 else kwargs.get("p", 1)
+
+    if torch.is_grad_enabled() and isinstance(A, torch.Tensor) and A.requires_grad:
+        return MvlgammaFunction.apply(A, p)
+    return _mvlgamma_impl(A, p)

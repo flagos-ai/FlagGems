@@ -1274,7 +1274,7 @@ from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
 from flag_gems.ops.multiply_ import multiply_
 from flag_gems.ops.mv import mv
-from flag_gems.ops.mvlgamma import mvlgamma
+from flag_gems.ops.mvlgamma import mvlgamma, mvlgamma_backward
 from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.nan_to_num_ import nan_to_num_
@@ -3052,6 +3052,7 @@ __all__ = [
     "mv",
     "mvlgamma",
     "mvlgamma_",
+    "mvlgamma_backward",
     "nan_to_num",
     "nan_to_num_",
     "nanmean",
