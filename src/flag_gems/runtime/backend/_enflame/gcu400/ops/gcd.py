@@ -187,9 +187,9 @@ def gcd_kernel_i64(x_ptr, y_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
 
 def _kernel_meta(dtype):
     if dtype == torch.int16:
-        return gcd_kernel_i16, 512, 4
+        return gcd_kernel_i16, 2048, 4
     if dtype == torch.int32:
-        return gcd_kernel_i32, 512, 4
+        return gcd_kernel_i32, 2048, 4
     if dtype == torch.int64:
         return gcd_kernel_i64, 256, 4
     raise TypeError(f"unsupported dtype for gcd: {dtype}")

@@ -21,8 +21,6 @@ import triton.language as tl
 from flag_gems.ops.avg_pool2d import _parse_pool_params, pool2d_output_size
 from flag_gems.utils import libentry
 
-from ..utils.config_utils import MAX_GRID_DIM
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +61,7 @@ def avg_pool2d_forward_kernel(
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
     COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override,
+    divisor_override: tl.constexpr,
     total_nc,
     NC_PER_PROGRAM: tl.constexpr,
     BLOCK_H: tl.constexpr,
@@ -86,7 +84,6 @@ def avg_pool2d_forward_kernel(
             c_idx = pid_nc % in_c
 
             sum_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-            count_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
 
             input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
@@ -105,8 +102,9 @@ def avg_pool2d_forward_kernel(
                         input_base_ptr + input_offset, mask=in_mask, other=0.0
                     )
 
-                    sum_acc += tl.where(in_mask, current_val, 0.0)
-                    count_acc += in_mask.to(tl.int32)
+                    # tl.load already zeros out-of-range elements with other=0.0, so masking by in_mask again is
+                    # unnecessary.
+                    sum_acc += current_val
 
             if divisor_override != 0:
                 divisor = tl.full(
@@ -117,7 +115,19 @@ def avg_pool2d_forward_kernel(
                     (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                 )
             else:
-                divisor = count_acc.to(tl.float32)
+                # The forward valid-element count matches backward; use an analytic expression instead of accumulating a
+                # per-window count.
+                first_h_in = h_out_offsets[:, None] * stride_h - padding_h
+                first_w_in = w_out_offsets[None, :] * stride_w - padding_w
+                last_h_in = first_h_in + (kernel_h - 1) * dilation_h + 1
+                last_w_in = first_w_in + (kernel_w - 1) * dilation_w + 1
+                valid_h = tl.maximum(
+                    0, tl.minimum(in_h, last_h_in) - tl.maximum(0, first_h_in)
+                )
+                valid_w = tl.maximum(
+                    0, tl.minimum(in_w, last_w_in) - tl.maximum(0, first_w_in)
+                )
+                divisor = (valid_h * valid_w).to(tl.float32)
 
             output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
 
@@ -171,7 +181,7 @@ def avg_pool2d_backward_kernel(
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
     COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override,
+    divisor_override: tl.constexpr,
     total_nc,
     NC_PER_PROGRAM: tl.constexpr,
     BLOCK_H: tl.constexpr,
@@ -228,21 +238,22 @@ def avg_pool2d_backward_kernel(
                             (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                         )
                     else:
+                        # Backward recomputes divisor for every (kh,kw), forming O(k^4) comparisons.
+                        # With dilation always 1, the valid window interval is independent along H/W:
+                        # [max(0,start), min(in_size,start+(k-1)*dilation+1)),
+                        # so the product of the two valid lengths is the original count and can be computed
+                        # analytically.
                         h_start = h_out * stride_h - padding_h
                         w_start = w_out * stride_w - padding_w
-                        count = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
-                        for kh_count in range(0, kernel_h):
-                            for kw_count in range(0, kernel_w):
-                                h_in_for_count = h_start + kh_count * dilation_h
-                                w_in_for_count = w_start + kw_count * dilation_w
-                                is_valid = (
-                                    (h_in_for_count >= 0)
-                                    & (h_in_for_count < in_h)
-                                    & (w_in_for_count >= 0)
-                                    & (w_in_for_count < in_w)
-                                )
-                                count += is_valid.to(tl.int32)
-                        divisor = count.to(tl.float32)
+                        h_window_end = h_start + (kernel_h - 1) * dilation_h + 1
+                        w_window_end = w_start + (kernel_w - 1) * dilation_w + 1
+                        valid_h_count = tl.maximum(
+                            0, tl.minimum(in_h, h_window_end) - tl.maximum(0, h_start)
+                        )
+                        valid_w_count = tl.maximum(
+                            0, tl.minimum(in_w, w_window_end) - tl.maximum(0, w_start)
+                        )
+                        divisor = (valid_h_count * valid_w_count).to(tl.float32)
 
                     divisor = tl.where(divisor == 0, 1.0, divisor)
 
@@ -303,12 +314,11 @@ def avg_pool2d(
     if output.numel() == 0:
         return output
 
+    # Fixed Grid: compress the first grid dimension to the GCU400 SIP count; the remaining (n,c) plane is
+    # handled by the NC_PER_PROGRAM loop within the same program, avoiding tens of thousands of CTAs for large batches.
     total_nc = in_n * in_c
-    grid_nc = total_nc
-    NC_PER_PROGRAM = 1
-    if total_nc >= 65536:
-        grid_nc = MAX_GRID_DIM
-        NC_PER_PROGRAM = (total_nc + MAX_GRID_DIM - 1) // MAX_GRID_DIM
+    grid_nc = min(total_nc, 48)
+    NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
 
     grid = lambda meta: (
         grid_nc,
@@ -374,12 +384,11 @@ def avg_pool2d_backward(
     if grad_output.numel() == 0:
         return grad_input.to(grad_output.dtype)
 
+    # Fixed Grid: compress the first grid dimension to the GCU400 SIP count; the remaining (n,c) plane is
+    # handled by the NC_PER_PROGRAM loop within the same program, avoiding tens of thousands of CTAs for large batches.
     total_nc = in_n * in_c
-    grid_nc = total_nc
-    NC_PER_PROGRAM = 1
-    if total_nc >= 65536:
-        grid_nc = MAX_GRID_DIM
-        NC_PER_PROGRAM = (total_nc + MAX_GRID_DIM - 1) // MAX_GRID_DIM
+    grid_nc = min(total_nc, 48)
+    NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
 
     grid = lambda meta: (
         grid_nc,
