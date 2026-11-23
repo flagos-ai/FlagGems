@@ -104,7 +104,6 @@ def test_is_same_size_scalar_tensor(caplog):
     assert res_diff is False
 
 
-
 @pytest.mark.is_same_size
 @pytest.mark.skipif(
     flag_gems.vendor_name != "ascend", reason="Ascend metadata-only implementation"
