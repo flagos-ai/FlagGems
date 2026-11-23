@@ -34,22 +34,41 @@ import logging
 
 import torch
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
-# Redispatch past every FlagGems-registered key.  The native
-# ``_sparse_coo_tensor_unsafe`` composition funnels into
+# Fallback redispatch, kept for builds without ``torch.library.get_kernel``.
+# The native ``_sparse_coo_tensor_unsafe`` composition funnels into
 # ``at::_sparse_coo_tensor_with_dims_and_tensors``, which is the operator
 # registered here, so a plain ``torch.ops.aten`` call recurses under full
 # registration.  CompositeExplicitAutograd alone is not enough for this
 # schema: it takes no tensor argument carrying a device, so there is no
 # fallback to land on and the sparse backend key has to be present as well.
-# Both keys together reach the underlying constructor without re-entering
-# this override (the same idiom as index_fill's fallback).
+# That sparse key is also the key this module's override is registered on, so
+# this redispatch re-enters the override while the override is active.
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 ) | torch._C.DispatchKeySet(torch._C.DispatchKey.SparseCUDA)
 _WITH_TENSORS = torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors.default
 _SPARSE_COO = torch.sparse_coo
+
+# Capture the native constructor now, at import time, before FlagGems
+# registers its override on the sparse dispatch key.  ``call_boxed`` skips the
+# dispatcher, so the assembly step can never re-enter this override: this is
+# what keeps ``torch.sparse_coo_tensor`` working inside ``use_gems()``.
+try:
+    _SPARSE_DISPATCH_KEY = "Sparse" + runtime.device.dispatch_key
+    _SPARSE_KEY_SET = torch._C.DispatchKeySet(
+        getattr(torch._C.DispatchKey, _SPARSE_DISPATCH_KEY)
+    )
+    _NATIVE_WITH_TENSORS = torch.library.get_kernel(_WITH_TENSORS, _SPARSE_DISPATCH_KEY)
+except (AttributeError, RuntimeError):
+    # Backend without a native kernel on that sparse key (or an older torch
+    # without get_kernel): keep the redispatch path instead of failing the
+    # import for the whole backend.
+    _NATIVE_WITH_TENSORS = None
+    _SPARSE_KEY_SET = None
 
 
 def _coo_with_tensors(
@@ -64,10 +83,25 @@ def _coo_with_tensors(
     is_coalesced,
 ):
     """Assemble the COO descriptor from the caller's payload."""
-    # device and layout are spelled out explicitly: the redispatch skips the
-    # SparseCUDA factory inference, so nothing else reports where the
-    # descriptor should live. An unset dtype keeps the native default (the
-    # global default dtype), which is why a mismatching payload is rejected.
+    # device and layout are spelled out explicitly: the native constructor is
+    # invoked directly, so nothing else reports where the descriptor should
+    # live. An unset dtype keeps the native default (the global default
+    # dtype), which is why a mismatching payload is rejected.
+    device = values.device if device is None else device
+    if _NATIVE_WITH_TENSORS is not None:
+        return _NATIVE_WITH_TENSORS.call_boxed(
+            _SPARSE_KEY_SET,
+            sparse_dim,
+            dense_dim,
+            list(size),
+            indices,
+            values,
+            dtype=dtype,
+            device=device,
+            layout=_SPARSE_COO,
+            pin_memory=pin_memory,
+            is_coalesced=is_coalesced,
+        )
     return _WITH_TENSORS.redispatch(
         _FALLBACK_KEYSET,
         sparse_dim,
@@ -76,7 +110,7 @@ def _coo_with_tensors(
         indices,
         values,
         dtype=dtype,
-        device=values.device if device is None else device,
+        device=device,
         layout=_SPARSE_COO,
         pin_memory=pin_memory,
         is_coalesced=is_coalesced,
