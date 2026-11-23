@@ -32,6 +32,7 @@ from .kernels import (
     addmm_rowmajor_kernel,
     addmm_small_kernel,
 )
+from .precision import launch_precise_vector, use_precise_vector
 from .ring import addmm_ring_kernel
 
 logger = logging.getLogger(__name__)
@@ -298,6 +299,8 @@ def _use_ring_addmm(bias, mat1, mat2, out):
 
 def _launch_addmm(bias, mat1, mat2, out, *, beta=1, alpha=1):
     if not _scalar_eq(alpha, 0):
+        if bias.dtype == out.dtype == torch.float32 and use_precise_vector(mat1, mat2):
+            return launch_precise_vector(bias, mat1, mat2, out, alpha, beta)
         with torch_device_fn.device(mat1.device):
             if launch_small_splitk(
                 mat1.unsqueeze(0),
