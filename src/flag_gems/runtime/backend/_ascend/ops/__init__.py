@@ -119,6 +119,7 @@ from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
+from .foreach_abs import foreach_abs
 from .foreach_abs_ import foreach_abs_
 from .foreach_acos_ import foreach_acos_
 from .foreach_add_scalar_list_ import foreach_add_scalar_list_
@@ -498,6 +499,7 @@ __all__ = [
     "flip",
     "float_power_scalar_tensor_out",
     "floor",
+    "foreach_abs",
     "foreach_abs_",
     "foreach_acos_",
     "foreach_add_scalar_list_",
