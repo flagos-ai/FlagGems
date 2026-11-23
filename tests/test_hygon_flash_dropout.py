@@ -125,7 +125,16 @@ def test_hygon_native_dropout_backward(
         result = actual_grad.cpu().float()
         assert torch.isfinite(result).all()
         torch.testing.assert_close(
-            result, ref_input.grad.transpose(1, 2), rtol=0.08, atol=backward_atol
+            result,
+            ref_input.grad.transpose(1, 2),
+            rtol=0.08,
+            atol=backward_atol,
+            msg=lambda message: (
+                f"{message}\nforward_device={q.device.type}; "
+                f"seed={int(seed.cpu())}; offset={int(offset.cpu())}; "
+                f"native_mask_subset_shape={tuple(mask[0, 0, :64, :64].shape)}; "
+                f"native_mask_subset_hex={bytes(int(v) for v in mask[0, 0, :64, :64].flatten().tolist()).hex()}"
+            ),
         )
 
 
