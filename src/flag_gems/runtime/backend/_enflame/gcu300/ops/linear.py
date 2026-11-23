@@ -64,15 +64,15 @@ def linear_kernel(
     - bias: (N,) optional
     - output: (M, N)
     """
-    # GCU 硬件限制 grid.y <= 255，而 N 可为 vocab 级大尺寸（如 248320），
-    # tile 数远超 255，不能放在 grid.y。因此将 (pid_m, pid_n) 二维 tile
-    # 空间平铺编码进单维 grid.x（与 mm/addmm 相同），grid.y 恒为 1。
+    # GCU hardware limits grid.y to <= 255, while N can be vocabulary-sized (e.g. 248320),
+    # so the tile count far exceeds 255 and cannot be mapped to grid.y. Flatten the 2D (pid_m, pid_n)
+    # tile space into a single grid.x (same as mm/addmm); grid.y is always 1.
     pid = tl.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
     grid_n = tl.cdiv(N, BLOCK_SIZE_N)
 
-    # GROUP_M swizzle：仅改变 (pid_m, pid_n) 的调度顺序以提升 A/B 块复用，
-    # 不改变每个 tile 的计算语义。
+    # GROUP_M swizzle: only changes the scheduling order of (pid_m, pid_n) to improve A/B block reuse,
+    # without changing the computation semantics of any tile.
     width = GROUP_M * grid_n
     group_id = pid // width
     group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
@@ -176,8 +176,8 @@ def linear(input, weight, bias=None):
     # Allocate output
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
 
-    # Launch kernel：把 (M, N) 的二维 tile 空间展平为单维 grid，
-    # grid.y 恒为 1（GCU 限制 grid.y <= 255，N 可为 vocab 级大尺寸）。
+    # Launch kernel: flatten the 2D (M, N) tile space into a 1D grid.
+    # grid.y is always 1 (GCU limits grid.y to <= 255, while N can be vocabulary-sized).
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
