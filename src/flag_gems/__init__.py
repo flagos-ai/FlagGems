@@ -18,10 +18,10 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
-from flag_gems import deprecated as _deprecated
 from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
@@ -2090,7 +2090,12 @@ _FULL_CONFIG = (
     ("remainder_.Tensor", remainder_),
     ("renorm", renorm),
     ("renorm_", renorm_),
-    ("repeat", repeat),
+    (
+        "repeat",
+        repeat,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
     ("repeat_interleave.Tensor", repeat_interleave_tensor),

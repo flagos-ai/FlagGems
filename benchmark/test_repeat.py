@@ -56,3 +56,16 @@ def test_repeat():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.repeat_backward
+def test_repeat_backward():
+    bench = RepeatBenchmark(
+        op_name="repeat_backward",
+        input_fn=_input_fn,
+        torch_op=torch.Tensor.repeat,
+        gems_op=flag_gems.repeat,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
