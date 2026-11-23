@@ -19,6 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support sparse BSR tensors",
+)
+
 BSR_UNSAFE_DTYPES = utils.FLOAT_DTYPES
 
 # 2x2 blocks on a (4, 4) canvas: 2 block rows x 2 block cols
@@ -82,7 +87,7 @@ def test_sparse_bsr_tensor_unsafe_dtype(nnz, dtype):
     """The dtype argument converts the payload through the Triton kernel."""
     crow, col, values = _make_components(nnz, dtype)
     size = (4, 4, 2)
-    target = torch.float64
+    target = torch.float64 if utils.fp64_is_supported else torch.float32
 
     ref_values = utils.to_reference(values).to(target)
     ref = torch.ops.aten._sparse_bsr_tensor_unsafe(

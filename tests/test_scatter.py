@@ -76,7 +76,7 @@ def test_scatter_src(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     utils.init_seed(0)
 
@@ -313,7 +313,7 @@ def test_scatter_add_2d(inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -387,7 +387,7 @@ def test_scatter_src_(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     utils.init_seed(0)
 
@@ -427,7 +427,7 @@ def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_multiply_(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
