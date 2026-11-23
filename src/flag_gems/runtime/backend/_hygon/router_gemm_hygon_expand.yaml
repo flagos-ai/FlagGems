@@ -1,0 +1,71 @@
+# Hygon RouterGEMM tile search used when FlagTune is enabled.
+# Dimensions in META describe kernel tiles and split counts.
+matrix:
+  - gen: true
+    param_map: {META: metas, num_warps: warps, num_stages: stages}
+    metas:
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 4}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 64, GROUP_M: 4}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 4}
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 4}
+      - {BLOCK_M: 128, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 4}
+    warps: [4]
+    stages: [2]
+  - gen: true
+    param_map: {META: metas, num_warps: warps, num_stages: stages}
+    metas:
+      - {BLOCK_M: 128, BLOCK_N: 256, BLOCK_K: 32, GROUP_M: 8}
+    warps: [8]
+    stages: [1, 2]
+
+vector:
+  - gen: true
+    param_map: {META: {BN: block_n, BK: block_k}, num_warps: warps, num_stages: stages}
+    block_n: [1, 2, 4]
+    block_k: [512, 1024, 2048]
+    warps: [2, 4]
+    stages: [2]
+
+shared_vector:
+  - gen: true
+    param_map: {META: metas, num_warps: warps, num_stages: stages}
+    metas:
+      - {BM: 2, BN: 4, BK: 2048}
+      - {BM: 2, BN: 8, BK: 512}
+    warps: [4]
+    stages: [2]
+
+split:
+  - gen: true
+    param_map: {META: metas, num_warps: warps, num_stages: stages}
+    metas:
+      - {BM: 16, BN: 16, BK: 256, SK: 8}
+      - {BM: 16, BN: 64, BK: 128, SK: 4}
+      - {BM: 16, BN: 64, BK: 128, SK: 8}
+      - {BM: 32, BN: 32, BK: 128, SK: 8}
+      - {BM: 32, BN: 64, BK: 128, SK: 4}
+      - {BM: 32, BN: 128, BK: 64, SK: 8}
+      - {BM: 64, BN: 64, BK: 64, SK: 8}
+      - {BM: 64, BN: 64, BK: 64, SK: 16}
+    warps: [4]
+    stages: [2]
+
+aligned_split:
+  - gen: true
+    param_map: {META: metas, num_warps: warps, num_stages: stages}
+    metas:
+      - {BM: 16, BN: 16, BK: 128, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
+      - {BM: 16, BN: 32, BK: 64, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 0, kpack: 1}
+      - {BM: 16, BN: 64, BK: 128, SK: 16, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
+    warps: [2, 4]
+    stages: [2]
+  - gen: true
+    param_map: {META: metas, num_warps: warps, num_stages: stages}
+    metas:
+      - {BM: 16, BN: 64, BK: 128, SK: 4, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
+      - {BM: 16, BN: 64, BK: 128, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 0, kpack: 1}
+      - {BM: 32, BN: 32, BK: 128, SK: 4, GROUP_M: 2, matrix_instr_nonkdim: 16, kpack: 2}
+      - {BM: 32, BN: 64, BK: 128, SK: 4, GROUP_M: 2, matrix_instr_nonkdim: 16, kpack: 2}
+      - {BM: 32, BN: 64, BK: 128, SK: 8, GROUP_M: 2, matrix_instr_nonkdim: 0, kpack: 1}
+    warps: [4]
+    stages: [2]

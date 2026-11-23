@@ -21,6 +21,8 @@ The host dispatch selects GEMV, shared-row GEMV, two-stage Split-K, or GEMM.
 FlagTune searches a bounded candidate set within the selected kernel family.
 """
 
+from pathlib import Path
+
 import torch
 import triton
 import triton.language as tl
@@ -34,208 +36,93 @@ from flag_gems.utils.libentry import LibTuner
 __all__ = ["router_gemm"]
 
 
-class _RouterTuner(LibTuner.get("default")):
-    """Use LibTuner's FlagTune mode, search, and persistent dtype-aware cache.
+_EXPAND_PATH = Path(__file__).resolve().parents[1] / "router_gemm_hygon_expand.yaml"
 
-    Shape-aware pruning selects a bounded space. Split-K tuning measures
-    the producer and reduction kernels together.
-    """
 
+class _RouterTuner(LibTuner.get("flagtune")):
     def _flagtune_configs_for_mode(self, op_name, mode):
-        family = self.base_fn.__name__.split("_")[2]
-        family = "matrix" if family == "kernel" else family
-        configs = _router_config_pool(family, mode is runtime.TuningMode.EXPANDED)
-        return configs, self._flagtune_default_strategy
-
-    def _bench(self, *args, config, **kwargs):
-        if not self.base_fn.__name__.startswith("router_gemm_partial"):
-            return super()._bench(*args, config=config, **kwargs)
-        # Select Split-K using the complete device pipeline. Compiled handles
-        # here are local to the tuning trial; normal dispatch uses LibEntry.
-        x, weight, partials, m, n, k = args[:6]
-        out = torch.empty((m, n), device=x.device, dtype=torch.float32)
-        bound = dict(zip(self.arg_names, args))
-        bound.update(config.kwargs)
-        grid = kwargs["grid"](bound) if callable(kwargs["grid"]) else kwargs["grid"]
-        grid = tuple(grid) + (1,) * (3 - len(grid))
-        main = self.fn.run(*args, **kwargs, **config.all_kwargs())
-        bm, bn, bk, sk = (config.kwargs[name] for name in ("BM", "BN", "BK", "SK"))
-        rgrid = (triton.cdiv(m * n, 256), 1, 1)
-        reduction, _ = router_gemm_reduce_kernel[rgrid](partials, out, m * n, sk, 256)
-
-        def run_pair():
-            main[grid](*args, bm, bn, bk, sk)
-            reduction[rgrid](partials, out, m * n, sk, 256)
-
-        return triton.testing.do_bench(
-            run_pair, warmup=2, rep=8, quantiles=[0.5, 0.2, 0.8]
-        )
-
-    def prune_configs(self, kwargs):
-        family = self.base_fn.__name__.split("_")[2]
-        family = "matrix" if family == "kernel" else family
-        args = self.nargs
-        tensor = next(
-            value for value in args.values() if isinstance(value, torch.Tensor)
-        )
-        seed = _router_seed(
-            family, args.get("M", 0), args.get("N", 0), args.get("K", 0), tensor.dtype
-        )
-        if self._flagtune_mode is not runtime.TuningMode.EXPANDED:
-            return [seed]
-        return _router_config_space(family, seed, args.get("M"))
-
-
-def _router_config(meta, warps=4, stages=2):
-    return triton.Config(meta, num_warps=warps, num_stages=stages)
-
-
-def _router_config_space(family, seed, m=None):
-    configs = [seed]
-    if family == "vector":
-        configs += [
-            _router_config({"BN": bn, "BK": bk}, warps)
-            for bn, bk, warps in [(1, 512, 4), (2, 2048, 4), (8, 512, 4), (1, 2048, 2)]
-        ]
-    elif family == "shared":
-        configs += [
-            _router_config({"BM": bm, "BN": bn, "BK": bk})
-            for bm, bn, bk in [(1, 4, 1024), (2, 4, 1024), (2, 4, 2048), (2, 8, 512)]
-        ]
-    elif family == "partial":
-        # Bound the search by the output-tile occupancy regime.
-        if m is not None and m <= 16:
-            candidates = [(32, 32, 128, sk) for sk in (8, 16)]
-            candidates += [(16, 64, 128, sk) for sk in (4, 8, 16)]
-            candidates += [(16, 16, 256, 8)]
-        elif m is not None and m <= 64:
-            candidates = [
-                (bm, bn, bk, sk)
-                for bm, bn, bk in (
-                    (16, 64, 128),
-                    (32, 32, 128),
-                    (64, 64, 64),
-                    (32, 128, 64),
-                )
-                for sk in (8, 16)
-            ]
-        else:
-            candidates = [(32, 128, 64, sk) for sk in (8, 16)]
-            candidates += [(64, 64, 64, sk) for sk in (2, 4, 8)]
-            candidates += [(32, 64, 128, sk) for sk in (4, 8)]
-        configs += [
-            _router_config({"BM": bm, "BN": bn, "BK": bk, "SK": sk})
-            for bm, bn, bk, sk in candidates
-        ]
-    elif family == "matrix":
-        configs += [
-            _router_matrix_tile(*tile)
-            for tile in (
-                (16, 16, 256, 4, 2, 1, "none"),
-                (32, 32, 128, 4, 2, 4, "none"),
-                (64, 64, 32, 4, 2, 4, "none"),
-                (128, 256, 64, 8, 1, 8, "none"),
+        configs = self._flagtune_default_configs
+        if mode is runtime.TuningMode.EXPANDED:
+            space = runtime.backend.get_expand_config(
+                self._flagtune_expand_op_name, file_path=_EXPAND_PATH
             )
-        ]
-    # Always retain the previously measured default as a candidate.
-    unique = {}
-    for config in configs:
-        unique[str(config)] = config
-    return list(unique.values())
+            configs = [*configs]
+            for spec in space:
+                configs.extend(runtime.config_loader.to_gen_config(spec))
+        return list(dict.fromkeys(configs)), self._flagtune_default_strategy
 
 
-def _router_split_seed(m, n):
-    # Seeds cover occupancy regimes; Expanded also measures nearby choices.
-    if m <= 16:
-        return 32, 32, 128, 16
-    if m <= 64:
-        return (16, 64, 128, 16) if n <= 512 else (64, 64, 64, 8)
-    return (32, 128, 64, 16) if n <= 512 else (64, 64, 64, 4)
+_TUNE_OPTIONS = dict(policy=_RouterTuner, flagtune_op_name="router_gemm", warmup=2, rep=8)
 
 
-# Default seeds, also retained in FlagTune's Expanded candidate space.
-_ROUTER_MATRIX_CONFIGS = {
-    (8, 2048, 4096): (16, 16, 256, 4, 2, 4, "none"),
-    (100, 2048, 4096): (32, 64, 128, 8, 2, 1, "none"),
-    (1028, 256, 4096): (32, 32, 128, 4, 2, 4, "none"),
-    (2048, 256, 4096): (64, 64, 128, 4, 2, 4, "mmac5-ds6"),
-    (3805, 256, 4096): (64, 64, 64, 4, 2, 4, "none"),
-    (7884, 512, 4096): (128, 256, 32, 8, 2, 8, "none"),
-    (16384, 2048, 4096): (128, 256, 64, 8, 1, 8, "none"),
-}
-
-
-def _router_matrix_config(m, n, k):
-    return _ROUTER_MATRIX_CONFIGS.get(
-        (m, n, k),
-        (
-            (128, 256, 64, 8, 1, 8, "none")
-            if m >= 1024
-            else (32, 64, 128, 4, 2, 4, "none")
-        ),
+def _matrix_config(bm, bn, bk, warps, stages, group):
+    return triton.Config(
+        {"BLOCK_M": bm, "BLOCK_N": bn, "BLOCK_K": bk, "GROUP_M": group},
+        num_warps=warps,
+        num_stages=stages,
     )
 
 
-def _router_seed(family, m, n, k, dtype):
-    if family == "vector":
-        return _router_config({"BN": 8 if n >= 1024 else 1, "BK": 512})
-    if family == "shared":
-        return _router_config({"BM": 1, "BN": 4, "BK": 1024})
-    if family == "partial":
-        return _router_config(
-            dict(zip(("BM", "BN", "BK", "SK"), _router_split_seed(m, n)))
-        )
-    bm, bn, bk, nw, stages, gm, sched = (
-        (64, 64, 32, 4, 2, 4, "none")
-        if dtype == torch.float32
-        else _router_matrix_config(m, n, k)
+def _split_config(bm, bn, bk, splits, warps=4):
+    return triton.Config(
+        {"BM": bm, "BN": bn, "BK": bk, "SK": splits},
+        num_warps=warps,
+        num_stages=2,
     )
-    return _router_matrix_tile(bm, bn, bk, nw, stages, gm, sched)
 
 
-def _router_matrix_tile(bm, bn, bk, nw, stages, gm, sched):
-    return _router_config(
+def _aligned_config(bm, bn, bk, splits, group, warps, instr=0, pack=1):
+    return triton.Config(
         {
-            "BLOCK_M": bm,
-            "BLOCK_N": bn,
-            "BLOCK_K": bk,
-            "GROUP_M": gm,
-            "sched_latency": sched,
+            "BM": bm,
+            "BN": bn,
+            "BK": bk,
+            "SK": splits,
+            "GROUP_M": group,
+            "matrix_instr_nonkdim": instr,
+            "kpack": pack,
         },
-        nw,
-        stages,
+        num_warps=warps,
+        num_stages=2,
     )
 
 
-def _router_config_pool(family, expanded=True):
-    # The pool defines persistent tuning identity. Shape-aware pruning below
-    # keeps the measured candidate set unchanged, rather than searching it all.
-    shapes = [(m, n, 4096) for m in (16, 64, 128, 2048) for n in (256, 2048)]
-    if family == "matrix":
-        shapes += list(_ROUTER_MATRIX_CONFIGS)
-    configs = {}
-    for m, n, k in shapes:
-        for dtype in (torch.bfloat16, torch.float32):
-            seed = _router_seed(family, m, n, k, dtype)
-            candidates = _router_config_space(family, seed, m) if expanded else [seed]
-            for config in candidates:
-                configs[str(config)] = config
-    return list(configs.values())
+_MATRIX_CONFIGS = [
+    _matrix_config(16, 16, 256, 4, 2, 1),
+    _matrix_config(32, 64, 128, 4, 2, 4),
+    _matrix_config(64, 64, 32, 4, 2, 4),
+    _matrix_config(128, 256, 64, 8, 1, 8),
+]
+_SPLIT_CONFIGS = [
+    _split_config(32, 32, 128, 16),
+    _split_config(16, 64, 128, 16),
+    _split_config(32, 64, 128, 8),
+    _split_config(64, 64, 64, 4),
+]
 
 
-_ROUTER_TUNE_OPTIONS = dict(
-    strategy="default",
-    policy=_RouterTuner,
-    flagtune_op_name="router_gemm",
-    warmup=2,
-    rep=8,
-    benchmark_mode="event",
-)
+def _prune_aligned_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["m"], args["N"], args["K"]
+    row_limit = max(16, triton.next_power_of_2(m))
+    legal = [
+        config
+        for config in configs
+        if config.kwargs["BM"] <= row_limit
+        and n % config.kwargs["BN"] == 0
+        and k % (config.kwargs["SK"] * config.kwargs["BK"]) == 0
+    ]
+    # Once eight FP32 partials would exceed 1 MiB of writes, prefer fewer
+    # slices. The producer-only tuner otherwise misses that reduction traffic.
+    if m * n * 8 * 4 > 1024**2:
+        return [config for config in legal if config.kwargs["SK"] <= 4] or legal
+    return legal
 
 
 @libentry()
 @libtuner(
-    configs=_router_config_pool("matrix"),
+    configs=_MATRIX_CONFIGS,
+    flagtune_expand_op_name="matrix",
     key=[
         "M",
         "N",
@@ -247,7 +134,7 @@ _ROUTER_TUNE_OPTIONS = dict(
         "stride_om",
         "stride_on",
     ],
-    **_ROUTER_TUNE_OPTIONS,
+    **_TUNE_OPTIONS,
 )
 @triton.heuristics(
     {
@@ -339,9 +226,13 @@ def router_gemm_kernel(
 
 @libentry()
 @libtuner(
-    configs=_router_config_pool("vector"),
+    configs=[
+        triton.Config({"BN": bn, "BK": bk}, num_warps=4, num_stages=2)
+        for bn, bk in ((1, 512), (2, 2048), (8, 512))
+    ],
+    flagtune_expand_op_name="vector",
     key=["M", "N", "K", "XM", "XK", "WN", "WK"],
-    **_ROUTER_TUNE_OPTIONS,
+    **_TUNE_OPTIONS,
 )
 @triton.jit
 def router_gemm_vector_kernel(
@@ -379,9 +270,13 @@ def router_gemm_vector_kernel(
 
 @libentry()
 @libtuner(
-    configs=_router_config_pool("shared"),
+    configs=[
+        triton.Config({"BM": bm, "BN": 4, "BK": 1024}, num_warps=4, num_stages=2)
+        for bm in (1, 2)
+    ],
+    flagtune_expand_op_name="shared_vector",
     key=["M", "N", "K"],
-    **_ROUTER_TUNE_OPTIONS,
+    **_TUNE_OPTIONS,
 )
 @triton.jit
 def router_gemm_shared_vector_kernel(
@@ -476,9 +371,10 @@ def _router_split_k(
 
 @libentry()
 @libtuner(
-    configs=_router_config_pool("partial"),
+    configs=_SPLIT_CONFIGS,
+    flagtune_expand_op_name="split",
     key=["M", "N", "K"],
-    **_ROUTER_TUNE_OPTIONS,
+    **_TUNE_OPTIONS,
 )
 @triton.jit(do_not_specialize=["P"])
 def router_gemm_partial_kernel(
@@ -500,9 +396,10 @@ def router_gemm_partial_kernel(
 
 @libentry()
 @libtuner(
-    configs=_router_config_pool("partial"),
+    configs=_SPLIT_CONFIGS,
+    flagtune_expand_op_name="split",
     key=["M", "N", "K"],
-    **_ROUTER_TUNE_OPTIONS,
+    **_TUNE_OPTIONS,
 )
 @triton.jit(do_not_specialize=["X", "W", "P"])
 def router_gemm_partial_generic_kernel(
@@ -541,49 +438,6 @@ def router_gemm_reduce_kernel(P, OUT, MN, SK: tl.constexpr, B: tl.constexpr):
     tl.store(OUT + offsets, total, offsets < MN)
 
 
-# Each row sets the upper M bound and (BM, BN, BK, splits, group M,
-# warps, matrix instruction width, K pack) for aligned BF16 inputs.
-_BF16_SPLIT_CONFIGS = {
-    256: (
-        (48, (16, 64, 128, 16, 1, 4, 16, 2)),
-        (64, (32, 32, 128, 8, 2, 4, 0, 1)),
-        (96, (16, 32, 128, 8, 1, 2, 0, 1)),
-        (160, (32, 32, 128, 4, 2, 4, 16, 2)),
-    ),
-    512: (
-        (16, (16, 64, 128, 16, 1, 4, 16, 2)),
-        (32, (32, 32, 128, 8, 2, 4, 0, 1)),
-        (48, (16, 32, 128, 8, 1, 2, 0, 1)),
-        (64, (32, 64, 128, 8, 2, 4, 0, 1)),
-        (80, (16, 32, 64, 8, 1, 2, 0, 1)),
-        (160, (32, 64, 128, 4, 2, 4, 16, 2)),
-    ),
-    1024: (
-        (16, (16, 32, 128, 8, 1, 2, 0, 1)),
-        (32, (32, 32, 128, 8, 2, 4, 0, 1)),
-        (64, (32, 32, 128, 4, 2, 4, 16, 2)),
-    ),
-    2048: (
-        (16, (16, 16, 128, 8, 1, 2, 16, 2)),
-        (64, (32, 32, 128, 4, 2, 4, 16, 2)),
-    ),
-}
-
-
-def _bf16_split_config(m, n, k):
-    # GEMV still wins for the smallest token counts.
-    if m < (5 if n <= 256 else 4):
-        return None
-    if k == 7168 and n == 256 and m <= 16:
-        return (16, 32, 128, 8, 1, 2, 0, 1)
-    if k == 4096:
-        for max_m, config in _BF16_SPLIT_CONFIGS.get(n, ()):
-            if m <= max_m:
-                return config
-    return None
-
-
-@libentry()
 @triton.jit(do_not_specialize=["m"])
 def _bf16_split_kernel(
     X,
@@ -601,39 +455,74 @@ def _bf16_split_kernel(
     _router_split_k(X, W, P, m, N, K, BM, BN, BK, SK, GROUP_M, True)
 
 
-def _launch_bf16_split(x, weight, out, m, n, k, config):
-    bm, bn, bk, sk, group_m, warps, instr, kpack = config
-    partials = torch.empty((sk, m, n), device=x.device, dtype=torch.float32)
-    _bf16_split_kernel[(triton.cdiv(m, bm) * (n // bn), sk)](
-        x,
-        weight,
-        partials,
-        m,
-        n,
-        k,
-        bm,
-        bn,
-        bk,
-        sk,
-        group_m,
-        num_warps=warps,
-        num_stages=2,
-        matrix_instr_nonkdim=instr,
-        kpack=kpack,
+def _aligned_tuner(configs):
+    return libentry()(
+        libtuner(
+            configs=configs,
+            key=["m", "N", "K"],
+            flagtune_expand_op_name="aligned_split",
+            prune_configs_by={"early_config_prune": _prune_aligned_configs},
+            **_TUNE_OPTIONS,
+        )(_bf16_split_kernel)
     )
-    router_gemm_reduce_kernel[(triton.cdiv(m * n, 256),)](partials, out, m * n, sk, 256)
-    return out
 
+
+_ALIGNED_NARROW = _aligned_tuner(
+    [
+        _aligned_config(16, 64, 128, 16, 1, 4, 16, 2),
+        _aligned_config(16, 32, 128, 8, 1, 2),
+        _aligned_config(32, 32, 128, 8, 2, 4),
+        _aligned_config(32, 64, 128, 4, 2, 4, 16, 2),
+    ]
+)
+_ALIGNED_WIDE = _aligned_tuner(
+    [
+        _aligned_config(16, 16, 128, 8, 1, 2, 16, 2),
+        _aligned_config(16, 32, 128, 8, 1, 2),
+        _aligned_config(32, 32, 128, 8, 2, 4),
+        _aligned_config(32, 32, 128, 4, 2, 4, 16, 2),
+    ]
+)
+
+
+def _use_aligned_split(m, n, k):
+    # Split K when there are too few output tiles to fill the device. The
+    # scratch limit bounds the work added by the second launch.
+    return (
+        m >= 4
+        and (m > 4 or n > 256)
+        and n >= 256
+        and n % 32 == 0
+        and k >= 2048
+        and k % 1024 == 0
+        and m <= 160
+        and (n <= 512 or m <= 64)
+        and m * n <= 128 * 1024
+    )
+
+
+def _launch_bf16_split(x, weight, out, m, n, k):
+    partials = torch.empty((16, m, n), device=x.device, dtype=torch.float32)
+    tuner = _ALIGNED_NARROW if n <= 512 else _ALIGNED_WIDE
+    grid = lambda meta: (triton.cdiv(m, meta["BM"]) * (n // meta["BN"]), meta["SK"])
+    _, meta = tuner[grid](x, weight, partials, m, n, k)
+    router_gemm_reduce_kernel[(triton.cdiv(m * n, 256),)](
+        partials, out, m * n, meta["SK"], 256
+    )
+    return out
 
 def _router_fast(x, weight):
     m, k = x.shape
     n = weight.shape[0]
     out = torch.empty((m, n), device=x.device, dtype=torch.float32)
     contiguous = x.is_contiguous() and weight.is_contiguous()
-    if contiguous and x.dtype == torch.bfloat16:
-        config = _bf16_split_config(m, n, k)
-        if config is not None and x.data_ptr() % 16 == weight.data_ptr() % 16 == 0:
-            return _launch_bf16_split(x, weight, out, m, n, k, config)
+    if (
+        contiguous
+        and x.dtype == torch.bfloat16
+        and _use_aligned_split(m, n, k)
+        and x.data_ptr() % 16 == weight.data_ptr() % 16 == 0
+    ):
+        return _launch_bf16_split(x, weight, out, m, n, k)
 
     # Keep dimensions in LibEntry's dispatch key so every shape is tuned
     # independently. The framework also handles dtype, strides and mode changes.
