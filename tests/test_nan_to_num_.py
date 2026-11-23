@@ -35,6 +35,9 @@ def test_nan_to_num_(shape, dtype, nan, posinf, neginf):
         base.view(-1)[2] = float("-inf")
 
     ref_input = utils.to_reference(base)
+    if flag_gems.vendor_name == "kunlunxin":
+        # Keep the in-place native reference from consuming the candidate input.
+        ref_input = ref_input.clone()
     ref_out = ref_input.nan_to_num_(nan=nan, posinf=posinf, neginf=neginf)
 
     inp1 = base.clone()

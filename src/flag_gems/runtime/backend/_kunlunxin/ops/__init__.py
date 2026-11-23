@@ -723,7 +723,8 @@ from .multiply_ import multiply_
 from .mv import mv, mv_cluster
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
-from .nan_to_num import nan_to_num, nan_to_num_
+from .nan_to_num import nan_to_num
+from .nan_to_num_inplace import nan_to_num_
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
