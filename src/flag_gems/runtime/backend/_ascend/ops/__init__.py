@@ -315,6 +315,7 @@ from .silu import silu, silu_
 from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
 from .smm import smm
+from .soft_margin_loss_backward import soft_margin_loss_backward
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .softplus_backward import softplus_backward
 from .softshrink_backward import softshrink_backward
@@ -741,6 +742,7 @@ __all__ = [
     "silu_backward",
     "slice_scatter",
     "smm",
+    "soft_margin_loss_backward",
     "softmax",
     "softmax_backward",
     "softmax_backward_out",
