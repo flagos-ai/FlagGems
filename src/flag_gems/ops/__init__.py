@@ -797,6 +797,7 @@ from flag_gems.ops.cumsum_ import cumsum_
 from flag_gems.ops.cumsum_backward import cumsum_backward
 from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
+from flag_gems.ops.deg2rad_backward import deg2rad_backward
 from flag_gems.ops.dense_dim import dense_dim
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.det import det
@@ -2544,6 +2545,7 @@ __all__ = [
     "cumulative_trapezoid",
     "deg2rad",
     "deg2rad_",
+    "deg2rad_backward",
     "deg2rad_out",
     "dense_dim",
     "dequantize",
