@@ -1273,7 +1273,7 @@ from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
 from flag_gems.ops.multiply_ import multiply_
-from flag_gems.ops.mv import mv
+from flag_gems.ops.mv import mv, mv_backward
 from flag_gems.ops.mvlgamma import mvlgamma
 from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
@@ -3050,6 +3050,7 @@ __all__ = [
     "multiply",
     "multiply_",
     "mv",
+    "mv_backward",
     "mvlgamma",
     "mvlgamma_",
     "nan_to_num",
