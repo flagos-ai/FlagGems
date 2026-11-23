@@ -231,10 +231,10 @@ def isin_by_search(
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()
-    # 边界情况：如果 in1 为空，则没有元素能在空集合中找到
+    # Edge case: if in1 is empty, no element can be found in an empty set
     if N == 0:
-        # invert=False: 全部为 False（没有元素在空集合中）
-        # invert=True: 全部为 True（所有元素都不在空集合中）
+        # invert=False: all False (no element is in the empty set)
+        # invert=True: all True (every element is outside the empty set)
         return torch.full_like(in0, fill_value=invert, dtype=torch.bool)
 
     if M <= 1048576:  # 2 ** 20 = 1024 * 1024
