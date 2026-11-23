@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -24,5 +26,17 @@ def test_frac():
         op_name="frac",
         torch_op=torch.frac,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.frac_backward
+def test_frac_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="frac_backward",
+        torch_op=torch.frac,
+        gems_op=flag_gems.frac,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()

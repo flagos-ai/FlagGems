@@ -31,3 +31,49 @@ def test_frac(shape, dtype):
     res_out = flag_gems.frac(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.frac_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["scalar", "empty", "contiguous", "transposed"])
+def test_frac_backward(dtype, layout):
+    if layout == "scalar":
+        inp = torch.tensor(-2.0, dtype=dtype, device=flag_gems.device)
+    elif layout == "empty":
+        inp = torch.empty((0, 3), dtype=dtype, device=flag_gems.device)
+    else:
+        # Exercise both signs, zero and integer inputs (ATen uses identity even
+        # at discontinuities), as well as non-unit upstream gradients.
+        values = torch.tensor(
+            [[-2.0, -1.25, -0.0], [0.0, 1.5, 3.0]],
+            dtype=dtype,
+            device=flag_gems.device,
+        )
+        inp = values if layout == "contiguous" else values.T
+    grad = torch.randn(inp.shape, dtype=dtype, device=flag_gems.device)
+    if layout == "transposed":
+        grad = grad.T.contiguous().T
+
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    expected = torch.autograd.grad(
+        torch.frac(ref_inp), ref_inp, utils.to_reference(grad, False)
+    )[0]
+    out = flag_gems.frac(actual)
+    assert "FracFunctionBackward" in type(out.grad_fn).__name__
+    result = torch.autograd.grad(out, actual, grad)[0]
+    utils.gems_assert_equal(result, expected)
+    utils.gems_assert_equal(result, grad)
+
+
+@pytest.mark.frac_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_frac_backward_dispatch(dtype):
+    inp = torch.tensor([-2.0, 0.0, 1.5], device=flag_gems.device, dtype=dtype)
+    grad = torch.tensor([3.0, -4.0, 2.0], device=flag_gems.device, dtype=dtype)
+    with flag_gems.use_gems():
+        actual = inp.detach().requires_grad_()
+        out = torch.frac(actual)
+        assert "FracFunctionBackward" in type(out.grad_fn).__name__
+        result = torch.autograd.grad(out, actual, grad)[0]
+    utils.gems_assert_equal(result, grad)
