@@ -77,10 +77,11 @@ def test_mvlgamma_backward(shape, dtype, p):
         torch.rand(shape, dtype=dtype, device=flag_gems.device) + (p - 1) / 2 + 0.75
     ).requires_grad_()
     grad = torch.randn_like(x, memory_format=torch.contiguous_format)
-    ref_x = x.detach().clone().requires_grad_()
+    ref_x = utils.to_reference(x, True)
+    ref_grad = utils.to_reference(grad, True)
 
     (result,) = torch.autograd.grad(flag_gems.mvlgamma(x, p), x, grad)
-    (expected,) = torch.autograd.grad(torch.mvlgamma(ref_x, p), ref_x, grad)
+    (expected,) = torch.autograd.grad(torch.mvlgamma(ref_x, p), ref_x, ref_grad)
 
     # CUDA digamma rounds each low-precision term before the reduction.
     atol = 2e-2 if dtype in LOW_PRECISION_DTYPES else 1e-4
@@ -93,8 +94,9 @@ def test_mvlgamma_backward(shape, dtype, p):
 def test_mvlgamma_backward_registered_dispatch():
     x = (torch.rand((31, 47), device=flag_gems.device) + 3.0).requires_grad_()
     grad = torch.randn_like(x)
-    ref_x = x.detach().clone().requires_grad_()
-    (expected,) = torch.autograd.grad(torch.mvlgamma(ref_x, 5), ref_x, grad)
+    ref_x = utils.to_reference(x, True)
+    ref_grad = utils.to_reference(grad, True)
+    (expected,) = torch.autograd.grad(torch.mvlgamma(ref_x, 5), ref_x, ref_grad)
 
     lib = torch.library.Library("aten", "IMPL")
     previous_registrar = getattr(flag_gems, "current_work_registrar", None)
@@ -119,10 +121,11 @@ def test_mvlgamma_backward_strided_and_expanded(dtype):
     ).transpose(0, 2)
     x.requires_grad_()
     grad = torch.randn((19, 1, 13), dtype=dtype, device=x.device).expand_as(x)
-    ref_x = x.detach().clone().requires_grad_()
+    ref_x = utils.to_reference(x, True)
+    ref_grad = utils.to_reference(grad, True)
 
     (result,) = torch.autograd.grad(flag_gems.mvlgamma(x, 5), x, grad)
-    (expected,) = torch.autograd.grad(torch.mvlgamma(ref_x, 5), ref_x, grad)
+    (expected,) = torch.autograd.grad(torch.mvlgamma(ref_x, 5), ref_x, ref_grad)
     atol = 2e-2 if dtype in LOW_PRECISION_DTYPES else 1e-4
     utils.gems_assert_close(result, expected, dtype, atol=atol)
 
