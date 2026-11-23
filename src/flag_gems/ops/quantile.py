@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
-from .topk import _get_finfo_val, argsort
+from .topk import argsort
 
 logger = logging.getLogger(__name__)
 
@@ -125,26 +125,24 @@ def quantile_bitonic_kernel(
     cols = tl.arange(0, BLOCK_M)
     mask_M = cols < M
     row_ptr = inp + pid * M
-    mask_val = _get_finfo_val(ctype, return_max=True)
-    vals = tl.load(row_ptr + cols, mask=mask_M, other=mask_val)
+    vals = tl.load(row_ptr + cols, mask=mask_M, other=float("inf"))
     vals = tl.where(vals.dtype.is_fp64(), vals, vals.to(tl.float32))
     ids = tl.arange(0, BLOCK_M)
     sorted_vals, _ = argsort(vals, ids, 0, descending=False)
 
     offsets_Q = tl.arange(0, BLOCK_Q)
     mask_Q = offsets_Q < Q
-    q_vals = tl.load(q + offsets_Q, mask=mask_Q, other=0.0).to(tl.float32)
-    q_scaled = q_vals * (M - 1)
+    q_vals = tl.load(q + offsets_Q, mask=mask_Q, other=0.0).to(sorted_vals.dtype)
+    # Round the rank before subtracting its integer part, as in torch.quantile.
+    q_scaled = tl.fma(q_vals, tl.cast(M - 1, q_vals.dtype), 0.0)
     q_lower = tl.floor(q_scaled).to(tl.int32)
     q_upper = tl.ceil(q_scaled).to(tl.int32)
 
     idx = tl.arange(0, BLOCK_M)[:, None]
     mask_lower = idx == q_lower[None, :]
     mask_upper = idx == q_upper[None, :]
-    mask_lower_f = mask_lower.to(tl.float32)
-    mask_upper_f = mask_upper.to(tl.float32)
-    lower_vals = tl.sum(sorted_vals[:, None] * mask_lower_f, axis=0)
-    upper_vals = tl.sum(sorted_vals[:, None] * mask_upper_f, axis=0)
+    lower_vals = tl.sum(tl.where(mask_lower, sorted_vals[:, None], 0.0), axis=0)
+    upper_vals = tl.sum(tl.where(mask_upper, sorted_vals[:, None], 0.0), axis=0)
 
     if interpolation == "linear":
         q_frac = q_scaled - q_lower

@@ -91,3 +91,42 @@ def test_quantile_dim(shape, dim, keepdim, dtype, q, interpolation):
     for d in dim:
         _dim *= shape[d]
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
+
+
+@pytest.mark.quantile
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="requires float64")
+@pytest.mark.parametrize(
+    "interpolation", ["linear", "lower", "higher", "nearest", "midpoint"]
+)
+def test_quantile_fp64_rank(interpolation, caplog):
+    inp = torch.full((1024,), 1e12, device=flag_gems.device, dtype=torch.float64)
+    inp[:512] = -1e12
+    # Straddle the jump in the sorted data at integer and half-integer ranks.
+    q = inp.new_tensor(
+        [
+            (511 + 1e-6) / 1023,
+            0.5 - 2**-28,
+            0.5 + 2**-53,
+            0.5 + 2**-28,
+            (512 - 1e-6) / 1023,
+        ]
+    )
+    ref = torch.quantile(
+        utils.to_reference(inp), utils.to_reference(q), interpolation=interpolation
+    )
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.quantile)):
+        result = flag_gems.quantile(inp, q, interpolation=interpolation)
+    assert f"{utils.gems_log_prefix(flag_gems.quantile)} QUANTILE" in caplog.text
+    utils.gems_assert_close(result, ref, torch.float64, atol=1e-12)
+
+
+@pytest.mark.quantile
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="requires float64")
+def test_quantile_fp64_bitonic_padding(caplog):
+    inp = torch.arange(1, 32, dtype=torch.float64, device=flag_gems.device)
+    q = inp.new_tensor([0.0, 0.5, 1.0])
+    ref = torch.quantile(utils.to_reference(inp), utils.to_reference(q))
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.quantile)):
+        result = flag_gems.quantile(inp, q)
+    assert f"{utils.gems_log_prefix(flag_gems.quantile)} QUANTILE" in caplog.text
+    utils.gems_assert_equal(result, ref)
