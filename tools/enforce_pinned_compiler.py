@@ -17,13 +17,11 @@
 """Make backends.yaml authoritative for the compiler package at runtime.
 
 Runs after reconcile_backend_deps.py on backends that execute inside a prebuilt
-runtime image. Those images bake the compiler (flagtree, or triton when
-flagtree is absent) OUTSIDE the venv — e.g. /opt/flagtree — and ahead of the
-venv on sys.path. reconcile reinstalls the backends.yaml pin INTO the venv but
-pip cannot uninstall the baked copy ("Not uninstalling flagtree at /opt/..."),
-so the test run still resolves the stale baked version and silently uses the
-wrong compiler build (confirmed in ops-test run 40473319476: reconcile installed
-flagtree 0.7.1a1 into /flagos but `import` still reported 0.7.0 from /opt).
+runtime image. build-infra stores FlagTree in /opt/flagtree and vendor Triton in
+/opt/triton, then selects one with PYTHONPATH. The image manages those trees as
+whole units; RECORD-based deletion of either tree breaks compiler switching.
+If a side tree is stale, fail and require the image's `compiler flagtree <pin>`
+helper to replace it. For other external shadows, remove stale installations.
 
 This script closes that gap, working entirely off installed *distribution
 metadata* rather than importing anything:
@@ -33,17 +31,13 @@ metadata* rather than importing anything:
   2. Enumerate every install of that distribution via importlib.metadata.
      More than one means a shadow: typically the venv copy (the pin, from
      reconcile) plus the image's baked copy outside the venv.
-  3. Delete each copy whose version != the pin AND whose files live outside the
-     venv (the baked shadow), using the distribution's own RECORD so we remove
-     exactly what it installed — never touching the venv copy or other packages.
-  4. Hard-verify: after cleanup, exactly the pinned version must remain
-     resolvable, or exit non-zero so the job fails instead of testing a stale
-     build.
+  3. Preserve /opt/flagtree and /opt/triton. Delete stale copies outside those
+     trees and the venv using their RECORD.
+  4. Verify the pinned FlagTree distribution and the actual triton import path.
 
-We never import the compiler (importing triton on Ascend prints warnings to
-stdout and, more importantly, triton and flagtree are *separate* distributions
-here with different versions — importing would conflate them). Metadata lookup
-is side-effect free and reports each distribution's real on-disk version.
+Distribution versions come from metadata because flagtree and triton are
+separate distributions. A fresh subprocess checks the triton import origin
+without importing it into the enforcement process.
 
 Usage:
     python3 tools/enforce_pinned_compiler.py <backend>
@@ -58,6 +52,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 import sysconfig
 from importlib import metadata
@@ -285,9 +280,10 @@ def main() -> None:
         root = _dist_root(dist)
         log(f"  - {_dist_version(dist)} at {root} (in venv: {_under(root, venv)})")
 
-    # Remove every copy that is both stale (version != pin) and outside the venv
-    # — i.e. the image's baked shadow. A matching copy, or anything inside the
-    # venv, is left alone.
+    # Never mutate the image's compiler side directories. build-infra manages
+    # /opt/flagtree as one tree and selects it through PYTHONPATH on every shell
+    # startup. Deleting its RECORD files also deletes its bundled triton/ and
+    # makes the next shell fall back to /opt/triton.
     for dist in installs:
         ver = _dist_version(dist)
         root = _dist_root(dist)
@@ -299,34 +295,38 @@ def main() -> None:
                 f"it for reconcile/pip to manage, not deleting"
             )
             continue
+        if root in (Path("/opt/flagtree"), Path("/opt/triton")):
+            log(
+                f"::error::{dist_name} {ver} at {root} differs from pin {want}; "
+                f"use the image's compiler flagtree {want} before testing"
+            )
+            sys.exit(1)
         log(f"removing stale shadow {dist_name} {ver} at {root}")
         remove_dist(dist)
 
-    # When the pin is flagtree, also evict any triton package baked outside the
-    # venv. flagtree installs into the 'triton' import namespace, so any copy of
-    # triton ahead of the venv on sys.path shadows flagtree regardless of whether
-    # flagtree is correctly pinned. setup.sh guards this with an explicit
-    # 'uv pip uninstall triton'; the reconcile path has no such step.
+    # A FlagTree wheel includes the triton import namespace. Remove unrelated
+    # external shadows, but retain both image compiler side trees: /opt/flagtree
+    # contains FlagTree's own triton, and /opt/triton is a selectable fallback.
     #
     # Two forms of shadow must be handled:
     #
-    #   1. pip-installed triton with dist-info: found in collected["triton"],
-    #      removed the same way as a stale flagtree shadow.
+    #   1. Pip-installed triton with dist-info outside the side trees.
     #
-    #   2. Bare directory on PYTHONPATH with no dist-info (e.g. /opt/triton
-    #      injected via PYTHONPATH=[/opt/triton]): importlib.metadata never sees
-    #      it, so collected["triton"] is empty. We scan every sys.path entry
-    #      that (a) is outside the venv and (b) contains a triton/ subdirectory
-    #      that looks like a real package (has __init__.py), then remove that
-    #      subdirectory directly with shutil.rmtree.
+    #   2. Bare triton/ directory on an unrelated PYTHONPATH entry.
     #
-    # We only act when flagtree is the declared compiler and only on copies
-    # outside the venv — triton inside the venv and backends that use triton
-    # directly are never touched.
+    # We only act when flagtree is the declared compiler. The actual import
+    # check below catches an active /opt/triton without deleting that tree.
     if dist_name == "flagtree":
         # Form 1: pip-installed triton with dist-info outside the venv.
+        #
+        # Re-collect after any unrelated stale FlagTree distribution was
+        # removed. A triton dist-info in /opt/flagtree belongs to FlagTree.
+        triton_installs = collect_installs("triton")["triton"]
         triton_dist_shadows = [
-            d for d in collected["triton"] if not _under(_dist_root(d), venv)
+            d
+            for d in triton_installs
+            if not _under(_dist_root(d), venv)
+            and _dist_root(d) not in (Path("/opt/flagtree"), Path("/opt/triton"))
         ]
         if triton_dist_shadows:
             log(
@@ -337,16 +337,20 @@ def main() -> None:
                 log(f"  removing triton {_dist_version(d)} at {_dist_root(d)}")
                 remove_dist(d)
         else:
-            log("no pip-installed triton shadows outside the venv found")
+            log("no removable pip-installed triton shadows found")
 
-        # Form 2: bare triton/ directory on sys.path with no dist-info.
-        # Covers images that inject /opt/triton via PYTHONPATH.
+        # Form 2: bare triton/ directory with no dist-info.
+        #
+        # Scan sys.path (PYTHONPATH entries are already on it), excluding both
+        # image side trees.
         bare_removed = []
         for entry in sys.path:
             if not entry:
                 continue
             p = Path(entry).resolve()
             if _under(p, venv):
+                continue
+            if p in (Path("/opt/flagtree"), Path("/opt/triton")):
                 continue
             triton_pkg = p / "triton"
             if (triton_pkg / "__init__.py").exists():
@@ -369,7 +373,7 @@ def main() -> None:
                     ]
                     bare_removed.append(str(triton_pkg))
         if not bare_removed:
-            log("no bare triton/ directories found outside the venv")
+            log("no removable bare triton/ directories found")
 
     # Hard gate: what resolves now must be the pin.
     # Re-collect: the list above was taken before the cleanup and still holds
@@ -387,6 +391,44 @@ def main() -> None:
         )
         sys.exit(1)
     log(f"OK: {dist_name} resolves to {have} from {root}")
+
+    # Secondary gate for flagtree: verify that `import triton` in a fresh
+    # subprocess resolves to the selected FlagTree tree. Metadata tells us
+    # what pip knows about; only an actual import catches a bare directory on PYTHONPATH
+    # that has no dist-info.  We use a subprocess so we inherit the same
+    # environment (PYTHONPATH, LD_LIBRARY_PATH, etc.) that pytest will see,
+    # but we do NOT import triton in-process to avoid side effects on Ascend
+    # and other backends where importing triton prints hardware warnings.
+    if dist_name == "flagtree":
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import importlib.util, sys; "
+                "spec = importlib.util.find_spec('triton'); "
+                "print(spec.origin if spec else '')",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        triton_origin = result.stdout.strip()
+        if not triton_origin:
+            log(
+                "::error::triton is not importable in a clean subprocess after "
+                "cleanup; flagtree may not have installed its triton namespace"
+            )
+            sys.exit(1)
+        triton_origin_path = Path(triton_origin).resolve()
+        # FlagTree is intentionally installed into /opt/flagtree by build-infra.
+        # Its bundled triton/ is the expected import when that distribution won.
+        expected_root = root if root == Path("/opt/flagtree") else venv
+        if not _under(triton_origin_path, expected_root):
+            log(
+                f"::error::import triton resolves to {triton_origin} which is "
+                f"outside the selected compiler ({expected_root})"
+            )
+            sys.exit(1)
+        log(f"OK: import triton resolves to {triton_origin}")
 
 
 if __name__ == "__main__":

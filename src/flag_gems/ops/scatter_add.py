@@ -54,7 +54,9 @@ def _heur_loop_2d(args):
 
 @libentry()
 @triton.heuristics({"BLOCK": _heur_block_2d, "LOOP": _heur_loop_2d})
-@triton.jit(do_not_specialize=["N", "idx_ncols", "src_stride0", "out_ncols"])
+@triton.jit(
+    do_not_specialize=["N", "idx_ncols", "src_stride0", "out_ncols", "out_dim_size"]
+)
 def scatter_add_2d_kernel(
     src_ptr,
     index_ptr,
@@ -63,6 +65,7 @@ def scatter_add_2d_kernel(
     idx_ncols,
     src_stride0,
     out_ncols,
+    out_dim_size,
     DIM: tl.constexpr,
     BLOCK: tl.constexpr,
     LOOP: tl.constexpr,
@@ -77,6 +80,8 @@ def scatter_add_2d_kernel(
         idx_offsets = row * idx_ncols + col
         src_offsets = row * src_stride0 + col
         idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+        # Mask out-of-bound indices: do not scatter, matching PyTorch's error semantics.
+        mask = mask & (idx >= 0) & (idx < out_dim_size)
         if DIM == 0:
             out_offsets = idx * out_ncols + col
         else:
@@ -260,6 +265,10 @@ def generate_scatter_kernel(
             code.writeline(
                 "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
             )
+            code.writeline("# Suppress out-of-bound indices to prevent OOB writes.")
+            code.writeline(
+                "mask = mask & (cur_index >= 0) & (cur_index < inp_size_dim)"
+            )
             code.writeline("dim_offsets = cur_index * stride_dim")
             code.writeline("inp_offsets += dim_offsets")
             code.newline()
@@ -439,6 +448,7 @@ def scatter_add_0(inp, dim, index, src):
                 idx_ncols,
                 src_stride0,
                 out_ncols,
+                out.shape[dim_2d],
                 dim_2d,
             )
             if dtype_convert:
