@@ -17,6 +17,9 @@ from ._adaptive_avg_pool3d_backward import (
     adaptive_avg_pool3d_backward_grad_input,
 )
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._functional_sym_constrain_range_for_size import (
+    _functional_sym_constrain_range_for_size,
+)
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
 from .acos_ import acos_
@@ -385,6 +388,7 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_functional_sym_constrain_range_for_size",
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
