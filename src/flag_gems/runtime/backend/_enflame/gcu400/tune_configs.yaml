@@ -93,6 +93,47 @@ addmm:
     BLOCK_SIZE_K: 256
   num_stages: 2
   num_warps: 4
+# addbmm keeps its own space so the gemm autotune list above (shared by addmm,
+# bmm and baddbmm) is not changed. Measured on GCU400, the dropped candidates
+# either fail at compile time (256x256x256 needs 1310720 bytes of dsm memory
+# against a 917504 limit) or are far slower than the kept configs
+# (32x32x32 is up to 65x slower on large shapes), so benchmarking them only
+# inflated the cold-start cost of every shape/dtype/layout case.
+#
+# num_warps=1 is the single largest win on this kernel (+20% fp16, +75% fp32 at
+# (16,4096^3) against the former num_warps=4 space): one warp per program keeps
+# the cluster on the GEMM core instead of splitting the tile across SIPs. The
+# 512-wide K tile then beats 256 on 16-bit input (+45% over 128x128x256/w4 at
+# (2,4096^3)) because the batch loop already serialises B x K steps. fp32 still
+# prefers the 256-wide K tile, autotune decides per dtype. The 64-wide K tile is
+# the fallback for the N == 1 and tiny-K layouts, see _prune_addbmm_configs;
+# it keeps num_warps=4 because the num_warps=1 form fails to link on GCU400
+# (ld.lld: relocation R_DTU_ADDR16_LO_ICALL against tops_cvt_v0_si8_to_v1_si8).
+addbmm:
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 512
+  num_stages: 2
+  num_warps: 1
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 256
+  num_stages: 4
+  num_warps: 1
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 512
+  num_stages: 2
+  num_warps: 1
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 64
+  num_stages: 2
+  num_warps: 4
 bmm:
 - META:
     BLOCK_M: 256
