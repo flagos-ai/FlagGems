@@ -498,6 +498,14 @@ def floor_div_func_scalar_tensor(x, y):
 # ---------------------------------------------------------------------------
 
 _FLAT_BLOCK_INT = 4096
+# The *scalar* integer body has a different tile ladder from the tensor/tensor one that
+# _FLAT_BLOCK_INT was tuned on: re-probing _floor_div_scalar_flat_kernel on GCU400
+# (GRID=48, in-place out==in, do_bench median) makes 4096 the worst tile in every case:
+#   int16 16.7M: B4096 282.5us, B16384 141.5us, B32768 135.7us, B65536 137.7us
+#   int16 1G   : B4096 18106us, B16384 8048us,  B32768 7757us,  B65536 7742us
+#   int32 16.7M: B4096 167.2us, B16384 129.0us, B32768 121.6us, B65536 123.7us
+# 32768 is the joint optimum (65536 wins by only 0.2% at 1G int16 and loses at 16.7M).
+_FLAT_BLOCK_INT_SCALAR = 32768
 _FLAT_BLOCK_F32 = 32768
 _FLAT_BLOCK_F16_WIDE = 65536
 _FLAT_BLOCK_F16_MID = 16384
@@ -528,7 +536,7 @@ _FLAT_F16_WIDE_MIN = 1 << 24
 _FLAT_GRID = 48
 
 
-def _flat_launch(n_elements, dtype, wide16=False):
+def _flat_launch(n_elements, dtype, wide16=False, scalar_int=False):
     """Picks (BLOCK, num_warps) for the flat kernel by element count and dtype (see the table above).
 
     ``wide16`` lets 16-bit float kernels use the wide B65536/nw2 shape even
@@ -545,7 +553,8 @@ def _flat_launch(n_elements, dtype, wide16=False):
         else:
             cap, num_warps = _FLAT_BLOCK_F16_MID, 4
     else:
-        cap, num_warps = _FLAT_BLOCK_INT, 4
+        cap = _FLAT_BLOCK_INT_SCALAR if scalar_int else _FLAT_BLOCK_INT
+        num_warps = 4
     wanted = triton.next_power_of_2(max(1, triton.cdiv(n_elements, _FLAT_MIN_TILES)))
     return max(1024, min(cap, wanted)), num_warps
 
@@ -748,7 +757,7 @@ def _try_flat_scalar(A, B, out, kernel=None, wide16=False, dtypes=None):
     buffer = out if out is not None else torch.empty_like(A)
     if n_elements == 0:
         return buffer
-    block, num_warps = _flat_launch(n_elements, dtype, wide16)
+    block, num_warps = _flat_launch(n_elements, dtype, wide16, scalar_int=True)
     grid_size = min(triton.cdiv(n_elements, block), _FLAT_GRID)
     flat_kernel = _floor_div_scalar_flat_kernel if kernel is None else kernel
     flat_kernel[(grid_size,)](
