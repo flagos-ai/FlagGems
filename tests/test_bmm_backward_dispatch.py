@@ -122,3 +122,15 @@ def test_backward_uses_gems_compute(name):
         "aten::neg",
     }
     assert forbidden.isdisjoint(recorder.names), recorder.names
+
+
+@pytest.fixture(autouse=True)
+def _ieee_matmul_reference():
+    # Native cuBLAS VJPs otherwise inherit TF32 from the CI runner. The Triton
+    # kernels use IEEE FP32, as does the existing performance benchmark.
+    previous = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = previous
