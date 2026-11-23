@@ -33,6 +33,24 @@ def test_floor(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.floor_backward
+@pytest.mark.parametrize("shape", [(), (0,), (3, 4)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("noncontiguous", [False, True])
+def test_floor_backward(shape, dtype, noncontiguous):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if noncontiguous and inp.ndim == 2:
+        inp = inp.T
+    grad = torch.randn_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    expected = torch.autograd.grad(
+        torch.floor(ref), ref, utils.to_reference(grad, False)
+    )[0]
+    result = torch.autograd.grad(flag_gems.floor(actual), actual, grad)[0]
+    utils.gems_assert_equal(result, expected)
+
+
 @pytest.mark.floor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -59,3 +77,18 @@ def test_floor_out(shape, dtype):
     flag_gems.floor_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)
+
+
+@pytest.mark.floor
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_floor_byte(shape, dtype):
+    # floor on integers is the identity and keeps the input dtype.
+    inp = torch.randint(0, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.floor(ref_inp)
+    res_out = flag_gems.floor(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out, ref_out)
