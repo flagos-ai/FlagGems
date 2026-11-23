@@ -42,6 +42,7 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
 try:
     from triton import knobs
 except ImportError:
@@ -820,8 +821,6 @@ def _foreach16_kernel_pow(
         BLOCK,
         EVEN,
     )
-
-
 
 
 _SCRATCH: dict = {}
