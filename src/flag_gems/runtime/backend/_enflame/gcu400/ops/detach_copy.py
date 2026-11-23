@@ -18,6 +18,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,8 @@ def _apply_lane_negation(
     return value
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def _detach_copy_flat(
     x_ptr,
     out_ptr,
@@ -108,12 +111,13 @@ def _detach_copy_flat(
     for block_id in tl.range(pid, num_blocks, NUM_SPC):
         offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
-        val = tl.load(x_ptr + offsets, mask=mask)
+        val = tl.load(x_ptr + offsets, mask=mask, cache_modifier=".cg")
         val = _apply_lane_negation(val, offsets, NEGATE_REAL, NEGATE_IMAG)
-        tl.store(out_ptr + offsets, val, mask=mask)
+        tl.store(out_ptr + offsets, val, mask=mask, cache_modifier=".cg")
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def _detach_copy_flat_i64(
     x_ptr,
     out_ptr,
@@ -131,12 +135,13 @@ def _detach_copy_flat_i64(
     for block_id in tl.range(pid, num_blocks, NUM_SPC):
         offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
-        val = tl.load(x_ptr + offsets, mask=mask)
+        val = tl.load(x_ptr + offsets, mask=mask, cache_modifier=".cg")
         val = _apply_lane_negation(val, offsets, NEGATE_REAL, NEGATE_IMAG)
-        tl.store(out_ptr + offsets, val, mask=mask)
+        tl.store(out_ptr + offsets, val, mask=mask, cache_modifier=".cg")
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def _detach_copy_strided(
     x_ptr,
     out_ptr,
@@ -260,7 +265,7 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
         )
         # Tuning measured on H20 (see the task report): the strided kernel's
         # per-element div/mod address computation prefers narrower blocks than
-        # the flat path — BLOCK=256 beats the shared 1024 default by 10-58%
+        # the flat path - BLOCK=256 beats the shared 1024 default by 10-58%
         # across the shapes swept, with num_warps=4 at the knee.
         BLOCK = 256
         grid = (triton.cdiv(n, BLOCK),)

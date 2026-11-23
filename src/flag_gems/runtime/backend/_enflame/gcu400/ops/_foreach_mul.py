@@ -23,6 +23,7 @@ table is likewise read-only and cached independently by value.
 import logging
 
 import torch
+import triton
 
 from flag_gems.ops._foreach_binary import _apply_list, _apply_scalar, _apply_tensor
 from flag_gems.utils.foreach import _device_meta
@@ -46,8 +47,8 @@ logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
 # Generated per round by the optimization driver script; all compile-time / launch-time config, semantics unchanged.
-FIXED_GRID = 48
-BLOCK_SIZE = 8192
+FIXED_GRID = 96
+BLOCK_SIZE = 16384
 NUM_WARPS = 4
 NUM_STAGES = 1
 USE_DEVICE_CONTEXT = 0
@@ -67,6 +68,8 @@ SMALL_SHAPE_MAX_NUMEL = 261120
 # Read-only metadata cache: the key contains only device and address/element count, not tensor data; the kernel still
 # fully reads inputs and recomputes each time, so address reuse or in-place content changes do not affect correctness.
 _SCALAR_CACHE = {}
+# (num_tensors, max_numel, block) -> grid tuple, see _run_mul_cached.
+_GRID_CACHE = {}
 
 
 def _cached_scalar_tensor(scalars, device):
@@ -97,15 +100,24 @@ def _run_mul_cached(self, operand, mode, inplace):
     outputs = self if inplace else [torch.empty_like(tensor) for tensor in self]
     out_ptrs = in_ptrs if inplace else [tensor.data_ptr() for tensor in outputs]
     numels = [tensor.numel() for tensor in self]
-    dtype = self[0].dtype
-    triton_dtype = _TL_DTYPES[dtype]
-    device = self[0].device
-    grid = (_fused_grid(self, FIXED_GRID, BLOCK_SIZE),)
+    first = self[0]
+    triton_dtype = _TL_DTYPES[first.dtype]
+    device = first.device
+    # The fused grid only depends on (list length, largest numel, block width): cache it so a steady
+    # stream of same-shaped calls does not re-scan the list for its maximum.
+    grid_key = (num_tensors, max(numels), BLOCK_SIZE)
+    grid_edges = _GRID_CACHE.get(grid_key)
+    if grid_edges is None:
+        grid_edges = (
+            max(1, min(FIXED_GRID, num_tensors * triton.cdiv(grid_key[1], BLOCK_SIZE))),
+        )
+        _GRID_CACHE[grid_key] = grid_edges
+    grid = grid_edges
 
     if mode == MODE_LIST:
-        if not all(
-            other.numel() == tensor.numel() for tensor, other in zip(self, operand)
-        ):
+        # Same-shape lists share flat indices; reuse the numel vector already built above instead of
+        # walking both lists pairwise again (32 x numel() per call is measurable at this launch scale).
+        if numels != [other.numel() for other in operand]:
             # Broadcast .List does not share flat indices with the inputs, so hand it to the per-tensor kernel.
             return FALLBACK
         b_ptrs = [other.data_ptr() for other in operand]

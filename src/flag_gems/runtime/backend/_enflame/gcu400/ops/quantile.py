@@ -190,7 +190,10 @@ def quantile(
     if isinstance(q, torch.Tensor):
         if q.dim() > 1:
             raise RuntimeError("quantile() q must be a scalar or 1D tensor")
-        q = q.to(device=inp.device, dtype=inp.dtype)
+        # Only move/cast q when it does not already live where the gather reads it: an
+        # identity .to() still costs a dispatch on every call.
+        if q.device != inp.device or q.dtype != inp.dtype:
+            q = q.to(device=inp.device, dtype=inp.dtype)
         Q = 1 if q.numel() == 1 else len(q)
     else:
         q_value = float(q)

@@ -111,7 +111,7 @@ def _gelu_backward_kernel(
             dy = tl.load(DY + off, mask=mask, other=0.0).to(tl.float32)
             x = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
         if APPROX == 0:
-            # d/dx [x·Φ(x)] = Φ(x) + x·φ(x); Φ uses the same logistic form as the forward pass
+            # d/dx [x*Phi(x)] = Phi(x) + x*phi(x); Phi uses the same logistic form as the forward pass
             t = x * x
             t2 = t * t
             if LOWPOLY:
@@ -125,7 +125,7 @@ def _gelu_backward_kernel(
         else:
             u = (0.7978845608028654 + 0.035677408136300125 * x * x) * x
             s = tl.fdiv(1.0, 1.0 + tl.exp(-2.0 * u))
-            # d/dx [x·sigmoid(2u)] = s + 2·x·s·(1-s)·u'
+            # d/dx [x*sigmoid(2u)] = s + 2*x*s*(1-s)*u'
             dydx = s + 2.0 * x * s * (1.0 - s) * (
                 0.7978845608028654 + 0.1070322243 * x * x
             )
@@ -173,7 +173,7 @@ def _gelu_backward_kernel_h(
                 dy = tl.load(DY + off, mask=mask, other=0.0).to(tl.float32)
                 x = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
             if APPROX == 0:
-                # Same 4th-order Φ logistic form as the tiled version
+                # Same 4th-order Phi logistic form as the tiled version
                 t = x * x
                 t2 = t * t
                 if LOWPOLY:
@@ -230,11 +230,11 @@ def _pick_tile_bwd(N, two_byte):
     - 2-byte tiny (<=4096): B512/nw1 over many CTAs sits on the launch floor (fp16 (64,64)
       3.40 vs 4.11us for a single CTA).
     - 2-byte (4096, 32K]: keep an exact np2 tile in a single CTA (same as forward).
-    - 2-byte (32K, 1M]: B8192/nw2/g48 (1M: 10.6 vs 12.4µs).
+    - 2-byte (32K, 1M]: B8192/nw2/g48 (1M: 10.6 vs 12.4us).
     - 2-byte (1M, 16M]: B16384/nw2 (2^21..2^24: 16.2/24.5/40.3/71.6us, best at every tier).
     - 2-byte >16M: B32768/nw2 (256M: 976.5us; B65536 is 17% worse; the half-block staged
       S8@131072 is also 28% worse -- with a heavy double-exp math chain neither helps).
-    - fp32 (32K, 16M): B8192/nw4 (2^16..2^23: 4.9/7.7/10.0/15.4/23.2/37.7/66.3µs
+    - fp32 (32K, 16M): B8192/nw4 (2^16..2^23: 4.9/7.7/10.0/15.4/23.2/37.7/66.3us
       all tiers best; a 64KB-granularity tile keeps only 96KB in flight, far from the DSM line).
     - fp32 >=16M: the half-block staged kernel (outer 65536, two inner 32768 stages, 128KB
       descriptors): 16M 122.2 vs 125.7, 256M 1486 vs 1733us (-14.3%). Note that fp32 tiled
@@ -284,15 +284,18 @@ def _launch_forward(inp, out, approximate):
     """Forward launch: tiered tile + 48 CTA cap.
 
     Small shapes use an exact tile (one iteration in a single CTA); large shapes use a
-    ceil(N/48) power-of-two tile capped at 32K so the CTA count fills up. 2-byte dtypes use
-    num_warps=2 and fp32 uses 4; the mask is only generated when the tile does not divide numel.
+    ceil(N/48) power-of-two tile capped at 32K so the CTA count fills up. All dtypes use
+    num_warps=4: with 4 warps the 32K tile keeps 8x more independent lanes in flight than the
+    previous 2-warp 2-byte tier, which measured +6% end to end (fp16 1.89 -> 2.03, and the
+    512M-element cases 1.42 -> 2.26); 8 warps regressed to 1.85. The mask is only generated
+    when the tile does not divide numel.
     """
     N = inp.numel()
     if N == 0:
         return out
     two_byte = inp.element_size() <= 2
     block, grid_size = _pick_tile(N)
-    num_warps = 2 if (two_byte and N > _SMALL_N) else 4
+    num_warps = 4
     with torch_device_fn.device(inp.device):
         _gelu_kernel[(grid_size,)](
             inp,
@@ -341,8 +344,8 @@ def gelu_backward(grad_output, self, *, approximate="none"):
             out,
             N,
             _approx_code(approximate),
-            # Backward always uses 4th-order Φ (error 3.1e-6): the 16-bit 2nd-order arm's absolute error 4.2e-5 is
-            # amplified by dy (~N(0,1)) and then combined with the tiny dydx≈0 values at x≈-4..-6, which in practice
+            # Backward always uses 4th-order Phi (error 3.1e-6): the 16-bit 2nd-order arm's absolute error 4.2e-5 is
+            # amplified by dy (~N(0,1)) and then combined with the tiny dydx~0 values at x~-4..-6, which in practice
             # causes
             # 0.1% of elements in test_gelu_backward to exceed the 1e-4 tolerance; the forward pass has no such
             # amplification but is still tiered.
