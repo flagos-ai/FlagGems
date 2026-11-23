@@ -1008,6 +1008,7 @@ from .trapezoid import trapezoid_x  # noqa: F401
 from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
+from .triplet_margin_loss import triplet_margin_loss  # noqa: F401
 from .triu import triu, triu_
 from .triu_indices import triu_indices  # noqa: F401
 from .trunc import trunc, trunc_
@@ -2096,6 +2097,7 @@ __all__ = [
     "tril_",
     "tril_indices",
     "tril_out",
+    "triplet_margin_loss",
     "triu",
     "triu_",
     "triu_indices",
