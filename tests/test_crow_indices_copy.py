@@ -989,3 +989,30 @@ def test_crow_indices_copy_master_noncontiguous_indices():
 
     _assert_copy_semantics(actual, expected, inp, reference, inp.device)
     _assert_input_unchanged(inp, input_state)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSR layout not supported on this device",
+)
+@pytest.mark.crow_indices_copy
+def test_crow_indices_copy_master_dispatch_sentinel():
+    inp = _make_input("csr", (3, 5), 4, None, torch.float32, seed=3)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.crow_indices_copy(reference)
+    hits = []
+
+    def sentinel(tensor):
+        hits.append(tensor.layout)
+        return flag_gems.crow_indices_copy(tensor)
+
+    key = torch._C._dispatch_key_for_device(inp.device.type)
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        lib.impl("crow_indices_copy", sentinel, f"SparseCsr{key}")
+        actual = torch.ops.aten.crow_indices_copy(inp)
+    finally:
+        lib._destroy()
+
+    assert hits == [torch.sparse_csr]
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
