@@ -142,6 +142,105 @@ def logsumexp_kernel_inner(
         tl.store(output_ptrs, out)
 
 
+# --- TUNING PARAMS START ---
+# Multi-row inner path: rows per program are chosen so one program owns
+# INNER_ROW_ELEMENTS fp32 operands (the live tile), which keeps the reduction
+# tile inside the vector register budget while amortising the per-program
+# max/exp/log epilogue over several rows.
+INNER_ROW_ELEMENTS = 32768
+NUM_WARPS_INNER_ROWS = 4
+# Above this tile width a stacked tile spills, so wide rows switch to the
+# row-loop kernel with this many rows per program.
+MAX_TILE_2D = 2048
+WIDE_ROW_ROWS = 8
+NUM_WARPS_WIDE = 4
+# 2026-11-23 sweep (official do_bench, GEO over the 15 core cells: 1.734x at HEAD):
+#   stacked-row budget 4096 / 8192 / 16384 / 32768 / 65536 -> 2.519x / 2.734x / 2.906x /
+#   3.079x / 3.024x, so the budget is set where a program still fills the 48 cores;
+#   wide rows 4 / 8 / 16 -> 1.517x / 1.656x / 1.626x at 4096^2 (8 rows shipped);
+#   a split-N two-pass variant measured 0.265x at 4096^2 (many small programs) and was dropped;
+#   exp2/log2 rewriting of the epilogue failed 6 accuracy cells and was dropped.
+# --- TUNING PARAMS END ---
+
+
+def _inner_rows(M, N):
+    """Rows per program for the fused multi-row inner kernel (1 = use the per-row kernel).
+
+    The innermost-dimension reduction ships one program per row, so the row count
+    is the only lever on how much work a program amortises. A row that is already
+    at the tile budget stays on the historical kernel.
+    """
+    tile_n = triton.next_power_of_2(N)
+    if tile_n > MAX_TILE_2D:
+        return 1
+    return min(max(1, INNER_ROW_ELEMENTS // tile_n), M)
+
+
+@libentry()
+@triton.jit
+def logsumexp_kernel_inner_rows(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    ROWS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """``logsumexp`` over the innermost dimension, ROWS rows per program.
+
+    Numerics are those of ``logsumexp_kernel_inner``: an fp32 max pass, a shifted
+    exponential sum, and the same all ``-inf`` row guard, so the trimmed tile can
+    only change the launch geometry, not the result.
+    """
+    pid = ext.program_id(0)
+    rows = pid * ROWS + tl.arange(0, ROWS)
+    cols = tl.arange(0, BLOCK_N)
+    row_mask = rows < M
+    mask = row_mask[:, None] & (cols < N)[None, :]
+    inp = tl.load(
+        input_ptr + rows[:, None] * N + cols[None, :], mask=mask, other=-float("inf")
+    ).to(tl.float32)
+    m = tl.max(inp, axis=1)
+    safe_m = tl.where(m == float("-inf"), 0.0, m)
+    z = tl.sum(tl.exp(inp - safe_m[:, None]), axis=1)
+    out = safe_m + tl.log(z)
+    out = tl.where(m == float("-inf"), m, out)
+    tl.store(output_ptr + rows, out, mask=row_mask)
+
+
+@libentry()
+@triton.jit
+def logsumexp_kernel_inner_rowloop(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    ROWS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Wide-row variant: ROWS rows per program, one row at a time.
+
+    A row wider than the register tile cannot be stacked (a ``(ROWS, N)`` tile
+    spills), but a program can still take several rows sequentially to cut the
+    program count, which is what the flat geometry is short of at 4096 columns.
+    """
+    pid = ext.program_id(0)
+    cols = tl.arange(0, BLOCK_N)
+    mask = cols < N
+    for row_offset in tl.static_range(ROWS):
+        row = pid * ROWS + row_offset
+        if row < M:
+            inp = tl.load(
+                input_ptr + row * N + cols, mask=mask, other=-float("inf")
+            ).to(tl.float32)
+            m = tl.max(inp, axis=0)
+            safe_m = tl.where(m == float("-inf"), 0.0, m)
+            z = tl.sum(tl.exp(inp - safe_m), axis=0)
+            out = safe_m + tl.log(z)
+            out = tl.where(m == float("-inf"), m, out)
+            tl.store(output_ptr + row, out)
+
+
 def logsumexp(inp, dim, keepdim=False):
     logger.debug("GEMS_ENFLAME LOGSUMEXP")
 
@@ -190,13 +289,40 @@ def logsumexp(inp, dim, keepdim=False):
                 K,
             )
         else:
-            grid = (M, 1, 1)
-            logsumexp_kernel_inner[grid](
-                out,
-                inp,
-                M,
-                N,
-            )
+            rows = _inner_rows(M, N)
+            if rows > 1:
+                # Multi-row inner path: ROWS consecutive rows per program.
+                grid = (triton.cdiv(M, rows), 1, 1)
+                logsumexp_kernel_inner_rows[grid](
+                    out,
+                    inp,
+                    M,
+                    N,
+                    rows,
+                    triton.next_power_of_2(N),
+                    num_warps=NUM_WARPS_INNER_ROWS,
+                    num_stages=1,
+                )
+            elif N >= MAX_TILE_2D:
+                grid = (triton.cdiv(M, WIDE_ROW_ROWS), 1, 1)
+                logsumexp_kernel_inner_rowloop[grid](
+                    out,
+                    inp,
+                    M,
+                    N,
+                    WIDE_ROW_ROWS,
+                    triton.next_power_of_2(N),
+                    num_warps=NUM_WARPS_WIDE,
+                    num_stages=1,
+                )
+            else:
+                grid = (M, 1, 1)
+                logsumexp_kernel_inner[grid](
+                    out,
+                    inp,
+                    M,
+                    N,
+                )
 
     if not keepdim:
         out = out.squeeze(dim=dim)
