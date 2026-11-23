@@ -71,9 +71,11 @@ def test_conj_physical_backward_real_passthrough(dtype):
     # fp32/fp64 sample covers it.
     grad_output = torch.randn((1024,), dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.conj_physical_backward(grad_output)
-    ref_out = torch.conj_physical(grad_output)
-
     assert res_out is grad_output
+
+    # to_reference relocates the reference (CPU in --ref=cpu mode); the alias
+    # check above must run before that move, against the device-side tensor.
+    ref_out = torch.conj_physical(utils.to_reference(grad_output))
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
