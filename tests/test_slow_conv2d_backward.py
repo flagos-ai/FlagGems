@@ -109,3 +109,56 @@ def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding,
     utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=kernel_size[0])
     utils.gems_assert_close(gw, ref_gw, dtype, reduce_dim=weight_shape[0])
     utils.gems_assert_close(gb, ref_gb, dtype, reduce_dim=shape[0])
+
+
+def test_slow_conv2d_backward_dispatches_to_gems(caplog):
+    """The implementation must actually be reached through the aten overload."""
+    shape, weight_shape, kernel_size, stride, padding = (
+        (2, 4, 8, 8),
+        (5, 4, 3, 3),
+        [3, 3],
+        [1, 1],
+        [0, 0],
+    )
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    ho = (shape[2] + 2 * padding[0] - kernel_size[0]) // stride[0] + 1
+    wo = (shape[3] + 2 * padding[1] - kernel_size[1]) // stride[1] + 1
+    grad_output = torch.randn(
+        (shape[0], weight_shape[0], ho, wo),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_gi, ref_gw, ref_gb = torch.ops.aten._slow_conv2d_backward.output_mask(
+        utils.to_reference(grad_output, True),
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        kernel_size,
+        stride,
+        padding,
+        [True, True, True],
+    )
+
+    caplog.clear()
+    with caplog.at_level("DEBUG", logger="flag_gems.ops._slow_conv2d_backward"):
+        # Tests must not call use_gems(); only_enable is the sanctioned
+        # registration API and reaches the same registrar.
+        flag_gems.only_enable(include=["_slow_conv2d_backward"])
+        try:
+            gi, gw, gb = torch.ops.aten._slow_conv2d_backward.output_mask(
+                grad_output,
+                inp,
+                weight,
+                kernel_size,
+                stride,
+                padding,
+                [True, True, True],
+            )
+        finally:
+            flag_gems.enable()
+
+    assert "GEMS _SLOW_CONV2D_BACKWARD" in caplog.text
+    utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=kernel_size[0])
+    utils.gems_assert_close(gw, ref_gw, dtype, reduce_dim=weight_shape[0])
+    utils.gems_assert_close(gb, ref_gb, dtype, reduce_dim=shape[0])

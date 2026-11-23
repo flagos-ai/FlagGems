@@ -39,6 +39,7 @@ class ParallelMmW8A8Int8Benchmark(ParallelBlasBenchmark):
     """
 
     SHAPE_CONFIG_KEYS = ("mm_w8a8_int8", "BlasBenchmark")
+    RECORD_PARALLEL_RESULTS = True
 
     def prepare_call(self, op, a, b):
         if op is self.torch_op:
@@ -192,7 +193,7 @@ def test_mm_w8a8_int8(baseline):
     options = {"baseline": baseline} if flag_gems.vendor_name == "ascend" else {}
     bench = bench_cls(
         input_fn=mm_input_fn,
-        op_name="mm_w8a8_int8",
+        op_name="mm_w8a8",
         torch_op=torch.mm,
         dtypes=[torch.bfloat16] if flag_gems.vendor_name == "ascend" else FLOAT_DTYPES,
         **options,
@@ -253,7 +254,7 @@ def test_mm_w8a8_int8_thead():
         pytest.skip("mm_w8a8_int8 benchmark requires the THead INT8 backend")
     bench = ParallelMmW8A8Int8THeadBenchmark(
         input_fn=mm_input_fn,
-        op_name="mm_w8a8_int8",
+        op_name="mm_w8a8",
         torch_op=torch.Tensor.mm,
         dtypes=FLOAT_DTYPES,
     )

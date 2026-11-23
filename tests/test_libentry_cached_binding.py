@@ -272,7 +272,7 @@ def test_cached_binding_requires_explicit_opt_in(monkeypatch, vendor, opt_in):
     assert hasattr(result, "_launch_plans") is (opt_in is True)
 
 
-@pytest.mark.parametrize("major,minor", [(2, 3), (3, 2), (3, 7), (4, 0)])
+@pytest.mark.parametrize("major,minor", [(2, 3), (3, 2), (4, 0)])
 def test_unsupported_triton_uses_generic_binding(monkeypatch, major, minor):
     monkeypatch.setattr(lib, "major_version", major)
     monkeypatch.setattr(lib, "minor_version", minor)

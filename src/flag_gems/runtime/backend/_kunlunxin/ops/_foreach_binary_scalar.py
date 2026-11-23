@@ -42,8 +42,12 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
-from triton import knobs
 from triton.runtime import driver
+
+try:
+    from triton import knobs
+except ImportError:  # older triton / flagtree builds without knobs
+    knobs = None
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import (
@@ -734,6 +738,10 @@ _RAW_CACHE: dict = {}
 
 def _raw_launch(jit_fn, grid, const_key, tensors, args, num_warps) -> bool:
     """Launch ``jit_fn`` bypassing the binder; False if the caller must not."""
+    # Without ``triton.knobs`` we cannot prove no hook is installed, so this
+    # Triton build must take the normal dispatch path.
+    if knobs is None:
+        return False
     # The knob holds a ``HookChain``, never ``None``, and the chain defines no
     # ``__bool__``/``__len__`` -- so it is always truthy and ``is not None`` would
     # reject every call.  An empty ``calls`` list means nobody is profiling; any

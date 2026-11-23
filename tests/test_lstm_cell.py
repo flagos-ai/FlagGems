@@ -24,7 +24,54 @@ import flag_gems
 from .accuracy_utils import FLOAT_DTYPES, QUICK_MODE, gems_assert_close, to_reference
 from .conftest import TO_CPU
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 GATES = 4
+
+
+def _ref_args(input, hx, w_ih, w_hh, b_ih, b_hh):
+    """Reference arguments for ``_reference``.
+
+    On kunlunxin without ``--ref cpu`` the on-device reference is unreliable
+    (e.g. ``F.linear`` with a zero-size input returns zeros instead of the
+    bias), so compute the reference on CPU there, same semantics as ``--ref
+    cpu`` (fp64 upcast for fp32 inputs).
+    """
+    if IS_KUNLUNXIN and not TO_CPU:
+
+        def _up(x):
+            return None if x is None else x.detach().cpu().to(torch.float64)
+
+        return (
+            _up(input),
+            [_up(t) for t in hx],
+            _up(w_ih),
+            _up(w_hh),
+            _up(b_ih),
+            _up(b_hh),
+        )
+    return (
+        to_reference(input, True),
+        [to_reference(t, True) for t in hx],
+        to_reference(w_ih, True),
+        to_reference(w_hh, True),
+        to_reference(b_ih, True),
+        to_reference(b_hh, True),
+    )
+
+
+def _reference_safe(*args):
+    """``_reference`` with the result on the comparison device.
+
+    On kunlunxin without ``--ref cpu`` the reference runs on CPU (see
+    ``_ref_args``); move its outputs back to the device so the shared
+    comparison below compares like-for-like.
+    """
+    ref_out = _reference(*args)
+    if IS_KUNLUNXIN and not TO_CPU:
+        ref_out = tuple(t.to(flag_gems.device) for t in ref_out)
+    return ref_out
+
 
 # (batch, input_size, hidden_size)
 SHAPES = (
@@ -83,14 +130,7 @@ def test_accuracy_lstm_cell(shape, dtype, bias):
         batch, input_size, hidden_size, dtype, bias
     )
 
-    ref_out = _reference(
-        to_reference(input, True),
-        [to_reference(t, True) for t in hx],
-        to_reference(w_ih, True),
-        to_reference(w_hh, True),
-        to_reference(b_ih, True),
-        to_reference(b_hh, True),
-    )
+    ref_out = _reference_safe(*_ref_args(input, hx, w_ih, w_hh, b_ih, b_hh))
     res_out = flag_gems.lstm_cell(input, hx, w_ih, w_hh, b_ih, b_hh)
 
     # Both gate matrices are reductions, so the tolerance scales with the two
@@ -112,14 +152,7 @@ def test_accuracy_lstm_cell_non_contiguous(dtype):
     assert not input.is_contiguous()
     assert not w_ih.is_contiguous()
 
-    ref_out = _reference(
-        to_reference(input, True),
-        [to_reference(t, True) for t in hx],
-        to_reference(w_ih, True),
-        to_reference(w_hh, True),
-        to_reference(b_ih, True),
-        to_reference(b_hh, True),
-    )
+    ref_out = _reference_safe(*_ref_args(input, hx, w_ih, w_hh, b_ih, b_hh))
     res_out = flag_gems.lstm_cell(input, hx, w_ih, w_hh, b_ih, b_hh)
 
     reduce_dim = input_size + hidden_size
@@ -143,14 +176,7 @@ def test_accuracy_lstm_cell_zero_sized(batch, input_size, hidden_size):
     if hy.numel():
         # An empty reduction leaves only the biases, so the result is still
         # well defined and must match the reference.
-        ref_out = _reference(
-            to_reference(input, True),
-            [to_reference(t, True) for t in hx],
-            to_reference(w_ih, True),
-            to_reference(w_hh, True),
-            to_reference(b_ih, True),
-            to_reference(b_hh, True),
-        )
+        ref_out = _reference_safe(*_ref_args(input, hx, w_ih, w_hh, b_ih, b_hh))
         gems_assert_close(hy, ref_out[0], dtype, reduce_dim=hidden_size + 1)
         gems_assert_close(cy, ref_out[1], dtype, reduce_dim=hidden_size + 1)
 
@@ -207,8 +233,11 @@ def test_accuracy_lstm_cell_invalid_input():
     with pytest.raises(RuntimeError, match="elements"):
         flag_gems.lstm_cell(input, hx, w_ih, w_hh, b_ih[:-1], b_hh)
 
-    with pytest.raises(RuntimeError, match="same dtype"):
-        flag_gems.lstm_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
+    if not IS_KUNLUNXIN:
+        # XPU silently downgrades float64 to float32, so the dtype guard can
+        # never fire for an fp64 input on this backend.
+        with pytest.raises(RuntimeError, match="same dtype"):
+            flag_gems.lstm_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
 
 
 @pytest.mark.lstm_cell

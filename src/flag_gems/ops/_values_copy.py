@@ -57,7 +57,12 @@ def _values_copy_kernel_nd(
     mask = offs < n_elements
     rem = offs
     phys = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    for d in tl.static_range(NDIM):
+    # Row-major decomposition: the LAST dimension varies fastest, so the rounds
+    # run from the innermost dim outwards. Both tables are padded to ``NDIM``
+    # with trailing 1s (extents) and 0s (strides), which contribute nothing:
+    # ``rem % 1`` is 0 and ``rem // 1`` is a no-op.
+    for i in tl.static_range(NDIM):
+        d = NDIM - 1 - i
         dim = tl.load(shape_ptr + d)
         stride = tl.load(stride_ptr + d)
         idx = rem % dim
@@ -84,27 +89,49 @@ def _values_copy_impl(self, out=None):
         _values_copy_kernel_1d[grid](x, y, n, BLOCK_SIZE=BLOCK, num_warps=8)
     else:
         ndim = vals.dim()
-        shape = torch.zeros(_MAX_NDIM, dtype=torch.int64, device=vals.device)
-        stride = torch.zeros(_MAX_NDIM, dtype=torch.int64, device=vals.device)
-        shape[:ndim] = torch.as_tensor(
-            vals.shape, dtype=torch.int64, device=vals.device
-        )
-        stride[:ndim] = torch.as_tensor(
-            vals.stride(), dtype=torch.int64, device=vals.device
-        )
-        # nd path: BLOCK=1024 with 4 warps balances the div/mod chain.
-        BLOCK = 1024
-        grid = (triton.cdiv(n, BLOCK),)
-        _values_copy_kernel_nd[grid](
-            vals,
-            out,
-            shape,
-            stride,
-            n,
-            NDIM=_MAX_NDIM,
-            BLOCK_SIZE=BLOCK,
-            num_warps=4,
-        )
+        # The ND kernel addresses BOTH buffers at the physical offset implied by
+        # ``vals``'s shape/stride table, so it stays inside them only when
+        # ``out`` carries that same layout and is dense. ``torch.empty_like``
+        # reproduces a source's strides exactly for dense non-overlapping
+        # layouts; for a gapped (``base[::2]``) or expanded (stride-0) source it
+        # falls back to the compact layout, and then the source's own offsets
+        # reach past ``numel - 1`` -- the launch would write outside ``out``.
+        # Such a source is materialized and copied with the flat kernel.
+        if ndim <= _MAX_NDIM and out.stride() == vals.stride():
+            shape = torch.ones(_MAX_NDIM, dtype=torch.int64, device=vals.device)
+            stride = torch.zeros(_MAX_NDIM, dtype=torch.int64, device=vals.device)
+            shape[:ndim] = torch.as_tensor(
+                vals.shape, dtype=torch.int64, device=vals.device
+            )
+            stride[:ndim] = torch.as_tensor(
+                vals.stride(), dtype=torch.int64, device=vals.device
+            )
+            # nd path: BLOCK=1024 with 4 warps balances the div/mod chain.
+            BLOCK = 1024
+            grid = (triton.cdiv(n, BLOCK),)
+            _values_copy_kernel_nd[grid](
+                vals,
+                out,
+                shape,
+                stride,
+                n,
+                NDIM=_MAX_NDIM,
+                BLOCK_SIZE=BLOCK,
+                num_warps=4,
+            )
+        else:
+            # ``staged`` is compact, so the flat kernel is sound on it; a
+            # destination that is not compact is served through a staged buffer
+            # and ``copy_`` (the accepted alias_copy / crow_indices_copy idiom).
+            staged = vals.contiguous()
+            dst = out if out.is_contiguous() else torch.empty_like(staged)
+            BLOCK = 4096
+            grid = (triton.cdiv(n, BLOCK),)
+            _values_copy_kernel_1d[grid](
+                staged.view(-1), dst.view(-1), n, BLOCK_SIZE=BLOCK, num_warps=8
+            )
+            if dst is not out:
+                out.copy_(dst)
     return out
 
 

@@ -27,6 +27,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from . import baddbmm_kernels as _baddbmm_kernels
+
 # Reuse the warp-specialized bmm pipeline: baddbmm is a batched GEMM whose
 # consumer only gains the extra beta * bias term before the store, so it shares
 # the TME producer, the tile shape and the column-panel rasterization with bmm.
@@ -516,6 +518,9 @@ class BaddbmmFunction(torch.autograd.Function):
 
         batch, M, K = A.shape
         _, _, N = B.shape
+        fast_out = _baddbmm_kernels.try_forward(bias, A, B, alpha, beta)
+        if fast_out is not None:
+            return fast_out
         if _use_ws(bias, A, B, M, N, K):
             return baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta)
         if _use_sqmma(A, B, N, K):
@@ -528,6 +533,19 @@ class BaddbmmFunction(torch.autograd.Function):
     def backward(ctx, grad_output):
         logger.debug("GEMS_MTHREADS BADDBMM_BACKWARD")
         A, B, bias = ctx.saved_tensors
+
+        fast_grads = _baddbmm_kernels.try_backward(
+            ctx.needs_input_grad,
+            grad_output,
+            bias,
+            A,
+            B,
+            ctx.alpha,
+            ctx.beta,
+        )
+        if fast_grads is not None:
+            grad_bias, grad_A, grad_B = fast_grads
+            return grad_bias, grad_A, grad_B, None, None
 
         grad_A = None
         grad_B = None
@@ -589,6 +607,9 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
     assert (
         out.shape == (batch, M, N) and out.dtype == A.dtype
     ), "Incompatible output shape or dtype for baddbmm.out"
+    fast_out = _baddbmm_kernels.try_forward(bias, A, B, alpha, beta, out)
+    if fast_out is not None:
+        return fast_out
     # The SQMMA consumer stores straight into a row-major buffer of the operand
     # dtype, so a contiguous `out` of that dtype can be the destination itself
     # instead of paying for a temporary product plus three elementwise passes.

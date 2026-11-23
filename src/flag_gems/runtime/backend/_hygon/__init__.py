@@ -22,6 +22,8 @@ vendor_info = VendorDescriptor(
     tle_enabled=True,
 )
 
+ARCH_MAP = {"gfx936": "gfx936"}
+
 CUSTOMIZED_UNUSED_OPS = ()
 
 __all__ = ["*"]

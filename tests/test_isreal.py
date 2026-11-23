@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 def _make_complex(shape, dtype, device):
@@ -39,7 +40,7 @@ def _make_complex(shape, dtype, device):
     utils.FLOAT_DTYPES
     + utils.ALL_INT_DTYPES
     + utils.BOOL_TYPES
-    + [torch.complex64, torch.complex128],
+    + [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)],
 )
 def test_isreal(shape, dtype):
     if dtype.is_complex:
@@ -56,7 +57,10 @@ def test_isreal(shape, dtype):
 
 
 @pytest.mark.isreal
-@pytest.mark.parametrize("dtype", [torch.float32, torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)],
+)
 def test_isreal_special_values(dtype):
     """Zero, negative zero, NaN and infinity, including a NaN imaginary part."""
     if dtype.is_complex:
@@ -83,7 +87,10 @@ def test_isreal_special_values(dtype):
 
 
 @pytest.mark.isreal
-@pytest.mark.parametrize("dtype", [torch.float32, torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)],
+)
 def test_isreal_non_contiguous(dtype):
     if dtype.is_complex:
         base = _make_complex((32, 48), dtype, flag_gems.device)

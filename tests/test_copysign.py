@@ -53,3 +53,26 @@ def test_copysign_out(shape, dtype):
     flag_gems.copysign_out(input, other, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.copysign
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_copysign_byte(shape, dtype):
+    # torch promotes integral copysign inputs to float32. Sweep the full dtype
+    # range: values >= 128 in uint8 have the top bit set but are not negative,
+    # and abs(int8 min) must not wrap in integer arithmetic.
+    info = torch.iinfo(dtype)
+    input = torch.randint(info.min, info.max + 1, shape, dtype=dtype).to(
+        flag_gems.device
+    )
+    other = torch.randint(info.min, info.max + 1, shape, dtype=dtype).to(
+        flag_gems.device
+    )
+
+    ref_input = utils.to_reference(input)
+    ref_other = utils.to_reference(other)
+    ref_out = torch.copysign(ref_input, ref_other)
+    res_out = flag_gems.copysign(input, other)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)

@@ -25,7 +25,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
-BLOCK = 8192
+BLOCK = 32768
 
 
 @libentry()

@@ -15,14 +15,45 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+# consts.FLOAT_DTYPES omits float64; maximum supports it when the device does.
+MAXIMUM_DTYPES = consts.FLOAT_DTYPES + (
+    [torch.float64] if flag_gems.runtime.device.support_fp64 else []
+)
+
+
+class MaximumBenchmark(base.BinaryPointwiseBenchmark):
+    def _input(self, shape, dtype):
+        return torch.randn(shape, dtype=dtype, device=self.device)
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"inputs": [shape, shape]},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            yield self._input(shape, dtype), self._input(shape, dtype)
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        return self._input(shape, case.dtype), self._input(shape, case.dtype)
 
 
 @pytest.mark.maximum
 def test_maximum():
-    bench = base.BinaryPointwiseBenchmark(
+    bench = MaximumBenchmark(
         op_name="maximum",
         torch_op=torch.maximum,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=MAXIMUM_DTYPES,
     )
     bench.run()

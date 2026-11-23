@@ -77,6 +77,71 @@ def mul_broadcast_get_configs():
     ]
 
 
+def _contiguous_configs():
+    return [
+        triton.Config({"BLOCK_SIZE": block}, num_warps=warps, num_stages=1)
+        for block, warps in (
+            (128, 1),
+            (256, 1),
+            (512, 2),
+            (1024, 4),
+            (1024, 8),
+            (2048, 4),
+            (4096, 4),
+            (8192, 4),
+        )
+    ] + mul_get_configs()
+
+
+def _prune_contiguous_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    defaults = {str(config) for config in _contiguous_configs()}
+    # Expanded keeps every launch geometry; remove verified stage aliases.
+    if any(str(config) not in defaults for config in configs):
+        return configs
+    if args.get("dtype") not in ("float32", "bfloat16"):
+        original = {str(config) for config in mul_get_configs()}
+        return [config for config in configs if str(config) in original]
+    elements = args.get("n_elements", 0)
+    if elements <= 16384:
+        preferred = {(128, 1), (256, 1), (512, 2), (1024, 4)}
+    elif elements < 1048576:
+        preferred = {(512, 2), (1024, 4), (1024, 8)}
+    else:
+        preferred = {(1024, 4), (1024, 8), (2048, 4)}
+    selected = [
+        config
+        for config in configs
+        if (config.kwargs["BLOCK_SIZE"], config.num_warps) in preferred
+    ]
+    return selected or configs
+
+
+@triton.jit
+def _mul_contiguous_tile(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    n_elements,
+    block,
+    BLOCK_SIZE: tl.constexpr,
+    EVEN_SIZE: tl.constexpr,
+):
+    compute_dtype: tl.constexpr = (
+        tl.float16 if x_ptr.dtype.element_ty == tl.float16 else tl.float32
+    )
+    offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if EVEN_SIZE:
+        x = tl.load(x_ptr + offsets).to(compute_dtype)
+        y = tl.load(y_ptr + offsets).to(compute_dtype)
+        tl.store(output_ptr + offsets, x * y)
+    else:
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask, other=0).to(compute_dtype)
+        y = tl.load(y_ptr + offsets, mask, other=0).to(compute_dtype)
+        tl.store(output_ptr + offsets, x * y, mask)
+
+
 @libentry()
 @libtuner(
     configs=mul_get_configs(),
@@ -614,7 +679,7 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     return output
 
 
-def mul_broadcast_func(a, b, out=None):
+def mul_broadcast_func(a, b, out=None, *, launchers=None, real_output=_real_output):
     if not (_is_tensor_or_number(a) and _is_tensor_or_number(b)):
         raise TypeError("mul expects tensor or scalar inputs")
 
@@ -626,37 +691,31 @@ def mul_broadcast_func(a, b, out=None):
 
     dtype = _result_dtype(a, b)
 
-    if (
-        isinstance(a, torch.Tensor)
-        and not isinstance(b, torch.Tensor)
-        and not isinstance(b, complex)
-    ):
+    launch_contiguous, launch_scalar, launch_broadcast = launchers or (
+        _launch_contiguous_tensor_tensor,
+        _launch_scalar,
+        _launch_2d_broadcast,
+    )
+    # Multiplication is commutative; normalize tensor/scalar order once.
+    if not isinstance(a, torch.Tensor):
+        a, b = b, a
+    if not isinstance(b, (torch.Tensor, complex)):
         a_t = _as_tensor(a, device=device, dtype=dtype)
-        output = _real_output(a_t, a_t.new_empty(()), out=out)
+        output = real_output(a_t, a_t, out=out)
         if _can_use_contiguous_scalar(a_t, output):
-            return _launch_scalar(a_t, b, output, dtype)
-
-    if (
-        isinstance(b, torch.Tensor)
-        and not isinstance(a, torch.Tensor)
-        and not isinstance(a, complex)
-    ):
-        b_t = _as_tensor(b, device=device, dtype=dtype)
-        output = _real_output(b_t.new_empty(()), b_t, out=out)
-        if _can_use_contiguous_scalar(b_t, output):
-            return _launch_scalar(b_t, a, output, dtype)
+            return launch_scalar(a_t, b, output, dtype)
 
     a_t = _as_tensor(a, device=device, dtype=dtype)
     b_t = _as_tensor(b, device=device, dtype=dtype)
-    output = _real_output(a_t, b_t, out=out)
+    output = real_output(a_t, b_t, out=out)
 
     if _can_use_contiguous_tensor_tensor(a_t, b_t, output):
-        return _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype)
+        return launch_contiguous(a_t, b_t, output, dtype)
 
     out_shape = tuple(output.shape)
     a_stride, b_stride, out_stride = _real_layout(out_shape, a_t, b_t, output)
     if _can_use_2d_broadcast(out_shape):
-        return _launch_2d_broadcast(
+        return launch_broadcast(
             a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
         )
     return _launch_generic(
@@ -699,8 +758,23 @@ def _complex_layout(out_shape, tensors, out_r, out_i):
 
 
 def _launch_complex_generic(
-    ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype
+    ar,
+    ai,
+    br,
+    bi,
+    output,
+    out_shape,
+    strides,
+    out_r_stride,
+    out_i_stride,
+    dtype,
+    *,
+    kernels=None,
 ):
+    kernel, runtime_meta_kernel = kernels or (
+        mul_complex_generic_nd_kernel,
+        mul_complex_generic_nd_runtime_meta_kernel,
+    )
     n_elements = volume(out_shape)
     if n_elements == 0:
         return output
@@ -726,7 +800,7 @@ def _launch_complex_generic(
             dtype=torch.int64,
         )
         with torch_device_fn.device(output.device):
-            mul_complex_generic_nd_runtime_meta_kernel[grid](
+            runtime_meta_kernel[grid](
                 ar,
                 ai,
                 br,
@@ -741,7 +815,7 @@ def _launch_complex_generic(
         return output
 
     with torch_device_fn.device(output.device):
-        mul_complex_generic_nd_kernel[grid](
+        kernel[grid](
             ar,
             ai,
             br,
@@ -762,7 +836,7 @@ def _launch_complex_generic(
     return output
 
 
-def mul_complex_broadcast_func(a, b, out=None):
+def mul_complex_broadcast_func(a, b, out=None, *, parts=_complex_parts, kernels=None):
     device = _select_device(a, b)
     if not _is_accelerator_device(device):
         if out is not None:
@@ -770,8 +844,8 @@ def mul_complex_broadcast_func(a, b, out=None):
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
 
     dtype = _result_dtype(a, b)
-    ar, ai = _complex_parts(a, device=device, complex_dtype=dtype)
-    br, bi = _complex_parts(b, device=device, complex_dtype=dtype)
+    ar, ai = parts(a, device=device, complex_dtype=dtype)
+    br, bi = parts(b, device=device, complex_dtype=dtype)
     out_shape = tuple(
         torch.broadcast_shapes(
             tuple(ar.shape), tuple(ai.shape), tuple(br.shape), tuple(bi.shape)
@@ -783,11 +857,61 @@ def mul_complex_broadcast_func(a, b, out=None):
         out_shape, [ar, ai, br, bi], out_view[..., 0], out_view[..., 1]
     )
     return _launch_complex_generic(
-        ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype
+        ar,
+        ai,
+        br,
+        bi,
+        output,
+        out_shape,
+        strides,
+        out_r_stride,
+        out_i_stride,
+        dtype,
+        kernels=kernels,
     )
 
 
-def mul(A, B, *, out=None):
+def _try_contiguous(a, b, out, launch_contiguous, real_output):
+    if not (
+        isinstance(a, torch.Tensor)
+        and isinstance(b, torch.Tensor)
+        and not a.is_complex()
+        and a.device.type == _DEVICE_NAME
+        and a.device == b.device
+        and a.dtype == b.dtype
+        and a.shape == b.shape
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and a.numel() < 2**31
+    ):
+        return None
+    if out is not None and (
+        torch._C._is_alias_of(out, a) or torch._C._is_alias_of(out, b)
+    ):
+        return None
+    output = torch.empty_like(a) if out is None else real_output(a, b, out=out)
+    if not output.is_contiguous():
+        return None
+    return launch_contiguous(a, b, output, a.dtype)
+
+
+def _mul(
+    A,
+    B,
+    *,
+    out=None,
+    launchers=None,
+    real_output=_real_output,
+    complex_mul=mul_complex_broadcast_func,
+):
+    if (
+        launchers is not None
+        and isinstance(A, torch.Tensor)
+        and isinstance(B, torch.Tensor)
+    ):
+        result = _try_contiguous(A, B, out, launchers[0], real_output)
+        if result is not None:
+            return result
     logger.debug("GEMS MUL")
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
@@ -796,12 +920,25 @@ def mul(A, B, *, out=None):
             or isinstance(A, complex)
             or isinstance(B, complex)
         ):
-            return mul_complex_broadcast_func(A, B, out=out)
-        return mul_broadcast_func(A, B, out=out)
+            return complex_mul(A, B, out=out)
+        return mul_broadcast_func(
+            A, B, out=out, launchers=launchers, real_output=real_output
+        )
     return torch.tensor(A * B)
 
 
-def mul_(A, B):
+def mul(A, B, *, out=None):
+    return _mul(A, B, out=out)
+
+
+def _mul_(
+    A,
+    B,
+    *,
+    launchers=None,
+    real_output=_real_output,
+    complex_mul=mul_complex_broadcast_func,
+):
     logger.debug("GEMS MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
@@ -815,5 +952,9 @@ def mul_(A, B):
         or (isinstance(B, torch.Tensor) and B.is_complex())
         or isinstance(B, complex)
     ):
-        return mul_complex_broadcast_func(A, B, out=A)
-    return mul_broadcast_func(A, B, out=A)
+        return complex_mul(A, B, out=A)
+    return mul_broadcast_func(A, B, out=A, launchers=launchers, real_output=real_output)
+
+
+def mul_(A, B):
+    return _mul_(A, B)
