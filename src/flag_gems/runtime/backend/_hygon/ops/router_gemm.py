@@ -52,7 +52,9 @@ class _RouterTuner(LibTuner.get("flagtune")):
         return list(dict.fromkeys(configs)), self._flagtune_default_strategy
 
 
-_TUNE_OPTIONS = dict(policy=_RouterTuner, flagtune_op_name="router_gemm", warmup=2, rep=8)
+_TUNE_OPTIONS = dict(
+    policy=_RouterTuner, flagtune_op_name="router_gemm", warmup=2, rep=8
+)
 
 
 def _matrix_config(bm, bn, bk, warps, stages, group):
@@ -510,6 +512,7 @@ def _launch_bf16_split(x, weight, out, m, n, k):
         partials, out, m * n, meta["SK"], 256
     )
     return out
+
 
 def _router_fast(x, weight):
     m, k = x.shape
