@@ -333,6 +333,7 @@ from .stack import stack
 from .subtract import subtract
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
+from .take_along_dim import take_along_dim, take_along_dim_out
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .threshold_ import threshold_
@@ -766,6 +767,8 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "swiglu",
+    "take_along_dim",
+    "take_along_dim_out",
     "thnn_fused_lstm_cell",
     "threshold",
     "threshold_",
