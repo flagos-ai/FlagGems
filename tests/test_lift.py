@@ -20,6 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _numel(shape):
+    n = 1
+    for s in shape:
+        n *= s
+    return n
+
+
 @pytest.mark.lift
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -63,3 +70,48 @@ def test_lift_backward(shape, dtype):
 
     res_direct = flag_gems.lift_backward(out_grad)
     assert torch.equal(res_direct, out_grad)
+
+
+@pytest.mark.lift
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES + utils.FP8_DTYPES)
+def test_lift_low_precision(shape, dtype):
+    # lift is a metadata-only identity: dtype, shape and values must survive
+    # bit exactly, including float8 inputs.
+    if dtype in utils.FP8_DTYPES:
+        raw = (torch.arange(1, _numel(shape) + 1, device=flag_gems.device) % 256).to(
+            torch.uint8
+        )
+        inp = raw.reshape(shape).view(dtype)
+    else:
+        inp = torch.randint(0, 8, shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.lift(ref_inp)
+    res_out = flag_gems.lift(inp.clone())
+    if ref_out.device != res_out.device:
+        res_out = res_out.cpu()
+    assert res_out.dtype == ref_out.dtype
+    # Bitwise compare: NaNs in fp8 inputs break float32 closeness checks.
+    assert torch.equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
+
+
+@pytest.mark.lift_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES + utils.FP8_DTYPES)
+def test_lift_out_low_precision(shape, dtype):
+    if dtype in utils.FP8_DTYPES:
+        raw = (torch.arange(1, _numel(shape) + 1, device=flag_gems.device) % 256).to(
+            torch.uint8
+        )
+        inp = raw.reshape(shape).view(dtype)
+    else:
+        inp = torch.randint(0, 8, shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.lift.out(ref_inp, out=torch.empty_like(ref_inp))
+    res_out = flag_gems.lift_out(inp.clone(), out=torch.empty_like(inp))
+    if ref_out.device != res_out.device:
+        res_out = res_out.cpu()
+    assert res_out.dtype == ref_out.dtype
+    assert torch.equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
