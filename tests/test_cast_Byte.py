@@ -17,6 +17,8 @@ import torch
 
 import flag_gems
 
+from .accuracy_utils import _SKIP_FP64
+
 DTYPES = [
     torch.bool,
     torch.uint8,
@@ -27,7 +29,7 @@ DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    torch.float64,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
 ]
 
 
@@ -79,7 +81,13 @@ def test_cast_Byte_strided(dtype, layout):
 
 @pytest.mark.cast_Byte
 @pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=_SKIP_FP64),
+    ],
 )
 def test_cast_Byte_fractional(dtype):
     x = torch.tensor(
