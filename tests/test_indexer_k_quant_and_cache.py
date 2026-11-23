@@ -18,7 +18,7 @@ import pytest
 import torch
 from packaging.version import InvalidVersion, Version
 
-from flag_gems.fused import indexer_k_quant_and_cache
+from flag_gems import indexer_k_quant_and_cache
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
