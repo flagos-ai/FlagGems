@@ -3816,6 +3816,22 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: conj_backward
+  description: |
+    Backward pass for `conj`: the conjugate is self-inverse, so the input
+    gradient is `torch.conj(grad_output)`. The kernel flips the sign bit of
+    the imaginary components through an int64 view -- no floating-point
+    arithmetic is involved. Real (non-complex) inputs are returned unchanged.
+  for:
+  - conj_backward
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: conj_copy
   description: 'Computes the element-wise conjugate of a complex `input` tensor and
 
