@@ -891,6 +891,7 @@ from .sin import sin, sin_
 from .sinc import sinc, sinc_, special_sinc
 from .sinh import sinh, sinh_  # noqa: F401
 from .slice_backward import slice_backward
+from .slice_copy import slice_copy, slice_copy_out
 from .slice_scatter import slice_scatter
 from .smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward, smooth_l1_loss_out
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
@@ -1983,6 +1984,8 @@ __all__ = [
     "sinc",
     "sinc_",
     "slice_backward",
+    "slice_copy",
+    "slice_copy_out",
     "slice_scatter",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
