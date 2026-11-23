@@ -24,6 +24,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+
 # Tiled tl.dot kernel for large, tile-friendly shapes. The generic kernel
 # launches one program per output element and runs a serial K1 loop, which is
 # launch/occupancy bound. Here each program computes a (BLOCK_N, BLOCK_M) tile:
@@ -71,10 +72,12 @@ def _bilinear_tiled_kernel(
             ks = k2 + offs_k2
             w = tl.load(
                 w_ptr + offs_n[:, None] * s_wn + i * s_wk1 + ks[None, :] * s_wk2
-            ).to(tl.float32)  # (BN, BK2)
-            x2 = tl.load(
-                x2_ptr + ks[:, None] * s_x2k + offs_m[None, :] * s_x2m
-            ).to(tl.float32)  # (BK2, BM)
+            ).to(
+                tl.float32
+            )  # (BN, BK2)
+            x2 = tl.load(x2_ptr + ks[:, None] * s_x2k + offs_m[None, :] * s_x2m).to(
+                tl.float32
+            )  # (BK2, BM)
             g = tl.dot(w, x2)  # (BN, BM)
             acc += g * x1[None, :]
 
@@ -102,12 +105,7 @@ def bilinear(input1, input2, weight, bias=None):
     K2 = input2.shape[-1]
     N = weight.shape[0]
 
-    if (
-        M % _BLOCK_M == 0
-        and N % _BLOCK_N == 0
-        and K2 % _BLOCK_K2 == 0
-        and M > 0
-    ):
+    if M % _BLOCK_M == 0 and N % _BLOCK_N == 0 and K2 % _BLOCK_K2 == 0 and M > 0:
         x1 = input1.reshape(M, K1)
         x2 = input2.reshape(M, K2)
         w = weight.contiguous()

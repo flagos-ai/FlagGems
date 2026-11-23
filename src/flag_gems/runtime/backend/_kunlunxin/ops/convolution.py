@@ -160,7 +160,16 @@ def _im2col_transposed_kernel(
 
 @libentry()
 @triton.jit
-def _mm_kernel(A, B, C, K, USE_FP16: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+def _mm_kernel(
+    A,
+    B,
+    C,
+    K,
+    USE_FP16: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
     om = tl.program_id(0) * BM + tl.arange(0, BM)
     on = tl.program_id(1) * BN + tl.arange(0, BN)
     acc = tl.zeros((BM, BN), dtype=tl.float32)
@@ -173,7 +182,9 @@ def _mm_kernel(A, B, C, K, USE_FP16: tl.constexpr, BM: tl.constexpr, BN: tl.cons
             # to match the fp16 reference in the convolution accuracy tests.
             acc = tl.dot(a, b, acc)
         else:
-            acc = tl.dot(a.to(tl.float32), b.to(tl.float32), acc, input_precision="ieee")
+            acc = tl.dot(
+                a.to(tl.float32), b.to(tl.float32), acc, input_precision="ieee"
+            )
     tl.store(C + om[:, None] * BN + on[None, :], acc)
 
 
@@ -317,18 +328,62 @@ def convolution(
     with torch_device_fn.device(x.device):
         if is_transposed:
             _im2col_transposed_kernel[grid](
-                xc, col, KDIM, OUT[0], OUT[1], OUT[2], IN[0], IN[1], IN[2],
-                S[0], S[1], S[2], P[0], P[1], P[2], DL[0], DL[1], DL[2], KVOL, K12, K2,
-                xc.stride(0), xc.stride(1), xc.stride(2),
-                xc.stride(3) if nd >= 2 else 0, xc.stride(4) if nd >= 3 else 0,
+                xc,
+                col,
+                KDIM,
+                OUT[0],
+                OUT[1],
+                OUT[2],
+                IN[0],
+                IN[1],
+                IN[2],
+                S[0],
+                S[1],
+                S[2],
+                P[0],
+                P[1],
+                P[2],
+                DL[0],
+                DL[1],
+                DL[2],
+                KVOL,
+                K12,
+                K2,
+                xc.stride(0),
+                xc.stride(1),
+                xc.stride(2),
+                xc.stride(3) if nd >= 2 else 0,
+                xc.stride(4) if nd >= 3 else 0,
                 BLOCK=BLOCK,
             )
         else:
             _im2col_forward_kernel[grid](
-                xc, col, KDIM, OUT[0], OUT[1], OUT[2], IN[0], IN[1], IN[2],
-                S[0], S[1], S[2], P[0], P[1], P[2], DL[0], DL[1], DL[2], KVOL, K12, K2,
-                xc.stride(0), xc.stride(1), xc.stride(2),
-                xc.stride(3) if nd >= 2 else 0, xc.stride(4) if nd >= 3 else 0,
+                xc,
+                col,
+                KDIM,
+                OUT[0],
+                OUT[1],
+                OUT[2],
+                IN[0],
+                IN[1],
+                IN[2],
+                S[0],
+                S[1],
+                S[2],
+                P[0],
+                P[1],
+                P[2],
+                DL[0],
+                DL[1],
+                DL[2],
+                KVOL,
+                K12,
+                K2,
+                xc.stride(0),
+                xc.stride(1),
+                xc.stride(2),
+                xc.stride(3) if nd >= 2 else 0,
+                xc.stride(4) if nd >= 3 else 0,
                 BLOCK=BLOCK,
             )
 
@@ -339,10 +394,10 @@ def convolution(
         if is_transposed:
             # weight layout (C_in, C_out_pg, K); B[(ci,k), oc] = w[ci, oc, k]
             wbd[
-                gi * C_in_pg * KVOL:(gi + 1) * C_in_pg * KVOL,
-                gi * C_out_pg:(gi + 1) * C_out_pg,
+                gi * C_in_pg * KVOL : (gi + 1) * C_in_pg * KVOL,
+                gi * C_out_pg : (gi + 1) * C_out_pg,
             ] = (
-                wc[gi * C_in_pg:(gi + 1) * C_in_pg]
+                wc[gi * C_in_pg : (gi + 1) * C_in_pg]
                 .reshape(C_in_pg, C_out_pg, KVOL)
                 .permute(0, 2, 1)
                 .reshape(C_in_pg * KVOL, C_out_pg)
@@ -350,9 +405,13 @@ def convolution(
         else:
             # weight layout (C_out, C_in_pg, K); B[(ci,k), oc] = w[oc, ci, k]
             wbd[
-                gi * C_in_pg * KVOL:(gi + 1) * C_in_pg * KVOL,
-                gi * C_out_pg:(gi + 1) * C_out_pg,
-            ] = wc[gi * C_out_pg:(gi + 1) * C_out_pg].reshape(C_out_pg, C_in_pg * KVOL).T
+                gi * C_in_pg * KVOL : (gi + 1) * C_in_pg * KVOL,
+                gi * C_out_pg : (gi + 1) * C_out_pg,
+            ] = (
+                wc[gi * C_out_pg : (gi + 1) * C_out_pg]
+                .reshape(C_out_pg, C_in_pg * KVOL)
+                .T
+            )
 
     # ---- padded matmul ----
     BM, BN, BK = 64, 16, 32
@@ -366,11 +425,22 @@ def convolution(
     out_p = torch.empty(Mpad, Npad, device=x.device, dtype=torch.float32)
     with torch_device_fn.device(x.device):
         _mm_kernel[((Mpad // BM), (Npad // BN))](
-            col_p, w_p, out_p, Kpad, USE_FP16=(x.dtype == torch.float16), BM=BM, BN=BN, BK=BK
+            col_p,
+            w_p,
+            out_p,
+            Kpad,
+            USE_FP16=(x.dtype == torch.float16),
+            BM=BM,
+            BN=BN,
+            BK=BK,
         )
 
-    out = out_p[:M, :C_out].to(x.dtype).contiguous().reshape(n_, *OUT[:nd], C_out).permute(
-        0, nd + 1, *range(1, nd + 1)
+    out = (
+        out_p[:M, :C_out]
+        .to(x.dtype)
+        .contiguous()
+        .reshape(n_, *OUT[:nd], C_out)
+        .permute(0, nd + 1, *range(1, nd + 1))
     )
 
     if bias is not None and bias.numel() > 0:
