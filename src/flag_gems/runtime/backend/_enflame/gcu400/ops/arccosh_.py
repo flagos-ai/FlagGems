@@ -28,6 +28,10 @@ NUM_SIPS = 24
 MAX_GRID = NUM_SIPS * 2
 BLOCK_LARGE = 65536
 BLOCK_MID = 8192
+# 2026-11-23 sweep on the official protocol (GEO over the 15 core cells, 2.080x at HEAD):
+# 32-bit tile 32768/131072, grid 96, 16-bit tile 32768, 16-bit slab, 4 warps for 16-bit,
+# and mid tier 4096/16384 all landed in 2.017x-2.072x, i.e. neutral to slightly worse, and a
+# libdevice acosh instead of the rsqrt form measured 0.301x. The geometry below stays.
 
 
 @libentry()
