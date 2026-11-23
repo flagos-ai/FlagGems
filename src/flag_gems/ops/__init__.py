@@ -1141,7 +1141,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
 )
 from flag_gems.ops.linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from flag_gems.ops.linalg_norm import linalg_norm
-from flag_gems.ops.linalg_pinv import linalg_pinv
+from flag_gems.ops.linalg_pinv import linalg_pinv, linalg_pinv_out
 from flag_gems.ops.linalg_polar import linalg_polar, linalg_polar_out
 from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
@@ -2909,6 +2909,7 @@ __all__ = [
     "linalg_multi_dot_out",
     "linalg_norm",
     "linalg_pinv",
+    "linalg_pinv_out",
     "linalg_polar",
     "linalg_polar_out",
     "linalg_qr",
