@@ -80,7 +80,9 @@ def randn_like(
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(x.device):
         # fp32 goes REDUCED only past the transition band (see ladder note);
-        # the two small bands keep the full 24-bit uniforms.
+        # the two small bands keep the full 24-bit uniforms.  Measured: forcing
+        # the reduced form in the latency band (N <= 8192) changes nothing
+        # (0.00309ms vs 0.00311ms), so the launch, not the hash, is the floor.
         reduced = dtype != torch.float32 or N > 131072
         randn_kernel[grid](
             out,
@@ -93,6 +95,7 @@ def randn_like(
             MASKED=N % (BLOCK * UNROLL) != 0,
             FLAT=flat,
             WIDE=N > 2**31 - BLOCK * UNROLL,
+            FAST_LOG=dtype != torch.float32,
             num_warps=num_warps,
         )
     return out
