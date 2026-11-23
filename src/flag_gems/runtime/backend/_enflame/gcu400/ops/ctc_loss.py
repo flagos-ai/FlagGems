@@ -31,6 +31,8 @@ _REDUCTION_NONE = 0
 _POST_SCRATCH_BYTES = 256 * 1024 * 1024
 # Class chunk of the posterior->class reduction tile.
 _POST_REDUCE_BLOCK_C = 32
+# 24 SIPs per GCU400 die; two CTAs per SIP hides the drain latency of the row loop.
+_NUM_SIPS = 24
 _REDUCTION_MEAN = 1
 _REDUCTION_SUM = 2
 _LENGTH_STATS_CACHE = {}
@@ -427,38 +429,48 @@ def _ctc_loss_init_grad_kernel(
     REDUCTION: tl.constexpr,
     ZERO_INFINITY: tl.constexpr,
     BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < total
-    batch = (offsets // C) % N
-    t = offsets // (N * C)
+    # Persistent fixed-size grid: the flat elementwise sweep used to launch one CTA per
+    # BLOCK elements (16384 CTAs for T=1024/N=32/C=128), and the per-CTA drain cost was
+    # most of this kernel's time. Each CTA now strides over the flat range instead.
+    pid = tl.program_id(0)
+    for block_start in tl.range(pid * BLOCK, total, GRID * BLOCK, num_stages=1):
+        offsets = block_start + tl.arange(0, BLOCK)
+        mask = offsets < total
+        batch = (offsets // C) % N
+        t = offsets // (N * C)
 
-    input_len = tl.load(input_lengths + batch, mask=mask, other=0)
-    target_len = tl.load(target_lengths + batch, mask=mask, other=1)
-    nll = tl.load(neg_log_likelihood + batch, mask=mask, other=0.0).to(tl.float32)
+        input_len = tl.load(input_lengths + batch, mask=mask, other=0)
+        target_len = tl.load(target_lengths + batch, mask=mask, other=1)
+        nll = tl.load(neg_log_likelihood + batch, mask=mask, other=0.0).to(tl.float32)
 
-    if REDUCTION == 0:
-        scale = tl.load(grad_output + batch, mask=mask, other=0.0).to(tl.float32)
-    else:
-        scale = tl.load(grad_output).to(tl.float32)
-        if REDUCTION == 1:
-            denom = tl.maximum(target_len, 1).to(tl.float32) * N
-            scale = scale / denom
+        if REDUCTION == 0:
+            scale = tl.load(grad_output + batch, mask=mask, other=0.0).to(tl.float32)
+        else:
+            scale = tl.load(grad_output).to(tl.float32)
+            if REDUCTION == 1:
+                denom = tl.maximum(target_len, 1).to(tl.float32) * N
+                scale = scale / denom
 
-    if ZERO_INFINITY:
-        scale = tl.where(nll == float("inf"), 0.0, scale)
+        if ZERO_INFINITY:
+            scale = tl.where(nll == float("inf"), 0.0, scale)
 
-    logp = tl.load(log_probs + offsets, mask=mask, other=-float("inf")).to(tl.float32)
-    grad = tl.where((t < input_len) & mask, tl.exp(logp) * scale, 0.0)
-    nan_grad = float("nan")
-    grad = tl.where(
-        (t < input_len) & mask & (scale != 0.0) & (logp == -float("inf")),
-        nan_grad,
-        grad,
-    )
-    if not ZERO_INFINITY:
-        grad = tl.where((t < input_len) & mask & (nll == float("inf")), nan_grad, grad)
-    tl.store(grad_input + offsets, grad, mask=mask)
+        logp = tl.load(log_probs + offsets, mask=mask, other=-float("inf")).to(
+            tl.float32
+        )
+        grad = tl.where((t < input_len) & mask, tl.exp(logp) * scale, 0.0)
+        nan_grad = float("nan")
+        grad = tl.where(
+            (t < input_len) & mask & (scale != 0.0) & (logp == -float("inf")),
+            nan_grad,
+            grad,
+        )
+        if not ZERO_INFINITY:
+            grad = tl.where(
+                (t < input_len) & mask & (nll == float("inf")), nan_grad, grad
+            )
+        tl.store(grad_input + offsets, grad, mask=mask)
 
 
 @libentry()
@@ -652,60 +664,71 @@ def _ctc_loss_grad_reduce_kernel(
     TARGET_1D: tl.constexpr,
     BLOCK_C: tl.constexpr,
     BLOCK_S: tl.constexpr,
+    GRID: tl.constexpr,
 ):
-    """Fold the per-state posterior into per-class gradients, one program per (t, n) row.
+    """Fold the per-state posterior into per-class gradients, one row at a time.
 
     grad_input[t, n, c] += sum over states whose label == c of posterior[t, n, state].
 
-    Every program owns a private (t, n) row of grad_input, so the accumulation needs no
-    atomics; the class axis is walked in BLOCK_C chunks to keep the [BLOCK_C, BLOCK_S]
-    compare tile small. The result is *added* to grad_input, which keeps the
-    `exp(logp) * scale` base value and the NaN markers written by
+    Every (t, n) row of grad_input is owned by exactly one program iteration, so the
+    accumulation needs no atomics; the class axis is walked in BLOCK_C chunks to keep the
+    [BLOCK_C, BLOCK_S] compare tile small. The result is *added* to grad_input, which keeps
+    the `exp(logp) * scale` base value and the NaN markers written by
     _ctc_loss_init_grad_kernel intact.
+
+    The rows are walked with a fixed-size grid instead of one CTA per row: T*N reaches
+    32768 rows for the largest ctc shape, and a persistent 48-CTA grid removes the
+    per-CTA launch/drain overhead that dominated a grid of that size.
     """
-    row = tl.program_id(0)
-    t = row % T
-    batch = row // T
+    pid = tl.program_id(0)
+    total_rows = T * N
 
     # lengths are int64 in memory; narrowing to int32 keeps every index expression in 32-bit
-    # arithmetic (this program runs once per (t, n) row, so int64 division would be paid
-    # T*N times and dominated the small shapes).
-    input_len = tl.load(input_lengths + batch).to(tl.int32)
-    if t < input_len:
-        target_len = tl.load(target_lengths + batch).to(tl.int32)
-        state_count = target_len * 2 + 1
-        states = tl.arange(0, BLOCK_S)
-        valid_state = states < state_count
+    # arithmetic.
+    for row in tl.range(pid, total_rows, GRID, num_stages=1):
+        batch = row // T
+        t = row - batch * T
+        input_len = tl.load(input_lengths + batch).to(tl.int32)
+        if t < input_len:
+            target_len = tl.load(target_lengths + batch).to(tl.int32)
+            state_count = target_len * 2 + 1
+            states = tl.arange(0, BLOCK_S)
+            valid_state = states < state_count
 
-        target_index = (states - 1) // 2
-        target_mask = (target_index >= 0) & (target_index < target_len)
-        target_safe_index = tl.where(target_mask, target_index, 0)
-        if TARGET_1D:
-            target_origin = tl.load(target_offsets + batch).to(tl.int32)
-            target_ptrs = targets + target_origin + target_safe_index
-        else:
-            target_origin = batch * MAX_TARGET
-            target_ptrs = targets + target_origin + target_safe_index
-        target_value = tl.load(target_ptrs, mask=target_mask, other=BLANK).to(tl.int32)
-        labels = tl.where((states % 2) == 0, BLANK, target_value)
+            target_index = (states - 1) // 2
+            target_mask = (target_index >= 0) & (target_index < target_len)
+            target_safe_index = tl.where(target_mask, target_index, 0)
+            if TARGET_1D:
+                target_origin = tl.load(target_offsets + batch).to(tl.int32)
+                target_ptrs = targets + target_origin + target_safe_index
+            else:
+                target_origin = batch * MAX_TARGET
+                target_ptrs = targets + target_origin + target_safe_index
+            target_value = tl.load(
+                target_ptrs, mask=target_mask, other=BLANK
+            ).to(tl.int32)
+            labels = tl.where((states % 2) == 0, BLANK, target_value)
 
-        post = tl.load(
-            scratch_post + batch * T * STATE_COUNT_MAX + t * STATE_COUNT_MAX + states,
-            mask=valid_state,
-            other=0.0,
-        )
-        grad_row = grad_input + t * N * C + batch * C
-        # labels are int64 in memory; compare them in int32 so the compiler never emits the
-        # int8 vector conversion that ld.lld rejects on gcu400
-        # (relocation R_DTU_ADDR16_*_ICALL against tops_cvt_v1_si8_to_v1_si8__8).
-        labels_i32 = labels
-        for class_start in range(0, C, BLOCK_C):
-            classes = (class_start + tl.arange(0, BLOCK_C)).to(tl.int32)
-            class_mask = classes < C
-            hit = (labels_i32[None, :] == classes[:, None]) & valid_state[None, :]
-            acc = tl.sum(tl.where(hit, post[None, :], 0.0), axis=1)
-            acc += tl.load(grad_row + classes, mask=class_mask, other=0.0)
-            tl.store(grad_row + classes, acc, mask=class_mask)
+            post = tl.load(
+                scratch_post
+                + batch * T * STATE_COUNT_MAX
+                + t * STATE_COUNT_MAX
+                + states,
+                mask=valid_state,
+                other=0.0,
+            )
+            grad_row = grad_input + t * N * C + batch * C
+            # labels are int64 in memory; compare them in int32 so the compiler never emits
+            # the int8 vector conversion that ld.lld rejects on gcu400
+            # (relocation R_DTU_ADDR16_*_ICALL against tops_cvt_v1_si8_to_v1_si8__8).
+            labels_i32 = labels
+            for class_start in range(0, C, BLOCK_C):
+                classes = (class_start + tl.arange(0, BLOCK_C)).to(tl.int32)
+                class_mask = classes < C
+                hit = (labels_i32[None, :] == classes[:, None]) & valid_state[None, :]
+                acc = tl.sum(tl.where(hit, post[None, :], 0.0), axis=1)
+                acc += tl.load(grad_row + classes, mask=class_mask, other=0.0)
+                tl.store(grad_row + classes, acc, mask=class_mask)
 
 
 def _reduction_enum(reduction):
@@ -1094,8 +1117,9 @@ class CtcLossFunction(torch.autograd.Function):
         grad_log_probs = torch.empty_like(work_log_probs)
         total = work_log_probs.numel()
         block = 256
+        init_grid = min(triton.cdiv(total, block), _NUM_SIPS * 2)
         with torch_device_fn.device(work_log_probs.device):
-            _ctc_loss_init_grad_kernel[(triton.cdiv(total, block),)](
+            _ctc_loss_init_grad_kernel[(init_grid,)](
                 work_log_probs,
                 work_input_lengths,
                 work_target_lengths,
@@ -1109,8 +1133,9 @@ class CtcLossFunction(torch.autograd.Function):
                 ctx.reduction,
                 ctx.zero_infinity,
                 block,
+                init_grid,
                 num_warps=2,
-            )
+                )
 
             scratch_beta = torch.empty(
                 (ctx.batch_size, 2, ctx.state_count_max),
@@ -1162,8 +1187,11 @@ class CtcLossFunction(torch.autograd.Function):
             )
 
             if write_post:
-                # One program per (t, n) row folds the posterior into grad_input without atomics.
-                _ctc_loss_grad_reduce_kernel[(time_steps * ctx.batch_size,)](
+                # A persistent fixed-size grid folds the posterior into grad_input without
+                # atomics; rows are strided over by each CTA.
+                reduce_rows = time_steps * ctx.batch_size
+                reduce_grid = min(reduce_rows, _NUM_SIPS * 2)
+                _ctc_loss_grad_reduce_kernel[(reduce_grid,)](
                     grad_log_probs,
                     scratch_post,
                     work_targets,
@@ -1179,6 +1207,7 @@ class CtcLossFunction(torch.autograd.Function):
                     ctx.target_1d,
                     min(_POST_REDUCE_BLOCK_C, triton.next_power_of_2(classes)),
                     block_s,
+                    reduce_grid,
                     num_warps=4,
                 )
 
