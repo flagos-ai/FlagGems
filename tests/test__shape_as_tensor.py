@@ -435,3 +435,41 @@ def test__shape_as_tensor_master_disjoint_from_native_neighbors():
     assert nnz == 5
     assert flag_gems._shape_as_tensor(sparse).tolist() == [2, 3]
     assert flag_gems._shape_as_tensor(t).tolist() == [3, 4]
+
+
+@pytest.mark.underscore_shape_as_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame has no CUDA/SparseCUDA/SparseCsrCUDA",
+)
+def test__shape_as_tensor_master_dispatch_sentinel():
+    # Registration-path check: the op is registered on CUDA, SparseCUDA and
+    # SparseCsrCUDA (measured on this build: the plain CUDA key intercepts
+    # strided inputs, and the sparse keys become reachable once the CUDA key
+    # is registered too - see the report for the dispatcher-alias mechanics).
+    # A sentinel on each key proves every layout routes into the registered
+    # implementation instead of falling through to the native kernel.
+    hits = []
+
+    def sentinel(self):
+        hits.append(str(self.layout))
+        return flag_gems._shape_as_tensor(self)
+
+    lib = torch.library.Library("aten", "IMPL")
+    backend = torch._C._dispatch_key_for_device(torch.device(flag_gems.device).type)
+    for key in (backend, f"Sparse{backend}", f"SparseCsr{backend}"):
+        lib.impl("_shape_as_tensor", sentinel, key)
+
+    dev = flag_gems.device
+    t = torch.randn(2, 3, device=dev)
+    coo = _make_coo(2, 3, (2, 3), seed=13).to(dev)
+    row = torch.tensor([0, 2, 4], dtype=torch.int64, device=dev)
+    col = torch.tensor([0, 1, 0, 1], dtype=torch.int64, device=dev)
+    csr = torch.sparse_csr_tensor(row, col, torch.randn(4, device=dev), (2, 3))
+
+    assert torch.ops.aten._shape_as_tensor(t).tolist() == [2, 3]
+    assert torch.ops.aten._shape_as_tensor(coo).tolist() == [2, 3]
+    assert torch.ops.aten._shape_as_tensor(csr).tolist() == [2, 3]
+
+    assert set(hits) == {"torch.strided", "torch.sparse_coo", "torch.sparse_csr"}
+    assert len(hits) == 3
