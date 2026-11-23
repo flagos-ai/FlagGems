@@ -2445,6 +2445,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: batch_norm_no_update_backward
+  description: |
+    Backward computation of `_batch_norm_no_update`. The op has no independent
+    backward schema: the engine derives its gradients from
+    `native_batch_norm_backward` with train=False and empty saved statistics,
+    so the running estimates are the normalisation statistics.
+  for:
+  - _batch_norm_no_update
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: batch_norm_stats
   description: Computes per-channel mean and inverse standard deviation for batch
     normalization.
