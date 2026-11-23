@@ -19,15 +19,17 @@ import flag_gems
 
 from . import base, consts
 from .test_scatter_reduce import (
-    LegacyScatterReduceTiming,
     scatter_reduce_input_fn_factory,
     scatter_reduce_more_shapes,
 )
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="CANN scatter_reduce falls back to CPU, so NPU events are unavailable",
+)
 
-class ScatterReduceInplaceBenchmark(
-    LegacyScatterReduceTiming, base.GenericBenchmark2DOnly
-):
+
+class ScatterReduceInplaceBenchmark(base.GenericBenchmark2DOnly):
     def set_more_shapes(self):
         generic_shapes = super().set_more_shapes()
         scatter_shapes = scatter_reduce_more_shapes(generic_shapes)
@@ -35,19 +37,14 @@ class ScatterReduceInplaceBenchmark(
 
 
 @pytest.mark.scatter_reduce_
-@pytest.mark.skip_native(
-    vendors="ascend",
-    reason="Native aten::scatter_.reduce has no valid NPU kernel timing",
-)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_scatter_reduce_legacy_inplace():
+def test_scatter_reduce_two_inplace():
     bench = ScatterReduceInplaceBenchmark(
         op_name="scatter_reduce_",
-        torch_op=torch.ops.aten.scatter_.reduce,
-        gems_op=flag_gems.scatter_,
-        input_fn=scatter_reduce_input_fn_factory(is_inplace=True, legacy=True),
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_input_fn_factory(is_inplace=True),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )

@@ -18,11 +18,7 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -32,96 +28,6 @@ from flag_gems.utils.shape_utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@triton.jit
-def _scatter_segment_sum(left_key, left, right_key, right):
-    return right_key, tl.where(left_key == right_key, left + right, right)
-
-
-@triton.jit
-def _scatter_segment_product(left_key, left, right_key, right):
-    return right_key, tl.where(left_key == right_key, left * right, right)
-
-
-@libentry()
-@triton.jit
-def _scatter_sorted_row_kernel(
-    inp,
-    index,
-    src,
-    out,
-    ROWS,
-    WIDTH: tl.constexpr,
-    BLOCK: tl.constexpr,
-    PRODUCT: tl.constexpr,
-    INPLACE: tl.constexpr,
-):
-    row = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
-    lane = tl.arange(0, BLOCK)
-    base = row.to(tl.int64) * WIDTH
-    valid = (row < ROWS) & (lane < WIDTH)
-    # Encode source order as the low bits to keep it within each group.
-    target = tl.load(index + base + lane, mask=valid, other=WIDTH).to(tl.int32)
-    packed = tl.sort(target * BLOCK + lane, descending=False)
-    target = packed // BLOCK
-    source_col = packed % BLOCK
-    active = (row < ROWS) & (target < WIDTH)
-    source = tl.load(src + base + source_col, mask=active, other=0).to(tl.float32)
-    following = tl.gather(target, tl.minimum(lane + 1, BLOCK - 1), 0)
-    last = active & ((lane == BLOCK - 1) | (target != following))
-    value = tl.load(inp + base + target, mask=last, other=0).to(tl.float32)
-    if PRODUCT:
-        _, reduced = tl.associative_scan((target, source), 0, _scatter_segment_product)
-        value *= reduced
-    else:
-        _, reduced = tl.associative_scan((target, source), 0, _scatter_segment_sum)
-        value += reduced
-
-    if not INPLACE:
-        original = tl.load(inp + base + lane, mask=valid, other=0)
-        tl.store(out + base + lane, original, mask=valid)
-        tl.debug_barrier()
-    tl.store(out + base + target, value, mask=last)
-
-
-def _scatter_sorted_rows(inp, index, src, reduce, *, inplace):
-    out = inp if inplace else torch.empty_like(inp)
-    rows, width = inp.shape
-    grid_x = min(rows, 65535)
-    with runtime.torch_device_fn.device(inp.device):
-        _scatter_sorted_row_kernel[(grid_x, triton.cdiv(rows, grid_x))](
-            inp,
-            index,
-            src,
-            out,
-            rows,
-            width,
-            triton.next_power_of_2(width),
-            reduce == "multiply",
-            inplace,
-            num_warps=4,
-        )
-    return out
-
-
-def _use_nvidia_sorted_rows(inp, dim, index, src, reduce, *, inplace):
-    return (
-        runtime.device.vendor_name == "nvidia"
-        and reduce in ("add", "multiply")
-        and inp.ndim == 2
-        and dim in (-1, 1)
-        and inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
-        and src.dtype == inp.dtype
-        and index.dtype == torch.int64
-        and inp.shape == src.shape == index.shape
-        and inp.is_contiguous()
-        and src.is_contiguous()
-        and index.is_contiguous()
-        and inp.numel() > 0
-        and 64 < inp.shape[1] <= 256
-        and (not inplace or not torch._C._overlaps(inp, src))
-    )
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -269,7 +175,7 @@ def generate_scatter_kernel(
             code.writeline("if IS_ADD: ")
             with code.indent():
                 code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src.to(out.dtype.element_ty), mask=mask, sem='relaxed')"
+                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
                 )
             code.writeline("elif IS_MUL: ")
             with code.indent():
@@ -473,8 +379,7 @@ def _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace):
     See Issue #7828.
     """
     work = inp.to(torch.float32)
-    if runtime.device.vendor_name != "nvidia":
-        src = src.to(torch.float32)
+    src = src.to(torch.float32)
     _scatter_launch(work, dim, index, src, reduce, work)
     if inplace:
         inp.copy_(work)
@@ -484,8 +389,6 @@ def _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace):
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
-    if _use_nvidia_sorted_rows(inp, dim, index, src, reduce, inplace=False):
-        return _scatter_sorted_rows(inp, index, src, reduce, inplace=False)
     if reduce is not None and inp.dtype == torch.bfloat16:
         return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=False)
 
@@ -501,9 +404,6 @@ def scatter_(inp, dim, index, src, reduce=None):
     assert (
         has_internal_overlapping(inp) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
-
-    if _use_nvidia_sorted_rows(inp, dim, index, src, reduce, inplace=True):
-        return _scatter_sorted_rows(inp, index, src, reduce, inplace=True)
 
     if reduce is not None and inp.dtype == torch.bfloat16:
         return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=True)
