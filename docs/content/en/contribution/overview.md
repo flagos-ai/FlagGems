@@ -71,7 +71,15 @@ These conversion rules ensure a one-to-one correspondence between FlagGems opera
 
 ## 4. Operator metadata management {#operator-metadata-management}
 
-Starting from v4.2, the FlagGems project introduced an operator inventory which can be found as the `conf/operators.yaml` file. Each operator has a unique ID denoted as the `id` field. The fields are described as follows:
+Starting from v4.2, the FlagGems project introduced an operator inventory. `conf/operators.yaml` records actively maintained operators, while `conf/deprecated_operators.yaml` preserves metadata for deprecated operators, including descriptions of the corresponding operators under `src/flag_gems/deprecated`. For these fused operators, use the implementations in [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm). New vLLM-specific operators and optimizations should also be contributed to that repository.
+
+Both inventories use the same `ops` list structure and field definitions. Operator IDs must be unique across both files, and entries in each file must be sorted by `id.casefold()`. CI metadata checks and label lookups read both inventories. By default, `tools/run_tests.py` selects operators only from `conf/operators.yaml`; deprecated operators can still be selected explicitly with `--ops`. Run the following command to validate required fields, duplicate IDs, and ordering in both inventories:
+
+```shell
+python tools/ci_checks/check_operators_yaml.py --all
+```
+
+Each operator has a unique ID denoted as the `id` field. The fields are described as follows:
 
 | Field       | Type            | Purpose                                                                 | Constraints                                                           |
 | ----------- | --------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -114,15 +122,15 @@ Example yaml file entry:
 
 ## 5. Operator deliverables {#operator-deliverables}
 
-Before developing a new operator, check the `for` field in `conf/operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
+Before developing a new operator, check the `for` field in both `conf/operators.yaml` and `conf/deprecated_operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
 
 > [!IMPORTANT]
 > **Notice on vLLM Operator Contributions**:
-> The vLLM-specific fused operators formerly residing in `src/flag_gems/fused/` have migrated to the dedicated [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm) repository.
+> The vLLM-specific fused operators formerly residing in `src/flag_gems/deprecated/` have migrated to the dedicated [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm) repository.
 > If your work involves optimizing or adding vLLM-specialized kernels (e.g., PagedAttention, FlashMLA, FusedMoE in vLLM), **please submit your PRs and code directly to [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm)**. The FlagGems core repository is dedicated to universal PyTorch ATen operators and standard neural network building blocks.
 
 - Fill in operator metadata in `conf/operators.yaml`;
-- Add the Triton operator implementation in `src/flag_gems/ops`, `src/flag_gems/fused`, or `src/flag_gems/experimental_ops`;
+- Add the Triton operator implementation in `src/flag_gems/ops`, `src/flag_gems/deprecated`, or `src/flag_gems/experimental_ops`;
 - Export the API in the corresponding `__init__.py` file;
 - Register the ATen operator in `_FULL_CONFIG` in `src/flag_gems/__init__.py`; if there are backend-specific implementations, place them under `src/flag_gems/runtime/backend`;
 - Add unit tests in the `tests` directory;
@@ -130,7 +138,7 @@ Before developing a new operator, check the `for` field in `conf/operators.yaml`
 
 > [!IMPORTANT]
 > **Generic Baseline Implementations and Compatibility Requirement**:
-> All operator implementations located under `src/flag_gems/ops`, `src/flag_gems/fused`, and `src/flag_gems/experimental_ops` are considered **generic baseline operator implementations ("公版算子实现")**.
+> All operator implementations located under `src/flag_gems/ops`, `src/flag_gems/deprecated`, and `src/flag_gems/experimental_ops` are considered **generic baseline operator implementations ("公版算子实现")**.
 > To guarantee maximum portability and neutrality across all AI hardware platforms, **generic baseline implementations must be able to run with the official upstream Triton compiler on the NVIDIA Ampere architecture (e.g. A100)**.
 > Generic kernels must not introduce vendor-proprietary compiler directives, non-standard language extensions, or chip-specific inline assembly. Hardware-specific optimizations targeting particular architectures (e.g. Ascend, Hygon, MetaX, Moore Threads) must be implemented under `src/flag_gems/runtime/backend/_<vendor>/` as backend overrides instead of altering the generic codebase.
 

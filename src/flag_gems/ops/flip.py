@@ -29,8 +29,25 @@ def copy_func(x):
     return x
 
 
+class FlipFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, dims):
+        ctx.dims = dims
+        return _flip_impl(A, dims)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _flip_impl(grad_output, ctx.dims), None
+
+
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
     logger.debug("GEMS FLIP")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return FlipFunction.apply(A, tuple(dims))
+    return _flip_impl(A, dims)
+
+
+def _flip_impl(A: torch.Tensor, dims) -> torch.Tensor:
     strides = list(A.stride())
     flip_dims_b = [False for _ in A.stride()]
     for dim in dims:

@@ -27,7 +27,9 @@ MEDIAN_OUT_SHAPES = [(1,), (7, 5), (3, 17), (2, 3, 5), (4, 8, 16, 8)]
 
 @pytest.mark.median_out
 @pytest.mark.parametrize("shape", MEDIAN_OUT_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES
+)
 def test_median_out(shape, dtype):
     if dtype in utils.ALL_INT_DTYPES:
         # Narrow range on purpose: integer inputs collide often, which is where

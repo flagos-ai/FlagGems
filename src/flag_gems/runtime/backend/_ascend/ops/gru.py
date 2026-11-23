@@ -1,4 +1,6 @@
+import contextlib
 import logging
+import os
 
 import torch
 import triton
@@ -33,6 +35,23 @@ _IGEMM_MM_MIN_MACS = 5e8
 _TRANSPOSE_BLOCK = 32
 
 _PACK_BLOCK = 256
+
+
+# The 910B compiler reads TRITON_ALL_BLOCKS_PARALLEL at compile time and the
+# launcher reads it again at load time; keep the two in sync. The per-kernel
+# option also puts the regime in the cache key, so a blockified artifact can
+# never be picked up by a plain launch (or vice versa).
+@contextlib.contextmanager
+def _blockified():
+    previous = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TRITON_ALL_BLOCKS_PARALLEL", None)
+        else:
+            os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = previous
 
 
 @libentry()
@@ -211,7 +230,7 @@ def _transpose_weight(weight: torch.Tensor, rows: int, cols: int) -> torch.Tenso
         triton.cdiv(rows, _TRANSPOSE_BLOCK),
         triton.cdiv(cols, _TRANSPOSE_BLOCK),
     )
-    with torch_device_fn.device(weight.device):
+    with torch_device_fn.device(weight.device), _blockified():
         _transpose_weight_kernel[grid](
             weight,
             transposed,
@@ -219,6 +238,7 @@ def _transpose_weight(weight: torch.Tensor, rows: int, cols: int) -> torch.Tenso
             cols,
             BLOCK_R=_TRANSPOSE_BLOCK,
             BLOCK_C=_TRANSPOSE_BLOCK,
+            enable_auto_blockify=True,
         )
     _transposed_weight_cache[key] = (weight, transposed)
     return transposed
@@ -1041,7 +1061,7 @@ def _direction_prep(
 
     macs = seq_len * batch_size * input_size * 3 * hidden_size
     use_mm = macs >= _IGEMM_MM_MIN_MACS
-    with torch_device_fn.device(layer_input.device):
+    with torch_device_fn.device(layer_input.device), _blockified():
         if use_mm:
             m = seq_len * batch_size
             x_aug = torch.empty(
@@ -1072,6 +1092,7 @@ def _direction_prep(
                     ),
                     HAS_BIAS=has_biases,
                     BLOCK=_PACK_BLOCK,
+                    enable_auto_blockify=True,
                 )
                 # Strong refs keep the sources alive so no freed tensor can alias a key.
                 _w_aug_cache[w_aug_key] = (w_ih, b_ih, b_hh, w_aug)
@@ -1090,6 +1111,7 @@ def _direction_prep(
                     layer_input.stride(2),
                 ),
                 BLOCK=_PACK_BLOCK,
+                enable_auto_blockify=True,
             )
             # The out must be the 2D view: Ascend mm_out derives M/N from out.shape
             # and miscomputes for a 3D out tensor.
@@ -1125,6 +1147,7 @@ def _direction_prep(
                 COMPUTE_DTYPE=compute_dtype,
                 num_warps=_IGEMM_NUM_WARPS,
                 num_stages=_IGEMM_NUM_STAGES,
+                enable_auto_blockify=True,
             )
 
     return {
@@ -1204,7 +1227,7 @@ def _run_direction(
         final_h.stride(1),
         final_h.stride(2),
     )
-    with torch_device_fn.device(layer_input.device):
+    with torch_device_fn.device(layer_input.device), _blockified():
         timeloop_args = (
             input_gates,
             hx,
@@ -1228,7 +1251,10 @@ def _run_direction(
         if hsplit is not None:
             hs_block_b, hs_grid = hsplit
             _gru_timeloop_hsplit_kernel[hs_grid](
-                *timeloop_args, BLOCK_B=hs_block_b, **timeloop_kwargs
+                *timeloop_args,
+                BLOCK_B=hs_block_b,
+                enable_auto_blockify=True,
+                **timeloop_kwargs,
             )
         else:
             # batch_size is only read by this kernel: the h-split variant requires
@@ -1238,6 +1264,7 @@ def _run_direction(
                 batch_size,
                 BLOCK_B=block_b,
                 DIVISIBLE=divisible,
+                enable_auto_blockify=True,
                 **timeloop_kwargs,
             )
 
@@ -1413,13 +1440,14 @@ def gru_data(
     # kernel: torch.cumsum/sub dispatch crashes on the packed path under use_gems().
     offsets = torch.empty((num_steps,), dtype=torch.int32, device=data.device)
     bs32 = torch.empty((num_steps,), dtype=torch.int32, device=data.device)
-    with torch_device_fn.device(data.device):
+    with torch_device_fn.device(data.device), _blockified():
         _batch_offsets_kernel[(1,)](
             batch_sizes,
             offsets,
             bs32,
             num_steps,
             BLOCK=_ceil_power_of_2(num_steps),
+            enable_auto_blockify=True,
         )
 
     # Gather the packed input into a zero-padded tensor so the batched recurrence can
@@ -1427,7 +1455,7 @@ def gru_data(
     x_padded = torch.empty(
         (num_steps, batch, input_size), dtype=data.dtype, device=data.device
     )
-    with torch_device_fn.device(data.device):
+    with torch_device_fn.device(data.device), _blockified():
         _unpack_padded_kernel[(num_steps * batch,)](
             data,
             x_padded,
@@ -1440,6 +1468,7 @@ def gru_data(
             x_padded.stride(1),
             x_padded.stride(2),
             BLOCK_F=_PACK_BLOCK,
+            enable_auto_blockify=True,
         )
 
     # ATen's packed reverse flips the whole buffer, so on a wider one it consumes rows the
@@ -1453,7 +1482,7 @@ def gru_data(
             reverse_input = torch.empty(
                 (num_steps, batch, input_size), dtype=data.dtype, device=data.device
             )
-            with torch_device_fn.device(data.device):
+            with torch_device_fn.device(data.device), _blockified():
                 _gru_unpack_padded_shifted_kernel[(num_steps * batch,)](
                     data,
                     reverse_input,
@@ -1467,6 +1496,7 @@ def gru_data(
                     reverse_input.stride(1),
                     reverse_input.stride(2),
                     BLOCK_F=_PACK_BLOCK,
+                    enable_auto_blockify=True,
                 )
         layer_inputs = {(0, 1): reverse_input}
 
@@ -1500,7 +1530,7 @@ def gru_data(
     out_packed = torch.empty(
         (num_packed_rows, hidden_total), dtype=data.dtype, device=data.device
     )
-    with torch_device_fn.device(data.device):
+    with torch_device_fn.device(data.device), _blockified():
         _pack_output_kernel[(num_steps * batch,)](
             out_padded,
             out_packed,
@@ -1513,6 +1543,7 @@ def gru_data(
             out_padded.stride(2),
             out_packed.stride(0),
             BLOCK_F=_PACK_BLOCK,
+            enable_auto_blockify=True,
         )
 
     return out_packed, final_h

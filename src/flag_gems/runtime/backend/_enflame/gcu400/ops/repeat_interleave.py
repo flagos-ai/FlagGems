@@ -144,23 +144,29 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     return output
 
 
+@libentry()
 @triton.jit
 def repeat_interleave_tensor_kernel(
     repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
 ):
+    # Fixed-grid friendly: stride over repeat indices so the launch never
+    # exceeds the 65535 grid.x limit for large repeat vectors (grid used to
+    # be (size,), which overflows at size=65536).
     pid = tl.program_id(0)
-    mask = pid < size
-    cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
-    repeats = tl.load(repeats_ptr + pid, mask, other=0)
-    out_offset = cumsum - repeats
+    num_pids = tl.num_programs(0)
+    for rid in tl.range(pid, size, num_pids):
+        cumsum = tl.load(cumsum_ptr + rid)
+        repeats = tl.load(repeats_ptr + rid)
+        # Local base (do NOT advance out_ptr in-place: the stride loop would
+        # accumulate the offset across iterations).
+        out_base = out_ptr + cumsum - repeats
 
-    tl.device_assert(repeats >= 0, "repeats can not be negative")
+        tl.device_assert(repeats >= 0, "repeats can not be negative")
 
-    out_ptr += out_offset
-    for start_k in range(0, repeats, BLOCK_SIZE):
-        offsets_k = start_k + tl.arange(0, BLOCK_SIZE)
-        mask_k = offsets_k < repeats
-        tl.store(out_ptr + offsets_k, pid, mask=mask_k)
+        for start_k in range(0, repeats, BLOCK_SIZE):
+            offsets_k = start_k + tl.arange(0, BLOCK_SIZE)
+            mask_k = offsets_k < repeats
+            tl.store(out_base + offsets_k, rid, mask=mask_k)
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
@@ -171,7 +177,7 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     assert result_size >= 0, "repeats can not be negative"
     out = torch.empty((result_size,), dtype=repeats.dtype, device=repeats.device)
     size = repeats.size(0)
-    grid = (size,)
+    grid = (min(size, NUM_SIPS * 4),)
     BLOCK_SIZE = 32
     repeat_interleave_tensor_kernel[grid](
         repeats,

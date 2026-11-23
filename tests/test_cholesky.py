@@ -20,12 +20,15 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky(shape, dtype):
     # Create a positive-definite matrix: A = B @ B^T + I
     n = shape[-1]
@@ -46,7 +49,9 @@ def test_cholesky(shape, dtype):
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_upper(shape, dtype):
     # Test with upper=True
     n = shape[-1]
@@ -67,7 +72,9 @@ def test_cholesky_upper(shape, dtype):
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_batch(shape, dtype):
     # Create positive-definite matrices for batched input: A = B @ B^T + I
     n = shape[-1]
@@ -87,7 +94,9 @@ def test_cholesky_batch(shape, dtype):
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (32, 32)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_non_contiguous(shape, dtype):
     # Transposed views are the most common way to build a symmetric matrix and
     # must not produce NaNs (the old kernel assumed contiguous strides).
@@ -129,7 +138,9 @@ def test_cholesky_non_contiguous_batch(shape, dtype):
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_batched_4d(shape, dtype):
     shape = (2, 3) + shape
     n = shape[-1]
@@ -156,7 +167,9 @@ def _spd(n, dtype=torch.float32):
 
 
 @pytest.mark.cholesky
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_not_positive_definite_raises(dtype):
     # A non-positive pivot must surface as LinAlgError, not silent NaNs.
     inp = -_spd(4, dtype)
@@ -184,7 +197,9 @@ def test_cholesky_non_square_raises():
 
 
 @pytest.mark.cholesky
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_large_n_fallback(dtype):
     # N > 64 is out of scope for the blocked kernel; the operator delegates to
     # the native ``aten::cholesky`` captured at import time and must return the
