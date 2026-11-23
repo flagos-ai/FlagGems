@@ -65,7 +65,13 @@ def generate_gather_kernel(
         args += [f"inp_stride{i}, " for i in range(rank)]
         args += [f"index_stride{i}, " for i in range(rank)]
         args += [f"out_stride{i}, " for i in range(rank)]
-        args += ["dim, ", "dim_stride, ", "inp_dim_size, ", "N, ", "BLOCK_SIZE_N: tl.constexpr, "]
+        args += [
+            "dim, ",
+            "dim_stride, ",
+            "inp_dim_size, ",
+            "N, ",
+            "BLOCK_SIZE_N: tl.constexpr, ",
+        ]
         code.writelines(args)
     code.writeline("):")
 
@@ -107,7 +113,9 @@ def generate_gather_wrapper(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    code.writeline(f"def {wrapper_name}(inp, dim, index, out, dim_stride, inp_dim_size, N):")
+    code.writeline(
+        f"def {wrapper_name}(inp, dim, index, out, dim_stride, inp_dim_size, N):"
+    )
     with code.indent():
         code.writeline("inp_shape = inp.shape")
         code.writeline("inp_stride = inp.stride()")

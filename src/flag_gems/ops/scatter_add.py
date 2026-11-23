@@ -54,7 +54,9 @@ def _heur_loop_2d(args):
 
 @libentry()
 @triton.heuristics({"BLOCK": _heur_block_2d, "LOOP": _heur_loop_2d})
-@triton.jit(do_not_specialize=["N", "idx_ncols", "src_stride0", "out_ncols", "out_dim_size"])
+@triton.jit(
+    do_not_specialize=["N", "idx_ncols", "src_stride0", "out_ncols", "out_dim_size"]
+)
 def scatter_add_2d_kernel(
     src_ptr,
     index_ptr,
@@ -264,7 +266,9 @@ def generate_scatter_kernel(
                 "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
             )
             code.writeline("# Suppress out-of-bound indices to prevent OOB writes.")
-            code.writeline("mask = mask & (cur_index >= 0) & (cur_index < inp_size_dim)")
+            code.writeline(
+                "mask = mask & (cur_index >= 0) & (cur_index < inp_size_dim)"
+            )
             code.writeline("dim_offsets = cur_index * stride_dim")
             code.writeline("inp_offsets += dim_offsets")
             code.newline()
