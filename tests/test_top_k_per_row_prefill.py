@@ -32,6 +32,7 @@ import torch
 
 import flag_gems
 from flag_gems import top_k_per_row_prefill
+from flag_gems.deprecated.top_k_per_row_prefill import _use_radix_final_for_prefill
 
 from . import conftest as cfg
 
@@ -120,11 +121,9 @@ def check_topk_values_match(logits, indices_test, indices_ref, row_starts, top_k
 
 @pytest.mark.top_k_per_row_prefill
 def test_top_k_per_row_prefill_radix_final_config_prefers_large_vocab():
-    topk_prefill = import_module(flag_gems.top_k_per_row_prefill.__module__)
-
-    assert topk_prefill._use_radix_final_for_prefill(129280)
-    assert not topk_prefill._use_radix_final_for_prefill(8193)
-    assert not topk_prefill._use_radix_final_for_prefill(4095)
+    assert _use_radix_final_for_prefill(129280)
+    assert not _use_radix_final_for_prefill(8193)
+    assert not _use_radix_final_for_prefill(4095)
 
 
 @pytest.mark.top_k_per_row_prefill

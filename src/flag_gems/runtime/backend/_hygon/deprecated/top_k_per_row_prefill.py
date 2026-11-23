@@ -26,6 +26,8 @@ import torch
 import triton
 import triton.language as tl
 
+HAS_TLE = False
+
 
 def _next_pow2(x: int) -> int:
     p = 1
@@ -154,7 +156,9 @@ def _compact_kernel(
 
 
 @triton.jit
-def _sort_cand_kernel(CAND, OUT, K_OUT, stride_cm, stride_om, CAND_PAD: tl.constexpr):
+def _sort_cand_kernel(
+    CAND, CAND_CTR, OUT, K_OUT, stride_cm, stride_om, CAND_PAD: tl.constexpr
+):
     pid = tl.program_id(0).to(tl.int64)
     offs = tl.arange(0, CAND_PAD).to(tl.int64)
     pack_i64 = tl.load(CAND + pid * stride_cm + offs)
@@ -163,7 +167,8 @@ def _sort_cand_kernel(CAND, OUT, K_OUT, stride_cm, stride_om, CAND_PAD: tl.const
 
     mask_low = tl.full([CAND_PAD], 0xFFFFFFFF, tl.uint64)
     low = (sorted_u & mask_low).to(tl.uint32)
-    idx_i32 = low.to(tl.int32, bitcast=True)
+    num_candidates = tl.load(CAND_CTR + pid)
+    idx_i32 = tl.where(offs < num_candidates, low.to(tl.int32, bitcast=True), -1)
     out_mask = offs < K_OUT
     tl.store(OUT + pid * stride_om + offs, idx_i32, mask=out_mask)
 
@@ -184,7 +189,8 @@ def top_k_per_row_prefill(
         row_starts: [num_rows] int32 — start of valid range per row (inclusive).
         row_ends: [num_rows] int32 — end of valid range per row (exclusive).
         indices: [num_rows, top_k] int32 — output buffer, filled with 0-based
-                 indices relative to row_starts[i]. Caller pre-allocates this.
+                 indices relative to row_starts[i], padded with -1 as needed.
+                 Caller pre-allocates this.
         num_rows: number of rows.
         stride0: logits.stride(0).
         stride1: logits.stride(1).
@@ -259,6 +265,7 @@ def top_k_per_row_prefill(
     sort_warps = 16
     _sort_cand_kernel[(M,)](
         cand,
+        cand_ctr,
         indices,
         top_k,
         cand.stride(0),
