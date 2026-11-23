@@ -50,8 +50,24 @@ def rem_st(x, y):
     return _remainder(x, y)
 
 
-def remainder(A, B):
-    logger.debug("GEMS REMAINDER")
+@pointwise_dynamic(
+    promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")],
+    num_outputs=2,
+)
+@triton.jit
+def remainder_backward_kernel(grad_output, self, other):
+    # div_rn matches aten::div's correctly rounded quotient before floor.
+    quotient = tl.floor(tl.math.div_rn(self.to(tl.float32), other.to(tl.float32)))
+    return grad_output, -grad_output * quotient
+
+
+def remainder_backward(grad_output, self, other):
+    """Return both tensor remainder gradients from one fused Triton launch."""
+    logger.debug("GEMS REMAINDER_BACKWARD")
+    return remainder_backward_kernel(grad_output, self, other)
+
+
+def _remainder_impl(A, B):
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):
@@ -61,6 +77,36 @@ def remainder(A, B):
     else:
         # Both scalar
         return torch.tensor(A % B)
+
+
+class RemainderFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, other):
+        ctx.other_is_tensor = isinstance(other, torch.Tensor)
+        if ctx.other_is_tensor:
+            ctx.save_for_backward(self, other)
+        return _remainder_impl(self, other)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.other_is_tensor:
+            return grad_output if ctx.needs_input_grad[0] else None, None
+        self, other = ctx.saved_tensors
+        if not ctx.needs_input_grad[1]:
+            return grad_output if ctx.needs_input_grad[0] else None, None
+        grad_self, grad_other = remainder_backward(grad_output, self, other)
+        return grad_self if ctx.needs_input_grad[0] else None, grad_other
+
+
+def remainder(A, B):
+    logger.debug("GEMS REMAINDER")
+    if (
+        torch.is_grad_enabled()
+        and isinstance(A, torch.Tensor)
+        and (A.requires_grad or (isinstance(B, torch.Tensor) and B.requires_grad))
+    ):
+        return RemainderFunction.apply(A, B)
+    return _remainder_impl(A, B)
 
 
 def remainder_(A, B):
