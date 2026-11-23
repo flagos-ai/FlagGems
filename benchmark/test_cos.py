@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -31,4 +33,19 @@ def test_cos_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="cos_", torch_op=torch.cos_, dtypes=consts.FLOAT_DTYPES, is_inplace=True
     )
+    bench.run()
+
+
+@pytest.mark.cos_backward
+def test_cos_backward():
+    # ``is_backward=True`` times ``torch.autograd.grad(out, xs, dout)``, so the
+    # reference (torch.cos's autograd) and the candidate (flag_gems.cos's
+    # CosFunction) each run their own backward.
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="cos",
+        torch_op=torch.cos,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.cos)
     bench.run()

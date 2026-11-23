@@ -16,12 +16,11 @@
 import warnings
 
 import torch
-from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
-from flag_gems import deprecated as _deprecated
 from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
@@ -35,6 +34,7 @@ from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
+from packaging.version import parse as _parse_version
 
 try:
     from flag_gems._version import commit_id as _commit_id
@@ -1273,7 +1273,15 @@ _FULL_CONFIG = (
     ("copysign.Tensor", copysign),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
-    ("cos", cos),
+    # Autograd fallthrough: the CosFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and torch.cos() takes the native backward.
+    (
+        "cos",
+        cos,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("cos_", cos_),
     ("cosh", cosh),
     ("cosh.out", cosh_out),
