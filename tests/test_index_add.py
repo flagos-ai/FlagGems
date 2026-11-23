@@ -679,6 +679,20 @@ def test_index_add_metax_random_contention(inplace, dtype):
     )
 
 
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX bounds validation")
+@pytest.mark.index_add_
+@pytest.mark.parametrize("invalid", [-(2**32), 2**32])
+def test_index_add_metax_rejects_wide_index_in_tail(invalid):
+    inp = torch.zeros((17, 8), dtype=torch.float16, device=flag_gems.device)
+    src = torch.ones_like(inp)
+    index = torch.arange(17, dtype=torch.int64, device=flag_gems.device)
+    index[-1] = invalid
+
+    with pytest.raises(AssertionError, match="0 <= index"):
+        _call_index_add(inp, 0, index, src, inplace=True)
+    torch.testing.assert_close(inp, torch.zeros_like(inp), rtol=0, atol=0)
+
+
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX dispatch coverage")
 @pytest.mark.index_add
 @pytest.mark.index_add_

@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # C550 sweeps favor flat below the smallest configured 32-column tile.
 # Recheck the crossover when changing the MetaX compiler/config pool.
 _CONTIGUOUS_SUFFIX_TILE_MIN = 32
+_INDEX_CHECK_BLOCK_LIMIT = 1024
 _NATIVE_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd)
 
 
@@ -145,14 +146,36 @@ def _can_use_suffix_path(inp, dim, index, src):
     )
 
 
+@libentry()
+@triton.jit
+def _check_index_bounds_kernel(index, invalid, size, upper_bound, BLOCK: tl.constexpr):
+    offsets = tl.arange(0, BLOCK)
+    mask = offsets < size
+    values = tl.load(index + offsets, mask=mask, other=0)
+    out_of_bounds = mask & ((values < 0) | (values >= upper_bound))
+    tl.store(invalid, tl.max(out_of_bounds.to(tl.int32), 0))
+
+
 def _checked_index(index, upper_bound):
     index = _resolve_kernel_tensor(index)
     # Validate each call before any output write. Tensor version counters do
     # not detect all external/.data mutations and are not a bounds contract.
-    lower, upper = torch.ops.aten.aminmax.default.redispatch(
-        _NATIVE_KEYSET, index, dim=None, keepdim=False
-    )
-    if lower.item() < 0 or upper.item() >= upper_bound:
+    size = index.numel()
+    if size <= _INDEX_CHECK_BLOCK_LIMIT:
+        # One block produces a single flag to read back for short indices.
+        invalid = torch.empty((), dtype=torch.int32, device=index.device)
+        with torch_device_fn.device(index.device):
+            _check_index_bounds_kernel[(1,)](
+                index, invalid, size, upper_bound, triton.next_power_of_2(size)
+            )
+        out_of_bounds = invalid.item() != 0
+    else:
+        # Use the parallel reduction for larger vectors.
+        lower, upper = torch.ops.aten.aminmax.default.redispatch(
+            _NATIVE_KEYSET, index, dim=None, keepdim=False
+        )
+        out_of_bounds = lower.item() < 0 or upper.item() >= upper_bound
+    if out_of_bounds:
         raise AssertionError("0 <= index < self.size(dim)")
     return index
 
