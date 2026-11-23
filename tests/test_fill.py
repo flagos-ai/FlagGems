@@ -35,8 +35,7 @@ def test_fill_tensor(value, shape, dtype):
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
     ref_value_tensor = utils.to_reference(value_tensor, False)
     ref_out_tensor = torch.fill(ref_x, ref_value_tensor)
-    with flag_gems.use_gems():
-        res_out_tensor = torch.fill(x, value_tensor)
+    res_out_tensor = flag_gems.fill_tensor(x, value_tensor)
 
     utils.gems_assert_equal(res_out_tensor, ref_out_tensor)
 
@@ -54,8 +53,7 @@ def test_fill_scalar(value, shape, dtype):
     ref_x = utils.to_reference(x, False)
 
     ref_out = torch.fill(ref_x, value)
-    with flag_gems.use_gems():
-        res_out = torch.fill(x, value)
+    res_out = flag_gems.fill_scalar(x, value)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -80,10 +78,7 @@ def test_fill_tensor_out(value, shape, dtype):
     ref_result_tensor = torch.ops.aten.fill.Tensor_out(
         ref_x, ref_value_tensor, out=ref_out_tensor
     )
-    with flag_gems.use_gems():
-        res_result_tensor = torch.ops.aten.fill.Tensor_out(
-            x, value_tensor, out=out_tensor
-        )
+    res_result_tensor = flag_gems.fill_tensor_out(x, value_tensor, out=out_tensor)
 
     utils.gems_assert_equal(res_result_tensor, ref_result_tensor)
     assert (
@@ -106,8 +101,7 @@ def test_fill_scalar_out(value, shape, dtype):
     ref_out = torch.empty_like(ref_x)
 
     ref_result = torch.ops.aten.fill.Scalar_out(ref_x, value, out=ref_out)
-    with flag_gems.use_gems():
-        res_result = torch.ops.aten.fill.Scalar_out(x, value, out=out)
+    res_result = flag_gems.fill_scalar_out(x, value, out=out)
 
     utils.gems_assert_equal(res_result, ref_result)
     assert res_result is out, "fill.Scalar_out should return the out tensor"
@@ -128,8 +122,100 @@ def test_fill_scalar_(value, shape, dtype):
     ref_x = utils.to_reference(x.clone(), False)
 
     ref_x.fill_(value)
-    with flag_gems.use_gems():
-        x.fill_(value)
+    flag_gems.fill_scalar_(x, value)
+
+
+@pytest.mark.fill_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(0,), (3, 4)])
+@pytest.mark.parametrize("tensor_value", [False, True])
+def test_fill_backward(dtype, shape, tensor_value):
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    grad = torch.ones_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_grad = utils.to_reference(grad, False)
+    if tensor_value:
+        value = torch.tensor(
+            2.0, device=flag_gems.device, dtype=dtype, requires_grad=True
+        )
+        ref_value = utils.to_reference(value.detach(), False).requires_grad_()
+        expected = torch.autograd.grad(
+            torch.fill(ref, ref_value), (ref, ref_value), ref_grad
+        )
+        result = torch.autograd.grad(
+            flag_gems.fill_tensor(actual, value), (actual, value), grad
+        )
+        utils.gems_assert_close(result[1], expected[1], dtype)
+    else:
+        expected = torch.autograd.grad(torch.fill(ref, 2.0), ref, ref_grad)
+        result = torch.autograd.grad(flag_gems.fill_scalar(actual, 2.0), actual, grad)
+    utils.gems_assert_equal(result[0], expected[0])
+
+
+@pytest.mark.fill_backward
+@pytest.mark.parametrize("value_device", ["cpu", "gpu"])
+def test_fill_tensor_value_gradient_mixed_dtype(value_device):
+    inplace = False
+    inp = torch.randn((3, 4), device=flag_gems.device, dtype=torch.float16)
+    grad = torch.ones_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_grad = utils.to_reference(grad, False)
+    value = torch.tensor(
+        2.0,
+        device="cpu" if value_device == "cpu" else flag_gems.device,
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    ref_value = utils.to_reference(value.detach(), False).requires_grad_()
+    native_input = ref.clone() if inplace else ref
+    gems_input = actual.clone() if inplace else actual
+    native_result = (
+        native_input.fill_(ref_value)
+        if inplace
+        else torch.fill(native_input, ref_value)
+    )
+    gems_result = (
+        flag_gems.fill_tensor_(gems_input, value)
+        if inplace
+        else flag_gems.fill_tensor(gems_input, value)
+    )
+    expected = torch.autograd.grad(native_result, (ref, ref_value), ref_grad)
+    result = torch.autograd.grad(gems_result, (actual, value), grad)
+    utils.gems_assert_equal(result[0], expected[0])
+    utils.gems_assert_equal(result[1], expected[1])
+
+
+@pytest.mark.fill_backward
+@pytest.mark.parametrize("value_device", ["cpu", "gpu"])
+def test_fill_tensor_double_backward(value_device):
+    inplace = False
+    x = torch.randn((3, 4), device=flag_gems.device, requires_grad=True)
+    value = torch.tensor(
+        2.0,
+        device="cpu" if value_device == "cpu" else flag_gems.device,
+        requires_grad=True,
+    )
+    dout = torch.randn_like(x, requires_grad=True)
+
+    def gradient(op, inp, scalar, upstream):
+        result = op(inp.clone(), scalar) if inplace else op(inp, scalar)
+        first = torch.autograd.grad(result, scalar, upstream, create_graph=True)[0]
+        return torch.autograd.grad(first, upstream)[0]
+
+    native = lambda inp, scalar: (
+        inp.fill_(scalar) if inplace else torch.fill(inp, scalar)
+    )
+    gems = flag_gems.fill_tensor_ if inplace else flag_gems.fill_tensor
+    expected = gradient(
+        native,
+        utils.to_reference(x.detach(), False).requires_grad_(),
+        utils.to_reference(value.detach(), False).requires_grad_(),
+        utils.to_reference(dout.detach(), False).requires_grad_(),
+    )
+    actual = gradient(gems, x, value, dout)
+    utils.gems_assert_equal(actual, expected)
 
 
 FILL_SLICE_CASES = [
@@ -159,8 +245,7 @@ def test_fill_scalar_sliced_view(shape, slc, dtype, value):
     ref_x = utils.to_reference(x, False)
 
     ref_x[slc] = value
-    with flag_gems.use_gems():
-        x[slc] = value
+    flag_gems.fill_scalar_(x[slc], value)
 
     utils.gems_assert_equal(x, ref_x)
 
@@ -185,8 +270,7 @@ def test_fill_(value, shape, dtype):
         ref_value_tensor = utils.to_reference(value_tensor)
         ref_x.fill_(ref_value_tensor)
 
-    with flag_gems.use_gems():
-        x.fill_(value_tensor)
+    flag_gems.fill_tensor_(x, value_tensor)
 
     utils.gems_assert_equal(x, ref_x)
 
@@ -206,7 +290,6 @@ def test_fill_sliced_view_tensor(shape, slc, dtype, value):
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
     ref_value_tensor = utils.to_reference(value_tensor, False)
     ref_x[slc] = ref_value_tensor
-    with flag_gems.use_gems():
-        x[slc] = value_tensor
+    flag_gems.fill_tensor_(x[slc], value_tensor)
 
     utils.gems_assert_equal(x, ref_x)

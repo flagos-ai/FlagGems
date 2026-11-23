@@ -4,37 +4,53 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64, gems_assert_close
 
 
 @pytest.mark.view_as_complex
+@pytest.mark.parametrize("shape", [(10, 2), (100, 2), (1000, 2)])
 @pytest.mark.parametrize(
-    "shape",
-    [(64, 2), (128, 64, 2), (4096, 4096, 2), (64, 512, 512, 2)],
+    "dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
 )
-# view_as_complex only supports float32 and float64 per PyTorch docs
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_view_as_complex(shape, dtype):
-    """Test view_as_complex accuracy against PyTorch implementation."""
+def test_view_as_complex_accuracy(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.view_as_complex(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.view_as_complex(inp)
-
-    # Compare via view_as_real since complex tensors need special handling
-    res_out_ref = utils.to_reference(torch.view_as_real(res_out))
-    ref_out_ref = utils.to_reference(torch.view_as_real(ref_out))
-    utils.gems_assert_close(res_out_ref, ref_out_ref, dtype)
+    res_out = flag_gems.view_as_complex(inp)
+    # Pass output dtype for complex tensors, not input dtype
+    output_dtype = res_out.dtype
+    gems_assert_close(res_out, ref_out, output_dtype)
 
 
 @pytest.mark.view_as_complex
-def test_view_as_complex_invalid_last_dim():
-    """Test that view_as_complex raises RuntimeError when last dim != 2."""
-    inp = torch.randn((64, 3), dtype=torch.float32, device=flag_gems.device)
+@pytest.mark.parametrize("shape", [(5, 10, 2), (20, 30, 2), (100, 50, 2)])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
+def test_view_as_complex_2d_accuracy(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
 
-    with pytest.raises(
-        RuntimeError, match="expects a tensor with last dimension of size 2"
-    ):
-        with flag_gems.use_gems():
-            torch.view_as_complex(inp)
+    ref_out = torch.view_as_complex(ref_inp)
+    res_out = flag_gems.view_as_complex(inp)
+    output_dtype = res_out.dtype
+    gems_assert_close(res_out, ref_out, output_dtype)
+
+
+@pytest.mark.view_as_complex
+@pytest.mark.parametrize("shape", [(4, 8, 16, 2), (10, 20, 30, 2)])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
+def test_view_as_complex_3d_accuracy(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.view_as_complex(ref_inp)
+    res_out = flag_gems.view_as_complex(inp)
+    output_dtype = res_out.dtype
+    gems_assert_close(res_out, ref_out, output_dtype)

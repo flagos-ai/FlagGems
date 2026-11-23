@@ -19,6 +19,11 @@ import flag_gems
 
 from . import base
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="quantized-weight fused_experts_impl is not executable on kunlunxin",
+)
+
 
 def is_cuda_available():
     if flag_gems.device != "cuda":
@@ -87,20 +92,37 @@ class FusedMoEINT4W4A16Benchmark(base.Benchmark):
             dtype=torch.int8,
         )
         for e in range(num_experts):
-            w1_int4[e] = torch.randint(
-                -8,
-                8,
-                (intermediate_size * 2, hidden_size),
-                device=device,
-                dtype=torch.int8,
-            )
-            w2_int4[e] = torch.randint(
-                -8,
-                8,
-                (hidden_size, intermediate_size),
-                device=device,
-                dtype=torch.int8,
-            )
+            if flag_gems.vendor_name == "cambricon":
+                # Cambricon torch.randint currently does not support int8/int16 generation.
+                w1_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (intermediate_size * 2, hidden_size),
+                    device="cpu",
+                    dtype=torch.int8,
+                ).to(device)
+                w2_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (hidden_size, intermediate_size),
+                    device="cpu",
+                    dtype=torch.int8,
+                ).to(device)
+            else:
+                w1_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (intermediate_size * 2, hidden_size),
+                    device=device,
+                    dtype=torch.int8,
+                )
+                w2_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (hidden_size, intermediate_size),
+                    device=device,
+                    dtype=torch.int8,
+                )
 
         # Per-channel scales [E, output_dim]
         w1_scale = (

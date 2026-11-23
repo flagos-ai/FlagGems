@@ -293,9 +293,15 @@ def flash_fwd_kernel_heur_block_k(args):
 
 
 @libentry()
+# Sunrise uses static launch heuristics instead of the generic attention
+# autotuner, so every launch meta-parameter must be supplied here.
 @triton.heuristics(
     values={
+        "BLOCK_M": block_m_splitkv_heuristic_spec_args,
+        "BLOCK_N": block_n_splitkv_heuristic_spec_args,
         "BLOCK_K": flash_fwd_kernel_heur_block_k,
+        "num_warps": lambda args: 8,
+        "num_stages": lambda args: 2 if args["d"] > 128 else 3,
         "PRE_LOAD_V": lambda args: False,
         "IS_EVEN_MN": lambda args: is_even_mn(
             args["seqlen_q"],
@@ -406,7 +412,10 @@ def flash_fwd_kernel(
         col_max += (m_block - num_m_blocks + 1) * BLOCK_M
         if is_local:
             col_max += window_size_right
-        col_max = min(seqlen_k, col_max)
+        # When seqlen_q is much larger than seqlen_k, early query blocks can
+        # have no visible keys. Keep the empty frame at column zero instead of
+        # letting the masking loop form negative K/V addresses.
+        col_max = max(0, min(seqlen_k, col_max))
 
     if not IS_EVEN_MN:
         # round right
@@ -480,7 +489,7 @@ def flash_fwd_kernel(
 
     if is_causal | is_local | (not IS_EVEN_MN):
         # Cut short masking cols if there's not enough cols out there
-        masking_cols = min(col_max - col_min, masking_cols)
+        masking_cols = max(0, min(col_max - col_min, masking_cols))
         for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
             col_start = col_max - col_shift - BLOCK_N
             col_start = tl.multiple_of(col_start, BLOCK_N)
@@ -714,7 +723,7 @@ def flash_fwd_kernel(
     # the effect of rowmax and outputs lse only.
     lse = tl.where(
         rowsum_ == 0 | (rowsum_ != rowsum_),
-        float("inf"),
+        0.0,
         rowmax_ * scale_softmax + tl.log(rowsum_),
     )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
@@ -764,7 +773,8 @@ def flash_fwd_splitkv_kernel_heur_block_k(args):
         "BLOCK_N": block_n_splitkv_heuristic_spec_args,
         "BLOCK_K": flash_fwd_splitkv_kernel_heur_block_k,
         "num_warps": lambda args: 8,
-        "num_stages": lambda args: 2 if args["d"] > 128 else 3,
+        # D=192 rounds BLOCK_K to 256; two stages exceed PTPU's 128 KiB limit.
+        "num_stages": lambda args: 1 if args["d"] > 128 else 3,
         "PRE_LOAD_V": lambda args: True,
         "IS_EVEN_MN": is_even_mn_spec_args,
     }

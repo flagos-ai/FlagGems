@@ -19,7 +19,10 @@ vendor_info = VendorDescriptor(
     device_name="cuda",
     device_query_cmd="hy-smi",
     triton_extra_name="hip",
+    tle_enabled=True,
 )
+
+ARCH_MAP = {"gfx936": "gfx936"}
 
 CUSTOMIZED_UNUSED_OPS = ()
 

@@ -38,8 +38,7 @@ def test_addcdiv(shape, dtype):
     v = float(np.float32(random.random()))
 
     ref_out = torch.addcdiv(ref_inp, ref_t1, ref_t2, value=v)
-    with flag_gems.use_gems():
-        res_out = torch.addcdiv(res_inp, t1, t2, value=v)
+    res_out = flag_gems.addcdiv(res_inp, t1, t2, value=v)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
 
@@ -60,7 +59,6 @@ def test_addcdiv_out(dtype):
     torch.ops.aten.addcdiv.out(ref_inp, ref_t1, ref_t2, value=value, out=ref_out)
 
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten.addcdiv.out(inp, t1, t2, value=value, out=out)
+    flag_gems.addcdiv_out(inp, t1, t2, value=value, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, True)

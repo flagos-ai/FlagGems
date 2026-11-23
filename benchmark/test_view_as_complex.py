@@ -1,26 +1,36 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
-from . import base
+from . import base, utils
 
 
-def view_as_complex_input_fn(shape, dtype, device):
-    # view_as_complex only supports float32 and float64.
-    # Last dim must be 2 (real/imag parts).
-    complex_shape = list(shape) + [2]
-    # Use torch.randn directly: generate_tensor_input excludes float64
-    # from FLOAT_DTYPES and would return None for it.
-    inp = torch.randn(complex_shape, dtype=dtype, device=device)
-    yield inp, {}
+def _input_fn(shape, dtype, device):
+    # view_as_complex requires last dimension to be 2
+    shape_with_complex = shape + (2,)
+    inp = utils.generate_tensor_input(shape_with_complex, dtype, device)
+    yield (inp,)
 
 
 @pytest.mark.view_as_complex
 def test_view_as_complex():
     bench = base.GenericBenchmark(
-        input_fn=view_as_complex_input_fn,
         op_name="view_as_complex",
+        input_fn=_input_fn,
         torch_op=torch.view_as_complex,
-        # view_as_complex only supports float32 and float64 per PyTorch docs
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()

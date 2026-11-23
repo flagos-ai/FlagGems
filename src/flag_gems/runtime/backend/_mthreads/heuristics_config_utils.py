@@ -407,6 +407,15 @@ def mean_heur_one_tile_per_cta(args):
     return args["TILE_N"] >= args["N"]
 
 
+def post_layer_norm_residual_heur_tile_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def post_layer_norm_residual_heur_tile_m(args):
+    # A full row grid outperforms packed rows for MUSA reduction kernels.
+    return 1
+
+
 HEURISTICS_CONFIGS = {
     "argmax_non_inner": {
         "TILE_K": argmax_heur_tile_k,
@@ -453,6 +462,22 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_add_heur_block_m,
         "BLOCK_N": index_add_heur_block_n,
     },
+    "layer_norm_backward_resident_dx": {
+        "MIN_ROWS": lambda _args: 32768,
+        "MAX_RESIDENT_N": lambda _args: 512,
+        "TILE_ELEMENTS": lambda _args: 512,
+        "PROGRAM_WAVES": lambda _args: 8,
+        "FULL_ROW_GRID": lambda args: args["TILE_N"] >= 256,
+    },
+    "layer_norm_weight_bias_backward": {
+        "ROWS_PER_PROGRAM": lambda _args: 256,
+        "BLOCK_COL_SIZE": lambda args: (
+            16
+            if args["N"] <= 16 or (args["IS_LOW_PRECISION"] and args["N"] <= 32)
+            else 32
+        ),
+        "MIN_ROW_GROUPS": lambda _args: 64,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
@@ -488,6 +513,10 @@ HEURISTICS_CONFIGS = {
         "TILE_N": mean_heur_tile_n_non_inner,
         "ONE_TILE_PER_CTA": mean_heur_one_tile_per_cta,
         "num_warps": softmax_heur_num_warps_non_inner,
+    },
+    "post_layer_norm_residual": {
+        "TILE_M": post_layer_norm_residual_heur_tile_m,
+        "TILE_N": post_layer_norm_residual_heur_tile_n,
     },
     "uniform": {
         "BLOCK": uniform_heur_block,

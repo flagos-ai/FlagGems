@@ -57,13 +57,16 @@ def isin_by_comparation_impl(
     for col_off in range(0, N, BLOCK_N):
         cols = col_off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
-        block = tl.where(
-            mask,
-            tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
-            invert,
-        )
+        # Avoid tl.where on bool tensors: the GCU300 compiler lowers it to
+        # tops_select_vbool, which cannot be linked (R_DTU_ADDR16_LO_ICALL).
+        # Masked positions are the neutral element of the running reduction,
+        # so the select folds into plain boolean bitwise ops.
+        if invert:
+            block = block & (~mask | (in0 != in1))
+        else:
+            block = block | (mask & (in0 == in1))
     out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
     tl.store(out_ptr, out[:, None], row_mask)
 
@@ -165,9 +168,11 @@ def isin_by_search_impl(
     for i in range(log_n):
         mid = tl.where(while_mask, start + (end - start) // 2, 0)
         mid_val = tl.load(in1_sorted_ptr + mid, mask=while_mask)
-        out = tl.where(while_mask, out or (mid_val == in0_ravel), out)  # found
-        start = tl.where(while_mask and (mid_val < in0_ravel), mid + 1, start)
-        end = tl.where(while_mask and (mid_val > in0_ravel), mid, end)
+        # bool tl.where -> tops_select_vbool (unlinkable); a bitwise or keeps
+        # the same semantics because masked lanes keep their previous value.
+        out = out | (while_mask & (mid_val == in0_ravel))  # found
+        start = tl.where(while_mask & (mid_val < in0_ravel), mid + 1, start)
+        end = tl.where(while_mask & (mid_val > in0_ravel), mid, end)
         while_mask = start < end
 
     # store out
@@ -219,19 +224,17 @@ def isin_by_search(
         )
     else:
         in0_ravel = in0.contiguous().ravel()
-    if unique_in1:
-        in1_ravel, _, _ = _unique2(
-            in1, sorted=True, return_inverse=False, return_counts=False
-        )
-    else:
-        in1_ravel, _ = torch.sort(in1.ravel())
+    # GCU300: _unique2 runs out of registers on multi-million element inputs
+    # (local_quick_unique_flat_kernel). The binary search only needs a sorted
+    # array and tolerates duplicates, so sort instead of deduplicating.
+    in1_ravel, _ = torch.sort(in1.ravel())
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()
-    # 边界情况：如果 in1 为空，则没有元素能在空集合中找到
+    # Edge case: if in1 is empty, no element can be found in an empty set
     if N == 0:
-        # invert=False: 全部为 False（没有元素在空集合中）
-        # invert=True: 全部为 True（所有元素都不在空集合中）
+        # invert=False: all False (no element is in the empty set)
+        # invert=True: all True (every element is outside the empty set)
         return torch.full_like(in0, fill_value=invert, dtype=torch.bool)
 
     if M <= 1048576:  # 2 ** 20 = 1024 * 1024

@@ -1,4 +1,5 @@
 import gc
+from dataclasses import asdict
 
 import pytest
 import torch
@@ -121,7 +122,7 @@ class ConvertWeightBenchmark(base.Benchmark):
                 result=metrics,
             )
             print(result)
-            update_result(self.op_name, result.to_json())
+            update_result(self.op_name, asdict(result))
             emit_record_logger(result.to_json())
 
 

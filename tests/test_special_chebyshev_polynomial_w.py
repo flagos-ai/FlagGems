@@ -22,6 +22,9 @@ from . import accuracy_utils as utils
 
 # special.* Chebyshev polynomials only support float32 in PyTorch reference
 @pytest.mark.special_chebyshev_polynomial_w
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 # special.* Chebyshev polynomials: torch ref only supports float32
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -32,14 +35,16 @@ def test_special_chebyshev_polynomial_w(shape, dtype):
     n = 3
 
     ref_out = torch.special.chebyshev_polynomial_w(ref_x, n)
-    with flag_gems.use_gems():
-        res_out = torch.special.chebyshev_polynomial_w(x, n)
+    res_out = flag_gems.special_chebyshev_polynomial_w(x, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 # Test values outside [-1, 1] — recurrence is valid for all real x
 @pytest.mark.special_chebyshev_polynomial_w
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_special_chebyshev_polynomial_w_out_of_domain(dtype):
     # Test with |x| > 1 values; W_3(2.0) = 71.0 in PyTorch reference
@@ -49,13 +54,12 @@ def test_special_chebyshev_polynomial_w_out_of_domain(dtype):
     n = 3
 
     ref_out = torch.special.chebyshev_polynomial_w(ref_x, n)
-    with flag_gems.use_gems():
-        res_out = torch.special.chebyshev_polynomial_w(x, n)
+    res_out = flag_gems.special_chebyshev_polynomial_w(x, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.special_chebyshev_polynomial_w
+@pytest.mark.special_chebyshev_polynomial_w_out
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_special_chebyshev_polynomial_w_out(shape, dtype):
@@ -64,9 +68,8 @@ def test_special_chebyshev_polynomial_w_out(shape, dtype):
     n = 3
 
     ref_out = torch.special.chebyshev_polynomial_w(ref_x, n)
-    with flag_gems.use_gems():
-        out = torch.empty_like(x)
-        res_out = torch.special.chebyshev_polynomial_w(x, n, out=out)
+    out = torch.empty_like(x)
+    res_out = flag_gems.special_chebyshev_polynomial_w_out(x, n, out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
     # Verify output is the same tensor as `out`

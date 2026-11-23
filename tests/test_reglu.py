@@ -27,16 +27,33 @@ except ImportError:
     TE_OP = None
 
 
+def _reference_reglu(input_tensor: torch.Tensor, quantizer=None) -> torch.Tensor:
+    """High-precision (fp64) reference for ReGLU.
+
+    ``ReGLU(a, b)`` with ``a = input[..., :N]``, ``b = input[..., N:]`` is
+    ``relu(a) * b``. Takes the same arguments as TransformerEngine's entry point
+    so it can stand in for it when TE is not installed.
+    """
+    n = input_tensor.shape[-1] // 2
+    a = input_tensor[..., :n].to(torch.float64)
+    b = input_tensor[..., n:].to(torch.float64)
+    return torch.clamp(a, min=0.0) * b
+
+
+if TE_OP is None:
+    # TransformerEngine is not installed: bind the fp64 torch reference in
+    # place of the TE entry point so the accuracy test runs instead of skipping.
+    TE_OP = _reference_reglu
+
+
 @pytest.mark.reglu
 @pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(TE_OP is None, reason="'reglu' not found in TransformerEngine")
 def test_reglu(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = TE_OP(input_tensor, None)
     ref_out = utils.to_reference(ref_out)
-    with flag_gems.use_gems():
-        res_out = flag_gems.reglu(input_tensor)
+    res_out = flag_gems.reglu(input_tensor)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -41,10 +41,11 @@ def full_like(
     if dtype is None:
         dtype = x.dtype
     fill_value = check_dtype(fill_value, dtype, device)
-    out = torch.empty_like(x, device=device, dtype=dtype)
-    N = x.numel()
+    size = x.size()
+    out = torch.empty(size, device=device, dtype=dtype)
+    N = out.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    with torch_device_fn.device(x.device):
+    with torch_device_fn.device(device):
         if isinstance(fill_value, torch.Tensor):
             full_tensor_kernel[grid_fn](
                 out,

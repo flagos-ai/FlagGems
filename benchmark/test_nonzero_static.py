@@ -1,13 +1,38 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Generator
 
 import pytest
 import torch
 
-from flag_gems.ops.nonzero_static import nonzero_static
+import flag_gems
 
 from . import base
 
-BENCH_DTYPES = [torch.float16, torch.bfloat16]  # target report uses fp16 and bf16
+VENDOR = flag_gems.vendor_name
+
+# On ascend the general KERNEL-mode do_bench_npu is unreliable; use operator
+# (end-to-end) timing mode (same as det/lu_factor/linalg_solve_triangular).
+# nonzero_static additionally spans several kernels per call, which the
+# KERNEL-mode profiler averages per kernel instead of summing.
+
+BENCH_DTYPES = [  # The Ascend performance report is scoped to FP16 and BF16.
+    torch.float16,
+    torch.bfloat16,
+]
+
 BENCH_CASES = [
     ((1024,), 0.0, 128, -1),
     ((1024,), 0.1, 128, -1),
@@ -26,7 +51,28 @@ BENCH_CASES = [
 ]
 
 
+def _composed_nonzero_static_baseline(input, size, fill_value=-1):
+    if size < 0:
+        raise RuntimeError("nonzero_static: size must be non-negative")
+
+    out = torch.full(
+        (size, input.dim()),
+        fill_value,
+        dtype=torch.int64,
+        device=input.device,
+    )
+    if size == 0 or input.dim() == 0:
+        return out
+
+    indices = torch.nonzero(input)
+    copy_len = min(size, indices.shape[0])
+    if copy_len > 0:
+        out[:copy_len].copy_(indices[:copy_len])
+    return out
+
+
 def _make_input(shape, dtype, nnz_ratio, device):
+    torch.manual_seed(0)
     mask = torch.rand(shape, device=device) < nnz_ratio
 
     if dtype == torch.bool:
@@ -40,26 +86,11 @@ def _make_input(shape, dtype, nnz_ratio, device):
     return x
 
 
-def _baseline_nonzero_static(x, size: int, fill_value: int = -1):
-    try:
-        return torch.nonzero_static(x, size=size, fill_value=fill_value)
-    except Exception:
-        ndim = x.dim()
-        out = torch.empty((size, ndim), device=x.device, dtype=torch.long)
-
-        if size == 0 or ndim == 0:
-            return out
-
-        nz = torch.nonzero(x, as_tuple=False)
-        copy_len = min(size, nz.shape[0])
-
-        if copy_len > 0:
-            out[:copy_len].copy_(nz[:copy_len])
-
-        if copy_len < size:
-            out[copy_len:].fill_(fill_value)
-
-        return out
+def _get_baseline_nonzero_static():
+    # Nonzero_static is not supported for cuda <= 11.4
+    if flag_gems.vendor_name in ("ascend", "hygon", "iluvatar"):
+        return _composed_nonzero_static_baseline
+    return torch.nonzero_static
 
 
 def _input_fn(case, dtype, device):
@@ -79,6 +110,8 @@ class NonzeroStaticBenchmark(base.GenericBenchmark):
         self.mode = base.Config.mode
         self.set_dtypes(base.Config.user_desired_dtypes)
         self.set_metrics(base.Config.user_desired_metrics)
+        # Each case includes shape, sparsity, size, and fill_value, so generic
+        # shape-only configuration files are not compatible with this benchmark.
         self.shapes = self.DEFAULT_SHAPES
 
     def get_input_iter(self, dtype) -> Generator:
@@ -88,11 +121,41 @@ class NonzeroStaticBenchmark(base.GenericBenchmark):
 
 @pytest.mark.nonzero_static
 def test_perf_nonzero_static():
+    baseline_nonzero_static = _get_baseline_nonzero_static()
     bench = NonzeroStaticBenchmark(
         op_name="nonzero_static",
-        torch_op=_baseline_nonzero_static,
-        gems_op=nonzero_static,
+        torch_op=baseline_nonzero_static,
+        gems_op=flag_gems.nonzero_static,
         input_fn=_input_fn,
+        dtypes=BENCH_DTYPES,
+    )
+    bench.run()
+
+
+def _input_fn_out(case, dtype, device):
+    shape, nnz_ratio, size, fill_value = case
+    inp = _make_input(shape, dtype, nnz_ratio, device)
+    out = torch.empty((size, inp.dim()), dtype=torch.int64, device=device)
+    yield inp, {"size": size, "fill_value": fill_value, "out": out}
+
+
+@pytest.mark.nonzero_static_out
+def test_perf_nonzero_static_out():
+    baseline_nonzero_static = _get_baseline_nonzero_static()
+
+    def baseline_out(input, *, size, fill_value=-1, out=None):
+        # The aten baseline has no out overload; write into the caller's out.
+        result = baseline_nonzero_static(input, size=size, fill_value=fill_value)
+        if out is not None:
+            out.copy_(result)
+            return out
+        return result
+
+    bench = NonzeroStaticBenchmark(
+        op_name="nonzero_static_out",
+        torch_op=baseline_out,
+        gems_op=flag_gems.nonzero_static_out,
+        input_fn=_input_fn_out,
         dtypes=BENCH_DTYPES,
     )
     bench.run()

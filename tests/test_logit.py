@@ -31,8 +31,7 @@ def test_logit(shape, dtype):
     inp = torch.sigmoid(base).to(dtype=dtype)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.logit(ref_inp, eps=1e-6)
-    with flag_gems.use_gems():
-        res_out = torch.logit(inp, eps=1e-6)
+    res_out = flag_gems.logit(inp, eps=1e-6)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -47,8 +46,7 @@ def test_logit_(shape, dtype):
     inp = torch.sigmoid(base).to(dtype=dtype)
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = ref_inp.logit_(eps=1e-6)
-    with flag_gems.use_gems():
-        res_out = inp.logit_(eps=1e-6)
+    res_out = flag_gems.logit_(inp, eps=1e-6)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -66,8 +64,7 @@ def test_logit_out(shape, dtype):
 
     out = torch.empty_like(inp)
     original_ptr = out.data_ptr()
-    with flag_gems.use_gems():
-        res_out = torch.logit(inp, eps=1e-6, out=out)
+    res_out = flag_gems.logit_out(inp, eps=1e-6, out=out)
 
     assert res_out.data_ptr() == original_ptr
     assert out.data_ptr() == original_ptr
@@ -92,8 +89,7 @@ def test_logit_out_non_contiguous_out(dtype):
     out = out_base[:, ::2]
     assert not out.is_contiguous()
 
-    with flag_gems.use_gems():
-        res_out = torch.logit(inp, eps=1e-6, out=out)
+    res_out = flag_gems.logit_out(inp, eps=1e-6, out=out)
 
     assert res_out.data_ptr() == out.data_ptr()
     utils.gems_assert_close(out, ref_out, dtype)

@@ -12,9 +12,14 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+from ..utils.config_utils import MAX_GRID_DIM
+
 logger = logging.getLogger(__name__)
 
 UNROLL = 4
+# Expose UNROLL to the @triton.jit kernel as a constexpr global (required by
+# Triton: ordinary globals are not accessible inside JIT functions).
+UNROLL_C: tl.constexpr = tl.constexpr(UNROLL)
 
 
 @triton.heuristics(runtime.get_heuristic_config("rand"))
@@ -31,35 +36,44 @@ def randint_kernel(
     # GCU300: keep philox_seed/offset as int64 (scalar params are allowed by the
     # verifier) so the `>> 32` high-word extraction is correct. ENABLE_I64 flags
     # that 64-bit scalar values are in use.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
 
-    # Convert to uniform float in [0, 1)
-    u0 = uint_to_uniform_float(r0)
-    u1 = uint_to_uniform_float(r1)
-    u2 = uint_to_uniform_float(r2)
-    u3 = uint_to_uniform_float(r3)
+    pid_base = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    num_tiles = tl.cdiv(N, BLOCK * UNROLL_C)
+    # grid-stride-loop over the element-tile space so grid.x can be capped well
+    # below gcu300's 65535 hardware limit regardless of how large N grows.
+    for pid in range(pid_base, num_tiles, num_programs):
+        i4 = pid * BLOCK + tl.arange(0, BLOCK)
+        c0_tile = c0 + i4
+        _O = c0_tile * 0
+        r0, r1, r2, r3 = tl.philox(philox_seed, c0_tile, c1, _O, _O)
 
-    # Scale to [0, high) and convert to int32
-    high_f = high.to(tl.float32)
-    i0 = (u0 * high_f).to(tl.int32)
-    i1 = (u1 * high_f).to(tl.int32)
-    i2 = (u2 * high_f).to(tl.int32)
-    i3 = (u3 * high_f).to(tl.int32)
+        # Convert to uniform float in [0, 1)
+        u0 = uint_to_uniform_float(r0)
+        u1 = uint_to_uniform_float(r1)
+        u2 = uint_to_uniform_float(r2)
+        u3 = uint_to_uniform_float(r3)
 
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
+        # Scale to [0, high) and convert to int32
+        high_f = high.to(tl.float32)
+        i0 = (u0 * high_f).to(tl.int32)
+        i1 = (u1 * high_f).to(tl.int32)
+        i2 = (u2 * high_f).to(tl.int32)
+        i3 = (u3 * high_f).to(tl.int32)
 
-    tl.store(out_ptr + off_0, i0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_1, i1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_2, i2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_3, i3, mask=off_3 < N, eviction_policy="evict_first")
+        off_0 = pid * BLOCK * 4 + tl.arange(0, BLOCK)
+        off_1 = off_0 + BLOCK
+        off_2 = off_1 + BLOCK
+        off_3 = off_2 + BLOCK
+
+        tl.store(out_ptr + off_0, i0, mask=off_0 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_1, i1, mask=off_1 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_2, i2, mask=off_2 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_3, i3, mask=off_3 < N, eviction_policy="evict_first")
 
 
 def randint_like(
@@ -79,7 +93,9 @@ def randint_like(
         dtype = self.dtype
     out = torch.empty_like(self, device=device, dtype=dtype)
     N = self.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    # The kernel virtualizes the tile space with a grid-stride-loop, so grid.x
+    # can be capped well below gcu300's 65535 hardware limit regardless of N.
+    grid_fn = lambda meta: (min(MAX_GRID_DIM, triton.cdiv(N, meta["BLOCK"] * UNROLL)),)
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(self.device):

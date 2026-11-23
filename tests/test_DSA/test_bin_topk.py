@@ -18,11 +18,8 @@ import numpy as np
 import pytest
 import torch
 
-# Import your operator
-from flag_gems.fused.DSA.bin_topk import (
-    bucket_sort_topk,  # Replace with actual module name
-)
-from flag_gems.fused.DSA.bin_topk import HAS_TLE
+from flag_gems import bucket_sort_topk
+from flag_gems.deprecated.DSA.bin_topk import HAS_TLE
 
 
 def assert_set_similar(actual, expected, dtype, equal_nan=False):
@@ -180,9 +177,6 @@ def test_bucket_sort_topk(starts_list, ends_list):
     assert_set_similar(actual_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize("batch_size", [1, 4, 16])
 @pytest.mark.parametrize("seq_len", [256, 1024, 8192])
@@ -215,9 +209,6 @@ def test_bucket_sort_topk_forward(
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
     "config",
@@ -250,9 +241,7 @@ def test_bucket_sort_topk_edge_cases(config):
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skipif(not HAS_TLE, reason="TLE bucket_sort_topk is unavailable")
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
     "config",
@@ -288,9 +277,7 @@ def test_bucket_sort_topk_large_scale(config):
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skipif(not HAS_TLE, reason="TLE bucket_sort_topk is unavailable")
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_variable_length():
     """Test variable length sequence processing"""
@@ -319,9 +306,7 @@ def test_bucket_sort_topk_variable_length():
     assert_set_similar(your_indices, ref_indices, dtype)
 
 
-@pytest.mark.skip(
-    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
+@pytest.mark.skipif(not HAS_TLE, reason="TLE bucket_sort_topk is unavailable")
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_correctness():
     """Correctness test - using your original test logic"""

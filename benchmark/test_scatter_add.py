@@ -81,3 +81,26 @@ def test_scatter_add_inplace():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.scatter_add
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_scatter_add():
+    def scatter_input_fn(shape, dtype, device):
+        input_gen = _input_fn(shape, dtype, device)
+        inp, dim, index = next(input_gen)
+        src_shape = list(size + 16 for size in index.shape)
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+
+        yield inp, dim, index, src
+
+    bench = TensorSelectBenchmark(
+        op_name="scatter_add",
+        torch_op=torch.scatter_add,
+        input_fn=scatter_input_fn,
+        get_gbps=_get_gbps,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

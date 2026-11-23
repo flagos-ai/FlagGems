@@ -76,9 +76,12 @@ def add(A, B, *, alpha=1):
             if isinstance(B, torch.Tensor):
                 Br = torch.view_as_real(B.to(A.dtype))
             else:
-                Br = torch.view_as_real(
-                    torch.tensor(B, dtype=A.dtype, device=A.device).expand_as(A)
+                # B is a real scalar; construct its real view directly to avoid
+                # creating a complex-dtype tensor (unsupported by Triton kernels)
+                scalar_real = torch.tensor(
+                    [float(B), 0.0], dtype=Ar.dtype, device=Ar.device
                 )
+                Br = scalar_real.broadcast_to(Ar.shape)
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
             out_real = add_func(Ar, Br, alpha)
@@ -88,9 +91,12 @@ def add(A, B, *, alpha=1):
             if isinstance(A, torch.Tensor):
                 Ar = torch.view_as_real(A.to(B.dtype))
             else:
-                Ar = torch.view_as_real(
-                    torch.tensor(A, dtype=B.dtype, device=B.device).expand_as(B)
+                # A is a real scalar; construct its real view directly to avoid
+                # creating a complex-dtype tensor (unsupported by Triton kernels)
+                scalar_real = torch.tensor(
+                    [float(A), 0.0], dtype=Br.dtype, device=Br.device
                 )
+                Ar = scalar_real.broadcast_to(Br.shape)
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
             out_real = add_func(Ar, Br, alpha)

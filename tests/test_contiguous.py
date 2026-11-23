@@ -39,8 +39,7 @@ def test_accuracy_contiguous(shape, dtype):
 
     ref_inp = utils.to_reference(inp)
     ref_out = ref_inp.contiguous()
-    with flag_gems.use_gems():
-        res_out = inp.contiguous()
+    res_out = flag_gems.contiguous(inp)
 
     assert res_out.is_contiguous() is True
     assert res_out.is_contiguous() is True

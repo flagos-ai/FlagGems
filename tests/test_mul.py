@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
+from contextlib import nullcontext
 
 import numpy as np
 import pytest
 import torch
+import triton
 
 import flag_gems
 
@@ -33,8 +36,7 @@ def test_mul_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -49,8 +51,7 @@ def test_mul_tensor_scalar(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.mul(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -65,8 +66,7 @@ def test_mul_scalar_tensor(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -82,13 +82,77 @@ def test_mul_scalar_scalar(dtype):
         inp2 = random.randint(0, 100)
 
     ref_out = torch.mul(inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_mul_tensor_scalar_int(shape, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = 3
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_mul_tensor_scalar_int_float_scalar(shape, dtype):
+    # int tensor x float scalar promotes to the default float dtype
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = 0.001
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", [True, False, 2.0])
+def test_mul_tensor_scalar_bool(shape, scalar):
+    inp1 = torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(
+        flag_gems.device
+    )
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, scalar)
+    res_out = flag_gems.mul(inp1, scalar)
+
+    if isinstance(scalar, bool):
+        utils.gems_assert_equal(res_out, ref_out)
+    else:
+        # bool tensor x float scalar promotes to float32
+        utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+def test_mul_scalar_scalar_float(shape):
+    inp1 = float(np.float32(random.random()))
+    inp2 = float(np.float32(random.random()))
+
+    ref_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    # scalar x scalar falls back to torch.tensor(A * B), which yields float32
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
 
 
 @pytest.mark.mul_
@@ -101,8 +165,7 @@ def test_mul_tensor_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.mul_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.mul_(inp2)
+    res_out = flag_gems.mul_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -117,8 +180,7 @@ def test_mul_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.mul_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.mul_(inp2)
+    res_out = flag_gems.mul_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -141,8 +203,7 @@ def test_mul_broadcast_shape(shape_a, shape_b, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     assert res_out.shape == ref_out.shape, (
         f"Shape mismatch: FlagGems produced {res_out.shape}, "
@@ -173,10 +234,16 @@ def test_mul_complex_complex(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
-    utils.gems_assert_close(res_out, ref_out, complex_dtype)
+    if flag_gems.vendor_name == "cambricon" and complex_dtype == torch.complex32:
+        from .accuracy_utils import to_cpu
+
+        res_out = to_cpu(res_out, ref_out)
+        ref_out = ref_out.to(complex_dtype)
+        torch.testing.assert_close(res_out, ref_out, atol=5e-3, rtol=2e-3)
+    else:
+        utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
 @pytest.mark.mul
@@ -214,8 +281,7 @@ def test_mul_complex_float_tensor(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if flag_gems.vendor_name == "mthreads":
         res_out = res_out.to("cpu")
@@ -250,8 +316,7 @@ def test_mul_complex_int_tensor(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if flag_gems.vendor_name == "mthreads":
         res_out = res_out.to("cpu")
@@ -281,7 +346,253 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     ref_inp2 = inp2
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
+
+
+# Ascend coreDim and large-tensor regressions.
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="This test is specific to Ascend NPU coreDim limit",
+)
+@pytest.mark.parametrize(
+    "n_elements,description",
+    [
+        # Small tensor - baseline test
+        (10240, "Small tensor (baseline)"),
+        # Just below threshold: 65535 * 1024 - 1 = 67,107,839
+        (67107839, "Just below coreDim threshold"),
+        # Just above threshold: 65536 * 1024 = 67,108,864
+        (67108864, "Just above coreDim threshold"),
+        # From actual training error logs
+        (141050 * 1024, "From device 0-3 error log (144,435,200)"),
+        (169351 * 1024, "From device 8-11 error log (173,415,424)"),
+        (310400 * 1024, "From device 4-7 error log (317,849,600)"),
+        # Very large tensor - stress test
+        # Note: This creates a ~4GB tensor (1G * 4 bytes), ensure device has enough memory
+        pytest.param(
+            1024 * 1024 * 1024,
+            "Very large tensor (1G elements, 4GB)",
+        ),
+    ],
+)
+@pytest.mark.parametrize("scalar", [2.5, -1.5, 0.5])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_mul_large_tensor_scalar(n_elements, description, scalar, dtype):
+    """Test mul operation with large tensors that trigger coreDim > 65535."""
+    if n_elements == 1024 * 1024 * 1024:
+        npu = getattr(torch, "npu", None)
+        if npu is None or not npu.is_available():
+            pytest.skip("Requires an Ascend NPU with at least 8GB device memory")
+        if npu.get_device_properties(0).total_memory < 8 * 1024**3:
+            pytest.skip("Requires at least 8GB device memory")
+
+    # Create large tensor
+    inp = torch.randn(n_elements, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    # Compute reference result
+    ref_out = torch.mul(ref_inp, scalar)
+
+    # Compute FlagGems result
+    # This should not raise "coreDim can't be greater than UINT16_MAX" error
+    res_out = flag_gems.mul(inp, scalar)
+
+    # Verify correctness
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="This test is specific to Ascend NPU coreDim limit",
+)
+@pytest.mark.parametrize(
+    "n_elements",
+    [
+        67108864,  # 65536 * 1024
+        141050 * 1024,
+        169351 * 1024,
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_mul_large_tensor_scalar_dtypes(n_elements, dtype):
+    """Test mul operation with large tensors across different dtypes."""
+    if dtype == torch.bfloat16 and not flag_gems.runtime.device.support_bf16:
+        pytest.skip("bfloat16 not supported on this device")
+
+    inp = torch.randn(n_elements, dtype=dtype, device=flag_gems.device)
+    scalar = 2.5
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mul(ref_inp, scalar)
+    res_out = flag_gems.mul(inp, scalar)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul_
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="This test is specific to Ascend NPU coreDim limit",
+)
+@pytest.mark.parametrize(
+    "n_elements",
+    [
+        67108864,  # 65536 * 1024
+        173415424,  # 169351 * 1024
+    ],
+)
+@pytest.mark.parametrize("scalar", [2.0, -3.5])
+def test_mul_large_tensor_scalar_inplace(n_elements, scalar):
+    """Test inplace mul operation with large tensors."""
+    inp = torch.randn(n_elements, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True)
+
+    ref_out = ref_inp.mul_(scalar)
+    res_out = flag_gems.mul_(inp, scalar)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend complex launch grid"
+)
+@pytest.mark.parametrize("runtime_meta", [False, True])
+@pytest.mark.parametrize("n_elements", [2051, 65535 * 1024 + 1])
+def test_mul_complex_grid_meta_review(monkeypatch, runtime_meta, n_elements):
+    mul_ops = importlib.import_module(flag_gems.mul.__module__)
+    assert "_ascend" in mul_ops.__name__
+    monkeypatch.setattr(
+        mul_ops, "_needs_runtime_meta_for_constexpr_tuple", lambda: runtime_meta
+    )
+    monkeypatch.setattr(mul_ops.torch_device_fn, "device", lambda device: nullcontext())
+    launches = []
+
+    class CaptureGrid:
+        def __getitem__(self, grid):
+            assert callable(grid)
+            for block in (256, 512, 1024):
+                expected = min(triton.cdiv(n_elements, block), 65535)
+                assert grid({"BLOCK_SIZE": block}) == (expected,)
+
+            def launch(*args, **kwargs):
+                launches.append(True)
+
+            return launch
+
+    kernel_name = (
+        "mul_complex_generic_nd_runtime_meta_kernel"
+        if runtime_meta
+        else "mul_complex_generic_nd_kernel"
+    )
+    monkeypatch.setattr(mul_ops, kernel_name, CaptureGrid())
+    # Meta tensors test the real launcher above the cap without allocating GBs.
+    output = torch.empty(n_elements, device="meta", dtype=torch.complex64)
+    part = torch.empty(n_elements, device="meta")
+    result = mul_ops._launch_complex_generic(
+        part,
+        part,
+        part,
+        part,
+        output,
+        (n_elements,),
+        [(1,)] * 4,
+        (2,),
+        (2,),
+        torch.complex64,
+    )
+    assert result is output
+    assert launches == [True]
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend complex launch grid"
+)
+@pytest.mark.parametrize("block_size", [256, 512])
+@pytest.mark.parametrize("runtime_meta", [False, True])
+@pytest.mark.parametrize("n_elements", [2051, 262147])
+def test_mul_complex_grid_stride_review(
+    monkeypatch, block_size, runtime_meta, n_elements
+):
+    mul_ops = importlib.import_module(flag_gems.mul.__module__)
+    monkeypatch.setattr(
+        mul_ops, "_needs_runtime_meta_for_constexpr_tuple", lambda: runtime_meta
+    )
+    kernel_name = (
+        "mul_complex_generic_nd_runtime_meta_kernel"
+        if runtime_meta
+        else "mul_complex_generic_nd_kernel"
+    )
+    kernel = getattr(mul_ops, kernel_name)
+    while not isinstance(kernel, triton.runtime.JITFunction):
+        kernel = kernel.fn
+    launches = []
+
+    class FixedTileKernel:
+        def __getitem__(self, grid):
+            def launch(*args, **kwargs):
+                resolved = grid({"BLOCK_SIZE": block_size})
+                assert resolved == (min(triton.cdiv(n_elements, block_size), 65535),)
+                # Exercise multiple grid strides and the masked last tile with
+                # both implementations, without requiring huge allocations.
+                launches.append(resolved)
+                return kernel[(3,)](*args, **kwargs, BLOCK_SIZE=block_size)
+
+            return launch
+
+    monkeypatch.setattr(mul_ops, kernel_name, FixedTileKernel())
+    generator = torch.Generator().manual_seed(20261117)
+    a_cpu = torch.randn((n_elements,), dtype=torch.complex64, generator=generator)
+    b_cpu = torch.tensor([1.5 - 0.5j], dtype=torch.complex64)
+    expected = a_cpu * b_cpu
+    result = flag_gems.mul(a_cpu.to(flag_gems.device), b_cpu.to(flag_gems.device))
+    torch.npu.synchronize()
+    assert launches
+    torch.testing.assert_close(result.cpu(), expected, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or triton.__version__ < "3.5",
+    reason="Hopper tiled broadcast kernel requires triton >= 3.5",
+)
+@pytest.mark.parametrize("n_cols", [7, 96])
+def test_mul_hopper_broadcast_survives_monkeypatched_next_power_of_2(
+    monkeypatch, n_cols
+):
+    """The tiled broadcast kernel must not depend on a mutable triton global.
+
+    Some downstream packages replace ``triton.next_power_of_2`` with an
+    int-only implementation. The kernel evaluates next_power_of_2 on a
+    ``tl.constexpr``, so a helper that only accepts ``int`` makes compilation
+    fail. Here we install an int-only version (the one sglang uses) and assert
+    the broadcast path still compiles and computes the right result.
+    """
+    hopper_mul = importlib.import_module(
+        "flag_gems.runtime.backend._nvidia.hopper.ops.mul"
+    )
+
+    def _int_only_next_power_of_2(n):
+        return 1 << (n - 1).bit_length() if n > 0 else 1
+
+    monkeypatch.setattr(triton, "next_power_of_2", _int_only_next_power_of_2)
+
+    rows = 262144
+    inp1 = torch.randn((rows, 1), dtype=torch.float32, device=flag_gems.device)
+    inp2 = torch.randn((1, n_cols), dtype=torch.float32, device=flag_gems.device)
+    ref_out = utils.to_reference(inp1, True) * utils.to_reference(inp2, True)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    assert res_out.shape == ref_out.shape, (
+        f"Shape mismatch: FlagGems produced {res_out.shape}, "
+        f"expected {ref_out.shape}"
+    )
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    # Guard against the fix silently losing the helper (e.g. helper removed but
+    # call sites reverted): the module must own its constexpr-safe version.
+    assert hasattr(hopper_mul, "_next_power_of_2")

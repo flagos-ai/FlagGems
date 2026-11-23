@@ -12,21 +12,63 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+MUL_SHAPES = [
+    ((64, 64), (64, 64)),
+    ((2048, 2048), (2048, 2048)),
+    ((4096, 4096), (4096, 4096)),
+    ((64, 512, 512), (64, 512, 512)),
+    ((1024, 1024, 1024), (1024, 1024, 1024)),
+    ((128, 1), (128, 2048)),
+    ((8192, 1), (1, 18)),
+    ((18,), ()),
+    ((512, 2048), ()),
+]
+
+
+class MulBenchmark(base.BinaryPointwiseBenchmark):
+    DEFAULT_SHAPE_DESC = "shape"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = MUL_SHAPES
+
+    def get_input_iter(self, dtype):
+        for index, (lhs_shape, rhs_shape) in enumerate(self.shapes):
+            lhs = base.generate_tensor_input(lhs_shape, dtype, self.device)
+            rhs = (
+                base.generate_tensor_input(rhs_shape, dtype, self.device)
+                if rhs_shape
+                else 0.5
+            )
+            yield lhs, rhs
+            if index == 0:
+                # A single shared-output case covers the common fallback kernel.
+                rhs = torch.ones_like(lhs)
+                yield lhs, rhs, {"out": lhs}
+
+    def get_tflops(self, op, *args, **kwargs):
+        rhs_shape = args[1].shape if isinstance(args[1], torch.Tensor) else ()
+        return math.prod(torch.broadcast_shapes(args[0].shape, rhs_shape))
 
 
 # TODO(0x45f): Fix OOM when dtypes includes COMPLEX_DTYPES is included (Issue #2693).
 @pytest.mark.mul
 def test_mul():
-    bench = base.BinaryPointwiseBenchmark(
+    bench = MulBenchmark(
         op_name="mul",
         torch_op=torch.mul,
         dtypes=consts.FLOAT_DTYPES,
         # dtypes=attrs.FLOAT_DTYPES + attrs.COMPLEX_DTYPES,
     )
+    bench.set_gems(flag_gems.mul)
     bench.run()
 
 

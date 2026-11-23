@@ -23,14 +23,14 @@ weight: 20
 # Packaging
 
 Creating a source or binary distribution is similar to
-[building and installing from source](/FlagGems/getting-started/installation/#install-from-source).
-It involves invoking a build-frontend (such as `pip` or `build`) and pass the command
-to the build-backend (`setuptools` for the main `flag-gems` package;
+[building and installing from source](../getting-started/install.md#install-from-source).
+It involves invoking a build frontend (such as `pip` or `build`) and passing the command
+to the build backend (`setuptools` for the main `flag-gems` package;
 `scikit-build-core` for the `cpp/` C++ extension package).
 
 ## 1. Using the `build` build frontend
 
-To build a wheel with the `build` package (recommended).
+To build a wheel with the `build` package (recommended):
 
 ```shell
 pip install -U build
@@ -40,16 +40,13 @@ python -m build --no-isolation --no-deps .
 This will first create a source distribution (sdist) and then build a binary distribution (wheel)
 from the source distribution.
 
-If you want to disable the default behavior (source-dir -> sdist -> wheel), You can
+If you want to customize the build artifacts, you can:
 
-- pass `--sdist` to build a source distribution from the source(source-dir -> sdist), or
+- pass `--sdist` to build only a source distribution (`dist/*.tar.gz`), or
+- pass `--wheel` to build only a binary wheel (`dist/*.whl`), or
+- pass both `--sdist` and `--wheel` to build both.
 
-- pass `--wheel` to build a binary distribution from the source(source-dir -> wheel), or
-
-- pass both `--sdist` and `--wheel` to build both the source and binary distributions
-  from the source (source-dir -> sdist, and source-dir -> wheel).
-
-The result is placed in the `.dist/` directory.
+The build artifacts are placed in the `dist/` directory.
 
 ## 2. Using the `pip` build frontend
 
@@ -60,13 +57,12 @@ pip wheel --no-build-isolation --no-deps -w dist .
 ```
 
 The environment variables used to configure `setuptools` work in the same way
-as described in the [installation guide](/FlagGems/getting-started/installation/).
+as described in the [installation guide](../getting-started/install.md).
 
 After the binary distribution (wheel) is built, you can use `pip` to install it.
 
 ```shell
-cd FlagGems
-python -m build --no-isolation --wheel .
+pip install dist/flag_gems-*.whl
 ```
 
 ## 3. Building C++ extension wheels
@@ -94,5 +90,5 @@ This produces a platform-specific wheel (e.g.
 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`) in `cpp/dist/`.
 
 The environment variables used to configure `scikit-build-core` (see the
-[installation guide](/FlagGems/getting-started/installation/#scikit-build-core-options))
+[installation guide](../getting-started/install.md#scikit-build-core-options))
 apply when building from `cpp/`.

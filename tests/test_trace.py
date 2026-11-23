@@ -69,8 +69,7 @@ def test_trace(shape, dtype):
     else:
         ref_out = torch.trace(ref_inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.trace(inp)
+        res_out = flag_gems.trace(inp)
 
     if dtype in FLOAT_DTYPES:
         utils.gems_assert_close(res_out, ref_out, dtype)

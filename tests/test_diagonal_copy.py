@@ -57,8 +57,7 @@ def test_diagonal_copy(shape, dtype, offset, dims):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, offset, dim1, dim2)
+    res_out = flag_gems.diagonal_copy(inp, offset, dim1, dim2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -76,14 +75,44 @@ def test_diagonal_copy_int(shape, dtype, offset, dims):
     if dim1 == dim2:
         pytest.skip("dim1 and dim2 must be different")
 
-    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.int16:
+        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, offset, dim1, dim2)
+    res_out = flag_gems.diagonal_copy(inp, offset, dim1, dim2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.diagonal_copy
+@pytest.mark.parametrize("shape", DIAGONAL_COPY_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES + utils.FP8_DTYPES)
+@pytest.mark.parametrize("offset", [0, 1, -1])
+def test_diagonal_copy_low_precision(shape, dtype, offset):
+    if dtype in utils.FP8_DTYPES:
+        # A pure bit copy, so every value must round-trip exactly.
+        inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(dtype)
+    else:
+        # Stay inside each dtype's range (uint8 rejects negatives).
+        lo, hi = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+        inp = torch.randint(max(lo, -100), min(hi, 100) + 1, shape, dtype=dtype).to(
+            flag_gems.device
+        )
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.diagonal_copy(ref_inp, offset, 0, 1)
+    res_out = flag_gems.diagonal_copy(inp, offset, 0, 1)
+
+    assert res_out.dtype == ref_out.dtype
+    if dtype in utils.FP8_DTYPES:
+        utils.gems_assert_close(res_out, ref_out, dtype)
+    else:
+        utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.diagonal_copy
@@ -95,8 +124,7 @@ def test_diagonal_copy_empty():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, 0, 1, 2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, 0, 1, 2)
+    res_out = flag_gems.diagonal_copy(inp, 0, 1, 2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -110,7 +138,6 @@ def test_diagonal_copy_single_element():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, 0, 1, 2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, 0, 1, 2)
+    res_out = flag_gems.diagonal_copy(inp, 0, 1, 2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

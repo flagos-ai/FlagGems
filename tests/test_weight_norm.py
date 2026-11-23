@@ -24,6 +24,7 @@ from . import conftest as cfg
 WEIGHT_NORM_SHAPES = [(1, 2), (4096, 256), (4, 256, 3)]
 
 if cfg.QUICK_MODE:
+    # Quick mode intentionally limits the fused reduction to float32.
     FLOAT_DTYPES = [torch.float32]
     DIM_LIST = [-1]
 else:

@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 # DTE hardware register bitwidth limit: each tile dimension must fit in 24 bits.
 DTE_DIM_MAX = (1 << 24) - 1
+# Program cap of the reduction kernel, tuned for GCU400's SIP count.
+MEAN_GRID_CAP = 24
+# libtuner 2D tile area range, controlling compile config count and register pressure.
+MEAN_TILE_MIN = 2048
+MEAN_TILE_MAX = 128 * 1024
 
 
 @libentry()
@@ -38,7 +43,7 @@ def mean_kernel_1(inp, mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexp
         offset = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         inp_ptrs = inp + offset
         mask = offset < M
-        inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
+        inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
         sum_val = tl.sum(inp_val, axis=0)
         mid_ptr = mid + tile_id
         tl.store(mid_ptr, sum_val)
@@ -55,12 +60,37 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     tl.store(out, sum_val)
 
 
+def _mean_dtype(inp, dtype):
+    """Infer/validate the output dtype with CPU aten semantics.
+
+    Mirrors the generic ``_mean_dtype``: mean over a non-floating input without
+    an explicit floating ``dtype`` (and vice versa a non-floating explicit
+    ``dtype``) must raise RuntimeError instead of computing garbage.
+    """
+    if dtype is None:
+        dtype = inp.dtype
+        if not (dtype.is_floating_point or dtype.is_complex):
+            raise RuntimeError(
+                "mean(): could not infer output dtype. Input dtype must be either "
+                f"a floating point or complex dtype. Got: {dtype}"
+            )
+    elif not (dtype.is_floating_point or dtype.is_complex):
+        raise RuntimeError(
+            "mean(): could not infer output dtype. Optional dtype must be either "
+            f"a floating point or complex dtype. Got: {dtype}"
+        )
+    return dtype
+
+
 def mean(inp, *, dtype=None):
+    logger.debug("GEMS_ENFLAME_GCU400 MEAN")
     if not inp.is_contiguous():
         inp = inp.contiguous()
     M = inp.numel()
-    if dtype is None:
-        dtype = inp.dtype
+    dtype = _mean_dtype(inp, dtype)
+    # Full-mean of an empty tensor is NaN in aten; short-circuit to avoid launching a 0-element kernel.
+    if M == 0:
+        return torch.full([], float("nan"), dtype=dtype, device=inp.device)
 
     block_size = 32 * 64
     if M < 24 * 16 * 1024:
@@ -74,11 +104,15 @@ def mean(inp, *, dtype=None):
     num_stages = 1
     if mid_size > 4 * 24:
         num_stages = 3
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    # Cross-block partial sums accumulate in fp32 for 16-bit inputs: an fp16
+    # partial sum overflows to inf once the running sum passes 65504
+    # (measured: 96000 fp16 values around 3.0 -> torch.mean returns inf).
+    acc_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
+    mid = torch.empty((mid_size,), dtype=acc_dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(min(triton.cdiv(M, block_size), 24), 1, 1)](
+        mean_kernel_1[(min(triton.cdiv(M, block_size), MEAN_GRID_CAP), 1, 1)](
             inp, mid, M, block_size, num_stages=num_stages, num_warps=1
         )
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid, num_warps=1)
@@ -88,9 +122,9 @@ def mean(inp, *, dtype=None):
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
     BLOCK_N = conf.kwargs["BLOCK_N"]
-    if BLOCK_M * BLOCK_N < 2048:
+    if BLOCK_M * BLOCK_N < MEAN_TILE_MIN:
         return False
-    if BLOCK_M * BLOCK_N >= 256 * 1024:
+    if BLOCK_M * BLOCK_N >= MEAN_TILE_MAX:
         return False
     return True
 
@@ -230,21 +264,21 @@ def mean_kernel_dim_mid(
 
 def _launch_kernel_dim_low(inp, out, M, N):
     """Reduce along rows (last-dim reduction): each row has N elements, M rows."""
-    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
+    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), MEAN_GRID_CAP),)
     with torch_device_fn.device(inp.device):
         mean_kernel_dim_low[grid](inp, out, M, N)
 
 
 def _launch_kernel_dim_high(inp, out, M, N):
     """Reduce along columns (first-dim reduction): M rows reduced to 1, N columns."""
-    grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
+    grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), MEAN_GRID_CAP),)
     with torch_device_fn.device(inp.device):
         mean_kernel_dim_high[grid](inp, out, M, N)
 
 
 def _launch_kernel_dim_mid(inp, out, B, M, N):
     """Reduce middle dim: B batches, M reduction length, N columns per batch."""
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, MEAN_GRID_CAP), 1)
     with torch_device_fn.device(inp.device):
         mean_kernel_dim_mid[grid](inp, out, B, M, N)
 
@@ -392,17 +426,47 @@ def _largest_divisor_le(n, limit):
     return best
 
 
+def _empty_mean_dim_output(x, dim, keepdim, dtype):
+    """Build the output of mean over dim for empty inputs.
+
+    PyTorch semantics: when the reduced axis has length 0, all output elements are NaN, and keepdim
+    decides whether the reduced axis is retained. Construct the result directly here, without launching a 0-element
+    Triton kernel,
+    and avoiding division by zero in ``numel // N`` when N is 0.
+    """
+    if dim is None:
+        reduced_dims = list(range(x.ndim))
+    elif isinstance(dim, int):
+        reduced_dims = [dim % x.ndim]
+    else:
+        reduced_dims = [d % x.ndim for d in dim]
+
+    out_shape = list(x.shape)
+    for axis in reduced_dims:
+        out_shape[axis] = 1
+    if not keepdim:
+        kept_axes = set(range(x.ndim)) - set(reduced_dims)
+        out_shape = [size for axis, size in enumerate(out_shape) if axis in kept_axes]
+
+    return torch.full(out_shape, float("nan"), dtype=dtype, device=x.device)
+
+
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_ENFLAME MEAN_DIM")
     if not x.is_contiguous():
         x = x.contiguous()
-    if dtype is None:
-        dtype = x.dtype
+    dtype = _mean_dtype(x, dtype)
+    # Empty inputs uniformly take the NaN-output short circuit, covering single-axis / multi-axis / dim=None branches.
+    if x.numel() == 0:
+        return _empty_mean_dim_output(x, dim, keepdim, dtype)
     if dim is None:
         out = mean(x, dtype=dtype)
         if not keepdim:
             out = out.reshape([1] * x.ndim)
         return out
 
+    if isinstance(dim, int):
+        dim = [dim]
     if len(dim) == 1:
         inp = x
         mean_dim_idx = dim[0] % inp.ndim
@@ -467,3 +531,48 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
             if not keepdim:
                 out = out.squeeze(dim)
             return out
+
+
+def _install_aten_kernels():
+    """Route bare aten::mean / aten::mean.dim calls on GCU onto this kernel.
+
+    torch_gcu's native ``topsatenMean`` aborts the whole process on 0-element
+    tensors (``op_aten_mean.cc``: ``mean compute err: 2`` ->
+    ``TOPSATEN_STATUS_BAD_PARAM`` -> uncaught ``std::runtime_error`` -> SIGABRT,
+    no Python exception), via both the scalar ``mean`` path and the
+    ``mean.dim -> mean_out -> fill_`` path.  The accuracy suite's reference
+    leg (bare ``torch.mean(empty_gcu_tensor)``) and the benchmark's
+    native-baseline leg therefore die before the FlagGems op is even called.
+    Registering the two overloads on the backend dispatch key here makes those
+    calls land on this kernel, which is exactly what production already sees
+    inside ``flag_gems.use_gems()``; the empty-tensor case is short-circuited
+    to the aten NaN semantics on the host without launching any kernel.
+
+    Idempotent: a later ``use_gems()``/``enable()`` cycle re-attempts the same
+    registration through the general registrar and is skipped with a warning.
+    """
+    try:
+        dispatch_key = runtime.device.dispatch_key
+        library = torch.library.Library("aten", "IMPL")
+        for op_name, kernel in (
+            ("mean", mean),
+            ("mean.dim", mean_dim),
+        ):
+            try:
+                library.impl(op_name, kernel, dispatch_key)
+            except RuntimeError as error:
+                logger.warning(
+                    "mean: aten registration %s@%s skipped: %s",
+                    op_name,
+                    dispatch_key,
+                    error,
+                )
+        return library
+    except Exception as error:
+        logger.warning("mean: aten registration unavailable: %s", error)
+        return None
+
+
+# Module-level handle keeps the Library (and its kernels) alive for the
+# process; the registration itself must never break the flag_gems import.
+_MEAN_ATEN_LIBRARY = _install_aten_kernels()

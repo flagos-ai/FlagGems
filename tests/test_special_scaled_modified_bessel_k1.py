@@ -15,8 +15,7 @@ def test_special_scaled_modified_bessel_k1(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.scaled_modified_bessel_k1(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.scaled_modified_bessel_k1(inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k1(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -30,8 +29,7 @@ def test_special_scaled_modified_bessel_k1_out(shape, dtype):
     out_ref = torch.empty_like(ref_inp)
     out = torch.empty_like(inp)
     torch.special.scaled_modified_bessel_k1(ref_inp, out=out_ref)
-    with flag_gems.use_gems():
-        torch.special.scaled_modified_bessel_k1(inp, out=out)
+    flag_gems.special_scaled_modified_bessel_k1_out(inp, out)
     utils.gems_assert_close(out, out_ref, dtype)
 
 
@@ -59,6 +57,5 @@ def test_special_scaled_modified_bessel_k1_edge_cases(dtype):
     inp = torch.tensor(edge_vals, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.scaled_modified_bessel_k1(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.scaled_modified_bessel_k1(inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k1(inp)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

@@ -30,8 +30,7 @@ def test_celu(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.nn.functional.celu(ref_inp, alpha)
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.celu(inp, alpha)
+    res_out = flag_gems.celu(inp, alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -48,7 +47,6 @@ def test_celu_(shape, dtype):
     ref_inp = utils.to_reference(inp_clone, True)
     torch.nn.functional.celu_(ref_inp, alpha)
 
-    with flag_gems.use_gems():
-        torch.nn.functional.celu_(res_inp, alpha)
+    flag_gems.celu_(res_inp, alpha)
 
     utils.gems_assert_close(res_inp, ref_inp, dtype)

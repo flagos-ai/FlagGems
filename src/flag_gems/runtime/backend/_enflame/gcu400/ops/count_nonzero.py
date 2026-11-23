@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import dim_compress
+
+logger = logging.getLogger(__name__)
 
 _NP2 = triton.next_power_of_2
 _CDIV = triton.cdiv
@@ -150,6 +154,7 @@ def _count_dim_strided_k(
 
 
 def count_nonzero(x, dim=None):
+    logger.debug("GEMS_ENFLAME COUNT_NONZERO")
     if dim is not None:
         dim = dim % x.ndim
         shape = x.shape

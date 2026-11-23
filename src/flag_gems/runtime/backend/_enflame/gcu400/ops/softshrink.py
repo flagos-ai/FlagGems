@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 BLOCK = 8192
@@ -65,6 +69,7 @@ def _launch_softshrink_kernel(x: torch.Tensor, out: torch.Tensor, lambd: float):
 
 
 def softshrink(input: torch.Tensor, lambd: float = 0.5):
+    logger.debug("GEMS_ENFLAME SOFTSHRINK")
     _check_supported_dtype(input)
     x = input.contiguous()
     out = torch.empty_like(x)
@@ -73,6 +78,7 @@ def softshrink(input: torch.Tensor, lambd: float = 0.5):
 
 
 def softshrink_out(input: torch.Tensor, lambd: float = 0.5, out: torch.Tensor = None):
+    logger.debug("GEMS_ENFLAME SOFTSHRINK_OUT")
     if out is None:
         raise ValueError("Argument 'out' must be provided for softshrink_out.")
     if input.shape != out.shape:

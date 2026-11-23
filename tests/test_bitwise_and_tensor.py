@@ -20,6 +20,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.and_tensor
 @pytest.mark.bitwise_and_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
@@ -43,8 +44,7 @@ def test_bitwise_and_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.bitwise_and(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_and(inp1, inp2)
+    res_out = flag_gems.and_tensor(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -67,7 +67,6 @@ def test_bitwise_and_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.bitwise_and_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.bitwise_and_(inp2)
+    res_out = flag_gems.__iand___tensor(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

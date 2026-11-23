@@ -71,9 +71,9 @@ def _to_triton_dtype(dtype):
 
 def _choose_block(n_elements, is_fp32):
     if n_elements <= 65536:
-        return 8192
+        return 4096
     if n_elements <= 16777216:
-        return 65536
+        return 32768
     return 65536 if is_fp32 else 131072
 
 
@@ -159,10 +159,12 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
 
 
 def logit(input, eps=None):
+    logger.debug("GEMS_ENFLAME LOGIT")
     return _logit_impl(input, eps=eps, out=None)
 
 
 def logit_out(input, eps=None, out=None):
+    logger.debug("GEMS_ENFLAME LOGIT_OUT")
     if out is None:
         raise TypeError("logit_out requires an 'out' tensor.")
     return _logit_impl(input, eps=eps, out=out)

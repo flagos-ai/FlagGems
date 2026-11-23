@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 BLOCK = 8192
@@ -35,8 +39,12 @@ def hardsigmoid_kernel(x_ptr, out_ptr, N_total, BLOCK_SIZE: tl.constexpr):
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask)
         xf = x.to(tl.float32)
-        y = xf * (1.0 / 6.0) + 0.5
+        y = tl.fma(xf, 1.0 / 6.0, 0.5)
         y = tl.minimum(tl.maximum(y, 0.0), 1.0)
+        # aten.hardsigmoid propagates NaN while tl.minimum/tl.maximum swallow it,
+        # so restore the original value based on whether the input is NaN, keeping out / non-out path semantics aligned
+        # with the reference.
+        y = tl.where(xf != xf, xf, y)
         tl.store(out_ptr + off, y.to(x.dtype), mask=mask)
 
 
@@ -45,6 +53,7 @@ def _grid(n_elements):
 
 
 def hardsigmoid(x: torch.Tensor):
+    logger.debug("GEMS_ENFLAME HARDSIGMOID")
     out = torch.empty_like(x)
     n_elements = x.numel()
     if n_elements == 0:
@@ -57,6 +66,7 @@ def hardsigmoid(x: torch.Tensor):
 
 
 def hardsigmoid_out(x: torch.Tensor, out: torch.Tensor):
+    logger.debug("GEMS_ENFLAME HARDSIGMOID_OUT")
     assert x.numel() == out.numel()
     n_elements = x.numel()
     if n_elements == 0:

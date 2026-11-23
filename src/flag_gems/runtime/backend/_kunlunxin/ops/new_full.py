@@ -1,25 +1,24 @@
 import logging
-import math
 
 import torch
+import triton
+import triton.language as tl
 
-from flag_gems.ops.full import check_dtype, full_func, full_func_scalar
-
-from .full import full
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# The tuned kunlunxin `full` kernel (hand-written grid=(12,1,1) block-DMA) is
-# fast AND correct for finite fills into the floating dtypes the benchmark
-# exercises (float16/float32/bfloat16, fill_value=3.1415926), reaching ~1.0
-# speedup. But it MISCOMPILES some corners that the accuracy suite covers:
-#   * non-finite scalars (inf/nan) into bfloat16 -> stores 4.25e37, and
-#   * bool output at large shapes -> misaligned-address kernel fault.
-# Those corners are never hit by the benchmark, so route only the proven
-# fast+correct float path through the tuned kernel and fall back to the generic
-# (correct on XPU, slower) full_func/full_func_scalar for everything else. This
-# keeps benchmark speedup ~1.0 with ZERO accuracy regression vs the generic op.
-_FAST_FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
+
+@triton.jit(do_not_specialize=["fill_value"])
+def new_full_kernel(output_ptr, n_elements, fill_value, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(output_ptr + offsets, fill_value, mask=offsets < n_elements)
+
+
+def _launch_config(n_elements):
+    grid = 12
+    block_size = triton.next_power_of_2(triton.cdiv(n_elements, grid))
+    return (grid, 1, 1), block_size
 
 
 def new_full(
@@ -39,16 +38,19 @@ def new_full(
     if dtype is None:
         dtype = self.dtype
 
-    fill_is_finite = not (
-        isinstance(fill_value, float)
-        and (math.isinf(fill_value) or math.isnan(fill_value))
-    )
-    if dtype in _FAST_FLOAT_DTYPES and fill_is_finite:
-        return full(size, fill_value, dtype=dtype, device=device)
-
-    # Correct-but-generic fallback for bool / int / float64 / non-finite fills.
-    fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty(size, device=device, dtype=dtype)
-    if isinstance(fill_value, torch.Tensor):
-        return full_func(out, fill_value, out0=out)
-    return full_func_scalar(out, fill_value, out0=out)
+    n_elements = out.numel()
+    if n_elements == 0:
+        return out
+
+    grid, block_size = _launch_config(n_elements)
+    with torch_device_fn.device(device):
+        new_full_kernel[grid](
+            out,
+            n_elements,
+            fill_value,
+            BLOCK_SIZE=block_size,
+            buffer_size_limit=2048,
+            isCloseDtypeConvert=True,
+        )
+    return out

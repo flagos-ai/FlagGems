@@ -19,20 +19,30 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# lt_ is a comparison op in ATen: floats and all int dtypes (incl. 1-byte ints).
+LT_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.INT_DTYPES
+
 
 @pytest.mark.lt_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", LT_DTYPES)
 def test_lt_(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES + utils.INT_DTYPES:
+        inp1 = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+        inp2 = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp1 = utils.to_reference(inp1.clone(), True)
     ref_inp2 = utils.to_reference(inp2, True)
     ref_out = ref_inp1.lt_(ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.lt_.Tensor(inp1, inp2)
+    res_out = flag_gems.lt_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out is inp1
@@ -40,16 +50,20 @@ def test_lt_(shape, dtype):
 
 @pytest.mark.lt_scalar_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", LT_DTYPES)
 def test_lt_scalar_(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    scalar = 0
+    if dtype in utils.BYTE_INT_DTYPES + utils.INT_DTYPES:
+        inp = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    scalar = 50
 
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = ref_inp.lt_(scalar)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.lt_.Scalar(inp, scalar)
+    res_out = flag_gems.lt_scalar_(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out is inp

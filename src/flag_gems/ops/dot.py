@@ -70,7 +70,7 @@ def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
 
 
 def dot(x, y):
-    logger.debug("Triton Dot Product")
+    logger.debug("GEMS DOT")
 
     assert x.shape == y.shape, "Input vectors must have the same shape"
     assert x.dim() == 1, "Input must be 1D tensors"

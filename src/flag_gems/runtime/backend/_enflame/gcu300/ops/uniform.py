@@ -28,6 +28,45 @@ from flag_gems.utils.shape_utils import volume
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _next_below(x, DT: tl.constexpr):
+    """Largest ``DT`` value strictly less than ``x``.
+
+    ``uniform`` samples from ``[from, to)``. The value is computed in float32
+    and then stored in the output dtype, and that last rounding can land exactly
+    on the exclusive upper bound for float16/bfloat16 (measured on GCU300:
+    17 of 96000 float16 and 133 of 96000 bfloat16 draws of [-3, 3) come out as
+    exactly 3.0). Clamping to the output-dtype predecessor of ``to`` keeps the
+    stored samples inside the half-open interval.
+
+    A zero input needs care: the bit patterns of ``+0.0`` and ``-0.0`` are the
+    bottom of the positive block and the top of the negative block, so the usual
+    "-1 for x >= 0, +1 otherwise" step walks *out* of the number line and wraps
+    around -- ``+0.0`` (0) minus one is all-ones, and ``-0.0`` plus one is
+    all-ones too, both of which are NaN. The true predecessor of either zero is
+    ``-smallest_subnormal``, so a zero input is answered directly.
+    """
+    zero = x == 0
+    if DT == tl.float32:
+        bits = x.to(tl.int32, bitcast=True)
+        step = tl.where(x >= 0, -1, 1).to(tl.int32)
+        stepped = (bits + step).to(tl.float32, bitcast=True)
+        tiny = tl.full((), 1, tl.int32).to(tl.float32, bitcast=True)
+        return tl.where(zero, -tiny, stepped).to(tl.float32)
+    elif DT == tl.float64:
+        bits = x.to(tl.int64, bitcast=True)
+        step = tl.where(x >= 0, -1, 1).to(tl.int64)
+        stepped = (bits + step).to(tl.float64, bitcast=True)
+        tiny = tl.full((), 1, tl.int64).to(tl.float64, bitcast=True)
+        return tl.where(zero, -tiny, stepped).to(tl.float64)
+    else:
+        bits = x.to(tl.int16, bitcast=True)
+        step = tl.where(x >= 0, -1, 1).to(tl.int16)
+        stepped = (bits + step).to(DT, bitcast=True)
+        tiny = tl.full((), 1, tl.int16).to(DT, bitcast=True)
+        return tl.where(zero, -tiny, stepped).to(DT)
+
+
 @triton.heuristics(runtime.get_heuristic_config("uniform"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def uniform_kernel(
@@ -51,6 +90,21 @@ def uniform_kernel(
     r1 = uint_to_uniform_float(r1) * (to - from_) + from_
     r2 = uint_to_uniform_float(r2) * (to - from_) + from_
     r3 = uint_to_uniform_float(r3) * (to - from_) + from_
+    # The scaled values are float32 but are stored in the output dtype, whose
+    # rounding can land exactly on the exclusive ``to`` bound (notably for
+    # float16/bfloat16). Clamp to the output-dtype predecessor of ``to`` so the
+    # samples stay in ``[from, to)`` after the store conversion. When the
+    # interval is too narrow to survive the dtype (``to`` rounds down to
+    # ``from``) the unclamped value is kept rather than producing ``from``.
+    OUT_DT: tl.constexpr = out_ptr.dtype.element_ty
+    to_dt = (r0 * 0.0 + to).to(OUT_DT)
+    from_dt = (r0 * 0.0 + from_).to(OUT_DT)
+    hi = _next_below(to_dt, OUT_DT)
+    hi = tl.where(to_dt > from_dt, hi, to_dt)
+    r0 = tl.minimum(r0.to(OUT_DT), hi)
+    r1 = tl.minimum(r1.to(OUT_DT), hi)
+    r2 = tl.minimum(r2.to(OUT_DT), hi)
+    r3 = tl.minimum(r3.to(OUT_DT), hi)
     off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK

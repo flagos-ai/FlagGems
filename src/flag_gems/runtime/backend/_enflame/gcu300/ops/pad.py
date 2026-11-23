@@ -294,12 +294,13 @@ def generate_pad_kernel(
         code.writeline("if_pad_true_mask = tl.full((BLOCK_SIZE, ), 1, dtype=tl.int32)")
 
         code.writeline(
-            "cond = (dst_index_0 >= valid_dim0_start and dst_index_0 < valid_dim0_end) "
+            "cond = (dst_index_0 >= valid_dim0_start) & (dst_index_0 < valid_dim0_end) "
         )
 
         for i in range(1, rank):
             code.writeline(
-                f"cond &= (dst_index_{i} >= valid_dim{i}_start and dst_index_{i} < valid_dim{i}_end)"
+                f"cond &= (dst_index_{i} >= valid_dim{i}_start) & "
+                f"(dst_index_{i} < valid_dim{i}_end)"
             )
 
         code.writeline(
@@ -360,14 +361,15 @@ def generate_pad_kernel(
         for i in range(1, rank):
             code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
 
-        code.writeline(f"load_cond = src_index_{i} < x_shape{i}")
+        code.writeline("load_cond = src_index_0 < x_shape0")
         for i in range(1, rank):
             code.writeline(f"load_cond &= src_index_{i} < x_shape{i}")
 
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
             code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=(not if_pad) and load_cond, other=value)"
+                "x_val = tl.load(in0_ptr + src_offset, "
+                "mask=((if_pad == 0) & load_cond), other=value)"
             )
         code.writeline("else: ")
         with code.indent():
@@ -462,31 +464,21 @@ def pad(self, pad, mode="constant", value=None):
     if value is None:
         value = 0.0
 
-    if mode == "reflect":
-        ndim //= 2
-        assert (
-            len(pad) == 2 * ndim
-        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+    pad_pairs = len(pad) // 2
 
-        for i in range(ndim):
+    if mode == "reflect":
+        for i in range(pad_pairs):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
-            input_l, input_r = (
-                self.shape[ndim - (2 * i + 1) - 1],
-                self.shape[ndim - (2 * i + 1)],
-            )
+            input_size = self.shape[ndim - 1 - i]
             assert (
-                pad_l < input_l and pad_r < input_r
+                pad_l < input_size and pad_r < input_size
             ), f"padding size should be less than the corresponding input dimension, \
                  but got padding size: {pad_l}, {pad_r}, input size: {self.shape}"
 
     if mode == "circular":
-        ndim //= 2
-        assert (
-            len(pad) == 2 * ndim
-        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
-        for i in range(ndim):
+        for i in range(pad_pairs):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
-            input_size = self.shape[ndim - i - 1]
+            input_size = self.shape[ndim - 1 - i]
             assert (
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
@@ -495,5 +487,5 @@ def pad(self, pad, mode="constant", value=None):
     return out
 
 
-def constant_pad_nd(self, pad, value=0):
-    return pad(self, pad, mode="constant", value=value)
+def constant_pad_nd(self, pad_list, value=0):
+    return pad(self, pad_list, mode="constant", value=value)

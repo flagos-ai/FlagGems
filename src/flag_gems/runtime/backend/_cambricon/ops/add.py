@@ -17,7 +17,7 @@ import logging
 import torch
 import triton
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.pointwise_dynamic import ComplexMode, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,16 @@ def add_func_tensor_scalar(x, y, alpha, inplace):
 @triton.jit
 def add_func_scalar_tensor(x, y, alpha, inplace):
     return x + y * alpha
+
+
+# Register complex support (elementwise)
+add_func.register_complex(mode=ComplexMode.ELEMENTWISE)
+add_func_tensor_scalar.register_complex(
+    mode=ComplexMode.ELEMENTWISE, tensorize_scalars=True, fallback_target=add_func
+)
+add_func_scalar_tensor.register_complex(
+    mode=ComplexMode.ELEMENTWISE, tensorize_scalars=True, fallback_target=add_func
+)
 
 
 def add(A, B, *, alpha=1):

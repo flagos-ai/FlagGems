@@ -46,8 +46,7 @@ def test_multinomial_with_replacement(shape, dtype, n_samples):
 
     if shape[-1] == 1:
         dist = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
-        with flag_gems.use_gems():
-            res_out = torch.multinomial(dist, n_samples, True)
+        res_out = flag_gems.multinomial(dist, n_samples, True)
         assert torch.all(res_out == 0)
     else:
         # Mask p% off of the categories and test the sampling results fall in the rest
@@ -57,8 +56,7 @@ def test_multinomial_with_replacement(shape, dtype, n_samples):
             # Make sure there's at least one non-zero probability
             dist[..., -1] = 0.5
 
-            with flag_gems.use_gems():
-                res_out = torch.multinomial(dist, n_samples, True)
+            res_out = flag_gems.multinomial(dist, n_samples, True)
 
             res_dist = torch.gather(dist, -1, res_out)
             # assert torch.all(res_dist)
@@ -74,15 +72,45 @@ def test_multinomial_with_replacement_1(shape, dtype, n_samples):
     # use the index counts as the input probabilities (scaled)
     rand_indices = torch.multinomial(torch.rand(shape), n_samples, True).to(device)
     inp_counts = torch.nn.functional.one_hot(rand_indices).sum(1)
-    with flag_gems.use_gems():
-        out_indices = torch.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
+    out_indices = flag_gems.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
     out_counts = torch.nn.functional.one_hot(out_indices).sum(1)
 
     # Do a simple Chi-square test
     assert torch.equal(inp_counts.sum(-1), out_counts.sum(-1))
 
-    _, pvalue = scipy.stats.chisquare(out_counts.tolist(), inp_counts.tolist(), axis=-1)
-    assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
+    if flag_gems.vendor_name == "cambricon":
+        # Avoid scipy.stats import failure in the Cambricon test environment.
+        valid_counts = inp_counts > 0
+        chi_square = torch.where(
+            valid_counts, (out_counts - inp_counts).float().square() / inp_counts, 0
+        ).sum(-1)
+        df = (valid_counts.sum(-1).float() - 1).cpu()
+        chi_square = chi_square.cpu()
+        pvalue = torch.special.gammaincc(df / 2, chi_square / 2)
+        assert torch.sum(pvalue < 0.05) / pvalue.numel() < 0.1
+    else:
+        _, pvalue = scipy.stats.chisquare(
+            out_counts.tolist(), inp_counts.tolist(), axis=-1
+        )
+        assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
+
+
+@pytest.mark.multinomial
+@pytest.mark.parametrize("strided", [False, True])
+def test_multinomial_does_not_mutate_input(strided):
+    # The float32 fast path clamps probabilities in place, so it must not
+    # operate on caller-owned storage.
+    prob = torch.zeros((8, 2048), dtype=torch.float32, device=flag_gems.device)
+    prob[..., 0] = 1.0
+    if strided:
+        storage = torch.empty((8, 4096), dtype=torch.float32, device=flag_gems.device)
+        storage[:, ::2].copy_(prob)
+        prob = storage[:, ::2]
+    expected = prob.clone()
+
+    flag_gems.multinomial(prob, 1, False)
+
+    utils.gems_assert_equal(prob.cpu(), expected.cpu())
 
 
 @pytest.mark.multinomial
@@ -98,8 +126,7 @@ def test_multinomial_without_replacement(pool, dtype):
         ns = [1]
 
     for n in ns:
-        with flag_gems.use_gems():
-            out = torch.multinomial(dist, n, False)
+        out = flag_gems.multinomial(dist, n, False)
 
         # Verifies uniqueness
         idx_cnt = torch.nn.functional.one_hot(out).sum(1)

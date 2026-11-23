@@ -24,22 +24,24 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES,
+    utils.ALL_FLOAT_DTYPES
+    + utils.ALL_INT_DTYPES
+    + utils.BYTE_INT_DTYPES
+    + utils.BOOL_TYPES,
 )
 def test_logical_not(shape, dtype):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    elif dtype in utils.ALL_INT_DTYPES:
-        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
+    elif dtype in utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES:
+        inp = torch.randint(-1000, 1000, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
         )
     elif dtype in utils.BOOL_TYPES:
         inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.logical_not(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.logical_not(inp)
+    res_out = flag_gems.logical_not(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -47,22 +49,25 @@ def test_logical_not(shape, dtype):
 @pytest.mark.logical_not_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+    "dtype",
+    utils.FLOAT_DTYPES
+    + utils.ALL_INT_DTYPES
+    + utils.BYTE_INT_DTYPES
+    + utils.BOOL_TYPES,
 )
 def test_logical_not_(shape, dtype):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    elif dtype in utils.ALL_INT_DTYPES:
-        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
+    elif dtype in utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES:
+        inp = torch.randint(-1000, 1000, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
         )
     elif dtype in utils.BOOL_TYPES:
         inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
     ref_inp = utils.to_reference(inp.clone())
     ref_out = ref_inp.logical_not_()
-    with flag_gems.use_gems():
-        res_out = inp.logical_not_()
+    res_out = flag_gems.logical_not_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp, ref_inp)

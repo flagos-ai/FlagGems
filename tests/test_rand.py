@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import pytest
-import torch
 
 import flag_gems
 
@@ -24,8 +23,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_rand(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.rand(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = utils.to_reference(res_out)
 

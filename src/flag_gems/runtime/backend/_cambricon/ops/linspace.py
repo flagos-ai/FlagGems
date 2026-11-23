@@ -26,8 +26,8 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.heuristics(runtime.get_heuristic_config("linspace"))
+@libentry()
 @triton.jit
 def linspace_kernel(
     out_ptr,

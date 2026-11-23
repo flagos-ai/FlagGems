@@ -100,11 +100,8 @@ def amin_kernel(
 
 def amin(inp, dim=None, keepdim=False):
     logger.debug("GEMS AMIN")
-    assert inp.dtype in (
-        torch.float32,
-        torch.float16,
-        torch.bfloat16,
-    ), "amin only supports float dtypes"
+    if isinstance(dim, int):
+        dim = [dim]
     if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -157,11 +154,6 @@ def amin(inp, dim=None, keepdim=False):
 
 def amin_(inp, dim=None, keepdim=False):
     logger.debug("GEMS AMIN_")
-    assert inp.dtype in (
-        torch.float32,
-        torch.float16,
-        torch.bfloat16,
-    ), "amin_ only supports float dtypes"
     if isinstance(dim, int):
         dim = [dim]
     if dim is None or len(dim) == 0:

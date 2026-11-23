@@ -52,7 +52,7 @@ def group_norm_kernel(
     wb_mask = wb_offset < C
 
     xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
+    xy_mask = (wb_offset[:, None] < C) & (hw_offset[None, :] < HW)
 
     Mean_ptr = Mean + pid
     Rstd_ptr = Rstd + pid
@@ -171,7 +171,7 @@ def weight_bias_backward_kernel(
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)
-    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+    xy_mask = (n_offset[:, None] < N) & (hw_offset[None, :] < HW)
     mr_mask = n_offset < N
 
     mean_ptr = Mean + group + n_offset * num_groups

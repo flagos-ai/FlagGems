@@ -47,7 +47,8 @@ def simple_unique_consecutive_flat_kernel(
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
     b = tl.load(data_ptr + i0_prev, mask=mask)
 
-    # Check if element differs from previous (first element always starts a new group)
+    # Check if element differs from previous
+    # (first element always starts a new group)
     ne_result = tl.where(i0 > 0, a != b, 1)
     cumsum = tl.cumsum(ne_result)
 
@@ -94,7 +95,8 @@ def output_counts_impl(
     next_mask = i0_next < num_tasks
     idx_next = tl.load(idx_ptr + i0_next, mask=next_mask)
 
-    # counts = next_idx - current_idx (or total - current_idx for last element)
+    # counts = next_idx - current_idx
+    # (or total - current_idx for last element)
     counts = tl.where(i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx)
 
     # store counts
@@ -135,7 +137,10 @@ def local_ne_consecutive_impl(
     num_tasks: int,
     tile_size: tl.constexpr,
 ):
-    """Compute ne_result (whether each element differs from previous) for a tile."""
+    """Compute ne_result for a tile.
+
+    Check whether each element differs from previous element.
+    """
     r = tl.arange(0, tile_size)
     i0 = global_pid * tile_size + r
     mask = i0 < num_tasks
@@ -241,7 +246,8 @@ def global_cumsum_consecutive_impl(
     # output index (0-indexed)
     out_idx = cumsum - 1
 
-    # data_out: scatter unique values (only first element of each consecutive group)
+    # data_out: scatter unique values
+    # (only first element of each consecutive group)
     tl.store(data_out_ptr + out_idx, data, mask=ne_result_i1 & mask)
 
     # inverse_indices: each input position maps to its output index
@@ -355,10 +361,10 @@ def simple_unique_consecutive_flat(
             num_warps=8,
         )
 
-    out_size = unique_size.item()
+    out_size = int(unique_size.item())
     counts = None
     if return_counts:
-        idx = idx[:out_size]
+        idx = idx.narrow(0, 0, out_size)
         counts = torch.empty_like(idx)
         with torch_device_fn.device(data.device.index):
             output_counts_kernel[grid](
@@ -371,7 +377,7 @@ def simple_unique_consecutive_flat(
                 num_warps=8,
             )
 
-    return data_out[:out_size], inverse_indices, counts
+    return data_out.narrow(0, 0, out_size), inverse_indices, counts
 
 
 def large_unique_consecutive_flat(
@@ -444,11 +450,11 @@ def large_unique_consecutive_flat(
             return_counts=return_counts,
             num_warps=num_warps,
         )
-        out_size = tile_sum[-1].item()
+        out_size = int(tile_sum[-1].item())
 
         counts = None
         if return_counts:
-            idx = idx[:out_size]
+            idx = idx.narrow(0, 0, out_size)
             counts = torch.empty_like(idx)
             output_counts_kernel[grid](
                 idx,
@@ -460,7 +466,7 @@ def large_unique_consecutive_flat(
                 num_warps=num_warps,
             )
 
-    return data_out[:out_size], inverse_indices, counts
+    return data_out.narrow(0, 0, out_size), inverse_indices, counts
 
 
 def unique_consecutive(
@@ -469,17 +475,21 @@ def unique_consecutive(
     return_counts: bool = False,
     dim: int = None,
 ):
-    """
-    Eliminates all but the first element from every consecutive group of equivalent elements.
+    """Eliminates all but the first element from every consecutive group.
+
+    Removes all but the first element from every consecutive group of
+    equivalent elements.
 
     Args:
         input: the input tensor
         return_inverse: Whether to return inverse indices
         return_counts: Whether to return counts for each unique element
-        dim: the dimension to apply unique. If None, the unique of the flattened input is returned.
+        dim: the dimension to apply unique. If None, the unique of the
+            flattened input is returned.
 
     Returns:
-        (Tensor, Tensor (optional), Tensor (optional)): output, inverse_indices, counts
+        (Tensor, Tensor (optional), Tensor (optional)): output,
+            inverse_indices, counts
     """
     logger.debug("GEMS UNIQUE_CONSECUTIVE")
 

@@ -33,8 +33,11 @@ def gems_silu_and_mul(
     x: torch.Tensor,
     y: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS CUSTOM SILU_AND_MUL FORWARD")
-    # TODO: Implement C++ wrapper for silu_and_mul
+
+    # NOTE: Dynamo cannot trace logging.Logger methods
+    # (torch._dynamo.exc.Unsupported 'logging.Logger method not supported
+    # for non-export cases'), so this entry point must not log.
+    # Debug-only removal; numerics/control flow unchanged.
     return flag_gems.silu_and_mul(x, y)
 
 
