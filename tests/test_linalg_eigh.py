@@ -31,6 +31,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # Path A: closed-form 2x2 kernel (real). fp16/bf16 are widened to fp32 on
 # device, an enhancement over native torch.linalg.eigh (which raises
@@ -273,7 +274,9 @@ def test_linalg_eigh_jacobi(shape, dtype):
     EIG_COMPLEX_SHAPES,
     ids=[f"complex_n{s[0]}" for s in EIG_COMPLEX_SHAPES],
 )
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_linalg_eigh_complex(shape, dtype):
     """Complex inputs: real embedding then the real Jacobi path."""
     inp = make_symmetric_matrix(shape, dtype, flag_gems.device)
@@ -395,7 +398,9 @@ def test_linalg_eigh_2x2_low_precision(shape, dtype):
     EIG_TRIVIAL_COMPLEX_SHAPES,
     ids=[f"trivial_complex_n{s[0]}" for s in EIG_TRIVIAL_COMPLEX_SHAPES],
 )
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_linalg_eigh_trivial_complex(shape, dtype):
     """Complex n < 2 (0x0 / 1x1): diagonal/identity on device."""
     inp = make_symmetric_matrix(shape, dtype, flag_gems.device)
@@ -416,7 +421,9 @@ def test_linalg_eigh_trivial_complex(shape, dtype):
     EIG_BATCH_COMPLEX_SHAPES,
     ids=[f"complex-batch{s[-1]}" for s in EIG_BATCH_COMPLEX_SHAPES],
 )
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_linalg_eigh_batch_complex(shape, dtype):
     """Batched complex n > 2: real embedding then the real Jacobi path."""
     inp = make_symmetric_matrix(shape, dtype, flag_gems.device)
@@ -458,7 +465,9 @@ def test_linalg_eigh_uplo_upper(shape, dtype):
     EIG_UPLO_U_COMPLEX_SHAPES,
     ids=[f"uplo_u_complex_n{s[0]}" for s in EIG_UPLO_U_COMPLEX_SHAPES],
 )
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_linalg_eigh_uplo_upper_complex(shape, dtype):
     """UPLO="U" on the complex path."""
     inp = make_symmetric_matrix(shape, dtype, flag_gems.device, symmetric_only=False)

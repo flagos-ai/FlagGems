@@ -1,0 +1,278 @@
+// Copyright 2026 FlagOS Contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/*
+ * HW MRADIX LSD radix sort for GCU400 via TLE-RAW, called once per row by a
+ * TLE-Struct launcher (sort_mradix.py).
+ *
+ * Split across the Struct/Raw boundary, mirroring topk_mradix_l1.tops:
+ *   - the row's key conversion, the row loop, the launch geometry, the buffer
+ *     ownership and the value writeback live on the TLE-Struct side, because
+ *     they are ordinary Triton work (tl.load/tl.store of one tile);
+ *   - this region keeps what needs tcle/MRADIX: the per-pass
+ *     count -> prefix -> offset -> scatter sequence on the hardware unit, plus
+ *     the 32-bit row-position writeback for a 16-bit row (see writeback_idx).
+ *
+ * What is left here is therefore dtype-agnostic: the buffers already hold
+ * monotonic uint32 sort keys (ascending order = bitwise-inverted keys, see
+ * sort_mradix.py) and uint32 row positions, and the region runs
+ * `ndigit` passes of one 5-bit digit each, LSB first.
+ *
+ * Execution geometry: one hw thread per SIP with 4 subthreads (num_warps = 4).
+ * MRADIX is a shared per-SIP unit, so only subthread 0 drives it; all four
+ * subthreads store the row positions back, and they meet at the barriers that
+ * order this region against the Triton-side stores and reads of the same VDMEM
+ * windows.
+ *
+ * Why LSD and not the MSB radix of the TopK kernel: a full sort has to place
+ * every lane, so the digits must be consumed from the least significant end to
+ * keep the sort stable. Stability is what makes the result equal to torch's
+ * `stable=True` reference: equal keys come out in their original row order.
+ *
+ * Buffer contract (all four are VDMEM windows allocated by the launcher):
+ *   v_a/v_b  BLOCK_N uint32 sort keys, ping-pong
+ *   i_a/i_b  BLOCK_N uint32 row positions, ping-pong
+ * The launcher fills (src_is_b ? v_b/i_b : v_a/i_a) with BLOCK_N lanes (the
+ * row padded to a whole number of VEC_LEN vectors: pad key 0, i.e. the last
+ * position in the descending digit walk, and pad index 0xffffffff so a real
+ * lane with key 0 still outranks it). `src_is_b` is chosen from the parity of
+ * `ndigit`, so the last pass always lands in v_a/i_a and both writebacks (the
+ * region's positions, the launcher's values) read a single fixed address:
+ *   ndigit odd  -> start in v_b, 7/... passes end in v_a
+ *   ndigit even -> start in v_a, 4/2 passes end in v_a
+ */
+
+#include <stdint.h>
+#include <tcle_general.h>
+#include <tops.h>
+#include <tops/topscc_types.h>
+
+#include <algorithm>
+#include <cstddef>
+
+typedef __vector unsigned int VUI;
+typedef __vector bool int     VMASK;
+
+constexpr int VEC_LEN = 128;
+constexpr int DSA_BITS = 5; /* one MRADIX digit per pass */
+/* Subthreads per hw thread, i.e. the launcher's num_warps. The writeback is
+   the only phase that uses more than one of them. */
+constexpr int SUBTHREADS = 4;
+
+/* One LSD radix pass over `nvec` VEC_LEN-lane vectors: count five-bit digit
+   `SHIFT` (LSB first), turn the per-bin counts into the descending output
+   base, then scatter key and index with the hardware offset unit. SHIFT is
+   the digit index in [0,6], not a bit offset: the MRADIX instruction itself
+   slices bits [5*SHIFT, 5*SHIFT+5).
+   Ported verbatim from topk_mradix_l1.tops' radix_pass. SHIFT must stay a
+   template argument: mradix_cntbase/mradix_offset reject a runtime value
+   ("shift value must be a constant integer"), which is why radix_run below
+   spells out the pass sequence per key width instead of looping.
+   `dst` must be disjoint from `src`; the caller ping-pongs the buffers. */
+template <int SHIFT>
+static __device__ __forceinline__ void radix_pass(uint32_t *dst_v,
+                                                  uint32_t *dst_i,
+                                                  uint32_t *src_v,
+                                                  uint32_t *src_i,
+                                                  int nvec) {
+  constexpr int BATCH = 8;
+  const VUI vzero = (VUI)0;
+
+  tcle::mradix_w_base(vzero);
+  int c = 0;
+  for (; c + BATCH <= nvec; c += BATCH) {
+    VUI v[BATCH];
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j)
+      v[j] = tcle::load<VUI>(src_v + (c + j) * VEC_LEN);
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j)
+      tcle::mradix_cntbase(v[j], SHIFT);
+  }
+  for (; c < nvec; ++c)
+    tcle::mradix_cntbase(tcle::load<VUI>(src_v + c * VEC_LEN), SHIFT);
+
+  /* Descending base: bin 31 (the largest digit) starts at 0, then bin 30, ...
+     so the scatter writes the largest keys first. One scalar array is enough:
+     the exclusive suffix sum overwrites the counts in place.
+     The bins are read back through an aligned stack array rather than by
+     indexing the OACC vector: a lane read lowers to v.movoa2r (one per bin),
+     which is slower than one 512B store plus 32 constant-address loads. */
+  __valigned__ uint32_t bins[VEC_LEN];
+  tcle::store(tcle::mradix_r_base<VUI>(), bins);
+  uint32_t acc = 0;
+  #pragma clang loop unroll(full)
+  for (int i = 31; i >= 0; --i) {
+    uint32_t cnt = bins[i];
+    bins[i] = acc;
+    acc += cnt;
+  }
+  tcle::mradix_w_base(
+      tcle::load<VUI>(bins, vzero, tcle::vset_mb<VMASK>(32)));
+
+  c = 0;
+  for (; c + BATCH <= nvec; c += BATCH) {
+    VUI v[BATCH], ix[BATCH], off[BATCH];
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j) {
+      v[j] = tcle::load<VUI>(src_v + (c + j) * VEC_LEN);
+      ix[j] = tcle::load<VUI>(src_i + (c + j) * VEC_LEN);
+    }
+    /* mradix_offset is stateful and advances the per-bin running position, so
+       the offsets must be taken in vector order before any scatter. */
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j)
+      off[j] = tcle::mradix_offset(v[j], SHIFT);
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j) {
+      tcle::scatter(v[j], dst_v, off[j]);
+      tcle::scatter(ix[j], dst_i, off[j]);
+    }
+  }
+  for (; c < nvec; ++c) {
+    VUI v = tcle::load<VUI>(src_v + c * VEC_LEN);
+    VUI ix = tcle::load<VUI>(src_i + c * VEC_LEN);
+    VUI off = tcle::mradix_offset(v, SHIFT);
+    tcle::scatter(v, dst_v, off);
+    tcle::scatter(ix, dst_i, off);
+  }
+}
+
+/* The pass sequences, one per key width, spelled out because of the constant
+   digit requirement above. `ndigit` only ever takes the values the launcher
+   derives from the key width (7 for a 32-bit key, 4 for 16-bit, 2 for 8-bit).
+   Buffer parity: the launcher stages into window B for an odd `ndigit` and
+   into window A for an even one, so every sequence below leaves the sorted
+   lanes in window A and the launcher has a single read-back address. */
+static __device__ __forceinline__ void radix_run(uint32_t *v_a, uint32_t *v_b,
+                                                uint32_t *i_a, uint32_t *i_b,
+                                                int nvec, int ndigit) {
+  if (ndigit >= 7) {
+    /* 32-bit key: five-bit digits 0..6, i.e. bits 0, 5, ..., 30 (digit 6 is
+       bits 30..34, of which only 30..31 exist). */
+    radix_pass<0>(v_a, i_a, v_b, i_b, nvec);
+    radix_pass<1>(v_b, i_b, v_a, i_a, nvec);
+    radix_pass<2>(v_a, i_a, v_b, i_b, nvec);
+    radix_pass<3>(v_b, i_b, v_a, i_a, nvec);
+    radix_pass<4>(v_a, i_a, v_b, i_b, nvec);
+    radix_pass<5>(v_b, i_b, v_a, i_a, nvec);
+    radix_pass<6>(v_a, i_a, v_b, i_b, nvec);
+  } else if (ndigit == 4) {
+    /* 16-bit key: digits 0..3, i.e. bits 0, 5, 10, 15 (only bit 15 of digit 3
+       is populated; the zero-extended upper half never enters a digit). */
+    radix_pass<0>(v_b, i_b, v_a, i_a, nvec);
+    radix_pass<1>(v_a, i_a, v_b, i_b, nvec);
+    radix_pass<2>(v_b, i_b, v_a, i_a, nvec);
+    radix_pass<3>(v_a, i_a, v_b, i_b, nvec);
+  } else {
+    /* 8-bit key: digits 0 and 1, i.e. bits 0..4 and 5..9 (only bits 5..7 of
+       digit 1 are populated). */
+    radix_pass<0>(v_b, i_b, v_a, i_a, nvec);
+    radix_pass<1>(v_a, i_a, v_b, i_b, nvec);
+  }
+}
+
+// ============= writeback: emit the row positions =============
+
+/* The sorted row positions leave here as 32-bit vector stores, the same volume
+   and width as the scatter that produced them. The launcher asks for them only
+   for a 16-bit row (it passes n = 0 otherwise); the values are always restored
+   and stored by the TLE-Struct side, because restoring a 16-bit row needs a
+   256-lane narrowing (cvt<__vector unsigned short> from __vector2 unsigned int
+   on GCU400) while this region runs at VEC_LEN = 128 lanes, and a 16-bit value
+   store on its own is cheap. What is NOT cheap is doing both a 16-bit value
+   store and a 32-bit store from the same Triton loop iteration (measured
+   ~3.8ms of extra time for a 4096x4096 fp16 row set, against ~0.1ms for the
+   same stores one at a time), which is why the 32-bit half moves here for
+   exactly those rows. */
+static __device__ __forceinline__ void writeback_idx(uint32_t *i_src,
+                                                     int32_t *out_i, int n,
+                                                     int sub) {
+  constexpr int BATCH = 4;
+  int nfull = n & ~(VEC_LEN - 1);
+  /* Every subthread takes every SUBTHREADS-th vector of the row, so the
+     positions leave at the full 4-subthread store rate instead of serially
+     from sub0 (the sort itself has to be serial: MRADIX is a per-SIP unit). */
+  int c = sub * VEC_LEN;
+  for (; c + BATCH * SUBTHREADS * VEC_LEN <= nfull;
+       c += BATCH * SUBTHREADS * VEC_LEN) {
+    VUI ix[BATCH];
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j)
+      ix[j] = tcle::load<VUI>(i_src + c + j * SUBTHREADS * VEC_LEN);
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < BATCH; ++j)
+      tcle::store(ix[j],
+                  reinterpret_cast<uint32_t *>(out_i) + c +
+                      j * SUBTHREADS * VEC_LEN);
+  }
+  for (; c < nfull; c += SUBTHREADS * VEC_LEN) {
+    VUI ix = tcle::load<VUI>(i_src + c);
+    tcle::store(ix, reinterpret_cast<uint32_t *>(out_i) + c);
+  }
+  /* At most VEC_LEN-1 lanes: the sort pads the row to whole vectors in VDMEM
+     but the output row is exactly `n` long. Sub0 finishes the last partial
+     vector with scalar stores; every benchmarked row is a power of two, so
+     this loop only ever runs for odd shapes. */
+  if (sub == 0)
+    for (int j = nfull; j < n; ++j)
+      out_i[j] = (int32_t)i_src[j];
+}
+
+// ============= kernel entry: one row per call (persistent on the Struct side)
+
+extern "C" __device__ __attribute__((no_mem_alias_in_vldst_tar,
+                                     loop_iterator_less_than_1024,
+                                     enable_software_pipeliner,
+                                     enable_bc_resolver))
+void sort_mradix_l1_kernel(
+    uint32_t *v_a,   // BLOCK_N sort keys, ping-pong A
+    uint32_t *v_b,   // BLOCK_N sort keys, ping-pong B
+    uint32_t *i_a,   // BLOCK_N row positions, ping-pong A
+    uint32_t *i_b,   // BLOCK_N row positions, ping-pong B
+    __attribute__((address_space(1))) int32_t *out_i,  // row positions
+    int32_t nvec,    // BLOCK_N / VEC_LEN
+    int32_t ndigit,  // 7 for a 32-bit key, 4 for 16-bit, 2 for 8-bit
+    int32_t n        // real row length (<= BLOCK_N)
+    ) {
+
+  /* tcle::set_vl MUST be set at kernel entry: without it the vector ops fall
+     back to one lane per instruction and the scatter writes one element per
+     instruction, which is orders of magnitude slower. */
+  tcle::set_vl(VEC_LEN);
+
+  int32_t sub_idx = subThreadIdx.x;
+
+  /* The launcher's stores to these windows are distributed across all 4
+     subthreads of this hw thread, so sub0 must not read them before every
+     subthread has finished storing. */
+  __syncsubthreads();
+
+  /* MRADIX is a shared per-SIP unit, so only one subthread may drive it (see
+     the geometry note in the header). */
+  if (sub_idx == 0)
+    radix_run(v_a, v_b, i_a, i_b, nvec, ndigit);
+
+  /* Publish the scatter results to the other subthreads, which join only for
+     the writeback. */
+  __syncsubthreads();
+
+  writeback_idx(i_a, out_i, n, sub_idx);
+
+  /* No trailing barrier: the launcher ends every iteration with a Triton
+     barrier of its own (tl.debug_barrier, which lowers to tops_syncsubthreads),
+     and that already orders this writeback's read of i_a against the staging
+     stores of the next row. An extra barrier here costs ~40ns per row, which
+     is 20% of a 1024x1024 16-bit row set. */
+}
