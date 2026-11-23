@@ -122,6 +122,7 @@ from .floor import floor
 from .foreach_abs_ import foreach_abs_
 from .foreach_acos_ import foreach_acos_
 from .foreach_add_scalar_list_ import foreach_add_scalar_list_
+from .foreach_addcdiv_scalar import foreach_addcdiv_scalar, foreach_addcdiv_scalar_list
 from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
 from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
 from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
@@ -501,7 +502,9 @@ __all__ = [
     "foreach_abs_",
     "foreach_acos_",
     "foreach_add_scalar_list_",
+    "foreach_addcdiv_scalar",
     "foreach_addcdiv_scalar_",
+    "foreach_addcdiv_scalar_list",
     "foreach_addcdiv_scalar_list_",
     "foreach_addcmul_scalar_",
     "foreach_atan_",
