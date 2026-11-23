@@ -290,6 +290,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .prod import prod, prod_dim
 from .randperm import randperm
 from .relu6_ import relu6_
 from .renorm import renorm
@@ -707,6 +708,8 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
+    "prod",
+    "prod_dim",
     "randperm",
     "relu6_",
     "renorm",
