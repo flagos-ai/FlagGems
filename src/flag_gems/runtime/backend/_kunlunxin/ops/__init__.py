@@ -298,7 +298,7 @@ from .assert_async import _assert_async
 from .atan import atan, atan_
 from .atan2 import atan2, atan2_, atan2_out
 from .atanh import atanh, atanh_  # noqa: F401
-from .attention import (  # noqa: F401
+from .attention import (  # noqa: F401, F811
     ScaleDotProductAttention,
     _scaled_dot_product_attention_math,
     _scaled_dot_product_cudnn_attention,
