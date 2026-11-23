@@ -1,7 +1,23 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
 import torch
+
+import flag_gems
 
 from . import base, consts
 
@@ -117,5 +133,42 @@ def test_put_out_accumulate():
         torch_op=torch.ops.aten.put.out,
         input_fn=put_out_input_fn(accumulate=True),
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class PutBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        # Span launch-bound through bandwidth-bound inputs while keeping the
+        # overwrite set small enough to benchmark the fused membership scan.
+        self.shapes = [(256,), (4096,), (65536,), (1024, 1024)]
+
+    def set_more_shapes(self):
+        return None
+
+
+def put_backward_input_fn(accumulate):
+    def inner(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        count = min(inp.numel(), 16)
+        index = torch.randint(0, inp.numel(), (count,), device=device)
+        if not accumulate:
+            index = torch.randperm(inp.numel(), device=device)[:count]
+        source = torch.randn(count, dtype=dtype, device=device)
+        yield inp, index, source, accumulate
+
+    return inner
+
+
+@pytest.mark.put_backward
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_put_backward(accumulate):
+    bench = PutBackwardBenchmark(
+        op_name="put_backward",
+        torch_op=torch.put,
+        gems_op=flag_gems.put,
+        input_fn=put_backward_input_fn(accumulate),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()

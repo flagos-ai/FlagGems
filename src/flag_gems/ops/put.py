@@ -357,12 +357,18 @@ def _put_scatter(out, index, source, accumulate):
             accumulate,
             elems_per_slot=2,
         )
-    elif accumulate and out.dtype in _NARROW_ACC_DTYPES:
-        # `tl.atomic_add` has no sub-32-bit lowering: accumulate into a contiguous
-        # int32 staging buffer holding `out`'s row-major values, then narrow back.
+    elif accumulate and out.dtype in _NARROW_ACC_DTYPES + (torch.bfloat16,):
+        # `tl.atomic_add` has no lowering for narrow integers or bfloat16 in the
+        # NVIDIA Triton used by FlagGems. Accumulate through a supported staging
+        # type, then cast back to the destination dtype.
         row_major = out if out.is_contiguous() else out.contiguous()
-        staging = row_major.to(torch.int32)
-        _launch_scatter(staging, staging, index, source.to(torch.int32), accumulate, 1)
+        staging_dtype = (
+            torch.int32 if out.dtype in _NARROW_ACC_DTYPES else torch.float32
+        )
+        staging = row_major.to(staging_dtype)
+        _launch_scatter(
+            staging, staging, index, source.to(staging_dtype), accumulate, 1
+        )
         narrowed = torch.empty_like(row_major)
         BLOCK_SIZE = 1024
         put_narrow_cast_kernel[(triton.cdiv(narrowed.numel(), BLOCK_SIZE),)](
@@ -424,6 +430,165 @@ def put_impl(out, index, source, accumulate):
     )
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N", "K"])
+def put_backward_kernel(
+    grad_ptr,
+    index_ptr,
+    grad_self_ptr,
+    grad_source_ptr,
+    N,
+    K,
+    NEED_SELF: tl.constexpr,
+    NEED_SOURCE: tl.constexpr,
+    ACCUMULATE: tl.constexpr,
+    ELEMS_PER_SLOT: tl.constexpr,
+    GRAD_SHAPE: tl.constexpr,
+    GRAD_STRIDES: tl.constexpr,
+    GRAD_CONTIGUOUS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    INDEX_BLOCK_SIZE: tl.constexpr,
+):
+    """Compute both differentiable ``put`` inputs in one fused launch."""
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if GRAD_CONTIGUOUS:
+        grad_offsets = offsets
+    else:
+        remaining = offsets
+        grad_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        for dim in tl.static_range(len(GRAD_SHAPE) - 1, -1, -1):
+            grad_offsets += (remaining % GRAD_SHAPE.value[dim]) * GRAD_STRIDES.value[
+                dim
+            ]
+            remaining //= GRAD_SHAPE.value[dim]
+
+    if NEED_SELF:
+        self_mask = offsets < N
+        overwritten = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+        if not ACCUMULATE:
+            for start in tl.range(0, K, INDEX_BLOCK_SIZE):
+                index_offsets = start + tl.arange(0, INDEX_BLOCK_SIZE)
+                index_mask = index_offsets < K
+                raw_index = tl.load(index_ptr + index_offsets, mask=index_mask, other=0)
+                index = tl.where(raw_index < 0, raw_index + N, raw_index)
+                matches = offsets[:, None] == index[None, :]
+                matches &= index_mask[None, :]
+                overwritten |= tl.max(matches, axis=1).to(tl.int32)
+
+        if ELEMS_PER_SLOT == 1:
+            grad = tl.load(grad_ptr + grad_offsets, mask=self_mask, other=0.0)
+            grad = tl.where(overwritten, 0.0, grad)
+            tl.store(grad_self_ptr + offsets, grad, mask=self_mask)
+        else:
+            real = tl.load(grad_ptr + 2 * grad_offsets, mask=self_mask, other=0.0)
+            imag = tl.load(grad_ptr + 2 * grad_offsets + 1, mask=self_mask, other=0.0)
+            real = tl.where(overwritten, 0.0, real)
+            imag = tl.where(overwritten, 0.0, imag)
+            tl.store(grad_self_ptr + 2 * offsets, real, mask=self_mask)
+            tl.store(grad_self_ptr + 2 * offsets + 1, imag, mask=self_mask)
+
+    if NEED_SOURCE:
+        source_mask = offsets < K
+        raw_index = tl.load(index_ptr + offsets, mask=source_mask, other=0)
+        index = tl.where(raw_index < 0, raw_index + N, raw_index)
+        if GRAD_CONTIGUOUS:
+            source_grad_offsets = index
+        else:
+            remaining = index
+            source_grad_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+            for dim in tl.static_range(len(GRAD_SHAPE) - 1, -1, -1):
+                source_grad_offsets += (
+                    remaining % GRAD_SHAPE.value[dim]
+                ) * GRAD_STRIDES.value[dim]
+                remaining //= GRAD_SHAPE.value[dim]
+        if ELEMS_PER_SLOT == 1:
+            grad = tl.load(grad_ptr + source_grad_offsets, mask=source_mask, other=0.0)
+            tl.store(grad_source_ptr + offsets, grad, mask=source_mask)
+        else:
+            real = tl.load(
+                grad_ptr + 2 * source_grad_offsets, mask=source_mask, other=0.0
+            )
+            imag = tl.load(
+                grad_ptr + 2 * source_grad_offsets + 1,
+                mask=source_mask,
+                other=0.0,
+            )
+            tl.store(grad_source_ptr + 2 * offsets, real, mask=source_mask)
+            tl.store(grad_source_ptr + 2 * offsets + 1, imag, mask=source_mask)
+
+
+def put_backward(grad_output, index, source_shape, accumulate, needs_input_grad):
+    """Fused gradient of ``put`` for ``self`` and ``source``.
+
+    PyTorch exposes no ``aten::put_backward`` schema. This public primitive is
+    used by the autograd wrapper, tests, and benchmarks.
+    """
+    logger.debug("GEMS PUT_BACKWARD")
+    need_self, need_source = needs_input_grad
+    if not need_self and not need_source:
+        return None, None
+
+    grad = grad_output
+    grad_self = (
+        torch.empty(grad.shape, dtype=grad.dtype, device=grad.device)
+        if need_self
+        else None
+    )
+    grad_source = (
+        torch.empty(source_shape, dtype=grad.dtype, device=grad.device)
+        if need_source
+        else None
+    )
+    N = grad.numel()
+    K = index.numel()
+    work = max(N if need_self else 0, K if need_source else 0)
+    if work == 0:
+        return grad_self, grad_source
+
+    data = grad
+    self_data = grad_self if need_self else grad
+    source_data = grad_source if need_source else grad
+    elems_per_slot = 1
+    if grad.is_complex():
+        real_dtype = {
+            torch.complex32: torch.float16,
+            torch.complex64: torch.float32,
+            torch.complex128: torch.float64,
+        }[grad.dtype]
+        data = grad.view(real_dtype)
+        if need_self:
+            self_data = grad_self.view(real_dtype)
+        if need_source:
+            source_data = grad_source.view(real_dtype)
+        elems_per_slot = 2
+
+    # The overwrite path uses 256 lanes to keep its membership tile in registers;
+    # accumulate needs no scan and uses a wider bandwidth-oriented tile on H20.
+    # A 16-wide index tile amortizes loop overhead without spilling.
+    BLOCK_SIZE = 1024 if accumulate else 256
+    grid = (triton.cdiv(work, BLOCK_SIZE),)
+    put_backward_kernel[grid](
+        data,
+        index,
+        self_data,
+        source_data,
+        N,
+        K,
+        need_self,
+        need_source,
+        accumulate,
+        elems_per_slot,
+        tuple(grad.shape),
+        tuple(grad.stride()),
+        grad.is_contiguous(),
+        BLOCK_SIZE,
+        16,
+        num_warps=4,
+    )
+    return grad_self, grad_source
+
+
 def _check_same_device(self, index, source, out=None):
     """ATen requires self, index and source (and ``out``) to share one device."""
     for name, tensor in (("index", index), ("source", source)):
@@ -440,7 +605,7 @@ def _check_same_device(self, index, source, out=None):
         )
 
 
-def put(self, index, source, accumulate=False):
+def _put_forward(self, index, source, accumulate=False):
     logger.debug("GEMS PUT")
     _check_same_device(self, index, source)
 
@@ -451,6 +616,33 @@ def put(self, index, source, accumulate=False):
     _flat_copy(out, self)
 
     return put_impl(out, index, source, accumulate)
+
+
+class PutFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, index, source, accumulate=False):
+        flat_index = index.contiguous().reshape(-1)
+        ctx.save_for_backward(flat_index)
+        ctx.source_shape = tuple(source.shape)
+        ctx.accumulate = accumulate
+        return _put_forward(self, index, source, accumulate)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (index,) = ctx.saved_tensors
+        grad_self, grad_source = put_backward(
+            grad_output,
+            index,
+            ctx.source_shape,
+            ctx.accumulate,
+            (ctx.needs_input_grad[0], ctx.needs_input_grad[2]),
+        )
+        return grad_self, None, grad_source, None
+
+
+def put(self, index, source, accumulate=False):
+    logger.debug("GEMS PUT")
+    return PutFunction.apply(self, index, source, accumulate)
 
 
 def put_out(self, index, source, accumulate=False, *, out=None):
