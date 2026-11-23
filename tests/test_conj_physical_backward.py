@@ -42,7 +42,9 @@ REAL_PASSTHROUGH_DTYPES = [
 
 
 @pytest.mark.conj_physical_backward
-@pytest.mark.parametrize("shape", [(256,), (32, 64), (2, 3, 4), (4096, 4096), (64, 512, 512)])
+@pytest.mark.parametrize(
+    "shape", [(256,), (32, 64), (2, 3, 4), (4096, 4096), (64, 512, 512)]
+)
 # conj_physical_backward keeps the gradient dtype; complex64/complex128 are the
 # dtypes under test (FLOAT_DTYPES/INT_DTYPES not applicable, mirroring test_conj.py).
 @pytest.mark.parametrize("dtype", COMPLEX_BACKWARD_DTYPES)
