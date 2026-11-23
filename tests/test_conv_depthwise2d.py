@@ -63,6 +63,7 @@ def _reference_depthwise2d(inp, weight, kernel_size, bias, stride, padding, dila
     )
 
 
+@pytest.mark.conv_depthwise2d
 @pytest.mark.underscore_conv_depthwise2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
