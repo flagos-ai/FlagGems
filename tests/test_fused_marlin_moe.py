@@ -29,7 +29,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.fused_marlin_moe import (
+from flag_gems.deprecated.fused_marlin_moe import (
     QUANT_TYPE_FP4_E2M1,
     QUANT_TYPE_UINT4B8,
     QUANT_TYPE_UINT8B128,
@@ -588,6 +588,10 @@ def test_fused_marlin_moe_w8a16_int8(config, dtype):
 @pytest.mark.skipif(
     not _is_hopper(),
     reason="MXFP4 fast path uses Hopper-only bf16/fp16 SIMD PTX (sm_90+)",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame/GCU does not support FP4",
 )
 @pytest.mark.parametrize("config", FULL_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])

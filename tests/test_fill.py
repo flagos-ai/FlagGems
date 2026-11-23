@@ -161,10 +161,43 @@ def test_fill_backward_(dtype, shape, tensor_value, view):
     utils.gems_assert_equal(result[0], expected[0])
 
 
-@pytest.mark.fill_backward_
+@pytest.mark.fill_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(0,), (3, 4)])
+@pytest.mark.parametrize("tensor_value", [False, True])
+def test_fill_backward(dtype, shape, tensor_value):
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    grad = torch.ones_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_grad = utils.to_reference(grad, False)
+    if tensor_value:
+        value = torch.tensor(
+            2.0, device=flag_gems.device, dtype=dtype, requires_grad=True
+        )
+        ref_value = utils.to_reference(value.detach(), False).requires_grad_()
+        expected = torch.autograd.grad(
+            torch.fill(ref, ref_value), (ref, ref_value), ref_grad
+        )
+        result = torch.autograd.grad(
+            flag_gems.fill_tensor(actual, value), (actual, value), grad
+        )
+        utils.gems_assert_close(result[1], expected[1], dtype)
+    else:
+        expected = torch.autograd.grad(torch.fill(ref, 2.0), ref, ref_grad)
+        result = torch.autograd.grad(flag_gems.fill_scalar(actual, 2.0), actual, grad)
+    utils.gems_assert_equal(result[0], expected[0])
+
+
+@pytest.mark.parametrize(
+    "inplace",
+    [
+        pytest.param(False, marks=pytest.mark.fill_backward, id="outplace"),
+        pytest.param(True, marks=pytest.mark.fill_backward_, id="inplace"),
+    ],
+)
 @pytest.mark.parametrize("value_device", ["cpu", "gpu"])
-def test_fill_tensor_value_gradient_mixed_dtype(value_device):
-    inplace = True
+def test_fill_tensor_value_gradient_mixed_dtype(value_device, inplace):
     inp = torch.randn((3, 4), device=flag_gems.device, dtype=torch.float16)
     grad = torch.ones_like(inp)
     ref = utils.to_reference(inp.detach(), False).requires_grad_()
@@ -195,10 +228,15 @@ def test_fill_tensor_value_gradient_mixed_dtype(value_device):
     utils.gems_assert_equal(result[1], expected[1])
 
 
-@pytest.mark.fill_backward_
+@pytest.mark.parametrize(
+    "inplace",
+    [
+        pytest.param(False, marks=pytest.mark.fill_backward, id="outplace"),
+        pytest.param(True, marks=pytest.mark.fill_backward_, id="inplace"),
+    ],
+)
 @pytest.mark.parametrize("value_device", ["cpu", "gpu"])
-def test_fill_tensor_double_backward(value_device):
-    inplace = True
+def test_fill_tensor_double_backward(value_device, inplace):
     x = torch.randn((3, 4), device=flag_gems.device, requires_grad=True)
     value = torch.tensor(
         2.0,

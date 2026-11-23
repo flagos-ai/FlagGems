@@ -82,8 +82,8 @@ ALLOWED_TORCH_NAMESPACES = {
     "ixuca",
 }
 PRAGMA = "allow-torch-compute"
-CORE_DIRS = ("ops", "fused", "experimental_ops")
-VENDOR_SUBDIRS = ("ops", "fused", "fla")
+CORE_DIRS = ("ops", "deprecated", "experimental_ops")
+VENDOR_SUBDIRS = ("ops", "deprecated", "fla")
 
 # Per-file exemptions for torch compute calls that dispatch to a vendor-native
 # kernel rather than falling back to CPU/CUDA.  Key: path suffix (posix);

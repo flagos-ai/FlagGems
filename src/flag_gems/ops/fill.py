@@ -55,6 +55,20 @@ def _fill_tensor_(input, value):
     return input
 
 
+def _fill_scalar(input, value):
+    out = torch.empty_like(input)
+    with torch_device_fn.device(input.device):
+        return fill_scalar_func(input, value, out0=out)
+
+
+def _fill_tensor(input, value):
+    if not value.is_cuda:
+        return _fill_scalar(input, value.item())
+    out = torch.empty_like(input)
+    with torch_device_fn.device(input.device):
+        return fill_tensor_func(input, value, out0=out)
+
+
 class _GradSum(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
@@ -66,7 +80,7 @@ class _GradSum(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         empty = torch.empty(ctx.shape, dtype=ctx.dtype, device=ctx.device)
-        return _FillTensorInplace.apply(empty, grad_output)
+        return _FillTensor.apply(empty, grad_output)
 
 
 def _value_gradient(grad_output, value_device):
@@ -105,11 +119,34 @@ class _FillTensorInplace(torch.autograd.Function):
         )
 
 
+class _FillScalar(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, value):
+        return _fill_scalar(input, value)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.zeros_like(grad_output), None
+
+
+class _FillTensor(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, value):
+        ctx.value_device = value.device
+        return _fill_tensor(input, value)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.zeros_like(grad_output), _value_gradient(
+            grad_output, ctx.value_device
+        )
+
+
 def fill_scalar(input, value):
     logger.debug("GEMS FILL (Dynamic)")
-    out = torch.empty_like(input)
-    with torch_device_fn.device(input.device):
-        return fill_scalar_func(input, value, out0=out)
+    if torch.is_grad_enabled() and input.requires_grad:
+        return _FillScalar.apply(input, value)
+    return _fill_scalar(input, value)
 
 
 def fill_scalar_out(input, value, *, out=None):
@@ -122,16 +159,14 @@ def fill_scalar_out(input, value, *, out=None):
 
 
 def fill_tensor(input, value):
-    if not value.is_cuda:
-        return fill_scalar(input, value.item())
     logger.debug("GEMS FILL (Dynamic)")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
-    out = torch.empty_like(input)
-    with torch_device_fn.device(input.device):
-        return fill_tensor_func(input, value, out0=out)
+    if torch.is_grad_enabled() and (input.requires_grad or value.requires_grad):
+        return _FillTensor.apply(input, value)
+    return _fill_tensor(input, value)
 
 
 def fill_tensor_out(input, value, *, out=None):
