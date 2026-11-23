@@ -20,11 +20,38 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _skip_kunlunxin_fp64(*dtypes):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not flag_gems.runtime.device.support_fp64
+        and any(dtype in (torch.float64, torch.complex128) for dtype in dtypes)
+    ):
+        pytest.skip("Kunlunxin does not support true FP64 for this ldexp input")
+
+
+def _ldexp_reference_input(inp, upcast=False):
+    if flag_gems.vendor_name != "kunlunxin":
+        return utils.to_reference(inp, upcast)
+    inp = inp.cpu()
+    if upcast:
+        inp = inp.to(torch.complex128 if inp.is_complex() else torch.float64)
+    return inp
+
+
+def _ldexp_for_comparison(result, inp, exponent):
+    if flag_gems.vendor_name != "kunlunxin":
+        return result
+    device = inp.device if inp.device.type != "cpu" else exponent.device
+    assert result.device == device
+    return result.cpu()
+
+
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
     "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
 )
 def test_ldexp_integral_exponent_boundaries(dtype, exponent):
+    _skip_kunlunxin_fp64(dtype)
     inp = torch.tensor(
         [2.0 ** (-exponent + 2), 2.0 ** (-exponent + 1), 0.0, float("inf")],
         dtype=dtype,
@@ -33,11 +60,13 @@ def test_ldexp_integral_exponent_boundaries(dtype, exponent):
     other = torch.tensor(
         [exponent, exponent, exponent, -exponent], dtype=torch.int64, device=inp.device
     )
-    reference = utils.to_reference(
+    reference = _ldexp_reference_input(
         torch.tensor([4.0, 2.0, 0.0, float("inf")], dtype=dtype, device=inp.device)
     )
     result = flag_gems.ldexp(inp, other)
-    utils.gems_assert_equal(result, reference, equal_nan=True)
+    utils.gems_assert_equal(
+        _ldexp_for_comparison(result, inp, other), reference, equal_nan=True
+    )
 
 
 @pytest.mark.ldexp
@@ -56,9 +85,11 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
         with pytest.raises(RuntimeError):
             flag_gems.ldexp(inp, other)
         return
-    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    reference = torch.ldexp(_ldexp_reference_input(inp), _ldexp_reference_input(other))
     result = flag_gems.ldexp(inp, other)
-    utils.gems_assert_close(result, reference, result.dtype)
+    utils.gems_assert_close(
+        _ldexp_for_comparison(result, inp, other), reference, result.dtype
+    )
 
 
 @pytest.mark.ldexp
@@ -72,9 +103,11 @@ def test_ldexp_lazy_conjugation(conj_input, conj_other):
         inp = inp.conj()
     if conj_other:
         other = other.conj()
-    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    reference = torch.ldexp(_ldexp_reference_input(inp), _ldexp_reference_input(other))
     result = flag_gems.ldexp(inp, other)
-    utils.gems_assert_close(result, reference, inp.dtype)
+    utils.gems_assert_close(
+        _ldexp_for_comparison(result, inp, other), reference, inp.dtype
+    )
 
 
 @pytest.mark.ldexp
@@ -84,13 +117,15 @@ def test_ldexp(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, shape, device=flag_gems.device, dtype=torch.int32)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = _ldexp_reference_input(self, True)
+    ref_other = _ldexp_reference_input(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(
+        _ldexp_for_comparison(res_out, self, other), ref_out, dtype
+    )
 
 
 def _promotion_reference(inp, exponent):
@@ -100,7 +135,7 @@ def _promotion_reference(inp, exponent):
     ):
         return torch.ops.aten.ldexp.Tensor(inp.cpu(), exponent.cpu())
     return torch.ops.aten.ldexp.Tensor(
-        utils.to_reference(inp), utils.to_reference(exponent)
+        _ldexp_reference_input(inp), _ldexp_reference_input(exponent)
     )
 
 
@@ -117,6 +152,7 @@ def _promotion_reference(inp, exponent):
     ],
 )
 def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
+    _skip_kunlunxin_fp64(self_dtype, other_dtype, expected_dtype)
     shape = (37, 53)
     if self_dtype == torch.bool:
         self = torch.randint(0, 2, shape, device=flag_gems.device).bool()
@@ -150,6 +186,7 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     ],
 )
 def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
+    _skip_kunlunxin_fp64(self_dtype, other_dtype, expected_dtype)
     if self_dtype.is_complex and flag_gems.vendor_name in ("ascend", "tsingmicro"):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
@@ -170,11 +207,13 @@ def test_ldexp_broadcast_noncontiguous_and_empty():
     self = torch.randn((19, 7), device=flag_gems.device).T
     other = torch.randint(-8, 9, (19,), device=flag_gems.device, dtype=torch.int64)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = _ldexp_reference_input(self, True)
+    ref_other = _ldexp_reference_input(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
     res_out = flag_gems.ldexp(self, other)
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    utils.gems_assert_close(
+        _ldexp_for_comparison(res_out, self, other), ref_out, torch.float32
+    )
 
     empty = torch.empty((0, 7), device=flag_gems.device)
     empty_other = torch.empty((1, 7), dtype=torch.int32, device=flag_gems.device)
@@ -202,8 +241,8 @@ def test_ldexp_special_values(dtype):
             self.cpu().double(), other.cpu().double()
         ).to(dtype)
     else:
-        ref_self = utils.to_reference(self, True)
-        ref_other = utils.to_reference(other, True)
+        ref_self = _ldexp_reference_input(self, True)
+        ref_other = _ldexp_reference_input(other, True)
         ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -227,13 +266,15 @@ def test_ldexp_special_values(dtype):
 def test_ldexp_complex():
     self = torch.randn((19, 7), dtype=torch.complex64, device=flag_gems.device)
     other = torch.randn((7,), dtype=torch.complex64, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    ref_self = _ldexp_reference_input(self, True)
+    ref_other = _ldexp_reference_input(other, True)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
 
-    utils.gems_assert_close(res_out, ref_out, torch.complex64)
+    utils.gems_assert_close(
+        _ldexp_for_comparison(res_out, self, other), ref_out, torch.complex64
+    )
 
 
 def _ldexp_out_reference(inp, exponent):
