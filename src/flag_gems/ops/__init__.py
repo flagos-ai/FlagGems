@@ -699,6 +699,7 @@ from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.clone import clone
 from flag_gems.ops.coalesce import coalesce
 from flag_gems.ops.col2im import col2im
+from flag_gems.ops.col2im_backward import col2im_backward
 from flag_gems.ops.col_indices import col_indices
 from flag_gems.ops.col_indices_copy import col_indices_copy, col_indices_copy_out
 from flag_gems.ops.column_stack import column_stack, column_stack_out
@@ -2457,6 +2458,7 @@ __all__ = [
     "clone",
     "coalesce",
     "col2im",
+    "col2im_backward",
     "col_indices",
     "col_indices_copy",
     "col_indices_copy_out",
