@@ -1479,7 +1479,7 @@ from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
-from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
+from flag_gems.ops.rsub import rsub_backward, rsub_scalar, rsub_tensor
 from flag_gems.ops.scalar_tensor import scalar_tensor
 from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
 from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
@@ -3267,6 +3267,7 @@ __all__ = [
     "rrelu_with_noise_functional",
     "rsqrt",
     "rsqrt_",
+    "rsub_backward",
     "rsub_scalar",
     "rsub_tensor",
     "scalar_tensor",

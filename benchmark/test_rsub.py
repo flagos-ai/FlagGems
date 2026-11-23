@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -49,5 +51,18 @@ def test_rsub_scalar():
         op_name="rsub_scalar",
         torch_op=torch.rsub,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.rsub_backward
+def test_rsub_backward():
+    bench = base.GenericBenchmark(
+        input_fn=_tensor_input_fn,
+        op_name="rsub_backward",
+        torch_op=torch.rsub,
+        gems_op=flag_gems.rsub_tensor,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
