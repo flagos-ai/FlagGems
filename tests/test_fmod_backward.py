@@ -84,14 +84,13 @@ def test_fmod_single_input_gradient(requires_x, requires_y):
 
 
 @pytest.mark.fmod_backward
-def test_fmod_backward_dispatch():
+def test_fmod_backward_grad_fn():
     x = torch.tensor([-4.5, 2.25], device=flag_gems.device, requires_grad=True)
     y = torch.tensor([1.25, -2.0], device=flag_gems.device, requires_grad=True)
     grad = torch.tensor([2.0, -3.0], device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.fmod(x, y)
-        assert "_FmodTensorBackward" in type(result.grad_fn).__name__
-        actual = torch.autograd.grad(result, (x, y), grad)
+    result = flag_gems.fmod_tensor(x, y)
+    assert type(result.grad_fn).__name__ == "_FmodTensorBackward"
+    actual = torch.autograd.grad(result, (x, y), grad)
     ref_x = x.detach().clone().requires_grad_()
     ref_y = y.detach().clone().requires_grad_()
     expected = torch.autograd.grad(torch.fmod(ref_x, ref_y), (ref_x, ref_y), grad)
