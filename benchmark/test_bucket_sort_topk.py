@@ -16,10 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from tests.test_DSA.test_bin_topk import (
-    make_topk_input,
-    reference_topk_implementation,
-)
+from tests.test_DSA.test_bin_topk import make_topk_input, reference_topk_implementation
 
 from . import base
 
