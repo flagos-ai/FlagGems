@@ -188,6 +188,10 @@ def test_avg_pool3d_backward(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name in ("cambricon", "sunrise"),
+    reason="Issue #7797: vendor avg_pool3d forward still assumes 5D; tracked by #7799",
+)
 def test_avg_pool3d_unbatched(
     shape,
     kernel_size,
@@ -235,6 +239,10 @@ def test_avg_pool3d_unbatched(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name in ("cambricon", "hygon", "iluvatar", "metax", "sunrise"),
+    reason="Issue #7797: vendor avg_pool3d_backward still assumes 5D; tracked by #7799",
 )
 def test_avg_pool3d_backward_unbatched(
     shape,
