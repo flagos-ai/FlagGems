@@ -341,18 +341,12 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
-def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
-    out = inp.clone()
+def _scatter_launch(inp, dim, index, src, reduce, out):
+    """Launch the generated scatter kernel.
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
-    if has_internal_overlapping(out) == MemOverlap.Yes:
-        out = out.contiguous()
-
+    ``out`` must have the same shape and layout as ``inp``; it is the buffer the
+    kernel writes (and, for reduce, reads) while ``inp`` only provides strides.
+    """
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
@@ -376,37 +370,42 @@ def scatter(inp, dim, index, src, reduce=None):
     return out
 
 
+def _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace):
+    """Run a reduce scatter on bfloat16 input through a float32 workspace.
+
+    bfloat16 atomics are not available on every backend, so the reduction is
+    accumulated in float32 (same strategy as ``scatter_add``) and the result is
+    cast back to bfloat16. Numerical kernels are left untouched.
+    See Issue #7828.
+    """
+    work = inp.to(torch.float32)
+    src = src.to(torch.float32)
+    _scatter_launch(work, dim, index, src, reduce, work)
+    if inplace:
+        inp.copy_(work)
+        return inp
+    return work.to(torch.bfloat16)
+
+
+def scatter(inp, dim, index, src, reduce=None):
+    logger.debug("GEMS SCATTER")
+    if reduce is not None and inp.dtype == torch.bfloat16:
+        return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=False)
+
+    out = inp.clone()
+    if has_internal_overlapping(out) == MemOverlap.Yes:
+        out = out.contiguous()
+
+    return _scatter_launch(inp, dim, index, src, reduce, out)
+
+
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
-    out = inp
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     assert (
-        has_internal_overlapping(out) != MemOverlap.Yes
+        has_internal_overlapping(inp) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
-    src_restrided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
-    N = index.numel()
+    if reduce is not None and inp.dtype == torch.bfloat16:
+        return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=True)
 
-    int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
-    use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
-    _scatter_func(
-        src_restrided,
-        index,
-        inp_restrided,
-        out,
-        dim_size,
-        dim_stride,
-        N,
-        reduce,
-        int32_offset=use_int32_offset,
-    )
-
-    return inp
+    return _scatter_launch(inp, dim, index, src, reduce, inp)

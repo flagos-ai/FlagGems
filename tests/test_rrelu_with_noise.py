@@ -64,6 +64,11 @@ def _skip_half_cpu_reference(dtype, training):
     """
     if cfg.TO_CPU and training and dtype == torch.float16:
         pytest.skip("the CPU reference does not implement the training path for Half")
+    if flag_gems.vendor_name == "enflame" and training and dtype == torch.float16:
+        # enflame forwards aten::rrelu_with_noise to the same CPU kernel, so
+        # the device-side reference raises the identical "not implemented for
+        # 'Half'" error.
+        pytest.skip("enflame's rrelu_with_noise reference has no Half kernel")
 
 
 def _pair(shape, dtype, bounds, fill_noise=False):
