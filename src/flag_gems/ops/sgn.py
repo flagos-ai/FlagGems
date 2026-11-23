@@ -100,6 +100,62 @@ def sgn_complex_kernel(
     tl.store(out_ri_ptr + base + 1, out_imag, mask=mask)
 
 
+@triton.jit
+def sgn_backward_kernel(
+    x_ptr,
+    grad_ptr,
+    sgn_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    IS_COMPLEX: tl.constexpr,
+    COMPUTE_IN_FP32: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    if IS_COMPLEX:
+        base = offsets * 2
+        x_real = tl.load(x_ptr + base, mask=mask, other=0.0)
+        x_imag = tl.load(x_ptr + base + 1, mask=mask, other=0.0)
+        grad_real = tl.load(grad_ptr + base, mask=mask, other=0.0)
+        grad_imag = tl.load(grad_ptr + base + 1, mask=mask, other=0.0)
+        sgn_real = tl.load(sgn_ptr + base, mask=mask, other=0.0)
+        sgn_imag = tl.load(sgn_ptr + base + 1, mask=mask, other=0.0)
+
+        if COMPUTE_IN_FP32:
+            x_real = x_real.to(tl.float32)
+            x_imag = x_imag.to(tl.float32)
+            grad_real = grad_real.to(tl.float32)
+            grad_imag = grad_imag.to(tl.float32)
+            sgn_real = sgn_real.to(tl.float32)
+            sgn_imag = sgn_imag.to(tl.float32)
+
+        abs_real = tl.abs(x_real)
+        abs_imag = tl.abs(x_imag)
+        scale = tl.maximum(abs_real, abs_imag)
+        is_zero = scale == 0.0
+        safe_scale = tl.where(is_zero, 1.0, scale)
+        scaled_real = x_real / safe_scale
+        scaled_imag = x_imag / safe_scale
+        magnitude = scale * tl.sqrt(
+            scaled_real * scaled_real + scaled_imag * scaled_imag
+        )
+        safe_denominator = tl.where(is_zero, 1.0, 2.0 * magnitude)
+
+        sgn_squared_real = sgn_real * sgn_real - sgn_imag * sgn_imag
+        sgn_squared_imag = 2.0 * sgn_real * sgn_imag
+        product_real = sgn_squared_real * grad_real + sgn_squared_imag * grad_imag
+        product_imag = sgn_squared_imag * grad_real - sgn_squared_real * grad_imag
+        out_real = tl.where(is_zero, 0.0, (grad_real - product_real) / safe_denominator)
+        out_imag = tl.where(is_zero, 0.0, (grad_imag - product_imag) / safe_denominator)
+        tl.store(out_ptr + base, out_real, mask=mask)
+        tl.store(out_ptr + base + 1, out_imag, mask=mask)
+    else:
+        tl.store(out_ptr + offsets, 0.0, mask=mask)
+
+
 def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
     if x.device != out.device:
         raise RuntimeError("input and out must be on the same device")
@@ -144,8 +200,76 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
     return out
 
 
+def sgn_backward(
+    x: torch.Tensor, grad_output: torch.Tensor, result: torch.Tensor
+) -> torch.Tensor:
+    """Compute the derivative used by ``aten::sgn`` in one Triton launch."""
+    logger.debug("GEMS SGN_BACKWARD")
+    if x.device != grad_output.device or x.device != result.device:
+        raise RuntimeError("input, grad_output, and result must be on the same device")
+    if x.dtype != grad_output.dtype or x.dtype != result.dtype:
+        raise RuntimeError("input, grad_output, and result must have the same dtype")
+    if x.shape != grad_output.shape or x.shape != result.shape:
+        raise RuntimeError("input, grad_output, and result must have the same shape")
+
+    out = torch.empty_like(x, memory_format=torch.contiguous_format)
+    n_elements = x.numel()
+    if n_elements == 0:
+        return out
+
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(x.device):
+        if x.is_complex():
+            real_dtype = {
+                torch.complex32: torch.float16,
+                torch.complex64: torch.float32,
+                torch.complex128: torch.float64,
+            }[x.dtype]
+            x_ri = x.contiguous().view(real_dtype).view(-1)
+            grad_ri = grad_output.contiguous().view(real_dtype).view(-1)
+            result_ri = result.contiguous().view(real_dtype).view(-1)
+            out_ri = out.view(real_dtype).view(-1)
+            sgn_backward_kernel[grid](
+                x_ri,
+                grad_ri,
+                result_ri,
+                out_ri,
+                n_elements,
+                BLOCK_SIZE=1024,
+                IS_COMPLEX=True,
+                COMPUTE_IN_FP32=x.dtype in (torch.complex32, torch.complex64),
+            )
+        else:
+            sgn_backward_kernel[grid](
+                x,
+                grad_output,
+                result,
+                out,
+                n_elements,
+                BLOCK_SIZE=1024,
+                IS_COMPLEX=False,
+                COMPUTE_IN_FP32=False,
+            )
+    return out
+
+
+class SgnAutogradFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        result = _sgn_impl(x, torch.empty_like(x))
+        ctx.save_for_backward(x, result)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, result = ctx.saved_tensors
+        return sgn_backward(x, grad_output, result)
+
+
 def sgn(x: torch.Tensor):
     logger.debug("GEMS SGN")
+    if torch.is_grad_enabled() and x.requires_grad:
+        return SgnAutogradFunction.apply(x)
     out = torch.empty_like(x)
     return _sgn_impl(x, out)
 

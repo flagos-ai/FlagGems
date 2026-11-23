@@ -1502,7 +1502,7 @@ from flag_gems.ops.set_ import (
     set_source_tensor,
     set_source_tensor_storage_offset,
 )
-from flag_gems.ops.sgn import sgn, sgn_out
+from flag_gems.ops.sgn import sgn, sgn_backward, sgn_out
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.shape_as_tensor import shape_as_tensor
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
@@ -3292,6 +3292,7 @@ __all__ = [
     "set_source_tensor_storage_offset",
     "sgn",
     "sgn_",
+    "sgn_backward",
     "sgn_out",
     "shape_as_tensor",
     "sigmoid",
