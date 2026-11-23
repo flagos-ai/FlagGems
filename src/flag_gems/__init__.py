@@ -18,10 +18,10 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
-from flag_gems import deprecated as _deprecated
 from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
@@ -2128,7 +2128,12 @@ _FULL_CONFIG = (
     ("rnn_tanh.data", rnn_tanh_data),
     ("rnn_tanh.input", rnn_tanh),
     ("rnn_tanh_cell", rnn_tanh_cell),
-    ("roll", roll),
+    (
+        "roll",
+        roll,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("rot90", rot90),
     ("round", round),
     ("round.out", round_out),

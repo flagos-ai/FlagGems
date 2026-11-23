@@ -41,3 +41,16 @@ def test_roll():
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.roll_backward
+def test_roll_backward():
+    bench = base.GenericBenchmark(
+        op_name="roll_backward",
+        input_fn=_input_fn,
+        torch_op=torch.roll,
+        gems_op=flag_gems.roll,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
