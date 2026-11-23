@@ -19,7 +19,7 @@ import pytest
 import torch
 from packaging.version import InvalidVersion, Version
 
-from flag_gems.fused import cp_gather_indexer_k_quant_cache
+from flag_gems import cp_gather_indexer_k_quant_cache
 
 from . import base
 
