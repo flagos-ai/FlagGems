@@ -27,7 +27,7 @@ def transpose(self: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     ``dim0`` and ``dim1`` via :func:`torch.as_strided`, matching the semantics
     of ``aten::transpose.int`` (``Tensor(a) -> Tensor(a)``).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 TRANSPOSE")
+    logger.debug("GEMS_ENFLAME TRANSPOSE")
 
     ndim = self.dim()
 

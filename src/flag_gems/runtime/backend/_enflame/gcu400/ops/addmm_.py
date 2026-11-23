@@ -25,31 +25,38 @@ logger = logging.getLogger(__name__)
 
 from flag_gems.ops.addmm import addmm  # noqa: E402
 from flag_gems.runtime.backend._enflame.gcu400.ops.addmm import (  # noqa: E402
+    _DEVICE_KEYSET,
+    _NATIVE_ADDMM_OUT,
     _select_addmm_config,
+    _should_delegate_to_native,
     addmm_kernel,
 )
 
 
 def _select_addmm_inplace_config(M, N, K, dtype):
-    """Tile dispatch for the addmm_ in-place path: an extra deep-K single-segment tier for 16-bit medium sizes.
+    """Tile selection for the addmm_ in-place path: one extra BM=64 tier for mid-size 16-bit.
 
-    _select_addmm_config keeps the large-matrix tiers for the (64, 512] range; libtuner measured
-    (128,128,512,ns1) as optimal at 384^3 (fp16 9.76us vs 13.3us for the 128^3 tier; deep-K single segment
-    avoids loop pipeline overhead). That tier is listed in enflame tune_configs.yaml. Other ranges keep
-    the selections of the gcu400 tuned addmm.
+    _select_addmm_config keeps the large-matrix tier (128,128,512,w2,s2) for (64, 512]; on the
+    new stack (Triton GCU 4.1.6) 384^3 16-bit re-measured: the old libtuner tier
+    (128,128,512,w4,s1) has merged with the base tier (~9.4us each), while BM=64
+    (64,128,512,w2,s2) takes 8.0us (-15%) -- grid 3x3=9 -> 6x3=18 programs doubles the 48SP
+    occupancy (mid-size GEMM is unsaturated, so trading tile size for parallelism pays here);
+    512^3/256^3 are -3%/-21% in the same tier with no regression; other ranges keep addmm selection.
     """
     if K <= 64 or M <= 64 or N <= 64:
         return _select_addmm_config(M, N, K, dtype)
     if dtype != torch.float32 and M <= 512 and N <= 512 and K <= 512:
-        return 128, 128, 512, 4, 1
+        return 64, 128, 512, 2, 2
     return _select_addmm_config(M, N, K, dtype)
 
 
 def _addmm_inplace(self, mat1, mat2, alpha, beta):
     """Single-kernel in-place write: self serves as both bias input and output.
 
-    The kernel loads the bias tile only after the K loop finishes and immediately writes the same tile back,
-    so there is no cross-program read/write and using self as both input and output is safe.
+    The kernel loads the bias tile only after the K loop and immediately writes the same tile,
+    with no cross-program read/write, so self aliasing as input and output is safe. With
+    beta==0, SKIP_BIAS skips the bias load (aten contract: beta=0 ignores bias, including
+    NaN/Inf, matching the native delegate arm and out-of-place addmm semantics).
     """
     M, K = mat1.shape
     N = mat2.shape[1]
@@ -89,6 +96,7 @@ def _addmm_inplace(self, mat1, mat2, alpha, beta):
             BLOCK_SIZE_K=BLOCK_K,
             GROUP_M=8,
             EVEN=even,
+            SKIP_BIAS=bool(beta == 0),
             num_warps=num_warps,
             num_stages=num_stages,
         )
@@ -122,9 +130,26 @@ def addmm_(self, mat1, mat2, *, beta=1, alpha=1):
         and self.data_ptr() != mat1.data_ptr()
         and self.data_ptr() != mat2.data_ptr()
     ):
-        logger.debug("GEMS_ENFLAME_GCU400 ADDMM_ (inplace)")
+        # Delegate the saturated/long-K regime to native (same capture and dispatch line as addmm/mm/bmm, with the
+        # threshold sourced from a single
+        # place, addmm.py): Triton GEMM has a structural ceiling on large shapes on GCU400 (1024³-4096³
+        # measured 0.49-0.96x vs native); addmm.out(out=self) is the internal landing point of native addmm_
+        # (isomorphic on CUDA), and bit-level equivalence has been cross-checked (3 dtypes × alpha/beta × beta=0-NaN).
+        # Delegate only when dtypes match (following the addmm_out precedent); mixed dtypes keep the original Triton
+        # behavior.
+        if (
+            _NATIVE_ADDMM_OUT is not None
+            and mat2.dtype == mat1.dtype
+            and _should_delegate_to_native(self, mat1, mat2)
+        ):
+            logger.debug("GEMS ADDMM_ (native delegate)")
+            _NATIVE_ADDMM_OUT.call_boxed(
+                _DEVICE_KEYSET, self, mat1, mat2, beta=beta, alpha=alpha, out=self
+            )
+            return self
+        logger.debug("GEMS ADDMM_ (inplace)")
         return _addmm_inplace(self, mat1, mat2, alpha, beta)
 
-    logger.debug("GEMS_ENFLAME_GCU400 ADDMM_")
+    logger.debug("GEMS_ENFLAME ADDMM_")
     result = addmm(self, mat1, mat2, beta=beta, alpha=alpha)
     return self.copy_(result)

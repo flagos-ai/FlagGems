@@ -22,7 +22,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 
 try:
     from triton.knobs import autotuning as _autotuning_knobs
@@ -1081,9 +1081,10 @@ def flash_attn_backward(
     softmax_scale=None,
     attn_bias=None,
     bias_requires_grad=False,
+    head_major=False,
 ):
     if is_dropout and dropout_p > 0.0 and rng_state is None:
-        raise ValueError("rng_state must be provided when dropout is enabled")
+        raise ValueError("rng_state is required when dropout is enabled")
 
     is_varlen = (cu_seq_q is not None) and (cu_seq_k is not None)
 
@@ -1093,12 +1094,24 @@ def flash_attn_backward(
         Batch = cu_seq_q.shape[0] - 1
         SeqLen_q = max_seqlen_q
         SeqLen_k = max_seqlen_k
+    elif head_major:
+        # (Batch, Head, SeqLen, Dim) operands, as produced by the cudnn entry
+        # point. The kernels are stride-generic, so only the logical extents have
+        # to be recovered here; no transposition is needed downstream.
+        Batch, H_q, SeqLen_q, Head_Dim = Q.shape
+        _, H_k, SeqLen_k, _ = K.shape
     else:
         Batch, SeqLen_q, H_q, Head_Dim = Q.shape
         _, SeqLen_k, H_k, _ = K.shape
 
+    def _kernel_strides(t):
+        """Strides in the (batch, seqlen, head, dim) order the kernels expect."""
+        if head_major:
+            return (t.stride(0), t.stride(2), t.stride(1), t.stride(3))
+        return t.stride(0), t.stride(1), t.stride(2), t.stride(3)
+
     if H_q % H_k != 0:
-        raise ValueError(f"H_q ({H_q}) must be an integer multiple of H_k ({H_k})")
+        raise ValueError(f"H_q ({H_q}) must be a multiple of H_k ({H_k})")
     group_size = H_q // H_k
     scale = softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Head_Dim))
 
@@ -1124,12 +1137,28 @@ def flash_attn_backward(
     has_bias = attn_bias is not None
     do_bias_grad = has_bias and bias_requires_grad
 
-    Q = Q.contiguous()
-    K = K.contiguous()
-    V = V.contiguous()
-    Out = Out.contiguous()
-    dOut = dOut.contiguous()
+    # Q, Out and dOut are addressed by the kernels through one shared stride set
+    # (the launch passes Out.stride(...) for both Out and dOut, and the K/V pass
+    # reuses the Q stride set for dOut), so the three operands must agree on
+    # layout. Normalise only when they do not: the common cases -- contiguous
+    # (B, S, H, D) tensors from ATen, or the (B, H, S, D) views the cudnn entry
+    # point receives -- then need no copy at all, which is what makes the cudnn
+    # transposes unnecessary. K/V keep their own stride sets and are passed
+    # through untouched.
+    if not (Q.stride() == Out.stride() == dOut.stride()):
+        Q = Q.contiguous()
+        Out = Out.contiguous()
+        dOut = dOut.contiguous()
+    # The log-sum-exp stays dense: every kernel indexes it as a flat
+    # (Batch, H, SeqLen) buffer.
     L = L.contiguous()
+
+    # Resolved after the layout normalisation above, so the strides always match
+    # the buffers that are actually handed to the kernels.
+    stride_q = _kernel_strides(Q)
+    stride_k = _kernel_strides(K)
+    stride_v = _kernel_strides(V)
+    stride_o = _kernel_strides(Out)
     if has_bias:
         attn_bias = attn_bias.contiguous()
 
@@ -1282,22 +1311,10 @@ def flash_attn_backward(
                 drop_stride_b,
                 drop_stride_h,
                 drop_stride_m,
-                Q.stride(0),
-                Q.stride(1),
-                Q.stride(2),
-                Q.stride(3),
-                K.stride(0),
-                K.stride(1),
-                K.stride(2),
-                K.stride(3),
-                V.stride(0),
-                V.stride(1),
-                V.stride(2),
-                V.stride(3),
-                Out.stride(0),
-                Out.stride(1),
-                Out.stride(2),
-                Out.stride(3),
+                *stride_q,
+                *stride_k,
+                *stride_v,
+                *stride_o,
                 L.stride(0),
                 L.stride(1),
                 D.stride(0),
@@ -1340,22 +1357,10 @@ def flash_attn_backward(
                 drop_stride_b,
                 drop_stride_h,
                 drop_stride_m,
-                Q.stride(0),
-                Q.stride(1),
-                Q.stride(2),
-                Q.stride(3),
-                K.stride(0),
-                K.stride(1),
-                K.stride(2),
-                K.stride(3),
-                V.stride(0),
-                V.stride(1),
-                V.stride(2),
-                V.stride(3),
-                Out.stride(0),
-                Out.stride(1),
-                Out.stride(2),
-                Out.stride(3),
+                *stride_q,
+                *stride_k,
+                *stride_v,
+                *stride_o,
                 L.stride(0),
                 L.stride(1),
                 sb_b,
@@ -1395,7 +1400,7 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_rng_state(rng_state, unused) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
@@ -1440,7 +1445,7 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
@@ -1504,27 +1509,53 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
-    grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
-    query_bshd = query.permute(0, 2, 1, 3).contiguous()
-    key_bshd = key.permute(0, 2, 1, 3).contiguous()
-    value_bshd = value.permute(0, 2, 1, 3).contiguous()
-    out_bshd = out.permute(0, 2, 1, 3).contiguous()
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     lse = logsumexp.float()
 
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
 
-    dQ_bshd, dK_bshd, dV_bshd, dBias = flash_attn_backward(
-        grad_out_bshd,
-        query_bshd,
-        key_bshd,
-        value_bshd,
-        out_bshd,
+    # The dense kernels address every operand through explicit strides, so the
+    # (B, H, S, D) operands are fed straight in and their gradients come back in
+    # that same layout (empty_like preserves the strides): the eight
+    # permute+contiguous round trips that used to convert to and from
+    # (B, S, H, D) are gone. Only the varlen kernels, which index packed
+    # (Total, H, D) buffers, still need the (B, S, H, D) materialisation, so that
+    # path keeps the old behaviour.
+    if use_varlen:
+        dQ, dK, dV, _ = flash_attn_backward(
+            grad_out.permute(0, 2, 1, 3).contiguous(),
+            query.permute(0, 2, 1, 3).contiguous(),
+            key.permute(0, 2, 1, 3).contiguous(),
+            value.permute(0, 2, 1, 3).contiguous(),
+            out.permute(0, 2, 1, 3).contiguous(),
+            lse,
+            cu_seq_q=cum_seq_q,
+            cu_seq_k=cum_seq_k,
+            max_seqlen_q=int(max_q),
+            max_seqlen_k=int(max_k),
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            softmax_scale=scale,
+            attn_bias=attn_bias,
+            bias_requires_grad=bias_requires_grad,
+        )
+        return (
+            dQ.permute(0, 2, 1, 3).contiguous(),
+            dK.permute(0, 2, 1, 3).contiguous(),
+            dV.permute(0, 2, 1, 3).contiguous(),
+        )
+
+    dQ, dK, dV, _ = flash_attn_backward(
+        grad_out,
+        query,
+        key,
+        value,
+        out,
         lse,
-        cu_seq_q=cum_seq_q if use_varlen else None,
-        cu_seq_k=cum_seq_k if use_varlen else None,
         max_seqlen_q=int(max_q),
         max_seqlen_k=int(max_k),
         is_dropout=is_dropout,
@@ -1534,11 +1565,9 @@ def scaled_dot_product_cudnn_attention_backward(
         softmax_scale=scale,
         attn_bias=attn_bias,
         bias_requires_grad=bias_requires_grad,
+        head_major=True,
     )
 
-    dQ = dQ_bshd.permute(0, 2, 1, 3).contiguous()
-    dK = dK_bshd.permute(0, 2, 1, 3).contiguous()
-    dV = dV_bshd.permute(0, 2, 1, 3).contiguous()
     return dQ, dK, dV
 
 
@@ -1565,7 +1594,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1622,7 +1651,7 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 
     grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()
@@ -1688,37 +1717,6 @@ def scaled_dot_product_efficient_attention_backward(
 # ---------------------------------------------------------------------------
 _FLASH_ATTN_BWD_KEY_FLAG = "_flag_gems_gcu400_flash_attn_bwd_keys_registered"
 _FLASH_ATTN_BWD_LIBRARY = None
-
-
-def _ensure_flash_attn_bwd_key_registrations():
-    global _FLASH_ATTN_BWD_LIBRARY
-    if getattr(torch, _FLASH_ATTN_BWD_KEY_FLAG, False):
-        return
-    _FLASH_ATTN_BWD_LIBRARY = torch.library.Library("aten", "IMPL")
-    for aten_name, impl_fn in (
-        ("_flash_attention_backward", flash_attention_backward),
-        (
-            "_scaled_dot_product_cudnn_attention_backward",
-            scaled_dot_product_cudnn_attention_backward,
-        ),
-        ("_efficient_attention_backward", efficient_attention_backward),
-    ):
-        try:
-            _FLASH_ATTN_BWD_LIBRARY.impl(
-                aten_name, impl_fn, runtime.device.dispatch_key
-            )
-        except RuntimeError as error:
-            logger.warning(
-                "%s: aten registration %s@%s skipped: %s",
-                aten_name,
-                aten_name,
-                runtime.device.dispatch_key,
-                error,
-            )
-    setattr(torch, _FLASH_ATTN_BWD_KEY_FLAG, True)
-
-
-_ensure_flash_attn_bwd_key_registrations()
 
 
 # ---------------------------------------------------------------------------

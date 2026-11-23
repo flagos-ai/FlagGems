@@ -108,7 +108,7 @@ def max_unpool2d_kernel(
 
 
 def max_unpool2d(pooled: torch.Tensor, indices: torch.Tensor, output_size: list):
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_UNPOOL2D")
+    logger.debug("GEMS_ENFLAME MAX_UNPOOL2D")
 
     pooled = pooled.contiguous()
     indices = indices.contiguous()

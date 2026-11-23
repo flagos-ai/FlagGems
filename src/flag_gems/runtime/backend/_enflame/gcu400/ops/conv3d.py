@@ -26,6 +26,9 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# Hardware limit for each grid dimension on this backend.
+_MAX_GRID_DIM = 65535
+
 
 def conv3d_output_size(
     in_size: int,
@@ -50,11 +53,45 @@ def conv3d_output_size(
     return conv2d_output_size(in_size, kernel_size, stride, padding, dilation)
 
 
+# Tile sizes that cannot be decided by ``triton.autotune`` without paying the
+# autotuning cost on the largest 3D shapes (a single trial on the biggest core
+# shape already runs for minutes), so BLOCK_CI is picked host-side, see
+# ``_select_block_ci``.
+_AUTOTUNE_BLOCK_NI_DO_HO_WO = 64
+_AUTOTUNE_BLOCK_CO = 32
+_MIN_DOT_K = 16
+_MAX_BLOCK_CI = 64
+
+
+def _select_block_ci(weight_c: int) -> int:
+    """Pick the tl.dot K tile for the im2col matmul along the input channels.
+
+    The kernel is bound by the im2col gather (one gather per (tap, channel tile,
+    position)), not by the dots, so the tile wants to cover as many channels per
+    iteration as the hardware allows while never loading masked-out lanes:
+    BLOCK_CI = next_power_of_2(weight_c) capped at 64. Measured on a
+    (8, 64, 24x24x24) x 32x3x3x3 fp16 proxy: BLOCK_CI 16 -> 756.9ms,
+    32 -> 739.5ms, 64 -> 566.8ms (1.34x); widening the row tile to 128 rows on
+    top of BLOCK_CI=64 only added 3% (549ms), so the row tile stays at the
+    autotuned 64.
+    """
+    if weight_c <= _MIN_DOT_K:
+        return _MIN_DOT_K
+    return min(_MAX_BLOCK_CI, triton.next_power_of_2(weight_c))
+
+
 @libentry()
 @triton.autotune(
+    # A single tile keeps the benchmark run time bounded: wider dot tiles
+    # (128x64x64) were measured ~2.3x faster for large channel counts but
+    # ~3.7x slower when the group split leaves few channels per program, and the
+    # autotuning pass itself exceeds the per-stage timeout on the largest shape.
     configs=[
         triton.Config(
-            {"BLOCK_NI_DO_HO_WO": 64, "BLOCK_CI": 16, "BLOCK_CO": 32},
+            {
+                "BLOCK_NI_DO_HO_WO": _AUTOTUNE_BLOCK_NI_DO_HO_WO,
+                "BLOCK_CO": _AUTOTUNE_BLOCK_CO,
+            },
             num_warps=8,
             num_stages=2,
         )
@@ -128,9 +165,12 @@ def conv3d_forward_kernel(
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
 ):
-    pid_ni_do_ho_wo = tl.program_id(0)
-    pid_co = tl.program_id(1)
-    pid_group = tl.program_id(2)
+    # The volume axis (N * Do * Ho * Wo) can exceed the 65535 hardware limit of
+    # grid.x for large 3D convolutions, so it is folded over grid.x/grid.y while
+    # the output-channel tiles and the groups share grid.z.
+    pid_ni_do_ho_wo = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
+    pid_co = tl.program_id(2) // groups
+    pid_group = tl.program_id(2) % groups
 
     # caculate in_n out_depth out_height out_weight value in kernel
     ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(
@@ -242,7 +282,7 @@ def conv3d_forward_kernel(
 
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
-    logger.debug("GEMS_ENFLAME_GCU400 CONV3D")
+    logger.debug("GEMS_ENFLAME CONV3D")
     assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
     assert (
         bias is None or bias.ndim == 1
@@ -372,15 +412,19 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dtype=output_dtype,
     )
 
-    # BLOCK_NI_HO_WO along the in_n, out_height, and out_width dimensions,
-    # BLOCK_CO along the out_c,
-    # one group per cat
-    grid = lambda META: (
-        triton.cdiv(
-            in_n * out_depth * out_height * out_width, META["BLOCK_NI_DO_HO_WO"]
-        ),
-        triton.cdiv(out_c // groups, META["BLOCK_CO"]),
-        groups,
+    # BLOCK_NI_HO_WO along the in_n, out_depth, out_height and out_width
+    # dimensions, BLOCK_CO along the out_c, one group per cat.
+    # grid.x is capped at the 65535 hardware limit: the volume axis is folded
+    # over grid.x/grid.y, and the channel tiles plus the groups share grid.z.
+    volume_elements = in_n * out_depth * out_height * out_width
+    block_ci = _select_block_ci(weight_c)
+
+    volume_tiles = triton.cdiv(volume_elements, _AUTOTUNE_BLOCK_NI_DO_HO_WO)
+    grid_x = min(volume_tiles, _MAX_GRID_DIM)
+    grid = (
+        grid_x,
+        triton.cdiv(volume_tiles, grid_x),
+        groups * triton.cdiv(out_c // groups, _AUTOTUNE_BLOCK_CO),
     )
 
     if bias is None:
@@ -418,6 +462,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dilation_height,
         dilation_width,
         groups=groups,
+        BLOCK_CI=block_ci,
     )
 
     if padding == "same":

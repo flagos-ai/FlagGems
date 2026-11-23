@@ -39,14 +39,26 @@ def _zero_words(p, N, BLOCK: tl.constexpr):
     tl.store(p + offs, tl.zeros([BLOCK], p.dtype.element_ty), mask=offs < N)
 
 
+@triton.jit
+def _zero_words_nomask(p, N, BLOCK: tl.constexpr):
+    """Used when numel is an exact multiple of BLOCK: drops the predicate, tighter store sequence."""
+    offs = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    tl.store(p + offs, tl.zeros([BLOCK], p.dtype.element_ty))
+
+
 # --- TUNING PARAMS START ---
 DIRECT_DEVICE = 1
-USE_WORDS = 1
-BLOCK_BYTES = 8192
-BLOCK_WORDS = 16384
-NUM_WARPS = 4
-SMALL_THRESHOLD_BYTES = 0
-SMALL_BLOCK_BYTES = 8192
+# Bucketing rationale: measurements show that for the same shape it is the "number of programs", not just the byte
+# count, that determines throughput —
+# medium buffers (<=8 MiB) are spread over about 12 programs (after rounding up to a power of 2, landing at 8~12,
+# fp16 2 MiB / fp32 4 MiB are both optimal in this bucket), while larger buffers need about 64 programs to be saturated.
+TARGET_PROGRAMS_MEDIUM = 12
+TARGET_PROGRAMS_LARGE = 64
+LARGE_BUFFER_BYTES = 8 * 1024 * 1024
+MIN_PROGRAM_BYTES = 16 * 1024
+MAX_PROGRAM_BYTES = 1024 * 1024
+STORE_BYTES = 8
+NUM_WARPS = 2
 BLOCK_ELEMS_STRIDED = 1024
 STRIDED_WARPS = 4
 SKIP_PINNED_CHECK = 1
@@ -82,25 +94,71 @@ def _empty(size_t, dtype, layout, device, pin_memory):
     return torch.empty(size_t, **kwargs)
 
 
+def _program_bytes(num_bytes):
+    """Derives the per-program byte target from the total byte count.
+
+    The rule puts the program count in the measured best tier (8 for medium buffers, 64 for
+    large ones) clamped to [MIN_PROGRAM_BYTES, MAX_PROGRAM_BYTES]; tiny buffers therefore land
+    on a single program, and larger ones do not slow down from over-long blocks.
+    """
+    target_programs = (
+        TARGET_PROGRAMS_MEDIUM
+        if num_bytes <= LARGE_BUFFER_BYTES
+        else TARGET_PROGRAMS_LARGE
+    )
+    program_bytes = num_bytes // target_programs
+    return max(MIN_PROGRAM_BYTES, min(MAX_PROGRAM_BYTES, program_bytes))
+
+
+def _power_of_two_at_most(value):
+    """Rounds down to a power of two: ``tl.arange`` block lengths must be powers of two."""
+    value = max(1, int(value))
+    return 1 << (value.bit_length() - 1)
+
+
+def _power_of_two_at_least(value):
+    """Rounds up to a power of two (block length must be a power of two; rounding up wins full-tile writes)."""
+    value = max(1, int(value))
+    return 1 << (value - 1).bit_length()
+
+
 def _fill_contiguous(buf):
-    """Contiguous buffer: prefer 32-bit word launches; fall back to the byte path when bytes are not a multiple of 4."""
+    """Contiguous buffer: emit the zeroing store at 64/32/8-bit width, chosen by byte alignment.
+
+    Wider stores move the same bytes with fewer write instructions and longer contiguous runs;
+    the int64 view requires the total bytes to be a multiple of 8 (always true for new buffers).
+    """
     flat = buf.reshape(-1)
     byte_view = flat.view(torch.uint8)
     num_bytes = byte_view.numel()
-    if USE_WORDS and num_bytes % 4 == 0 and num_bytes > 0:
-        word_view = byte_view.view(torch.int32)
-        num_words = word_view.numel()
-        block = BLOCK_WORDS
-        if SMALL_THRESHOLD_BYTES and num_bytes <= SMALL_THRESHOLD_BYTES:
-            block = max(1, SMALL_BLOCK_BYTES // 4)
-        grid = (triton.cdiv(num_words, block),)
-        _zero_words[grid](word_view, num_words, block, num_warps=NUM_WARPS)
+    if num_bytes == 0:
         return
-    block = BLOCK_BYTES
-    if SMALL_THRESHOLD_BYTES and num_bytes <= SMALL_THRESHOLD_BYTES:
-        block = SMALL_BLOCK_BYTES
-    grid = (triton.cdiv(num_bytes, block),)
-    _zero_bytes[grid](byte_view, num_bytes, block, num_warps=NUM_WARPS)
+
+    program_bytes = _program_bytes(num_bytes)
+    if STORE_BYTES >= 8 and num_bytes % 8 == 0:
+        store_view = byte_view.view(torch.int64)
+        elem_bytes = 8
+    elif num_bytes % 4 == 0:
+        store_view = byte_view.view(torch.int32)
+        elem_bytes = 4
+    else:
+        store_view = byte_view
+        elem_bytes = 1
+
+    num_elems = store_view.numel()
+    block = _power_of_two_at_least(max(1, program_bytes // elem_bytes))
+    if num_elems < block:
+        # A single program can cover the whole buffer: narrow the block length to the actual number of elements to avoid
+        # idle threads.
+        block = _power_of_two_at_least(num_elems)
+    num_warps = NUM_WARPS
+    grid = (triton.cdiv(num_elems, block),)
+    if elem_bytes == 1:
+        _zero_bytes[grid](store_view, num_elems, block, num_warps=num_warps)
+    elif num_elems % block == 0:
+        _zero_words_nomask[grid](store_view, num_elems, block, num_warps=num_warps)
+    else:
+        _zero_words[grid](store_view, num_elems, block, num_warps=num_warps)
 
 
 def _fill_strided(buf):
@@ -133,11 +191,11 @@ def _fill_device(buf):
 
 
 def _fill_any(t):
-    """Zero a dense buffer (GCU device / UVA pinned / CPU fallback)."""
+    """Zeroes a dense buffer (GCU device / UVA pinned / CPU fallback)."""
     if t.numel() == 0 or t.device.type == "meta":
         return
     if (DIRECT_DEVICE and t.device.type == "gcu") or t.device.type == "cuda":
-        # GCU device memory is directly addressable by Triton kernels, no scratch detour needed.
+        # GCU device memory can be addressed directly by the Triton kernel, with no intermediate scratch needed.
         _fill_device(t)
     elif not SKIP_PINNED_CHECK and t.is_pinned():
         _fill_device(t)

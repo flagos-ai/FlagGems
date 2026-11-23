@@ -51,14 +51,15 @@ def _launch_retry(launch):
 
 _BLOCK_SIZE = 4096
 _NON_INNER_BLOCK_SIZE = 64
-# Scale cap for direct single-CTA computation: medium N (including the 64k tier) is taken by one kernel, cheaper in
-# fixed
-# overhead than two "map+finish" launches; beyond that use the cross-CTA partial path to avoid single-CTA bandwidth
-# saturation.
+# Size limit for direct single-CTA computation: for medium N (including the 64k case), finishing in one kernel is
+# cheaper than the "map+finish"
+# two-launch approach in fixed overhead; beyond that, still use the cross-CTA partial-sum path to avoid single-CTA
+# bandwidth saturation.
 _GLOBAL_SINGLE_CTA_LIMIT = 65536
 _MAX_GLOBAL_PROGRAMS = 512
-# At large N each program gets more tiles, and 512 programs make each CTA hold too many resident tiles,
-# lowering effective bandwidth; measured 256 is faster for N >= 2M, so switch the program cap by scale.
+# For large N, each program gets more tiles; 512 programs would leave too many resident tiles per CTA,
+# actually reducing effective bandwidth; measurements show the 256 setting is faster for N >= 2M, so the program-count
+# cap is switched by size.
 _MAX_GLOBAL_WIDE_PROGRAMS = 256
 _GLOBAL_WIDE_GRID_MIN_ELEMS = 1 << 21
 _MAX_STRIDED_NDIM = 8
@@ -2002,22 +2003,22 @@ def _std_mean_impl(
 
 
 def std_mean(inp, unbiased=True):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN")
+    logger.debug("GEMS_ENFLAME STD_MEAN")
     return _std_mean_impl(inp, None, 1.0 if unbiased else 0.0, False)
 
 
 def std_mean_dim(inp, dim, unbiased=True, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.DIM")
+    logger.debug("GEMS_ENFLAME STD_MEAN.DIM")
     return _std_mean_impl(inp, dim, 1.0 if unbiased else 0.0, keepdim)
 
 
 def std_mean_correction(inp, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.CORRECTION")
+    logger.debug("GEMS_ENFLAME STD_MEAN.CORRECTION")
     return _std_mean_impl(inp, dim, correction, keepdim)
 
 
 def std_mean_names_dim(inp, dim, unbiased=True, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.NAMES_DIM")
+    logger.debug("GEMS_ENFLAME STD_MEAN.NAMES_DIM")
     return _std_mean_impl(
         inp,
         dim,
@@ -2028,7 +2029,7 @@ def std_mean_names_dim(inp, dim, unbiased=True, keepdim=False):
 
 
 def std_mean_correction_names(inp, dim, *, correction=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.CORRECTION_NAMES")
+    logger.debug("GEMS_ENFLAME STD_MEAN.CORRECTION_NAMES")
     return _std_mean_impl(
         inp,
         dim,
@@ -2047,7 +2048,7 @@ def std_mean_correction_out(
     out0,
     out1,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.CORRECTION_OUT")
+    logger.debug("GEMS_ENFLAME STD_MEAN.CORRECTION_OUT")
     return _std_mean_impl(
         inp,
         dim,

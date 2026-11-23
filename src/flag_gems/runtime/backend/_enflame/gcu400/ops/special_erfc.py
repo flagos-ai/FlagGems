@@ -101,19 +101,19 @@ def _launch(x, out):
 
 
 def erfc(x):
-    logger.debug("GEMS_ENFLAME_GCU400 ERFC")
+    logger.debug("GEMS_ENFLAME ERFC")
     inp = x if x.is_contiguous() else x.contiguous()
     return _launch(inp, torch.empty_like(inp))
 
 
 def special_erfc(x):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFC")
+    logger.debug("GEMS_ENFLAME SPECIAL_ERFC")
     inp = x if x.is_contiguous() else x.contiguous()
     return _launch(inp, torch.empty_like(inp))
 
 
 def erfc_(x):
-    logger.debug("GEMS_ENFLAME_GCU400 ERFC_")
+    logger.debug("GEMS_ENFLAME ERFC_")
     if not x.is_contiguous():
         x.copy_(erfc(x))
         return x

@@ -53,7 +53,15 @@ _SCAN_SB_LOG = 11
 _SCAN_SB = 1 << _SCAN_SB_LOG
 _SCAN_BLOCK = 2048
 _FIN_BLOCK = 1024
-_SB_INREG_MAX = 1024
+# Launch parameters are managed centrally for easy item-by-item A/B testing (no dynamic adaptation, to keep behavior
+# reproducible).
+_HIST_WARPS = 16
+_SCAN_WARPS = 8
+_SCATTER_WARPS = 16
+_FIN_WARPS = 8
+# A/B switch: None means automatically select based on "whether the key space fits in 32 bits"; True/False force the
+# choice.
+_KEY_PATH_OVERRIDE = None
 
 _FP8 = tuple(
     d
@@ -209,7 +217,7 @@ def _coalesce_scatter(
     D4: tl.constexpr,
     NTP: tl.constexpr,
     KEY_PATH: tl.constexpr,
-    INREG_SB: tl.constexpr,
+    SINGLE_SB: tl.constexpr,
     SB_LOG: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -225,13 +233,10 @@ def _coalesce_scatter(
     exc = (packed >> 32).to(tl.int32)
     bits = (packed & 0xFFFFFFFF).to(tl.int32)
     lmask = (tl.full([BLOCK], 1, tl.int32) << (k & 31).to(tl.int32)) - 1
-    if INREG_SB:
-        # Each program re-derives the superblock exclusive offsets in registers;
-        # NB2 is small enough for this size class that no extra launch is needed.
-        sidx = tl.arange(0, NTP)
-        st = tl.load(blk_tot_ptr + sidx, mask=sidx < NB2, other=0)
-        soff = tl.cumsum(st, axis=0) - st
-        blk = tl.gather(soff, w >> SB_LOG, axis=0)
+    if SINGLE_SB:
+        # When the key space has only one superblock, the global prefix offset is always 0, avoiding an extra launch and
+        # load.
+        blk = tl.zeros([BLOCK], tl.int32)
     else:
         blk = tl.load(blk_off_ptr + (w >> SB_LOG), mask=m, other=0)
     pos = exc + _popc32(bits & lmask) + blk
@@ -312,7 +317,7 @@ def _coalesce_finalize(
 
 def coalesce(self):
     """Coalesce a COO sparse tensor, matching ``aten::coalesce`` semantics."""
-    logger.debug("GEMS_ENFLAME_GCU400 COALESCE")
+    logger.debug("GEMS_ENFLAME COALESCE")
     if self.layout != torch.sparse_coo:
         raise RuntimeError(
             "coalesce expected sparse coordinate tensor layout but got "
@@ -332,7 +337,11 @@ def coalesce(self):
     shape = tuple(int(d) for d in self.shape)
     S = self.sparse_dim()
     n = self._nnz()
-    dev = self.device
+    indices = self._indices()
+    # torch_gcu's sparse wrapper may report ``self.device`` as cpu, while the storage of indices/values is
+    # actually on the GCU; the scratch buffer must live on the real device holding indices, otherwise
+    # the Triton kernel receives a CPU pointer ("Pointer argument cannot be accessed from Kurama").
+    dev = indices.device
 
     if vdt in _F32_DT:
         adt = torch.float32
@@ -344,28 +353,43 @@ def coalesce(self):
     K = 1
     for d in shape:
         K *= d
-    key_path = K < _U32_MAX
+    key_path = (
+        (K < _U32_MAX) if _KEY_PATH_OVERRIDE is None else bool(_KEY_PATH_OVERRIDE)
+    )
     NW = (K + 31) // 32
     NB2 = (NW + _SCAN_SB - 1) // _SCAN_SB
-    inreg_sb = NB2 <= _SB_INREG_MAX
-    NTP = max(16, triton.next_power_of_2(NB2)) if inreg_sb else 16
+    # Single superblock: the global prefix sum is always 0, so scatter needs no prefix-table load (and no blkoff
+    # launch).
+    # Multiple superblocks: _coalesce_blkoff materializes the prefix table. The previous "in-register cumsum +
+    # tl.gather"
+    # path could not be legalized on the GCU backend (tt.gather illegal) and has been removed.
+    single_sb = NB2 <= 1
+    NTP = max(16, triton.next_power_of_2(NB2))
     dims = list(shape) + [0] * (5 - len(shape))
     D1, D2, D3, D4 = dims[1], dims[2], dims[3], dims[4]
-
-    indices = self._indices()
 
     bits = torch.zeros(NW, dtype=torch.int32, device=dev)
     table = torch.empty(NW, dtype=torch.int64, device=dev)
     cnt = torch.empty(1, dtype=torch.int32, device=dev)
     is_bool = vdt == torch.bool
-    out_vals = torch.empty(n, dtype=torch.uint8 if is_bool else vdt, device=dev)
+    # The GCU backend cannot select a vector truncation narrowed to i8 (LLVM ERROR: Cannot select
+    # v512i8 = truncate), so int8/uint8 are first written into an int32 buffer and finally converted by torch
+    # once for dtype conversion (equivalent to the ATen reference accumulating in int64 and then narrowing).
+    narrow8 = vdt in (torch.int8, torch.uint8)
+    if is_bool:
+        out_dtype = torch.uint8
+    elif narrow8:
+        out_dtype = torch.int32
+    else:
+        out_dtype = vdt
+    out_vals = torch.empty(n, dtype=out_dtype, device=dev)
     accbuf = torch.empty(n, dtype=adt, device=dev)
     # Two separate key buffers: the histogram publishes the consumed keys and
     # the scatter writes the ranked keys, so they must not alias.
     keyin = torch.empty(n, dtype=torch.uint32, device=dev)
     keys = torch.empty(n, dtype=torch.uint32, device=dev)
     out_idx = torch.empty(S * n, dtype=torch.int64, device=dev)
-    if inreg_sb:
+    if single_sb:
         blk_tot = torch.empty(NB2, dtype=torch.int32, device=dev)
         blk_off = blk_tot
     else:
@@ -388,12 +412,12 @@ def coalesce(self):
         D4,
         WRITE_KEY=key_path,
         BLOCK=_HIST_BLOCK,
-        num_warps=8,
+        num_warps=_HIST_WARPS,
     )
     _coalesce_scan[(triton.cdiv(NW, _SCAN_BLOCK),)](
-        bits, table, blk_tot, cnt, NW, BLOCK=_SCAN_BLOCK, num_warps=8
+        bits, table, blk_tot, cnt, NW, BLOCK=_SCAN_BLOCK, num_warps=_SCAN_WARPS
     )
-    if not inreg_sb:
+    if not single_sb:
         _coalesce_blkoff[(1,)](blk_tot, blk_off, NB2, NTP=NTP)
     _coalesce_scatter[grid_n](
         keyin,
@@ -414,10 +438,10 @@ def coalesce(self):
         D4,
         NTP=NTP,
         KEY_PATH=key_path,
-        INREG_SB=inreg_sb,
+        SINGLE_SB=single_sb,
         SB_LOG=_SCAN_SB_LOG,
         BLOCK=_HIST_BLOCK,
-        num_warps=8,
+        num_warps=_SCATTER_WARPS,
     )
     _coalesce_finalize[grid_n](
         accbuf,
@@ -434,6 +458,7 @@ def coalesce(self):
         KEY_PATH=key_path,
         IS_BOOL=is_bool,
         BLOCK=_FIN_BLOCK,
+        num_warps=_FIN_WARPS,
     )
 
     # Single trailing device->host read; every kernel above is already queued.
@@ -445,6 +470,8 @@ def coalesce(self):
     out_values = out_vals[:r]
     if is_bool:
         out_values = out_values.view(torch.bool)
+    elif narrow8:
+        out_values = out_values.to(vdt)
     return torch.sparse_coo_tensor(
         out_indices, out_values, shape, device=dev, is_coalesced=True
     )

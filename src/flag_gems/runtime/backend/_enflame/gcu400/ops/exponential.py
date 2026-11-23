@@ -58,17 +58,21 @@ def exponential(x, lambd: float = 1.0, *, generator=None):
     else:
         BLOCK = min(triton.next_power_of_2(N), 1024)
 
-    increment = triton.cdiv(N, UNROLL)
+    grid_size = triton.cdiv(N, BLOCK * UNROLL)
+    # Every program draws BLOCK philox counters, including the lanes its masked
+    # tail stores drop, so a call consumes exactly grid_size * BLOCK counters.
+    # `N // UNROLL` under-reserves whenever BLOCK > 1 (e.g. small N), and the
+    # next call then replays part of this call's random stream (Issue #7162).
+    increment = grid_size * BLOCK
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
 
-    use_f32_buffer = dtype in (torch.float16, torch.bfloat16) and N > 65536
-    out_buf = (
-        torch.empty(N, dtype=torch.float32, device=device) if use_f32_buffer else out
-    )
+    # Write directly to the target dtype (store implicitly does f32 -> fp16/bf16), removing the original three-step
+    # f32 intermediate buffer + .to(dtype) + copy_ path for large fp16/bf16 shapes; numerically equivalent, and saves
+    # two kernels plus one full memory pass.
+    out_buf = out
 
-    grid_size = triton.cdiv(N, BLOCK * UNROLL)
     with torch_device_fn.device(device):
         fused_exponential_kernel_f32[(grid_size,)](
             out_buf,
@@ -81,6 +85,4 @@ def exponential(x, lambd: float = 1.0, *, generator=None):
             num_warps=1,
         )
 
-    if use_f32_buffer:
-        out.view(-1).copy_(out_buf.to(dtype))
     return out

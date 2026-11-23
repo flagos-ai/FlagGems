@@ -38,5 +38,5 @@ def special_sinc_func(x):
 
 
 def special_sinc(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SINC")
+    logger.debug("GEMS_ENFLAME SPECIAL_SINC")
     return special_sinc_func(A)

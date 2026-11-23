@@ -16,10 +16,14 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,118 @@ def saturate_weight_to_fp16_func(x):
     return clamped.to(x.dtype)
 
 
+# ---------------------------------------------------------------------------
+# GCU400 flat grid-stride fast path (2026-11-18, L600, do_bench median,
+# kernel mode, grid=48, num_stages=1).
+#
+# The generic pointwise_dynamic path dispatches a block-pointer GSL kernel
+# that sustains only ~374GB/s on this op (5.6ms @ 2^29 fp16 = 0.12x vs
+# native), while a flat grid-stride kernel with the same arithmetic reaches
+# the 1R1W copy floor (3.16-3.19TB/s @ 2^29 fp16, 674.8us == copy_floor
+# 673.1us). The arithmetic itself is free: propagate_nan=ALL min/max costs
+# nothing over minnum (28.4us vs 28.3us @ 2^24 fp16) and tl.where NaN
+# restore is 9% slower, so the propagate_nan=ALL form is kept (exact
+# parity with the generic scalar body).
+#
+# Swept ladder (nan_all semantics, all num_warps=4 so no two bands share
+# a (dtype, BLOCK) pair with different num_warps -- the libentry cache key
+# drops num_warps, see ops/add.py):
+#   16-bit: 2^20 B16384 6.1us | 2^21 8.7 | 2^22 B65536 12.4 | 2^23 17.5 |
+#           2^24 B131072 27.6us (vs B65536 28.5) | 2^29 B131072 674.8us
+#           (vs B65536/nw4 700.5, nw2 679.6)
+#   fp32:   2^20 B8192 7.3us | 2^24 B65536 49.0us | 2^27 B65536 340.4us
+#           (B131072 362.4) | 2^29 B131072 1409-1356us (B65536 1428)
+# Native torch.clamp runs at 2.97-3.08TB/s on the big shapes, so the
+# remaining gap to 1.0x is the 1R1W pure-stream ceiling itself (cf. the
+# ior_scalar 15-case arithmean ceiling ~1.13x), not kernel headroom.
+#
+# Everything the guard rejects (non-contiguous, non-float, tiny shapes
+# where the launch floor dominates: N<=8192 measured 3.1us on pointwise
+# vs 3.3us flat) keeps the pointwise_dynamic fallback unchanged.
+# ---------------------------------------------------------------------------
+
+_FLAT_GRID_CAP = 48
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
+def saturate_weight_flat_kernel(
+    x_ptr, out_ptr, N_total, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        if EVEN:
+            x = tl.load(x_ptr + off).to(tl.float32)
+            v = tl.minimum(
+                65504.0,
+                tl.maximum(-65504.0, x, propagate_nan=tl.PropagateNan.ALL),
+                propagate_nan=tl.PropagateNan.ALL,
+            )
+            tl.store(out_ptr + off, v.to(out_ptr.dtype.element_ty))
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+            v = tl.minimum(
+                65504.0,
+                tl.maximum(-65504.0, x, propagate_nan=tl.PropagateNan.ALL),
+                propagate_nan=tl.PropagateNan.ALL,
+            )
+            tl.store(out_ptr + off, v.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+def _choose_block_and_warps(n_total, itemsize):
+    if n_total <= 8192:
+        return 0, 0
+    if itemsize == 2:
+        if n_total <= (1 << 21):
+            return 16384, 4
+        if n_total <= (1 << 23):
+            return 65536, 4
+        return 131072, 4
+    if n_total <= (1 << 21):
+        return 8192, 4
+    if n_total <= (1 << 27):
+        return 65536, 4
+    return 131072, 4
+
+
 def _saturate_weight_to_fp16(A):
-    logger.debug("GEMS_ENFLAME_GCU400 _SATURATE_WEIGHT_TO_FP16")
+    logger.debug("GEMS _SATURATE_WEIGHT_TO_FP16")
+    if A.is_contiguous() and A.dtype.is_floating_point:
+        n_total = A.numel()
+        if n_total == 0:
+            return torch.empty_like(A)
+        block, num_warps = _choose_block_and_warps(n_total, A.element_size())
+        if block:
+            out = torch.empty_like(A)
+            grid = (min(triton.cdiv(n_total, block), _FLAT_GRID_CAP),)
+            # The external llvm converter intermittently fails on cold
+            # compiles (nondeterministic; converterResult=-2 family, see
+            # P02); retrying the launch recompiles and succeeds
+            # (add.py / sinh.py precedent).
+            for attempt in range(3):
+                try:
+                    with torch_device_fn.device(A.device):
+                        saturate_weight_flat_kernel[grid](
+                            A,
+                            out,
+                            n_total,
+                            BLOCK=block,
+                            EVEN=n_total % block == 0,
+                            num_warps=num_warps,
+                            num_stages=1,
+                        )
+                    return out
+                except Exception as exc:
+                    if attempt == 2:
+                        raise
+                    logger.warning(
+                        "saturate flat kernel launch failed (attempt %d): %s",
+                        attempt + 1,
+                        exc,
+                    )
     return saturate_weight_to_fp16_func(A)

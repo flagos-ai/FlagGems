@@ -270,7 +270,7 @@ def _pad8(seq, fill):
 
 
 def special_bessel_y0(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_BESSEL_Y0")
+    logger.debug("GEMS_ENFLAME SPECIAL_BESSEL_Y0")
     x = A
     if x.dtype not in (torch.float32, torch.float64):
         raise TypeError(

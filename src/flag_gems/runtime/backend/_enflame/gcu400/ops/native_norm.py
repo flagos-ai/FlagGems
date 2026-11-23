@@ -84,6 +84,22 @@ def _native_norm_l2_partial(
 
 
 @libentry()
+@triton.jit
+def _native_norm_l2_single(X, Mid, BLOCK: tl.constexpr):
+    """One program per full block: no loop, no tail, no mask predicate.
+
+    For inputs that divide into a handful of 32KB blocks the persistent
+    strided loop degenerates to one iteration per program, so the loop
+    control and the tail-block predicate are pure overhead; a flat one
+    block-per-program kernel with 32KB chunks runs measurably faster
+    (64K elements: 4.73us vs 5.36us, three dtypes, 5-round medians).
+    """
+    pid = tl.program_id(0)
+    x = tl.load(X + pid * BLOCK + tl.arange(0, BLOCK)).to(tl.float32)
+    tl.store(Mid + pid, tl.sum(x * x))
+
+
+@libentry()
 @triton.jit(do_not_specialize=["MID_SIZE"])
 def _native_norm_l2_final(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -108,24 +124,71 @@ def _partial_block_size(numel, cap):
 # tensor numel.
 _FUSED_MAX_NUMEL = 16384
 
+# Sizes that divide into whole 32KB blocks go one-block-per-program instead
+# of the persistent strided loop: fewer, wider chunks beat more, narrower
+# programs once the tensor spans only a handful of DMA transfers. Above this
+# many blocks the loop amortises and the wider fp32 chunks below take over.
+_SINGLE_BLOCK_NUMEL = 8192
+_SINGLE_MAX_NUMEL = 256 * 1024
+
+
+# Crossover measured on GCU400 (do_bench median, interleaved A/B): below it,
+# dense 32KB chunks keep all 48 SPCs streaming (1M: 6.96us vs 8.34; 8M: 23.4
+# vs 24.0); above it, 128KB chunks on 24 programs already saturate the
+# aggregate DRAM ceiling with less per-program ramp-up waste (64M: 127.8 vs
+# 136.7). The two schedules tie exactly at the crossover (12M: 31.4 both).
+_FP32_WIDE_MIN_NUMEL = 12 * 1024 * 1024
+_FP32_SMALL_MAX_NUMEL = 256 * 1024
+
 
 def _l2_two_stage(x, out, numel):
-    if x.dtype == torch.float32 and numel >= 4 * 1024 * 1024:
-        # Wide fp32 chunks only pay off once every program streams many
-        # tiles; below that the narrower 16K block keeps more programs busy.
-        cap, num_warps = 32768, 8
+    if (
+        _FUSED_MAX_NUMEL < numel <= _SINGLE_MAX_NUMEL
+        and numel % _SINGLE_BLOCK_NUMEL == 0
+    ):
+        # Whole 32KB blocks, at most 32 programs: flat one-block-per-program.
+        single = True
+        block, grid_size, num_warps = (
+            _SINGLE_BLOCK_NUMEL,
+            numel // _SINGLE_BLOCK_NUMEL,
+            4,
+        )
     else:
-        cap, num_warps = 16384, 4
-    block = _partial_block_size(numel, cap)
-    num_chunks = triton.cdiv(numel, block)
-    grid_size = min(num_chunks, _MAX_GRID)
-    num_stages = 2 if num_chunks > grid_size else 1
+        single = False
+        if x.dtype == torch.float32:
+            if numel >= _FP32_WIDE_MIN_NUMEL:
+                block, grid_size, num_warps = 32768, 24, 4
+            elif numel <= _FP32_SMALL_MAX_NUMEL:
+                block, grid_size, num_warps = (
+                    _partial_block_size(numel, 8192),
+                    _MAX_GRID,
+                    4,
+                )
+            else:
+                block, grid_size, num_warps = 8192, 48, 4
+        else:
+            # 16-bit lanes move half the bytes per element, capping
+            # per-program throughput; the 48-way adaptive schedule measured
+            # fastest at every size probed, so 16-bit inputs keep it.
+            block, grid_size, num_warps = (
+                _partial_block_size(numel, 16384),
+                _MAX_GRID,
+                4,
+            )
+        num_chunks = triton.cdiv(numel, block)
+        grid_size = min(num_chunks, grid_size)
+        num_stages = 2 if num_chunks > grid_size else 1
 
     mid = torch.empty([grid_size], dtype=torch.float32, device=x.device)
     with torch_device_fn.device(x.device):
-        _native_norm_l2_partial[(grid_size,)](
-            x, mid, numel, BLOCK=block, num_stages=num_stages, num_warps=num_warps
-        )
+        if single:
+            _native_norm_l2_single[(grid_size,)](
+                x, mid, BLOCK=block, num_warps=num_warps
+            )
+        else:
+            _native_norm_l2_partial[(grid_size,)](
+                x, mid, numel, BLOCK=block, num_stages=num_stages, num_warps=num_warps
+            )
         _native_norm_l2_final[(1,)](
             mid,
             out,
@@ -146,7 +209,7 @@ def native_norm(self, p=2):
     Returns:
         A scalar tensor containing the p-norm
     """
-    logger.debug("GEMS_ENFLAME_GCU400 NATIVE_NORM")
+    logger.debug("GEMS_ENFLAME NATIVE_NORM")
 
     # Validate dtype
     if self.dtype not in [torch.float16, torch.float32, torch.bfloat16, torch.float64]:

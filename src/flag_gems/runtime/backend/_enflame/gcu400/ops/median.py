@@ -65,7 +65,33 @@ _INT_LASTDIM_SELECT_DTYPES = {
     torch.int64,
 }
 _STRIDED_SELECT_MIN = _DIRECT_REDUCTION_LIMIT + 1
+# Minimum width for routing small integer tensors to binary select: below it a
+# single-block tl.sort is cheaper (measured crossover on GCU400)
+_INT_SELECT_MIN_WIDTH = 16
+# Above this reduction width the single-block tl.sort used by the direct-dim
+# kernel spills into a 128/256-element bitonic network and gets ~30-45x slower
+# than binary select (measured on GCU400: 2.7ms at width 64 vs 220ms at 96)
+_INT_DIRECT_SORT_MAX_WIDTH = 64
 _STRIDED_SELECT_LIMIT = 4096
+# Elements per program for the (BLOCK_OUT, BLOCK) key-select tiles. The binary
+# select walks ~32 dependent reductions, so one program must carry enough
+# independent rows to hide that latency: measured on GCU400 the old fixed
+# BLOCK_OUT=2 left the reduction chain fully exposed (128-wide last-dim median
+# on [32, 384, 128]: 22.7 ms with 1 row per program, 8.7 ms with 16).
+_SELECT_TILE_ELEMENTS = 4096
+_SELECT_BLOCK_OUT_MAX = 16
+# Widest last-dim reduction for which the tiled strided select beats the
+# one-row-per-program select (measured crossover on GCU400 fp32).
+_SELECT_LASTDIM_STRIDED_MAX_BLOCK = 1024
+# With this few rows the strided fp32 kernel only pads idle rows into its tile,
+# so the dense one-row-per-program kernel wins by more than 20x (measured).
+_SELECT_DENSE_ROWS_LIMIT = 8
+
+
+def _select_block_out(block):
+    # More rows per program amortises the serial select chain, but the tile has
+    # to stay register friendly, hence the element budget plus a hard cap.
+    return max(2, min(_SELECT_BLOCK_OUT_MAX, _SELECT_TILE_ELEMENTS // block))
 
 
 @libentry()
@@ -387,18 +413,35 @@ def median_int_lastdim_select_kernel(
     dtype = row_data.dtype.element_ty
     high = _get_iinfo_val(dtype, return_max=True)
     low = _get_iinfo_val(dtype, return_max=False)
-    row_min = tl.min(tl.where(valid, data, high), axis=0).to(tl.int64)
-    row_max = tl.max(tl.where(valid, data, low), axis=0).to(tl.int64)
+    # The bisection runs on int32 unless the data is int64: 64-bit vector compares
+    # are much slower than int32 on GCU and the loop is entirely compares. lo/hi
+    # stay int64 so `hi - lo` cannot overflow, and mid is narrowed back for the
+    # vector compare (it always lies inside [row_min, row_max]).
+    if dtype == tl.int64:
+        work = data
+        work_ty = tl.int64
+    else:
+        work = data.to(tl.int32)
+        work_ty = tl.int32
+    row_min = tl.min(tl.where(valid, work, high), axis=0).to(tl.int64)
+    row_max = tl.max(tl.where(valid, work, low), axis=0).to(tl.int64)
 
     lo = row_min
     hi = row_max
     rank = (WIDTH - 1) // 2
-    for _ in tl.static_range(0, SEARCH_STEPS):
+    # Dynamic bisection: converges once lo==hi, so it exits early. When the value
+    # range is much narrower than the full dtype width the iteration count drops
+    # from a fixed SEARCH_STEPS to about log2(row_max-row_min+1).
+    # SEARCH_STEPS is kept as an upper bound to avoid an infinite loop on a logic
+    # error.
+    steps = 0
+    while (lo < hi) and (steps < SEARCH_STEPS):
         mid = lo + ((hi - lo) // 2)
-        le_count = tl.sum((valid & (data <= mid.to(dtype))).to(tl.int32), axis=0)
+        le_count = tl.sum((valid & (work <= mid.to(work_ty))).to(tl.int32), axis=0)
         take_left = le_count > rank
         hi = tl.where(take_left, mid, hi)
         lo = tl.where(take_left, lo, mid + 1)
+        steps += 1
 
     median_value = lo.to(dtype)
     first_match = tl.argmax((valid & (data == median_value)).to(tl.int32), axis=0)
@@ -454,8 +497,6 @@ def median_f16_key_select_kernel(
     nan_mask = valid & (data != data)
     nan_i32 = nan_mask.to(tl.int32)
     has_nan = tl.max(nan_i32, axis=0) != 0
-    first_nan = tl.argmax(nan_i32, axis=0)
-    nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
 
     finite = valid & ~nan_mask
     neg_inf_mask = finite & (data == -float("inf"))
@@ -489,20 +530,19 @@ def median_f16_key_select_kernel(
 
     selected_key = lo
     key_match = real_finite & (keys == selected_key)
-    selected_key_first = tl.argmax(key_match.to(tl.int32), axis=0)
-    selected_value = tl.load(base + selected_key_first)
-
-    first_neg_inf = tl.argmax(neg_inf_mask.to(tl.int32), axis=0)
-    neg_inf_value = tl.load(base + first_neg_inf, mask=take_neg_inf, other=0.0)
-    first_pos_inf = tl.argmax(pos_inf_mask.to(tl.int32), axis=0)
-    pos_inf_value = tl.load(base + first_pos_inf, mask=take_pos_inf, other=0.0)
-    selected_value = tl.where(take_neg_inf, neg_inf_value, selected_value)
-    selected_value = tl.where(take_pos_inf, pos_inf_value, selected_value)
-    selected_key_first = tl.where(take_neg_inf, first_neg_inf, selected_key_first)
-    selected_key_first = tl.where(take_pos_inf, first_pos_inf, selected_key_first)
-
-    selected_value = tl.where(has_nan, nan_value, selected_value)
-    first_match = tl.where(has_nan, first_nan, selected_key_first)
+    # NaN / -inf / +inf / key hit all report "first matching index" and the value
+    # at that index is the answer, so resolve the category once and use a single
+    # argmax: the previous four argmax plus four masked loads cost ~10us at
+    # BLOCK=4096, i.e. a fifth of the whole kernel.
+    target = tl.where(
+        has_nan,
+        nan_mask,
+        tl.where(
+            take_neg_inf, neg_inf_mask, tl.where(take_pos_inf, pos_inf_mask, key_match)
+        ),
+    )
+    first_match = tl.argmax(target.to(tl.int32), axis=0)
+    selected_value = tl.load(base + first_match)
     tl.store(values + row, selected_value)
     tl.store(indices + row, first_match.to(tl.int64))
 
@@ -525,33 +565,61 @@ def median_fp32_key_select_kernel(
     nan_mask = valid & (data != data)
     nan_i32 = nan_mask.to(tl.int32)
     has_nan = tl.max(nan_i32, axis=0) != 0
-    first_nan = tl.argmax(nan_i32, axis=0)
-    nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
 
     keys = _fp32_order_key(data)
     finite = valid & ~nan_mask
-    key_min_fill = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint32)
     key_max_fill = tl.full((), 0, dtype=tl.uint32)
-    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=0)
-    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=0)
 
-    lo = row_min
-    hi = row_max
+    # Two-stage select: first bisect on the high 16 bits of the key (<=16
+    # reductions instead of the previous fixed 32), then pinpoint inside the hit
+    # bucket with the low 16 bits. With consecutive data a bucket usually holds a
+    # single element and takes the single-element fast path; with dense duplicates
+    # it falls back to a full bisection, worst case equivalent to 32 single-stage
+    # steps.
+    keys_hi = keys >> 16
+    lo = tl.min(tl.where(finite, keys_hi, key_min_fill), axis=0)
+    hi = tl.max(tl.where(finite, keys_hi, key_max_fill), axis=0)
     rank = (WIDTH - 1) // 2
-    for _ in tl.static_range(0, 32):
+    # 16 fixed steps instead of a guarded while loop: the loop is always taken 16
+    # times for real data, and the unrolled form avoids the per-step loop
+    # bookkeeping on the scalar side.
+    for _ in tl.static_range(0, 16):
         mid = lo + ((hi - lo) >> 1)
-        le_count = tl.sum((finite & (keys <= mid)).to(tl.int32), axis=0)
+        le_count = tl.sum((finite & (keys_hi <= mid)).to(tl.int32), axis=0)
         take_left = le_count > rank
         hi = tl.where(take_left, mid, hi)
         lo = tl.where(take_left, lo, mid + 1)
 
-    selected_key = lo
-    key_match = finite & (keys == selected_key)
-    selected_key_first = tl.argmax(key_match.to(tl.int32), axis=0)
-    selected_value = tl.load(base + selected_key_first)
-
-    selected_value = tl.where(has_nan, nan_value, selected_value)
-    first_match = tl.where(has_nan, first_nan, selected_key_first)
+    bucket = lo
+    in_bucket = finite & (keys_hi == bucket)
+    bucket_count = tl.sum(in_bucket.to(tl.int32), axis=0)
+    if bucket_count == 1:
+        key_match = in_bucket
+    else:
+        # Pinpoint inside the bucket: rank_in_bucket = global rank - elements below
+        # the bucket
+        below = tl.sum((finite & (keys_hi < bucket)).to(tl.int32), axis=0)
+        rank = rank - below
+        lo_low = 0
+        hi_low = 0xFFFF
+        guard = 0
+        while (lo_low < hi_low) and (guard < 16):
+            mid_low = lo_low + ((hi_low - lo_low) >> 1)
+            le_low = tl.sum(
+                (in_bucket & ((keys & 0xFFFF) <= mid_low)).to(tl.int32), axis=0
+            )
+            take_left = le_low > rank
+            hi_low = tl.where(take_left, mid_low, hi_low)
+            lo_low = tl.where(take_left, lo_low, mid_low + 1)
+            guard += 1
+        selected_key = (bucket << 16) | lo_low
+        key_match = in_bucket & (keys == selected_key)
+    # One argmax covers both the NaN case and the key hit: the value at the
+    # returned index is the answer either way.
+    target = tl.where(has_nan, nan_mask, key_match)
+    first_match = tl.argmax(target.to(tl.int32), axis=0)
+    selected_value = tl.load(base + first_match)
     tl.store(values + row, selected_value)
     tl.store(indices + row, first_match.to(tl.int64))
 
@@ -830,26 +898,37 @@ def _unsupported_width(dtype, width):
     )
 
 
-def _median_from_rows(row_data, output_shape):
+def _median_from_rows(row_data, output_shape, out_values=None):
     width = row_data.shape[-1]
     if _use_f16_key_select(row_data.dtype, width):
-        return _median_f16_key_select(row_data, output_shape)
+        return _median_f16_key_select(row_data, output_shape, out_values)
     if _use_lastdim_sort(row_data.dtype, width):
-        return _median_lastdim_sort(row_data, output_shape)
+        return _median_lastdim_sort(row_data, output_shape, out_values)
     if _use_fp32_key_select(row_data.dtype, width):
-        return _median_fp32_key_select(row_data, output_shape)
+        return _median_fp32_key_select(row_data, output_shape, out_values)
     if _use_fp64_key_select(row_data.dtype, width):
-        return _median_fp64_key_select(row_data, output_shape)
+        return _median_fp64_key_select(row_data, output_shape, out_values)
     if (
         width <= _INT_LASTDIM_SELECT_LIMIT
         and row_data.dtype in _INT_LASTDIM_SELECT_DTYPES
     ):
-        return _median_int_lastdim_select(row_data, output_shape)
+        return _median_int_lastdim_select(row_data, output_shape, out_values)
     _unsupported_width(row_data.dtype, width)
 
 
-def _median_small_flat(inp):
-    value = torch.empty((), dtype=inp.dtype, device=inp.device)
+def _result_buffer(inp, output_shape, out_values):
+    """Values buffer for one reduction result.
+
+    ``median.out`` passes its own zero-dim tensor here so the kernel writes the
+    result in place and no extra device copy is needed.
+    """
+    if out_values is not None:
+        return out_values
+    return torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
+
+
+def _median_small_flat(inp, out_values=None):
+    value = _result_buffer(inp, (), out_values)
     block = triton.next_power_of_2(inp.numel())
     with torch_device_fn.device(inp.device):
         median_small_flat_kernel[(1,)](
@@ -862,12 +941,12 @@ def _median_small_flat(inp):
     return value
 
 
-def _median_bool_flat(inp):
+def _median_bool_flat(inp, out_values=None):
     width = inp.numel()
     block = _BOOL_FLAT_BLOCK
     num_blocks = triton.cdiv(width, block)
     counts = torch.empty((num_blocks,), dtype=torch.int64, device=inp.device)
-    value = torch.empty((), dtype=inp.dtype, device=inp.device)
+    value = _result_buffer(inp, (), out_values)
     with torch_device_fn.device(inp.device):
         median_bool_count_kernel[(num_blocks,)](
             inp.reshape(-1),
@@ -971,10 +1050,10 @@ def _median_bool_dim(inp, dim, output_shape):
     return values, indices
 
 
-def _median_lastdim_sort(row_data, output_shape):
+def _median_lastdim_sort(row_data, output_shape, out_values=None):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    values = _result_buffer(row_data, output_shape, out_values)
     indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 8 if rows == 1 and block >= 1024 else min(8, max(4, block // 512))
@@ -1025,6 +1104,18 @@ def _use_strided_select(dtype, width):
     )
 
 
+def _narrow_width_prefers_select(dtype, width):
+    """Narrow rows are cheaper through binary select than through the sort-based
+    direct-dim kernel once the row width outgrows a 64-wide bitonic network."""
+    if width <= _INT_DIRECT_SORT_MAX_WIDTH:
+        return False
+    return (
+        dtype in _INT_LASTDIM_SELECT_DTYPES
+        or _use_f16_key_select(dtype, width)
+        or _use_fp32_key_select(dtype, width)
+    )
+
+
 def _use_float_key_select(dtype, width):
     return (
         _use_f16_key_select(dtype, width)
@@ -1033,12 +1124,13 @@ def _use_float_key_select(dtype, width):
     )
 
 
-def _median_float_key_select_rows(row_data, output_shape):
+def _median_float_key_select_rows(row_data, output_shape, out_values=None):
     if _use_f16_key_select(row_data.dtype, row_data.shape[-1]):
-        return _median_f16_key_select(row_data, output_shape)
+        return _median_f16_key_select(row_data, output_shape, out_values)
     if _use_fp32_key_select(row_data.dtype, row_data.shape[-1]):
-        return _median_fp32_key_select(row_data, output_shape)
-    return _median_fp64_key_select(row_data, output_shape)
+        # row_data is contiguous, so the last dim is the reduction dim.
+        return _median_fp32_lastdim_select(row_data, output_shape, out_values)
+    return _median_fp64_key_select(row_data, output_shape, out_values)
 
 
 def _median_float_key_select_dim(work, dim, output_shape, keepdim):
@@ -1060,10 +1152,10 @@ def _median_float_key_select_dim(work, dim, output_shape, keepdim):
     return values, indices
 
 
-def _median_int_lastdim_select(row_data, output_shape):
+def _median_int_lastdim_select(row_data, output_shape, out_values=None):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    values = _result_buffer(row_data, output_shape, out_values)
     indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     search_steps = _int_search_steps(row_data.dtype)
@@ -1080,10 +1172,10 @@ def _median_int_lastdim_select(row_data, output_shape):
     return values, indices
 
 
-def _median_f16_key_select(row_data, output_shape):
+def _median_f16_key_select(row_data, output_shape, out_values=None):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    values = _result_buffer(row_data, output_shape, out_values)
     indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 1 if block <= 1024 else 2 if block <= 2048 else 4
@@ -1106,7 +1198,7 @@ def _median_f16_strided_key_select(inp, dim, output_shape):
     values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
     indices = torch.empty(output_shape, dtype=torch.int64, device=inp.device)
     block = triton.next_power_of_2(reduction_size)
-    block_out = 2
+    block_out = _select_block_out(block)
     num_warps = 1 if block <= 1024 else 2 if block <= 2048 else 4
     with torch_device_fn.device(inp.device):
         median_f16_strided_key_select_kernel[(triton.cdiv(total_outputs, block_out),)](
@@ -1123,10 +1215,10 @@ def _median_f16_strided_key_select(inp, dim, output_shape):
     return values, indices
 
 
-def _median_fp32_key_select(row_data, output_shape):
+def _median_fp32_key_select(row_data, output_shape, out_values=None):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    values = _result_buffer(row_data, output_shape, out_values)
     indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 2 if block <= 1024 else 8
@@ -1142,10 +1234,10 @@ def _median_fp32_key_select(row_data, output_shape):
     return values, indices
 
 
-def _median_fp64_key_select(row_data, output_shape):
+def _median_fp64_key_select(row_data, output_shape, out_values=None):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    values = _result_buffer(row_data, output_shape, out_values)
     indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 2 if block <= 1024 else 8
@@ -1168,7 +1260,7 @@ def _median_fp32_strided_key_select(inp, dim, output_shape):
     values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
     indices = torch.empty(output_shape, dtype=torch.int64, device=inp.device)
     block = triton.next_power_of_2(reduction_size)
-    block_out = 2
+    block_out = _select_block_out(block)
     num_warps = 2 if block <= 1024 else 8
     with torch_device_fn.device(inp.device):
         median_fp32_strided_key_select_kernel[(triton.cdiv(total_outputs, block_out),)](
@@ -1185,6 +1277,20 @@ def _median_fp32_strided_key_select(inp, dim, output_shape):
     return values, indices
 
 
+def _median_fp32_lastdim_select(inp, output_shape, out_values=None):
+    # Last-dim reduction via the tiled strided kernel: several rows share one
+    # program, which overlaps the ~32 dependent select reductions. Above the
+    # measured crossover, and for very few rows (the strided kernel pads them
+    # up to BLOCK_OUT rows per program), the one-row-per-program kernel is
+    # cheaper: measured on GCU400 one row of width 2/64/256/1024 costs
+    # 16-18 us dense against 360-450 us strided.
+    block = triton.next_power_of_2(inp.shape[-1])
+    rows = inp.numel() // inp.shape[-1]
+    if block > _SELECT_LASTDIM_STRIDED_MAX_BLOCK or rows <= _SELECT_DENSE_ROWS_LIMIT:
+        return _median_fp32_key_select(inp, output_shape, out_values)
+    return _median_fp32_strided_key_select(inp, inp.ndim - 1, output_shape)
+
+
 def _median_direct_dim(inp, dim, output_shape):
     reduction_size = inp.shape[dim]
     inner_size = math.prod(inp.shape[dim + 1 :])
@@ -1192,10 +1298,15 @@ def _median_direct_dim(inp, dim, output_shape):
     values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
     indices = torch.empty(output_shape, dtype=torch.int64, device=inp.device)
     block_n = triton.next_power_of_2(reduction_size)
-    block_out = 2 if block_n >= 128 else 16
     if block_n >= 128:
+        block_out = 2
         num_warps = 8 if inp.dtype in (torch.int32, torch.int64) else 4
     else:
+        # Narrow sorts are dominated by the bitonic network, not by the loads:
+        # each warp runs many rows through the same compare-exchange stages, so
+        # a wide BLOCK_OUT is nearly free. Measured on GCU400 (32 x 384 x 128,
+        # dim=0, fp32): BLOCK_OUT 16 -> 22.6 ms, 128 -> 4.0 ms.
+        block_out = max(16, min(128, _SELECT_TILE_ELEMENTS * 3 // block_n))
         num_warps = 1
     with torch_device_fn.device(inp.device):
         median_small_dim_kernel[(triton.cdiv(total_outputs, block_out),)](
@@ -1228,49 +1339,88 @@ def _copy_out(src, out, name):
 
 
 def median(inp):
-    logger.debug("GEMS_ENFLAME_GCU400 MEDIAN")
+    logger.debug("GEMS_ENFLAME MEDIAN")
+    return _median_flat(inp)
 
+
+def _median_flat(inp, dest=None):
+    """Median over all elements; writes the result into ``dest`` when given."""
     inp = _anonymous(inp)
     if inp.numel() == 0:
-        return _empty_result_value(inp)
+        empty_value = _empty_result_value(inp)
+        if dest is not None:
+            return _copy_out(empty_value, dest, "out")
+        return empty_value
     if inp.dtype.is_complex:
         raise RuntimeError("Sort does not support complex dtypes on CPU")
     if inp.numel() == 1:
+        if dest is not None:
+            return _median_small_flat(inp, dest)
         return inp.reshape(()).clone()
 
     flat = inp.contiguous().reshape(-1)
     row_data = flat.reshape(1, inp.numel())
     if _use_float_key_select(inp.dtype, inp.numel()):
-        values, _ = _median_float_key_select_rows(row_data, ())
+        values, _ = _median_float_key_select_rows(row_data, (), dest)
+        return values.reshape(())
+    if inp.dtype == torch.bool:
+        return _median_bool_flat(flat, dest)
+    if (
+        inp.numel() <= _DIRECT_FLAT_LIMIT
+        and inp.dtype in _INT_LASTDIM_SELECT_DTYPES
+        and inp.numel() >= _INT_SELECT_MIN_WIDTH
+    ):
+        # Small integer tensors use binary key-select: a single-block bitonic
+        # tl.sort is very expensive on GCU (measured ~2ms for 256 int32 elements),
+        # while binary select needs only a few reductions.
+        # Below width 16 tl.sort is cheaper again, so small_flat is still used.
+        values, _ = _median_int_lastdim_select(row_data, (), dest)
         return values.reshape(())
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
-        return _median_small_flat(flat)
-    if inp.dtype == torch.bool:
-        return _median_bool_flat(flat)
+        return _median_small_flat(flat, dest)
 
     if inp.dtype in _FLAT_SORT_DTYPES and inp.numel() <= _FLAT_SORT_LIMIT:
-        values, _ = _median_lastdim_sort(row_data, ())
+        values, _ = _median_lastdim_sort(row_data, (), dest)
     elif _use_fp32_key_select(inp.dtype, inp.numel()):
-        values, _ = _median_fp32_key_select(row_data, ())
+        values, _ = _median_fp32_key_select(row_data, (), dest)
     elif _use_fp64_key_select(inp.dtype, inp.numel()):
-        values, _ = _median_fp64_key_select(row_data, ())
+        values, _ = _median_fp64_key_select(row_data, (), dest)
     elif (
         inp.numel() <= _INT_LASTDIM_SELECT_LIMIT
         and inp.dtype in _INT_LASTDIM_SELECT_DTYPES
     ):
-        values, _ = _median_int_lastdim_select(row_data, ())
+        values, _ = _median_int_lastdim_select(row_data, (), dest)
     else:
-        values, _ = _median_from_rows(row_data, ())
+        values, _ = _median_from_rows(row_data, (), dest)
     return values.reshape(())
 
 
 def median_out(inp, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 MEDIAN.OUT")
-    return _copy_out(median(inp), out, "out")
+    logger.debug("GEMS_ENFLAME MEDIAN.OUT")
+    if out.device != inp.device:
+        raise RuntimeError(
+            f"Expected out tensor to have device {inp.device}, "
+            f"but got {out.device} instead"
+        )
+    if out.dtype != inp.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype}"
+        )
+    if out.numel() != 1:
+        # aten resizes the out tensor to the scalar result shape; one element is
+        # all the kernel needs, so shrink first and reshape afterwards.
+        out.resize_as_(torch.empty((), dtype=out.dtype, device=out.device))
+    # Kernel writes straight into `out`: no extra device copy, which used to
+    # cost more than the median kernel itself for small inputs. Note that
+    # ``resize_([])`` is a no-op on the GCU400 backend, so the scalar out shape
+    # is restored with ``resize_as_`` on the already computed scalar result.
+    flat_result = _median_flat(inp, out.reshape(()))
+    out.resize_as_(flat_result.reshape(()))
+    return out
 
 
 def median_dim(inp, dim=0, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 MEDIAN.DIM")
+    logger.debug("GEMS_ENFLAME MEDIAN.DIM")
 
     if isinstance(dim, str):
         dim = _name_to_dim(inp, dim)
@@ -1306,13 +1456,16 @@ def median_dim(inp, dim=0, keepdim=False):
             _raise_dim_dtype(work.dtype)
         if work.dtype == torch.bool:
             values, indices = _median_bool_dim(work.contiguous(), dim, output_shape)
-        elif _use_float_key_select(work.dtype, work.shape[dim]):
+        elif _use_float_key_select(work.dtype, work.shape[dim]) and not (
+            dim != work.ndim - 1 and work.shape[dim] <= _INT_DIRECT_SORT_MAX_WIDTH
+        ):
             values, indices = _median_float_key_select_dim(
                 work, dim, output_shape, keepdim
             )
         elif (
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
+            and not _narrow_width_prefers_select(work.dtype, work.shape[dim])
         ):
             values, indices = _median_direct_dim(work.contiguous(), dim, output_shape)
         elif (
@@ -1333,7 +1486,9 @@ def median_dim(inp, dim=0, keepdim=False):
         elif dim == work.ndim - 1 and _use_lastdim_sort(work.dtype, work.shape[dim]):
             values, indices = _median_lastdim_sort(work.contiguous(), output_shape)
         elif dim == work.ndim - 1 and _use_fp32_key_select(work.dtype, work.shape[dim]):
-            values, indices = _median_fp32_key_select(work.contiguous(), output_shape)
+            values, indices = _median_fp32_lastdim_select(
+                work.contiguous(), output_shape
+            )
         elif dim == work.ndim - 1 and _use_fp64_key_select(work.dtype, work.shape[dim]):
             values, indices = _median_fp64_key_select(work.contiguous(), output_shape)
         elif (
@@ -1375,7 +1530,7 @@ def median_dim(inp, dim=0, keepdim=False):
 
 
 def median_dim_values(inp, dim=0, keepdim=False, *, values, indices):
-    logger.debug("GEMS_ENFLAME_GCU400 MEDIAN.DIM_VALUES")
+    logger.debug("GEMS_ENFLAME MEDIAN.DIM_VALUES")
     result = median_dim(inp, dim=dim, keepdim=keepdim)
     _copy_out(result.values, values, "values")
     _copy_out(result.indices, indices, "indices")

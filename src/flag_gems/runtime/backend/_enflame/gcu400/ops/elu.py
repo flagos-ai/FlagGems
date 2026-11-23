@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
+# 16-bit elementwise streams: element count above which the widest block wins
+# (probe-calibrated: 16M->B65536 31.4us vs B131072 32.9us; 512Mi->B131072 804us vs B65536 862us)
+WIDE_BLOCK_THRESHOLD = 1 << 26
+
 
 @libentry()
 @triton.jit(do_not_specialize=["N_total", "alpha", "scale", "input_scale"])
@@ -36,12 +40,11 @@ def elu_kernel(x_ptr, out_ptr, N_total, alpha, scale, input_scale, BLOCK: tl.con
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
         mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        out = tl.where(
-            x > 0.0,
-            scale * input_scale * x,
-            scale * alpha * (tl.exp(x * input_scale) - 1.0),
-        )
+        x16 = tl.load(x_ptr + off, mask=mask)
+        xf = x16.to(tl.float32)
+        pos = (scale * input_scale * xf).to(x16.dtype)
+        neg = (scale * alpha * (tl.exp(xf * input_scale) - 1.0)).to(x16.dtype)
+        out = tl.where(x16 > 0.0, pos, neg)
         tl.store(out_ptr + off, out, mask=mask)
 
 
@@ -57,8 +60,10 @@ def elu_kernel_default(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
         mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        out = tl.where(x > 0.0, x, tl.exp(x) - 1.0)
+        x16 = tl.load(x_ptr + off, mask=mask)
+        xf = x16.to(tl.float32)
+        neg = (tl.exp(xf) - 1.0).to(x16.dtype)
+        out = tl.where(x16 > 0.0, x16, neg)
         tl.store(out_ptr + off, out, mask=mask)
 
 
@@ -69,18 +74,15 @@ def _launch_elu(inp, out, N_total, alpha, scale, input_scale):
     if N_total <= 1024:
         BLOCK = 1024
     elif N_total <= 32768:
-        BLOCK = triton.next_power_of_2(N_total)
+        BLOCK = max(1024, triton.next_power_of_2(N_total) // 4)
     elif N_total <= 1048576:
         target_block = N_total // NUM_SIPS
         BLOCK = max(1024, 1 << (target_block - 1).bit_length())
         BLOCK = min(BLOCK, 65536)
-    elif N_total <= 8388608:
-        BLOCK = 32768
+    elif is_fp32:
+        BLOCK = 32768 if N_total <= WIDE_BLOCK_THRESHOLD else 65536
     else:
-        if is_default and not is_fp32:
-            BLOCK = 131072
-        else:
-            BLOCK = 65536
+        BLOCK = 65536 if N_total <= WIDE_BLOCK_THRESHOLD else 131072
 
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
     grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)

@@ -37,7 +37,7 @@ def unbind(input: torch.Tensor, dim: int = 0) -> Tuple[torch.Tensor, ...]:
     Returns:
         A tuple of tensors, each a view into ``input``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNBIND")
+    logger.debug("GEMS_ENFLAME UNBIND")
 
     if dim < 0:
         dim = dim + input.ndim

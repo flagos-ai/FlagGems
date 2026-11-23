@@ -20,72 +20,90 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+_as_strided = torch.as_strided
+
 
 def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
     """Expand tensor to specified size.
 
     This is a zero-copy view operation that broadcasts dimensions with size 1
-    by setting their stride to 0.
+    logger.debug("GEMS_ENFLAME EXPAND")
+    by setting their stride to 0. The target strides follow ATen semantics:
+    input dims keep their own stride (broadcast dims get 0), new leading dims
+    use the natural size[i+1] * strides[i+1] recursion, and -1 sizes resolve
+    to the input size.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 EXPAND")
-
-    # Normalize sizes to be a list
-    input_shape = list(inp.shape)
-    original_input_ndim = len(input_shape)
+    sizes = inp.size()
+    in_strides = inp.stride()
+    ndim = len(sizes)
     size = list(size)
-
-    if len(size) < original_input_ndim:
+    nsize = len(size)
+    if nsize < ndim:
         raise RuntimeError(
             "expand: the number of sizes provided must be greater or equal "
-            f"to the number of dimensions in the tensor ({original_input_ndim})"
+            f"to the number of dimensions in the tensor ({ndim})"
         )
-
-    # Prepend 1s if size has more dimensions than input
-    if len(size) > original_input_ndim:
-        input_shape = [1] * (len(size) - original_input_ndim) + input_shape
-        inp = inp.view(input_shape)
-
-    leading_dims = len(size) - original_input_ndim
-
-    # Replace -1 with actual size from input
-    for i in range(len(size)):
-        if size[i] == -1:
-            if i < leading_dims:
+    offset = nsize - ndim
+    strides = [0] * nsize
+    if offset:
+        for j in range(nsize):
+            target = size[j]
+            if j < offset:
+                if target == -1:
+                    raise RuntimeError(
+                        f"The expanded size of the tensor (-1) isn't allowed "
+                        f"in a leading, non-existing dimension {j}"
+                    )
+                if target < 0:
+                    raise RuntimeError(
+                        f"The expanded size of the tensor ({target}) is invalid"
+                    )
+            else:
+                src_dim = j - offset
+                src = sizes[src_dim]
+                if target == src:
+                    strides[j] = in_strides[src_dim]
+                elif target == -1:
+                    # Resolving -1 always yields target == src, whose stride
+                    # is the input stride (never the broadcast stride 0).
+                    size[j] = src
+                    strides[j] = in_strides[src_dim]
+                elif target < 0:
+                    raise RuntimeError(
+                        f"The expanded size of the tensor ({target}) is invalid"
+                    )
+                elif src != 1:
+                    raise RuntimeError(
+                        "The expanded size of the tensor "
+                        f"({target}) must match the existing size ({src}) "
+                        f"at non-singleton dimension {j}"
+                    )
+        for j in range(offset - 1, -1, -1):
+            if size[j] == 1 and j + 1 < nsize:
+                strides[j] = size[j + 1] * strides[j + 1]
+    else:
+        for i in range(ndim):
+            target = size[i]
+            src = sizes[i]
+            if target == src:
+                strides[i] = in_strides[i]
+            elif target == -1:
+                size[i] = src
+                strides[i] = in_strides[i]
+            elif target < 0:
                 raise RuntimeError(
-                    f"The expanded size of the tensor ({size[i]}) isn't allowed "
-                    f"in a leading, non-existing dimension {i}"
+                    f"The expanded size of the tensor ({target}) is invalid"
                 )
-            size[i] = input_shape[i]
-        elif size[i] < 0:
-            raise RuntimeError(
-                f"The expanded size of the tensor ({size[i]}) is invalid"
-            )
-        elif size[i] != input_shape[i] and input_shape[i] != 1:
-            raise RuntimeError(
-                "The expanded size of the tensor "
-                f"({size[i]}) must match the existing size ({input_shape[i]}) "
-                f"at non-singleton dimension {i}"
-            )
-
-    # Compute target strides:
-    # - If target size > source size (broadcasting), stride = 0
-    # - Otherwise, use the source dimension's stride
-    input_strides = list(inp.stride())
-    strides = []
-    for i in range(len(size)):
-        if input_shape[i] == 1 and size[i] != 1:
-            # Broadcasting dimension, stride = 0
-            strides.append(0)
-        else:
-            # Use source stride
-            strides.append(input_strides[i])
-
-    # Use as_strided to create a view with the new shape and strides
-    # This is a meta-information operation, no actual data is copied
-    return torch.as_strided(inp, size, strides)
+            elif src != 1:
+                raise RuntimeError(
+                    "The expanded size of the tensor "
+                    f"({target}) must match the existing size ({src}) "
+                    f"at non-singleton dimension {i}"
+                )
+    return _as_strided(inp, size, strides)
 
 
 def expand_(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
     """In-place expand (for compatibility, returns view)."""
-    logger.debug("GEMS_ENFLAME_GCU400 EXPAND_")
+    logger.debug("GEMS_ENFLAME EXPAND_")
     return expand(inp, size)

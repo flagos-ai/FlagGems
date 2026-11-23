@@ -233,7 +233,7 @@ def _launch_replication_pad1d_backward_kernel(
 def replication_pad1d_backward(
     grad_output: torch.Tensor, self_tensor: torch.Tensor, padding
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 REPLICATION_PAD1D_BACKWARD")
+    logger.debug("GEMS_ENFLAME REPLICATION_PAD1D_BACKWARD")
     if isinstance(padding, torch.Tensor):
         padding = tuple(padding.tolist())
     left, right = int(padding[0]), int(padding[1])

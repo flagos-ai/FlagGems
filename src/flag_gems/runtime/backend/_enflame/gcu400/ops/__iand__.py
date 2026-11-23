@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 def __iand___tensor(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 __IAND___TENSOR")
+    logger.debug("GEMS_ENFLAME __IAND___TENSOR")
     return bitwise_and_tensor_(self, other)
 
 
 def __iand___scalar(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 __IAND___SCALAR")
+    logger.debug("GEMS_ENFLAME __IAND___SCALAR")
     return bitwise_and_scalar_(self, other)

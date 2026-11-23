@@ -89,7 +89,7 @@ def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
     self, scale, zero_point, fake_quant_enabled, quant_min, quant_max
 ):
     logger.debug(
-        "GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_TENSOR_QPARAMS"
+        "GEMS_ENFLAME FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_TENSOR_QPARAMS"
     )
     self = self.contiguous()
     out = torch.empty_like(self)

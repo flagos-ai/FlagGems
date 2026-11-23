@@ -105,7 +105,7 @@ def addbmm_kernel(
 
 
 def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDBMM")
+    logger.debug("GEMS_ENFLAME ADDBMM")
 
     assert batch1.ndim == 3 and batch2.ndim == 3, "batch1 and batch2 must be 3D"
     assert bias.ndim == 2, "bias must be 2D"
@@ -156,7 +156,7 @@ def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
 
 
 def addbmm_(bias, batch1, batch2, beta=1.0, alpha=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDBMM_")
+    logger.debug("GEMS_ENFLAME ADDBMM_")
 
     assert batch1.ndim == 3 and batch2.ndim == 3, "batch1 and batch2 must be 3D"
     assert bias.ndim == 2, "bias must be 2D"

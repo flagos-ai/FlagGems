@@ -492,7 +492,7 @@ def index_fill(inp, dim, index, value):
     # Entry for both `index_fill.int_Scalar` and `index_fill.int_Tensor`: the
     # dispatcher routes by value type, so a 0-dimensional tensor value arrives
     # as a Tensor and a plain number as a Python scalar.
-    logger.debug("GEMS_ENFLAME_GCU400 INDEX_FILL")
+    logger.debug("GEMS_ENFLAME INDEX_FILL")
     dim, index = _prepare_index(inp, dim, index)
     if isinstance(value, torch.Tensor):
         value_is_tensor, value = _prepare_tensor_value(inp, value)
@@ -514,7 +514,7 @@ def index_fill(inp, dim, index, value):
 
 def index_fill_(inp, dim, index, value):
     # Entry for both `index_fill_.int_Scalar` and `index_fill_.int_Tensor`.
-    logger.debug("GEMS_ENFLAME_GCU400 INDEX_FILL_")
+    logger.debug("GEMS_ENFLAME INDEX_FILL_")
     dim, index = _prepare_index(inp, dim, index)
     if isinstance(value, torch.Tensor):
         value_is_tensor, value = _prepare_tensor_value(inp, value)

@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 _REDUCTION_NONE = 0
+# Upper bound for the per-state posterior scratch of the backward pass (see
+# _ctc_loss_grad_reduce_kernel). Larger problems keep the in-kernel atomic accumulation.
+_POST_SCRATCH_BYTES = 256 * 1024 * 1024
+# Class chunk of the posterior->class reduction tile.
+_POST_REDUCE_BLOCK_C = 32
 _REDUCTION_MEAN = 1
 _REDUCTION_SUM = 2
 _LENGTH_STATS_CACHE = {}
@@ -469,6 +474,7 @@ def _ctc_loss_backward_kernel(
     grad_output,
     grad_input,
     scratch_beta,
+    scratch_post,
     T: tl.constexpr,
     N: tl.constexpr,
     C: tl.constexpr,
@@ -479,6 +485,7 @@ def _ctc_loss_backward_kernel(
     REDUCTION: tl.constexpr,
     ZERO_INFINITY: tl.constexpr,
     BLOCK_S: tl.constexpr,
+    WRITE_POST: tl.constexpr,
 ):
     batch = tl.program_id(0)
     states = tl.arange(0, BLOCK_S)
@@ -541,6 +548,7 @@ def _ctc_loss_backward_kernel(
         -float("inf"),
     )
     scratch_batch = scratch_beta + batch * 2 * STATE_COUNT_MAX
+    post_base = scratch_post + batch * T * STATE_COUNT_MAX
     tl.store(scratch_batch + states, beta_init, mask=stored_state)
     _debug_barrier()
     log_likelihood = tl.where(scale != 0.0, -nll, 0.0)
@@ -566,12 +574,23 @@ def _ctc_loss_backward_kernel(
             tl.exp(log_post),
             0.0,
         )
-        tl.atomic_add(
-            grad_input + safe_t * N * C + batch * C + labels,
-            -scale * posterior,
-            sem="relaxed",
-            mask=active & valid_state & stored_state,
-        )
+        if WRITE_POST:
+            # Coalesced store of the per-state posterior; the class reduction is done by
+            # _ctc_loss_grad_reduce_kernel. The scattered atomic_add this replaces measured
+            # 89.2 ms of the 93 ms backward on T=1024/N=32/C=128 (GCU global atomics serialize,
+            # ~450 ns per lane) while this store costs 8.4 ms in total.
+            tl.store(
+                post_base + safe_t * STATE_COUNT_MAX + states,
+                -scale * posterior,
+                mask=active & stored_state,
+            )
+        else:
+            tl.atomic_add(
+                grad_input + safe_t * N * C + batch * C + labels,
+                -scale * posterior,
+                sem="relaxed",
+                mask=active & valid_state & stored_state,
+            )
 
         stay = beta + tl.load(
             log_probs + safe_t * N * C + batch * C + labels,
@@ -613,6 +632,80 @@ def _ctc_loss_backward_kernel(
             mask=stored_state,
         )
         _debug_barrier()
+
+
+@libentry()
+@triton.jit
+def _ctc_loss_grad_reduce_kernel(
+    grad_input,
+    scratch_post,
+    targets,
+    input_lengths,
+    target_lengths,
+    target_offsets,
+    T: tl.constexpr,
+    N: tl.constexpr,
+    C: tl.constexpr,
+    MAX_TARGET: tl.constexpr,
+    STATE_COUNT_MAX: tl.constexpr,
+    BLANK: tl.constexpr,
+    TARGET_1D: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+):
+    """Fold the per-state posterior into per-class gradients, one program per (t, n) row.
+
+    grad_input[t, n, c] += sum over states whose label == c of posterior[t, n, state].
+
+    Every program owns a private (t, n) row of grad_input, so the accumulation needs no
+    atomics; the class axis is walked in BLOCK_C chunks to keep the [BLOCK_C, BLOCK_S]
+    compare tile small. The result is *added* to grad_input, which keeps the
+    `exp(logp) * scale` base value and the NaN markers written by
+    _ctc_loss_init_grad_kernel intact.
+    """
+    row = tl.program_id(0)
+    t = row % T
+    batch = row // T
+
+    # lengths are int64 in memory; narrowing to int32 keeps every index expression in 32-bit
+    # arithmetic (this program runs once per (t, n) row, so int64 division would be paid
+    # T*N times and dominated the small shapes).
+    input_len = tl.load(input_lengths + batch).to(tl.int32)
+    if t < input_len:
+        target_len = tl.load(target_lengths + batch).to(tl.int32)
+        state_count = target_len * 2 + 1
+        states = tl.arange(0, BLOCK_S)
+        valid_state = states < state_count
+
+        target_index = (states - 1) // 2
+        target_mask = (target_index >= 0) & (target_index < target_len)
+        target_safe_index = tl.where(target_mask, target_index, 0)
+        if TARGET_1D:
+            target_origin = tl.load(target_offsets + batch).to(tl.int32)
+            target_ptrs = targets + target_origin + target_safe_index
+        else:
+            target_origin = batch * MAX_TARGET
+            target_ptrs = targets + target_origin + target_safe_index
+        target_value = tl.load(target_ptrs, mask=target_mask, other=BLANK).to(tl.int32)
+        labels = tl.where((states % 2) == 0, BLANK, target_value)
+
+        post = tl.load(
+            scratch_post + batch * T * STATE_COUNT_MAX + t * STATE_COUNT_MAX + states,
+            mask=valid_state,
+            other=0.0,
+        )
+        grad_row = grad_input + t * N * C + batch * C
+        # labels are int64 in memory; compare them in int32 so the compiler never emits the
+        # int8 vector conversion that ld.lld rejects on gcu400
+        # (relocation R_DTU_ADDR16_*_ICALL against tops_cvt_v1_si8_to_v1_si8__8).
+        labels_i32 = labels
+        for class_start in range(0, C, BLOCK_C):
+            classes = (class_start + tl.arange(0, BLOCK_C)).to(tl.int32)
+            class_mask = classes < C
+            hit = (labels_i32[None, :] == classes[:, None]) & valid_state[None, :]
+            acc = tl.sum(tl.where(hit, post[None, :], 0.0), axis=1)
+            acc += tl.load(grad_row + classes, mask=class_mask, other=0.0)
+            tl.store(grad_row + classes, acc, mask=class_mask)
 
 
 def _reduction_enum(reduction):
@@ -1025,6 +1118,21 @@ class CtcLossFunction(torch.autograd.Function):
                 device=work_log_probs.device,
             )
             block_s = triton.next_power_of_2(ctx.state_count_max)
+            time_steps = work_log_probs.shape[0]
+            classes = work_log_probs.shape[2]
+            post_elements = ctx.batch_size * time_steps * ctx.state_count_max
+            # The posterior scratch costs batch * T * state_count fp32; keep it only while it
+            # stays below the limit, otherwise the (slower, atomic) single-kernel path is used.
+            write_post = post_elements * 4 <= _POST_SCRATCH_BYTES
+            scratch_post = (
+                torch.empty(
+                    (ctx.batch_size, time_steps, ctx.state_count_max),
+                    dtype=torch.float32,
+                    device=work_log_probs.device,
+                )
+                if write_post
+                else scratch_beta
+            )
             _ctc_loss_backward_kernel[(ctx.batch_size,)](
                 work_log_probs,
                 work_targets,
@@ -1036,6 +1144,7 @@ class CtcLossFunction(torch.autograd.Function):
                 grad_output,
                 grad_log_probs,
                 scratch_beta,
+                scratch_post,
                 work_log_probs.shape[0],
                 ctx.batch_size,
                 work_log_probs.shape[2],
@@ -1046,8 +1155,32 @@ class CtcLossFunction(torch.autograd.Function):
                 ctx.reduction,
                 ctx.zero_infinity,
                 block_s,
-                num_warps=8,
+                write_post,
+                # One warp per 32 states keeps one element per lane; the recursion has no
+                # cross-state reduction, so over-subscribing lanes only wastes issue slots.
+                num_warps=min(8, max(1, block_s // 32)),
             )
+
+            if write_post:
+                # One program per (t, n) row folds the posterior into grad_input without atomics.
+                _ctc_loss_grad_reduce_kernel[(time_steps * ctx.batch_size,)](
+                    grad_log_probs,
+                    scratch_post,
+                    work_targets,
+                    work_input_lengths,
+                    work_target_lengths,
+                    work_target_offsets,
+                    time_steps,
+                    ctx.batch_size,
+                    classes,
+                    ctx.max_target,
+                    ctx.state_count_max,
+                    ctx.blank,
+                    ctx.target_1d,
+                    min(_POST_REDUCE_BLOCK_C, triton.next_power_of_2(classes)),
+                    block_s,
+                    num_warps=4,
+                )
 
         if ctx.unbatched:
             grad_log_probs = grad_log_probs.squeeze(1)
@@ -1066,7 +1199,7 @@ def ctc_loss(
     reduction="mean",
     zero_infinity=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CTC_LOSS")
+    logger.debug("GEMS_ENFLAME CTC_LOSS")
     return CtcLossFunction.apply(
         log_probs,
         targets,

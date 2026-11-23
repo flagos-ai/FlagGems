@@ -31,16 +31,31 @@ def swapdims(self: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     int dim1) -> Tensor(a)``). The storage offset is preserved, autograd
     tracks the view, and the original strides are kept exactly (including
     the degenerate no-op cases).
-    """
-    logger.debug("GEMS_ENFLAME_GCU400 SWAPDIMS")
 
-    ndim = self.dim()
+    This op launches no kernel, so the whole cost is host-side dispatch. A
+    fast path serves non-negative, in-range dims directly: logging and the
+    aten-parity normalization/error machinery run only when a dim is
+    negative or out of range.
+    """
+    ndim = self.ndim
+    max_dim = ndim if ndim > 1 else 1
+
+    # Fast path: already-normalized in-range dims skip the debug log and the
+    # error-reporting machinery below and go straight to the metadata swap.
+    if 0 <= dim0 < max_dim and 0 <= dim1 < max_dim:
+        shape = list(self.shape)
+        strides = list(self.stride())
+        if dim0 != dim1:
+            shape[dim0], shape[dim1] = shape[dim1], shape[dim0]
+            strides[dim0], strides[dim1] = strides[dim1], strides[dim0]
+        return torch.as_strided(self, shape, strides)
+
+    logger.debug("GEMS_ENFLAME SWAPDIMS")
 
     # Normalize negative dims with aten's convention. A 0D tensor accepts only
     # 0 and -1 (both denote the sole axis), so clamp the accepted range to
     # [-1, 0] instead of the rank-based range used for higher ranks. ATen
     # reports out-of-range dims using the value as passed in by the caller.
-    max_dim = max(ndim, 1)
     if dim0 < 0:
         dim0 += max_dim
     if dim1 < 0:

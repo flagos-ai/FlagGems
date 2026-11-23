@@ -143,7 +143,7 @@ def logsumexp_kernel_inner(
 
 
 def logsumexp(inp, dim, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGSUMEXP")
+    logger.debug("GEMS_ENFLAME LOGSUMEXP")
 
     if isinstance(dim, (list, tuple)):
         # Handle multi-dimensional reduction

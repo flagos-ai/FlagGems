@@ -138,10 +138,10 @@ def logcumsumexp_kernel_3d(inp, out, M, N, K, BLOCK_SIZE: tl.constexpr):
 
 
 def logcumsumexp(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGCUMSUMEXP")
+    logger.debug("GEMS_ENFLAME LOGCUMSUMEXP")
     return logcumsumexp_wrapper(inp, dim, dtype)
 
 
 def logcumsumexp_out(inp, dim=1, *, dtype=None, out):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGCUMSUMEXP_OUT")
+    logger.debug("GEMS_ENFLAME LOGCUMSUMEXP_OUT")
     return logcumsumexp_wrapper(inp, dim, dtype, out)

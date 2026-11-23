@@ -30,27 +30,44 @@ kernels instead (probe-validated tiers, sibling of greater_equal/copysign):
   comparing, matching torch TensorIterator semantics; the fp32-compare
   template deviates from torch on fp16 round-down scalars (e.g. 0.1);
 * per-dtype DSM cap (flat dual-load Required = 2 x itemsize x BLOCK,
-  917504 B compile-time limit) bounds BLOCK; a coverage/chunk loop kernel
-  extends per-CTA coverage past the single-tile DSM cap for giant shapes.
+  917504 B compile-time limit) bounds BLOCK;
+* every tier kernel carries an ``EVEN`` constexpr arm (host-side
+  ``n % BLOCK == 0``): when the tile count divides the element count the
+  masked loads/stores (mask predicate + `other=0` fill) are compiled out on
+  the mid band. The giant band (n >= 2^28) keeps the masked arm on purpose:
+  the isolated-probe EVEN gain did not survive the official-bench
+  re-measure (within-noise to +1.2%), a fresh instance of the
+  isolated-vs-sustained-load reversal.
 
 Probe-validated tiers (L600, do_bench kernel-mode median vs torch native;
-three interleaved sweep rounds, 2026-11-11):
+three interleaved sweep rounds, 2026-11-11; EVEN/strided re-sweep
+2026-11-16):
 
   tensor   n < 2^16            -> generic pointwise (launch-overhead floor)
-  tensor   2^16..2^22          -> flat BLOCK=65536 nw4            (~1.3-1.6x)
-  tensor   2^22..2^28 (f16)    -> flat BLOCK=131072 nw4           (~0.96-1.0x)
-  tensor   2^22..2^28 (f32)    -> loop COV=262144 CHUNK=65536 nw8 (~0.95x)
-  tensor   n >= 2^28 (f16)      -> loop COV=1048576 CHUNK=131072 nw2 st2 (~1.0x)
-  tensor   n >= 2^28 (f32)      -> strided BLOCK=65536 grid=48 nw4  (~1.0x)
-  scalar   n < 2^16            -> flat BLOCK=next_pow2(n) nw4      (~1.5x)
-  scalar   2^16..2^22          -> flat BLOCK=65536 nw4            (~1.2-1.3x)
-  scalar   n >= 2^22 (f16/bf16) -> flat BLOCK=262144 nw4           (~1.0-1.06x)
-  scalar   2^22..2^28 (f32)    -> flat BLOCK=131072 nw4           (~1.01x)
-  scalar   n >= 2^28 (f32)      -> strided BLOCK=65536 grid=48 nw4  (~0.98-0.99x)
+  tensor   2^16..2^22          -> flat BLOCK=65536 nw4 EVEN-armed
+  tensor   2^22..2^28          -> strided 48xB=131072 nw4 f16/bf16
+                                  (~0.96x, flat launch loses ~4.5%)
+  tensor   f32 n >= 2^16       -> strided 48xB=65536 nw4 (mid 0.98x; the
+                                  contiguous-chunk loop tier retired: 70.4
+                                  -> 65.1us at 2^24; grid sweep g32..g256
+                                  all lose to g48)
+  tensor   n >= 2^28 (f16)     -> loop COV=1048576 CHUNK=131072 nw2 st2
+                                  (~1.0x, masked arm: the EVEN arm that
+                                  won the isolated probe (+4%) re-measured
+                                  within-noise-to-worse on the official
+                                  bench, so giants keep masked)
+  scalar   n < 2^16            -> flat BLOCK=next_pow2(n) nw4 EVEN-armed
+  scalar   2^16..2^22          -> flat BLOCK=65536 nw4 EVEN-armed
+  scalar   f32 n >= 2^22       -> strided 48xB=65536 nw4 (2^24 37.7us vs
+                                  flat-131072 anchor 38.8us)
+  scalar   f16/bf16 2^22..2^28 -> strided 48xB=131072 nw4 (24.0us)
+  scalar   f16/bf16 n >= 2^28  -> flat BLOCK=262144 nw4 (~1.0x; a 65536-wide
+                                  strided tile loses 5%)
 
-The fp32 giant arms use a strided (grid-stride, 48 persistent CTAs) tile
+The fp32 arms use a strided (grid-stride, 48 persistent CTAs) tile
 assignment: under the official bench's sustained traffic the contiguous
-coverage-chunk loop loses ~5% there, while f16 giants prefer the chunk loop.
+coverage-chunk loop loses ~5% on giants and ~7% at 2^24, while f16 giants
+prefer the chunk loop.
 """
 
 import logging
@@ -99,49 +116,79 @@ def eq_func(x, y):
 
 
 @triton.jit
-def _eq_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
+def _eq_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(A + off, mask=m, other=0)
-    y = tl.load(B + off, mask=m, other=0)
-    r = x == y
-    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+    if EVEN:
+        x = tl.load(A + off)
+        y = tl.load(B + off)
+        r = x == y
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+    else:
+        m = off < N
+        x = tl.load(A + off, mask=m, other=0)
+        y = tl.load(B + off, mask=m, other=0)
+        r = x == y
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
 
 
 @triton.jit
 def _eq_cmp_loop_kernel(
-    A, B, OUT, N, COV: tl.constexpr, CHUNK: tl.constexpr, ST: tl.constexpr
+    A,
+    B,
+    OUT,
+    N,
+    COV: tl.constexpr,
+    CHUNK: tl.constexpr,
+    ST: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     base = tl.program_id(0) * COV
     for j in tl.range(0, COV // CHUNK, num_stages=ST):
         off = base + j * CHUNK + tl.arange(0, CHUNK)
-        m = off < N
-        x = tl.load(A + off, mask=m, other=0)
-        y = tl.load(B + off, mask=m, other=0)
-        r = x == y
-        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+        if EVEN:
+            x = tl.load(A + off)
+            y = tl.load(B + off)
+            r = x == y
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+        else:
+            m = off < N
+            x = tl.load(A + off, mask=m, other=0)
+            y = tl.load(B + off, mask=m, other=0)
+            r = x == y
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
 
 
 @triton.jit
-def _eq_cmp_strided_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
+def _eq_cmp_strided_kernel(A, B, OUT, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
     for tile in tl.range(pid, tl.cdiv(N, BLOCK), num_ctas):
         off = tile * BLOCK + tl.arange(0, BLOCK)
-        m = off < N
-        x = tl.load(A + off, mask=m, other=0)
-        y = tl.load(B + off, mask=m, other=0)
-        r = x == y
-        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+        if EVEN:
+            x = tl.load(A + off)
+            y = tl.load(B + off)
+            r = x == y
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+        else:
+            m = off < N
+            x = tl.load(A + off, mask=m, other=0)
+            y = tl.load(B + off, mask=m, other=0)
+            r = x == y
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
 
 
 @triton.jit
-def _eq_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
+def _eq_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(A + off, mask=m, other=0)
-    r = x == Y.to(x.dtype)
-    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+    if EVEN:
+        x = tl.load(A + off)
+        r = x == Y.to(x.dtype)
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+    else:
+        m = off < N
+        x = tl.load(A + off, mask=m, other=0)
+        r = x == Y.to(x.dtype)
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
 
 
 def _eq_cmp_run(A, B, out):
@@ -150,67 +197,76 @@ def _eq_cmp_run(A, B, out):
     if n < _SMALL_N:
         return False
     if A.dtype == torch.float32:
-        if n >= _BIG_N:
-            # strided tile assignment (48 persistent CTAs): under sustained
-            # traffic the contiguous-chunk loop loses ~5% on fp32 giant shapes
-            if n > _INT32_SAFE_LIMIT - 65536:
-                return False
-            _launch_with_retry(
-                lambda: _eq_cmp_strided_kernel[(_NPROGS,)](
-                    A, B, out, n, BLOCK=65536, num_warps=4
-                )
+        # DSM caps the fp32 dual-load tile at BLOCK=65536; the 48-CTA
+        # persistent strided form beats both the flat launch and the
+        # contiguous-chunk loop on every measured band (probe 2026-11-16:
+        # 2^24 strided 65.1us vs loop anchor 70.4us; grid sweep g96/g64/g128
+        # all lose to g48), so it serves the whole fp32 mid/giant range.
+        # EVEN arm only below the giant band: the official-bench re-measure
+        # shows no gain (within-noise to +1%) there, so giants keep masked.
+        if n > _INT32_SAFE_LIMIT - 65536:
+            return False
+        _launch_with_retry(
+            lambda: _eq_cmp_strided_kernel[(_NPROGS,)](
+                A,
+                B,
+                out,
+                n,
+                BLOCK=65536,
+                EVEN=(n % 65536 == 0 and n < _BIG_N),
+                num_warps=4,
             )
-            return True
-        if n >= _MID_N:
-            cov, chunk, nw, st = 262144, 65536, 8, 1
-        else:
-            cov = None
-        if cov is not None:
-            if n > _INT32_SAFE_LIMIT - cov:
-                return False
-            _launch_with_retry(
-                lambda: _eq_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-                    A,
-                    B,
-                    out,
-                    n,
-                    COV=cov,
-                    CHUNK=chunk,
-                    ST=st,
-                    num_warps=nw,
-                    num_stages=st,
-                )
+        )
+        return True
+    if n >= _BIG_N:
+        cov, chunk, nw, st = 1048576, 131072, 2, 2
+        if n > _INT32_SAFE_LIMIT - cov:
+            return False
+        _launch_with_retry(
+            lambda: _eq_cmp_loop_kernel[(triton.cdiv(n, cov),)](
+                A,
+                B,
+                out,
+                n,
+                COV=cov,
+                CHUNK=chunk,
+                ST=st,
+                EVEN=False,
+                num_warps=nw,
+                num_stages=st,
             )
-            return True
-        block, nw = 65536, 4
-    else:
-        if n >= _BIG_N:
-            cov, chunk, nw, st = 1048576, 131072, 2, 2
-            if n > _INT32_SAFE_LIMIT - cov:
-                return False
-            _launch_with_retry(
-                lambda: _eq_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-                    A,
-                    B,
-                    out,
-                    n,
-                    COV=cov,
-                    CHUNK=chunk,
-                    ST=st,
-                    num_warps=nw,
-                    num_stages=st,
-                )
+        )
+        return True
+    if n >= _MID_N:
+        # f16/bf16 mid band: 48-CTA persistent strided x 131072 beats the
+        # previous flat launch (probe 2026-11-16: 38.5us vs flat 40.6us)
+        if n > _INT32_SAFE_LIMIT - 131072:
+            return False
+        _launch_with_retry(
+            lambda: _eq_cmp_strided_kernel[(_NPROGS,)](
+                A, B, out, n, BLOCK=131072, EVEN=(n % 131072 == 0), num_warps=4
             )
-            return True
-        block, nw = (131072, 4) if n >= _MID_N else (65536, 4)
+        )
+        return True
+    block = 65536
     if n > _INT32_SAFE_LIMIT - block:
         return False
     _launch_with_retry(
         lambda: _eq_cmp_kernel[(triton.cdiv(n, block),)](
-            A, B, out, n, BLOCK=block, num_warps=nw
+            A, B, out, n, BLOCK=block, EVEN=(n % block == 0), num_warps=4
         )
     )
     return True
+
+
+# ---------------- complex eq bridged off the hard-aborting native path -------
+# topsatenEq rejects complex64/complex128 with a C++ CHECK abort (NOT_SUPPORT,
+# no error code), so `a == b` on complex GCU tensors kills the process -- the
+# slice_copy_out accuracy leg hits it on its final `(out == ref).all()` assert.
+# An aten shim on the free AutogradPrivateUse1 slot (house pattern, see
+# adaptive_avg_pool2d.py) maps complex equality onto two real comparisons over
+# `view_as_real` plus an all-reduce along the trailing dim; every other dtype
+# redispatches to the untouched native PrivateUse1 kernel.
 
 
 def eq(A, B):
@@ -249,17 +305,51 @@ def eq_scalar(A, B):
         n = A.numel()
         if n > 0:
             if n >= _MID_N:
-                if A.dtype == torch.float32 and n >= _BIG_N:
+                if A.dtype == torch.float32:
+                    # fp32 mid+giant: 48-CTA persistent strided (probe
+                    # 2026-11-16: 2^24 37.7us vs flat-131072 anchor 38.8us;
+                    # grid sweep: g32/g48 best, g96+ lose). EVEN arm below the
+                    # giant band only (official re-measure: no gain there).
                     if n > _INT32_SAFE_LIMIT - 65536:
                         return eq_func_scalar(A, B)
                     out = torch.empty_like(A, dtype=torch.bool)
                     _launch_with_retry(
                         lambda: _eq_cmp_scalar_strided_kernel[(_NPROGS,)](
-                            A, out, n, y, BLOCK=65536, num_warps=4
+                            A,
+                            out,
+                            n,
+                            y,
+                            BLOCK=65536,
+                            EVEN=(n % 65536 == 0 and n < _BIG_N),
+                            num_warps=4,
                         )
                     )
                     return out
-                block = 262144 if A.dtype != torch.float32 else 131072
+                if n >= _BIG_N:
+                    # f16/bf16 giant: keep the flat 262144 launch with the
+                    # masked arm (probe 2026-11-16: strided-48x131072 ties
+                    # within noise, a 65536-wide strided tile loses 5%; the
+                    # EVEN arm re-measured within-noise-to-+1% on the
+                    # official bench, so masked stays)
+                    block = 262144
+                else:
+                    # f16/bf16 mid: 48-CTA persistent strided x 131072
+                    # (probe 2026-11-16: 24.0us vs flat-262144 anchor 24.1us)
+                    if n > _INT32_SAFE_LIMIT - 131072:
+                        return eq_func_scalar(A, B)
+                    out = torch.empty_like(A, dtype=torch.bool)
+                    _launch_with_retry(
+                        lambda: _eq_cmp_scalar_strided_kernel[(_NPROGS,)](
+                            A,
+                            out,
+                            n,
+                            y,
+                            BLOCK=131072,
+                            EVEN=(n % 131072 == 0),
+                            num_warps=4,
+                        )
+                    )
+                    return out
             elif n >= _SMALL_N:
                 block = 65536
             else:
@@ -270,7 +360,13 @@ def eq_scalar(A, B):
                 out = torch.empty_like(A, dtype=torch.bool)
                 _launch_with_retry(
                     lambda: _eq_cmp_scalar_kernel[(triton.cdiv(n, block),)](
-                        A, out, n, y, BLOCK=block, num_warps=4
+                        A,
+                        out,
+                        n,
+                        y,
+                        BLOCK=block,
+                        EVEN=(n % block == 0) if n < _BIG_N else False,
+                        num_warps=4,
                     )
                 )
                 return out
@@ -278,15 +374,22 @@ def eq_scalar(A, B):
 
 
 @triton.jit
-def _eq_cmp_scalar_strided_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
+def _eq_cmp_scalar_strided_kernel(
+    A, OUT, N, Y, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
     for tile in tl.range(pid, tl.cdiv(N, BLOCK), num_ctas):
         off = tile * BLOCK + tl.arange(0, BLOCK)
-        m = off < N
-        x = tl.load(A + off, mask=m, other=0)
-        r = x == Y.to(x.dtype)
-        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+        if EVEN:
+            x = tl.load(A + off)
+            r = x == Y.to(x.dtype)
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+        else:
+            m = off < N
+            x = tl.load(A + off, mask=m, other=0)
+            r = x == Y.to(x.dtype)
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
 
 
 @triton.jit

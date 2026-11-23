@@ -55,75 +55,146 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.ge import ge_func, ge_func_scalar
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 16
+_GRID_CAP = NUM_SIPS * 3
+_TINY_N = 4096
 _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
-_SMALL_N = 2**16
-_MID_N = 2**22
-_BIG_N = 2**28
 _INT32_SAFE_LIMIT = 0x7FFFFFFF
 
 
-@triton.jit
-def _ge_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
-    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(A + off, mask=m, other=0)
-    y = tl.load(B + off, mask=m, other=0)
-    r = x >= y
-    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
+def geq_flat_kernel(
+    A, B, OUT, N_total, BLOCK: tl.constexpr, EXACT: tl.constexpr, NS: tl.constexpr
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids, num_stages=NS):
+        off = block_id * BLOCK + arange
+        if EXACT:
+            x = tl.load(A + off)
+            y = tl.load(B + off)
+            r = x >= y
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+        else:
+            mask = off < N_total
+            x = tl.load(A + off, mask=mask, other=0)
+            y = tl.load(B + off, mask=mask, other=0)
+            r = x >= y
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=mask)
 
 
-@triton.jit
-def _ge_cmp_loop_kernel(A, B, OUT, N, COV: tl.constexpr, CHUNK: tl.constexpr):
-    base = tl.program_id(0) * COV
-    for j in range(0, COV // CHUNK):
-        off = base + j * CHUNK + tl.arange(0, CHUNK)
-        m = off < N
-        x = tl.load(A + off, mask=m, other=0)
-        y = tl.load(B + off, mask=m, other=0)
-        r = x >= y
-        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
+def geq_scalar_flat_kernel(
+    A, OUT, N_total, Y, BLOCK: tl.constexpr, EXACT: tl.constexpr
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        if EXACT:
+            x = tl.load(A + off)
+            r = x >= Y.to(x.dtype)
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+        else:
+            mask = off < N_total
+            x = tl.load(A + off, mask=mask, other=0)
+            r = x >= Y.to(x.dtype)
+            tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=mask)
 
 
-@triton.jit
-def _ge_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
-    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(A + off, mask=m, other=0)
-    r = x >= Y.to(x.dtype)
-    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+def _geq_pair_config(n, itemsize, inplace=False):
+    if n <= _TINY_N:
+        # fp32 needs nw2 here: one warp holding 128 fp32 lanes per operand
+        # serializes (4096/nw1 = 6.4us vs 3.77us at nw2); 16-bit is fine at nw1.
+        return max(triton.next_power_of_2(n), 256), (1 if itemsize == 2 else 2), 1
+    if itemsize == 2:
+        if n <= (1 << 17):
+            return 8192, 4, 1
+        if n <= (1 << 23):
+            return 16384, 4, 1
+        # ns=1 beats ns=3 on the flat 1Gi case in-session (ns3 won by ~1% on
+        # the gt twin's card; the effect is card-state dependent and ns1 never
+        # loses the paired probe here: f16-flat -1.9%, bf16-flat -3.4%).
+        return 65536, 2, 1
+    if n <= (1 << 21):
+        return 8192, 4, 1
+    if n <= (1 << 27):
+        return 32768, 2, 1
+    if inplace:
+        # The bool-out 16384/nw1 arm collapses on the 12B/elem dtype-out
+        # stream (6160 vs 4223us paired probe, 2026-11-16): a single warp
+        # cannot keep the 2x fp32 load + fp32 store footprint in flight.
+        return 32768, 2, 1
+    return 16384, 1, 1
 
 
-def _ge_cmp_run(A, B, out):
+def _geq_scalar_config(n, itemsize):
+    if n <= _TINY_N:
+        # Same fp32 nw1 serialization as the pair kernel (5.3us -> 3.84us at nw2).
+        return max(triton.next_power_of_2(n), 256), (1 if itemsize == 2 else 2)
+    if n <= (1 << 22):
+        return 16384, 4
+    if itemsize == 2:
+        return 65536, 2
+    if n <= (1 << 25):
+        return 32768, 2
+    return 65536, 1
+
+
+def _geq_launch(kernel, grid, args, block, num_warps, **constexprs):
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic; converterResult=-2 family, see P02); retrying the
+    # launch recompiles and succeeds (add.py / greater.py precedent).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(args[0].device):
+                kernel[(grid,)](
+                    *args,
+                    BLOCK=block,
+                    num_warps=num_warps,
+                    num_stages=1,
+                    **constexprs,
+                )
+            return
+        except Exception:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "greater_equal flat kernel launch failed (attempt %d)",
+                attempt + 1,
+                exc_info=True,
+            )
+
+
+def _geq_pair_run(A, B, out, inplace=False):
     """Launch the tuned comparison kernel; False falls back to pointwise."""
     n = A.numel()
-    if n < _SMALL_N:
+    if n == 0:
         return False
-    if A.dtype == torch.float32:
-        if n >= _MID_N:
-            cov, chunk, nw, st = 262144, 65536, 8, 1
-            if n > _INT32_SAFE_LIMIT - cov:
-                return False
-            _ge_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-                A, B, out, n, COV=cov, CHUNK=chunk, num_warps=nw, num_stages=st
-            )
-            return True
-        block, nw = 16384, 4
-    else:
-        if n >= _BIG_N:
-            cov, chunk, nw, st = 524288, 131072, 4, 2
-            if n > _INT32_SAFE_LIMIT - cov:
-                return False
-            _ge_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-                A, B, out, n, COV=cov, CHUNK=chunk, num_warps=nw, num_stages=st
-            )
-            return True
-        block, nw = (131072, 4) if n >= _MID_N else (16384, 4)
+    block, num_warps, num_stages = _geq_pair_config(n, A.element_size(), inplace)
     if n > _INT32_SAFE_LIMIT - block:
         return False
-    _ge_cmp_kernel[(triton.cdiv(n, block),)](A, B, out, n, BLOCK=block, num_warps=nw)
+    grid = min(-(-n // block), _GRID_CAP)
+    _geq_launch(
+        geq_flat_kernel,
+        grid,
+        (A, B, out, n),
+        block,
+        num_warps,
+        EXACT=n % block == 0,
+        NS=num_stages,
+    )
     return True
 
 
@@ -137,7 +208,7 @@ def greater_equal(A, B):
         and B.is_contiguous()
     ):
         out = torch.empty_like(A, dtype=torch.bool)
-        if _ge_cmp_run(A, B, out):
+        if _geq_pair_run(A, B, out):
             return out
     return ge_func(A, B)
 
@@ -147,14 +218,17 @@ def greater_equal_scalar(A, B):
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         n = A.numel()
         if n > 0:
-            if n >= _MID_N:
-                block = 262144 if A.dtype != torch.float32 else 131072
-            else:
-                block = 16384
+            block, num_warps = _geq_scalar_config(n, A.element_size())
             if n <= _INT32_SAFE_LIMIT - block:
                 out = torch.empty_like(A, dtype=torch.bool)
-                _ge_cmp_scalar_kernel[(triton.cdiv(n, block),)](
-                    A, out, n, float(B), BLOCK=block, num_warps=4
+                grid = min(-(-n // block), _GRID_CAP)
+                _geq_launch(
+                    geq_scalar_flat_kernel,
+                    grid,
+                    (A, out, n, float(B)),
+                    block,
+                    num_warps,
+                    EXACT=n % block == 0,
                 )
                 return out
     return ge_func_scalar(A, B)
@@ -171,6 +245,6 @@ def greater_equal_(A, B):
         and A.is_contiguous()
         and B.is_contiguous()
     ):
-        if _ge_cmp_run(A, B, A):
+        if _geq_pair_run(A, B, A, inplace=True):
             return A
     return ge_func(A, B, out0=A)

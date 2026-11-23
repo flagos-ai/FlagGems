@@ -515,12 +515,12 @@ def smooth_l1_loss_backward(
         return out
     block_size = _backward_config(n_elements, input.element_size())
     if triton.cdiv(n_elements, block_size) > 65535:
-        # Grid dimension cap protection: enlarge BLOCK for huge tensors to keep one launch.
+        # Guard against the grid dimension limit: for very large tensors, increase BLOCK to keep it to a single launch.
         block_size = 65536
     grid = triton.cdiv(n_elements, block_size)
     beta_f = float(beta)
-    # Same empirical rule as the reduction path: unmasked is slightly slower on large fp32 (16.7M
-    # elements 0.1270ms vs 0.1203ms), while 16-bit steadily gains 1.5~2.5x, so disable only there.
+    # Same empirical rule as the reduction path: on large-scale fp32, no mask is slightly slower (16.7M
+    # elements: 0.1270ms vs 0.1203ms), while 16-bit consistently gains 1.5~2.5x, so disable it only there.
     even_n = n_elements % block_size == 0
     if input.element_size() >= 4 and n_elements > (1 << 21):
         even_n = False

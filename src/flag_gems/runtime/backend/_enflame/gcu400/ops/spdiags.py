@@ -19,13 +19,34 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.index_select import index_select
-from flag_gems.ops.nonzero import nonzero
-from flag_gems.ops.unique import _unique2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+# grid.x hardware limit on GCU (grid.x <= 65535); a single diagonal longer
+# than BLOCK * 65535 elements would overflow it, so the block size is
+# scaled up first.
+_MAX_GRID_X = 65535
+# DSM-safe upper bound for the block size (index math is int64).
+_MAX_BLOCK = 16384
+# grid.y hardware limit on GCU (grid.y <= 255); diagonals beyond one launch
+# are processed in chunks, each carrying its host-computed output base.
+_MAX_GRID_Y = 255
+# Minimum lanes of the in-kernel offsets tile (GCU rejects tiny tiles).
+_MIN_OFF_PAD = 32
+# Pinned staging buffer / event for the async device-to-host offsets read,
+# reused across calls (bounded by the fast-path diagonal count).
+_PINNED_STAGE = None
+_SYNC_EVENT = None
+
+
+def _get_pinned_stage():
+    global _PINNED_STAGE, _SYNC_EVENT
+    if _PINNED_STAGE is None:
+        _PINNED_STAGE = torch.empty(_MAX_GRID_Y, dtype=torch.int64, pin_memory=True)
+        _SYNC_EVENT = torch.cuda.Event()
+    return _PINNED_STAGE, _SYNC_EVENT
 
 
 @libentry()
@@ -35,61 +56,82 @@ def spdiags_kernel(
     offsets_ptr,
     indices_ptr,
     values_ptr,
-    num_diags: tl.constexpr,
+    col_off,
+    chunk_base,
+    diag_base,
+    num_chunk: tl.constexpr,
     diag_len: tl.constexpr,
     nrows: tl.constexpr,
     ncols: tl.constexpr,
-    numel: tl.constexpr,
+    OFF_PAD: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    INLINE_NNZ: tl.constexpr,
 ):
+    """Build the compacted COO entries of a sparse diagonal matrix.
+
+    Program (pid_x, pid_y) covers the ``pid_y``-th diagonal of the current
+    chunk and the ``pid_x``-th block of that diagonal. The valid positions of
+    diagonal ``d`` with offset ``o`` are ``j`` in ``[max(0, o),
+    min(diag_len, ncols, nrows + o))`` mapped to ``(row, col) = (j - o, j)``.
+
+    The output is written straight into its final compacted slots, so no
+    sentinel / nonzero / index_select compaction pass is needed. The output
+    base of a diagonal is the number of valid entries of the earlier
+    diagonals of this chunk (recomputed in-kernel from the tiny offsets
+    vector) plus the host-provided ``chunk_base`` for multi-chunk launches.
+
+    With ``INLINE_NNZ`` the kernel also derives the global entry count from
+    the offsets itself and uses it as the column-block base of the flat
+    ``(2, nnz)`` index buffer. That decouples the launch from the host-side
+    offsets read, so the kernel can be enqueued before the blocking read
+    completes and the host only pays for the read, not for the launch.
     """
-    Kernel to compute sparse COO indices and values from diagonals.
+    diag_local = tl.program_id(1)
+    diag_idx = diag_base + diag_local
 
-    Each program processes one block of one diagonal and writes into a
-    fixed-stride ``num_diags * diag_len`` scratch layout: entry ``i`` of
-    diagonal ``d`` lands at slot ``d * diag_len + i``. Invalid slots (positions
-    that fall outside the matrix) get their row index tagged with the sentinel
-    ``-1`` so the host side can compact the results with a single ``nonzero``
-    instead of a per-diagonal Python loop.
+    # All offsets of this chunk, per-diagonal valid ranges and counts.
+    d_idx = tl.arange(0, OFF_PAD)
+    d_mask = d_idx < num_chunk
+    offs_all = tl.load(offsets_ptr + diag_base + d_idx, mask=d_mask, other=0)
+    lo_all = tl.maximum(offs_all, 0)
+    hi_all = tl.minimum(diag_len, tl.minimum(ncols, nrows + offs_all))
+    cnt_all = tl.where(d_mask, tl.maximum(hi_all - lo_all, 0), 0)
+    if INLINE_NNZ:
+        col_block = tl.sum(cnt_all.to(tl.int32), axis=0).to(tl.int64)
 
-    Coordinates follow the native ``_spdiags`` layout contract: the ``j``-th
-    element of a diagonal lands at matrix position ``(j - offset, j)``. Only
-    positions whose row and column fall inside the matrix are valid; unlike the
-    previous implementation there is no row-major modulo wrapping.
-    """
-    pid = tl.program_id(0)
-    diag_idx = pid // tl.cdiv(diag_len, BLOCK_SIZE)
-    block_idx = pid % tl.cdiv(diag_len, BLOCK_SIZE)
-
-    if diag_idx >= num_diags:
-        return
-
-    # Load the offset without narrowing to int32: valid offsets are int64.
     offset = tl.load(offsets_ptr + diag_idx)
 
-    positions = (block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)).to(tl.int64)
-    inbound = positions < diag_len
+    j_lo = tl.maximum(offset, 0)
+    j_hi = tl.minimum(diag_len, tl.minimum(ncols, nrows + offset))
+    if j_lo >= j_hi:
+        return
 
-    # Native coordinate mapping: diagonal value at position j maps to
-    # (row, col) = (j - offset, j). Filter out-of-bounds indices directly.
-    row_idx = positions - offset
-    col_idx = positions
+    # Intersect the diagonal's valid range with this block's range.
+    b_lo = tl.program_id(0) * BLOCK_SIZE
+    lo = tl.maximum(j_lo, b_lo)
+    hi = tl.minimum(j_hi, b_lo + BLOCK_SIZE)
+    if lo >= hi:
+        return
 
-    valid = inbound & (row_idx >= 0) & (row_idx < nrows) & (col_idx < ncols)
+    # Entries of the earlier diagonals of this chunk, plus previous chunks.
+    cnt_early = tl.where(d_mask & (d_idx < diag_local), cnt_all, 0).to(tl.int32)
+    base = chunk_base + tl.sum(cnt_early, axis=0)
 
-    # Fixed-stride output position within the scratch buffers.
-    out_idx = diag_idx * diag_len + positions
+    j = lo + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    mask = j < hi
 
-    # Load diagonal values.
-    diag_base = diag_idx * diag_len
-    vals = tl.load(diagonals_ptr + diag_base + positions, mask=valid, other=0.0)
+    out_pos = base.to(tl.int64) + (j - j_lo)
+    diag_addr = diag_idx.to(tl.int64) * diag_len
 
-    # Store into the shared (2, numel) index buffer: row = indices[0], col = indices[1].
-    # Invalid entries carry a -1 row sentinel so they are dropped during compaction.
-    store_row = tl.where(valid, row_idx, -1)
-    tl.store(indices_ptr + out_idx, store_row, mask=inbound)
-    tl.store(indices_ptr + numel + out_idx, col_idx, mask=inbound)
-    tl.store(values_ptr + out_idx, vals, mask=inbound)
+    row = j - offset
+    vals = tl.load(diagonals_ptr + diag_addr + j, mask=mask)
+
+    tl.store(indices_ptr + out_pos, row, mask=mask)
+    if INLINE_NNZ:
+        tl.store(indices_ptr + col_block + out_pos, j, mask=mask)
+    else:
+        tl.store(indices_ptr + col_off + out_pos, j, mask=mask)
+    tl.store(values_ptr + out_pos, vals, mask=mask)
 
 
 def _to_layout(result_coo, layout):
@@ -98,6 +140,39 @@ def _to_layout(result_coo, layout):
     if layout == torch.sparse_csc:
         return result_coo.to_sparse_csc()
     return result_coo
+
+
+def _host_counts(offsets_host, diag_len, nrows, ncols):
+    """Per-diagonal valid-entry counts; mirrors the kernel's range formula."""
+    counts = []
+    for off in offsets_host:
+        lo = off if off > 0 else 0
+        hi = min(diag_len, ncols, nrows + off)
+        counts.append(hi - lo if hi > lo else 0)
+    return counts
+
+
+def _empty_result(diagonals, shape, layout):
+    indices = torch.empty((2, 0), dtype=torch.int64, device=diagonals.device)
+    values = torch.empty((0,), dtype=diagonals.dtype, device=diagonals.device)
+    result = torch.sparse_coo_tensor(
+        indices, values, size=shape, dtype=diagonals.dtype, device=diagonals.device
+    )
+    return _to_layout(result, layout)
+
+
+def _launch_grid(diag_len):
+    """Block size covering diag_len within the grid.x hardware limit."""
+    block_size = 512
+    n_blocks = triton.cdiv(diag_len, block_size)
+    while n_blocks > _MAX_GRID_X and block_size < _MAX_BLOCK:
+        block_size *= 2
+        n_blocks = triton.cdiv(diag_len, block_size)
+    if n_blocks > _MAX_GRID_X:
+        raise RuntimeError(
+            f"spdiags diagonal length {diag_len} exceeds the launchable grid"
+        )
+    return n_blocks, block_size
 
 
 def spdiags(diagonals, offsets, shape, layout=None):
@@ -116,7 +191,7 @@ def spdiags(diagonals, offsets, shape, layout=None):
     Returns:
         Sparse tensor in the requested layout.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPDIAGS")
+    logger.debug("GEMS_ENFLAME SPDIAGS")
 
     # Promote 1-D diagonals and scalar offsets to the native 2-D/1-D forms.
     diagonals_2d = diagonals.unsqueeze(0) if diagonals.dim() == 1 else diagonals
@@ -154,62 +229,127 @@ def spdiags(diagonals, offsets, shape, layout=None):
             f"the number of offsets ({offsets_1d.shape[0]})"
         )
 
-    # Duplicate detection routes through the FlagGems unique op instead of
-    # torch.unique: _unique2 returns the deduplicated values, so a shrink in
-    # element count means the offsets contained duplicates. An empty offset
-    # tensor trivially has no duplicates and would make the unique kernel launch
-    # a zero-length arange, so guard the call.
-    if offsets_1d.numel() > 0:
-        unique_offsets = _unique2(offsets_1d, sorted=False)[0]
-        if offsets_1d.numel() != unique_offsets.numel():
-            raise RuntimeError("Offset tensor contains duplicate values")
-
     # Handle empty case
     if num_diags == 0 or diag_len == 0 or nrows == 0 or ncols == 0:
-        indices = torch.empty((2, 0), dtype=torch.int64, device=diagonals.device)
-        values = torch.empty((0,), dtype=diagonals.dtype, device=diagonals.device)
-        result = torch.sparse_coo_tensor(
-            indices, values, size=shape, dtype=diagonals.dtype, device=diagonals.device
-        )
-        return _to_layout(result, layout)
-
-    # Scratch buffers use a fixed ``num_diags * diag_len`` stride so the kernel
-    # can write each entry to a deterministic slot without any host-side nnz
-    # bookkeeping. The grid covers every slot exactly once, so the kernel fully
-    # initializes both buffers: valid entries get their real (row, col) while
-    # unused slots receive the -1 row sentinel used by the compaction below.
-    numel = num_diags * diag_len
-    indices_buffer = torch.empty((2, numel), dtype=torch.int64, device=diagonals.device)
-    values_buffer = torch.empty(
-        (numel,), dtype=diagonals.dtype, device=diagonals.device
-    )
-
-    # Launch kernel
-    BLOCK_SIZE = 256
-    grid = (num_diags * triton.cdiv(diag_len, BLOCK_SIZE),)
+        return _empty_result(diagonals, shape, layout)
 
     diagonals_contig = diagonals_2d.contiguous()
     offsets_contig = offsets_1d.contiguous()
+    numel_max = num_diags * diag_len
 
-    with torch_device_fn.device(diagonals.device):
-        spdiags_kernel[grid](
-            diagonals_contig,
-            offsets_contig,
-            indices_buffer,
-            values_buffer,
-            num_diags,
-            diag_len,
-            nrows,
-            ncols,
-            numel,
-            BLOCK_SIZE=BLOCK_SIZE,
+    # The generic path compacts with a nonzero + index_select chain whose
+    # int64 cumsum scan aborts the GCU runtime. Here the kernel writes the
+    # compacted COO directly: one blocking offsets read (the output size is
+    # data-dependent, so a device-to-host sync is unavoidable), one kernel,
+    # no scratch, no compaction.
+    #
+    # Fast path (num_diags <= grid.y limit): enqueue everything before
+    # blocking on the offsets read - the kernel derives the column-block
+    # base itself, so only the read itself stays inside the sync window.
+    if num_diags <= _MAX_GRID_Y:
+        try:
+            stage, sync_event = _get_pinned_stage()
+        except Exception:
+            stage = None
+        if stage is not None:
+            stage[:num_diags].copy_(offsets_contig, non_blocking=True)
+            sync_event.record()
+            n_blocks, block_size = _launch_grid(diag_len)
+            indices_flat = torch.empty(
+                (2 * numel_max,), dtype=torch.int64, device=diagonals.device
+            )
+            values_buf = torch.empty(
+                (numel_max,), dtype=diagonals.dtype, device=diagonals.device
+            )
+            with torch_device_fn.device(diagonals.device):
+                spdiags_kernel[(n_blocks, num_diags)](
+                    diagonals_contig,
+                    offsets_contig,
+                    indices_flat,
+                    values_buf,
+                    0,
+                    0,
+                    0,
+                    num_chunk=num_diags,
+                    diag_len=diag_len,
+                    nrows=nrows,
+                    ncols=ncols,
+                    OFF_PAD=max(_MIN_OFF_PAD, triton.next_power_of_2(num_diags)),
+                    BLOCK_SIZE=block_size,
+                    INLINE_NNZ=True,
+                    num_warps=4,
+                )
+            sync_event.synchronize()
+            offsets_host = stage[:num_diags].tolist()
+            # Duplicate detection + valid-entry accounting in one pass.
+            nnz = 0
+            seen = set()
+            for off in offsets_host:
+                if off in seen:
+                    raise RuntimeError("Offset tensor contains duplicate values")
+                seen.add(off)
+                lo = off if off > 0 else 0
+                hi = min(diag_len, ncols, nrows + off)
+                if hi > lo:
+                    nnz += hi - lo
+            if nnz == 0:
+                return _empty_result(diagonals, shape, layout)
+            if nnz > 0x7FFFFFFF:
+                raise RuntimeError(
+                    f"spdiags result has {nnz} nonzeros, exceeding the supported 2^31 - 1"
+                )
+            indices = indices_flat[: 2 * nnz].view(2, nnz)
+            values = values_buf[:nnz]
+            # The kernel guarantees in-bounds indices by construction, so the
+            # unsafe (check-free) constructor is exact here and saves the
+            # argument-validation hop of torch.sparse_coo_tensor.
+            result = torch.ops.aten._sparse_coo_tensor_unsafe(
+                indices, values, list(shape)
+            )
+            return _to_layout(result, layout)
+
+    # Fallback path (many diagonals): blocking offsets read first, then exact
+    # chunked launches with the host-computed column-block base.
+    offsets_host = offsets_contig.cpu().tolist()
+    if len(set(offsets_host)) != len(offsets_host):
+        raise RuntimeError("Offset tensor contains duplicate values")
+    counts = _host_counts(offsets_host, diag_len, nrows, ncols)
+    nnz = sum(counts)
+    if nnz == 0:
+        return _empty_result(diagonals, shape, layout)
+    if nnz > 0x7FFFFFFF:
+        raise RuntimeError(
+            f"spdiags result has {nnz} nonzeros, exceeding the supported 2^31 - 1"
         )
 
-    # Compact valid entries by routing through supported FlagGems operators
-    # instead of calling PyTorch ge/nonzero/index_select directly.
-    keep = nonzero(indices_buffer[0] >= 0).reshape(-1)
-    indices = index_select(indices_buffer, 1, keep)
-    values = index_select(values_buffer, 0, keep)
+    n_blocks, block_size = _launch_grid(diag_len)
+    indices = torch.empty((2, nnz), dtype=torch.int64, device=diagonals.device)
+    values = torch.empty((nnz,), dtype=diagonals.dtype, device=diagonals.device)
+
+    with torch_device_fn.device(diagonals.device):
+        chunk_base = 0
+        diag_base = 0
+        for chunk_start in range(0, num_diags, _MAX_GRID_Y):
+            num_chunk = min(_MAX_GRID_Y, num_diags - chunk_start)
+            spdiags_kernel[(n_blocks, num_chunk)](
+                diagonals_contig,
+                offsets_contig,
+                indices,
+                values,
+                nnz,
+                chunk_base,
+                diag_base,
+                num_chunk=num_chunk,
+                diag_len=diag_len,
+                nrows=nrows,
+                ncols=ncols,
+                OFF_PAD=max(_MIN_OFF_PAD, triton.next_power_of_2(num_chunk)),
+                BLOCK_SIZE=block_size,
+                INLINE_NNZ=False,
+                num_warps=4,
+            )
+            chunk_base += sum(counts[chunk_start : chunk_start + num_chunk])
+            diag_base += num_chunk
 
     result = torch.sparse_coo_tensor(
         indices, values, size=shape, dtype=diagonals.dtype, device=diagonals.device

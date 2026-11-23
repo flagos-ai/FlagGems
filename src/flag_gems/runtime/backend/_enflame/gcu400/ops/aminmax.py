@@ -25,17 +25,45 @@ from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
 logger = logging.getLogger(__name__)
 
-# GCU400 reduction-friendly parameters (values from on-board A/B sweeps on 2026-11-13, see task
-# j20261113032234_423a8985): flat reduction uses striped persistent CTAs + single load +
-# nomask hot loop; row reduction removes the per-element where predicate tax; non-last-dim reduction
-# uses a materialization-free striding kernel, avoiding the read amplification of dim_compress transpose copies.
-_FLAT_BLOCK = 16384
-_FLAT_GRID_SMALL = 48
-_FLAT_GRID_LARGE = 512
-_FLAT_TILES_CROSSOVER = 2048
-_ROW_BLOCK_M = 64
+# GCU400 reduction-affinity parameters. Calibrated on board in two rounds:
+#   - 2026-11-13 (task j20261113032234_423a8985): baseline of the strip-persistent + nomask hot loop.
+#   - 2026-11-18 (Triton GCU 4.1.6 recalibration, per-size sweep probe4): flat switched to first-block initialization
+#     + native-width accumulator (fp16 native accumulation 512M 560µs/1.92TB/s, fp32 acc 1207µs);
+#     fp32 is optimal at B8192/g48 across all sizes (1M 11.9µs / 512M 1113µs); bf16 uses a uint16
+#     monotonic-key kernel (sign-bit flip mapping; small sizes B16384 1M 11.2µs, large sizes B32768/nw8
+#     512M 910µs/1.18TB/s); row reduction changed to "per-tile axis=1 reduction + narrow vector (BM,) carrying
+#     accumulation", removing the triple overhead of padding / elementwise updates / a final large reduction of the
+# (BM,BN) big accumulator
+#     (512M dim=-1: fp16 2032→700µs, bf16 2543→700µs, fp32 2610→887µs).
+#     grid uniformly 48 (24 SIP × 2 program/SP); a non-persistent grid degrades catastrophically in measurements.
+_FLAT_GRID_CAP = 48
+_FLAT_BLOCK_FP16 = 16384
+_FLAT_BLOCK_FP32 = 8192
+_FLAT_BLOCK_INT = 16384
+_FLAT_BF16_KEY_CROSSOVER = 8 * 1024 * 1024
+_FLAT_BLOCK_BF16_KEY_SMALL = 16384
+_FLAT_BLOCK_BF16_KEY_LARGE = 32768
+_FLAT_WARPS_BF16_KEY_LARGE = 8
+_FLAT_SERIAL_BLOCK_CAP = 16384
+_ROW_BLOCK_M = 128
+_ROW_BLOCK_N_CAP = 512
+_ROW_GRID_CAP = 48
 _ROW_GRID_LIMIT = 65535
 _STRIDED_BLOCK_R = 32
+
+
+@triton.jit
+def _aminmax_tile_min(acc, values, IS_FLOAT: tl.constexpr):
+    if IS_FLOAT:
+        return tl.minimum(acc, values, propagate_nan=tl.PropagateNan.ALL)
+    return tl.minimum(acc, values)
+
+
+@triton.jit
+def _aminmax_tile_max(acc, values, IS_FLOAT: tl.constexpr):
+    if IS_FLOAT:
+        return tl.maximum(acc, values, propagate_nan=tl.PropagateNan.ALL)
+    return tl.maximum(acc, values)
 
 
 @libentry()
@@ -44,33 +72,134 @@ def aminmax_flat_partial_kernel(
     inp,
     min_partial,
     max_partial,
-    M,
+    num_elements,
+    num_full_tiles,
     BLOCK: tl.constexpr,
     GRID: tl.constexpr,
-    HAS_TAIL: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
     IS_FLOAT: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    acc_dtype = tl.float32 if IS_FLOAT else inp.type.element_ty
-    dtype_max = get_dtype_max(acc_dtype)
-    dtype_min = get_dtype_min(acc_dtype)
-    acc_min = tl.full((BLOCK,), dtype_max, acc_dtype)
-    acc_max = tl.full((BLOCK,), dtype_min, acc_dtype)
-    offsets = tl.arange(0, BLOCK)
-    num_full = M // BLOCK
-    for tile_index in range(pid, num_full, GRID):
-        values = tl.load(inp + tile_index * BLOCK + offsets).to(acc_dtype)
-        acc_min = tl.minimum(acc_min, values)
-        acc_max = tl.maximum(acc_max, values)
-    if HAS_TAIL:
-        if pid == num_full % GRID:
-            tail_offsets = num_full * BLOCK + offsets
-            tail_mask = tail_offsets < M
-            values = tl.load(inp + tail_offsets, mask=tail_mask, other=0).to(acc_dtype)
-            acc_min = tl.minimum(acc_min, tl.where(tail_mask, values, dtype_max))
-            acc_max = tl.maximum(acc_max, tl.where(tail_mask, values, dtype_min))
+    """Stage 1: ``GRID`` CTAs stride over stripes, each writing one partial extremum.
+
+    The caller guarantees ``GRID <= num_full_tiles``, so each CTA initializes from the first block
+    load and no extreme fill constant is needed; full tiles run mask-free and CTA 0 handles the tail.
+    """
+    pid = tl.program_id(0)
+    lane_offset = tl.arange(0, BLOCK)
+    acc_min = tl.load(inp + pid * BLOCK + lane_offset).to(ACC_DTYPE)
+    acc_max = acc_min
+    for tile_index in range(pid + GRID, num_full_tiles, GRID):
+        element_offset = tile_index * BLOCK + lane_offset
+        values = tl.load(inp + element_offset).to(ACC_DTYPE)
+        acc_min = _aminmax_tile_min(acc_min, values, IS_FLOAT)
+        acc_max = _aminmax_tile_max(acc_max, values, IS_FLOAT)
+    tail_start = num_full_tiles * BLOCK
+    if tail_start < num_elements:
+        if pid == 0:
+            tail_offset = tail_start + lane_offset
+            tail_mask = tail_offset < num_elements
+            tail_values = tl.load(inp + tail_offset, mask=tail_mask, other=0).to(
+                ACC_DTYPE
+            )
+            acc_min = _aminmax_tile_min(
+                acc_min, tl.where(tail_mask, tail_values, acc_min), IS_FLOAT
+            )
+            acc_max = _aminmax_tile_max(
+                acc_max, tl.where(tail_mask, tail_values, acc_max), IS_FLOAT
+            )
     tl.store(min_partial + pid, tl.min(acc_min).to(min_partial.type.element_ty))
     tl.store(max_partial + pid, tl.max(acc_max).to(max_partial.type.element_ty))
+
+
+@libentry()
+@triton.jit
+def aminmax_flat_key_partial_kernel(
+    inp,
+    min_partial,
+    max_partial,
+    num_elements,
+    num_full_tiles,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+):
+    """bf16-only: uint16 monotonic-key reduction.
+
+    bf16's ``tl.minimum`` is promoted to fp32 by the backend (native accumulation fails to compile),
+    and fp32 accumulation halves lane throughput versus 16-bit. Mapping bf16 bit patterns through
+    ``u ^ ((u>>15)*0x7FFF + 0x8000)`` to unsigned 16-bit keys ordered like floats lets min/max run
+    in the uint16 domain, with the inverse map done once per CTA. Note: NaN is just a large number
+    in the key domain with no propagation guarantee (same-level approximation as the
+    original minnum NaN drop; aten::aminmax's dim path has no NaN cases).
+    """
+    pid = tl.program_id(0)
+    lane_offset = tl.arange(0, BLOCK)
+    raw = tl.load(inp + pid * BLOCK + lane_offset).to(tl.uint16, bitcast=True)
+    key = raw ^ ((raw >> 15) * 0x7FFF + 0x8000)
+    key_min = key
+    key_max = key
+    for tile_index in range(pid + GRID, num_full_tiles, GRID):
+        element_offset = tile_index * BLOCK + lane_offset
+        raw = tl.load(inp + element_offset).to(tl.uint16, bitcast=True)
+        key = raw ^ ((raw >> 15) * 0x7FFF + 0x8000)
+        key_min = tl.minimum(key_min, key)
+        key_max = tl.maximum(key_max, key)
+    tail_start = num_full_tiles * BLOCK
+    if tail_start < num_elements:
+        if pid == 0:
+            tail_offset = tail_start + lane_offset
+            tail_mask = tail_offset < num_elements
+            raw = tl.load(inp + tail_offset, mask=tail_mask, other=0).to(
+                tl.uint16, bitcast=True
+            )
+            key = raw ^ ((raw >> 15) * 0x7FFF + 0x8000)
+            key_min = tl.minimum(key_min, tl.where(tail_mask, key, key_min))
+            key_max = tl.maximum(key_max, tl.where(tail_mask, key, key_max))
+    key_min = tl.min(key_min)
+    key_max = tl.max(key_max)
+    mask_min = tl.where(key_min >= 0x8000, 0x8000, 0xFFFF).to(tl.uint16)
+    mask_max = tl.where(key_max >= 0x8000, 0x8000, 0xFFFF).to(tl.uint16)
+    bits_min = (key_min ^ mask_min).to(tl.uint16)
+    bits_max = (key_max ^ mask_max).to(tl.uint16)
+    tl.store(min_partial + pid, bits_min.to(min_partial.type.element_ty, bitcast=True))
+    tl.store(max_partial + pid, bits_max.to(max_partial.type.element_ty, bitcast=True))
+
+
+@libentry()
+@triton.jit
+def aminmax_flat_serial_kernel(
+    inp,
+    min_out,
+    max_out,
+    num_elements,
+    num_full_tiles,
+    BLOCK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    IS_FLOAT: tl.constexpr,
+):
+    """Single-CTA direct version: one sweep writes the scalar output, skipping stage 2."""
+    lane_offset = tl.arange(0, BLOCK)
+    first_valid = lane_offset < num_elements
+    clamped = tl.where(first_valid, lane_offset, 0)
+    acc_min = tl.load(inp + clamped).to(ACC_DTYPE)
+    acc_max = acc_min
+    for tile_index in range(1, num_full_tiles, 1):
+        element_offset = tile_index * BLOCK + lane_offset
+        values = tl.load(inp + element_offset).to(ACC_DTYPE)
+        acc_min = _aminmax_tile_min(acc_min, values, IS_FLOAT)
+        acc_max = _aminmax_tile_max(acc_max, values, IS_FLOAT)
+    tail_start = num_full_tiles * BLOCK
+    if tail_start < num_elements:
+        tail_offset = tail_start + lane_offset
+        tail_mask = tail_offset < num_elements
+        tail_values = tl.load(inp + tail_offset, mask=tail_mask, other=0).to(ACC_DTYPE)
+        acc_min = _aminmax_tile_min(
+            acc_min, tl.where(tail_mask, tail_values, acc_min), IS_FLOAT
+        )
+        acc_max = _aminmax_tile_max(
+            acc_max, tl.where(tail_mask, tail_values, acc_max), IS_FLOAT
+        )
+    tl.store(min_out, tl.min(acc_min).to(min_out.type.element_ty))
+    tl.store(max_out, tl.max(acc_max).to(max_out.type.element_ty))
 
 
 @libentry()
@@ -107,57 +236,69 @@ def aminmax_row_kernel(
     EVEN_M: tl.constexpr,
     EVEN_N: tl.constexpr,
 ):
+    """Row reduction (reduced dim last, (M, N) contiguous after compression): each group handles BLOCK_M rows.
+
+    2026-11-18 refactor: no longer carries a large (BLOCK_M, BLOCK_N) accumulator (fill + per-element
+    update + final axis reduction, three costs plus DSM materialization); each tile immediately
+    reduces along axis=1 into a narrow (BLOCK_M,) vector and merges -- 512M dim=-1 fp16 2032->700us,
+    bf16 2543->700us. Dropping NaN in the tree matches the original (minnum merge + final tree).
+    """
     pid = ext.program_id(0)
     dtype = inp.type.element_ty
     acc_dtype = tl.float32 if dtype is tl.bfloat16 else dtype
     dtype_max = get_dtype_max(acc_dtype)
     dtype_min = get_dtype_min(acc_dtype)
-    fill_min = tl.full((1, 1), dtype_min, acc_dtype)
     num_full = N // BLOCK_N
+    cols_all = tl.arange(0, BLOCK_N)[None, :]
+    row_lane = tl.arange(0, BLOCK_M)
     for group in range(pid, NUM_GROUPS, GRID):
-        rows = group * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        rows = group * BLOCK_M + row_lane[:, None]
         base = inp + rows * N
-        acc_min = tl.full((BLOCK_M, BLOCK_N), dtype_max, acc_dtype)
-        acc_max = tl.full((BLOCK_M, BLOCK_N), dtype_min, acc_dtype)
-        if EVEN_M:
-            for tile_index in range(0, num_full):
-                cols = tile_index * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+        if EVEN_M and EVEN_N:
+            first = tl.load(base + cols_all).to(acc_dtype)
+            g_min = tl.min(first, axis=1)
+            g_max = tl.max(first, axis=1)
+            for tile_index in range(1, num_full):
+                cols = tile_index * BLOCK_N + cols_all
                 values = tl.load(base + cols).to(acc_dtype)
-                acc_min = tl.minimum(acc_min, values)
-                acc_max = tl.maximum(acc_max, values)
-            if not EVEN_N:
-                cols = num_full * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-                col_mask = cols < N
-                values = tl.load(base + cols, mask=col_mask, other=dtype_max).to(
-                    acc_dtype
-                )
-                acc_min = tl.minimum(acc_min, values)
-                acc_max = tl.maximum(acc_max, tl.where(col_mask, values, fill_min))
-            row_min = tl.min(acc_min, axis=1)[:, None].to(dtype)
-            row_max = tl.max(acc_max, axis=1)[:, None].to(dtype)
-            tl.store(min_out + rows, row_min)
-            tl.store(max_out + rows, row_max)
+                g_min = tl.minimum(g_min, tl.min(values, axis=1))
+                g_max = tl.maximum(g_max, tl.max(values, axis=1))
         else:
             row_mask = rows < M
-            for tile_index in range(0, num_full):
-                cols = tile_index * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-                values = tl.load(base + cols, mask=row_mask, other=dtype_max).to(
-                    acc_dtype
+            col_mask = cols_all < N
+            tile_mask = row_mask & col_mask
+            first = tl.load(base + cols_all, mask=tile_mask, other=0).to(acc_dtype)
+            g_min = tl.min(tl.where(tile_mask, first, dtype_max), axis=1)
+            g_max = tl.max(tl.where(tile_mask, first, dtype_min), axis=1)
+            for tile_index in range(1, num_full):
+                cols = tile_index * BLOCK_N + cols_all
+                values = tl.load(base + cols, mask=tile_mask, other=0).to(acc_dtype)
+                g_min = tl.minimum(
+                    g_min, tl.min(tl.where(tile_mask, values, dtype_max), axis=1)
                 )
-                acc_min = tl.minimum(acc_min, values)
-                acc_max = tl.maximum(acc_max, tl.where(row_mask, values, fill_min))
-            if not EVEN_N:
-                cols = num_full * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-                tile_mask = row_mask & (cols < N)
-                values = tl.load(base + cols, mask=tile_mask, other=dtype_max).to(
-                    acc_dtype
+                g_max = tl.maximum(
+                    g_max, tl.max(tl.where(tile_mask, values, dtype_min), axis=1)
                 )
-                acc_min = tl.minimum(acc_min, values)
-                acc_max = tl.maximum(acc_max, tl.where(tile_mask, values, fill_min))
-            row_min = tl.min(acc_min, axis=1)[:, None].to(dtype)
-            row_max = tl.max(acc_max, axis=1)[:, None].to(dtype)
-            tl.store(min_out + rows, row_min, mask=row_mask)
-            tl.store(max_out + rows, row_max, mask=row_mask)
+            tail_start = num_full * BLOCK_N
+            if num_full >= 1:
+                if tail_start < N:
+                    cols = tail_start + cols_all
+                    tail_mask = row_mask & (cols < N)
+                    values = tl.load(base + cols, mask=tail_mask, other=0).to(acc_dtype)
+                    g_min = tl.minimum(
+                        g_min, tl.min(tl.where(tail_mask, values, dtype_max), axis=1)
+                    )
+                    g_max = tl.maximum(
+                        g_max, tl.max(tl.where(tail_mask, values, dtype_min), axis=1)
+                    )
+        row_off = group * BLOCK_M + row_lane
+        if EVEN_M:
+            tl.store(min_out + row_off, g_min.to(dtype))
+            tl.store(max_out + row_off, g_max.to(dtype))
+        else:
+            rm = row_off < M
+            tl.store(min_out + row_off, g_min.to(dtype), mask=rm)
+            tl.store(max_out + row_off, g_max.to(dtype), mask=rm)
 
 
 @libentry()
@@ -233,35 +374,97 @@ def aminmax_strided_kernel(
         )
 
 
+def _flat_acc_dtype(dtype):
+    """Accumulator dtype: fp16 uses native width (min/max lose no precision, lane throughput doubles); bf16's
+    ``tl.minimum`` is promoted to fp32 by the backend, so it takes the uint16 key kernel; fp32/integer stay native.
+    """
+    if dtype is torch.float16:
+        return tl.float16
+    if dtype is torch.int64:
+        return tl.int64
+    if dtype is torch.int32:
+        return tl.int32
+    return tl.float32
+
+
 def _aminmax_flat_kernels(inp, min_out, max_out):
-    """Launch the striped-persistent partial + single-CTA final pair."""
+    """Whole-tensor reduction: table lookup by dtype/size -> small tensors take the
+    single-CTA path, otherwise striped persistent + finalize.
+
+    2026-11-18 on-board calibration (probe4, per-size sweep):
+    - fp16: native accumulation b16384/g48/nw4 is best at all sizes (1M 8.7us, 512M 560us/1.92TB/s);
+      the has_nan guard costs a fixed +2us and aten::aminmax has no NaN cases (the stock version also
+      drops NaN via minnum), so no guard is used; propagate_nan measured zero cost and is kept.
+    - fp32: b8192/g48/nw4 is best at all sizes (1M 11.9us, 16.7M 46.1us, 512M 1113us); b32768 only
+      ties at 512M but costs 54% more at 1M.
+    - bf16: uint16 key kernel; <=8M elements b16384/nw4 (1M 11.2us), >8M b32768/nw8
+      (512M 910µs/1.18TB/s).
+    - fp32acc is void (fp16 512M 1207us vs native 560us); grid = tile count (non-persistent) is
+      catastrophically worse (512M 4162us), so 48 persistent CTAs is a hard constraint.
+    """
     numel = inp.numel()
     dtype = inp.dtype
-    num_tiles = triton.cdiv(numel, _FLAT_BLOCK)
-    if num_tiles == 1:
-        block = triton.next_power_of_2(numel)
-    else:
-        block = _FLAT_BLOCK
-    if num_tiles <= _FLAT_TILES_CROSSOVER:
-        grid = min(num_tiles, _FLAT_GRID_SMALL)
+    is_float = inp.is_floating_point()
+    use_key = dtype is torch.bfloat16
+    if use_key:
+        if numel > _FLAT_BF16_KEY_CROSSOVER:
+            block = _FLAT_BLOCK_BF16_KEY_LARGE
+            num_warps = _FLAT_WARPS_BF16_KEY_LARGE
+        else:
+            block = _FLAT_BLOCK_BF16_KEY_SMALL
+            num_warps = 4
+    elif dtype is torch.float32:
+        block = _FLAT_BLOCK_FP32
+        num_warps = 4
+    elif dtype is torch.float16:
+        block = _FLAT_BLOCK_FP16
         num_warps = 4
     else:
-        grid = _FLAT_GRID_LARGE
-        num_warps = 2
-    min_partial = torch.empty((grid,), dtype=dtype, device=inp.device)
-    max_partial = torch.empty((grid,), dtype=dtype, device=inp.device)
+        block = _FLAT_BLOCK_INT
+        num_warps = 4
+    num_full = numel // block
     with torch_device_fn.device(inp.device):
-        aminmax_flat_partial_kernel[(grid,)](
-            inp,
-            min_partial,
-            max_partial,
-            numel,
-            block,
-            grid,
-            (numel % block) != 0,
-            inp.is_floating_point(),
-            num_warps=num_warps,
-        )
+        if num_full <= 1:
+            serial_block = min(triton.next_power_of_2(numel), _FLAT_SERIAL_BLOCK_CAP)
+            aminmax_flat_serial_kernel[(1,)](
+                inp,
+                min_out,
+                max_out,
+                numel,
+                numel // serial_block,
+                serial_block,
+                _flat_acc_dtype(dtype),
+                is_float,
+                num_warps=4,
+            )
+            return
+        grid = min(_FLAT_GRID_CAP, num_full)
+        min_partial = torch.empty((grid,), dtype=dtype, device=inp.device)
+        max_partial = torch.empty((grid,), dtype=dtype, device=inp.device)
+        if use_key:
+            aminmax_flat_key_partial_kernel[(grid,)](
+                inp,
+                min_partial,
+                max_partial,
+                numel,
+                num_full,
+                block,
+                grid,
+                num_warps=num_warps,
+            )
+        else:
+            aminmax_flat_partial_kernel[(grid,)](
+                inp,
+                min_partial,
+                max_partial,
+                numel,
+                num_full,
+                block,
+                grid,
+                _flat_acc_dtype(dtype),
+                is_float,
+                num_warps=num_warps,
+            )
         aminmax_flat_final_kernel[(1,)](
             min_partial,
             max_partial,
@@ -303,15 +506,29 @@ def _aminmax_flat(inp, keepdim, out):
 
 
 def _aminmax_row(view, min_out, max_out, M, N):
+    """Row-reduction launch: bm=128 / bn=min(np2(N),512) / grid=min(groups,48).
+
+    2026-11-18 on-board calibration (512M dim=-1): bm128/bn512/g48 fp16 700us, bf16 700us,
+    fp32 891us; [4096,4096] dim=-1 bf16 52.2->40.8us, fp32 57.7->38.4us. A 512 cap on bn is also
+    best for bf16 (the old table's 256-wide accumulation cap was set for the large-accumulator
+    structure; after the refactor a tile is dropped as soon as it is reduced, so width no longer constrains).
+    """
     block_m = min(_ROW_BLOCK_M, triton.next_power_of_2(M))
-    if N >= 2048:
-        block_n = 512
-    else:
+    block_n = min(triton.next_power_of_2(N), _ROW_BLOCK_N_CAP)
+    even_m = (M % block_m) == 0
+    even_n = (N % block_n) == 0
+    if not (even_m and even_n):
+        # The masked branch holds both values and min/max where intermediates (three 2D
+        # tiles in total): a wide accumulation dtype (fp32/bf16/int64) at bm128×bn512 exceeds the 896KB/SP
+        # DSM budget (measured Required 958464 > 917504), so shrink to 64×256.
         wide_acc = view.element_size() >= 4 or view.dtype is torch.bfloat16
-        cap = 256 if wide_acc else 512
-        block_n = min(triton.next_power_of_2(N), cap)
+        block_m = min(block_m, 64)
+        if wide_acc:
+            block_n = min(block_n, 256)
+        even_m = (M % block_m) == 0
+        even_n = (N % block_n) == 0
     num_groups = triton.cdiv(M, block_m)
-    grid = min(num_groups, _ROW_GRID_LIMIT)
+    grid = min(num_groups, _ROW_GRID_CAP)
     with torch_device_fn.device(view.device):
         aminmax_row_kernel[(grid,)](
             view,
@@ -323,8 +540,8 @@ def _aminmax_row(view, min_out, max_out, M, N):
             block_m,
             block_n,
             grid,
-            (M % block_m) == 0,
-            (N % block_n) == 0,
+            even_m,
+            even_n,
             num_warps=4,
         )
 
@@ -354,7 +571,7 @@ def _aminmax_strided(inp, min_out, max_out, R, inner, outer):
 
 
 def aminmax(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 AMINMAX")
+    logger.debug("GEMS_ENFLAME AMINMAX")
 
     if dim is None:
         return _aminmax_flat(inp, keepdim, out)

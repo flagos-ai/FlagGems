@@ -14,6 +14,7 @@
 
 import logging
 import math
+from collections import OrderedDict
 from typing import Optional, Sequence, Tuple
 
 import torch
@@ -21,9 +22,219 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 device = device.name
+sinpi = tl_extra_shim.sinpi
+
+# ---------------------------------------------------------------------------
+# gcu400 dense dot path (rewritten 2026-11-18, same rationale as _upsample_lanczos2d_aa_backward):
+#   Separable Lanczos-AA forward pass = two GEMMs (in @ Wx^T along W, Wy @ · along H). The original two-pass
+#   per-lane gather form (13-tap weight table / sample element-wise gather + flat element-wise kernel)
+#   serializes gathers per lane on GCU400, pushing large-shape downsampling to 1.9-2.5ms (native einsum
+#   with two GEMMs takes only 51-94us). Replaced with a single kernel using a dense-weight-matrix tl.dot chain:
+#     tmp[BIH,BOW] = dot(in[BIH,BKW], wxT[BKW,BOW])   (contract along W)
+#     acc[BOH,BOW] = dot(wy[BOH,BIH], tmp[BIH,BOW])   (contract along H)
+#   All addressing is affine; the K dimension (H_in/W_in) is unrolled with tl.static_range (a gcu400 dynamic range loop
+#   carrying an fp32 tl.dot accumulator miscompiles; see the comments in gcu400/ops/mm.py).
+# Finalized by probing (V6W1): BIH/BKW/BOH cap=128, BOW cap=64, num_warps=1.
+# ---------------------------------------------------------------------------
+_DOT_NUM_SPC = 48  # GCU400 L600 fixed grid (number of SPs)
+_DOT_MAX_K_BLOCKS = 16
+_DOT_WEIGHT_CACHE_MAX = 128
+_DOT_FP16_MIN_ELEMS = 65536
+_DOT_BIH_CAP = 128
+_DOT_BOH_CAP = 128
+_DOT_BOW_CAP = 64
+_DOT_BKW_CAP = 128
+_DOT_DSM_BUDGET = 917504 // 2  # Libra per-program DSM limit (448KB)
+
+
+@triton.jit
+def _lanczos_aa_filter(x):
+    pix = math.pi * x
+    sinc = tl.where(x == 0.0, 1.0, sinpi(x) / pix)
+    sinc_three = tl.where(x == 0.0, 1.0, sinpi(x / 3.0) / (pix / 3.0))
+    return tl.where(x < 3.0, sinc * sinc_three, 0.0)
+
+
+@triton.jit
+def _f2i(x):
+    _LO: tl.constexpr = -2147483648.0
+    _HI: tl.constexpr = 2147483520.0
+    return tl.minimum(tl.maximum(x, _LO), _HI).to(tl.int32)
+
+
+@triton.jit
+def _dense_weights_kernel(
+    w_ptr,
+    out_size,
+    in_size,
+    scale,
+    support,
+    invscale,
+    BLOCK_I: tl.constexpr,
+    I_BLOCKS: tl.constexpr,
+    NUM_SPC: tl.constexpr,
+):
+    """Computes dense Lanczos-AA weight rows [out_size, in_size] per output row (zero outside the window)."""
+    pid = tl.program_id(0)
+    for oi in range(pid, out_size, NUM_SPC):
+        center = scale * (oi + 0.5)
+        xmin = tl.maximum(_f2i(center - support + 0.5), 0)
+        xmax = tl.minimum(_f2i(center + support + 0.5), in_size)
+        total = 0.0
+        for i0 in tl.static_range(I_BLOCKS):
+            ii = i0 * BLOCK_I + tl.arange(0, BLOCK_I)
+            arg = tl.abs((ii.to(tl.float32) - center + 0.5) * invscale)
+            raw = _lanczos_aa_filter(arg)
+            w = tl.where((ii >= xmin) & (ii < xmax) & (arg < 3.0), raw, 0.0)
+            total += tl.sum(w)
+        for i0 in tl.static_range(I_BLOCKS):
+            ii = i0 * BLOCK_I + tl.arange(0, BLOCK_I)
+            in_m = ii < in_size
+            arg = tl.abs((ii.to(tl.float32) - center + 0.5) * invscale)
+            raw = _lanczos_aa_filter(arg)
+            w = tl.where((ii >= xmin) & (ii < xmax) & (arg < 3.0), raw, 0.0)
+            w = tl.where(total != 0.0, w / total, 0.0)
+            tl.store(
+                w_ptr + oi.to(tl.int64) * in_size + ii,
+                w.to(w_ptr.dtype.element_ty),
+                mask=in_m,
+            )
+
+
+@triton.jit
+def _fused_dot_forward_kernel(
+    in_ptr,
+    out_ptr,
+    wy_ptr,
+    wx_ptr,
+    H_in,
+    W_in,
+    H_out,
+    W_out,
+    T_OH,
+    T_OW,
+    TOTAL_WORK,
+    BIH: tl.constexpr,
+    BOH: tl.constexpr,
+    BOW: tl.constexpr,
+    BKW: tl.constexpr,
+    KH_BLOCKS: tl.constexpr,
+    KW_BLOCKS: tl.constexpr,
+    HAS_H: tl.constexpr,
+    HAS_W: tl.constexpr,
+    MODE: tl.constexpr,
+    NUM_SPC: tl.constexpr,
+):
+    """out[nc,oh,ow] = sum_ih sum_ih wy[oh,ih] * wx[ow,iw] * in[nc,ih,iw].
+
+    Two-stage dot chain in one kernel: tmp = in @ Wx^T (along W), acc = Wy @ tmp (along H).
+    MODE=0: all-fp32 dot (exact, input/weights widened to fp32 in-kernel);
+    MODE=1: dot uses tensor cores in the input dtype and tmp is cast back before dot2.
+    All accesses are affine: Wy / Wx are dense weight matrices (zeroed outside the window), the
+    transposed weight tile uses 2-D loads with row-stride=1 / col-stride=W_in, and in/out are
+    """
+    pid = tl.program_id(0)
+    for wid in range(pid, TOTAL_WORK, NUM_SPC):
+        nc = wid // (T_OH * T_OW)
+        r = wid - nc * (T_OH * T_OW)
+        oh_t = r // T_OW
+        ow_t = r - oh_t * T_OW
+        oh = oh_t * BOH + tl.arange(0, BOH)
+        ow = ow_t * BOW + tl.arange(0, BOW)
+        oh_m = oh < H_out
+        ow_m = ow < W_out
+        nc64 = nc.to(tl.int64)
+        acc = tl.zeros((BOH, BOW), dtype=tl.float32)
+        if HAS_H:
+            for ihb in tl.static_range(KH_BLOCKS):
+                ih = ihb * BIH + tl.arange(0, BIH)
+                ih_m = ih < H_in
+                if HAS_W:
+                    tmp = tl.zeros((BIH, BOW), dtype=tl.float32)
+                    for iwb in tl.static_range(KW_BLOCKS):
+                        iw = iwb * BKW + tl.arange(0, BKW)
+                        iw_m = iw < W_in
+                        a = tl.load(
+                            in_ptr + (nc64 * H_in + ih)[:, None] * W_in + iw[None, :],
+                            mask=ih_m[:, None] & iw_m[None, :],
+                            other=0.0,
+                        )
+                        b = tl.load(
+                            wx_ptr + ow[None, :].to(tl.int64) * W_in + iw[:, None],
+                            mask=iw_m[:, None] & ow_m[None, :],
+                            other=0.0,
+                        )
+                        if MODE == 0:
+                            tmp += tl.dot(
+                                a.to(tl.float32),
+                                b.to(tl.float32),
+                                out_dtype=tl.float32,
+                                allow_tf32=False,
+                            )
+                        else:
+                            tmp += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+                else:
+                    tmp = tl.load(
+                        in_ptr + (nc64 * H_in + ih)[:, None] * W_in + ow[None, :],
+                        mask=ih_m[:, None] & ow_m[None, :],
+                        other=0.0,
+                    ).to(tl.float32)
+                wy_t = tl.load(
+                    wy_ptr + oh[:, None].to(tl.int64) * H_in + ih[None, :],
+                    mask=oh_m[:, None] & ih_m[None, :],
+                    other=0.0,
+                )
+                if MODE == 1:
+                    acc += tl.dot(
+                        wy_t, tmp.to(wy_t.dtype), out_dtype=tl.float32, allow_tf32=False
+                    )
+                else:
+                    acc += tl.dot(
+                        wy_t.to(tl.float32),
+                        tmp,
+                        out_dtype=tl.float32,
+                        allow_tf32=False,
+                    )
+        else:
+            # H_out == H_in: row pass-through (the BOH tile also serves as the input row tile)
+            if HAS_W:
+                for iwb in tl.static_range(KW_BLOCKS):
+                    iw = iwb * BKW + tl.arange(0, BKW)
+                    iw_m = iw < W_in
+                    a = tl.load(
+                        in_ptr + (nc64 * H_in + oh)[:, None] * W_in + iw[None, :],
+                        mask=oh_m[:, None] & iw_m[None, :],
+                        other=0.0,
+                    )
+                    b = tl.load(
+                        wx_ptr + ow[None, :].to(tl.int64) * W_in + iw[:, None],
+                        mask=iw_m[:, None] & ow_m[None, :],
+                        other=0.0,
+                    )
+                    if MODE == 0:
+                        acc += tl.dot(
+                            a.to(tl.float32),
+                            b.to(tl.float32),
+                            out_dtype=tl.float32,
+                            allow_tf32=False,
+                        )
+                    else:
+                        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            else:
+                acc = tl.load(
+                    in_ptr + (nc64 * H_in + oh)[:, None] * W_in + ow[None, :],
+                    mask=oh_m[:, None] & ow_m[None, :],
+                    other=0.0,
+                ).to(tl.float32)
+        tl.store(
+            out_ptr + (nc64 * H_out + oh)[:, None] * W_out + ow[None, :],
+            acc.to(out_ptr.dtype.element_ty),
+            mask=oh_m[:, None] & ow_m[None, :],
+        )
 
 
 @triton.jit
@@ -325,6 +536,149 @@ def _lanczos_vertical_border_kernel(
     )
 
 
+def _get_dense_weights(input_size, output_size, align_corners, scale_arg, dtype, dev):
+    """Dense [out, in] Lanczos-AA weights (the host caches the device tensor, launching the
+    weight kernel only on a cache miss; the bench reference einsum weights are cached too).
+    """
+    cache = getattr(_get_dense_weights, "_cache", None)
+    if cache is None:
+        cache = OrderedDict()
+        _get_dense_weights._cache = cache
+    key = (
+        int(input_size),
+        int(output_size),
+        bool(align_corners),
+        None if scale_arg is None else float(scale_arg),
+        dtype,
+        str(dev),
+    )
+    cached = cache.get(key)
+    if cached is not None:
+        cache.move_to_end(key)
+        return cached
+    scale = _reciprocal_scale(input_size, output_size, align_corners, scale_arg)
+    support = 3.0 * scale if scale >= 1.0 else 3.0
+    invscale = 1.0 / scale if scale >= 1.0 else 1.0
+    weight = torch.zeros((output_size, input_size), dtype=dtype, device=dev)
+    BLOCK_I = 128
+    _dense_weights_kernel[(_DOT_NUM_SPC,)](
+        weight,
+        output_size,
+        input_size,
+        scale,
+        support,
+        invscale,
+        BLOCK_I=BLOCK_I,
+        I_BLOCKS=triton.cdiv(input_size, BLOCK_I),
+        NUM_SPC=_DOT_NUM_SPC,
+        num_warps=4,
+    )
+    if len(cache) >= _DOT_WEIGHT_CACHE_MAX:
+        cache.popitem(last=False)
+    cache[key] = weight
+    return weight
+
+
+def _np2_min16(x, cap):
+    return min(max(triton.next_power_of_2(max(int(x), 1)), 16), cap)
+
+
+def _dot_path_eligible(input, output_h, output_w, align_corners):
+    if input.device.type != "gcu":
+        return False
+    if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        return False
+    if align_corners and (output_h == 1 or output_w == 1):
+        return False
+    input_h, input_w = input.shape[-2:]
+    if input_h > _DOT_MAX_K_BLOCKS * _DOT_BIH_CAP:
+        return False
+    if input_w > _DOT_MAX_K_BLOCKS * _DOT_BKW_CAP:
+        return False
+    return True
+
+
+def _dot_forward_impl(
+    input,
+    output_size,
+    align_corners,
+    scales_h,
+    scales_w,
+    out_tensor=None,
+):
+    """Dense dot path: a single kernel launch performs the separable Lanczos-AA forward."""
+    n, c, input_h, input_w = input.shape
+    output_h, output_w = output_size
+    nc = n * c
+    dev = input.device
+    has_h = input_h != output_h
+    has_w = input_w != output_w
+    work_elems = nc * max(input_h * input_w, output_h * output_w)
+    use_f16_dot = (
+        input.dtype in (torch.float16, torch.bfloat16)
+        and work_elems >= _DOT_FP16_MIN_ELEMS
+    )
+    weight_dtype = input.dtype if use_f16_dot else torch.float32
+    mode = 1 if use_f16_dot else 0
+    wy = (
+        _get_dense_weights(
+            input_h, output_h, align_corners, scales_h, weight_dtype, dev
+        )
+        if has_h
+        else input
+    )
+    wx = (
+        _get_dense_weights(
+            input_w, output_w, align_corners, scales_w, weight_dtype, dev
+        )
+        if has_w
+        else input
+    )
+    bih = _np2_min16(input_h, _DOT_BIH_CAP) if has_h else 16
+    boh = _np2_min16(output_h, _DOT_BOH_CAP)
+    bow = _np2_min16(output_w, _DOT_BOW_CAP)
+    bkw = _np2_min16(input_w, _DOT_BKW_CAP) if has_w else 16
+    kh_blocks = triton.cdiv(input_h, bih) if has_h else 1
+    kw_blocks = triton.cdiv(input_w, bkw) if has_w else 1
+    # Peak DSM budget (fp32 worst case): a + b + tmp + wy + acc
+    dsm_bytes = (bih * bkw + bkw * bow + bih * bow + boh * bih + boh * bow) * 4
+    assert dsm_bytes <= _DOT_DSM_BUDGET, f"DSM {dsm_bytes} > {_DOT_DSM_BUDGET}"
+    if out_tensor is not None and out_tensor.is_contiguous():
+        out_flat = out_tensor.view(nc, output_h, output_w)
+    else:
+        out_flat = torch.empty((nc, output_h, output_w), dtype=input.dtype, device=dev)
+    t_oh = triton.cdiv(output_h, boh)
+    t_ow = triton.cdiv(output_w, bow)
+    in_flat = input.reshape(nc, input_h, input_w)
+    _fused_dot_forward_kernel[(_DOT_NUM_SPC,)](
+        in_flat,
+        out_flat,
+        wy,
+        wx,
+        input_h,
+        input_w,
+        output_h,
+        output_w,
+        t_oh,
+        t_ow,
+        nc * t_oh * t_ow,
+        BIH=bih,
+        BOH=boh,
+        BOW=bow,
+        BKW=bkw,
+        KH_BLOCKS=kh_blocks,
+        KW_BLOCKS=kw_blocks,
+        HAS_H=has_h,
+        HAS_W=has_w,
+        MODE=mode,
+        NUM_SPC=_DOT_NUM_SPC,
+        num_warps=1,
+    )
+    if out_tensor is not None and out_tensor.is_contiguous():
+        return out_tensor
+    return out_flat.reshape(n, c, output_h, output_w)
+
+
 def _reciprocal_scale(
     input_size: int,
     output_size: int,
@@ -457,6 +811,14 @@ def _upsample_lanczos2d_aa_contiguous(
     output_h, output_w = output_size
     if input_h == output_h and input_w == output_w:
         return input.clone()
+
+    # gcu400 main path: a single kernel with a dense dot chain. For huge input dimensions beyond the static-unroll limit
+    # on the K dimension (H_in/W_in),
+    # fall back to the legacy gather path (its tap unrolling is independent of the input dimension).
+    if _dot_path_eligible(input, output_h, output_w, align_corners):
+        return _dot_forward_impl(
+            input, (output_h, output_w), align_corners, scales_h, scales_w, None
+        )
 
     scale_w = _reciprocal_scale(input_w, output_w, align_corners, scales_w)
     scale_h = _reciprocal_scale(input_h, output_h, align_corners, scales_h)
@@ -610,7 +972,7 @@ def _upsample_lanczos2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_LANCZOS2D_AA")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_LANCZOS2D_AA")
     output_size = _validate(input, output_size)
     channels_last = input.is_contiguous(memory_format=torch.channels_last)
     if input.shape[0] == 0:
@@ -639,7 +1001,7 @@ def _upsample_lanczos2d_aa_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_LANCZOS2D_AA_OUT")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_LANCZOS2D_AA_OUT")
     if out.device != input.device:
         raise RuntimeError(
             f"Expected out tensor on {input.device}, but got {out.device}"
@@ -647,6 +1009,20 @@ def _upsample_lanczos2d_aa_out(
     if out.dtype != input.dtype:
         raise RuntimeError(
             f"Expected out tensor to have dtype {input.dtype}, but got {out.dtype}"
+        )
+    output_size = _validate(input, output_size)
+    # dot path + contiguous out: first resize to the target shape, then have the kernel write directly into the caller's
+    # buffer,
+    # eliminating one full allocation and one device-to-device copy (non-contiguous out follows the original copy path).
+    if (
+        _dot_path_eligible(input, output_size[0], output_size[1], align_corners)
+        and input.shape[0] != 0
+        and (out.is_contiguous() or out.numel() == 0)
+    ):
+        out.resize_((input.shape[0], input.shape[1], output_size[0], output_size[1]))
+        input = input.contiguous()
+        return _dot_forward_impl(
+            input, output_size, align_corners, scales_h, scales_w, out
         )
     result = _upsample_lanczos2d_aa(
         input, output_size, align_corners, scales_h, scales_w
@@ -662,7 +1038,7 @@ def _upsample_lanczos2d_aa_vec(
     align_corners: bool,
     scale_factors: Optional[Sequence[float]],
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_LANCZOS2D_AA_VEC")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_LANCZOS2D_AA_VEC")
     if (output_size is None) == (scale_factors is None):
         raise RuntimeError("Must specify exactly one of output_size and scale_factors")
     if output_size is not None:

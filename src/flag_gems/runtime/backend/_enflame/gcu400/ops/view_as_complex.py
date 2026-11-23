@@ -18,6 +18,12 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+_COMPLEX_DTYPE = {
+    torch.float16: torch.complex32,
+    torch.float32: torch.complex64,
+    torch.float64: torch.complex128,
+}
+
 
 def view_as_complex(A: torch.Tensor) -> torch.Tensor:
     r"""Return a view of the real input tensor as a complex tensor.
@@ -31,35 +37,35 @@ def view_as_complex(A: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A complex tensor view.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 VIEW_AS_COMPLEX")
+    logger.debug("GEMS_ENFLAME VIEW_AS_COMPLEX")
 
-    # Validate input - support float16, float32, and float64
-    # float16 -> complex32, float32 -> complex64, float64 -> complex128
-    assert A.dtype in (
-        torch.float16,
-        torch.float32,
-        torch.float64,
-    ), f"view_as_complex only supports float16/float32/float64, got {A.dtype}"
-
-    # Validate last dimension
-    if A.size(-1) != 2:
+    # Map real dtype to complex dtype (float16 -> complex32,
+    # float32 -> complex64, float64 -> complex128); a single dict lookup
+    # replaces the tuple-membership assert plus the if/elif chain.
+    complex_dtype = _COMPLEX_DTYPE.get(A.dtype)
+    if complex_dtype is None:
         raise RuntimeError(
-            f"view_as_complex expects a tensor with last dimension of size 2, "
-            f"but got size {A.size(-1)}"
+            f"view_as_complex only supports float16/float32/float64, got {A.dtype}"
         )
 
-    # Map real dtype to complex dtype
-    if A.dtype == torch.float16:
-        complex_dtype = torch.complex32
-    elif A.dtype == torch.float32:
-        complex_dtype = torch.complex64
-    else:  # float64
-        complex_dtype = torch.complex128
+    # Validate last dimension
+    if A.shape[-1] != 2:
+        raise RuntimeError(
+            f"view_as_complex expects a tensor with last dimension of size 2, "
+            f"but got size {A.shape[-1]}"
+        )
 
     # Reinterpret memory as complex dtype via Tensor.view(dtype).
     # This calls aten.view.dtype (not aten.view_as_complex), avoiding
     # FlagGems dispatch interception and infinite recursion in use_gems().
     # view(complex_dtype) merges the last dim-2 into one complex element,
-    # producing shape [..., 1]; squeeze(-1) removes that size-1 trailing dim
-    # to match the output shape of torch.view_as_complex.
-    return A.view(complex_dtype).squeeze(-1)
+    # producing shape [..., 1]; dropping that trailing size-1 dim via
+    # select(-1, 0) matches the output shape of torch.view_as_complex.
+    #
+    # select is used instead of squeeze deliberately: FlagGems registers
+    # aten::squeeze / aten::squeeze.dim, so a squeeze here would chain a
+    # second python-kernel dispatch hop (~2.5us on the gcu400 host path),
+    # while aten::select stays native under use_gems(). select is a pure
+    # view op for a size-1 trailing dim, so the result is identical to
+    # squeeze(-1) for every rank, stride and dtype view(dtype) accepts.
+    return A.view(complex_dtype).select(-1, 0)

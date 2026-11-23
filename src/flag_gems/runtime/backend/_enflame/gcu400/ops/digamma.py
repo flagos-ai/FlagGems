@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 # Fixed Grid on GCU400 (48 CTAs); see ops/deg2rad.py for the grid.x limit
 # rationale.
 _GRID_SIZE = 48
+# 4K-element tile per loop iteration: measured best across the whole size range
+# (see _launch for the numbers).
+_BLOCK_SIZE = 4096
 
 
 @libentry()
@@ -108,19 +111,22 @@ def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
 
 def digamma(A):
     logger.debug("GEMS_ENFLAME DIGAMMA")
-    x_contig = A.contiguous()
+    x_contig = A if A.is_contiguous() else A.contiguous()
     out = torch.empty_like(x_contig)
-    _launch(x_contig.view(-1), out.view(-1))
-    return out.view_as(A)
+    # The kernel only uses the flat element count and the data pointers, so the
+    # tensors are passed as-is: `view(-1)`/`view_as` would add three dispatches
+    # per call, which is the whole launch cost for tiny inputs.
+    _launch(x_contig, out)
+    return out
 
 
 def digamma_out(A, out):
     logger.debug("GEMS_ENFLAME DIGAMMA_OUT")
     x_contig = A.to(out.dtype).contiguous()
     if out.is_contiguous():
-        _launch(x_contig.view(-1), out.view(-1))
+        _launch(x_contig, out)
     else:
         out_contig = torch.empty_like(out, memory_format=torch.contiguous_format)
-        _launch(x_contig.view(-1), out_contig.view(-1))
+        _launch(x_contig, out_contig)
         out.copy_(out_contig)
     return out

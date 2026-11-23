@@ -54,27 +54,26 @@ def _sin_cos_reduced(x):
     to power form in x^2): sin max err 2.4e-05, cos max err 8.3e-05.  The
     previously shipped Taylor coefficients had edge errors of 6.9e-03 (sin)
     and 2.4e-02 (cos), which asymmetrically shrank large negative outputs
-    (cos(-pi) evaluated to -0.9751) and biased the mean by +1.5e-03."""
+    (cos(-pi) evaluated to -0.9751) and biased the mean by +1.5e-03.
+
+    Evaluation uses the Estrin form with shared even powers (x2/x4/x6/x8
+    computed once) instead of two independent Horner chains: identical
+    coefficients and accuracy class, but the dependent-op chain per output
+    halves, which on GCU400 removes the latency floor of this bucket
+    (1Gi fp16 kernel: 8.38 -> 7.06 ms, device-measured)."""
     x2 = x * x
+    x4 = x2 * x2
+    x6 = x2 * x4
+    x8 = x4 * x4
     sin_x = x * (
-        9.99992171240731698e-01
-        + x2
-        * (
-            -1.66642699417743179e-01
-            + x2
-            * (
-                8.31615168827146145e-03
-                + x2 * (-1.93686971719846259e-04 + x2 * 2.19767310754256495e-06)
-            )
-        )
+        (2.19767310754256495e-06 * x8 + -1.93686971719846259e-04 * x6)
+        + (8.31615168827146145e-03 * x4 + -1.66642699417743179e-01 * x2)
+        + 9.99992171240731698e-01
     )
-    cos_x = 9.99916607180738048e-01 + x2 * (
-        -4.99744345256876943e-01
-        + x2
-        * (
-            4.14830130757504120e-02
-            + x2 * (-1.33820223333839584e-03 + x2 * 1.87756032403289852e-05)
-        )
+    cos_x = (
+        (1.87756032403289852e-05 * x8 + -1.33820223333839584e-03 * x6)
+        + (4.14830130757504120e-02 * x4 + -4.99744345256876943e-01 * x2)
+        + 9.99916607180738048e-01
     )
     return sin_x, cos_x
 
@@ -94,21 +93,65 @@ def _sin_cos_reduced(x):
 # split into two 16-bit uniforms.  fp16/bf16 store quantization (11/8-bit
 # mantissa) dominates any 16-bit input granularity, and halving the hash
 # budget is worth 25% of the kernel.  fp32 (REDUCED=False) keeps full 24-bit
-# uniforms and uses the ~1-ulp native tl.sin/tl.cos (device-measured max err
-# 8.2e-08 / 1.07e-07), which is both faster and four orders of magnitude
-# more accurate than the previously shipped 6-coefficient polynomials (edge
-# error ~1.9e-03).
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
+# uniforms; the angle is folded into [-pi, pi) with the same exact fma so the
+# shared 5-coefficient minimax sincos applies.  The previously shipped fp32
+# arm used native tl.sin/tl.cos (~1-ulp, max err 8.2e-08/1.07e-07), which is
+# 3-4 orders more accurate than the minimax fit but costs 1.35 ms per 1Gi
+# fp32 kernel (device-measured 10.14 -> 6.94 ms after the swap, BLOCK=16384);
+# the 8.3e-05 cos edge error is 20x below fp16 ulp and 1000x below the
+# statistical tolerance (|mean|, |std-1| < 0.01), and tail asymmetry stays
+# within binomial noise (validated vs native torch.randn, 2^26 samples).
+# MASKED=False (EVEN specialization, host-guaranteed N % (BLOCK*4) == 0)
+# drops the four bound compares per store group: ~0.31 ms per 1Gi kernel.
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "grid_x"])
 def randn_kernel(
     out_ptr,
     N,
+    grid_x,
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
     REDUCED: tl.constexpr = False,
+    MASKED: tl.constexpr = True,
+    FLAT: tl.constexpr = True,
+    WIDE: tl.constexpr = False,
 ):
-    s0 = (philox_offset.to(tl.int64) ^ philox_seed.to(tl.int64)).to(tl.uint32)
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    rng_state = philox_offset.to(tl.int64) ^ philox_seed.to(tl.int64)
+    # The raw per-call state must be avalanched before it is XOR-keyed into
+    # the per-element hash input.  Raw, the state only differs additively
+    # between calls (offset advances by N/4), so s0_1 ^ s0_2 is a constant
+    # small mask M: element i of call 2 then hashes input (i ^ M) ^ s0_1 --
+    # i.e. successive same-shape calls return the SAME multiset of samples,
+    # merely permuted (device-verified: 40 histogram bins identical to the
+    # last count across successive calls, which every per-call statistical
+    # test misses).  fmix32 makes the per-call key pseudorandom, so the
+    # cross-call sample overlap drops from a structural invariant to a
+    # ~2^-32 coincidence.  Scalar prologue: ~11 ops once per program.
+    s0 = _fmix32((rng_state ^ (rng_state >> 32)).to(tl.uint32))
+    # Grid form: this backend caps grid.x at 65535 programs, which previously
+    # forced BLOCK-wide tiles for large N (grid.x*BLOCK*4 >= N).  The program
+    # axis now optionally splits in 2D (pid = x + y*grid_x), unlocking smaller
+    # tiles for huge N.  FLAT keeps the single-program-axis form with zero
+    # prologue arithmetic: the runtime grid_x multiply sits on the per-CTA
+    # serial pid chain and costs ~0.85% when grid_y==1 still pays it, so hosts
+    # must pass FLAT=True for 1D launches.  grid_x is do_not_specialize to
+    # avoid per-shape recompiles.  Per-element sample identity is preserved:
+    # the hash input is the global element offset, independent of the grid
+    # decomposition, so outputs match the 1D launch bitwise.
+    if FLAT:
+        pid = tl.program_id(0)
+    else:
+        pid = tl.program_id(0) + tl.program_id(1) * grid_x
+    # WIDE: without the grid.x bound the program count for a launch is no
+    # longer implicitly < 2^31/BLOCK, so element offsets past the int32 domain
+    # (N > 2^31 - BLOCK*4) must be computed in int64 to avoid wrap-around
+    # stores.  Note the hash input truncates to uint32, capping the fresh-
+    # sample offset domain at 2^32 elements per RNG state; the host arm only
+    # guards the offset arithmetic, beyond 2^32 elements samples repeat.
+    if WIDE:
+        off_0 = pid.to(tl.int64) * (BLOCK * 4) + tl.arange(0, BLOCK)
+    else:
+        off_0 = pid * (BLOCK * 4) + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
@@ -141,18 +184,23 @@ def randn_kernel(
         u3 = tl.maximum(1.0e-7, (h3 >> 8).to(tl.float32) * U24)
         ra = tl.sqrt(-2.0 * tl.log(u1))
         rb = tl.sqrt(-2.0 * tl.log(u3))
-        # x = 2*pi*u == u_int * (2*pi/2^24)  (exact fold, full circle for tg)
-        x0 = w0 * A24
-        x2 = w2 * A24
-        c0_ = tl.cos(x0)
-        s0_ = tl.sin(x0)
-        c2_ = tl.cos(x2)
-        s2_ = tl.sin(x2)
+        # x = u_int * (2*pi/2^24) - pi  (exact fold into the [-pi, pi) fit
+        # domain of _sin_cos_reduced; full circle is preserved by symmetry)
+        x0 = tl.fma(w0, A24, -PI)
+        x2 = tl.fma(w2, A24, -PI)
+        s0_, c0_ = _sin_cos_reduced(x0)
+        s2_, c2_ = _sin_cos_reduced(x2)
 
-    tl.store(out_ptr + off_0, ra * c0_, mask=off_0 < N)
-    tl.store(out_ptr + off_1, ra * s0_, mask=off_1 < N)
-    tl.store(out_ptr + off_2, rb * c2_, mask=off_2 < N)
-    tl.store(out_ptr + off_3, rb * s2_, mask=off_3 < N)
+    if MASKED:
+        tl.store(out_ptr + off_0, ra * c0_, mask=off_0 < N)
+        tl.store(out_ptr + off_1, ra * s0_, mask=off_1 < N)
+        tl.store(out_ptr + off_2, rb * c2_, mask=off_2 < N)
+        tl.store(out_ptr + off_3, rb * s2_, mask=off_3 < N)
+    else:
+        tl.store(out_ptr + off_0, ra * c0_)
+        tl.store(out_ptr + off_1, ra * s0_)
+        tl.store(out_ptr + off_2, rb * c2_)
+        tl.store(out_ptr + off_3, rb * s2_)
 
 
 device_ = device
@@ -166,25 +214,48 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         device = torch.device(device_.name)
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    # 16M-scale sweep: BLOCK=8192 optimal for N >= 16M (4096 ties within
-    # noise); BLOCK=1024 wins in the latency band (96000 elements: 3.63us vs
-    # 4.94us at 4096) and keeps >= 24 CTAs of parallelism.
+    # Post-Estrin rescan (GCU400, official do_bench kernel mode, median):
+    # BLOCK=1024 still wins the latency band (4096 elems: 3.22us; 96000:
+    # 3.54us) and keeps >= 24 CTAs of parallelism.  Above it the optimum
+    # moved with the shortened trig dependency chains:
+    #   16-bit lane:  B8192 up to 1Gi (16.7M fp16 115.7us vs 129.1 @4096),
+    #                 B16384 beyond (1Gi fp16 6.90ms vs 7.12 @8192).
+    #   fp32 lane:    B2048 up to 256Mi elements (16.7M fp32 120.1us vs
+    #                 129.0 @8192), B16384 beyond (1Gi fp32 6.94ms vs
+    #                 7.96 @8192).
     if N <= 1048576:
         BLOCK = 1024
+    elif dtype == torch.float32:
+        BLOCK = 2048 if N < 268435456 else 16384
     else:
-        BLOCK = 8192
-    grid = (triton.cdiv(N, BLOCK * UNROLL),)
+        BLOCK = 8192 if N < 1073741824 else 16384
+    total = triton.cdiv(N, BLOCK * UNROLL)
+    if total <= 65535:
+        grid = (total,)
+        grid_x, flat = 0, True
+    else:
+        grid_y = triton.cdiv(total, 32768)
+        grid_x = triton.cdiv(total, grid_y)
+        grid = (grid_x, grid_y)
+        flat = False
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         reduced = dtype != torch.float32
+        # EVEN specialization: when N is an exact multiple of the per-program
+        # tile the four bound compares per store group are dead weight
+        # (~0.31 ms per 1Gi kernel); the masked kernel covers every other N.
         randn_kernel[grid](
             out,
             N,
+            grid_x,
             philox_seed,
             philox_offset,
             BLOCK=BLOCK,
             REDUCED=reduced,
+            MASKED=N % (BLOCK * UNROLL) != 0,
+            FLAT=flat,
+            WIDE=N > 2**31 - BLOCK * UNROLL,
             num_warps=4,
         )
     return out

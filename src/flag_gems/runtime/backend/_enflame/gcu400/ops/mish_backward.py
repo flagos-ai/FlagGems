@@ -24,5 +24,5 @@ def mish_backward_kernel(grad_output, input):
 
 
 def mish_backward(grad_output, input):
-    logger.debug("GEMS_ENFLAME_GCU400 MISH_BACKWARD")
+    logger.debug("GEMS_ENFLAME MISH_BACKWARD")
     return mish_backward_kernel(grad_output, input)

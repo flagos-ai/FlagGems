@@ -28,12 +28,12 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -41,25 +41,71 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
-def _prune_frobenius_norm_configs(configs, named_args, **kwargs):
-    """Skip configs whose per-program loop count explodes: for N > 1024 the
-    small-BLOCK_N configs loop N/BLOCK_N times and dominate autotune; for tiny
-    N the BLOCK_N=1024 configs are almost fully masked-wasted."""
-    N = named_args["N"]
-    if N > 1024:
-        return [c for c in configs if c.kwargs["BLOCK_N"] == 1024]
-    if N <= 8:
-        return [c for c in configs if c.kwargs["BLOCK_N"] <= 64]
-    return configs
+# Block-shape policy for the row-reduction kernel, measured on gc400:
+#   M=4096   , N=4096 -> (128, 256)  = 0.033 ms
+#   M=32768  , N=512  -> (256, 128)  = 0.042 ms
+#   M=1048576, N=1024 -> (1024, 64)  = 1.60 ms  (~1280 GB/s)
+# Every program owns a tall run of rows and keeps a ~32K-element fp32 tile, so the
+# DMA engine sees long back-to-back row descriptors instead of many narrow column
+# strips. Growing BLOCK_M with sqrt(M) reproduces the measured optima without a
+# per-shape table, and BLOCK_M * BLOCK_N stays inside the accumulator budget and
+# keeps grid.x below the hardware limit of 65535.
+_FROBENIUS_TILE_ELEMS = 32768
+# grid.x hardware limit of the GCU launch path.
+_FROBENIUS_MAX_GRID_X = 65535
+_FROBENIUS_MAX_BLOCK_M = 1024
+_FROBENIUS_MIN_BLOCK_M = 16
+_FROBENIUS_MAX_BLOCK_N = 1024
+_FROBENIUS_NUM_WARPS = 4
+
+
+def _choose_frobenius_block_shape(n_rows, n_cols):
+    """Return (BLOCK_M, BLOCK_N) for an M x N row reduction."""
+    row_pad = triton.next_power_of_2(n_cols)
+    block_m = 2 * triton.next_power_of_2(max(1, math.isqrt(n_rows)))
+    block_m = max(_FROBENIUS_MIN_BLOCK_M, min(_FROBENIUS_MAX_BLOCK_M, block_m))
+    block_n = max(64, _FROBENIUS_TILE_ELEMS // block_m)
+    block_n = min(block_n, _FROBENIUS_MAX_BLOCK_N, max(64, row_pad))
+    if row_pad < 64:
+        # Tiny rows: one DMA line already covers the whole row.
+        block_n = row_pad
+    return block_m, block_n
+
+
+# Single middle-dimension reduction (e.g. dim=1 of a 3D tensor). Reducing such a
+# dim needs no layout copy: the reduced axis is a plain row stride of the
+# contiguous input, so the kernel walks RED rows of INNER contiguous columns and
+# folds them with a column sum. Avoids the multi-megabyte permute+copy that
+# `dim_compress` would otherwise pay before the generic kernel can run.
+_FROBENIUS_MID_BLOCK_N = 512
+_FROBENIUS_MID_BLOCK_R = 64
+# Below this innermost run width (in bytes) the strided walk cannot keep the DMA
+# engine busy and the permute+copy path is faster.
+_FROBENIUS_MIN_INNER_BYTES = 512
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("frobenius_norm"),
-    key=["M", "N"],
-    prune_configs_by={"early_config_prune": _prune_frobenius_norm_configs},
-    cache_results=True,
-)
+@triton.jit
+def frobenius_norm_mid_kernel(
+    X, Out, OUTER, RED, INNER, BLOCK_N: tl.constexpr, BLOCK_R: tl.constexpr
+):
+    outer = tl.program_id(0)
+    cols = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    col_mask = cols < INNER
+    base = X + outer.to(tl.int64) * (RED * INNER) + cols
+
+    acc_dtype = tl.float64 if X.type.element_ty == tl.float64 else tl.float32
+    acc = tl.zeros([BLOCK_N], dtype=acc_dtype)
+    row_lane = tl.arange(0, BLOCK_R)
+    for r0 in range(0, RED, BLOCK_R):
+        rows = r0 + row_lane
+        mask = (rows[:, None] < RED) & col_mask[None, :]
+        a = tl.load(base + rows[:, None] * INNER, mask, other=0.0).to(acc_dtype)
+        acc += tl.sum(a * a, axis=0)
+    tl.store(Out + outer.to(tl.int64) * INNER + cols, tl.sqrt(acc), col_mask)
+
+
+@libentry()
 @triton.jit
 def frobenius_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -85,7 +131,7 @@ def frobenius_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.const
 
 
 def frobenius_norm(x, dim, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 FROBENIUS_NORM")
+    logger.debug("GEMS_ENFLAME FROBENIUS_NORM")
     dtype = x.dtype
     assert dtype in (
         torch.float16,
@@ -98,6 +144,52 @@ def frobenius_norm(x, dim, keepdim=False):
     dim = [d % x.ndim for d in dim]
     if len(set(dim)) != len(dim):
         raise RuntimeError(f"dim {dim} appears multiple times in the list of dims")
+
+    # Fast path: a single non-trailing dim of a contiguous input. The reduced axis
+    # is then a uniform row stride, so the reduction runs in place with no copy.
+    # It only pays off when the innermost run (dims after `dim`) is wide enough to
+    # feed the DMA engine; otherwise the permute+copy path wins.
+    inner_bytes = x.element_size()
+    if len(dim) == 1:
+        for axis in range(dim[0] + 1, x.ndim):
+            inner_bytes *= shape[axis]
+    use_mid_path = (
+        len(dim) == 1
+        and dim[0] < x.ndim - 1
+        and x.is_contiguous()
+        and inner_bytes >= _FROBENIUS_MIN_INNER_BYTES
+    )
+    if use_mid_path:
+        outer = 1
+        for axis in range(dim[0]):
+            outer *= shape[axis]
+        red = shape[dim[0]]
+        inner = 1
+        for axis in range(dim[0] + 1, x.ndim):
+            inner *= shape[axis]
+        if 0 < outer <= _FROBENIUS_MAX_GRID_X and red > 0 and inner > 0:
+            reduced_shape = list(shape)
+            reduced_shape[dim[0]] = 1
+            with torch_device_fn.device(x.device):
+                out = torch.empty(reduced_shape, dtype=dtype, device=x.device)
+                block_n = min(_FROBENIUS_MID_BLOCK_N, triton.next_power_of_2(inner))
+                block_r = min(red, _FROBENIUS_MID_BLOCK_R)
+                grid = (outer, triton.cdiv(inner, block_n))
+                frobenius_norm_mid_kernel[grid](
+                    x,
+                    out,
+                    outer,
+                    red,
+                    inner,
+                    BLOCK_N=block_n,
+                    BLOCK_R=block_r,
+                    num_warps=_FROBENIUS_NUM_WARPS,
+                    num_stages=2,
+                )
+            if not keepdim:
+                out = out.squeeze(dim=dim)
+            return out
+
     x = dim_compress(x, dim)
     N = 1
     for i in dim:
@@ -108,10 +200,20 @@ def frobenius_norm(x, dim, keepdim=False):
     if N == 0 or M == 0:
         out = torch.zeros(shape, dtype=dtype, device=x.device)
     else:
+        block_m, block_n = _choose_frobenius_block_shape(M, N)
         with torch_device_fn.device(x.device):
             out = torch.empty(shape, dtype=dtype, device=x.device)
-            grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-            frobenius_norm_kernel[grid](x, out, M, N)
+            grid = (triton.cdiv(M, block_m),)
+            frobenius_norm_kernel[grid](
+                x,
+                out,
+                M,
+                N,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_warps=_FROBENIUS_NUM_WARPS,
+                num_stages=2,
+            )
 
     if not keepdim:
         out = out.squeeze(dim=dim)

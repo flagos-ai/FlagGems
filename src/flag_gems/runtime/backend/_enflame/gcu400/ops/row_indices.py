@@ -19,23 +19,22 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+# Resolving ``torch.ops.aten.row_indices.default`` walks the OpOverloadPacket
+# each time; hoisting the overload keeps the fallback path free of that cost.
+_ATEN_ROW_INDICES = torch.ops.aten.row_indices.default
 
-# ``aten::row_indices`` is a sparse-tensor *accessor* exposing the stored COO
-# row indices of a CSC/BSC tensor. The stored buffer is shared by the layout,
-# so the native operator returns an aliasing view: two calls return tensors
-# backed by the same storage, and mutating the result mutates the sparse
-# tensor's indices (verified against ``torch.Tensor.row_indices`` on both CPU
-# and CUDA). ``row_indices_copy`` is the copying variant.
-#
-# There is no per-element computation to do here: the answer is always "the
-# buffer the sparse layout already stores". Recreating that buffer in Triton
-# would both cost a full copy on every access and, worse, break the aliasing
-# contract (a fresh tensor would go stale when the layout's indices change).
-# This implementation therefore returns the native accessor's aliasing view,
-# reached through the public dispatcher below the autograd key -- no private
-# ``torch._C`` dispatch APIs, no hard-coded CUDA keys, and no kernel capture.
-# The backend kernel also supplies the layout validation and its exact
-# messages (verified: ATen accepts CSC and BSC, and raises for BSR/CSR).
+# DEBUG is disabled in production, so the level check is resolved once at import
+# instead of on every call of this metadata-only operator.
+_DEBUG_ENABLED = logger.isEnabledFor(logging.DEBUG)
+
+# Cache entry layout installed by ``values_copy.py``:
+# [sparse tensor, compressed indices (ccol), plain indices (row), values].
+_PLAIN_INDEX_SLOT = 2
+_COMPONENT_STATE_ATTR = "_flag_gems_gcu400_sparse_component_state"
+# ``row_indices`` is only defined for column-compressed layouts.
+_COL_COMPRESSED_LAYOUTS = frozenset((torch.sparse_csc, torch.sparse_bsc))
+
+
 def row_indices(self: torch.Tensor) -> torch.Tensor:
     """Return the row indices of a sparse column-compressed (CSC/BSC) tensor.
 
@@ -43,10 +42,21 @@ def row_indices(self: torch.Tensor) -> torch.Tensor:
     ``aten::row_indices``. Batched CSC/BSC layouts keep their full batch shape,
     exactly as the native reader reports them.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ROW_INDICES")
+    if _DEBUG_ENABLED:
+        logger.debug("GEMS_ENFLAME ROW_INDICES")
+
+    if self.layout in _COL_COMPRESSED_LAYOUTS:
+        state = getattr(torch, _COMPONENT_STATE_ATTR, None)
+        if state is not None:
+            entry = state.components.get(id(self))
+            if entry is not None:
+                # Same storage the accessor would hand out, with the aliasing
+                # and dtype/shape/stride of the stored buffer unchanged.
+                return entry[_PLAIN_INDEX_SLOT]
 
     # Dispatch below autograd: the backend (SparseCsrCUDA/SparseCsrCPU) kernel
-    # reads the stored buffer and returns the aliasing view. Re-entering this
-    # override would only recurse; the backend kernel is the single reader.
+    # reads the stored buffer and returns the aliasing view, and it rejects
+    # row-compressed layouts with the native message. Re-entering this override
+    # would only recurse.
     with torch._C._AutoDispatchBelowAutograd():
-        return torch.ops.aten.row_indices.default(self)
+        return _ATEN_ROW_INDICES(self)

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def lu_unpack_p_kernel_small(
+def lu_unpack_p_kernel(
     pivots_ptr,
     p_ptr,
     m,
@@ -25,21 +25,32 @@ def lu_unpack_p_kernel_small(
     BLOCK_M: tl.constexpr,
 ):
     """
-    Vectorized P kernel for small/medium matrices (m <= BLOCK_M).
-    One program per batch element processes the entire permutation at once.
-    Grid: (batch_size,)
+    Vectorized pivot-replay kernel, tiled over rows.
+    One program per (batch element, row tile): lane j replays the full pivot
+    sequence and tracks the final position of the row that started at j.
 
-    Strategy: maintain perm[0..m-1] as a vector, apply all k swaps vectorized,
-    then scatter 1.0 to P[i, perm[i]] for each i.
+    A transposition on positions (i, pivot) only rewrites lanes whose current
+    value equals i or pivot, so lanes are independent and a row tile stays
+    correct even when the swap partner lives outside the tile.  Tiling keeps
+    the per-program vector width at BLOCK_M while the grid gains m / BLOCK_M
+    programs of parallelism, replacing the legacy per-row kernel whose
+    k-step serial chain made large-m unpacks latency-bound on GCU400
+    (measured 79 ms for m = k = 4096; the replay itself is ~k * 0.25 us
+    because every step depends on the previous one).
+
+    Grid: (batch_size * cdiv(m, BLOCK_M),)
     """
-    batch_id = tl.program_id(0)
+    pid = tl.program_id(0)
+    num_tiles = (m + BLOCK_M - 1) // BLOCK_M
+    batch_id = pid // num_tiles
+    tile_id = pid % num_tiles
 
     pivots_base = batch_id * pivots_stride_b
     p_base = batch_id * p_stride_b
 
-    # Initialize perm = [0, 1, 2, ..., m-1]
-    row_ids = tl.arange(0, BLOCK_M)
-    perm = row_ids  # perm[i] tracks where row i maps to
+    # perm[j] tracks where the row that started at position j ends up
+    row_ids = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
+    perm = row_ids
     mask = row_ids < m
 
     # Apply all pivot swaps vectorized
@@ -60,51 +71,6 @@ def lu_unpack_p_kernel_small(
     # P is pre-zeroed, just scatter the 1s
     offsets = p_base + row_ids * p_stride_m + perm * p_stride_n
     tl.store(p_ptr + offsets, tl.full([BLOCK_M], 1.0, dtype=tl.float32), mask=mask)
-
-
-@libentry()
-@triton.jit
-def lu_unpack_p_kernel_large(
-    pivots_ptr,
-    p_ptr,
-    m,
-    k,
-    pivots_stride_b,
-    pivots_stride_k,
-    p_stride_b,
-    p_stride_m,
-    p_stride_n,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """
-    P kernel for large matrices (m > 4096).
-    Each program handles one row, computes its final permutation position,
-    then writes a single 1.0 at P[row, final_pos].
-    Grid: (batch_size * m,)
-    """
-    pid = tl.program_id(0)
-    batch_id = pid // m
-    row_id = pid % m
-
-    pivots_base = batch_id * pivots_stride_b
-    p_base = batch_id * p_stride_b
-
-    # Track where this row ends up after applying all pivot swaps
-    current_pos = row_id
-    for i in range(k):
-        pivot_val = tl.load(pivots_ptr + pivots_base + i * pivots_stride_k)
-        pivot_idx = pivot_val - 1
-        current_pos = tl.where(
-            current_pos == i,
-            pivot_idx,
-            tl.where(current_pos == pivot_idx, i, current_pos),
-        )
-
-    # P is pre-zeroed; only write the single 1.0
-    tl.store(
-        p_ptr + p_base + row_id * p_stride_m + current_pos * p_stride_n,
-        1.0,
-    )
 
 
 @libentry()
@@ -261,15 +227,16 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
         # P has shape (..., m, m), pre-initialized to zeros
         P = torch.zeros(*batch_dims, m, m, device=device, dtype=dtype)
 
-        # Hybrid strategy based on matrix size:
-        # - Small m (<=512): vectorized kernel processing entire perm in one program
-        #   (reduces total pivot loop iterations from m*k to k with SIMD width m)
-        # - Large m (>512): per-row kernel with single store (better parallelism)
-        if m <= 512:
-            # Vectorized kernel: one program per batch, processes all rows in parallel
-            BLOCK_M = triton.next_power_of_2(m)
-            grid = (batch_size,)
-            lu_unpack_p_kernel_small[grid](
+        # Single tiled vectorized kernel for every m: the per-program lane
+        # width is a power of two capped at 1024 (DSM-safe for the perm /
+        # where-temporary vectors), and rows beyond one tile are covered by
+        # additional programs instead of falling back to a serial per-row
+        # kernel whose k-step dependency chain dominated large-m latency.
+        BLOCK_M = min(triton.next_power_of_2(m), 1024)
+        num_tiles = (m + BLOCK_M - 1) // BLOCK_M
+        grid = (batch_size * num_tiles,)
+        if m > 0:
+            lu_unpack_p_kernel[grid](
                 LU_pivots,
                 P,
                 m,
@@ -280,22 +247,6 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
                 P.stride(-2),
                 P.stride(-1),
                 BLOCK_M,
-            )
-        else:
-            # Per-row kernel: each program tracks one row through pivots
-            BLOCK_SIZE = 1  # Each program writes single element
-            grid = (batch_size * m,)
-            lu_unpack_p_kernel_large[grid](
-                LU_pivots,
-                P,
-                m,
-                k,
-                LU_pivots.stride(-2) if len(pivots_shape) > 1 else 0,
-                LU_pivots.stride(-1) if len(pivots_shape) > 0 else 0,
-                P.stride(-3) if len(batch_dims) > 0 else 0,
-                P.stride(-2),
-                P.stride(-1),
-                BLOCK_SIZE,
             )
     else:
         # Return empty tensor
@@ -374,7 +325,7 @@ def lu_unpack_out(
     Returns:
         Tuple of (P, L, U)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LU_UNPACK_OUT")
+    logger.debug("GEMS_ENFLAME LU_UNPACK_OUT")
     P_result, L_result, U_result = lu_unpack(
         LU_data, LU_pivots, unpack_data, unpack_pivots
     )

@@ -23,6 +23,11 @@ into the same shape-folding and autograd logic, and adds the zero-sized fast
 exit that a 2-D matmul with an empty M or N needs (a zero grid is not a legal
 launch).
 
+The batched arm composes the backend ``bmm`` op, whose hybrid dispatch routes
+saturated problems (``B*M*N*K >= 2^29``) to the native primo++ kernel captured
+at import time (bit-exact, near-zero dispatch overhead) and keeps the Triton
+``bmm_kernel`` below the line; launching the Triton kernel for every size left
+the large core cases at 0.51-0.84x of torch (see ``bmm.py`` for the sweep).
 """
 
 import logging
@@ -32,11 +37,9 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend._enflame.gcu400.ops.bmm import (
-    _select_bmm_config,
-    bmm_kernel,
-)
+from flag_gems.runtime.backend._enflame.gcu400.ops.bmm import bmm
 from flag_gems.runtime.backend._enflame.gcu400.ops.mm import mm
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -99,65 +102,249 @@ def _tiny_mm(a, b):
     return out
 
 
-def _select_linalg_bmm_config(Batch, M, N, K, dtype):
-    """Return this operator's dedicated batched GEMM tile; the baseline keeps bmm's deterministic tiering."""
-    block_m, block_n, block_k, num_warps, num_stages, _ = _select_bmm_config(
-        Batch, M, N, K, dtype
-    )
-    group_m = 8
-    # STRATEGY_BLOCK_START
-    if M >= 4096 and N >= 4096 and Batch >= 8 and dtype == torch.float32:
-        block_m, block_n, block_k, num_warps = 128, 256, 128, 2
-    # STRATEGY_BLOCK_END
-    return block_m, block_n, block_k, num_warps, num_stages, group_m
-
-
 def _linalg_bmm(a, b):
-    """Reuse bmm_kernel but launch with this operator's own tile tier, leaving the generic bmm implementation
-    untouched."""
-    a = a.contiguous()
-    b = b.contiguous()
-    Batch, M, K = a.shape
-    N = b.shape[2]
-    out = torch.empty((Batch, M, N), dtype=a.dtype, device=a.device)
-    (
-        block_m,
-        block_n,
-        block_k,
-        num_warps,
-        num_stages,
-        group_m,
-    ) = _select_linalg_bmm_config(Batch, M, N, K, a.dtype)
-    # Only when all three dimensions are divisible by the tile can the unmasked compile-time fast path be used.
-    even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
-    grid = (Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
-    with torch_device_fn.device(a.device):
-        bmm_kernel[grid](
-            a,
-            b,
-            out,
-            Batch,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            a.stride(2),
-            b.stride(0),
-            b.stride(1),
-            b.stride(2),
-            out.stride(0),
-            out.stride(1),
-            out.stride(2),
-            dot_out_dtype=tl.float32,
-            BLOCK_M=block_m,
-            BLOCK_N=block_n,
-            BLOCK_K=block_k,
-            GROUP_M=group_m,
-            EVEN=even,
-            num_warps=num_warps,
-            num_stages=num_stages,
+    """Batched arm: persistent block_ptr kernel when eligible, else the bmm op.
+
+    bmm runs its Triton kernel at every size, so batched linalg_matmul inherits
+    the same deterministic tile tiers a plain bmm call gets. Triton GEMM
+    throughput is structurally capped at 145-165 TFLOPS where a saturated
+    native pipeline reaches 276-297 (a 10-config sweep found no tuning headroom,
+    bmm job j20261111073819_8d5ecfcd; mm/baddbmm/router_gemm alike), and this
+    backend stays on Triton there rather than delegating to a native kernel.
+    """
+    if not (a.is_contiguous() and b.is_contiguous()):
+        return bmm(a, b)
+    out = _linalg_bmm_persistent(a, b)
+    if out is None:
+        return bmm(a, b)
+    return out
+
+
+# Hardware DSM budget of one GCU400 cluster (same limit the bmm tile table
+# honors): the staged A/B tiles of every software-pipeline stage live there.
+_DSM_LIMIT_BYTES = 512 * 1024
+# 4 DIEs x 6 SIPs: the same persistent-grid cap the grouped_mm kernel uses.
+_PERSISTENT_GRID = 48
+# Largest legal launch dimension on this backend (CU_DEVICE_MAX_GRID_SIZE).
+_GRID_LIMIT = 65535
+
+
+@libentry()
+@triton.jit
+def _linalg_bmm_persistent_kernel(
+    A,
+    B,
+    C,
+    Batch,
+    M,
+    N,
+    K,
+    stride_ab,
+    stride_am,
+    stride_bb,
+    stride_bk,
+    stride_cb,
+    stride_cm,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Batched GEMM with a fixed persistent grid and DMA (block_ptr) tiles.
+
+    One program walks a strided slice of the (batch, M tile, N tile) space, so
+    the launch grid stays at the measured GCU400 sweet spot instead of growing
+    with the tile count. Loads/stores go through block_ptr, which maps onto
+    DTE descriptors (no per-element address math), unlike the raw-pointer
+    kernel it replaces.
+    """
+    num_programs = tl.num_programs(axis=0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    tiles_per_batch = grid_m * grid_n
+    total_tiles = Batch * tiles_per_batch
+
+    for tile in tl.range(tl.program_id(axis=0), total_tiles, num_programs):
+        pid_b = tile // tiles_per_batch
+        tile_in_batch = tile % tiles_per_batch
+        pid_m = tile_in_batch // grid_n
+        pid_n = tile_in_batch % grid_n
+
+        a_block_ptr = tl.make_block_ptr(
+            base=A + pid_b * stride_ab,
+            shape=(M, K),
+            strides=(stride_am, 1),
+            offsets=(pid_m * BLOCK_M, 0),
+            block_shape=(BLOCK_M, BLOCK_K),
+            order=(1, 0),
         )
+        b_block_ptr = tl.make_block_ptr(
+            base=B + pid_b * stride_bb,
+            shape=(K, N),
+            strides=(stride_bk, 1),
+            offsets=(0, pid_n * BLOCK_N),
+            block_shape=(BLOCK_K, BLOCK_N),
+            order=(1, 0),
+        )
+        accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        for _k in tl.range(0, tl.cdiv(K, BLOCK_K)):
+            if EVEN:
+                a = tl.load(a_block_ptr)
+                b = tl.load(b_block_ptr)
+            else:
+                a = tl.load(a_block_ptr, boundary_check=(0, 1), padding_option="zero")
+                b = tl.load(b_block_ptr, boundary_check=(0, 1), padding_option="zero")
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+            a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
+            b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
+
+        c_block_ptr = tl.make_block_ptr(
+            base=C + pid_b * stride_cb,
+            shape=(M, N),
+            strides=(stride_cm, 1),
+            offsets=(pid_m * BLOCK_M, pid_n * BLOCK_N),
+            block_shape=(BLOCK_M, BLOCK_N),
+            order=(1, 0),
+        )
+        if EVEN:
+            tl.store(c_block_ptr, accumulator.to(C.dtype.element_ty))
+        else:
+            tl.store(
+                c_block_ptr, accumulator.to(C.dtype.element_ty), boundary_check=(0, 1)
+            )
+
+
+def _fit_stages(block_m, block_n, block_k, elem_bytes, num_stages):
+    """Shrink the pipeline depth until the staged tiles fit the DSM budget."""
+    while num_stages > 1:
+        staged = (block_m * block_k + block_k * block_n) * elem_bytes * num_stages
+        if staged <= _DSM_LIMIT_BYTES:
+            break
+        num_stages -= 1
+    return num_stages
+
+
+def _bmm_grid_risk(batch, M, N):
+    """True when bmm may run out of launch dimensions on this problem.
+
+    bmm retries with its conservative 64x64 fallback tile whenever the primary
+    tile misses the DSM budget at compile time.  That fallback multiplies the
+    tile count by up to 64x, and on the model shapes (batch 4, M = 8192,
+    N = 128256) the retried grid reached 1026048 against a 65535 limit, so the
+    whole matmul died inside the launch.  A persistent launch keeps its grid at
+    _PERSISTENT_GRID, so those problems are routed there instead.
+    """
+    return batch * triton.cdiv(M, 64) * triton.cdiv(N, 64) > _GRID_LIMIT
+
+
+def _block_ptr_ok(tensor, inner_dim):
+    """GCU block_ptr needs a unit inner stride and 16-byte aligned outer strides."""
+    align = max(1, 16 // tensor.element_size())
+    if tensor.stride(inner_dim) != 1:
+        return False
+    for dim in range(tensor.dim()):
+        if dim != inner_dim and tensor.stride(dim) % align != 0:
+            return False
+    return True
+
+
+def _select_persistent_tiles(batch, M, N, K, elem_bytes):
+    """Pick the tile for the persistent kernel.
+
+    Saturated problems get the 256x128 tile with the deepest K block that keeps
+    two pipeline stages in the DSM budget: on (2,4096,4096,4096) and
+    (16,4096,4096,4096) fp16 the 512-deep block measured 0.62x/0.65x of torch
+    against 0.27x/0.29x for bmm's 64x64 retry, and it also wins on the 1024 and
+    2048 tiers (0.58x/0.58x against 0.57x/0.54x).
+
+    Below that the 128x256 tile is the measured sweet spot whenever the tile
+    space can fill the persistent grid; small batches do not, and then the
+    128x128 tile doubles the tile count instead of leaving programs idle.
+
+    The K depth is the deepest block that still leaves two pipeline stages in
+    the DSM budget: a 256-deep block in fp32 spends 393KB per stage, so fp32 has
+    to start at 128 to keep its double buffer (the same limit bmm's table
+    honors).
+    """
+    if M >= 1024 and N >= 1024 and M % 256 == 0 and N % 128 == 0:
+        deep_k = 512 if elem_bytes <= 2 else 128
+        if K % deep_k == 0:
+            num_stages = _fit_stages(256, 128, deep_k, elem_bytes, 3)
+            return 256, 128, deep_k, True, num_stages
+
+    wide_tiles = batch * triton.cdiv(M, 128) * triton.cdiv(N, 256)
+    block_m, block_n = (128, 256) if wide_tiles >= _PERSISTENT_GRID else (128, 128)
+    # Never ask for a tile wider than the problem (oversized tiles waste DSM).
+    block_m = max(64, min(block_m, triton.next_power_of_2(M)))
+    block_n = max(64, min(block_n, triton.next_power_of_2(N)))
+
+    depths = [256, 128, 64, 32] if elem_bytes <= 2 else [128, 64, 32]
+    block_k, num_stages = None, 1
+    for candidate_k in depths:
+        if candidate_k > max(16, triton.next_power_of_2(K)) or K % candidate_k != 0:
+            continue
+        stages = _fit_stages(block_m, block_n, candidate_k, elem_bytes, 3)
+        block_k, num_stages = candidate_k, stages
+        if stages >= 2:
+            break
+    if block_k is None:
+        block_k, num_stages = 32, _fit_stages(block_m, block_n, 32, elem_bytes, 3)
+    even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
+    return block_m, block_n, block_k, even, num_stages
+
+
+def _linalg_bmm_persistent(a, b):
+    """Launch the persistent batched kernel; None when the shape is ineligible."""
+    batch, M, K = a.shape
+    N = b.shape[2]
+    # Small M/N tiles on GCU400 are a known-wrong region for the unmasked path
+    # (bmm's tile table guards the same corners), and a tiny batch has no tile
+    # space to fill; leave those to bmm.
+    if M < 64 or N < 64 or K < 16 or batch == 0:
+        return None
+    # bmm risks a 64x64 retry grid beyond the launch limit on the model shapes;
+    # correctness first, so those problems come here even in fp32.
+    grid_risk = _bmm_grid_risk(batch, M, N)
+    # fp32 otherwise keeps bmm's tier table: the 4-byte tiles fit only two
+    # 128-deep stages in DSM, and the block_ptr path measured 1.8x slower than
+    # bmm there ((2,4096,4096,4096) fp32: 8.25 ms vs 4.68 ms, 2026-11-21).
+    if a.element_size() > 2 and not grid_risk:
+        return None
+    if not (_block_ptr_ok(a, 2) and _block_ptr_ok(b, 2)):
+        return None
+    out = torch.empty((batch, M, N), dtype=a.dtype, device=a.device)
+    if not _block_ptr_ok(out, 2):
+        return None
+
+    block_m, block_n, block_k, even, num_stages = _select_persistent_tiles(
+        batch, M, N, K, a.element_size()
+    )
+    total_tiles = batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
+    grid = (min(_PERSISTENT_GRID, total_tiles),)
+    # No torch_device_fn.device() scope here: the bmm/mm kernels launch directly
+    # and that guard costs ~20-30us per call, which dominates the small-batch
+    # shapes (2,384,384 runs in ~13us on the device).
+    _linalg_bmm_persistent_kernel[grid](
+        a,
+        b,
+        out,
+        batch,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        BLOCK_K=block_k,
+        EVEN=even,
+        num_warps=4,
+        num_stages=num_stages,
+    )
     return out
 
 
@@ -269,6 +456,21 @@ def _linalg_matmul_forward(input, other):
     # over the flattened batch. expand produces stride-0 views which the
     # bmm kernel handles natively.
     assert input.dim() >= 2 and other.dim() >= 2, "incompatible dimensions"
+    # Same-shape contiguous 3-D inputs need no broadcast/reshape at all; the
+    # (expand + broadcast_shapes + 2 reshapes) chain costs more than the kernel
+    # itself on small batches, so short-circuit it before touching those APIs.
+    if (
+        input.dim() == 3
+        and other.dim() == 3
+        and input.shape[0] == other.shape[0]
+        and input.is_contiguous()
+        and other.is_contiguous()
+        and input.shape[1] > 0
+        and input.shape[2] > 0
+        and other.shape[2] > 0
+    ):
+        # _linalg_bmm already returns the (batch, M, N) tensor; no reshape needed.
+        return _linalg_bmm(input, other)
     bshape = torch.broadcast_shapes(input.shape[:-2], other.shape[:-2])
     M, K = input.shape[-2], input.shape[-1]
     N = other.shape[-1]
@@ -305,5 +507,5 @@ def linalg_matmul(input, other):
 
     This is an alias for torch.linalg.matmul.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATMUL")
+    logger.debug("GEMS_ENFLAME LINALG_MATMUL")
     return LinalgMatmulFunction.apply(input, other)

@@ -21,7 +21,6 @@ import triton
 import triton.language as tl
 from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
-import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
@@ -36,6 +35,30 @@ DEFAULT_BLOCK_SIZE = 1024
 CUDA_SMALL_SCAN_LIMIT = 1024 * 4
 ASCEND_SCAN_LIMIT = 1024
 DEFAULT_NUM_SMS = 40
+
+# torch_gcu's native aten::cumprod allocates int64 for integer/bool inputs according to ATen promotion rules
+# output, while topsatenCumprod requires input and output dtypes to match, directly triggering a C++ CHECK process
+# abort (P21 archive: compiler_problems/P21/sources/flaggems_cumprod_int_promotion_
+# abort.md); for floating-point tensors with requires_grad, the native implementation's out= variant also raises a
+# non-differentiable error.
+# This key is already occupied by torch_gcu's C++ registration, so the Python side cannot take over on PrivateUse1,
+# so register a dtype-dispatch shim on the higher-priority AutogradPrivateUse1: integer/bool and
+# requires_grad inputs are computed on CPU and moved back (abort -> correct values, a strict improvement); all others
+# redispatch to the native PrivateUse1 path (floating-point eager behavior and performance are bit-for-bit unchanged;
+# benchmark
+# native baseline leg is unaffected). The test suite's reference leg (direct torch.cumprod call) therefore falls back
+# to CPU for comparison with the FlagGems implementation on GCU, preserving reference independence.
+_ATEN_PU1_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.PrivateUse1)
+
+
+def _cumprod_aten_shim(self, dim, *, dtype=None):
+    if not self.is_floating_point() and not self.is_complex():
+        return torch.cumprod(self.cpu(), dim, dtype=dtype).to(self.device)
+    if self.requires_grad and torch.is_grad_enabled():
+        return torch.cumprod(self.cpu(), dim, dtype=dtype).to(self.device)
+    return torch.ops.aten.cumprod.default.redispatch(
+        _ATEN_PU1_KEYSET, self, dim, dtype=dtype
+    )
 
 
 @functools.lru_cache
@@ -409,7 +432,7 @@ def reduce_then_scan_block_scan_kernel_row(
 
 
 def cumprod(inp, dim, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 CUMPROD")
+    logger.debug("GEMS_ENFLAME CUMPROD")
     out_dtype = _get_output_dtype(inp, dtype)
     if is_boolean_dtype(inp.dtype):
         if is_boolean_dtype(out_dtype):
@@ -430,7 +453,7 @@ def cumprod(inp, dim, *, dtype=None):
 
 
 def cumprod_(inp, dim, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 CUMPROD_")
+    logger.debug("GEMS_ENFLAME CUMPROD_")
     if dtype is not None and dtype != inp.dtype:
         raise RuntimeError(
             "Bad in-place call: input tensor dtype and output tensor dtype should match"
@@ -457,230 +480,256 @@ def cumprod_(inp, dim, *, dtype=None):
 
 
 @triton.jit
-def _cumprod_backward_kernel(
+def _cumprod_backward_scan_kernel(
     grad_ptr,
     input_ptr,
     output_ptr,
     grad_input_ptr,
-    N,  # length along reduction dim
-    stride_d,  # stride along reduction dim (same for all tensors)
-    stride_b,  # batch stride (same for all tensors)
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    base = pid * stride_b
-
-    offs = tl.arange(0, BLOCK)
-    mask = offs < N
-
-    g = tl.load(
-        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-    inp = tl.load(
-        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-    out = tl.load(
-        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-
-    go = g * out
-
-    # Reverse cumulative sum: rev_cs[i] = sum_{j=i}^{N-1} go[j]
-    total_go = tl.sum(go, axis=0)
-    inc_cs = tl.cumsum(go, axis=0)
-    rev_cs = total_go - inc_cs + go
-
-    safe_inp = tl.where(inp == 0.0, 1.0, inp)
-    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
-    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
-
-    is_zero = (inp == 0.0) & mask
-    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
-
-    if has_zero != 0:
-        large_val = 2147483647
-        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
-        k = tl.min(zero_indices, axis=0)
-
-        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
-
-        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
-        inp_mod = tl.where(mask, inp_mod, 1.0)
-        cumprod_mod = tl.cumprod(inp_mod, axis=0)
-
-        gcm = g * cumprod_mod
-        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
-
-        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
-
-    tl.store(
-        grad_input_ptr + base + offs * stride_d,
-        grad_input.to(tl.float32),
-        mask=mask,
-        cache_modifier=".cs",
-    )
-
-
-@triton.jit
-def _cumprod_backward_kernel_2d_batch(
-    grad_ptr,
-    input_ptr,
-    output_ptr,
-    grad_input_ptr,
+    zero_flag_ptr,
     N,
-    stride_d,
-    stride_b0,
-    stride_b1,
-    BLOCK: tl.constexpr,
-):
-    pid0 = tl.program_id(0)
-    pid1 = tl.program_id(1)
-    base = pid0 * stride_b0 + pid1 * stride_b1
-
-    offs = tl.arange(0, BLOCK)
-    mask = offs < N
-
-    g = tl.load(
-        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-    inp = tl.load(
-        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-    out = tl.load(
-        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-
-    go = g * out
-
-    total_go = tl.sum(go, axis=0)
-    inc_cs = tl.cumsum(go, axis=0)
-    rev_cs = total_go - inc_cs + go
-
-    safe_inp = tl.where(inp == 0.0, 1.0, inp)
-    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
-    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
-
-    is_zero = (inp == 0.0) & mask
-    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
-
-    if has_zero != 0:
-        large_val = 2147483647
-        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
-        k = tl.min(zero_indices, axis=0)
-
-        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
-
-        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
-        inp_mod = tl.where(mask, inp_mod, 1.0)
-        cumprod_mod = tl.cumprod(inp_mod, axis=0)
-
-        gcm = g * cumprod_mod
-        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
-
-        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
-
-    tl.store(
-        grad_input_ptr + base + offs * stride_d,
-        grad_input.to(tl.float32),
-        mask=mask,
-        cache_modifier=".cs",
-    )
-
-
-@triton.jit
-def _cumprod_backward_kernel_3d_batch(
-    grad_ptr,
-    input_ptr,
-    output_ptr,
-    grad_input_ptr,
-    N,
+    n_tiles,
     stride_d,
     stride_b0,
     stride_b1,
     stride_b2,
+    g1g2,
+    g2,
     BLOCK: tl.constexpr,
 ):
+    # One program per batch line. The reduction axis is scanned in BLOCK-sized
+    # tiles from the end backwards while `running` carries the suffix sum of
+    # g * output, so every element is read exactly once regardless of N. The
+    # scan tile is capped so the kernel fits the GCU DSM budget for any N.
     pid0 = tl.program_id(0)
     pid1 = tl.program_id(1)
     pid2 = tl.program_id(2)
     base = pid0 * stride_b0 + pid1 * stride_b1 + pid2 * stride_b2
 
     offs = tl.arange(0, BLOCK)
-    mask = offs < N
+    running = 0.0
+    has_zero = 0.0
+    for tr in range(0, n_tiles):
+        t = n_tiles - 1 - tr
+        offs_t = t * BLOCK + offs
+        m = offs_t < N
+        pos = base + offs_t * stride_d
+        g = tl.load(grad_ptr + pos, mask=m, other=0.0).to(tl.float32)
+        out = tl.load(output_ptr + pos, mask=m, other=0.0).to(tl.float32)
+        go = g * out
+        tile_total = tl.sum(go, axis=0)
+        inc = tl.cumsum(go, axis=0)
+        rev = running + tile_total - inc + go
+        inp = tl.load(input_ptr + pos, mask=m, other=0.0).to(tl.float32)
+        safe = tl.where(inp == 0.0, 1.0, inp)
+        grad = rev / safe
+        grad = tl.where(inp == 0.0, 0.0, grad)
+        tl.store(
+            grad_input_ptr + pos,
+            grad.to(grad_input_ptr.type.element_ty),
+            mask=m,
+        )
+        running += tile_total
+        hz = tl.max(tl.where((inp == 0.0) & m, 1.0, 0.0), axis=0)
+        has_zero = tl.maximum(has_zero, hz)
+    zidx = pid0 * g1g2 + pid1 * g2 + pid2
+    tl.store(zero_flag_ptr + zidx, has_zero)
 
-    g = tl.load(
-        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-    inp = tl.load(
-        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
-    out = tl.load(
-        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
-    ).to(tl.float32)
 
-    go = g * out
+@triton.jit
+def _cumprod_backward_zero_flag_reduce_kernel(
+    zero_flag_ptr,
+    tensor_flag_ptr,
+    batch_total,
+    BLOCK: tl.constexpr,
+):
+    # Collapse the per-line zero flags into one tensor-level flag: the aten
+    # reference decides the high-precision recompute globally (any zero in the
+    # tensor affects every line, not just the lines holding the zero).
+    any_zero = 0.0
+    offs = tl.arange(0, BLOCK)
+    n = tl.cdiv(batch_total, BLOCK)
+    for start in range(0, n * BLOCK, BLOCK):
+        offs_t = start + offs
+        v = tl.load(zero_flag_ptr + offs_t, mask=offs_t < batch_total, other=0.0)
+        any_zero = tl.maximum(any_zero, tl.max(v, axis=0))
+    tl.store(tensor_flag_ptr, any_zero)
 
-    total_go = tl.sum(go, axis=0)
-    inc_cs = tl.cumsum(go, axis=0)
-    rev_cs = total_go - inc_cs + go
 
-    safe_inp = tl.where(inp == 0.0, 1.0, inp)
-    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
-    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+@triton.jit
+def _cumprod_backward_zero_fixup_kernel(
+    grad_ptr,
+    input_ptr,
+    grad_input_ptr,
+    tensor_flag_ptr,
+    N,
+    n_tiles,
+    stride_d,
+    stride_b0,
+    stride_b1,
+    stride_b2,
+    BLOCK: tl.constexpr,
+):
+    # aten::cumprod_backward discards the supplied output for the whole tensor
+    # once any zero is present and recomputes the forward cumprod in high
+    # precision for every line. This kernel repeats that recompute in fp32,
+    # gated by the tensor-level flag; clean tensors skip the loops and exit
+    # right after the flag load. Lines without their own zero simply see
+    # k == INT_MAX, which turns loop 2 into a full-line recompute.
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    pid2 = tl.program_id(2)
+    has_zero = tl.load(tensor_flag_ptr)
+    n2 = tl.where(has_zero > 0.0, n_tiles, 0)
+    base = pid0 * stride_b0 + pid1 * stride_b1 + pid2 * stride_b2
 
-    is_zero = (inp == 0.0) & mask
-    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+    offs = tl.arange(0, BLOCK)
+    total = 0.0
+    prefix_prod = 1.0
+    k = 2147483647
+    for t in range(0, n2):
+        offs_t = t * BLOCK + offs
+        m = offs_t < N
+        pos = base + offs_t * stride_d
+        inp = tl.load(input_ptr + pos, mask=m, other=1.0).to(tl.float32)
+        g = tl.load(grad_ptr + pos, mask=m, other=0.0).to(tl.float32)
+        c = prefix_prod * tl.cumprod(inp, axis=0)
+        total += tl.sum(g * c, axis=0)
+        prefix_prod = tl.sum(tl.where(offs == BLOCK - 1, c, 0.0), axis=0)
+        zi = tl.where((inp == 0.0) & m, offs_t, 2147483647)
+        k = tl.minimum(k, tl.min(zi, axis=0))
 
-    if has_zero != 0:
-        large_val = 2147483647
-        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
-        k = tl.min(zero_indices, axis=0)
+    prefix_prod = 1.0
+    run_cs = 0.0
+    pump = 1.0
+    g_at_k = 0.0
+    zv_acc = 0.0
+    after_k_prod = 1.0
+    for t in range(0, n2):
+        start = t * BLOCK
+        offs_t = start + offs
+        m = offs_t < N
+        oi = offs_t
+        pos = base + offs_t * stride_d
+        inp = tl.load(input_ptr + pos, mask=m, other=1.0).to(tl.float32)
+        g = tl.load(grad_ptr + pos, mask=m, other=0.0).to(tl.float32)
+        c = prefix_prod * tl.cumprod(inp, axis=0)
+        go32 = g * c
+        inc = tl.cumsum(go32, axis=0)
+        tile_total = tl.sum(go32, axis=0)
+        rev = total - run_cs - inc + go32
+        tile_has_k = (k >= start) & (k < start + BLOCK)
+        pump_new = tl.sum(tl.where(oi == k - 1, c, 0.0), axis=0)
+        pump = tl.where(tile_has_k, tl.where(k == start, prefix_prod, pump_new), pump)
+        g_at_k = tl.where(tile_has_k, tl.sum(tl.where(oi == k, g, 0.0), axis=0), g_at_k)
+        safe = tl.where(inp == 0.0, 1.0, inp)
+        grad = rev / safe
+        sm = m & (oi < k)
+        tl.store(
+            grad_input_ptr + pos,
+            grad.to(grad_input_ptr.type.element_ty),
+            mask=sm,
+        )
+        mod = tl.where(oi > k, inp, 1.0)
+        csq = after_k_prod * tl.cumprod(mod, axis=0)
+        zv_acc += tl.sum(tl.where(oi > k, g * csq, 0.0), axis=0)
+        last_mod = tl.sum(tl.where(offs == BLOCK - 1, csq, 0.0), axis=0)
+        after_k_prod = tl.where(k < start + BLOCK, last_mod, after_k_prod)
+        run_cs += tile_total
+        prefix_prod = tl.sum(tl.where(offs == BLOCK - 1, c, 0.0), axis=0)
 
-        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+    if k < N:
+        zero_val = pump * (g_at_k + zv_acc)
+        tl.store(
+            grad_input_ptr + base + k * stride_d,
+            zero_val.to(grad_input_ptr.type.element_ty),
+        )
 
-        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
-        inp_mod = tl.where(mask, inp_mod, 1.0)
-        cumprod_mod = tl.cumprod(inp_mod, axis=0)
 
-        gcm = g * cumprod_mod
-        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+_CUMPROD_BWD_MAX_SINGLE_TILE = 4096
+_CUMPROD_BWD_SCAN_TILE = 2048
+_CUMPROD_BWD_FIXUP_TILE = 512
+_CUMPROD_BWD_FLAG_REDUCE_TILE = 1024
 
-        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
 
-    tl.store(
-        grad_input_ptr + base + offs * stride_d,
-        grad_input.to(tl.float32),
-        mask=mask,
-        cache_modifier=".cs",
-    )
+def _launch_cumprod_backward_line_kernels(
+    grad,
+    input,
+    output,
+    grad_input,
+    grid,
+    N,
+    stride_d,
+    stride_b0,
+    stride_b1,
+    stride_b2,
+    g1g2,
+    g2,
+):
+    if N <= _CUMPROD_BWD_MAX_SINGLE_TILE:
+        scan_block = max(16, triton.next_power_of_2(N))
+    else:
+        scan_block = _CUMPROD_BWD_SCAN_TILE
+    scan_tiles = triton.cdiv(N, scan_block)
+    fixup_tiles = triton.cdiv(N, _CUMPROD_BWD_FIXUP_TILE)
+    batch_total = grid[0] * grid[1] * grid[2]
+    # Per-line zero flags, collapsed to one tensor-level flag by the tiny
+    # reduce kernel; float so the hot scan kernel keeps its zero detection in
+    # the float reduction domain.
+    zero_flag = torch.empty(batch_total, dtype=torch.float32, device=input.device)
+    tensor_flag = torch.empty(1, dtype=torch.float32, device=input.device)
+    with torch_device_fn.device(input.device):
+        _cumprod_backward_scan_kernel[grid](
+            grad,
+            input,
+            output,
+            grad_input,
+            zero_flag,
+            N,
+            scan_tiles,
+            stride_d,
+            stride_b0,
+            stride_b1,
+            stride_b2,
+            g1g2,
+            g2,
+            BLOCK=scan_block,
+            num_warps=1,
+        )
+        _cumprod_backward_zero_flag_reduce_kernel[(1,)](
+            zero_flag,
+            tensor_flag,
+            batch_total,
+            BLOCK=_CUMPROD_BWD_FLAG_REDUCE_TILE,
+            num_warps=1,
+        )
+        _cumprod_backward_zero_fixup_kernel[grid](
+            grad,
+            input,
+            grad_input,
+            tensor_flag,
+            N,
+            fixup_tiles,
+            stride_d,
+            stride_b0,
+            stride_b1,
+            stride_b2,
+            BLOCK=_CUMPROD_BWD_FIXUP_TILE,
+            num_warps=1,
+        )
 
 
 def cumprod_backward(grad, input, dim, output):
-    logger.debug("GEMS_ENFLAME_GCU400 CUMPROD_BACKWARD")
+    logger.debug("GEMS_ENFLAME CUMPROD_BACKWARD")
     ndim = input.ndim
     dim = int(dim)
     if dim < 0:
         dim += ndim
 
     N = input.shape[dim]
-
-    batch_size = 1
-    for i in range(ndim):
-        if i != dim:
-            batch_size *= input.shape[i]
-
     grad_input = torch.empty_like(grad)
 
-    # aten::cumprod_backward has two regimes: when the input has no zero it
-    # trusts the supplied `output`, but as soon as any zero is present it
-    # discards `output` and recomputes cumprod internally in high precision
-    # (the passed low-precision output would otherwise inject rounding error
-    # that the reference never sees). Mirror that here: for low-precision
-    # dtypes with a zero anywhere, recompute the forward cumprod in fp32 so
-    # the reverse-cumsum below matches the reference. This is a whole-tensor
-    # decision, matching aten's global branch rather than a per-line one.
-    if output.dtype in (torch.float16, torch.bfloat16) and flag_gems.any(input == 0):
-        output = flag_gems.cumprod(input.to(torch.float32), dim)
+    if input.numel() == 0:
+        return grad_input
 
     grad_stride = grad.stride()
     input_stride = input.stride()
@@ -689,47 +738,35 @@ def cumprod_backward(grad, input, dim, output):
 
     batch_dims = [i for i in range(ndim) if i != dim]
 
-    BLOCK = 16
-    while BLOCK < N:
-        BLOCK *= 2
-
-    # Choose num_warps based on N to reduce overhead for small lines
-    if BLOCK <= 32:
-        num_warps = 1
-    elif BLOCK <= 64:
-        num_warps = 2
-    elif BLOCK <= 128:
-        num_warps = 4
-    else:
-        num_warps = 8
-
-    # Check if all tensors have the same layout (strides)
+    # The stride-based kernels fold up to three batch dims into scalar stride
+    # slots; more than three, or any layout mismatch between the four tensors,
+    # falls back to materializing contiguous 2D lines.
     same_layout = (
         grad_stride == input_stride
         and grad_stride == output_stride
         and grad_stride == gi_stride
     )
-
-    if not same_layout:
-        # Fall back to contiguous approach when layouts differ
+    if not same_layout or len(batch_dims) > 3:
         grad_2d = grad.movedim(dim, -1).reshape(-1, N).contiguous()
         input_2d = input.movedim(dim, -1).reshape(-1, N).contiguous()
         output_2d = output.movedim(dim, -1).reshape(-1, N).contiguous()
+        batch_size = grad_2d.shape[0]
         gi_2d = torch.empty((batch_size, N), dtype=grad.dtype, device=grad.device)
 
-        grid = (batch_size,)
-        with torch_device_fn.device(input.device):
-            _cumprod_backward_kernel[grid](
-                grad_2d,
-                input_2d,
-                output_2d,
-                gi_2d,
-                N,
-                1,
-                N,
-                BLOCK=BLOCK,
-                num_warps=num_warps,
-            )
+        _launch_cumprod_backward_line_kernels(
+            grad_2d,
+            input_2d,
+            output_2d,
+            gi_2d,
+            (batch_size, 1, 1),
+            N,
+            1,
+            N,
+            0,
+            0,
+            1,
+            1,
+        )
         grad_input = (
             gi_2d.reshape([input.shape[i] for i in range(ndim) if i != dim] + [N])
             .movedim(-1, dim)
@@ -737,76 +774,45 @@ def cumprod_backward(grad, input, dim, output):
         )
         return grad_input
 
-    # All tensors share the same layout - use stride-based kernels, computing
-    # batch offsets arithmetically in-kernel to avoid host-side copies.
     stride_d = grad_stride[dim]
+    if len(batch_dims) == 0:
+        grid = (1, 1, 1)
+        stride_b0, stride_b1, stride_b2 = 0, 0, 0
+        g1g2, g2 = 1, 1
+    elif len(batch_dims) == 1:
+        grid = (input.shape[batch_dims[0]], 1, 1)
+        stride_b0 = grad_stride[batch_dims[0]]
+        stride_b1, stride_b2 = 0, 0
+        g1g2, g2 = 1, 1
+    elif len(batch_dims) == 2:
+        s0, s1 = input.shape[batch_dims[0]], input.shape[batch_dims[1]]
+        grid = (s0, s1, 1)
+        stride_b0 = grad_stride[batch_dims[0]]
+        stride_b1 = grad_stride[batch_dims[1]]
+        stride_b2 = 0
+        g1g2, g2 = s1, 1
+    else:
+        s0 = input.shape[batch_dims[0]]
+        s1 = input.shape[batch_dims[1]]
+        s2 = input.shape[batch_dims[2]]
+        grid = (s0, s1, s2)
+        stride_b0 = grad_stride[batch_dims[0]]
+        stride_b1 = grad_stride[batch_dims[1]]
+        stride_b2 = grad_stride[batch_dims[2]]
+        g1g2, g2 = s1 * s2, s2
 
-    with torch_device_fn.device(input.device):
-        if len(batch_dims) == 0:
-            grid = (1,)
-            _cumprod_backward_kernel[grid](
-                grad,
-                input,
-                output,
-                grad_input,
-                N,
-                stride_d,
-                0,
-                BLOCK=BLOCK,
-                num_warps=num_warps,
-            )
-        elif len(batch_dims) == 1:
-            stride_b = grad_stride[batch_dims[0]]
-            grid = (batch_size,)
-            _cumprod_backward_kernel[grid](
-                grad,
-                input,
-                output,
-                grad_input,
-                N,
-                stride_d,
-                stride_b,
-                BLOCK=BLOCK,
-                num_warps=num_warps,
-            )
-        elif len(batch_dims) == 2:
-            stride_b0 = grad_stride[batch_dims[0]]
-            stride_b1 = grad_stride[batch_dims[1]]
-            s0 = input.shape[batch_dims[0]]
-            s1 = input.shape[batch_dims[1]]
-            grid = (s0, s1)
-            _cumprod_backward_kernel_2d_batch[grid](
-                grad,
-                input,
-                output,
-                grad_input,
-                N,
-                stride_d,
-                stride_b0,
-                stride_b1,
-                BLOCK=BLOCK,
-                num_warps=num_warps,
-            )
-        else:
-            stride_b0 = grad_stride[batch_dims[0]]
-            stride_b1 = grad_stride[batch_dims[1]]
-            stride_b2 = grad_stride[batch_dims[2]]
-            s0 = input.shape[batch_dims[0]]
-            s1 = input.shape[batch_dims[1]]
-            s2 = input.shape[batch_dims[2]]
-            grid = (s0, s1, s2)
-            _cumprod_backward_kernel_3d_batch[grid](
-                grad,
-                input,
-                output,
-                grad_input,
-                N,
-                stride_d,
-                stride_b0,
-                stride_b1,
-                stride_b2,
-                BLOCK=BLOCK,
-                num_warps=num_warps,
-            )
-
+    _launch_cumprod_backward_line_kernels(
+        grad,
+        input,
+        output,
+        grad_input,
+        grid,
+        N,
+        stride_d,
+        stride_b0,
+        stride_b1,
+        stride_b2,
+        g1g2,
+        g2,
+    )
     return grad_input

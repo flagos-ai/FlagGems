@@ -873,7 +873,7 @@ class _WeightNormFunction(torch.autograd.Function):
 
 def _weight_norm(v: torch.Tensor, g: torch.Tensor, dim: int = 0) -> torch.Tensor:
     """ATen entry point for the fused weight-normalization path."""
-    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_NORM")
+    logger.debug("GEMS_ENFLAME _WEIGHT_NORM")
     if v.dtype not in _FLOAT_DTYPES:
         raise TypeError(f"_weight_norm does not support {v.dtype}")
     return _WeightNormFunction.apply(v, g, dim)

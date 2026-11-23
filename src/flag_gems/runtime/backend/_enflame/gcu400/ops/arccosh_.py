@@ -23,47 +23,75 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# GCU400: 4 DIE × 6 SIP, resident CTA count aligned with the topology
 NUM_SIPS = 24
+MAX_GRID = NUM_SIPS * 2
+BLOCK_LARGE = 65536
+BLOCK_MID = 8192
 
 
 @libentry()
-@triton.jit(do_not_specialize=["N"])
-def arccosh_kernel(x_ptr, out_ptr, N, BLOCK: tl.constexpr):
+@triton.jit
+def arccosh_kernel(
+    x_ptr, out_ptr, N, BLOCK: tl.constexpr, EVEN: tl.constexpr, SLAB: tl.constexpr
+):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     num_blocks = (N + BLOCK - 1) // BLOCK
-    for block_id in tl.range(pid, num_blocks, num_pids):
+    if SLAB:
+        per_pid = (num_blocks + num_pids - 1) // num_pids
+        begin = pid * per_pid
+        end = tl.minimum(begin + per_pid, num_blocks)
+        step = 1
+    else:
+        begin = pid
+        end = num_blocks
+        step = num_pids
+    for block_id in tl.range(begin, end, step):
         off = block_id * BLOCK + tl.arange(0, BLOCK)
-        mask = off < N
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        s1 = tl.sqrt(x - 1.0)
-        s2 = tl.sqrt(x + 1.0)
-        y = tl.log(x + s1 * s2)
-        tl.store(out_ptr + off, y, mask=mask)
+        if EVEN:
+            x = tl.load(x_ptr + off).to(tl.float32)
+        else:
+            mask = off < N
+            x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+        # sqrt(x^2-1) = (x^2-1) * rsqrt(max(x^2-1, 1e-30)): eliminates the software sqrt
+        q = x * x - 1.0
+        y = tl.log(x + q * tl.rsqrt(tl.maximum(q, 1e-30)))
+        if EVEN:
+            tl.store(out_ptr + off, y)
+        else:
+            tl.store(out_ptr + off, y, mask=mask)
 
 
-def _choose_block(N, is_fp32):
-    if N <= 1024:
-        return 1024
-    if N <= 32768:
-        return triton.next_power_of_2(N)
-    if is_fp32:
-        return 65536
-    return 8192
+def _choose_config(num_elements, dtype):
+    """Returns (BLOCK, num_warps, slab): tile picked by element count and dtype, see the module docstring."""
+    if num_elements <= 32768:
+        return max(1024, triton.next_power_of_2(num_elements)), 4, False
+    if num_elements < 1 << 22:
+        return BLOCK_MID, 4, False
+    # fp32 uses 4 warps + contiguous segmentation (contiguous segmentation evens out HBM channel hot spots on a 2GB
+    # buffer);
+    # 16-bit halves the traffic, so 2 warps + grid-stride is better (see module docstring for measurements).
+    if dtype == torch.float32:
+        return BLOCK_LARGE, 4, True
+    return BLOCK_LARGE, 2, False
 
 
 def _launch(inp, out):
-    N = inp.numel()
-    is_fp32 = inp.dtype == torch.float32
-    BLOCK = _choose_block(N, is_fp32)
-    grid_size = min(triton.cdiv(N, BLOCK), NUM_SIPS * 2)
+    num_elements = inp.numel()
+    if num_elements == 0:
+        return out
+    block_size, num_warps, slab = _choose_config(num_elements, inp.dtype)
+    grid_size = min(triton.cdiv(num_elements, block_size), MAX_GRID)
     with torch_device_fn.device(inp.device):
         arccosh_kernel[(grid_size,)](
             inp,
             out,
-            N,
-            BLOCK=BLOCK,
-            num_warps=4,
+            num_elements,
+            BLOCK=block_size,
+            EVEN=(num_elements % block_size == 0),
+            SLAB=slab,
+            num_warps=num_warps,
         )
     return out
 

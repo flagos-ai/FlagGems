@@ -37,13 +37,11 @@ def hsplit(
     Returns:
         List[torch.Tensor]: List of tensor views.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 HSPLIT")
-
+    logger.debug("GEMS_ENFLAME HSPLIT")
     # hsplit works on dim=1 for 2D+ tensors, dim=0 for 1D tensors
-    if A.dim() == 0:
+    ndim = A.dim()
+    if ndim == 0:
         raise RuntimeError("hsplit expects at least a 1-dimensional tensor")
 
-    split_dim = 1 if A.ndim >= 2 else 0
-
     # Use tensor_split which handles both int and list cases
-    return torch.tensor_split(A, indices_or_sections, dim=split_dim)
+    return torch.tensor_split(A, indices_or_sections, 0 if ndim == 1 else 1)
