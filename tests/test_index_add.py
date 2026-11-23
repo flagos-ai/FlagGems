@@ -679,6 +679,77 @@ def test_index_add_metax_random_contention(inplace, dtype):
     )
 
 
+@pytest.fixture
+def deterministic_algorithms():
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX ordered reduction")
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("suffix", [3, 33, 129])
+def test_index_add_metax_ordered_fp32(deterministic_algorithms, inplace, suffix):
+    generator = torch.Generator().manual_seed(2718)
+    initial = torch.randn((2, 7, suffix), generator=generator)
+    source = torch.randn((2, 193, suffix), generator=generator)
+    receivers = torch.arange(193) % 7
+    alpha = 0.7
+    expected = initial.clone()
+    for edge, receiver in enumerate(receivers.tolist()):
+        expected[:, receiver, :].add_(source[:, edge, :] * alpha)
+
+    inp = initial.to(flag_gems.device).contiguous()
+    src = source.to(flag_gems.device).contiguous()
+    storage = torch.full((386,), -1, dtype=torch.int32, device=flag_gems.device)
+    storage[::2] = receivers.to(device=flag_gems.device, dtype=torch.int32)
+    result = _call_index_add(inp, -2, storage[::2], src, inplace, alpha)
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+    if inplace:
+        assert result is inp
+    else:
+        torch.testing.assert_close(inp.cpu(), initial, rtol=0, atol=0)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX ordered reduction")
+@pytest.mark.index_add_
+@pytest.mark.parametrize("groups, extra", [(8193, 0), (385, 2200)])
+def test_index_add_metax_ordered_fp32_adaptive_sort(
+    deterministic_algorithms, groups, extra
+):
+    inp = torch.zeros((groups, 3), dtype=torch.float32, device=flag_gems.device)
+    index = torch.arange(groups, device=flag_gems.device).repeat(3)
+    source = torch.empty((3 * groups + extra, 3), device=flag_gems.device)
+    source[:groups].fill_(2**24)
+    source[groups : 2 * groups].fill_(1)
+    source[2 * groups : 3 * groups].fill_(-(2**24))
+    if extra:
+        index = torch.cat((index, index.new_zeros(extra)))
+        source[3 * groups :].zero_()
+
+    # In source order the middle unit is rounded away.
+    assert _call_index_add(inp, 0, index, source, inplace=True) is inp
+    torch.testing.assert_close(inp, torch.zeros_like(inp), rtol=0, atol=0)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX ordered reduction")
+@pytest.mark.index_add_
+def test_index_add_metax_ordered_fp32_invalid_tail(deterministic_algorithms):
+    inp = torch.full((2, 7, 33), 5.0, device=flag_gems.device)
+    src = torch.ones((2, 513, 33), device=flag_gems.device)
+    index = torch.zeros(513, dtype=torch.int64, device=flag_gems.device)
+    index[-1] = 2**63 - 1
+    with pytest.raises(AssertionError, match="0 <= index"):
+        _call_index_add(inp, 1, index, src, inplace=True)
+    torch.testing.assert_close(inp, torch.full_like(inp, 5.0), rtol=0, atol=0)
+
+
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX bounds validation")
 @pytest.mark.index_add_
 @pytest.mark.parametrize("invalid", [-(2**32), 2**32])

@@ -32,6 +32,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from ._index_add_grouped import (
+    _can_prepare_groups,
+    _prepare_grouped_suffix,
+    _run_grouped_suffix,
+)
+
 logger = logging.getLogger(__name__)
 
 # C550 sweeps favor flat below the smallest configured 32-column tile.
@@ -218,6 +224,29 @@ def _run_suffix_path(out, dim, index, src, alpha):
     return out
 
 
+def _run_ordered_fp32(inp, dim, index, src, alpha, inplace):
+    if (
+        inp.dtype != torch.float32
+        or not torch.are_deterministic_algorithms_enabled()
+        or not _can_prepare_groups(index.numel(), inp.size(dim))
+    ):
+        return None
+    with torch_device_fn.device(inp.device):
+        index = _resolve_kernel_tensor(index)
+        grouping = _prepare_grouped_suffix(
+            index,
+            inp.size(dim),
+            math.prod(src.shape[:dim]),
+            math.prod(src.shape[dim + 1 :]),
+        )
+        if grouping is None:
+            return None
+        # Metadata preparation validates all indices before any output write.
+        out = inp if inplace else inp.clone()
+        _run_grouped_suffix(out, dim, index, src, alpha, grouping)
+        return out
+
+
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_METAX INDEX_ADD")
     # Last-dimension calls have suffix=1 and cannot enter these kernels. Keep
@@ -229,6 +258,9 @@ def index_add(inp, dim, index, src, alpha=1):
         return _common_index_add(inp, dim, index, src, alpha)
     dim = _validate_index_add_args(inp, dim, index, src)
     alpha = _normalize_index_add_alpha(inp, alpha)
+    ordered = _run_ordered_fp32(inp, dim, index, src, alpha, inplace=False)
+    if ordered is not None:
+        return ordered
     index = _checked_index(index, inp.size(dim))
     # FP16 atomic writeback loses small updates under contention; BF16
     # atomics are also not reliably supported. Load either source directly
@@ -248,6 +280,9 @@ def index_add_(inp, dim, index, src, alpha=1):
         return _common_index_add_(inp, dim, index, src, alpha)
     dim = _validate_index_add_args(inp, dim, index, src)
     alpha = _normalize_index_add_alpha(inp, alpha)
+    ordered = _run_ordered_fp32(inp, dim, index, src, alpha, inplace=True)
+    if ordered is not None:
+        return ordered
     index = _checked_index(index, inp.size(dim))
     low_precision = inp.dtype in (torch.float16, torch.bfloat16)
     out = inp.float() if low_precision else inp
