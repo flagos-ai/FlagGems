@@ -249,6 +249,10 @@ def test_accuracy_shape_as_tensor_disjoint_from_native_neighbors():
 
 
 @pytest.mark.shape_as_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame has no CUDA/SparseCUDA/SparseCsrCUDA",
+)
 def test_accuracy_shape_as_tensor_dispatch_sentinel():
     # Registration-path check: the op is registered on CUDA, SparseCUDA and
     # SparseCsrCUDA (measured on this build: the plain CUDA key intercepts

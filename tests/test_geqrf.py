@@ -18,11 +18,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
 # torch geqrf (cuSOLVER/LAPACK) only supports float32/float64 on CUDA.
-_TEST_DTYPES = [torch.float32, torch.float64]
+_TEST_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 # Shapes covering both implementation paths: single-launch register kernel
 # (small/batched) and blocked column-major panel path (large), tall/wide/

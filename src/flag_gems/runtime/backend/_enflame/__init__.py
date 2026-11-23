@@ -93,6 +93,7 @@ if arch_version == 300:
         "_thnn_fused_lstm_cell",
         "_thnn_fused_lstm_cell_backward_impl",
         "_unsafe_masked_index_put_accumulate",
+        "_unsafe_view",
         "addmm",
         "addmm_dtype",
         "addmm_dtype_out",
