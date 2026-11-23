@@ -15,9 +15,10 @@
 import random
 import time
 
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
