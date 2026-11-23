@@ -263,6 +263,7 @@ from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
+from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -672,6 +673,7 @@ __all__ = [
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
     "mode",
+    "mse_loss_backward",
     "mul",
     "mul_",
     "multinomial",
