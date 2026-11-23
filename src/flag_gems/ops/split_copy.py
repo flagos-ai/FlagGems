@@ -124,9 +124,9 @@ def split_copy(self: torch.Tensor, split_size: int, dim: int = 0):
     divisible by ``split_size``; a ``split_size`` larger than the dimension
     yields a single whole-dimension chunk. Negative ``dim`` is normalized like
     PyTorch. Every output chunk is contiguous, freshly allocated, and never
-    aliases the input. 0-dim inputs, out-of-range ``dim`` and non-positive
-    ``split_size`` (unless the dimension itself is empty) are rejected with
-    the same error messages PyTorch raises.
+    aliases the input. 0-dim inputs, out-of-range ``dim`` and negative
+    ``split_size`` are rejected. A ``split_size`` of 0 is valid only when the
+    selected dimension is empty and returns one empty chunk.
     """
     logger.debug("GEMS SPLIT_COPY")
 
@@ -154,7 +154,10 @@ def split_copy(self: torch.Tensor, split_size: int, dim: int = 0):
     period = dim_size * dim_stride
     # An empty dimension still splits into a single empty chunk (torch keeps
     # one output whose ``dim`` extent is 0).
-    n_chunks = max(1, (dim_size + split_size - 1) // split_size)
+    if split_size == 0:
+        n_chunks = 1
+    else:
+        n_chunks = max(1, (dim_size + split_size - 1) // split_size)
 
     result = []
     chunk_start = 0

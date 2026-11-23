@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.split_copy import split_copy as generic_split_copy
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -86,6 +87,33 @@ def test_accuracy_split_copy(input_shape, dim, split_size, dtype):
     res_out = flag_gems.split_copy(inp, split_size, dim=dim)
 
     _assert_chunks_match(res_out, ref_out, inp, dtype)
+
+
+@pytest.mark.split_copy
+@pytest.mark.parametrize(
+    "shape, dim", [((0, 3), 0), ((0, 3), -2), ((3, 0), 1), ((3, 0), -1)]
+)
+def test_generic_split_copy_zero_split_size_empty_dim(shape, dim):
+    inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_out = torch.ops.aten.split_copy.Tensor(utils.to_reference(inp), 0, dim)
+    res_out = generic_split_copy(inp, 0, dim)
+
+    assert len(res_out) == len(ref_out) == 1
+    assert res_out[0].shape == ref_out[0].shape == inp.shape
+    assert res_out[0].dtype == ref_out[0].dtype == inp.dtype
+    assert res_out[0].device == inp.device
+
+
+@pytest.mark.split_copy
+@pytest.mark.parametrize("shape, dim", [((2, 3), 0), ((0, 3), 1)])
+def test_generic_split_copy_zero_split_size_nonempty_dim(shape, dim):
+    inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    message = "split_size can only be 0 if dimension size is 0"
+
+    with pytest.raises(RuntimeError, match=message):
+        torch.ops.aten.split_copy.Tensor(utils.to_reference(inp), 0, dim)
+    with pytest.raises(RuntimeError, match=message):
+        generic_split_copy(inp, 0, dim)
 
 
 @pytest.mark.split_copy
