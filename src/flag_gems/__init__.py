@@ -18,10 +18,10 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
-from flag_gems import deprecated as _deprecated
 from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
@@ -1472,8 +1472,18 @@ _FULL_CONFIG = (
     ("fmax.out", fmax_out),
     ("fmin", fmin),
     ("fmin.out", fmin_out),
-    ("fmod.Scalar", fmod_scalar),
-    ("fmod.Tensor", fmod_tensor),
+    (
+        "fmod.Scalar",
+        fmod_scalar,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    (
+        "fmod.Tensor",
+        fmod_tensor,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("fmod_.Scalar", fmod_scalar_),
     ("fmod_.Tensor", fmod_tensor_),
     ("frac", frac),
