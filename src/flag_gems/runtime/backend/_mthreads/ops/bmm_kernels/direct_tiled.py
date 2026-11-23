@@ -26,6 +26,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ..gemm_common import small_m_nt_gemv_kernel
+
 DIRECT_BM1_BN1_BK32_PATH = "direct_b4_m1_n1_k32_bm1_bn1_bk32"
 DIRECT_NN_BM32_BN128_BK32_FP32_K71_PATH = (
     "direct_nn_b4_m495_n5333_k71_bm32_bn128_3xbk32_fp32_tf32x3"
@@ -111,65 +113,6 @@ def _bmm_gemv4_kernel(
     tl.store(out_base + stride_on, acc1, mask=offs_m < M)
     tl.store(out_base + 2 * stride_on, acc2, mask=offs_m < M)
     tl.store(out_base + 3 * stride_on, acc3, mask=offs_m < M)
-
-
-@triton.jit
-def _bmm_small_m_nt_gemv_kernel(
-    a_ptr,
-    b_ptr,
-    out_ptr,
-    stride_ab,
-    stride_am,
-    stride_ak,
-    stride_bb,
-    stride_bk,
-    stride_bn,
-    stride_ob,
-    stride_om,
-    stride_on,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    """One CTA per output column for a physical ``[B, N, K]`` B tensor."""
-
-    pid_n = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    offs_k = tl.arange(0, BLOCK_K)
-    acc0 = 0.0
-    acc1 = 0.0
-    for k_start in range(0, K, BLOCK_K):
-        k = k_start + offs_k
-        mask_k = k < K
-        b = tl.load(
-            b_ptr + pid_b * stride_bb + k * stride_bk + pid_n * stride_bn,
-            mask=mask_k,
-            other=0.0,
-        ).to(tl.float32)
-        a0 = tl.load(
-            a_ptr + pid_b * stride_ab + k * stride_ak,
-            mask=mask_k,
-            other=0.0,
-        ).to(tl.float32)
-        acc0 += tl.sum(a0 * b, axis=0)
-        if M == 2:
-            a1 = tl.load(
-                a_ptr + pid_b * stride_ab + stride_am + k * stride_ak,
-                mask=mask_k,
-                other=0.0,
-            ).to(tl.float32)
-            acc1 += tl.sum(a1 * b, axis=0)
-
-    tl.store(
-        out_ptr + pid_b * stride_ob + pid_n * stride_on,
-        acc0,
-    )
-    if M == 2:
-        tl.store(
-            out_ptr + pid_b * stride_ob + stride_om + pid_n * stride_on,
-            acc1,
-        )
 
 
 @triton.jit
@@ -499,23 +442,32 @@ def launch(
     if path == _CATALOG_NT_GEMV_PATH:
         M, N, K = a.shape[1], b.shape[2], a.shape[2]
         block_k, num_warps = (2048, 4) if M == 1 else (1024, 2)
-        _bmm_small_m_nt_gemv_kernel[(N, batch)](
+        small_m_nt_gemv_kernel[(N, batch)](
             a,
             b,
             out,
+            out,
+            1.0,
+            0.0,
             a.stride(0),
             a.stride(1),
             a.stride(2),
             b.stride(0),
             b.stride(1),
             b.stride(2),
+            0,
+            0,
+            0,
             out.stride(0),
             out.stride(1),
             out.stride(2),
             M=M,
             N=N,
             K=K,
+            BLOCK_N=1,
             BLOCK_K=block_k,
+            FUSE_BIAS=False,
+            BETA_ZERO=True,
             num_warps=num_warps,
             num_stages=1,
         )

@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from .gemm_common import small_m_nt_gemv_kernel
+
 # Reuse the warp-specialized mm building blocks.  addmm is a single GEMM with
 # a bias epilogue, so it shares the tuned 256x256x64 tile pipeline, the
 # column-panel rasterization and the TLE producer with mm; only the consumer
@@ -163,96 +165,6 @@ def _prepare_bias(bias, out):
     return bias, bias.stride(0), bias.stride(1), False, False
 
 
-@libentry()
-@triton.jit(do_not_specialize=["alpha", "beta"])
-def _addmm_nt_gemv_kernel(
-    mat1,
-    mat2,
-    bias,
-    out,
-    alpha,
-    beta,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_bias_m,
-    stride_bias_n,
-    stride_out_m,
-    stride_out_n,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    M_ROWS: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    BIAS_IS_VECTOR: tl.constexpr,
-    BIAS_IS_SCALAR: tl.constexpr,
-):
-    """Compute a validated M=1/2 addmm directly from the operand strides."""
-
-    offsets_n = tl.program_id(0) * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask_n = offsets_n < N
-    accumulator0 = tl.zeros((BLOCK_N,), dtype=tl.float32)
-    accumulator1 = tl.zeros((BLOCK_N,), dtype=tl.float32)
-
-    for k_start in range(0, K, BLOCK_K):
-        offsets_k = k_start + tl.arange(0, BLOCK_K)
-        mask_k = offsets_k < K
-        weight = tl.load(
-            mat2 + offsets_k[None, :] * stride_bk + offsets_n[:, None] * stride_bn,
-            mask=mask_n[:, None] & mask_k[None, :],
-            other=0.0,
-        ).to(tl.float32)
-        vector0 = tl.load(
-            mat1 + offsets_k * stride_ak,
-            mask=mask_k,
-            other=0.0,
-        ).to(tl.float32)
-        accumulator0 += tl.sum(weight * vector0[None, :], axis=1)
-        if M_ROWS == 2:
-            vector1 = tl.load(
-                mat1 + stride_am + offsets_k * stride_ak,
-                mask=mask_k,
-                other=0.0,
-            ).to(tl.float32)
-            accumulator1 += tl.sum(weight * vector1[None, :], axis=1)
-
-    if BIAS_IS_SCALAR:
-        bias0 = tl.load(bias).to(tl.float32)
-        bias1 = bias0
-    elif BIAS_IS_VECTOR:
-        bias0 = tl.load(
-            bias + offsets_n * stride_bias_n,
-            mask=mask_n,
-            other=0.0,
-        ).to(tl.float32)
-        bias1 = bias0
-    else:
-        bias0 = tl.load(
-            bias + offsets_n * stride_bias_n,
-            mask=mask_n,
-            other=0.0,
-        ).to(tl.float32)
-        if M_ROWS == 2:
-            bias1 = tl.load(
-                bias + stride_bias_m + offsets_n * stride_bias_n,
-                mask=mask_n,
-                other=0.0,
-            ).to(tl.float32)
-
-    tl.store(
-        out + offsets_n * stride_out_n,
-        accumulator0 * alpha + bias0 * beta,
-        mask=mask_n,
-    )
-    if M_ROWS == 2:
-        tl.store(
-            out + stride_out_m + offsets_n * stride_out_n,
-            accumulator1 * alpha + bias1 * beta,
-            mask=mask_n,
-        )
-
-
 def _launch_addmm_nt_gemv(
     bias,
     mat1,
@@ -269,32 +181,34 @@ def _launch_addmm_nt_gemv(
     n = mat2.shape[1]
     if out is None:
         out = torch.empty((m, n), dtype=mat1.dtype, device=mat1.device)
-    bias, stride_bias_m, stride_bias_n, bias_is_vector, bias_is_scalar = _prepare_bias(
-        bias, out
-    )
+    bias, stride_bias_m, stride_bias_n, _, _ = _prepare_bias(bias, out)
     with torch_device_fn.device(mat1.device):
-        _addmm_nt_gemv_kernel[(triton.cdiv(n, block_n),)](
+        small_m_nt_gemv_kernel[(triton.cdiv(n, block_n), 1)](
             mat1,
             mat2,
             bias,
             out,
             alpha,
             beta,
+            0,
             mat1.stride(0),
             mat1.stride(1),
+            0,
             mat2.stride(0),
             mat2.stride(1),
+            0,
             stride_bias_m,
             stride_bias_n,
+            0,
             out.stride(0),
             out.stride(1),
+            M=m,
             N=n,
             K=k,
-            M_ROWS=m,
             BLOCK_N=block_n,
             BLOCK_K=block_k,
-            BIAS_IS_VECTOR=bias_is_vector,
-            BIAS_IS_SCALAR=bias_is_scalar,
+            FUSE_BIAS=True,
+            BETA_ZERO=float(beta) == 0.0,
             num_warps=num_warps,
             num_stages=1,
         )
@@ -325,57 +239,19 @@ def _nt_gemv_config(bias, mat1, mat2, out):
         and out.device == mat1.device
         and out.shape == (m, n)
         and out.is_contiguous()
+        and _out_is_disjoint(out, bias, mat1, mat2)
     ):
         return None
     return config
 
 
+def _out_is_disjoint(out, *inputs):
+    return out is None or all(not torch._C._overlaps(out, tensor) for tensor in inputs)
+
+
 _SMALL_M_BM = tl.constexpr(64)
 _SMALL_M_BN = tl.constexpr(64)
 _SMALL_M_K_FRAGMENT = tl.constexpr(64)
-
-
-@triton.jit
-def _small_m_bm64_bn64_bk128_s2_producer(
-    a_writer,
-    b_writer,
-    a_desc,
-    b_desc,
-    pid_m,
-    pid_n,
-    N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    K_TILES: tl.constexpr,
-    TRANS_B: tl.constexpr,
-):
-    m_offset = (pid_m * _SMALL_M_BM).to(tl.int32)
-    n_offset = (pid_n * _SMALL_M_BN).to(tl.int32)
-    for k_iter in tl.range(0, K_TILES, num_stages=1):
-        k_offset = (k_iter * BLOCK_K).to(tl.int32)
-        a_slot = a_writer.acquire(k_iter)
-        b_slot = b_writer.acquire(k_iter)
-        tle.gpu.copy(
-            a_desc,
-            a_slot.a,
-            (_SMALL_M_BM, BLOCK_K),
-            (m_offset, k_offset),
-        )
-        if TRANS_B:
-            tle.gpu.copy(
-                b_desc,
-                b_slot.b,
-                (_SMALL_M_BN, BLOCK_K),
-                (n_offset, k_offset),
-            )
-        else:
-            tle.gpu.copy(
-                b_desc,
-                b_slot.b,
-                (BLOCK_K, _SMALL_M_BN),
-                (k_offset, n_offset),
-            )
-        a_writer.commit(k_iter)
-        b_writer.commit(k_iter)
 
 
 @triton.jit
@@ -399,6 +275,7 @@ def _small_m_bm64_bn64_bk128_s2_consumer(
     TRANS_B: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
 ):
     accumulator = tl.zeros((_SMALL_M_BM, _SMALL_M_BN), dtype=tl.float32)
     for k_iter in tl.range(0, K_TILES, num_stages=1):
@@ -430,21 +307,24 @@ def _small_m_bm64_bn64_bk128_s2_consumer(
     rows = pid_m * _SMALL_M_BM + tl.arange(0, _SMALL_M_BM)
     columns = pid_n * _SMALL_M_BN + tl.arange(0, _SMALL_M_BN)
     mask = (rows[:, None] < M) & (columns[None, :] < N)
-    if BIAS_IS_SCALAR:
-        bias_tile = tl.load(bias).to(tl.float32)
-    elif BIAS_IS_VECTOR:
-        bias_tile = tl.load(
-            bias + columns * stride_bias_n,
-            mask=columns < N,
-            other=0.0,
-        ).to(tl.float32)[None, :]
+    if BETA_ZERO:
+        output = accumulator * alpha
     else:
-        bias_tile = tl.load(
-            bias + rows[:, None] * stride_bias_m + columns[None, :] * stride_bias_n,
-            mask=mask,
-            other=0.0,
-        ).to(tl.float32)
-    output = accumulator * alpha + bias_tile * beta
+        if BIAS_IS_SCALAR:
+            bias_tile = tl.load(bias).to(tl.float32)
+        elif BIAS_IS_VECTOR:
+            bias_tile = tl.load(
+                bias + columns * stride_bias_n,
+                mask=columns < N,
+                other=0.0,
+            ).to(tl.float32)[None, :]
+        else:
+            bias_tile = tl.load(
+                bias + rows[:, None] * stride_bias_m + columns[None, :] * stride_bias_n,
+                mask=mask,
+                other=0.0,
+            ).to(tl.float32)
+        output = accumulator * alpha + bias_tile * beta
     tl.store(
         out + rows[:, None] * stride_out_m + columns[None, :] * stride_out_n,
         output.to(out.dtype.element_ty),
@@ -473,6 +353,7 @@ def _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
     TRANS_B: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
 ):
     pid_n = tl.program_id(0)
     pid_m = tl.program_id(1)
@@ -528,21 +409,25 @@ def _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
                     TRANS_B,
                     BIAS_IS_VECTOR,
                     BIAS_IS_SCALAR,
+                    BETA_ZERO,
                 ),
             ),
             (
-                _small_m_bm64_bn64_bk128_s2_producer,
+                _ws_mm_producer,
                 (
                     a_pipe.writer(),
                     b_pipe.writer(),
                     a_desc,
                     b_desc,
+                    K,
                     pid_m,
                     pid_n,
-                    N,
+                    _SMALL_M_BM,
+                    _SMALL_M_BN,
                     BLOCK_K,
-                    k_tiles,
                     TRANS_B,
+                    False,
+                    False,
                 ),
             ),
         ],
@@ -594,6 +479,7 @@ def _launch_addmm_bm64_bn64_bk128_s2_small_m_ws(
             TRANS_B=trans_b,
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
+            BETA_ZERO=float(beta) == 0.0,
             num_warps=8,
             num_stages=2,
             enable_backend_opt=True,
@@ -628,6 +514,7 @@ def _small_m_tle_eligible(bias, mat1, mat2, out):
         and out.device == mat1.device
         and out.shape == (m, n)
         and out.is_contiguous()
+        and _out_is_disjoint(out, bias, mat1, mat2)
     )
     return mat2_supported and descriptor_strides_aligned and out_supported
 
