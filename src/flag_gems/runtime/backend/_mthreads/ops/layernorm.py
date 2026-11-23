@@ -327,8 +327,8 @@ def _layer_norm_impl(input, normalized_shape, weight, bias, eps, keepdim):
                     bm,
                     triton.next_power_of_2(n),
                     use_tle,
-                    _ROW_LAYOUT,
-                    _WEIGHT_LAYOUT,
+                    _ROW_LAYOUT if use_tle else None,
+                    _WEIGHT_LAYOUT if use_tle else None,
                     num_warps=nw,
                 )
     return y, mean, rstd
