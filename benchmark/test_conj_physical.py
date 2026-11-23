@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base, consts, utils
 
 # torch.randn has no FP8 implementation, so FP8 inputs are built from an FP32
 # tensor; int8/uint8 go through the existing truncating path.
@@ -130,4 +130,38 @@ def test__conj_physical_out():
         dtypes=consts.COMPLEX_DTYPES,
     )
     bench.set_gems(flag_gems.ops._conj_physical_out)
+    bench.run()
+
+
+def conj_physical_backward__case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={},
+        builder_args=(shape,),
+    )
+
+
+def conj_physical_backward__build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    grad_output = torch.randn(shape, dtype=dtype, device=device)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return grad_output, inp
+
+
+def conj_physical_backward__torch_op(grad_output, inp):
+    inp = inp.detach().requires_grad_(True)
+    (ref_in_grad,) = torch.autograd.grad(torch.conj_physical(inp), inp, grad_output)
+    return ref_in_grad
+
+
+@pytest.mark.conj_physical_backward_
+def test_conj_physical_backward_():
+    bench = base.GenericBenchmarkExcluse1D(
+        case_fn=conj_physical_backward__case_fn,
+        build_inputs_fn=conj_physical_backward__build_inputs_fn,
+        op_name="conj_physical_backward_",
+        torch_op=conj_physical_backward__torch_op,
+        gems_op=flag_gems.conj_physical_backward_,
+        dtypes=consts.COMPLEX_DTYPES,
+    )
     bench.run()

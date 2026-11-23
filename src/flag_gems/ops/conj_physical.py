@@ -65,8 +65,31 @@ def launch_conj_physical(src: torch.Tensor, output: torch.Tensor) -> None:
     conj_physical_kernel[grid](in_real_ptr, out_real_ptr, n_elements)
 
 
+class ConjPhysicalFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return _conj_physical_impl(input)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::conj_physical`` has no standalone backward operator, so the
+        # gradient runs a Triton kernel from
+        # ``flag_gems.ops.conj_physical_backward_``.
+        (input,) = ctx.saved_tensors
+        from flag_gems.ops.conj_physical_backward_ import conj_physical_backward_
+
+        return conj_physical_backward_(grad_output, input)
+
+
 def conj_physical(input: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS CONJ_PHYSICAL")
+    if torch.is_grad_enabled() and input.is_complex() and input.requires_grad:
+        return ConjPhysicalFunction.apply(input)
+    return _conj_physical_impl(input)
+
+
+def _conj_physical_impl(input: torch.Tensor) -> torch.Tensor:
     if not input.is_complex():
         return input
 

@@ -1239,7 +1239,15 @@ _FULL_CONFIG = (
     ("concat", concat),
     ("concatenate", concatenate),
     ("conj", conj),
-    ("conj_physical", conj_physical),
+    # Autograd fallthrough: the ConjPhysicalFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and torch.conj_physical() takes the native backward.
+    (
+        "conj_physical",
+        conj_physical,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("conj_physical_", conj_physical_),
     ("constant_pad_nd", constant_pad_nd),
     ("conv1d", conv1d),

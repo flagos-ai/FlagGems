@@ -3874,6 +3874,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: conj_physical_backward_
+  description: The backward computation of `conj_physical()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - conj_physical
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: constant_pad_nd
   description: 'Pads the input tensor boundaries with a constant value.
 
