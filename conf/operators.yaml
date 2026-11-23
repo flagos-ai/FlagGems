@@ -3874,6 +3874,22 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: conj_physical_backward
+  description: |
+    Backward pass for `conj_physical`: the conjugate is self-inverse, so the
+    input gradient is `grad.conj_physical()` (the materialized elementwise
+    conjugate). Real (non-complex) gradients pass through unchanged, matching
+    the identity semantics of `conj_physical` on real tensors.
+  for:
+  - conj_physical_backward
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: constant_pad_nd
   description: 'Pads the input tensor boundaries with a constant value.
 
