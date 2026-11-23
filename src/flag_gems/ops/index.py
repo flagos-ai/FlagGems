@@ -20,6 +20,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems import runtime
+from flag_gems.ops.index_put import index_put_
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -753,7 +754,7 @@ def index_backward(grad_output, indices, input_size):
         else grad_output.dtype
     )
     inp = torch.zeros(input_size, dtype=compute_dtype, device=grad_output.device)
-    out = torch.index_put_(
+    out = index_put_(
         inp, list(indices), grad_output.to(compute_dtype), accumulate=True
     )
     return out.to(grad_output.dtype)
