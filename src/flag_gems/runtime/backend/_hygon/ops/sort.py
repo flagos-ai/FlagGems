@@ -361,6 +361,9 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     # We only implement stable radix sort here
     _ = stable
     sort_elem_cnt = inp.shape[dim]
+    if inp.numel() == 0:
+        # An empty axis or batch does not need a radix sort launch.
+        return torch.empty_like(inp), torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
         return inp, torch.zeros_like(inp, dtype=torch.int64)
 
