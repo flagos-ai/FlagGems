@@ -18,6 +18,7 @@ from typing import Optional
 import torch
 import triton
 
+from flag_gems.ops.copy import _copy_to_bool_kernel
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -152,4 +153,6 @@ def to_copy(
     else:
         out = torch.empty_like(x, memory_format=target_memory_format, **empty_kwargs)
 
+    if target_dtype == torch.bool and x.dtype != torch.bool:
+        return _copy_to_bool_kernel(x, out0=out)
     return _to_copy_func(x, out0=out)
