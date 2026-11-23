@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -31,4 +33,21 @@ def test_logsumexp():
         torch_op=torch.logsumexp,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.logsumexp_backward
+def test_logsumexp_backward():
+    # ``is_backward`` makes the timed callable
+    # ``torch.autograd.grad(out, (inp,), grad_outputs=(dout,))`` on a graph built
+    # once from the same ``(inp, dim=1)`` inputs, so the forward is not timed and
+    # only the backward kernel is measured for both sides.
+    bench = base.GenericBenchmarkExcluse1D(
+        input_fn=_input_fn,
+        op_name="logsumexp",
+        torch_op=torch.logsumexp,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.logsumexp)
     bench.run()
