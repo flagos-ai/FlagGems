@@ -52,6 +52,10 @@ def mm_kernel(
     GROUP_M: tl.constexpr,
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
+    # Vendor-level heuristics ("mm" in heuristics_config_utils.py) inject
+    # K_BLOCKS for gcu400's unrolled-K workaround; gcu300 keeps the dynamic
+    # K loop, so the parameter is accepted here but unused.
+    K_BLOCKS: tl.constexpr,
     MAX_GRID_DIM: tl.constexpr,
     num_warps: tl.constexpr,
 ):
