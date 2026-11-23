@@ -21,6 +21,9 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+mul_backward:
+  <<: *single_dim_shapes
+
 vdot:
   <<: *single_dim_shapes
 

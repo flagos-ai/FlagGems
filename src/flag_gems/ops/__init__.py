@@ -1258,7 +1258,7 @@ from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
 from flag_gems.ops.mT import mT
-from flag_gems.ops.mul import mul, mul_
+from flag_gems.ops.mul import mul, mul_, mul_backward
 from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss,
     multi_margin_loss_backward,
@@ -3039,6 +3039,7 @@ __all__ = [
     "mT",
     "mul",
     "mul_",
+    "mul_backward",
     "multi_margin_loss",
     "multi_margin_loss_backward",
     "multi_margin_loss_backward_out",

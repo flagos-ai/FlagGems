@@ -14659,6 +14659,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: mul_backward
+  description: Computes both tensor-input gradients of `mul` in one fused Triton kernel.
+  for:
+  - mul.Tensor
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: multi_margin_loss
   description: Computes the multi-class margin loss with optional class weights.
   for:

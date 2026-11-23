@@ -1863,7 +1863,16 @@ _FULL_CONFIG = (
     ("msort.out", msort_out),
     ("mT", mT),
     ("mul.Scalar", mul),
-    ("mul.Tensor", mul),
+    (
+        "mul.Tensor",
+        mul,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("mul_.Scalar", mul_),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
