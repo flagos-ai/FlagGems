@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -22,6 +24,18 @@ from . import base, consts
 def test_relu():
     bench = base.UnaryPointwiseBenchmark(
         op_name="relu", torch_op=torch.nn.functional.relu, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
+
+
+@pytest.mark.relu_backward
+def test_relu_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="relu_backward",
+        torch_op=torch.relu,
+        gems_op=flag_gems.relu,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
 

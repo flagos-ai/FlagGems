@@ -18,10 +18,10 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
-from flag_gems import deprecated as _deprecated
 from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
@@ -2079,7 +2079,12 @@ _FULL_CONFIG = (
     ("reflection_pad3d", reflection_pad3d),
     ("reflection_pad3d.out", reflection_pad3d),
     ("reflection_pad3d_backward", reflection_pad3d_backward),
-    ("relu", relu),
+    (
+        "relu",
+        relu,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("relu6", relu6),
     ("relu6_", relu6_),
     ("relu_", relu_),
