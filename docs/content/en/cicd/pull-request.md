@@ -126,7 +126,7 @@ matching label:
 
 The `python-op` job is the gatekeeper for generic operator correctness and baseline compatibility:
 - **Hardware Runner**: Deployed on a dedicated self-hosted runner (`runs-on: jiuding`) equipped with **NVIDIA A100-40G** GPUs.
-- **Compiler Stack**: The environment installs and uses the **official upstream Triton compiler rather than the FlagTree compiler**. This guarantees that all generic baseline implementations in `src/flag_gems/ops`, `src/flag_gems/fused`, and `src/flag_gems/experimental_ops` adhere strictly to standard community Triton semantics and maintain guaranteed compatibility with NVIDIA Ampere architecture.
+- **Compiler Stack**: The environment installs and uses the **official upstream Triton compiler rather than the FlagTree compiler**. This guarantees that all generic baseline implementations in `src/flag_gems/ops`, `src/flag_gems/deprecated`, and `src/flag_gems/experimental_ops` adhere strictly to standard community Triton semantics and maintain guaranteed compatibility with NVIDIA Ampere architecture.
 
 `backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR
 with `checkout-retry`, runs the vendor's GPU-availability check, installs

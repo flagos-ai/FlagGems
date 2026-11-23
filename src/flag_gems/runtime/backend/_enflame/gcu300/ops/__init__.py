@@ -285,7 +285,7 @@ from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm, router_gemm
+from .mm import mm, mm_out, router_gemm
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
@@ -725,6 +725,7 @@ __all__ = [
     "min_dim",
     "minimum",
     "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multinomial",

@@ -126,6 +126,10 @@ def _reference(inp, scales, zero_points, axis, dtype):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("axis", [0, 1])
@@ -144,6 +148,10 @@ def test_quantize_per_channel(shape, axis, dtype):
     _assert_quantized_identical(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
@@ -158,6 +166,10 @@ def test_quantize_per_channel_last_axis(shape, dtype):
     _assert_quantized_identical(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 def test_quantize_per_channel_extremes(dtype):
@@ -185,6 +197,10 @@ def test_quantize_per_channel_extremes(dtype):
         _assert_quantized_identical(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
 def test_quantize_per_channel_tie_cases(dtype):
@@ -218,6 +234,10 @@ def test_quantize_per_channel_tie_cases(dtype):
         assert got == want, f"{value} rounded to {got}, expected {want} (half-to-even)"
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("axis", [0, 1])
@@ -244,6 +264,10 @@ def test_quantize_per_channel_round_trip(shape, axis, dtype):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("axis", [0, 1])
@@ -271,6 +295,10 @@ def test_quantize_per_channel_float_zero_points(shape, axis, dtype):
     _assert_quantized_identical(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("dtype", FLOAT_QPARAM_DTYPES)
 def test_quantize_per_channel_float_zero_points_tie_cases(dtype):
@@ -453,6 +481,10 @@ def test_quantize_per_channel_out_noncontiguous():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_rejects_non_float_input():
     """Native per-channel quantization only accepts float32."""
@@ -464,6 +496,10 @@ def test_quantize_per_channel_rejects_non_float_input():
         flag_gems.quantize_per_channel(inp, scales, zero_points, 0, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_rejects_float_zero_point_non_float_input():
     """The float-qparams quantizer phrases its dtype check differently."""
@@ -475,6 +511,10 @@ def test_quantize_per_channel_rejects_float_zero_point_non_float_input():
         flag_gems.quantize_per_channel(inp, scales, zero_points, 0, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("axis", [-1, 2, 5])
 def test_quantize_per_channel_rejects_bad_axis(axis):
@@ -487,6 +527,10 @@ def test_quantize_per_channel_rejects_bad_axis(axis):
         flag_gems.quantize_per_channel(inp, scales, zero_points, axis, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("param", ["scales", "zero_points"])
 def test_quantize_per_channel_rejects_cpu_qparams(param):
@@ -514,6 +558,10 @@ def test_quantize_per_channel_rejects_cpu_qparams(param):
         flag_gems.quantize_per_channel(inp, bad, other, 0, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_rejects_multi_dim_qparams():
     """scales/zero_points must be 1-D vectors."""
@@ -530,6 +578,10 @@ def test_quantize_per_channel_rejects_multi_dim_qparams():
         flag_gems.quantize_per_channel(inp, scales, zero_points_2d, 0, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_rejects_short_qparams():
     """Short qparam vectors are rejected before the kernel reads past the end.
@@ -574,6 +626,10 @@ def test_quantize_per_channel_rejects_integer_scales():
         flag_gems.quantize_per_channel(inp, scales, zero_points, 0, torch.quint8)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_rejects_unsupported_dtype():
     """Only quint8/qint8/qint32 have a per-channel implementation."""
@@ -585,6 +641,10 @@ def test_quantize_per_channel_rejects_unsupported_dtype():
         flag_gems.quantize_per_channel(inp, scales, zero_points, 0, torch.quint4x2)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize(
     "qtype,zp,dtype",
@@ -618,6 +678,10 @@ def test_quantize_per_channel_rejects_out_of_range_zero_point(qtype, zp, dtype):
         )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_zero_point_error_matches_native():
     """The host check reproduces ATen's message and below-before-above order."""
@@ -652,6 +716,10 @@ def test_quantize_per_channel_zero_point_error_matches_native():
     torch.cuda.synchronize()  # context intact
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_accepts_valid_zero_points():
     """The in-range zero-points used elsewhere pass the host range check."""

@@ -22,6 +22,8 @@ from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 48
+
 
 @triton.jit
 def slice_scatter_kernel(
@@ -36,31 +38,34 @@ def slice_scatter_kernel(
     src_dim_size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE
-    offsets = tl.arange(0, BLOCK_SIZE)
-    mask = block_start + offsets < total_elements
+    num_blocks = tl.cdiv(total_elements, BLOCK_SIZE)
+    for block in tl.range(tl.program_id(0), num_blocks, tl.num_programs(0)):
+        block_start = block * BLOCK_SIZE
+        offsets = tl.arange(0, BLOCK_SIZE)
+        mask = block_start + offsets < total_elements
 
-    idx = block_start + offsets
-    pre_idx = idx // (dim_size * dim_prod_post)
-    dim_idx = (idx // dim_prod_post) % dim_size
-    post_idx = idx % dim_prod_post
+        idx = block_start + offsets
+        pre_idx = idx // (dim_size * dim_prod_post)
+        dim_idx = (idx // dim_prod_post) % dim_size
+        post_idx = idx % dim_prod_post
 
-    slice_mask = (
-        (dim_idx >= start)
-        & (dim_idx < start + src_dim_size * step)
-        & ((dim_idx - start) % step == 0)
-    )
+        slice_mask = (
+            (dim_idx >= start)
+            & (dim_idx < start + src_dim_size * step)
+            & ((dim_idx - start) % step == 0)
+        )
 
-    inp_data = tl.load(inp_ptr + idx, mask=mask)
+        inp_data = tl.load(inp_ptr + idx, mask=mask)
 
-    src_dim_idx = (dim_idx - start) // step
-    src_idx = (
-        pre_idx * src_dim_size * dim_prod_post + src_dim_idx * dim_prod_post + post_idx
-    )
-    src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask)
-    result = tl.where(slice_mask, src_data, inp_data)
-    tl.store(out_ptr + idx, result, mask=mask)
+        src_dim_idx = (dim_idx - start) // step
+        src_idx = (
+            pre_idx * src_dim_size * dim_prod_post
+            + src_dim_idx * dim_prod_post
+            + post_idx
+        )
+        src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask)
+        result = tl.where(slice_mask, src_data, inp_data)
+        tl.store(out_ptr + idx, result, mask=mask)
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
@@ -97,12 +102,12 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
 
     dim_prod_post = 1
     for d in range(dim + 1, inp.ndim):
-        dim_prod_post *= inp.size(d)
+        dim_prod_post *= inp.shape[d]
 
     BLOCK_SIZE = 1024
     if total_elements // BLOCK_SIZE > 65535:
         BLOCK_SIZE = 16384
-    grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
+    grid = (min(triton.cdiv(total_elements, BLOCK_SIZE), NUM_SIPS),)
 
     slice_scatter_kernel[grid](
         out,
