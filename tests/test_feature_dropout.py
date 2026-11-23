@@ -49,16 +49,9 @@ def test_feature_dropout(shape, p, dtype):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                matches = torch.allclose(
+                assert torch.allclose(
                     channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
                 )
-                if not matches and flag_gems.vendor_name == "mthreads":
-                    # MUSA rounds the gain to the input dtype before multiplying.
-                    rounded_scale = channel_inp.new_tensor(scale)
-                    matches = torch.allclose(
-                        channel_out, channel_inp * rounded_scale, rtol=1e-4, atol=1e-5
-                    )
-                assert matches
     out_by_channel = res_out.view(batch_size, num_channels, -1)
     dropped = sum(
         1
