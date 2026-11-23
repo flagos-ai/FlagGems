@@ -26,9 +26,18 @@ def make_reflectors(shape, dtype):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
-    input, tau = make_reflectors(shape, dtype)
-    ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
+    use_empty_cpu_reference = flag_gems.vendor_name == "mthreads" and shape[-1] == 0
+    if use_empty_cpu_reference:
+        # The zero-column Q and reflector vector are empty, including without LAPACK.
+        ref = torch.empty(shape, dtype=dtype, device="cpu")
+        input = ref.to(flag_gems.device)
+        tau = torch.empty((*shape[:-2], 0), dtype=dtype, device=input.device)
+    else:
+        input, tau = make_reflectors(shape, dtype)
+        ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
     result = flag_gems.orgqr(input, tau)
+    if use_empty_cpu_reference:
+        assert result.device == input.device
     utils.gems_assert_close(result, ref, dtype)
 
 
@@ -69,17 +78,23 @@ def test_orgqr_complex_is_explicitly_unsupported(dtype):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr_out(shape, dtype):
-    input, tau = make_reflectors(shape, dtype)
-    ref_input = utils.to_reference(input)
-    ref_tau = utils.to_reference(tau)
-    ref_out = torch.empty(0, dtype=dtype, device=ref_input.device)
-    ref = torch.orgqr(ref_input, ref_tau, out=ref_out)
+    if flag_gems.vendor_name == "mthreads" and shape[-1] == 0:
+        # Zero columns imply zero reflectors and an empty Q with the input shape.
+        # The empty result is defined without calling geqrf or LAPACK.
+        ref_out = torch.empty(shape, dtype=dtype, device="cpu")
+        input = ref_out.to(flag_gems.device)
+        tau = torch.empty((*shape[:-2], 0), dtype=dtype, device=input.device)
+    else:
+        input, tau = make_reflectors(shape, dtype)
+        ref_input = utils.to_reference(input)
+        ref_tau = utils.to_reference(tau)
+        ref_out = torch.empty(0, dtype=dtype, device=ref_input.device)
+        assert torch.orgqr(ref_input, ref_tau, out=ref_out) is ref_out
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
     result = flag_gems.orgqr_out(input, tau, out=out)
     assert result is out
-    assert ref is ref_out
     assert out.shape == input.shape
-    utils.gems_assert_close(out, ref, dtype)
+    utils.gems_assert_close(out, ref_out, dtype)
 
 
 @pytest.mark.orgqr_out

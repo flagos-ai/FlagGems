@@ -17,7 +17,7 @@ import logging
 import pytest
 import torch
 
-from flag_gems.fused import bf16_paged_mqa_logits
+from flag_gems import bf16_paged_mqa_logits
 
 from . import base
 

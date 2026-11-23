@@ -59,13 +59,22 @@ CASE_LISTS = []
 REPORT_FILE = "benchmark_result.json"
 
 
-def update_result(op, data):
+def update_result(op, data, *, aggregate_by_dtype=False):
     if not Config.record_json:
         return
 
-    TEST_RESULTS.setdefault(op, {})
-    TEST_RESULTS[op].setdefault("details", [])
-    TEST_RESULTS[op]["details"].append(data)
+    details = TEST_RESULTS.setdefault(op, {}).setdefault("details", [])
+    if aggregate_by_dtype:
+        for row in data["result"]:
+            row["test_case"] = Config.current_nodeid
+        # Optest reads one result block per dtype. Keep latency-only rows with
+        # their native skip reason so they never enter native speedup averages.
+        fields = ("dtype", "mode", "level", "native_baseline_skip_reason")
+        for group in details:
+            if all(group.get(key) == data.get(key) for key in fields):
+                group["result"].extend(data["result"])
+                return
+    details.append(data)
 
 
 def update_case_list(data):
