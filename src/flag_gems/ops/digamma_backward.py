@@ -45,6 +45,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ def _trigamma_f64(x):
     return sign * result
 
 
+@libentry()
 @triton.jit
 def digamma_backward_kernel(
     g_ptr,
