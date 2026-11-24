@@ -487,9 +487,31 @@ class _AscendWeightBackwardStaticReference:
         )
         return record["latency_ms"]
 
-    def _measure_input(self, input, case_id=None):
+    def _measure_input(self, input, case_id=None, dtype=None):
         if flag_gems.vendor_name != "ascend":
-            return super()._measure_input(input, case_id=case_id)
+            return super()._measure_input(input, case_id=case_id, dtype=dtype)
+        if case_id is None:
+            # The legacy input_fn path never calls build_inputs, so derive the
+            # original case descriptor from the five-argument input tuple.
+            shape = tuple(input[0].shape)
+            if shape not in _WEIGHT_LEGACY_SHAPES:
+                raise ValueError("Measured input must use an original legacy shape")
+            ordinal = _WEIGHT_LEGACY_SHAPES.index(shape)
+            self._weight_input_case = self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape=dict(
+                        grad_w=list(shape),
+                        saved_v=list(shape),
+                        saved_g=[shape[0]],
+                        saved_norms=[shape[0]],
+                    ),
+                    params=dict(dim=input[4]),
+                    builder_args=(input,),
+                ),
+            )
+            case_id = self._weight_input_case.case_id
         if case_id != self._weight_input_case.case_id:
             raise ValueError("Measured case must equal the original built case")
         self._weight_imported_source = None
@@ -498,7 +520,7 @@ class _AscendWeightBackwardStaticReference:
         )
         self._weight_native_pending = needs_reference
         try:
-            metric = super()._measure_input(input, case_id=case_id)
+            metric = super()._measure_input(input, case_id=case_id, dtype=dtype)
             source = self._weight_imported_source
             if source is None:
                 if needs_reference:
