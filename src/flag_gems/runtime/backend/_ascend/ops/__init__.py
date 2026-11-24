@@ -158,6 +158,7 @@ from .foreach_div_tensor_ import foreach_div_tensor_
 from .foreach_erf_ import foreach_erf_
 from .foreach_exp_ import foreach_exp_
 from .foreach_expm1_ import foreach_expm1_
+from .foreach_floor_ import foreach_floor_
 from .foreach_log1p_ import foreach_log1p_
 from .foreach_log2_ import foreach_log2_
 from .foreach_log10_ import foreach_log10_
@@ -555,6 +556,7 @@ __all__ = [
     "foreach_erf_",
     "foreach_exp_",
     "foreach_expm1_",
+    "foreach_floor_",
     "foreach_log10_",
     "foreach_log1p_",
     "foreach_log2_",
