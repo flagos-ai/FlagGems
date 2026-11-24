@@ -291,12 +291,12 @@ class _CholeskyH800Baseline:
         self._cholesky_h800_source = dict(source, config=record["config"])
         return ms
 
-    def _measure_input(self, input, case_id=None):
+    def _measure_input(self, input, case_id=None, dtype=None):
         needs_native = (
             "latency_base" in self.to_bench_metrics and not base.Config.skip_native
         )
         if flag_gems.vendor_name != "ascend" or not needs_native:
-            return super()._measure_input(input, case_id)
+            return super()._measure_input(input, case_id=case_id, dtype=dtype)
         if not os.environ.get("FLAGGEMS_CHOLESKY_SOLVE_H800_BASELINE"):
             raise ValueError(
                 "Ascend Cholesky solve uses CPU fallback; set "
@@ -309,7 +309,7 @@ class _CholeskyH800Baseline:
         self._cholesky_h800_pending = True
         self._cholesky_h800_source = None
         try:
-            metric = super()._measure_input(input, case_id)
+            metric = super()._measure_input(input, case_id=case_id, dtype=dtype)
             if self._cholesky_h800_source is not None:
                 if metric.latency is not None and (
                     isinstance(metric.latency, bool)
