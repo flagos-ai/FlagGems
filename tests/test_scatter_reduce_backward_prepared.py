@@ -17,6 +17,8 @@ import pytest
 import torch
 from triton import knobs
 
+import flag_gems
+
 from . import accuracy_utils as utils
 from ._scatter_reduce_backward_cases import forward, make_case, make_tensor
 from ._scatter_reduce_backward_integration import NoNativeCompute, gems_forward
@@ -123,6 +125,77 @@ def test_prepared_saved_tensor_hook_layout(op, dtype):
             got = torch.autograd.grad(y, xs, grad)
     for a, b in zip(got, want):
         torch.testing.assert_close(a, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+@pytest.mark.scatter_reduce_backward
+@pytest.mark.parametrize("op", ["scatter_reduce"])
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dim", [-1, 0])
+@pytest.mark.parametrize("registered", [False, True])
+@pytest.mark.parametrize(
+    "pair", [(1.0, 2.0), (0.0, 2.0), (2.0, 0.0), (1.0, 1.0), (-0.3, 0.8)]
+)
+def test_scalar_scatter_vjp(op, dtype, dim, registered, pair):
+    variants = [
+        (r, include)
+        for r in ("sum", "prod", "mean", "amax", "amin")
+        for include in (False, True)
+    ]
+    for reduction, include in variants:
+        x = torch.tensor([9.0, pair[0]], device=flag_gems.device, dtype=dtype)[
+            1
+        ].requires_grad_()
+        src = torch.tensor([9.0, pair[1]], device=x.device, dtype=dtype)[
+            1
+        ].requires_grad_()
+        index = torch.tensor([9, 0], device=x.device)[1]
+        refs = [x.detach().requires_grad_(), src.detach().requires_grad_()]
+        p = dict(
+            op="scatter_reduce",
+            dim=dim,
+            index=index,
+            reduce=reduction,
+            include_self=include,
+        )
+        expected = forward(refs, p)
+        grad = torch.tensor([9.0, 0.7], device=x.device, dtype=dtype)[1]
+        want = torch.autograd.grad(expected, refs, grad)
+        extra = dict(reduce=reduction, include_self=include)
+        direct = getattr(flag_gems, "scatter_reduce_backward")
+        args = (grad, x, dim, index, src)
+        with NoNativeCompute():
+            got_direct = direct(*args, reduction, include, expected)
+        lib = torch.library.Library("aten", "IMPL") if registered else None
+        try:
+            if lib is not None:
+                flag_gems.only_enable(lib=lib, include=["scatter_reduce"])
+            actual = getattr(torch if registered else flag_gems, "scatter_reduce")(
+                x, dim, index, src, **extra
+            )
+            torch.testing.assert_close(
+                actual, expected, rtol=TOL[dtype][0], atol=TOL[dtype][1]
+            )
+            with NoNativeCompute():
+                got = torch.autograd.grad(actual, [x, src], grad)
+        finally:
+            if lib is not None:
+                lib._destroy()
+        for a, b, c in zip(got, want, got_direct):
+            torch.testing.assert_close(a, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+            torch.testing.assert_close(c, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+@pytest.mark.scatter_reduce_backward
+@pytest.mark.parametrize("op", ["scatter_reduce"])
+@pytest.mark.parametrize("dim", [-2, 1])
+def test_scalar_scatter_invalid_dim(op, dim):
+    x = torch.tensor(1.0, device=flag_gems.device, requires_grad=True)
+    src = torch.tensor(2.0, device=x.device, requires_grad=True)
+    index = torch.tensor(0, device=x.device)
+    extra = dict(reduce="sum")
+    for module in (torch, flag_gems):
+        with pytest.raises(IndexError):
+            getattr(module, "scatter_reduce")(x, dim, index, src, **extra)
 
 
 pytestmark = [pytest.mark.scatter_reduce, pytest.mark.scatter_reduce_backward]

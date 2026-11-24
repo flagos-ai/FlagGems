@@ -17,10 +17,58 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils._scatter_reduce_backward_index_kernel_impl import (
     contiguous_strides,
     offset,
 )
+
+
+def scalar_to_vector(tensor):
+    return torch.as_strided(tensor, (1,), (1,))
+
+
+def vector_to_scalar(tensor):
+    return torch.as_strided(tensor, (), ())
+
+
+@triton.jit
+def _scalar_reduce_fp64_kernel(
+    X, INDEX, S, Y, REDUCE: tl.constexpr, INCLUDE: tl.constexpr
+):
+    index = tl.load(("scatter_reduce",))
+    tl.device_assert(index == 0, "scalar scatter index must be zero")
+    x, src = (tl.load(X).to(tl.float64), tl.load(S).to(tl.float64))
+    if not INCLUDE:
+        value = src
+    elif REDUCE == "sum":
+        value = x + src
+    elif REDUCE == "prod":
+        value = x * src
+    elif REDUCE == "mean":
+        value = (x + src) / 2.0
+    elif REDUCE == "amax":
+        value = tl.where((x != x) | (src != src), float("nan"), tl.maximum(x, src))
+    else:
+        value = tl.where((x != x) | (src != src), float("nan"), tl.minimum(x, src))
+    tl.store(Y, value)
+
+
+def scalar_reduce_fp64_forward(inp, dim, index, src, reduce, *, include_self=True):
+    if reduce not in ("sum", "prod", "mean", "amax", "amin"):
+        raise ValueError("unsupported scatter reducer")
+    if src.dtype != inp.dtype or index.dtype not in (torch.int32, torch.int64):
+        raise RuntimeError(
+            "scalar scatter requires matching value dtypes and integer indices"
+        )
+    if src.device != inp.device or index.device != inp.device:
+        raise RuntimeError("scalar scatter tensors must be on the same device")
+    with torch_device_fn.device(inp.device):
+        out = torch.empty_like(inp)
+        _scalar_reduce_fp64_kernel[1,](
+            inp, index, src, out, reduce, include_self, enable_fp_fusion=False
+        )
+    return out
 
 
 @triton.jit
