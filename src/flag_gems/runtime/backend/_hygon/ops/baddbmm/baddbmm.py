@@ -26,7 +26,7 @@ from flag_gems.utils.triton_version_utils import HAS_TLE
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
 from ..bmm.splitk import launch_small_splitk
-from .kernels import _TUNERS, _bias_kernel, _pack_b
+from .kernels import _TUNERS, HAS_ASYNC_LOAD, _bias_kernel, _pack_b
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,21 @@ def _validate(bias, a, b):
     return shape, strides
 
 
+def _allow_async_b(b, m):
+    return (
+        HAS_ASYNC_LOAD
+        and m >= 256
+        and b.dtype in (torch.bfloat16, torch.float16)
+        and b.is_contiguous()
+        and b.data_ptr() % 16 == 0
+        and b.untyped_storage().nbytes() < 2**31
+        and getattr(
+            torch.cuda.get_device_properties(b.device), "gcnArchName", ""
+        ).split(":")[0]
+        == "gfx936"
+    )
+
+
 def _launch(bias, a, b, beta, alpha, out, bias_strides):
     batch, m, k = a.shape
     n = b.shape[2]
@@ -121,6 +136,9 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
                 b, packed, n, k, *b.stride(), num_warps=4
             )
             b = packed.transpose(1, 2)
+        launch_meta = {"BATCH": batch}
+        if algorithm == "matmul":
+            launch_meta["ALLOW_ASYNC_B"] = _allow_async_b(b, m)
         _TUNERS[algorithm][
             lambda meta: (
                 triton.cdiv(m, meta["BLOCK_M"]) * triton.cdiv(n, meta["BLOCK_N"]),
@@ -140,7 +158,7 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
             *out.stride(),
             alpha,
             beta,
-            BATCH=batch,
+            **launch_meta,
         )
     return out
 
