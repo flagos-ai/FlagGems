@@ -369,7 +369,8 @@ def test_convolution_backward_spatial_boundaries(
 
 @pytest.mark.convolution_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("nvidia", "hygon"), reason="Launch-plan regression"
+    flag_gems.vendor_name not in ("nvidia", "hygon", "mthreads", "thead"),
+    reason="Launch-plan regression",
 )
 def test_convolution_backward_repeated_input_alias():
     x = torch.randn((2, 2, 5), device=flag_gems.device)
@@ -421,3 +422,60 @@ def test_convolution_backward_large_dilation(transposed):
     result = flag_gems.convolution_backward(*args, [True] * 3)
     for actual, reference in zip(result, _reference(args)):
         gems_assert_close(actual.cpu(), reference, torch.float32)
+
+
+@pytest.mark.convolution_backward
+@pytest.mark.convolution_backward_out
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("transposed", [False, True])
+@pytest.mark.parametrize("out", [False, True])
+def test_convolution_backward_fresh_buffers(dtype, transposed, out):
+    from flag_gems.runtime import torch_device_fn
+
+    alternate = torch_device_fn.Stream()
+    current = torch_device_fn.current_stream()
+    retained = []
+    offsets = [(0, 0), (0, 0), (1, 0), (0, 1), (0, 0)]
+    for step, (input_offset, output_offset) in enumerate(offsets):
+        args = list(_inputs(2, transposed, 2, dtype))
+        for index in range(3):
+            tensor = args[index]
+            storage = torch.empty(
+                (tensor.numel() + input_offset,), device=tensor.device, dtype=dtype
+            )
+            args[index] = storage[input_offset:].view(tensor.shape)
+            args[index].copy_(tensor)
+        expected = _reference(args)
+        outputs = (
+            tuple(
+                torch.full(
+                    (reference.numel() + output_offset,),
+                    float("nan"),
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )[output_offset:].view(reference.shape)
+                for reference in expected
+            )
+            if out
+            else ()
+        )
+        torch_device_fn.synchronize()
+        stream = alternate if step % 2 else current
+        with torch_device_fn.stream(stream):
+            if out:
+                result = flag_gems.convolution_backward_out(
+                    *args,
+                    [True] * 3,
+                    out0=outputs[0],
+                    out1=outputs[1],
+                    out2=outputs[2],
+                )
+            else:
+                result = flag_gems.convolution_backward(*args, [True] * 3)
+        stream.synchronize()
+        for index, (actual, reference) in enumerate(zip(result, expected)):
+            gems_assert_close(actual.cpu(), reference, dtype)
+            if out:
+                assert actual is outputs[index]
+        # Keep previous buffers alive so a warm call must bind different pointers.
+        retained.append((args, outputs, result))

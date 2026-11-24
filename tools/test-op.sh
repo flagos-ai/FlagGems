@@ -16,19 +16,50 @@
 # limitations under the License.
 
 PR_ID=$1
+RUN_KERNEL_CHECK=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --kernel-check) RUN_KERNEL_CHECK=1 ;;
+    *) PR_ID="$1" ;;
+  esac
+  shift
+done
+
+# Ensure console scripts installed by 'pip install .[test]' (coverage, pytest,
+# pytest-md-report, …) are on PATH. The native backend gets this automatically
+# from 'source .venv/bin/activate' in the workflow; containerized backends
+# (kunlunxin, metax, hygon, iluvatar, mthreads, thead, enflame) install into
+# the container's system Python without activating anything, so the scripts
+# directory (e.g. /flagos/bin) may be absent from PATH under bash --login.
+# sysconfig.get_path("scripts") returns the directory for whatever python3 is
+# currently in PATH, covering both venv and system installs correctly.
+_py_scripts=$(python3 -c 'import sysconfig; print(sysconfig.get_path("scripts"))')
+case ":${PATH}:" in
+  *":${_py_scripts}:"*) ;;  # already present, nothing to do
+  *) export PATH="${_py_scripts}:${PATH}" ;;
+esac
+unset _py_scripts
 
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
 
 COLLECT_COVERAGE=""
 FAIL_FAST=false
+# Remember whether this is a full-range run: CHANGED_FILES is overwritten with
+# the discovered test list below, so it cannot be compared with "__ALL__" later.
+FULL_RUN=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  FULL_RUN=true
   # Replace "__ALL__" with all tests
   CHANGED_FILES=$(find tests -name "test*.py")
   # add options to generate summary report
   EXTRA_OPTS="--md-report"
   EXTRA_OPTS+=" --md-report-verbose=1"
+  # Reduce test quantity when QUICK_TESTS is set (e.g. daily workflow)
+  if [[ -n "${QUICK_TESTS:-}" ]]; then
+    EXTRA_OPTS+=" --first-parameter-only"
+  fi
   # --md-report-output is set per-batch (see run_batch); the final file is
   # assembled by concatenating all per-batch reports at the end.
   SUFFIX=""
@@ -182,7 +213,7 @@ run_batch() {
   local label="$1"; shift
   local report_file="$1"; shift
   local flags="$1"; shift
-  local timeout_s="${TEST_BATCH_TIMEOUT:-1800}"
+  local timeout_s="${TEST_BATCH_TIMEOUT:-3600}"
   local extra_flags=""
   if [[ "$report_file" != "-" ]]; then
     extra_flags="--md-report-output=${report_file}"
@@ -204,9 +235,9 @@ run_batch() {
 
 FAILURES=()
 _BATCH_IDX=0
-if [[ "${CHANGED_FILES}" == "__ALL__" && ${#TEST_CASES[@]} -gt 0 ]]; then
+if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   # Full-range daily run: batch files so each pytest process covers many files.
-  BATCH_SIZE="${TEST_BATCH_SIZE:-20}"
+  BATCH_SIZE="${TEST_BATCH_SIZE:-100}"
   batch=()
   for item in "${TEST_CASES[@]}"; do
     batch+=("$item")
@@ -280,7 +311,7 @@ fi
 # Skipped for full-range daily runs (CHANGED_FILES == __ALL__) because the GPU
 # accuracy run already covers all files; running them again on CPU reference
 # doubles the runtime for negligible extra signal in that context.
-if [[ "${CHANGED_FILES}" != "__ALL__" ]]; then
+if ! $FULL_RUN; then
   for item in "${TEST_CASES_CPU[@]}"; do
     echo "Running quick-cpu mode unit tests for ${item}"
     if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
@@ -299,6 +330,41 @@ for item in "${PERF_TEST_CASES[@]}"; do
     FAILURES+=("${item} (benchmark)")
   fi
 done
+
+# Derive benchmark files for changed operators (from unit-test files and
+# marker-derived ops) that were NOT already covered by PERF_TEST_CASES above.
+# This ensures that a PR adding/modifying an operator implementation or its
+# unit tests still gets a kernel-check even when the PR does not touch the
+# benchmark file itself.
+# kernel-check is opt-in: set RUN_KERNEL_CHECK=1 to enable (e.g. python-op /
+# NVIDIA CI). Backend jobs leave it unset and skip this block entirely.
+if [[ "$RUN_KERNEL_CHECK" == "1" ]]; then
+KERNEL_CHECK_EXTRAS=()
+_already_checked=" ${PERF_TEST_CASES[*]} "
+for item in "${TEST_CASES[@]}"; do
+  bench="benchmark/$(basename "$item")"
+  if [[ -f "$bench" ]] && [[ ! "$_already_checked" =~ " ${bench} " ]]; then
+    KERNEL_CHECK_EXTRAS+=("$bench")
+    _already_checked+="${bench} "
+  fi
+done
+for marker in "${OPS_MARKERS[@]}"; do
+  [[ -z "$marker" ]] && continue
+  bench="benchmark/test_${marker}.py"
+  if [[ -f "$bench" ]] && [[ ! "$_already_checked" =~ " ${bench} " ]]; then
+    KERNEL_CHECK_EXTRAS+=("$bench")
+    _already_checked+="${bench} "
+  fi
+done
+
+for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
+  echo "Running kernel-check for ${item} (derived from changed operator)"
+  if ! pytest -s ${item} --kernel-check; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item} (kernel-check)")
+  fi
+done
+fi
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default

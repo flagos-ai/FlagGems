@@ -161,6 +161,8 @@ def test_upsample_lanczos2d_aa_backward(
     ],
 )
 def test_upsample_lanczos2d_aa_backward_dtypes(monkeypatch, dtype, tolerance):
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     _disable_gemm_path(monkeypatch)
     monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((1, 2, 11, 13), dtype=dtype, device=flag_gems.device)
