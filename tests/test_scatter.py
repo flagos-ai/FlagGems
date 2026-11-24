@@ -179,8 +179,7 @@ def test_scatter_add_2d_noncontiguous(layout, dim, dtype):
     data_ptr = inp.data_ptr()
     stride = inp.stride()
 
-    with flag_gems.use_gems():
-        res_out = inp.scatter_add_(dim, index, src)
+    res_out = flag_gems.scatter_add_(inp, dim, index, src)
 
     assert res_out is inp
     assert res_out.data_ptr() == data_ptr
