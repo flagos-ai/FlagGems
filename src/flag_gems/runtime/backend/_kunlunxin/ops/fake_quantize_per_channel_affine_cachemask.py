@@ -16,8 +16,9 @@
 ``fake_quantize_per_channel_affine_cachemask`` / ``..._out``.
 
 The non-out entry below retains the part1 implementation. The out entry uses
-independent pure Triton quantization, dense-mask packing, and BF16 conversion;
-it does not call vendor computation, copy, or conversion operators.
+an independent pure Triton quantization kernel selected by tile size (see the
+out-variant notes at the end of this file); it does not call vendor computation,
+copy, or conversion operators.
 
 Original non-out design notes (vs. the generic 1D implementation, ~0.8 ms/kernel + ~236 ms/call
 host recompile due to a ``grid = lambda``):
@@ -54,8 +55,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton import knobs as _triton_knobs
-from triton.runtime import driver as _triton_driver
 
 from flag_gems.runtime import torch_device_fn
 
@@ -467,315 +466,306 @@ def fake_quantize_per_channel_affine_cachemask(
     )
 
 
-@triton.jit
-def _out_offsets(i, SHAPE: tl.constexpr, STRIDES: tl.constexpr):
-    off = tl.full(i.shape, 0, tl.int32)
-    for d in tl.static_range(len(SHAPE) - 1, -1, -1):
-        off += (i % SHAPE[d]) * STRIDES[d]
-        i = i // SHAPE[d]
-    return off
+# --- Out variant (integrated passed22 candidate) -----------------------------
+# Semantics reproduced from the ATen reference (verified on this target):
+#   q   = nearbyint_(half-to-even)(x / scale) + zero_point   # fp32 opmath
+#   m   = (q >= quant_min) & (q <= quant_max)                # inclusive
+#   out = (clamp(q, quant_min, quant_max) - zero_point) * scale
+# The quotient must be a true IEEE fp32 division: a focused probe showed the
+# reference matches x/s on 135/135 discriminating inputs and x*(1/s) on 0, and
+# ties must round half-to-even (no native rint on this backend).
+# Both destinations (out0, out1) are written in place and returned.
+
+_OUT_NDIM_MAX = 8
 
 
 @triton.jit
-def _out_prepare(s, inv, C, SS: tl.constexpr, B: tl.constexpr):
-    c = tl.program_id(0) * B + tl.arange(0, B)
-    v = tl.load(s + c * SS, c < C, other=1).to(tl.float32)
-    tl.store(inv + c, tl.div_rn(1.0, v), c < C)
+def _out_round_half_to_even(x, magic, FAST: tl.constexpr):
+    """round-to-nearest, ties-to-even (matches std::nearbyint in fp32).
+
+    FAST uses the shift trick: for |x| <= 2^22, x + 1.5*2^23 lands where the fp32
+    spacing is exactly 1, so the add rounds to the nearest integer with ties to
+    even and subtracting the constant is exact - 2 ops instead of ~14. The host
+    enables it only when max(|quant_min|, |quant_max|) < 2^22, so no result that
+    can reach the clamp range is affected.
+    """
+    if FAST:
+        return (x + magic) - magic
+    fl = tl.floor(x)
+    frac = x - fl
+    is_even = (tl.floor(fl * 0.5) * 2.0) == fl
+    return tl.where((frac > 0.5) | ((frac == 0.5) & (is_even == 0)), fl + 1.0, fl)
 
 
 @triton.jit
-def _out_quant(
-    x,
-    s,
-    z,
-    inv,
-    y,
-    m,
-    N,
+def _fq_cachemask_kernel(
+    x_ptr,
+    s_ptr,
+    z_ptr,
+    o_ptr,
+    m_ptr,
+    n_elements,
+    qmin,
+    qmax,
+    magic,
     INNER: tl.constexpr,
     C: tl.constexpr,
-    LO: tl.constexpr,
-    HI: tl.constexpr,
-    SS: tl.constexpr,
-    ZS: tl.constexpr,
-    SHAPE: tl.constexpr,
-    XS: tl.constexpr,
-    YS: tl.constexpr,
-    MS: tl.constexpr,
-    FLAT: tl.constexpr,
-    SCALAR: tl.constexpr,
-    INLINE: tl.constexpr,
-    DIRECT: tl.constexpr,
-    ENC: tl.constexpr,
-    B: tl.constexpr,
-    EVEN: tl.constexpr,
+    BLOCK: tl.constexpr,
+    FULL: tl.constexpr,
+    FAST: tl.constexpr,
+    MB: tl.constexpr,
 ):
-    i = tl.program_id(0) * B + tl.arange(0, B)
-    if SCALAR:
-        c = (tl.program_id(0) * B // INNER) % C
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    if INNER == 1:
+        ch = off % C
     else:
-        c = (i // INNER) % C
-    scale = tl.load(s + c * SS).to(tl.float32)
-    zero = tl.load(z + c * ZS).to(tl.float32)
-    if INLINE:
-        iv = tl.div_rn(1.0, scale)
-    else:
-        iv = tl.load(inv + c)
-    if FLAT:
-        xi = i
-        yi = i
-        mi = i
-    else:
-        xi = _out_offsets(i, SHAPE, XS)
-        yi = _out_offsets(i, SHAPE, YS)
-        mi = _out_offsets(i, SHAPE, MS)
-    if EVEN:
-        v = tl.load(x + xi).to(tl.float32)
-    else:
-        v = tl.load(x + xi, i < N, other=0).to(tl.float32)
-    scaled = v * iv
-    valid = tl.minimum(tl.maximum(2147483648.0 - tl.abs(scaled), 0.0), 1.0)
-    scaled = scaled * valid + (-2147483648.0) * (1.0 - valid)
-    r = ((scaled + 12582912.0) - 12582912.0) + zero
-    clipped = tl.minimum(tl.maximum(r, LO), HI)
-    out = (clipped - zero) * scale
-    if DIRECT:
-        mask = (r >= LO) & (r <= HI)
-    else:
-        lo = tl.minimum(tl.maximum((r - (LO - 1)) * 1e30, 0.0), 1.0)
-        hi = tl.minimum(tl.maximum(((HI + 1) - r) * 1e30, 0.0), 1.0)
-        mask = lo * hi
-        if ENC:
-            mask = 2.0 - mask
-    if EVEN:
-        tl.store(y + yi, out)
-        tl.store(m + mi, mask)
-    else:
-        tl.store(y + yi, out, i < N)
-        tl.store(m + mi, mask, i < N)
+        ch = (off // INNER) % C
 
-
-@triton.jit
-def _out_pack_normal(
-    src,
-    dst,
-    N,
-    B: tl.constexpr,
-    EVEN: tl.constexpr,
-    V01: tl.constexpr,
-    V11: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
-):
-    i = tl.program_id(0) * B + tl.arange(0, B)
-    if EVEN:
-        v = tl.load(src + i)
-    else:
-        v = tl.load(src + i, i < N, other=0.0)
-    b = tl.minimum(tl.maximum((2.0 - v) * 2.0, 0.0), 1.0)
-    a0 = tl.minimum(tl.maximum((V01 - v) * S0, 0.0), 1.0)
-    a1 = tl.minimum(tl.maximum((V11 - v) * S1, 0.0), 1.0)
-    bits = a0 + a1 + b * 255.0
-    if EVEN:
-        tl.store(dst + i, bits * 5.960464477539063e-08)
-    else:
-        tl.store(dst + i, bits * 5.960464477539063e-08, i < N)
-
-
-@triton.jit
-def _out_cast(
-    src,
-    dst,
-    N,
-    SHAPE: tl.constexpr,
-    STRIDES: tl.constexpr,
-    FLAT: tl.constexpr,
-    B: tl.constexpr,
-    EVEN: tl.constexpr,
-):
-    i = tl.program_id(0) * B + tl.arange(0, B)
-    if EVEN:
-        v = tl.load(src + i)
-    else:
-        v = tl.load(src + i, i < N, other=0.0)
-    # Explicit IEEE round-to-nearest-even; the vector BF16 cast loses ties.
-    # BF16 keeps the high 16 bits. Add 0x7fff plus the retained LSB so an
-    # exact halfway low word 0x8000 rounds toward an even retained word.
-    # The same integer rule handles either sign and preserves signed zero.
-    bits = v.to(tl.uint32, bitcast=True)
-    rounded = (bits + 32767 + ((bits >> 16) & 1)) >> 16
-    # Preserve NaNs as quiet NaNs instead of rounding a small payload to inf.
-    rounded = tl.where((bits & 0x7FFFFFFF) > 0x7F800000, (bits >> 16) | 0x40, rounded)
-    v = rounded.to(tl.uint16)
-    if FLAT:
-        off = i
-    else:
-        off = _out_offsets(i, SHAPE, STRIDES)
-    if EVEN:
-        tl.store(dst + off, v)
-    else:
-        tl.store(dst + off, v, i < N)
-
-
-# Out-only compiled launch cache. It never retains tensors, pointers, or streams.
-_OUT_COMPILED = {}
-
-
-def _out_launch(kernel, grid, args, device):
-    descriptors = tuple(
-        (arg.dtype, arg.data_ptr() % 16) if isinstance(arg, torch.Tensor) else arg
-        for arg in args
-    )
-    key = (kernel, device.index, grid, descriptors)
-    hooks = (
-        _triton_knobs.runtime.launch_enter_hook,
-        _triton_knobs.runtime.launch_exit_hook,
-    )
-    active_hooks = any(
-        hook is not None and (not hasattr(hook, "calls") or hook.calls)
-        for hook in hooks
-    )
-    entry = None if active_hooks else _OUT_COMPILED.get(key)
-    if entry is None:
-        compiled = kernel[grid](*args)
-        if not active_hooks:
-            _OUT_COMPILED[key] = (compiled, _triton_driver.active.get_current_device())
-        return
-    compiled, triton_device = entry
-    stream = _triton_driver.active.get_current_stream(triton_device)
-    launch_args = tuple(
-        arg.data_ptr() if isinstance(arg, torch.Tensor) else arg for arg in args
-    )
-    compiled.run(
-        grid[0],
-        1,
-        1,
-        stream,
-        compiled.function,
-        compiled.packed_metadata,
-        None,
-        None,
-        None,
-        *launch_args,
-    )
-
-
-def _out_run(input, scale, zero_point, axis, quant_min, quant_max, *, out0, out1):
-    n = input.numel()
-    if not n:
-        return out0, out1
-    axis %= input.ndim
-    shape = tuple(input.shape)
-    channels = shape[axis]
-    inner = 1
-    for size in shape[axis + 1 :]:
-        inner *= size
-    flat = input.is_contiguous() and out0.is_contiguous() and out1.is_contiguous()
-    direct = n <= 512 or not flat or n % 2 or out1.data_ptr() % 2
-    block = (
-        triton.next_power_of_2(n)
-        if n <= 512
-        else 64 if not flat else 4096 if n < 98304 else 16384
-    )
-    scalar = inner >= block and inner % block == 0
-    inline = scalar or direct
-    with torch_device_fn.device(input.device):
-        inverse = scale
-        if not inline:
-            inverse = torch.empty(channels, device=input.device, dtype=torch.float32)
-            _out_launch(
-                _out_prepare,
-                ((channels + 255) // 256,),
-                (scale, inverse, channels, scale.stride(0), 256),
-                input.device,
-            )
-        scratch = (
-            out1 if direct else torch.empty(n, device=input.device, dtype=torch.float16)
-        )
-        # Standalone conversion avoids the fused vector BF16 tie-rounding defect.
-        separate_bf16 = input.dtype == torch.bfloat16 and n > 512
-        output = (
-            torch.empty(n, device=input.device, dtype=torch.float32)
-            if separate_bf16
-            else out0
-        )
-        if separate_bf16:
-            stride = 1
-            out_strides = []
-            for size in reversed(shape):
-                out_strides.append(stride)
-                stride *= size
-            out_strides = tuple(reversed(out_strides))
+    if FULL:
+        # n_elements is an exact multiple of BLOCK: no lane is ever out of
+        # bounds, so neither the loads nor the stores need predication.
+        s = tl.load(s_ptr + ch).to(tl.float32)
+        z = tl.load(z_ptr + ch).to(tl.float32)
+        x = tl.load(x_ptr + off).to(tl.float32)
+        q = _out_round_half_to_even(x / s, magic, FAST) + z
+        qc = tl.minimum(tl.maximum(q, qmin), qmax)
+        # in-range == clamp did not change the value (identical to the inclusive
+        # qmin/qmax test, and False for NaN), so reuse the clamp result.
+        if MB:
+            tl.store(m_ptr + off, q == qc)
         else:
-            out_strides = out0.stride()
-        _out_launch(
-            _out_quant,
-            ((n + block - 1) // block,),
-            (
+            tl.store(m_ptr + off, (q == qc).to(tl.uint8))
+        tl.store(o_ptr + off, ((qc - z) * s).to(o_ptr.dtype.element_ty))
+    else:
+        ok = off < n_elements
+        s = tl.load(s_ptr + ch, mask=ok, other=1.0).to(tl.float32)
+        z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr + off, mask=ok, other=0.0).to(tl.float32)
+        q = _out_round_half_to_even(x / s, magic, FAST) + z
+        qc = tl.minimum(tl.maximum(q, qmin), qmax)
+        if MB:
+            tl.store(m_ptr + off, q == qc, mask=ok)
+        else:
+            tl.store(m_ptr + off, (q == qc).to(tl.uint8), mask=ok)
+        tl.store(o_ptr + off, ((qc - z) * s).to(o_ptr.dtype.element_ty), mask=ok)
+
+
+@triton.jit
+def _fq_cachemask_strided_kernel(
+    x_ptr,
+    s_ptr,
+    z_ptr,
+    o_ptr,
+    m_ptr,
+    n_elements,
+    inner,
+    C,
+    qmin,
+    qmax,
+    magic,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    xs0,
+    xs1,
+    xs2,
+    xs3,
+    xs4,
+    xs5,
+    xs6,
+    xs7,
+    os0,
+    os1,
+    os2,
+    os3,
+    os4,
+    os5,
+    os6,
+    os7,
+    ms0,
+    ms1,
+    ms2,
+    ms3,
+    ms4,
+    ms5,
+    ms6,
+    ms7,
+    NDIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+    FAST: tl.constexpr,
+):
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    ok = off < n_elements
+    ch = (off // inner) % C
+    s = tl.load(s_ptr + ch, mask=ok, other=1.0).to(tl.float32)
+    z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
+
+    xo = tl.zeros([BLOCK], dtype=tl.int64)
+    oo = tl.zeros([BLOCK], dtype=tl.int64)
+    mo = tl.zeros([BLOCK], dtype=tl.int64)
+    rem = off
+    if NDIM > 7:
+        i7 = rem % d7
+        rem = rem // d7
+        xo += i7 * xs7
+        oo += i7 * os7
+        mo += i7 * ms7
+    if NDIM > 6:
+        i6 = rem % d6
+        rem = rem // d6
+        xo += i6 * xs6
+        oo += i6 * os6
+        mo += i6 * ms6
+    if NDIM > 5:
+        i5 = rem % d5
+        rem = rem // d5
+        xo += i5 * xs5
+        oo += i5 * os5
+        mo += i5 * ms5
+    if NDIM > 4:
+        i4 = rem % d4
+        rem = rem // d4
+        xo += i4 * xs4
+        oo += i4 * os4
+        mo += i4 * ms4
+    if NDIM > 3:
+        i3 = rem % d3
+        rem = rem // d3
+        xo += i3 * xs3
+        oo += i3 * os3
+        mo += i3 * ms3
+    if NDIM > 2:
+        i2 = rem % d2
+        rem = rem // d2
+        xo += i2 * xs2
+        oo += i2 * os2
+        mo += i2 * ms2
+    if NDIM > 1:
+        i1 = rem % d1
+        rem = rem // d1
+        xo += i1 * xs1
+        oo += i1 * os1
+        mo += i1 * ms1
+    i0 = rem % d0
+    xo += i0 * xs0
+    oo += i0 * os0
+    mo += i0 * ms0
+
+    x = tl.load(x_ptr + xo, mask=ok, other=0.0).to(tl.float32)
+    q = _out_round_half_to_even(x / s, magic, FAST) + z
+    qc = tl.minimum(tl.maximum(q, qmin), qmax)
+    tl.store(m_ptr + mo, (q == qc).to(tl.uint8), mask=ok)
+    tl.store(o_ptr + oo, ((qc - z) * s).to(o_ptr.dtype.element_ty), mask=ok)
+
+
+def _out_run(
+    input,
+    scale,
+    zero_point,
+    axis,
+    quant_min,
+    quant_max,
+    *,
+    out0,
+    out1,
+):
+    n_elements = input.numel()
+    if n_elements == 0:
+        return out0, out1
+
+    nd = input.dim()
+    a = axis + nd if axis < 0 else axis
+    shape = input.shape
+    C = shape[a]
+    inner = 1
+    for d in shape[a + 1 :]:
+        inner *= d
+
+    if out1.dtype == torch.bool:
+        mask_bool = True
+        mask_arg = out1
+    else:
+        mask_bool = False
+        mask_arg = out1.view(torch.uint8)
+
+    qmin = float(quant_min)
+    qmax = float(quant_max)
+    magic = 12582912.0  # 1.5 * 2**23, exact in fp32
+    fast_rne = max(abs(quant_min), abs(quant_max)) < (1 << 22)
+
+    if input.is_contiguous() and out0.is_contiguous() and mask_arg.is_contiguous():
+        # Cost on this target tracks CTAs and tile bytes: the measured optimum
+        # elements-per-CTA grows with the problem size (98304 -> 4096 elements,
+        # >=524288 -> 8192), while launch-bound tiny inputs keep the smallest
+        # tile.
+        if n_elements <= 8192:
+            BLOCK = 1024
+            nw = 4
+        elif n_elements <= 131072:
+            BLOCK = 4096
+            nw = 4
+        else:
+            BLOCK = 8192
+            nw = 4
+        with torch_device_fn.device(input.device):
+            _fq_cachemask_kernel[(triton.cdiv(n_elements, BLOCK),)](
                 input,
                 scale,
                 zero_point,
-                inverse,
-                output,
-                scratch,
-                n,
-                inner,
-                channels,
-                quant_min,
-                quant_max,
-                scale.stride(0),
-                zero_point.stride(0),
-                shape,
-                input.stride(),
-                out_strides,
-                out1.stride(),
-                flat,
-                scalar,
-                inline,
-                direct,
-                True,
-                block,
-                n % block == 0,
-            ),
-            input.device,
+                out0,
+                mask_arg,
+                n_elements,
+                qmin,
+                qmax,
+                magic,
+                INNER=inner,
+                C=C,
+                BLOCK=BLOCK,
+                FULL=(n_elements % BLOCK == 0),
+                FAST=fast_rne,
+                MB=mask_bool,
+                num_warps=nw,
+            )
+        return out0, out1
+
+    # general strided fallback (no layout conversion on the data path)
+    def _pad(seq):
+        seq = list(seq) + [1] * (_OUT_NDIM_MAX - len(seq))
+        return seq
+
+    ds = _pad(shape)
+    xs = _pad(input.stride())
+    os_ = _pad([s // out0.element_size() for s in out0.stride()])
+    mask_view = out1.view(torch.uint8) if mask_bool else out1
+    ms = _pad(mask_view.stride())
+    BLOCK = 1024
+    with torch_device_fn.device(input.device):
+        _fq_cachemask_strided_kernel[(triton.cdiv(n_elements, BLOCK),)](
+            input,
+            scale,
+            zero_point,
+            out0,
+            mask_view,
+            n_elements,
+            inner,
+            C,
+            qmin,
+            qmax,
+            magic,
+            *ds,
+            *xs,
+            *os_,
+            *ms,
+            NDIM=nd,
+            BLOCK=BLOCK,
+            FAST=fast_rne,
+            num_warps=4,
         )
-        if not direct:
-            pairs = n // 2
-            packed = out1.view(-1).view(torch.float16)
-            # fp16 scratch values 1/2 become four normal fp32 bit patterns.
-            # Arithmetic decoding writes two canonical bool bytes per half.
-            _out_launch(
-                _out_pack_normal,
-                ((pairs + 8191) // 8192,),
-                (
-                    scratch.view(torch.float32),
-                    packed,
-                    pairs,
-                    8192,
-                    pairs % 8192 == 0,
-                    0.0078277587890625,
-                    2.00390625,
-                    1048576.0,
-                    4096.0,
-                ),
-                input.device,
-            )
-        if separate_bf16:
-            _out_launch(
-                _out_cast,
-                ((n + 8191) // 8192,),
-                (
-                    output,
-                    out0.view(torch.uint16),
-                    n,
-                    shape,
-                    out0.stride(),
-                    out0.is_contiguous(),
-                    8192,
-                    n % 8192 == 0,
-                ),
-                input.device,
-            )
     return out0, out1
 
 
