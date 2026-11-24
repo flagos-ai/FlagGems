@@ -103,6 +103,35 @@ def test_topk_3d_lastdim(shape, topk, dtype):
 
 
 @pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="Vendor backends override topk with their own host functions",
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("topk", [1, 7, 64])
+def test_topk_non_contiguous_input(topk, largest, dtype):
+    # Regression test for issue #7829: the topk kernels assume a dense
+    # (batch, dim) layout, so a strided view such as ``x.t().contiguous().t()``
+    # used to read elements at the wrong offsets and return wrong results.
+    hiddensize = 64
+    x = torch.linspace(
+        -12, 13, 2 * hiddensize, dtype=dtype, device=flag_gems.device
+    ).reshape(2, hiddensize)
+    x = x.t().contiguous().t()
+    assert x.stride() == (1, 2)
+
+    ref_value, ref_index = torch.topk(
+        utils.to_reference(x), topk, dim=-1, largest=largest
+    )
+
+    res_value, res_index = flag_gems.topk(x, topk, dim=-1, largest=largest)
+
+    utils.gems_assert_close(res_value, ref_value, dtype)
+    utils.gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.topk
 def test_topk_radix_tle_config_uses_large_fp32_shape_heuristic():
     topk_op = import_module(flag_gems.topk.__module__)
 
