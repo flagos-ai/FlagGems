@@ -573,6 +573,14 @@ class MedianNoDimBackwardBenchmark(_ForwardShapeBenchmark, MedianNoDimBenchmark)
 
 
 class MedianDimBackwardBenchmark(_ForwardShapeBenchmark, MedianReductionBenchmark):
+    # The shared backward VRAM filter sizes every row with math.prod(), which
+    # cannot digest the [shape, dim, keepdim] reduction rows carried by
+    # median_dim. Every median_dim row is at most 8*64*384*64 = 12,582,912
+    # elements (< 2**24), far below the 2**27 budget, so the filter would keep
+    # them all anyway. Skip it here; teaching the shared filter about
+    # structured specs belongs in the benchmark base, not this operator PR.
+    MAX_BACKWARD_ELEMENTS = None
+
     def _benchmark_callable(self, op, *args, **kwargs):
         inp = args[0]
         dim = args[1]
