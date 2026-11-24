@@ -31,6 +31,7 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
+    _FAST_MATH,
     _promote_dtypes,
     foreach_binary_list,
     foreach_binary_scalar,
@@ -106,7 +107,7 @@ def _pow_fn(a, b):
     # promoted.
     af = a.to(tl.float32)
     bf = b.to(tl.float32)
-    if a.dtype == tl.float16 or a.dtype == tl.bfloat16:
+    if _FAST_MATH and (a.dtype == tl.float16 or a.dtype == tl.bfloat16):
         # 16-bit output: ``powf`` is about half the kernel time, and the
         # fixups a negative base needs are exactly what a *block-wide* guard
         # would avoid -- but on data with mixed signs that guard never fires

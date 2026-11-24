@@ -24,6 +24,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
+from .sum import _resolve_acc_dtype, _tle_sum_flat
 from .sum import sum_dim as _sum_dim_tle
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,14 @@ def mean(inp, *, dtype=None):
         return torch.full([], float("nan"), dtype=dtype, device=inp.device)
     BLOCK_SIZE = get_block_size_1d(M, inp.element_size())
     out = torch.empty([], dtype=dtype, device=inp.device)
+
+    # `mean = sum / M`, and the TLE flat reduce can fold the scale into its
+    # final store, so one launch produces the mean directly. The single-CTA
+    # scalar kernel below reduces the whole tensor in one program and measured
+    # 0.12-0.13x on the 1M-element full-reduction case; the flat pipeline gets
+    # ~0.9x because it parallelises over the 64 cores.
+    if _tle_sum_flat(inp, out, _resolve_acc_dtype(inp.dtype), scale=1.0 / M):
+        return out
 
     with torch_device_fn.device(inp.device):
         mean_scalar_kernel[(1, 1, 1)](inp, out, M, BLOCK_SIZE, buffer_size_limit=2048)

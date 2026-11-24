@@ -247,8 +247,15 @@ def _affine_grid_generator_backward_3d_kernel(
 
     batch_offset = batch_id * D * H * W * 3
     num_w_tiles = tl.cdiv(W, BLOCK_W)
+    num_rows = D * H
 
-    for d in range(D):
+    # The (d, h) planes are walked by a single flattened loop: XPU cannot lower
+    # a `tt.reduce` that lives inside two nested loops ("failed to legalize
+    # operation 'tt.reduce'"), so the row reduce below must stay at depth 1.
+    for row in range(num_rows):
+        d = row // H
+        h = row % H
+
         d_f = d.to(acc_dtype)
         if align_corners:
             z_val = (
@@ -257,73 +264,70 @@ def _affine_grid_generator_backward_3d_kernel(
         else:
             z_val = (2.0 * d_f + 1.0) / D - 1.0
 
-        for h in range(H):
-            h_f = h.to(acc_dtype)
+        h_f = h.to(acc_dtype)
+        if align_corners:
+            y_val = (
+                2.0 * h_f / (H - 1) - 1.0 if H > 1 else tl.zeros((), dtype=acc_dtype)
+            )
+        else:
+            y_val = (2.0 * h_f + 1.0) / H - 1.0
+
+        row_offset = batch_offset + row * W * 3
+
+        row_g0 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_g1 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_g2 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_g0x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_g1x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_g2x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+
+        for w_tile in range(num_w_tiles):
+            w_offs = w_tile * BLOCK_W + tl.arange(0, BLOCK_W)
+            w_mask = w_offs < W
+
             if align_corners:
-                y_val = (
-                    2.0 * h_f / (H - 1) - 1.0
-                    if H > 1
-                    else tl.zeros((), dtype=acc_dtype)
+                x_coords = (
+                    2.0 * w_offs.to(acc_dtype) / (W - 1) - 1.0
+                    if W > 1
+                    else tl.zeros([BLOCK_W], dtype=acc_dtype)
                 )
             else:
-                y_val = (2.0 * h_f + 1.0) / H - 1.0
+                x_coords = (2.0 * w_offs.to(acc_dtype) + 1.0) / W - 1.0
 
-            row_offset = batch_offset + (d * H * W + h * W) * 3
+            ptrs_0 = grad_output_ptr + row_offset + w_offs * 3
+            ptrs_1 = grad_output_ptr + row_offset + w_offs * 3 + 1
+            ptrs_2 = grad_output_ptr + row_offset + w_offs * 3 + 2
 
-            row_g0 = tl.zeros([BLOCK_W], dtype=acc_dtype)
-            row_g1 = tl.zeros([BLOCK_W], dtype=acc_dtype)
-            row_g2 = tl.zeros([BLOCK_W], dtype=acc_dtype)
-            row_g0x = tl.zeros([BLOCK_W], dtype=acc_dtype)
-            row_g1x = tl.zeros([BLOCK_W], dtype=acc_dtype)
-            row_g2x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+            g0 = tl.load(ptrs_0, mask=w_mask, other=0.0).to(acc_dtype)
+            g1 = tl.load(ptrs_1, mask=w_mask, other=0.0).to(acc_dtype)
+            g2 = tl.load(ptrs_2, mask=w_mask, other=0.0).to(acc_dtype)
 
-            for w_tile in range(num_w_tiles):
-                w_offs = w_tile * BLOCK_W + tl.arange(0, BLOCK_W)
-                w_mask = w_offs < W
+            row_g0 += g0
+            row_g1 += g1
+            row_g2 += g2
+            row_g0x += g0 * x_coords
+            row_g1x += g1 * x_coords
+            row_g2x += g2 * x_coords
 
-                if align_corners:
-                    x_coords = (
-                        2.0 * w_offs.to(acc_dtype) / (W - 1) - 1.0
-                        if W > 1
-                        else tl.zeros([BLOCK_W], dtype=acc_dtype)
-                    )
-                else:
-                    x_coords = (2.0 * w_offs.to(acc_dtype) + 1.0) / W - 1.0
+        s_g0 = tl.sum(row_g0, axis=0)
+        s_g1 = tl.sum(row_g1, axis=0)
+        s_g2 = tl.sum(row_g2, axis=0)
+        s_g0x = tl.sum(row_g0x, axis=0)
+        s_g1x = tl.sum(row_g1x, axis=0)
+        s_g2x = tl.sum(row_g2x, axis=0)
 
-                ptrs_0 = grad_output_ptr + row_offset + w_offs * 3
-                ptrs_1 = grad_output_ptr + row_offset + w_offs * 3 + 1
-                ptrs_2 = grad_output_ptr + row_offset + w_offs * 3 + 2
-
-                g0 = tl.load(ptrs_0, mask=w_mask, other=0.0).to(acc_dtype)
-                g1 = tl.load(ptrs_1, mask=w_mask, other=0.0).to(acc_dtype)
-                g2 = tl.load(ptrs_2, mask=w_mask, other=0.0).to(acc_dtype)
-
-                row_g0 += g0
-                row_g1 += g1
-                row_g2 += g2
-                row_g0x += g0 * x_coords
-                row_g1x += g1 * x_coords
-                row_g2x += g2 * x_coords
-
-            s_g0 = tl.sum(row_g0, axis=0)
-            s_g1 = tl.sum(row_g1, axis=0)
-            s_g2 = tl.sum(row_g2, axis=0)
-            s_g0x = tl.sum(row_g0x, axis=0)
-            s_g1x = tl.sum(row_g1x, axis=0)
-            s_g2x = tl.sum(row_g2x, axis=0)
-
-            acc_00 += s_g0x
-            acc_01 += s_g0 * y_val
-            acc_02 += s_g0 * z_val
-            acc_03 += s_g0
-            acc_10 += s_g1x
-            acc_11 += s_g1 * y_val
-            acc_12 += s_g1 * z_val
-            acc_13 += s_g1
-            acc_20 += s_g2x
-            acc_21 += s_g2 * y_val
-            acc_22 += s_g2 * z_val
-            acc_23 += s_g2
+        acc_00 += s_g0x
+        acc_01 += s_g0 * y_val
+        acc_02 += s_g0 * z_val
+        acc_03 += s_g0
+        acc_10 += s_g1x
+        acc_11 += s_g1 * y_val
+        acc_12 += s_g1 * z_val
+        acc_13 += s_g1
+        acc_20 += s_g2x
+        acc_21 += s_g2 * y_val
+        acc_22 += s_g2 * z_val
+        acc_23 += s_g2
 
     out_base = batch_id * 12
     tl.store(grad_theta_ptr + out_base + 0, acc_00)

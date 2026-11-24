@@ -20,11 +20,13 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-_pow = tl_extra_shim.pow
+# Natural log of pi, spelled as a literal. `tl.log(pi)` with `pi` a Python float
+# constant is mis-folded on this backend to log2(pi) = 1.6514961 (instead of
+# 1.1447299), which shifted every a < 0.5 result by e^0.5068 (~40% relative).
+_LOG_PI = tl.constexpr(1.1447298858494001741434273513531)
 
 
 @triton.jit
@@ -76,7 +78,7 @@ def igamma_kernel(
     log_gamma_a = (z + 0.5) * tl.log(t) - t + tl.log(sqrt_2pi * p)
     log_gamma_a = tl.where(
         reflect_mask,
-        tl.log(pi) - tl.log(tl.abs(tl.sin(pi * a_f32))) - log_gamma_a,
+        _LOG_PI - tl.log(tl.abs(tl.sin(pi * a_f32))) - log_gamma_a,
         log_gamma_a,
     )
 
@@ -92,8 +94,8 @@ def igamma_kernel(
     # fixed 60-term sum is fully converged regardless of tensor shape/size.
     small_x = x_f32 < (a_f32 + 1.0)
 
-    series_result = _pow(a_f32, -1.0)
-    series_term = _pow(a_f32, -1.0)
+    series_result = 1.0 / a_f32
+    series_term = 1.0 / a_f32
     ap = a_f32
     for i in range(60):
         ap = ap + 1.0
@@ -104,29 +106,36 @@ def igamma_kernel(
     # ========== Branch 2: continued fraction (fast-converging for x >= a + 1) ==========
     # Lentz's method for Q(a,x); P(a,x) = 1 - Q(a,x). Used where x >= a + 1, where
     # it converges in a few dozen iterations, so 60 iterations is safely enough.
-    fpmin = 1e-30
-    b = x_f32 + 1.0 - a_f32
-    c = b * 0.0 + 1.0e30
-    d = _pow(b, -1.0)
-    h = d
+    #
+    # Both branches together are ~85% of the kernel cost and only one is ever
+    # selected per element, so the continued fraction is skipped whenever every
+    # lane of the block satisfies x < a + 1 (block-uniform test, mirroring what a
+    # SIMT library does when a whole warp takes the same branch).
+    result = series_res
+    if tl.max(x_f32 - a_f32) >= 1.0:
+        fpmin = 1e-30
+        b = x_f32 + 1.0 - a_f32
+        c = b * 0.0 + 1.0e30
+        d = 1.0 / b
+        h = d
 
-    n = 1.0
-    for i in range(60):
-        an = -n * (n - a_f32)
-        b = b + 2.0
-        d = an * d + b
-        d = tl.where(tl.abs(d) < fpmin, fpmin, d)
-        c = b + an / c
-        c = tl.where(tl.abs(c) < fpmin, fpmin, c)
-        d = _pow(d, -1.0)
-        delta = c * d
-        h = h * delta
-        n = n + 1.0
+        n = 1.0
+        for i in range(60):
+            an = -n * (n - a_f32)
+            b = b + 2.0
+            d = an * d + b
+            d = tl.where(tl.abs(d) < fpmin, fpmin, d)
+            c = b + an / c
+            c = tl.where(tl.abs(c) < fpmin, fpmin, c)
+            d = 1.0 / d
+            delta = c * d
+            h = h * delta
+            n = n + 1.0
 
-    cf_res = 1.0 - ax * h
+        cf_res = 1.0 - ax * h
+        result = tl.where(small_x, series_res, cf_res)
 
-    # ========== Select branch by x vs a + 1 ==========
-    result = tl.where(result_zero, 0.0, tl.where(small_x, series_res, cf_res))
+    result = tl.where(result_zero, 0.0, result)
 
     # Clamp to [0, 1] for the regularized gamma
     result = tl.minimum(result, 1.0)
@@ -157,7 +166,11 @@ def igamma(a, x):
 
     output = torch.empty_like(a)
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    block_size = 512
+    # Pass a concrete tuple grid: a callable grid forces Triton onto the
+    # `JITFunction.run` path, which on this backend costs ~200 ms per launch
+    # (~0.1 ms with a tuple grid). That fixed cost dominates every shape.
+    grid = (triton.cdiv(n_elements, block_size),)
     with torch_device_fn.device(a.device):
-        igamma_kernel[grid](a, x, output, n_elements, BLOCK_SIZE=1024)
+        igamma_kernel[grid](a, x, output, n_elements, BLOCK_SIZE=block_size)
     return output

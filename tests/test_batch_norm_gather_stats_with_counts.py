@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].
 SHAPES = [
@@ -30,6 +32,17 @@ SHAPES = [
     (64, 128, 28, 28),
     (16, 256, 14, 14),
 ]
+
+
+def _combined_stats_with_counts(mean, invstd, counts, eps):
+    var = 1.0 / (invstd * invstd) - eps
+    weights = counts.unsqueeze(1)
+    total = counts.sum()
+    combined_mean = (weights * mean).sum(dim=0) / total
+    combined_var = (weights * var).sum(dim=0) / total + (
+        weights * (mean - combined_mean) ** 2
+    ).sum(dim=0) / total
+    return combined_mean, 1.0 / torch.sqrt(combined_var + eps)
 
 
 @pytest.mark.batch_norm_gather_stats_with_counts
@@ -62,27 +75,40 @@ def test_batch_norm_gather_stats_with_counts(shape, dtype, num_segments):
         (num_segments,), count_per_segment, dtype=torch.float32, device=flag_gems.device
     )
 
-    ref_out = torch.batch_norm_gather_stats_with_counts(
-        input_t,
-        mean,
-        invstd,
-        running_mean.clone(),
-        running_var.clone(),
-        0.1,
-        1e-5,
-        counts,
-    )
+    if IS_KUNLUNXIN:
+        ref_out = _combined_stats_with_counts(mean, invstd, counts, 1e-5)
+        res_out = flag_gems.batch_norm_gather_stats_with_counts(
+            input_t,
+            mean,
+            invstd,
+            running_mean.clone(),
+            running_var.clone(),
+            0.1,
+            1e-5,
+            counts,
+        )
+    else:
+        ref_out = torch.batch_norm_gather_stats_with_counts(
+            input_t,
+            mean,
+            invstd,
+            running_mean.clone(),
+            running_var.clone(),
+            0.1,
+            1e-5,
+            counts,
+        )
 
-    res_out = torch.batch_norm_gather_stats_with_counts(
-        input_t,
-        mean,
-        invstd,
-        running_mean.clone(),
-        running_var.clone(),
-        0.1,
-        1e-5,
-        counts,
-    )
+        res_out = torch.batch_norm_gather_stats_with_counts(
+            input_t,
+            mean,
+            invstd,
+            running_mean.clone(),
+            running_var.clone(),
+            0.1,
+            1e-5,
+            counts,
+        )
 
     for ref_val, res_val in zip(ref_out, res_out):
         # Output is always float32 regardless of input dtype

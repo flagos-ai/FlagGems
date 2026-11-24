@@ -43,6 +43,13 @@ if vendor_name == "ascend":
         torch.npu.conv.allow_hf32 = False
     except AttributeError:
         pass
+elif vendor_name == "mthreads":
+    # MUSA's MUDNN enables TF32 by default, which makes the device reference
+    # inexact in fp32 (measured ~5e-3 abs error on the 1D cases). The CUDA
+    # tests clear the equivalent cudnn flag; benchmark/base.py does the same
+    # for musa, so this operator's fp32 output is compared against a real
+    # fp32 reference.
+    torch.backends.mudnn.allow_tf32 = False
 
 # ---------------------------------------------------------------------------
 # Parameter sets
@@ -214,15 +221,32 @@ def _reference_output(inp, weight, padding, stride, dilation, groups, dtype):
     ndim = inp.ndim - 2
     ref_inp = utils.to_reference(inp, True)
     ref_weight = utils.to_reference(weight, True)
-    out = _CONV_REF_FN[ndim](
-        ref_inp,
-        ref_weight,
-        bias=None,
-        stride=stride,
-        padding=padding,
-        dilation=dilation,
-        groups=groups,
-    )
+    try:
+        out = _CONV_REF_FN[ndim](
+            ref_inp,
+            ref_weight,
+            bias=None,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        )
+    except RuntimeError:
+        # MUDNN rejects some grouped convolutions on musa (e.g. groups=2 with
+        # a 3x3 kernel, failing in mudnnGetConvolutionForwardWorkspaceSize).
+        # Compute those references on CPU rather than failing the operator test
+        # over a vendor gap. --ref cpu already takes this path for every case.
+        if vendor_name != "mthreads" or ref_inp.device.type == "cpu":
+            raise
+        out = _CONV_REF_FN[ndim](
+            ref_inp.to("cpu"),
+            ref_weight.to("cpu"),
+            bias=None,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        ).to(ref_inp.device)
     return out.to(dtype)
 
 
