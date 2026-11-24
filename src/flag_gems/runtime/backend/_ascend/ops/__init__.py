@@ -176,6 +176,7 @@ from .foreach_reciprocal_ import foreach_reciprocal_
 from .foreach_round import foreach_round
 from .foreach_sigmoid_ import foreach_sigmoid_
 from .foreach_sign_ import foreach_sign_
+from .foreach_sin import foreach_sin
 from .foreach_sin_ import foreach_sin_
 from .foreach_sinh_ import foreach_sinh_
 from .foreach_sqrt_ import foreach_sqrt_
@@ -576,6 +577,7 @@ __all__ = [
     "foreach_round",
     "foreach_sigmoid_",
     "foreach_sign_",
+    "foreach_sin",
     "foreach_sin_",
     "foreach_sinh_",
     "foreach_sqrt_",
