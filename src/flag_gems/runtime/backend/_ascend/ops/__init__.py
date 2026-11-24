@@ -62,7 +62,13 @@ from .attention import (
 from .baddbmm import baddbmm
 from .bilinear import bilinear
 from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
-from .bitwise_xor_scalar_tensor import bitwise_xor_scalar_tensor
+from .bitwise_xor import (
+    bitwise_xor_scalar,
+    bitwise_xor_scalar_,
+    bitwise_xor_scalar_tensor,
+    bitwise_xor_tensor,
+    bitwise_xor_tensor_,
+)
 from .block_diag import block_diag
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
@@ -437,7 +443,11 @@ __all__ = [
     "baddbmm",
     "bilinear",
     "binary_cross_entropy_with_logits",
+    "bitwise_xor_scalar",
+    "bitwise_xor_scalar_",
     "bitwise_xor_scalar_tensor",
+    "bitwise_xor_tensor",
+    "bitwise_xor_tensor_",
     "block_diag",
     "bmm",
     "bmm_w8a8",
