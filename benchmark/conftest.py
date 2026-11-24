@@ -853,9 +853,9 @@ def pytest_sessionfinish(session, exitstatus):
         if incomplete and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and getattr(Config, "kernel_check", False):
-        # Per-operator check: every operator must have at least one record
-        # where invoked_kernel is True.  This prevents a kernel-launching
-        # operator in the same file from masking a no-kernel operator.
+        # Validate each operator separately so another operator's kernel
+        # cannot mask a fallback. ATen is_same_size only compares sizes.
+        metadata_only_baselines = {"is_same_size"}
         from collections import defaultdict
 
         by_operator = defaultdict(list)
@@ -865,7 +865,17 @@ def pytest_sessionfinish(session, exitstatus):
         no_kernel_ops = sorted(
             op
             for op, records in by_operator.items()
-            if not any(r.get("invoked_kernel") for r in records)
+            if op not in metadata_only_baselines
+            and not any(r.get("invoked_kernel") for r in records)
+        )
+        invalid_metadata_ops = sorted(
+            op
+            for op, records in by_operator.items()
+            if op in metadata_only_baselines
+            and not all(
+                r.get("status") == "passed" and r.get("invoked_kernel") is False
+                for r in records
+            )
         )
         if no_kernel_ops and session.exitstatus == pytest.ExitCode.OK:
             import sys
@@ -874,6 +884,12 @@ def pytest_sessionfinish(session, exitstatus):
                 f"\n⚠️  kernel-check FAILED — operators with no device kernel: "
                 f"{', '.join(no_kernel_ops)}",
                 file=sys.stderr,
+            )
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        if invalid_metadata_ops and session.exitstatus == pytest.ExitCode.OK:
+            print(
+                "kernel-check FAILED — invalid metadata-only baseline records: "
+                + ", ".join(invalid_metadata_ops)
             )
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
         # Also fail when there are no records at all (nothing was checked).
