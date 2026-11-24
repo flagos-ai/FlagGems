@@ -100,3 +100,26 @@ def test_flip_with_non_dense_input(shape, dtype, dims):
     res_out = flag_gems.flip(inp, dims)
     ref_out = torch.flip(ref_inp, dims)
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.flip
+@pytest.mark.flip_backward
+@pytest.mark.parametrize("dims", [(0, 2), (1, 3), (0, -1, 2)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["contiguous", "transpose"])
+def test_flip_4d_multi_axis_forward_and_backward(dims, dtype, layout):
+    inp = torch.randn((2, 3, 4, 5), dtype=dtype, device=flag_gems.device)
+    if layout == "transpose":
+        inp = inp.transpose(1, 2)
+    grad = torch.randn_like(inp)
+
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+
+    ref_out = torch.flip(ref_inp, dims)
+    res_out = flag_gems.flip(res_inp, dims)
+    utils.gems_assert_equal(res_out, ref_out)
+
+    (ref_dx,) = torch.autograd.grad(ref_out, ref_inp, utils.to_reference(grad, False))
+    (res_dx,) = torch.autograd.grad(res_out, res_inp, grad)
+    utils.gems_assert_equal(res_dx, ref_dx)

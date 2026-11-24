@@ -29,7 +29,8 @@ config_ = CodeGenConfig(
     tuple([48, 1, 1]),
     32,
     False,
-    prefer_1d_tile=int(triton.__version__[0]) < 3,
+    # Use 1D linear tiling so N-D negative strides avoid TritonToLinalg block lowering failures on Triton 3.x.
+    prefer_1d_tile=True,
 )
 
 
@@ -39,8 +40,25 @@ def copy_func(x):
     return x
 
 
+class FlipFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, dims):
+        ctx.dims = dims
+        return _flip_impl(A, dims)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _flip_impl(grad_output, ctx.dims), None
+
+
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
     logger.debug("GEMS_ASCEND FLIP")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return FlipFunction.apply(A, tuple(dims))
+    return _flip_impl(A, dims)
+
+
+def _flip_impl(A: torch.Tensor, dims) -> torch.Tensor:
     strides = list(A.stride())
     flip_dims_b = [False for _ in A.stride()]
     for dim in dims:
