@@ -40,3 +40,24 @@ def test_mv(N, K, dtype, column_major):
     res_out = flag_gems.mv(matrix, vector)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mv
+@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="THead column-major MV")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "rows, k, padding", [(7, 33, 0), (37, 3073, 5), (1537, 257, 0)]
+)
+def test_thead_mv_column_major(rows, k, padding, dtype):
+    storage = torch.randn((k, rows + padding), dtype=dtype, device=flag_gems.device)
+    start = int(padding != 0)
+    matrix = storage[:, start : start + rows].t()
+    vector = torch.randn((k,), dtype=dtype, device=flag_gems.device)
+    ref_matrix = utils.to_reference(matrix, True)
+    ref_vector = utils.to_reference(vector, True)
+    expected = torch.mv(ref_matrix, ref_vector)
+
+    with flag_gems.use_gems(include=["mv"]):
+        actual = torch.mv(matrix, vector)
+
+    utils.gems_assert_close(actual, expected, dtype, reduce_dim=k)
