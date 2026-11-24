@@ -11092,6 +11092,17 @@ ops:
   - Math
   stages:
   - alpha: 5.5.0
+- id: inplace_partial_rotary_mul
+  description: Interleaved partial rotary update of BF16 activations with FP32 sine and cosine values.
+  for:
+  - inplace_partial_rotary_mul
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: instance_norm
   description: 'Apply Instance Normalization independently for each channel in every
     data sample within a batch.
