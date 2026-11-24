@@ -18,6 +18,7 @@ import random
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 import flag_gems
@@ -29,6 +30,11 @@ bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
+
+_SKIP_FP64 = pytest.mark.skipif(
+    not fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
 
 
 def TestForwardOnly():
@@ -286,11 +292,40 @@ ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPE
 # explicitly; the 16/32/64-bit list above misses both.
 SMALL_INT_DTYPES = [torch.int8, torch.uint8]
 BOOL_TYPES = [torch.bool]
+# 1-byte dtypes (int8/uint8) and fp8 dtypes are not part of the default CI lists;
+# tests that target them parametrize over these constants explicitly.
+BYTE_INT_DTYPES = [torch.int8, torch.uint8]
+# Triton's CUDA backend only compiles fp8e4nv (torch.float8_e4m3fn) pointers on
+# sm89+; on older arches (e.g. A100/sm80) any kernel taking an fp8e4nv pointer
+# fails at compile time, so gate the list on the actual device capability,
+# not just the backend's fp8 flag.
+_fp8_supported = (
+    fp8_is_supported
+    and flag_gems.utils.device_info.get_device_capability()[0] * 10
+    + flag_gems.utils.device_info.get_device_capability()[1]
+    >= 89
+)
+FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_supported else []
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
     if complex_is_supported
     else []
 )
+
+# Low-precision dtypes: int8/uint8 are always available; float8 only where the
+# device exposes it (mirrors fp8_is_supported above).
+BYTE_DTYPES = [torch.int8, torch.uint8]
+# Triton's CUDA backend only compiles fp8e4nv (torch.float8_e4m3fn) pointers on
+# sm89+; on older arches (e.g. A100/sm80) any kernel taking an fp8e4nv pointer
+# fails at compile time, so gate the list on the actual device capability,
+# not just the backend's fp8 flag.
+_fp8_supported = (
+    fp8_is_supported
+    and flag_gems.utils.device_info.get_device_capability()[0] * 10
+    + flag_gems.utils.device_info.get_device_capability()[1]
+    >= 89
+)
+FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_supported else []
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
@@ -479,7 +514,7 @@ def _vendor_arch_names():
     vendor_dir = backend_dir / f"_{flag_gems.vendor_name}"
     if not vendor_dir.is_dir():
         return set()
-    excluded = ("ops", "fused")
+    excluded = ("ops", "deprecated")
     return {
         p.name
         for p in vendor_dir.iterdir()

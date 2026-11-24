@@ -14,12 +14,12 @@
 
 """GCU300 optimized std.
 
-Design (三板斧):
-  1. Fixed Grid (第一板斧): dim=None path uses GRID_DIM=6 with block_ptr DMA
+Design (three key techniques):
+  1. Fixed Grid: dim=None path uses GRID_DIM=6 with block_ptr DMA
      strided loop (from sum.py proven pattern).
-  2. DSM / single-pass (第二板斧): sum/sum_sq single-pass eliminates the 2x
+  2. DSM / single-pass: single-pass sum/sum_sq eliminates the 2x
      data read of the generic 2-pass implementation. var = sum_sq/N - mean^2.
-  3. Math (第三板斧): tl.sqrt is irreplaceable (no rsqrt variant needed).
+  3. Math: tl.sqrt is irreplaceable (no rsqrt variant needed).
 
 Bound type: memory-bound reduction.
 

@@ -22,6 +22,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 if cfg.QUICK_MODE:
     # Single tiny shape keeps the quick smoke run fast.
     KL_DIV_SHAPES = [(2, 3)]
@@ -52,6 +54,9 @@ def test_kl_div(shape, dtype, reduction, log_target):
     ref_inp = utils.to_reference(inp, True)
     ref_target = utils.to_reference(target, True)
 
+    if IS_KUNLUNXIN and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
+        ref_target = ref_target.cpu()
     ref_out = torch.ops.aten.kl_div(
         ref_inp, ref_target, reduction, log_target=log_target
     )
@@ -73,6 +78,9 @@ def test_kl_div_zero_target(shape, dtype, reduction):
     ref_inp = utils.to_reference(inp, True)
     ref_target = utils.to_reference(target, True)
 
+    if IS_KUNLUNXIN and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
+        ref_target = ref_target.cpu()
     ref_out = torch.ops.aten.kl_div(ref_inp, ref_target, reduction)
     res_out = flag_gems.kl_div(inp, target, reduction)
 

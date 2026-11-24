@@ -31,7 +31,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import top_k_per_row_prefill
+from flag_gems import top_k_per_row_prefill
 
 from . import conftest as cfg
 
@@ -120,7 +120,7 @@ def check_topk_values_match(logits, indices_test, indices_ref, row_starts, top_k
 
 @pytest.mark.top_k_per_row_prefill
 def test_top_k_per_row_prefill_radix_final_config_prefers_large_vocab():
-    topk_prefill = import_module("flag_gems.fused.top_k_per_row_prefill")
+    topk_prefill = import_module(flag_gems.top_k_per_row_prefill.__module__)
 
     assert topk_prefill._use_radix_final_for_prefill(129280)
     assert not topk_prefill._use_radix_final_for_prefill(8193)
@@ -161,10 +161,6 @@ def test_top_k_per_row_prefill_full_vocab(num_rows, vocab_size, top_k):
 
 
 @pytest.mark.top_k_per_row_prefill
-@pytest.mark.skipif(
-    not import_module("flag_gems.fused.top_k_per_row_prefill").HAS_TLE,
-    reason="TLE top_k_per_row_prefill path is unavailable",
-)
 def test_top_k_per_row_prefill_large_vocab_partial_nonzero_range():
     torch.manual_seed(321)
     num_rows = 2
