@@ -20,6 +20,15 @@ from flag_gems.runtime import torch_device_fn
 
 from .accuracy_utils import gems_assert_equal
 
+# enflame (GCU) mm_w8a8_int8/gemm follows the same FP32 dequantization semantics, and the reference implementation is
+# a vendor-independent CPU INT64 product (_assert_reference / reference), so this module
+# can run in full on enflame; only the graph/stream cases require the torch.cuda CUDAGraph interface,
+# which is not provided by the GCU runtime (torch_device_fn.CUDAGraph is missing), so they take a capability-level skip.
+_GRAPH_CAPABLE = ("thead", "enflame")
+if flag_gems.vendor_name == "enflame":
+    if not hasattr(torch_device_fn, "CUDAGraph"):
+        _GRAPH_CAPABLE = ("thead",)
+
 pytestmark = pytest.mark.mm_w8a8
 
 

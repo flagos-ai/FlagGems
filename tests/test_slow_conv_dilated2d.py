@@ -74,6 +74,12 @@ def _atol(dtype):
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", [True, False])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 def test_slow_conv_dilated2d(
     shape_input, shape_weight, kernel, stride, padding, dilation, bias, dtype
 ):

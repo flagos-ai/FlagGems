@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # ``growth_interval`` is kept within the signed int32 range. For the no-inf

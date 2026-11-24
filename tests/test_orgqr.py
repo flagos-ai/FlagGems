@@ -6,6 +6,16 @@ import flag_gems
 from . import accuracy_utils as utils
 from .accuracy_utils import _SKIP_FP64
 
+_SKIP_COMPLEX_ENFLAME = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame GCU has no complex64/complex128 aten support: "
+        "torch.randn (aten::normal) rejects complex64 with "
+        "TOPSATEN_STATUS_BAD_PARAM and aborts the process, so neither the "
+        "reference nor the input construction can run"
+    ),
+)
+
 _COMPLEX_DTYPES = (
     [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
     if utils.complex_is_supported

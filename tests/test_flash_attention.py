@@ -31,6 +31,11 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
+# The GCU torch build does not register `aten::_flash_attention_forward` (the
+# reference oracle used by the dense tests), so those tests take the same
+# dense math reference route as ascend/kunlunxin (see ENFLAME_DENSE_REF).
+ENFLAME_DENSE_REF = vendor_name in ("ascend", "kunlunxin", "enflame")
+
 # Generic `ops/flash_kernel.py` splitkv combine kernels fail to compile on the
 # XPU backend (TritonXPUCoreTiling / TritonToLinalgExperimental), so skip the
 # three splitkv layout tests there until the generic kernel is fixed.

@@ -34,6 +34,8 @@ def test_linalg_eig(shape, dtype):
     well defined: the (unordered) eigenvalue set and the reconstruction
     A @ V == V @ diag(eigenvalues).
     """
+    use_cpu_reference = flag_gems.vendor_name == "mthreads"
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 

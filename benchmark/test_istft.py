@@ -15,6 +15,7 @@
 import pytest
 import torch
 
+import flag_gems
 from flag_gems import istft
 
 from . import base

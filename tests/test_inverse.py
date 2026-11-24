@@ -65,6 +65,22 @@ def _make_well_conditioned(shape, dtype, device):
 @pytest.mark.inverse
 @pytest.mark.parametrize("shape", INVERSE_SHAPES)
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
+def ref_inverse(a):
+    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
+    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
+    # the reference is computed wide on CPU there.  Other backends keep the
+    # to_reference() upcast behaviour (device, or CPU under --ref cpu).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.inverse(utils.to_reference(a, upcast=True)).to(a.dtype)
+    a_cpu = (
+        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
+    )
+    ref = torch.inverse(a_cpu)
+    if not TO_CPU:
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 def test_inverse(shape, dtype):
     # Inversion is ill conditioned by nature: the reference is upcast to fp64
     # so the comparison measures our error, not the reference's.

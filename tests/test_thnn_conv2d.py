@@ -141,6 +141,12 @@ def _reference(inp, weight, kernel, bias, stride, padding):
 @pytest.mark.thnn_conv2d
 @pytest.mark.parametrize("shape,out_channels", _CONV_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
+def _reference_input(tensor):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.cpu()
+    return utils.to_reference(tensor)
+
+
 def test_thnn_conv2d(shape, out_channels, dtype):
     inp, weight, bias = _conv_operands(shape, out_channels, dtype, 3)
 

@@ -24,6 +24,13 @@ PADDINGS = [0, 1]
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
+    use_cpu_reference = (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and shape == (2, 16, 8, 8, 8)
+        and kernel == (16, 8, 2, 2, 2)
+    )
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -55,6 +62,13 @@ def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_bias(shape, kernel, stride, padding, dtype):
+    use_cpu_reference = (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and shape == (2, 16, 8, 8, 8)
+        and kernel == (16, 8, 2, 2, 2)
+    )
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -132,6 +146,13 @@ def test_conv_transpose3d_dilation(stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
+    use_cpu_reference = (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and shape == (2, 16, 8, 8, 8)
+        and kernel == (16, 8, 2, 2, 2)
+    )
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)

@@ -67,6 +67,12 @@ SHAPES = [
 @pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("shape,weight_shape,kernel_size,stride,padding", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)

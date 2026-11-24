@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # ``quantize_per_tensor`` only accepts float32 tensors, so the benchmark input is

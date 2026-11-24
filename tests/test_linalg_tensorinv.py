@@ -311,6 +311,18 @@ def test_linalg_tensorinv_singular(A_cpu):
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND2)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.
 @pytest.mark.parametrize("dtype", TENSORINV_DTYPES)
+def _tensorinv_out_reference(inp, ind):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
+    return torch.linalg.tensorinv(inp, ind=ind)
+
+
 def test_linalg_tensorinv_out(shape, dtype):
     """Out-of-place variant: the result is written into the provided out
     tensor and returned from the call.

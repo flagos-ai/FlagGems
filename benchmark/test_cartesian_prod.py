@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # Each entry lists the lengths of the 1-D input vectors, so the output has

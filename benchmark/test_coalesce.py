@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # (sparse shape, nnz) workload descriptors, mirroring the KernelGen acceptance

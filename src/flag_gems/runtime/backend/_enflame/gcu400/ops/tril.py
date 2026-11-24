@@ -1044,5 +1044,3 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
     _launch_tril(input, tmp, int(diagonal))
     out.copy_(tmp)
     return out
-
-

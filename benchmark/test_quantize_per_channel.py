@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # quantize_per_channel is an element-wise quantization with per-channel scale

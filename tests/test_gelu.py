@@ -23,6 +23,7 @@ import flag_gems
 from flag_gems.testing import RESOLUTION
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def _reference_input(x):

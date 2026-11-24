@@ -140,6 +140,8 @@ def test_row_stack_memory_format(shape, memory_format, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_row_stack_mixed_dtype_promotion(dtype):
     """Mixed dtypes follow ATen's type promotion instead of being rejected."""
+    use_cpu_reference = flag_gems.vendor_name == "iluvatar" and dtype == torch.float32
+
     other = torch.float64 if dtype == torch.float32 else torch.int64
     if dtype in utils.FLOAT_DTYPES:
         a = torch.randn(3, 4, dtype=dtype, device=flag_gems.device)

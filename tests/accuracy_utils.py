@@ -31,6 +31,11 @@ int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
 
 def TestForwardOnly():
     return flag_gems.vendor_name in []

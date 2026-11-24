@@ -181,6 +181,8 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
     "case", ["broadcast_conjugate", "large", "empty", "real_input", "real_target"]
 )
 def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
+    use_cpu_reference = flag_gems.vendor_name == "mthreads" and case != "empty"
+
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)

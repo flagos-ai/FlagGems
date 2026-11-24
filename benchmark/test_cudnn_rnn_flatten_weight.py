@@ -14,6 +14,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # (input_size, hidden_size, num_layers)
