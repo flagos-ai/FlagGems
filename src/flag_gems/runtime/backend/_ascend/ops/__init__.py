@@ -174,6 +174,7 @@ from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
 from .foreach_reciprocal_ import foreach_reciprocal_
 from .foreach_round import foreach_round
+from .foreach_round_ import foreach_round_
 from .foreach_rsqrt import foreach_rsqrt
 from .foreach_rsqrt_ import foreach_rsqrt_
 from .foreach_sigmoid_ import foreach_sigmoid_
@@ -600,6 +601,7 @@ __all__ = [
     "foreach_pow_scalar_list_",
     "foreach_reciprocal_",
     "foreach_round",
+    "foreach_round_",
     "foreach_rsqrt",
     "foreach_rsqrt_",
     "foreach_sigmoid_",
