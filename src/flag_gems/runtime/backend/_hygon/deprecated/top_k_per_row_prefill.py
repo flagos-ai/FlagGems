@@ -18,8 +18,9 @@ Algorithm (quantile-filter / single-level radix select):
   Stage A: per-row 12-bit histogram over monotonic-uint32 keys (4096 buckets).
   Stage B: per-row scan to find threshold bucket b s.t. sum(hist[b..]) >= K.
   Stage C: per-row compact pass — collect (key, idx) for elements whose bucket
-           >= threshold into a fixed-size candidate buffer.
+           >= threshold, up to the candidate buffer capacity.
   Stage D: per-row sort the candidate buffer descending; write the top K indices.
+           Recompute overflowing rows by merging the top K across input tiles.
 """
 
 import torch
@@ -34,6 +35,19 @@ def _next_pow2(x: int) -> int:
     while p < x:
         p <<= 1
     return p
+
+
+@triton.jit
+def _ordered_key(value):
+    bits = value.to(tl.uint32, bitcast=True)
+    sign = bits >> 31
+    xor_mask = tl.where(sign != 0, 0xFFFFFFFF, 0x80000000)
+    return bits ^ xor_mask.to(tl.uint32)
+
+
+@triton.jit
+def _pack_candidate(key, index):
+    return (key.to(tl.uint64) << 32) | (index.to(tl.uint64) + 1)
 
 
 @triton.jit
@@ -65,15 +79,7 @@ def _hist_kernel(
         other=float("-inf"),
     )
 
-    bits_u = v.to(tl.uint32, bitcast=True)
-    sign_bit = bits_u >> 31
-    xor_mask = tl.where(
-        sign_bit != 0,
-        tl.full([BLOCK], 0xFFFFFFFF, tl.uint32),
-        tl.full([BLOCK], 0x80000000, tl.uint32),
-    )
-    key_u = bits_u ^ xor_mask
-    bucket = (key_u >> SHIFT).to(tl.int64)
+    bucket = (_ordered_key(v) >> SHIFT).to(tl.int64)
 
     tl.atomic_add(HIST + pid_m * stride_hm + bucket, 1, mask=in_range)
 
@@ -107,6 +113,7 @@ def _compact_kernel(
     stride_cm,
     BLOCK: tl.constexpr,
     SHIFT: tl.constexpr,
+    CAND_PAD: tl.constexpr,
 ):
     pid_m = tl.program_id(0).to(tl.int64)
     pid_n = tl.program_id(1).to(tl.int64)
@@ -124,14 +131,7 @@ def _compact_kernel(
         mask=in_range,
         other=float("-inf"),
     )
-    bits_u = v.to(tl.uint32, bitcast=True)
-    sign_bit = bits_u >> 31
-    xor_mask = tl.where(
-        sign_bit != 0,
-        tl.full([BLOCK], 0xFFFFFFFF, tl.uint32),
-        tl.full([BLOCK], 0x80000000, tl.uint32),
-    )
-    key_u = bits_u ^ xor_mask
+    key_u = _ordered_key(v)
     bucket = (key_u >> SHIFT).to(tl.int32)
 
     pass_mask = in_range & (bucket >= thr)
@@ -141,36 +141,60 @@ def _compact_kernel(
     n_valid = tl.sum(pass_i32)
     block_base = tl.atomic_add(CAND_CTR + pid_m, n_valid)
 
-    rel_idx = offs - start
-    neg1 = tl.full([BLOCK], -1, tl.int32)
-    rel_idx = tl.where(in_range, rel_idx, neg1)
-    idx_u = rel_idx.to(tl.uint32, bitcast=True)
-    pack = (key_u.to(tl.uint64) << 32) | idx_u.to(tl.uint64)
-
-    write_offs = (block_base + cs - 1).to(tl.int64)
+    pack = _pack_candidate(key_u, offs - start)
+    write_offs = block_base.to(tl.int64) + cs - 1
     tl.store(
         CAND + pid_m * stride_cm + write_offs,
         pack.to(tl.int64, bitcast=True),
-        mask=pass_mask,
+        mask=pass_mask & (write_offs < CAND_PAD),
     )
 
 
 @triton.jit
+def _merge_row_topk(LOGITS, start, end, stride_ln, KEEP: tl.constexpr):
+    lanes = tl.arange(0, KEEP)
+    best = tl.full([KEEP], 0, tl.uint64)
+    for offset in range(start, end, KEEP):
+        positions = offset + lanes
+        valid = positions < end
+        values = tl.load(LOGITS + positions * stride_ln, mask=valid, other=0.0)
+        packed = _pack_candidate(_ordered_key(values), positions - start)
+        tile = tl.where(valid, packed, 0)
+        best = tl.topk(tl.cat(best, tile, can_reorder=True), KEEP)
+    return best
+
+
+@triton.jit
 def _sort_cand_kernel(
-    CAND, CAND_CTR, OUT, K_OUT, stride_cm, stride_om, CAND_PAD: tl.constexpr
+    LOGITS,
+    STARTS,
+    ENDS,
+    CAND,
+    CAND_CTR,
+    OUT,
+    N,
+    K_OUT,
+    stride_lm,
+    stride_ln,
+    stride_cm,
+    stride_om,
+    CAND_PAD: tl.constexpr,
 ):
     pid = tl.program_id(0).to(tl.int64)
-    offs = tl.arange(0, CAND_PAD).to(tl.int64)
-    pack_i64 = tl.load(CAND + pid * stride_cm + offs)
-    pack_u = pack_i64.to(tl.uint64, bitcast=True)
-    sorted_u = tl.sort(pack_u, descending=True)
-
-    mask_low = tl.full([CAND_PAD], 0xFFFFFFFF, tl.uint64)
-    low = (sorted_u & mask_low).to(tl.uint32)
+    KEEP: tl.constexpr = CAND_PAD // 2
     num_candidates = tl.load(CAND_CTR + pid)
-    idx_i32 = tl.where(offs < num_candidates, low.to(tl.int32, bitcast=True), -1)
-    out_mask = offs < K_OUT
-    tl.store(OUT + pid * stride_om + offs, idx_i32, mask=out_mask)
+    if num_candidates > CAND_PAD:
+        start = tl.maximum(tl.load(STARTS + pid), 0).to(tl.int64)
+        end = tl.minimum(tl.load(ENDS + pid), N).to(tl.int64)
+        best = _merge_row_topk(LOGITS + pid * stride_lm, start, end, stride_ln, KEEP)
+    else:
+        candidate_offsets = tl.arange(0, CAND_PAD)
+        packed = tl.load(CAND + pid * stride_cm + candidate_offsets)
+        best = tl.topk(packed.to(tl.uint64, bitcast=True), KEEP)
+
+    offs = tl.arange(0, KEEP)
+    indices = (best.to(tl.uint32) - 1).to(tl.int32, bitcast=True)
+    tl.store(OUT + pid * stride_om + offs, indices, mask=offs < K_OUT)
 
 
 def top_k_per_row_prefill(
@@ -182,7 +206,10 @@ def top_k_per_row_prefill(
     1. Build 12-bit histogram of monotonic-uint32 keys per row
     2. Find threshold bucket via cumulative sum scan
     3. Compact candidates above threshold into a buffer
-    4. Sort candidates and emit top-K indices
+    4. Select the top-K candidates, rescanning rows that overflow the buffer
+
+    Results are ordered by descending float sort key, then by descending
+    relative index for identical keys.
 
     Args:
         logits: [num_rows, vocab_size] float32 tensor.
@@ -198,6 +225,8 @@ def top_k_per_row_prefill(
     """
     M = num_rows
     N = logits.shape[1]
+    if M == 0 or top_k == 0:
+        return
 
     if not logits.is_contiguous():
         logits = logits.contiguous()
@@ -213,7 +242,7 @@ def top_k_per_row_prefill(
     CAND_PAD = _next_pow2(max(2 * top_k, 2048))
 
     BLOCK_N = 2048
-    n_blocks = (N + BLOCK_N - 1) // BLOCK_N
+    n_blocks = max(1, triton.cdiv(N, BLOCK_N))
 
     dev = logits.device
     hist = torch.zeros((M, BUCKETS), dtype=torch.int32, device=dev)
@@ -258,16 +287,22 @@ def top_k_per_row_prefill(
         cand.stride(0),
         BLOCK=BLOCK_N,
         SHIFT=SHIFT,
+        CAND_PAD=CAND_PAD,
         num_warps=8,
         num_stages=2,
     )
 
     sort_warps = 16
     _sort_cand_kernel[(M,)](
+        logits,
+        row_starts,
+        row_ends,
         cand,
         cand_ctr,
         indices,
+        N,
         top_k,
+        *logits.stride(),
         cand.stride(0),
         indices.stride(0),
         CAND_PAD=CAND_PAD,

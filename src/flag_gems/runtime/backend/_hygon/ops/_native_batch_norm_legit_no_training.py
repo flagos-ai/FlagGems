@@ -64,6 +64,8 @@ def batch_norm_legit_no_training_contig_kernel(
     output_pointer,
     running_mean_pointer,
     running_var_pointer,
+    save_mean_pointer,
+    save_invstd_pointer,
     feat_dim,
     spatial_dim,
     num_s_tiles,
@@ -79,16 +81,20 @@ def batch_norm_legit_no_training_contig_kernel(
 
     # Per-channel affine: output = input * a + b where
     # a = weight * inv_std, b = bias - mean * a.
-    running_mean = tl.load(running_mean_pointer + c).to(tl.float32)
-    running_var = tl.load(running_var_pointer + c).to(tl.float32)
+    acc_dtype = save_mean_pointer.dtype.element_ty
+    running_mean = tl.load(running_mean_pointer + c).to(acc_dtype)
+    running_var = tl.load(running_var_pointer + c).to(acc_dtype)
     inv_std = rsqrt(running_var + eps)
+    if pid < feat_dim * num_s_tiles and s_tile == 0:
+        tl.store(save_mean_pointer + c, running_mean)
+        tl.store(save_invstd_pointer + c, inv_std)
 
     if HAS_WEIGHT:
-        weight = tl.load(weight_pointer + c).to(tl.float32)
+        weight = tl.load(weight_pointer + c).to(acc_dtype)
     else:
         weight = 1.0
     if HAS_BIAS:
-        bias = tl.load(bias_pointer + c).to(tl.float32)
+        bias = tl.load(bias_pointer + c).to(acc_dtype)
     else:
         bias = 0.0
 
@@ -98,7 +104,7 @@ def batch_norm_legit_no_training_contig_kernel(
     offset = s_tile * BLOCK + tl.arange(0, BLOCK)
     mask = offset < spatial_dim
     base = slab_pid.to(tl.int64) * spatial_dim
-    curr_input = tl.load(input_pointer + base + offset, mask=mask).to(tl.float32)
+    curr_input = tl.load(input_pointer + base + offset, mask=mask).to(acc_dtype)
     output = curr_input * a + b
     tl.store(output_pointer + base + offset, output, mask=mask)
 
@@ -120,6 +126,8 @@ def batch_norm_legit_no_training_kernel(
     output_pointer,
     running_mean_pointer,
     running_var_pointer,
+    save_mean_pointer,
+    save_invstd_pointer,
     batch_dim,
     spatial_dim,
     input_batch_stride,
@@ -136,17 +144,20 @@ def batch_norm_legit_no_training_kernel(
 
     # Load running mean and var for this feature channel and precompute the
     # inverse standard deviation once per program.
-    running_mean = tl.load(feat_pid + running_mean_pointer).to(tl.float32)
-    running_var = tl.load(feat_pid + running_var_pointer).to(tl.float32)
+    acc_dtype = save_mean_pointer.dtype.element_ty
+    running_mean = tl.load(feat_pid + running_mean_pointer).to(acc_dtype)
+    running_var = tl.load(feat_pid + running_var_pointer).to(acc_dtype)
     inv_std = rsqrt(running_var + eps)
+    tl.store(save_mean_pointer + feat_pid, running_mean)
+    tl.store(save_invstd_pointer + feat_pid, inv_std)
 
     # Load weight and bias for this feature channel
     if weight_pointer:
-        weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
+        weight = tl.load(feat_pid + weight_pointer).to(acc_dtype)
     else:
         weight = 1.0
     if bias_pointer:
-        bias = tl.load(feat_pid + bias_pointer).to(tl.float32)
+        bias = tl.load(feat_pid + bias_pointer).to(acc_dtype)
     else:
         bias = 0.0
 
@@ -174,7 +185,7 @@ def batch_norm_legit_no_training_kernel(
 
             curr_input = tl.load(
                 curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
+            ).to(acc_dtype)
             output = weight * (curr_input - running_mean) * inv_std + bias
 
             tl.store(
@@ -184,46 +195,81 @@ def batch_norm_legit_no_training_kernel(
             )
 
 
+@triton.jit
+def save_inference_statistics_kernel(
+    running_mean,
+    running_var,
+    save_mean,
+    save_invstd,
+    start,
+    mean_size,
+    var_size,
+    eps,
+    BLOCK: tl.constexpr,
+):
+    offsets = start + tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mean_mask = offsets < mean_size
+    var_mask = offsets < var_size
+    mean = tl.load(running_mean + offsets, mask=mean_mask, other=0)
+    var = tl.load(running_var + offsets, mask=var_mask, other=0)
+    invstd = rsqrt(var.to(save_invstd.dtype.element_ty) + eps)
+    tl.store(save_mean + offsets, mean, mask=mean_mask)
+    tl.store(save_invstd + offsets, invstd, mask=var_mask)
+
+
 def _native_batch_norm_legit_no_training(
     input: Tensor,
-    weight=None,
-    bias=None,
-    running_mean=None,
-    running_var=None,
-    momentum=0.1,
-    eps=1e-05,
+    weight: Tensor | None,
+    bias: Tensor | None,
+    running_mean: Tensor,
+    running_var: Tensor,
+    momentum: float,
+    eps: float,
 ):
     """Inference-only batch normalization using precomputed running statistics.
 
     Mirrors ``torch.ops.aten._native_batch_norm_legit_no_training``. The running
     estimates are treated as constants (never updated), so no batch statistics
-    are computed. The op returns the normalized ``output`` together with two
-    empty ``save_mean``/``save_var`` tensors, matching the schema which has no
-    saved statistics in this mode.
+    are computed. The returned statistics are the running mean and inverse
+    standard deviation in the accumulation dtype, as on ATen's GPU path.
     """
     logger.debug("GEMS_HYGON _NATIVE_BATCH_NORM_LEGIT_NO_TRAINING")
 
+    for index, name, stat in (
+        (3, "running_mean", running_mean),
+        (4, "running_var", running_var),
+    ):
+        if stat is None:
+            raise RuntimeError(
+                "Expected a proper Tensor but got None (or an undefined Tensor in C++) "
+                f"for argument #{index} '{name}'"
+            )
+
     input_3d = make_3d_for_bn(input)
-
     batch_dim, feat_dim, spatial_dim = input_3d.shape
+    for name, tensor in (
+        ("running_mean", running_mean),
+        ("running_var", running_var),
+        ("weight", weight),
+        ("bias", bias),
+    ):
+        if tensor is not None and (tensor.ndim != 1 or tensor.numel() < feat_dim):
+            raise RuntimeError(
+                f"{name} must be a vector with at least {feat_dim} values"
+            )
+
+    running_mean = running_mean.contiguous()
+    running_var = running_var.contiguous()
+    weight = weight.contiguous() if weight is not None else None
+    bias = bias.contiguous() if bias is not None else None
     output = torch.empty_like(input_3d)
-
-    if running_mean is not None:
-        assert running_mean.shape[0] == feat_dim, (
-            f"running_mean shape mismatch: expected ({feat_dim},), "
-            f"got {running_mean.shape}"
-        )
-    if running_var is not None:
-        assert running_var.shape[0] == feat_dim, (
-            f"running_var shape mismatch: expected ({feat_dim},), "
-            f"got {running_var.shape}"
-        )
-
-    running_mean = input if running_mean is None else running_mean
-    running_var = input if running_var is None else running_var
+    stats_dtype = torch.float64 if input.dtype == torch.float64 else torch.float32
+    save_mean = torch.empty_like(running_mean, dtype=stats_dtype, device=input.device)
+    save_invstd = torch.empty_like(running_var, dtype=stats_dtype, device=input.device)
+    has_elements = input_3d.numel() != 0
 
     with torch_device_fn.device(input.device):
-        if input_3d.is_contiguous() and output.is_contiguous():
+        if has_elements and input_3d.is_contiguous():
             # Fast path: each (batch, channel) slab is contiguous, launch one
             # program per spatial tile of every slab for full parallelism.
             BLOCK = 1024
@@ -236,6 +282,8 @@ def _native_batch_norm_legit_no_training(
                 output,
                 running_mean,
                 running_var,
+                save_mean,
+                save_invstd,
                 feat_dim,
                 spatial_dim,
                 num_s_tiles,
@@ -245,7 +293,7 @@ def _native_batch_norm_legit_no_training(
                 BLOCK=BLOCK,
                 num_warps=4,
             )
-        else:
+        elif has_elements:
             # Launches a 1D grid where each program operates over one feature channel.
             batch_norm_legit_no_training_kernel[(feat_dim,)](
                 input_3d,
@@ -254,6 +302,8 @@ def _native_batch_norm_legit_no_training(
                 output,
                 running_mean,
                 running_var,
+                save_mean,
+                save_invstd,
                 batch_dim,
                 spatial_dim,
                 *input_3d.stride(),
@@ -261,11 +311,20 @@ def _native_batch_norm_legit_no_training(
                 eps,
             )
 
-    # Return 3 tensors to match the aten schema: (output, save_mean, save_var).
-    # save_mean and save_var are empty since no batch statistics are computed
-    # in the no-training (inference) path.
-    save_mean = torch.empty((0,), dtype=input.dtype, device=input.device)
-    save_var = torch.empty((0,), dtype=input.dtype, device=input.device)
+        start = feat_dim if has_elements else 0
+        remaining = max(save_mean.numel(), save_invstd.numel()) - start
+        if remaining:
+            save_inference_statistics_kernel[(triton.cdiv(remaining, 128),)](
+                running_mean,
+                running_var,
+                save_mean,
+                save_invstd,
+                start,
+                save_mean.numel(),
+                save_invstd.numel(),
+                eps,
+                BLOCK=128,
+            )
 
     # Avoid an extra dispatched aten::view_as call when no reshape is needed.
     if input_3d is input:
@@ -273,4 +332,4 @@ def _native_batch_norm_legit_no_training(
     else:
         out = output.view_as(input)
 
-    return out, save_mean, save_var
+    return out, save_mean, save_invstd

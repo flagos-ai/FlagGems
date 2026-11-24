@@ -23,8 +23,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
-from .all import reduce_all
-from .any import reduce_any
 from .unique import _unique2
 
 logger = logging.getLogger(__name__)
@@ -58,14 +56,14 @@ def isin_by_comparation_impl(
     for col_off in range(0, N, BLOCK_N):
         cols = col_off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
         block = tl.where(
             mask,
-            tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
-            invert,
+            tl.where(invert, block & (in0 != in1), block | (in0 == in1)),
+            block,
         )
-    out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
+    out = tl.min(block, axis=1) if invert else tl.max(block, axis=1)
     tl.store(out_ptr, out[:, None], row_mask)
 
 
@@ -158,23 +156,23 @@ def isin_by_search_impl(
     mask = i0 < M
 
     # load in0_ravel
-    in0_ravel = tl.load(in0_ravel_ptr + i0, mask=mask)
+    in0_ravel = tl.load(in0_ravel_ptr + i0, mask=mask, other=0)
 
     # binary search: lower_bound
     out = tl.zeros_like(r).to(tl.int1)
     start = tl.zeros_like(r)
     end = start + N
-    while_mask = start < end
+    while_mask = mask & (start < end)
     for i in range(log_n):
         mid = tl.where(while_mask, start + (end - start) // 2, 0)
-        mid_val = tl.load(in1_sorted_ptr + mid, mask=while_mask)
-        out = tl.where(while_mask, out or (mid_val == in0_ravel), out)  # found
-        start = tl.where(while_mask and (mid_val < in0_ravel), mid + 1, start)
-        end = tl.where(while_mask and (mid_val > in0_ravel), mid, end)
-        while_mask = start < end
+        mid_val = tl.load(in1_sorted_ptr + mid, mask=while_mask, other=0)
+        out |= while_mask & (mid_val == in0_ravel)
+        start = tl.where(while_mask & (mid_val < in0_ravel), mid + 1, start)
+        end = tl.where(while_mask & (mid_val > in0_ravel), mid, end)
+        while_mask = mask & (start < end)
 
     # store out
-    tl.store(out_ptr + i0, not out if invert else out, mask=mask)
+    tl.store(out_ptr + i0, ~out if invert else out, mask=mask)
 
 
 @libentry()
@@ -366,7 +364,7 @@ def isin(
         assert torch.is_tensor(in0)
         in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
-        return torch.zeros_like(in0, dtype=torch.bool)
+        return torch.full_like(in0, invert, dtype=torch.bool)
     elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096

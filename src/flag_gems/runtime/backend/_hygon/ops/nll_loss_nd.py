@@ -82,7 +82,7 @@ def nll_loss_nd_forward_kernel(
             tl.atomic_add(scratch_ptr, block_loss_sum, sem="relaxed")
             tl.atomic_add(scratch_ptr + 1, block_weight_sum, sem="relaxed")
 
-            old_cnt = tl.atomic_add(scratch_ptr + 2, 1.0, sem="release")
+            old_cnt = tl.atomic_add(scratch_ptr + 2, 1.0, sem="acq_rel")
 
             total_programs = tl.num_programs(0) * tl.num_programs(1)
 
@@ -95,7 +95,7 @@ def nll_loss_nd_forward_kernel(
         else:
             tl.atomic_add(scratch_ptr, block_loss_sum, sem="relaxed")
 
-            old_cnt = tl.atomic_add(scratch_ptr + 2, 1.0, sem="release")
+            old_cnt = tl.atomic_add(scratch_ptr + 2, 1.0, sem="acq_rel")
             total_programs = tl.num_programs(0) * tl.num_programs(1)
 
             if old_cnt == total_programs - 1.0:
