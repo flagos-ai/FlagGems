@@ -164,7 +164,7 @@ def _applicable_layouts(shape):
         layouts.append("channels_last")
     if _PER_CHANNEL_SUPPORTED and len(shape) >= 1 and all(dim > 0 for dim in shape):
         layouts.append("per_channel")
-    return layouts
+    return _measurable_layouts(layouts)
 
 
 def _validated_shape(shape):
