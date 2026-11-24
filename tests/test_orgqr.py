@@ -53,6 +53,37 @@ def make_reflectors(shape, dtype):
     return torch.geqrf(matrix)
 
 
+def _musa_orgqr_cpu_reference(input, tau):
+    # Apply the packed Householder reflectors to the first n identity columns.
+    # This PyTorch build does not provide CPU LAPACK.
+    m, n = input.shape[-2:]
+    q = torch.eye(m, n, dtype=input.dtype, device=input.device)
+    q = q.expand(*input.shape[:-2], m, n).clone()
+    for idx in range(tau.shape[-1] - 1, -1, -1):
+        tail = input[..., idx + 1 :, idx]
+        v = torch.cat((torch.ones_like(input[..., idx : idx + 1, idx]), tail), dim=-1)
+        block = q[..., idx:, :]
+        projection = (v.conj().unsqueeze(-1) * block).sum(dim=-2)
+        q[..., idx:, :] = block - (
+            (tau[..., idx, None] * v).unsqueeze(-1) * projection.unsqueeze(-2)
+        )
+    return q
+
+
+def _reference_orgqr(input, tau):
+    try:
+        return torch.orgqr(input, tau)
+    except RuntimeError as error:
+        if (
+            flag_gems.vendor_name != "mthreads"
+            or input.device.type != "cpu"
+            or "requires compiling PyTorch with LAPACK" not in str(error)
+        ):
+            raise
+
+    return _musa_orgqr_cpu_reference(input, tau)
+
+
 @pytest.mark.orgqr
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
