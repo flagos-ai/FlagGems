@@ -18,7 +18,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.fill import fill_scalar_ as _fill_scalar_
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
@@ -66,6 +65,11 @@ def zero_(x: torch.Tensor) -> torch.Tensor:
         # The generic `fill_scalar_` is called directly rather than through
         # `x.fill_(0)`: some vendor overrides of `fill_` still store flat
         # offsets and would reintroduce the same defect on a strided view.
+        # Imported here rather than at module level: zeros -> fill -> sum ->
+        # zeros is an import cycle, and the module-level import made every
+        # ``import flag_gems`` fail with a partially initialized fill module.
+        from flag_gems.ops.fill import fill_scalar_ as _fill_scalar_
+
         _fill_scalar_(x, 0)
         return x
     N = x.numel()
