@@ -325,7 +325,14 @@ def test_sparse_dim_unsupported_layout_parity():
 
     native_msg = str(ref_err.value)
     res_msg = str(res_err.value)
-    backend = "NestedTensor" + nested.device.type.upper()
+    # The dispatch key is 'NestedTensor' + the *registered* backend name: the
+    # built-in backends register in upper case ('NestedTensorCUDA'), while a
+    # PrivateUse1 backend keeps its own (lower-case) name ('NestedTensorgcu'),
+    # so device.type must not be upper-cased unconditionally.
+    backend_suffix = nested.device.type
+    if backend_suffix != torch._C._get_privateuse1_backend_name():
+        backend_suffix = backend_suffix.upper()
+    backend = "NestedTensor" + backend_suffix
     assert f"'{backend}' backend" in native_msg
     assert f"'{backend}' backend" in res_msg
     # The dispatcher's opening sentence (which names the backend key) is the

@@ -1021,6 +1021,7 @@ from .conj import conj
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_depthwise3d import conv_depthwise3d
 from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
@@ -2280,6 +2281,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_depthwise3d",
     "conv_tbc",
     "conv_tbc_backward",
     "conv_tbc_out",

@@ -17,15 +17,13 @@ import torch
 
 import flag_gems
 
-from . import accuracy_utils as utils
 
-# The device-side aten reference leg aborts the whole process on complex input
-# (gcu_utils.cpp Check failed); only the --ref=cpu mode (reference leg moved to
-# CPU) can validate complex semantics.
-_SKIP_COMPLEX_ON_DEVICE = pytest.mark.skipif(
-    not utils.TO_CPU and flag_gems.vendor_name in ("kunlunxin", "enflame"),
-    reason="device aten _cast_Short aborts on complex input; run with --ref=cpu",
-)
+# On enflame the device-side aten reference leg aborts the whole process on
+# complex input (gcu_utils.cpp Check failed), in both `--ref=cpu` and
+# device-reference mode: the reference tensor itself is always produced by aten
+# on the device, so the complex dtype cases cannot use it there.  Other vendors
+# keep their previous behaviour.
+_DEVICE_ATEN_COMPLEX_ABORTS = ("enflame",)
 
 
 DTYPES = [
@@ -73,8 +71,8 @@ def assert_cast(x, non_blocking=False):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Short(shape, dtype, non_blocking):
-    if dtype.is_complex and not utils.TO_CPU and flag_gems.vendor_name == "enflame":
-        pytest.skip("device aten _cast_Short aborts on complex input; use --ref=cpu")
+    if dtype.is_complex and flag_gems.vendor_name in _DEVICE_ATEN_COMPLEX_ABORTS:
+        pytest.skip("device aten _cast_Short aborts on complex input")
     assert_cast(make_input(shape, dtype), non_blocking)
 
 
@@ -84,8 +82,8 @@ def test_cast_Short(shape, dtype, non_blocking):
     "layout", ["transpose", "slice", "expand", "channels_last", "permuted_slice"]
 )
 def test_cast_Short_strided(dtype, layout):
-    if dtype.is_complex and not utils.TO_CPU and flag_gems.vendor_name == "enflame":
-        pytest.skip("device aten _cast_Short aborts on complex input; use --ref=cpu")
+    if dtype.is_complex and flag_gems.vendor_name in _DEVICE_ATEN_COMPLEX_ABORTS:
+        pytest.skip("device aten _cast_Short aborts on complex input")
     x = make_input((4, 5, 6, 7), dtype)
     if layout == "transpose":
         x = x.transpose(0, 3)
@@ -110,6 +108,13 @@ def test_cast_Short_complex_real_component(dtype, conjugated):
     x = torch.complex(real, imag).to(dtype)
     if conjugated:
         x = x.conj()
+    if flag_gems.vendor_name in _DEVICE_ATEN_COMPLEX_ABORTS:
+        # The device aten reference leg aborts on complex input, so take the
+        # truncation of the real part on CPU as the reference instead.
+        expected = real.cpu().to(torch.int16)
+        actual = flag_gems.cast_Short(x)
+        torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+        return
     actual, expected = assert_cast(x)
     torch.testing.assert_close(actual, real.to(torch.int16), rtol=0, atol=0)
     torch.testing.assert_close(expected, real.to(torch.int16), rtol=0, atol=0)

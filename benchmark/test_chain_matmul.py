@@ -113,7 +113,9 @@ class ChainMatmulBenchmark(base.GenericBenchmark):
     DEFAULT_SHAPE_DESC = "chain of (M, K) matrix shapes"
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(self.BENCH_SHAPES)
+        # Drop the chains this backend cannot measure (see _UNMEASURABLE_CHAINS);
+        # running them wedges the native mm and the benchmark never finishes.
+        self.shapes = _measurable_chains(self.BENCH_SHAPES)
         self.shape_desc = self.DEFAULT_SHAPE_DESC
 
     def set_more_shapes(self):
