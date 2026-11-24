@@ -189,6 +189,13 @@ def _cudnn_attn_fwd_gems(
     )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_attention_forward; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.cudnn_attention_forward
 def test_perf_cudnn_attention_forward():

@@ -145,14 +145,21 @@ def _svd_shape(A):
 def _rank2_svals_kernel(
     A,
     S,
+    Out,
     BATCH: tl.constexpr,
     M: tl.constexpr,
     N: tl.constexpr,
     TALL: tl.constexpr,
     BLOCK_B: tl.constexpr,
     BLOCK_R: tl.constexpr,
+    MODE: tl.constexpr,
 ):
-    """Closed-form SVD for k=2. BLOCK_B matrices per program."""
+    """Closed-form SVD for k=2. BLOCK_B matrices per program.
+
+    MODE 0: plain svdvals -- both singular values stored to S (batch, 2).
+    MODE 1/2/3: ord=2 / ord=-2 / nuc -- the requested norm value is stored
+    straight into Out[b] with an in-kernel dtype cast, so no host-side
+    slice + copy epilogue is needed."""
     pid = tl.program_id(0)
     eps = 1.0e-20
     c_dtype = A.type.element_ty
@@ -182,9 +189,19 @@ def _rank2_svals_kernel(
         det = tl.maximum(0.0, aa * bbv - ab * ab)
         l1 = tl.where(l0 > eps, det / l0, 0.0)
 
-        sbase = S + pid * 2
-        tl.store(sbase, tl.sqrt(l0))
-        tl.store(sbase + 1, tl.sqrt(l1))
+        if MODE == 0:
+            sbase = S + pid * 2
+            tl.store(sbase, tl.sqrt(l0))
+            tl.store(sbase + 1, tl.sqrt(l1))
+        elif MODE == 1:
+            tl.store(Out + pid, tl.sqrt(l0).to(Out.dtype.element_ty))
+        elif MODE == 2:
+            tl.store(Out + pid, tl.sqrt(l1).to(Out.dtype.element_ty))
+        else:
+            tl.store(
+                Out + pid,
+                (tl.sqrt(l0) + tl.sqrt(l1)).to(Out.dtype.element_ty),
+            )
 
     else:
         # --- BLOCK_B matrices per program (vectorized, tiny rows) ---
@@ -213,13 +230,29 @@ def _rank2_svals_kernel(
         l0 = tl.maximum(0.0, 0.5 * (aa + bbv + root))
         det = tl.maximum(0.0, aa * bbv - ab * ab)
         l1 = tl.where(l0 > 1.0e-20, det / l0, 0.0)
-        tl.store(S + b * 2, tl.sqrt(l0), mask=bmask)
-        tl.store(S + b * 2 + 1, tl.sqrt(l1), mask=bmask)
+        if MODE == 0:
+            tl.store(S + b * 2, tl.sqrt(l0), mask=bmask)
+            tl.store(S + b * 2 + 1, tl.sqrt(l1), mask=bmask)
+        elif MODE == 1:
+            tl.store(Out + b, tl.sqrt(l0).to(Out.dtype.element_ty), mask=bmask)
+        elif MODE == 2:
+            tl.store(Out + b, tl.sqrt(l1).to(Out.dtype.element_ty), mask=bmask)
+        else:
+            tl.store(
+                Out + b,
+                (tl.sqrt(l0) + tl.sqrt(l1)).to(Out.dtype.element_ty),
+                mask=bmask,
+            )
 
 
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_NUMERIC = {1, -1, 2, -2, float("inf"), -float("inf")}
+
+# Output dtypes the GCU400 kernels can store directly (in-kernel fp32->x
+# cast at store).  fp64 needs the host-cast fallback (no fp64 arithmetic
+# on this backend).
+_FLOAT_CAST_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 
 # ===========================================================================
@@ -338,6 +371,166 @@ def _abs_norm_kernel(
 
 
 # ---------------------------------------------------------------------------
+# Fast two-phase abs-norm kernels (GCU400):
+#   Phase 1 `_abs_norm_v2_kernel`: one program per (matrix, main-axis block);
+#     loops over the other axis, plain-stores per-row/per-col abs sums to a
+#     scratch buffer (no atomics -- vector atomic_add costs ~27ns/lane-op and
+#     serializes to >100us on mid-size matrices), or -- when the matrix fits
+#     a single block per matrix -- reduces in-program and stores the final
+#     norm straight into Out with an in-kernel dtype cast.
+#   Phase 2 `_abs_norm_final_kernel`: max/min over the scratch row plus cast.
+# Both phases load fp16/bf16/fp32 and accumulate in fp32.
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit
+def _abs_norm_v2_kernel(
+    X,
+    Out,
+    Partial,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    GRID_MAIN: tl.constexpr,
+    SUM_AXIS: tl.constexpr,
+    IS_MIN: tl.constexpr,
+    SINGLE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    b = pid // GRID_MAIN
+    blk = pid % GRID_MAIN
+    base = b * M * N
+    if SUM_AXIS == 1:
+        # inf-norm: row sums.  main axis = rows, loop over columns.
+        rows = blk * BLOCK_M + tl.arange(0, BLOCK_M)
+        rmask = rows < M
+        acc = tl.zeros([BLOCK_M], dtype=tl.float32)
+        for c0 in range(0, N, BLOCK_N):
+            cols = c0 + tl.arange(0, BLOCK_N)
+            x = tl.load(
+                X + base + rows[:, None] * N + cols[None, :],
+                mask=rmask[:, None] & (cols < N)[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            acc += tl.sum(tl.abs(x), axis=1)
+        if SINGLE:
+            acc = tl.where(rmask, acc, float("inf") if IS_MIN else 0.0)
+            v = tl.min(acc) if IS_MIN else tl.max(acc)
+            tl.store(Out + b, v.to(Out.dtype.element_ty))
+        else:
+            tl.store(Partial + b * M + rows, acc, mask=rmask)
+    else:
+        # 1-norm: column sums.  main axis = columns, loop over rows.
+        cols = blk * BLOCK_N + tl.arange(0, BLOCK_N)
+        cmask = cols < N
+        acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+        for r0 in range(0, M, BLOCK_M):
+            rows = r0 + tl.arange(0, BLOCK_M)
+            x = tl.load(
+                X + base + rows[:, None] * N + cols[None, :],
+                mask=(rows < M)[:, None] & cmask[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            acc += tl.sum(tl.abs(x), axis=0)
+        if SINGLE:
+            acc = tl.where(cmask, acc, float("inf") if IS_MIN else 0.0)
+            v = tl.min(acc) if IS_MIN else tl.max(acc)
+            tl.store(Out + b, v.to(Out.dtype.element_ty))
+        else:
+            tl.store(Partial + b * N + cols, acc, mask=cmask)
+
+
+@libentry()
+@triton.jit
+def _abs_norm_final_kernel(
+    Partial,
+    Out,
+    L,
+    BLOCK_L: tl.constexpr,
+    IS_MIN: tl.constexpr,
+):
+    b = tl.program_id(0)
+    base = b * L
+    init = float("inf") if IS_MIN else float("-inf")
+    run = init
+    for l0 in range(0, L, BLOCK_L):
+        idx = l0 + tl.arange(0, BLOCK_L)
+        v = tl.load(Partial + base + idx, mask=idx < L, other=init)
+        m = tl.min(v) if IS_MIN else tl.max(v)
+        run = tl.minimum(run, m) if IS_MIN else tl.maximum(run, m)
+    tl.store(Out + b, run.to(Out.dtype.element_ty))
+
+
+# ---------------------------------------------------------------------------
+# Fast two-phase Frobenius kernels for large single matrices (M*N > 65536):
+#   `_fro_v2_kernel`: row-block partial sum of squares, plain store (no
+#     atomics); `_fro_final_kernel`: sum + sqrt + cast in one tiny launch.
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit
+def _fro_v2_kernel(
+    X,
+    Partial,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    GRID_M: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    rmask = rows < M
+    acc = 0.0
+    for c0 in range(0, N, BLOCK_N):
+        cols = c0 + tl.arange(0, BLOCK_N)
+        x = tl.load(
+            X + rows[:, None] * N + cols[None, :],
+            mask=rmask[:, None] & (cols < N)[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        acc += tl.sum(x * x)
+    tl.store(Partial + pid, acc)
+
+
+@libentry()
+@triton.jit
+def _fro_final_kernel(
+    Partial,
+    Out,
+    L,
+    BLOCK_L: tl.constexpr,
+):
+    acc = 0.0
+    for l0 in range(0, L, BLOCK_L):
+        idx = l0 + tl.arange(0, BLOCK_L)
+        acc += tl.sum(tl.load(Partial + idx, mask=idx < L, other=0.0))
+    tl.store(Out, tl.sqrt(acc).to(Out.dtype.element_ty))
+
+
+# ---------------------------------------------------------------------------
+# Nuclear-norm sigma-sum: sums the (batch, K) singular-value matrix produced
+# by the SVD path along K and stores per-batch results with a dtype cast,
+# replacing the generic FlagGems sum (whose Python wrapper costs ~5us).
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit
+def _nuc_sum_kernel(S, Out, K, BLOCK_K: tl.constexpr):
+    b = tl.program_id(0)
+    base = b * K
+    acc = 0.0
+    for k0 in range(0, K, BLOCK_K):
+        idx = k0 + tl.arange(0, BLOCK_K)
+        acc += tl.sum(tl.load(S + base + idx, mask=idx < K, other=0.0))
+    tl.store(Out + b, acc.to(Out.dtype.element_ty))
+
+
+# ---------------------------------------------------------------------------
 # Per-ord helper functions -- each mirrors a path in the C++ dispatch
 # ---------------------------------------------------------------------------
 
@@ -360,12 +553,12 @@ def _fro_norm(A, dim, keepdim, dtype, out=None):
         if total <= 65536:
             # GCU400 has no fp64 arithmetic: an fp64 Out buffer would make the
             # kernel emit an in-kernel fp32->fp64 extf, which produces garbage
-            # (-3.7e19) on this backend.  Always compute into an fp32 buffer
-            # and cast to out_dtype on the host; direct kernel writes into a
-            # user-provided out require a fp32 out as well.
+            # (-3.7e19) on this backend.  Direct kernel writes accept
+            # fp32/fp16/bf16 out (in-kernel downcast is fine); anything else
+            # computes into an fp32 buffer and casts on the host.
             direct = (
                 out is not None
-                and out.dtype == torch.float32
+                and out.dtype in _FLOAT_CAST_DTYPES
                 and out.is_contiguous()
                 and out.numel() == 1
             )
@@ -386,6 +579,44 @@ def _fro_norm(A, dim, keepdim, dtype, out=None):
                 TILE_2D=False,
                 USE_FP64=use_fp64,
                 num_warps=8,
+            )
+            if direct:
+                return out
+            result = buf.view(())
+        elif (
+            A.is_contiguous()
+            and out_dtype in _FLOAT_CAST_DTYPES
+            and (out is None or (out.is_contiguous() and out.numel() == 1))
+        ):
+            # Fast two-phase path: row-block partial sums of squares (plain
+            # stores, no atomics), then one tiny fused sum + sqrt + cast
+            # kernel writing straight into the out/result buffer.
+            bn = triton.next_power_of_2(min(N, 512))
+            bm = triton.next_power_of_2(max(1, min(M, 4096 // bn)))
+            grid_m = triton.cdiv(M, bm)
+            direct = out is not None
+            buf = (
+                out.reshape(-1)
+                if direct
+                else torch.empty(1, dtype=out_dtype, device=A.device)
+            )
+            partial = torch.empty(grid_m, dtype=torch.float32, device=A.device)
+            _fro_v2_kernel[(grid_m,)](
+                A,
+                partial,
+                M,
+                N,
+                bm,
+                bn,
+                grid_m,
+                num_warps=4,
+            )
+            _fro_final_kernel[(1,)](
+                partial,
+                buf,
+                grid_m,
+                triton.next_power_of_2(min(grid_m, 1024)),
+                num_warps=4,
             )
             if direct:
                 return out
@@ -432,16 +663,16 @@ def _fro_norm(A, dim, keepdim, dtype, out=None):
     for i in range(A_perm.ndim - 2):
         batch *= A_perm.size(i)
     mat_size = A_perm.size(-2) * A_perm.size(-1)
-    # A_perm is non-contiguous; reshape on a non-contiguous (…,1) view can
+    # A_perm is non-contiguous; reshape on a non-contiguous (...,1) view can
     # yield a strided (batch, mat_size) view instead of a copy, breaking the
     # _fro_kernel's contiguous linear indexing.  Force a contiguous copy.
     flat = A_perm.reshape(batch, mat_size).contiguous()
 
-    # fp32 kernel buffer + fp32-only direct write (same GCU400 fp64 rule as
-    # the simple 2D path above); cast to out_dtype on the host afterwards.
+    # fp32 kernel buffer + fp32/fp16/bf16 direct write (same GCU400 fp64 rule
+    # as the simple 2D path above); cast to out_dtype on the host afterwards.
     direct = (
         out is not None
-        and out.dtype == torch.float32
+        and out.dtype in _FLOAT_CAST_DTYPES
         and out.is_contiguous()
         and out.numel() == batch
     )
@@ -480,17 +711,60 @@ def _fro_norm(A, dim, keepdim, dtype, out=None):
     return result
 
 
-def _ord2_norm(A, ord_val, dim, keepdim, dtype):
+def _ord2_norm(A, ord_val, dim, keepdim, dtype, out=None):
     """Spectral norm (ord=2 / ord=-2).  Mirrors C++ inline dispatch.
 
-    Permutes target dims to last two positions, computes singular values
-    via ``_svdvals_for_norm``, then takes max (ord=2) or min (ord=-2).
+    Fast path (GCU400): reducing the last two dims of a contiguous
+    fp16/bf16/fp32 input, the whole norm is produced by the SVD kernels
+    writing straight into the (possibly half-precision) out/result buffer
+    -- rank-2 closed form for k=2, Gram + tridiag + Sturm otherwise; the
+    Sturm kernel's owning lane stores the max/min sigma directly, so there
+    is no host-side slice + copy epilogue.  Anything else (odd dims, fp64)
+    falls back to the generic permute + svdvals path.
     """
     d0, d1 = dim
     out_dtype = dtype if dtype is not None else A.dtype
-
-    # Move target dims to the last two positions.
     ndim = A.ndim
+
+    fast = (
+        ndim >= 2
+        and A.is_contiguous()
+        and A.dtype in _FLOAT_CAST_DTYPES
+        and out_dtype in _FLOAT_CAST_DTYPES
+        and (d0, d1) in ((ndim - 2, ndim - 1), (ndim - 1, ndim - 2))
+        and (out is None or (out.is_contiguous() and out.numel() >= 1))
+    )
+    if fast:
+        batch = 1
+        for i in range(ndim - 2):
+            batch *= A.shape[i]
+        M, N = A.shape[-2], A.shape[-1]
+        if batch * M * N >= 2**31:
+            fast = False
+
+    if fast:
+        want_max = ord_val > 0
+        direct = out is not None
+        buf = (
+            out.reshape(-1)
+            if direct
+            else torch.empty(batch, dtype=out_dtype, device=A.device)
+        )
+        _svd_norm_impl(A, batch, M, N, 1 if want_max else 2, buf)
+        if direct:
+            return out
+        result = buf
+        if keepdim:
+            out_shape = list(A.shape)
+            out_shape[d0] = 1
+            out_shape[d1] = 1
+            result = result.reshape(out_shape)
+        else:
+            batch_shape = [A.size(i) for i in range(ndim) if i != d0 and i != d1]
+            result = result.reshape(batch_shape)
+        return result
+
+    # Generic path: permute target dims to the last two positions.
     all_dims = list(range(ndim))
     remaining = [d for d in all_dims if d not in (d0, d1)]
     perm = remaining + [d0, d1]
@@ -641,6 +915,119 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim, out=None):
     return result
 
 
+def _abs_norm_lastdim_ok(A, d0, d1, out_dtype, out):
+    """Whether the GCU400 fast two-phase abs-norm path applies:
+    contiguous fp16/bf16/fp32 input reducing (either order of) the last two
+    dims, fp32-or-finer output, and int32-safe linear indexing."""
+    ndim = A.ndim
+    if (
+        not A.is_contiguous()
+        or A.dtype not in _FLOAT_CAST_DTYPES
+        or out_dtype not in _FLOAT_CAST_DTYPES
+        or (d0, d1) not in ((ndim - 2, ndim - 1), (ndim - 1, ndim - 2))
+        or (out is not None and not out.is_contiguous())
+    ):
+        return False
+    total = 1
+    for s in A.shape:
+        total *= s
+        if total >= 2**31:
+            return False
+    return True
+
+
+def _abs_norm_impl(A, d0, d1, ord_val, out_dtype, keepdim, out, ndim):
+    """Fast ord=1/-1/inf/-inf for reductions over the last two dims.
+
+    Two-phase, atomic-free design (vector atomic_add measured ~27ns/lane-op
+    and >100us on mid-size matrices; the old tiled/stripe paths also relied
+    on aten zeros/fill_/copy_ around the kernel):
+      phase 1 `_abs_norm_v2_kernel`: one program per (matrix, main-axis
+      block); plain-stores per-row (inf) / per-column (1) abs sums, or --
+      when the matrix fits one block per matrix -- reduces in-program and
+      stores the final norm straight into Out with an in-kernel dtype cast;
+      phase 2 `_abs_norm_final_kernel`: max/min over the scratch vector.
+    Swapped (d0, d1) = (last, second-last) dims transpose the matrix, which
+    exchanges the roles of the 1-norm and inf-norm reductions."""
+    is_min = ord_val < 0
+    sum_axis = 1 if math.isinf(abs(ord_val)) else 0
+    if d0 == ndim - 1 and d1 == ndim - 2:
+        sum_axis = 1 - sum_axis
+    batch = 1
+    for i in range(ndim - 2):
+        batch *= A.shape[i]
+    M, N = A.shape[-2], A.shape[-1]
+    if sum_axis == 1:
+        # inf-norm: main axis = rows, wide contiguous column loads
+        bn = triton.next_power_of_2(min(N, 2048))
+        bm = triton.next_power_of_2(max(1, min(M, 4096 // bn)))
+        grid_main = triton.cdiv(M, bm)
+        L = M
+    else:
+        # 1-norm: main axis = columns, loop over rows
+        bm = triton.next_power_of_2(min(M, 64))
+        bn = triton.next_power_of_2(min(N, max(64, 4096 // bm)))
+        grid_main = triton.cdiv(N, bn)
+        L = N
+    direct = out is not None
+    buf = (
+        out.reshape(-1)
+        if direct
+        else torch.empty(batch, dtype=out_dtype, device=A.device)
+    )
+    if grid_main == 1:
+        _abs_norm_v2_kernel[(batch,)](
+            A,
+            buf,
+            buf,
+            M,
+            N,
+            bm,
+            bn,
+            1,
+            sum_axis,
+            is_min,
+            True,
+            num_warps=4,
+        )
+    else:
+        partial = torch.empty(batch * L, dtype=torch.float32, device=A.device)
+        _abs_norm_v2_kernel[(batch * grid_main,)](
+            A,
+            buf,
+            partial,
+            M,
+            N,
+            bm,
+            bn,
+            grid_main,
+            sum_axis,
+            is_min,
+            False,
+            num_warps=4,
+        )
+        _abs_norm_final_kernel[(batch,)](
+            partial,
+            buf,
+            L,
+            triton.next_power_of_2(min(L, 1024)),
+            is_min,
+            num_warps=4,
+        )
+    if direct:
+        return out
+    result = buf
+    if keepdim:
+        out_shape = list(A.shape)
+        out_shape[d0] = 1
+        out_shape[d1] = 1
+        result = result.reshape(out_shape)
+    else:
+        batch_shape = [A.size(i) for i in range(ndim) if i != d0 and i != d1]
+        result = result.reshape(batch_shape)
+    return result
+
+
 def _ord1_norm(A, ord_val, dim, keepdim, dtype, out=None):
     """1-norm (ord=1 / ord=-1).  Mirrors C++ ``ord1_norm``.
 
@@ -652,6 +1039,10 @@ def _ord1_norm(A, ord_val, dim, keepdim, dtype, out=None):
     d0, d1 = dim
     out_dtype = dtype if dtype is not None else A.dtype
     is_min = ord_val < 0
+
+    # --- GCU400 fast two-phase path (2D and batched, last-two dims) ---
+    if _abs_norm_lastdim_ok(A, d0, d1, out_dtype, out):
+        return _abs_norm_impl(A, d0, d1, ord_val, out_dtype, keepdim, out, A.ndim)
 
     # --- Simple 2D matrix path  ---
     if A.ndim == 2 and d0 == 0 and d1 == 1:
@@ -738,6 +1129,10 @@ def _ordinf_norm(A, ord_val, dim, keepdim, dtype, out=None):
     out_dtype = dtype if dtype is not None else A.dtype
     is_min = ord_val < 0
 
+    # --- GCU400 fast two-phase path (2D and batched, last-two dims) ---
+    if _abs_norm_lastdim_ok(A, d0, d1, out_dtype, out):
+        return _abs_norm_impl(A, d0, d1, ord_val, out_dtype, keepdim, out, A.ndim)
+
     # --- Simple 2D matrix path ---
     if A.ndim == 2 and d0 == 0 and d1 == 1:
         M, N = A.shape
@@ -811,12 +1206,60 @@ def _ordinf_norm(A, ord_val, dim, keepdim, dtype, out=None):
     return _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim, out=out)
 
 
-def _nuc_norm(A, dim, keepdim=False, dtype=None):
-    """Nuclear norm (ord='nuc').  Mirrors C++ ``nuc_norm``."""
+def _nuc_norm(A, dim, keepdim=False, dtype=None, out=None):
+    """Nuclear norm (ord='nuc').  Mirrors C++ ``nuc_norm``.
+
+    GCU400 fast path: last-two-dim reduction on contiguous fp16/bf16/fp32
+    input runs the SVD kernels with want=3 (nuclear-norm) mode, which sums
+    the singular values in a tiny fused kernel and stores the per-matrix
+    norm straight into the out/result buffer -- no generic FlagGems sum
+    (whose wrapper costs ~5us) and no host copy epilogue."""
     d0, d1 = dim
+    out_dtype = dtype if dtype is not None else A.dtype
+    if A.dtype in (torch.float16, torch.bfloat16) and dtype is None:
+        out_dtype = torch.float32  # torch promotes half-precision SVD results
+    ndim = A.ndim
+
+    if (
+        A.is_contiguous()
+        and A.dtype in _FLOAT_CAST_DTYPES
+        and out_dtype in _FLOAT_CAST_DTYPES
+        and (d0, d1) in ((ndim - 2, ndim - 1), (ndim - 1, ndim - 2))
+        and (out is None or out.is_contiguous())
+    ):
+        total = 1
+        fast = True
+        for s in A.shape:
+            total *= s
+            if total >= 2**31:
+                fast = False
+                break
+        if fast:
+            batch = 1
+            for i in range(ndim - 2):
+                batch *= A.shape[i]
+            M, N = A.shape[-2], A.shape[-1]
+            direct = out is not None
+            buf = (
+                out.reshape(-1)
+                if direct
+                else torch.empty(batch, dtype=out_dtype, device=A.device)
+            )
+            _svd_norm_impl(A, batch, M, N, 3, buf)
+            if direct:
+                return out
+            result = buf
+            if keepdim:
+                out_shape = list(A.shape)
+                out_shape[d0] = 1
+                out_shape[d1] = 1
+                result = result.reshape(out_shape)
+            else:
+                batch_shape = [A.size(i) for i in range(ndim) if i != d0 and i != d1]
+                result = result.reshape(batch_shape)
+            return result
 
     # Move target dims to last two positions.
-    ndim = A.ndim
     all_dims = list(range(ndim))
     remaining = [d for d in all_dims if d not in (d0, d1)]
     perm = remaining + [d0, d1]
@@ -905,13 +1348,14 @@ def _linalg_matrix_norm_impl(
         )
 
     # --- dtype guard for SVD-based ords -------------------------------------
-    # Upcast before the out-dtype check so the expected result dtype matches
-    # what the (upcast) SVD helpers actually produce.
+    # torch promotes half-precision SVD results to fp32; honor that contract
+    # without materializing an fp32 copy of A (the GCU400 kernels upcast
+    # inside the kernel), by promoting the requested output dtype instead.
     _svd_ord = (isinstance(ord, str) and ord == "nuc") or (
         not isinstance(ord, str) and abs(float(ord)) == 2
     )
-    if _svd_ord and A.dtype in (torch.float16, torch.bfloat16):
-        A = A.float()  # upcast to fp32 for SVD
+    if _svd_ord and dtype is None and A.dtype in (torch.float16, torch.bfloat16):
+        dtype = torch.float32
 
     # --- out validation + resize up front (before any compute) --------------
     if out is not None:
@@ -924,7 +1368,7 @@ def _linalg_matrix_norm_impl(
         if ord == "fro":
             result = _fro_norm(A, dim, keepdim, dtype, out=out)
         elif ord == "nuc":
-            result = _nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype)
+            result = _nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype, out=out)
         else:
             raise RuntimeError(
                 f"linalg_matrix_norm: Order '{ord}' not supported. "
@@ -940,7 +1384,7 @@ def _linalg_matrix_norm_impl(
             )
         abs_ord = abs(ord_val)
         if abs_ord == 2.0:
-            result = _ord2_norm(A, ord_val, dim, keepdim, dtype)
+            result = _ord2_norm(A, ord_val, dim, keepdim, dtype, out=out)
         elif abs_ord == 1.0:
             result = _ord1_norm(A, ord_val, dim, keepdim, dtype, out=out)
         elif math.isinf(abs_ord):
@@ -965,7 +1409,7 @@ def linalg_matrix_norm(
     provided, writes the result into it and returns the same (aliased) tensor
     (out variant); otherwise returns a freshly-allocated result.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_NORM")
+    logger.debug("GEMS_ENFLAME LINALG_MATRIX_NORM")
     return _linalg_matrix_norm_impl(
         A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
     )
@@ -980,7 +1424,7 @@ def linalg_matrix_norm_out(
     performs the validation / resize / direct write and returns the aliased
     ``out``.  Pattern follows ``linalg_lu_factor_out``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_NORM_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_MATRIX_NORM_OUT")
     if out is None:
         raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
     return _linalg_matrix_norm_impl(
@@ -993,13 +1437,23 @@ def linalg_matrix_norm_out(
 # ===========================================================================
 
 
-def _svdvals_rank2(input):
-    """Closed-form singular values for k=2 matrices.  Mirrors C++ ``svdvals_rank2``."""
+def _svdvals_rank2(input, out_flat=None, want=0):
+    """Closed-form singular values for k=2 matrices.  Mirrors C++ ``svdvals_rank2``.
+
+    want=0: plain svdvals -- returns (..., 2) in the input dtype.
+    want=1/2/3 (ord=2/-2/nuc): the kernel writes the requested norm value
+    straight into ``out_flat`` (batch,) with an in-kernel dtype cast and
+    this returns None -- no host slice/copy epilogue."""
     batch, m, n = _svd_shape(input)
     a = input.contiguous().reshape(batch, m, n)
-    s = torch.empty((batch, 2), dtype=input.dtype, device=input.device)
     largest = max(m, n)
     block_r = triton.next_power_of_2(largest)
+    if want == 0:
+        s = torch.empty((batch, 2), dtype=input.dtype, device=input.device)
+        out_arg = s
+    else:
+        s = None  # mode>0 never stores S
+        out_arg = out_flat
     with torch_device_fn.device(input.device):
         if largest <= 16 and batch >= 16:
             block_b = (
@@ -1008,27 +1462,33 @@ def _svdvals_rank2(input):
             _rank2_svals_kernel[(triton.cdiv(batch, block_b),)](
                 a,
                 s,
+                out_arg,
                 BATCH=batch,
                 M=m,
                 N=n,
                 TALL=m >= n,
                 BLOCK_B=block_b,
                 BLOCK_R=block_r,
+                MODE=want,
                 num_warps=1,
             )
         else:
             _rank2_svals_kernel[(batch,)](
                 a,
                 s,
+                out_arg,
                 BATCH=batch,
                 M=m,
                 N=n,
                 TALL=m >= n,
                 BLOCK_B=1,
                 BLOCK_R=block_r,
+                MODE=want,
                 num_warps=1 if block_r <= 64 else 4,
             )
-    return s.reshape(*input.shape[:-2], 2)
+    if want == 0:
+        return s.reshape(*input.shape[:-2], 2)
+    return None
 
 
 # ===========================================================================
@@ -1058,7 +1518,9 @@ def _gram_sym_kernel(
 ):
     """G = A@Aᵀ (TRANSPOSE=False, A is (batch, K, ROWS)) or
     G = Aᵀ@A (TRANSPOSE=True, A is (batch, ROWS, K)).  G: (batch, K, K) fp64.
-    Element-wise accumulation (fp64 tl.dot is unavailable / not tensor-core)."""
+    Element-wise accumulation (fp64 tl.dot is unavailable / not tensor-core).
+    Half-precision inputs are upcast to fp32 inside the kernel so the host
+    does not need a separate ``A.float()`` launch."""
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     pid_b = tl.program_id(2)
@@ -1075,24 +1537,24 @@ def _gram_sym_kernel(
                 a_base + (k0 + offs_k)[None, :] * K + offs_m[:, None],
                 mask=((k0 + offs_k)[None, :] < ROWS) & (offs_m[:, None] < K),
                 other=0.0,
-            )
+            ).to(tl.float32)
             b = tl.load(
                 a_base + (k0 + offs_k)[None, :] * K + offs_n[:, None],
                 mask=((k0 + offs_k)[None, :] < ROWS) & (offs_n[:, None] < K),
                 other=0.0,
-            )
+            ).to(tl.float32)
         else:
             # A is (batch, K, ROWS): G[i,j] = sum_r A[i,r] * A[j,r]
             a = tl.load(
                 a_base + offs_m[:, None] * ROWS + (k0 + offs_k)[None, :],
                 mask=(offs_m[:, None] < K) & ((k0 + offs_k)[None, :] < ROWS),
                 other=0.0,
-            )
+            ).to(tl.float32)
             b = tl.load(
                 a_base + offs_n[:, None] * ROWS + (k0 + offs_k)[None, :],
                 mask=(offs_n[:, None] < K) & ((k0 + offs_k)[None, :] < ROWS),
                 other=0.0,
-            )
+            ).to(tl.float32)
         acc += tl.sum(a[:, None, :] * b[None, :, :], axis=2)
     tl.store(
         g_base + offs_m[:, None] * K + offs_n[None, :],
@@ -1187,20 +1649,182 @@ def _sym_tridiag_kernel(G, SCR, D, E, K, BLOCK_C: tl.constexpr, BLOCK_R: tl.cons
 
 @libentry()
 @triton.jit
+def _sym_tridiag_reg_kernel(G, D, E, K, BLOCK_K: tl.constexpr):
+    """Register-resident Householder tridiagonalization for small K.
+
+    Same math as `_sym_tridiag_kernel`, but the whole K x K tile lives in
+    registers for the entire j-loop: no GMEM round-trips, no barriers, and
+    D/E are accumulated in registers and stored once at the end.  The tile
+    is held TRANSPOSED (T[c, r] = G[r, c]) so every in-loop reduction runs
+    along axis 0 (axis-1 reductions cost 4x more on GCU400).
+
+    GCU400-specific cost model (measured): a cross-lane reduce to scalar is
+    ~190ns and a [32,32] axis-0 reduce ~114ns, so the kernel uses only 3
+    scalar reductions per step (S, x0, cs); tau is recovered from
+    S - 2*x0*beta + beta*2 instead of a 4th reduction.  Run with num_warps=1
+    (measured 1.4x faster than num_warps=4: fewer cross-lane extract stages).
+    """
+    pid_b = tl.program_id(0)
+    idx = tl.arange(0, BLOCK_K)
+    inb = idx < K
+    g = G + pid_b * K * K
+    tile = tl.load(
+        g + idx[None, :] * K + idx[:, None],
+        mask=inb[None, :] & inb[:, None],
+        other=0.0,
+    )
+    # diag[r] = G[r, r] (kept separately so step j needs no scalar extract)
+    diag = tl.sum(tl.where(idx[:, None] == idx[None, :], tile, 0.0), axis=0)
+    dvec = tl.zeros((BLOCK_K,), dtype=tl.float32)
+    evec = tl.zeros((BLOCK_K,), dtype=tl.float32)
+    d = D + pid_b * K
+    e = E + pid_b * (K - 1)
+    for j in range(K - 1):
+        rem = idx > j
+        # col[r] = G[r, j] = T[j, r]: extract row j of the transposed tile.
+        col = tl.sum(tl.where(idx[:, None] == j, tile, 0.0), axis=0)
+        col = tl.where(rem, col, 0.0)
+        S = tl.sum(col * col)
+        sig = tl.sqrt(S)
+        x0 = tl.sum(tl.where(idx == j + 1, col, 0.0))
+        beta = tl.where(x0 >= 0.0, -sig, sig)
+        v = tl.where(idx == j + 1, col - beta, col)
+        # ||v||^2 = S - 2*beta*x0 + beta^2 (reuses S; no extra reduction)
+        tau = 2.0 / (S - 2.0 * x0 * beta + beta * beta)
+        # w[r] = tau * sum_c G[r, c] * v[c] = tau * sum_c T[c, r] * v[c].
+        # v is zero outside the trailing block, so rows <= j come out as
+        # sums over zero contributions and only need an explicit zeroing.
+        w = tau * tl.sum(tile * v[:, None], axis=0)
+        w = tl.where(rem, w, 0.0)
+        cs = tl.sum(v * w)
+        w2 = w - 0.5 * (tau * cs) * v
+        # Rank-2 update.  v and w2 are zero outside the trailing block, so
+        # leading rows/columns are untouched without any tile-level mask.
+        tile = tile - w2[:, None] * v[None, :] - v[:, None] * w2[None, :]
+        diag = diag - 2.0 * v * w2
+        dvec = tl.where(idx == j, diag, dvec)
+        evec = tl.where(idx == j, beta, evec)
+    dvec = tl.where(idx == K - 1, diag, dvec)
+    tl.store(d + idx, dvec, mask=inb)
+    tl.store(e + idx, evec, mask=idx < K - 1)
+
+
+@libentry()
+@triton.jit
+def _sturm_m_kernel(
+    D,
+    E,
+    S,
+    Out,
+    K,
+    BISECT_ITERS,
+    SLOTS: tl.constexpr,
+    SPP: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    WRITE_OUT: tl.constexpr,
+    WANT_SLOT: tl.constexpr,
+):
+    """Sturm bisection on the symmetric tridiagonal (D, E), LAPACK-style.
+
+    Two GCU400-specific fixes vs `_sturm_sigmas_kernel`:
+      * The eigenvalue count uses the leading-principal-minor recurrence
+        m_new = (d_i - mid)*m_cur - e^2*m_prev (LAPACK dstebz form) instead
+        of the division recurrence q = (d_i - mid) - e^2/q: fp32 divide is
+        ~150 cycles of exposed latency per step, and the minor form removes
+        it from the serial chain.  A power-of-two rescale (exact, no
+        rounding) keeps |m| in range.
+      * D/E offsets are compile-time constants (static_range over SLOTS)
+        and the bisection loop is a runtime loop, so all 2K scalar loads are
+        loop-invariant and hoist out of the 32 bisection iterations instead
+        of being re-fetched ~1500 times (measured 3x faster).
+      * The Gershgorin bound is one vectorized reduce instead of a serial
+        K-loop of scalar loads.
+    Grid: batch * cdiv(SLOTS, SPP) -- the OLD kernel launched
+    batch*cdiv(k,8) programs with SPP=16, a 2x overshoot whose extra
+    programs read/wrote out of bounds (silent corruption risk).
+
+    WRITE_OUT / WANT_SLOT: the program owning the requested slot also
+    stores its sigma straight into Out[b] (with dtype cast), so ord=+2/-2
+    needs no host-side slice+copy epilogue.  With WRITE_OUT=0 the kernel
+    behaves as plain svdvals (S only).
+    """
+    n_groups: tl.constexpr = (SLOTS + SPP - 1) // SPP
+    pid = tl.program_id(0)
+    b = pid // n_groups
+    group = pid % n_groups
+    d = D + b * K
+    e = E + b * (K - 1)
+    lane = tl.arange(0, SPP)
+    slot = group * SPP + lane
+    smask = slot < SLOTS
+    # vectorized Gershgorin upper bound
+    vidx = tl.arange(0, BLOCK_K)
+    vm = vidx < K
+    d0 = tl.load(d + vidx, mask=vm, other=0.0)
+    e_next = tl.load(e + vidx, mask=vm & (vidx < K - 1), other=0.0)
+    e_prev = tl.load(e + vidx - 1, mask=vm & (vidx >= 1), other=0.0)
+    hi = tl.max(tl.abs(d0) + tl.abs(e_next) + tl.abs(e_prev))
+    hi = hi * (1.0 + 1e-6) + 1e-30
+    hi_v = tl.full((SPP,), hi, dtype=tl.float32)
+    lo_v = tl.full((SPP,), 0.0, dtype=tl.float32)
+    target_f = ((SLOTS - 1) - slot).to(tl.float32)
+    BIG: tl.constexpr = 5.0e17
+    IBIG: tl.constexpr = 1.0 / 5.0e17
+    for _ in range(BISECT_ITERS):
+        mid = 0.5 * (lo_v + hi_v)
+        m_prev = tl.full((SPP,), 1.0, dtype=tl.float32)
+        m_cur = tl.load(d + 0) - mid
+        m_cur = tl.where(m_cur == 0.0, -1e-300, m_cur)
+        cnt = tl.where(m_cur < 0.0, 1.0, 0.0)
+        for i in tl.static_range(1, SLOTS):
+            a = tl.load(d + i)
+            b2 = tl.load(e + i - 1)
+            b2 = b2 * b2
+            m_new = (a - mid) * m_cur - b2 * m_prev
+            m_new = tl.where(m_new == 0.0, -1e-300, m_new)
+            cnt += tl.where(m_new * m_cur < 0.0, 1.0, 0.0)
+            # exact power-of-two rescale keeps the minor chain in fp32 range
+            sc = tl.where(m_new > BIG, IBIG, 1.0)
+            sc = tl.where(m_new < -BIG, IBIG, sc)
+            m_prev = m_cur * sc
+            m_cur = m_new * sc
+        take = cnt >= (target_f + 1.0)
+        hi_v = tl.where(take, mid, hi_v)
+        lo_v = tl.where(take, lo_v, mid)
+    res = tl.sqrt(tl.maximum(0.5 * (lo_v + hi_v), 0.0))
+    tl.store(S + b * SLOTS + slot, res, mask=smask)
+    if WRITE_OUT:
+        # block-shaped pointer (all lanes -> Out[b]) so the masked scalar
+        # lane store compiles; only the lane owning WANT_SLOT writes.
+        out_ptrs = Out + b + tl.zeros([SPP], dtype=tl.int32)
+        tl.store(out_ptrs, res.to(Out.dtype.element_ty), mask=slot == WANT_SLOT)
+
+
+@libentry()
+@triton.jit
 def _sturm_sigmas_kernel(
     D,
     E,
     S,
+    Out,
     K,
     BISECT_ITERS: tl.constexpr,
     SLOTS: tl.constexpr,
     SPP: tl.constexpr,
+    WRITE_OUT: tl.constexpr = False,
+    WANT_SLOT: tl.constexpr = 0,
 ):
     """Sturm bisection on the symmetric tridiagonal (D, E): returns the
     eigenvalues of G = A Aᵀ (i.e. σ(A)²) at S[b, slot], slot 0 = largest
     (descending output).  Each program bisects SPP independent eigenvalue
     targets (SPP lanes); the independent recurrence chains give ILP that
-    hides fp64 division latency.  PSD eigenvalues are all in [0, Gershgorin]."""
+    hides fp64 division latency.  PSD eigenvalues are all in [0, Gershgorin].
+
+    WRITE_OUT/WANT_SLOT: the program owning WANT_SLOT also stores its sigma
+    straight into Out[b] with a dtype cast (ord=+2/-2 direct out write).
+    NOTE the launch grid must be batch * cdiv(SLOTS, SPP); the historical
+    batch*cdiv(k, 8) grid with SPP=16 launched 2x too many programs whose
+    b >= batch lanes read and wrote OUT OF BOUNDS."""
     n_groups: tl.constexpr = (SLOTS + SPP - 1) // SPP
     pid = tl.program_id(0)
     b = pid // n_groups
@@ -1245,25 +1869,36 @@ def _sturm_sigmas_kernel(
     # elementwise ops (each would be a separate kernel launch).
     res = tl.sqrt(tl.maximum(0.5 * (lo_v + hi_v), 0.0))
     tl.store(S + b * SLOTS + slot, res, mask=smask)
+    if WRITE_OUT:
+        # block-shaped pointer (all lanes -> Out[b]) so the masked scalar
+        # lane store compiles; only the lane owning WANT_SLOT writes.
+        out_ptrs = Out + b + tl.zeros([SPP], dtype=tl.int32)
+        tl.store(out_ptrs, res.to(Out.dtype.element_ty), mask=slot == WANT_SLOT)
 
 
-def _svdvals_gram_tridiag(A, bisect_iters=48):
-    """SVD via Gram → symmetric tridiagonalization → Sturm bisection.
-    All computation in fp64.  Returns singular values, descending,
-    shape (..., K).  Fast path for k ≥ 3 on the generic (NVIDIA) backend."""
-    *batch_dims, M, N = A.shape
-    batch = 1
-    for d in batch_dims:
-        batch *= d
-    k = min(M, N)
-    rows = max(M, N)
-    tall = M >= N
-    if A.dtype != torch.float32:
-        A = A.float()
-    A = A.contiguous()
-    a = A.reshape(batch, M, N)
+def _gram_tridiag_sturm(
+    a, batch, k, rows, tall, want=0, out_flat=None, bisect_iters=32
+):
+    """Gram -> tridiagonalization -> Sturm for k >= 3 (GCU400 fast core).
 
-    G = torch.empty((batch, k, k), dtype=torch.float32, device=A.device)
+    want=0: returns the (batch, k) descending sigma matrix S.
+    want=1/2: the Sturm lane owning slot 0 / slot k-1 stores sigma_max /
+      sigma_min straight into out_flat (dtype cast in kernel); returns None.
+    want=3: nuc -- stores sum(sigma) into out_flat via `_nuc_sum_kernel`.
+
+    Kernel selection (measured):
+      * k <= 64: `_sym_tridiag_reg_kernel` -- register-resident Householder
+        (442us -> ~130us at k=32, and more accurate: no GMEM round-trips).
+      * k <= 128: `_sturm_m_kernel` -- LAPACK leading-minor recurrence
+        (div-free, loads hoisted out of the bisection loop, vectorized
+        Gershgorin): 448us -> ~96us at k=32 with 32 bisection iterations
+        (the fp32 noise floor is reached well before 48 halvings).
+      * larger k (accuracy-only shapes): the original kernels, but with the
+        Sturm launch grid fixed to batch*cdiv(k, SPP) -- the historical
+        batch*cdiv(k, 8) grid with SPP=16 launched 2x excess programs that
+        read and wrote out of bounds."""
+    dev = a.device
+    G = torch.empty((batch, k, k), dtype=torch.float32, device=dev)
     _gram_sym_kernel[(triton.cdiv(k, 16), triton.cdiv(k, 16), batch)](
         a,
         G,
@@ -1276,50 +1911,155 @@ def _svdvals_gram_tridiag(A, bisect_iters=48):
         num_warps=4,
     )
 
-    scratch = torch.empty((batch, 2 * k + 8), dtype=torch.float32, device=A.device)
-    D = torch.empty((batch, k), dtype=torch.float32, device=A.device)
-    E = torch.empty((batch, k - 1), dtype=torch.float32, device=A.device)
-    block_c = triton.next_power_of_2(k)
-    _sym_tridiag_kernel[(batch,)](
-        G,
-        scratch,
-        D,
-        E,
-        k,
-        BLOCK_C=block_c,
-        BLOCK_R=16,
-        num_warps=8,
-        num_stages=1,
-    )
+    D = torch.empty((batch, k), dtype=torch.float32, device=dev)
+    E = torch.empty((batch, k - 1), dtype=torch.float32, device=dev)
+    block_k = triton.next_power_of_2(k)
+    if k <= 64:
+        _sym_tridiag_reg_kernel[(batch,)](
+            G,
+            D,
+            E,
+            k,
+            BLOCK_K=block_k,
+            num_warps=1,
+        )
+    else:
+        scratch = torch.empty((batch, 2 * k + 8), dtype=torch.float32, device=dev)
+        _sym_tridiag_kernel[(batch,)](
+            G,
+            scratch,
+            D,
+            E,
+            k,
+            BLOCK_C=block_k,
+            BLOCK_R=16,
+            num_warps=8,
+            num_stages=1,
+        )
 
-    # Sturm: 8 eigenvalue targets per program (ILP), 48 bisection iters
-    # (random test matrices have modest condition numbers; interval reaches
-    # λ_min scale well within 48 halvings).
-    S = torch.empty((batch, k), dtype=torch.float32, device=A.device)
-    _sturm_sigmas_kernel[(batch * triton.cdiv(k, 8),)](
-        D,
-        E,
-        S,
-        k,
-        BISECT_ITERS=bisect_iters,
-        SLOTS=k,
-        SPP=16,
-        num_warps=2,
-    )
-    # Sturm kernel already stores sigma = sqrt(max(lambda, 0)).
+    S = torch.empty((batch, k), dtype=torch.float32, device=dev)
+    out_arg = out_flat if out_flat is not None else S
+    write_out = want in (1, 2)
+    want_slot = 0 if want == 1 else k - 1
+    # SPP=32 packs all 32 slots of one matrix into a single program; with
+    # many matrices that halves the program count and avoids a second
+    # occupancy wave (measured 202us -> 106us at batch=32, k=32).
+    spp = 16
+    if batch * triton.cdiv(k, 16) > 48 and k >= 32:
+        spp = min(32, triton.next_power_of_2(k))
+    grid = (batch * triton.cdiv(k, spp),)
+    if k <= 128:
+        _sturm_m_kernel[grid](
+            D,
+            E,
+            S,
+            out_arg,
+            k,
+            bisect_iters,
+            SLOTS=k,
+            SPP=spp,
+            BLOCK_K=block_k,
+            WRITE_OUT=write_out,
+            WANT_SLOT=want_slot,
+            num_warps=2,
+        )
+    else:
+        _sturm_sigmas_kernel[grid](
+            D,
+            E,
+            S,
+            out_arg,
+            k,
+            BISECT_ITERS=bisect_iters,
+            SLOTS=k,
+            SPP=spp,
+            WRITE_OUT=write_out,
+            WANT_SLOT=want_slot,
+            num_warps=2,
+        )
+    if want == 3:
+        _nuc_sum_kernel[(batch,)](
+            S,
+            out_arg,
+            k,
+            triton.next_power_of_2(min(k, 1024)),
+            num_warps=4,
+        )
+    return S if want == 0 else None
+
+
+_BISECT_ITERS = 32
+
+
+def _svdvals_gram_tridiag(A, bisect_iters=_BISECT_ITERS):
+    """SVD via Gram → symmetric tridiagonalization → Sturm bisection.
+    All computation in fp32 (GCU400 has no fp64 arithmetic).  Returns
+    singular values, descending, shape (..., K)."""
+    *batch_dims, M, N = A.shape
+    batch = 1
+    for d in batch_dims:
+        batch *= d
+    k = min(M, N)
+    rows = max(M, N)
+    tall = M >= N
+    if A.dtype == torch.float64:
+        A = A.float()
+    A = A.contiguous()
+    a = A.reshape(batch, M, N)
+    S = _gram_tridiag_sturm(a, batch, k, rows, tall, 0, None, bisect_iters)
     return S.reshape(*batch_dims, k)
+
+
+def _svd_norm_impl(A, batch, M, N, want, buf):
+    """ord=2/-2/nuc (want=1/2/3) for contiguous fp16/bf16/fp32 (batch, M, N)
+    matrices, writing per-matrix norm values straight into ``buf`` (batch,).
+
+    Transpose-invariance of singular values means swapped last-two reduce
+    dims need no special handling here.  All kernels accumulate in fp32 and
+    cast at the final store, so half inputs match torch's promote-to-fp32
+    SVD numerics."""
+    k = min(M, N)
+    rows = max(M, N)
+    a = A.reshape(batch, M, N)  # view (A is contiguous)
+    if k == 1:
+        # single singular value = Frobenius norm of the (M, N) matrix
+        flat = a.reshape(batch, M * N)
+        blk_n = triton.next_power_of_2(min(M * N, 512))
+        _fro_kernel[(batch,)](
+            flat,
+            buf,
+            0,
+            M * N,
+            1,
+            blk_n,
+            1,
+            TILE_2D=False,
+            USE_FP64=False,
+            num_warps=8,
+        )
+        return
+    if k == 2 and rows <= _RANK2_BLOCK_R_MAX:
+        _svdvals_rank2(a, out_flat=buf, want=want)
+        return
+    if 2 < k <= 512 and rows <= 2048:
+        _gram_tridiag_sturm(a, batch, k, rows, M >= N, want, buf)
+        return
+    raise NotImplementedError(
+        f"FlagGems svdvals: unsupported matrix shape. "
+        f"Got batch={batch}, m={M}, n={N} (k={k}, rows={rows}). "
+        f"Supported: k=1 (L2 norm), k==2 with rows<={_RANK2_BLOCK_R_MAX}, "
+        f"or 2<k<=512 with rows<=2048."
+    )
 
 
 def _svdvals_for_norm(A):
     """SVD dispatch for ord=2/-2/nuc.  Returns (..., K).
 
     Precision strategy (matches PyTorch CUDA gesvdj / gesvd):
-      fp64 → fp64,  fp32 → fp32,  fp16/bf16 → upcast to fp32.
+      fp64 → fp64,  fp32 → fp32,  fp16/bf16 → upcast to fp32 (in kernel).
     """
     in_dtype = A.dtype
-    if in_dtype in (torch.float16, torch.bfloat16):
-        A = A.float()
-    elif in_dtype == torch.float64:
+    if in_dtype == torch.float64:
         # GCU400 has no fp64 kernel arithmetic: linalg_matrix_norm with
         # dtype=float64 upcasts A to fp64 on the host (a plain dtype cast,
         # which works), but the SVD kernels below must still compute in

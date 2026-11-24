@@ -24,8 +24,24 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 MAX_BLOCK_N = 16384
-_GRID_SIZE = 48  # Fixed program count, tiered after sweeping over M sizes
-_NUM_WARPS = 1  # Launch config, fixed after sweeping
+_GRID_SIZE = 48  # Fix the program count, with tiers chosen after sweeping over M sizes
+
+
+def _num_warps(M, N):
+    """按 (M, N) 选择 num_warps。
+
+    该算子 in-place（x / residual 都被写回），不能用 autotune 试算配置，
+    只能走 host 侧启发式；num_warps 会以 NW_TAG 的形式进入 LibEntry 的
+    dispatch key（dispatch key 本身不含 num_warps），保证不同配置不会串味。
+    """
+    # Measured conclusions (GCU400, shape ∈ {3,4,5,22,2048} × {4096} ∪ {(2048,2048)}):
+    # - For small M (grid=min(48,M) CTAs), a single sub-thread must scan the whole row serially, so instruction issue is
+    # the bottleneck,
+    #   and nw>=2 can cut small-shape fp32 latency from ~6.6us to ~4.6us;
+    # - For large M, throughput already reaches 1.0~1.4 TB/s (close to the bandwidth ceiling), and nw1 is on par with or
+    # even better than nw2/4,
+    #   so keep nw1 to avoid contention among multiple sub-threads.
+    return 1 if M >= 128 else 2
 
 
 @triton.jit(do_not_specialize=["eps", "inv_N"])
@@ -39,8 +55,9 @@ def fused_add_rms_norm_kernel(
     inv_N,
     BLOCK_N: tl.constexpr,
     SINGLE_BLOCK: tl.constexpr,
+    NW_TAG: tl.constexpr = 1,
 ):
-    # Accumulate always in fp32: fp16/bf16 inputs are promoted, fp32 inputs stay fp32
+    # Accumulation always uses fp32: fp16/bf16 inputs are promoted to fp32, and fp32 inputs are already fp32
     cdtype = tl.float32
 
     pid = ext.program_id(0)
@@ -112,6 +129,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     weight = weight.contiguous()
 
     grid_size = min(_GRID_SIZE, M)
+    nw = _num_warps(M, N)
     inv_N = 1.0 / N
 
     with torch_device_fn.device(x.device):
@@ -125,6 +143,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
             inv_N,
             BLOCK_N=BLOCK_N,
             SINGLE_BLOCK=single_block,
-            num_warps=_NUM_WARPS,
+            NW_TAG=nw,
+            num_warps=nw,
         )
     return x, residual

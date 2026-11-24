@@ -231,7 +231,7 @@ def max_pool3d_with_indices(
 
     Indices are flat offsets into the (D, H, W) spatial volume of the input.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_POOL3D_WITH_INDICES")
+    logger.debug("GEMS_ENFLAME MAX_POOL3D_WITH_INDICES")
     input = input.contiguous()
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)

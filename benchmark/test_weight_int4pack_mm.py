@@ -23,6 +23,10 @@ from . import base
 from .conftest import Config, emit_record_logger, update_result
 from .consts import BenchmarkMetrics, BenchmarkResult
 
+# All the enflame-specific deviations in this module are gated on this flag so
+# that every other vendor keeps the original code path.
+_ENFLAME = flag_gems.vendor_name == "enflame"
+
 # Benchmark shapes: (M, N, K, qGroupSize)
 # M=activation rows, N=output channels, K=feature dim, qGroupSize=quantization group size
 WEIGHT_INT4PACK_MM_SHAPES = [
@@ -164,13 +168,25 @@ class WeightInt4PackMmBenchmark(base.Benchmark):
         metric = BenchmarkMetrics()
         args = list(input_item)
         metric.shape_detail = self.record_shapes(*args)
+        # On enflame, honour skip_native the same way base.Benchmark does:
+        # torch_gcu has no aten kernel for the int4 packer, so there is no
+        # native baseline and only the gems latency is measured. Other vendors
+        # keep measuring the baseline unconditionally.
+        skip_native = _ENFLAME and Config.skip_native
         try:
-            if "latency_base" in self.to_bench_metrics:
+            if "latency_base" in self.to_bench_metrics and not skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *args)
             if "latency" in self.to_bench_metrics:
                 metric.latency = self.get_latency(self.gems_op, *args)
             if "speedup" in self.to_bench_metrics:
-                metric.speedup = metric.latency_base / metric.latency
+                if _ENFLAME:
+                    if (
+                        metric.latency_base is not None
+                        and metric.latency is not None
+                    ):
+                        metric.speedup = metric.latency_base / metric.latency
+                else:
+                    metric.speedup = metric.latency_base / metric.latency
         except (RuntimeError, Exception) as e:
             metric.error_msg = str(e)
             pytest.fail(str(e))
@@ -212,18 +228,33 @@ class WeightInt4PackMmBenchmark(base.Benchmark):
                 metrics.append(metric)
                 gc.collect()
 
-            result = BenchmarkResult(
-                level=Config.bench_level.value,
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode=Config.mode.value,
-                result=metrics,
-            )
-            print(result)
-            update_result(self.op_name, result.to_json())
-            emit_record_logger(result.to_json())
+            if _ENFLAME:
+                # On enflame delegate the record emission to the framework
+                # helper: it stores the result as a dict (a JSON string here
+                # would break the report parser) and attaches the
+                # native-baseline skip reason.
+                self._emit_result(dtype, metrics)
+            else:
+                result = BenchmarkResult(
+                    level=Config.bench_level.value,
+                    op_name=self.op_name,
+                    dtype=str(dtype),
+                    mode=Config.mode.value,
+                    result=metrics,
+                )
+                print(result)
+                update_result(self.op_name, result.to_json())
+                emit_record_logger(result.to_json())
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_convert_weight_to_int4pack, "
+        "which the aten::_weight_int4pack_mm baseline needs to repack the weight; "
+        "the CPU fallback cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.weight_int4pack_mm
 def test_weight_int4pack_mm():
     bench = WeightInt4PackMmBenchmark(

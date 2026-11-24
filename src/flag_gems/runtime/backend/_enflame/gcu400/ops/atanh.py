@@ -34,6 +34,11 @@ NUM_CTAS = 48
 BLOCK_LARGE_16BIT = 8192
 BLOCK_LARGE_32BIT = 8192
 NUM_WARPS = 4
+# Pipeline depth of the grid-stride loop: keep 3 as "harmless and potentially beneficial"; measurements and
+# counterexamples are in the module
+# docstring (for in-place and 16-bit, st=1/3 makes no difference; only in the two-pass scans of fp32 512M
+# is st>=2 faster). It must be a tl.constexpr to be read by tl.range inside @triton.jit.
+GRID_STRIDE_STAGES = tl.constexpr(3)
 
 
 @libentry()
@@ -43,42 +48,24 @@ def atanh_kernel(
     out_ptr,
     num_elements,
     BLOCK: tl.constexpr,
-    FORMULA_MODE: tl.constexpr,
-    COMPUTE_MODE: tl.constexpr,
-    MULTIPLE_OF_HINT: tl.constexpr,
-    LOOP_STAGES: tl.constexpr,
 ):
     program_id = tl.program_id(0)
     num_programs = tl.num_programs(0)
     num_tiles = (num_elements + BLOCK - 1) // BLOCK
-    for tile_index in tl.range(
-        program_id, num_tiles, num_programs, num_stages=LOOP_STAGES
-    ):
+    for tile_index in tl.range(program_id, num_tiles, num_programs, num_stages=1):
         offsets = tile_index * BLOCK + tl.arange(0, BLOCK)
-        if MULTIPLE_OF_HINT == 1:
-            offsets = tl.multiple_of(offsets, BLOCK)
-        x = tl.load(x_ptr + offsets, mask=offsets < num_elements, other=0.0)
-        if COMPUTE_MODE == 0:
-            value = x.to(tl.float32)
-        else:
-            value = x
-        if FORMULA_MODE == 0:
-            # Original definition: atanh(x) = 0.5 * log((1+x)/(1-x))
-            result = 0.5 * tl.log((1.0 + value) / (1.0 - value))
-        elif FORMULA_MODE == 1:
-            # Subtract two logs: near +/-1 this avoids error amplification from rounding the division quotient
-            result = 0.5 * (tl.log(1.0 + value) - tl.log(1.0 - value))
-        elif FORMULA_MODE == 2:
-            # log2 equivalent rewrite, log(x) = log2(x) * ln(2)
-            result = 0.34657359027997264 * tl.log2((1.0 + value) / (1.0 - value))
-        else:
-            # Single division: atanh(x) = 0.5 * log(1 + 2x/(1-x))
-            result = 0.5 * tl.log(1.0 + 2.0 * value / (1.0 - value))
-        tl.store(out_ptr + offsets, result, mask=offsets < num_elements)
+        mask = offsets < num_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+        value = x.to(tl.float32)
+        # sqrt((1+v)/(1-v)) = (1+v) * rsqrt(1-v) * rsqrt(1-v)
+        reciprocal_sqrt = tl.rsqrt(1.0 - value)
+        scaled = ((1.0 + value) * reciprocal_sqrt) * reciprocal_sqrt
+        log_value = tl.log(scaled)
+        tl.store(out_ptr + offsets, (log_value.to(x.dtype)) * 0.5, mask=mask)
 
 
 def _choose_block(num_elements, is_fp32):
-    """Small shapes use 1024, medium shapes the nearest power of two, large shapes are tiered by dtype."""
+    """1024 for small shapes, the nearest power of two for medium ones, dtype tiers for large ones."""
     if num_elements <= 1024:
         return 1024
     if num_elements <= 32768:
@@ -99,10 +86,6 @@ def _launch(inp, out):
             out,
             num_elements,
             BLOCK=block_size,
-            FORMULA_MODE=0,
-            COMPUTE_MODE=0,
-            MULTIPLE_OF_HINT=0,
-            LOOP_STAGES=1,
             num_warps=NUM_WARPS,
         )
     return out
@@ -113,13 +96,35 @@ def _atanh(A):
     return _launch(inp, torch.empty_like(inp))
 
 
+_FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
 def atanh(A):
     logger.debug("GEMS_ENFLAME ATANH")
+    # The flat kernel allocates with empty_like and stores back in the input
+    # dtype, which only matches ATen for float inputs.  ATen promotes integer
+    # inputs to fp32, so leave those to the generic INT_TO_FLOAT pointwise op.
+    if A.dtype not in _FLOAT_DTYPES:
+        from flag_gems.ops.atanh import atanh as _generic_atanh
+
+        return _generic_atanh(A)
     return _atanh(A)
 
 
 def atanh_(A):
     logger.debug("GEMS_ENFLAME ATANH_")
+    # ATen rejects in-place atanh on integer/bool inputs (the float result
+    # cannot be cast back into the output buffer), matching the generic op.
+    if not A.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{A.dtype}"
+        )
+    if A.dtype not in _FLOAT_DTYPES:
+        # fp64 (and any non-flat-kernel float dtype) goes through the generic
+        # in-place op; raising here would wrongly reject valid float inputs.
+        from flag_gems.ops.atanh import atanh_ as _generic_atanh_
+
+        return _generic_atanh_(A)
     if not A.is_contiguous():
         A.copy_(_atanh(A))
         return A

@@ -24,9 +24,11 @@ change a value.  Every element and dtype is preserved bit-for-bit, and the
 result is observed through ``to_dense()``.
 
 The resolved-geometry contract is evaluated on the device: a real one-program
-``@triton.jit`` guard receives the resolved shape entries and the operand numel
-and asserts, on the accelerator, that the rank is admissible, that every
-resolved entry is positive, and that the resolved shape preserves numel.
+``@triton.jit`` guard receives the resolved shape entries (packed four to an
+int64 word, with an unrolled fallback for entries that overflow a packed
+field) and the operand numel, and asserts, on the accelerator, that the rank
+is admissible, that every resolved entry is positive, and that the resolved
+shape preserves numel.
 
 Semantics mirrored from the native kernel:
 
@@ -44,6 +46,7 @@ reproduced so the same ``RuntimeError``/``TypeError`` families are raised.
 """
 
 import logging
+import os
 
 import torch
 import triton
@@ -69,9 +72,61 @@ _DESCRIPTOR_ERROR = (
 # weight rank (4) plus headroom for the collapsed rank-5 branch (4).
 _MAX_RANK = 8
 
+# The packed contract launch serializes the resolved geometry into two int64
+# words (four 16-bit little-endian fields apiece), which keeps the launcher
+# signature down to four scalars: this operator moves no tensor data, so the
+# host-side launch path dominates its cost and a slimmer signature shortens
+# every step of it. A resolved entry at or above this bound overflows a packed
+# field and takes the unrolled kernel below instead.
+_PACK_FIELD_LIMIT = 0x10000
+
+
+@triton.jit(do_not_specialize=["n", "ndim", "lo", "hi"])
+def _shape_contract_kernel(
+    n: tl.int64,
+    ndim: tl.int32,
+    lo: tl.int64,
+    hi: tl.int64,
+    MAX_RANK: tl.constexpr,
+):
+    """Device evaluation of the resolved-geometry contract of the reorder.
+
+    A weight re-layout is legal exactly when its rank is admissible, no
+    resolved entry is non-positive, and the resolved numel is preserved.  The
+    eight resolved entries arrive packed four apiece in ``lo``/``hi``; padding
+    entries are ``1`` and therefore neutral in the product.  The fixed
+    ``int64``/``int32`` annotations pin the launcher signature and
+    ``do_not_specialize`` keeps a single compiled binary across every
+    geometry, so the kernel can be cached and replayed directly by
+    :func:`_packed_contract_launch`.
+    """
+    e0 = lo & 0xFFFF
+    e1 = (lo >> 16) & 0xFFFF
+    e2 = (lo >> 32) & 0xFFFF
+    e3 = (lo >> 48) & 0xFFFF
+    e4 = hi & 0xFFFF
+    e5 = (hi >> 16) & 0xFFFF
+    e6 = (hi >> 32) & 0xFFFF
+    e7 = (hi >> 48) & 0xFFFF
+    tl.device_assert(n >= 0, "mkldnn reorder: negative operand numel")
+    tl.device_assert(ndim >= 1, "mkldnn reorder: empty target geometry")
+    tl.device_assert(ndim <= MAX_RANK, "mkldnn reorder: target rank too large")
+    # The unpacked entries inherit lo/hi's int64 width, so the product is
+    # evaluated at full width without a cast.
+    prod = e0 * e1 * e2 * e3 * e4 * e5 * e6 * e7
+    tl.device_assert(e0 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e1 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e2 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e3 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e4 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e5 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e6 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(e7 >= 1, "mkldnn reorder: non-positive resolved dimension")
+    tl.device_assert(prod == n, "mkldnn reorder: resolved geometry changed numel")
+
 
 @triton.jit
-def _shape_contract_kernel(
+def _shape_contract_kernel_wide(
     n,
     ndim,
     e0,
@@ -110,6 +165,93 @@ def _shape_contract_kernel(
     tl.device_assert(prod == n, "mkldnn reorder: resolved geometry changed numel")
 
 
+# Direct-launch cache.  The contract kernel has no tensor arguments, so a
+# single compiled binary per device serves every geometry; on a hit the
+# cached C launcher is invoked with exactly the argument list FlagTree's
+# ``JITFunction.run`` assembles (grid, stream, function, packed metadata,
+# launch metadata, hooks, then the bound arguments including the constexpr
+# value), skipping the Python argument-binding pass that dominates this
+# metadata-only operator's host time.
+_direct_launchers = {}
+
+try:
+    from triton.runtime._distributed import DistributedRtContext as _DistRtContext
+except ImportError:  # stock Triton layout without the FlagTree runtime
+    _DistRtContext = None
+
+# ``FLAGTREE_LITE_DIST`` launches append communication pointers to the
+# launcher protocol; that mode keeps the standard dispatch path.
+_LITE_DIST_ENV = os.environ.get("FLAGTREE_LITE_DIST", "").strip().upper() in {
+    "1",
+    "ON",
+    "TRUE",
+}
+
+
+def _packed_contract_launch(device, n, ndim, lo, hi):
+    """Launch the packed contract kernel, preferring the cached C launcher.
+
+    A cache miss goes through the standard JIT dispatch once per device,
+    which compiles (or reuses) the binary and performs that call's launch;
+    the returned compiled kernel's launcher is then cached.  Any direct
+    failure pops the entry and retries through the standard path, which
+    re-launches the contract.
+    """
+    if (
+        _LITE_DIST_ENV
+        and _DistRtContext is not None
+        and _DistRtContext._init_count == 1
+    ):
+        _shape_contract_kernel[(1,)](n, ndim, lo, hi, MAX_RANK=_MAX_RANK)
+        return
+    entry = _direct_launchers.get(device)
+    if entry is None:
+        if device in _direct_launchers:
+            # The direct path previously failed on this device; stay standard.
+            _shape_contract_kernel[(1,)](n, ndim, lo, hi, MAX_RANK=_MAX_RANK)
+            return
+        kernel = _shape_contract_kernel[(1,)](n, ndim, lo, hi, MAX_RANK=_MAX_RANK)
+        launcher = getattr(kernel, "run", None)
+        launch = getattr(launcher, "launch", None)
+        if (
+            launch is not None
+            and hasattr(kernel, "function")
+            and hasattr(kernel, "packed_metadata")
+            and hasattr(kernel, "launch_metadata")
+        ):
+            _direct_launchers[device] = (
+                launch,
+                kernel.function,
+                kernel.packed_metadata,
+                kernel.launch_metadata,
+            )
+        else:
+            _direct_launchers[device] = None
+        return
+    launch, function, packed_metadata, launch_metadata = entry
+    stream = torch.gcu.current_stream(device).gcu_stream
+    try:
+        launch(
+            1,
+            1,
+            1,
+            stream,
+            function,
+            packed_metadata,
+            launch_metadata((1, 1, 1), stream, n, ndim, lo, hi, _MAX_RANK),
+            triton.knobs.runtime.launch_enter_hook,
+            triton.knobs.runtime.launch_exit_hook,
+            n,
+            ndim,
+            lo,
+            hi,
+            _MAX_RANK,
+        )
+    except Exception:
+        _direct_launchers.pop(device, None)
+        _shape_contract_kernel[(1,)](n, ndim, lo, hi, MAX_RANK=_MAX_RANK)
+
+
 def _as_conv_pair(value, name):
     """Normalise a 2-element convolution attribute (a 1-element list is legal)."""
     if not isinstance(value, (list, tuple)):
@@ -133,7 +275,7 @@ def _as_conv_pair(value, name):
     return items
 
 
-def _validate(self, padding, stride, dilation, groups, input_size):
+def _validate_full(self, padding, stride, dilation, groups, input_size):
     """Reproduce the native descriptor preconditions; return the operand shape."""
     if not isinstance(self, torch.Tensor):
         raise TypeError(
@@ -197,6 +339,58 @@ def _validate(self, padding, stride, dilation, groups, input_size):
     return shape
 
 
+def _validate(self, padding, stride, dilation, groups, input_size):
+    """Fast common-path screening; every surprise defers to the full validator.
+
+    The call form every real reorder uses (two-int lists for the convolution
+    attributes, an integer group count, no ``input_size``, an admissible
+    mkldnn operand) is answered from one guarded expression, because this
+    operator is metadata-bound and the screening cost is part of its latency.
+    Every other shape of the arguments — tuples, one-element lists, bool or
+    non-int items, a present ``input_size``, and any operand the fast path
+    cannot vouch for — falls back to :func:`_validate_full` so the native
+    ``TypeError``/``RuntimeError`` families are reproduced verbatim and in
+    the native order.
+    """
+    if (
+        type(padding) is list
+        and len(padding) == 2
+        and type(padding[0]) is int
+        and type(padding[1]) is int
+        and type(stride) is list
+        and len(stride) == 2
+        and type(stride[0]) is int
+        and type(stride[1]) is int
+        and type(dilation) is list
+        and len(dilation) == 2
+        and type(dilation[0]) is int
+        and type(dilation[1]) is int
+        and type(groups) is int
+        and input_size is None
+        and isinstance(self, torch.Tensor)
+        and self.is_mkldnn
+        and self.dtype in _ALLOWED_DTYPES
+    ):
+        shape = self.shape
+        rank = len(shape)
+        if (
+            rank < 3
+            or groups < 1
+            or padding[0] < 0
+            or padding[1] < 0
+            or stride[0] < 1
+            or stride[1] < 1
+            or dilation[0] < 1
+            or dilation[1] < 1
+            or shape[0] % groups != 0
+            or (rank >= 4 and shape[1] % groups != 0)
+            or any(d <= 0 for d in shape)
+        ):
+            return _validate_full(self, padding, stride, dilation, groups, input_size)
+        return tuple(shape)
+    return _validate_full(self, padding, stride, dilation, groups, input_size)
+
+
 def _infer_geometry(shape, input_size):
     """Resolved logical geometry of the reordered weight."""
     if input_size is None and len(shape) == 5:
@@ -211,19 +405,23 @@ def _pad_dims(dims):
 def _check_geometry(weight, out_shape):
     """Evaluate the resolved-geometry contract on the accelerator."""
     dims = _pad_dims(out_shape)
-    _shape_contract_kernel[(1,)](
-        weight.numel(),
-        len(out_shape),
-        dims[0],
-        dims[1],
-        dims[2],
-        dims[3],
-        dims[4],
-        dims[5],
-        dims[6],
-        dims[7],
-        MAX_RANK=_MAX_RANK,
-    )
+    ndim = len(out_shape)
+    n = weight.numel()
+    if (
+        dims[0] < _PACK_FIELD_LIMIT
+        and dims[1] < _PACK_FIELD_LIMIT
+        and dims[2] < _PACK_FIELD_LIMIT
+        and dims[3] < _PACK_FIELD_LIMIT
+        and dims[4] < _PACK_FIELD_LIMIT
+        and dims[5] < _PACK_FIELD_LIMIT
+        and dims[6] < _PACK_FIELD_LIMIT
+        and dims[7] < _PACK_FIELD_LIMIT
+    ):
+        lo = dims[0] | dims[1] << 16 | dims[2] << 32 | dims[3] << 48
+        hi = dims[4] | dims[5] << 16 | dims[6] << 32 | dims[7] << 48
+        _packed_contract_launch(torch.gcu.current_device(), n, ndim, lo, hi)
+    else:
+        _shape_contract_kernel_wide[(1,)](n, ndim, *dims, MAX_RANK=_MAX_RANK)
 
 
 def _reorder(weight, out_shape):
@@ -263,7 +461,7 @@ def mkldnn_reorder_conv2d_weight(
     out_shape = _infer_geometry(shape, input_size)
 
     if out is not None:
-        logger.debug("GEMS_ENFLAME_GCU400 MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
+        logger.debug("GEMS_ENFLAME MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
         if not isinstance(out, torch.Tensor) or not out.is_mkldnn:
             raise RuntimeError(
                 "mkldnn_reorder_conv2d_weight.out expects an MkldnnCPU output buffer"
@@ -277,7 +475,7 @@ def mkldnn_reorder_conv2d_weight(
         out.copy_(self.reshape(out_shape))
         return out
 
-    logger.debug("GEMS_ENFLAME_GCU400 MKLDNN_REORDER_CONV2D_WEIGHT")
+    logger.debug("GEMS_ENFLAME MKLDNN_REORDER_CONV2D_WEIGHT")
     if self.requires_grad:
         _check_geometry(self, out_shape)
         return _MkldnnReorderConv2dWeight.apply(self, out_shape)
@@ -295,7 +493,7 @@ def mkldnn_reorder_conv2d_weight_out(
     out,
 ):
     """``aten::mkldnn_reorder_conv2d_weight.out``: fill the caller's mkldnn buffer."""
-    logger.debug("GEMS_ENFLAME_GCU400 MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
+    logger.debug("GEMS_ENFLAME MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
     return mkldnn_reorder_conv2d_weight(
         self, padding, stride, dilation, groups, input_size, out=out
     )

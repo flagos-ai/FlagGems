@@ -204,6 +204,22 @@ def _gelu_mul_grad_flat(
         tl.store(DY + off, d * x_gelu, mask)
 
 
+def _pick_tile(n):
+    """按元素数选 (tile 宽度, CTA 数)。
+
+    与同族 gcu400 elementwise 结论一致：小 shape（≤32K 元素）用 next_pow2(n) 的
+    精确 tile 单 CTA 一次做完；更大的 shape 把 tile 取成 ceil(n/48) 的 2 次幂并
+    封顶 32K，让 CTA 数尽量铺满。改前对 64K 元素仍用 32K tile → 只有 2 个 CTA
+    （fp32 1M 之外的 mid-size 段实测 1.16x，改成 2048 tile/32 CTA 后明显改善）。
+    """
+    if n <= _SMALL_N:
+        return max(64, triton.next_power_of_2(n)), 1
+    block = min(
+        _TILE_BIG, max(2048, triton.next_power_of_2(triton.cdiv(n, _GRID_SIZE)))
+    )
+    return block, min(_GRID_SIZE, triton.cdiv(n, block))
+
+
 def _grid(n):
     return (min(MAX_GRID_SIZE, triton.cdiv(n, BLOCK_SIZE)),)
 
@@ -226,15 +242,8 @@ def _launch(x, y, out, mode):
     if n == 0:
         return
     two_byte = x.element_size() <= 2
-    if n <= _SMALL_N:
-        block = max(64, triton.next_power_of_2(n))
-        grid = _GRID_SIZE
-        num_warps = 4
-    else:
-        block = _TILE_BIG
-        grid = _GRID_SIZE
-        num_warps = 2 if two_byte else 4
-    grid = min(grid, triton.cdiv(n, block))
+    block, grid = _pick_tile(n)
+    num_warps = 2 if (two_byte and n > _SMALL_N) else 4
     _gelu_mul_flat[(grid, 1, 1)](
         x,
         y,
@@ -280,7 +289,7 @@ class GeluAndMul(torch.autograd.Function):
 
 def gelu_and_mul(x, y, approximate="none"):
     # Inference path: avoid autograd.Function.apply graph construction.
-    logger.debug("GEMS_ENFLAME_GCU400 GELU_AND_MUL")
+    logger.debug("GEMS_ENFLAME GELU_AND_MUL")
     if not torch.is_grad_enabled() or not (x.requires_grad or y.requires_grad):
         if approximate not in ("none", "tanh"):
             raise ValueError(f"Invalid approximate value: {approximate}")

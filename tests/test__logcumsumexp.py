@@ -242,6 +242,17 @@ def test__logcumsumexp_complex(shape, dim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
 
+def _host_complex_masks(tensor):
+    """NaN/±Inf branch masks of a complex tensor, evaluated on the host.
+
+    ``torch.isnan`` and ``torch.isinf`` abort the process on a complex GCU
+    tensor (TOPSATEN reports them as unsupported), so the masks are built after
+    moving the tensor to the CPU; the comparison itself is unchanged.
+    """
+    host = tensor.cpu() if tensor.device.type != "cpu" else tensor
+    return torch.isnan(host), torch.isinf(host.real), torch.isinf(host.imag)
+
+
 @pytest.mark.underscore_logcumsumexp
 @pytest.mark.parametrize(
     "data",
@@ -566,7 +577,15 @@ def _assert_complex_scan_close(res_out, ref_out):
     NaNs are compared as a mask (they must appear in the same places); only the
     entries where both sides are *finite* are checked for value agreement, so an
     ``inf - inf`` in the difference cannot turn into a spurious NaN.
+
+    Everything runs on the host: ``torch.isnan``/``torch.isinf``/``isfinite``
+    abort on a complex GCU tensor (TOPSATEN does not implement them), and moving
+    both operands keeps the comparison semantics identical.
     """
+    if res_out.device.type != "cpu":
+        res_out = res_out.cpu()
+    if ref_out.device.type != "cpu":
+        ref_out = ref_out.cpu()
     assert torch.isnan(res_out).equal(torch.isnan(ref_out))
     both_finite = torch.isfinite(res_out) & torch.isfinite(ref_out)
     if bool(both_finite.any()):

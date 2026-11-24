@@ -163,7 +163,7 @@ def indexer_k_quant_and_cache(
     quant_block_size,
     scale_fmt,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 INDEXER_K_QUANT_AND_CACHE")
+    logger.debug("GEMS_ENFLAME INDEXER_K_QUANT_AND_CACHE")
     num_blocks = kv_cache.shape[0]
     head_dim = k.shape[-1]
     num_tokens = slot_mapping.shape[0]

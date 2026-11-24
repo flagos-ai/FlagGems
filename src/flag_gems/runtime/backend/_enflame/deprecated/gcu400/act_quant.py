@@ -178,7 +178,7 @@ def act_quant_triton(
             - The quantized tensor with dtype `torch.float8_e4m3fn`.
             - A tensor of scaling factors with dtype `torch.float32`.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ACT_QUANT_TRITON")
+    logger.debug("GEMS_ENFLAME ACT_QUANT_TRITON")
     assert x.is_contiguous(), "Input tensor must be contiguous"
     assert (
         x.size(-1) % block_size == 0

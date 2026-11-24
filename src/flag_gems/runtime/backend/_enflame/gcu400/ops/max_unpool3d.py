@@ -113,7 +113,7 @@ def max_unpool3d(
     padding=0,
     output_size=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_UNPOOL3D")
+    logger.debug("GEMS_ENFLAME MAX_UNPOOL3D")
     input = input.contiguous()
     indices = indices.contiguous()
 

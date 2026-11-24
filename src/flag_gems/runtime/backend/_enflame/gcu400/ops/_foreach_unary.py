@@ -67,7 +67,6 @@ from flag_gems.ops._foreach_complex_math import (
 )
 from flag_gems.ops.acos import acos_kernel
 from flag_gems.ops.asin import asin_kernel
-from flag_gems.ops.ceil import ceil_func
 from flag_gems.ops.cos import cos_func
 from flag_gems.ops.cosh import cosh_func
 from flag_gems.ops.erf import erf_func
@@ -75,30 +74,21 @@ from flag_gems.ops.exp import exp_func
 from flag_gems.ops.expm1 import expm1_func
 from flag_gems.ops.floor import floor_func
 from flag_gems.ops.frac_ import frac_func
-from flag_gems.ops.lgamma_ import lgamma_func
 from flag_gems.ops.log import log_func
-from flag_gems.ops.log1p import log1p_func
-from flag_gems.ops.log2 import log2_func
 from flag_gems.ops.log10 import log10_func
 from flag_gems.ops.neg import neg_func
 from flag_gems.ops.reciprocal import reciprocal_func
-from flag_gems.ops.sigmoid import sigmoid_forward
 from flag_gems.ops.sin import sin_func
 from flag_gems.ops.sinh import sinh_kernel
-from flag_gems.ops.special_erfc import _erfc_kernel
 from flag_gems.ops.sqrt import sqrt_func
 from flag_gems.ops.tan import tan_func
-from flag_gems.ops.tanh import tanh_kernel
 from flag_gems.ops.trunc_ import trunc_func
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
-    _FAST_MATH_OK,
     _device_meta,
     _launch_executor_kernel,
-    _pack_ok,
     foreach_unary,
     foreach_unary_kernel,
-    foreach_unary_kernel_p4,
     int_to_float,
     real_dtype_of,
     same_dtype,
@@ -414,20 +404,62 @@ def _approx_lgamma_func(x):
 
 
 @triton.jit
+def _ceil_func(x):
+    # GCU400: libdevice ``ceil`` is an extern software path (the floor/rint
+    # family, see ``_round_func`` and ``gcu400/ops/floor__opt.py``).  Through
+    # the scalar executor at 1024^2 x 16 it costs 89 us (fp16) against 61 us
+    # for the body below, and 110 us (fp32) against 94 us (probe,
+    # 2026-11-16).  The int-domain chain is the ``floor__opt`` recipe with the
+    # correction direction flipped: trunc via an int32 round-trip in the
+    # *storage* domain (every finite fp16 fits int32, so only inf/NaN need
+    # the ``x - x == 0`` exclusion; bf16/fp32 keep ``|x| < 2^31`` because
+    # finite values beyond int32 exist there and are already integral), plus
+    # ``+1`` when the truncation moved down.  Probe-verified value-exact
+    # against torch.ceil over special values (incl. +-inf/NaN/subnormals and
+    # the 2^23/2^24/2^31 boundaries) and 1M full-range randoms per dtype; the
+    # only deviation is the sign of a -0.0 result (the floor__opt class).
+    # ``float64`` keeps the historical fp32 round-trip (no fp64 on gcu400);
+    # integral dtypes pass through, which also removes the >2^24 int64
+    # truncation of the old fp32 round-trip.
+    if x.dtype == tl.float64:
+        return tl.ceil(x.to(tl.float32)).to(x.dtype)
+    if x.dtype == tl.float16:
+        trunc = x.to(tl.int32).to(tl.float16)
+        rounded = tl.where(trunc < x, trunc + 1.0, trunc)
+        return tl.where(x - x == 0, rounded, x)
+    if x.dtype == tl.bfloat16:
+        trunc = x.to(tl.int32).to(tl.bfloat16)
+        rounded = tl.where(trunc < x, trunc + 1.0, trunc)
+        return tl.where(tl.abs(x) < 2147483648.0, rounded, x)
+    if x.dtype == tl.float32:
+        trunc = x.to(tl.int32).to(tl.float32)
+        rounded = tl.where(trunc < x, trunc + 1.0, trunc)
+        return tl.where(tl.abs(x) < 2147483648.0, rounded, x)
+    return x
+
+
+@triton.jit
 def _round_func(x):
-    # Integral inputs are already rounded; float ones go through libdevice's
-    # ``rint``, which is round-half-to-even and measured bitwise identical to
-    # ``torch.round`` on 24k exact ties per dtype (both signs, including
-    # ``+-0.5``) and on random data in fp32/fp16/bf16.  The previous emulation
-    # (floor + parity test + select) needed about eight instructions and got
-    # the sign of a zero result wrong; ``rint`` is one.  ``rint`` has no 16-bit
-    # overload, so those widen first; ``float64`` is called directly because
-    # widening it to float32 would round large values that the emulation used
-    # to round exactly.
+    # GCU400: libdevice ``rint`` is an extern software path -- through the
+    # scalar executor it costs 255 us at 256^2 x 16 fp16 and 932 us at 1024^2
+    # (19-38x the copy floor), because the extern thrashes at few-CTA large-
+    # BLOCK launches.  The magic-number identity replaces it with six ALU
+    # ops: adding +-2^23 makes the IEEE addition itself round the fraction to
+    # nearest-even, and |x| >= 2^23 is already integral in fp32.  Measured
+    # bit-exact against torch.round over 6230 values including every tie in
+    # +-0.5 .. 8.5, negatives, 2^22/2^23/2^24 boundary values, subnormals,
+    # +-inf and NaN (probe4_round.py); the |x| < 0.5 select preserves the
+    # sign of a +-0 result, which the previous floor/parity emulation got
+    # wrong.  ``float64`` keeps libdevice (no fp64 arithmetic on gcu400);
+    # integral inputs are already rounded and pass through unchanged.
     if x.dtype == tl.float64:
         return tl_extra_shim.rint(x)
     elif x.dtype.is_floating():
-        return tl_extra_shim.rint(x.to(tl.float32)).to(x.dtype)
+        xf = x.to(tl.float32)
+        m = tl.where(xf < 0.0, -8388608.0, 8388608.0)
+        rounded = (xf + m) - m
+        rounded = tl.where(tl.abs(xf) < 8388608.0, rounded, xf)
+        return tl.where(tl.abs(xf) < 0.5, xf * 0.0, rounded).to(x.dtype)
     else:
         return x
 
@@ -520,6 +552,18 @@ def _fast_log2_func(x):
 
 
 @triton.jit
+def _gcu_log2_func(x):
+    # GCU400 measurements (2026-11-16 bench A/B, log2 rows in this file): tl.log2 and tl.log
+    # are both extern software slow paths, but the log call has a lower unit cost (single-primitive ablation of
+    # atanh/randn
+    # showed -8~17%); log2(x) = ln(x)*log2(e) is a mathematically equivalent swap for a cheaper call, and special-value
+    # semantics
+    # (+-0/-inf, negative NaN, subnormal flush) are point-by-point consistent with tl.log2 (reconfirmed by
+    # three-way probes).
+    return tl.log(x.to(tl.float32)) * 1.4426950408889634
+
+
+@triton.jit
 def _fast_log10_func(x):
     # The accurate body is ``tl.log(x) * log10(e)``; the direct entry point
     # also saves the extra multiply.
@@ -561,6 +605,91 @@ def _fast_tanh_func(x):
     # disagrees with the accurate path on 0.02% of lanes (99.98% bit-identical
     # at fp16, max abs 1.2e-4, inside the suite's rtol=1e-3/atol=1e-4).
     return 1.0 - 2.0 / (tl_extra_shim.fast_expf(2.0 * x.to(tl.float32)) + 1.0)
+
+
+# ---------------------------------------------------------------------------
+# GCU400 fast bodies (2026-11-16 perf round)
+# ---------------------------------------------------------------------------
+#
+# The bodies below replace libdevice externs that are software slow paths on
+# this device.  Measured on the acceptance cells (16 tensors, do_bench median,
+# full call): the libdevice ``erfc`` extern costs 290 us at 512^2 fp16 and
+# 4.5 ms at 1024^2 -- 19x to 200x the copy floor -- because its range
+# reduction thrashes under many concurrent CTAs; ``tanh`` and the accurate
+# ``log1p`` degrade the same way (387 us / 122 us at 1024^2 fp16).
+#
+# * ``_erfc_fast_func`` is the tanh identity already shipping in
+#   ``gcu400/ops/special_erfc.py`` (max abs error 1.4e-5 over the whole real
+#   line, 7x inside the suite's atol=1e-4; +-0/+-inf/NaN bit-compatible).
+# * ``_tanh_fast_func`` calls the *hardware* ``fast_tanhf``: measured max abs
+#   error 5.9e-8 against float64 on [-6, 6], saturates to +-1 at +-inf and
+#   preserves +-0 -- more accurate than the suite needs in every dtype.
+# * ``_sigmoid_fast_func`` is the exact identity ``sigmoid(x) = (1 +
+#   tanh(x/2)) / 2``; it removes the division of the ``1/(1+exp2(-x))`` body
+#   and inherits the same 4e-8 error.
+# * ``_fast_log1p_func`` (defined above) measured 2e-7 against float64 and
+#   keeps ``log1p(-1) = -inf``, so it serves every dtype, in- and out-of-place.
+# * ``_lgamma_lanczos_func`` is the pure-Triton Lanczos body of
+#   ``gcu400/ops/_foreach_lgamma.py`` (g=7, N=9).  The libdevice ``lgamma``
+#   extern is the P16 abort source under >= 512 concurrent CTAs; the pure body
+#   runs at any CTA count, which is what lets the lgamma rows go back through
+#   the single-launch executor instead of 16 per-tensor launches.
+
+
+@triton.jit
+def _erfc_fast_func(x):
+    x = x.to(tl.float32)
+    t = tl.minimum(x * x, 10.24)
+    inner = (
+        (-0.0001557349766 * t - 0.001096489224) * t + 0.1033662741
+    ) * t + 1.128288849
+    return 1.0 - tl_extra_shim.fast_tanhf(x * inner)
+
+
+@triton.jit
+def _tanh_fast_func(x):
+    return tl_extra_shim.fast_tanhf(x.to(tl.float32))
+
+
+@triton.jit
+def _sigmoid_fast_func(x):
+    x = x.to(tl.float32)
+    return 0.5 * tl_extra_shim.fast_tanhf(0.5 * x) + 0.5
+
+
+@triton.jit
+def _lgamma_pos_lanczos(y):
+    # Lanczos g=7 / N=9, identical to ``gcu400/ops/_foreach_lgamma.py``.
+    z = y - 1.0
+    a = 0.9999999999998099
+    a += 676.5203681218851 / (z + 1.0)
+    a += -1259.1392167224028 / (z + 2.0)
+    a += 771.3234287776531 / (z + 3.0)
+    a += -176.6150291621406 / (z + 4.0)
+    a += 12.507343278686905 / (z + 5.0)
+    a += -0.13857109526572012 / (z + 6.0)
+    a += 9.984369578019572e-6 / (z + 7.0)
+    a += 1.5056327351493116e-7 / (z + 8.0)
+    t = z + 7.5
+    return 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
+
+
+@triton.jit
+def _lgamma_lanczos_func(x):
+    # Full-domain lgamma: reflection for x < 0.5, +inf at the poles and at
+    # +-inf, NaN propagates -- ATen ``gammaln`` semantics, as in
+    # ``_foreach_lgamma.py``.  Both branches share one Lanczos evaluation.
+    x = x.to(tl.float32)
+    small = x < 0.5
+    y = tl.where(small, 1.0 - x, x)
+    value = _lgamma_pos_lanczos(y)
+    reduced = x - tl.floor(x + 0.5)
+    z = 3.141592653589793 * reduced
+    sin_pi = tl.where(tl.abs(reduced) < 1.0e-7, z, tl.sin(z))
+    refl = tl.log(3.141592653589793 / tl.abs(sin_pi)) - value
+    res = tl.where(small, refl, value)
+    pole = (x <= 0.0) & (x == tl.floor(x))
+    return tl.where(pole | (tl.abs(x) == float("inf")), float("inf"), res)
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +753,7 @@ UNARY_OPS: Dict[str, UnaryOp] = {
             c_atan,
             fn16=_atan16_func,
         ),
-        UnaryOp("ceil", _scalar_fn(ceil_func), same_dtype, NO_BOOL_NO_COMPLEX),
+        UnaryOp("ceil", _ceil_func, same_dtype, NO_BOOL_NO_COMPLEX),
         UnaryOp(
             "cos",
             _scalar_fn(cos_func),
@@ -643,10 +772,9 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         ),
         UnaryOp(
             "erfc",
-            _scalar_fn(_erfc_kernel),
+            _erfc_fast_func,
             int_to_float,
             NO_COMPLEX,
-            fn16=_approx_erfc_func,
         ),
         UnaryOp("exp", _scalar_fn(exp_func), int_to_float, NO_COMPLEX32, c_exp),
         UnaryOp("expm1", _scalar_fn(expm1_func), int_to_float, NO_COMPLEX32, c_expm1),
@@ -654,10 +782,9 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("frac", _scalar_fn(frac_func), same_dtype, FLOAT_ONLY),
         UnaryOp(
             "lgamma",
-            _scalar_fn(lgamma_func),
+            _lgamma_lanczos_func,
             int_to_float,
             NO_COMPLEX,
-            fn16=_approx_lgamma_func,
         ),
         UnaryOp(
             "log",
@@ -677,15 +804,14 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         ),
         UnaryOp(
             "log1p",
-            _scalar_fn(log1p_func),
+            _fast_log1p_func,
             int_to_float,
             NO_COMPLEX32,
             c_log1p,
-            fn16=_fast_log1p_func,
         ),
         UnaryOp(
             "log2",
-            _scalar_fn(log2_func),
+            _gcu_log2_func,
             int_to_float,
             NO_COMPLEX32,
             c_log2,
@@ -703,7 +829,7 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("rsqrt", _rsqrt_func, int_to_float, NO_COMPLEX32, c_rsqrt),
         UnaryOp(
             "sigmoid",
-            _scalar_fn(sigmoid_forward),
+            _sigmoid_fast_func,
             int_to_float,
             NO_COMPLEX32,
             c_sigmoid,
@@ -729,73 +855,105 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         ),
         UnaryOp(
             "tanh",
-            _scalar_fn(tanh_kernel),
+            _tanh_fast_func,
             int_to_float,
             NO_COMPLEX32,
             c_tanh,
-            fn16=_fast_tanh_func,
         ),
         UnaryOp("trunc", _scalar_fn(trunc_func), same_dtype, NO_BOOL_NO_COMPLEX),
     )
 }
 
 
-# GCU400's 2D grid has a 255 hardware limit on the second dimension, while the common executor's grid is
-# (tensor count, cdiv(max element count, BLOCK)) with BLOCK >= 1024. A single tensor with more than
-# 255*1024 elements makes the common implementation raise OutOfResources; here contiguous tensors are split by that
-# limit.
+# The hardware limit for the second dimension of the GCU400 2D grid is 255, while the common executor's grid is
+# (number of tensors, cdiv(max element count, BLOCK)), with BLOCK at least 1024. When a single tensor exceeds
+# 255*1024 elements, the common implementation raises OutOfResources; here contiguous tensors are split according to
+# that limit.
 GCU400_GRID_Y_LIMIT = 255
 FOREACH_MIN_BLOCK = 1024
 CHUNK_ELEMENTS = GCU400_GRID_Y_LIMIT * FOREACH_MIN_BLOCK
-# Large-tensor path: 1 = split by the grid limit and concatenate, 2 = increase BLOCK for a single launch.
+# Large-tensor path: 1=split by the grid limit and concatenate, 2=enlarge BLOCK for a single launch.
 FOREACH_LARGE_TENSOR_STRATEGY = 2
-# Starting point for increasing BLOCK; the actual BLOCK keeps doubling per the grid.y limit.
+# Starting point for enlarged BLOCK (the historical default, superseded by the tiered config below; kept as a reference
+# for
+# the chunked fallback path when FOREACH_LARGE_TENSOR_STRATEGY==1).
 FOREACH_LARGE_BLOCK_START = 32768
 
-# Per-operator large-tensor tuning table. Entries affect only this operator's launch parameters; missing entries
-# fall back entirely to the global defaults above, so other unary operators are unaffected.
-#   block_start      : starting point for increasing BLOCK, must be a power of two >= 1024;
-#   block_start_16bit: optional, separate BLOCK starting point for 16-bit inputs;
-#   force_scalar     : 1 forces the scalar kernel, bypassing the p4 packing kernel for 16-bit inputs;
-#   num_warps        : when != 4, bypass common launch replay and launch directly with this value;
-#   route_min_numel  : optional, send contiguous float tensors with numel >= this to the single-launch
-#                      path (only for float inputs that need no dtype / complex policy).
-UNARY_LARGE_TENSOR_TUNING: Dict[str, Dict[str, int]] = {
-    "asin": {"block_start": 16384, "force_scalar": 1, "num_warps": 4},
-    "abs": {
-        "block_start": 32768,
-        "force_scalar": 1,
-        "num_warps": 8,
-        "route_min_numel": 1,
-    },
-    "erf": {
-        "block_start": 16384,
-        "force_scalar": 1,
-        "num_warps": 8,
-        "route_min_numel": 1,
-    },
-    "trunc": {
-        "block_start": 8192,
-        "num_warps": 8,
-        "force_scalar": 1,
-        "route_min_numel": 1,
-    },
-    "round": {
-        "block_start": 8192,
-        "num_warps": 8,
-        "force_scalar": 1,
-        "route_min_numel": 1,
-    },
-}
+# ---------------------------------------------------------------------------
+# GCU400 launch tiering config (2026-11-16 perf round; sweep evidence in
+# jobs/j20261116073013_0bdf168d/tmp/probe3_sweep.py)
+# ---------------------------------------------------------------------------
+#
+# The aligned scalar kernel (including the ``tl.multiple_of`` hint) is no worse than the int64-unpacking p4 kernel on
+# GCU400 for 512^2/1024^2
+# across all (BLOCK, num_warps) combinations—p4's
+# unpack/pack live vectors overflow DSM at high BLOCK (1024^2 fp16 rsqrt measured 110us versus
+# scalar 57us, and atan polynomial + p4 collapses to 1781us)—so the lean path always uses scalar.
+#
+# BLOCK starting points:
+#   light (memory-streaming bodies: abs/round/rsqrt/sigmoid/tanh/log1p/cosh/sinh/
+#         frac/reciprocal/erfc/asin/acos, etc.)—16-bit 131072 / 32-bit
+#         65536, about 512KB of live vectors per CTA, within the DSM budget of 917504B/CTA; grid.y
+#         is 8/16 at 1M elements, for 128-256 CTAs total, and measured bandwidth is at the floor
+#         (abs 512^2 fp16 14.4us, 1024^2 fp16 41.6us / fp32 57.4us).
+#   heavy (ALU-intensive bodies: atan polynomial, lgamma Lanczos)—8192, with more CTAs
+#         to preserve parallelism (atan8 at 1024^2 fp16 259.5us is best overall; the pure ALU body
+#         with 2048 CTAs shows no collapse, and the pure Triton lgamma body likewise avoids P16).
+#
+# num_warps fixed at 4: the launch replay of the common ``_launch_executor_kernel`` only takes effect
+# when num_warps==4; bypassing replay with direct launch costs an extra ~5us of Python dispatch each time,
+# which is not worthwhile at 256^2 (host-dominated); gains from nw=2/8 in the sweep are <8%.
+FOREACH_LIGHT_BLOCK_16 = 131072
+FOREACH_LIGHT_BLOCK_32 = 65536
+FOREACH_HEAVY_BLOCK = 8192
+# 16-bit BLOCK for extern bodies (libdevice extern for asin/acos/tan/erf): extern's
+# internal temporaries overflow DSM at B=131072 (x plane 256KB + fp32 promotion 512KB), and low CTA
+# parallelism is insufficient; 16384 restores the 256-2048 CTA tier in measurements (asin 512^2 67.5us vs 107.7us).
+FOREACH_EXTERN16_BLOCK = 16384
+
+# Set of operators with heavy bodies; light by default.
+HEAVY_ROWS = frozenset(("atan", "lgamma"))
+
+# Rows that use extern BLOCK for 16-bit (fp32 stays at light-32: extern measured 22.7/64.9us at 65536/B
+# in r1, better than the old 256-1024 CTA config).
+EXTERN16_ROWS = frozenset(("asin", "acos", "tan", "erf"))
+
+# ``fn16`` allowlist: only these rows have 16-bit in-place fast bodies that compile on GCU libdevice
+# and have measured accuracy (fast_tanf / atan16); the ``_approx_*`` fast bodies for rows such as erf depend on
+# ``fast_expf``, which is missing on GCU, so they must never be enabled.
+_GCU_FN16_OK = frozenset(("tan", "atan"))
+
+
+def _uniform_outputs(tensors, dtype):
+    """Allocate all outputs with one ``torch.empty`` when every input shares a shape.
+
+    Returns a tuple of views, or ``None`` when the shapes differ (the caller then
+    falls back to per-tensor ``empty_like``).  On GCU a single ``empty_like``
+    costs ~5us of host time, so a 16-tensor list pays ~84us inside the
+    allocator alone; one ``(n, *shape)`` allocation plus ``unbind`` measures
+    ~32us.  The views cover disjoint, contiguous sections of that buffer, so
+    every output still holds its own elements; only the storage is shared, and
+    the compute path is unchanged.
+    """
+    first = tensors[0]
+    shape = first.shape
+    for t in tensors:
+        if t.shape != shape:
+            return None
+    # ``list`` keeps the ATen return type (a TensorList is a Python list).
+    return list(
+        torch.empty((len(tensors), *shape), dtype=dtype, device=first.device).unbind(0)
+    )
 
 
 def _launch_large_block_group(op, tensors, inplace: bool):
-    """Increase BLOCK so grid.y <= 255 and all tensors are handled in one launch.
+    """Unified lean single-launch path: grow BLOCK so that grid.y <= 255.
 
-    The common executor's grid is (tensor count, cdiv(max element count, BLOCK)); increasing BLOCK
-    by powers of two pushes the second dimension back within the hardware limit, avoiding multiple launches
-    and torch.cat concatenation from splitting. The metadata layout is identical to the common executor,
-    so the same ``@triton.jit`` kernels are reused and the main compute path remains Triton.
+    The shared executor uses grid = (num_tensors, cdiv(max_elements, BLOCK)); BLOCK starts from
+    a per-body-class baseline and doubles up to the hardware cap, so one launch covers every
+    tensor. The metadata layout matches the shared executor exactly, so the same
+    ``@triton.jit`` kernel and ``_launch_executor_kernel`` replay are reused and the main
+    compute path stays Triton.
     """
     dtype = tensors[0].dtype
     out_dtype = op.out_dtype_fn(dtype)
@@ -807,47 +965,55 @@ def _launch_large_block_group(op, tensors, inplace: bool):
                 f"{str(dtype).replace('torch.', '').capitalize()}"
             )
         destinations = tensors
+    elif out_dtype == dtype:
+        # Equal shapes take the one-allocation path; mixed shapes keep the per-tensor form.
+        destinations = _uniform_outputs(tensors, dtype)
+        if destinations is None:
+            destinations = list(map(torch.empty_like, tensors))
     else:
         destinations = [torch.empty_like(t, dtype=out_dtype) for t in tensors]
 
     numels = [t.numel() for t in tensors]
     max_numel = max(numels)
     tensor_count = len(tensors)
-    tuning = UNARY_LARGE_TENSOR_TUNING.get(op.name, {})
-    if dtype.itemsize == 2 and "block_start_16bit" in tuning:
-        block = tuning["block_start_16bit"]
+    if max_numel == 0:
+        # All lists empty: no elements to compute, so skip the launch (grid.y=0 is invalid) and keep the corresponding
+        # outputs.
+        return None if inplace else destinations
+    if op.name in HEAVY_ROWS:
+        block = FOREACH_HEAVY_BLOCK
+    elif op.name in EXTERN16_ROWS and dtype.itemsize == 2:
+        block = FOREACH_EXTERN16_BLOCK
+    elif dtype.itemsize == 2:
+        block = FOREACH_LIGHT_BLOCK_16
     else:
-        block = tuning.get("block_start", FOREACH_LARGE_BLOCK_START)
+        block = FOREACH_LIGHT_BLOCK_32
+    # Cap for small shapes: BLOCK does not exceed the next power of 2 of the data size (lower bound 1024). When it
+    # exceeds the data size,
+    # the sole chunk takes the masked path in full, and the 16-bit promotion body is measured 3-6x slower (erfc 256^2
+    # fp16 51.6us vs full-block fp32 12.6us).
+    block = min(block, max(1024, 1 << (max_numel - 1).bit_length()))
     while -(-max_numel // block) > GCU400_GRID_Y_LIMIT:
         block *= 2
 
-    pointer_values = (
-        [t.data_ptr() for t in tensors] + [d.data_ptr() for d in destinations] + numels
-    )
+    pointer_values = [t.data_ptr() for t in tensors]
+    if destinations is not tensors:
+        pointer_values += [d.data_ptr() for d in destinations]
+    else:
+        pointer_values += pointer_values
+    pointer_values += numels
     meta = _device_meta(pointer_values, tensors[0].device)
     grid = (tensor_count, -(-max_numel // block))
-    use_packed = not tuning.get("force_scalar", 0) and _pack_ok(
-        (dtype, destinations[0].dtype), max_numel, pointer_values
+    _launch_executor_kernel(
+        foreach_unary_kernel,
+        grid,
+        tensor_count,
+        meta,
+        op.fn,
+        tl_dtype(dtype),
+        tl_dtype(destinations[0].dtype),
+        block,
     )
-    kernel = foreach_unary_kernel_p4 if use_packed else foreach_unary_kernel
-    in_dtype = tl_dtype(dtype)
-    out_dtype = tl_dtype(destinations[0].dtype)
-    num_warps = tuning.get("num_warps", 4)
-    if num_warps == 4:
-        _launch_executor_kernel(
-            kernel, grid, tensor_count, meta, op.fn, in_dtype, out_dtype, block
-        )
-    else:
-        # Common launch replay fixes num_warps=4; other values from the tuning table are launched directly.
-        kernel[grid](
-            meta,
-            op.fn,
-            tensor_count,
-            in_dtype,
-            out_dtype,
-            block,
-            num_warps=num_warps,
-        )
     return None if inplace else destinations
 
 
@@ -912,25 +1078,39 @@ def _apply_unary_chunked(op, tensors, inplace: bool):
 def apply_unary(name: str, self, inplace: bool):
     """Dispatch one table row through the shared executor."""
     op = UNARY_OPS[name]
-    logger.debug(
-        "GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else ""
-    )
-    route_min_numel = UNARY_LARGE_TENSOR_TUNING.get(op.name, {}).get("route_min_numel")
-    # ATen raises RuntimeError for both empty TensorLists and non-Tensor elements, while numel() /
-    # is_contiguous() in route probing would raise AttributeError first. Wrap the whole routing decision
-    # in exception translation to match error semantics; the normal TensorList path adds no Python overhead.
+    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    # ATen raises RuntimeError for an empty TensorList or non-Tensor elements, while the route probe's
+    # numel() / is_contiguous() raises AttributeError first. Wrap the entire routing decision in exception
+    # translation to align error semantics; the normal TensorList path adds no Python overhead.
+    #
+    # lean single-launch routing (2026-11-16): all floating-point TensorLists with the same dtype and device and full
+    # contiguity
+    # go through ``_launch_large_block_group`` (the common bulk path's
+    # check/group/contiguity machinery costs ~55us on the host, while the lean path needs only ~8us; at 256^2,
+    # all out-of-place rows improve from ~0.85x to over 4x). Non-floating-point, mixed-dtype,
+    # non-contiguous, and complex inputs fall back to the common grouped path, with dtype/exception semantics unchanged.
     try:
-        route_all_float = (
-            route_min_numel is not None
-            and bool(self)
-            and max(t.numel() for t in self) >= route_min_numel
-            and len({t.dtype for t in self}) == 1
-            and all(t.is_contiguous() and t.dtype.is_floating_point for t in self)
-        )
-        needs_chunking = _needs_chunking(self)
+        # Single pass, comparing against the first element: the four set comprehensions this replaces walked the
+        # TensorList four times and cost ~2us per tensor at 16 tensors, which is host time the 256^2 case cannot
+        # afford (the launch itself is ~8us). ``is`` is exact for ``torch.dtype`` (they are singletons).
+        route_all_float = bool(self)
+        if route_all_float:
+            first_dtype = self[0].dtype
+            first_device = self[0].device
+            route_all_float = first_dtype.is_floating_point
+            for t in self:
+                if (
+                    t.dtype is not first_dtype
+                    or t.device != first_device
+                    or not t.is_contiguous()
+                ):
+                    route_all_float = False
+                    break
     except AttributeError as exc:
         raise RuntimeError("foreach expects a TensorList of Tensors") from exc
-    if route_all_float or needs_chunking:
+    # ``_needs_chunking`` re-walks the whole TensorList, so it only runs when the lean all-float route was rejected
+    # (the short circuit keeps the common path at a single pass).
+    if route_all_float or _needs_chunking(self):
         if FOREACH_LARGE_TENSOR_STRATEGY == 2:
             return _launch_large_block_group(op, self, inplace)
         return _apply_unary_chunked(op, self, inplace)
@@ -946,17 +1126,13 @@ def apply_unary(name: str, self, inplace: bool):
         # must take the accurate path, and the executor's bucketing path shares
         # one ``fn`` across dtype groups.
         #
-        # Only the in-place entry point uses this.  An out-of-place call already
-        # spends past the do_bench L2-flush window on host work, so added Python
-        # leaks 1:1 into its measured latency while the kernel time saved by the
-        # fast body stays hidden underneath it -- gated on that path the change
-        # measured as a 1.3-3.7 us regression.  The accurate body costs it
-        # nothing, so out-of-place keeps ``op.fn`` unconditionally.
-        #
-        # Every ``fn16`` body below is built on a vendor libdevice ``fast_*``
-        # entry point, so the path is also gated on the backend being able to
-        # lower them at all -- see ``_FAST_MATH_OK``.
-        fast = op.fn16 is not None and _FAST_MATH_OK
+        # ``fn16`` is gated on the per-row allowlist below, not on the shared
+        # ``_FAST_MATH_OK`` (nvidia-only): GCU's libdevice exports fast_tanf
+        # but *not* fast_expf, so ``_approx_erf_func`` and friends would fail
+        # the JIT link here.  The allowlisted bodies are the ones measured on
+        # this device (probe2_acc.py): tan via fast_tanf 5e-7 max abs on the
+        # suite domain, atan16 2.3e-5, both far inside atol=1e-4.
+        fast = op.fn16 is not None and name in _GCU_FN16_OK
         for t in self:
             if t.dtype.is_complex and op.out_dtype_fn is real_dtype_of:
                 raise RuntimeError(
@@ -990,42 +1166,42 @@ def apply_unary(name: str, self, inplace: bool):
 
 
 def _foreach_abs(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ABS")
+    logger.debug("GEMS_ENFLAME _FOREACH_ABS")
     return apply_unary("abs", self, inplace=False)
 
 
 def _foreach_abs_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ABS_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ABS_")
     return apply_unary("abs", self, inplace=True)
 
 
 def _foreach_acos(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ACOS")
+    logger.debug("GEMS_ENFLAME _FOREACH_ACOS")
     return apply_unary("acos", self, inplace=False)
 
 
 def _foreach_acos_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ACOS_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ACOS_")
     return apply_unary("acos", self, inplace=True)
 
 
 def _foreach_asin(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ASIN")
+    logger.debug("GEMS_ENFLAME _FOREACH_ASIN")
     return apply_unary("asin", self, inplace=False)
 
 
 def _foreach_asin_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ASIN_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ASIN_")
     return apply_unary("asin", self, inplace=True)
 
 
 def _foreach_atan(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ATAN")
+    logger.debug("GEMS_ENFLAME _FOREACH_ATAN")
     return apply_unary("atan", self, inplace=False)
 
 
 def _foreach_atan_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ATAN_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ATAN_")
     return apply_unary("atan", self, inplace=True)
 
 
@@ -1038,7 +1214,7 @@ def _foreach_ceil_(self):
 
 
 def _foreach_cos(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COS")
+    logger.debug("GEMS_ENFLAME _FOREACH_COS")
     return apply_unary("cos", self, inplace=False)
 
 
@@ -1047,32 +1223,32 @@ def _foreach_cos_(self):
 
 
 def _foreach_cosh(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COSH")
+    logger.debug("GEMS_ENFLAME _FOREACH_COSH")
     return apply_unary("cosh", self, inplace=False)
 
 
 def _foreach_cosh_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COSH_")
+    logger.debug("GEMS_ENFLAME _FOREACH_COSH_")
     return apply_unary("cosh", self, inplace=True)
 
 
 def _foreach_erf(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERF")
+    logger.debug("GEMS_ENFLAME _FOREACH_ERF")
     return apply_unary("erf", self, inplace=False)
 
 
 def _foreach_erf_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERF_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ERF_")
     return apply_unary("erf", self, inplace=True)
 
 
 def _foreach_erfc(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERFC")
+    logger.debug("GEMS_ENFLAME _FOREACH_ERFC")
     return apply_unary("erfc", self, inplace=False)
 
 
 def _foreach_erfc_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERFC_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ERFC_")
     return apply_unary("erfc", self, inplace=True)
 
 
@@ -1085,52 +1261,52 @@ def _foreach_exp_(self):
 
 
 def _foreach_expm1(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_EXPM1")
+    logger.debug("GEMS_ENFLAME _FOREACH_EXPM1")
     return apply_unary("expm1", self, inplace=False)
 
 
 def _foreach_expm1_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_EXPM1_")
+    logger.debug("GEMS_ENFLAME _FOREACH_EXPM1_")
     return apply_unary("expm1", self, inplace=True)
 
 
 def _foreach_floor(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FLOOR")
+    logger.debug("GEMS_ENFLAME _FOREACH_FLOOR")
     return apply_unary("floor", self, inplace=False)
 
 
 def _foreach_floor_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FLOOR_")
+    logger.debug("GEMS_ENFLAME _FOREACH_FLOOR_")
     return apply_unary("floor", self, inplace=True)
 
 
 def _foreach_frac(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FRAC")
+    logger.debug("GEMS_ENFLAME _FOREACH_FRAC")
     return apply_unary("frac", self, inplace=False)
 
 
 def _foreach_frac_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FRAC_")
+    logger.debug("GEMS_ENFLAME _FOREACH_FRAC_")
     return apply_unary("frac", self, inplace=True)
 
 
 def _foreach_lgamma(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LGAMMA")
+    logger.debug("GEMS_ENFLAME _FOREACH_LGAMMA")
     return apply_unary("lgamma", self, inplace=False)
 
 
 def _foreach_lgamma_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LGAMMA_")
+    logger.debug("GEMS_ENFLAME _FOREACH_LGAMMA_")
     return apply_unary("lgamma", self, inplace=True)
 
 
 def _foreach_log(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG")
+    logger.debug("GEMS_ENFLAME _FOREACH_LOG")
     return apply_unary("log", self, inplace=False)
 
 
 def _foreach_log_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG_")
+    logger.debug("GEMS_ENFLAME _FOREACH_LOG_")
     return apply_unary("log", self, inplace=True)
 
 
@@ -1139,17 +1315,17 @@ def _foreach_log10(self):
 
 
 def _foreach_log10_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG10_")
+    logger.debug("GEMS_ENFLAME _FOREACH_LOG10_")
     return apply_unary("log10", self, inplace=True)
 
 
 def _foreach_log1p(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG1P")
+    logger.debug("GEMS_ENFLAME _FOREACH_LOG1P")
     return apply_unary("log1p", self, inplace=False)
 
 
 def _foreach_log1p_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG1P_")
+    logger.debug("GEMS_ENFLAME _FOREACH_LOG1P_")
     return apply_unary("log1p", self, inplace=True)
 
 
@@ -1166,47 +1342,47 @@ def _foreach_neg(self):
 
 
 def _foreach_neg_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_NEG_")
+    logger.debug("GEMS_ENFLAME _FOREACH_NEG_")
     return apply_unary("neg", self, inplace=True)
 
 
 def _foreach_reciprocal(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RECIPROCAL")
+    logger.debug("GEMS_ENFLAME _FOREACH_RECIPROCAL")
     return apply_unary("reciprocal", self, inplace=False)
 
 
 def _foreach_reciprocal_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RECIPROCAL_")
+    logger.debug("GEMS_ENFLAME _FOREACH_RECIPROCAL_")
     return apply_unary("reciprocal", self, inplace=True)
 
 
 def _foreach_round(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ROUND")
+    logger.debug("GEMS_ENFLAME _FOREACH_ROUND")
     return apply_unary("round", self, inplace=False)
 
 
 def _foreach_round_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ROUND_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ROUND_")
     return apply_unary("round", self, inplace=True)
 
 
 def _foreach_rsqrt(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RSQRT")
+    logger.debug("GEMS_ENFLAME _FOREACH_RSQRT")
     return apply_unary("rsqrt", self, inplace=False)
 
 
 def _foreach_rsqrt_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RSQRT_")
+    logger.debug("GEMS_ENFLAME _FOREACH_RSQRT_")
     return apply_unary("rsqrt", self, inplace=True)
 
 
 def _foreach_sigmoid(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SIGMOID")
+    logger.debug("GEMS_ENFLAME _FOREACH_SIGMOID")
     return apply_unary("sigmoid", self, inplace=False)
 
 
 def _foreach_sigmoid_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SIGMOID_")
+    logger.debug("GEMS_ENFLAME _FOREACH_SIGMOID_")
     return apply_unary("sigmoid", self, inplace=True)
 
 
@@ -1223,17 +1399,17 @@ def _foreach_sin(self):
 
 
 def _foreach_sin_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SIN_")
+    logger.debug("GEMS_ENFLAME _FOREACH_SIN_")
     return apply_unary("sin", self, inplace=True)
 
 
 def _foreach_sinh(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SINH")
+    logger.debug("GEMS_ENFLAME _FOREACH_SINH")
     return apply_unary("sinh", self, inplace=False)
 
 
 def _foreach_sinh_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SINH_")
+    logger.debug("GEMS_ENFLAME _FOREACH_SINH_")
     return apply_unary("sinh", self, inplace=True)
 
 
@@ -1250,27 +1426,27 @@ def _foreach_tan(self):
 
 
 def _foreach_tan_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TAN_")
+    logger.debug("GEMS_ENFLAME _FOREACH_TAN_")
     return apply_unary("tan", self, inplace=True)
 
 
 def _foreach_tanh(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TANH")
+    logger.debug("GEMS_ENFLAME _FOREACH_TANH")
     return apply_unary("tanh", self, inplace=False)
 
 
 def _foreach_tanh_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TANH_")
+    logger.debug("GEMS_ENFLAME _FOREACH_TANH_")
     return apply_unary("tanh", self, inplace=True)
 
 
 def _foreach_trunc(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TRUNC")
+    logger.debug("GEMS_ENFLAME _FOREACH_TRUNC")
     return apply_unary("trunc", self, inplace=False)
 
 
 def _foreach_trunc_(self):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TRUNC_")
+    logger.debug("GEMS_ENFLAME _FOREACH_TRUNC_")
     return apply_unary("trunc", self, inplace=True)
 
 

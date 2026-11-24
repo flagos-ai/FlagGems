@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import random
 import time
 
@@ -26,6 +27,19 @@ from . import conftest as cfg
 random.seed(time.time() // 100)
 
 device = flag_gems.device
+
+
+def _gcu_int64_runtime_enabled():
+    """True when the GCU 64-bit switch keeps int64 tensors on device.
+
+    ``flag_gems.runtime.device.support_int64`` only reports a static per-arch
+    capability (true for every GCU400 build), while the runtime behaviour is
+    driven by ``TORCH_GCU_ENABLE_INT64_AND_UINT64``: with the switch off, GCU
+    silently narrows int64 tensors to int32 before the reference runs, so the
+    native embedding backward reference accepts the int64 index tensors these
+    tests build. With the switch on only the int32 index cases stay runnable.
+    """
+    return os.environ.get("TORCH_GCU_ENABLE_INT64_AND_UINT64") == "1"
 
 
 @pytest.mark.embedding
@@ -67,6 +81,17 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
 
 @pytest.mark.embedding_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame"
+    and _gcu_int64_runtime_enabled()
+    and not cfg.TO_CPU,
+    reason="native reference aten::embedding_backward (topsatenEmbeddingBackward) "
+    "only accepts int32 index tensors and aborts the process with "
+    "TOPSATEN_STATUS_BAD_PARAM for the int64 index tensor built by this test when "
+    "the TORCH_GCU_ENABLE_INT64_AND_UINT64 switch is on; with the switch off GCU "
+    "narrows the index to int32 before dispatch and with --ref cpu the reference "
+    "runs on CPU, so only the int64-enabled device-reference run is skipped",
+)
 @pytest.mark.parametrize(
     "EmbeddingSize", [1024] if cfg.TO_CPU or cfg.QUICK_MODE else [4096]
 )

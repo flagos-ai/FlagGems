@@ -205,6 +205,14 @@ class LinalgLuBenchmark(base.Benchmark):
                 yield inp, {"pivot": pivot}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::linalg_lu; the native baseline "
+        "falls through to a CPU fallback / inner Triton kernel that cannot run "
+        "on the device, so there is no native baseline"
+    ),
+)
 @pytest.mark.linalg_lu
 def test_linalg_lu():
     bench = LinalgLuBenchmark(
@@ -240,6 +248,14 @@ class LinalgLuOutBenchmark(base.Benchmark):
                 yield inp, {"out": (P, L, U)}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::linalg_lu; the native baseline "
+        "falls through to a CPU fallback / inner Triton kernel that cannot run "
+        "on the device, so there is no native baseline"
+    ),
+)
 @pytest.mark.linalg_lu_out
 def test_linalg_lu_out():
     bench = LinalgLuOutBenchmark(

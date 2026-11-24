@@ -26,7 +26,7 @@ CHOLESKY_INVERSE_BATCH_SHAPES = [
 # float64 request is silently downgraded to float32, so it can never match a
 # true-fp64 reference; skip fp64 on that backend only. Every other vendor keeps
 # running float64 exactly as before.
-_SKIP_FP64_ON_VENDORS = pytest.mark.skipif(
+_SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
     flag_gems.runtime.device.vendor_name in ("kunlunxin", "enflame"),
     reason=(
         "Kunlunxin XPU has no real float64 (silently downgraded to float32); "
@@ -35,7 +35,7 @@ _SKIP_FP64_ON_VENDORS = pytest.mark.skipif(
 )
 CHOLESKY_INVERSE_DTYPES = [
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64_ON_VENDORS),
+    pytest.param(torch.float64, marks=_SKIP_FP64_ON_KUNLUNXIN),
 ]
 
 
@@ -53,6 +53,8 @@ def _make_positive_definite(shape, dtype, device):
 # cholesky_inverse only supports float32/float64
 @pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
 
@@ -66,6 +68,8 @@ def test_cholesky_inverse(shape, dtype):
 @pytest.mark.parametrize("shape", CHOLESKY_INVERSE_SHAPES[:3])
 @pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse_upper(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     U = L.transpose(-2, -1).contiguous()
     ref_U = utils.to_reference(U)
@@ -80,6 +84,8 @@ def test_cholesky_inverse_upper(shape, dtype):
 @pytest.mark.parametrize("shape", CHOLESKY_INVERSE_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse_batch(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
 

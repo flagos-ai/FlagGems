@@ -18,104 +18,29 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from .bmm import bmm
+from .bmm import _SAFE_FALLBACK_CONFIG, _clamp_tile, _select_gemm_config, bmm
 from .mul import mul
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Native-kernel delegation (capture + call_boxed), same pattern as the local
-# bmm.py / linalg_multi_dot / linalg_cond vendor ops.
-#
-# Measured on L600 (bench kernel mode, do_bench median, cold L2): the Triton
-# GEMM only beats the native vendor kernel while the problem is launch/overhead
-# bound; once the native primo++ pipeline saturates it is ~2x faster than any
-# swept Triton config (see bmm.py's anchor table). baddbmm shares the same
-# GEMM core, so the same dispatch line applies:
-#   (2,384^3)    Triton 1.15-1.45x (baseline run, this op)
-#   (2,4096^3)   Triton 0.46-0.71x   (16,1024^3) Triton 0.55-0.73x
-#   (16,2048^3)  Triton 0.51-0.73x   (16,4096^3) Triton 0.49-0.69x
-# The kernels below are captured at import time - before any use_gems()
-# registration replaces the PrivateUse1 entry - so call_boxed runs the
-# original device kernel bit-identically with zero dispatch overhead
-# (probe-verified: kwargs alpha/beta/out, 1-D broadcast bias, non-contiguous
-# and fp32/fp16 inputs all torch.equal vs plain torch.baddbmm).
-# Dispatch line: total work B*M*N*K >= 2^29 routes to the native kernel;
-# both sides of the line have measured anchor points (see table above).
+# Every shape runs the Triton GEMM below: the operator must stay a Triton
+# implementation on this backend, so there is no vendor-kernel fallback.  The
+# tile selection is shared with bmm.py (single source of truth for the GEMM
+# core), and large problems rely on that table's software pipeline.
 # ---------------------------------------------------------------------------
-
-_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
-_NATIVE_BADDBMM = None
-_NATIVE_BADDBMM_OUT = None
-if _CAN_CAPTURE_NATIVE_KERNEL:
-    try:
-        _NATIVE_BADDBMM = torch.library.get_kernel(
-            torch.ops.aten.baddbmm.default, runtime.device.dispatch_key
-        )
-        _NATIVE_BADDBMM_OUT = torch.library.get_kernel(
-            torch.ops.aten.baddbmm.out, runtime.device.dispatch_key
-        )
-    except Exception:  # noqa: B902
-        _NATIVE_BADDBMM = None
-        _NATIVE_BADDBMM_OUT = None
-
-_DEVICE_KEYSET = torch._C.DispatchKeySet(
-    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
-)
-_NATIVE_WORK_THRESHOLD = 1 << 29
-
-
-def _should_delegate_to_native(bias, A, B):
-    if _NATIVE_BADDBMM is None:
-        return False
-    if A.device.type != runtime.device.name:
-        return False
-    Batch, M, K = A.shape
-    N = B.shape[2]
-    return Batch * M * N * K >= _NATIVE_WORK_THRESHOLD
 
 
 def _select_baddbmm_config(Batch, M, N, K, dtype):
-    # Select GEMM tiles deterministically by dtype and shape tier, replacing libtuner autotune.
-    # From the same-source sweep (bmm.py): BM=128/BN=256 is generally optimal; fp16/bf16 prefers
-    # BK=256/w=4, fp32 prefers BK=128/w=2; very large batches of big square matrices need larger BM or smaller BK
-    # to avoid exceeding the grid.x hardware limit and keep pipeline efficiency; tiny K / tiny shapes use small tiles.
-    # Small-shape tier (the only Triton tier on the delegated path) measured: fp16/bf16 use (128,128,256,w4,ns2)
-    # ((2,384^3) measured directly 12.1us vs native 17.7us = 1.47x; the (128,128,128) tier 12.8us);
-    # fp32 uses (64,128,128,w4,ns2) (17.6us vs native 24.4us = 1.39x).
-    num_stages = 3
-    if K < 128:
-        block_m, block_n, block_k, num_warps = 64, 64, 32, 4
-    elif M <= 512 and N <= 512 and K <= 512:
-        if dtype == torch.float32:
-            block_m, block_n, block_k, num_warps, num_stages = 64, 128, 128, 4, 2
-        else:
-            block_m, block_n, block_k, num_warps, num_stages = (
-                128,
-                128,
-                256 if K >= 256 else 128,
-                4,
-                2,
-            )
-    elif M >= 4096 and N >= 4096 and Batch >= 8:
-        if dtype == torch.float32:
-            block_m, block_n, block_k, num_warps = 256, 128, 128, 4
-        else:
-            block_m, block_n, block_k, num_warps = 128, 256, 128, 2
-    elif dtype == torch.float32:
-        block_m, block_n, block_k, num_warps = 128, 256, 128, 2
-    else:
-        block_m, block_n, block_k, num_warps = 128, 256, 256, 4
-
-    # Exact decision: only when all three dimensions are divisible by the actually selected tiles are load/store
-    # free of out-of-bounds access, in which case an unmasked fast path is compiled; otherwise use the masked generic
-    # path.
-    even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
-    return block_m, block_n, block_k, num_warps, num_stages, even
+    # baddbmm shares the batched GEMM core with bmm and only adds a stride-based
+    # bias epilogue, so the tile table lives in bmm.py (single source of truth).
+    # That table also clamps every tile to the problem dimensions and fits the
+    # software pipeline into the DSM budget, which is what used to make the
+    # N == 1 accuracy cases fail to compile.
+    return _select_gemm_config(Batch, M, N, K, dtype)
 
 
 @libentry()
@@ -242,41 +167,61 @@ def _launch_baddbmm(A, B, bias, out, Batch, M, N, K, alpha, beta):
     if bias.dim() == 3 and bias.shape == (Batch, M, N):
         bbias = bias
     else:
+        # bias keeps its own strides (0 strides for broadcast), so no (B, M, N)
+        # materialization is needed.
         bbias = bias.broadcast_to((Batch, M, N))
-    grid = (Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
-    with torch_device_fn.device(A.device):
+    args = (
+        A,
+        B,
+        out,
+        bbias,
+        alpha,
+        beta,
+        Batch,
+        M,
+        N,
+        K,
+        A.stride(0),
+        A.stride(1),
+        A.stride(2),
+        B.stride(0),
+        B.stride(1),
+        B.stride(2),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
+        bbias.stride(0),
+        bbias.stride(1),
+        bbias.stride(2),
+    )
+    dot_dtype = tl.float64 if A.dtype == torch.float64 else tl.float32
+
+    def _issue(bm, bn, bk, warps, stages, ev):
+        grid = (Batch * triton.cdiv(M, bm) * triton.cdiv(N, bn),)
         baddbmm_kernel[grid](
-            A,
-            B,
-            out,
-            bbias,
-            alpha,
-            beta,
-            Batch,
-            M,
-            N,
-            K,
-            A.stride(0),
-            A.stride(1),
-            A.stride(2),
-            B.stride(0),
-            B.stride(1),
-            B.stride(2),
-            out.stride(0),
-            out.stride(1),
-            out.stride(2),
-            bbias.stride(0),
-            bbias.stride(1),
-            bbias.stride(2),
-            dot_out_dtype=tl.float64 if A.dtype == torch.float64 else tl.float32,
-            BLOCK_M=block_m,
-            BLOCK_N=block_n,
-            BLOCK_K=block_k,
+            *args,
+            dot_out_dtype=dot_dtype,
+            BLOCK_M=bm,
+            BLOCK_N=bn,
+            BLOCK_K=bk,
             GROUP_M=8,
-            EVEN=even,
-            num_warps=num_warps,
-            num_stages=num_stages,
+            EVEN=ev,
+            num_warps=warps,
+            num_stages=stages,
         )
+
+    with torch_device_fn.device(A.device):
+        try:
+            _issue(block_m, block_n, block_k, num_warps, num_stages, even)
+        except triton.runtime.errors.OutOfResources:
+            # Tiles exceed the hardware DSM budget for this shape: retry once
+            # with the conservative tile instead of failing the operator.
+            block_m, block_n, block_k, num_warps, num_stages = _SAFE_FALLBACK_CONFIG
+            block_m = _clamp_tile(M, block_m)
+            block_n = _clamp_tile(N, block_n)
+            block_k = _clamp_tile(K, block_k, floor=16)
+            even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
+            _issue(block_m, block_n, block_k, num_warps, num_stages, even)
 
 
 class BaddbmmFunction(torch.autograd.Function):
@@ -287,14 +232,6 @@ class BaddbmmFunction(torch.autograd.Function):
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
         ctx.beta = beta
-
-        # Saturation range (large workload) delegates to the native kernel: bit-identical, zero dispatch overhead;
-        # passed through unchanged (native supports arbitrary stride / broadcast bias). Inside forward,
-        # autograd is isolated by the Function mechanism, so call_boxed only runs the device kernel.
-        if _should_delegate_to_native(bias, A, B):
-            return _NATIVE_BADDBMM.call_boxed(
-                _DEVICE_KEYSET, bias, A, B, beta=beta, alpha=alpha
-            )
 
         batch, M, K = A.shape
         _, _, N = B.shape
@@ -321,7 +258,18 @@ class BaddbmmFunction(torch.autograd.Function):
 
 
 def compute_bias_grad(d_output, beta, bias):
-    grad_bias = mul(d_output, beta)
+    # The reference baddbmm backward multiplies and reduces in the upcast
+    # (float32) reference dtype, so a low-precision beta * sum() loses up to a
+    # whole fp16 ULP on entries where the eight broadcast terms cancel and can
+    # exceed the 1e-4 * reduce_dim tolerance (measured maxdiff 9.8e-4 vs
+    # atol 8e-4 at batch=2, M=4). Reduce in float32 and cast back, mirroring
+    # compute_A_grad / compute_B_grad below.
+    work_dtype = (
+        torch.float32
+        if d_output.dtype in (torch.float16, torch.bfloat16)
+        else d_output.dtype
+    )
+    grad_bias = mul(d_output.to(work_dtype), beta)
     if grad_bias.shape != bias.shape:
         # Sum over broadcasted dimensions
         while grad_bias.dim() > bias.dim():
@@ -329,7 +277,7 @@ def compute_bias_grad(d_output, beta, bias):
         for i in range(bias.dim()):
             if bias.shape[i] == 1 and grad_bias.shape[i] > 1:
                 grad_bias = grad_bias.sum(dim=i, keepdim=True)
-    return grad_bias.view(bias.shape)
+    return grad_bias.view(bias.shape).to(bias.dtype)
 
 
 def compute_A_grad(d_output, B, alpha):
@@ -367,14 +315,10 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
     assert (
         out.shape == (batch, M, N) and out.dtype == A.dtype
     ), "Incompatible output shape or dtype for baddbmm.out"
-    if _should_delegate_to_native(bias, A, B) and _NATIVE_BADDBMM_OUT is not None:
-        return _NATIVE_BADDBMM_OUT.call_boxed(
-            _DEVICE_KEYSET, bias, A, B, beta=beta, alpha=alpha, out=out
-        )
     _launch_baddbmm(A, B, bias, out, batch, M, N, K, alpha, beta)
     return out
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 BADDBMM")
+    logger.debug("GEMS_ENFLAME BADDBMM")
     return BaddbmmFunction.apply(bias, A, B, beta, alpha)

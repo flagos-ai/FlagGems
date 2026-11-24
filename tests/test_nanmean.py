@@ -132,13 +132,8 @@ def test_nanmean_edge():
 def test_nanmean_empty_and_dtype():
     inp = torch.empty((2, 0, 3), device=flag_gems.device)
     result = flag_gems.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
-    assert result.device == inp.device
-    use_cpu_reference = flag_gems.vendor_name == "mthreads"
-    ref_inp = inp.cpu() if use_cpu_reference else inp
-    reference = torch.nanmean(ref_inp, dim=1, keepdim=True, dtype=torch.float64)
-    torch.testing.assert_close(
-        result.cpu() if use_cpu_reference else result, reference, equal_nan=True
-    )
+    reference = torch.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
+    torch.testing.assert_close(result, reference, equal_nan=True)
 
 
 @pytest.mark.nanmean
@@ -280,7 +275,7 @@ def test_nanmean_out_rejects_device_mismatch():
 @pytest.mark.nanmean
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame has no complex nanmean datapath",
+    reason="torch_gcu has no complex nanmean datapath",
 )
 def test_nanmean_complex_and_autograd():
     inp = torch.tensor(

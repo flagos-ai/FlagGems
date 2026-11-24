@@ -22,6 +22,13 @@ from .conftest import TO_CPU
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
+# The torch build behind the enflame GCU backend is CPU-only, and
+# aten::batch_norm_gather_stats is a CUDA-only composite op upstream, so no
+# kernel exists for it on any backend in that build; neither the device
+# reference nor the CPU reference can produce a value, and the benchmark side
+# has no baseline either. Skip only for enflame, other vendors are unaffected.
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
+
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].
 SHAPES = [
@@ -42,6 +49,12 @@ def _combined_stats(mean, invstd, eps):
 
 
 @pytest.mark.batch_norm_gather_stats
+@pytest.mark.skipif(
+    IS_ENFLAME,
+    reason="aten::batch_norm_gather_stats has no kernel in the CPU-only torch "
+    "build behind the enflame GCU backend (CPU, CUDA and PrivateUse1 dispatch "
+    "keys are all absent), so the reference value cannot be produced",
+)
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("num_segments", [2, 4])

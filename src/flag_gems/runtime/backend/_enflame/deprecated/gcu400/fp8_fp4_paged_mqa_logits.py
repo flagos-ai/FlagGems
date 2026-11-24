@@ -218,7 +218,7 @@ def fp8_fp4_paged_mqa_logits(
     Returns:
         Logits tensor [total_rows, max_model_len] float32.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_PAGED_MQA_LOGITS")
+    logger.debug("GEMS_ENFLAME FP8_FP4_PAGED_MQA_LOGITS")
 
     q_values, q_scale = q
 
@@ -296,19 +296,13 @@ def fp8_fp4_paged_mqa_logits(
 
 
 def _install():
-    """Route the generic namespaces to this GCU copy and install vLLM compat.
+    """Route the generic namespaces to this GCU copy.
 
     The accuracy test and benchmark import the op from the ``flag_gems.deprecated``
     submodule, which the SpecOpRegistrar top-level swap cannot reach, so patch
     the already-imported modules the same way the kunlunxin backend does for
-    ``bf16_paged_mqa_logits``. The vLLM compat shim keeps the test's metadata
-    and DeepGEMM reference legs alive on GCU (see
-    ``_vllm_paged_mqa_logits_compat``).
+    ``bf16_paged_mqa_logits``.
     """
-    from ._vllm_paged_mqa_logits_compat import install_vllm_paged_mqa_logits_compat
-
-    install_vllm_paged_mqa_logits_compat()
-
     from flag_gems.deprecated.fp8_fp4_paged_mqa_logits import (
         fp8_fp4_paged_mqa_logits as _generic_fp8_fp4_paged_mqa_logits,
     )

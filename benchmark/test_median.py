@@ -92,6 +92,13 @@ def test_median_out():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::median.dim has no usable GCU kernel; the native call aborts the "
+        "process (SIGABRT), so there is no native baseline to time"
+    ),
+)
 @pytest.mark.median_dim
 def test_median_dim():
     bench = MedianReductionBenchmark(
@@ -102,6 +109,13 @@ def test_median_dim():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::median.dim_values has no usable GCU kernel; the native call "
+        "aborts the process (SIGABRT), so there is no native baseline to time"
+    ),
+)
 @pytest.mark.median_dim_values
 def test_median_dim_values():
     bench = MedianReductionBenchmark(

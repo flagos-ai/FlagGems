@@ -75,6 +75,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.bincount import bincount
     from .gcu400.chunk_gated_delta_rule import chunk_gated_delta_rule
     from .gcu400.concat_and_cache_mla import concat_and_cache_mla
+    from .gcu400.cp_gather_indexer_k_quant_cache import cp_gather_indexer_k_quant_cache
     from .gcu400.cross_entropy_loss import cross_entropy_loss
     from .gcu400.cutlass_scaled_mm import (
         cutlass_scaled_mm,
@@ -120,6 +121,7 @@ elif arch_version == 400 or arch_version == 410:
         topk_with_k2_triton,
     )
     from .gcu400.indexer_k_quant_and_cache import indexer_k_quant_and_cache
+    from .gcu400.indexer_k_tiled import triton_lighting_indexer_k_tiled_interface
     from .gcu400.matmuladd import matmuladd
     from .gcu400.moe_align_block_size import (  # noqa: F401
         moe_align_block_size,
@@ -133,6 +135,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.reshape_and_cache import reshape_and_cache
     from .gcu400.reshape_and_cache_flash import reshape_and_cache_flash
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
+    from .gcu400.rwkv_ka_fusion import rwkv_ka_fusion  # noqa: F401
     from .gcu400.silu_and_mul import silu_and_mul, silu_and_mul_out
     from .gcu400.silu_and_mul_with_clamp import (
         silu_and_mul_with_clamp,
@@ -170,6 +173,7 @@ elif arch_version == 400 or arch_version == 410:
         "silu_and_mul_with_clamp_out",
         "cross_entropy_loss",
         "concat_and_cache_mla",
+        "cp_gather_indexer_k_quant_cache",
         "flash_mla",
         "moe_sum",
         "mrope",
@@ -211,6 +215,7 @@ elif arch_version == 400 or arch_version == 410:
         "group_idx_and_topk_triton",
         "grouped_topk",
         "indexer_k_quant_and_cache",
+        "triton_lighting_indexer_k_tiled_interface",
         "matmuladd",
         "post_layer_norm_residual",
         "reglu",
@@ -239,3 +244,16 @@ elif arch_version == 400 or arch_version == 410:
             gmod.bucket_sort_topk = bucket_sort_topk
 
     _install_gcu400_bin_topk()
+
+    # Same situation for the DSA lightning indexer: its test imports the
+    # interface straight from ``flag_gems.deprecated.DSA.indexer_k_tiled``, so the
+    # public module is imported here and its attribute redirected to the
+    # GCU400 kernel (tile-selected for the DSM budget of this arch).
+    def _install_gcu400_indexer_k_tiled():
+        from flag_gems.deprecated.DSA import indexer_k_tiled as _dsa_indexer
+
+        _dsa_indexer.triton_lighting_indexer_k_tiled_interface = (
+            triton_lighting_indexer_k_tiled_interface
+        )
+
+    _install_gcu400_indexer_k_tiled()

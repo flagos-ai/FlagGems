@@ -21,7 +21,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as ext  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -136,10 +136,41 @@ _install_aten_argwhere_ref_arm_proxy()
 # falls back to loading dim sizes from a shape tensor.
 MAX_CONSTEXPR_DIM = tl.constexpr(8)
 
-# Elements per block in the scatter/count kernels.
-_BLOCK_SIZE = 2048
+# Elements per block in the scatter/count kernels. Use a small BLOCK for small-block shapes (less waste),
+# and a large BLOCK for large-block shapes: count/scatter are now persistent kernels, moving
+# BLOCK elements per iteration; if BLOCK is too small each transfer is insufficient and stalls on memory latency (at 67M
+# elements measured,
+# count dropped from 2.16ms at 2048 to 0.37ms at 16384).
+# Cap at 16384: scatter's cumsum / indices / int64 writeback are all BLOCK-level tiles,
+# and at 32768 the DSM requirement of 919552B already exceeds the 917504B cap (multi-dimensional shapes report
+# OutOfResources directly).
+_SMALL_BLOCK_SIZE = 2048
+_LARGE_BLOCK_SIZE = 16384
+_LARGE_BLOCK_THRESHOLD = 1 << 16
+# Persistent grid cap: 4 DIE x 6 SIP x 2.
+_GRID_CAP = 48
 # Block count entries processed per iteration of the serial scan kernel.
 _SCAN_BLOCK = 1024
+# Block size for the total-count pass (tier-1): measured fp16 67M elements hits the read-bandwidth floor at 8192
+# (1202GB/s); 4096/16384 are both slower (742/915GB/s), and num_warps 4 and 8 make no difference.
+_COUNT_TOTAL_BLOCK = 8192
+# Block size for the all-nonzero (dense) direct-write scatter: measured optimum 4096 (754us / 1.07GB written),
+# 2048 is on par, and it gets slower from 8192; vectorized variants such as join/reshape or elementwise select to build
+# interleaved values
+# all degrade by more than an order of magnitude (12-18ms) — do not retry.
+_DENSE_BLOCK = 4096
+# Fusing count+scan in a single program only helps for tiny inputs: a single program's cross-block loads cannot hide
+# latency
+# (measured ~2.3us/block, num_stages pipelining has no effect), and above 16384 it loses to grid-stride counting.
+_FUSED_MAX_ELEMENTS = 16384
+_FUSED_BLOCK = 8192
+
+
+def _select_block_size(n_elements):
+    """Picks the count/scatter block size from the element count (also sets n_blocks granularity)."""
+    if n_elements <= _LARGE_BLOCK_THRESHOLD:
+        return _SMALL_BLOCK_SIZE
+    return _LARGE_BLOCK_SIZE
 
 
 @libentry()
@@ -150,16 +181,26 @@ def argwhere_count_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """Counts non-zero elements in each BLOCK_SIZE-wide chunk of the input."""
-    pid = ext.program_id(0)
+    """Counts non-zero elements in each BLOCK_SIZE-wide chunk of the input.
 
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
+    Persistent form: the grid stays pinned to a handful of programs that stride
+    over the chunks, instead of launching one program per chunk (67M elements
+    used to mean 32K programs, whose launch/scheduling cost alone was ~3ms).
+    """
+    # Note: use tl.program_id here (int32). flag_gems' ext.program_id returns
+    # int64, which lifts all offset/address arithmetic to 64 bits and measured 2~3x slower.
+    pid = tl.program_id(0)
+    grid_stride = tl.num_programs(0)
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
 
-    inp_vals = tl.load(inp + offset, mask=mask, other=0)
-    nonzero_mask = (inp_vals != 0) & mask
+    for block_idx in tl.range(pid, n_blocks, grid_stride, num_stages=1):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
 
-    tl.store(block_counts + pid, tl.sum(nonzero_mask.to(tl.int32), axis=0))
+        inp_vals = tl.load(inp + offset, mask=mask, other=0)
+        nonzero_mask = (inp_vals != 0) & mask
+
+        tl.store(block_counts + block_idx, tl.sum(nonzero_mask.to(tl.int32), axis=0))
 
 
 @libentry()
@@ -198,7 +239,6 @@ def argwhere_scatter_kernel(
     block_offsets,
     out,
     n_elements,
-    shape,
     D0: tl.constexpr,
     D1: tl.constexpr,
     D2: tl.constexpr,
@@ -216,26 +256,36 @@ def argwhere_scatter_kernel(
     cumsum, added to the chunk's base offset from the scan kernel, so rows
     land in flat-index (row-major) order. The flat index is decomposed into
     multi-dimensional coordinates and written to the output row.
+
+    All coordinates use constexpr dim lengths and loops are unrolled by ndim. rank > 8 with
+    dynamic dims takes the separate argwhere_scatter_dyn_kernel: putting both paths in one
+    kernel's if/else degrades stores into conditional writes, measuring 3x slower overall
+    (67M elements 2.03ms -> 6.10ms), hence the split.
     """
-    pid = ext.program_id(0)
+    # Note: use tl.program_id here (int32). flag_gems' ext.program_id returns
+    # int64, which lifts all offset/address arithmetic to 64 bits and measured 2~3x slower.
+    pid = tl.program_id(0)
+    grid_stride = tl.num_programs(0)
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
 
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
+    # Persistent form, same reasoning as the count kernel: one program per chunk
+    # made the launch overhead dominate on large inputs.
+    for block_idx in tl.range(pid, n_blocks, grid_stride, num_stages=1):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
 
-    inp_vals = tl.load(inp + offset, mask=mask, other=0)
-    nonzero_mask = (inp_vals != 0) & mask
+        inp_vals = tl.load(inp + offset, mask=mask, other=0)
+        nonzero_mask = (inp_vals != 0) & mask
 
-    nonzero_i32 = nonzero_mask.to(tl.int32)
-    out_offset = tl.cumsum(nonzero_i32, axis=0) - nonzero_i32
-    out_offset += tl.load(block_offsets + pid)
+        nonzero_i32 = nonzero_mask.to(tl.int32)
+        out_offset = tl.cumsum(nonzero_i32, axis=0) - nonzero_i32
+        out_offset += tl.load(block_offsets + block_idx)
 
-    # Decompose flat index into multi-dimensional coordinates.
-    # Fast path: constexpr dim sizes let the loop unroll fully. Note the
-    # loop always runs MAX_CONSTEXPR_DIM iterations; dims >= ndim hold 1 and
-    # are guarded off by `dim >= 0` at compile time.
-    idx_flat = offset
-    if ndim <= MAX_CONSTEXPR_DIM:
-        for i in tl.static_range(0, MAX_CONSTEXPR_DIM):
+        # Decompose flat index into multi-dimensional coordinates.
+        # constexpr dim sizes let the loop unroll fully; the loop bound is ndim
+        # itself so no iterations are spent on unused dims.
+        idx_flat = offset
+        for i in tl.static_range(0, ndim):
             dim = ndim - 1 - i
             dim_size = D0
             if dim == 1:
@@ -252,32 +302,244 @@ def argwhere_scatter_kernel(
                 dim_size = D6
             elif dim == 7:
                 dim_size = D7
-            if dim >= 0:
+            if i < ndim - 1:
                 remainder = idx_flat % dim_size
                 idx_flat = idx_flat // dim_size
-                tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
-    else:
+            else:
+                # Top dim: idx_flat is already < dim_size (offset < product of
+                # dims); the final modulo is redundant and measurably costly.
+                remainder = idx_flat
+            tl.store(
+                out + (out_offset * ndim + dim).to(tl.int64),
+                remainder.to(tl.int64),
+                mask=nonzero_mask,
+            )
+
+
+@libentry()
+@triton.jit
+def argwhere_scatter_dyn_kernel(
+    inp,
+    block_offsets,
+    out,
+    n_elements,
+    shape,
+    ndim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Scatter path for rank > MAX_CONSTEXPR_DIM: dim lengths read dynamically from the shape tensor."""
+    # Note: use tl.program_id here (int32). flag_gems' ext.program_id returns
+    # int64, which lifts all offset/address arithmetic to 64 bits and measured 2~3x slower.
+    pid = tl.program_id(0)
+    grid_stride = tl.num_programs(0)
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+
+    for block_idx in tl.range(pid, n_blocks, grid_stride, num_stages=1):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+
+        inp_vals = tl.load(inp + offset, mask=mask, other=0)
+        nonzero_mask = (inp_vals != 0) & mask
+
+        nonzero_i32 = nonzero_mask.to(tl.int32)
+        out_offset = tl.cumsum(nonzero_i32, axis=0) - nonzero_i32
+        out_offset += tl.load(block_offsets + block_idx)
+
+        idx_flat = offset
         for dim in range(ndim - 1, -1, -1):
             dim_size = tl.load(shape + dim)
-            remainder = idx_flat % dim_size
-            idx_flat //= dim_size
-            tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+            if dim > 0:
+                remainder = idx_flat % dim_size
+                idx_flat //= dim_size
+            else:
+                # Top dim: idx_flat is already < dim_size; the final modulo is
+                # redundant (see the constexpr scatter kernel note).
+                remainder = idx_flat
+            tl.store(
+                out + (out_offset * ndim + dim).to(tl.int64),
+                remainder.to(tl.int64),
+                mask=nonzero_mask,
+            )
+
+
+@libentry()
+@triton.jit
+def argwhere_count_total_kernel(
+    inp,
+    total,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Counts the grand total of non-zero elements, nothing else.
+
+    Persistent grid-stride form of the counting pass. Each program keeps a
+    register-vector accumulator (one elementwise add per block, no per-block
+    reduction tree) and folds it into the single grand total with one atomic
+    per program, so the input is streamed exactly once at read-bandwidth
+    floor. This is the cheap first pass used to detect the all-non-zero
+    (dense) case before any per-block bookkeeping is spent on it.
+    """
+    pid = tl.program_id(0)
+    grid_stride = tl.num_programs(0)
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+    for block_idx in tl.range(pid, n_blocks, grid_stride, num_stages=1):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+
+        inp_vals = tl.load(inp + offset, mask=mask, other=0)
+        acc += (inp_vals != 0).to(tl.int32)
+    tl.atomic_add(total, tl.sum(acc, axis=0))
+
+
+@libentry()
+@triton.jit
+def argwhere_fused_count_kernel(
+    inp,
+    block_offsets,
+    total,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Single-program count + serial scan + grand total for tiny inputs.
+
+    One program walks the whole input in BLOCK_SIZE chunks, storing each
+    chunk's exclusive output base offset as the running carry advances, so
+    the separate scan launch is not needed. Only profitable while the input
+    fits in a handful of chunks: a single program cannot hide the load
+    latency across sequential chunks.
+    """
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+    carry = 0
+    for block_idx in range(0, n_blocks):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+
+        inp_vals = tl.load(inp + offset, mask=mask, other=0)
+        nonzero_mask = (inp_vals != 0) & mask
+
+        tl.store(block_offsets + block_idx, carry)
+        carry += tl.sum(nonzero_mask.to(tl.int32), axis=0)
+    tl.store(total, carry)
+
+
+@libentry()
+@triton.jit
+def argwhere_scatter_dense_kernel(
+    out,
+    n_elements,
+    D0: tl.constexpr,
+    D1: tl.constexpr,
+    D2: tl.constexpr,
+    D3: tl.constexpr,
+    D4: tl.constexpr,
+    D5: tl.constexpr,
+    D6: tl.constexpr,
+    D7: tl.constexpr,
+    ndim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """All-non-zero fast path: writes coordinates for every flat index.
+
+    When the counted total equals n_elements, every element is non-zero, so
+    output row k is exactly the coordinate decomposition of flat index k:
+    the input is not read at all and there is no in-block cumsum. Stores stay
+    unmasked except for the tail block. Kept as a separate kernel from the
+    sparse scatter for the same reason as the dyn split: merging both paths
+    behind an if/else degrades the stores.
+    """
+    pid = tl.program_id(0)
+    grid_stride = tl.num_programs(0)
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+
+    for block_idx in tl.range(pid, n_blocks, grid_stride, num_stages=1):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+
+        base = offset.to(tl.int64) * ndim
+        idx_flat = offset
+        for i in tl.static_range(0, ndim):
+            dim = ndim - 1 - i
+            dim_size = D0
+            if dim == 1:
+                dim_size = D1
+            elif dim == 2:
+                dim_size = D2
+            elif dim == 3:
+                dim_size = D3
+            elif dim == 4:
+                dim_size = D4
+            elif dim == 5:
+                dim_size = D5
+            elif dim == 6:
+                dim_size = D6
+            elif dim == 7:
+                dim_size = D7
+            if i < ndim - 1:
+                remainder = idx_flat % dim_size
+                idx_flat = idx_flat // dim_size
+            else:
+                # Top dim: after dividing out every other dim, idx_flat is
+                # already < dim_size (offset < product of dims), so the final
+                # modulo is redundant. Keeping it measurably costs ~18% on
+                # 67M elements (890 -> 755us).
+                remainder = idx_flat
+            tl.store(out + base + dim, remainder.to(tl.int64), mask=mask)
+
+
+@libentry()
+@triton.jit
+def argwhere_scatter_dense_dyn_kernel(
+    out,
+    n_elements,
+    shape,
+    ndim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """All-non-zero fast path for rank > MAX_CONSTEXPR_DIM (dyn dims)."""
+    pid = tl.program_id(0)
+    grid_stride = tl.num_programs(0)
+    n_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+
+    for block_idx in tl.range(pid, n_blocks, grid_stride, num_stages=1):
+        offset = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+
+        base = offset.to(tl.int64) * ndim
+        idx_flat = offset
+        for dim in range(ndim - 1, -1, -1):
+            dim_size = tl.load(shape + dim)
+            if dim > 0:
+                remainder = idx_flat % dim_size
+                idx_flat //= dim_size
+            else:
+                # Top dim: idx_flat is already < dim_size here (see the
+                # constexpr dense kernel note); skipping the modulo is exact.
+                remainder = idx_flat
+            tl.store(out + base + dim, remainder.to(tl.int64), mask=mask)
 
 
 def argwhere(input):
     """Triton-accelerated implementation of torch.argwhere.
 
     Returns a tensor of shape (num_nonzero, ndim) containing the indices
-    of all non-zero elements. Runs three Triton kernels:
-    1. Count non-zero elements per block
-    2. Scan block counts into per-block output base offsets (single program)
-    3. Scatter: in-block cumsum + block base gives each element's output row;
-       the flat index is decomposed into multi-dimensional coordinates
+    of all non-zero elements. The output size is data-dependent, so at least
+    one device->host sync is inherent; the structure minimizes the work
+    spent before that sync and specializes the scatter afterwards:
 
-    The output is allocated at its exact final size after step 2, so no
-    max-size buffer is needed.
+    1. Tiny inputs: a single fused program counts, scans and totals in one
+       launch (a second launch only for the scatter).
+    2. Otherwise a total-only counting pass streams the input once at read
+       bandwidth and atomically folds the grand total (no per-block
+       bookkeeping yet).
+    3. If every element is non-zero (total == n_elements), output row k is
+       the coordinate decomposition of flat index k: a dedicated dense
+       scatter writes coordinates without re-reading the input.
+    4. Sparse inputs pay one extra counting pass for per-block counts plus
+       the serial scan, then the compacting scatter runs as before.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ARGWHERE")
+    logger.debug("GEMS_ENFLAME ARGWHERE")
 
     inp_ndim = input.ndim
     input = input.contiguous()
@@ -295,41 +557,95 @@ def argwhere(input):
     if inp_view.is_complex():
         inp_bool = inp_view != 0
 
-    n_blocks = triton.cdiv(n_elements, _BLOCK_SIZE)
-    block_counts = torch.empty(n_blocks, dtype=torch.int32, device=device)
-    block_offsets = torch.empty(n_blocks, dtype=torch.int32, device=device)
-    total = torch.empty(1, dtype=torch.int32, device=device)
-
     with torch_device_fn.device(device):
-        argwhere_count_kernel[(n_blocks,)](
-            inp_bool, block_counts, n_elements, BLOCK_SIZE=_BLOCK_SIZE
-        )
-        argwhere_scan_kernel[(1,)](
-            block_counts, block_offsets, total, n_blocks, BLOCK=_SCAN_BLOCK
-        )
+        tiny = n_elements <= _FUSED_MAX_ELEMENTS
+        if tiny:
+            # One program does count + scan + total, so neither the
+            # grid-stride counting pass nor the scan launch is needed.
+            block_size = _FUSED_BLOCK
+            n_blocks = triton.cdiv(n_elements, block_size)
+            block_offsets = torch.empty(n_blocks, dtype=torch.int32, device=device)
+            total = torch.empty(1, dtype=torch.int32, device=device)
+            argwhere_fused_count_kernel[(1,)](
+                inp_bool, block_offsets, total, n_elements, BLOCK_SIZE=block_size
+            )
+        else:
+            total = torch.zeros(1, dtype=torch.int32, device=device)
+            grid = (min(_GRID_CAP, triton.cdiv(n_elements, _COUNT_TOTAL_BLOCK)),)
+            argwhere_count_total_kernel[grid](
+                inp_bool, total, n_elements, BLOCK_SIZE=_COUNT_TOTAL_BLOCK
+            )
 
         num_nonzeros = int(total.item())
 
         out = torch.empty((num_nonzeros, inp_ndim), dtype=torch.int64, device=device)
-        if inp_ndim <= MAX_CONSTEXPR_DIM:
-            pad = (1,) * (MAX_CONSTEXPR_DIM - inp_ndim)
-            dims = tuple(input.shape) + pad
+        if num_nonzeros == n_elements:
+            # Dense fast path: every element is non-zero, so output row k is
+            # the coordinate decomposition of flat index k and the input does
+            # not need to be read again.
+            dense_grid = (min(_GRID_CAP, triton.cdiv(n_elements, _DENSE_BLOCK)),)
+            if inp_ndim <= MAX_CONSTEXPR_DIM:
+                pad = (1,) * (MAX_CONSTEXPR_DIM - inp_ndim)
+                dims = tuple(input.shape) + pad
+                argwhere_scatter_dense_kernel[dense_grid](
+                    out,
+                    n_elements,
+                    *dims,
+                    ndim=inp_ndim,
+                    BLOCK_SIZE=_DENSE_BLOCK,
+                )
+            else:
+                shape = torch.tensor(input.shape, dtype=torch.int32, device=device)
+                argwhere_scatter_dense_dyn_kernel[dense_grid](
+                    out,
+                    n_elements,
+                    shape,
+                    ndim=inp_ndim,
+                    BLOCK_SIZE=_DENSE_BLOCK,
+                )
         else:
-            dims = (1,) * MAX_CONSTEXPR_DIM
-        shape = (
-            torch.tensor(input.shape, dtype=torch.int32, device=device)
-            if inp_ndim > MAX_CONSTEXPR_DIM
-            else total
-        )
-        argwhere_scatter_kernel[(n_blocks,)](
-            inp_bool,
-            block_offsets,
-            out,
-            n_elements,
-            shape,
-            *dims,
-            ndim=inp_ndim,
-            BLOCK_SIZE=_BLOCK_SIZE,
-        )
+            if not tiny:
+                # Sparse and not tiny: redo the counting per block (the
+                # total-only pass kept no per-block counts) and scan the
+                # block counts into output base offsets.
+                block_size = _select_block_size(n_elements)
+                n_blocks = triton.cdiv(n_elements, block_size)
+                block_counts = torch.empty(n_blocks, dtype=torch.int32, device=device)
+                block_offsets = torch.empty(n_blocks, dtype=torch.int32, device=device)
+                grid = (min(_GRID_CAP, n_blocks),)
+                argwhere_count_kernel[grid](
+                    inp_bool, block_counts, n_elements, BLOCK_SIZE=block_size
+                )
+                argwhere_scan_kernel[(1,)](
+                    block_counts, block_offsets, total, n_blocks, BLOCK=_SCAN_BLOCK
+                )
+            # The tiny path already scanned its offsets in the fused kernel;
+            # its scatter blocks are _FUSED_BLOCK wide to match.
+            block_size = _FUSED_BLOCK if tiny else _select_block_size(n_elements)
+            n_blocks = triton.cdiv(n_elements, block_size)
+            grid = (min(_GRID_CAP, n_blocks),)
+            if inp_ndim <= MAX_CONSTEXPR_DIM:
+                pad = (1,) * (MAX_CONSTEXPR_DIM - inp_ndim)
+                dims = tuple(input.shape) + pad
+                argwhere_scatter_kernel[grid](
+                    inp_bool,
+                    block_offsets,
+                    out,
+                    n_elements,
+                    *dims,
+                    ndim=inp_ndim,
+                    BLOCK_SIZE=block_size,
+                )
+            else:
+                shape = torch.tensor(input.shape, dtype=torch.int32, device=device)
+                argwhere_scatter_dyn_kernel[grid](
+                    inp_bool,
+                    block_offsets,
+                    out,
+                    n_elements,
+                    shape,
+                    ndim=inp_ndim,
+                    BLOCK_SIZE=block_size,
+                )
 
     return out

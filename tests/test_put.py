@@ -229,8 +229,6 @@ def test_put_index_out_of_range(numel, bad_offset, negative, accumulate):
     # no host round trip -- so this runs in a subprocess (a tripped device
     # assertion poisons the CUDA context for the rest of the process) and
     # asserts both the failure and the absence of a host-side sync.
-    if flag_gems.vendor_name == "mthreads":
-        pytest.skip("MUSA native put has no target-device trap for invalid indices")
     bad = -numel - 1 - bad_offset if negative else numel + bad_offset
     code = textwrap.dedent(f"""
         import torch

@@ -336,7 +336,11 @@ def test_index_int32_offset_overflow():
     overflow int32 arithmetic in the generated kernels and caused
     out-of-bounds reads ("illegal memory access").
     """
-    free_bytes, _ = torch.cuda.mem_get_info(flag_gems.device)
+    if flag_gems.vendor_name == "enflame":
+        # The GCU cuda-shim rejects a device object here; query the current one.
+        free_bytes, _ = torch.cuda.mem_get_info()
+    else:
+        free_bytes, _ = torch.cuda.mem_get_info(flag_gems.device)
     if free_bytes < 3 * 2**30:
         pytest.skip("not enough free device memory for the int32-offset case")
 

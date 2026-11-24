@@ -20,8 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-from flag_gems.runtime import device as runtime_device
+from flag_gems.runtime import device as runtime_device  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -33,15 +32,29 @@ from .topk import _get_finfo_val
 logger = logging.getLogger(__name__)
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
-INT32_MAX = torch.iinfo(torch.int32).max
 MAX_BLOCK_N = 512
 RADIX_BLOCK_N = 4096
-RADIX_BITS = 2
-MEDIUM_REDUCTION_N = 1024
 LARGE_FLOAT_REDUCTION_N = 4096
 LONG_RADIX_REDUCTION_N = 131072
-FLAT_RADIX_BLOCK_N = 4096
-FLAT_RADIX_BITS = 8
+# GCU400 radix-select tuning: 4 bit digits keep the per-row kernel at
+# nbits/4 row scans (fp32: 10 scans incl. count+find) while the one-hot
+# bin counting stays in the proven tl.sum(axis=0) form (tl.histogram is
+# untrusted on this backend: silent mask drop + nondeterminism).
+GCU_RADIX_BITS = 4
+GCU_RADIX_BLOCK_N = 8192
+GCU_RADIX_BLOCK_C = 64
+# Hardware grid.x limit on this backend. Row-parallel launches chunk M in
+# host-side batches of GCU_GRID_X_SAFE, staying clear of the raw 65535
+# boundary (P19: boundary values themselves are hazardous).
+GCU_GRID_X_LIMIT = 65535
+GCU_GRID_X_SAFE = 32768
+GCU_MULTIK_N_MIN = 32768
+GCU_MULTIK_M_MAX = 32
+# Grid-parallel count capacity: one 1D grid.x. Beyond this the giant 2D
+# fan-out measured device-unstable (async Sip faults at 600M-element scale
+# even with a safe grid.x margin), so flat inputs above it defer to the
+# catchable aten kthvalue fallback instead of risking a device fault.
+GCU_MULTIK_MAX_ELEMS = GCU_GRID_X_LIMIT * GCU_RADIX_BLOCK_N
 RADIX_SELECT_DTYPES = (
     torch.float16,
     torch.bfloat16,
@@ -50,26 +63,8 @@ RADIX_SELECT_DTYPES = (
     torch.uint8,
     torch.int16,
     torch.int32,
+    torch.int64,
 )
-IS_NVIDIA_BACKEND = runtime_device.vendor_name == "nvidia"
-
-
-def _triton_version_at_least(major, minor):
-    version = getattr(triton, "__version__", "0.0").split("+", 1)[0]
-    parts = []
-    for token in version.split(".")[:2]:
-        digits = []
-        for char in token:
-            if not char.isdigit():
-                break
-            digits.append(char)
-        parts.append(int("".join(digits) or 0))
-    parts.extend([0] * (2 - len(parts)))
-    return tuple(parts[:2]) >= (major, minor)
-
-
-# Triton added tl.histogram(..., mask) in 3.4.
-CUDA_SUPPORTS_MASKED_HISTOGRAM = _triton_version_at_least(3, 4)
 
 
 @triton.jit
@@ -174,132 +169,73 @@ def nanmedian_select_kernel(
 
 @libentry()
 @triton.jit
-def nanmedian_float_clean_count_kernel(
-    inp,
-    cleaned,
-    valid_counts,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    dtype = inp.dtype.element_ty
-    max_value = _get_finfo_val(dtype, return_max=True)
-    count = tl.full((), 0, dtype=tl.int32)
-
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=max_value)
-        valid = mask & _is_not_nan(vals, False)
-        cleaned_vals = tl.where(valid, vals, max_value)
-        tl.store(cleaned + pid * N + cols, cleaned_vals, mask=mask)
-        count += tl.sum(valid.to(tl.int32), axis=0)
-
-    tl.store(valid_counts + pid, count)
-
-
-@libentry()
-@triton.jit
-def nanmedian_float_sorted_gather_kernel(
-    sorted_values,
-    sorted_indices,
-    valid_counts,
-    out_values,
-    out_indices,
-    N: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    count = tl.load(valid_counts + pid)
-    rank = tl.where(count > 0, (count - 1) // 2, 0)
-    result_val = tl.load(
-        sorted_values + pid * N + rank, mask=count > 0, other=float("nan")
-    )
-    result_idx = tl.load(sorted_indices + pid * N + rank, mask=count > 0, other=0)
-    result_val = tl.where(count > 0, result_val, float("nan"))
-    result_idx = tl.where(count > 0, result_idx, 0)
-
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
-def nanmedian_radix_select_kernel(
+def gcu_nanmedian_row_radix_kernel(
     inp,
     out_values,
     out_indices,
     M,
-    N: tl.constexpr,
+    N,
     BLOCK_N: tl.constexpr,
     RADIX_BITS_: tl.constexpr,
     USE_ISNAN: tl.constexpr,
-    USE_HISTOGRAM: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
+    row = tle.program_id(0)
     dtype = inp.dtype.element_ty
     nbits: tl.constexpr = dtype.primitive_bitwidth
     utype = tl.dtype(f"uint{nbits}")
     radix_size: tl.constexpr = 1 << RADIX_BITS_
     radix_mask: tl.constexpr = radix_size - 1
-    radix_bins = tl.arange(0, radix_size)
+    bins = tl.arange(0, radix_size)
+    radix_mask_val = tl.full((), radix_mask, dtype=utype)
+    offsets = tl.arange(0, BLOCK_N)
 
     valid_count = tl.full((), 0, dtype=tl.int32)
     for start in tl.range(0, N, BLOCK_N):
         cols = start + offsets
         mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
+        vals = tl.load(inp + row * N + cols, mask=mask, other=0.0)
         if dtype.is_floating():
             valid = mask & _is_not_nan(vals, USE_ISNAN)
         else:
             valid = mask
         valid_count += tl.sum(valid.to(tl.int32), axis=0)
+    k = tl.where(valid_count > 0, (valid_count + 1) // 2, 0)
 
-    k_to_find = (valid_count + 1) // 2
     desired = tl.full((), 0, dtype=utype)
     desired_mask = tl.full((), 0, dtype=utype)
-    radix_mask_val = tl.full((), radix_mask, dtype=utype)
-
-    for digit_pos in tl.static_range(nbits - RADIX_BITS_, -1, -RADIX_BITS_):
+    for i in tl.range(0, nbits, RADIX_BITS_):
+        digit_pos = nbits - RADIX_BITS_ - i
         counts = tl.zeros((radix_size,), dtype=tl.int32)
         for start in tl.range(0, N, BLOCK_N):
             cols = start + offsets
             mask = cols < N
-            vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
+            vals = tl.load(inp + row * N + cols, mask=mask, other=0.0)
             if dtype.is_floating():
                 valid = mask & _is_not_nan(vals, USE_ISNAN)
             else:
                 valid = mask
             keys = _to_order_key(vals, valid)
-            matches = (keys & desired_mask) == desired
+            active = valid & ((keys & desired_mask) == desired)
             digit = ((keys >> digit_pos) & radix_mask_val).to(tl.int32)
-            active = valid & matches
-            if USE_HISTOGRAM:
-                counts += tl.histogram(digit, radix_size, active)
-            else:
-                for radix_bin in tl.static_range(0, radix_size):
-                    bin_count = tl.sum(
-                        (active & (digit == radix_bin)).to(tl.int32), axis=0
-                    )
-                    counts += tl.where(radix_bins == radix_bin, bin_count, 0)
-
+            for radix_bin in tl.static_range(0, radix_size):
+                bin_count = tl.sum((active & (digit == radix_bin)).to(tl.int32), axis=0)
+                counts += tl.where(bins == radix_bin, bin_count, 0)
         cumsum = tl.cumsum(counts, axis=0)
         prev = cumsum - counts
-        take = (cumsum >= k_to_find) & (prev < k_to_find)
-        selected_bin = tl.min(tl.where(take, radix_bins, radix_size - 1), axis=0)
+        take = (cumsum >= k) & (prev < k)
+        selected_bin = tl.min(tl.where(take, bins, radix_size - 1), axis=0)
         counts_before = tl.max(tl.where(take, prev, 0), axis=0)
-
-        selected_bin = selected_bin.to(utype)
-        desired = desired | (selected_bin << digit_pos)
-        desired_mask = desired_mask | (radix_mask_val << digit_pos)
-        k_to_find = k_to_find - counts_before
+        # Runtime digit_pos promotes the shifted value past utype; truncating
+        # back keeps the loop-carried key/mask types stable.
+        desired = desired | ((selected_bin.to(utype) << digit_pos).to(utype))
+        desired_mask = desired_mask | ((radix_mask_val << digit_pos).to(utype))
+        k = k - counts_before
 
     result_idx = tl.full((), N, dtype=tl.int32)
     for start in tl.range(0, N, BLOCK_N):
         cols = start + offsets
         mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
+        vals = tl.load(inp + row * N + cols, mask=mask, other=0.0)
         if dtype.is_floating():
             valid = mask & _is_not_nan(vals, USE_ISNAN)
         else:
@@ -309,177 +245,18 @@ def nanmedian_radix_select_kernel(
         result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
 
     if dtype.is_floating():
-        fallback_value = _get_finfo_val(dtype, return_max=False)
+        result_val = tl.load(
+            inp + row * N + result_idx, mask=valid_count > 0, other=float("nan")
+        )
+        result_val = tl.where(valid_count > 0, result_val, float("nan"))
+        result_idx = tl.where(valid_count > 0, result_idx, 0)
     else:
-        fallback_value = get_dtype_min(dtype)
-    result_val = tl.load(
-        inp + pid * N + result_idx, mask=valid_count > 0, other=fallback_value
-    )
+        result_val = tl.load(
+            inp + row * N + result_idx, mask=valid_count > 0, other=get_dtype_min(dtype)
+        )
 
-    if dtype.is_floating():
-        all_nan = valid_count == 0
-        result_val = tl.where(all_nan, float("nan"), result_val)
-        result_idx = tl.where(all_nan, 0, result_idx)
-
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
-def flat_radix_init_kernel(
-    valid_count,
-    state,
-    result_idx,
-    N: tl.constexpr,
-    IS_FLOAT: tl.constexpr,
-):
-    tl.store(valid_count, 0 if IS_FLOAT else N)
-    tl.store(state + 0, 0)
-    tl.store(state + 1, 0)
-    tl.store(state + 2, 0)
-    tl.store(result_idx, N)
-
-
-@libentry()
-@triton.jit
-def flat_radix_count_valid_kernel(
-    inp,
-    valid_count,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    USE_ISNAN: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offsets < N
-    vals = tl.load(inp + offsets, mask=mask, other=0.0)
-    valid = mask & _is_not_nan(vals, USE_ISNAN)
-    count = tl.sum(valid.to(tl.int64), axis=0)
-    tl.atomic_add(valid_count, count, sem="relaxed")
-
-
-@libentry()
-@triton.jit
-def flat_radix_init_rank_kernel(valid_count, state):
-    count = tl.load(valid_count)
-    tl.store(state + 2, (count + 1) // 2)
-
-
-@libentry()
-@triton.jit
-def flat_radix_count_kernel(
-    inp,
-    bin_counts,
-    state,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    DIGIT_POS: tl.constexpr,
-    RADIX_BITS_: tl.constexpr,
-    RADIX_SIZE: tl.constexpr,
-    USE_ISNAN: tl.constexpr,
-    USE_HISTOGRAM: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offsets < N
-    vals = tl.load(inp + offsets, mask=mask, other=0.0)
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    radix_mask: tl.constexpr = (1 << RADIX_BITS_) - 1
-    radix_mask_val = tl.full((), radix_mask, dtype=utype)
-
-    if dtype.is_floating():
-        valid = mask & _is_not_nan(vals, USE_ISNAN)
-    else:
-        valid = mask
-
-    desired = tl.load(state + 0).to(utype)
-    desired_mask = tl.load(state + 1).to(utype)
-    keys = _to_order_key(vals, valid)
-    active = valid & ((keys & desired_mask) == desired)
-    digit = ((keys >> DIGIT_POS) & radix_mask_val).to(tl.int32)
-    bins = tl.arange(0, RADIX_SIZE)
-    counts = tl.zeros((RADIX_SIZE,), dtype=tl.int64)
-    if USE_HISTOGRAM:
-        counts = tl.histogram(digit, RADIX_SIZE, active).to(tl.int64)
-    else:
-        for radix_bin in tl.static_range(0, RADIX_SIZE):
-            bin_count = tl.sum((active & (digit == radix_bin)).to(tl.int64), axis=0)
-            counts += tl.where(bins == radix_bin, bin_count, 0)
-    tl.atomic_add(bin_counts + bins, counts, sem="relaxed")
-
-
-@libentry()
-@triton.jit
-def flat_radix_update_kernel(
-    bin_counts,
-    state,
-    DIGIT_POS: tl.constexpr,
-    RADIX_BITS_: tl.constexpr,
-    RADIX_SIZE: tl.constexpr,
-):
-    bins = tl.arange(0, RADIX_SIZE)
-    counts = tl.load(bin_counts + bins)
-    k_to_find = tl.load(state + 2)
-    cumsum = tl.cumsum(counts, axis=0)
-    prev = cumsum - counts
-    take = (k_to_find <= cumsum) & (k_to_find > prev)
-    selected_bin = tl.min(tl.where(take, bins, RADIX_SIZE - 1), axis=0).to(tl.int64)
-    counts_before = tl.max(tl.where(take, prev, 0), axis=0)
-
-    desired = tl.load(state + 0)
-    desired_mask = tl.load(state + 1)
-    radix_mask: tl.constexpr = (1 << RADIX_BITS_) - 1
-    desired = desired | (selected_bin << DIGIT_POS)
-    desired_mask = desired_mask | (radix_mask << DIGIT_POS)
-    tl.store(state + 0, desired)
-    tl.store(state + 1, desired_mask)
-    tl.store(state + 2, k_to_find - counts_before)
-
-
-@libentry()
-@triton.jit
-def flat_radix_find_index_kernel(
-    inp,
-    state,
-    valid_count,
-    result_idx,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    USE_ISNAN: tl.constexpr,
-):
-    if tl.load(valid_count) > 0:
-        pid = tle.program_id(0)
-        offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-        mask = offsets < N
-        vals = tl.load(inp + offsets, mask=mask, other=0.0)
-        dtype = inp.dtype.element_ty
-        nbits: tl.constexpr = dtype.primitive_bitwidth
-        utype = tl.dtype(f"uint{nbits}")
-
-        if dtype.is_floating():
-            valid = mask & _is_not_nan(vals, USE_ISNAN)
-        else:
-            valid = mask
-
-        desired = tl.load(state + 0).to(utype)
-        keys = _to_order_key(vals, valid)
-        local_idx = tl.min(tl.where(valid & (keys == desired), offsets, N), axis=0)
-        tl.atomic_min(result_idx, local_idx, sem="relaxed")
-
-
-@libentry()
-@triton.jit
-def flat_radix_store_result_kernel(inp, out, valid_count, result_idx):
-    dtype = inp.dtype.element_ty
-    idx = tl.load(result_idx)
-    if dtype.is_floating():
-        result = tl.load(inp + idx, mask=tl.load(valid_count) > 0, other=float("nan"))
-    else:
-        result = tl.load(inp + idx)
-    tl.store(out, result)
+    tl.store(out_values + row, result_val)
+    tl.store(out_indices + row, result_idx.to(tl.int64))
 
 
 def _check_supported_dtype(inp):
@@ -510,40 +287,6 @@ def _empty_flat_value(inp):
     return out
 
 
-def _radix_block_n(inp, n):
-    block_n = triton.next_power_of_2(n)
-    if inp.is_cuda:
-        if n > LARGE_FLOAT_REDUCTION_N:
-            return min(block_n, 8192)
-        if n > MEDIUM_REDUCTION_N:
-            return min(block_n, 4096)
-        if inp.dtype is torch.uint8:
-            return min(block_n, 512)
-        return min(block_n, RADIX_BLOCK_N)
-    if inp.dtype in (torch.float16, torch.bfloat16):
-        if n > LARGE_FLOAT_REDUCTION_N:
-            return 2048
-        return min(block_n, 2048)
-    if inp.dtype is torch.float32 or inp.dtype is torch.int32:
-        if n > MEDIUM_REDUCTION_N:
-            return 512
-        return min(block_n, RADIX_BLOCK_N)
-    if inp.dtype in (torch.int8, torch.uint8):
-        if n > MEDIUM_REDUCTION_N:
-            return RADIX_BLOCK_N
-        return min(block_n, 512)
-    return min(block_n, RADIX_BLOCK_N)
-
-
-def _radix_bits(inp, n):
-    if inp.is_cuda:
-        if n > LARGE_FLOAT_REDUCTION_N:
-            return 8
-        if n > MEDIUM_REDUCTION_N:
-            return 4
-    return RADIX_BITS
-
-
 def _full_nan_result(shape, dtype, device):
     values = torch.full(shape, float("nan"), dtype=dtype, device=device)
     indices = torch.zeros(shape, dtype=torch.long, device=device)
@@ -570,7 +313,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             count_valid_kernel[(M,)](inp, valid_count, M, N, block_n, inp.is_cuda)
         # Replace NaN with +inf so kthvalue sorts them to the end deterministically
         kth_inp = torch.where(
-            flag_gems.isnan(inp),
+            torch.isnan(inp),
             torch.tensor(float("inf"), dtype=inp.dtype, device=inp.device),
             inp,
         )
@@ -579,7 +322,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         if min_count == max_count:
             if max_count == 0:
                 return _full_nan_result((M,), inp.dtype, inp.device)
-            values, indices = flag_gems.kthvalue(kth_inp, (max_count + 1) // 2, dim=1)
+            values, indices = torch.kthvalue(kth_inp, (max_count + 1) // 2, dim=1)
             return NanMedian(values=values, indices=indices)
 
         if max_count - min_count <= 1:
@@ -587,7 +330,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             max_k = (max_count + 1) // 2
 
             if min_k == max_k:
-                values, indices = flag_gems.kthvalue(kth_inp, max_k, dim=1)
+                values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
                 if min_count > 0:
                     return NanMedian(values=values, indices=indices)
                 fallback = _full_nan_result((M,), inp.dtype, inp.device)
@@ -600,14 +343,14 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             result = _full_nan_result((M,), inp.dtype, inp.device)
 
             if min_count > 0:
-                values, indices = flag_gems.kthvalue(kth_inp, min_k, dim=1)
+                values, indices = torch.kthvalue(kth_inp, min_k, dim=1)
                 mask = valid_count == min_count
                 result = NanMedian(
                     values=torch.where(mask, values, result.values),
                     indices=torch.where(mask, indices, result.indices),
                 )
 
-            values, indices = flag_gems.kthvalue(kth_inp, max_k, dim=1)
+            values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
             mask = valid_count == max_count
             return NanMedian(
                 values=torch.where(mask, values, result.values),
@@ -619,15 +362,162 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             count = int(count)
             if count == 0:
                 continue
-            row_indices = flag_gems.nonzero(valid_count == count).flatten()
-            rows = flag_gems.index_select(kth_inp, 0, row_indices)
-            values, indices = flag_gems.kthvalue(rows, (count + 1) // 2, dim=1)
+            row_indices = torch.nonzero(valid_count == count).flatten()
+            rows = torch.index_select(kth_inp, 0, row_indices)
+            values, indices = torch.kthvalue(rows, (count + 1) // 2, dim=1)
             result.values[row_indices] = values
             result.indices[row_indices] = indices
         return result
     else:
-        values, indices = flag_gems.kthvalue(inp, (N + 1) // 2, dim=1)
+        values, indices = torch.kthvalue(inp, (N + 1) // 2, dim=1)
         return NanMedian(values=values, indices=indices)
+
+
+def _gcu_radix_multik_impl(inp, M, N, out_values, out_indices):
+    num_chunks = triton.cdiv(N, GCU_RADIX_BLOCK_N)
+    radix_size = 1 << GCU_RADIX_BITS
+    nbits = inp.element_size() * 8
+    device = inp.device
+    partial = torch.empty(
+        (M * num_chunks, radix_size), dtype=torch.int32, device=device
+    )
+    # desired / desired_mask / k per row; zero-init selects all elements in pass 0.
+    # 64-bit order keys (int64) need int64 state slots so the accumulating
+    # desired / desired_mask survive the round trip through global memory.
+    state_dtype = torch.int64 if nbits > 32 else torch.int32
+    state = torch.zeros((M, 3), dtype=state_dtype, device=device)
+    valid_counts = torch.empty((M,), dtype=torch.int32, device=device)
+    cand = torch.empty((M * num_chunks,), dtype=torch.int32, device=device)
+    # The dispatch gate keeps the count grid within one 1D grid.x; the 2D
+    # linearized form remains only as a defensive cap.
+    total = M * num_chunks
+    grid_x = min(total, GCU_GRID_X_LIMIT)
+    count_grid = (grid_x, triton.cdiv(total, grid_x))
+    state_is_64bit = nbits > 32
+    with torch_device_fn.device(device):
+        for pass_index, digit_pos in enumerate(
+            range(nbits - GCU_RADIX_BITS, -1, -GCU_RADIX_BITS)
+        ):
+            gcu_radix_partial_count_kernel[count_grid](
+                inp,
+                partial,
+                state,
+                N,
+                num_chunks,
+                total,
+                grid_x,
+                GCU_RADIX_BLOCK_N,
+                digit_pos,
+                radix_size,
+                False,
+                state_is_64bit,
+                num_warps=4,
+                num_stages=1,
+            )
+            gcu_radix_row_update_kernel[(M,)](
+                partial,
+                state,
+                valid_counts,
+                num_chunks,
+                digit_pos,
+                radix_size,
+                GCU_RADIX_BITS,
+                nbits,
+                GCU_RADIX_BLOCK_C,
+                pass_index == 0,
+                state_is_64bit,
+                num_warps=4,
+                num_stages=1,
+            )
+        gcu_radix_find_index_kernel[count_grid](
+            inp,
+            state,
+            cand,
+            N,
+            num_chunks,
+            total,
+            grid_x,
+            GCU_RADIX_BLOCK_N,
+            False,
+            num_warps=4,
+            num_stages=1,
+        )
+        gcu_radix_finalize_kernel[(M,)](
+            inp,
+            state,
+            valid_counts,
+            cand,
+            out_values,
+            out_indices,
+            N,
+            num_chunks,
+            GCU_RADIX_BLOCK_C,
+            num_warps=2,
+            num_stages=1,
+        )
+
+
+def _gcu_dim_compute(inp, M, N, out_values, out_indices):
+    """Launch a GCU kernel path for the (M, N) contiguous input.
+
+    Returns True when one of the Triton paths handled the reduction, False
+    when the caller must fall back to the aten-based kthvalue path.
+    """
+    if out_values.dim() == 0:
+        # Flat callers hand in the 0-dim result tensor (M == 1).
+        out_values = out_values.reshape(1)
+        out_indices = out_indices.reshape(1)
+
+    if N <= MAX_BLOCK_N and inp.dtype is not torch.float64:
+        block_n = triton.next_power_of_2(N)
+        with torch_device_fn.device(inp.device):
+            for row_start in range(0, M, GCU_GRID_X_SAFE):
+                rows = min(GCU_GRID_X_SAFE, M - row_start)
+                nanmedian_select_kernel[(rows,)](
+                    inp[row_start : row_start + rows],
+                    out_values[row_start : row_start + rows],
+                    out_indices[row_start : row_start + rows],
+                    rows,
+                    N,
+                    block_n,
+                    False,
+                )
+        return True
+
+    if inp.dtype not in RADIX_SELECT_DTYPES:
+        return False
+
+    if (
+        N > GCU_MULTIK_N_MIN
+        and M <= GCU_MULTIK_M_MAX
+        and M * triton.cdiv(N, GCU_RADIX_BLOCK_N) <= GCU_GRID_X_LIMIT
+    ):
+        _gcu_radix_multik_impl(inp, M, N, out_values, out_indices)
+        return True
+
+    # One program per row: right for row-parallel dim inputs and for flat
+    # input below the grid-parallel threshold; beyond grid capacity or for a
+    # single-program row too long to be practical, defer to the fallback.
+    if M > 1 or N <= GCU_MULTIK_MAX_ELEMS:
+        block_n = min(triton.next_power_of_2(N), GCU_RADIX_BLOCK_N)
+        with torch_device_fn.device(inp.device):
+            for row_start in range(0, M, GCU_GRID_X_SAFE):
+                rows = min(GCU_GRID_X_SAFE, M - row_start)
+                gcu_nanmedian_row_radix_kernel[(rows,)](
+                    inp[row_start : row_start + rows],
+                    out_values[row_start : row_start + rows],
+                    out_indices[row_start : row_start + rows],
+                    rows,
+                    N,
+                    block_n,
+                    GCU_RADIX_BITS,
+                    False,
+                    num_warps=4,
+                    num_stages=1,
+                )
+        return True
+
+    return False
 
 
 def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
@@ -681,58 +571,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         values, indices = out
 
     inp = dim_compress(inp, dim)
-    is_cuda = inp.is_cuda
-    is_nvidia = IS_NVIDIA_BACKEND
-    in_radix_range = MAX_BLOCK_N < N <= LONG_RADIX_REDUCTION_N
-    use_cuda_histogram = (
-        is_nvidia
-        and is_cuda
-        and CUDA_SUPPORTS_MASKED_HISTOGRAM
-        and N > MAX_BLOCK_N
-        and N == triton.next_power_of_2(N)
-    )
-    use_radix_select = (
-        is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range
-    )
-    use_small_select = N <= MAX_BLOCK_N and inp.dtype is not torch.float64
-    if use_radix_select or use_small_select:
-        values_contiguous = values.is_contiguous()
-        indices_contiguous = indices.is_contiguous()
-        flat_values = values.reshape(M) if values_contiguous else values.new_empty((M,))
-        flat_indices = (
-            indices.reshape(M) if indices_contiguous else indices.new_empty((M,))
-        )
+    values_contiguous = values.is_contiguous()
+    indices_contiguous = indices.is_contiguous()
+    flat_values = values.reshape(M) if values_contiguous else values.new_empty((M,))
+    flat_indices = indices.reshape(M) if indices_contiguous else indices.new_empty((M,))
 
-        if use_radix_select:
-            block_n = _radix_block_n(inp, N)
-            num_warps = 4 if block_n <= 512 else 8
-            with torch_device_fn.device(inp.device):
-                nanmedian_radix_select_kernel[(M,)](
-                    inp,
-                    flat_values,
-                    flat_indices,
-                    M,
-                    N,
-                    block_n,
-                    _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
-                    is_cuda,
-                    use_cuda_histogram,
-                    num_warps=num_warps,
-                    num_stages=1,
-                )
-        else:
-            block_n = triton.next_power_of_2(N)
-            with torch_device_fn.device(inp.device):
-                nanmedian_select_kernel[(M,)](
-                    inp,
-                    flat_values,
-                    flat_indices,
-                    M,
-                    N,
-                    block_n,
-                    is_cuda,
-                )
-
+    if _gcu_dim_compute(inp, M, N, flat_values, flat_indices):
         if not values_contiguous:
             values.copy_(flat_values.reshape(values.shape))
         if not indices_contiguous:
@@ -755,81 +599,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
     return NanMedian(values=values, indices=indices)
 
 
-def _nanmedian_cuda_flat_radix_select(inp, out=None):
-    flat = inp.reshape(-1).contiguous()
-    n = flat.numel()
-    if out is None:
-        out = torch.empty((), dtype=flat.dtype, device=flat.device)
-    valid_count = torch.empty((), dtype=torch.int64, device=flat.device)
-    state = torch.empty((3,), dtype=torch.int64, device=flat.device)
-    result_idx = torch.empty((), dtype=torch.int64, device=flat.device)
-    block_n = min(triton.next_power_of_2(n), FLAT_RADIX_BLOCK_N)
-    grid = (triton.cdiv(n, block_n),)
-    nbits = flat.element_size() * 8
-    use_histogram = CUDA_SUPPORTS_MASKED_HISTOGRAM and n % block_n == 0
-    radix_bits = FLAT_RADIX_BITS if use_histogram else RADIX_BITS
-    radix_size = 1 << radix_bits
-    bin_counts = torch.empty((radix_size,), dtype=torch.int64, device=flat.device)
-
-    with torch_device_fn.device(flat.device):
-        flat_radix_init_kernel[(1,)](
-            valid_count,
-            state,
-            result_idx,
-            n,
-            torch.is_floating_point(flat),
-        )
-        if torch.is_floating_point(flat):
-            flat_radix_count_valid_kernel[grid](
-                flat,
-                valid_count,
-                n,
-                block_n,
-                True,
-                num_warps=8,
-                num_stages=1,
-            )
-        flat_radix_init_rank_kernel[(1,)](valid_count, state)
-        for digit_pos in range(nbits - radix_bits, -1, -radix_bits):
-            bin_counts.zero_()
-            flat_radix_count_kernel[grid](
-                flat,
-                bin_counts,
-                state,
-                n,
-                block_n,
-                digit_pos,
-                radix_bits,
-                radix_size,
-                True,
-                use_histogram,
-                num_warps=8,
-                num_stages=1,
-            )
-            flat_radix_update_kernel[(1,)](
-                bin_counts,
-                state,
-                digit_pos,
-                radix_bits,
-                radix_size,
-                num_warps=8,
-                num_stages=1,
-            )
-        flat_radix_find_index_kernel[grid](
-            flat,
-            state,
-            valid_count,
-            result_idx,
-            n,
-            block_n,
-            True,
-            num_warps=8,
-            num_stages=1,
-        )
-        flat_radix_store_result_kernel[(1,)](flat, out, valid_count, result_idx)
-    return out
-
-
 def _nanmedian_flat_impl(inp, out=None):
     n = inp.numel()
     if n == 0:
@@ -839,46 +608,246 @@ def _nanmedian_flat_impl(inp, out=None):
             return out
         return result
 
-    if (
-        IS_NVIDIA_BACKEND
-        and inp.is_cuda
-        and inp.dtype in RADIX_SELECT_DTYPES
-        and LONG_RADIX_REDUCTION_N < n <= INT32_MAX
-    ):
-        return _nanmedian_cuda_flat_radix_select(inp, out=out)
-
     flat = inp.reshape(-1)
     if out is None:
-        return _nanmedian_dim_impl(flat, 0, False).values
-
-    indices = torch.empty((), dtype=torch.long, device=inp.device)
-    _nanmedian_dim_impl(
-        flat,
-        0,
-        False,
-        out=(out, indices),
-    )
+        out = torch.empty((), dtype=flat.dtype, device=flat.device)
+    # Flat nanmedian reports no indices; the kernels still need the pointer.
+    indices = torch.empty((1,), dtype=torch.long, device=flat.device)
+    if _gcu_dim_compute(flat, 1, n, out, indices):
+        return out
+    _nanmedian_dim_impl(flat, 0, False, out=(out, indices))
     return out
 
 
 def nanmedian(inp):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEDIAN")
+    logger.debug("GEMS_ENFLAME NANMEDIAN")
     _check_supported_dtype(inp)
     return _nanmedian_flat_impl(inp)
 
 
 def nanmedian_out(inp, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEDIAN_OUT")
+    logger.debug("GEMS_ENFLAME NANMEDIAN_OUT")
     _check_supported_dtype(inp)
     return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEDIAN_DIM")
+    logger.debug("GEMS_ENFLAME NANMEDIAN_DIM")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim)
 
 
 def nanmedian_dim_values(inp, dim=-1, keepdim=False, *, values, indices):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEDIAN_DIM_VALUES")
+    logger.debug("GEMS_ENFLAME NANMEDIAN_DIM_VALUES")
     return _nanmedian_dim_impl(inp, dim, keepdim, out=(values, indices))
+
+
+def _aten_nanmedian(self):
+    return nanmedian(self)
+
+
+def _aten_nanmedian_out(self, *, out):
+    return nanmedian_out(self, out=out)
+
+
+def _aten_nanmedian_dim(self, dim=-1, keepdim=False):
+    result = nanmedian_dim(self, dim=dim, keepdim=keepdim)
+    return (result.values, result.indices)
+
+
+def _aten_nanmedian_dim_values(self, dim=-1, keepdim=False, *, values, indices):
+    # The torch.nanmedian(..., out=(v, i)) Python binding unpacks the kernel's
+    # return value as a (values, indices) sequence, so hand back the tuple.
+    return nanmedian_dim_values(
+        self, dim=dim, keepdim=keepdim, values=values, indices=indices
+    )
+
+
+# Module-level handle keeps the Library (and its kernels) alive for the
+# process; the registration itself must never break the flag_gems import.
+
+
+@libentry()
+@triton.jit
+def gcu_radix_partial_count_kernel(
+    inp,
+    partial,
+    state,
+    N,
+    NUM_CHUNKS,
+    TOTAL,
+    GRID_X,
+    BLOCK_N: tl.constexpr,
+    DIGIT_POS,
+    RADIX_SIZE: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
+    STATE_64: tl.constexpr,
+):
+    pid = tle.program_id(1) * GRID_X + tle.program_id(0)
+    if pid < TOTAL:
+        row = pid // NUM_CHUNKS
+        chunk = pid % NUM_CHUNKS
+        offsets = chunk * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = offsets < N
+        vals = tl.load(inp + row * N + offsets, mask=mask, other=0.0)
+        dtype = inp.dtype.element_ty
+        nbits: tl.constexpr = dtype.primitive_bitwidth
+        utype = tl.dtype(f"uint{nbits}")
+        radix_mask: tl.constexpr = RADIX_SIZE - 1
+        radix_mask_val = tl.full((), radix_mask, dtype=utype)
+
+        if dtype.is_floating():
+            valid = mask & _is_not_nan(vals, USE_ISNAN)
+        else:
+            valid = mask
+
+        desired = tl.load(state + row * 3 + 0).to(utype)
+        desired_mask = tl.load(state + row * 3 + 1).to(utype)
+        keys = _to_order_key(vals, valid)
+        active = valid & ((keys & desired_mask) == desired)
+        digit = ((keys >> DIGIT_POS) & radix_mask_val).to(tl.int32)
+        bins = tl.arange(0, RADIX_SIZE)
+        counts = tl.zeros((RADIX_SIZE,), dtype=tl.int32)
+        for radix_bin in tl.static_range(0, RADIX_SIZE):
+            bin_count = tl.sum((active & (digit == radix_bin)).to(tl.int32), axis=0)
+            counts += tl.where(bins == radix_bin, bin_count, 0)
+        tl.store(partial + pid * RADIX_SIZE + bins, counts)
+
+
+@libentry()
+@triton.jit
+def gcu_radix_row_update_kernel(
+    partial,
+    state,
+    valid_counts,
+    NUM_CHUNKS,
+    DIGIT_POS,
+    RADIX_SIZE: tl.constexpr,
+    RADIX_BITS_: tl.constexpr,
+    NBITS: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    IS_FIRST_PASS,
+    STATE_64: tl.constexpr,
+):
+    row = tle.program_id(0)
+    bins = tl.arange(0, RADIX_SIZE)
+    counts = tl.zeros((RADIX_SIZE,), dtype=tl.int32)
+    # GCU400: a [BLOCK_C, RADIX_SIZE] 2D tile load + tl.sum(axis=0) lowers to
+    # a silently-zero reduction in this kernel (2D accumulate-tile reduction
+    # hazard family; the trigger boundary does not extrapolate across
+    # kernels). Reduce per bin with 1D loads/sums -- the same proven form the
+    # count kernel uses.
+    for start in tl.range(0, NUM_CHUNKS, BLOCK_C):
+        chunk_rows = start + tl.arange(0, BLOCK_C)
+        cmask = chunk_rows < NUM_CHUNKS
+        base = (row * NUM_CHUNKS + chunk_rows) * RADIX_SIZE
+        for radix_bin in tl.static_range(0, RADIX_SIZE):
+            lane_counts = tl.load(partial + base + radix_bin, mask=cmask, other=0)
+            counts += tl.where(bins == radix_bin, tl.sum(lane_counts, axis=0), 0)
+
+    if IS_FIRST_PASS:
+        valid_count = tl.sum(counts, axis=0)
+        tl.store(valid_counts + row, valid_count)
+        # Keep k in a register: re-loading the slot this kernel just stored
+        # is not reliably visible on this backend.
+        k = tl.where(valid_count > 0, (valid_count + 1) // 2, 0)
+    else:
+        # Narrow back to int32 so both branches of the runtime IS_FIRST_PASS
+        # test carry the same type (64-bit state slots return int64).
+        k = tl.load(state + row * 3 + 2).to(tl.int32)
+    cumsum = tl.cumsum(counts, axis=0)
+    prev = cumsum - counts
+    take = (cumsum >= k) & (prev < k)
+    selected_bin = tl.min(tl.where(take, bins, RADIX_SIZE - 1), axis=0)
+    counts_before = tl.max(tl.where(take, prev, 0), axis=0)
+
+    utype = tl.dtype(f"uint{NBITS}")
+    radix_mask: tl.constexpr = (1 << RADIX_BITS_) - 1
+    radix_mask_val = tl.full((), radix_mask, dtype=utype)
+    desired = tl.load(state + row * 3 + 0).to(utype)
+    desired_mask = tl.load(state + row * 3 + 1).to(utype)
+    # Runtime DIGIT_POS promotes the shifted value past utype; truncating
+    # back keeps the stored key/mask types stable.
+    desired = desired | ((selected_bin.to(utype) << DIGIT_POS).to(utype))
+    desired_mask = desired_mask | ((radix_mask_val << DIGIT_POS).to(utype))
+    # int64 state slots keep 64-bit keys intact; the uint64 -> int64 cast is a
+    # modulo-2**64 reinterpretation, so the key bits are preserved.
+    if STATE_64:
+        tl.store(state + row * 3 + 0, desired.to(tl.int64))
+        tl.store(state + row * 3 + 1, desired_mask.to(tl.int64))
+    else:
+        tl.store(state + row * 3 + 0, desired.to(tl.int32))
+        tl.store(state + row * 3 + 1, desired_mask.to(tl.int32))
+    tl.store(state + row * 3 + 2, (k - counts_before).to(tl.int32))
+
+
+@libentry()
+@triton.jit
+def gcu_radix_find_index_kernel(
+    inp,
+    state,
+    cand,
+    N,
+    NUM_CHUNKS,
+    TOTAL,
+    GRID_X,
+    BLOCK_N: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
+):
+    pid = tle.program_id(1) * GRID_X + tle.program_id(0)
+    if pid < TOTAL:
+        row = pid // NUM_CHUNKS
+        chunk = pid % NUM_CHUNKS
+        offsets = chunk * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = offsets < N
+        vals = tl.load(inp + row * N + offsets, mask=mask, other=0.0)
+        dtype = inp.dtype.element_ty
+        if dtype.is_floating():
+            valid = mask & _is_not_nan(vals, USE_ISNAN)
+        else:
+            valid = mask
+        nbits: tl.constexpr = dtype.primitive_bitwidth
+        utype = tl.dtype(f"uint{nbits}")
+        desired = tl.load(state + row * 3 + 0).to(utype)
+        keys = _to_order_key(vals, valid)
+        local_idx = tl.min(tl.where(valid & (keys == desired), offsets, N), axis=0)
+        tl.store(cand + pid, local_idx.to(tl.int32))
+
+
+@libentry()
+@triton.jit
+def gcu_radix_finalize_kernel(
+    inp,
+    state,
+    valid_counts,
+    cand,
+    out_values,
+    out_indices,
+    N,
+    NUM_CHUNKS,
+    BLOCK_C: tl.constexpr,
+):
+    row = tle.program_id(0)
+    valid_count = tl.load(valid_counts + row)
+    result_idx = tl.full((), N, dtype=tl.int32)
+    if valid_count > 0:
+        for start in tl.range(0, NUM_CHUNKS, BLOCK_C):
+            chunk_rows = start + tl.arange(0, BLOCK_C)
+            cmask = chunk_rows < NUM_CHUNKS
+            tile = tl.load(cand + row * NUM_CHUNKS + chunk_rows, mask=cmask, other=N)
+            result_idx = tl.minimum(result_idx, tl.min(tile, axis=0))
+
+    dtype = inp.dtype.element_ty
+    if dtype.is_floating():
+        result_val = tl.load(
+            inp + row * N + result_idx, mask=valid_count > 0, other=float("nan")
+        )
+        result_val = tl.where(valid_count > 0, result_val, float("nan"))
+        result_idx = tl.where(valid_count > 0, result_idx, 0)
+    else:
+        result_val = tl.load(
+            inp + row * N + result_idx, mask=valid_count > 0, other=get_dtype_min(dtype)
+        )
+
+    tl.store(out_values + row, result_val)
+    tl.store(out_indices + row, result_idx.to(tl.int64))

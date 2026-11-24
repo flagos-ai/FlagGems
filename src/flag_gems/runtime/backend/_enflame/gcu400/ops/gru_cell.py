@@ -89,6 +89,8 @@ def _gru_cell_kernel(
     HAS_BHH: tl.constexpr,
     ACC_DTYPE: tl.constexpr,
     ROUND_DTYPE: tl.constexpr,
+    DOT_IN_FP32: tl.constexpr,
+    FULL_STORE: tl.constexpr,
     BLOCK_B: tl.constexpr,
     BLOCK_H: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -124,6 +126,15 @@ def _gru_cell_kernel(
         wr = tl.load(w_ih_ptr + row_r[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
         wz = tl.load(w_ih_ptr + row_z[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
         wn = tl.load(w_ih_ptr + row_n[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
+        if DOT_IN_FP32:
+            # A masked k tail inside a 16-bit dot yields NaN lanes on this
+            # backend; the fp32 dot path handles the mask.  Upcasting the
+            # operands is lossless (they are 16-bit values) and ATen also
+            # accumulates in fp32.
+            x = x.to(tl.float32)
+            wr = wr.to(tl.float32)
+            wz = wz.to(tl.float32)
+            wn = wn.to(tl.float32)
         gi_r = tl.dot(x, wr, gi_r, input_precision="ieee", out_dtype=ACC_DTYPE)
         gi_z = tl.dot(x, wz, gi_z, input_precision="ieee", out_dtype=ACC_DTYPE)
         gi_n = tl.dot(x, wn, gi_n, input_precision="ieee", out_dtype=ACC_DTYPE)
@@ -145,6 +156,11 @@ def _gru_cell_kernel(
         wr = tl.load(w_hh_ptr + row_r[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
         wz = tl.load(w_hh_ptr + row_z[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
         wn = tl.load(w_hh_ptr + row_n[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
+        if DOT_IN_FP32:
+            hx = hx.to(tl.float32)
+            wr = wr.to(tl.float32)
+            wz = wz.to(tl.float32)
+            wn = wn.to(tl.float32)
         gh_r = tl.dot(hx, wr, gh_r, input_precision="ieee", out_dtype=ACC_DTYPE)
         gh_z = tl.dot(hx, wz, gh_z, input_precision="ieee", out_dtype=ACC_DTYPE)
         gh_n = tl.dot(hx, wn, gh_n, input_precision="ieee", out_dtype=ACC_DTYPE)
@@ -174,11 +190,36 @@ def _gru_cell_kernel(
     ).to(ACC_DTYPE)
     hy = (hx_tile - new) * update + new
 
-    tl.store(
-        out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
-        hy.to(out_ptr.dtype.element_ty),
-        mask=b_mask[:, None] & n_mask[None, :],
-    )
+    if FULL_STORE:
+        # The last hidden column of a partially covered tile is dropped by the
+        # masked 2-D store on this backend (column H-1 kept the previous
+        # allocation's garbage, NaN after a NaN-filled block).  With a padded
+        # buffer every lane is a valid address, so the store is unmasked and a
+        # stride-aware copy trims it afterwards.
+        tl.store(
+            out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
+            hy.to(out_ptr.dtype.element_ty),
+        )
+    else:
+        tl.store(
+            out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
+            hy.to(out_ptr.dtype.element_ty),
+            mask=b_mask[:, None] & n_mask[None, :],
+        )
+
+
+@libentry()
+@triton.jit
+def _trim_kernel(src, dst, n_rows, n_cols, src_stride, BLOCK: tl.constexpr):
+    """Copy the ``n_rows x n_cols`` top-left block of ``src`` into the
+    contiguous ``dst`` with a 1-D lane mask (the padded store buffer holds
+    ``block_h`` columns per row)."""
+    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = idx < n_rows * n_cols
+    row = idx // n_cols
+    col = idx - row * n_cols
+    value = tl.load(src + row * src_stride + col, mask=mask, other=0.0)
+    tl.store(dst + idx, value, mask=mask)
 
 
 def _block(value, limit):
@@ -190,6 +231,46 @@ def _block(value, limit):
     the tile instead lets a wide layer spread over more blocks.
     """
     return max(16, min(limit, triton.next_power_of_2(max(int(value), 1))))
+
+
+def _launch_config(batch, input_size, hidden_size, dtype):
+    """Shape-tiered launch configuration for the GCU400 dot pipeline.
+
+    The six-accumulator dot chain pays a fixed pipeline cost per program
+    that scales with num_warps, so small tiles want nw1 and mid tiles nw2;
+    only 256-wide k tiles profit from the generic nw4. Partially covered
+    tiles are also a known fp16/bf16 lane-NaN trigger on this backend when
+    the k tail is masked inside a wide dot, so the fast tiers only take
+    fully covered tiles and everything else keeps the conservative generic
+    configuration.
+    """
+    block_k = _block(max(input_size, hidden_size), 128)
+    if hidden_size <= 32:
+        block_b, block_h, num_warps = 16, _block(hidden_size, 32), 1
+    elif batch <= 16:
+        block_b, block_h, num_warps = (
+            16,
+            min(64, triton.next_power_of_2(hidden_size)),
+            2,
+        )
+    else:
+        block_b = 32
+        if hidden_size <= 128 or dtype in (torch.float16, torch.bfloat16):
+            block_h = min(128, triton.next_power_of_2(hidden_size))
+        else:
+            block_h = 64
+        num_warps = 2
+    full = hidden_size % block_h == 0 and (
+        block_k <= 32 or (input_size % block_k == 0 and hidden_size % block_k == 0)
+    )
+    if full:
+        return block_b, block_h, block_k, num_warps, 2
+    # Partially covered shapes keep the conservative configuration, but a
+    # 32-wide hidden tile leaves a single valid lane in the last block for
+    # H = 33/65/... (H % 32 == 1), and a 2-D tile with one valid column is a
+    # known NaN trigger on this backend (fp16/bf16, H = 65 measured NaN in the
+    # last hidden column).  A 128-wide tile keeps the tail block multi-lane.
+    return 16, _block(hidden_size, 128), block_k, 4, 3
 
 
 def _check_cell_args(name, input, hx, w_ih, w_hh, b_ih, b_hh, gates):
@@ -278,7 +359,7 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     Returns:
         The new hidden state of shape ``(batch, hidden_size)``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 GRU_CELL")
+    logger.debug("GEMS_ENFLAME GRU_CELL")
     _check_cell_args("gru_cell", input, hx, w_ih, w_hh, b_ih, b_hh, 3)
 
     batch, input_size = input.shape
@@ -287,9 +368,23 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     if batch == 0 or hidden_size == 0:
         return out
 
-    block_b = _block(batch, 16)
-    block_h = _block(hidden_size, 32)
-    block_k = _block(max(input_size, hidden_size), 128)
+    block_b, block_h, block_k, num_warps, num_stages = _launch_config(
+        batch, input_size, hidden_size, input.dtype
+    )
+
+    # A partially covered hidden tile loses its last valid column in the masked
+    # 2-D store (see FULL_STORE in the kernel).  Write into a padded buffer
+    # whose rows are block_h wide and trim with a stride-aware copy.
+    partial_h = hidden_size % block_h != 0
+    if partial_h:
+        rows = triton.cdiv(batch, block_b) * block_b
+        store_buf = torch.empty(
+            (rows, block_h), dtype=input.dtype, device=input.device
+        )
+        s_ob, s_on = block_h, 1
+    else:
+        store_buf = out
+        s_ob, s_on = out.stride(0), out.stride(1)
 
     _gru_cell_kernel[(triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))](
         input,
@@ -298,7 +393,7 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         w_hh,
         b_ih if b_ih is not None else input,
         b_hh if b_hh is not None else input,
-        out,
+        store_buf,
         batch,
         input_size,
         hidden_size,
@@ -310,16 +405,28 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         w_ih.stride(1),
         w_hh.stride(0),
         w_hh.stride(1),
-        out.stride(0),
-        out.stride(1),
+        s_ob,
+        s_on,
         HAS_BIH=b_ih is not None,
         HAS_BHH=b_hh is not None,
         ACC_DTYPE=_ACC_DTYPE[input.dtype],
         ROUND_DTYPE=_ROUND_DTYPE[input.dtype],
+        DOT_IN_FP32=(
+            input.dtype in (torch.float16, torch.bfloat16)
+            and (input_size % block_k != 0 or hidden_size % block_k != 0)
+        ),
+        FULL_STORE=partial_h,
         BLOCK_B=block_b,
         BLOCK_H=block_h,
         BLOCK_K=block_k,
-        num_warps=4,
-        num_stages=3,
+        num_warps=num_warps,
+        num_stages=num_stages,
     )
+    if partial_h:
+        n = batch * hidden_size
+        _trim_kernel[(triton.cdiv(n, 1024),)](
+            store_buf, out, batch, hidden_size, block_h, BLOCK=1024
+        )
     return out
+
+

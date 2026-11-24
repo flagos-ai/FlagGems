@@ -14,6 +14,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # (input_size, hidden_size, num_layers)
@@ -125,6 +127,10 @@ class CudnnRnnFlattenWeightOutBenchmark(CudnnRnnFlattenWeightBenchmark):
             yield args + ({"out": out},)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten dose not support",
+)
 @pytest.mark.cudnn_rnn_flatten_weight_out
 def test_cudnn_rnn_flatten_weight_out():
     bench = CudnnRnnFlattenWeightOutBenchmark(

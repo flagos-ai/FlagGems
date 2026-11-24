@@ -70,6 +70,10 @@ def batch_norm_gather_stats_input_fn(shape, dtype, device):
     yield input_t, mean, invstd, running_mean, running_var, 0.1, 1e-5, count
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.batch_norm_gather_stats
 def test_batch_norm_gather_stats():
     bench = NormBenchmark(

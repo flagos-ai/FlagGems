@@ -13,11 +13,29 @@
 # limitations under the License.
 """gcu400 nll_loss2d forward/backward specialisation.
 
-The common ``flag_gems.ops.nllloss`` implementation feeds the int64 target
-straight into a Triton kernel, which aborts the process on gcu400 (SIGABRT).
-It also uses Python ``and`` / ``not`` on ``tl.tensor`` and an atomic counter
-for the mean reduction.  Here we reuse the newer atomic-free three-stage
-kernels from ``flag_gems.ops.nll_loss2d`` with gcu400-specific host handling.
+The generic ``flag_gems.ops.nllloss`` / ``flag_gems.ops.nll_loss2d`` paths pay
+several avoidable kernel launches per call on gcu400:
+
+* the int64 target is downcast to int32 on the host (one extra kernel),
+* the mean reduction computes ``total_weight`` with a separate ``sum``
+  reduction (another kernel), and
+* the backward always memsets the whole ``grad_input`` and then launches a
+  sparse-scatter kernel.
+
+``nll_loss2d`` only ever touches ``N*H*W`` lanes (one gather per output
+position), so it is launch-bound on every benchmark shape; the kernel work
+itself is negligible.  This module therefore keeps the atomic-free staged
+reduction from ``flag_gems.ops.nll_loss2d`` but:
+
+* passes the int64 target straight to the kernel (gcu400 can issue 64-bit
+  loads -- the host downcast used to add a full-tensor cast kernel),
+* folds the ``total_weight`` reduction into the finalize kernel so a mean
+  forward is two launches instead of four,
+* collapses the whole reduction into a single program for small outputs,
+* fuses the ``grad_input`` zero-fill into the backward scatter kernel for
+  small ``grad_input`` tensors, removing one launch, and
+* reuses cached scratch buffers for the partial sums and for the
+  ``total_weight`` of the reductions that never read it (``none`` / ``sum``).
 """
 
 import importlib
@@ -25,23 +43,21 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
 import flag_gems
-from flag_gems.ops.nllloss import nll_loss2d_backward as _common_nll_loss2d_backward
+from flag_gems.utils import libentry
 
 _common = importlib.import_module("flag_gems.ops.nll_loss2d")
 
 logger = logging.getLogger(__name__)
 
 _NUM_STAGES = 2
+_STAGES_2D = 1
 
-
-def _to_int32_target(target):
-    # gcu400: Triton cannot issue 64-bit loads from the target tensor.
-    # gcu300 already applies this downcast in its specialised implementation.
-    if target.dtype == torch.int64:
-        return target.to(torch.int32)
-    return target
+# Upper bound on the output element count for completing the whole reduction in
+# a single program.
+_ONESHOT_MAX_TOTAL = 2048
 
 
 def _as_int(value):
@@ -59,71 +75,344 @@ def _launch_config(total):
     return 2048, 8
 
 
+# With reduction=0/2 the backward pass never reads total_weight, so a cached
+# all-zero scalar is reused to save one memset.
+_ZERO_SCALAR_CACHE = {}
+
+# The stage-1 partial buffer is purely internal scratch and is reused per
+# num_blocks, saving one allocation per call. Execution on the same stream is
+# ordered, so a previous call can never read it half-written.
+_PARTIAL_CACHE = {}
+
+
+def _zero_scalar(dtype, device):
+    # torch.device is hashable, so use it directly as the key and avoid the extra
+    # str(device) cost on every call.
+    key = (dtype, device)
+    cached = _ZERO_SCALAR_CACHE.get(key)
+    if cached is None:
+        cached = torch.zeros((), dtype=dtype, device=device)
+        _ZERO_SCALAR_CACHE[key] = cached
+    return cached
+
+
+def _partial_buffers(num_blocks, device):
+    # Returns two independent flat buffers so callers skip the partials[0] /
+    # partials[1] slicing (two aten calls, not cheap under the benchmark
+    # dispatch mode).
+    key = (num_blocks, device)
+    cached = _PARTIAL_CACHE.get(key)
+    if cached is None:
+        cached = (
+            torch.empty((num_blocks,), dtype=torch.float32, device=device),
+            torch.empty((num_blocks,), dtype=torch.float32, device=device),
+        )
+        if len(_PARTIAL_CACHE) > 64:  # bound growth across many shape combos
+            _PARTIAL_CACHE.clear()
+        _PARTIAL_CACHE[key] = cached
+    return cached
+
+
+def _contiguous_if_needed(tensor):
+    # Return early when already contiguous, avoiding one more aten call (the
+    # Python dispatch mode used by the benchmark amplifies each aten call).
+    return tensor if tensor.is_contiguous() else tensor.contiguous()
+
+
+@libentry()
+@triton.jit
+def _nll_loss2d_none_gcu400_kernel(
+    self_input_ptr,
+    target_ptr,
+    weight_ptr,
+    out_ptr,
+    C,
+    HW,
+    total,
+    HAS_WEIGHT: tl.constexpr,
+    IGNORE_INDEX: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # After flattening, offsets are exactly the target indices (n*HW + hw), so no
+    # div/mod split is needed. loss is stored in the caller dtype directly,
+    # saving the float32 buffer + cast of the generic implementation.
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < total
+    num_pos = offsets // HW
+    hw = offsets - num_pos * HW
+
+    t = tl.load(target_ptr + offsets, mask=mask, other=IGNORE_INDEX)
+    valid = (t != IGNORE_INDEX) & mask
+    t_clamped = tl.where(valid, t, 0)
+    gathered = tl.load(
+        self_input_ptr + (num_pos * C + t_clamped) * HW + hw, mask=mask, other=0.0
+    ).to(tl.float32)
+
+    if HAS_WEIGHT:
+        wgt = tl.load(weight_ptr + t_clamped, mask=mask, other=0.0).to(tl.float32)
+    else:
+        wgt = tl.full((BLOCK,), 1.0, dtype=tl.float32)
+
+    loss = tl.where(valid, -gathered * wgt, 0.0)
+    tl.store(out_ptr + offsets, loss.to(OUT_DTYPE), mask=mask)
+
+
+@libentry()
+@triton.jit
+def _nll_loss2d_reduce_gcu400_kernel(
+    self_input_ptr,
+    target_ptr,
+    weight_ptr,
+    partial_loss_ptr,
+    partial_weight_ptr,
+    C,
+    HW,
+    total,
+    HAS_WEIGHT: tl.constexpr,
+    REDUCTION: tl.constexpr,
+    IGNORE_INDEX: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Stage 1: each program writes only its own partial, so no pre-zeroing and no
+    # atomic counter is needed.
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < total
+    num_pos = offsets // HW
+    hw = offsets - num_pos * HW
+
+    t = tl.load(target_ptr + offsets, mask=mask, other=IGNORE_INDEX)
+    valid = (t != IGNORE_INDEX) & mask
+    t_clamped = tl.where(valid, t, 0)
+    gathered = tl.load(
+        self_input_ptr + (num_pos * C + t_clamped) * HW + hw, mask=mask, other=0.0
+    ).to(tl.float32)
+
+    if HAS_WEIGHT:
+        wgt = tl.load(weight_ptr + t_clamped, mask=mask, other=0.0).to(tl.float32)
+    else:
+        wgt = tl.full((BLOCK,), 1.0, dtype=tl.float32)
+
+    loss = tl.where(valid, -gathered * wgt, 0.0)
+    tl.store(partial_loss_ptr + pid, tl.sum(loss))
+    if REDUCTION == 1:
+        tl.store(partial_weight_ptr + pid, tl.sum(tl.where(valid, wgt, 0.0)))
+
+
+@libentry()
+@triton.jit
+def _nll_loss2d_finalize_gcu400_kernel(
+    partial_loss_ptr,
+    partial_weight_ptr,
+    out_ptr,
+    total_weight_ptr,
+    num_blocks,
+    REDUCTION: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Stage 2: write loss and total_weight (float32) in one pass, avoiding extra
+    # sum/cast kernels.
+    offsets = tl.arange(0, BLOCK)
+    mask = offsets < num_blocks
+    loss = tl.sum(tl.load(partial_loss_ptr + offsets, mask=mask, other=0.0))
+    if REDUCTION == 1:
+        total_w = tl.sum(tl.load(partial_weight_ptr + offsets, mask=mask, other=0.0))
+        result = loss / total_w
+        tl.store(total_weight_ptr, total_w)
+    else:
+        result = loss
+    tl.store(out_ptr, result.to(OUT_DTYPE))
+
+
+@libentry()
+@triton.jit
+def _nll_loss2d_oneshot_gcu400_kernel(
+    self_input_ptr,
+    target_ptr,
+    weight_ptr,
+    out_ptr,
+    total_weight_ptr,
+    C,
+    HW,
+    total,
+    HAS_WEIGHT: tl.constexpr,
+    REDUCTION: tl.constexpr,
+    IGNORE_INDEX: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Small-output case: one program computes loss and total_weight at once, so the
+    # whole op needs a single launch.
+    offsets = tl.arange(0, BLOCK)
+    mask = offsets < total
+    num_pos = offsets // HW
+    hw = offsets - num_pos * HW
+
+    t = tl.load(target_ptr + offsets, mask=mask, other=IGNORE_INDEX)
+    valid = (t != IGNORE_INDEX) & mask
+    t_clamped = tl.where(valid, t, 0)
+    gathered = tl.load(
+        self_input_ptr + (num_pos * C + t_clamped) * HW + hw, mask=mask, other=0.0
+    ).to(tl.float32)
+
+    if HAS_WEIGHT:
+        wgt = tl.load(weight_ptr + t_clamped, mask=mask, other=0.0).to(tl.float32)
+    else:
+        wgt = tl.full((BLOCK,), 1.0, dtype=tl.float32)
+
+    loss = tl.where(valid, -gathered * wgt, 0.0)
+    total_loss = tl.sum(loss)
+    if REDUCTION == 1:
+        total_w = tl.sum(tl.where(valid, wgt, 0.0))
+        tl.store(out_ptr, (total_loss / total_w).to(OUT_DTYPE))
+        tl.store(total_weight_ptr, total_w)
+    else:
+        tl.store(out_ptr, total_loss.to(OUT_DTYPE))
+
+
+@libentry()
+@triton.jit
+def _nll_loss2d_backward_scatter_gcu400_kernel(
+    out_grad_ptr,
+    target_ptr,
+    weight_ptr,
+    inp_grad_ptr,
+    total_weight_ptr,
+    HW,
+    C,
+    total,
+    HAS_WEIGHT: tl.constexpr,
+    REDUCTION: tl.constexpr,
+    IGNORE_INDEX: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Large grad_input case: zero it with the zero_() DMA memset first, then only
+    # write the sparse entries here.
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < total
+    num_pos = offsets // HW
+    hw = offsets - num_pos * HW
+
+    t = tl.load(target_ptr + offsets, mask=mask, other=IGNORE_INDEX)
+    hit = (t != IGNORE_INDEX) & mask
+
+    if REDUCTION == 0:
+        grad = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    else:
+        grad = tl.load(out_grad_ptr).to(tl.float32)
+    if REDUCTION == 1:
+        scale = grad / tl.load(total_weight_ptr).to(tl.float32)
+    else:
+        scale = grad
+
+    if HAS_WEIGHT:
+        wgt = tl.load(weight_ptr + t, mask=hit, other=0.0).to(tl.float32)
+        value = -scale * wgt
+    else:
+        value = -scale
+
+    tl.store(
+        inp_grad_ptr + (num_pos * C + t) * HW + hw,
+        tl.where(hit, value, 0.0).to(OUT_DTYPE),
+        mask=hit,
+    )
+
+
 def _forward_impl(self, target, weight, reduction_val, ignore_index_val):
     N, C, H, W = self.shape
-    total = N * H * W
+    HW = H * W
+    total = N * HW
     has_weight = weight is not None
     out_dtype = self.dtype
-    BLOCK, num_warps = _launch_config(total)
-    grid = (triton.cdiv(total, BLOCK),)
+    tl_dtype = _common._TORCH_TO_TL[out_dtype]
 
     if reduction_val == 0:
-        # Store straight into the caller dtype.  tl.store casts the float32
-        # accumulator, so the common implementation's extra `.to(out_dtype)`
-        # kernel launch is not needed.
+        # Non-reduction path: the single launch stores directly in the caller dtype.
         out = torch.empty((N, H, W), dtype=out_dtype, device=self.device)
-        _common._nll_loss2d_none_kernel[grid](
+        BLOCK, num_warps = _launch_config(total)
+        _nll_loss2d_none_gcu400_kernel[(triton.cdiv(total, BLOCK),)](
             self,
             target,
             weight,
             out,
-            N,
             C,
-            H,
-            W,
+            HW,
             total,
             HAS_WEIGHT=has_weight,
             IGNORE_INDEX=ignore_index_val,
+            OUT_DTYPE=tl_dtype,
             BLOCK=BLOCK,
             num_warps=num_warps,
-            num_stages=_NUM_STAGES,
+            num_stages=_STAGES_2D,
         )
-        return out, torch.zeros((), dtype=out_dtype, device=self.device)
+        return out, _zero_scalar(out_dtype, self.device)
 
-    num_blocks = grid[0]
-    partials = torch.empty((2, num_blocks), dtype=torch.float32, device=self.device)
-    partial_loss, partial_weight = partials[0], partials[1]
-    _common._nll_loss2d_reduce_kernel[grid](
+    out = torch.empty((), dtype=out_dtype, device=self.device)
+    total_weight = torch.empty((), dtype=torch.float32, device=self.device)
+
+    if total <= _ONESHOT_MAX_TOTAL:
+        # Small output: the whole op collapses into a single launch.
+        block = triton.next_power_of_2(max(total, 32))
+        _nll_loss2d_oneshot_gcu400_kernel[(1,)](
+            self,
+            target,
+            weight,
+            out,
+            total_weight,
+            C,
+            HW,
+            total,
+            HAS_WEIGHT=has_weight,
+            REDUCTION=reduction_val,
+            IGNORE_INDEX=ignore_index_val,
+            OUT_DTYPE=tl_dtype,
+            BLOCK=block,
+            num_warps=4,
+            num_stages=_STAGES_2D,
+        )
+        if reduction_val != 1:
+            return out, _zero_scalar(out_dtype, self.device)
+        return out, total_weight
+
+    BLOCK, num_warps = _launch_config(total)
+    num_blocks = triton.cdiv(total, BLOCK)
+    # Reuse internal scratch: the loss and weight partial arrays share one cached
+    # buffer.
+    partial_loss, partial_weight = _partial_buffers(num_blocks, self.device)
+    _nll_loss2d_reduce_gcu400_kernel[(num_blocks,)](
         self,
         target,
         weight,
         partial_loss,
         partial_weight,
-        N,
         C,
-        H,
-        W,
+        HW,
         total,
         HAS_WEIGHT=has_weight,
         REDUCTION=reduction_val,
         IGNORE_INDEX=ignore_index_val,
         BLOCK=BLOCK,
         num_warps=num_warps,
-        num_stages=_NUM_STAGES,
+        num_stages=_STAGES_2D,
     )
-    out = torch.empty((), dtype=out_dtype, device=self.device)
-    _common._nll_loss2d_finalize_kernel[(1,)](
+    _nll_loss2d_finalize_gcu400_kernel[(1,)](
         partial_loss,
         partial_weight,
         out,
+        total_weight,
         num_blocks,
         REDUCTION=reduction_val,
-        OUT_DTYPE=_common._TORCH_TO_TL[out_dtype],
+        OUT_DTYPE=tl_dtype,
         BLOCK=triton.next_power_of_2(num_blocks),
     )
-    # Keep total_weight in float32: the backward kernel only reads it to
-    # divide, so converting to out_dtype costs an extra kernel for no benefit.
-    return out, flag_gems.sum(partial_weight)
+    if reduction_val != 1:
+        return out, _zero_scalar(out_dtype, self.device)
+    return out, total_weight
 
 
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
@@ -131,10 +420,10 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
     if self.device.type != flag_gems.device or target.device.type != flag_gems.device:
         raise RuntimeError("nll_loss2d_forward: expected tensors on the GCU device")
     assert self.ndim == 4, "nll_loss2d_forward: expected 4D input (N, C, H, W)"
-    target = _to_int32_target(target).contiguous()
-    self = self.contiguous()
+    target = _contiguous_if_needed(target)
+    self = _contiguous_if_needed(self)
     if weight is not None:
-        weight = weight.contiguous()
+        weight = _contiguous_if_needed(weight)
     return _forward_impl(
         self, target, weight, _as_int(reduction), _as_int(ignore_index)
     )
@@ -150,15 +439,44 @@ def nll_loss2d_backward(
     total_weight=None,
 ):
     logger.debug("GEMS_ENFLAME NLL_LOSS2D_BWD")
-    return _common_nll_loss2d_backward(
+    N, C, H, W = self.shape
+    HW = H * W
+    total = N * HW
+    reduction_val = _as_int(reduction)
+    ignore_index_val = _as_int(ignore_index)
+    has_weight = weight is not None
+
+    grad_output = _contiguous_if_needed(grad_output)
+    target = _contiguous_if_needed(target)
+    if has_weight:
+        weight = _contiguous_if_needed(weight)
+
+    # Almost all of grad_input must be zero (only the channels pointed to by
+    # target hold values). Measured: zero_() DMA memset + sparse scatter beats the
+    # fused "one kernel fills the whole grad_input" form on every shape (the
+    # latter is 14x slower at (256,256,4,8)).
+    grad_input = torch.empty_like(self)
+    grad_input.zero_()
+    tl_dtype = _common._TORCH_TO_TL[self.dtype]
+    BLOCK, num_warps = _launch_config(total)
+    _nll_loss2d_backward_scatter_gcu400_kernel[(triton.cdiv(total, BLOCK),)](
         grad_output,
-        self,
-        _to_int32_target(target),
-        weight,
-        reduction,
-        ignore_index,
-        total_weight,
+        target,
+        weight if has_weight else grad_input,
+        grad_input,
+        total_weight if total_weight is not None else grad_input,
+        HW,
+        C,
+        total,
+        HAS_WEIGHT=has_weight,
+        REDUCTION=reduction_val,
+        IGNORE_INDEX=ignore_index_val,
+        OUT_DTYPE=tl_dtype,
+        BLOCK=BLOCK,
+        num_warps=num_warps,
+        num_stages=_STAGES_2D,
     )
+    return grad_input
 
 
 # ---------------------------------------------------------------------------

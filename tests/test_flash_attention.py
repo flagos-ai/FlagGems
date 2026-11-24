@@ -31,6 +31,10 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
+# Enflame/GCU has no native ATen FlashAttention reference kernel; route the
+# dense reference through the local implementation like ascend/kunlunxin.
+ENFLAME_DENSE_REF = vendor_name in ("ascend", "kunlunxin", "enflame")
+
 # Generic `ops/flash_kernel.py` splitkv combine kernels fail to compile on the
 # XPU backend (TritonXPUCoreTiling / TritonToLinalgExperimental), so skip the
 # three splitkv layout tests there until the generic kernel is fixed.
@@ -277,7 +281,7 @@ def test__flash_attention_forward(
     # Ascend does not provide the native ATen FlashAttention reference.
     # Kunlunxin's torch_xmlir build dispatches the op to CPU and raises
     # NotImplementedError even for XPU inputs, so use the dense reference too.
-    if cfg.TO_CPU or vendor_name in ("ascend", "kunlunxin"):
+    if cfg.TO_CPU or ENFLAME_DENSE_REF:
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -889,6 +893,13 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
+@pytest.mark.skipif(
+    vendor_name == "enflame",
+    reason=(
+        "GCU flash attention forward does not apply dropout: debug_softmax "
+        "contains no dropped entries, so dropout_ratio is 0 instead of dropout_p"
+    ),
+)
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS

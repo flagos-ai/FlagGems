@@ -47,7 +47,7 @@ def _functional_assert_async(
     Returns:
         A new empty tensor serving as the output dependency token
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FUNCTIONAL_ASSERT_ASYNC")
+    logger.debug("GEMS_ENFLAME FUNCTIONAL_ASSERT_ASYNC")
 
     if tensor.numel() != 1:
         raise RuntimeError(

@@ -51,23 +51,45 @@ def log1p_kernel(
         tl.store(y_ptr + offsets, y, mask=mask)
 
 
+def _config(n_elements, dtype):
+    """Returns (BLOCK_SIZE, GRID_SIZE, num_warps, NUM_STAGES), tiered by dtype x size (v2).
+
+    Official bench kernel mode (do_bench median w1000/r100, GCU400/Libra) sweep results
+    (40+ configs x 6 variant-body ablations, see the log1p__opt.py docstring):
+    - fp32: BS8192/nw4/ST4 is optimal across the whole space (tl.log becomes an extern call,
+      leaving no room in the config domain; 2^24 75.1us vs the 50.2us copy floor);
+    - fp16/bf16 n>=2^26 use BS131072 (+2.4~4.9%), 4096<n<2^26 keeps BS65536;
+    - n<=4096 uses BS=max(512, npo2(n//2)) to spread launch latency over more CTAs (+5.6~8.3%).
+    """
+    if dtype == torch.float32:
+        BS, G, nw, ST = 8192, _GRID_SIZE, 4, 4
+    else:
+        BS = 131072 if n_elements >= (1 << 26) else 65536
+        G, nw, ST = _GRID_SIZE, 2, 1
+    if n_elements <= 4096:
+        BS = max(512, triton.next_power_of_2(n_elements // 2))
+        nw, ST = 2, 1
+    elif n_elements < BS:
+        BS = max(1024, triton.next_power_of_2(n_elements))
+    num_tile = triton.cdiv(n_elements, BS)
+    return BS, min(G, num_tile), nw, ST
+
+
 def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
     n_elements = out_contig.numel()
     if n_elements == 0:
         return
-    # Tuned on GCU400: BLOCK=32768 + num_warps=4 + num_stages=4.
-    block_size = 16384
-    num_tile = triton.cdiv(n_elements, block_size)
-    grid = (min(_GRID_SIZE, num_tile), 1, 1)
+    BS, G, nw, ST = _config(n_elements, out_contig.dtype)
+    grid = (G, 1, 1)
     with torch_device_fn.device(out_contig.device.index):
         log1p_kernel[grid](
             x_contig,
             out_contig,
             n_elements,
-            BLOCK_SIZE=block_size,
-            GRID_SIZE=min(_GRID_SIZE, num_tile),
-            NUM_STAGES=4,
-            num_warps=4,
+            BLOCK_SIZE=BS,
+            GRID_SIZE=G,
+            NUM_STAGES=ST,
+            num_warps=nw,
         )
 
 

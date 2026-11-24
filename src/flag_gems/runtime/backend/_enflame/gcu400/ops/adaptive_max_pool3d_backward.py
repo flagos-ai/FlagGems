@@ -120,7 +120,7 @@ def adaptive_max_pool3d_backward(
     self: torch.Tensor,
     indices: torch.Tensor,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 ADAPTIVE_MAX_POOL3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME ADAPTIVE_MAX_POOL3D_BACKWARD")
 
     in_n, in_c, in_d, in_h, in_w = self.shape
     out_d, out_h, out_w = (

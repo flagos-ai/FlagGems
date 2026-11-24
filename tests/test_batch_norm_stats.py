@@ -19,6 +19,23 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
+
+
+def _batch_norm_stats_reference(inp, eps):
+    """Independent per-channel reference built from raw tensor math.
+
+    enflame GCU has no aten kernel for batch_norm_stats (not on CPU, and the
+    on-device aten dispatch is the FlagGems implementation itself), so the
+    reference is derived from the definition of the op instead: the per-channel
+    mean and 1/sqrt(biased var + eps) accumulated in float32.
+    """
+    reduce_dims = (0,) + tuple(range(2, inp.dim()))
+    inp_f32 = inp.to(torch.float32)
+    ref_mean = inp_f32.mean(dim=reduce_dims)
+    ref_var = inp_f32.var(dim=reduce_dims, unbiased=False)
+    return ref_mean, 1.0 / torch.sqrt(ref_var + eps)
+
 
 @pytest.mark.batch_norm_stats
 @pytest.mark.parametrize(

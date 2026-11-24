@@ -164,6 +164,10 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
         )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.skipif(flag_gems.device != "cuda", reason="benchmark requires CUDA device")
 @pytest.mark.chunk_gated_delta_rule
 def test_perf_chunk_gated_delta_rule():

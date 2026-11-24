@@ -18,6 +18,7 @@ import pytest
 import torch
 from packaging.version import InvalidVersion, Version
 
+import flag_gems
 from flag_gems import indexer_k_quant_and_cache
 
 from . import accuracy_utils as utils
@@ -57,6 +58,10 @@ pytestmark = [
     pytest.mark.skipif(
         not _is_fp8e4nv_supported(),
         reason="fp8e4nv requires device capability >= 8.9",
+    ),
+    pytest.mark.skipif(
+        flag_gems.vendor_name == "enflame",
+        reason="the fp8e4nv/FP4 reference semantics rely on CUDA compute capability, unavailable on enflame/GCU",
     ),
 ]
 

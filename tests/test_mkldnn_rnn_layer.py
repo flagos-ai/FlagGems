@@ -30,6 +30,14 @@ _BATCH_FIRST = False
 
 pytestmark = pytest.mark.mkldnn_rnn_layer
 
+# enflame GCU ships its own pure-Triton mkldnn_rnn_layer kernel and the
+# reference below is a plain PyTorch LSTM rewrite, so the device is added to the
+# accelerator set; without it the CUDA-only gate skipped this whole file.
+_ACCELERATOR_AVAILABLE = not cfg.TO_CPU and (
+    (flag_gems.device == "cuda" and torch.cuda.is_available())
+    or flag_gems.vendor_name == "enflame"
+)
+
 
 def _make_lstm_params(input_size, hidden_size, dtype, device):
     """Build packed (4H, *) LSTM weights/biases via torch.nn.LSTM."""

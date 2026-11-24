@@ -37,22 +37,22 @@ observing the functional kernel's debug record.
 """
 
 import logging
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver as _triton_driver
 
-from flag_gems.utils import tl_extra_shim
-from flag_gems.utils.foreach import _TERNARY_SWAP_MIN_ELEMS, _pack_ok
+from flag_gems.utils import libentry, tl_extra_shim
 
-from ..utils.config_utils import MAX_GRID_DIM
 from ..utils.foreach import (
     _FAST_MATH,
     _STATS,
     _device_meta,
-    _pick_block,
     _promote_dtypes,
+    _promote_with_scalar,
     _resolve_scalars,
     foreach_binary_list,
     foreach_binary_scalar,
@@ -61,6 +61,8 @@ from ..utils.foreach import (
 )
 from ._foreach_addcdiv_flat import FALLBACK as _ADDC_DIV_FLAT_FALLBACK
 from ._foreach_addcdiv_flat import run_addcdiv_tensor
+from ._foreach_flat import FALLBACK as _COPY_FLAT_FALLBACK
+from ._foreach_flat import _empty_output_list, run_copy
 from ._foreach_lerp_flat import FALLBACK as _LERP_FLAT_FALLBACK
 from ._foreach_lerp_flat import run_lerp_scalar_list
 
@@ -110,6 +112,20 @@ def _mul_fn(a, b):
 
 @triton.jit
 def _div_fn(a, b):
+    # 16-bit division goes through the non-IEEE path: GCU400 has no native
+    # fp16 divide, so ``a / b`` is a full-precision fp32 divide per lane and
+    # dominated the op (16 paired tensors at 1024^2: 78us against 50us for the
+    # multiply).  ``ieee_rounding=False`` lets the compiler use the reciprocal
+    # approximation plus one Newton step, which measured 58us (+-2 ulp, far
+    # inside the 1e-2 tolerance of a 16-bit divide).  fp32 keeps the exact
+    # divide: there the approximation buys nothing (104.6us against 104.3us)
+    # while the fp32 tolerance is ~11 ulp.
+    if a.dtype == tl.float16 or a.dtype == tl.bfloat16:
+        # ``fdiv`` answers in the operand width while ``/`` widens to fp32; both
+        # arms of the ``if`` must agree, and fp32 is the wider of the two.  The
+        # value is rounded to the operand width by ``fdiv`` itself and handed on
+        # exactly, so widening afterwards costs a cast and changes no bit.
+        return tl.fdiv(a, b, ieee_rounding=False).to(tl.float32)
     return a / b
 
 
@@ -290,53 +306,205 @@ def _addcdiv_fn(a, b, c, v):
 _FLAT_FALLBACK = object()
 
 _MAX_GRID_X = 65535
-_MAX_GRID_Y = 255
 
 _FLAT_FLOAT = (torch.float16, torch.float32, torch.bfloat16)
 
+# --- TUNING PARAMS START ---
+# Set by optimization iterations from family precedent and this module's sweeps; compile/launch
+# time config only, no semantic change. 2026-11-18 resweep (grid became NT*parts after the
+# missing-tile fix): ternary at 1024^2 in fp32/fp16/bf16 is best with parts=3 (grid=48),
+# BLOCK=8192, nw=4, st=1 (fp32 116.2us / 16-bit 62.0us, at the 4-stream probe ceiling).
+# 2026-11-19 binary round (maximum_List 11-18 precedent): FIXED_GRID 24->48 (a 16-tensor list
+# goes from parts 2 to 3; paired lists always prefer 48 CTAs, while parts>3 only adds CTA-issue
+# serialization); the mask-free EXACT arm tiers BLOCK by dtype -- 8192 for fp32, 16384 for
+# 16-bit ((dtype, tile width) coupling: EXACT@8192 gives -17.4/-9.6/-4.7% on the three fp32
+# tiers, while bf16 regresses at 8192 tiles and turns positive at 16384); ragged lists (any
+# numel not divisible by the chosen BLOCK) keep 16384 + mask, bit-identical to history.
+_BINARY_FIXED_GRID = 48
+_BINARY_BLOCK = 16384
+_BINARY_BLOCK_FP32 = 8192
+_BINARY_EXACT = True
+_TERNARY_FIXED_GRID = 48
+_TERNARY_BLOCK = 8192
+_NUM_WARPS = 4
+_NUM_STAGES = 1
+# Promote 16-bit operands to fp32 for computation, then store back to the original dtype (aligned with ATen opmath
+# semantics).
+FP32_PROMOTE = True
+_SCALAR_CACHE_LIMIT = 64
+# --- TUNING PARAMS END ---
 
+# Second-operand addressing modes for the binary kernel.
+_B_PAIRED = 0  # element-wise from a paired second list
+_B_VALUE = 1  # one Python number for every tensor (constexpr slot)
+_B_PER_TENSOR = 2  # one number per tensor, from a cached device array
+_B_BROADCAST = 3  # single-element tensor operand, read once per program
+
+# Read-only device buffers cached by content: the kernels re-read the tensor
+# data every call, so reusing a scalar table only skips its H2D upload.
+_SCALAR_CACHE: Dict[Any, torch.Tensor] = {}
+
+# Replay cache for ``_foreach_binary_flat_kernel``: fully specialized launch ->
+# ``(CompiledKernel.run, kernel.function, packed_metadata)``.
+_BINARY_FLAT_LAUNCH_CACHE: Dict[Any, Any] = {}
+
+
+def _cached_scalar_buffer(values, dtype, device):
+    """A device scalar table (read-only), cached by ``(device, values, dtype)``."""
+    key = (str(device), tuple(values), dtype)
+    cached = _SCALAR_CACHE.get(key)
+    if cached is not None:
+        return cached
+    if len(_SCALAR_CACHE) >= _SCALAR_CACHE_LIMIT:
+        _SCALAR_CACHE.clear()
+    cached = torch.tensor(values, dtype=dtype, device=device)
+    _SCALAR_CACHE[key] = cached
+    return cached
+
+
+def _binary_launch_shape(dtype, numels):
+    """``(BLOCK, EXACT)`` for the flat binary kernel, keyed on family tuning.
+
+    The per-tile bounds mask is the largest kernel-side lever on the paired
+    list kernel (the ``maximum_List`` 11-18 judgment): fp32 takes the maskless
+    ``EXACT`` body at an 8192 tile while 16-bit wants the wider 16384 tile
+    (``EXACT`` at 8192 regresses bf16), and any ragged count keeps the
+    historical masked 16384 body bit for bit.
+    """
+    if _BINARY_EXACT:
+        block = _BINARY_BLOCK_FP32 if dtype is torch.float32 else _BINARY_BLOCK
+        if all(n % block == 0 for n in numels):
+            return block, True
+    return _BINARY_BLOCK, False
+
+
+def _flat_grid(num_tensors, max_numel, fixed_grid, block):
+    """One launch axis laid out as ``(tensor, part)`` with full tile coverage.
+
+    The kernel decomposes ``program_id`` into ``(tensor_id = pid % NT,
+    part_id = pid // NT)`` and strides tiles by ``cdiv(num_programs, NT)``,
+    so a tile of tensor ``t`` is visited by worker ``(t, part)`` exactly when
+    ``tile % num_parts == part``.  Every tile is therefore reached only when
+    the grid is an exact multiple of ``NT``: a plain ``min(fixed_grid,
+    NT * tiles)`` cap left the tiles of the trailing ``grid % NT`` tensors
+    unvisited whenever ``NT * tiles`` exceeded the cap without dividing it
+    (sixteen tensors at 1024^2 with a 24-program cap dropped every odd tile
+    of tensors 8..15, half of each tensor's elements).  ``parts`` is derived
+    from the cap by ceiling division and clamped to the tile count, so
+    ``grid = NT * parts`` covers every tile of every tensor by construction
+    while staying at or just above the cap.
+    """
+    blocks_per_tensor = -(-max_numel // block)
+    parts = min(-(-fixed_grid // num_tensors), blocks_per_tensor)
+    return (num_tensors * parts,)
+
+
+# ``.Tensor`` overloads hand in the per-tensor values as a small CPU tensor and
+# ``_resolve_scalars`` unpacks it with ``tolist()`` on every call (~5us of the
+# ~30us host path).  The unpacked list is memoised on the tensor's identity and
+# version counter: ``_version`` bumps on any in-place mutation, and the cache
+# keeps a strong reference so the id cannot be recycled while cached.
+_SCALAR_TENSOR_MEMO: Dict[Any, Any] = {}
+
+
+def _resolve_scalars_memo(tensors, scalars):
+    """``_resolve_scalars`` with the ``.Tensor`` unpack memoised."""
+    if type(scalars) is not torch.Tensor or scalars.numel() < 2:
+        return _resolve_scalars(tensors, scalars)
+    key = (id(scalars), scalars._version, scalars.numel(), len(tensors))
+    hit = _SCALAR_TENSOR_MEMO.get(key)
+    if hit is not None and hit[0] is scalars:
+        return hit[1], None, None
+    values, common, vclass = _resolve_scalars(tensors, scalars)
+    if len(_SCALAR_TENSOR_MEMO) > 8:
+        _SCALAR_TENSOR_MEMO.clear()
+    _SCALAR_TENSOR_MEMO[key] = (scalars, values)
+    return values, common, vclass
+
+
+@libentry()
 @triton.jit
 def _foreach_binary_flat_kernel(
     meta_ptr,
+    scalar_ptr,
     fn: tl.constexpr,
     NT: tl.constexpr,
     A_DT: tl.constexpr,
     B_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     ALPHA: tl.constexpr,
+    B_MODE: tl.constexpr,
     B_SCALAR: tl.constexpr,
     BLOCK: tl.constexpr,
-    NCTA,
+    EXACT: tl.constexpr,
 ):
-    """Paired-list math on a grid-stride ``(NT, NCTA)`` launch.
+    """Paired-list math on one linearized launch.
 
-    The metadata layout matches the common ``foreach_binary_kernel``:
-    first-input, second-input and output pointers plus element counts, ``NT``
-    each, int64.  Axis 1 carries at most ``NCTA`` starting tiles and each
-    program strides over the remaining ones, so the second axis never grows
-    past the GCU400 limit no matter how large the tensors are.
+    ``meta_ptr`` keeps the common layout -- first-input, second-input and
+    output pointers plus element counts, ``NT`` each, int64 -- while the grid
+    is a single axis laid out as ``(tensor, part)``: each program takes the
+    tiles ``part, part + num_parts, ...`` of its tensor.
+
+    ``B_MODE`` selects how the second operand is addressed; the scalar modes
+    keep the executor's arithmetic order (scale, cast to the output dtype,
+    then ``fn``).
+
+    ``EXACT`` drops the per-tile bounds mask when every element count divides
+    ``BLOCK``; ragged tails keep the masked body.  The two arms each hold a
+    complete load-compute-store body because a value defined inside one
+    ``if`` and consumed inside another fails to compile (scf.if boundary).
     """
-    tensor_id = tl.program_id(0)
-    tile_id = tl.program_id(1)
+    program_id = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    tensor_id = program_id % NT
+    part_id = program_id // NT
+    num_parts = tl.cdiv(num_programs, NT)
 
     a_ptr = tl.load(meta_ptr + tensor_id).to(tl.pointer_type(A_DT))
     b_ptr = tl.load(meta_ptr + NT + tensor_id).to(tl.pointer_type(B_DT))
     out_ptr = tl.load(meta_ptr + 2 * NT + tensor_id).to(tl.pointer_type(OUT_DT))
     n_elements = tl.load(meta_ptr + 3 * NT + tensor_id)
+    if B_MODE == 2:  # _B_PER_TENSOR: one scalar per tensor
+        b_scalar = tl.load(scalar_ptr + tensor_id)
+    else:
+        b_scalar = tl.full((), B_SCALAR, OUT_DT)
 
+    arange = tl.arange(0, BLOCK)
+    # The tile count stays in i32 to match ``part_id`` and keep the address
+    # arithmetic narrow, as in the common executors.
     num_tiles = tl.cdiv(n_elements, BLOCK).to(tl.int32)
-    for block_id in tl.range(tile_id, num_tiles, NCTA):
-        idx = block_id * BLOCK + tl.arange(0, BLOCK)
-        mask = idx < n_elements
-        a = tl.load(a_ptr + idx, mask=mask, other=0)
-        if B_SCALAR:
-            b = tl.load(b_ptr)
+    for block_id in tl.range(part_id, num_tiles, num_parts):
+        idx = block_id * BLOCK + arange
+        if EXACT:
+            a = tl.load(a_ptr + idx)
+            if B_MODE == 0:  # _B_PAIRED: element-wise from the second list
+                b = tl.load(b_ptr + idx)
+            elif B_MODE == 3:  # _B_BROADCAST: single-element tensor operand
+                b = tl.load(b_ptr)
+            else:
+                b = b_scalar
+            if ALPHA != 1:
+                b = (b * ALPHA).to(OUT_DT)
+            else:
+                b = b.to(OUT_DT)
+            tl.store(out_ptr + idx, fn(a.to(OUT_DT), b).to(OUT_DT))
         else:
-            b = tl.load(b_ptr + idx, mask=mask, other=0)
-        b = (b * ALPHA).to(OUT_DT) if ALPHA != 1 else b.to(OUT_DT)
-        tl.store(out_ptr + idx, fn(a.to(OUT_DT), b).to(OUT_DT), mask=mask)
+            mask = idx < n_elements
+            a = tl.load(a_ptr + idx, mask=mask, other=0)
+            if B_MODE == 0:  # _B_PAIRED: element-wise from the second list
+                b = tl.load(b_ptr + idx, mask=mask, other=0)
+            elif B_MODE == 3:  # _B_BROADCAST: single-element tensor operand
+                b = tl.load(b_ptr)
+            else:
+                b = b_scalar
+            if ALPHA != 1:
+                b = (b * ALPHA).to(OUT_DT)
+            else:
+                b = b.to(OUT_DT)
+            tl.store(out_ptr + idx, fn(a.to(OUT_DT), b).to(OUT_DT), mask=mask)
 
 
+@libentry()
 @triton.jit
 def _foreach_ternary_flat_kernel(
     meta_ptr,
@@ -346,20 +514,30 @@ def _foreach_ternary_flat_kernel(
     A_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     S_DT: tl.constexpr,
+    FP32_PROMOTE: tl.constexpr,
+    EXACT: tl.constexpr,
     BLOCK: tl.constexpr,
-    NCTA,
 ):
-    """Ternary-list math on a grid-stride ``(NT, NCTA)`` launch.
+    """Ternary-list math on one linearized launch.
 
-    The metadata layout matches the common ``foreach_ternary_kernel``:
-    self, tensor1 and tensor2 pointers, output pointers and element counts,
-    ``NT`` each, int64; ``scalar_ptr`` holds one value per tensor.  The
-    scalars ride in a device array of the output dtype rather than a
-    by-value ``float64`` argument, keeping the signature f64-free exactly
-    like the GCU400 scalar executor.
+    ``meta_ptr`` layout matches the common ``foreach_ternary_kernel``: self,
+    tensor1 and tensor2 pointers, output pointers and element counts, ``NT``
+    each, int64; ``scalar_ptr`` holds one value per tensor.  The scalars ride
+    in a cached device array of the tensor dtype, keeping the signature
+    f64-free exactly like the GCU400 scalar executor.
+
+    ``FP32_PROMOTE`` lifts 16-bit operands into fp32 for the math and stores
+    back in the output dtype, matching ATen's ``opmath_t`` accumulation for
+    half/bfloat16 element-wise ternary ops.
+
+    ``EXACT`` drops the per-tile bounds mask when every element count divides
+    ``BLOCK``; ragged tails keep the masked body.
     """
-    tensor_id = tl.program_id(0)
-    tile_id = tl.program_id(1)
+    program_id = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    tensor_id = program_id % NT
+    part_id = program_id // NT
+    num_parts = tl.cdiv(num_programs, NT)
 
     a_ptr = tl.load(meta_ptr + tensor_id).to(tl.pointer_type(A_DT))
     b_ptr = tl.load(meta_ptr + NT + tensor_id).to(tl.pointer_type(A_DT))
@@ -368,54 +546,265 @@ def _foreach_ternary_flat_kernel(
     n_elements = tl.load(meta_ptr + 4 * NT + tensor_id)
     s = tl.load(scalar_ptr + tensor_id)
 
+    arange = tl.arange(0, BLOCK)
     num_tiles = tl.cdiv(n_elements, BLOCK).to(tl.int32)
-    for block_id in tl.range(tile_id, num_tiles, NCTA):
-        idx = block_id * BLOCK + tl.arange(0, BLOCK)
-        mask = idx < n_elements
-        a = tl.load(a_ptr + idx, mask=mask, other=0).to(OUT_DT)
-        b = tl.load(b_ptr + idx, mask=mask, other=0).to(OUT_DT)
-        c = tl.load(c_ptr + idx, mask=mask, other=0).to(OUT_DT)
-        tl.store(out_ptr + idx, fn(a, b, c, s.to(OUT_DT)).to(OUT_DT), mask=mask)
+    if FP32_PROMOTE:
+        sv = s.to(tl.float32)
+    else:
+        sv = s.to(OUT_DT)
+    for block_id in tl.range(part_id, num_tiles, num_parts):
+        idx = block_id * BLOCK + arange
+        if EXACT:
+            a = tl.load(a_ptr + idx)
+            b = tl.load(b_ptr + idx)
+            c = tl.load(c_ptr + idx)
+        else:
+            mask = idx < n_elements
+            a = tl.load(a_ptr + idx, mask=mask, other=0)
+            b = tl.load(b_ptr + idx, mask=mask, other=0)
+            c = tl.load(c_ptr + idx, mask=mask, other=0)
+        if FP32_PROMOTE:
+            a = a.to(tl.float32)
+            b = b.to(tl.float32)
+            c = c.to(tl.float32)
+        if EXACT:
+            tl.store(out_ptr + idx, fn(a, b, c, sv).to(OUT_DT))
+        else:
+            tl.store(out_ptr + idx, fn(a, b, c, sv).to(OUT_DT), mask=mask)
 
 
-def _common_grid_overflows(numels) -> bool:
-    """Whether the common paired launch grid exceeds the GCU400 limits.
-
-    The paired executor launches ``(nt, cdiv(max_numel, BLOCK))`` with the
-    ``BLOCK`` its own search picks, so the answer is computed the same way;
-    ``True`` means the launch would raise ``OutOfResources`` on grid.y.
-    """
-    nt = len(numels)
-    max_numel = max(numels)
-    if nt == 0 or max_numel == 0:
-        return False
-    block = _pick_block(numels)
-    tiles = -(-max_numel // block)
-    return nt > _MAX_GRID_X or tiles > _MAX_GRID_Y
+# The flat ternary launch replay, mirroring the common executor's
+# ``_launch_ternary_kernel``.  Every argument past the two buffers is a
+# ``tl.constexpr``, so ``(kernel, nt, fn, dtype, promote, exact, block, grid,
+# meta alignment)`` identifies the compiled variant exactly and a replay only
+# hands over the runtime buffers.  No device-visible data is cached: ``meta``
+# and ``scalar_buf`` are read-only and content-addressed upstream, and a miss,
+# an installed launch hook (topsprof et al.) or a replay that raises all take
+# Triton's normal dispatch.  The one-hit memo sits in front of the dict the
+# same way as ``_TERNARY_LAST`` upstream.
+_TERNARY_FLAT_LAUNCH_CACHE: Dict[Any, Any] = {}
+_TERNARY_FLAT_LAST: List[Any] = [None] * 8
 
 
-def _common_ternary_grid_overflows(numels, dtype, values) -> bool:
-    """Whether the common ternary launch grid exceeds the GCU400 limits.
-
-    The ternary launcher transposes its grid for the packed 16-bit kernel
-    above ``2**20`` elements, which hides the tile count on axis 0; every
-    other launch puts it on axis 1 where the 255 cap bites.  ``values`` is
-    the pointer/numel run the launch would upload, for the same pack test
-    the common launcher applies.
-    """
-    nt = len(numels)
-    max_numel = max(numels)
-    if nt == 0 or max_numel == 0:
-        return False
-    block = _pick_block(numels)
-    tiles = -(-max_numel // block)
-    swap = (
-        _pack_ok((dtype, dtype), max_numel, values)
-        and max_numel >= _TERNARY_SWAP_MIN_ELEMS
+def _launch_ternary_flat(
+    grid,
+    nt: int,
+    meta: torch.Tensor,
+    scalar_buf: torch.Tensor,
+    fn: Callable,
+    dt: Any,
+    promote: bool,
+    exact: bool,
+    block: int,
+) -> None:
+    """``_foreach_ternary_flat_kernel[grid](...)`` with a cached launcher."""
+    runtime = knobs.runtime
+    last = _TERNARY_FLAT_LAST
+    if (
+        last[0] is meta
+        and last[1] is scalar_buf
+        and last[2] is fn
+        and last[4] == (grid, nt, dt, promote, exact, block)
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            last[5](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                last[6],
+                last[7],
+                None,
+                None,
+                None,
+                meta,
+                scalar_buf,
+                fn,
+                nt,
+                dt,
+                dt,
+                dt,
+                promote,
+                exact,
+                block,
+            )
+            return
+        except Exception:
+            last[0] = None
+    key = (
+        _foreach_ternary_flat_kernel,
+        meta.device,
+        nt,
+        fn,
+        dt,
+        promote,
+        exact,
+        block,
+        grid,
+        not (meta.data_ptr() & 15),
     )
-    if swap:
-        return tiles > _MAX_GRID_X or nt > _MAX_GRID_Y
-    return nt > _MAX_GRID_X or tiles > _MAX_GRID_Y
+    entry = _TERNARY_FLAT_LAUNCH_CACHE.get(key)
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                scalar_buf,
+                fn,
+                nt,
+                dt,
+                dt,
+                dt,
+                promote,
+                exact,
+                block,
+            )
+            last[0] = meta
+            last[1] = scalar_buf
+            last[2] = fn
+            last[4] = (grid, nt, dt, promote, exact, block)
+            last[5], last[6], last[7] = entry
+            return
+        except Exception:
+            _TERNARY_FLAT_LAUNCH_CACHE.pop(key, None)
+            last[0] = None
+    compiled = _foreach_ternary_flat_kernel[grid](
+        meta,
+        scalar_buf,
+        fn,
+        nt,
+        dt,
+        dt,
+        dt,
+        promote,
+        exact,
+        block,
+        num_warps=_NUM_WARPS,
+        num_stages=_NUM_STAGES,
+    )
+    if compiled is not None:
+        kernel = compiled[0] if isinstance(compiled, tuple) else compiled
+        _TERNARY_FLAT_LAUNCH_CACHE[key] = (
+            kernel.run,
+            kernel.function,
+            kernel.packed_metadata,
+        )
+
+
+def _launch_binary_flat(
+    grid,
+    meta,
+    scalar_arg,
+    fn,
+    nt,
+    a_dt,
+    b_dt,
+    out_dt,
+    alpha,
+    b_mode,
+    b_value,
+    block,
+    exact,
+):
+    """``_foreach_binary_flat_kernel[grid](...)`` with a cached direct launcher.
+
+    The Triton ``kernel[grid]`` entry re-binds the signature, re-derives the
+    specialization key and re-checks the launch hooks on every call, and that
+    host path costs more than the kernel itself on GCU400 (25.6us against
+    4.6us for a replayed launch).  Since the whole operand list already rides
+    one launch, that overhead was the dominant term of the ``.List`` /
+    ``.Tensor`` overloads.  The replay is keyed by everything selecting a
+    compiled variant plus the metadata alignment Triton specializes on; a
+    replay that raises, or any installed launch hook (topsprof et al.), falls
+    back to the normal dispatch so instrumentation still sees every launch.
+    """
+    runtime = knobs.runtime
+    key = (
+        grid,
+        nt,
+        fn,
+        a_dt,
+        b_dt,
+        out_dt,
+        alpha,
+        b_mode,
+        b_value,
+        block,
+        exact,
+        meta.device,
+        not (meta.data_ptr() & 15),
+        not (scalar_arg.data_ptr() & 15),
+    )
+    entry = _BINARY_FLAT_LAUNCH_CACHE.get(key)
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                scalar_arg,
+                fn,
+                nt,
+                a_dt,
+                b_dt,
+                out_dt,
+                alpha,
+                b_mode,
+                b_value,
+                block,
+                exact,
+            )
+            return
+        except Exception:
+            _BINARY_FLAT_LAUNCH_CACHE.pop(key, None)
+    compiled = _foreach_binary_flat_kernel[grid](
+        meta,
+        scalar_arg,
+        fn,
+        nt,
+        a_dt,
+        b_dt,
+        out_dt,
+        alpha,
+        b_mode,
+        b_value,
+        block,
+        exact,
+        num_warps=_NUM_WARPS,
+        num_stages=_NUM_STAGES,
+    )
+    if compiled is not None:
+        kernel = compiled[0] if isinstance(compiled, tuple) else compiled
+        _BINARY_FLAT_LAUNCH_CACHE[key] = (
+            kernel.run,
+            kernel.function,
+            kernel.packed_metadata,
+        )
 
 
 def _flat_binary_list(
@@ -431,25 +820,24 @@ def _flat_binary_list(
     copy_semantics=False,
     scalar_operand=False,
 ):
-    """Uniform float paired lists on the flat kernel, or ``_FLAT_FALLBACK``.
+    """Uniform float paired lists on one cached launch, or ``_FLAT_FALLBACK``.
 
-    Replays the common executor's uniform-list semantics -- dtype refusal,
-    promotion, allocation and the in-place pairing -- for exactly the groups
-    whose common launch would exceed the GCU400 grid limits.  Every other
-    shape answers ``_FLAT_FALLBACK`` and the caller hands it to the common
-    executor unchanged, error wording included.
+    Serves the ``.List`` / ``.Tensor`` forms: two lists that pair position by
+    position on one flat index (a single-element ``.Tensor`` operand is read
+    once per program).  Every other shape answers ``_FLAT_FALLBACK`` and the
+    caller hands it to the common executor unchanged, error wording included.
     """
     if not isinstance(self, (list, tuple)) or not self:
         return _FLAT_FALLBACK
-    nt = len(self)
-    if not isinstance(other, (list, tuple)) or len(other) != nt:
+    if alpha != 1:
         return _FLAT_FALLBACK
+    nt = len(self)
     if nt > _MAX_GRID_X:
+        return _FLAT_FALLBACK
+    if not isinstance(other, (list, tuple)) or len(other) != nt:
         return _FLAT_FALLBACK
     a0 = self[0]
     if not isinstance(a0, torch.Tensor):
-        return _FLAT_FALLBACK
-    if not all(isinstance(t, torch.Tensor) for t in self):
         return _FLAT_FALLBACK
     device = a0.device
     a_dt = a0.dtype
@@ -457,38 +845,59 @@ def _flat_binary_list(
         return _FLAT_FALLBACK
     if allowed_dtypes is not None and a_dt not in allowed_dtypes:
         return _FLAT_FALLBACK
-    numels = [t.numel() for t in self]
-    if not _common_grid_overflows(numels):
-        return _FLAT_FALLBACK
-
     b0 = other[0]
     if not isinstance(b0, torch.Tensor):
         return _FLAT_FALLBACK
     b_dt = b0.dtype
     if b_dt not in _FLAT_FLOAT:
         return _FLAT_FALLBACK
-    a_zero_dim = a0.dim() == 0
-    for t in self:
-        if (
-            t.dtype is not a_dt
-            or t.device != device
-            or not t.is_contiguous()
-            or (t.dim() == 0) != a_zero_dim
-        ):
-            return _FLAT_FALLBACK
+    # One traversal over the pairs collects the element counts and both address
+    # columns while it validates them.  The previous form walked the lists five
+    # times (counts, then the second operand, then three address comprehensions)
+    # and every extra walk is a visible slice of the launch, because the kernel
+    # itself is only a few microseconds on the short shapes.
+    numels = []
+    a_ptrs = []
+    b_ptrs = []
+    max_numel = 0
     if scalar_operand:
-        if b0.device != device or not b0.is_contiguous():
+        if b0.device != device or not b0.is_contiguous() or b0.numel() != 1:
             return _FLAT_FALLBACK
+        b_mode = _B_BROADCAST
+        for t in self:
+            if t.dtype is not a_dt or t.device != device or not t.is_contiguous():
+                return _FLAT_FALLBACK
+            numel = t.numel()
+            if numel == 0:
+                return _FLAT_FALLBACK
+            numels.append(numel)
+            a_ptrs.append(t.data_ptr())
+            if numel > max_numel:
+                max_numel = numel
+        b_ptrs = [b0.data_ptr()] * nt
     else:
-        b_zero_dim = b0.dim() == 0
-        for t in other:
+        # Paired lists must share the flat index; a broadcast ``.List``
+        # operand (per-position scalar or shape broadcast) would read past a
+        # smaller allocation, so it falls back to the common executor.
+        b_mode = _B_PAIRED
+        for tensor, other_tensor in zip(self, other):
             if (
-                t.dtype is not b_dt
-                or t.device != device
-                or not t.is_contiguous()
-                or (t.dim() == 0) != b_zero_dim
+                tensor.dtype is not a_dt
+                or tensor.device != device
+                or not tensor.is_contiguous()
+                or other_tensor.dtype is not b_dt
+                or other_tensor.device != device
+                or not other_tensor.is_contiguous()
             ):
                 return _FLAT_FALLBACK
+            numel = tensor.numel()
+            if numel == 0 or other_tensor.numel() != numel:
+                return _FLAT_FALLBACK
+            numels.append(numel)
+            a_ptrs.append(tensor.data_ptr())
+            b_ptrs.append(other_tensor.data_ptr())
+            if numel > max_numel:
+                max_numel = numel
 
     if out_dtypes is not None:
         out_dt = out_dtypes[0]
@@ -510,23 +919,17 @@ def _flat_binary_list(
     _STATS.reset()
     if inplace:
         results = list(self)
-    elif out_dt is a_dt:
-        results = list(map(torch.empty_like, self))
     else:
-        results = [torch.empty_like(t, dtype=out_dt) for t in self]
+        results = _empty_output_list(self, out_dt)
 
-    a_ptrs = [t.data_ptr() for t in self]
-    if scalar_operand:
-        b_ptrs = [b0.data_ptr()] * nt
-    else:
-        b_ptrs = [t.data_ptr() for t in other]
     out_ptrs = a_ptrs if inplace else [t.data_ptr() for t in results]
     meta = _device_meta(a_ptrs + b_ptrs + out_ptrs + numels, device)
 
-    block = _pick_block(numels)
-    tiles = -(-max(numels) // block)
-    ncta = min(tiles, MAX_GRID_DIM)
-    _foreach_binary_flat_kernel[(nt, ncta)](
+    block, exact = _binary_launch_shape(a_dt, numels)
+    grid = _flat_grid(nt, max_numel, _BINARY_FIXED_GRID, block)
+    _launch_binary_flat(
+        grid,
+        meta,
         meta,
         fn,
         nt,
@@ -534,10 +937,112 @@ def _flat_binary_list(
         tl_dtype(b_dt),
         tl_dtype(out_dt),
         alpha,
-        scalar_operand,
+        b_mode,
+        0.0,
         block,
-        ncta,
-        num_warps=4,
+        exact,
+    )
+    _STATS.executor_launches += 1
+    _STATS.groups += 1
+    return results
+
+
+def _flat_binary_scalar(
+    self,
+    scalars,
+    fn,
+    *,
+    inplace=False,
+    alpha=1,
+    allowed_dtypes=None,
+    out_dtype_fn=None,
+):
+    """Uniform float ``.Scalar`` / ``.ScalarList`` lists on one cached launch.
+
+    The counterpart of :func:`_flat_binary_list` for the scalar overloads: one
+    Python number for the whole list or one number per tensor.  A scalar that
+    would promote the result away from the tensor dtype answers
+    ``_FLAT_FALLBACK`` so the common executor keeps ATen's promotion; a
+    broadcast value travels as a compile-time constant and a per-tensor table
+    rides the content cache, so neither form uploads anything in steady state.
+    """
+    if not isinstance(self, (list, tuple)) or not self:
+        return _FLAT_FALLBACK
+    if alpha != 1:
+        return _FLAT_FALLBACK
+    nt = len(self)
+    if nt > _MAX_GRID_X:
+        return _FLAT_FALLBACK
+    a0 = self[0]
+    if not isinstance(a0, torch.Tensor):
+        return _FLAT_FALLBACK
+    dtype = a0.dtype
+    if dtype not in _FLAT_FLOAT:
+        return _FLAT_FALLBACK
+    if allowed_dtypes is not None and dtype not in allowed_dtypes:
+        return _FLAT_FALLBACK
+    device = a0.device
+    numels = []
+    for t in self:
+        if t.dtype is not dtype or t.device != device or not t.is_contiguous():
+            return _FLAT_FALLBACK
+        numel = t.numel()
+        if numel == 0:
+            return _FLAT_FALLBACK
+        numels.append(numel)
+    try:
+        values, common, _ = _resolve_scalars(self, scalars)
+    except Exception:
+        return _FLAT_FALLBACK
+    if len(values) != nt:
+        return _FLAT_FALLBACK
+    # ``bool`` is an ``int`` subclass with its own ATen promotion rules; the
+    # common executor keeps them.
+    for v in values:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return _FLAT_FALLBACK
+        if _promote_with_scalar(dtype, v) is not dtype:
+            return _FLAT_FALLBACK
+    if out_dtype_fn is not None and out_dtype_fn(dtype) is not dtype:
+        return _FLAT_FALLBACK
+
+    _STATS.reset()
+    if inplace:
+        results = list(self)
+        out_ptrs = [t.data_ptr() for t in self]
+    else:
+        results = _empty_output_list(self, dtype)
+        out_ptrs = [t.data_ptr() for t in results]
+    in_ptrs = [t.data_ptr() for t in self]
+    # The second-pointer slot is unused in the scalar modes; a real device
+    # tensor keeps the pointer argument valid without any upload.
+    meta = _device_meta(in_ptrs + [0] * nt + out_ptrs + numels, device)
+
+    if common is not None:
+        b_mode = _B_VALUE
+        scalar_arg = meta
+        b_value = float(common)
+    else:
+        b_mode = _B_PER_TENSOR
+        scalar_arg = _cached_scalar_buffer([float(v) for v in values], dtype, device)
+        b_value = 0.0
+
+    block, exact = _binary_launch_shape(dtype, numels)
+    grid = _flat_grid(nt, max(numels), _BINARY_FIXED_GRID, block)
+    _launch_binary_flat(
+        grid,
+        meta,
+        scalar_arg,
+        fn,
+        nt,
+        tl_dtype(dtype),
+        tl_dtype(dtype),
+        tl_dtype(dtype),
+        alpha,
+        b_mode,
+        b_value,
+        block,
+        exact,
     )
     _STATS.executor_launches += 1
     _STATS.groups += 1
@@ -586,9 +1091,14 @@ def _flat_ternary(
         return _FLAT_FALLBACK
     if allowed_dtypes is not None and dtype not in allowed_dtypes:
         return _FLAT_FALLBACK
+    numels = []
     for t in self:
         if t.dtype is not dtype or t.device != device or not t.is_contiguous():
             return _FLAT_FALLBACK
+        numel = t.numel()
+        if numel == 0:
+            return _FLAT_FALLBACK
+        numels.append(numel)
     for t in tensor1:
         if t.dtype is not dtype or t.device != device or not t.is_contiguous():
             return _FLAT_FALLBACK
@@ -596,51 +1106,54 @@ def _flat_ternary(
         for t in tensor2:
             if t.dtype is not dtype or t.device != device or not t.is_contiguous():
                 return _FLAT_FALLBACK
+    # The kernel walks all three operands on one flat index, so every operand
+    # list must pair exactly with ``self``; broadcast shapes fall back.
+    for t, numel in zip(tensor1, numels):
+        if t.numel() != numel:
+            return _FLAT_FALLBACK
+    if not same_bc:
+        for t, numel in zip(tensor2, numels):
+            if t.numel() != numel:
+                return _FLAT_FALLBACK
     try:
-        values, _, _ = _resolve_scalars(self, scalars)
+        values, _, _ = _resolve_scalars_memo(self, scalars)
     except Exception:
         return _FLAT_FALLBACK
-    if not all(isinstance(v, (int, float)) for v in values):
+    if len(values) != nt:
         return _FLAT_FALLBACK
-
-    a_ptrs = [t.data_ptr() for t in self]
-    b_ptrs = [t.data_ptr() for t in tensor1]
-    c_ptrs = b_ptrs if same_bc else [t.data_ptr() for t in tensor2]
-    numels = [t.numel() for t in self]
-    # The pack test reads alignment off the whole pointer run; for the
-    # out-of-place form the freshly allocated destinations are at least as
-    # aligned as the inputs, so the inputs answer the same question.
-    if not _common_ternary_grid_overflows(
-        numels, dtype, a_ptrs + b_ptrs + c_ptrs + a_ptrs + numels
-    ):
-        return _FLAT_FALLBACK
+    for v in values:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return _FLAT_FALLBACK
 
     _STATS.reset()
     if inplace:
         results = list(self)
-        out_ptrs = a_ptrs
+        out_ptrs = [t.data_ptr() for t in self]
     else:
-        results = list(map(torch.empty_like, self))
+        results = _empty_output_list(self, dtype)
         out_ptrs = [t.data_ptr() for t in results]
+    a_ptrs = [t.data_ptr() for t in self]
+    b_ptrs = [t.data_ptr() for t in tensor1]
+    c_ptrs = b_ptrs if same_bc else [t.data_ptr() for t in tensor2]
     meta = _device_meta(a_ptrs + b_ptrs + c_ptrs + out_ptrs + numels, device)
-    scalar_buf = torch.tensor([float(v) for v in values], dtype=dtype).to(
-        device, non_blocking=True
-    )
+    # The common ternary executor casts the scalars into the tensor dtype;
+    # the cached buffer keeps the same rounding with zero steady-state H2D.
+    scalar_buf = _cached_scalar_buffer([float(v) for v in values], dtype, device)
 
-    block = _pick_block(numels)
-    tiles = -(-max(numels) // block)
-    ncta = min(tiles, MAX_GRID_DIM)
-    _foreach_ternary_flat_kernel[(nt, ncta)](
+    grid = _flat_grid(nt, max(numels), _TERNARY_FIXED_GRID, _TERNARY_BLOCK)
+    # Bench and optimizer shapes divide the tile evenly; dropping the bounds
+    # mask there measured ~2% on the 1024^2 rows (ladder L2 vs production).
+    exact = all(n % _TERNARY_BLOCK == 0 for n in numels)
+    _launch_ternary_flat(
+        grid,
+        nt,
         meta,
         scalar_buf,
         fn,
-        nt,
         tl_dtype(dtype),
-        tl_dtype(dtype),
-        tl_dtype(dtype),
-        block,
-        ncta,
-        num_warps=4,
+        FP32_PROMOTE,
+        exact,
+        _TERNARY_BLOCK,
     )
     _STATS.executor_launches += 1
     _STATS.groups += 1
@@ -766,9 +1279,7 @@ BINARY_OPS: Dict[str, BinaryOp] = {
 
 
 def _log(name: str, overload: str, inplace: bool) -> None:
-    logger.debug(
-        "GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else ""
-    )
+    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
     del overload
 
 
@@ -820,17 +1331,27 @@ def _apply_scalar(name: str, self, scalars, inplace: bool, alpha=1):
         for t in self:
             _check_alpha(alpha, t.dtype)
     allowed = op.allowed_scalar if op.allowed_scalar is not None else op.allowed
-    res = foreach_binary_scalar(
+    res = _flat_binary_scalar(
         self,
         scalars,
         op.fn,
         inplace=inplace,
         alpha=alpha,
         allowed_dtypes=allowed,
-        dtype_error=op.dtype_error,
-        dtype_error_type=op.dtype_error_type,
         out_dtype_fn=op.out_dtype_fn,
     )
+    if res is _FLAT_FALLBACK:
+        res = foreach_binary_scalar(
+            self,
+            scalars,
+            op.fn,
+            inplace=inplace,
+            alpha=alpha,
+            allowed_dtypes=allowed,
+            dtype_error=op.dtype_error,
+            dtype_error_type=op.dtype_error_type,
+            out_dtype_fn=op.out_dtype_fn,
+        )
     return None if inplace else res
 
 
@@ -1148,16 +1669,18 @@ for _inplace in (False, True):
 
 
 def _foreach_copy(self, src, non_blocking=False):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COPY")
+    logger.debug("GEMS_ENFLAME _FOREACH_COPY")
     del non_blocking
     _log("copy", "copy", False)
-    res = _flat_binary_list(
-        self,
-        src,
-        _copy_fn,
-        inplace=False,
-        copy_semantics=True,
-    )
+    res = run_copy(self, src, False)
+    if res is _COPY_FLAT_FALLBACK:
+        res = _flat_binary_list(
+            self,
+            src,
+            _copy_fn,
+            inplace=False,
+            copy_semantics=True,
+        )
     if res is _FLAT_FALLBACK:
         res = foreach_binary_list(
             self,
@@ -1171,16 +1694,18 @@ def _foreach_copy(self, src, non_blocking=False):
 
 
 def _foreach_copy_(self, src, non_blocking=False):
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COPY_")
+    logger.debug("GEMS_ENFLAME _FOREACH_COPY_")
     del non_blocking
     _log("copy", "copy", True)
-    res = _flat_binary_list(
-        self,
-        src,
-        _copy_fn,
-        inplace=True,
-        copy_semantics=True,
-    )
+    res = run_copy(self, src, True)
+    if res is _COPY_FLAT_FALLBACK:
+        res = _flat_binary_list(
+            self,
+            src,
+            _copy_fn,
+            inplace=True,
+            copy_semantics=True,
+        )
     if res is _FLAT_FALLBACK:
         foreach_binary_list(
             self,
@@ -1199,7 +1724,7 @@ def _foreach_pow_ScalarAndTensor(self, exponent):
     The argument order is reversed relative to every other overload in this
     family, which is why it cannot share the generated wrappers.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_POW_SCALARANDTENSOR")
+    logger.debug("GEMS_ENFLAME _FOREACH_POW_SCALARANDTENSOR")
     _log("pow", "ScalarAndTensor", False)
     op = BINARY_OPS["pow"]
     for t in exponent:
@@ -1208,15 +1733,25 @@ def _foreach_pow_ScalarAndTensor(self, exponent):
         if t.dtype == torch.bool:
             raise NotImplementedError(_POW_BOOL_ERROR)
 
-    return foreach_binary_scalar(
+    res = _flat_binary_scalar(
         exponent,
         self,
         _rpow_fn,
+        inplace=False,
         allowed_dtypes=op.allowed,
-        dtype_error=op.dtype_error,
-        dtype_error_type=op.dtype_error_type,
         out_dtype_fn=_float_result,
     )
+    if res is _FLAT_FALLBACK:
+        res = foreach_binary_scalar(
+            exponent,
+            self,
+            _rpow_fn,
+            allowed_dtypes=op.allowed,
+            dtype_error=op.dtype_error,
+            dtype_error_type=op.dtype_error_type,
+            out_dtype_fn=_float_result,
+        )
+    return res
 
 
 def _clear_loop_vars() -> None:

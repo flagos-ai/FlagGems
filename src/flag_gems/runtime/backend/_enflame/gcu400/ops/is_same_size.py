@@ -33,7 +33,7 @@ def is_same_size(self: torch.Tensor, other: torch.Tensor) -> bool:
     """
     # The gcu400-specific module is imported by the short name `gcu400.ops.*`, and accuracy_utils.gems_log_prefix
     # derives the common prefix "GEMS" from it; log text must match that derivation or engineering cases fail.
-    logger.debug("GEMS_ENFLAME_GCU400 IS_SAME_SIZE")
+    logger.debug("GEMS_ENFLAME IS_SAME_SIZE")
 
     if not self.ndim:
         return not other.ndim

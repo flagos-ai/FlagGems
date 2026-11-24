@@ -23,7 +23,12 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-GRID_DIM_X = 24
+GRID_DIM_X = 48
+
+# Element cap of one backward tile: with 48 persistent programs a 32K-element
+# tile keeps every CTA's DSM footprint small enough for full memory
+# parallelism (a 64K cap measured slower at N=4096 once programs went 24->48).
+_BWD_TILE_ELEMS = 32768
 
 
 @libentry()
@@ -37,6 +42,7 @@ def softmax_backward_kernel_inner(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ONE_TILE: tl.constexpr,
+    EXACT: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -59,12 +65,16 @@ def softmax_backward_kernel_inner(
                 block_shape=(BLOCK_M, BLOCK_N),
                 order=(1, 0),
             )
-            out_tile = tl.load(
-                out_block, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
-            grad_tile = tl.load(
-                grad_block, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            if EXACT:
+                out_tile = tl.load(out_block).to(tl.float32)
+                grad_tile = tl.load(grad_block).to(tl.float32)
+            else:
+                out_tile = tl.load(
+                    out_block, boundary_check=(0, 1), padding_option="zero"
+                ).to(tl.float32)
+                grad_tile = tl.load(
+                    grad_block, boundary_check=(0, 1), padding_option="zero"
+                ).to(tl.float32)
             scale = tl.sum(out_tile * grad_tile, axis=1)
             in_grad_tile = out_tile * (grad_tile - scale[:, None])
             in_grad_block = tl.make_block_ptr(
@@ -75,11 +85,17 @@ def softmax_backward_kernel_inner(
                 block_shape=(BLOCK_M, BLOCK_N),
                 order=(1, 0),
             )
-            tl.store(
-                in_grad_block,
-                in_grad_tile.to(in_grad_ptr.dtype.element_ty),
-                boundary_check=(0, 1),
-            )
+            if EXACT:
+                tl.store(
+                    in_grad_block,
+                    in_grad_tile.to(in_grad_ptr.dtype.element_ty),
+                )
+            else:
+                tl.store(
+                    in_grad_block,
+                    in_grad_tile.to(in_grad_ptr.dtype.element_ty),
+                    boundary_check=(0, 1),
+                )
     else:
         for m_start in tl.range(pid * BLOCK_M, M, num_programs * BLOCK_M):
             scale = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
@@ -100,12 +116,16 @@ def softmax_backward_kernel_inner(
                     block_shape=(BLOCK_M, BLOCK_N),
                     order=(1, 0),
                 )
-                out_tile = tl.load(
-                    out_block, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
-                grad_tile = tl.load(
-                    grad_block, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                if EXACT:
+                    out_tile = tl.load(out_block).to(tl.float32)
+                    grad_tile = tl.load(grad_block).to(tl.float32)
+                else:
+                    out_tile = tl.load(
+                        out_block, boundary_check=(0, 1), padding_option="zero"
+                    ).to(tl.float32)
+                    grad_tile = tl.load(
+                        grad_block, boundary_check=(0, 1), padding_option="zero"
+                    ).to(tl.float32)
                 scale += out_tile * grad_tile
             scale = tl.sum(scale, axis=1)
 
@@ -134,18 +154,28 @@ def softmax_backward_kernel_inner(
                     block_shape=(BLOCK_M, BLOCK_N),
                     order=(1, 0),
                 )
-                out_tile = tl.load(
-                    out_block, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
-                grad_tile = tl.load(
-                    grad_block, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                if EXACT:
+                    out_tile = tl.load(out_block).to(tl.float32)
+                    grad_tile = tl.load(grad_block).to(tl.float32)
+                else:
+                    out_tile = tl.load(
+                        out_block, boundary_check=(0, 1), padding_option="zero"
+                    ).to(tl.float32)
+                    grad_tile = tl.load(
+                        grad_block, boundary_check=(0, 1), padding_option="zero"
+                    ).to(tl.float32)
                 in_grad_tile = out_tile * (grad_tile - scale[:, None])
-                tl.store(
-                    in_grad_block,
-                    in_grad_tile.to(in_grad_ptr.dtype.element_ty),
-                    boundary_check=(0, 1),
-                )
+                if EXACT:
+                    tl.store(
+                        in_grad_block,
+                        in_grad_tile.to(in_grad_ptr.dtype.element_ty),
+                    )
+                else:
+                    tl.store(
+                        in_grad_block,
+                        in_grad_tile.to(in_grad_ptr.dtype.element_ty),
+                        boundary_check=(0, 1),
+                    )
 
 
 @libentry()
@@ -156,6 +186,7 @@ def softmax_backward_scale_kernel(
     partial_ptr,
     N,
     BLOCK_N: tl.constexpr,
+    EXACT: tl.constexpr,
 ):
     """Stage 1 for M=1: compute partial scale sums across programs."""
     pid = tl.program_id(0)
@@ -164,11 +195,15 @@ def softmax_backward_scale_kernel(
     acc = tl.zeros([BLOCK_N], dtype=tl.float32)
     for n_start in tl.range(pid * BLOCK_N, N, num_programs * BLOCK_N):
         n_offsets = n_start + tl.arange(0, BLOCK_N)
-        mask = n_offsets < N
-        out_val = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        grad_val = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
-            tl.float32
-        )
+        if EXACT:
+            out_val = tl.load(out_ptr + n_offsets).to(tl.float32)
+            grad_val = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
+        else:
+            mask = n_offsets < N
+            out_val = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            grad_val = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
         acc += out_val * grad_val
     tl.store(partial_ptr + pid, tl.sum(acc, axis=0))
 
@@ -184,6 +219,7 @@ def softmax_backward_grad_kernel(
     num_partials,
     BLOCK_N: tl.constexpr,
     BLOCK_P: tl.constexpr,
+    EXACT: tl.constexpr,
 ):
     """Stage 2 for M=1: read partial sums, compute total scale, compute in_grad."""
     pid = tl.program_id(0)
@@ -196,17 +232,26 @@ def softmax_backward_grad_kernel(
 
     for n_start in tl.range(pid * BLOCK_N, N, num_programs * BLOCK_N):
         n_offsets = n_start + tl.arange(0, BLOCK_N)
-        mask = n_offsets < N
-        out_val = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        grad_val = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
-            tl.float32
-        )
-        in_grad_val = out_val * (grad_val - scale)
-        tl.store(
-            in_grad_ptr + n_offsets,
-            in_grad_val.to(in_grad_ptr.dtype.element_ty),
-            mask=mask,
-        )
+        if EXACT:
+            out_val = tl.load(out_ptr + n_offsets).to(tl.float32)
+            grad_val = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
+            in_grad_val = out_val * (grad_val - scale)
+            tl.store(
+                in_grad_ptr + n_offsets,
+                in_grad_val.to(in_grad_ptr.dtype.element_ty),
+            )
+        else:
+            mask = n_offsets < N
+            out_val = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            grad_val = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            in_grad_val = out_val * (grad_val - scale)
+            tl.store(
+                in_grad_ptr + n_offsets,
+                in_grad_val.to(in_grad_ptr.dtype.element_ty),
+                mask=mask,
+            )
 
 
 @libentry()
@@ -220,6 +265,7 @@ def softmax_backward_kernel_non_inner(
     K,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    EXACT: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
@@ -244,12 +290,16 @@ def softmax_backward_kernel_non_inner(
                 block_shape=(BLOCK_N, BLOCK_K),
                 order=(1, 0),
             )
-            out_tile = tl.load(
-                out_block, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
-            grad_tile = tl.load(
-                grad_block, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            if EXACT:
+                out_tile = tl.load(out_block).to(tl.float32)
+                grad_tile = tl.load(grad_block).to(tl.float32)
+            else:
+                out_tile = tl.load(
+                    out_block, boundary_check=(0, 1), padding_option="zero"
+                ).to(tl.float32)
+                grad_tile = tl.load(
+                    grad_block, boundary_check=(0, 1), padding_option="zero"
+                ).to(tl.float32)
             scale += out_tile * grad_tile
         scale = tl.sum(scale, axis=0)
 
@@ -278,18 +328,28 @@ def softmax_backward_kernel_non_inner(
                 block_shape=(BLOCK_N, BLOCK_K),
                 order=(1, 0),
             )
-            out_tile = tl.load(
-                out_block, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
-            grad_tile = tl.load(
-                grad_block, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            if EXACT:
+                out_tile = tl.load(out_block).to(tl.float32)
+                grad_tile = tl.load(grad_block).to(tl.float32)
+            else:
+                out_tile = tl.load(
+                    out_block, boundary_check=(0, 1), padding_option="zero"
+                ).to(tl.float32)
+                grad_tile = tl.load(
+                    grad_block, boundary_check=(0, 1), padding_option="zero"
+                ).to(tl.float32)
             in_grad_tile = out_tile * (grad_tile - scale[None, :])
-            tl.store(
-                in_grad_block,
-                in_grad_tile.to(in_grad_ptr.dtype.element_ty),
-                boundary_check=(0, 1),
-            )
+            if EXACT:
+                tl.store(
+                    in_grad_block,
+                    in_grad_tile.to(in_grad_ptr.dtype.element_ty),
+                )
+            else:
+                tl.store(
+                    in_grad_block,
+                    in_grad_tile.to(in_grad_ptr.dtype.element_ty),
+                    boundary_check=(0, 1),
+                )
 
 
 def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
@@ -315,7 +375,15 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
 
     with torch_device_fn.device(grad_input.device):
         if K > 1:
-            BLOCK_K = min(triton.next_power_of_2(K), 1024)
+            # Two-pass over the row: 2-byte dtypes run best at BLOCK_K=512,
+            # fp32 at 256 (measured 1.05x at (1024,1024,1024) fp32). A
+            # one-pass whole-row kernel was tried and rejected: on this stack
+            # its masked arm exceeds the DSM budget ([512,128] tiles require
+            # 1052672B > 917504B) and the EXACT arm measured slower than the
+            # two-pass form ((64,512,512): 121us vs 111us fp16, 243us vs
+            # 191us fp32).
+            block_k_cap = 512 if output.element_size() < 4 else 256
+            BLOCK_K = min(triton.next_power_of_2(K), block_k_cap)
             BLOCK_N = max(1, min(64, 32768 // BLOCK_K))
             num_k_programs = min(GRID_DIM_X, triton.cdiv(K, BLOCK_K))
             grid = (M, num_k_programs)
@@ -328,10 +396,13 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
                 K,
                 BLOCK_N=BLOCK_N,
                 BLOCK_K=BLOCK_K,
-                num_warps=4,
+                EXACT=N % BLOCK_N == 0 and K % BLOCK_K == 0,
+                num_warps=2,
             )
         elif M == 1 and N > 2048:
-            BLOCK_N = 4096
+            # 2B dtypes run best with a 4096-wide chunk, fp32 with 2048
+            # (measured: 1.23x / 1.65x over the old 24-program 4096 config).
+            BLOCK_N = max(1, 8192 // output.element_size())
             num_programs = min(GRID_DIM_X, triton.cdiv(N, BLOCK_N))
             partial = torch.empty(
                 num_programs, dtype=torch.float32, device=grad_input.device
@@ -342,6 +413,7 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
                 partial,
                 N,
                 BLOCK_N=BLOCK_N,
+                EXACT=N % BLOCK_N == 0,
                 num_warps=1,
             )
             BLOCK_P = triton.next_power_of_2(num_programs)
@@ -354,14 +426,28 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
                 num_programs,
                 BLOCK_N=BLOCK_N,
                 BLOCK_P=BLOCK_P,
+                EXACT=N % BLOCK_N == 0,
                 num_warps=1,
             )
         else:
-            BLOCK_N = min(triton.next_power_of_2(N), 2048)
-            BLOCK_M = max(1, min(128, 32768 // BLOCK_N))
+            BLOCK_N = min(triton.next_power_of_2(N), 4096)
             ONE_TILE = N <= BLOCK_N
+            BLOCK_M = max(1, min(128, _BWD_TILE_ELEMS // BLOCK_N))
+            # With few rows BLOCK_M squeezes them into one CTA: the grid collapses to 1 program
+            # and the in-CTA tile far exceeds the register budget, measuring 20x+ slower than torch.
+            # So BLOCK_M is capped by "fill at least half the CTAs".
+            rows_per_program = max(1, triton.cdiv(M, GRID_DIM_X // 2))
+            BLOCK_M = max(1, min(BLOCK_M, triton.next_power_of_2(rows_per_program)))
             num_programs = min(GRID_DIM_X, triton.cdiv(M, BLOCK_M))
             grid = (num_programs,)
+            if ONE_TILE:
+                EXACT = M % BLOCK_M == 0 and N == BLOCK_N
+            else:
+                EXACT = M % BLOCK_M == 0 and N % BLOCK_N == 0
+            # When a single tile covers the whole row (N<=4096) one CTA has to hold BLOCK_M*BLOCK_N
+            # elements, and with a single warp each lane gets thousands of them, so memory latency is
+            # not hidden well enough; use multiple warps once the tile is large enough.
+            num_warps = 8 if (ONE_TILE and BLOCK_M * BLOCK_N >= 16384) else 1
             softmax_backward_kernel_inner[grid](
                 output,
                 grad_output,
@@ -371,7 +457,8 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
                 BLOCK_M=BLOCK_M,
                 BLOCK_N=BLOCK_N,
                 ONE_TILE=ONE_TILE,
-                num_warps=1,
+                EXACT=EXACT,
+                num_warps=num_warps,
             )
     return grad_input
 
@@ -386,22 +473,26 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
 
 # ------------------------  forward  -------------------------------
-# GCU400 forward softmax is organized by "row": total programs fixed at GRID_DIM_FWD,
-# each program strides over several rows in-kernel (row count no longer decides CTA count).
-# Rows are split by BLOCK_N; when N is short, pack several rows into one 2D tile to avoid one launch per row.
+# GCU400 forward softmax is organized by "rows": the total number of programs is fixed at GRID_DIM_FWD,
+# and each program strides over multiple rows inside the kernel (the row count no longer determines the CTA count).
+# Rows are segmented by BLOCK_N; when N is short, pack multiple rows into one 2D tile to avoid per-row launch
+# amortization.
 GRID_DIM_FWD = 48
-# Byte budget of a single tile: the in-row contiguous segment length is derived from it (128 KiB measured best
-# bandwidth).
+# Byte budget for a single tile: the length of the contiguous segment within a row is derived from it (128 KiB gives the
+# highest measured bandwidth).
 FWD_TILE_BYTES = 128 << 10
-# Beyond this row length switch to 2D block tiling: full-row reduction width drops bandwidth to 1/3.
+# Beyond that row length, switch to 2D block tiling: when the full-row reduction width is too large, bandwidth drops to
+# 1/3.
 BLOCK_TILING_MIN_N = 8192
-# Columns per block in 2D block tiling: reduction width is fixed here to avoid wide reductions slowing bandwidth.
+# Number of columns within a block for 2D block tiling: the reduction width is fixed at this value to keep wide
+# reductions from slowing bandwidth.
 BLOCK_TILING_COLS = 4096
-# Element cap per tile in block tiling: fp32 intermediates take 128 KiB, larger exceeds DSM.
+# Element cap for a single tile in block tiling: fp32 intermediates take 128 KiB, above which DSM is insufficient.
 BLOCK_TILING_TILE_ELEMS = 32768
-# Element cap of the single-pass row kernel tile: beyond it register pressure outweighs the parallelism gain.
+# Tile element cap for the single-pass row kernel: beyond it register pressure outweighs the parallelism gain.
 ROW_TILE_ELEMS = 32768
-# log2(e) multiplier for exp via exp2 must be a tl.constexpr to be referenced inside the kernel.
+# exp via exp2 requires multiplying by log2(e), which must be instantiated as tl.constexpr to be referenced inside the
+# kernel.
 LOG2E = tl.constexpr(1.4426950408889634)
 
 
@@ -487,11 +578,11 @@ def softmax_forward_split_partial_kernel(
     N,
     BLOCK_N: tl.constexpr,
 ):
-    """M == 1 with an extremely long row: each program handles one segment, producing local max / sum."""
+    """Extra-long rows with M == 1: each program owns one segment and yields partial max/sum."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     n_offsets = tl.arange(0, BLOCK_N)
-    # Accumulate with scalar state: state size is independent of BLOCK_N, so tiles can grow to 128 KiB.
+    # Accumulate with scalar state: the state size is independent of BLOCK_N, so the tile can grow to 128 KiB.
     acc_max = float("-inf")
     acc_sum = 0.0
     for n_start in tl.range(pid * BLOCK_N, N, num_programs * BLOCK_N):

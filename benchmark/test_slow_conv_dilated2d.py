@@ -71,6 +71,10 @@ class SlowConvDilated2DBenchmark(base.Benchmark):
             yield inp, weight, [k_h, k_w], None, [s, s], [p, p], [d, d]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.slow_conv_dilated2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads",
@@ -123,6 +127,10 @@ class SlowConvDilated2DOutBenchmark(base.Benchmark):
         )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.slow_conv_dilated2d_out
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_slow_conv_dilated2d_out(dtype):

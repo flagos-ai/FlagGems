@@ -23,258 +23,268 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# Tuning knobs (adjusted one variable at a time during the optimization rounds,
+# mirroring the adaptive_avg_pool2d recipe on GCU400/L600):
+# - GRID_LIMIT keeps the grid-stride walk inside one <=48-CTA wave (larger
+#   grids measured monotonically worse: waves serialize, no CTA interleaving).
+# - BLOCK_CAP bounds each spatial block; plane batching (P) fills the tile.
+# - Forward tiles are dispatched by output-plane size: big planes amortize the
+#   per-tile-op overhead best with the full 16K-element tile at 1 warp, while
+#   tiny output planes (e.g. 4x4) keep the 4K tile (a 16K tile there drags in
+#   dead row lanes and measured ~1.8x worse). The backward candidate walk
+#   (<= cdiv(K-1,S)+1)^2 loads per input element) prefers the 16K tile at
+#   1 warp on every core shape.
+POOL_GRID_LIMIT = 48
+POOL_BLOCK_CAP = 64
+POOL_TILE_FLOOR = 1024
+POOL_FWD_BIG_PLANE_OUT = 128
+POOL_FWD_TILE_BIG = 16384
+POOL_FWD_WARPS_BIG = 1
+POOL_FWD_TILE_SMALL = 4096
+POOL_FWD_WARPS_SMALL = 2
+POOL_BWD_TILE_LIMIT = 16384
+POOL_BWD_WARPS = 1
+
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 64}, num_stages=2, num_warps=8),
-    ],
-    key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
 def avg_pool2d_forward_kernel(
-    input_ptr,
-    output_ptr,
-    in_stride_n,
-    in_stride_c,
-    in_stride_h,
-    in_stride_w,
-    in_c,
-    in_h,
-    in_w,
-    out_h,
-    out_w,
-    kernel_h: tl.constexpr,
-    kernel_w: tl.constexpr,
-    stride_h: tl.constexpr,
-    stride_w: tl.constexpr,
-    padding_h: tl.constexpr,
-    padding_w: tl.constexpr,
-    dilation_h: tl.constexpr,
-    dilation_w: tl.constexpr,
-    COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override: tl.constexpr,
-    total_nc,
-    NC_PER_PROGRAM: tl.constexpr,
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    X,
+    Y,
+    NC,
+    IH,
+    IW,
+    OH,
+    OW,
+    UNITS,
+    OH_BLOCKS,
+    OW_BLOCKS,
+    INV_DIV,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    UNIFORM_DIV: tl.constexpr,
+    P: tl.constexpr,
+    BLOCK_OH: tl.constexpr,
+    BLOCK_OW: tl.constexpr,
 ):
-    pid_nc_base = tl.program_id(0)
-    pid_hw = tl.program_id(1)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-    h_block_idx = pid_hw // num_w_blocks
-    w_block_idx = pid_hw % num_w_blocks
+    """Plane-batched sliding-window forward.
 
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    out_mask = (h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w)
+    One unit owns a (P * BLOCK_OH, BLOCK_OW) output tile whose row axis mixes P
+    consecutive (n, c) planes with BLOCK_OH output rows, so a single 2D tile op
+    replaces the per-plane serial loop of the previous implementation. The
+    KH * KW window loads are constexpr-unrolled computed-offset gathers (the
+    layout proven on GCU400 by the adaptive_avg_pool2d general arm), the
+    accumulation stays in fp32, and the uniform divisor branches multiply by a
+    host-precomputed reciprocal instead of dividing per element. A grid-stride
+    walk keeps the grid inside one <=48-CTA wave regardless of N*C.
+    """
+    pid = tl.program_id(0)
+    num_progs = tl.num_programs(0)
+    ps_in = IH * IW
+    ps_out = OH * OW
+    rows = tl.arange(0, P * BLOCK_OH)
+    p_local = rows // BLOCK_OH
+    oh_local = rows - p_local * BLOCK_OH
+    cols = tl.arange(0, BLOCK_OW)
+    for unit in tl.range(pid, UNITS, num_progs):
+        wb = unit % OW_BLOCKS
+        rest = unit // OW_BLOCKS
+        hb = rest % OH_BLOCKS
+        pb = rest // OH_BLOCKS
 
-    for nc_i in range(NC_PER_PROGRAM):
-        pid_nc = pid_nc_base * NC_PER_PROGRAM + nc_i
-        if pid_nc < total_nc:
-            n_idx = pid_nc // in_c
-            c_idx = pid_nc % in_c
+        plane = pb * P + p_local
+        oh = hb * BLOCK_OH + oh_local
+        ow = wb * BLOCK_OW + cols
 
-            sum_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
+        row_ok = plane < NC
+        oh_ok = oh < OH
+        col_ok = ow < OW
+        out_ok = row_ok & oh_ok
 
-            input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-
-            for kh in range(0, kernel_h):
-                for kw in range(0, kernel_w):
-                    h_in = (
-                        h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-                    )
-                    w_in = (
-                        w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-                    )
-                    in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-
-                    input_offset = h_in * in_stride_h + w_in * in_stride_w
-                    current_val = tl.load(
-                        input_base_ptr + input_offset, mask=in_mask, other=0.0
-                    )
-
-                    # tl.load already zeros out-of-range elements with other=0.0, so masking by in_mask again is
-                    # unnecessary.
-                    sum_acc += current_val
-
-            if divisor_override != 0:
-                divisor = tl.full(
-                    (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
+        acc = tl.zeros((P * BLOCK_OH, BLOCK_OW), dtype=tl.float32)
+        for kh in range(KH):
+            h_in = oh * SH - PH + kh
+            h_ok = (h_in >= 0) & (h_in < IH) & row_ok & oh_ok
+            # Scalar tensor base plus an integer offset tile keeps the load on
+            # the vectorized path; a pointer-vector base degrades to
+            # per-lane scalar loads on GCU400.
+            row_off = plane * ps_in + h_in * IW
+            for kw in range(KW):
+                w_in = ow * SW - PW + kw
+                w_ok = (w_in >= 0) & (w_in < IW) & col_ok
+                vals = tl.load(
+                    X + row_off[:, None] + w_in[None, :],
+                    mask=h_ok[:, None] & w_ok[None, :],
+                    other=0.0,
                 )
-            elif COUNT_INCLUDE_PAD:
-                divisor = tl.full(
-                    (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
-                )
-            else:
-                # The forward valid-element count matches backward; use an analytic expression instead of accumulating a
-                # per-window count.
-                first_h_in = h_out_offsets[:, None] * stride_h - padding_h
-                first_w_in = w_out_offsets[None, :] * stride_w - padding_w
-                last_h_in = first_h_in + (kernel_h - 1) * dilation_h + 1
-                last_w_in = first_w_in + (kernel_w - 1) * dilation_w + 1
-                valid_h = tl.maximum(
-                    0, tl.minimum(in_h, last_h_in) - tl.maximum(0, first_h_in)
-                )
-                valid_w = tl.maximum(
-                    0, tl.minimum(in_w, last_w_in) - tl.maximum(0, first_w_in)
-                )
-                divisor = (valid_h * valid_w).to(tl.float32)
+                acc += vals.to(tl.float32)
 
-            output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
+        if UNIFORM_DIV:
+            out_vals = acc * INV_DIV
+        else:
+            # count_include_pad=False: analytic valid-element count per window
+            # (dilation is always 1), identical to the ATen divisor.
+            h0 = oh * SH - PH
+            w0 = ow * SW - PW
+            vh = tl.maximum(0, tl.minimum(IH, h0 + KH) - tl.maximum(0, h0))
+            vw = tl.maximum(0, tl.minimum(IW, w0 + KW) - tl.maximum(0, w0))
+            divisor = (vh[:, None] * vw[None, :]).to(tl.float32)
+            out_vals = tl.where(divisor != 0, acc / divisor, 0.0)
 
-            out_base_ptr = output_ptr + pid_nc * out_h * out_w
-            output_block_ptr = (
-                out_base_ptr + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
-            )
-
-            tl.store(
-                output_block_ptr,
-                output_vals.to(output_ptr.type.element_ty),
-                mask=out_mask,
-            )
+        tl.store(
+            Y + (plane * ps_out + oh * OW)[:, None] + ow[None, :],
+            out_vals.to(Y.dtype.element_ty),
+            mask=out_ok[:, None] & col_ok[None, :],
+        )
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 64}, num_stages=2, num_warps=8),
-    ],
-    key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
 def avg_pool2d_backward_kernel(
-    grad_output_ptr,
-    grad_input_ptr,
-    in_c,
-    in_h,
-    in_w,
-    out_h,
-    out_w,
-    in_stride_n,
-    in_stride_c,
-    in_stride_h,
-    in_stride_w,
-    out_stride_n,
-    out_stride_c,
-    out_stride_h,
-    out_stride_w,
-    kernel_h: tl.constexpr,
-    kernel_w: tl.constexpr,
-    stride_h: tl.constexpr,
-    stride_w: tl.constexpr,
-    padding_h: tl.constexpr,
-    padding_w: tl.constexpr,
-    dilation_h: tl.constexpr,
-    dilation_w: tl.constexpr,
-    COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override: tl.constexpr,
-    total_nc,
-    NC_PER_PROGRAM: tl.constexpr,
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    GO,
+    GI,
+    NC,
+    IH,
+    IW,
+    OH,
+    OW,
+    UNITS,
+    IH_BLOCKS,
+    IW_BLOCKS,
+    INV_DIV,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    UNIFORM_DIV: tl.constexpr,
+    P: tl.constexpr,
+    BLOCK_IH: tl.constexpr,
+    BLOCK_IW: tl.constexpr,
+    NUM_H_STEPS: tl.constexpr,
+    NUM_W_STEPS: tl.constexpr,
 ):
-    pid_nc_base = tl.program_id(0)
-    pid_hw = tl.program_id(1)
+    """Scatter-as-gather backward over plane-batched input tiles.
 
-    num_w_blocks = tl.cdiv(in_w, BLOCK_W)
+    Each grad_input element receives from at most
+    (ceil((KH-1)/SH)+1) * (ceil((KW-1)/SW)+1) output elements, so instead of
+    sweeping all KH*KW window offsets the kernel visits only those candidates:
+    oh = (ih + PH) // SH - jh for jh in [0, NUM_H_STEPS). The unit grid covers
+    every input element exactly once (each lane is stored, zeros when no
+    candidate hits), which makes an empty output buffer safe without atomics
+    or a zero-init pass. Uniform divisor branches multiply the fp32
+    accumulator by a host-precomputed reciprocal once per tile.
+    """
+    pid = tl.program_id(0)
+    num_progs = tl.num_programs(0)
+    ps_in = IH * IW
+    ps_out = OH * OW
+    rows = tl.arange(0, P * BLOCK_IH)
+    p_local = rows // BLOCK_IH
+    ih_local = rows - p_local * BLOCK_IH
+    cols = tl.arange(0, BLOCK_IW)
+    for unit in tl.range(pid, UNITS, num_progs):
+        wb = unit % IW_BLOCKS
+        rest = unit // IW_BLOCKS
+        hb = rest % IH_BLOCKS
+        pb = rest // IH_BLOCKS
 
-    h_block_idx = pid_hw // num_w_blocks
-    w_block_idx = pid_hw % num_w_blocks
+        plane = pb * P + p_local
+        ih = hb * BLOCK_IH + ih_local
+        iw = wb * BLOCK_IW + cols
 
-    h_in_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_in_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    in_write_mask = (h_in_offsets[:, None] < in_h) & (w_in_offsets[None, :] < in_w)
+        row_ok = (plane < NC) & (ih < IH)
+        col_ok = iw < IW
 
-    for nc_i in range(NC_PER_PROGRAM):
-        pid_nc = pid_nc_base * NC_PER_PROGRAM + nc_i
-        if pid_nc < total_nc:
-            n_idx = pid_nc // in_c
-            c_idx = pid_nc % in_c
+        base_h = (ih + PH) // SH
+        rem_h = (ih + PH) - base_h * SH
+        base_w = (iw + PW) // SW
+        rem_w = (iw + PW) - base_w * SW
 
-            grad_input_block_ptr = (
-                grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-            )
-            grad_output_base_ptr = (
-                grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
-            )
-
-            grad_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-
-            for kh_loop in range(kernel_h):
-                for kw_loop in range(kernel_w):
-                    h_out_num = h_in_offsets[:, None] + padding_h - kh_loop * dilation_h
-                    w_out_num = w_in_offsets[None, :] + padding_w - kw_loop * dilation_w
-
-                    h_valid_map = (h_out_num >= 0) & ((h_out_num % stride_h) == 0)
-                    w_valid_map = (w_out_num >= 0) & ((w_out_num % stride_w) == 0)
-
-                    h_out = h_out_num // stride_h
-                    w_out = w_out_num // stride_w
-
-                    h_out_mask = h_valid_map & (h_out < out_h)
-                    w_out_mask = w_valid_map & (w_out < out_w)
-                    out_mask = h_out_mask & w_out_mask
-
-                    if divisor_override != 0:
-                        divisor = tl.full(
-                            (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
-                        )
-                    elif COUNT_INCLUDE_PAD:
-                        divisor = tl.full(
-                            (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
-                        )
-                    else:
-                        # Backward recomputes divisor for every (kh,kw), forming O(k^4) comparisons.
-                        # With dilation always 1, the valid window interval is independent along H/W:
-                        # [max(0,start), min(in_size,start+(k-1)*dilation+1)),
-                        # so the product of the two valid lengths is the original count and can be computed
-                        # analytically.
-                        h_start = h_out * stride_h - padding_h
-                        w_start = w_out * stride_w - padding_w
-                        h_window_end = h_start + (kernel_h - 1) * dilation_h + 1
-                        w_window_end = w_start + (kernel_w - 1) * dilation_w + 1
-                        valid_h_count = tl.maximum(
-                            0, tl.minimum(in_h, h_window_end) - tl.maximum(0, h_start)
-                        )
-                        valid_w_count = tl.maximum(
-                            0, tl.minimum(in_w, w_window_end) - tl.maximum(0, w_start)
-                        )
-                        divisor = (valid_h_count * valid_w_count).to(tl.float32)
-
+        acc = tl.zeros((P * BLOCK_IH, BLOCK_IW), dtype=tl.float32)
+        for jh in range(NUM_H_STEPS):
+            oh = base_h - jh
+            kh = rem_h + jh * SH
+            h_ok = (oh >= 0) & (oh < OH) & (kh < KH) & row_ok
+            for jw in range(NUM_W_STEPS):
+                ow = base_w - jw
+                kw = rem_w + jw * SW
+                w_ok = (ow >= 0) & (ow < OW) & (kw < KW) & col_ok
+                go_ptr = GO + (plane * ps_out + oh * OW)[:, None] + ow[None, :]
+                grad_val = tl.load(
+                    go_ptr, mask=h_ok[:, None] & w_ok[None, :], other=0.0
+                ).to(tl.float32)
+                if UNIFORM_DIV:
+                    acc += grad_val
+                else:
+                    # count_include_pad=False: per-window analytic divisor,
+                    # matching the ATen backward semantics.
+                    h0 = oh * SH - PH
+                    w0 = ow * SW - PW
+                    vh = tl.maximum(0, tl.minimum(IH, h0 + KH) - tl.maximum(0, h0))
+                    vw = tl.maximum(0, tl.minimum(IW, w0 + KW) - tl.maximum(0, w0))
+                    divisor = (vh[:, None] * vw[None, :]).to(tl.float32)
                     divisor = tl.where(divisor == 0, 1.0, divisor)
+                    acc += grad_val / divisor
 
-                    grad_out_ptr = (
-                        grad_output_base_ptr
-                        + h_out * out_stride_h
-                        + w_out * out_stride_w
-                    )
-                    grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
-                    grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
+        if UNIFORM_DIV:
+            acc = acc * INV_DIV
+        gi_ptr = GI + (plane * ps_in + ih * IW)[:, None] + iw[None, :]
+        tl.store(
+            gi_ptr,
+            acc.to(GI.dtype.element_ty),
+            mask=row_ok[:, None] & col_ok[None, :],
+        )
 
-            grad_input_store_ptr = (
-                grad_input_block_ptr
-                + h_in_offsets[:, None] * in_stride_h
-                + w_in_offsets[None, :] * in_stride_w
-            )
-            tl.store(
-                grad_input_store_ptr,
-                grad_acc.to(grad_input_ptr.type.element_ty),
-                mask=in_write_mask,
-            )
+
+def _pool_tiling(dim_h, dim_w, total_planes, tile_limit):
+    """Pick (block_h, block_w, planes) for the plane-batched tiles.
+
+    Blocks are capped so the tile stays inside the DSM budget with plane
+    batching filling the rest; the shrink loop trades tile size for more units
+    until one <=48-CTA wave is filled (bandwidth spreads across the SIPs for
+    small problems), stopping at the tile floor.
+    """
+    block_h = min(triton.next_power_of_2(dim_h), POOL_BLOCK_CAP)
+    block_w = min(triton.next_power_of_2(dim_w), POOL_BLOCK_CAP)
+    planes = max(1, tile_limit // (block_h * block_w))
+    h_blocks = triton.cdiv(dim_h, block_h)
+    w_blocks = triton.cdiv(dim_w, block_w)
+    units = triton.cdiv(total_planes, planes) * h_blocks * w_blocks
+    while (
+        units < POOL_GRID_LIMIT
+        and block_h * block_w * planes > POOL_TILE_FLOOR
+        and (planes > 1 or block_h > 1 or block_w > 1)
+    ):
+        if planes > 1:
+            planes //= 2
+        elif block_h >= block_w:
+            block_h //= 2
+        else:
+            block_w //= 2
+        h_blocks = triton.cdiv(dim_h, block_h)
+        w_blocks = triton.cdiv(dim_w, block_w)
+        units = triton.cdiv(total_planes, planes) * h_blocks * w_blocks
+    return block_h, block_w, planes, h_blocks, w_blocks, units
+
+
+def _pool_uniform_divisor(kernel_h, kernel_w, count_include_pad, divisor_override):
+    """Return (uniform_flag, reciprocal) for the divisor branches.
+
+    count_include_pad=True and divisor_override divide every window by the same
+    value, so the kernel multiplies the fp32 accumulator by a host-computed
+    reciprocal; count_include_pad=False needs per-window analytic counts.
+    """
+    if divisor_override is not None:
+        return True, 1.0 / divisor_override
+    if count_include_pad:
+        return True, 1.0 / (kernel_h * kernel_w)
+    return False, 1.0
 
 
 def avg_pool2d(
@@ -296,16 +306,11 @@ def avg_pool2d(
     kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
         kernel_size, stride, padding
     )
-    dilation_h, dilation_w = 1, 1
 
     in_n, in_c, in_h, in_w = input.shape
 
-    out_h = pool2d_output_size(
-        in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode
-    )
-    out_w = pool2d_output_size(
-        in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode
-    )
+    out_h = pool2d_output_size(in_h, kernel_h, stride_h, padding_h, 1, ceil_mode)
+    out_w = pool2d_output_size(in_w, kernel_w, stride_w, padding_w, 1, ceil_mode)
 
     output = torch.empty(
         (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
@@ -314,41 +319,43 @@ def avg_pool2d(
     if output.numel() == 0:
         return output
 
-    # Fixed Grid: compress the first grid dimension to the GCU400 SIP count; the remaining (n,c) plane is
-    # handled by the NC_PER_PROGRAM loop within the same program, avoiding tens of thousands of CTAs for large batches.
-    total_nc = in_n * in_c
-    grid_nc = min(total_nc, 48)
-    NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
-
-    grid = lambda meta: (
-        grid_nc,
-        triton.cdiv(out_h, meta["BLOCK_H"]) * triton.cdiv(out_w, meta["BLOCK_W"]),
+    if out_h * out_w >= POOL_FWD_BIG_PLANE_OUT:
+        fwd_tile_limit = POOL_FWD_TILE_BIG
+        fwd_warps = POOL_FWD_WARPS_BIG
+    else:
+        fwd_tile_limit = POOL_FWD_TILE_SMALL
+        fwd_warps = POOL_FWD_WARPS_SMALL
+    block_oh, block_ow, planes, oh_blocks, ow_blocks, units = _pool_tiling(
+        out_h, out_w, in_n * in_c, fwd_tile_limit
+    )
+    grid = (min(units, POOL_GRID_LIMIT),)
+    uniform_div, inv_div = _pool_uniform_divisor(
+        kernel_h, kernel_w, count_include_pad, divisor_override
     )
 
     avg_pool2d_forward_kernel[grid](
         input,
         output,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
-        in_c,
+        in_n * in_c,
         in_h,
         in_w,
         out_h,
         out_w,
-        kernel_h,
-        kernel_w,
-        stride_h,
-        stride_w,
-        padding_h,
-        padding_w,
-        dilation_h,
-        dilation_w,
-        COUNT_INCLUDE_PAD=count_include_pad,
-        divisor_override=divisor_override if divisor_override is not None else 0.0,
-        total_nc=total_nc,
-        NC_PER_PROGRAM=NC_PER_PROGRAM,
+        units,
+        oh_blocks,
+        ow_blocks,
+        inv_div,
+        KH=kernel_h,
+        KW=kernel_w,
+        SH=stride_h,
+        SW=stride_w,
+        PH=padding_h,
+        PW=padding_w,
+        UNIFORM_DIV=uniform_div,
+        P=planes,
+        BLOCK_OH=block_oh,
+        BLOCK_OW=block_ow,
+        num_warps=fwd_warps,
     )
 
     return output
@@ -374,55 +381,63 @@ def avg_pool2d_backward(
     kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
         kernel_size, stride, padding
     )
-    dilation_h, dilation_w = 1, 1
 
     in_n, in_c, in_h, in_w = input.shape
     out_h, out_w = grad_output.shape[2], grad_output.shape[3]
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
-
     if grad_output.numel() == 0:
-        return grad_input.to(grad_output.dtype)
+        # The kernel-side zero fill relies on masked loads from grad_output,
+        # which never run against an empty tensor: materialize zeros here.
+        return torch.zeros(
+            (in_n, in_c, in_h, in_w), device=grad_output.device, dtype=grad_output.dtype
+        )
 
-    # Fixed Grid: compress the first grid dimension to the GCU400 SIP count; the remaining (n,c) plane is
-    # handled by the NC_PER_PROGRAM loop within the same program, avoiding tens of thousands of CTAs for large batches.
-    total_nc = in_n * in_c
-    grid_nc = min(total_nc, 48)
-    NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
-
-    grid = lambda meta: (
-        grid_nc,
-        triton.cdiv(in_h, meta["BLOCK_H"]) * triton.cdiv(in_w, meta["BLOCK_W"]),
+    # Every input element is stored by exactly one unit (zeros where no window
+    # contributes), so an uninitialized buffer is safe and the zero-init pass
+    # plus the fp32->dtype cast copy of the old implementation disappear.
+    grad_input = torch.empty(
+        (in_n, in_c, in_h, in_w), device=grad_output.device, dtype=grad_output.dtype
     )
+    if grad_input.numel() == 0:
+        return grad_input
+
+    block_ih, block_iw, planes, ih_blocks, iw_blocks, units = _pool_tiling(
+        in_h, in_w, in_n * in_c, POOL_BWD_TILE_LIMIT
+    )
+    grid = (min(units, POOL_GRID_LIMIT),)
+    uniform_div, inv_div = _pool_uniform_divisor(
+        kernel_h, kernel_w, count_include_pad, divisor_override
+    )
+
+    # Each input element receives from at most cdiv(K-1, S)+1 outputs per axis.
+    num_h_steps = (kernel_h + stride_h - 2) // stride_h + 1
+    num_w_steps = (kernel_w + stride_w - 2) // stride_w + 1
 
     avg_pool2d_backward_kernel[grid](
         grad_output,
         grad_input,
-        in_c,
+        in_n * in_c,
         in_h,
         in_w,
         out_h,
         out_w,
-        grad_input.stride(0),
-        grad_input.stride(1),
-        grad_input.stride(2),
-        grad_input.stride(3),
-        grad_output.stride(0),
-        grad_output.stride(1),
-        grad_output.stride(2),
-        grad_output.stride(3),
-        kernel_h,
-        kernel_w,
-        stride_h,
-        stride_w,
-        padding_h,
-        padding_w,
-        dilation_h,
-        dilation_w,
-        COUNT_INCLUDE_PAD=count_include_pad,
-        divisor_override=divisor_override if divisor_override is not None else 0.0,
-        total_nc=total_nc,
-        NC_PER_PROGRAM=NC_PER_PROGRAM,
+        units,
+        ih_blocks,
+        iw_blocks,
+        inv_div,
+        KH=kernel_h,
+        KW=kernel_w,
+        SH=stride_h,
+        SW=stride_w,
+        PH=padding_h,
+        PW=padding_w,
+        UNIFORM_DIV=uniform_div,
+        P=planes,
+        BLOCK_IH=block_ih,
+        BLOCK_IW=block_iw,
+        NUM_H_STEPS=num_h_steps,
+        NUM_W_STEPS=num_w_steps,
+        num_warps=POOL_BWD_WARPS,
     )
 
-    return grad_input.to(grad_output.dtype)
+    return grad_input

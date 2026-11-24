@@ -248,9 +248,9 @@ def _as_copy_tensor(tensor, real_dtype):
     return tensor.view(real_dtype)
 
 
-def run(tensors, out=None, **kwargs):
+def _dstack_forward(tensors, out=None, **kwargs):
     """``aten::dstack(Tensor[] tensors) -> Tensor``, plus the ``out=`` overload."""
-    logger.debug("GEMS_ENFLAME_GCU400 RUN")
+    logger.debug("GEMS_ENFLAME RUN")
     del kwargs
     items = [tensors] if isinstance(tensors, torch.Tensor) else list(tensors)
     if len(items) == 0:
@@ -261,6 +261,22 @@ def run(tensors, out=None, **kwargs):
                 "dstack(): argument 'tensors' must be a list of Tensors, "
                 f"but found {type(item).__name__}"
             )
+
+    # gcu400 has no fp64 datapath (torch_gcu stores complex128 as complex64),
+    # and a float64 copy tile cannot be lowered at all.  Run the copy in
+    # complex64 and re-label the result, which is lossless for this device.
+    if any(item.dtype == torch.complex128 for item in items):
+        narrowed = [
+            item.to(torch.complex64) if item.dtype == torch.complex128 else item
+            for item in items
+        ]
+        result = _dstack_forward(narrowed, out=None)
+        if result.dtype == torch.complex64:
+            result = result.to(torch.complex128)
+        if out is not None:
+            out.copy_(result)
+            return out
+        return result
 
     # Both kernels address their input with a flat linear index, which only
     # matches logical element order when the tensor is contiguous.  Strided,
@@ -291,6 +307,10 @@ def run(tensors, out=None, **kwargs):
         if out is None
         else out
     )
+    # Cast every input to the promoted dtype so the copy-element width used by
+    # the kernels matches the one implied by the result (a real input promoted
+    # to complex must be read as two copy units, not one).
+    items = [item.to(dtype=dtype).contiguous() for item in items]
 
     real_dtype = _real_dtype(result.dtype)
     unit = 1 if real_dtype is None else 2
@@ -397,6 +417,49 @@ def run(tensors, out=None, **kwargs):
                     )
         offset += depth_i
     return result
+
+
+class _Dstack(torch.autograd.Function):
+    """Autograd bridge for ``dstack``: backward is a slice of the output grad.
+
+    ``dstack`` promotes each input with ``atleast_3d`` and concatenates along
+    dim 2, so the adjoint of input ``i`` is the matching depth slice of
+    ``grad_out`` reshaped back to the input's original shape.
+    """
+
+    @staticmethod
+    def forward(ctx, *items):
+        ctx.shapes = [tuple(t.shape) for t in items]
+        ctx.dtypes = [t.dtype for t in items]
+        ctx.depths = [_atleast_3d(t.shape)[2] for t in items]
+        return _dstack_forward(list(items))
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        grads = []
+        offset = 0
+        for shape, dtype, depth, needs in zip(
+            ctx.shapes, ctx.dtypes, ctx.depths, ctx.needs_input_grad
+        ):
+            if needs:
+                grads.append(grad_out.narrow(2, offset, depth).reshape(shape).to(dtype))
+            else:
+                grads.append(None)
+            offset += depth
+        return tuple(grads)
+
+
+def run(tensors, out=None, **kwargs):
+    """``aten::dstack(Tensor[] tensors) -> Tensor``, plus the ``out=`` overload."""
+    items = [tensors] if isinstance(tensors, torch.Tensor) else list(tensors)
+    if (
+        out is None
+        and torch.is_grad_enabled()
+        and all(isinstance(t, torch.Tensor) for t in items)
+        and any(t.requires_grad for t in items)
+    ):
+        return _Dstack.apply(*items)
+    return _dstack_forward(tensors, out=out, **kwargs)
 
 
 dstack = run

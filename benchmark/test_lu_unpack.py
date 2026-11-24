@@ -5,8 +5,19 @@ import flag_gems
 
 from . import base
 
+LU_UNPACK_DTYPES = [torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    LU_UNPACK_DTYPES.append(torch.float64)
+
 
 @pytest.mark.lu_unpack
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::lu_unpack; the native "
+        "baseline falls back to a CPU path, which measures nothing useful"
+    ),
+)
 def test_lu_unpack():
     def lu_unpack_input_fn(shape, dtype, device):
         # shape here is a tuple from the auto-generated shapes
@@ -25,7 +36,7 @@ def test_lu_unpack():
         op_name="lu_unpack",
         torch_op=torch.ops.aten.lu_unpack,
         # torch.linalg.lu_factor only supports float32/float64; half/bfloat16 not supported
-        dtypes=[torch.float32, torch.float64],
+        dtypes=LU_UNPACK_DTYPES,
     )
     bench.run()
 
@@ -68,7 +79,7 @@ def test_lu_unpack_backward():
         op_name="lu_unpack",
         torch_op=torch.ops.aten.lu_unpack,
         # torch.linalg.lu_factor only supports float32/float64
-        dtypes=[torch.float32, torch.float64],
+        dtypes=LU_UNPACK_DTYPES,
         is_backward=True,
     )
     bench.set_gems(flag_gems.lu_unpack)

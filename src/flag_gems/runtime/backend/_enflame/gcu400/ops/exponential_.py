@@ -57,6 +57,17 @@ def fused_exponential_kernel_f32(
     c0 += i
     z = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, z, z)
+    # When a uint32 sample happens to be exactly 0, u = 0 and log(0) = -inf, producing inf in the output (probability
+    # 2^-32 per sample;
+    # at 1G elements this is almost certain to happen, turning the tests' mean≈1 assertion into inf).
+    # Lift 0 to 1 in the integer domain (the smallest nonzero sample of u is 2^-31, giving y = 21.49);
+    # this only adds one integer select and does not affect the later floating-point vectorization (clamping in the
+    # float domain pushes log off the hardware vector path, measured 50% slower).
+    one = z + 1  # uint32 constant 1 with the same dtype as the philox output
+    r0 = tl.maximum(r0, one)
+    r1 = tl.maximum(r1, one)
+    r2 = tl.maximum(r2, one)
+    r3 = tl.maximum(r3, one)
 
     y0 = transform_exponential_f32(uint_to_uniform_float(r0), inv_lambd, eps_minus)
     y1 = transform_exponential_f32(uint_to_uniform_float(r1), inv_lambd, eps_minus)
@@ -96,18 +107,23 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
         BLOCK = 8192
     else:
         BLOCK = min(triton.next_power_of_2(N), 1024)
-    increment = triton.cdiv(N, UNROLL)
+    grid_size = triton.cdiv(N, BLOCK * UNROLL)
+    # Every program draws BLOCK philox counters, including the lanes its masked
+    # tail stores drop, so a call consumes exactly grid_size * BLOCK counters.
+    # `N // UNROLL` under-reserves whenever BLOCK > 1 (e.g. small N), and the
+    # next call then replays part of this call's random stream (Issue #7162).
+    increment = grid_size * BLOCK
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
 
-    use_f32_buffer = dtype in (torch.float16, torch.bfloat16) and N > 65536
-    if use_f32_buffer:
-        out_buf = torch.empty(N, dtype=torch.float32, device=device)
-    else:
-        out_buf = out.view(-1) if inplace else out
+    # Write directly to the target dtype: the kernel computes in f32 and store implicitly converts to fp16/bf16,
+    # numerically equivalent to the old "write f32 intermediate buffer -> .to(dtype) -> copy_" path (both round the f32
+    # result once to the
+    # target precision), but saves a full f32 allocation, one read+write of an f32 buffer, and two extra kernel
+    # launches.
+    out_buf = out.view(-1) if inplace else out
 
-    grid_size = triton.cdiv(N, BLOCK * UNROLL)
     with torch_device_fn.device(device):
         fused_exponential_kernel_f32[(grid_size,)](
             out_buf,
@@ -119,9 +135,6 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
             BLOCK,
             num_warps=1,
         )
-
-    if use_f32_buffer:
-        out.view(-1).copy_(out_buf.to(dtype))
 
     if not inplace:
         x.copy_(out)

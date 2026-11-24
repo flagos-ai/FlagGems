@@ -31,9 +31,12 @@ int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
 
+# Mark used by `pytest.param(..., marks=_SKIP_FP64)` in the fp64-skipping
+# parametrizations introduced by the "skip fp64" commits. The symbol was
+# referenced by 69 tests but never defined; keep it next to the capability
+# flags so both the mark and ALL_FLOAT_DTYPES share one source of truth.
 _SKIP_FP64 = pytest.mark.skipif(
-    not fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+    not fp64_is_supported, reason="FP64 is not supported on this backend"
 )
 
 

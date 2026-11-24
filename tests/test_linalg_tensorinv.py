@@ -5,6 +5,19 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _tensorinv_out_reference(inp, ind):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
+    return torch.linalg.tensorinv(inp, ind=ind)
+
+
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
@@ -305,18 +318,6 @@ def test_linalg_tensorinv_singular(A_cpu):
         "tensorinv on a singular (exact-zero-pivot) matrix must return "
         "inf/nan, not a finite wrong inverse"
     )
-
-
-def _tensorinv_out_reference(inp, ind):
-    if (
-        flag_gems.vendor_name == "mthreads"
-        and inp.device.type == "cpu"
-        and not torch._C.has_lapack
-    ):
-        import numpy as np
-
-        return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
-    return torch.linalg.tensorinv(inp, ind=ind)
 
 
 @pytest.mark.linalg_tensorinv_out

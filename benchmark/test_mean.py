@@ -15,9 +15,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.mean
 def test_mean():
     bench = base.UnaryReductionBenchmark(
@@ -31,6 +37,10 @@ def _mean_dim_input_fn(shape, dtype, device):
     yield inp, [1]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.mean_dim
 def test_mean_dim():
     bench = base.GenericBenchmarkExcluse1D(

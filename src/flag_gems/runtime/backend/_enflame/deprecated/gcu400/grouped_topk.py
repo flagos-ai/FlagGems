@@ -242,6 +242,187 @@ def group_idx_and_topk_triton(
     )
 
 
+# Hard limit on GCU grid.x; when the token count exceeds it, fold into grid.y paging
+GCU_GRID_X_MAX = 65535
+
+
+@triton.jit
+def grouped_topk_fused_kernel(
+    scores_ptr,
+    bias_ptr,
+    topk_values_ptr,
+    topk_indices_ptr,
+    num_tokens,
+    n_group,
+    topk_group,
+    topk,
+    num_experts,
+    num_experts_per_group,
+    routed_scaling_factor,
+    stride_scores_token,
+    stride_out_token,
+    grid_x,
+    N_GROUP: tl.constexpr,
+    TOPK_GROUP: tl.constexpr,
+    TOPK: tl.constexpr,
+    BLOCK_GROUP: tl.constexpr,
+    BLOCK_PER_GROUP: tl.constexpr,
+    BLOCK_EXPERT: tl.constexpr,
+    INPUT_DTYPE: tl.constexpr,
+    SCORING_FUNC: tl.constexpr,
+    renormalize: tl.constexpr,
+):
+    """单 program 完成一个 token 的「组打分 → 选组 → 选专家 → 归一化」。
+
+    相比 group_scores 与 group_idx 两个 kernel 的版本：省掉一次 launch、group_scores
+    的全局读写，以及 scoring_func=1 时的全量 scores 中间张量；grid 也从
+    num_tokens * n_group 收缩到 num_tokens。
+    """
+    pid = tl.program_id(1) * grid_x + tl.program_id(0)
+    if pid >= num_tokens:
+        return
+
+    neg_inf = -float("inf")
+
+    group_offsets = tl.arange(0, BLOCK_GROUP)
+    per_group_offsets = tl.arange(0, BLOCK_PER_GROUP)
+    # A 2D tile over (group, expert-in-group) covers all experts of this token
+    expert_tile = (
+        group_offsets[:, None] * num_experts_per_group + per_group_offsets[None, :]
+    )
+    valid_group = group_offsets < n_group
+    tile_mask = valid_group[:, None] & (
+        per_group_offsets[None, :] < num_experts_per_group
+    )
+
+    scores_raw = tl.load(
+        scores_ptr + pid * stride_scores_token + expert_tile,
+        mask=tile_mask,
+        other=neg_inf,
+    )
+    if SCORING_FUNC == 1:
+        # Match torch.sigmoid(scores.float()).to(scores.dtype)
+        scores_raw = tl.sigmoid(scores_raw.to(tl.float32)).to(INPUT_DTYPE)
+
+    bias_raw = tl.load(bias_ptr + expert_tile, mask=tile_mask, other=0.0)
+    # Add in f32 first and then round back to the input dtype: semantically equivalent to low-precision addition (IEEE
+    # round-to-nearest),
+    # while also avoiding the precision deviation seen with 2D bf16 tile addition on the GCU backend
+    pair_dtype = (scores_raw.to(tl.float32) + bias_raw.to(tl.float32)).to(INPUT_DTYPE)
+    selection_tile = tl.where(tile_mask, pair_dtype.to(tl.float32), neg_inf)
+
+    # Per-group group score = sum of the top-2 of (scores + bias) within the group; for a tie at the max, take only one
+    max1 = tl.max(selection_tile, axis=1)
+    is_max1 = (selection_tile == max1[:, None]) & tile_mask
+    count_max1 = tl.sum(is_max1.to(tl.int32), axis=1)
+    remainder = tl.where(is_max1 & (count_max1[:, None] == 1), neg_inf, selection_tile)
+    max2 = tl.max(remainder, axis=1)
+    # Quantize group_scores to the input dtype (the original implementation writes in scores dtype); here quantize
+    # first, then convert to f32
+    group_scores = (max1 + max2).to(INPUT_DTYPE).to(tl.float32)
+    group_scores = tl.where(valid_group, group_scores, neg_inf)
+
+    max_group_score = tl.max(group_scores, axis=0)
+    if_proceed = max_group_score != neg_inf
+
+    # Select topk_group groups: by value descending, ties broken by group index ascending
+    value = group_scores
+    target_num_min = BLOCK_GROUP - n_group + topk_group
+    count_equal_to_top_value = BLOCK_GROUP - n_group
+    pre_count_equal_to_top_value = 0
+    topk_group_value = neg_inf
+
+    for _ in range(TOPK_GROUP):
+        need = count_equal_to_top_value < target_num_min
+        max_val = tl.max(value, axis=0)
+        is_max = need & (value == max_val)
+        value = tl.where(is_max, neg_inf, value)
+        newly = tl.sum(is_max.to(tl.int32), axis=0)
+        pre_count_equal_to_top_value = tl.where(
+            need, count_equal_to_top_value, pre_count_equal_to_top_value
+        )
+        count_equal_to_top_value = tl.where(
+            need, count_equal_to_top_value + newly, count_equal_to_top_value
+        )
+        topk_group_value = tl.where(need, max_val, topk_group_value)
+
+    num_equalto_topkth_group = target_num_min - pre_count_equal_to_top_value
+    group_gt = group_scores > topk_group_value
+    group_eq = group_scores == topk_group_value
+    eq_i = group_eq.to(tl.int32)
+    prefix_eq = tl.cumsum(eq_i, axis=0) - eq_i
+    group_selected = (
+        group_gt | (group_eq & (prefix_eq < num_equalto_topkth_group))
+    ) & valid_group
+
+    expert_offsets = tl.arange(0, BLOCK_EXPERT)
+    valid_expert = expert_offsets < num_experts
+    expert_group = expert_offsets // num_experts_per_group
+    expert_in_group = expert_group[:, None] == group_offsets[None, :]
+    expert_selected = (
+        tl.sum((expert_in_group & group_selected[None, :]).to(tl.int32), axis=1) > 0
+    ) & valid_expert
+
+    scored_raw = tl.load(
+        scores_ptr + pid * stride_scores_token + expert_offsets,
+        mask=valid_expert,
+        other=neg_inf,
+    )
+    if SCORING_FUNC == 1:
+        scored_raw = tl.sigmoid(scored_raw.to(tl.float32)).to(INPUT_DTYPE)
+    scored = scored_raw.to(tl.float32)
+
+    expert_bias = tl.load(bias_ptr + expert_offsets, mask=valid_expert, other=0.0)
+    expert_pair = (scored_raw.to(tl.float32) + expert_bias.to(tl.float32)).to(
+        INPUT_DTYPE
+    )
+    selection_scores = tl.where(expert_selected, expert_pair.to(tl.float32), neg_inf)
+
+    topk_vals = tl.full([TOPK], 0.0, tl.float32)
+    topk_idx = tl.full([TOPK], 0, tl.int32)
+    pos_range = tl.arange(0, TOPK)
+
+    for i in range(TOPK):
+        max_val = tl.max(selection_scores, axis=0)
+        is_max = selection_scores == max_val
+        candidate_idx = tl.where(is_max, expert_offsets, num_experts + 1)
+        selected_idx = tl.min(candidate_idx, axis=0)
+        # Take the raw score of the selected expert (without bias); with no candidate, get -inf as in the original
+        # implementation
+        selected_score = tl.sum(
+            tl.where(expert_offsets == selected_idx, scored, 0.0), axis=0
+        )
+        selected_score = tl.where(selected_idx < num_experts, selected_score, neg_inf)
+        topk_vals = tl.where(pos_range == i, selected_score, topk_vals)
+        topk_idx = tl.where(pos_range == i, selected_idx.to(tl.int32), topk_idx)
+        selection_scores = tl.where(
+            expert_offsets == selected_idx, neg_inf, selection_scores
+        )
+
+    if renormalize == 1:
+        topk_sum = tl.sum(topk_vals, axis=0) + 1e-20
+        scale = routed_scaling_factor / topk_sum
+    else:
+        scale = routed_scaling_factor
+    topk_vals = topk_vals * scale
+
+    default_idx = pos_range.to(tl.int32)
+    default_vals = tl.full([TOPK], 1.0 / topk, tl.float32)
+    final_vals = tl.where(if_proceed, topk_vals, default_vals)
+    final_idx = tl.where(if_proceed, topk_idx, default_idx)
+
+    tl.store(
+        topk_values_ptr + pid * stride_out_token + pos_range,
+        final_vals,
+        mask=pos_range < topk,
+    )
+    tl.store(
+        topk_indices_ptr + pid * stride_out_token + pos_range,
+        final_idx,
+        mask=pos_range < topk,
+    )
+
+
 def grouped_topk(
     scores: torch.Tensor,
     n_group: int,
@@ -252,7 +433,7 @@ def grouped_topk(
     bias: torch.Tensor,
     scoring_func: int = 0,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 GROUPED_TOPK")
+    logger.debug("GEMS_ENFLAME GROUPED_TOPK")
     if scores.ndim != 2:
         raise ValueError("scores must be a 2D Tensor")
     num_tokens, num_experts = scores.shape
@@ -285,17 +466,7 @@ def grouped_topk(
     else:
         raise ValueError(f"Unsupported dtype: {scores.dtype}")
 
-    if scoring_func == 1:
-        scores_processed = torch.sigmoid(scores.float()).to(scores.dtype)
-    else:
-        scores_processed = scores
-
-    group_scores = torch.empty(
-        (num_tokens, n_group),
-        device=scores.device,
-        dtype=scores.dtype,
-    )
-
+    # Fuse sigmoid into the kernel, no longer materializing the full scores_processed intermediate tensor
     topk_values = torch.empty(
         (num_tokens, topk),
         device=scores.device,
@@ -308,31 +479,14 @@ def grouped_topk(
         dtype=torch.int32,
     )
 
-    BLOCK1 = triton.next_power_of_2(num_experts_per_group)
-    grid1 = (num_tokens * n_group,)
+    grid_x = min(num_tokens, GCU_GRID_X_MAX)
+    grid = (grid_x, triton.cdiv(num_tokens, grid_x))
 
-    topk_with_k2_triton[grid1](
-        scores_processed,
+    grouped_topk_fused_kernel[grid](
+        scores,
         bias,
-        group_scores,
-        num_experts_per_group,
-        n_group,
-        scores_processed.stride(0),
-        group_scores.stride(0),
-        BLOCK_SIZE=BLOCK1,
-        INPUT_DTYPE=INPUT_DTYPE,
-    )
-
-    BLOCK_GROUP = triton.next_power_of_2(n_group)
-    BLOCK_EXPERT = triton.next_power_of_2(num_experts)
-    grid2 = (num_tokens,)
-
-    group_idx_and_topk_triton[grid2](
-        scores_processed,
-        group_scores,
         topk_values,
         topk_indices,
-        bias,
         num_tokens,
         n_group,
         topk_group,
@@ -340,15 +494,17 @@ def grouped_topk(
         num_experts,
         num_experts_per_group,
         routed_scaling_factor,
-        scores_processed.stride(0),
-        group_scores.stride(0),
+        scores.stride(0),
         topk_values.stride(0),
+        grid_x,
         N_GROUP=n_group,
         TOPK_GROUP=topk_group,
         TOPK=topk,
-        BLOCK_GROUP=BLOCK_GROUP,
-        BLOCK_EXPERT=BLOCK_EXPERT,
+        BLOCK_GROUP=triton.next_power_of_2(n_group),
+        BLOCK_PER_GROUP=triton.next_power_of_2(num_experts_per_group),
+        BLOCK_EXPERT=triton.next_power_of_2(num_experts),
         INPUT_DTYPE=INPUT_DTYPE,
+        SCORING_FUNC=scoring_func,
         renormalize=int(renormalize),
     )
 

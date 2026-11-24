@@ -45,6 +45,13 @@ class GluJvpBenchmark(base.Benchmark):
 
 
 @pytest.mark.glu_jvp
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::glu_jvp; its CPU fallback "
+        "aborts the process, so there is no native baseline"
+    ),
+)
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_glu_jvp(dtype):
     bench = GluJvpBenchmark(

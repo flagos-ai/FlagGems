@@ -391,6 +391,42 @@ def kron_v3_kernel(
                 tl.store(c_ptr + c_idx, c)
 
 
+@triton.jit
+def kron_row_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    M,
+    M1,
+    N1,
+    M2,
+    N2,
+    N,
+    N1P: tl.constexpr,
+    N2P: tl.constexpr,
+):
+    """Single-batch kron that writes one *contiguous* C row per step.
+
+    C row ``m = m1 * M2 + m2`` holds ``[a[m1, n1] * b[m2, n2]]`` flattened, i.e.
+    exactly the run ``C[m * N : (m + 1) * N]``. Building the row as one 2D outer
+    product therefore turns the store into a single contiguous span instead of
+    the strided ``(M2, N2)`` tiles the B-tile kernels emit. Measured on GCU400:
+    2.6-3.9x faster than ``kron_v3_kernel`` and at/above parity with aten for
+    32x32 ... 128x128 operands (the A/B rows stay in cache across the walk).
+    """
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    offs_n1 = tl.arange(0, N1P)
+    offs_n2 = tl.arange(0, N2P)
+    for row in tl.range(pid, M, num_programs):
+        m1 = row // M2
+        m2 = row - m1 * M2
+        a_val = tl.load(a_ptr + m1 * N1 + offs_n1)
+        b_val = tl.load(b_ptr + m2 * N2 + offs_n2)
+        c = a_val[:, None] * b_val[None, :]
+        tl.store(c_ptr + row * N + offs_n1[:, None] * N2 + offs_n2[None, :], c)
+
+
 @libentry()
 @triton.jit
 def kron_v4_kernel(
@@ -492,6 +528,16 @@ _KRON_V3_MIN_B = 2048
 # (e.g. batched N=24 with BLOCK_N=32 is ~50x slower than BLOCK_N=256/1024).
 _KRON_V4_MAX_BN = 1024
 _KRON_V4_MIN_BN = 256
+# Byte budget for the (N1 x N2) row tile of kron_row_kernel.  GCU400 needs about
+# 4x the tile bytes of DSM, and the hardware limit is 917504 B, so 128 KB keeps
+# a 4x margin.
+_KRON_ROW_TILE_BYTES = 131072
+# Programs for kron_row_kernel: 48 CTAs is one full GCU400 wave and measured
+# best up to ~8K rows; wider krons (e.g. 128x128 operands, 16K rows) want 2-4
+# waves so the grid-stride tail does not serialize.
+_KRON_ROW_SMALL_GRID = 48
+_KRON_ROW_LARGE_GRID = 192
+_KRON_ROW_LARGE_ROWS = 8192
 
 
 def _pick_kron_tiles(M2, N2, single_batch):
@@ -499,6 +545,193 @@ def _pick_kron_tiles(M2, N2, single_batch):
     BM = min(triton.next_power_of_2(M2), _KRON_MAX_BLOCK_2D)
     BN = min(triton.next_power_of_2(N2), _KRON_MAX_BLOCK_2D)
     return BM, BN, 1
+
+
+# ---------------------------------------------------------------------------
+# Outer-product path.
+#
+# Every kron output row r = i * M2 + k is
+#
+#     C[r, :] = repeat(A[i, j], N2) * tile(B[k, :], N1)
+#
+# i.e. the elementwise product of two vectors of length N = N1 * N2.  Both
+# operands are tiny compared with C ((M1 + M2) * N elements against
+# M1 * M2 * N), so they are expanded once into device buffers and the main
+# kernel degenerates into a three-stream copy: two affine contiguous loads plus
+# one affine contiguous store.
+#
+# Why bother: rebuilding the operands per output element (c // N2, c % N2)
+# turns the loads into gathers.  Measured on GCU400 (kron 160x160, fp16):
+# gather formulation 32.6 ms, per-row scalar form 30.3 ms (one dependent scalar
+# load per 320 B store), this path 1.13 ms.  The expansion costs ~30 us because
+# it only touches (M1 + M2) * N elements.
+# ---------------------------------------------------------------------------
+_KRON_OUTER_MIN_OPERAND = 8  # keeps the expansion below 25% of C's bytes
+# Below this row length the expansion launch cost is not amortised (measured
+# 64x64: row kernel 0.146 ms vs this path 0.180 ms; from 96x96 on it wins).
+_KRON_OUTER_MIN_N = 8192
+_KRON_OUTER_MAX_BLOCK = 16384
+_KRON_OUTER_GRID = 48
+_KRON_EXPAND_GRID = 48
+_KRON_EXPAND_BLOCK_K = 16
+_KRON_EXPAND_BLOCK_L = 256
+_KRON_EXPAND_BLOCK_M = 32
+
+
+@libentry()
+@triton.jit
+def kron_repeat_element_kernel(
+    src_ptr,
+    dst_ptr,
+    M,
+    K: tl.constexpr,
+    K2: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_L: tl.constexpr,
+):
+    """dst[m, k * K2 + l] = src[m, k]: repeat every source element K2 times."""
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    offs_k = tl.arange(0, BLOCK_K)
+    offs_l = tl.arange(0, BLOCK_L)
+    num_l_tiles = (K2 + BLOCK_L - 1) // BLOCK_L
+    num_k_tiles = (K + BLOCK_K - 1) // BLOCK_K
+    total = M * num_k_tiles * num_l_tiles
+    for t in tl.range(pid, total, num_programs):
+        tile_l = t % num_l_tiles
+        rest = t // num_l_tiles
+        tile_k = rest % num_k_tiles
+        row = rest // num_k_tiles
+        k_idx = tile_k * BLOCK_K + offs_k
+        l_idx = tile_l * BLOCK_L + offs_l
+        k_ok = k_idx < K
+        mask = k_ok[:, None] & (l_idx[None, :] < K2)
+        value = tl.load(src_ptr + row * K + k_idx, mask=k_ok, other=0.0)
+        out = tl.broadcast_to(value[:, None], (BLOCK_K, BLOCK_L))
+        dst_idx = row * (K * K2) + k_idx[:, None] * K2 + l_idx[None, :]
+        tl.store(dst_ptr + tl.where(mask, dst_idx, 0), out, mask=mask)
+
+
+@libentry()
+@triton.jit
+def kron_repeat_tile_kernel(
+    src_ptr,
+    dst_ptr,
+    M,
+    K: tl.constexpr,
+    K2T: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_L: tl.constexpr,
+):
+    """dst[m, t * K + l] = src[m, l]: tile every source row K2T times."""
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    offs_m = tl.arange(0, BLOCK_M)
+    offs_l = tl.arange(0, BLOCK_L)
+    num_l_tiles = (K + BLOCK_L - 1) // BLOCK_L
+    num_m_tiles = (M + BLOCK_M - 1) // BLOCK_M
+    total = num_m_tiles * num_l_tiles * K2T
+    for t in tl.range(pid, total, num_programs):
+        tile_t = t % K2T
+        rest = t // K2T
+        tile_l = rest % num_l_tiles
+        tile_m = rest // num_l_tiles
+        m_idx = tile_m * BLOCK_M + offs_m
+        l_idx = tile_l * BLOCK_L + offs_l
+        m_ok = m_idx < M
+        mask = m_ok[:, None] & (l_idx[None, :] < K)
+        value = tl.load(
+            src_ptr + m_idx[:, None] * K + l_idx[None, :], mask=mask, other=0.0
+        )
+        dst_idx = m_idx[:, None] * (K * K2T) + tile_t * K + l_idx[None, :]
+        tl.store(dst_ptr + tl.where(mask, dst_idx, 0), value, mask=mask)
+
+
+@libentry()
+@triton.jit
+def kron_outer_kernel(
+    a_rep_ptr,
+    b_rep_ptr,
+    c_ptr,
+    num_rows,
+    M2: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """C[r, :] = a_rep[r // M2, :] * b_rep[r % M2, :] with affine streaming."""
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    lanes = tl.arange(0, BLOCK)
+    num_col_tiles: tl.constexpr = (N + BLOCK - 1) // BLOCK
+    total = num_rows * num_col_tiles
+    # Contiguous partition: every CTA streams one contiguous slice of C.
+    chunk = (total + num_programs - 1) // num_programs
+    start = pid * chunk
+    end = min(start + chunk, total)
+    for t in tl.range(start, end):
+        col_tile = t % num_col_tiles
+        row = t // num_col_tiles
+        row_a = row // M2
+        row_b = row - row_a * M2
+        col0 = col_tile * BLOCK
+        if NEED_MASK:
+            mask = col0 + lanes < N
+            a_val = tl.load(a_rep_ptr + row_a * N + col0 + lanes, mask=mask, other=0.0)
+            b_val = tl.load(b_rep_ptr + row_b * N + col0 + lanes, mask=mask, other=0.0)
+            tl.store(c_ptr + row * N + col0 + lanes, a_val * b_val, mask=mask)
+        else:
+            a_val = tl.load(a_rep_ptr + row_a * N + col0 + lanes)
+            b_val = tl.load(b_rep_ptr + row_b * N + col0 + lanes)
+            tl.store(c_ptr + row * N + col0 + lanes, a_val * b_val)
+
+
+def _kron_outer_fits(M1, M2, M, N, single_batch):
+    if not single_batch:
+        return False
+    if M1 < _KRON_OUTER_MIN_OPERAND or M2 < _KRON_OUTER_MIN_OPERAND:
+        return False
+    if N < _KRON_OUTER_MIN_N:
+        return False
+    # kernel offsets are int32
+    return M * N < 2**31
+
+
+def _launch_kron_outer(A2, B2, C_reshaped, M1, M2, N1, N2, M, N):
+    expanded_a = torch.empty((M1, N), device=A2.device, dtype=A2.dtype)
+    expanded_b = torch.empty((M2, N), device=B2.device, dtype=B2.dtype)
+    kron_repeat_element_kernel[(_KRON_EXPAND_GRID,)](
+        A2,
+        expanded_a,
+        M1,
+        K=N1,
+        K2=N2,
+        BLOCK_K=_KRON_EXPAND_BLOCK_K,
+        BLOCK_L=_KRON_EXPAND_BLOCK_L,
+        num_warps=1,
+    )
+    kron_repeat_tile_kernel[(_KRON_EXPAND_GRID,)](
+        B2,
+        expanded_b,
+        M2,
+        K=N2,
+        K2T=N1,
+        BLOCK_M=_KRON_EXPAND_BLOCK_M,
+        BLOCK_L=_KRON_EXPAND_BLOCK_L,
+        num_warps=1,
+    )
+    block = min(triton.next_power_of_2(N), _KRON_OUTER_MAX_BLOCK)
+    kron_outer_kernel[(_KRON_OUTER_GRID,)](
+        expanded_a,
+        expanded_b,
+        C_reshaped,
+        M,
+        M2=M2,
+        N=N,
+        BLOCK=block,
+        NEED_MASK=N % block != 0,
+        num_warps=8,
+    )
 
 
 def kron(A, B):
@@ -586,11 +819,66 @@ def kron(A, B):
         # without mask (measured: 96x96 B 73ms vs 0.27ms for the unmasked
         # 128x128 tile), independent of dtype/tile size.  v4's mask is 1D and
         # measured free, so any shape that would need a 2D mask routes to v4.
-        use_v3 = M2 * N2 >= _KRON_V3_MIN_B
-        if use_v3:
-            BM, BN, BLOCK_A = _pick_kron_tiles(M2, N2, single_batch)
-            use_v3 = (M2 % BM == 0) and (N2 % BN == 0)
-        if use_v3:
+        # Row kernel: single batch, both operands power-of-two so the (N1, N2)
+        # outer product covers one whole C row unmasked, tile inside the DSM
+        # budget and the C offsets inside int32.  This is the cheapest layout
+        # available: every store is one contiguous row of C.
+        elem_bytes = C_reshaped.element_size()
+        # Outer-product path: cheapest layout for wide krons (see the comment
+        # block above the kernels).  Only for single-batch operands that are
+        # large enough for the expansion to stay negligible.
+        use_outer = _kron_outer_fits(M1, M2, M, N, single_batch)
+        use_row = (
+            single_batch
+            and (N1 & (N1 - 1)) == 0
+            and (N2 & (N2 - 1)) == 0
+            and N1 * N2 * elem_bytes <= _KRON_ROW_TILE_BYTES
+            and M * N < 2**31
+        )
+        use_v3 = False
+        if not use_row:
+            use_v3 = M2 * N2 >= _KRON_V3_MIN_B
+            if use_v3:
+                BM, BN, BLOCK_A = _pick_kron_tiles(M2, N2, single_batch)
+                use_v3 = (M2 % BM == 0) and (N2 % BN == 0)
+
+        if use_outer:
+            _launch_kron_outer(
+                A_view.reshape(M1, N1),
+                B_view.reshape(M2, N2),
+                C_reshaped,
+                M1,
+                M2,
+                N1,
+                N2,
+                M,
+                N,
+            )
+        elif use_row:
+            num_rows = M
+            num_programs = min(
+                num_rows,
+                (
+                    _KRON_ROW_SMALL_GRID
+                    if num_rows <= _KRON_ROW_LARGE_ROWS
+                    else _KRON_ROW_LARGE_GRID
+                ),
+            )
+            kron_row_kernel[(num_programs,)](
+                A_view,
+                B_view,
+                C_reshaped,
+                M,
+                M1,
+                N1,
+                M2,
+                N2,
+                N,
+                N1P=N1,
+                N2P=N2,
+                num_warps=1,
+            )
+        elif use_v3:
             num_a_tiles = (batch_size * M1 * N1 + BLOCK_A - 1) // BLOCK_A
             num_b_tiles = (M2 + BM - 1) // BM * ((N2 + BN - 1) // BN)
             grid = (min(MAX_GRID_DIM, num_a_tiles * num_b_tiles),)

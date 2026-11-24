@@ -21,13 +21,18 @@ import flag_gems
 
 from . import base, utils
 
+# Vendors whose reference is the plain torch formulation instead of NVIDIA
+# TransformerEngine, which is unusable on these backends.
+TORCH_REFERENCE_VENDORS = ("enflame", "kunlunxin")
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
     TE_AVAILABLE = True
     TE_SCALED_SOFTMAX_FORWARD = getattr(tex, "scaled_softmax_forward", None)
     TE_SCALED_SOFTMAX_BACKWARD = getattr(tex, "scaled_softmax_backward", None)
-except ImportError:
+except (ImportError, RuntimeError):
+    # An empty transformer-engine meta package raises RuntimeError.
     TE_AVAILABLE = False
     TE_SCALED_SOFTMAX_FORWARD = None
     TE_SCALED_SOFTMAX_BACKWARD = None
@@ -72,15 +77,16 @@ def scaled_softmax_forward_input_fn(shape, dtype, device):
 
 @pytest.mark.scaled_softmax_forward
 @pytest.mark.skipif(
-    TE_AVAILABLE is False and flag_gems.vendor_name != "kunlunxin",
+    TE_AVAILABLE is False and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
     reason="TransformerEngine is not available",
 )
 @pytest.mark.skipif(
-    TE_SCALED_SOFTMAX_FORWARD is None and flag_gems.vendor_name != "kunlunxin",
+    TE_SCALED_SOFTMAX_FORWARD is None
+    and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
     reason="'scaled_softmax_forward' not found in TransformerEngine",
 )
 def test_scaled_softmax_forward():
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
         torch_op = _torch_scaled_softmax_forward
     else:
         torch_op = TE_SCALED_SOFTMAX_FORWARD
@@ -104,15 +110,16 @@ def scaled_softmax_backward_input_fn(shape, dtype, device):
 
 @pytest.mark.scaled_softmax_backward
 @pytest.mark.skipif(
-    TE_AVAILABLE is False and flag_gems.vendor_name != "kunlunxin",
+    TE_AVAILABLE is False and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
     reason="TransformerEngine is not available",
 )
 @pytest.mark.skipif(
-    TE_SCALED_SOFTMAX_BACKWARD is None and flag_gems.vendor_name != "kunlunxin",
+    TE_SCALED_SOFTMAX_BACKWARD is None
+    and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
     reason="'scaled_softmax_backward' not found in TransformerEngine",
 )
 def test_perf_scaled_softmax_backward():
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
         torch_op = _torch_scaled_softmax_backward
     else:
         torch_op = TE_SCALED_SOFTMAX_BACKWARD

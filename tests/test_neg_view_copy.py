@@ -123,6 +123,18 @@ def _make_input(dtype, shape, value_range):
     )
 
 
+def _materialized(tensor):
+    """Return a comparison-ready copy of ``tensor`` on the host.
+
+    The enflame backend returns ``aten::_neg_view_copy`` as a lazy neg view:
+    ``is_neg()`` survives ``clone`` / ``contiguous`` / ``resolve_neg``, and
+    ``torch.testing`` does not honour the neg flag, so a device-side compare
+    reads the reference as ``x`` instead of ``-x``.  Copying to the host
+    materializes the view, so every reference comparison goes through here.
+    """
+    return tensor.detach().cpu()
+
+
 def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
     assert res_out.is_contiguous()
     assert not res_out.is_neg()

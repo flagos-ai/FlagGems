@@ -33,7 +33,7 @@ def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
     Returns:
         View of the input tensor with a dimension of size 1 inserted
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNSQUEEZE")
+    logger.debug("GEMS_ENFLAME UNSQUEEZE")
 
     ndim = A.dim()
 
@@ -66,7 +66,29 @@ def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
     ``A`` via ``Tensor.set_`` so the metadata mutation is applied to ``A``
     in place, then ``A`` is returned.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNSQUEEZE_")
-    out = unsqueeze(A, dim)
-    A.set_(out)
+    logger.debug("GEMS_ENFLAME UNSQUEEZE_")
+
+    ndim = A.dim()
+    if dim < 0:
+        dim = ndim + dim + 1
+    if dim < 0 or dim > ndim:
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [0, {ndim}], "
+            f"but got {dim})"
+        )
+
+    # Rebinding A directly onto its own storage with the new size/stride keeps
+    # the mutation in one metadata dispatch. Building the view first (reshape)
+    # and then calling set_ on it costs two dispatches plus the stride
+    # recomputation of the intermediate view, which is measurable for an op
+    # whose whole cost is metadata handling.
+    size = list(A.shape)
+    stride = list(A.stride())
+    offset = A.storage_offset()
+    # A size-1 dimension never participates in addressing; mirror torch's
+    # convention (stride of the following dimension scaled by its size, or 1
+    # for an appended trailing dimension) so the metadata stays canonical.
+    stride.insert(dim, 1 if dim == ndim else stride[dim] * size[dim])
+    size.insert(dim, 1)
+    A.set_(A.untyped_storage(), offset, size, stride)
     return A

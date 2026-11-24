@@ -17,73 +17,76 @@ import logging
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.libdevice as libdevice
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 NUM_SIPS = 24
-_I16_MIN_LUT_CACHE = {}
 
-
-@triton.jit
-def _ctz(x):
-    return libdevice.ffs(x) - 1
-
-
-@triton.jit
-def _abs_u32(x):
-    ux = x.to(tl.uint32)
-    return tl.where(x < 0, 0 - ux, ux)
-
-
-@triton.jit
-def _abs_u64(x):
-    ux = x.to(tl.uint64)
-    return tl.where(x < 0, 0 - ux, ux)
-
-
-@triton.jit
-def _c_rem_i32(a, b):
-    mag = _abs_u32(a) % _abs_u32(b)
-    rem = mag.to(tl.int32)
-    return tl.where((a < 0) & (mag != 0), -rem, rem)
-
-
-@triton.jit
-def _c_rem_i64(a, b):
-    mag = _abs_u64(a) % _abs_u64(b)
-    rem = mag.to(tl.int64)
-    return tl.where((a < 0) & (mag != 0), -rem, rem)
-
-
-@triton.jit
-def _binary_gcd(ax, ay, normal):
-    zero_ax = ax == 0
-    zero_ay = ay == 0
-    res = tl.where(zero_ax, ay, ax)
-    both_nonzero = normal & (~zero_ax) & (~zero_ay)
-    common = _ctz(tl.where(both_nonzero, ax | ay, 1))
-    u = tl.where(both_nonzero, ax >> _ctz(tl.where(both_nonzero, ax, 1)), ax)
-    v = ay
-    active = both_nonzero
-
-    while tl.sum(active.to(tl.int32), axis=0) > 0:
-        v_shifted = tl.where(active, v >> _ctz(tl.where(active, v, 1)), v)
-        swap = active & (u > v_shifted)
-        small = tl.where(swap, v_shifted, u)
-        large = tl.where(swap, u, v_shifted)
-        u = tl.where(active, small, u)
-        v = tl.where(active, large - small, v)
-        active = active & (v != 0)
-
-    return tl.where(both_nonzero, u << common, res)
+# Semantics (bit-for-bit aligned with ATen's integer gcd; cross-checked on the host with a sim script across all dtypes
+# at 8/16/32/64 bits):
+#   a = |a|, b = |b| take absolute values **within this dtype**, so negating INT_MIN still wraps around to INT_MIN;
+#   then run the signed Euclidean loop while (b) { r = a % b; a = b; b = r; } and directly return the final a,
+#   with no final absolute value. So the result is allowed to be negative, and when INT_MIN is involved it is not the
+# "absolute value of the true gcd",
+#   e.g. gcd(INT32_MIN, 6) == -2, gcd(INT32_MIN, 0) == INT32_MIN.
+# The original implementation used binary-GCD(ctz) + an INT_MIN special case to "get the magnitude but not the sign",
+# which is
+# the root cause of the failures of tests/test_gcd.py on int16/int32 (INT_MIN boundary and a few full-range elements).
 
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
-def gcd_kernel_i16(x_ptr, y_ptr, lut_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
+def gcd_kernel_i32(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    DTYPE_MIN: tl.constexpr,
+    BLOCK: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
+    """8/16/32-bit integers are computed in int32: this dtype's range is a subset of int32,
+    only abs(INT_MIN) needs a dtype-specific wrap; everything else matches in-dtype arithmetic.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    for block_id in tl.range(pid, (n_elements + BLOCK - 1) // BLOCK, num_pids):
+        offsets = block_id * BLOCK + arange
+        mask = offsets < n_elements
+
+        x = tl.load(x_ptr + offsets, mask=mask, other=0).to(tl.int32)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0).to(tl.int32)
+        a = tl.where(x == DTYPE_MIN, x, tl.abs(x))
+        b = tl.where(y == DTYPE_MIN, y, tl.abs(y))
+
+        # Lanes with active=false leave a unchanged (when b==0 from the start, output |a| directly);
+        # Perform an intra-block reduction only once every CHUNK iterations, reducing the cross-lane reduction overhead
+        # to 1/CHUNK.
+        active = mask & (b != 0)
+        while tl.sum(active.to(tl.int32), axis=0) > 0:
+            for _ in tl.static_range(CHUNK):
+                r = a % tl.where(active, b, 1)
+                a = tl.where(active, b, a)
+                b = tl.where(active, r, b)
+                active = active & (b != 0)
+
+        tl.store(out_ptr + offsets, a.to(out_ptr.type.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
+def gcd_kernel_i64(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    DTYPE_MIN: tl.constexpr,
+    BLOCK: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
@@ -93,118 +96,46 @@ def gcd_kernel_i16(x_ptr, y_ptr, lut_ptr, out_ptr, n_elements, BLOCK: tl.constex
 
         x = tl.load(x_ptr + offsets, mask=mask, other=0)
         y = tl.load(y_ptr + offsets, mask=mask, other=0)
-        x_i32 = x.to(tl.int32)
-        y_i32 = y.to(tl.int32)
-        min_value: tl.constexpr = -32768
-        min_x = x_i32 == min_value
-        min_y = y_i32 == min_value
-        special_mask = mask & (min_x | min_y)
-        normal = mask & (~special_mask)
-        ax = tl.abs(x_i32)
-        ay = tl.abs(y_i32)
-        normal_res = _binary_gcd(ax, ay, normal)
+        a = tl.where(x == DTYPE_MIN, x, tl.abs(x))
+        b = tl.where(y == DTYPE_MIN, y, tl.abs(y))
 
-        both_min = special_mask & min_x & min_y
-        one_min = special_mask & (~both_min)
-        other_abs = tl.where(min_x, tl.abs(y_i32), tl.abs(x_i32))
-        special_res = tl.load(lut_ptr + other_abs, mask=one_min, other=0).to(tl.int32)
-        special_res = tl.where(both_min, min_value, special_res)
+        active = mask & (b != 0)
+        while tl.sum(active.to(tl.int32), axis=0) > 0:
+            for _ in tl.static_range(CHUNK):
+                r = a % tl.where(active, b, 1)
+                a = tl.where(active, b, a)
+                b = tl.where(active, r, b)
+                active = active & (b != 0)
 
-        out = tl.where(special_mask, special_res, normal_res)
-        tl.store(out_ptr + offsets, out.to(out_ptr.type.element_ty), mask=mask)
-
-
-@libentry()
-@triton.jit(do_not_specialize=["n_elements"])
-def gcd_kernel_i32(x_ptr, y_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (n_elements + BLOCK - 1) // BLOCK, num_pids):
-        offsets = block_id * BLOCK + arange
-        mask = offsets < n_elements
-
-        x = tl.load(x_ptr + offsets, mask=mask, other=0)
-        y = tl.load(y_ptr + offsets, mask=mask, other=0)
-        min_value: tl.constexpr = -(1 << 31)
-        min_x = x == min_value
-        min_y = y == min_value
-        ax_native = tl.where(min_x, x, tl.abs(x))
-        ay_native = tl.where(min_y, y, tl.abs(y))
-        ax = ax_native.to(tl.int32)
-        ay = ay_native.to(tl.int32)
-
-        special_mask = mask & (min_x | min_y)
-        normal = mask & (~special_mask)
-        normal_res = _binary_gcd(ax, ay, normal)
-
-        sa = ax_native.to(tl.int32)
-        sb = ay_native.to(tl.int32)
-        special = special_mask & (sa != 0)
-        while tl.sum(special.to(tl.int32), axis=0) > 0:
-            next_sa = tl.where(special, _c_rem_i32(sb, tl.where(special, sa, 1)), sa)
-            sb = tl.where(special, sa, sb)
-            sa = next_sa
-            special = special & (sa != 0)
-
-        out = tl.where(mask & (~normal), sb, normal_res)
-        tl.store(out_ptr + offsets, out.to(out_ptr.type.element_ty), mask=mask)
-
-
-@libentry()
-@triton.jit(do_not_specialize=["n_elements"])
-def gcd_kernel_i64(x_ptr, y_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (n_elements + BLOCK - 1) // BLOCK, num_pids):
-        offsets = block_id * BLOCK + arange
-        mask = offsets < n_elements
-
-        x = tl.load(x_ptr + offsets, mask=mask, other=0)
-        y = tl.load(y_ptr + offsets, mask=mask, other=0)
-        min_x = x == -(1 << 63)
-        min_y = y == -(1 << 63)
-        ax = tl.where(min_x, x, tl.abs(x)).to(tl.int64)
-        ay = tl.where(min_y, y, tl.abs(y)).to(tl.int64)
-
-        special_mask = mask & (min_x | min_y)
-        normal = mask & (~special_mask)
-        normal_res = _binary_gcd(ax, ay, normal)
-
-        sa = ax
-        sb = ay
-        special = special_mask & (sa != 0)
-        while tl.sum(special.to(tl.int32), axis=0) > 0:
-            next_sa = tl.where(special, _c_rem_i64(sb, tl.where(special, sa, 1)), sa)
-            sb = tl.where(special, sa, sb)
-            sa = next_sa
-            special = special & (sa != 0)
-
-        out = tl.where(mask & (~normal), sb, normal_res)
-        tl.store(out_ptr + offsets, out.to(out_ptr.type.element_ty), mask=mask)
+        tl.store(out_ptr + offsets, a, mask=mask)
 
 
 def _kernel_meta(dtype):
-    if dtype == torch.int16:
-        return gcd_kernel_i16, 2048, 4
-    if dtype == torch.int32:
-        return gcd_kernel_i32, 2048, 4
+    """(kernel, BLOCK, num_warps, CHUNK).
+
+    BLOCK=4096 / CHUNK=16 come from a 10-level private probe ((4096,4096)/(1024,65536), int16+int32):
+    BLOCK 2048->4096 gains 8%~15% (b1024 even drops to 0.17x/0.39x), CHUNK 1->8 gains ~80%
+    (the reduction dominates) and CHUNK 16 is another ~9% on int32 but flat on int16;
+    num_warps 2/4/8 and grid 2x/4x show no measurable difference, while grid 1x is clearly worse.
+
+    A later CHUNK sweep on 2^28 full-range int32 pairs (48 CTAs, BLOCK=4096) measured
+    114.9ms at CHUNK=16, 112.8ms at CHUNK=32, then 157.8/207.2/404.9ms at 48/64/128, so
+    int32 -- where the Euclid chain is longest -- keeps a slightly deeper unroll while
+    the narrow widths keep 16 (flat on int16 in the original probe).
+    """
     if dtype == torch.int64:
-        return gcd_kernel_i64, 256, 4
+        return gcd_kernel_i64, 256, 4, 4
+    if dtype == torch.int32:
+        return gcd_kernel_i32, 4096, 4, 32
+    if dtype in (torch.int8, torch.int16):
+        return gcd_kernel_i32, 4096, 4, 16
     raise TypeError(f"unsupported dtype for gcd: {dtype}")
 
 
-def _get_i16_min_lut(device):
-    key = (device.type, device.index)
-    lut = _I16_MIN_LUT_CACHE.get(key)
-    if lut is None:
-        info = torch.iinfo(torch.int16)
-        lhs = torch.full((info.max + 1,), info.min, dtype=torch.int16)
-        rhs = torch.arange(info.max + 1, dtype=torch.int16)
-        lut = torch.gcd(lhs, rhs).to(device=device)
-        _I16_MIN_LUT_CACHE[key] = lut
-    return lut
+def _dtype_min(dtype):
+    if dtype == torch.int64:
+        return -(1 << 63)
+    return torch.iinfo(dtype).min
 
 
 def _materialize_inputs(self, other):
@@ -220,14 +151,19 @@ def _launch_gcd(lhs, rhs, out):
     if numel == 0:
         return out
 
-    kernel, block, num_warps = _kernel_meta(out.dtype)
+    kernel, block, num_warps, chunk = _kernel_meta(out.dtype)
     grid = min((numel + block - 1) // block, NUM_SIPS * 2)
     with torch_device_fn.device(out.device):
-        if out.dtype == torch.int16:
-            lut = _get_i16_min_lut(out.device)
-            kernel[(grid,)](lhs, rhs, lut, out, numel, BLOCK=block, num_warps=num_warps)
-        else:
-            kernel[(grid,)](lhs, rhs, out, numel, BLOCK=block, num_warps=num_warps)
+        kernel[(grid,)](
+            lhs,
+            rhs,
+            out,
+            numel,
+            DTYPE_MIN=_dtype_min(out.dtype),
+            BLOCK=block,
+            CHUNK=chunk,
+            num_warps=num_warps,
+        )
     return out
 
 

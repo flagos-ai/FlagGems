@@ -63,6 +63,18 @@ _TL_DTYPE = {
 # Copy tiles balance launch overhead and memory bandwidth.
 _BLOCK = 2048
 _NUM_WARPS = 8
+# 64-bit word copy (see _word_copy_eligible): the metadata kernel indexes and
+# bounds-checks every element, so moving packed 8-byte words instead of 2-byte
+# halves reduces both the address arithmetic and the number of memory
+# instructions by 4x, and the word stores vectorise far better on gcu400.
+# Block sweep on the metadata path (16KB -> 64KB per program):
+#   fp16 2x4096^2 0.952 -> 0.816ms, fp32 2x4096^2 1.823 -> 1.447ms,
+#   fp16 3x1024^2 0.165 -> 0.145ms, fp32 3x1024^2 0.247 -> 0.210ms.
+_BLOCK_WORDS = 8192
+_NUM_WARPS_WORDS = 8
+# 2D fast path (no per-call metadata transfer): 1024 words = 8KB per program is
+# the measured sweet spot for 16-bit lists (64KB blocks lose on small totals).
+_BLOCK_WORDS_2D = 1024
 _LOG2N = 12  # fixed constexpr: binary search converges for N <= 4096
 _MAX_DIM = 8
 
@@ -450,39 +462,43 @@ def _flatten_contig_kernel(
     out_ptr,
     meta,
     N,
+    total_chunks,
     BLOCK: tl.constexpr,
     LOG2N: tl.constexpr,
     DT: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
     coff = meta + (N + 1)
     ptrs = meta + 2 * (N + 1)
-    # binary search: first idx in [1, N] with chunk-prefix[idx] > pid.
-    # The loop variables are scalars: a ``tl.full([1], ...)`` cursor makes every
-    # probe a 1-wide load, and gcu400 then cannot legalize the surrounding
-    # elementwise fusion region ("failed to legalize operation
-    # 'triton_gcu.elementwise_fusion_region'", measured on every metadata
-    # launch).
-    lo = 1
-    hi = N
-    for _ in tl.static_range(LOG2N):
-        mid = (lo + hi) >> 1
-        if tl.load(coff + mid) <= pid:
-            lo = mid + 1
-        else:
-            hi = mid
-    t = lo - 1
-    k = pid - tl.load(coff + t)
-    off_t = tl.load(meta + t)
-    end_t = tl.load(meta + t + 1)
-    ptr_t = tl.load(ptrs + t)
-    start = off_t + k.to(tl.int64) * BLOCK
-    offs = start + tl.arange(0, BLOCK)
-    mask = offs < end_t
-    local = offs - off_t
-    pp = ptr_t.to(tl.pointer_type(DT))
-    x = tl.load(pp + local, mask=mask)
-    tl.store(out_ptr + offs, x, mask=mask)
+    # gcu400 caps grid.x at 65535; walk the remaining chunks.
+    for chunk_id in tl.range(pid, total_chunks, num_pids):
+        # binary search: first idx in [1, N] with chunk-prefix[idx] > chunk_id.
+        # The loop variables are scalars: a ``tl.full([1], ...)`` cursor makes every
+        # probe a 1-wide load, and gcu400 then cannot legalize the surrounding
+        # elementwise fusion region ("failed to legalize operation
+        # 'triton_gcu.elementwise_fusion_region'", measured on every metadata
+        # launch).
+        lo = 1
+        hi = N
+        for _ in tl.static_range(LOG2N):
+            mid = (lo + hi) >> 1
+            if tl.load(coff + mid) <= chunk_id:
+                lo = mid + 1
+            else:
+                hi = mid
+        t = lo - 1
+        k = chunk_id - tl.load(coff + t)
+        off_t = tl.load(meta + t)
+        end_t = tl.load(meta + t + 1)
+        ptr_t = tl.load(ptrs + t)
+        start = off_t + k.to(tl.int64) * BLOCK
+        offs = start + tl.arange(0, BLOCK)
+        mask = offs < end_t
+        local = offs - off_t
+        pp = ptr_t.to(tl.pointer_type(DT))
+        x = tl.load(pp + local, mask=mask)
+        tl.store(out_ptr + offs, x, mask=mask)
 
 
 @triton.jit
@@ -492,6 +508,7 @@ def _flatten_general_kernel(
     shapes,
     strides,
     N,
+    total_chunks,
     BLOCK: tl.constexpr,
     LOG2N: tl.constexpr,
     DT: tl.constexpr,
@@ -499,45 +516,70 @@ def _flatten_general_kernel(
 ):
     # shapes/strides rows are stored reversed (last dim first), padded with shape 1.
     pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
     coff = meta + (N + 1)
     ptrs = meta + 2 * (N + 1)
-    lo = 1
-    hi = N
-    for _ in tl.static_range(LOG2N):
-        mid = (lo + hi) >> 1
-        if tl.load(coff + mid) <= pid:
-            lo = mid + 1
-        else:
-            hi = mid
-    t = lo - 1
-    k = pid - tl.load(coff + t)
-    off_t = tl.load(meta + t)
-    end_t = tl.load(meta + t + 1)
-    ptr_t = tl.load(ptrs + t)
-    start = off_t + k.to(tl.int64) * BLOCK
-    offs = start + tl.arange(0, BLOCK)
-    mask = offs < end_t
-    local = offs - off_t
-    # decompose logical flat index -> physical element offset (row-major order)
-    #
-    # gcu400 cannot lower a 64-bit integer div/mod inside an elementwise fusion
-    # region ("failed to legalize operation
-    # 'triton_gcu.elementwise_fusion_region'" for every non-contiguous input),
-    # so the per-dimension split runs in int32.  _launch_group keeps groups
-    # whose element count could overflow int32 off this path.
-    acc = local.to(tl.int32)
-    phys = tl.zeros([BLOCK], tl.int64)
-    base_s = shapes + t.to(tl.int64) * MAX_DIM
-    base_r = strides + t.to(tl.int64) * MAX_DIM
-    for d in tl.static_range(MAX_DIM):
-        sd = tl.load(base_s + d).to(tl.int32)
-        st = tl.load(base_r + d)
-        idx = acc % sd
-        acc = acc // sd
-        phys += idx * st
-    pp = ptr_t.to(tl.pointer_type(DT))
-    x = tl.load(pp + phys, mask=mask)
-    tl.store(out_ptr + offs, x, mask=mask)
+    for chunk_id in tl.range(pid, total_chunks, num_pids):
+        lo = 1
+        hi = N
+        for _ in tl.static_range(LOG2N):
+            mid = (lo + hi) >> 1
+            if tl.load(coff + mid) <= chunk_id:
+                lo = mid + 1
+            else:
+                hi = mid
+        t = lo - 1
+        k = chunk_id - tl.load(coff + t)
+        off_t = tl.load(meta + t)
+        end_t = tl.load(meta + t + 1)
+        ptr_t = tl.load(ptrs + t)
+        start = off_t + k.to(tl.int64) * BLOCK
+        offs = start + tl.arange(0, BLOCK)
+        mask = offs < end_t
+        local = offs - off_t
+        # decompose logical flat index -> physical element offset (row-major order)
+        #
+        # gcu400 cannot lower a 64-bit integer div/mod inside an elementwise fusion
+        # region ("failed to legalize operation
+        # 'triton_gcu.elementwise_fusion_region'" for every non-contiguous input),
+        # so the per-dimension split runs in int32.  _launch_group keeps groups
+        # whose element count could overflow int32 off this path.
+        acc = local.to(tl.int32)
+        phys = tl.zeros([BLOCK], tl.int64)
+        base_s = shapes + t.to(tl.int64) * MAX_DIM
+        base_r = strides + t.to(tl.int64) * MAX_DIM
+        for d in tl.static_range(MAX_DIM):
+            sd = tl.load(base_s + d).to(tl.int32)
+            st = tl.load(base_r + d)
+            idx = acc % sd
+            acc = acc // sd
+            phys += idx * st
+        pp = ptr_t.to(tl.pointer_type(DT))
+        x = tl.load(pp + phys, mask=mask)
+        tl.store(out_ptr + offs, x, mask=mask)
+
+
+def _word_copy_eligible(out, group, numels):
+    """Whether this group can be copied as packed 64-bit words.
+
+    ``aten::flatten_dense_tensors`` only concatenates; when every input shares
+    the output element size and every per-tensor byte length is a multiple of 8
+    the concatenation is byte-identical to a plain 64-bit word copy.  Sub-word
+    dtypes (fp16/bf16/fp32/int32/...) are then moved 4x (or 2x) fewer times per
+    byte, which is what the metadata kernel is limited by.
+    """
+    esize = out.element_size()
+    if esize >= 8 or 8 % esize:
+        return False
+    # Identical dtype (not merely identical element size) is required: a mixed
+    # list such as bf16+f16 would need a value conversion, not a byte copy.
+    if any(t.dtype != out.dtype for t in group):
+        return False
+    if any((m * esize) % 8 for m in numels):
+        return False
+    if out.data_ptr() % 8:
+        return False
+    return all(t.data_ptr() % 8 == 0 for t in group)
 
 
 def _launch_group(out, group, group_offsets, tl_dt):
@@ -550,14 +592,6 @@ def _launch_group(out, group, group_offsets, tl_dt):
     dev = out.device
     N = len(group)
     numels = [group_offsets[k + 1] - group_offsets[k] for k in range(N)]
-    chunks = [(n + _BLOCK - 1) // _BLOCK for n in numels]
-    total_chunks = sum(chunks)
-    if total_chunks == 0:
-        return
-    LOG2N = _LOG2N if N <= (1 << _LOG2N) else N.bit_length()
-    coff = [0] * (N + 1)
-    for i, c in enumerate(chunks):
-        coff[i + 1] = coff[i] + c
     # Materialise strided inputs before dispatch.  The general strided kernel
     # decomposes each flat index with div/mod, which gcu400 cannot lower inside
     # an elementwise fusion region ("failed to legalize operation
@@ -566,8 +600,29 @@ def _launch_group(out, group, group_offsets, tl_dt):
     # at the cost of one extra copy per non-contiguous input.
     if not all(t.is_contiguous() for t in group):
         group = [t.contiguous() for t in group]
-    flat = group_offsets + coff + [t.data_ptr() for t in group]
     contig = all(t.is_contiguous() for t in group)
+    # Width of one copied element in bytes; 8 means "already one 64-bit word".
+    word_scale = 1
+    if contig and _word_copy_eligible(out, group, numels):
+        # Copy packed 64-bit words: identical bytes, 8//esize fewer elements to
+        # index, check and address per tensor.
+        word_scale = 8 // out.element_size()
+        numels = [m // word_scale for m in numels]
+        group_offsets = [o // word_scale for o in group_offsets]
+        out = out.view(torch.int64)
+        tl_dt = tl.int64
+        block, num_warps = _BLOCK_WORDS, _NUM_WARPS_WORDS
+    else:
+        block, num_warps = _BLOCK, _NUM_WARPS
+    chunks = [(n + block - 1) // block for n in numels]
+    total_chunks = sum(chunks)
+    if total_chunks == 0:
+        return
+    LOG2N = _LOG2N if N <= (1 << _LOG2N) else N.bit_length()
+    coff = [0] * (N + 1)
+    for i, c in enumerate(chunks):
+        coff[i + 1] = coff[i] + c
+    flat = group_offsets + coff + [t.data_ptr() for t in group]
     if not contig:
         max_dim = max(_MAX_DIM, max(t.dim() for t in group))
         shapes_base = len(flat)
@@ -581,26 +636,29 @@ def _launch_group(out, group, group_offsets, tl_dt):
                 flat[sbase + t.dim() - 1 - d] = t.shape[d]
                 flat[rbase + t.dim() - 1 - d] = t.stride(d)
     meta = torch.tensor(flat, dtype=torch.int64, device=dev)
+    grid = (min(total_chunks, 65535),)
     with torch_device_fn.device(dev):
         if contig:
-            _flatten_contig_kernel[(total_chunks,)](
+            _flatten_contig_kernel[grid](
                 out,
                 meta,
                 N,
-                BLOCK=_BLOCK,
+                total_chunks,
+                BLOCK=block,
                 LOG2N=LOG2N,
                 DT=tl_dt,
-                num_warps=_NUM_WARPS,
+                num_warps=num_warps,
             )
         else:
             shapes = meta[shapes_base : shapes_base + N * max_dim].view(N, max_dim)
             strides = meta[shapes_base + N * max_dim :].view(N, max_dim)
-            _flatten_general_kernel[(total_chunks,)](
+            _flatten_general_kernel[grid](
                 out,
                 meta,
                 shapes,
                 strides,
                 N,
+                total_chunks,
                 BLOCK=_BLOCK,
                 LOG2N=LOG2N,
                 DT=tl_dt,
@@ -611,7 +669,7 @@ def _launch_group(out, group, group_offsets, tl_dt):
 
 def flatten_dense_tensors(tensors):
     """``aten::flatten_dense_tensors(Tensor[] tensors) -> Tensor``."""
-    logger.debug("GEMS_ENFLAME_GCU400 FLATTEN_DENSE_TENSORS")
+    logger.debug("GEMS_ENFLAME FLATTEN_DENSE_TENSORS")
     # Iterating a bare Tensor yields its rows and would silently flatten only
     # the first dimensions, so reject the same inputs the reference rejects.
     if isinstance(tensors, torch.Tensor):
@@ -702,18 +760,58 @@ def flatten_dense_tensors(tensors):
     # strided list of at most 4 dims per tensor and at most 4 tensors takes
     # the same route with shape/stride scalars; deeper strided tensors and
     # lists beyond 8 tensors fall through to the metadata path below.
+    esize = ts[0].element_size()
+    # Packed 64-bit words beat 2-byte element copies (the element copies leave
+    # the vector units half used): 7x64K halves drop from 0.032ms to 0.016ms and
+    # 2x(2048,32) from 0.0117ms to 0.0075ms.  16-bit lists therefore always
+    # prefer words; 32-bit lists are at parity (or slightly worse) element-wise
+    # on small totals and only switch once the element 2-D path would overflow
+    # into the metadata path anyway.
+    word_2d = contig and _word_copy_eligible(out, ts, numels)
+    if word_2d and esize > 2 and max((m + 1023) // 1024 for m in numels) <= 255:
+        word_2d = False
+    block_2d = _BLOCK_WORDS_2D
+    if word_2d:
+        # The 2-D grid is (n, max_chunks) and gcu400 caps grid.y at 255, so grow
+        # the per-program chunk (8KB -> 64KB) until the grid fits; totals that
+        # still overflow keep the metadata path's grid-stride kernel.
+        words_per_element = 8 // esize
+        word_numels = [m // words_per_element for m in numels]
+        for candidate in (
+            _BLOCK_WORDS_2D,
+            _BLOCK_WORDS_2D * 2,
+            _BLOCK_WORDS_2D * 4,
+            _BLOCK_WORDS_2D * 8,
+        ):
+            if max((m + candidate - 1) // candidate for m in word_numels) <= 255:
+                block_2d = candidate
+                break
+        else:
+            word_2d = False
     if (
         uniform
         and 2 <= n <= 8
         and total < (1 << 32)
         and (contig or (n <= 4 and max(t.dim() for t in ts) <= 4))
+        # Bound the chunk count for the unit that will actually be copied:
+        # word mode uses 8KB word chunks, element mode the conservative 1024
+        # element estimate; anything larger takes the metadata path's
+        # grid-stride kernel instead.
+        and (word_2d or max((m + 1023) // 1024 for m in numels) <= 255)
     ):
         tl_dt = _TL_DTYPE[out_dtype]
         # Launch-config specialization by element size: 16-bit dtypes prefer
         # smaller blocks / fewer warps (more, finer-grained programs); 32-bit
         # dtypes prefer large blocks.
-        esize = ts[0].element_size()
-        if esize <= 2:
+        out_arg = out
+        if word_2d:
+            words_per_element = 8 // esize
+            numels = [m // words_per_element for m in numels]
+            offs = [o // words_per_element for o in offs]
+            out_arg = out.view(torch.int64)
+            tl_dt = tl.int64
+            block, nw = block_2d, _NUM_WARPS_WORDS
+        elif esize <= 2:
             block, nw = 1024, 4
         elif esize == 4:
             block, nw = 4096, 8
@@ -747,7 +845,7 @@ def flatten_dense_tensors(tensors):
         if n == 2:
             if strided_ok:
                 _flatten_n2_strided[(2, max_chunks)](
-                    out,
+                    out_arg,
                     ps[0],
                     ps[1],
                     vs[0],
@@ -760,7 +858,7 @@ def flatten_dense_tensors(tensors):
                 )
             else:
                 _flatten_n2[(2, max_chunks)](
-                    out,
+                    out_arg,
                     ps[0],
                     ps[1],
                     vs[0],
@@ -773,7 +871,7 @@ def flatten_dense_tensors(tensors):
         elif n == 3:
             if strided_ok:
                 _flatten_n3_strided[(3, max_chunks)](
-                    out,
+                    out_arg,
                     ps[0],
                     ps[1],
                     ps[2],
@@ -789,7 +887,7 @@ def flatten_dense_tensors(tensors):
                 )
             else:
                 _flatten_n3[(3, max_chunks)](
-                    out,
+                    out_arg,
                     ps[0],
                     ps[1],
                     ps[2],
@@ -804,7 +902,7 @@ def flatten_dense_tensors(tensors):
         elif n == 4:
             if strided_ok:
                 _flatten_n4_strided[(4, max_chunks)](
-                    out,
+                    out_arg,
                     ps[0],
                     ps[1],
                     ps[2],
@@ -823,7 +921,7 @@ def flatten_dense_tensors(tensors):
                 )
             else:
                 _flatten_n4[(4, max_chunks)](
-                    out,
+                    out_arg,
                     ps[0],
                     ps[1],
                     ps[2],
@@ -844,7 +942,7 @@ def flatten_dense_tensors(tensors):
             vs8 = vs + [0] * (8 - n)
             ps8 = ps + [ps[0]] * (8 - n)
             _flatten_n8[(n, max_chunks)](
-                out,
+                out_arg,
                 ps8[0],
                 ps8[1],
                 ps8[2],

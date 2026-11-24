@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import _SKIP_FP64
 
 DTYPES = [

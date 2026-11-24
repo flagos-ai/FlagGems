@@ -381,5 +381,5 @@ def _run(x, n, out=None):
 
 
 def special_legendre_polynomial_p(x: torch.Tensor, n) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LEGENDRE_POLYNOMIAL_P")
+    logger.debug("GEMS_ENFLAME SPECIAL_LEGENDRE_POLYNOMIAL_P")
     return _run(x, n)

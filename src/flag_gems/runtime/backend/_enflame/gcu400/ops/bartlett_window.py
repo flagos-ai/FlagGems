@@ -23,6 +23,8 @@ from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
 
+MAX_GRID = 48
+
 
 @triton.jit
 def bartlett_window_kernel(
@@ -33,17 +35,26 @@ def bartlett_window_kernel(
     COMPUTE_DTYPE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < window_length
-
-    # Accumulate in the output's precision class so float64 keeps full precision
-    n = offsets.to(COMPUTE_DTYPE)
+    num_pids = tl.num_programs(0)
+    num_blocks = (window_length + BLOCK_SIZE - 1) // BLOCK_SIZE
     N_minus_1 = (N_compute - 1).to(COMPUTE_DTYPE)
+    # Hoist the lane cast out of the loop: an int->float cast of a vector
+    # *inside* the grid-stride loop fails to legalize on gcu400
+    # ("failed to legalize operation 'arith.sitofp'"). The loop-invariant
+    # arange converts once, and each iteration only adds a scalar offset.
+    lane_f = tl.arange(0, BLOCK_SIZE).to(COMPUTE_DTYPE)
 
-    # w[n] = 1 - |2*n/(N-1) - 1|
-    val = 1.0 - tl.abs(2.0 * n / N_minus_1 - 1.0)
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < window_length
 
-    tl.store(output_ptr + offsets, val, mask=mask)
+        # Accumulate in the output's precision class so float64 keeps full precision
+        n = block_id.to(COMPUTE_DTYPE) * BLOCK_SIZE + lane_f
+
+        # w[n] = 1 - |2*n/(N-1) - 1|
+        val = 1.0 - tl.abs(2.0 * n / N_minus_1 - 1.0)
+
+        tl.store(output_ptr + offsets, val, mask=mask)
 
 
 def bartlett_window(
@@ -55,7 +66,7 @@ def bartlett_window(
     device=None,
     requires_grad=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BARTLETT_WINDOW")
+    logger.debug("GEMS_ENFLAME BARTLETT_WINDOW")
     if dtype is None:
         dtype = torch.get_default_dtype()
     assert dtype in (
@@ -104,17 +115,28 @@ def bartlett_window(
 
     # 1024 balances occupancy and register usage for 1-D window generation
     BLOCK_SIZE = 1024
-    grid = ((window_length + BLOCK_SIZE - 1) // BLOCK_SIZE,)
+    grid = (min((window_length + BLOCK_SIZE - 1) // BLOCK_SIZE, MAX_GRID),)
 
-    # float64 output needs float64 math; lower precisions are fine computed in float32
-    compute_dtype = tl.float64 if dtype == torch.float64 else tl.float32
+    # gcu400 has no fp64 datapath: the int -> float64 cast the kernel needs
+    # fails to legalize ("failed to legalize operation 'arith.sitofp'").
+    # Compute an fp64 window in fp32 and widen the result with a copy; the
+    # device cannot represent fp64 arithmetic anyway.
+    widen = dtype == torch.float64
+    kernel_out = (
+        torch.empty(window_length, dtype=torch.float32, device=device)
+        if widen
+        else output
+    )
+    compute_dtype = tl.float32
 
     bartlett_window_kernel[grid](
-        output,
+        kernel_out,
         N_compute,
         window_length,
         BLOCK_SIZE=BLOCK_SIZE,
         COMPUTE_DTYPE=compute_dtype,
     )
+    if widen:
+        output.copy_(kernel_out)
 
     return output

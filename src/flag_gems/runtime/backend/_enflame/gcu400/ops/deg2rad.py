@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 
 import torch
 import triton
@@ -24,95 +23,155 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-_SCALE = math.pi / 180.0
+NUM_SIPS = 24
 
-# Fixed Grid on GCU400 (48 CTAs). The generic kernel launches
-# cdiv(n_elements, BLOCK_SIZE) CTAs, which exceeds the 65535 grid.x
-# hardware limit for large inputs (e.g. 2**28 elements -> 262144 CTAs).
-_GRID_SIZE = 48
+# int32 offset safe domain: the masked tail block evaluates
+# block_id * BLOCK + arange for masked lanes as well, reaching up to
+# num_blocks * BLOCK - 1; keep n_total <= 2^31 - 2^17 (BLOCK <= 131072)
+# so flat int32 offsets cannot wrap negative on the tail block.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
+
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+# pi / 180, the same double value the generic implementation passes as a
+# runtime fp32 argument; embedding it as a literal keeps the rounding
+# bit-identical (Triton rounds the Python float to fp32 in both forms).
+# (This Triton build rejects non-constexpr module globals inside @jit
+# functions, so the constant is inlined in the kernel body, rad2deg.py
+# style.)
 
 
 @libentry()
-@triton.jit
-def deg2rad_kernel(
+@triton.jit(do_not_specialize=["N_total"])
+def deg2rad_flat_kernel(
     x_ptr,
-    y_ptr,
-    n_elements,
-    scale,
-    BLOCK_SIZE: tl.constexpr,
-    GRID_SIZE: tl.constexpr,
-    NUM_STAGES: tl.constexpr,
+    out_ptr,
+    N_total,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
-    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
-        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < n_elements
-        x = tl.load(x_ptr + offsets, mask=mask)
-        tl.store(y_ptr + offsets, x * scale, mask=mask)
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        if EVEN:
+            x = tl.load(x_ptr + off)
+            tl.store(out_ptr + off, x * 0.017453292519943295)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask)
+            tl.store(out_ptr + off, x * 0.017453292519943295, mask=mask)
 
 
-def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
-    n_elements = out_contig.numel()
-    if n_elements == 0:
+# GCU400 retune (2026-11-16): deg2rad is a hardware-free primitive
+# (x * pi/180), so the kernel is memory-bound and only the launch shape
+# matters. Band table transferred from the verified 1R1W flat family
+# (rsqrt.py / rad2deg.py / abs.py, interleaved do_bench(median) A/B):
+#   tiny <=8K: multi-CTA B1024/nw4 beats single-CTA wide BLOCK on fp32
+#     (5.6 -> ~3.9us on the (64, 64) core shape; launch-floor regime);
+#   8K < N <= 64K: B8192/nw2;
+#   16-bit mid/big: B65536/nw2/g48 (the fixed B32768 left the 2^24 tier
+#     ~1% and was shape-fair but flat);
+#   16-bit >2^28: B131072/nw2 (512KB raw tiles -> 24-way DSM, measured at
+#     the copy floor by rad2deg/rsqrt/copysign precedents);
+#   fp32 mid+big: B32768/nw2 (2x32768x4B = 256KB, within the 448KB DSM
+#     budget; already at the native floor in the pre-tune baseline).
+# LibEntry's dispatch key is (dtype, alignment, BLOCK, EVEN) and does NOT
+# include num_warps, so each (dtype, BLOCK) pair must pin a single nw.
+# fp32 big in-place (+ aliased deg2rad_out): B65536/nw4 (aliasing probe
+# 2026-11-16: 1328.6 vs 1344.6us for B32768/nw2 over 3 interleaved rounds;
+# the out-of-place arm must not share this -- rsqrt.py measured 1388us
+# with nw4 there).
+def _choose_launch(n_total, itemsize, inplace):
+    if n_total <= 8192:
+        return 1024, 4
+    if n_total <= 65536:
+        return 8192, 2
+    if itemsize == 4:
+        if inplace and n_total > (1 << 28):
+            return 65536, 4
+        return 32768, 2
+    if n_total > (1 << 28):
+        return 131072, 2
+    return 65536, 2
+
+
+def _launch_flat(inp, out, inplace):
+    n_total = inp.numel()
+    if n_total == 0:
         return
-    # Tuned on GCU400 (sweep BLOCK x num_warps): BLOCK=32768 + nw=4 is the
-    # best geometric mean (1.08x vs torch); BLOCK=1024 starves the fixed
-    # grid of memory-level parallelism (0.51x).
-    block_size = 32768
-    num_warps = 2
-    num_stages = 2
-    num_tile = triton.cdiv(n_elements, block_size)
-    grid = (min(_GRID_SIZE, num_tile), 1, 1)
-    with torch_device_fn.device(out_contig.device.index):
-        deg2rad_kernel[grid](
-            x_contig,
-            out_contig,
-            n_elements,
-            _SCALE,
-            BLOCK_SIZE=block_size,
-            GRID_SIZE=min(_GRID_SIZE, num_tile),
-            NUM_STAGES=num_stages,
-            num_warps=num_warps,
-        )
+    block, num_warps = _choose_launch(n_total, inp.element_size(), inplace)
+    grid_size = min(triton.cdiv(n_total, block), NUM_SIPS * 2)
+    even = n_total % block == 0
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared
+    # nodes); retrying the launch recompiles and succeeds (rsqrt.py /
+    # rad2deg.py / abs.py precedents for the same toolchain family).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(inp.device):
+                deg2rad_flat_kernel[(grid_size,)](
+                    inp,
+                    out,
+                    n_total,
+                    BLOCK=block,
+                    EVEN=even,
+                    num_warps=num_warps,
+                )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "deg2rad flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )
+
+
+def _flat_path_ok(A):
+    return (
+        A.is_contiguous() and A.dtype in _FLAT_DTYPES and A.numel() < _INT32_SAFE_LIMIT
+    )
 
 
 def deg2rad(x: torch.Tensor):
     logger.debug("GEMS_ENFLAME DEG2RAD")
-    if x.is_floating_point():
-        result_dtype = x.dtype
-    else:
-        result_dtype = torch.float32
+    if not _flat_path_ok(x):
+        from flag_gems.ops.deg2rad import deg2rad as _public
 
-    x_contig = x.to(result_dtype).contiguous()
-    out = torch.empty_like(x_contig)
-    _launch(x_contig.view(-1), out.view(-1))
-    return out.view_as(x)
+        return _public(x)
+    out = torch.empty_like(x)
+    _launch_flat(x, out, False)
+    return out
 
 
 def deg2rad_(x: torch.Tensor):
     logger.debug("GEMS_ENFLAME DEG2RAD_")
-    if not x.is_floating_point():
-        x.mul_(_SCALE)
-        return x
+    if not _flat_path_ok(x):
+        from flag_gems.ops.deg2rad import deg2rad_ as _public
 
-    if x.is_contiguous():
-        _launch(x.view(-1), x.view(-1))
-    else:
-        x_contig = x.contiguous()
-        _launch(x_contig.view(-1), x_contig.view(-1))
-        x.copy_(x_contig)
+        return _public(x)
+    _launch_flat(x, x, True)
     return x
 
 
 def deg2rad_out(x: torch.Tensor, out: torch.Tensor):
     logger.debug("GEMS_ENFLAME DEG2RAD_OUT")
-    x_contig = x.to(out.dtype).contiguous()
+    if not (
+        _flat_path_ok(x)
+        and out.is_contiguous()
+        and out.numel() == x.numel()
+        and out.dtype == x.dtype
+    ):
+        from flag_gems.ops.deg2rad import deg2rad_out as _public
 
-    if out.is_contiguous():
-        _launch(x_contig.view(-1), out.view(-1))
-    else:
-        out_contig = torch.empty_like(out, memory_format=torch.contiguous_format)
-        _launch(x_contig.view(-1), out_contig.view(-1))
-        out.copy_(out_contig)
+        return _public(x, out)
+    # Aliased out (torch.deg2rad(x, out=x)) behaves like the in-place op:
+    # route it to the in-place launch band (rsqrt.py / probe 2026-11-16).
+    inplace = out.data_ptr() == x.data_ptr()
+    _launch_flat(x, out, inplace)
     return out

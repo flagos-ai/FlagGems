@@ -410,6 +410,13 @@ def test_stft_center(
         ("center", True),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::stft"
+    ),
+)
 def test_stft_torch_dispatch(entry, center, tmp_path, require_stft_fft):
     require_stft_fft(16, backward=True)
     inp_cpu = _make_input((2, 65), torch.float32)

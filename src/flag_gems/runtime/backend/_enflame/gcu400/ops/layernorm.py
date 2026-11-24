@@ -286,6 +286,69 @@ def layer_norm_rows_kernel(
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
+def layer_norm_persistent_2tree_kernel(
+    in_ptr,
+    out_ptr,
+    weight_ptr,
+    bias_ptr,
+    out_mean_ptr,  # pointer to the mean
+    out_rstd_ptr,  # pointer to the 1/std
+    M,
+    N,
+    eps,
+    TILE_N: tl.constexpr,
+):
+    # Parallel dual-tree form of the persistent single-tile kernel, for wide
+    # masked 2-byte rows (N in (4096, 16384) non-power-of-2, TILE_N in
+    # {8192, 16384}).  The baseline serial chain (tree1 -> sub -> mul -> tree2)
+    # exposes the reduction-tree latency there; shifting by the row's first
+    # element lets both trees issue from the same operand and overlap
+    # (interleaved A/B: -6~-9% on (16, 6144) and (M, 11264)).  Same shift
+    # identity as the loop kernel: var = E[(x-x0)^2] - E[x-x0]^2, exact in
+    # real arithmetic; x0 ~ sigma keeps the cancellation mild for large-mean
+    # inputs.  fp32 wide rows keep the serial form: the extra shifted live
+    # tile loses more DSM/ALU than the tree overlap gains (probe: 8.29 ->
+    # 8.66us).
+    pid = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
+    if pid >= M:
+        return
+
+    n_offsets = tl.arange(0, TILE_N)
+    mask = n_offsets < N
+
+    base = pid * N
+    x = tl.load(in_ptr + base + n_offsets, mask=mask, other=0.0).to(tl.float32)
+    x0 = tl.load(in_ptr + base)  # scalar shift center
+    xs = tl.where(mask, x - x0, 0.0)
+    s1 = tl.sum(xs)  # sum of shifted values
+    s2 = tl.sum(xs * xs)  # sum of squared shifted values
+    dmean = s1 / N
+    mean = dmean + x0
+    var = s2 / N - dmean * dmean
+    rstd = tl.math.rsqrt(var + eps)
+
+    tl.store(out_mean_ptr + pid, mean)
+    tl.store(out_rstd_ptr + pid, rstd)
+
+    if weight_ptr is None:
+        w = 1
+    else:
+        w = tl.load(weight_ptr + n_offsets, mask=mask)
+    if bias_ptr is None:
+        b = 0
+    else:
+        b = tl.load(bias_ptr + n_offsets, mask=mask)
+    out = (x - mean) * rstd * w + b
+
+    tl.store(out_ptr + base + n_offsets, out, mask=mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("layer_norm_persistent"),
+    key=["M", "N"],
+)
+@triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel_multiline(
     in_ptr,
     out_ptr,
@@ -459,7 +522,12 @@ def layer_norm_loop_kernel(
 
 @libentry()
 @libtuner(
-    configs=[triton.Config({"BLOCK_ROW_SIZE": 8, "BLOCK_COL_SIZE": 1024}, num_warps=4)],
+    configs=[
+        triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 2048}, num_warps=4),
+        triton.Config({"BLOCK_ROW_SIZE": 2, "BLOCK_COL_SIZE": 2048}, num_warps=4),
+        triton.Config({"BLOCK_ROW_SIZE": 4, "BLOCK_COL_SIZE": 1024}, num_warps=4),
+        triton.Config({"BLOCK_ROW_SIZE": 8, "BLOCK_COL_SIZE": 1024}, num_warps=4),
+    ],
     key=["M", "N"],
     # FlagTree AABS shrinks BLOCK_COL_SIZE toward next_power_of_2(N); the
     # shrunk fp32 [R, 256]/[R, 512] tiles with a W row-vector load are a
@@ -530,9 +598,15 @@ def layer_norm_backward_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_bias_backward"),
-    key=["N"],
+@libtuner(
+    configs=[
+        triton.Config({"BLOCK_ROW_SIZE": 16, "BLOCK_COL_SIZE": 256}, num_warps=4),
+        triton.Config({"BLOCK_ROW_SIZE": 32, "BLOCK_COL_SIZE": 256}, num_warps=4),
+        triton.Config({"BLOCK_ROW_SIZE": 64, "BLOCK_COL_SIZE": 256}, num_warps=4),
+        triton.Config({"BLOCK_ROW_SIZE": 16, "BLOCK_COL_SIZE": 1024}, num_warps=4),
+    ],
+    key=["M", "N"],
+    disable_aabs=True,
 )
 @triton.jit
 def weight_bias_backward_kernel(
@@ -573,7 +647,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS_ENFLAME_GCU400 LAYERNORM_FORWARD")
+    logger.debug("GEMS_ENFLAME LAYERNORM_FORWARD")
 
     N = math.prod(normalized_shape)
     M = input.numel() // N
@@ -585,8 +659,12 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
 
     # NOTE: when the input is half-precision(either float16 or bfloat16)
     # these statistical data saved for backward is in single precision
-    mean = torch.empty(M, dtype=input.dtype, device=input.device)
-    rstd = torch.empty(M, dtype=input.dtype, device=input.device)
+    # Allocate a 2*M statistics buffer in one shot and split it, saving one device allocation (allocation overhead is
+    # significant
+    # on small shapes; each split slice remains contiguous)
+    stats = torch.empty(2 * M, dtype=input.dtype, device=input.device)
+    mean = stats[:M]
+    rstd = stats[M:]
 
     with torch_device_fn.device(input.device):
         if N <= 128:
@@ -653,18 +731,39 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 TILE_N = triton.next_power_of_2(N)
                 grid_x = min(M, MAX_GRID_X)
                 grid_y = triton.cdiv(M, MAX_GRID_X)
-                layer_norm_persistent_kernel[(grid_x, grid_y, 1)](
-                    input,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_N,
-                )
+                # Wide masked 2-byte rows: the dual-tree form overlaps the two
+                # reduction trees (interleaved A/B: -6~-9% on (16, 6144) and
+                # (M, 11264); small exact tiles and fp32 keep the serial form).
+                if (
+                    input.dtype in (torch.float16, torch.bfloat16)
+                    and N > 4096
+                    and N < TILE_N
+                ):
+                    layer_norm_persistent_2tree_kernel[(grid_x, grid_y, 1)](
+                        input,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        eps,
+                        TILE_N,
+                    )
+                else:
+                    layer_norm_persistent_kernel[(grid_x, grid_y, 1)](
+                        input,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        eps,
+                        TILE_N,
+                    )
             else:
                 # fp32 above 8192: the 16384-wide fp32 tile and the 8192-wide
                 # v3 tile both lose to a 4096-wide loop here (interleaved A/B
@@ -719,7 +818,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 LAYERNORM_BACKWARD")
+    logger.debug("GEMS_ENFLAME LAYERNORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()
@@ -728,8 +827,12 @@ def layer_norm_backward(
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    # Rows are flattened over every leading axis, not just dim 0: for a
+    # multi-axis normalized_shape (e.g. (16,) over (64, 16, 64, 16)) using
+    # input.shape[0] as M shrinks M and inflates N, so the kernels then index
+    # the [N]-element weight/bias out of bounds and write NaN.
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
 
     if output_mask[0]:
         in_grad = torch.empty_like(input)

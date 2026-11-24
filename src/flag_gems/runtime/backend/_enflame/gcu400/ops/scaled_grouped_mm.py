@@ -538,7 +538,7 @@ def scaled_grouped_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_GROUPED_MM")
+    logger.debug("GEMS_ENFLAME SCALED_GROUPED_MM")
     if scale_result is not None:
         raise RuntimeError("scale_result is not supported for scaled_grouped_mm")
 

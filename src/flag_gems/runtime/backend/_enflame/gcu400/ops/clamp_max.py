@@ -43,7 +43,13 @@ def clamp_max_func(x, maxi):
 @libentry()
 @triton.jit(do_not_specialize=["N_total", "maxi"])
 def clamp_max_flat_kernel(
-    x_ptr, out_ptr, maxi, N_total, BLOCK: tl.constexpr, EVEN: tl.constexpr
+    x_ptr,
+    out_ptr,
+    maxi,
+    N_total,
+    BODY: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
@@ -53,27 +59,57 @@ def clamp_max_flat_kernel(
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
         if EVEN:
-            x = tl.load(x_ptr + off).to(tl.float32)
-            tl.store(out_ptr + off, tl.minimum(maxi, x))
+            if BODY == 2:
+                x = tl.load(x_ptr + off).to(tl.float32)
+                tl.store(out_ptr + off, tl.minimum(maxi, x))
+            else:
+                x = tl.load(x_ptr + off)
+                m = maxi.to(x_ptr.dtype.element_ty)
+                tl.store(out_ptr + off, tl.minimum(m, x))
         else:
             mask = off < N_total
-            x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-            tl.store(out_ptr + off, tl.minimum(maxi, x), mask=mask)
+            if BODY == 2:
+                x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+                tl.store(out_ptr + off, tl.minimum(maxi, x), mask=mask)
+            else:
+                x = tl.load(x_ptr + off, mask=mask)
+                m = maxi.to(x_ptr.dtype.element_ty)
+                tl.store(out_ptr + off, tl.minimum(m, x), mask=mask)
 
 
-def _choose_block(N_total, itemsize):
-    # BLOCK ladder validated on GCU400/L600 (kernel mode, do_bench median):
-    # tiny shapes want the exact next_pow2 tile; the >2^28 bucket splits by
-    # dtype byte width -- 2-byte elements gain from 131072 while fp32 loses.
-    if N_total <= 8192:
-        return max(triton.next_power_of_2(N_total), 256)
-    if N_total <= 65536:
-        return 8192
-    if N_total <= 524288:
-        return 32768
-    if N_total > (1 << 28) and itemsize <= 2:
-        return 131072
-    return 65536
+def _choose_cfg(n_total, dtype):
+    # (BLOCK, num_warps, BODY) ladder validated on GCU400/L600 with tight ABAB
+    # paired probes (do_bench median w1000/r100):
+    # - BODY=2 keeps the aten promote-to-f32 semantics; BODY=3 compares in the
+    #   tensor's own 16-bit domain after rounding `maxi` once.  For minimum the
+    #   two are bit-identical (rounding is monotone, the stored result is
+    #   re-rounded either way) and skipping the f32 round-trip cvt chain wins
+    #   -2.3% on fp16 mid shapes out-of-place / -3.4% in-place.  bf16 has no
+    #   native min ALU, BODY=3 loses there, so bf16 stays on BODY=2 everywhere.
+    # - fp16 BODY=3 only up to 2^27: the 2^28 band is ambiguous and the 2^29+
+    #   band prefers the f32 body (+0.3% at 2^30 @B131072/nw4).
+    # - >2^28 16-bit prefers B131072 with nw4 (nw2 is -0.3~-0.6% slower in
+    #   both out-of-place and in-place pairings); fp32 >2^28 prefers nw8 on
+    #   B65536 (-0.6%).  BODY=3 is a compile-time no-op for fp32 (maxi is f32)
+    #   and only splits the libentry cache key (which has no num_warps) so the
+    #   >2^28 band can run nw8 on B65536 while (524288, 2^28] keeps nw2.
+    if dtype == torch.float16 and n_total <= (1 << 27):
+        body = 3
+    elif dtype == torch.float32 and n_total > (1 << 28):
+        body = 3
+    else:
+        body = 2
+    if n_total <= 8192:
+        return max(triton.next_power_of_2(n_total), 256), 2, body
+    if n_total <= 65536:
+        return 8192, 2, body
+    if n_total <= 524288:
+        return 32768, 2, body
+    if n_total > (1 << 28):
+        if dtype == torch.float32:
+            return 65536, 8, body
+        return 131072, 4, body
+    return 65536, 2, body
 
 
 # Host-level flake guard: on this shared multi-tenant host the extern toolchain
@@ -89,12 +125,13 @@ _TOOLCHAIN_FLAKE_MARKERS = (
 )
 
 
-def _launch_flat(args, grid, block, n_total, num_warps=2):
+def _launch_flat(args, grid, block, n_total, num_warps, body):
     for attempt in range(3):
         try:
             clamp_max_flat_kernel[grid](
                 *args,
                 n_total,
+                BODY=body,
                 BLOCK=block,
                 EVEN=n_total % block == 0,
                 num_warps=num_warps,
@@ -123,10 +160,10 @@ def clamp_max(A, max_value):
     if N_total == 0:
         return out
 
-    BLOCK = _choose_block(N_total, A.element_size())
+    BLOCK, num_warps, body = _choose_cfg(N_total, A.dtype)
     grid_size = min(triton.cdiv(N_total, BLOCK), NUM_SIPS * 2)
     with torch_device_fn.device(A.device):
-        _launch_flat((A, out, max_value), (grid_size,), BLOCK, N_total)
+        _launch_flat((A, out, max_value), (grid_size,), BLOCK, N_total, num_warps, body)
     return out
 
 
@@ -143,8 +180,8 @@ def clamp_max_(A, max_value):
     if N_total == 0:
         return A
 
-    BLOCK = _choose_block(N_total, A.element_size())
+    BLOCK, num_warps, body = _choose_cfg(N_total, A.dtype)
     grid_size = min(triton.cdiv(N_total, BLOCK), NUM_SIPS * 2)
     with torch_device_fn.device(A.device):
-        _launch_flat((A, A, max_value), (grid_size,), BLOCK, N_total)
+        _launch_flat((A, A, max_value), (grid_size,), BLOCK, N_total, num_warps, body)
     return A

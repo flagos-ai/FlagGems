@@ -40,11 +40,32 @@ _GEMV_BLOCK_K_MAX = 128
 _GEMV_HOIST_BLOCK_N = 2
 _GEMV_HOIST_NUM_WARPS = 1
 
-# Per-step recurrence launch config
-_STEP_BLOCK_H = 64
-_STEP_BLOCK_K = 32
-_STEP_NUM_WARPS = 4
-_STEP_NUM_STAGES = 2
+# Per-step recurrence launch config.  The step kernel is a small GEMM per
+# timestep, so it is bound by the K loop trip count and by how many programs
+# are resident: a 32-wide K tile turns the H=2048 recurrence into 64 dependent
+# 32x32 dots.  Measured on GCU400 (100 steps, fp32, ms):
+#   B=16  H=1024 : 14.5 (H64/K32/w4) -> 6.0  (H64/K128/w4)
+#   B=256 H=512  : 25.2 (H64/K32/w4) -> 10.7 (H256/K128/w8)
+#   B=64  H=2048 : 86.9 (H64/K32/w4) -> 21.1 (H256/K128/w8)
+# The hidden tile therefore grows until roughly _STEP_TARGET_PROGRAMS programs
+# are resident, and the K tile is widened to 128.
+_STEP_BLOCK_H_MIN = 32
+_STEP_BLOCK_H_MAX = 256
+_STEP_BLOCK_K = 128
+_STEP_TARGET_PROGRAMS = 16
+_STEP_NUM_STAGES = 3
+
+
+def _step_tile_config(batch_size, hidden_size):
+    """Hidden tile, K tile and warp count for one recurrence step."""
+    b_blocks = max(1, triton.cdiv(batch_size, _BLOCK_B))
+    h_blocks = max(1, _STEP_TARGET_PROGRAMS // b_blocks)
+    block_h = triton.next_power_of_2(triton.cdiv(hidden_size, h_blocks))
+    block_h = min(max(block_h, _STEP_BLOCK_H_MIN), _STEP_BLOCK_H_MAX)
+    block_h = min(block_h, triton.next_power_of_2(hidden_size))
+    block_k = min(_STEP_BLOCK_K, triton.next_power_of_2(hidden_size))
+    num_warps = 4 if block_h <= 128 else 8
+    return block_h, block_k, num_warps
 
 
 @libentry()
@@ -915,8 +936,9 @@ def _run_direction(
     if batch_size == 0:
         return
 
-    block_h_step = _block_size(hidden_size, _STEP_BLOCK_H)
-    block_k_step = _block_size(hidden_size, _STEP_BLOCK_K)
+    block_h_step, block_k_step, step_num_warps = _step_tile_config(
+        batch_size, hidden_size
+    )
     block_k_h = _block_size(hidden_size, _BLOCK_K_MAX)
     grid = (
         triton.cdiv(batch_size, _BLOCK_B),
@@ -1106,7 +1128,7 @@ def _run_direction(
                     BLOCK_K=block_k_step,
                     COMPUTE_DTYPE=compute_dtype,
                     PACKED=batch_sizes is not None,
-                    num_warps=_STEP_NUM_WARPS,
+                    num_warps=step_num_warps,
                     num_stages=_STEP_NUM_STAGES,
                 )
                 h_work, h_next = h_next, h_work
@@ -1214,7 +1236,7 @@ def gru(
     bidirectional=False,
     batch_first=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 GRU")
+    logger.debug("GEMS_ENFLAME GRU")
     _validate_args(input, hx, params, has_biases, num_layers, dropout, bidirectional)
 
     if batch_first:
@@ -1271,7 +1293,7 @@ def gru_data(
     train=False,
     bidirectional=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 GRU_DATA")
+    logger.debug("GEMS_ENFLAME GRU_DATA")
     if data.dim() != 2:
         raise RuntimeError("gru.data: packed data must have 2 dimensions")
     if batch_sizes.dim() != 1:

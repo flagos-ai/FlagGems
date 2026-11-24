@@ -21,21 +21,6 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def _normalize_split_sizes(split_sizes):
-    if isinstance(split_sizes, torch.Tensor):
-        split_sizes = split_sizes.tolist()
-
-    if hasattr(split_sizes, "__iter__"):
-        split_sizes = list(split_sizes)
-
-    return [int(size) for size in split_sizes]
-
-
-def _normalize_dim(inp, dim):
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    return dim % inp.ndim
-
-
 def unsafe_split_with_sizes(
     self: torch.Tensor,
     split_sizes: Union[List[int], torch.Tensor],
@@ -47,20 +32,12 @@ def unsafe_split_with_sizes(
     This is the "unsafe" variant of split_with_sizes that returns views
     into the original tensor without performing safety checks.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_SPLIT_WITH_SIZES")
-
-    dim = _normalize_dim(self, dim)
-    split_sizes = _normalize_split_sizes(split_sizes)
-
-    split_sum = sum(split_sizes)
-    assert split_sum == self.shape[dim], "Invalid split_sizes"
-
-    result = []
-    start = 0
-    for size in split_sizes:
-        # Use narrow to create a view into the original tensor
-        out = torch.narrow(self, dim, start, size)
-        result.append(out)
-        start += size
-
-    return result
+    logger.debug("GEMS_ENFLAME UNSAFE_SPLIT_WITH_SIZES")
+    if isinstance(split_sizes, torch.Tensor):
+        split_sizes = split_sizes.tolist()
+    elif not isinstance(split_sizes, (list, tuple)):
+        split_sizes = [int(size) for size in split_sizes]
+    # One C-level aten dispatch replaces the Python narrow loop;
+    # split_with_sizes returns narrow views, wraps negative dims and
+    # validates sizes exactly like native unsafe_split_with_sizes.
+    return torch.split_with_sizes(self, split_sizes, dim)

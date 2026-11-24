@@ -124,7 +124,7 @@ def max_pool3d(
     to the ``max_pool3d_with_indices_backward`` kernel so gradients flow
     without relying on the standalone value kernel (which has no derivative).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_POOL3D")
+    logger.debug("GEMS_ENFLAME MAX_POOL3D")
     return _MaxPool3DFunction.apply(
         input, kernel_size, stride, padding, dilation, ceil_mode
     )

@@ -31,6 +31,15 @@ APPLY_CASES = [
     (128, 64),
 ]
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "GCU cannot compile the _sparse_semi_structured_apply kernel "
+        "(RuntimeError: Pipeline run failed: PassManager execution failed) and the "
+        "aten reference has no CPU kernel in this build"
+    ),
+)
+
 
 # aten has no CPU kernel for this op, so the CPU-reference (quick-cpu) mode
 # cannot compute a reference; the suite runs in normal mode only.

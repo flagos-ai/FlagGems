@@ -27,8 +27,17 @@ optionally paired with a ``swizzle_a``/``swizzle_b`` describing how the scale
 buffers have been shuffled in memory.
 
 All arithmetic -- the contraction ``mat_a @ mat_b`` and the application of the
-decoding scales -- happens inside the Triton kernel below; the Python wrapper
+decoding scales -- happens inside the Triton kernels below; the Python wrapper
 only validates the arguments and does shape/stride bookkeeping.
+
+GCU400 note: the backend exposes a direct fp8 ``tl.dot`` only for
+``float8_e4m3fn`` operands with non-fp8 outputs, where large ``BLOCK_K``
+tiles (up to 512) are the dominant lever (the per-iteration SIP call cost
+dominates small ``BLOCK_K``).  Every other combination -- fp8 outputs, or
+``e5m2``/``fnuz`` operands -- routes to the production fp16-conversion
+kernel from ``flag_gems.fused.cutlass_scaled_mm`` (shared with the
+``aten::scaled_mm`` path), whose fp8 store lowering pins ``BLOCK_M``/``BLOCK_N``
+to 32/64 for fp8 outputs.
 """
 
 import logging
@@ -37,14 +46,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems.fused.cutlass_scaled_mm import _scaled_mm_fp8_kernel
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-
-GROUP_M = 8
 
 # Decoding recipes accepted in ``recipe_a`` / ``recipe_b``.
 RECIPE_TENSOR_WISE = 0
@@ -65,20 +71,34 @@ _MAT_B_TRANSPOSED_ERROR = "Expected mat2 to be transposed"
 _OUT_DTYPE_ERROR = "Unsupported out_dtype for _scaled_mm_v2"
 _CONTRACTION_DIM_ERROR = "contraction_dim is only supported for batched operands"
 
+# GCU grid per-dimension hard limit (P19 family).
+_GCU_GRID_LIMIT = 65535
 
-def _heur_even_k(args):
-    return args["K"] % args["BLOCK_K"] == 0
+# Direct-dot tile ladder, calibrated on GCU400/L600 with do_bench median
+# (warmup 1000 ms / rep 100 ms), fp8 e4m3 operands + bf16 output:
+#   128^3   -> (64, 128, BK<=512)  4.7/5.7 us   (launch-bound)
+#   512^3   -> (128, 128, BK<=512)  6.5/7.1 us
+#   1024^3  -> (128, 256, BK<=512) 14.3/15.5 us (vs 94.5/96.5 us baseline)
+#   4096^3  -> (128, 256, BK<=512) 383/396 us   (359 TFLOPS)
+# num_warps=2 beats 4 across the whole range; num_stages is flat.  BLOCK_K=1024
+# is banned: no gain at 1024^3 and (128,256,1024) fails accuracy at 4096^3.
+_SMALL_MN = 1 << 16
+_MID_MN = 1 << 18
+_TILE_SMALL = (64, 128)
+_TILE_MID = (128, 128)
+_TILE_LARGE = (128, 256)
+_DIRECT_NUM_WARPS = 2
+
+
+# Direct-dot BLOCK_K ladder.  Only these values are safe for the direct fp8
+# dot on GCU400: a partial K-tail mask inside the dot loop miscompiles
+# (silent NaN, data-dependent; reproduced on K=300/700 tails), and
+# BLOCK_K=1024 miscompiles on 4096^3.  Shapes whose K is not divisible by
+# any ladder entry fall back to the conversion kernel.
+_DIRECT_BK_LADDER = (512, 256, 128)
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("scaled_mm"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["align32"] * 5,
-    warmup=2,
-    rep=2,
-)
-@triton.heuristics({"EVEN_K": _heur_even_k})
 @triton.jit
 def _scaled_mm_v2_kernel(
     A,
@@ -102,28 +122,24 @@ def _scaled_mm_v2_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    EVEN_K: tl.constexpr,
 ):
     """Tiled GEMM with the decoding scales folded into the accumulation.
 
     ``ScaleA``/``ScaleB`` are read according to ``SCALE_A_MODE``/``SCALE_B_MODE``
     (a single broadcast element for ``TensorWise``, one element per row/column
     for ``RowWise``) and multiply the accumulator before it is written out.
+    The fp8 operands feed ``tl.dot`` directly with an fp32 accumulator.
+
+    The host only launches this kernel when ``K % BLOCK_K == 0``: a partial
+    K-tail mask inside the dot loop miscompiles on GCU (silent NaN columns,
+    data-dependent), and ``BLOCK_K`` beyond 512 miscompiles as well, so both
+    cases are routed to the conversion kernel instead.
     """
-    pid = tle.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // group_size
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_m = offs_m.to(tl.int64)
-    offs_n = offs_n.to(tl.int64)
     offs_k = tl.arange(0, BLOCK_K)
 
     a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
@@ -131,22 +147,9 @@ def _scaled_mm_v2_kernel(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_K)):
-        if EVEN_K:
-            a = tl.load(a_ptrs, mask=offs_m[:, None] < M, other=0.0)
-            b = tl.load(b_ptrs, mask=offs_n[None, :] < N, other=0.0)
-        else:
-            k_remaining = K - k * BLOCK_K
-            a = tl.load(
-                a_ptrs,
-                mask=(offs_m[:, None] < M) & (offs_k[None, :] < k_remaining),
-                other=0.0,
-            )
-            b = tl.load(
-                b_ptrs,
-                mask=(offs_k[:, None] < k_remaining) & (offs_n[None, :] < N),
-                other=0.0,
-            )
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        a = tl.load(a_ptrs, mask=offs_m[:, None] < M, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_n[None, :] < N, other=0.0)
+        acc = tl.dot(a, b, acc, max_num_imprecise_acc=32)
         a_ptrs += BLOCK_K * stride_ak
         b_ptrs += BLOCK_K * stride_bk
 
@@ -163,8 +166,9 @@ def _scaled_mm_v2_kernel(
     acc = acc * scale_a[:, None] * scale_b[None, :]
 
     if HAS_BIAS:
-        bias = tl.load(Bias + offs_n, mask=offs_n < N, other=0.0).to(tl.float32)
-        acc += bias[None, :]
+        acc += tl.load(Bias + offs_n, mask=offs_n < N, other=0.0)[None, :].to(
+            tl.float32
+        )
 
     c_ptrs = C + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
     c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
@@ -186,6 +190,54 @@ def _float8_dtypes():
 
 def _is_float8_dtype(dtype):
     return dtype in _float8_dtypes()
+
+
+def _fit_grid_axis(size, block):
+    while triton.cdiv(size, block) > _GCU_GRID_LIMIT:
+        if block >= 32768:
+            raise ValueError(
+                f"_scaled_mm_v2: grid limit {_GCU_GRID_LIMIT} exceeded "
+                f"for extent {size}"
+            )
+        block *= 2
+    return block
+
+
+def _launch_config(m_size, n_size, k_size, mat_a_dtype, out_dtype):
+    """Deterministic tile dispatch (no runtime autotuning).
+
+    ``float8_e4m3fn`` operands with a non-fp8 output take the direct-dot
+    ladder measured on GCU400 -- but only when ``K`` is a multiple of a safe
+    ``BLOCK_K``; everything else (fp8 outputs, other fp8 encodings, ragged
+    ``K``) reuses the validated fp16-conversion kernel and tile table of the
+    ``scaled_mm`` path.
+    """
+    if out_dtype in _float8_dtypes():
+        # fp8 store lowering requires 32/64 output tiles (m32 matrix write).
+        return False, 32, 64, 32
+    if mat_a_dtype != torch.float8_e4m3fn:
+        # No direct fp8 dot for e5m2/fnuz encodings; convert through fp16.
+        return False, 64, 128, 32
+
+    block_k = 0
+    for candidate in _DIRECT_BK_LADDER:
+        if k_size % candidate == 0:
+            block_k = candidate
+            break
+    if block_k == 0:
+        # Ragged K cannot use the direct dot (K-tail mask miscompile);
+        # the conversion kernel masks K natively and is production-proven.
+        return False, 64, 128, 32
+
+    if m_size * n_size <= _SMALL_MN:
+        block_m, block_n = _TILE_SMALL
+    elif m_size * n_size <= _MID_MN:
+        block_m, block_n = _TILE_MID
+    else:
+        block_m, block_n = _TILE_LARGE
+    block_m = _fit_grid_axis(m_size, block_m)
+    block_n = _fit_grid_axis(n_size, block_n)
+    return True, block_m, block_n, block_k
 
 
 def _parse_recipe(recipe, name):
@@ -213,7 +265,7 @@ def _parse_swizzle(swizzle, name):
     value = int(swizzle[0])
     if value != SWIZZLE_NONE:
         raise ValueError(f"unsupported swizzle pattern {value} for {name}")
-    return value
+    return SWIZZLE_NONE
 
 
 def _parse_scale_list(scales, name):
@@ -271,7 +323,7 @@ def _scaled_mm_v2(
     contraction_dim=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_MM_V2")
+    logger.debug("GEMS_ENFLAME _SCALED_MM_V2")
     if contraction_dim:
         raise ValueError(_CONTRACTION_DIM_ERROR)
 
@@ -326,33 +378,80 @@ def _scaled_mm_v2(
     if out.numel() == 0:
         return out
 
-    grid = lambda META: (
-        triton.cdiv(m_size, META["BLOCK_M"]) * triton.cdiv(n_size, META["BLOCK_N"]),
+    if k_size == 0:
+        # An empty contraction is a zero matrix plus the decoding bias; a
+        # GCU fp8-output kernel cannot compile with an empty K loop
+        # (llvm.fptrunc -> i8), so serve the degenerate case on the host.
+        if bias is not None:
+            out.copy_(bias.reshape(1, n_size).expand(m_size, n_size))
+        else:
+            out.zero_()
+        return out
+
+    row_a = scale_a.numel() != 1
+    row_b = scale_b.numel() != 1
+    direct, block_m, block_n, block_k = _launch_config(
+        m_size, n_size, k_size, mat_a.dtype, out_dtype
     )
+    grid = (triton.cdiv(m_size, block_m), triton.cdiv(n_size, block_n))
     with torch_device_fn.device(mat_a.device):
-        _scaled_mm_v2_kernel[grid](
-            mat_a,
-            mat_b,
-            scale_a,
-            scale_b,
-            bias,
-            out,
-            m_size,
-            n_size,
-            k_size,
-            mat_a.stride(0),
-            mat_a.stride(1),
-            mat_b.stride(0),
-            mat_b.stride(1),
-            out.stride(0),
-            out.stride(1),
-            SCALE_A_MODE=(
-                SCALE_TENSOR_WISE if recipe_a == RECIPE_TENSOR_WISE else SCALE_ROW_WISE
-            ),
-            SCALE_B_MODE=(
-                SCALE_TENSOR_WISE if recipe_b == RECIPE_TENSOR_WISE else SCALE_ROW_WISE
-            ),
-            HAS_BIAS=bias is not None,
-            GROUP_M=GROUP_M,
-        )
+        if direct:
+            _scaled_mm_v2_kernel[grid](
+                mat_a,
+                mat_b,
+                scale_a,
+                scale_b,
+                bias,
+                out,
+                m_size,
+                n_size,
+                k_size,
+                mat_a.stride(0),
+                mat_a.stride(1),
+                mat_b.stride(0),
+                mat_b.stride(1),
+                out.stride(0),
+                out.stride(1),
+                SCALE_A_MODE=(
+                    SCALE_TENSOR_WISE
+                    if recipe_a == RECIPE_TENSOR_WISE
+                    else SCALE_ROW_WISE
+                ),
+                SCALE_B_MODE=(
+                    SCALE_TENSOR_WISE
+                    if recipe_b == RECIPE_TENSOR_WISE
+                    else SCALE_ROW_WISE
+                ),
+                HAS_BIAS=bias is not None,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                BLOCK_K=block_k,
+                num_warps=_DIRECT_NUM_WARPS,
+                num_stages=1,
+            )
+        else:
+            _scaled_mm_fp8_kernel[grid](
+                mat_a,
+                mat_b,
+                scale_a,
+                scale_b,
+                bias,
+                out,
+                m_size,
+                n_size,
+                k_size,
+                mat_a.stride(0),
+                mat_a.stride(1),
+                mat_b.stride(0),
+                mat_b.stride(1),
+                out.stride(0),
+                out.stride(1),
+                row_a,
+                row_b,
+                bias is not None,
+                block_m,
+                block_n,
+                block_k,
+                False,
+            )
     return out

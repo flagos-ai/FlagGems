@@ -61,6 +61,10 @@ FALLBACK_TO_PUBLIC = 0
 USE_SINGLE_H2D = 1
 USE_META_CACHE = 1
 META_CACHE_LIMIT = 32
+# out-of-place output allocation: 0=per-tensor empty_like + address table H2D;
+# 1=one contiguous allocation + output base address as a kernel scalar argument (zero H2D);
+# 2=one contiguous allocation + a 1-entry int64 address table H2D.
+PACK_OUTPUTS = 1
 # --- TUNING PARAMS END ---
 
 
@@ -69,17 +73,20 @@ META_CACHE_LIMIT = 32
 def fused_max_scalarlist_kernel(
     meta_ptr,
     out_ptr_meta,
+    out_base,
     NT: tl.constexpr,
     A_DT: tl.constexpr,
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
     HAS_OUT: tl.constexpr,
+    PACK_OUT: tl.constexpr,
+    ELEM_BYTES: tl.constexpr,
 ):
-    """Compute ``max(tensor, scalar_i)`` for the whole list in one launch.
+    """One launch applies ``max(tensor, scalar_i)`` to the whole list.
 
-    The three segments of ``meta_ptr`` are input addresses, element counts, and each fp32 scalar bit pattern;
-    with ``HAS_OUT=1`` output addresses are read from ``out_ptr_meta``, otherwise input is written in place.
-    grid.x is linearized over ``(tensor, part)`` to avoid the ``grid.y <= 255`` limit.
+    ``meta_ptr`` holds, in order, the input addresses, the element counts and the bit patterns
+    of the fp32 scalars; with ``HAS_OUT=1`` outputs come from ``out_ptr_meta``, else the
+    input is written in place. grid.x is flattened as ``(tensor, part)`` to stay inside
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -91,7 +98,14 @@ def fused_max_scalarlist_kernel(
     num_elems = tl.load(meta_ptr + NT + tensor_id)
     scalar_raw = tl.load(meta_ptr + 2 * NT + tensor_id)
     if HAS_OUT:
-        out_raw = tl.load(out_ptr_meta + tensor_id)
+        if PACK_OUT == 1:
+            # The output base address is a kernel scalar argument, and static metadata only stores per-tensor offsets.
+            out_offset = tl.load(meta_ptr + 3 * NT + tensor_id)
+            out_raw = out_base + out_offset * ELEM_BYTES
+        elif PACK_OUT == 2:
+            out_raw = tl.load(out_ptr_meta)
+        else:
+            out_raw = tl.load(out_ptr_meta + tensor_id)
     else:
         out_raw = in_raw
     in_ptr = in_raw.to(tl.pointer_type(A_DT))
@@ -137,10 +151,16 @@ def _run_max_scalarlist(self, scalars, inplace):
     scalar_bits = [
         struct.unpack("<i", struct.pack("<f", float(value)))[0] for value in scalars
     ]
+    numels = [tensor.numel() for tensor in self]
+    out_offsets = []
+    running_offset = 0
+    for numel in numels:
+        out_offsets.append(running_offset)
+        running_offset += numel
+    # The fourth segment holds the element offsets of each tensor within the contiguous output buffer (unchanged across
+    # calls).
     static_values = (
-        [tensor.data_ptr() for tensor in self]
-        + [tensor.numel() for tensor in self]
-        + scalar_bits
+        [tensor.data_ptr() for tensor in self] + numels + scalar_bits + out_offsets
     )
     if USE_META_CACHE:
         meta = _get_cached_meta(static_values, self[0].device)
@@ -150,7 +170,39 @@ def _run_max_scalarlist(self, scalars, inplace):
     if inplace:
         outputs = self
         out_ptr_meta = meta
+        out_base = 0
         has_out = 0
+        pack_out = 0
+    elif PACK_OUTPUTS:
+        # One contiguous allocation replaces 16 empty_like calls + address table H2D; outputs are independent views
+        # on the same buffer with no overlap between segments, so in-place modification of one output by the user does
+        # not affect the others.
+        # Views are constructed once with as_strided (narrow+view requires two dispatches; for 16 tensors the
+        # host overhead is 66µs -> 19µs, directly visible for small host-bound shapes in do_bench).
+        flat_output = torch.empty(
+            running_offset, dtype=self[0].dtype, device=self[0].device
+        )
+        outputs = []
+        element_offset = 0
+        for tensor in self:
+            outputs.append(
+                torch.as_strided(
+                    flat_output, tensor.shape, tensor.stride(), element_offset
+                )
+            )
+            element_offset += tensor.numel()
+        if PACK_OUTPUTS == 1:
+            out_ptr_meta = meta
+            out_base = flat_output.data_ptr()
+        else:
+            out_ptr_meta = torch.tensor(
+                [flat_output.data_ptr()],
+                dtype=torch.int64,
+                device=self[0].device,
+            )
+            out_base = 0
+        has_out = 1
+        pack_out = PACK_OUTPUTS
     else:
         outputs = [torch.empty_like(tensor) for tensor in self]
         out_ptr_meta = torch.tensor(
@@ -158,18 +210,27 @@ def _run_max_scalarlist(self, scalars, inplace):
             dtype=torch.int64,
             device=self[0].device,
         )
+        out_base = 0
         has_out = 1
+        pack_out = 0
 
-    blocks_per_tensor = triton.cdiv(max(tensor.numel() for tensor in self), BLOCK_SIZE)
+    blocks_per_tensor = triton.cdiv(max(numels), BLOCK_SIZE)
     grid_size = max(1, min(FIXED_GRID, num_tensors * blocks_per_tensor))
+    # Native-width fp16 comparison matches the scalar→tensor dtype semantics of ATen clamp_min,
+    # and avoids bidirectional fp16↔fp32 cvt in the hot loop (measured 37.6→32.8µs at 1024²×16, -13%);
+    # bf16/fp32 tiers show no measured difference with promote, so keep the common executor's fp32 promotion strategy.
+    fp32_promote = FP32_PROMOTE and self[0].dtype is not torch.float16
     fused_max_scalarlist_kernel[(grid_size,)](
         meta,
         out_ptr_meta,
+        out_base,
         num_tensors,
         _TL_DTYPES[self[0].dtype],
-        FP32_PROMOTE,
+        fp32_promote,
         BLOCK_SIZE,
         has_out,
+        pack_out,
+        self[0].element_size(),
         num_warps=NUM_WARPS,
         num_stages=NUM_STAGES,
     )

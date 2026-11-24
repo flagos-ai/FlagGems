@@ -88,7 +88,7 @@ def reduce_all_kernel(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def _nested_tensor_from_mask_left_aligned(t, mask):
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_TENSOR_FROM_MASK_LEFT_ALIGNED")
+    logger.debug("GEMS_ENFLAME _NESTED_TENSOR_FROM_MASK_LEFT_ALIGNED")
 
     if mask.dtype != torch.bool:
         raise RuntimeError(

@@ -30,6 +30,32 @@ CUDNN_RNN_SHAPES = [
 ]
 
 
+# torch aten not support due to: aten::_cudnn_rnn_backward only exists for CUDA/cuDNN,
+# GCU (PrivateUse1) has no kernel for it. When that is the case the case runs the
+# autograd reference instead (the path already used for bfloat16), so it is a
+# per-dtype reference choice rather than a reason to skip the module.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+
+@pytest.fixture(autouse=True)
+def isolate_matmul_precision():
+    """Keep the TF32 precision state self-consistent for this module.
+
+    Sibling test modules flip the legacy ``torch.backends.*.allow_tf32`` switches
+    at import time. Mixed with the new ``fp32_precision`` API that the device
+    backend already initialised, torch then refuses to report the matmul
+    precision at all and the ``torch.addmm`` inside ``cudnn_rnn_backward``
+    raises. Pin it through the new API for the duration of each case and restore
+    the previous value afterwards.
+    """
+    previous = torch.backends.cuda.matmul.fp32_precision
+    torch.backends.cuda.matmul.fp32_precision = "ieee"
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.fp32_precision = previous
+
+
 def _cudnn_rnn_backward_ref(
     input,
     weight,
@@ -48,37 +74,48 @@ def _cudnn_rnn_backward_ref(
     fp16/fp32 use ``aten::_cudnn_rnn_backward``.  cuDNN's RNN path does not
     support bfloat16 on every backend, so for bfloat16 the reference is
     computed via autograd over the native ``nn.LSTM`` forward (upcast to fp32).
+    Backends without an aten kernel for ``_cudnn_rnn`` (see
+    ATEN_REFERENCE_UNSUPPORTED) take the same autograd reference for every
+    dtype, computed in fp32 on the host because the fused LSTM cell backward
+    kernel is missing there as well.
     """
-    if dtype != torch.bfloat16:
+    if not ATEN_REFERENCE_UNSUPPORTED and dtype != torch.bfloat16:
         return None  # caller uses the cuDNN reserve/weight_buf path
 
     # bfloat16: autograd over native nn.LSTM forward, computed in fp32.
+    # On backends where the fused device kernels are missing
+    # (ATEN_REFERENCE_UNSUPPORTED) the whole golden -- including the fused
+    # LSTM cell backward used by autograd -- is computed on the host instead,
+    # and the gradients are moved back to the input device for comparison.
+    ref_device = torch.device("cpu") if ATEN_REFERENCE_UNSUPPORTED else input.device
     seq_len, batch, input_size = input.shape
     rnn = torch.nn.LSTM(input_size, hidden_size, 1).to(
-        device=input.device, dtype=torch.float32
+        device=ref_device, dtype=torch.float32
     )
     with torch.no_grad():
-        rnn.weight_ih_l0.copy_(weight[0].to(torch.float32))
-        rnn.weight_hh_l0.copy_(weight[1].to(torch.float32))
-        rnn.bias_ih_l0.copy_(weight[2].to(torch.float32))
-        rnn.bias_hh_l0.copy_(weight[3].to(torch.float32))
+        rnn.weight_ih_l0.copy_(weight[0].to(device=ref_device, dtype=torch.float32))
+        rnn.weight_hh_l0.copy_(weight[1].to(device=ref_device, dtype=torch.float32))
+        rnn.bias_ih_l0.copy_(weight[2].to(device=ref_device, dtype=torch.float32))
+        rnn.bias_hh_l0.copy_(weight[3].to(device=ref_device, dtype=torch.float32))
     rnn.flatten_parameters()
 
-    inp32 = input.to(torch.float32).detach().requires_grad_(True)
-    hx32 = hx.to(torch.float32)
-    cx32 = cx.to(torch.float32)
+    def _to_device(t):
+        return None if t is None else t.to(device=input.device, dtype=dtype)
+
+    inp32 = input.to(device=ref_device, dtype=torch.float32).detach().requires_grad_(True)
+    hx32 = hx.to(device=ref_device, dtype=torch.float32)
+    cx32 = cx.to(device=ref_device, dtype=torch.float32)
     out, (hy, cy) = rnn(inp32, (hx32, cx32))
+    grad_output_f32 = grad_output.to(device=ref_device, dtype=torch.float32)
+    grad_hy_f32 = grad_hy.to(device=ref_device, dtype=torch.float32)
+    grad_cy_f32 = grad_cy.to(device=ref_device, dtype=torch.float32)
     gs = torch.autograd.grad(
         [out, hy, cy],
         [inp32] + list(rnn.parameters()),
-        grad_outputs=[
-            grad_output.to(torch.float32),
-            grad_hy.to(torch.float32),
-            grad_cy.to(torch.float32),
-        ],
+        grad_outputs=[grad_output_f32, grad_hy_f32, grad_cy_f32],
         allow_unused=True,
     )
-    grad_input = gs[0].to(dtype)
+    grad_input = _to_device(gs[0])
     # grad_hx / grad_cx are the gradients w.r.t. the initial hidden/cell state;
     # autograd over nn.LSTM does not expose them directly, so recompute via the
     # hidden-state inputs.
@@ -88,17 +125,15 @@ def _cudnn_rnn_backward_ref(
     gs2 = torch.autograd.grad(
         [out2, hy2, cy2],
         [hx_leaf, cx_leaf],
-        grad_outputs=[
-            grad_output.to(torch.float32),
-            grad_hy.to(torch.float32),
-            grad_cy.to(torch.float32),
-        ],
+        grad_outputs=[grad_output_f32, grad_hy_f32, grad_cy_f32],
         allow_unused=True,
     )
-    grad_hx = gs2[0].to(dtype)
-    grad_cx = gs2[1].to(dtype)
+    grad_hx = _to_device(gs2[0])
+    grad_cx = _to_device(gs2[1])
     grad_weight = [
-        (g if g is not None else torch.zeros_like(p)).to(dtype)
+        (g if g is not None else torch.zeros_like(p)).to(
+            device=input.device, dtype=dtype
+        )
         for g, p in zip(gs[1:], weight)
     ]
     return grad_input, grad_hx, grad_cx, grad_weight
@@ -134,8 +169,9 @@ def test_cudnn_rnn_backward(shape, dtype):
     # passes.  fp16/fp32 use the cuDNN forward; bf16 uses the gems forward
     # (cuDNN does not support bf16 RNN on every backend), whose reserve /
     # weight_buf feeds the gems backward (the reference is autograd over
-    # native nn.LSTM).
-    if dtype != torch.bfloat16:
+    # native nn.LSTM). Backends without an aten kernel for the cuDNN forward
+    # (ATEN_REFERENCE_UNSUPPORTED) use the gems forward for every dtype.
+    if not ATEN_REFERENCE_UNSUPPORTED and dtype != torch.bfloat16:
         output, hy, cy, reserve, weight_buf = torch.ops.aten._cudnn_rnn(
             input,
             weight,
@@ -178,8 +214,9 @@ def test_cudnn_rnn_backward(shape, dtype):
     grad_hy = torch.randn_like(hy)
     grad_cy = torch.randn_like(cy)
 
-    # Reference backward: cuDNN path for fp16/fp32, autograd (native) for bf16.
-    if dtype != torch.bfloat16:
+    # Reference backward: cuDNN path for fp16/fp32, autograd (native) for bf16,
+    # and for every dtype on backends without the aten cuDNN kernels.
+    if not ATEN_REFERENCE_UNSUPPORTED and dtype != torch.bfloat16:
         ref_out = torch.ops.aten._cudnn_rnn_backward(
             input,
             weight,

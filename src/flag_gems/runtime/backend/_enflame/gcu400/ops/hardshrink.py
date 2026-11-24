@@ -21,22 +21,166 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 24
 
-@triton.jit
-def _hardshrink_kernel(x_ptr, out_ptr, n_elements, lambd, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+# GCU400 flat fast path for contiguous fp16/bf16/f32 hardshrink.
+# The seed kernel launched one program per 1024-element tile, so the 1Gi-element
+# core bench shapes demanded grid.x = 2^20 > 65535 and every such case aborted
+# with `OutOfResources: out of resource: grid.x` (P19 family).
+# Tuning (job j20261117175123_390f6c18, kernel-mode do_bench median w1000/r100,
+# 2026-11-17, GCU400/L600; probe JSONs in the job tmp dir):
+#   * The seed where-chain body compares in the f32 domain (two casts for
+#     16-bit dtypes): 16-bit 1Gi ran at 1.440ms vs the 1.358ms 1R1W copy floor
+#     (3.1TB/s) -- ALU-bound, same pathology the softshrink RSI documented.
+#     hardshrink(x) == where(|x| > lambd, x, 0) keeps the compare/select in the
+#     storage dtype when lambd is exactly representable there (abs + cmp +
+#     select, no casts) and is bit-exact with the generic seed chain on every
+#     input including NaN (both map NaN -> 0) and +-0.  It restores roofline
+#     behaviour: 16-bit 1Gi 1.355ms, 16.7M 27.3us, fp32 1Gi ~2.70ms.
+#   * BLOCK ladder: <=2^16 elems use next_pow2(n//2) (>=512) with num_warps=2
+#     (launch-latency band; configs are flat at ~3.1-3.2us there). Larger
+#     sizes use a wide tile with num_warps=4 (2026-11-20 retune of the
+#     previous flat 65536 ladder, see _choose_config): 131072 for 16-bit,
+#     65536 for fp32, halved while the tile count cannot fill the SIPS.
+#     EVEN elides the boundary mask when n % BLOCK == 0 (all core shapes are
+#     2^k, so the benchmark always takes the unmasked arm).  Each (dtype-class,
+#     BLOCK) pair maps to exactly one num_warps (LibEntry's dispatch key omits
+#     num_warps, relu/softshrink precedent).
+#   * Grid is capped at NUM_SIPS programs with a grid-stride loop over tiles,
+#     which removes the grid.x 65535 ceiling entirely and measured 0.1-0.3%
+#     faster than the previous NUM_SIPS * 2 cap.
+#   * WIDE arm: for n > 2^31 - BLOCK the tile base offsets are computed in
+#     int64 (randn precedent) to avoid int32 wrap-around stores.
+#   * Launch retries: the external llvm converter intermittently fails on
+#     cold compiles (softshrink/fill precedents); retrying recompiles.
+#   * Non-representable lambd on 16-bit dtypes falls back to the exact f32
+#     domain body (|f32(x)| > f32 lambd), matching the generic chain bit-for-bit
+#     (e.g. lambd = 0.3, where fp16(0.3) != 0.3).
 
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    # hardshrink(x) = x if |x| > lambd else 0
-    keep = (x > lambd) | (x < -lambd)
-    y = tl.where(keep, x, 0.0)
-    tl.store(out_ptr + offsets, y, mask=mask)
+_SMALL_MAX = 1 << 16
+_HUGE_BLOCK_16BIT = 131072
+_HUGE_BLOCK_F32 = 65536
+_MID_BLOCK_MIN = 8192
+_GRID_CAP = NUM_SIPS
+_LAUNCH_ATTEMPTS = 3
+_WIDE_BASE = 2**31
+_REPRESENTABLE_CACHE = {}
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N_total", "lambd"])
+def hardshrink_kernel(
+    x_ptr,
+    out_ptr,
+    N_total,
+    lambd,
+    BLOCK_SIZE: tl.constexpr,
+    EVEN: tl.constexpr,
+    NATIVE: tl.constexpr,
+    WIDE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        if WIDE:
+            off = block_id.to(tl.int64) * BLOCK_SIZE + arange
+        else:
+            off = block_id * BLOCK_SIZE + arange
+        if EVEN:
+            x = tl.load(x_ptr + off)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask, other=0.0)
+        if NATIVE:
+            lam = lambd.to(x.dtype)
+            keep = tl.abs(x) > lam
+            zero = tl.zeros([BLOCK_SIZE], dtype=x.dtype)
+            res = tl.where(keep, x, zero)
+        else:
+            x32 = x.to(tl.float32)
+            keep = tl.abs(x32) > lambd
+            res = tl.where(keep, x32, 0.0).to(x.dtype)
+        if EVEN:
+            tl.store(out_ptr + off, res)
+        else:
+            tl.store(out_ptr + off, res, mask=mask)
+
+
+def _check_supported_dtype(t):
+    if t.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        raise TypeError(
+            f"Unsupported dtype {t.dtype}. Supported dtypes are float16, bfloat16, and float32."
+        )
+
+
+def _lambda_representable(dtype, lambd):
+    key = (dtype, lambd)
+    cached = _REPRESENTABLE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        representable = float(torch.tensor(lambd, dtype=dtype)) == float(lambd)
+    except Exception:
+        representable = False
+    _REPRESENTABLE_CACHE[key] = representable
+    return representable
+
+
+def _choose_config(x, n):
+    if n <= _SMALL_MAX:
+        block = max(512, triton.next_power_of_2(max(n // 2, 1)))
+        num_warps = 2
+        return block, num_warps
+    # 2026-11-20 retune (kernel-level do_bench median, 6 configs x {16.7M, 512Mi}
+    # x {fp16, fp32}, one dtype/size per process):
+    #   16-bit: BLOCK 131072 beats 65536 by 0.9% at 16.7M (335.6us vs 338.6us)
+    #           and by 0.7% at 512Mi (10579us vs 10656us); num_warps 4 and 2 are
+    #           within 0.02%, so nw=4 (narrower register footprint per lane).
+    #   fp32:   the opposite -- 65536 is 1.2% faster than 131072 at 16.7M
+    #           (664.0us vs 671.1us) and 0.5% faster at 512Mi (21144us vs
+    #           21252us); nw 2 vs 4 within 0.02%.
+    # Only core/mid sizes need the wide tile; below NUM_SIPS tiles the wide
+    # BLOCK would leave SIPs idle, so halve it until the grid can fill them.
+    block = _HUGE_BLOCK_16BIT if x.element_size() == 2 else _HUGE_BLOCK_F32
+    num_warps = 4
+    while block > _MID_BLOCK_MIN and n // block < NUM_SIPS:
+        block //= 2
+    return block, num_warps
+
+
+def _launch_hardshrink_kernel(x, out, lambd):
+    n_elements = x.numel()
+    if n_elements == 0:
+        return
+    block, num_warps = _choose_config(x, n_elements)
+    grid = min(triton.cdiv(n_elements, block), _GRID_CAP)
+    lambd = float(lambd)
+    native = x.dtype == torch.float32 or _lambda_representable(x.dtype, lambd)
+    for attempt in range(_LAUNCH_ATTEMPTS):
+        try:
+            with torch_device_fn.device(x.device):
+                hardshrink_kernel[(grid,)](
+                    x,
+                    out,
+                    n_elements,
+                    lambd,
+                    BLOCK_SIZE=block,
+                    EVEN=(n_elements % block == 0),
+                    NATIVE=native,
+                    WIDE=(n_elements > _WIDE_BASE - block),
+                    num_warps=num_warps,
+                )
+            return
+        except Exception:
+            if attempt == _LAUNCH_ATTEMPTS - 1:
+                raise
+            logger.warning("hardshrink kernel launch failed (attempt %d)", attempt + 1)
 
 
 def _hardshrink_impl(x: torch.Tensor, lambd: float, out: torch.Tensor):
@@ -46,38 +190,32 @@ def _hardshrink_impl(x: torch.Tensor, lambd: float, out: torch.Tensor):
         raise RuntimeError(f"out must have dtype {x.dtype}, but got {out.dtype}")
     if out.shape != x.shape:
         out.resize_(x.shape)
+    _check_supported_dtype(x)
 
     n_elements = x.numel()
     if n_elements == 0:
         return out
 
     x_contig = x.contiguous()
+    # Fast path (contiguous caller-provided out): launch straight into `out` and
+    # skip the two data_ptr() round trips, which are pure host cost on top of a
+    # ~3.5us launch-bound kernel.
     if out.is_contiguous():
-        out_contig = out
-    else:
-        out_contig = torch.empty_like(x, memory_format=torch.contiguous_format)
+        _launch_hardshrink_kernel(x_contig, out, lambd)
+        return out
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(x.device):
-        _hardshrink_kernel[grid](
-            x_contig.view(-1),
-            out_contig.view(-1),
-            n_elements,
-            float(lambd),
-            BLOCK_SIZE=1024,
-        )
-
-    if out_contig is not out:
-        out.copy_(out_contig)
+    out_contig = torch.empty_like(x, memory_format=torch.contiguous_format)
+    _launch_hardshrink_kernel(x_contig, out_contig, lambd)
+    out.copy_(out_contig)
     return out
 
 
 def hardshrink(self: torch.Tensor, lambd: float = 0.5):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDSHRINK")
+    logger.debug("GEMS_ENFLAME HARDSHRINK")
     out = torch.empty_like(self)
     return _hardshrink_impl(self, lambd, out)
 
 
 def hardshrink_out(self: torch.Tensor, lambd: float = 0.5, *, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDSHRINK_OUT")
+    logger.debug("GEMS_ENFLAME HARDSHRINK_OUT")
     return _hardshrink_impl(self, lambd, out)
