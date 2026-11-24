@@ -26,23 +26,6 @@ pytestmark = pytest.mark.skipif(
 
 REDUCTIONS = ("sum", "mean", "max", "min", "prod")
 
-# The native baseline on gcu400 is not a valid reference: torch.segment_reduce costs 4.2~13.9 s
-# per call on (1024, 1024, 1024) (about 150 MB/s), and aten::_segment_reduce_backward has no
-# PrivateUse1 kernel at all (it falls back to the CPU). do_bench calls the baseline about 8 times
-# per case, so the 15 cases of 1024^3 alone would eat 1500 s or more, beyond the 1800 s
-# per-operator benchmark budget; therefore only the native baseline is skipped, while the
-# FlagGems kernel still measures latency as usual.
-_ENFLAME_SKIP_NATIVE = dict(
-    vendors=["enflame"],
-    reason=(
-        "gcu400 native baseline is not a usable reference for the "
-        "segment_reduce schemas: torch.segment_reduce costs 4.2-13.9 s per call "
-        "on (1024,1024,1024) (~150 MB/s) and aten::_segment_reduce_backward has "
-        "no PrivateUse1 kernel (CPU fallback), so measuring the baseline alone "
-        "blows the per-op benchmark time budget"
-    ),
-)
-
 
 def _select_axis(shape):
     return 0 if len(shape) == 1 else 1
@@ -112,7 +95,6 @@ class SegmentReduceBenchmark(base.Benchmark):
 
 
 @pytest.mark.segment_reduce
-@pytest.mark.skip_native(**_ENFLAME_SKIP_NATIVE)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason=(
@@ -124,6 +106,9 @@ class SegmentReduceBenchmark(base.Benchmark):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame", reason="aten not working"
+)
 def test_segment_reduce():
     bench = SegmentReduceBenchmark(
         op_name="segment_reduce",
@@ -134,7 +119,6 @@ def test_segment_reduce():
 
 
 @pytest.mark.segment_reduce_out
-@pytest.mark.skip_native(**_ENFLAME_SKIP_NATIVE)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason=(
@@ -145,6 +129,9 @@ def test_segment_reduce():
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame", reason="aten not working"
 )
 def test_segment_reduce_out():
     bench = SegmentReduceBenchmark(
@@ -157,7 +144,6 @@ def test_segment_reduce_out():
 
 
 @pytest.mark.segment_reduce_backward
-@pytest.mark.skip_native(**_ENFLAME_SKIP_NATIVE)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason=(
@@ -168,6 +154,9 @@ def test_segment_reduce_out():
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame", reason="aten not working"
 )
 def test_segment_reduce_backward():
     bench = SegmentReduceBenchmark(
@@ -180,7 +169,6 @@ def test_segment_reduce_backward():
 
 
 @pytest.mark.segment_reduce_backward_out
-@pytest.mark.skip_native(**_ENFLAME_SKIP_NATIVE)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason=(
@@ -191,6 +179,9 @@ def test_segment_reduce_backward():
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame", reason="aten not working"
 )
 def test_segment_reduce_backward_out():
     bench = SegmentReduceBenchmark(
