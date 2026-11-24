@@ -1627,3 +1627,11 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+sin_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape

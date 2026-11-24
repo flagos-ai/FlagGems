@@ -19304,6 +19304,17 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: sin_backward
+  description: First-order backward of sin, using saved forward state.
+  for:
+  - sin
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: sinc
   description: 'Computes the normalized sinc function `sin(π·x) / (π·x)` for each
     element of the input.
