@@ -19773,10 +19773,23 @@ ops:
   - aten
   - Activation
   - pointwise
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: softplus_backward_out
+  description: Destination-buffer variant of softplus backward.
+  for:
+  - softplus_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: 5.5.0
 - id: softshrink
   description: 'Applies the soft shrinkage function element-wise to an input tensor.
 
