@@ -1627,3 +1627,12 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_swiglu:
+  shapes:
+    - [1, 512]
+    - [8, 512]
+    - [8, 3072]
+    - [1024, 512]
+    - [1024, 3072]
+  shape_desc: "input shape"
