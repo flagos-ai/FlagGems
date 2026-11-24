@@ -23,6 +23,14 @@ from flag_gems.utils._scatter_add_backward_index_kernel_impl import (
 )
 
 
+def scalar_to_vector(tensor):
+    return torch.as_strided(tensor, (1,), (1,))
+
+
+def vector_to_scalar(tensor):
+    return torch.as_strided(tensor, (), ())
+
+
 @triton.jit
 def gather_kernel(
     G,
