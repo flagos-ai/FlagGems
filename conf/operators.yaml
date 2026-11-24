@@ -19000,6 +19000,17 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: select_scatter_backward
+  description: First-order backward of select_scatter, using saved forward state.
+  for:
+  - select_scatter
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: selu
   description: 'Applies an element-wise activation function that induces self-normalizing
     properties in neural networks.
