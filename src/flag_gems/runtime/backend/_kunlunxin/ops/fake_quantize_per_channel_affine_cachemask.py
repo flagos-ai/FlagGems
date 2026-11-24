@@ -486,16 +486,17 @@ _OUT_NDIM_MAX = 8
 def _out_round_half_to_even(x):
     """round-to-nearest, ties-to-even (matches std::nearbyint in fp32).
 
-    The fp32 magic-constant add is deliberately not used: on this backend the
-    compiler contracts ``(x * inv + magic)`` into an FMA, which skips the
-    intermediate rounding of the product and changes half-way results (measured
-    one-step divergence from the ATen reference). The explicit floor/fraction
-    form forces the product to be materialised and is exact for all magnitudes.
+    The clamp is required, not decorative: without it the compiler contracts
+    ``x * inv + 12582912`` into an FMA, skipping the rounding of the product,
+    and exact half-way quotients drift one step from the ATen reference.
+    Materialising the product first keeps results aligned while retaining the
+    two-op magic-constant RNE (``tl.floor`` is disproportionately slow here).
+    Quantised quotients stay far below 2**22, where the trick is exact; larger
+    quotients still clamp to quant_max.
     """
-    fl = tl.floor(x)
-    frac = x - fl
-    is_even = (tl.floor(fl * 0.5) * 2.0) == fl
-    return tl.where((frac > 0.5) | ((frac == 0.5) & (is_even == 0)), fl + 1.0, fl)
+    big = 2147483648.0
+    x = tl.minimum(tl.maximum(x, -big), big)
+    return (x + 12582912.0) - 12582912.0
 
 
 @triton.jit
