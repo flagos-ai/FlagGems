@@ -259,7 +259,7 @@ tsingmicro-tsm260610 = [
 ]
 # --- END auto-generated from backends.yaml ---
 
-# Vendor extras selected by flagos-optest
+# Test packages group for flagos-ai/flagos-optest
 ascend = [
     "decorator==5.2.1",  # used for gru operator test
     "numpy>=1.26.4,<2.0",
