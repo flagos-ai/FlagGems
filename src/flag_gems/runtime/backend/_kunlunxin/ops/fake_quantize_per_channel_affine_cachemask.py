@@ -471,9 +471,11 @@ def fake_quantize_per_channel_affine_cachemask(
 #   q   = nearbyint_(half-to-even)(x / scale) + zero_point   # fp32 opmath
 #   m   = (q >= quant_min) & (q <= quant_max)                # inclusive
 #   out = (clamp(q, quant_min, quant_max) - zero_point) * scale
-# The quotient must be a true IEEE fp32 division: a focused probe showed the
-# reference matches x/s on 135/135 discriminating inputs and x*(1/s) on 0, and
-# ties must round half-to-even (no native rint on this backend).
+# The quotient must match the ATen CPU reference: measured tie cases show it
+# uses a correctly rounded reciprocal multiply ``x * (1 / scale)`` (the master
+# CPU reference and the old kunlunxin path agree on all 48 diagnostic cases),
+# so the kernel uses the same form. Ties round half-to-even (no native rint on
+# this backend).
 # Both destinations (out0, out1) are written in place and returned.
 
 _OUT_NDIM_MAX = 8
@@ -527,7 +529,8 @@ def _fq_cachemask_kernel(
         s = tl.load(s_ptr + ch).to(tl.float32)
         z = tl.load(z_ptr + ch).to(tl.float32)
         x = tl.load(x_ptr + off).to(tl.float32)
-        q = _out_round_half_to_even(x / s, magic, FAST) + z
+        inv = tl.div_rn(1.0, s)
+        q = _out_round_half_to_even(x * inv, magic, FAST) + z
         qc = tl.minimum(tl.maximum(q, qmin), qmax)
         # in-range == clamp did not change the value (identical to the inclusive
         # qmin/qmax test, and False for NaN), so reuse the clamp result.
@@ -541,7 +544,8 @@ def _fq_cachemask_kernel(
         s = tl.load(s_ptr + ch, mask=ok, other=1.0).to(tl.float32)
         z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
         x = tl.load(x_ptr + off, mask=ok, other=0.0).to(tl.float32)
-        q = _out_round_half_to_even(x / s, magic, FAST) + z
+        inv = tl.div_rn(1.0, s)
+        q = _out_round_half_to_even(x * inv, magic, FAST) + z
         qc = tl.minimum(tl.maximum(q, qmin), qmax)
         if MB:
             tl.store(m_ptr + off, q == qc, mask=ok)
@@ -604,6 +608,7 @@ def _fq_cachemask_strided_kernel(
     ch = (off // inner) % C
     s = tl.load(s_ptr + ch, mask=ok, other=1.0).to(tl.float32)
     z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
+    inv = tl.div_rn(1.0, s)
 
     xo = tl.zeros([BLOCK], dtype=tl.int64)
     oo = tl.zeros([BLOCK], dtype=tl.int64)
@@ -657,7 +662,7 @@ def _fq_cachemask_strided_kernel(
     mo += i0 * ms0
 
     x = tl.load(x_ptr + xo, mask=ok, other=0.0).to(tl.float32)
-    q = _out_round_half_to_even(x / s, magic, FAST) + z
+    q = _out_round_half_to_even(x * inv, magic, FAST) + z
     qc = tl.minimum(tl.maximum(q, qmin), qmax)
     tl.store(m_ptr + mo, (q == qc).to(tl.uint8), mask=ok)
     tl.store(o_ptr + oo, ((qc - z) * s).to(o_ptr.dtype.element_ty), mask=ok)
