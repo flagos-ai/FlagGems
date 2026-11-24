@@ -100,7 +100,6 @@ def _conv2d_acc_dtype(dtype: torch.dtype):
     return _ACC_DTYPE_OVERRIDES.get(dtype, tl.float32)
 
 
-
 _FORWARD_CONFIGS = list(runtime.get_tuned_config("conv2d_forward"))
 
 # Widest BLOCK_CI/BLOCK_CO in the forward table. pack_weight never pads past
