@@ -32,9 +32,10 @@ def _is_op_registered(lib_name, op_name):
 
 
 def _ensure_vllm_library_exists(lib_name, ops_to_check=None):
+    # MetaX ships the `_C` / `_moe_C` namespaces in `mcoplib`, not `vllm._C`.
     module_map = {
-        "_C": ("vllm._C", "vllm._C_stable_libtorch"),
-        "_moe_C": ("vllm._moe_C", "vllm._moe_C_stable_libtorch"),
+        "_C": ("vllm._C", "vllm._C_stable_libtorch", "mcoplib._C"),
+        "_moe_C": ("vllm._moe_C", "vllm._moe_C_stable_libtorch", "mcoplib._moe_C"),
         "_vllm_fa3_C": ("vllm.vllm_flash_attn._vllm_fa3_C",),
         "_C_cache_ops": ("vllm._C_cache_ops", "vllm._C_stable_libtorch"),
     }
@@ -114,17 +115,13 @@ libs = {}
 
 
 def init_vllm_libraries():
-    _libs_loaded = {}
     for lib_name, ops_dict in _VLLM_OPS_SIGNATURES.items():
         ops = list(ops_dict.keys())
-        loaded = _ensure_vllm_library_exists(lib_name, ops)
-        _libs_loaded[lib_name] = loaded
+        _ensure_vllm_library_exists(lib_name, ops)
 
-        # looks like it happens only when vllm is not compiled
-        # with custom ops like tsingmicro vllm
-        if not loaded:
-            for op_name, signature in ops_dict.items():
-                _define_op_if_not_exists(lib_name, op_name, signature)
+        # A provider can cover only part of a namespace, so decide per operator.
+        for op_name, signature in ops_dict.items():
+            _define_op_if_not_exists(lib_name, op_name, signature)
 
     vllm_C_lib = torch.library.Library("_C", "IMPL")
     vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")

@@ -20,15 +20,16 @@ from flag_gems.patches import patch_util
 @pytest.mark.parametrize(
     ("lib_name", "module_names"),
     [
-        ("_C", ("vllm._C", "vllm._C_stable_libtorch")),
-        ("_moe_C", ("vllm._moe_C", "vllm._moe_C_stable_libtorch")),
+        ("_C", ("vllm._C", "vllm._C_stable_libtorch", "mcoplib._C")),
+        (
+            "_moe_C",
+            ("vllm._moe_C", "vllm._moe_C_stable_libtorch", "mcoplib._moe_C"),
+        ),
         ("_vllm_fa3_C", ("vllm.vllm_flash_attn._vllm_fa3_C",)),
         ("_C_cache_ops", ("vllm._C_cache_ops", "vllm._C_stable_libtorch")),
     ],
 )
-def test_vllm_extension_legacy_and_stable_abi_fallback(
-    monkeypatch, lib_name, module_names
-):
+def test_vllm_library_provider_probe_order(monkeypatch, lib_name, module_names):
     attempts = []
 
     def try_import(module_name):
@@ -39,3 +40,28 @@ def test_vllm_extension_legacy_and_stable_abi_fallback(
 
     assert patch_util._ensure_vllm_library_exists(lib_name)
     assert attempts == list(module_names)
+
+
+def test_fallback_is_decided_per_operator(monkeypatch):
+    probes = []
+    defines = []
+
+    def ensure(lib_name, ops_to_check=None):
+        probes.append(lib_name)
+        return True
+
+    monkeypatch.setattr(patch_util, "_ensure_vllm_library_exists", ensure)
+    monkeypatch.setattr(
+        patch_util,
+        "_define_op_if_not_exists",
+        lambda lib_name, op_name, signature: defines.append((lib_name, op_name)),
+    )
+
+    patch_util.init_vllm_libraries()
+
+    assert probes == list(patch_util._VLLM_OPS_SIGNATURES)
+    assert defines == [
+        (lib_name, op_name)
+        for lib_name, ops_dict in patch_util._VLLM_OPS_SIGNATURES.items()
+        for op_name in ops_dict
+    ]
