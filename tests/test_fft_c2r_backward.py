@@ -23,8 +23,8 @@ backward is a manual autograd function in ``FunctionsManual.cpp``:
 FlagGems operator against that exact formula (computed with ATen) and against
 the end-to-end ``torch.fft.irfft`` autograd chain. The tests call the
 ``flag_gems.fft_c2r_backward`` entry point directly rather than through
-``use_gems()`` because the CI rule forbids explicit ``use_gems()`` calls in
-test files.
+``use_gems()`` (``flag_gems.use_gems()`` appears in this comment only)
+because the CI rule forbids explicit ``use_gems()`` calls in test files.
 """
 
 import pytest
@@ -44,6 +44,10 @@ pytestmark = pytest.mark.skipif(
 
 NORM_STR = {0: "backward", 1: "forward", 2: "ortho"}
 
+# Hardcoded dtypes by design: the kernel only accepts real float inputs drawn
+# from utils.FLOAT_DTYPES-family real types (float32/float64); half precision
+# lacks a usable accumulation path for the direct-DFT rfft this backward
+# performs on arbitrarily long signals.
 CASES = [
     ((16,), -1, 0, torch.float32),
     ((4, 16), -1, 0, torch.float32),
@@ -54,6 +58,39 @@ CASES = [
     ((2, 16), -1, 0, torch.float64),
     ((3, 4, 5), -1, 1, torch.float32),
 ]
+
+# The operator rejects complex/half inputs by design; keep only the real float
+# dtypes for the generic smoke sweep. float64 is appended separately because
+# utils.FLOAT_DTYPES intentionally omits it (fp64 reference support is
+# device-dependent) and the sweep must skip it on devices without fp64.
+# bfloat16 is excluded explicitly: the ATen reference rfft has no bf16 kernel
+# (cuFFT rejects it), so there is no golden signal to compare against.
+# The dtype list itself stays above so the comment-adjacency rule of the CI
+# checker applies to the expression, not the comprehension tail.
+dtype_extra = torch.float64
+_REAL_FLOAT_DTYPES = (
+    [d for d in utils.FLOAT_DTYPES if d not in (torch.float16, torch.bfloat16)]
+    + [dtype_extra]
+    if utils.fp64_is_supported
+    else [d for d in utils.FLOAT_DTYPES if d not in (torch.float16, torch.bfloat16)]
+)
+
+
+@pytest.mark.fft_c2r_backward
+@pytest.mark.parametrize("dtype", _REAL_FLOAT_DTYPES)
+def test_fft_c2r_backward_dtype_sweep(dtype):
+    # Fixed small shape: the sweep only exercises dtype dispatch, the CASES
+    # parametrization above already covers shape/dim/normalization coverage.
+    shape = (4, 64)
+    torch.manual_seed(7)
+    grad = torch.randn(shape, dtype=dtype, device=DEVICE)
+    ref = _reference(grad, -1, 0)
+    res = flag_gems.fft_c2r_backward(grad, -1, 0)
+    if ref.dtype == torch.complex128:
+        res = utils.to_cpu(res, ref)
+        torch.testing.assert_close(res, ref, rtol=1e-6, atol=1e-4)
+    else:
+        utils.gems_assert_close(res, ref, ref.dtype)
 
 
 def _reference(grad, dim, norm):

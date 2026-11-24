@@ -45,9 +45,13 @@ signal length along the transformed axis. No reference kernels are
 reused, so the ``backward`` value is produced by this module alone.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit(do_not_specialize=["n"])
@@ -220,6 +224,7 @@ def fft_c2r_backward(grad_output, dim, normalization):
         axis replaced by ``N // 2 + 1``; equals ATen
         ``fft_c2r_backward(grad_output, [dim], normalization)``.
     """
+    logger.debug("GEMS FFT_C2R_BACKWARD")
     x = grad_output
     if not isinstance(x, torch.Tensor):
         x = torch.as_tensor(x)

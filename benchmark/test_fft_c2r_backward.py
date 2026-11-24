@@ -74,6 +74,8 @@ def test_fft_c2r_backward():
     bench = FftC2rBackwardBenchmark(
         op_name="fft_c2r_backward",
         torch_op=_reference,
+        # Single dtype: fp32 is the production dtype for this FFT backward
+        # gradient; fp64 only affects reference tolerance.
         dtypes=[torch.float32],
     )
     bench.set_gems(flag_gems.fft_c2r_backward)
