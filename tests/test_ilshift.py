@@ -35,6 +35,7 @@ INPLACE_BITWISE_SHAPES = [
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_ilshift(shapes, dtype):
+    """Exercise the registered ``__ilshift__`` operator (``a <<= b``) directly."""
     shape_a, shape_b = shapes
     res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -44,7 +45,9 @@ def test_ilshift(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.__ilshift__(ref_b)
-    flag_gems.bitwise_left_shift_(res_a, res_b)
+    out = flag_gems.__ilshift__(res_a, res_b)
+
+    assert out is res_a
     utils.gems_assert_close(res_a, ref_a, dtype)
 
 
@@ -62,24 +65,4 @@ def test_ilshift_int8(shapes, dtype):
 
     ref_a.__ilshift__(ref_b)
     res_a = flag_gems.bitwise_left_shift_(res_a, res_b)
-    utils.gems_assert_close(res_a, ref_a, dtype)
-
-
-@pytest.mark.ilshift
-@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
-def test_ilshift_operator(shapes, dtype):
-    """Exercise the registered ``__ilshift__`` operator (``a <<= b``) directly."""
-    shape_a, shape_b = shapes
-    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
-        flag_gems.device
-    )
-    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
-    ref_a = utils.to_reference(res_a.clone())
-    ref_b = utils.to_reference(res_b)
-
-    ref_a.__ilshift__(ref_b)
-    out = flag_gems.__ilshift__(res_a, res_b)
-
-    assert out is res_a
     utils.gems_assert_close(res_a, ref_a, dtype)
