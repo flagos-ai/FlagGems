@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
@@ -21,9 +22,32 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
+# TSM_FORCE_CUDAGRAPH: when set, fill rounds scalar values to the target
+# dtype on the host before the device launch (the device-side conversion
+# truncates, e.g. bf16 -0.999 would become -0.9961 instead of -1.0).
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
+
 TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
 
 logger = logging.getLogger(__name__)
+
+
+def _round_scalar_to_dtype(value, dtype):
+    """Round a python scalar on the host to the value ``dtype`` stores.
+
+    The device-side scalar→narrow-float conversion truncates instead of
+    rounding to nearest, so e.g. -0.999 filled into a bfloat16 tensor becomes
+    -0.9961 instead of -1.0. Rounding on the host first makes the device
+    conversion exact (no CPU tensor is materialized; this is scalar math).
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    if dtype in (torch.bfloat16, torch.float16, torch.float32):
+        try:
+            return torch.tensor(value).to(dtype).item()
+        except (RuntimeError, TypeError, OverflowError):
+            return value
+    return value
 
 
 @libentry()
@@ -197,6 +221,8 @@ def fill_scalar(input, value):
     out = torch.empty_like(input)
     if out.is_complex():
         return _fill_complex_scalar(out, value)
+    if _FORCE_CUDAGRAPH:
+        value = _round_scalar_to_dtype(value, out.dtype)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
@@ -214,6 +240,8 @@ def fill_scalar_out(input, value, *, out=None):
         return out
     if out.is_complex():
         return _fill_complex_scalar(out, value)
+    if _FORCE_CUDAGRAPH:
+        value = _round_scalar_to_dtype(value, out.dtype)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
@@ -267,6 +295,8 @@ def fill_scalar_(self, value):
         return self
     if self.is_complex():
         return _fill_complex_scalar(self, value)
+    if _FORCE_CUDAGRAPH:
+        value = _round_scalar_to_dtype(value, self.dtype)
     N = self.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 

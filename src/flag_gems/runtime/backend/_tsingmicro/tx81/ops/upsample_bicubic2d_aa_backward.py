@@ -14,6 +14,7 @@
 
 import logging
 import math
+import os
 from collections import OrderedDict
 
 import torch
@@ -21,6 +22,11 @@ import triton
 import triton.language as tl
 
 logger = logging.getLogger(__name__)
+
+# TSM_FORCE_CUDAGRAPH: when set, the resampling weight matrix is built on
+# device with vectorized ops (no CPU tensor construction + H2D round-trip),
+# so the op graph can be captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
 
 _WEIGHT_CACHE_MAX_ENTRIES = 128
 _weight_matrix_cache = OrderedDict()
@@ -69,21 +75,53 @@ def _get_weight_matrix(
     scale = _compute_scale(input_size, output_size, align_corners, scale_arg)
     support = 2.0 * scale if scale >= 1.0 else 2.0
     invscale = 1.0 / scale if scale >= 1.0 else 1.0
-    weight_cpu = torch.zeros((output_size, input_size), dtype=torch.float32)
-    for output_idx in range(output_size):
-        center = scale * (output_idx + 0.5)
-        start = max(math.floor(center - support + 0.5), 0)
-        end = min(math.floor(center + support + 0.5), input_size)
-        values = [
-            _cubic_aa_filter_scalar((input_idx - center + 0.5) * invscale)
-            for input_idx in range(start, end)
-        ]
-        total = sum(values)
-        if total != 0.0:
-            for input_idx, value in zip(range(start, end), values):
-                weight_cpu[output_idx, input_idx] = value / total
 
-    weight = weight_cpu.to(device=device, dtype=dtype)
+    if _FORCE_CUDAGRAPH:
+        # Build the (output_size, input_size) resampling weight matrix on
+        # device with vectorized ops (same f32 math as the forward kernel — no
+        # CPU tensor construction + H2D round-trip).
+        out_idx = torch.arange(int(output_size), device=device, dtype=torch.float32)
+        in_idx = torch.arange(int(input_size), device=device, dtype=torch.float32)
+        center = scale * (out_idx + 0.5)
+        x = (in_idx.unsqueeze(0) - center.unsqueeze(1) + 0.5) * invscale
+        ax = x.abs()
+        weight = torch.where(
+            ax < 1.0,
+            (1.5 * ax - 2.5) * ax * ax + 1.0,
+            torch.where(
+                ax < 2.0,
+                ((-0.5 * ax + 2.5) * ax - 4.0) * ax + 2.0,
+                torch.zeros_like(ax),
+            ),
+        )
+        # Keep only the taps inside each output row's support window
+        # [max(floor(center - support + 0.5), 0), min(floor(center + support + 0.5), input_size)).
+        start = torch.clamp(
+            torch.floor(center - support + 0.5), min=0.0
+        ).unsqueeze(1)
+        end = torch.clamp(
+            torch.floor(center + support + 0.5), max=float(input_size)
+        ).unsqueeze(1)
+        weight = weight * ((in_idx.unsqueeze(0) >= start) & (in_idx.unsqueeze(0) < end))
+        total = weight.sum(dim=1, keepdim=True)
+        weight = torch.where(total != 0.0, weight / total, weight)
+        weight = weight.to(dtype)
+    else:
+        weight_cpu = torch.zeros((output_size, input_size), dtype=torch.float32)
+        for output_idx in range(output_size):
+            center = scale * (output_idx + 0.5)
+            start = max(math.floor(center - support + 0.5), 0)
+            end = min(math.floor(center + support + 0.5), input_size)
+            values = [
+                _cubic_aa_filter_scalar((input_idx - center + 0.5) * invscale)
+                for input_idx in range(start, end)
+            ]
+            total = sum(values)
+            if total != 0.0:
+                for input_idx, value in zip(range(start, end), values):
+                    weight_cpu[output_idx, input_idx] = value / total
+
+        weight = weight_cpu.to(device=device, dtype=dtype)
     if len(_weight_matrix_cache) >= _WEIGHT_CACHE_MAX_ENTRIES:
         _weight_matrix_cache.popitem(last=False)
     _weight_matrix_cache[key] = weight

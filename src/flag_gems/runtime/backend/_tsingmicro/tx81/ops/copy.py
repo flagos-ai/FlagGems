@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import logging
+import os
+import warnings
 from typing import Optional
 
 import torch
@@ -33,6 +35,15 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 )
 
 _FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
+
+# TSM_FORCE_CUDAGRAPH: when set, copy_ runs the on-device-only code path
+# (no CPU round-trips / ATen redispatch for same-device strided tensors), so
+# the surrounding op graph can be captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
+
+# Generated pointwise kernels compute task ids in 32-bit arithmetic, so a
+# single launch cannot address more than INT32_MAX elements.
+_INT32_MAX = torch.iinfo(torch.int32).max
 
 _COPY_RANK3_CODEGEN_CONFIG = CodeGenConfig(
     max_tile_size=1024,
@@ -120,6 +131,81 @@ def _redispatch_copy_(dst, src, non_blocking: bool):
     )
 
 
+def _triton_copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool):
+    """Launch the triton copy kernel; dst/src are same-device strided tensors."""
+    expanded_src = src if src.shape == dst.shape else src.expand(dst.shape)
+    try:
+        # Pointwise preparation collapses contiguous input/output layouts to a
+        # flat task, avoiding expensive per-element rank-N index reconstruction.
+        # Keep direct instantiation for zero-stride destinations (written-to
+        # by some workloads even though ATen refuses them), which general
+        # pointwise output validation treats as internally overlapping.
+        if any(
+            size > 1 and stride == 0
+            for size, stride in zip(dst.shape, dst.stride())
+        ):
+            overload = _copy_kernel.instantiate(expanded_src.ndim)
+            overload(expanded_src, out0=dst)
+        else:
+            _copy_kernel(expanded_src, out0=dst)
+    except Exception as exc:
+        # Emergency net for unenumerated TX Triton compiler failures; the
+        # shapes/dtypes themselves are supported, so this should stay quiet.
+        logger.warning(
+            "GEMS_TSINGMICRO COPY_ triton path failed (%s); redispatch to ATen",
+            exc,
+        )
+        return _redispatch_copy_(dst, src, non_blocking)
+    return dst
+
+
+def _copy_in_chunks_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool):
+    """Split a >INT32_MAX copy into 32-bit-addressable slices."""
+    axis = None
+    for i in range(dst.ndim):
+        if dst.shape[i] > 1 and dst.numel() // dst.shape[i] <= _INT32_MAX:
+            axis = i
+            break
+    if axis is None:
+        # Every complementary product already exceeds int32; peel the first
+        # non-trivial dim and let the recursion split further.
+        axis = next(i for i in range(dst.ndim) if dst.shape[i] > 1)
+    per_slice = dst.numel() // dst.shape[axis]
+    step = max(1, _INT32_MAX // per_slice)
+    expanded = src if src.shape == dst.shape else src.expand(dst.shape)
+    for begin in range(0, dst.shape[axis], step):
+        length = min(step, dst.shape[axis] - begin)
+        copy_(
+            dst.narrow(axis, begin, length),
+            expanded.narrow(axis, begin, length),
+            non_blocking,
+        )
+    return dst
+
+
+def _copy_complex_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool):
+    """Complex copy via real/imag decomposition (triton has no complex dtype).
+
+    The real()/imag() views read through conj/neg flags, so lazy conjugate or
+    negative views of src are handled for free.
+    """
+    if src.is_complex():
+        if dst.is_complex():
+            copy_(dst.real, src.real, non_blocking)
+            copy_(dst.imag, src.imag, non_blocking)
+            return dst
+        warnings.warn(
+            "Casting complex values to real discards the imaginary part.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return copy_(dst, src.real, non_blocking)
+    # Real source into a complex destination: fill real part, zero imag part.
+    copy_(dst.real, src, non_blocking)
+    copy_(dst.imag, torch.zeros((), dtype=dst.imag.dtype, device=dst.device))
+    return dst
+
+
 def _has_large_noncontig_stride(t: torch.Tensor) -> bool:
     if t.numel() == 0 or t.is_contiguous():
         return False
@@ -174,8 +260,98 @@ def copy(
     return out
 
 
+def _cudagraph_copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool):
+    """On-device-only copy_ path (TSM_FORCE_CUDAGRAPH).
+
+    No CPU round-trips: every case a triton kernel cannot address is either
+    re-expressed on device (chunked copies, complex decomposition, fp8 via
+    uint8 reinterpretation) or explicitly left to ATen for the cases where no
+    device kernel exists at all (cross-device DMA, sparse / quantized layouts).
+    """
+    if isinstance(src, (int, float, bool, complex)):
+        src = torch.tensor(src, device=dst.device)
+    elif not isinstance(src, torch.Tensor):
+        raise TypeError("unsupport src type for copy_: ", type(src))
+
+    # this is the same as PyTorch's check
+    if dst._is_zerotensor():
+        raise RuntimeError("ZeroTensors are immutable. Call clone() before copy_.")
+    if src._is_zerotensor():
+        return dst.zero_()
+
+    # No triton path exists for these; ATen owns cross-device DMA, sparse and
+    # quantized layouts.
+    if (
+        dst.device != src.device
+        or dst.layout != torch.strided
+        or src.layout != torch.strided
+        or dst.is_quantized
+        or src.is_quantized
+    ):
+        return _redispatch_copy_(dst, src, non_blocking)
+
+    # Triton has no fp8 dtype yet. Same-dtype fp8 copies are pure bit moves, so
+    # reinterpret through uint8; cross-dtype fp8 casts need ATen's reference.
+    if _FLOAT8_E8M0FNU is not None and (
+        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
+    ):
+        if src.dtype == dst.dtype:
+            return copy_(
+                dst.view(torch.uint8), src.view(torch.uint8), non_blocking
+            )
+        return _redispatch_copy_(dst, src, non_blocking)
+
+    if src.is_complex() or dst.is_complex():
+        return _copy_complex_(dst, src, non_blocking)
+
+    # Materialize lazy neg/conj views so the kernel reads the visible values.
+    if src.is_neg():
+        src = src.resolve_neg()
+    if src.is_conj():
+        src = src.resolve_conj()
+    if dst.is_neg():
+        # Writes must land inverted so reads through the neg view agree.
+        src = -src
+
+    if torch._C._is_alias_of(dst, src):
+        # Align with PyTorch: if metadata fully matches, this is a no-op.
+        if (
+            dst.storage_offset() == src.storage_offset()
+            and dst.stride() == src.stride()
+            and dst.size() == src.size()
+            and dst.dtype == src.dtype
+            and dst.device == src.device
+            and dst.is_conj() == src.is_conj()
+            and dst.is_neg() == src.is_neg()
+        ):
+            return dst
+        # Partially overlapping views: snapshot src so reads cannot be
+        # corrupted by the writes into dst.
+        src = src.clone()
+
+    # Broadcast validation, also for empty tensors (matches PyTorch).
+    try:
+        broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
+    except RuntimeError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if torch.Size(broadcast_shape) != dst.shape:
+        raise RuntimeError(
+            f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
+        )
+
+    if dst.numel() == 0:
+        return dst
+
+    if dst.numel() > _INT32_MAX:
+        return _copy_in_chunks_(dst, src, non_blocking)
+
+    return _triton_copy_(dst, src, non_blocking)
+
+
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     logger.debug("GEMS_TSINGMICRO COPY_")
+    if _FORCE_CUDAGRAPH:
+        return _cudagraph_copy_(dst, src, non_blocking)
     if isinstance(src, (int, float, bool)):
         src = torch.tensor(src, device=dst.device)
     elif not isinstance(src, torch.Tensor):
@@ -280,3 +456,18 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         if precision_token is not None:
             restore_precision_mode(precision_token)
     return dst
+
+
+def contiguous_on_device(t: torch.Tensor) -> torch.Tensor:
+    """``t.contiguous()`` that always routes through the FlagGems copy kernel.
+
+    The native TXDA backend mishandles some permuted int64 copies (e.g. a 2-D
+    transpose of int64 data), so op implementations must not rely on aten
+    ``contiguous()``/``copy_`` when the FlagGems dispatcher may be inactive
+    (direct ``flag_gems.<op>`` function calls).
+    """
+    if t.is_contiguous():
+        return t
+    out = torch.empty(t.shape, dtype=t.dtype, device=t.device)
+    copy_(out, t, False)
+    return out
