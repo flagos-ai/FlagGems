@@ -238,24 +238,29 @@ def max_backward_lastdim_kernel(
     grad_ptr,
     index_ptr,
     out_ptr,
+    rows,
     N,
     BLOCK: tl.constexpr,
 ):
     """Write the whole gradient slab for a reduction over the innermost dim.
 
-    Program ``(o, pid)`` owns the ``BLOCK``-long slice ``[pid*BLOCK, pid*BLOCK +
-    BLOCK)`` of row ``o`` and writes ``grad[o]`` at ``indices[o]`` and zero
-    elsewhere, so the output is produced in a single pass: no zero-fill launch
-    followed by a scatter. The block index is the second grid axis because the
-    row count easily exceeds the 65535 limit of a CUDA y dimension.
+    Program ``(pid_row, pid_col)`` walks grid-strided rows and ``BLOCK``-wide
+    slices along the reduced axis, writing ``grad[row]`` at ``indices[row]``
+    and zero elsewhere so the output is produced in a single pass.
     """
-    row = ext.program_id(0)
-    offsets = ext.program_id(1).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < N
-    grad = tl.load(grad_ptr + row)
-    index = tl.load(index_ptr + row)
-    value = tl.where(offsets.to(tl.int64) == index, grad, tl.zeros_like(grad))
-    tl.store(out_ptr + row.to(tl.int64) * N + offsets, value, mask=mask)
+    pid_row = ext.program_id(0).to(tl.int64)
+    num_pid_row = tl.num_programs(0).to(tl.int64)
+    pid_col = ext.program_id(1).to(tl.int64)
+    num_pid_col = tl.num_programs(1).to(tl.int64)
+    for row in range(pid_row, rows, num_pid_row):
+        grad = tl.load(grad_ptr + row)
+        index = tl.load(index_ptr + row)
+        zero = tl.zeros_like(grad)
+        for col_start in range(pid_col * BLOCK, N, num_pid_col * BLOCK):
+            offsets = col_start + tl.arange(0, BLOCK)
+            mask = offsets < N
+            value = tl.where(offsets == index, grad, zero)
+            tl.store(out_ptr + row * N + offsets, value, mask=mask)
 
 
 @libentry()
@@ -264,6 +269,7 @@ def max_backward_tile_kernel(
     grad_ptr,
     index_ptr,
     out_ptr,
+    outer_size,
     reduction,
     inner,
     chunk,
@@ -276,30 +282,38 @@ def max_backward_tile_kernel(
     slice of the reduced axis starting at ``pid_r * chunk``. The int64 argmax
     index and the upstream gradient are loaded once and reused across the loop,
     so index traffic stays at ``outer * inner`` elements instead of being re-read
-    for every reduction step. The plane index is the first grid axis so it is not
-    limited to the 65535 entries of a CUDA y dimension.
+    for every reduction step.
     """
-    outer = ext.program_id(0)
-    pid_j = ext.program_id(1)
-    pid_r = ext.program_id(2)
-    column = pid_j * BJ + tl.arange(0, BJ)
-    column_mask = column < inner
-    flat = outer.to(tl.int64) * inner + column
-    index = tl.load(index_ptr + flat, mask=column_mask, other=-1)
-    grad = tl.load(grad_ptr + flat, mask=column_mask, other=0.0)
-    zero = tl.zeros_like(grad)
-    base = out_ptr + outer.to(tl.int64) * (reduction * inner) + column
-    start = pid_r.to(tl.int64) * chunk
-    for offset_r in range(start, start + chunk, BR):
-        rows = offset_r.to(tl.int64) + tl.arange(0, BR)
-        row_mask = rows < reduction
-        hit = (rows.to(tl.int64)[:, None] == index[None, :]) & row_mask[:, None]
-        value = tl.where(hit, grad[None, :], zero[None, :])
-        tl.store(
-            base + rows[:, None] * inner,
-            value,
-            mask=row_mask[:, None] & column_mask[None, :],
-        )
+    pid_outer = ext.program_id(0).to(tl.int64)
+    num_pid_outer = tl.num_programs(0).to(tl.int64)
+    pid_j_start = ext.program_id(1).to(tl.int64)
+    num_pid_j = tl.num_programs(1).to(tl.int64)
+    pid_r_start = ext.program_id(2).to(tl.int64)
+    num_pid_r = tl.num_programs(2).to(tl.int64)
+    tiles = (inner + BJ - 1) // BJ
+    splits = (reduction + chunk - 1) // chunk
+
+    for outer in range(pid_outer, outer_size, num_pid_outer):
+        for pid_j in range(pid_j_start, tiles, num_pid_j):
+            column = pid_j * BJ + tl.arange(0, BJ)
+            column_mask = column < inner
+            flat = outer * inner + column
+            index = tl.load(index_ptr + flat, mask=column_mask, other=-1)
+            grad = tl.load(grad_ptr + flat, mask=column_mask, other=0.0)
+            zero = tl.zeros_like(grad)
+            base = out_ptr + outer * (reduction * inner) + column
+            for pid_r in range(pid_r_start, splits, num_pid_r):
+                start = pid_r * chunk
+                for offset_r in range(start, start + chunk, BR):
+                    rows = offset_r + tl.arange(0, BR)
+                    row_mask = rows < reduction
+                    hit = (rows[:, None] == index[None, :]) & row_mask[:, None]
+                    value = tl.where(hit, grad[None, :], zero[None, :])
+                    tl.store(
+                        base + rows[:, None] * inner,
+                        value,
+                        mask=row_mask[:, None] & column_mask[None, :],
+                    )
 
 
 @libentry()
@@ -311,14 +325,21 @@ def evenly_distribute_count_kernel(
     n_elements,
     BLOCK: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n_elements
-    result = tl.load(result_ptr)
+    pid = ext.program_id(0).to(tl.int64)
+    num_programs = tl.num_programs(0).to(tl.int64)
+    cmp_type = (
+        tl.float32
+        if inp_ptr.dtype.element_ty is tl.bfloat16
+        else inp_ptr.dtype.element_ty
+    )
+    result = tl.load(result_ptr).to(cmp_type)
     nan_result = result != result
-    values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
-    hits = ((values == result) | ((values != values) & nan_result)) & mask
-    tl.atomic_add(count_ptr, tl.sum(hits.to(tl.int32), axis=0))
+    for start in range(pid * BLOCK, n_elements, num_programs * BLOCK):
+        offsets = start + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+        values = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(cmp_type)
+        hits = ((values == result) | ((values != values) & nan_result)) & mask
+        tl.atomic_add(count_ptr, tl.sum(hits.to(tl.int32), axis=0))
 
 
 @libentry()
@@ -332,19 +353,27 @@ def evenly_distribute_fill_kernel(
     n_elements,
     BLOCK: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n_elements
-    result = tl.load(result_ptr)
-    nan_result = result != result
-    values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
-    match = ((values == result) | ((values != values) & nan_result)) & mask
-    scaled = _even_share(tl.load(grad_ptr), tl.load(count_ptr), out_ptr)
-    tl.store(
-        out_ptr + offsets,
-        tl.where(match, scaled, tl.zeros_like(scaled)).to(out_ptr.dtype.element_ty),
-        mask=mask,
+    pid = ext.program_id(0).to(tl.int64)
+    num_programs = tl.num_programs(0).to(tl.int64)
+    cmp_type = (
+        tl.float32
+        if inp_ptr.dtype.element_ty is tl.bfloat16
+        else inp_ptr.dtype.element_ty
     )
+    result = tl.load(result_ptr).to(cmp_type)
+    nan_result = result != result
+    scaled = _even_share(tl.load(grad_ptr), tl.load(count_ptr), out_ptr)
+    zero = tl.zeros_like(scaled)
+    for start in range(pid * BLOCK, n_elements, num_programs * BLOCK):
+        offsets = start + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+        values = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(cmp_type)
+        match = ((values == result) | ((values != values) & nan_result)) & mask
+        tl.store(
+            out_ptr + offsets,
+            tl.where(match, scaled, zero).to(out_ptr.dtype.element_ty),
+            mask=mask,
+        )
 
 
 @triton.jit
@@ -382,9 +411,14 @@ def evenly_distribute_slab_kernel(
     pid = ext.program_id(0)
     offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
-    result = tl.load(result_ptr)
+    cmp_type = (
+        tl.float32
+        if inp_ptr.dtype.element_ty is tl.bfloat16
+        else inp_ptr.dtype.element_ty
+    )
+    result = tl.load(result_ptr).to(cmp_type)
     nan_result = result != result
-    values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
+    values = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(cmp_type)
     hits = ((values == result) | ((values != values) & nan_result)) & mask
     tl.store(partial_ptr + pid, tl.sum(hits.to(tl.int32), axis=0))
     tl.store(
@@ -428,11 +462,16 @@ def evenly_distribute_scale_kernel(
         target = tl.load(partial_ptr + n_partials + pid)
         tl.store(out_ptr + target, scaled.to(out_ptr.dtype.element_ty))
     elif local > 1:
-        result = tl.load(result_ptr)
+        cmp_type = (
+            tl.float32
+            if inp_ptr.dtype.element_ty is tl.bfloat16
+            else inp_ptr.dtype.element_ty
+        )
+        result = tl.load(result_ptr).to(cmp_type)
         nan_result = result != result
         offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
-        values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
+        values = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(cmp_type)
         match = ((values == result) | ((values != values) & nan_result)) & mask
         tl.store(
             out_ptr + offsets,
@@ -500,8 +539,14 @@ def max_backward(grad_output, self, result, indices, dim):
             block = triton.next_power_of_2(reduction)
             if block > 1024:
                 block = 1024
-            grid = (rows, triton.cdiv(reduction, block))
-            max_backward_lastdim_kernel[grid](grad, index, out, reduction, block)
+            col_blocks = triton.cdiv(reduction, block)
+            grid_y = col_blocks if col_blocks <= 65535 else 65535
+            grid_y = grid_y if grid_y >= 1 else 1
+            max_gx = 65535 // grid_y
+            grid_x = rows if rows <= max_gx else max_gx
+            grid_x = grid_x if grid_x >= 1 else 1
+            grid = (grid_x, grid_y)
+            max_backward_lastdim_kernel[grid](grad, index, out, rows, reduction, block)
         else:
             columns = 1 << _bit_length(inner - 1)
             if columns > _TILE_COLUMNS_MAX:
@@ -515,10 +560,19 @@ def max_backward(grad_output, self, result, indices, dim):
             splits = splits if splits < budget else budget
             chunk = triton.cdiv(reduction, splits)
             splits = triton.cdiv(reduction, chunk)
-            max_backward_tile_kernel[(outer, tiles, splits)](
+            grid_splits = splits if splits <= 65535 else 65535
+            grid_splits = grid_splits if grid_splits >= 1 else 1
+            rem_grid = 65535 // grid_splits
+            grid_tiles = tiles if tiles <= rem_grid else rem_grid
+            grid_tiles = grid_tiles if grid_tiles >= 1 else 1
+            max_outer = 65535 // (grid_tiles * grid_splits)
+            grid_outer = outer if outer <= max_outer else max_outer
+            grid_outer = grid_outer if grid_outer >= 1 else 1
+            max_backward_tile_kernel[(grid_outer, grid_tiles, grid_splits)](
                 grad,
                 index,
                 out,
+                outer,
                 reduction,
                 inner,
                 chunk,
@@ -573,7 +627,8 @@ def evenly_distribute_backward(grad_output, self, result):
         else:
             count_dtype = torch.int64 if n_elements > 2147483647 else torch.int32
             count = torch.zeros([], dtype=count_dtype, device=inp.device)
-            grid = (n_partials,)
+            capped_grid = n_partials if n_partials <= 65535 else 65535
+            grid = (capped_grid,)
             evenly_distribute_count_kernel[grid](inp, value, count, n_elements, block)
             evenly_distribute_fill_kernel[grid](
                 inp, grad, value, count, out, n_elements, block
