@@ -46,7 +46,7 @@ def restore_scalar_layout(tensor, reference):
 def _scalar_reduce_fp64_kernel(
     X, INDEX, S, Y, REDUCE: tl.constexpr, INCLUDE: tl.constexpr
 ):
-    index = tl.load(("scatter_reduce",))
+    index = tl.load(INDEX)
     tl.device_assert(index == 0, "scalar scatter index must be zero")
     x, src = (tl.load(X).to(tl.float64), tl.load(S).to(tl.float64))
     if not INCLUDE:
