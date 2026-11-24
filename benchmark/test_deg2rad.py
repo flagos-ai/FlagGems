@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -22,6 +24,21 @@ from . import base, consts
 def test_deg2rad():
     bench = base.UnaryPointwiseBenchmark(
         op_name="deg2rad", torch_op=torch.deg2rad, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
+
+
+@pytest.mark.deg2rad_backward
+def test_deg2rad_backward():
+    # The backward path is driven through the FlagGems autograd bridge, so the
+    # Triton kernel is what actually gets timed, instead of falling into the
+    # native ATen formula that the ATen-level ``torch.deg2rad`` dispatch keeps.
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="deg2rad_backward",
+        torch_op=torch.deg2rad,
+        gems_op=flag_gems.deg2rad,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
 

@@ -18,9 +18,11 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -152,6 +154,11 @@ _FULL_CONFIG = (
         "_cast_Float",
         cast_Float,
         lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
+        "_cast_Half",
+        cast_Half,
+        lambda: torch_has_aten_overload("_cast_Half", "default"),
     ),
     (
         "_cast_Long",
@@ -713,6 +720,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
     (
         "_sparse_log_softmax",
         _sparse_log_softmax,
@@ -784,6 +792,12 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    (
+        "_sparse_mm_reduce_impl_backward",
+        _sparse_mm_reduce_impl_backward,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
     (
         "_sparse_semi_structured_apply",
@@ -835,6 +849,36 @@ _FULL_CONFIG = (
     (
         "_sparse_sparse_matmul.out",
         _sparse_sparse_matmul_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum",
+        _sparse_sum,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim",
+        _sparse_sum_dim,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_dtype",
+        _sparse_sum_dim_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_out",
+        _sparse_sum_dim_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dtype",
+        _sparse_sum_dtype,
         None,
         (SPARSE_DISPATCH_KEY,),
     ),
@@ -1062,8 +1106,8 @@ _FULL_CONFIG = (
     ("atan2.out", atan2_out),
     ("atan2_", atan2_),
     ("atan_", atan_),
-    ("atanh", atanh),
-    ("atanh_", atanh_),
+    ("atanh", atanh, None, (f"Autograd{backend_info.dispatch_key}",)),
+    ("atanh_", atanh_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("atleast_1d", atleast_1d),
     ("atleast_1d.Sequence", atleast_1d),
     ("atleast_2d", atleast_2d),
@@ -1168,13 +1212,37 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    ("clamp", clamp),
+    # Autograd fallthrough: the ClampFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp",
+        clamp,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
-    ("clamp_max", clamp_max),
+    # Autograd fallthrough: the ClampMaxFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_max",
+        clamp_max,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_max_", clamp_max_),
-    ("clamp_min", clamp_min),
+    # Autograd fallthrough: the ClampMinFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_min",
+        clamp_min,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
@@ -1225,13 +1293,34 @@ _FULL_CONFIG = (
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
-    ("copysign.Scalar", copysign),
-    ("copysign.Tensor", copysign),
+    # Autograd fallthrough: the CopysignFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "copysign.Scalar",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    (
+        "copysign.Tensor",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),
-    ("cosh", cosh),
+    # Autograd fallthrough: the CoshFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and the backward falls back to the native kernel instead of ours.
+    (
+        "cosh",
+        cosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("cosine_embedding_loss", cosine_embedding_loss),
@@ -1325,6 +1414,7 @@ _FULL_CONFIG = (
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
+    ("elu_backward.grad_input", elu_backward_out),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
     ("embedding_bag", embedding_bag),
@@ -1528,7 +1618,12 @@ _FULL_CONFIG = (
     ("hypot", hypot),
     ("hypot.out", hypot_out),
     ("hypot_", hypot_),
-    ("i0", i0),
+    (
+        "i0",
+        i0,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("i0.out", i0_out),
     ("i0_", i0_),
     ("igamma", igamma),
@@ -1677,6 +1772,10 @@ _FULL_CONFIG = (
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
     ("linalg_pinv", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float_out", linalg_pinv_out),
+    ("linalg_pinv.atol_rtol_tensor", linalg_pinv),
+    ("linalg_pinv.atol_rtol_tensor_out", linalg_pinv_out),
     ("linalg_polar", linalg_polar),
     ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
@@ -1758,6 +1857,7 @@ _FULL_CONFIG = (
     ("matmul_backward", matmul_backward),
     ("matrix_exp", matrix_exp),
     ("matrix_exp_backward", matrix_exp_backward),
+    ("matrix_H", matrix_H),
     ("matrix_power", matrix_power),
     ("matrix_power.out", matrix_power_out),
     ("max", max),
@@ -2651,6 +2751,15 @@ class use_gems:
         import flag_gems.experimental_ops
 
         return flag_gems.experimental_ops
+
+
+def __getattr__(name):
+    # Deprecated operators that are imported lazily (see flag_gems.deprecated).
+    if name in _deprecated._LAZY_EXPORTS:
+        value = _deprecated._resolve_lazy(name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def all_registered_ops():
