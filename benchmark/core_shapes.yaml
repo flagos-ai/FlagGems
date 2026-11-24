@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+kv_compress_epilog:
+  shapes:
+    - [1, 512]
+    - [8, 512]
+  shape_desc: "input shape"
