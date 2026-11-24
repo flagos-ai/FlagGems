@@ -191,13 +191,15 @@ def min_backward_global_count_kernel(
     pid = tl.program_id(0)
     if INT64_OFFSET:
         pid = pid.to(tl.int64)
-    min_value = tl.load(result)
+    dtype = inp.type.element_ty
+    cmp_dtype = tl.float32 if dtype is tl.bfloat16 else dtype
+    min_value = tl.load(result).to(cmp_dtype)
     value_is_nan = min_value != min_value
     total = tl.zeros((1,), dtype=tl.int32)
     for start in range(pid * BLOCK_SIZE, n_elements, NUM_PROGRAMS * BLOCK_SIZE):
         offset = start + tl.arange(0, BLOCK_SIZE)
         mask = offset < n_elements
-        value = tl.load(inp + offset, mask=mask, other=0)
+        value = tl.load(inp + offset, mask=mask, other=0).to(cmp_dtype)
         is_min = (value == min_value) | ((value != value) & value_is_nan)
         total += tl.sum((is_min & mask).to(tl.int32))
     # One partial sum per program: the buffer is freshly allocated, so it needs
@@ -219,18 +221,21 @@ def min_backward_global_fill_kernel(
     INT64_OFFSET: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
     if INT64_OFFSET:
         pid = pid.to(tl.int64)
+        num_programs = num_programs.to(tl.int64)
     dtype = inp.type.element_ty
+    cmp_dtype = tl.float32 if dtype is tl.bfloat16 else dtype
     acc_dtype = tl.float64 if dtype is tl.float64 else tl.float32
-    min_value = tl.load(result)
+    min_value = tl.load(result).to(cmp_dtype)
     value_is_nan = min_value != min_value
     count = tl.sum(tl.load(partials + tl.arange(0, NUM_PARTIALS)).to(tl.int64), axis=0)
     scale = tl.load(grad_output).to(acc_dtype) / count.to(acc_dtype)
-    for start in range(pid * BLOCK_SIZE, n_elements, tl.num_programs(0) * BLOCK_SIZE):
+    for start in range(pid * BLOCK_SIZE, n_elements, num_programs * BLOCK_SIZE):
         offset = start + tl.arange(0, BLOCK_SIZE)
         mask = offset < n_elements
-        value = tl.load(inp + offset, mask=mask, other=0)
+        value = tl.load(inp + offset, mask=mask, other=0).to(cmp_dtype)
         is_min = (value == min_value) | ((value != value) & value_is_nan)
         grad_input = tl.where(is_min, scale, 0.0)
         tl.store(out + offset, grad_input.to(dtype), mask=mask)
@@ -256,36 +261,42 @@ def min_backward_dim_kernel(
     k_tiles: tl.constexpr = (K + BLOCK_K - 1) // BLOCK_K
 
     pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
     if INT64_OFFSET:
         pid = pid.to(tl.int64)
-    tile_n = pid % n_tiles
-    rest = pid // n_tiles
-    tile_k = rest % k_tiles
-    first_row = (rest // k_tiles) * ROWS
+        num_programs = num_programs.to(tl.int64)
+        n_rows = n_rows.to(tl.int64)
 
-    dim_offset = tile_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    inner_offset = tile_k * BLOCK_K + tl.arange(0, BLOCK_K)
-    dim_mask = dim_offset < N
-    inner_mask = inner_offset < K
-    store_mask = dim_mask[:, None] & inner_mask[None, :]
+    total_programs = ((n_rows + ROWS - 1) // ROWS) * n_tiles * k_tiles
+    for prog_id in range(pid, total_programs, num_programs):
+        tile_n = prog_id % n_tiles
+        rest = prog_id // n_tiles
+        tile_k = rest % k_tiles
+        first_row = (rest // k_tiles) * ROWS
 
-    for step in range(ROWS):
-        row = first_row + step
-        # A row tile may overshoot the last row of the tensor; the guard has to
-        # cover the loads as well as the store.
-        row_mask = row < n_rows
-        reduced_offset = row * K + inner_offset
-        load_mask = inner_mask & row_mask
-        index = tl.load(indices + reduced_offset, mask=load_mask, other=-1)
-        grad = tl.load(grad_output + reduced_offset, mask=load_mask, other=0)
-        selected = (dim_offset[:, None] == index[None, :]) & dim_mask[:, None]
-        # A zero of the loaded dtype keeps the select/store pipeline in the input
-        # dtype instead of promoting the tile to fp32: same bits, half the
-        # register footprint.
-        zero = tl.zeros([BLOCK_N, BLOCK_K], dtype=grad.dtype)
-        grad_input = tl.where(selected, grad[None, :], zero)
-        offset = row * (N * K) + dim_offset[:, None] * K + inner_offset[None, :]
-        tl.store(out + offset, grad_input, mask=store_mask & row_mask)
+        dim_offset = tile_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        inner_offset = tile_k * BLOCK_K + tl.arange(0, BLOCK_K)
+        dim_mask = dim_offset < N
+        inner_mask = inner_offset < K
+        store_mask = dim_mask[:, None] & inner_mask[None, :]
+
+        for step in range(ROWS):
+            row = first_row + step
+            # A row tile may overshoot the last row of the tensor; the guard has to
+            # cover the loads as well as the store.
+            row_mask = row < n_rows
+            reduced_offset = row * K + inner_offset
+            load_mask = inner_mask & row_mask
+            index = tl.load(indices + reduced_offset, mask=load_mask, other=-1)
+            grad = tl.load(grad_output + reduced_offset, mask=load_mask, other=0)
+            selected = (dim_offset[:, None] == index[None, :]) & dim_mask[:, None]
+            # A zero of the loaded dtype keeps the select/store pipeline in the input
+            # dtype instead of promoting the tile to fp32: same bits, half the
+            # register footprint.
+            zero = tl.zeros([BLOCK_N, BLOCK_K], dtype=grad.dtype)
+            grad_input = tl.where(selected, grad[None, :], zero)
+            offset = row * (N * K) + dim_offset[:, None] * K + inner_offset[None, :]
+            tl.store(out + offset, grad_input, mask=store_mask & row_mask)
 
 
 # Launch-shape caches: the backward is host-bound at small sizes, so the tile
@@ -348,7 +359,10 @@ def _dim_launch_config(outer_size, n_reduce, inner_size):
     # Keep enough programs in flight for the very small tensors.
     while rows > 1 and triton.cdiv(outer_size, rows) * n_tiles * k_tiles < 264:
         rows //= 2
-    grid = (triton.cdiv(outer_size, rows) * n_tiles * k_tiles,)
+    total_programs = triton.cdiv(outer_size, rows) * n_tiles * k_tiles
+    if total_programs > 65535:
+        total_programs = 65535
+    grid = (total_programs,)
     num_warps = 8 if wide else 4
     return grid, rows, block_n, block_k, n_tiles, k_tiles, num_warps
 
