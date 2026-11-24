@@ -236,6 +236,13 @@ def greater_equal_scalar(A, B):
 
 def greater_equal_(A, B):
     logger.debug("GEMS_ENFLAME GREATER_EQUAL_")
+    if not isinstance(B, torch.Tensor):
+        # aten dispatches ``Tensor.greater_equal_(scalar)`` onto the Tensor
+        # overload, so B can arrive as a Python number. Compare through the
+        # scalar pointwise kernel and write the result back into A; the kernel
+        # stores the bool result into A.dtype, which matches aten for byte and
+        # floating tensors alike.
+        return ge_func_scalar(A, B, out0=A)
     if A.device != B.device:
         B = B.to(A.device)
     if (

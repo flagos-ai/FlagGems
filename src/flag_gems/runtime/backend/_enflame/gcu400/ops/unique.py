@@ -60,28 +60,44 @@ def _unique_warps() -> int:
 def _unique_ne(a, b, NAN_AS_UNIQUE: tl.constexpr):
     """Elementwise "not equal" used to detect boundaries between unique values.
 
-    ``torch.unique`` folds every NaN into a single unique value while keeping
-    ``-0.0`` and ``+0.0`` distinct. A plain ``!=`` gets both wrong (NaN != NaN
-    is true, -0.0 == 0.0 is true), so for floating dtypes we compare bit
-    patterns after mapping NaN onto a canonical encoding.
+    ``NAN_AS_UNIQUE`` selects the aten::_unique2 contract: every NaN occurrence
+    keeps its own unique slot while ``-0.0``/``+0.0`` collapse into one value.
+    The other mode folds all NaNs onto a canonical encoding.
+
+    Both modes must be rebuilt from bit patterns on GCU: its float comparisons
+    are lowered to raw bit comparisons, so ``NaN != NaN`` evaluates to false and
+    ``-0.0 != 0.0`` evaluates to true, the opposite of IEEE ``!=``.
     """
-    if NAN_AS_UNIQUE:
-        # aten::_unique2 keeps one unique slot per NaN occurrence (NaN != NaN)
-        # and folds -0.0/+0.0 into one value, i.e. exactly plain != semantics.
-        return a != b
     if a.dtype.is_floating():
         if a.dtype == tl.float64:
-            a_bits = a.to(tl.uint64, bitcast=True)
-            b_bits = b.to(tl.uint64, bitcast=True)
+            int_dtype = tl.uint64
+            sign_bit = 0x8000000000000000
+            magnitude_mask = 0x7FFFFFFFFFFFFFFF
+            infinity_bits = 0x7FF0000000000000
             nan_bits = 0x7FF8000000000000
         elif a.dtype == tl.float32:
-            a_bits = a.to(tl.uint32, bitcast=True)
-            b_bits = b.to(tl.uint32, bitcast=True)
+            int_dtype = tl.uint32
+            sign_bit = 0x80000000
+            magnitude_mask = 0x7FFFFFFF
+            infinity_bits = 0x7F800000
             nan_bits = 0x7FC00000
         else:
-            a_bits = a.to(tl.uint16, bitcast=True)
-            b_bits = b.to(tl.uint16, bitcast=True)
+            int_dtype = tl.uint16
+            sign_bit = 0x8000
+            magnitude_mask = 0x7FFF
+            infinity_bits = 0x7C00
             nan_bits = 0x7E00
+        a_bits = a.to(int_dtype, bitcast=True)
+        b_bits = b.to(int_dtype, bitcast=True)
+        if NAN_AS_UNIQUE:
+            # Fold -0.0 onto +0.0 so signed zeros compare equal, then mark every
+            # NaN as distinct: an encoder that only reacts to magnitude bits
+            # cannot express "NaN never equals NaN", so add the NaN flags back.
+            a_key = tl.where(a_bits == sign_bit, 0, a_bits)
+            b_key = tl.where(b_bits == sign_bit, 0, b_bits)
+            a_is_nan = (a_bits & magnitude_mask) > infinity_bits
+            b_is_nan = (b_bits & magnitude_mask) > infinity_bits
+            return (a_key != b_key) | a_is_nan | b_is_nan
         a_key = tl.where(a != a, nan_bits, a_bits)
         b_key = tl.where(b != b, nan_bits, b_bits)
         return a_key != b_key
@@ -741,12 +757,9 @@ def _unique2(
         )
         counts = torch.empty(0, dtype=torch.int64, device=in0.device)
         return data_out, inverse_indices, counts
-    # NaN handling follows the ATen reference the test suite compares against
-    # (the CPU `_unique2` folds every NaN into one slot while keeping -0.0 and
-    # +0.0 distinct, which is exactly nan_as_unique=False: NaN bit patterns are
-    # canonicalized, signed zeros are not).  Passing True kept one slot per NaN
-    # occurrence and made tests/test_unique2.py::test_unique2_float_special_values
-    # return 9 unique values where ATen returns 8.
+    # NaN handling follows the ATen reference the test suite compares against:
+    # aten::_unique2 keeps one unique slot per NaN occurrence (NaN != NaN) and
+    # folds -0.0/+0.0 into a single value, i.e. nan_as_unique=True.
     if in0.numel() <= _UNIQUE_SIMPLE_MAX_NUMEL:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
@@ -754,17 +767,17 @@ def _unique2(
             sorted_indices,
             return_inverse,
             return_counts,
-            nan_as_unique=False,
+            nan_as_unique=True,
         )
     elif return_inverse:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices, return_counts, nan_as_unique=False
+            sorted_data, sorted_indices, return_counts, nan_as_unique=True
         )
     else:
         sorted_data, _ = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts, nan_as_unique=False
+            sorted_data, return_counts, nan_as_unique=True
         )
     # aten::_unique2 always returns three tensors: when return_inverse /
     # return_counts are False the corresponding output is an empty (0,) int64

@@ -974,6 +974,19 @@ def _upsample_lanczos2d_aa(
 ) -> torch.Tensor:
     logger.debug("GEMS_ENFLAME UPSAMPLE_LANCZOS2D_AA")
     output_size = _validate(input, output_size)
+    if input.dtype == torch.float64:
+        # GCU has no fp64 ALU: torch_gcu silently narrows float64 tensors to
+        # float32, and the tl.float64 weight path cannot be legalized
+        # ("failed to legalize operation 'arith.sitofp'" in
+        # _lanczos_weights_kernel). Run every kernel in fp32 and widen the
+        # result so the caller still receives the requested fp64 dtype.
+        return _upsample_lanczos2d_aa(
+            input.float(),
+            output_size,
+            align_corners,
+            scales_h,
+            scales_w,
+        ).to(torch.float64)
     channels_last = input.is_contiguous(memory_format=torch.channels_last)
     if input.shape[0] == 0:
         output = torch.empty(
