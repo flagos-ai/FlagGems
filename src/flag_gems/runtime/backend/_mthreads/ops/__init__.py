@@ -81,6 +81,7 @@ from ._foreach_rsqrt import _foreach_rsqrt
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin_ import _foreach_sin_
+from ._foreach_sqrt_ import _foreach_sqrt_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -336,6 +337,7 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_foreach_sin_",
+    "_foreach_sqrt_",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
