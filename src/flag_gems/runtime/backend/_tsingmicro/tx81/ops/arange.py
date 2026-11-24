@@ -30,13 +30,8 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
-    y_ptr += pid * BLOCK_SIZE
-    step_offset = pid * BLOCK_SIZE * step
-
-    cols = tl.arange(0, BLOCK_SIZE)
-    arange_val = cols * step + step_offset + start
-    mask = cols + pid * BLOCK_SIZE
-    tl.store(y_ptr + cols, arange_val, mask=mask < size)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(y_ptr + offset, start + step * offset, mask=offset < size)
 
 
 def arange_start(
@@ -55,16 +50,16 @@ def arange_start(
         size = math.ceil((end - start) / step)
     size = int(size)
 
-    if dtype is torch.bfloat16:
-        acc_dtype = torch.float32
-    else:
-        acc_dtype = dtype
-
     BLOCK_SIZE = 128
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if dtype is None:
-        dtype = torch.int64
+        # ATen infers int64 for integral arguments and the default float dtype
+        # as soon as one of start/end/step is a float.
+        integer_args = all(
+            isinstance(v, (int, torch.SymInt)) for v in (start, end, step)
+        )
+        dtype = torch.int64 if integer_args else torch.get_default_dtype()
 
     if pin_memory is None:
         pin_memory = False
@@ -74,10 +69,27 @@ def arange_start(
             runtime.device.name
         )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
-    result = torch.empty((size,), device=device, dtype=acc_dtype, pin_memory=pin_memory)
+    # txda runs ATen's arange through its CPU fallback (aten::arange.start_out is
+    # registered on PrivateUse1 in torch_txda's fallback_cpu.cpp). That kernel
+    # computes `start + step * i` in double precision and then rounds once to
+    # the output dtype, which an fp32 Triton kernel cannot reproduce bit-exactly
+    # (bf16 even diverges by whole ulps). Build floating-point ranges on the
+    # host so the output stays bit-identical to ATen for any start/step.
+    if dtype.is_floating_point:
+        host = torch.arange(
+            start,
+            end,
+            step,
+            dtype=dtype,
+            device="cpu",
+            pin_memory=pin_memory,
+        )  # allow-torch-compute
+        if torch.device(device).type == "cpu":
+            return host
+        return host.to(device)
+
+    result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
     arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
-    if acc_dtype != dtype:
-        return result.to(dtype=dtype)
     return result
 
 

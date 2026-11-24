@@ -23,9 +23,11 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 TOTAL_CORE_NUM = 16
 F32_INT_MAX = (1 << 24) - 1
@@ -43,6 +45,35 @@ def d0_chunk_size(stride_d0):
 
 
 logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def _dim_compress_kernel(x):
+    return x
+
+
+def _dim_compress(inp, dims):
+    # txdnnStrideCopy rejects permute(order).contiguous() ("stride copy dim size
+    # exceed limitation") as soon as a strided dimension is large, e.g.
+    # (4, 1048577, 4) reduced over dim=1. Gather through the strided pointwise
+    # kernel instead, which walks the source with explicit offsets.
+    if isinstance(dims, int):
+        dims = [dims]
+    ndim = inp.ndim
+    if ndim == 0:
+        return inp
+    stride = inp.stride()
+    batch_dim = [i for i in range(ndim) if i not in dims]
+    order = batch_dim + sorted(dims, key=lambda x: stride[x], reverse=True)
+    if order == list(range(ndim)) and inp.is_contiguous():
+        return inp
+    src = inp if order == list(range(ndim)) else inp.permute(order)
+    out = torch.empty(src.shape, dtype=inp.dtype, device=inp.device)
+    if out.numel() == 0:
+        return out
+    _dim_compress_kernel(src, out0=out)
+    return out
 
 
 def _is_reduce_last_dim(dim: int, ndim: int) -> bool:
@@ -234,7 +265,7 @@ def max_dim(inp, dim=None, keepdim=False):
         out_index = torch.squeeze(out_index, dim)
 
     if not use_fast:
-        inp = dim_compress(inp, dim)
+        inp = _dim_compress(inp, dim)
     m = inp.numel() // n
 
     if m == 0 or n == 0:

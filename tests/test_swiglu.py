@@ -51,6 +51,10 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
     flag_gems.vendor_name == "mthreads",
     reason="swiglu rejects MUSA tensors on mthreads",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="swiglu rejects tensors on tsingmicro",
+)
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):

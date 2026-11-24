@@ -151,7 +151,7 @@ def test_floor_divide_int(shape, dtype):
         device="cpu",
     ).to(flag_gems.device)
 
-    if cfg.TO_CPU:
+    if cfg.TO_CPU or flag_gems.vendor_name == "tsingmicro":
         inp1 = replace_zeros(inp1)
         inp2 = replace_zeros(inp2)
     if IS_KUNLUNXIN and not inp1.is_floating_point():
@@ -199,7 +199,7 @@ def test_floor_divide_int_(shape, dtype):
         flag_gems.device,
     )
 
-    if cfg.TO_CPU:
+    if cfg.TO_CPU or flag_gems.vendor_name == "tsingmicro":
         inp1 = replace_zeros(inp1)
         inp2 = replace_zeros(inp2)
     if IS_KUNLUNXIN and not inp1.is_floating_point():

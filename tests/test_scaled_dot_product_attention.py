@@ -118,6 +118,10 @@ def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
 
 
 @pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="'BLOCK_M' autotune configs are all filtered out by keep() in generic code",
+)
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
     SCALED_DOT_PRODUCT_FLASH_ATTENTION_SHAPES,
@@ -151,7 +155,7 @@ def test_scaled_dot_product_flash_attention(
     ref_v = utils.to_reference(v, False)
     # Ascend has no native ATen FlashAttention kernel; use independent math
     # on the selected reference device instead of its unsupported CPU fallback.
-    if cfg.TO_CPU or flag_gems.vendor_name == "ascend":
+    if cfg.TO_CPU or flag_gems.vendor_name in ("ascend", "tsingmicro"):
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )

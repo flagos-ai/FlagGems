@@ -86,7 +86,10 @@ def normal_distribution(shape, device, *, generator=None, out=None):
         out.copy_(cpu)
         return out
 
-    if _should_cpu_fallback(N, device, _CPU_FALLBACK_MAX):
+    # The CPU fallback below draws from the host RNG and would ignore the
+    # caller's generator, so keep the deterministic device kernel whenever one
+    # is supplied (Issue #7179).
+    if generator is None and _should_cpu_fallback(N, device, _CPU_FALLBACK_MAX):
         logger.debug(
             "GEMS_TSINGMICRO NORMAL cpu fallback N=%s (max=%s)", N, _CPU_FALLBACK_MAX
         )
@@ -115,7 +118,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
         return torch.ops.aten.normal.Tensor_Tensor(
             mean.cpu(), std.cpu(), generator=generator
         ).to(device=device)
-    out = normal_distribution(shape, device)
+    out = normal_distribution(shape, device, generator=generator)
     return transform_func_tensor_tensor(out, std, mean)
 
 
@@ -129,7 +132,7 @@ def normal_tensor_float(mean, std, *, generator=None):
         return torch.ops.aten.normal.Tensor_float(
             mean.cpu(), std, generator=generator
         ).to(device=device)
-    out = normal_distribution(shape, device)
+    out = normal_distribution(shape, device, generator=generator)
     return transform_func_tensor_float(out, std, mean)
 
 
@@ -143,7 +146,7 @@ def normal_float_tensor(mean, std, *, generator=None):
         return torch.ops.aten.normal.float_Tensor(
             mean, std.cpu(), generator=generator
         ).to(device=device)
-    out = normal_distribution(shape, device)
+    out = normal_distribution(shape, device, generator=generator)
     return transform_func_float_tensor(out, std, mean)
 
 
@@ -151,6 +154,6 @@ def normal_(self, mean=0, std=1, *, generator=None):
     logger.debug("GEMS_TSINGMICRO NORMAL_")
     shape = self.shape
     device = self.device
-    self = normal_distribution(shape, device, generator=None, out=self)
+    self = normal_distribution(shape, device, generator=generator, out=self)
     transform_func_float_float(self, std, mean, out0=self)
     return self
