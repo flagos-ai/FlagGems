@@ -17,9 +17,10 @@
 The fused path is the generated candidate's kernel: a homogeneous list of at
 most sixteen contiguous float tensors of one dtype and one element count is
 processed by a single launch whose signature carries sixteen direct data
-pointers; the 1-D program id selects the member through ``i = pid // BPT`` and
-a branch chain.  16-bit dtypes additionally have a paired variant that drives
-two tensors per program.
+pointers; the 1-D program id selects the member and its tile through
+``i = pid // BPT`` and a branch chain.  A partial final tile is masked, so every
+element count is fused, including the small shapes where one launch instead of
+one launch per member is the whole win.
 
 Everything else keeps the shared ``_foreach_unary`` executor, which owns the
 in-place contract: integral/bool promotion refusals, complex and float64,
@@ -48,14 +49,19 @@ _FAST_DTYPES = frozenset({torch.float16, torch.float32, torch.bfloat16})
 _FUSED_MAX = 16
 _BLOCK_WIDE = 8192
 _BLOCK_NARROW = 4096
-_SMALL_TOTAL = 1 << 22
 _WARPS = 8
 
 
 @triton.jit
-def _exp_body(p, offs):
-    x = tl.load(p + offs).to(tl.float32)
-    tl.store(p + offs, tl.exp(x).to(p.dtype.element_ty))
+def _exp_body(p, offs, n, NOMASK: tl.constexpr):
+    """exp of one tensor's tile; no predication when the tile is full."""
+    if NOMASK:
+        x = tl.load(p + offs).to(tl.float32)
+        tl.store(p + offs, tl.exp(x).to(p.dtype.element_ty))
+    else:
+        mask = offs < n
+        x = tl.load(p + offs, mask=mask, other=0.0).to(tl.float32)
+        tl.store(p + offs, tl.exp(x).to(p.dtype.element_ty), mask=mask)
 
 
 @triton.jit
@@ -76,131 +82,68 @@ def _exp_fused(
     p13,
     p14,
     p15,
+    n,
     BPT,
+    NOMASK: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
     i = pid // BPT
     offs = (pid - i * BPT) * BLOCK + tl.arange(0, BLOCK)
     if i == 0:
-        _exp_body(p0, offs)
+        _exp_body(p0, offs, n, NOMASK)
     elif i == 1:
-        _exp_body(p1, offs)
+        _exp_body(p1, offs, n, NOMASK)
     elif i == 2:
-        _exp_body(p2, offs)
+        _exp_body(p2, offs, n, NOMASK)
     elif i == 3:
-        _exp_body(p3, offs)
+        _exp_body(p3, offs, n, NOMASK)
     elif i == 4:
-        _exp_body(p4, offs)
+        _exp_body(p4, offs, n, NOMASK)
     elif i == 5:
-        _exp_body(p5, offs)
+        _exp_body(p5, offs, n, NOMASK)
     elif i == 6:
-        _exp_body(p6, offs)
+        _exp_body(p6, offs, n, NOMASK)
     elif i == 7:
-        _exp_body(p7, offs)
+        _exp_body(p7, offs, n, NOMASK)
     elif i == 8:
-        _exp_body(p8, offs)
+        _exp_body(p8, offs, n, NOMASK)
     elif i == 9:
-        _exp_body(p9, offs)
+        _exp_body(p9, offs, n, NOMASK)
     elif i == 10:
-        _exp_body(p10, offs)
+        _exp_body(p10, offs, n, NOMASK)
     elif i == 11:
-        _exp_body(p11, offs)
+        _exp_body(p11, offs, n, NOMASK)
     elif i == 12:
-        _exp_body(p12, offs)
+        _exp_body(p12, offs, n, NOMASK)
     elif i == 13:
-        _exp_body(p13, offs)
+        _exp_body(p13, offs, n, NOMASK)
     elif i == 14:
-        _exp_body(p14, offs)
+        _exp_body(p14, offs, n, NOMASK)
     else:
-        _exp_body(p15, offs)
-
-
-@triton.jit
-def _exp_fused_pair(
-    p0,
-    p1,
-    p2,
-    p3,
-    p4,
-    p5,
-    p6,
-    p7,
-    p8,
-    p9,
-    p10,
-    p11,
-    p12,
-    p13,
-    p14,
-    p15,
-    BPT,
-    N: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    # ``p`` slots beyond the live list are padded with the last tensor, so each
-    # write must be guarded by the real list length.  An ``ODD`` flag that only
-    # covered the final pair double-applied exp to the last tensor of every odd
-    # list (n = 3, 5, ..., 15).
-    pid = tl.program_id(0)
-    i = pid // BPT
-    offs = (pid - i * BPT) * BLOCK + tl.arange(0, BLOCK)
-    if i == 0:
-        _exp_body(p0, offs)
-        if N > 1:
-            _exp_body(p1, offs)
-    elif i == 1:
-        _exp_body(p2, offs)
-        if N > 3:
-            _exp_body(p3, offs)
-    elif i == 2:
-        _exp_body(p4, offs)
-        if N > 5:
-            _exp_body(p5, offs)
-    elif i == 3:
-        _exp_body(p6, offs)
-        if N > 7:
-            _exp_body(p7, offs)
-    elif i == 4:
-        _exp_body(p8, offs)
-        if N > 9:
-            _exp_body(p9, offs)
-    elif i == 5:
-        _exp_body(p10, offs)
-        if N > 11:
-            _exp_body(p11, offs)
-    elif i == 6:
-        _exp_body(p12, offs)
-        if N > 13:
-            _exp_body(p13, offs)
-    else:
-        _exp_body(p14, offs)
-        if N > 15:
-            _exp_body(p15, offs)
+        _exp_body(p15, offs, n, NOMASK)
 
 
 def _geometry(tensors):
-    """Block width and whether the paired kernel is used, as measured."""
-    n = tensors[0].numel()
-    narrow = tensors[0].dtype.itemsize < 4
-    block = _BLOCK_WIDE
-    paired = False
-    if narrow:
-        if n * len(tensors) <= _SMALL_TOTAL:
-            block = _BLOCK_NARROW
-        else:
-            paired = True
-    return block, paired
+    """Tile width for the fused launch.
+
+    Two tiles exist because the measured program-count response differs: small
+    lists are launch-bound and prefer the narrow tile plus more programs, while
+    the large shapes saturate bandwidth with the wide tile.  The predicate is
+    on element count alone, so every float dtype (including float32) takes the
+    fused path at every size; a partial final tile is masked.
+    """
+    numel = tensors[0].numel()
+    return _BLOCK_WIDE if numel >= _BLOCK_WIDE else _BLOCK_NARROW
 
 
 def _is_fusable(tensors):
     """Whether one fused launch reproduces the per-tensor in-place semantics.
 
     Requires a non-empty list of at most ``_FUSED_MAX`` contiguous float
-    members with one dtype, one element count and one device, a tile-aligned
-    element count, no internally overlapping view, and pairwise disjoint
-    storages.  Anything else keeps the shared executor, which owns those
-    contracts.
+    members with one dtype, one element count and one device, no internally
+    overlapping view, and pairwise disjoint storages.  Anything else keeps the
+    shared executor, which owns those contracts.
     """
     if not tensors or len(tensors) > _FUSED_MAX:
         return False
@@ -209,9 +152,6 @@ def _is_fusable(tensors):
     n = first.numel()
     device = first.device
     if dtype not in _FAST_DTYPES or n == 0:
-        return False
-    block, _ = _geometry(tensors)
-    if n % block:
         return False
     storages = set()
     for t in tensors:
@@ -248,14 +188,13 @@ def _launch_fused(tensors):
         tensors[14] if n > 14 else last,
         last,
     )
-    block, paired = _geometry(tensors)
-    bpt = tensors[0].numel() // block
-    if paired:
-        _exp_fused_pair[((bpt * ((n + 1) >> 1)),)](
-            *args, bpt, N=n, BLOCK=block, num_warps=_WARPS
-        )
-    else:
-        _exp_fused[(bpt * n,)](*args, bpt, BLOCK=block, num_warps=_WARPS)
+    numel = tensors[0].numel()
+    block = _geometry(tensors)
+    bpt = triton.cdiv(numel, block)
+    nomask = (numel % block) == 0
+    _exp_fused[(bpt * n,)](
+        *args, numel, bpt, NOMASK=nomask, BLOCK=block, num_warps=_WARPS
+    )
 
 
 def _foreach_exp_(self):
