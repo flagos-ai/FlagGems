@@ -17,37 +17,6 @@ ORGQR_BATCH_SHAPES = [(0, 4, 3), (2, 8, 5), (2, 3, 16, 8)]
 ORGQR_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
-def _musa_orgqr_cpu_reference(input, tau):
-    # Apply the packed Householder reflectors to the first n identity columns.
-    # This PyTorch build does not provide CPU LAPACK.
-    m, n = input.shape[-2:]
-    q = torch.eye(m, n, dtype=input.dtype, device=input.device)
-    q = q.expand(*input.shape[:-2], m, n).clone()
-    for idx in range(tau.shape[-1] - 1, -1, -1):
-        tail = input[..., idx + 1 :, idx]
-        v = torch.cat((torch.ones_like(input[..., idx : idx + 1, idx]), tail), dim=-1)
-        block = q[..., idx:, :]
-        projection = (v.conj().unsqueeze(-1) * block).sum(dim=-2)
-        q[..., idx:, :] = block - (
-            (tau[..., idx, None] * v).unsqueeze(-1) * projection.unsqueeze(-2)
-        )
-    return q
-
-
-def _reference_orgqr(input, tau):
-    if flag_gems.vendor_name == "mthreads" and input.device.type == "cpu":
-        return _musa_orgqr_cpu_reference(input, tau)
-    return torch.orgqr(input, tau)
-
-
-def _reference_orgqr_out(input, tau, out):
-    if flag_gems.vendor_name == "mthreads" and input.device.type == "cpu":
-        reference = _musa_orgqr_cpu_reference(input, tau)
-        out.resize_(reference.shape)
-        return out.copy_(reference.to(out.dtype))
-    return torch.orgqr(input, tau, out=out)
-
-
 def make_reflectors(shape, dtype):
     matrix = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     return torch.geqrf(matrix)
@@ -82,6 +51,14 @@ def _reference_orgqr(input, tau):
             raise
 
     return _musa_orgqr_cpu_reference(input, tau)
+
+
+def _reference_orgqr_out(input, tau, out):
+    if flag_gems.vendor_name == "mthreads" and input.device.type == "cpu":
+        reference = _musa_orgqr_cpu_reference(input, tau)
+        out.resize_(reference.shape)
+        return out.copy_(reference.to(out.dtype))
+    return torch.orgqr(input, tau, out=out)
 
 
 @pytest.mark.orgqr
