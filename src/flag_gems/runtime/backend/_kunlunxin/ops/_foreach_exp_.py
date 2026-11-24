@@ -135,36 +135,47 @@ def _exp_fused_pair(
     p14,
     p15,
     BPT,
-    ODD: tl.constexpr,
+    N: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
+    # ``p`` slots beyond the live list are padded with the last tensor, so each
+    # write must be guarded by the real list length.  An ``ODD`` flag that only
+    # covered the final pair double-applied exp to the last tensor of every odd
+    # list (n = 3, 5, ..., 15).
     pid = tl.program_id(0)
     i = pid // BPT
     offs = (pid - i * BPT) * BLOCK + tl.arange(0, BLOCK)
     if i == 0:
         _exp_body(p0, offs)
-        _exp_body(p1, offs)
+        if N > 1:
+            _exp_body(p1, offs)
     elif i == 1:
         _exp_body(p2, offs)
-        _exp_body(p3, offs)
+        if N > 3:
+            _exp_body(p3, offs)
     elif i == 2:
         _exp_body(p4, offs)
-        _exp_body(p5, offs)
+        if N > 5:
+            _exp_body(p5, offs)
     elif i == 3:
         _exp_body(p6, offs)
-        _exp_body(p7, offs)
+        if N > 7:
+            _exp_body(p7, offs)
     elif i == 4:
         _exp_body(p8, offs)
-        _exp_body(p9, offs)
+        if N > 9:
+            _exp_body(p9, offs)
     elif i == 5:
         _exp_body(p10, offs)
-        _exp_body(p11, offs)
+        if N > 11:
+            _exp_body(p11, offs)
     elif i == 6:
         _exp_body(p12, offs)
-        _exp_body(p13, offs)
+        if N > 13:
+            _exp_body(p13, offs)
     else:
         _exp_body(p14, offs)
-        if not ODD:
+        if N > 15:
             _exp_body(p15, offs)
 
 
@@ -241,7 +252,7 @@ def _launch_fused(tensors):
     bpt = tensors[0].numel() // block
     if paired:
         _exp_fused_pair[((bpt * ((n + 1) >> 1)),)](
-            *args, bpt, ODD=(n & 1) == 1, BLOCK=block, num_warps=_WARPS
+            *args, bpt, N=n, BLOCK=block, num_warps=_WARPS
         )
     else:
         _exp_fused[(bpt * n,)](*args, bpt, BLOCK=block, num_warps=_WARPS)
