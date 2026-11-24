@@ -463,7 +463,10 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
 from flag_gems.ops._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
 from flag_gems.ops._unpack_dual import _unpack_dual
-from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
+from flag_gems.ops._unsafe_masked_index import (
+    _unsafe_masked_index,
+    unsafe_masked_index_backward,
+)
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
 )
@@ -3560,6 +3563,7 @@ __all__ = [
     "unique_dim_consecutive",
     "unsafe_index",
     "unsafe_index_put",
+    "unsafe_masked_index_backward",
     "unsafe_split_with_sizes",
     "unsqueeze",
     "unsqueeze_",
