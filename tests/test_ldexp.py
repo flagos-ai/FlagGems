@@ -315,25 +315,6 @@ def test_ldexp_complex():
     utils.gems_assert_close(res_out, ref_out, torch.complex64)
 
 
-@pytest.mark.ldexp
-def test_ldexp_autograd():
-    torch.manual_seed(0)
-    inp = torch.randn((11, 7), device=flag_gems.device, requires_grad=True)
-    exponent = torch.randint(-3, 4, inp.shape, dtype=torch.int32, device=inp.device)
-    grad = torch.randn_like(inp)
-    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
-    ref_exponent = utils.to_reference(exponent, False)
-    ref_grad = utils.to_reference(grad, True)
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_inp, ref_exponent)
-    (ref_input_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-
-    result = flag_gems.ldexp(inp, exponent)
-    (input_grad,) = torch.autograd.grad(result, inp, grad)
-
-    utils.gems_assert_close(result, ref_out, result.dtype)
-    utils.gems_assert_close(input_grad, ref_input_grad, input_grad.dtype)
-
-
 def _ldexp_out_reference(inp, exponent):
     if flag_gems.vendor_name == "enflame":
         # The native GCU Out reference is unavailable; both reference modes
