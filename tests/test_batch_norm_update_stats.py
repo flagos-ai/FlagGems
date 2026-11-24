@@ -18,7 +18,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .conftest import TO_CPU
 
 # Hardcoded shapes: batch_norm_update_stats reduces over N and spatial dims per
 # channel, so coverage is driven by the (N, C, spatial) layout rather than total
@@ -39,9 +38,6 @@ SHAPES = [
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("has_running", [True, False])
 def test_batch_norm_update_stats(shape, dtype, has_running):
-    if TO_CPU:
-        pytest.skip("batch_norm_update_stats has no CPU backend; skip under --ref=cpu")
-
     C = shape[1]
     input_t = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -52,10 +48,18 @@ def test_batch_norm_update_stats(shape, dtype, has_running):
         running_mean = None
         running_var = None
 
+    # The reference is the native op on the reference device (CPU under --ref
+    # cpu). Build its input in float32, the accumulator dtype of the op: with no
+    # running stats the CPU kernel returns statistics rounded to the input dtype,
+    # which is too coarse to validate a float32 result for half/bfloat16 inputs.
+    ref_input = utils.to_reference(input_t).to(torch.float32)
+    ref_running_mean = utils.to_reference(running_mean)
+    ref_running_var = utils.to_reference(running_var)
+
     ref_out = torch.batch_norm_update_stats(
-        input_t,
-        running_mean.clone() if running_mean is not None else None,
-        running_var.clone() if running_var is not None else None,
+        ref_input,
+        ref_running_mean.clone() if ref_running_mean is not None else None,
+        ref_running_var.clone() if ref_running_var is not None else None,
         0.1,
     )
 
