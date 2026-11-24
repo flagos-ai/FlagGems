@@ -166,7 +166,7 @@ def _sparse_gate_words_kernel(W32, Meta, O32, WPG: tl.constexpr, BLOCK: tl.const
 
 
 @triton.jit
-def _sparse_gate_kn_flat_kernel(W, Meta, O, N, K4, BLOCK: tl.constexpr):
+def _sparse_gate_kn_flat_kernel(W, Meta, Out, N, K4, BLOCK: tl.constexpr):
     """2:4 gate for a weight whose storage is the contiguous (K, N) transpose.
 
     ``W`` is ``base`` (K, N) row-major where ``base = weight.t()``.  A 2:4 group
@@ -185,7 +185,7 @@ def _sparse_gate_kn_flat_kernel(W, Meta, O, N, K4, BLOCK: tl.constexpr):
     keep = tl.where(row < 2, meta != 0, meta == 0)
     off = pid * BLOCK + lane
     w = tl.load(W + off)
-    tl.store(O + off, tl.where(keep, w, tl.zeros_like(w)))
+    tl.store(Out + off, tl.where(keep, w, tl.zeros_like(w)))
 
 
 @triton.jit
