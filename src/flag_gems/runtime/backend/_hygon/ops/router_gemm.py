@@ -426,9 +426,8 @@ def router_gemm_partial_generic_kernel(
     _router_split_k(X, W, P, M, N, K, BM, BN, BK, SK)
 
 
-@libentry()
-@triton.jit(do_not_specialize=["P", "OUT", "MN"])
-def router_gemm_reduce_kernel(P, OUT, MN, SK: tl.constexpr, B: tl.constexpr):
+@triton.jit
+def _reduce_router_slices(P, OUT, MN, SK: tl.constexpr, B: tl.constexpr):
     # Generic pointers avoid unnecessary alignment/storage-range dispatch work.
     # Runtime MN allows the same reduction program to serve different shapes.
     # Each lane owns an output element. Accumulate slices in a fixed order,
@@ -438,6 +437,12 @@ def router_gemm_reduce_kernel(P, OUT, MN, SK: tl.constexpr, B: tl.constexpr):
     for split in tl.static_range(SK):
         total += tl.load(P + split * MN + offsets, offsets < MN, 0)
     tl.store(OUT + offsets, total, offsets < MN)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["P", "OUT", "MN"])
+def router_gemm_reduce_kernel(P, OUT, MN, SK: tl.constexpr, B: tl.constexpr):
+    _reduce_router_slices(P, OUT, MN, SK, B)
 
 
 @triton.jit(do_not_specialize=["m"])
@@ -514,11 +519,159 @@ def _launch_bf16_split(x, weight, out, m, n, k):
     return out
 
 
+@triton.jit(do_not_specialize=["X", "W", "OUT", "M"])
+def _narrow_router_vector(
+    X,
+    W,
+    OUT,
+    M,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_n: tl.constexpr = (N + BN - 1) // BN
+    rows = (pid // num_n) * BM + tl.arange(0, BM)
+    cols = (pid % num_n) * BN + tl.arange(0, BN)
+    offs_k = tl.arange(0, BK)
+    acc = tl.zeros((BM, BN, BK), tl.float32)
+    for block in range(tl.cdiv(K, BK)):
+        k = block * BK + offs_k
+        x = tl.load(
+            X + rows[:, None] * K + k[None, :],
+            (rows[:, None] < M) & (k[None, :] < K),
+            0,
+        ).to(tl.float32)
+        w = tl.load(
+            W + cols[:, None] * K + k[None, :],
+            (cols[:, None] < N) & (k[None, :] < K),
+            0,
+        ).to(tl.float32)
+        acc = tl.fma(x[:, None, :], w[None, :, :], acc)
+    tl.store(
+        OUT + rows[:, None] * N + cols[None, :],
+        tl.sum(acc, 2),
+        (rows[:, None] < M) & (cols[None, :] < N),
+    )
+
+
+@triton.jit(do_not_specialize=["X", "W", "P", "M"])
+def _narrow_router_matrix(
+    X,
+    W,
+    P,
+    M,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    INPUT_TYPE: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    SK: tl.constexpr,
+    GROUP: tl.constexpr,
+):
+    x = tl.multiple_of(X.to(tl.pointer_type(INPUT_TYPE)), 16)
+    w = tl.multiple_of(W.to(tl.pointer_type(INPUT_TYPE)), 16)
+    p = tl.multiple_of(P.to(tl.pointer_type(tl.float32)), 16)
+    _router_split_k(
+        x, w, p, M, N, K, BM, BN, BK, SK, GROUP, N % BN == 0 and K % (SK * BK) == 0
+    )
+
+
+@triton.jit(do_not_specialize=["P", "OUT", "MN"])
+def _narrow_router_reduce(P, OUT, MN, SK: tl.constexpr):
+    partials = P.to(tl.pointer_type(tl.float32))
+    out = OUT.to(tl.pointer_type(tl.float32))
+    _reduce_router_slices(partials, out, MN, SK, 256)
+
+
+def _narrow_matrix_config(m, n):
+    # More output tiles already provide parallel work, allowing fewer K slices.
+    # Configs contain BM, BN, BK, split count, group size, warps and stages.
+    if n <= 16:
+        if m <= 512:
+            return 16, 16, 256, 8, 1, 4, 2
+        if m <= 2048:
+            return 16, 16, 128, 8, 1, 2, 2
+        return 16, 16, 256, 1, 1, 2, 2
+    if n <= 64 and m <= 512:
+        if m <= 128:
+            return 16, 16, 128, 16, 1, 2, 2
+        return 16, triton.next_power_of_2(n), 128, 16, 1, 4, 2
+    if m >= 512:
+        if m <= 2048:
+            return 64, 64, 128, 4, 2, 4, 2
+        return 64, 64, 256, 1, 4, 4, 1
+    return None
+
+
+def _launch_narrow_router(x, weight, out, m, n, k):
+    if n <= 16 and m <= 128:
+        tile = 1 if m <= 32 else 2
+        grid = (triton.cdiv(m, tile) * triton.cdiv(n, tile),)
+        _narrow_router_vector[grid](
+            x, weight, out, m, n, k, tile, tile, 512, num_warps=4
+        )
+        return True
+
+    config = _narrow_matrix_config(m, n)
+    if config is None:
+        return False
+    x_ptr, w_ptr = x.data_ptr(), weight.data_ptr()
+    if (x_ptr | w_ptr) % 16:
+        return False
+
+    bm, bn, bk, splits, group, warps, stages = config
+    partials = (
+        torch.empty((splits, m, n), device=x.device, dtype=torch.float32)
+        if splits > 1
+        else out
+    )
+    input_type = tl.bfloat16 if x.dtype == torch.bfloat16 else tl.float16
+    grid = (triton.cdiv(m, bm) * triton.cdiv(n, bn), splits)
+    # Storage is contiguous, bounded and aligned. Passing the live addresses
+    # avoids HCU tensor specialization on both launches.
+    _narrow_router_matrix[grid](
+        x_ptr,
+        w_ptr,
+        partials.data_ptr(),
+        m,
+        n,
+        k,
+        input_type,
+        bm,
+        bn,
+        bk,
+        splits,
+        group,
+        num_warps=warps,
+        num_stages=stages,
+        matrix_instr_nonkdim=16,
+        kpack=2,
+    )
+    if splits > 1:
+        _narrow_router_reduce[(triton.cdiv(m * n, 256),)](
+            partials.data_ptr(), out.data_ptr(), m * n, splits
+        )
+    return True
+
+
 def _router_fast(x, weight):
     m, k = x.shape
     n = weight.shape[0]
     out = torch.empty((m, n), device=x.device, dtype=torch.float32)
     contiguous = x.is_contiguous() and weight.is_contiguous()
+    if (
+        contiguous
+        and x.dtype != torch.float32
+        and n <= 128
+        and m <= 8192
+        and 1024 <= k <= 8192
+        and _launch_narrow_router(x, weight, out, m, n, k)
+    ):
+        return out
     if (
         contiguous
         and x.dtype == torch.bfloat16
