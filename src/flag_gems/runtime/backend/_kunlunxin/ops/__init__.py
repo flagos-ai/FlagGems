@@ -896,6 +896,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .sparse_broadcast_to import sparse_broadcast_to  # noqa: F401
 from .sparse_broadcast_to_copy import sparse_broadcast_to_copy  # noqa: F401
 from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe  # noqa: F401
 from .sparse_compressed_tensor import sparse_compressed_tensor  # noqa: F401
@@ -2034,6 +2035,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "sparse_broadcast_to",
     "sparse_broadcast_to_copy",
     "special_bessel_j0",
     "special_bessel_j1",
