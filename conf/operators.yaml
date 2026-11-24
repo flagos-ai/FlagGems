@@ -16158,6 +16158,17 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: npu_moe_gating_top_k
+  description: Sigmoid MoE routing with optional expert bias and normalized top-k gate weights.
+  for:
+  - npu_moe_gating_top_k
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nuclear_norm
   description: 'Computes the nuclear norm (sum of singular values) of a matrix.
 
