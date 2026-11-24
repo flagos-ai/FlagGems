@@ -394,6 +394,114 @@ bug，快路径又引入了一遍。改成和通用一致的 `min(..., MAX_CORE_
 `rms_norm_kernel` 启动 0 次。把 TV kernel 也纳入记录、要求"前向恰由两者之一服务
 一次"，粒度上限仍对实际启动的那个 kernel 校验——守护的意图没有削弱。
 
+### 0.16 第五轮：越界断言的可达缺口，与闸门同步开销的真实代价
+
+0.15（3）说"加上粒度闸门后那个用例已走通用，断言恢复"——对那个用例成立，它是 1-D
+输入、行 4 B。但**这个结论不能推广**：换成闸门接受的宽度，缺口依然存在。
+
+**（5）越界下标在快路径被静默跳过（真 bug，已修）。**
+
+用 2-D fp32、宽 8（32 B，刚好一个写粒度，闸门接受）探测 `index_add`：
+
+```
+index=[0,-1]  gate accepts: True   -> 无异常返回，行 0 的更新照常落地
+index=[0,64]  gate accepts: False  -> 被 has_no_duplicates 的 scatter_ 拒掉
+```
+
+`-1` 这一侧闸门放行，`bounds_check=True` 把它当"跳过该行"静默吞掉，而通用实现
+`_assert_index_in_bounds` 会抛 `0 <= index < self.size(dim)`。上界那一侧只是**碰巧**
+被拦住：`has_no_duplicates` 用 `scatter_(0, index.long(), ...)`，下标等于 `num_rows`
+时 scatter 自己失败，于是闸门返回 False——不是有意的边界检查。
+
+把断言移进 `_launch_index_add_tv`（两个入口都经由它），放在 launch 之前，于是原地
+调用在报错时输入不变，与通用实现同契约、同消息。修完 `index=[0,-1]` 正常抛出，
+`tests/test_index_add.py` 仍 170 过。
+
+同样的探测跑了另外四个算子，结论是**只有 `index_add` 存在分歧**：
+
+| 算子 | 通用路径（下标 -1 / 64） | 快路径 | 判定 |
+|---|---|---|---|
+| index_add | 抛 AssertionError | 静默跳过 | 分歧，已修 |
+| index_copy | 静默返回 | 静默跳过 | 一致 |
+| index_put | 静默返回 | 静默跳过 | 一致 |
+| index_select | 静默返回 | 静默跳过 | 一致 |
+| embedding | 静默返回 | 静默跳过 | 一致 |
+
+torch 自己对这五个都抛异常，但快路径的契约是它覆盖的那个通用实现，不是 torch，
+所以后四个无需改动。
+
+**（6）0.12 的性能表测的不是生产路径（口径问题，非 bug）。**
+
+`bench_tensorview.py` 直接比 `_<op>_tensorview` 与 `_<op>_generic`，按设计绕开了
+eligibility 闸门。五个算子的闸门纯看形状，绕不绕开没差别；但 `index_add` 与
+`index_put(accumulate=True)` 的闸门要调 `has_no_duplicates`，那是一次
+device→host 同步。实测这次同步比它守护的 kernel 贵一个量级：
+
+| | small | large |
+|---|---|---|
+| TV kernel 本身 | 0.138 ms | 0.148 ms |
+| `has_no_duplicates`（闸门） | 0.392 ms | 0.566 ms |
+| `_assert_index_in_bounds`（本轮新加） | 0.295 ms | 0.401 ms |
+| **TV 合计** | **0.825 ms** | **1.115 ms** |
+| 通用合计 | 0.588 ms | 0.659 ms |
+
+于是改用生产入口（走闸门）重测全部算子，16 例数值全一致，11 例快于通用，中位 3.37x：
+
+| 算子 | 形状 | 通用 | 带闸门 TV | 加速 |
+|---|---|---|---|---|
+| reshape_and_cache_flash | tokens=4096 heads=8 dim=128 | 27.308 ms | 0.300 ms | 90.89x |
+| index_select | rows=32000 width=512 idx=4096 | 13.915 ms | 0.242 ms | 57.52x |
+| index_put(accumulate) | rows=16384 width=512 idx=4096 | 43.920 ms | 0.825 ms | 53.26x |
+| index_put | rows=16384 width=512 idx=4096 | 11.718 ms | 0.300 ms | 39.11x |
+| reshape_and_cache_flash | tokens=512 | 3.697 ms | 0.310 ms | 11.94x |
+| index_put(accumulate) | rows=4096 width=256 idx=512 | 6.140 ms | 0.750 ms | 8.18x |
+| index_select | rows=4096 width=256 idx=512 | 1.425 ms | 0.246 ms | 5.80x |
+| index_put | rows=4096 width=256 idx=512 | 1.285 ms | 0.307 ms | 4.19x |
+| index_copy | rows=16384 width=512 idx=4096 | 0.695 ms | 0.272 ms | 2.55x |
+| rms_norm | rows=16384 width=4096 | 1.370 ms | 0.825 ms | 1.66x |
+| rms_norm | rows=4096 width=1024 | 0.430 ms | 0.304 ms | 1.41x |
+| index_copy | rows=4096 width=256 idx=512 | 0.244 ms | 0.270 ms | 0.91x |
+| embedding | vocab=128000 dim=512 tokens=4096 | 0.261 ms | 0.306 ms | 0.85x |
+| **index_add** | **rows=4096 width=256 idx=512** | **0.591 ms** | **0.891 ms** | **0.66x** |
+| embedding | vocab=32000 dim=256 tokens=512 | 0.172 ms | 0.304 ms | 0.57x |
+| **index_add** | **rows=16384 width=512 idx=4096** | **0.643 ms** | **1.191 ms** | **0.54x** |
+
+`rms_norm` 本轮改了 kernel 结构（grid 封顶 + 按 `num_programs` 走 tile），0.825 ms
+与 0.12 的 0.764 ms 基本一致，循环没有引入可测开销。
+
+**（7）`index_add` 快路径在生产口径下是净亏（待决，见 9）。**
+
+同一个同步闸门，`index_put(accumulate)` 还有 8~53x，`index_add` 却是 0.54~0.66x。
+差别不在快路径，在通用基线：上游 `63e7f9d71` 把 `index_add` 的越界校验从
+`aminmax` + 两次 `.item()` 换成一个 Triton reduction kernel，通用实现从
+11.6 ms 降到 0.64 ms（约 18 倍）。0.12 表里 `index_add` 的 39.20x 是在**旧的慢基线**
+上测的；基线一快，闸门同步的固定开销就盖过了 DMA 的收益。
+
+扫了 10 组形状（宽 64~4096、下标 64~16384、行 1024~32768），**没有 crossover**，
+全程 0.40x~0.71x。通用开销随搬运量增长，闸门开销只随下标数增长，但通用实现在这
+个量级一直是 0.53~1.10 ms，始终比"闸门+kernel"便宜。
+
+试过把两次检查合成一个 kernel + 一次同步（越界下标记到 `num_rows` 处的哨兵槽，
+归约同时拿总标记数与单行最大标记数），判定正确（valid/越界/重复 → True/False/False），
+省下 0.24~0.74 ms，但仍不够：
+
+| | small | large | huge |
+|---|---|---|---|
+| 现在两次检查 | 0.707 ms | 0.977 ms | 1.273 ms |
+| 合成一次检查 | 0.466 ms | 0.548 ms | 0.537 ms |
+| 合成检查 + kernel | 0.610 ms | 0.697 ms | 0.764 ms |
+| 通用 | 0.588 ms | 0.643 ms | 0.612 ms |
+
+地板摆在这里：一个空 kernel 加一次 `.item()` 同步本身就要 0.233 ms，加上 0.148 ms
+的 DMA kernel 是 0.38 ms，而通用是 0.53~0.65 ms。即便把检查做到零成本也只有
+1.4x，而真实检查要 0.47~0.55 ms。**这台机器上、配上游当前的通用实现，
+`index_add` 的 TV 快路径赢不回来。**
+
+顺带排除一个假阳性：扫描在 rows=262144 处报 `vector core exception`。把
+alloc / has_no_duplicates / 断言 / TV kernel / 通用 / 完整快路径六个阶段各自单进程
+重跑，全部通过——是扫描脚本在一个进程里连开 10 组 512 MiB 张量的内存压力，不是
+算子缺陷。
+
 ---
 
 ## 1. 测试环境
@@ -933,6 +1041,23 @@ tile 下标寻址。另外该算子的**通用实现在本机也编译不过**�
 
 在此之前，默认环境下跑 FlagGems 测试会**静默走通用实现**——结果正确、测试全绿，
 但完全没有验证 TensorView。跑之前先确认 `tv._state`。`export.sh` 保持原样未改动。
+
+**`index_add` 的快路径是否还要保留（需要决定）。**
+
+0.16（7）的数据是明确的：生产口径下 0.54x~0.66x，10 组形状无 crossover，合并检查
+与零成本检查两个方向都算过，都赢不回来。原因是上游 `63e7f9d71` 把通用实现提速了
+约 18 倍，而快路径必须付的那次闸门同步（读-改-写要求下标无重复）是固定开销。
+
+三条路，倾向第一条：
+
+1. **摘掉 `index_add` / `index_add_` 的覆盖**，`ops/__init__.py` 不再导出，实现文件
+   保留或删除。用户拿到的是更快的通用实现，TV 层只留真正有收益的算子。代价是 17 个
+   移植算子少一个。
+2. 保留实现但让闸门恒假。契约上和（1）等价，多留一份不会执行的代码。
+3. 原样保留。会给用户带来约 1.8 倍的回归，不建议。
+
+这是缩减移植范围的决定，按约定留给你定；在此之前文件保持现状（已修的越界断言
+是独立的正确性修复，与这个决定无关，无论怎么选都该留着）。
 
 另外两条待处理（都不在 TensorView 范围内）：
 

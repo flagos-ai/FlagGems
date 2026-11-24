@@ -641,6 +641,13 @@ if HAS_TENSORVIEW:
     def _launch_index_add_tv(out, index, src, alpha, block_m=None):
         src = src.contiguous()
         num_rows = out.shape[0]
+        # The destination view is built with bounds_check=True, which *defines*
+        # an out-of-range row as "skip this row". That is what lets the tail of
+        # the index tile carry -1, but it would also turn an invalid index into
+        # a silently dropped update, where the generic path raises. Assert here,
+        # before the launch, so an in-place call leaves its input unchanged --
+        # the same contract and the same message the generic path gives.
+        _assert_index_in_bounds(index, num_rows)
         # Trailing dimensions collapse into one contiguous row.
         width = _volume(out.shape[1:]) if out.dim() > 1 else 1
         if block_m is None:
