@@ -454,7 +454,10 @@ def _load_modules(monkeypatch):
         "flag_gems.runtime", torch_device_fn=SimpleNamespace(current_device=unexpected)
     )
     module("tests.conftest", QUICK_MODE=False)
-    base = module("benchmark.base", Benchmark=type("Benchmark", (), {}))
+    base = module(
+        "benchmark.base",
+        Benchmark=type("Benchmark", (), {"aggregate_results_by_dtype": False}),
+    )
     consts = module("benchmark.consts", DEFAULT_METRICS=[])
     # Load the real report dataclasses/renderer without importing device config.
     tree = ast.parse((ROOT / "benchmark/consts.py").read_text())
@@ -511,7 +514,9 @@ def _load_modules(monkeypatch):
         Config=config,
         BenchmarkResult=consts.BenchmarkResult,
         asdict=asdict,
-        update_result=lambda name, result: conftest.results.append(result),
+        update_result=lambda name, result, *, aggregate_by_dtype: conftest.results.append(
+            result
+        ),
         emit_record_logger=conftest.records.append,
     )
     exec(compile(tree, "benchmark/base.py", "exec"), namespace)

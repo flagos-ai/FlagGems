@@ -34,6 +34,7 @@ from tests.test_scaled_mm import (
     _pytest_environment,
     _unsupported_reason,
     case_id,
+    case_reason,
     cases,
     comparison_tolerance,
     golden,
@@ -189,6 +190,19 @@ class ScaledMMBenchmark(base.Benchmark):
             )
         return (*args, kwargs)
 
+    def get_input_iter(self, dtype):
+        # The legacy kernel check profiles one native input per pytest item.
+        for case in CASES:
+            if case[0] != dtype or case_reason(case):
+                continue
+            for shape in self.shapes:
+                if native_reason(case, shape, self.use_out, reference=golden):
+                    continue
+                self.case, self.shape = case, shape
+                yield self._build_input()
+                return
+        pytest.skip(f"No native {self.op_name} input available for {dtype}")
+
     def _run_legacy(self):
         # A pytest item/table groups one A dtype, with B/output dtypes and all
         # other parameters retained as rows. Restore baseline state per row.
@@ -269,6 +283,34 @@ pytest_plugins = ["pytester"]
 @pytest.fixture
 def modules(monkeypatch):
     return _load_modules(monkeypatch)
+
+
+@pytest.mark.parametrize("use_out", [False, True])
+def test_kernel_check_selects_native_input(modules, monkeypatch, use_out):
+    module = modules.benchmark
+    unsupported, no_native, supported = module.CASES[:3]
+    shape = module.CORE_SHAPES[0]
+    bench = object.__new__(module.ScaledMMBenchmark)
+    bench.use_out = use_out
+    bench.shapes = [shape]
+    probes = []
+
+    def native_reason(case, case_shape, out, *, reference):
+        assert case_shape == shape and out is use_out and reference is module.golden
+        probes.append(case)
+        return "native unavailable" if case == no_native else None
+
+    monkeypatch.setattr(module, "CASES", (unsupported, no_native, supported))
+    monkeypatch.setattr(
+        module,
+        "case_reason",
+        lambda case: "unsupported" if case == unsupported else None,
+    )
+    monkeypatch.setattr(module, "native_reason", native_reason)
+    monkeypatch.setattr(bench, "_build_input", lambda: (bench.case, bench.shape))
+
+    assert list(bench.get_input_iter(supported[0])) == [(supported, shape)]
+    assert probes == [no_native, supported]
 
 
 @pytest.mark.parametrize("use_out", [False, True])
