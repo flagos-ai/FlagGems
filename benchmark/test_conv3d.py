@@ -47,9 +47,7 @@ class Conv3DPaddingBenchmark(base.GenericBenchmark):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten not working "
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten not working ")
 def test_conv3d():
     def conv3d_input_fn(shape, dtype, device):
         (

@@ -124,6 +124,7 @@ class CudnnRnnFlattenWeightOutBenchmark(CudnnRnnFlattenWeightBenchmark):
             out = torch.empty(size, dtype=weights[0].dtype, device=self.device)
             yield args + ({"out": out},)
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason="aten dose not support",
