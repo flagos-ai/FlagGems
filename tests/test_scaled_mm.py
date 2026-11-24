@@ -349,7 +349,8 @@ def test_scaled_mm_schema(case):
 def test_scaled_mm_fast_route(monkeypatch):
     import importlib
 
-    module = importlib.import_module(flag_gems.scaled_mm.__module__)
+    # The CUTLASS hook belongs to the generic implementation.
+    module = importlib.import_module("flag_gems.ops.scaled_mm")
     case = (torch.float8_e4m3fn, torch.float8_e4m3fn, torch.bfloat16, "scalar", True)
     reason = case_reason(case)
     if reason:
