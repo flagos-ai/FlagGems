@@ -68,6 +68,30 @@ _ONCT_BLOCK = 32768
 _ONCT_GRID_LIMIT = 65535
 _ONCT_MIN_NUMEL = 524288
 
+# aten copysign carries promote_integer_inputs_to_float=True, so every integral
+# input is widened to the default float dtype before the sign bit is inspected.
+# The Triton kernels below bitcast the operand to an unsigned dtype and read the
+# top bit, which is only meaningful after that widening: a uint8 value >= 128 has
+# the top bit set but is not negative, and abs(int8_min) would wrap in integer
+# arithmetic. Widening on the host keeps the kernels dtype-agnostic.
+_INTEGRAL_DTYPES = (
+    torch.bool,
+    torch.uint8,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+)
+
+
+def _widen_integral_inputs(input, other):
+    if input.dtype not in _INTEGRAL_DTYPES:
+        return input, other
+    promoted_dtype = torch.float32
+    if isinstance(other, torch.Tensor) and other.dtype in _INTEGRAL_DTYPES:
+        other = other.to(promoted_dtype)
+    return input.to(promoted_dtype), other
+
 
 def _unwrap_if_constexpr(o):
     return o.value if isinstance(o, tl.constexpr) else o
@@ -231,6 +255,9 @@ def _fast_out_ready(out, input):
 
 def copysign(input, other, *, out=None):
     logger.debug("GEMS_ENFLAME COPYSIGN")
+    if out is None:
+        # Integral inputs must reach the kernels as float; see _INTEGRAL_DTYPES.
+        input, other = _widen_integral_inputs(input, other)
     if isinstance(other, torch.Tensor):
         numel = input.numel()
         if (
