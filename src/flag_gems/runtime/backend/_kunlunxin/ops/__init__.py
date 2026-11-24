@@ -193,6 +193,7 @@ from ._nested_tensor_from_mask_left_aligned import (  # noqa: F401
 )
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._pack_padded_sequence import _pack_padded_sequence
 from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
@@ -1228,6 +1229,7 @@ __all__ = [
     "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
