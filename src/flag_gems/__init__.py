@@ -2227,7 +2227,7 @@ _FULL_CONFIG = (
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),
-    ("sign", sign),
+    ("sign", sign, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("sign.out", sign_out),
     ("sign_", sign_),
     ("signbit", signbit),

@@ -1507,7 +1507,7 @@ from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.shape_as_tensor import shape_as_tensor
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
-from flag_gems.ops.sign import sign, sign_, sign_out
+from flag_gems.ops.sign import sign, sign_, sign_backward, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
@@ -3301,6 +3301,7 @@ __all__ = [
     "sigmoid_backward",
     "sign",
     "sign_",
+    "sign_backward",
     "sign_out",
     "signbit",
     "signbit_out",
