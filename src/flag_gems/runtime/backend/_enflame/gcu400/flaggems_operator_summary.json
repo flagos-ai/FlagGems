@@ -1490,9 +1490,7 @@
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
   },
   "is_all_true": {},
-  "is_any_true": {
-    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
-  },
+  "is_any_true": {},
   "is_nonzero": {},
   "is_same_size": {},
   "isclose": {},
@@ -1944,6 +1942,7 @@
     "skip": "yes",
     "skip_reason": "need analysis"
   },
+  "multilabel_margin_loss_backward": {},
   "multilabel_margin_loss_forward": {},
   "multinomial": {},
   "multiply": {},
@@ -2938,7 +2937,8 @@
   },
   "underscore_sobol_engine_draw": {},
   "underscore_sobol_engine_scramble_": {
-    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
+    "skip": "yes",
+    "skip_reason": "Input setup calls device-side int64 torch.tril, which aborts the process on GCU400 (TOPSATEN_STATUS_BAD_PARAM); no fallback is usable because run_tests.py strips ENFLAME_PT_OP_DEBUG_CONFIG, so both accuracy and benchmark modules are skipped for enflame."
   },
   "unflatten": {},
   "unfold": {},
