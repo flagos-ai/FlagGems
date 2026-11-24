@@ -1252,7 +1252,7 @@ from .linalg_matrix_rank import (
 )
 from .linalg_matrix_sqrth import linalg_matrix_sqrth, linalg_matrix_sqrth_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
-from .linalg_pinv import linalg_pinv
+from .linalg_pinv import linalg_pinv, linalg_pinv_out
 from .linalg_polar import linalg_polar_out
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_slogdet import linalg_slogdet
@@ -2715,6 +2715,7 @@ __all__ = [
     "linalg_multi_dot_out",
     "linalg_norm",
     "linalg_pinv",
+    "linalg_pinv_out",
     "linalg_polar",
     "linalg_polar_out",
     "linalg_qr",

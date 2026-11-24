@@ -134,7 +134,13 @@ def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
 
 def digamma(A):
     logger.debug("GEMS_ENFLAME DIGAMMA")
-    x_contig = A if A.is_contiguous() else A.contiguous()
+    # Like torch.digamma, integral inputs are computed in and returned as the
+    # default float dtype, so int8/uint8 inputs must not keep their storage
+    # dtype (which would also truncate the fp32 result in the store).
+    if A.is_floating_point():
+        x_contig = A if A.is_contiguous() else A.contiguous()
+    else:
+        x_contig = A.to(torch.float32).contiguous()
     out = torch.empty_like(x_contig)
     # The kernel only uses the flat element count and the data pointers, so the
     # tensors are passed as-is: `view(-1)`/`view_as` would add three dispatches

@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 _MAX_RANK = 8
 _BLOCK_SIZE = 512
 
+# Upper bound on the leading launch dimension. Fills whose tile count exceeds
+# it launch _MAX_GRID programs and let the kernel stride over the remaining
+# tiles, so an oversized fill can never hit a backend grid-dimension limit.
+_MAX_GRID = 65535
+
 # GCU tuning: flat-copy block (the 1024-wide original reaches only ~80 GB/s on
 # gcu400; 16K-32K-wide blocks stream at ~1.6 TB/s), and the row-parallel /
 # last-dim fill kernels that replace the [BLOCK_M, BLOCK_N] tile scatter for
@@ -91,11 +96,11 @@ def index_fill_kernel(
 ):
     # Generic strided path: iterate over the fill space, i.e. all coordinates
     # of `out` with the `DIM`-th coordinate replaced by a position in `index`.
+    # The launch is capped at _MAX_GRID programs, so each program strides over
+    # the tile blocks it does not own.
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
-    linear = offsets.to(tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    num_programs = tl.num_programs(axis=0)
+    tile_count = (N + BLOCK_SIZE - 1) // BLOCK_SIZE
     shapes = (shape_0, shape_1, shape_2, shape_3, shape_4, shape_5, shape_6, shape_7)
     strides = (
         stride_0,
@@ -107,23 +112,28 @@ def index_fill_kernel(
         stride_6,
         stride_7,
     )
-    for i in tl.static_range(RANK):
-        size = index_len if i == DIM else shapes[i]
-        coord = linear % size
-        linear = linear // size
-        if i == DIM:
-            raw_index = tl.load(index + coord, mask=mask, other=0).to(tl.int64)
-            valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
-            coord = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
-        out_offsets += coord * strides[i]
     if VALUE_IS_TENSOR:
         fill_value = tl.load(value)
     else:
         fill_value = value
-    # Out-of-range index entries are skipped silently by the store mask.
-    # (PyTorch reports them as an error, but tl.device_assert fails to
-    # compile on non-CUDA FlagGems backends, so the check is omitted.)
-    tl.store(out + out_offsets, fill_value, mask=mask & valid_index)
+    for tile in tl.range(pid, tile_count, num_programs):
+        offsets = tile.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < N
+        linear = offsets
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        for i in tl.static_range(RANK):
+            size = index_len if i == DIM else shapes[i]
+            coord = linear % size
+            linear = linear // size
+            if i == DIM:
+                raw_index = tl.load(index + coord, mask=mask, other=0).to(tl.int64)
+                valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+                coord = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+            out_offsets += coord * strides[i]
+        # Out-of-range index entries are skipped silently by the store mask.
+        # (PyTorch reports them as an error, but tl.device_assert fails to
+        # compile on non-CUDA FlagGems backends, so the check is omitted.)
+        tl.store(out + out_offsets, fill_value, mask=mask & valid_index)
 
 
 @libentry()
@@ -141,29 +151,35 @@ def index_fill_contiguous_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # Contiguous fast path: 2-D grid over (outer x index) rows and inner blocks.
+    # The row dimension is capped at _MAX_GRID programs; a program strides over
+    # the row blocks beyond its own.
     pid_m = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
-    m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    num_programs_m = tl.num_programs(axis=0)
     inner_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    m_mask = m_offsets < outer_index_len
-    index_coord = m_offsets % index_len
-    outer_coord = m_offsets // index_len
-    raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
-    valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
-    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
-    out_offsets = outer_coord[:, None] * dim_size * inner_size
-    out_offsets += normalized_index[:, None] * inner_size
-    out_offsets += inner_offsets[None, :]
-    store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
-    store_mask = store_mask & valid_index[:, None]
+    inner_mask = inner_offsets < inner_size
+    m_block_count = (outer_index_len + BLOCK_M - 1) // BLOCK_M
     if VALUE_IS_TENSOR:
         fill_value = tl.load(value)
     else:
         fill_value = value
-    # Out-of-range index entries are skipped silently by the store mask.
-    # (PyTorch reports them as an error, but tl.device_assert fails to
-    # compile on non-CUDA FlagGems backends, so the check is omitted.)
-    tl.store(out + out_offsets, fill_value, mask=store_mask)
+    for m_block in tl.range(pid_m, m_block_count, num_programs_m):
+        m_offsets = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < outer_index_len
+        index_coord = m_offsets % index_len
+        outer_coord = m_offsets // index_len
+        raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
+        valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+        normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+        out_offsets = outer_coord[:, None] * dim_size * inner_size
+        out_offsets += normalized_index[:, None] * inner_size
+        out_offsets += inner_offsets[None, :]
+        store_mask = m_mask[:, None] & inner_mask[None, :]
+        store_mask = store_mask & valid_index[:, None]
+        # Out-of-range index entries are skipped silently by the store mask.
+        # (PyTorch reports them as an error, but tl.device_assert fails to
+        # compile on non-CUDA FlagGems backends, so the check is omitted.)
+        tl.store(out + out_offsets, fill_value, mask=store_mask)
 
 
 @libentry()
@@ -201,22 +217,25 @@ def index_fill_rowpar_kernel(
     # degrades to per-lane scattered stores, ~6 GB/s flat).
     pid_m = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
+    num_programs_m = tl.num_programs(axis=0)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     mask_n = offs_n < inner_size
+    block_count = (row_tasks + BLOCK_M - 1) // BLOCK_M
     if VALUE_IS_TENSOR:
         fill_value = tl.load(value)
     else:
         fill_value = value
-    for i in tl.static_range(BLOCK_M):
-        task = (pid_m * BLOCK_M + i).to(tl.int64)
-        inb = task < row_tasks
-        outer = task // index_len
-        ipos = task % index_len
-        raw_index = tl.load(index + ipos, mask=inb, other=0).to(tl.int64)
-        valid_index = (raw_index >= -dim_size) & (raw_index < dim_size) & inb
-        normalized = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
-        base = (outer * dim_size + normalized) * inner_size
-        tl.store(out + base + offs_n, fill_value, mask=mask_n & valid_index)
+    for m_block in tl.range(pid_m, block_count, num_programs_m):
+        for i in tl.static_range(BLOCK_M):
+            task = (m_block * BLOCK_M + i).to(tl.int64)
+            inb = task < row_tasks
+            outer = task // index_len
+            ipos = task % index_len
+            raw_index = tl.load(index + ipos, mask=inb, other=0).to(tl.int64)
+            valid_index = (raw_index >= -dim_size) & (raw_index < dim_size) & inb
+            normalized = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+            base = (outer * dim_size + normalized) * inner_size
+            tl.store(out + base + offs_n, fill_value, mask=mask_n & valid_index)
 
 
 @libentry()
@@ -238,21 +257,28 @@ def index_fill_lastdim_kernel(
     # scatter-stored for BLOCK_R consecutive rows, instead of re-gathering
     # `m % index_len` per output element.
     pid = tl.program_id(axis=0)
+    num_programs = tl.num_programs(axis=0)
     lanes = tl.arange(0, BLOCK_I)
     imask = lanes < index_len
     raw_index = tl.load(index + lanes, mask=imask, other=0).to(tl.int64)
     valid_index = (raw_index >= -dim_size) & (raw_index < dim_size) & imask
     normalized = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+    row_block_count = (outer_size + BLOCK_R - 1) // BLOCK_R
     if VALUE_IS_TENSOR:
         fill_value = tl.load(value)
     else:
         fill_value = value
-    for r in tl.static_range(BLOCK_R):
-        row = (pid * BLOCK_R + r).to(tl.int64)
-        row_mask = row < outer_size
-        tl.store(
-            out + row * dim_size + normalized, fill_value, mask=valid_index & row_mask
-        )
+    # The launch is capped at _MAX_GRID programs, so a program strides over the
+    # remaining row blocks.
+    for r_block in tl.range(pid, row_block_count, num_programs):
+        for r in tl.static_range(BLOCK_R):
+            row = (r_block * BLOCK_R + r).to(tl.int64)
+            row_mask = row < outer_size
+            tl.store(
+                out + row * dim_size + normalized,
+                fill_value,
+                mask=valid_index & row_mask,
+            )
 
 
 def _index_fill_contiguous_launch(out, dim, index, value, value_is_tensor, fill_numel):
@@ -276,7 +302,7 @@ def _index_fill_contiguous_launch(out, dim, index, value, value_is_tensor, fill_
         # actual number of rows; large fills keep the full 512.
         block_m = min(block_m, triton.next_power_of_2(max(1, outer_index_len)))
     grid = (
-        triton.cdiv(outer_index_len, block_m),
+        min(triton.cdiv(outer_index_len, block_m), _MAX_GRID),
         triton.cdiv(inner_size, block_n),
     )
     index_fill_contiguous_kernel[grid](
@@ -306,7 +332,7 @@ def _index_fill_rowpar_launch(
     target_m = max(1, _ROWPAR_TARGET_PROGRAMS // grid_n)
     block_m = triton.next_power_of_2(max(1, row_tasks // target_m))
     block_m = min(max(block_m, _ROWPAR_BLOCK_M_MIN), _ROWPAR_BLOCK_M_MAX)
-    grid = (triton.cdiv(row_tasks, block_m), grid_n)
+    grid = (min(triton.cdiv(row_tasks, block_m), _MAX_GRID), grid_n)
     index_fill_rowpar_kernel[grid](
         out,
         index,
@@ -330,7 +356,7 @@ def _index_fill_lastdim_launch(
     # generic contiguous kernel: the 16-wide store form regresses ~2.7x
     # there (measured 30us vs 11us at (4096, 256) with index_len 16).
     block_i = triton.next_power_of_2(max(1, index_len))
-    grid = (triton.cdiv(outer_size, 8),)
+    grid = (min(triton.cdiv(outer_size, 8), _MAX_GRID),)
     index_fill_lastdim_kernel[grid](
         out,
         index,
@@ -416,7 +442,7 @@ def _index_fill_impl(out, dim, index, value, value_is_tensor):
             while len(shapes) < _MAX_RANK:
                 shapes.append(1)
                 strides.append(0)
-            grid = (triton.cdiv(fill_numel, _BLOCK_SIZE),)
+            grid = (min(triton.cdiv(fill_numel, _BLOCK_SIZE), _MAX_GRID),)
             index_fill_kernel[grid](
                 out,
                 index,

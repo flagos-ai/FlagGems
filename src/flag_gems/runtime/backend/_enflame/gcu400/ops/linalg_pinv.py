@@ -23,6 +23,7 @@
 #     register pressure stays bounded.
 import linecache
 import logging
+import warnings
 
 import torch
 import triton
@@ -551,6 +552,44 @@ def _column_norm_kernel(
         tl.store(S_ptr + batch_idx * C + j, tl.sqrt(acc))
 
 
+@libentry()
+@triton.jit
+def _pinv_contract_kernel(
+    V_ptr,
+    W_ptr,
+    inv_sq_ptr,
+    out_ptr,
+    R,
+    C,
+    v_batch_stride,
+    w_batch_stride,
+    out_batch_stride,
+    BLOCK_R: tl.constexpr,
+):
+    """pinv[i, l] = sum_j V[i, j] * inv_sq[j] * W[l, j] for one (batch, i).
+
+    One program per (batch, row of V). The contraction axis is a scalar loop so
+    the reduction never needs a 2-D tile or tl.dot, which keeps the kernel
+    compilable on this backend while still vectorizing over the output columns.
+    """
+    batch_idx = tl.program_id(0)
+    i = tl.program_id(1)
+    l_offsets = tl.arange(0, BLOCK_R)
+    l_mask = l_offsets < R
+    v_base = V_ptr + batch_idx * v_batch_stride + i * C
+    w_base = W_ptr + batch_idx * w_batch_stride
+    inv_sq_base = inv_sq_ptr + batch_idx * C
+    acc = tl.zeros((BLOCK_R,), dtype=tl.float32)
+    for j in tl.range(0, C):
+        v_ij = tl.load(v_base + j)
+        scale_j = tl.load(inv_sq_base + j)
+        w_row = tl.load(w_base + l_offsets * C + j, mask=l_mask, other=0.0)
+        acc += (v_ij * scale_j) * w_row
+    tl.store(
+        out_ptr + batch_idx * out_batch_stride + i * R + l_offsets, acc, mask=l_mask
+    )
+
+
 # ---------------------------------------------------------------------------
 # Register-resident path (Kunlunxin XPU, small square matrices).
 #
@@ -723,14 +762,30 @@ def _blocked_pinv(W: torch.Tensor, batch: int, R: int, C: int, atol_val, rtol_va
     _column_norm_kernel[(batch, C)](W, S, R, C, R * C, BLOCK_R=BLOCK_R)
 
     # pinv = V @ diag(1/sigma_filt) @ U^T with U[:, j] = W[:, j] / sigma_j, i.e.
-    # pinv[i, l] = sum_j V[i, j] * W[l, j] / sigma_j^2. The contraction runs on
-    # the native matmul: the Triton version crashed the XPU compiler with
-    # "LLVM ERROR: Unsupported element type" on tl.trans + tl.dot tiles.
+    # pinv[i, l] = sum_j V[i, j] * W[l, j] / sigma_j^2. The contraction is a
+    # dedicated Triton kernel: tl.dot tiles do not compile on this backend, and
+    # routing it through the native matmul made the op depend on the ambient
+    # fp32 matmul-precision mode (it raises when a caller mixed the legacy and
+    # the new precision APIs).
     thr = flag_gems.maximum(
         torch.full_like(S[:, :1], atol_val), S.amax(dim=-1, keepdim=True) * rtol_val
     )
     inv_sq = torch.where(S > thr, 1.0 / (S * S + 1e-38), torch.zeros_like(S))
-    return torch.matmul(V * inv_sq[:, None, :], W.transpose(-2, -1))
+
+    out = torch.empty(batch, C, R, dtype=torch.float32, device=device)
+    _pinv_contract_kernel[(batch, C)](
+        V,
+        W,
+        inv_sq,
+        out,
+        R,
+        C,
+        V.stride(0),
+        W.stride(0),
+        out.stride(0),
+        BLOCK_R=triton.next_power_of_2(R),
+    )
+    return out
 
 
 def linalg_pinv(
@@ -754,10 +809,13 @@ def linalg_pinv(
     """
     logger.debug("GEMS_ENFLAME LINALG_PINV")
 
-    assert A.dtype in (
-        torch.float32,
-        torch.float64,
-    ), f"linalg_pinv: expected float32 or float64, got {A.dtype}"
+    # torch.linalg.pinv rejects non-float input with a RuntimeError, which is
+    # what the accuracy suite asserts for complex tensors.
+    if A.dtype not in (torch.float32, torch.float64):
+        raise RuntimeError(
+            f"linalg_pinv: Expected a floating point tensor, got {A.dtype} "
+            "(complex inputs are not supported)"
+        )
 
     if not A.is_contiguous():
         A = A.contiguous()
@@ -862,6 +920,51 @@ def linalg_pinv(
     # Reshape to original batch shape + (n, m)
     out_shape = list(orig_shape[:-2]) + [n, m]
     return out.reshape(out_shape)
+
+
+def linalg_pinv_out(
+    A: torch.Tensor,
+    *,
+    atol: float = None,
+    rtol: float = None,
+    hermitian: bool = False,
+    out: torch.Tensor = None,
+) -> torch.Tensor:
+    """Out variant of `linalg_pinv`: the pseudoinverse is written into `out`.
+
+    Mirrors the out-argument contract of the aten kernel: a non-empty `out`
+    with a mismatched shape is resized with a warning, an empty `out` is
+    resized silently, and an output dtype that cannot safely hold the result is
+    rejected before any device work happens.
+    """
+    if out is None:
+        return linalg_pinv(A, atol=atol, rtol=rtol, hermitian=hermitian)
+
+    result_dtype = torch.float64 if A.dtype == torch.float64 else torch.float32
+    if not torch.can_cast(result_dtype, out.dtype):
+        raise RuntimeError(
+            "linalg_pinv_out: the result dtype "
+            f"{result_dtype} is not safely castable to the requested output "
+            f"dtype {out.dtype}; pass a floating point out tensor"
+        )
+
+    expected_shape = list(A.shape[:-2]) + [A.shape[-1], A.shape[-2]]
+    if list(out.shape) != expected_shape:
+        if out.numel() == 0:
+            out.resize_(expected_shape)
+        else:
+            warnings.warn(
+                "An output with one or more elements was resized since it had "
+                f"shape {list(out.shape)}, which does not match the required "
+                f"output shape {expected_shape}.",
+                UserWarning,
+                stacklevel=2,
+            )
+            out.resize_(expected_shape)
+
+    result = linalg_pinv(A, atol=atol, rtol=rtol, hermitian=hermitian)
+    out.copy_(result)
+    return out
 
 
 def _patch_generic_wrapper():
