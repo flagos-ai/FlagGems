@@ -25,7 +25,9 @@ Two backend facts shape this kernel:
   which stays exact for masked widths; only the unmasked, contiguous case uses
   one interleaved store of the whole ``(w, 2)`` row.
 * GCU has no FP64 unit: a float64 ``theta`` cannot be legalized by the compiler,
-  so it is rejected with an explicit error instead of a compiler crash.
+  so the float64 path runs the same float32 kernels on a float32 workspace and
+  casts the finished grid back into the float64 output buffer.  The grid dtype
+  contract is preserved while the values carry float32 intermediate precision.
 
 The grid is (row chunks * column blocks, N) and one program writes ``ROWS`` grid
 rows for one batch element, which amortizes the six ``theta`` scalar loads that
@@ -427,15 +429,29 @@ def _cudnn_affine_grid_generator_impl(theta, N, C, H, W, out=None):
     if N * H * W * 2 == 0:
         return out
 
-    if theta.dtype == torch.float64:
-        raise NotImplementedError(
-            "cudnn_affine_grid_generator: Enflame GCU has no FP64 support, "
-            "run the cudnn variant on float32/float16 input instead"
-        )
+    # GCU has no FP64 unit: the compiler cannot legalize float64 arithmetic here
+    # (`triton_gcu.elementwise_fusion_region` fails to lower, and even a plain fp64
+    # copy trips a backend compiler assert), so a float64 `theta` runs the same
+    # float32 kernels on a float32 workspace and the finished grid is cast back
+    # into the caller's float64 buffer. The output dtype contract is preserved;
+    # the values carry float32 intermediate precision (~1e-7 relative).
+    grid_dtype = torch.float32 if theta.dtype == torch.float64 else theta.dtype
+    grid_theta = theta.to(torch.float32) if theta.dtype == torch.float64 else theta
+    if not grid_theta.is_contiguous():
+        grid_theta = grid_theta.contiguous()
+    grid_out = out
+    if grid_dtype != out.dtype:
+        grid_out = torch.empty(out_shape, dtype=grid_dtype, device=out.device)
 
-    if not theta.is_contiguous():
-        theta = theta.contiguous()
+    _launch_grid(grid_theta, N, H, W, grid_out)
 
+    if grid_out is not out:
+        out.copy_(grid_out)
+    return out
+
+
+def _launch_grid(theta, N, H, W, out):
+    """Launch the best write path for one validated (theta, out) pair."""
     block_w = min(MAX_BLOCK_W, triton.next_power_of_2(W))
     num_col_blocks = triton.cdiv(W, block_w)
     rows = _rows_per_program(H)

@@ -103,25 +103,41 @@ def one_hot_scatter_kernel(
 
 def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     logger.debug("GEMS_ENFLAME ONE_HOT")
-    if not tensor.is_contiguous():
-        tensor = tensor.contiguous()
     numel = tensor.numel()
+    # Validate exactly like aten::one_hot: `num_classes=-1` infers the class count
+    # from the largest index, every index must be non-negative, and every index
+    # must stay below `num_classes`. Without these checks out-of-range indices
+    # silently write past the row (or produce an empty output), which is what the
+    # `pytest.raises(RuntimeError)` contract of the accuracy test checks.
     if num_classes == -1:
-        # `num_classes=-1` infers the class count from the maximum index. On this
-        # backend an empty input would reach the aten max reduction on a tensor
-        # with no elements, which aborts the process instead of raising, so mirror
-        # torch.nn.functional.one_hot's Python-level error here.
+        # On this backend the max reduction on a tensor with no elements aborts
+        # the process instead of raising, so mirror torch.nn.functional.one_hot's
+        # Python-level error here.
         if numel == 0:
             raise RuntimeError(
                 "cannot perform reduction function max on tensor with no elements "
                 "because the operation does not have an identity"
             )
-        num_classes = int(tensor.max().item()) + 1
+        max_index = int(tensor.max().item())
+        num_classes = max_index + 1
+    elif numel > 0:
+        max_index = int(tensor.max().item())
+    else:
+        max_index = None
+
+    if max_index is not None:
+        if int(tensor.min().item()) < 0:
+            raise RuntimeError("Class values must be non-negative.")
+        if max_index >= num_classes:
+            raise RuntimeError("Class values must be smaller than num_classes.")
+
+    if not tensor.is_contiguous():
+        tensor = tensor.contiguous()
 
     out = torch.empty(
         (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
     )
-    if numel == 0 or num_classes <= 0:
+    if numel == 0:
         return out
 
     total = numel * num_classes
