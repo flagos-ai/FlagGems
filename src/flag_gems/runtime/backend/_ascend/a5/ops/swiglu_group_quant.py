@@ -62,58 +62,32 @@ That is why ``tests/test_swiglu_group_quant.py`` keeps a ULP band on the fp32
 scale and a tie rate on the fp8 payload while comparing byte-exactly whenever
 the vendor is importable.
 
-Performance against the vendor, kernel time, bf16 -> e4m3, mode 1 (ratio > 1 =
-this kernel is faster), measured on Ascend950DT_9582 (64 vector cores, triton
-3.6.0, CANN 9.2.1):
+``H = 1280`` (D = 2560) at large T is the one shape the vendor keeps: 1280 is
+not a power of two, Triton tile widths must be, so the widest legal chunk
+(1024) covers 2048 columns in two steps and part of the work is redundant.
+``should_use_triton`` returns False there.
 
-    H=D/2     T=1    T=16   T=64   T=256  T=1024  T=4096
-    256                    2.38x
-    512                    2.09x   1.48x          1.24x
-    1024                   1.77x                  1.19x
-    1280                           1.01x          0.77x   <- see below
-    1792                           1.11x          1.04x
-    2048    1.47x  1.37x   1.49x   1.27x  1.23x   1.17x
-    4096                   1.39x   1.26x          1.12x
-    7168                   1.13x                  1.08x
-
-mode 0 (block 128, fp32 scale) does better: 1.36x at T=256 H=2048 and 1.41x at
-T=4096, because it needs a quarter as many block reductions.
-
-The one loss is ``H = 1280`` (D = 2560) at large T, and it is a tile-shape
-problem rather than a throughput one: 1280 is not a power of two, Triton tiles
-must be, and the widest legal chunk (1024) therefore covers 2048 columns in two
-steps -- 37.5% of the work is redundant.  Dividing out that overhead gives
-~21 us against the vendor's 26, so the arithmetic is fine; there is just no way
-to spell a 1280-wide tile.  ``should_use_triton`` returns False there.
-
-This file sits under ``a5/ops`` rather than ``_ascend/ops`` because every
-number above, the tile thresholds in ``tile_cols`` and the cost model in
-``should_use_triton`` were fitted on Ascend950 (NpuArch DAV_3510).  Atlas A2/A3
-keep calling the vendor.  The core count itself is read from the driver, so a
-part with a different one still gets the right grid.
+This file sits under ``a5/ops`` rather than ``_ascend/ops`` because the tile
+thresholds in ``tile_cols`` and the cost models behind ``should_use_triton``
+were fitted on Ascend950 (NpuArch DAV_3510).  Atlas A2/A3 keep calling the
+vendor.  The core count itself is read from the driver, so a part with a
+different one still gets the right grid.
 
 Design notes:
 
-  * ``exp`` dominates, and that is why this operator goes better than a pure
-    data-movement quantiser does.  SwiGLU needs one ``exp`` and one ``div`` per
-    output element, so both sides are transcendental-bound and the vendor's
-    register-residency advantage has nothing to buy.
   * the per-block amax is a plain ``tl.max`` over a ``(rows*nblk, B)`` reshape;
     the reshape is free because the block axis is the contiguous one.
   * ``group_index`` is summed **inside** the kernel (G is 1..256 int64 values,
     so a few instructions) rather than on the host.  A host-side sum would need
-    a device sync per call, which costs more than the whole kernel and breaks
-    ACL graph capture.  Rows past ``real_bs`` are skipped by the loop bound, so
-    a short ``group_index`` makes the kernel proportionally cheaper, matching
-    the vendor.
-  * a column chunk narrower than 1024 costs 7-20x unless it covers the whole
-    row, and a chunk wider than H needs a column mask that costs about 2x.
-    ``tile_cols`` encodes both; the measurements are in its docstring.  This is
-    the single biggest performance fact about this kernel and it is a DMA
-    descriptor effect, not arithmetic.
+    a device sync per call, which breaks ACL graph capture.  Rows past
+    ``real_bs`` are skipped by the loop bound, so a short ``group_index`` makes
+    the kernel proportionally cheaper, matching the vendor.
+  * a column chunk must either cover the whole row or stay at least 1024 wide,
+    and must never exceed H.  ``tile_cols`` encodes both; it is a DMA
+    descriptor effect, not arithmetic, and it is the constraint that shapes the
+    whole tiling.
   * the sign-of-zero fixup adds the kernel's ``ZERO`` argument, not a literal
-    ``0.0``, because the literal is folded away as an identity.  It is one
-    instruction, 0.92 us at T=4096 H=2048; the bit-test spelling costs 2.97.
+    ``0.0``, because the literal is folded away as an identity.
 """
 
 import logging
@@ -156,17 +130,14 @@ _IN_DTYPES = (torch.bfloat16, torch.float16)
 
 # Largest tile in output elements (rows * cols).  A tile holds x0 and x1 as
 # fp32, the fp32 SwiGLU, and the fp8 output, so ~16 bytes of UB per output
-# element; 16384 is the largest that compiles at every (rows, cols) shape and is
-# the best choice at T >= 4096 (measured 32.8 us against 38.6 for 8192 at
-# T=4096 H=2048).  32768 does not fit.
+# element; 16384 is the largest that compiles at every (rows, cols) shape.
+# 32768 does not fit.
 _UB_TILE_ELEMS = 16384
 # Rows per tile.  Large row counts only matter at small H, where a whole row is
-# cheap: at H=512, rows=32 is the best tile at T=4096 (10.78 us against 12.59
-# for rows=4).
+# cheap.
 _ROWS = (1, 2, 4, 8, 16, 32)
 # A column chunk narrower than this collapses unless it covers the whole row.
-# See tile_cols for the measurements; it is a DMA-descriptor cliff, not a tuning
-# knob.
+# It is a DMA-descriptor cliff, not a tuning knob; see tile_cols.
 _MIN_STRIDED_COLS = 1024
 _DISPATCH_US = 16.0  # aclnn host dispatch the vendor pays in eager mode
 # Compiled plans, keyed by specialization; see _plan_key.  Bounded because every
@@ -249,13 +220,10 @@ def _sgq_kernel(
         for ci in range(0, STEPS):
             # When COLS does not divide H, the last chunk *overlaps* the one
             # before instead of running past the row and masking the overhang.
-            # A column mask is ruinous here -- it stops the DMA using its
-            # contiguous path, and the same tile that costs 12.6 us at H=2048
-            # (where it divides) costs 274 us at H=1280 (where it does not).
-            # Overlapping recomputes some blocks, which is safe because a
-            # block's amax, scale and payload depend only on that block, so the
-            # second write is identical to the first.  Cost is the overlap
-            # ratio: 1.6x at H=1280 with COLS=1024, 1.14x at H=1792.
+            # A column mask is ruinous here: it stops the DMA using its
+            # contiguous path.  Overlapping recomputes some blocks, which is
+            # safe because a block's amax, scale and payload depend only on
+            # that block, so the second write is identical to the first.
             c0 = ci * COLS
             if OVERLAP:
                 c0 = min(c0, H - COLS)
@@ -287,12 +255,12 @@ def _sgq_kernel(
             # merely underflows keeps its sign (0x80 on both sides) -- so this is
             # a zero-only fixup that neither the cast nor a patch of the output
             # bytes can do.  ZERO is a *runtime* argument, always 0.0, because a
-            # literal `y + 0.0` is folded away as an identity (measured: 0x80
-            # where the vendor gives 0x00) and the bit-test spelling
-            # `where(bitcast(y) == INT32_MIN, 0, ...)` costs 2.97 us at
-            # T=4096 H=2048 against 0.92 for this one.
+            # literal `y + 0.0` is folded away as an identity, leaving 0x80
+            # where the vendor gives 0x00.  The bit-test spelling
+            # `where(bitcast(y) == INT32_MIN, 0, ...)` is correct too but
+            # slower.
             # y_origin is stored above, before this, because the vendor's
-            # y_origin does keep the -0.0 (measured: bf16 bits 0x8000).
+            # y_origin does keep the -0.0 (bf16 bits 0x8000).
             y = y + ZERO
 
             yt = tl.reshape(y, (N, B))
@@ -370,17 +338,10 @@ def tile_cols(H, quant_mode=1):
 
     The floor is **1024 columns**, and that is not a tuning choice: a chunk
     narrower than that falls off a cliff whenever it does not cover the whole
-    row.  Measured at T=4096 (us):
-
-        H=512   cols=512  (= H)   11.7      H=1024  cols=1024 (= H)   18.1
-        H=1024  cols=512          235.0     H=1280  cols=1024          33.4
-        H=2048  cols=1024          33.0     H=1280  cols=512           339.5
-        H=2048  cols=512          387.0     H=1280  cols=256           221.2
-
-    So ``cols == H`` is always fine (each row's chunk is then contiguous, and
-    the load is one descriptor per row), but a *strided* chunk of 512 or fewer
-    columns costs 7-20x.  It is not a row-count effect -- H=1024 cols=512
-    measures 391 us at ``rows=2`` and 235 at ``rows=8``.
+    row.  ``cols == H`` is always fine -- each row's chunk is then contiguous
+    and the load is one descriptor per row -- but a *strided* chunk of 512 or
+    fewer columns collapses by an order of magnitude.  It is not a row-count
+    effect; more rows per tile does not recover it.
 
     ``top`` is therefore always offered even when it is below the floor, which
     is what makes H = 128/256/512 work at all.
@@ -406,24 +367,18 @@ def est_kernel_us(M, H, rows, cols):
 
     The shape matters more than the constants.  Cost is *not* proportional to
     waves of launches: the steps after the first pipeline against each other, so
-    a core walking 32 steps pays the fill once (measured: 1.20 us per step at
-    T=256 and at T=4096, for the same tile).  What does scale with occupancy is
-    the fill, because concurrently starting cores contend -- the same 2048-wide
-    single-row tile takes 1.77 us alone and 3.26 us on 64 cores.
-
-    That is why ``rows=1`` loses above T=64 despite filling every core: it buys
+    a core walking many steps pays the fill once.  What does scale with
+    occupancy is the fill, because concurrently starting cores contend.  That is
+    why ``rows=1`` loses above T=64 despite filling every core: it buys
     occupancy that was already saturated and pays the contention for it.
 
-    Max relative error is 12% over 63 measured cells spanning H = 512, 1024,
-    1280, 1792, 2048 and 4096 at T = 1..4096, and it picks a tile within 1.05x
-    of the measured best in all 16 (T, H) cells (13 of them exactly the best).
     The constants were fitted on a 64-vector-core part; ``CORE_NUM`` is read
     from the device, so a part with a different core count still gets the right
     occupancy term even though the fit is not re-derived for it.
 
     The model only describes tiles ``tile_cols`` offers.  It does **not** know
-    about the narrow-strided-chunk cliff, which is 7-20x and would swamp
-    everything here; that is excluded by construction instead of fitted.
+    about the narrow-strided-chunk cliff, which would swamp everything here;
+    that is excluded by construction instead of fitted.
     """
 
     groups = -(-M // rows)
@@ -439,36 +394,7 @@ def pick_tile(M, H, quant_mode=1):
     """(rows, cols) per tile: minimise the modelled cost over legal tiles.
 
     The free parameters are the rows per tile and the output columns per inner
-    step, under ``rows * cols <= 16384`` elements.  Measured kernel time (us,
-    bf16 -> e4m3, mode 1); ``*`` marks the cell this function picks:
-
-        H=2048  r1c1024 r1c2048 r2c1024 r2c2048 r4c1024 r4c2048 r8c1024 r8c2048
-        T=1        1.86   1.77*    2.72    2.44    3.88    3.62     ---     ---
-        T=64       3.39    3.26    3.11   2.98*    3.83    3.88     ---     ---
-        T=256      5.68    5.02    5.30    4.82    4.87   4.97*    ---     6.01
-        T=4096    52.21   42.96   43.00   38.40   38.50   38.59   38.88   32.81*
-
-        H=512    r1c512  r2c512  r4c512  r8c512 r16c512 r32c512
-        T=64       3.03    2.36   2.14*    2.50     ---     ---
-        T=256       ---    3.47    3.08   2.92*    3.83     ---
-        T=4096      ---     ---   12.59   11.67   11.75  10.78*
-
-        H=4096  r1c2048 r1c4096 r2c2048 r2c4096 r4c2048 r4c4096 r8c2048
-        T=64       4.00   3.70*    4.10    4.21     ---     ---     ---
-        T=256       ---    7.10    7.07    7.27     ---   7.01*    ---
-        T=4096      ---     ---     ---   77.79   78.30  63.90*  64.38
-
-        H not a power of 2 (overlapping last chunk; see the kernel)
-                r1c1024 r2c1024 r4c1024 r8c1024 r16c1024
-        H=1280
-        T=64       3.99   3.42*     ---     ---     ---
-        T=256       ---    5.56   5.64*    6.88     ---
-        T=4096      ---     ---     ---   39.10  33.35*
-        H=1792
-        T=256       ---     ---   5.58*    ---     ---
-        T=4096      ---     ---     ---     ---  33.14*
-
-    Two regimes:
+    step, under ``rows * cols <= 16384`` elements.  Two regimes:
 
       * below one tile per core, only the launch cost matters, so the widest
         single-row tile wins -- extra rows just idle cores.
@@ -478,10 +404,9 @@ def pick_tile(M, H, quant_mode=1):
 
     Two traps, both handled by ``tile_cols`` rather than by the cost model:
 
-      * a strided chunk of <= 512 columns costs 7-20x (H=2048 r8c512: 387 us
-        against 32.81 for r8c2048);
+      * a strided chunk of <= 512 columns collapses;
       * forcing ``cols`` above the largest power of two <= H wastes the overhang
-        on masked lanes and costs ~2x (H=2048 r4c4096: 72.96 us).
+        on masked lanes.
     """
     best, cost = None, None
     for rows in _ROWS:
@@ -504,8 +429,6 @@ def vendor_est_us(M, H):
 
         vendor = 2.50 us + 0.029 us * cores_busy + 0.270 ns per element per core
         this   = 1.20 us + 0.023 us * cores_busy + per-step, ~0.24 ns per element
-
-    Within 5% over T = 1..4096 and H = 512/2048/4096 (10 cells).
     """
     cores = min(M, CORE_NUM)
     return 2.50 + 0.029 * cores + 0.270e-3 * M * H / CORE_NUM
@@ -514,24 +437,19 @@ def vendor_est_us(M, H):
 def should_use_triton(M, H, quant_mode=1, graph_captured=False):
     """True where this kernel is at least as fast as the vendor.
 
-    It wins at 1.01x to 2.38x over 21 measured (T, H) points, with one family of
-    exceptions: ``H = 1280`` (D = 2560) at large T, where it runs 0.77x and this
-    returns False from T = 768 up.  That is the overlapping-chunk tax -- 1280 is
-    not a power of two, so the widest legal chunk (1024) covers 2048 columns in
-    two steps and 37.5% of the work is redundant.  At small T it does not matter
-    (the tile is not the bottleneck; T=256 measures 1.01x), which is why the cut
-    is on T as well as H.
+    The one family of exceptions is ``H = 1280`` (D = 2560) at large T, where
+    this returns False from T = 768 up.  That is the overlapping-chunk tax:
+    1280 is not a power of two, so the widest legal chunk (1024) covers 2048
+    columns in two steps and part of the work is redundant.  At small T the
+    tile is not the bottleneck, which is why the cut is on T as well as H.
 
     Both cost models are compared with a 10% band, because at ``H = 1792``
-    they land within 1% of each other and the measurement says this kernel wins
-    by 1.04x.
+    they land within 1% of each other while this kernel is in fact ahead.
 
-    ``graph_captured`` picks what the vendor is charged for.  False (the default)
-    adds the ~16 us of aclnn host dispatch it pays in eager mode; True compares
-    kernel time only, which is what survives ACL graph capture and what the
-    tables in this module quote -- so compare measured ratios against
-    ``graph_captured=True``.  It agrees with the measured winner on all 21
-    points there.
+    ``graph_captured`` picks what the vendor is charged for.  False (the
+    default) adds the ~16 us of aclnn host dispatch it pays in eager mode; True
+    compares kernel time only, which is what survives ACL graph capture -- so
+    compare kernel-time ratios against ``graph_captured=True``.
     """
     rows, cols = pick_tile(M, H, quant_mode)
     est = est_kernel_us(M, H, rows, cols)
