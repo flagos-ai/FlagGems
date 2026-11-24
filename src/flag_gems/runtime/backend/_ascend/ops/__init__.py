@@ -135,6 +135,11 @@ from .foreach_add_scalar_list_ import foreach_add_scalar_list_
 from .foreach_addcdiv_scalar import foreach_addcdiv_scalar, foreach_addcdiv_scalar_list
 from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
 from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
+from .foreach_addcmul_scalar import (
+    foreach_addcmul_scalar,
+    foreach_addcmul_scalar_list,
+    foreach_addcmul_scalar_list_,
+)
 from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
 from .foreach_atan_ import foreach_atan_
 from .foreach_ceil import foreach_ceil
@@ -526,7 +531,10 @@ __all__ = [
     "foreach_addcdiv_scalar_",
     "foreach_addcdiv_scalar_list",
     "foreach_addcdiv_scalar_list_",
+    "foreach_addcmul_scalar",
     "foreach_addcmul_scalar_",
+    "foreach_addcmul_scalar_list",
+    "foreach_addcmul_scalar_list_",
     "foreach_atan_",
     "foreach_ceil",
     "foreach_copy",
