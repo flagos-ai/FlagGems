@@ -76,6 +76,7 @@ from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_mul_Tensor import _foreach_mul_Tensor
 from ._foreach_neg_ import _foreach_neg_
+from ._foreach_pow__List import _foreach_pow__List
 from ._foreach_pow_ScalarAndTensor import _foreach_pow_ScalarAndTensor
 from ._foreach_rsqrt import _foreach_rsqrt
 from ._foreach_sigmoid_ import _foreach_sigmoid_
@@ -337,6 +338,7 @@ __all__ = [
     "_foreach_mul__ScalarList",
     "_foreach_mul_Tensor",
     "_foreach_neg_",
+    "_foreach_pow__List",
     "_foreach_pow_ScalarAndTensor",
     "_foreach_rsqrt",
     "_foreach_sigmoid_",
