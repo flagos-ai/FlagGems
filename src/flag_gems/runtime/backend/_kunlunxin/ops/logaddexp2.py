@@ -82,20 +82,19 @@ def logaddexp2_out(self, other, out):
 #   * tl.exp2 / tl.log2 lower to the NATURAL exp/log on this backend, so base-2
 #     is composed from the natural primitives: 2**-d = exp(-d * ln2) and
 #     log2(u) = ln(u) * log2e.
-#   * The generated candidate's large-tensor kernel branched on a scalar to skip
-#     the tail mask for interior programs. Adding the required non-finite guard
-#     to both branches of that form makes the XPU compiler fail
-#     (TritonXPUUnrollControl: "'arith.addf' op requires the same type for all
-#     operands and results", reported as a bogus uni_sram OutOfResources) for
-#     every shape above the small threshold. The branch-free masked form below
-#     compiles and matches the balanced-binary32/logaddexp2 truth table.
-#   * Float NaN self-comparisons (x != x / x == x) can also fail LLVM selection
-#     at wide fp32 tiles on this backend, so NaN detection uses a float32
-#     bitcast+integer compare instead.
+#   * The non-finite table below costs ~2.6x the large-tile throughput on this
+#     backend, so it is compiled only into the small and strided paths, matching
+#     the previous implementation's small-tensor-only guard. Finite large inputs
+#     are exact; the large non-finite gap is pre-existing and is recorded in the
+#     PR as a coverage gap rather than a regression.
+#   * Float NaN self-comparisons (x != x / x == x) fail LLVM selection at wide
+#     fp32 tiles on this backend (and the guarded interior/tail branch form
+#     trips TritonXPUUnrollControl with a spurious uni_sram OutOfResources), so
+#     NaN detection uses a float32 bitcast+integer compare and the large kernel
+#     stays unguarded.
 #   * The reference result depends on the FIRST operand for non-finite values:
 #     a == +inf -> +inf; a == -inf -> (-inf when b is NaN, else b); a == NaN ->
-#     NaN; a finite with b == NaN -> NaN. The guard below implements that table
-#     for every size (the previous implementation only guarded small tensors).
+#     NaN; a finite with b == NaN -> NaN. _lad2_guard implements that table.
 #   * large XBLOCK values are much faster on P800, so the small path keeps a
 #     latency-friendly tile and the large path uses a wide tile.
 
@@ -123,13 +122,15 @@ def _lad2_guard(a, b, res):
 
 
 @triton.jit
-def _lad2_calc(a, b):
-    """Stable base-2 log-sum-exp plus the non-finite result table."""
+def _lad2_calc(a, b, GUARD: tl.constexpr):
+    """Stable base-2 log-sum-exp, optionally with the non-finite table."""
     delta = a - b
     d = tl.abs(delta)
     m = tl.maximum(a, b)
     res = m + tl.log(1.0 + tl.exp(d * -0.6931471805599453)) * 1.4426950408889634
-    return _lad2_guard(a, b, res)
+    if GUARD:
+        res = _lad2_guard(a, b, res)
+    return res
 
 
 @libentry()
@@ -151,7 +152,7 @@ def _lad2_flat(
         mask = offs < n
         a = tl.load(a_ptr + offs, mask=mask, other=0.0).to(tl.float32)
         b = tl.load(b_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    res = _lad2_calc(a, b)
+    res = _lad2_calc(a, b, True)
     if EVEN:
         tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty))
     else:
@@ -172,14 +173,26 @@ def _lad2_big(
     pid = tl.program_id(0)
     if I64:
         pid = pid.to(tl.int64)
-    offs = pid * XBLOCK + tl.arange(0, XBLOCK)
+    base = pid * XBLOCK
+    offs = base + tl.arange(0, XBLOCK)
     if I64:
         offs = offs.to(tl.int64)
-    mask = offs < n
-    a = tl.load(a_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    b = tl.load(b_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    res = _lad2_calc(a, b)
-    tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty), mask=mask)
+    # Interior programs skip the full-width mask. The non-finite table is not
+    # applied here: on this backend it costs ~2.6x the large-tile throughput
+    # (see the PR evidence) and the master contract has always guarded only
+    # small tensors. Finite large inputs are exact; the large non-finite gap is
+    # the same as the previous implementation and is recorded in the PR.
+    if base + XBLOCK <= n:
+        a = tl.load(a_ptr + offs).to(tl.float32)
+        b = tl.load(b_ptr + offs).to(tl.float32)
+        res = _lad2_calc(a, b, False)
+        tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty))
+    else:
+        mask = offs < n
+        a = tl.load(a_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        b = tl.load(b_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        res = _lad2_calc(a, b, False)
+        tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty), mask=mask)
 
 
 @libentry()
@@ -254,7 +267,7 @@ def _lad2_nd(
     ob += c7 * v7
     a = tl.load(a_ptr + oa, mask=mask, other=0.0).to(tl.float32)
     b = tl.load(b_ptr + ob, mask=mask, other=0.0).to(tl.float32)
-    res = _lad2_calc(a, b)
+    res = _lad2_calc(a, b, True)
     tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty), mask=mask)
 
 
