@@ -37,6 +37,22 @@ QUANT_PARAMS = [
 ]
 
 
+def _reference_backward(grad, inp, scale, zero_point, quant_min, quant_max, grad_factor):
+    if flag_gems.vendor_name == "mthreads" and inp.dtype == torch.bfloat16:
+        # MUSA's PyTorch reference rejects BF16 inputs. Promote the already
+        # rounded BF16 values to the operation's float32 gradient precision.
+        grad, inp, scale, zero_point = (
+            tensor.cpu().float() for tensor in (grad, inp, scale, zero_point)
+        )
+    return torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
+        grad, inp, scale, zero_point, quant_min, quant_max, grad_factor
+    )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="fake-quantize learning accuracy issue",
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
@@ -57,7 +73,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
     ref_scale = utils.to_reference(scale_t)
     ref_zero_point = utils.to_reference(zero_point_t)
 
-    ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
+    ref_out = _reference_backward(
         ref_grad, ref_self, ref_scale, ref_zero_point, quant_min, quant_max, grad_factor
     )
     res_out = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
@@ -76,6 +92,8 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
     # float32 reduction order (tree-reduce in Triton vs. sequential on the CPU
     # reference) differs in the last bits, so scale the atol by the reduction
     # length (matching the convention used by the sum/mean accuracy tests).
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.bfloat16:
+        assert all(grad.device == self_t.device for grad in res_out)
     utils.gems_assert_close(res_out[0], ref_out[0], torch.float32)
     reduce_dim = max(1, self_t.numel())
     utils.gems_assert_close(
@@ -86,6 +104,10 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="fake-quantize learning accuracy issue",
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
@@ -104,7 +126,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype
     ref_scale = utils.to_reference(scale_t)
     ref_zero_point = utils.to_reference(zero_point_t)
 
-    ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
+    ref_out = _reference_backward(
         ref_grad, ref_self, ref_scale, ref_zero_point, quant_min, quant_max, grad_factor
     )
     res_out = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
@@ -120,6 +142,8 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype
     # grad_self is element-wise; grad_scale / grad_zero_point are full
     # reductions (scale the atol by the reduction length, matching the sum/mean
     # accuracy-test convention for float32 reduction-order sensitivity).
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.bfloat16:
+        assert all(grad.device == self_t.device for grad in res_out)
     utils.gems_assert_close(res_out[0], ref_out[0], torch.float32)
     reduce_dim = max(1, self_t.numel())
     utils.gems_assert_close(

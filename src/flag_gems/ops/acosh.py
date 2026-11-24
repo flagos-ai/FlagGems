@@ -33,8 +33,7 @@ def acosh_func(x):
     # We need to handle x >= 1 case
     # Using the formula: acosh(x) = log(x + sqrt(x*x - 1))
     sqrt_term = tl.sqrt(x_f32 * x_f32 - 1.0)
-    result = tl.log(x_f32 + sqrt_term)
-    return result.to(x.dtype)
+    return tl.log(x_f32 + sqrt_term)
 
 
 def acosh(A):
@@ -44,5 +43,12 @@ def acosh(A):
 
 def acosh_(A):
     logger.debug("GEMS ACOSH_")
+    # ATen rejects in-place acosh on integer and bool inputs (the float result
+    # cannot be cast back into the output buffer); mirror that instead of
+    # silently truncating.
+    if not A.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{A.dtype}"
+        )
     acosh_func(A, out0=A)
     return A

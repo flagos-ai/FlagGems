@@ -54,7 +54,7 @@
   ],
   "containerEnv": {
     "PIP_USER": "0", // <‑‑ disable implicit --user
-    "FLAGGEMS_DEVCONTAINER_BACKEND": "hygon"
+    "FLAGGEMS_DEVCONTAINER_BACKEND": "hygon-dtk2604"
   },
   // Use 'postCreateCommand' to run commands after the container is created.
   // Installs FlagGems in editable mode so source edits take effect immediately.

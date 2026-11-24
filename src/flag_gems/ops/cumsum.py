@@ -383,6 +383,20 @@ def reduce_then_scan_block_scan_kernel_row(
 
 def cumsum(inp, dim=1, *, dtype=None):
     logger.debug("GEMS CUMSUM")
+    # Route differentiable inputs through the autograd bridge so the Triton
+    # reverse-scan kernel is reachable from ``flag_gems.cumsum``; ATen has no
+    # ``aten::cumsum_backward`` schema. When the dispatcher calls this under the
+    # Autograd key (``torch.cumsum``), grad mode is already disabled, so ATen's
+    # own ``CumsumBackward0`` keeps owning that path.
+    if (
+        torch.is_grad_enabled()
+        and isinstance(inp, torch.Tensor)
+        and inp.requires_grad
+        and inp.is_floating_point()
+    ):
+        from flag_gems.ops.cumsum_backward import CumsumFunction
+
+        return CumsumFunction.apply(inp, dim, dtype)
     return cumsum_wrapper(inp, dim, dtype)
 
 

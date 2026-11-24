@@ -46,3 +46,20 @@ def test_ilshift(shapes, dtype):
     ref_a.__ilshift__(ref_b)
     flag_gems.bitwise_left_shift_(res_a, res_b)
     utils.gems_assert_close(res_a, ref_a, dtype)
+
+
+@pytest.mark.ilshift
+@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.int8])
+def test_ilshift_int8(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(-100, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = utils.to_reference(res_a.clone())
+    ref_b = utils.to_reference(res_b)
+
+    ref_a.__ilshift__(ref_b)
+    res_a = flag_gems.bitwise_left_shift_(res_a, res_b)
+    utils.gems_assert_close(res_a, ref_a, dtype)

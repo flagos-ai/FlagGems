@@ -18,9 +18,11 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -114,7 +116,7 @@ _FULL_CONFIG = (
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_adaptive_avg_pool2d.out", adaptive_avg_pool2d_out),
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
-    ("_adaptive_avg_pool3d", adaptive_avg_pool3d),
+    ("_adaptive_avg_pool3d", _adaptive_avg_pool3d),
     ("_adaptive_avg_pool3d.out", adaptive_avg_pool3d_out),
     ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("_add_relu.Tensor", _add_relu),
@@ -137,6 +139,36 @@ _FULL_CONFIG = (
         "_cast_Byte",
         cast_Byte,
         lambda: torch_has_aten_overload("_cast_Byte", "default"),
+    ),
+    (
+        "_cast_Char",
+        cast_Char,
+        lambda: torch_has_aten_overload("_cast_Char", "default"),
+    ),
+    (
+        "_cast_Double",
+        cast_Double,
+        lambda: torch_has_aten_overload("_cast_Double", "default"),
+    ),
+    (
+        "_cast_Float",
+        cast_Float,
+        lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
+        "_cast_Half",
+        cast_Half,
+        lambda: torch_has_aten_overload("_cast_Half", "default"),
+    ),
+    (
+        "_cast_Long",
+        cast_Long,
+        lambda: torch_has_aten_overload("_cast_Long", "default"),
+    ),
+    (
+        "_cast_Short",
+        cast_Short,
+        lambda: torch_has_aten_overload("_cast_Short", "default"),
     ),
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
@@ -175,6 +207,8 @@ _FULL_CONFIG = (
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_cudnn_rnn", cudnn_rnn),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
+    ("_cudnn_rnn_flatten_weight", cudnn_rnn_flatten_weight),
+    ("_cudnn_rnn_flatten_weight.out", cudnn_rnn_flatten_weight_out),
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
     ("_dim_arange", dim_arange),
@@ -184,12 +218,33 @@ _FULL_CONFIG = (
     ("_dyn_quant_matmul_4bit", _dyn_quant_matmul_4bit),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
+    ("_efficientzerotensor", _efficientzerotensor),
+    (
+        "_efficientzerotensor.out",
+        _efficientzerotensor_out,
+        lambda: torch_has_aten_overload("_efficientzerotensor", "out"),
+    ),
+    ("_embedding_bag", _embedding_bag),
+    ("_embedding_bag_backward", _embedding_bag_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
+    ("_embedding_bag_forward_only", _embedding_bag_forward_only),
     (
         "_embedding_bag_per_sample_weights_backward",
         _embedding_bag_per_sample_weights_backward,
     ),
     ("_embedding_bag_sparse_backward", _embedding_bag_sparse_backward),
+    (
+        "_empty_affine_quantized",
+        _empty_affine_quantized,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "_empty_affine_quantized.out",
+        _empty_affine_quantized_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
     (
         "_empty_per_channel_affine_quantized",
         _empty_per_channel_affine_quantized,
@@ -385,6 +440,7 @@ _FULL_CONFIG = (
     ("_fused_rms_norm_backward", _fused_rms_norm_backward),
     ("_fused_sgd_", _fused_sgd_),
     ("_fused_sgd_.tensor_lr", _fused_sgd__tensor_lr),
+    ("_fw_primal", _fw_primal),
     ("_fw_primal_copy", _fw_primal_copy),
     ("_fw_primal_copy.out", _fw_primal_copy_out),
     ("_gather_sparse_backward", _gather_sparse_backward),
@@ -436,9 +492,10 @@ _FULL_CONFIG = (
     ("_logcumsumexp", _logcumsumexp),
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
-    ("_make_dep_token", _make_dep_token),
+    ("_make_dual", _make_dual),
     ("_make_dual_copy", _make_dual_copy),
     ("_make_dual_copy.out", _make_dual_copy_out),
+    ("_make_per_channel_quantized_tensor", _make_per_channel_quantized_tensor),
     ("_make_per_tensor_quantized_tensor", _make_per_tensor_quantized_tensor),
     ("_make_per_tensor_quantized_tensor.out", _make_per_tensor_quantized_tensor_out),
     ("_masked_scale", _masked_scale),
@@ -467,12 +524,15 @@ _FULL_CONFIG = (
         "_nested_compute_contiguous_strides_offsets",
         nested_compute_contiguous_strides_offsets,
     ),
+    ("_nested_from_padded", _nested_from_padded),
+    ("_nested_from_padded_and_nested_example", _nested_from_padded_and_nested_example),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
     ("_nested_tensor_from_mask", _nested_tensor_from_mask),
     ("_nested_tensor_from_mask_left_aligned", _nested_tensor_from_mask_left_aligned),
     ("_nested_tensor_from_tensor_list", _nested_tensor_from_tensor_list),
+    ("_nested_tensor_size", _nested_tensor_size, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_nested_tensor_softmax_with_shape", _nested_tensor_softmax_with_shape),
     (
         "_nested_tensor_storage_offsets",
@@ -480,6 +540,8 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_nested_tensor_strides", _nested_tensor_strides, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_nested_view_from_buffer", _nested_view_from_buffer),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
@@ -500,16 +562,16 @@ _FULL_CONFIG = (
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
     ("_philox_uniform_", _philox_uniform_),
-    # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
-    # accelerator key: registering under the backend key would never fire.
     ("_pin_memory", _pin_memory, None, ["CPU"]),
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
-    ("_reshape_alias", _reshape_alias),
+    ("_remove_batch_dim", _remove_batch_dim),
     ("_reshape_alias_copy", _reshape_alias_copy),
     ("_reshape_copy", _reshape_copy),
+    ("_reshape_from_tensor", _reshape_from_tensor),
     ("_resize_output", _resize_output),
     ("_resize_output_", _resize_output_),
+    ("_rowwise_prune", _rowwise_prune),
     ("_safe_softmax", _safe_softmax),
     ("_sample_dirichlet", _sample_dirichlet),
     ("_saturate_weight_to_fp16", _saturate_weight_to_fp16),
@@ -563,7 +625,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),
-    ("_slow_conv2d_backward", _slow_conv2d_backward),
+    ("_slow_conv2d_backward.output_mask", _slow_conv2d_backward),
     ("_slow_conv2d_forward", _slow_conv2d_forward),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
@@ -576,6 +638,18 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    (
+        "_sparse_addmm",
+        _sparse_addmm,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
+    (
+        "_sparse_addmm.out",
+        _sparse_addmm_out,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
     ("_sparse_broadcast_to", sparse_broadcast_to, None, (SPARSE_DISPATCH_KEY,)),
     (
         "_sparse_broadcast_to_copy",
@@ -584,17 +658,242 @@ _FULL_CONFIG = (
         (SPARSE_DISPATCH_KEY,),
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
+    ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    (
+        "_sparse_coo_tensor_with_dims",
+        sparse_coo_tensor_with_dims,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims.out",
+        sparse_coo_tensor_with_dims_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        sparse_coo_tensor_with_dims_and_tensors,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors.out",
+        sparse_coo_tensor_with_dims_and_tensors_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
+    (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_sum",
+        sparse_csr_sum,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_sum.dim_dtype",
+        sparse_csr_sum,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_sum.dim_dtype_out",
+        sparse_csr_sum_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
+    (
+        "_sparse_log_softmax",
+        _sparse_log_softmax,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_log_softmax.int",
+        _sparse_log_softmax_int,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_log_softmax.out",
+        _sparse_log_softmax_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_log_softmax_backward_data",
+        _sparse_log_softmax_backward_data,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_log_softmax_backward_data.out",
+        _sparse_log_softmax_backward_data_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_mask_projection",
+        _sparse_mask_projection,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_mask_projection.out",
+        _sparse_mask_projection_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    # Both overloads are CompositeImplicitAutograd in ATen (no per-backend
+    # dispatch block in native_functions.yaml): the Autograd composite key is
+    # checked *before* the sparse backend keys, so a SparseCsrCUDA/SparseCUDA
+    # registration alone is shadowed in normal grad mode and the aten
+    # decomposition runs instead (same pitfall as nested_to_padded_tensor).
+    # Register the composite key as well so use_gems()/only_enable() actually
+    # intercept the operator.
+    (
+        "_sparse_mm",
+        _sparse_mm,
+        None,
+        (
+            SPARSE_DISPATCH_KEY,
+            SPARSE_CSR_DISPATCH_KEY,
+            "CompositeImplicitAutograd",
+        ),
+    ),
+    (
+        "_sparse_mm.reduce",
+        _sparse_mm,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY, "CompositeImplicitAutograd"),
+    ),
     (
         "_sparse_mm_reduce_impl",
         _sparse_mm_reduce_impl,
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    (
+        "_sparse_mm_reduce_impl_backward",
+        _sparse_mm_reduce_impl_backward,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
+    (
+        "_sparse_semi_structured_apply",
+        _sparse_semi_structured_apply,
+    ),
+    (
+        "_sparse_semi_structured_apply_dense",
+        _sparse_semi_structured_apply_dense,
+    ),
     ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     ("_sparse_semi_structured_tile", _sparse_semi_structured_tile),
+    (
+        "_sparse_softmax",
+        _sparse_softmax,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_softmax.int",
+        _sparse_softmax_int,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_softmax.out",
+        _sparse_softmax_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_softmax_backward_data",
+        _sparse_softmax_backward_data,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_softmax_backward_data.out",
+        _sparse_softmax_backward_data_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sparse_matmul",
+        _sparse_sparse_matmul,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sparse_matmul.out",
+        _sparse_sparse_matmul_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum",
+        _sparse_sum,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim",
+        _sparse_sum_dim,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_dtype",
+        _sparse_sum_dim_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_out",
+        _sparse_sum_dim_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dtype",
+        _sparse_sum_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum_backward",
+        _sparse_sum_backward,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum_backward.out",
+        _sparse_sum_backward_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_spdiags", spdiags),
     ("_spsolve", spsolve, None, (SPARSE_CSR_DISPATCH_KEY,)),
     ("_stack", _stack),
@@ -620,16 +919,17 @@ _FULL_CONFIG = (
         to_copy,
         lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
+    ("_to_sparse_semi_structured", to_sparse_semi_structured),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
     ("_trilinear", _trilinear),
     ("_trilinear.out", _trilinear_out),
     ("_unique2", _unique2),
+    ("_unpack_dual", _unpack_dual, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_unsafe_index.Tensor", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
-    ("_unsafe_view", _unsafe_view),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
@@ -663,7 +963,16 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    ("_validate_compressed_sparse_indices", _validate_compressed_sparse_indices),
+    ("_validate_sparse_bsc_tensor_args", _validate_sparse_bsc_tensor_args),
+    ("_validate_sparse_bsr_tensor_args", _validate_sparse_bsr_tensor_args),
+    (
+        "_validate_sparse_compressed_tensor_args",
+        _validate_sparse_compressed_tensor_args,
+    ),
+    ("_validate_sparse_coo_tensor_args", _validate_sparse_coo_tensor_args),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
+    ("_validate_sparse_csr_tensor_args", _validate_sparse_csr_tensor_args),
     (
         "_values",
         values,
@@ -700,6 +1009,18 @@ _FULL_CONFIG = (
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
+    # adaptive_avg_pool3d is CompositeImplicitAutograd in ATen with no dedicated
+    # Autograd kernel, so the device-key override below would drop its autograd
+    # formula. The autograd.Function wrapper supplies the backward and the
+    # Autograd fallthrough lets that wrapper own the whole differentiable path
+    # (cf. the ``clone`` entry).
+    (
+        "adaptive_avg_pool3d",
+        adaptive_avg_pool3d,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    ("adaptive_avg_pool3d.out", adaptive_avg_pool3d_out),
     (
         "adaptive_avg_pool3d_backward.grad_input",
         adaptive_avg_pool3d_backward_grad_input,
@@ -732,7 +1053,6 @@ _FULL_CONFIG = (
     ("adjoint", adjoint),
     ("affine_grid_generator", affine_grid_generator),
     ("affine_grid_generator_backward", affine_grid_generator_backward),
-    ("alias", alias),
     ("alias_copy", alias_copy),
     ("alias_copy.out", alias_copy_out),
     ("all", all),
@@ -786,8 +1106,8 @@ _FULL_CONFIG = (
     ("atan2.out", atan2_out),
     ("atan2_", atan2_),
     ("atan_", atan_),
-    ("atanh", atanh),
-    ("atanh_", atanh_),
+    ("atanh", atanh, None, (f"Autograd{backend_info.dispatch_key}",)),
+    ("atanh_", atanh_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("atleast_1d", atleast_1d),
     ("atleast_1d.Sequence", atleast_1d),
     ("atleast_2d", atleast_2d),
@@ -858,6 +1178,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("bucketize.Tensor", bucketize),
+    ("can_cast", can_cast, None, ["CompositeImplicitAutograd"]),
     ("cartesian_prod", cartesian_prod),
     ("cat", cat),
     ("cat.out", cat_out),
@@ -883,6 +1204,7 @@ _FULL_CONFIG = (
     ("celu", celu),
     ("celu_", celu_),
     ("chain_matmul", chain_matmul),
+    ("chain_matmul.out", chain_matmul_out),
     ("chalf", chalf),
     ("channel_shuffle", channel_shuffle),
     ("cholesky", cholesky),
@@ -890,13 +1212,37 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    ("clamp", clamp),
+    # Autograd fallthrough: the ClampFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp",
+        clamp,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
-    ("clamp_max", clamp_max),
+    # Autograd fallthrough: the ClampMaxFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_max",
+        clamp_max,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_max_", clamp_max_),
-    ("clamp_min", clamp_min),
+    # Autograd fallthrough: the ClampMinFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_min",
+        clamp_min,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
@@ -904,7 +1250,7 @@ _FULL_CONFIG = (
         "clone",
         clone,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col2im", col2im),
@@ -947,13 +1293,34 @@ _FULL_CONFIG = (
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
-    ("copysign.Scalar", copysign),
-    ("copysign.Tensor", copysign),
+    # Autograd fallthrough: the CopysignFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "copysign.Scalar",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    (
+        "copysign.Tensor",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),
-    ("cosh", cosh),
+    # Autograd fallthrough: the CoshFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and the backward falls back to the native kernel instead of ours.
+    (
+        "cosh",
+        cosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("cosine_embedding_loss", cosine_embedding_loss),
@@ -962,6 +1329,7 @@ _FULL_CONFIG = (
     ("cov", cov),
     ("cross", cross),
     ("cross.out", cross_out),
+    ("crow_indices", crow_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     (
         "crow_indices_copy",
         crow_indices_copy,
@@ -970,9 +1338,26 @@ _FULL_CONFIG = (
     ),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_affine_grid_generator", cudnn_affine_grid_generator),
+    ("cudnn_affine_grid_generator.out", cudnn_affine_grid_generator_out),
+    ("cudnn_affine_grid_generator_backward", cudnn_affine_grid_generator_backward),
+    (
+        "cudnn_affine_grid_generator_backward.out",
+        cudnn_affine_grid_generator_backward_out,
+    ),
+    ("cudnn_batch_norm", cudnn_batch_norm, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_batch_norm.out", cudnn_batch_norm_out),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
     ("cudnn_convolution", cudnn_convolution),
+    ("cudnn_convolution_add_relu", cudnn_convolution_add_relu),
+    ("cudnn_convolution_add_relu.out", cudnn_convolution_add_relu_out),
+    ("cudnn_convolution_relu", cudnn_convolution_relu),
+    ("cudnn_convolution_relu.out", cudnn_convolution_relu_out),
     ("cudnn_convolution_transpose", cudnn_convolution_transpose),
+    ("cudnn_grid_sampler", cudnn_grid_sampler),
+    ("cudnn_grid_sampler.out", cudnn_grid_sampler_out),
+    ("cudnn_grid_sampler_backward", cudnn_grid_sampler_backward),
+    ("cudnn_grid_sampler_backward.out", cudnn_grid_sampler_backward_out),
     ("cummax", cummax),
     ("cummaxmin_backward", cummaxmin_backward),
     ("cummin", cummin),
@@ -1004,11 +1389,6 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
-    # aten::dim is not a dispatcher operator on this build (it is a JIT
-    # primitive plus a Python Tensor method; probes: probe1..probe14 in the
-    # run dir). A device-key registration is unreachable dead code, so the
-    # entry registers no extra dispatch key and the implementation is tested
-    # through its direct call path, mirroring the can_cast investigation.
     ("dim", dim),
     ("dist", dist),
     ("div.out", true_divide_out),
@@ -1034,6 +1414,7 @@ _FULL_CONFIG = (
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
+    ("elu_backward.grad_input", elu_backward_out),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
     ("embedding_bag", embedding_bag),
@@ -1058,7 +1439,6 @@ _FULL_CONFIG = (
     ("exp2_", exp2_),
     ("exp_", exp_),
     ("expand", expand),
-    ("expand_as", expand_as),
     ("expand_copy", expand_copy),
     ("expm1", expm1),
     ("expm1.out", expm1_out),
@@ -1187,7 +1567,8 @@ _FULL_CONFIG = (
     ("greater_.Tensor", greater_),
     ("greater_equal.Scalar", greater_equal_scalar),
     ("greater_equal.Tensor", greater_equal),
-    ("greater_equal_.Tensor", greater_equal_),
+    ("greater_equal_.Scalar", greater_equal_scalar_),
+    ("greater_equal_.Tensor", greater_equal_tensor_),
     ("grid_sampler", grid_sampler),
     ("grid_sampler_2d", grid_sampler_2d),
     ("grid_sampler_2d_backward", grid_sampler_2d_backward),
@@ -1237,7 +1618,12 @@ _FULL_CONFIG = (
     ("hypot", hypot),
     ("hypot.out", hypot_out),
     ("hypot_", hypot_),
-    ("i0", i0),
+    (
+        "i0",
+        i0,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("i0.out", i0_out),
     ("i0_", i0_),
     ("igamma", igamma),
@@ -1386,6 +1772,10 @@ _FULL_CONFIG = (
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
     ("linalg_pinv", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float_out", linalg_pinv_out),
+    ("linalg_pinv.atol_rtol_tensor", linalg_pinv),
+    ("linalg_pinv.atol_rtol_tensor_out", linalg_pinv_out),
     ("linalg_polar", linalg_polar),
     ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
@@ -1450,6 +1840,8 @@ _FULL_CONFIG = (
     ("lt.Tensor", lt),
     ("lt_.Scalar", lt_scalar_),
     ("lt_.Tensor", lt_),
+    ("lu_solve", lu_solve),
+    ("lu_solve.out", lu_solve_out),
     ("lu_unpack", lu_unpack),
     ("lu_unpack.out", lu_unpack_out),
     ("margin_ranking_loss", margin_ranking_loss),
@@ -1465,6 +1857,7 @@ _FULL_CONFIG = (
     ("matmul_backward", matmul_backward),
     ("matrix_exp", matrix_exp),
     ("matrix_exp_backward", matrix_exp_backward),
+    ("matrix_H", matrix_H),
     ("matrix_power", matrix_power),
     ("matrix_power.out", matrix_power_out),
     ("max", max),
@@ -1478,7 +1871,7 @@ _FULL_CONFIG = (
         "max_pool3d",
         max_pool3d,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("max_pool3d_with_indices", max_pool3d_with_indices),
     ("max_pool3d_with_indices_backward", max_pool3d_with_indices_backward),
@@ -1528,6 +1921,7 @@ _FULL_CONFIG = (
     ),
     ("multilabel_margin_loss", multilabel_margin_loss),
     ("multilabel_margin_loss.out", multilabel_margin_loss),
+    ("multilabel_margin_loss_backward", multilabel_margin_loss_backward),
     ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
     ("multinomial", multinomial),
     ("multiply.Scalar", multiply),
@@ -1570,9 +1964,6 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
-    # nested_to_padded_tensor is a CompositeImplicitAutograd op; it decomposes before
-    # reaching the backend key, so we must also register the CompositeImplicitAutograd
-    # key for use_gems() to intercept it instead of silently running the decomposition.
     (
         "nested_to_padded_tensor",
         nested_to_padded_tensor,
@@ -1623,8 +2014,6 @@ _FULL_CONFIG = (
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
-    # pin_memory is CompositeImplicitAutograd; it decomposes before reaching any
-    # backend key, so the composite key is the only place use_gems() can see it.
     ("pin_memory", pin_memory, None, ["CompositeImplicitAutograd"]),
     ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
@@ -1759,6 +2148,18 @@ _FULL_CONFIG = (
     ("replication_pad2d_backward.grad_input", replication_pad2d_backward_grad_input),
     ("replication_pad3d", replication_pad3d),
     ("replication_pad3d_backward", replication_pad3d_backward),
+    # reshape_as is CompositeImplicitAutograd and differentiable. Registering
+    # only the backend key drops the AutogradCUDA math kernel and leaves the
+    # VariableFallbackKernel in its place, which warns on every backward. A
+    # fallthrough hands the node back to torch's own view/autograd logic, so
+    # the view branch records ViewBackward and the copy branch records the
+    # autograd.Function it already calls.
+    (
+        "reshape_as",
+        reshape_as,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("resize", resize),
     ("resize_", resize_),
     ("resize_as", resize_as),
@@ -1847,6 +2248,8 @@ _FULL_CONFIG = (
     ("slogdet", slogdet),
     ("slow_conv_dilated2d", slow_conv_dilated2d),
     ("slow_conv_dilated2d.out", slow_conv_dilated2d_out),
+    ("slow_conv_dilated3d", slow_conv_dilated3d),
+    ("slow_conv_dilated3d.out", slow_conv_dilated3d_out),
     ("slow_conv_transpose2d", slow_conv_transpose2d),
     ("slow_conv_transpose3d", slow_conv_transpose3d),
     ("smm", smm, None, (SPARSE_CUDA_DISPATCH_KEY,)),
@@ -1868,13 +2271,22 @@ _FULL_CONFIG = (
     ("sparse_bsr_tensor.crow_col_value_size", sparse_bsr_tensor),
     ("sparse_compressed_tensor.comp_plain_value", sparse_compressed_tensor),
     ("sparse_compressed_tensor.comp_plain_value_size", sparse_compressed_tensor),
+    ("sparse_coo_tensor.indices", sparse_coo_tensor),
+    ("sparse_coo_tensor.indices_size", sparse_coo_tensor),
+    ("sparse_csc_tensor.ccol_row_value", sparse_csc_tensor),
+    ("sparse_csc_tensor.ccol_row_value_size", sparse_csc_tensor),
+    ("sparse_csr_tensor.crow_col_value", sparse_csr_tensor),
+    ("sparse_csr_tensor.crow_col_value_size", sparse_csr_tensor),
     (
         "sparse_dim",
         sparse_dim,
         None,
         (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),
+    ("sparse_mask", sparse_mask, None, (SPARSE_DISPATCH_KEY,)),
+    ("sparse_mask.out", sparse_mask_out, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_resize_", sparse_resize_, None, (SPARSE_DISPATCH_KEY,)),
+    ("sparse_resize_and_clear_", sparse_resize_and_clear_, None, [SPARSE_DISPATCH_KEY]),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",
@@ -1983,6 +2395,12 @@ _FULL_CONFIG = (
     ("square", square),
     ("square.out", square_out),
     ("square_", square_),
+    ("squeeze", squeeze),
+    ("squeeze.dim", squeeze),
+    ("squeeze.dims", squeeze),
+    ("squeeze_", squeeze_),
+    ("squeeze_.dim", squeeze__dim),
+    ("squeeze_.dims", squeeze__dims),
     ("squeeze_copy", squeeze_copy),
     ("sspaddmm", sspaddmm, None, (SPARSE_DISPATCH_KEY,)),
     ("sspaddmm.out", sspaddmm_out, None, (SPARSE_DISPATCH_KEY,)),
@@ -2035,10 +2453,11 @@ _FULL_CONFIG = (
     ("sum.out", sum_out),
     ("sum_to_size", sum_to_size),
     ("svd", svd),
+    ("swapaxes", swapaxes),
     ("swapaxes_", swapaxes_),
     ("swapdims", swapdims),
+    ("swapdims_", swapdims_),
     ("sym_size.int", sym_size_int),
-    ("t_", t_),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("take", take),
@@ -2057,10 +2476,12 @@ _FULL_CONFIG = (
     ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),
     ("tile", tile),
+    ("to_dense_backward", to_dense_backward, None, ["CompositeImplicitAutograd"]),
     ("topk", topk),
     ("trace", trace),
     ("trace_backward", trace_backward),
     ("transpose.int", transpose),
+    ("transpose_", transpose_),
     ("transpose_copy.int", transpose_copy),
     ("trapezoid.dx", trapz),
     ("trapezoid.x", trapezoid_x),
@@ -2084,7 +2505,7 @@ _FULL_CONFIG = (
     ("trunc_", trunc_),
     ("unbind.int", unbind),
     ("unbind_copy.int", unbind_copy),
-    ("unflatten.int", unflatten),
+    ("unflatten_dense_tensors", unflatten_dense_tensors),
     ("unfold", unfold),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
@@ -2330,6 +2751,15 @@ class use_gems:
         import flag_gems.experimental_ops
 
         return flag_gems.experimental_ops
+
+
+def __getattr__(name):
+    # Deprecated operators that are imported lazily (see flag_gems.deprecated).
+    if name in _deprecated._LAZY_EXPORTS:
+        value = _deprecated._resolve_lazy(name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def all_registered_ops():

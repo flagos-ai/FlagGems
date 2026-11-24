@@ -32,6 +32,8 @@ def test_special_hermite_polynomial_h(shape, dtype):
     # Test with tensor n in [0, 9]
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Issue #8621: Not supported")
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = torch.randint(0, 10, (1,), device=flag_gems.device).squeeze()
@@ -59,6 +61,8 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
     # Test with scalar n = 9 (largest supported degree)
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Issue #8621: Not supported")
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = 9
@@ -83,6 +87,8 @@ def test_special_hermite_polynomial_h_out_of_range(dtype):
     # Verify that n >= 10 or n < 0 raises ValueError
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Issue #8621: Not supported")
     inp = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(ValueError, match="only supports n"):
