@@ -16,9 +16,12 @@ import logging
 
 import torch
 
+from flag_gems.ops.scatter import LEGACY_REDUCTIONS
 from flag_gems.ops.scatter import scatter as _scatter
 from flag_gems.ops.scatter import scatter_ as _scatter_
 from flag_gems.utils.shape_utils import restride_dim
+
+from .scatter_reduce import _scatter_reduce_with_segments, scatter_reduce
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +97,16 @@ def scatter_reduce_multiply_no_atomic(inp, dim, index, src):
     return out_cpu.to(inp.device)
 
 
+_DEVICE_REDUCE_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ASCEND SCATTER")
+    if reduce in LEGACY_REDUCTIONS and inp.dtype in _DEVICE_REDUCE_DTYPES:
+        # Legacy add can time out on 910B1 during a batch of profiled atomic
+        # sums. The segmented sum writes each destination without atomics.
+        op = _scatter_reduce_with_segments if reduce == "add" else scatter_reduce
+        return op(inp, dim, index, src, LEGACY_REDUCTIONS[reduce], include_self=True)
     if reduce == "add":
         return scatter_add_no_atomic(inp, dim, index, src)
     if reduce == "multiply":
@@ -105,12 +116,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ASCEND SCATTER_")
-    if reduce == "add":
-        result = scatter_add_no_atomic(inp, dim, index, src)
-        inp.copy_(result)
-        return inp
-    if reduce == "multiply":
-        result = scatter_reduce_multiply_no_atomic(inp, dim, index, src)
-        inp.copy_(result)
+    if reduce in LEGACY_REDUCTIONS:
+        inp.copy_(scatter(inp, dim, index, src, reduce))
         return inp
     return _scatter_(inp, dim, index, src, reduce)

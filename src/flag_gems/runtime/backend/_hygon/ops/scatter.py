@@ -19,6 +19,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
+from flag_gems.ops.scatter import LEGACY_REDUCTIONS
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -26,6 +27,8 @@ from flag_gems.utils.shape_utils import (
     has_internal_overlapping,
     restride_dim,
 )
+
+from .scatter_reduce import scatter_reduce, scatter_reduce_
 
 logger = logging.getLogger(__name__)
 
@@ -398,12 +401,14 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_HYGON SCATTER")
-    out = inp.clone()
+    if reduce is not None and inp.dtype == torch.bfloat16:
+        if reduce not in LEGACY_REDUCTIONS:
+            raise RuntimeError("reduce must be either add or multiply")
+        return scatter_reduce(
+            inp, dim, index, src, LEGACY_REDUCTIONS[reduce], include_self=True
+        )
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
+    out = inp.clone()
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -435,14 +440,16 @@ def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_HYGON SCATTER_")
     out = inp
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
+
+    if reduce is not None and inp.dtype == torch.bfloat16:
+        if reduce not in LEGACY_REDUCTIONS:
+            raise RuntimeError("reduce must be either add or multiply")
+        return scatter_reduce_(
+            inp, dim, index, src, LEGACY_REDUCTIONS[reduce], include_self=True
+        )
 
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)

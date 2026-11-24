@@ -19,14 +19,9 @@ import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import base, consts
-from .conftest import Config
 
-pytestmark = pytest.mark.skipif(
+skip_tsingmicro = pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-skip_ascend_two = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="CANN scatter_reduce falls back to CPU, so NPU events are unavailable",
 )
 
 REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
@@ -56,18 +51,11 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return scatter_reduce_more_shapes(super().set_more_shapes())
 
 
-class LegacyScatterReduceTiming:
-    def _time_callable(self, fn, xs):
-        if flag_gems.vendor_name == "ascend" and Config.mode == consts.BenchMode.KERNEL:
-            from triton.backends.ascend.testing import do_bench_npu
-
-            # Ascend's two legacy entries only record the Gems device latency.
-            return do_bench_npu(fn, warmup=2, active=5)
-        return super()._time_callable(fn, xs)
-
-
-class LegacyScatterReduceBenchmark(LegacyScatterReduceTiming, TensorSelectBenchmark):
-    pass
+class ScatterReduceInplaceBenchmark(base.GenericBenchmark2DOnly):
+    def set_more_shapes(self):
+        generic_shapes = super().set_more_shapes()
+        scatter_shapes = scatter_reduce_more_shapes(generic_shapes)
+        return list(dict.fromkeys(scatter_shapes + generic_shapes))
 
 
 def scatter_reduce_input_fn_factory(*, use_out=False, is_inplace=False, legacy=False):
@@ -108,14 +96,16 @@ def gather_scatter_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.scatter_reduce
+@skip_tsingmicro
 @pytest.mark.skip_native(
     vendors="ascend",
-    reason="Native aten::scatter.reduce has no valid NPU kernel timing",
+    reason="Native aten::scatter.reduce lacks NPU reduction timing for the full "
+    "legacy add/multiply benchmark",
 )
 def test_scatter_reduce_optest():
     """Benchmark the legacy tensor-source aten::scatter.reduce overload."""
 
-    bench = LegacyScatterReduceBenchmark(
+    bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
         torch_op=torch.ops.aten.scatter.reduce,
         gems_op=flag_gems.scatter,
@@ -126,44 +116,20 @@ def test_scatter_reduce_optest():
     bench.run()
 
 
-@pytest.mark.scatter_reduce_two
-@skip_ascend_two
-def test_scatter_reduce():
-    """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
-    bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_two",
-        torch_op=torch.ops.aten.scatter_reduce.two,
-        input_fn=scatter_reduce_input_fn_factory(),
-        get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.scatter_reduce_two_
-@skip_ascend_two
-def test_scatter_reduce_():
-    """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
-    bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_two_",
-        torch_op=torch.ops.aten.scatter_reduce_.two,
-        input_fn=scatter_reduce_input_fn_factory(is_inplace=True),
-        get_gbps=gather_scatter_gbps,
+@pytest.mark.scatter_reduce_
+@skip_tsingmicro
+@pytest.mark.skip_native(
+    vendors="ascend",
+    reason="Native aten::scatter_.reduce lacks NPU reduction timing for the full "
+    "legacy add/multiply benchmark",
+)
+def test_scatter_reduce_legacy_inplace():
+    bench = ScatterReduceInplaceBenchmark(
+        op_name="scatter_reduce_",
+        torch_op=torch.ops.aten.scatter_.reduce,
+        gems_op=flag_gems.scatter_,
+        input_fn=scatter_reduce_input_fn_factory(is_inplace=True, legacy=True),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
-    )
-    bench.run()
-
-
-@pytest.mark.scatter_reduce_two_out
-@skip_ascend_two
-def test_scatter_reduce_out():
-    """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""
-    bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_two_out",
-        torch_op=torch.ops.aten.scatter_reduce.two_out,
-        input_fn=scatter_reduce_input_fn_factory(use_out=True),
-        get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
