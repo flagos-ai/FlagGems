@@ -2059,36 +2059,167 @@ bmm_splitk:
 
 # RouterGEMM Default tuning candidates.
 router_gemm_hygon_matrix:
-- {META: {BLOCK_M: 16, BLOCK_N: 16, BLOCK_K: 256, GROUP_M: 1}, num_warps: 4, num_stages: 2}
-- {META: {BLOCK_M: 32, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 4}, num_warps: 4, num_stages: 2}
-- {META: {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 32, GROUP_M: 4}, num_warps: 4, num_stages: 2}
-- {META: {BLOCK_M: 128, BLOCK_N: 256, BLOCK_K: 64, GROUP_M: 8}, num_warps: 8, num_stages: 1}
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 16
+    BLOCK_K: 256
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 64
+    BLOCK_K: 128
+    GROUP_M: 4
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+    GROUP_M: 4
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 64
+    GROUP_M: 8
+  num_warps: 8
+  num_stages: 1
+
 router_gemm_hygon_vector:
-- {META: {BN: 1, BK: 512}, num_warps: 4, num_stages: 2}
-- {META: {BN: 2, BK: 2048}, num_warps: 4, num_stages: 2}
-- {META: {BN: 8, BK: 512}, num_warps: 4, num_stages: 2}
-- {META: {BN: 1, BK: 2048}, num_warps: 2, num_stages: 2}
+- META:
+    BN: 1
+    BK: 512
+  num_warps: 4
+  num_stages: 2
+- META:
+    BN: 2
+    BK: 2048
+  num_warps: 4
+  num_stages: 2
+- META:
+    BN: 8
+    BK: 512
+  num_warps: 4
+  num_stages: 2
+- META:
+    BN: 1
+    BK: 2048
+  num_warps: 2
+  num_stages: 2
+
 router_gemm_hygon_shared_vector:
-- {META: {BM: 1, BN: 4, BK: 1024}, num_warps: 4, num_stages: 2}
-- {META: {BM: 2, BN: 4, BK: 1024}, num_warps: 4, num_stages: 2}
-- {META: {BM: 1, BN: 4, BK: 2048}, num_warps: 4, num_stages: 2}
+- META:
+    BM: 1
+    BN: 4
+    BK: 1024
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 2
+    BN: 4
+    BK: 1024
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 1
+    BN: 4
+    BK: 2048
+  num_warps: 4
+  num_stages: 2
+
 router_gemm_hygon_split:
-- {META: {BM: 32, BN: 32, BK: 128, SK: 16}, num_warps: 4, num_stages: 2}
-- {META: {BM: 16, BN: 64, BK: 128, SK: 16}, num_warps: 4, num_stages: 2}
-- {META: {BM: 32, BN: 64, BK: 128, SK: 8}, num_warps: 4, num_stages: 2}
-- {META: {BM: 64, BN: 64, BK: 64, SK: 4}, num_warps: 4, num_stages: 2}
+- META:
+    BM: 32
+    BN: 32
+    BK: 128
+    SK: 16
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 16
+    BN: 64
+    BK: 128
+    SK: 16
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 64
+    BK: 128
+    SK: 8
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 64
+    BN: 64
+    BK: 64
+    SK: 4
+  num_warps: 4
+  num_stages: 2
+
 router_gemm_hygon_aligned_split:
-- META: {BM: 16, BN: 64, BK: 128, SK: 16, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
+- META:
+    BM: 16
+    BN: 64
+    BK: 128
+    SK: 16
+    GROUP_M: 1
+    matrix_instr_nonkdim: 16
+    kpack: 2
   num_warps: 4
-- META: {BM: 16, BN: 32, BK: 128, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 0, kpack: 1}
+- META:
+    BM: 16
+    BN: 32
+    BK: 128
+    SK: 8
+    GROUP_M: 1
+    matrix_instr_nonkdim: 0
+    kpack: 1
   num_warps: 2
-- META: {BM: 32, BN: 32, BK: 128, SK: 8, GROUP_M: 2, matrix_instr_nonkdim: 0, kpack: 1}
+- META:
+    BM: 32
+    BN: 32
+    BK: 128
+    SK: 8
+    GROUP_M: 2
+    matrix_instr_nonkdim: 0
+    kpack: 1
   num_warps: 4
-- META: {BM: 32, BN: 64, BK: 128, SK: 4, GROUP_M: 2, matrix_instr_nonkdim: 16, kpack: 2}
+- META:
+    BM: 32
+    BN: 64
+    BK: 128
+    SK: 4
+    GROUP_M: 2
+    matrix_instr_nonkdim: 16
+    kpack: 2
   num_warps: 4
-- META: {BM: 16, BN: 16, BK: 128, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
+- META:
+    BM: 16
+    BN: 16
+    BK: 128
+    SK: 8
+    GROUP_M: 1
+    matrix_instr_nonkdim: 16
+    kpack: 2
   num_warps: 2
-- META: {BM: 32, BN: 32, BK: 128, SK: 4, GROUP_M: 2, matrix_instr_nonkdim: 16, kpack: 2}
+- META:
+    BM: 32
+    BN: 32
+    BK: 128
+    SK: 4
+    GROUP_M: 2
+    matrix_instr_nonkdim: 16
+    kpack: 2
   num_warps: 4
+
 router_gemm_hygon_narrow_matrix:
-- {META: {BM: 16, BN: 16, BK: 128}, num_warps: 4, num_stages: 3}
+- META:
+    BM: 16
+    BN: 16
+    BK: 128
+  num_warps: 4
+  num_stages: 3
