@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_transpose_batchmatmul:
+  shapes:
+    - [1, 64, 192, 512]
+    - [1024, 8, 512, 256]
+  shape_desc: "tokens, batch, K, N"
