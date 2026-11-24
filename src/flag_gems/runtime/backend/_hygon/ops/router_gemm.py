@@ -40,23 +40,28 @@ def _expanded_router_tuning():
     return runtime.resolve_tuning_mode("router_gemm") is runtime.TuningMode.EXPANDED
 
 
-def _benchmark_router_split(run, quantiles):
-    if _expanded_router_tuning():
-        return triton.testing.do_bench_cudagraph(run, rep=8, quantiles=quantiles)
-    return triton.testing.do_bench(run, warmup=2, rep=8, quantiles=quantiles)
-
-
 def _benchmark_split_reduction(args, exception):
     out = args.get("OUT")
     if exception is None and out is not None:
         _launch_split_reduction(args["P"], out, args["SK"])
 
 
-_SPLIT_TUNE_OPTIONS = dict(
-    _TUNE_OPTIONS,
-    do_bench=_benchmark_router_split,
-    post_hook=_benchmark_split_reduction,
-)
+def _split_tuners(kernel, configs, key, expand_op, prune_configs_by=None):
+    options = dict(
+        configs=configs, key=key, prune_configs_by=prune_configs_by, warmup=2, rep=8
+    )
+    default = libentry()(libtuner(**options)(kernel))
+    expanded = libentry()(
+        libtuner(
+            **options,
+            use_cuda_graph=True,
+            post_hook=_benchmark_split_reduction,
+            policy="flagtune",
+            flagtune_op_name="router_gemm",
+            flagtune_expand_op_name=expand_op,
+        )(kernel)
+    )
+    return default, expanded
 
 
 def _matrix_config(bm, bn, bk, warps, stages, group):
@@ -373,13 +378,6 @@ def _router_split_k(
     tl.store(P + (split * M + rows[:, None]) * N + cols[None, :], acc, mask)
 
 
-@libentry()
-@libtuner(
-    configs=_SPLIT_CONFIGS,
-    flagtune_expand_op_name="router_gemm_hygon_split",
-    key=["M", "N", "K"],
-    **_SPLIT_TUNE_OPTIONS,
-)
 @triton.jit(do_not_specialize=["P", "OUT"])
 def router_gemm_partial_kernel(
     X,
@@ -399,13 +397,6 @@ def router_gemm_partial_kernel(
     _router_split_k(X, W, P, M, N, K, BM, BN, BK, SK)
 
 
-@libentry()
-@libtuner(
-    configs=_SPLIT_CONFIGS,
-    flagtune_expand_op_name="router_gemm_hygon_split",
-    key=["M", "N", "K"],
-    **_SPLIT_TUNE_OPTIONS,
-)
 @triton.jit(do_not_specialize=["X", "W", "P", "OUT"])
 def router_gemm_partial_generic_kernel(
     X,
@@ -428,6 +419,20 @@ def router_gemm_partial_generic_kernel(
         W = tl.multiple_of(W, 16)
         P = tl.multiple_of(P, 16)
     _router_split_k(X, W, P, M, N, K, BM, BN, BK, SK)
+
+
+_PARTIAL_TUNERS = _split_tuners(
+    router_gemm_partial_kernel,
+    _SPLIT_CONFIGS,
+    ["M", "N", "K"],
+    "router_gemm_hygon_split",
+)
+_GENERIC_PARTIAL_TUNERS = _split_tuners(
+    router_gemm_partial_generic_kernel,
+    _SPLIT_CONFIGS,
+    ["M", "N", "K"],
+    "router_gemm_hygon_split",
+)
 
 
 @triton.jit
@@ -472,19 +477,17 @@ def _bf16_split_kernel(
     _router_split_k(X, W, P, m, N, K, BM, BN, BK, SK, GROUP_M, True)
 
 
-def _aligned_tuner(configs):
-    return libentry()(
-        libtuner(
-            configs=configs,
-            key=["m", "N", "K"],
-            flagtune_expand_op_name="router_gemm_hygon_aligned_split",
-            prune_configs_by={"early_config_prune": _prune_aligned_configs},
-            **_SPLIT_TUNE_OPTIONS,
-        )(_bf16_split_kernel)
+def _aligned_tuners(configs):
+    return _split_tuners(
+        _bf16_split_kernel,
+        configs,
+        ["m", "N", "K"],
+        "router_gemm_hygon_aligned_split",
+        prune_configs_by={"early_config_prune": _prune_aligned_configs},
     )
 
 
-_ALIGNED_NARROW = _aligned_tuner(
+_ALIGNED_NARROW = _aligned_tuners(
     [
         _aligned_config(16, 64, 128, 16, 1, 4, 16, 2),
         _aligned_config(16, 32, 128, 8, 1, 2),
@@ -492,7 +495,7 @@ _ALIGNED_NARROW = _aligned_tuner(
         _aligned_config(32, 64, 128, 4, 2, 4, 16, 2),
     ]
 )
-_ALIGNED_WIDE = _aligned_tuner(
+_ALIGNED_WIDE = _aligned_tuners(
     [
         _aligned_config(16, 16, 128, 8, 1, 2, 16, 2),
         _aligned_config(16, 32, 128, 8, 1, 2),
@@ -520,10 +523,12 @@ def _use_aligned_split(m, n, k):
 
 def _launch_bf16_split(x, weight, out, m, n, k):
     partials = torch.empty((16, m, n), device=x.device, dtype=torch.float32)
-    tuner = _ALIGNED_NARROW if n <= 512 else _ALIGNED_WIDE
+    expanded = _expanded_router_tuning()
+    tuners = _ALIGNED_NARROW if n <= 512 else _ALIGNED_WIDE
     grid = lambda meta: (triton.cdiv(m, meta["BM"]) * (n // meta["BN"]), meta["SK"])
-    tune_out = out if _expanded_router_tuning() else None
-    _, meta = tuner[grid](x, weight, partials, m, n, k, OUT=tune_out)
+    _, meta = tuners[expanded][grid](
+        x, weight, partials, m, n, k, OUT=out if expanded else None
+    )
     _launch_split_reduction(partials, out, meta["SK"])
     return out
 
@@ -722,17 +727,18 @@ def _router_fast(x, weight):
         (8 < m <= 274) or (4 < m <= 8 and n > 512) or (274 < m <= 2048 and n <= 512)
     ):
         partials = torch.empty((16, m, n), device=x.device, dtype=torch.float32)
-        tune_out = out if _expanded_router_tuning() else None
+        expanded = _expanded_router_tuning()
+        tune_out = out if expanded else None
         grid = lambda a: (triton.cdiv(m, a["BM"]) * triton.cdiv(n, a["BN"]), a["SK"])
         if (x.dtype != torch.float32 and m <= 128 and m * n <= 65536) or (
             x.dtype == torch.float32 and m <= 64 and n <= 512
         ):
             aligned = all(t.data_ptr() % 16 == 0 for t in (x, weight, partials))
-            _, meta = router_gemm_partial_generic_kernel[grid](
+            _, meta = _GENERIC_PARTIAL_TUNERS[expanded][grid](
                 x, weight, partials, m, n, k, aligned, OUT=tune_out
             )
         else:
-            _, meta = router_gemm_partial_kernel[grid](
+            _, meta = _PARTIAL_TUNERS[expanded][grid](
                 x, weight, partials, m, n, k, OUT=tune_out
             )
         _launch_split_reduction(partials, out, meta["SK"])
