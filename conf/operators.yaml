@@ -19798,8 +19798,7 @@ ops:
   - beta: '5.0'
   - stable: '5.3'
 - id: softshrink_backward
-  description: 'Computes the gradient of the `softshrink` activation. Gradients flow
-    through
+  description: 'Computes the gradient of the `softshrink` activation. Gradients flow through
 
     only where the magnitude of the original input exceeds `lambd`; elsewhere
 
@@ -19813,6 +19812,18 @@ ops:
   - nn.functional
   - Activation
   - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: 5.5.0
+- id: softshrink_backward_out
+  description: Destination-buffer variant of softshrink backward.
+  for:
+  - softshrink_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
   kind:
   - NeuralNetwork
   stages:
