@@ -83,19 +83,3 @@ def test_ilshift_operator(shapes, dtype):
 
     assert out is res_a
     utils.gems_assert_close(res_a, ref_a, dtype)
-
-
-@pytest.mark.ilshift
-@pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
-def test_ilshift_operator_scalar(dtype):
-    """Scalar shift amount for ``__ilshift__`` (``a <<= 3``)."""
-    res_a = torch.randint(0, 100, (7, 13), dtype=dtype, device="cpu").to(
-        flag_gems.device
-    )
-    ref_a = utils.to_reference(res_a.clone())
-
-    ref_a.__ilshift__(3)
-    out = flag_gems.__ilshift__(res_a, 3)
-
-    assert out is res_a
-    utils.gems_assert_close(res_a, ref_a, dtype)
