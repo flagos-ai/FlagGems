@@ -745,6 +745,7 @@ from .negative_ import negative_
 from .nested_tensor_from_mask import _nested_tensor_from_mask
 from .new_full import new_full
 from .new_ones import new_ones
+from .new_zeros import new_zeros
 from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d,
@@ -1806,6 +1807,7 @@ __all__ = [
     "negative_",
     "new_full",
     "new_ones",
+    "new_zeros",
     "nextafter",
     "nextafter_",
     "nll_loss2d",
