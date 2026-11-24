@@ -190,6 +190,7 @@ from .foreach_tan import foreach_tan
 from .foreach_tan_ import foreach_tan_
 from .foreach_tanh import foreach_tanh
 from .foreach_tanh_ import foreach_tanh_
+from .foreach_trunc_ import foreach_trunc_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -596,6 +597,7 @@ __all__ = [
     "foreach_tan_",
     "foreach_tanh",
     "foreach_tanh_",
+    "foreach_trunc_",
     "frac",
     "frac_",
     "full",
