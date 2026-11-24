@@ -39,7 +39,9 @@ import flag_gems
 
 # FlagGems wrapper under test
 from flag_gems.deprecated.fused_marlin_moe import QUANT_TYPE_FP4_E2M1
-from flag_gems.deprecated.fused_marlin_moe import fused_marlin_moe as gems_fused_marlin_moe
+from flag_gems.deprecated.fused_marlin_moe import (
+    fused_marlin_moe as gems_fused_marlin_moe,
+)
 
 from . import base
 
