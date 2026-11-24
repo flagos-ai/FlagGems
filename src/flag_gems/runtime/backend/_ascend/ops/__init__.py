@@ -143,6 +143,7 @@ from .foreach_addcmul_scalar import (
 from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
 from .foreach_atan_ import foreach_atan_
 from .foreach_ceil import foreach_ceil
+from .foreach_clamp_max_scalar_list_ import foreach_clamp_max_scalar_list_
 from .foreach_copy import foreach_copy
 from .foreach_copy_ import foreach_copy_
 from .foreach_cos_ import foreach_cos_
@@ -537,6 +538,7 @@ __all__ = [
     "foreach_addcmul_scalar_list_",
     "foreach_atan_",
     "foreach_ceil",
+    "foreach_clamp_max_scalar_list_",
     "foreach_copy",
     "foreach_copy_",
     "foreach_cos_",
