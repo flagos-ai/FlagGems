@@ -17,6 +17,7 @@ from ._adaptive_avg_pool3d_backward import (
     adaptive_avg_pool3d_backward_grad_input,
 )
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
 from .acos_ import acos_
@@ -168,7 +169,6 @@ from .frac import frac
 from .frac_ import frac_
 from .full import full
 from .full_like import full_like
-from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
 from .gelu import gelu, gelu_, gelu_backward
@@ -389,6 +389,7 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_functional_sym_constrain_range",
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
@@ -551,7 +552,6 @@ __all__ = [
     "frac_",
     "full",
     "full_like",
-    "functional_sym_constrain_range",
     "fused_adam_",
     "gather",
     "gather_backward",
