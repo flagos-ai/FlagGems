@@ -19329,6 +19329,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: sinc_backward
+  description: First-order backward of sinc, using saved forward state.
+  for:
+  - sinc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: sinh
   description: 'Computes the hyperbolic sine (e^x - e^{-x}) / 2 element-wise.
 
