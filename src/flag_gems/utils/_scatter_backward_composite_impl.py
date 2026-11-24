@@ -16,20 +16,27 @@
 from flag_gems.utils._scatter_backward_scatter_kernel_impl import (
     clear,
     gather,
+    restore_scalar_layout,
+    scalar_scatter_layout,
     scalar_to_vector,
-    vector_to_scalar,
 )
 
 
 def scatter_backward(grad_output, self, dim, index, src):
-    if grad_output.ndim == 0:
+    if scalar_scatter_layout(grad_output, self, index, src):
+        if index.ndim == 0 and src.ndim == 1:
+            raise RuntimeError(
+                "scatter backward requires compatible index and src shapes"
+            )
         values = scatter_backward(
             *(scalar_to_vector(t) for t in (grad_output, self)),
             dim,
             scalar_to_vector(index),
             scalar_to_vector(src),
         )
-        return tuple((vector_to_scalar(t) for t in values))
+        return tuple(
+            (restore_scalar_layout(t, ref) for (t, ref) in zip(values, (self, src)))
+        )
     if src.shape != index.shape:
         raise RuntimeError("scatter backward requires src.shape == index.shape")
     return (clear(grad_output, dim, index), gather(grad_output, dim, index))

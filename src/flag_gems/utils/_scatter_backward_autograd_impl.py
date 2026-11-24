@@ -17,6 +17,7 @@ import torch
 
 from flag_gems.utils._scatter_backward_composite_impl import scatter_backward
 from flag_gems.utils._scatter_backward_scatter_kernel_impl import (
+    scalar_scatter_layout,
     scalar_to_vector,
     scatter_forward,
     vector_to_scalar,
@@ -99,32 +100,45 @@ class ScalarScatterBackwardFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, op, raw, p, *inputs):
+        ctx.scalar_ranks = tuple((t.ndim for t in inputs))
+        ctx.scalar_invalid_backward = (
+            p["index"].ndim == 0 and inputs[1].ndim == 1 and inputs[1].requires_grad
+        )
         params = dict(p)
         params["index"] = scalar_to_vector(p["index"])
         result = IndexBackwardFunction.forward(
             ctx, "scatter", raw, params, *(scalar_to_vector(t) for t in inputs)
         )
-        return vector_to_scalar(result)
+        return vector_to_scalar(result) if ctx.scalar_ranks[0] == 0 else result
 
     @staticmethod
     def backward(ctx, grad):
+        if ctx.scalar_invalid_backward:
+            raise RuntimeError(
+                "scatter backward requires compatible index and src shapes"
+            )
         values = IndexBackwardFunction.backward(ctx, scalar_to_vector(grad))
-        return (*values[:3], *(vector_to_scalar(t) for t in values[3:]))
+        return (
+            *values[:3],
+            *(
+                vector_to_scalar(t) if rank == 0 else t
+                for (t, rank) in zip(values[3:], ctx.scalar_ranks)
+            ),
+        )
 
 
 def index_autograd(op, raw, inputs, p):
-    if inputs[0].ndim == 0 and inputs[1].ndim == 0 and (p["index"].ndim == 0):
+    if scalar_scatter_layout(*inputs, p["index"]):
         if p["dim"] not in (-1, 0):
             raise IndexError("dimension out of range for scalar scatter")
         if torch.is_grad_enabled() and any((t.requires_grad for t in inputs)):
             return ScalarScatterBackwardFunction.apply("scatter", raw, p, *inputs)
         params = dict(p)
         params["index"] = scalar_to_vector(p["index"])
-        return vector_to_scalar(
-            _invoke(
-                "scatter", raw, tuple((scalar_to_vector(t) for t in inputs)), params
-            )
+        result = _invoke(
+            "scatter", raw, tuple((scalar_to_vector(t) for t in inputs)), params
         )
+        return vector_to_scalar(result) if inputs[0].ndim == 0 else result
     if torch.is_grad_enabled() and any((t.requires_grad for t in inputs)):
         return IndexBackwardFunction.apply("scatter", raw, p, *inputs)
     return _invoke("scatter", raw, inputs, p)

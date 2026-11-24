@@ -127,9 +127,12 @@ def test_prepared_saved_tensor_hook_layout(op, dtype):
 @pytest.mark.parametrize("dim", [-1, 0])
 @pytest.mark.parametrize("registered", [False, True])
 @pytest.mark.parametrize(
+    "ranks", [(0, 0, 0), (0, 1, 0), (0, 1, 1), (1, 0, 0), (1, 1, 0)]
+)
+@pytest.mark.parametrize(
     "pair", [(1.0, 2.0), (0.0, 2.0), (2.0, 0.0), (1.0, 1.0), (-0.3, 0.8)]
 )
-def test_scalar_scatter_vjp(op, dtype, dim, registered, pair):
+def test_scalar_scatter_vjp(op, dtype, dim, registered, ranks, pair):
     variants = [("sum", True)]
     for reduction, include in variants:
         x = torch.tensor([9.0, pair[0]], device=flag_gems.device, dtype=dtype)[
@@ -139,13 +142,20 @@ def test_scalar_scatter_vjp(op, dtype, dim, registered, pair):
             1
         ].requires_grad_()
         index = torch.tensor([9, 0], device=x.device)[1]
+        x = x if ranks[0] == 0 else x.unsqueeze(0)
+        index = index if ranks[1] == 0 else index.unsqueeze(0)
+        src = src if ranks[2] == 0 else src.unsqueeze(0)
         refs = [x.detach().requires_grad_(), src.detach().requires_grad_()]
         p = dict(
             op="scatter", dim=dim, index=index, reduce=reduction, include_self=include
         )
         expected = forward(refs, p)
         grad = torch.tensor([9.0, 0.7], device=x.device, dtype=dtype)[1]
+        grad = grad if ranks[0] == 0 else grad.unsqueeze(0)
         want = torch.autograd.grad(expected, refs, grad)
+        cpu_refs = [t.detach().cpu().requires_grad_() for t in (x, src)]
+        cpu_expected = forward(cpu_refs, dict(p, index=index.cpu()))
+        cpu_want = torch.autograd.grad(cpu_expected, cpu_refs, grad.cpu())
         extra = {}
         direct = getattr(flag_gems, "scatter_backward")
         args = (grad, x, dim, index, src)
@@ -169,6 +179,36 @@ def test_scalar_scatter_vjp(op, dtype, dim, registered, pair):
         for a, b, c in zip(got, want, got_direct):
             torch.testing.assert_close(a, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
             torch.testing.assert_close(c, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+        for a, b in zip(got, cpu_want):
+            torch.testing.assert_close(
+                a.cpu(), b, rtol=TOL[dtype][0], atol=TOL[dtype][1]
+            )
+
+
+@pytest.mark.scatter_backward
+@pytest.mark.parametrize("op", ["scatter"])
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dim", [-1, 0])
+@pytest.mark.parametrize("self_rank", [0, 1])
+@pytest.mark.parametrize("src_grad", [False, True])
+def test_scalar_scatter_native_unsupported_gradient_shape(
+    op, dtype, dim, self_rank, src_grad
+):
+    results = []
+    for module in (torch, flag_gems):
+        x = torch.tensor(1.0, device=flag_gems.device, dtype=dtype)
+        x = (x if self_rank == 0 else x.unsqueeze(0)).requires_grad_()
+        src = torch.tensor([2.0], device=x.device, dtype=dtype, requires_grad=src_grad)
+        index = torch.tensor(0, device=x.device)
+        extra = {}
+        y = getattr(module, "scatter")(x, dim, index, src, **extra)
+        if src_grad:
+            with pytest.raises(RuntimeError):
+                torch.autograd.grad(y, [x, src], torch.ones_like(y))
+        else:
+            results.append(torch.autograd.grad(y, x, torch.ones_like(y))[0])
+    if results:
+        torch.testing.assert_close(*results, rtol=TOL[dtype][0], atol=TOL[dtype][1])
 
 
 @pytest.mark.scatter_backward
