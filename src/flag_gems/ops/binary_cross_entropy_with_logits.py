@@ -178,7 +178,11 @@ def _bce_backward_kernel(
             tl.float32
         )
     if NEED_X:
-        sigmoid = (1.0 / (1.0 + tl.exp(-x))).to(dtype).to(tl.float32)
+        sigmoid = (
+            tl_extra_shim.div_rn(1.0, 1.0 + tl_extra_shim.exp(-x))
+            .to(dtype)
+            .to(tl.float32)
+        )
         if HAS_P:
             t = (positive * target).to(dtype).to(tl.float32)
             a = (t + 1.0).to(dtype).to(tl.float32)
@@ -195,7 +199,7 @@ def _bce_backward_kernel(
         tl.store(DX + i, dx, i < N)
     if NEED_T:
         if HAS_P:
-            log_term = tl.log(1.0 + tl.exp(-tl.abs(x)))
+            log_term = tl_extra_shim.log1p(tl_extra_shim.exp(-tl.abs(x)))
             log_s = (-tl.maximum(-x, 0.0) - log_term).to(dtype).to(tl.float32)
             log_not_s = (-tl.maximum(x, 0.0) - log_term).to(dtype).to(tl.float32)
             weighted = (positive * log_s).to(dtype).to(tl.float32)
