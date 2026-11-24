@@ -66,7 +66,14 @@ def scalar_reduce_fp64_forward(inp, dim, index, src, reduce, *, include_self=Tru
     with torch_device_fn.device(inp.device):
         out = torch.empty_like(inp)
         _scalar_reduce_fp64_kernel[1,](
-            inp, index, src, out, reduce, include_self, enable_fp_fusion=False
+            inp,
+            index,
+            src,
+            out,
+            reduce,
+            include_self,
+            enable_fp_fusion=False,
+            debug=True,
         )
     return out
 
