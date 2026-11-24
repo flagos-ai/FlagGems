@@ -287,7 +287,7 @@ def test_slogdet_non_contiguous(dtype):
 @pytest.mark.slogdet
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_nan_inf(dtype):
-    """Non-finite inputs follow the selected ATen reference, including NaNs."""
+    """Non-finite inputs must not produce a finite logabsdet; sign is backend-defined."""
     inf_cases = {
         "inf": ([[float("inf"), 0.0], [0.0, 1.0]], 1.0),
         "neg_inf": ([[float("-inf"), 0.0], [0.0, 1.0]], -1.0),
@@ -307,30 +307,20 @@ def test_slogdet_nan_inf(dtype):
     for name, vals in nan_cases.items():
         A = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
-        reference = torch.linalg.slogdet(utils.to_reference(A))
-        # ATen's LU backends also disagree on sign for a NaN input: CUDA
-        # returns 1.0 while the generic/Ascend LU returns 0.0. Treat the sign
-        # of a NaN matrix as backend-defined, but keep it a valid slogdet sign.
+        # ATen's LU backends do not agree on the value for a NaN input:
+        # CUDA can return sign=1.0/logabsdet=0.0 while CPU/Ascend returns
+        # nan/-inf. The portable contract is a non-finite logabsdet and a
+        # valid slogdet sign; an exact value is not portable.
         res_sign_value = res_sign.item()
         assert res_sign_value != res_sign_value or res_sign_value in (
             -1.0,
             0.0,
             1.0,
         ), f"{name}: invalid slogdet sign for a NaN input: {res_sign_value}"
-        # ATen's own LU does not agree on the non-finite value for a NaN input:
-        # the CPU/Ascend path returns nan while the CUDA path returns -inf.
-        # The portable contract is therefore a non-finite logabsdet that follows
-        # the selected reference's finite/non-finite class; an exact value is
-        # only compared when the reference is finite.
-        if torch.isfinite(reference.logabsdet).item():
-            torch.testing.assert_close(
-                res_logabsdet.cpu(), reference.logabsdet.cpu(), equal_nan=True
-            )
-        else:
-            assert not torch.isfinite(res_logabsdet).item(), (
-                f"{name}: a NaN input must not produce a finite logabsdet, got "
-                f"{res_logabsdet.item()}"
-            )
+        assert not torch.isfinite(res_logabsdet).item(), (
+            f"{name}: a NaN input must not produce a finite logabsdet, got "
+            f"{res_logabsdet.item()}"
+        )
 
 
 @pytest.mark.slogdet
