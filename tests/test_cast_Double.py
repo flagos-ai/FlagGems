@@ -24,23 +24,6 @@ _SKIP_FP64 = pytest.mark.skipif(
     reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
 )
 
-# The device-side aten reference leg aborts the whole process on complex input
-# (gcu_utils.cpp Check failed); only the --ref=cpu mode (reference leg moved to
-# CPU) can validate complex semantics.
-_SKIP_COMPLEX_ON_DEVICE = pytest.mark.skipif(
-    not utils.TO_CPU and flag_gems.vendor_name in ("kunlunxin", "enflame"),
-    reason="device aten _cast_Double aborts on complex input; run with --ref=cpu",
-)
-
-# Backends without an fp64 path store float64 as 4-byte fp32, so int64 -> float64
-# loses integer precision for |x| >= 2**24 and such extreme-value assertions can
-# never hold on those backends.
-_SKIP_FP64_PRECISION = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="backend stores float64 as fp32: int64->float64 loses precision "
-    "beyond 2**24",
-)
-
 
 DTYPES = [
     torch.bool,
@@ -52,7 +35,7 @@ DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    torch.float64,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
 ]
 
 

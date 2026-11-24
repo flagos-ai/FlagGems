@@ -38,38 +38,6 @@ def make_input(shape, dtype):
     return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
 
 
-def device_reference(x, non_blocking=False):
-    """Device-side ATen ``_cast_Char`` (aborts the process on complex input)."""
-    return torch.ops.aten._cast_Char(x, non_blocking)
-
-
-def assert_cast(x, non_blocking=False, reference_on_device=False):
-    """Compare ``flag_gems.cast_Char`` against the ATen reference.
-
-    Under ``--ref=cpu`` the reference leg runs on CPU by default (GCU's aten
-    aborts the whole process on complex input). Out-of-range float -> integer
-    conversion is implementation defined, so CPU and GCU aten differ (CPU yields
-    0, GCU saturates to int32 then takes the low byte); such cases keep the
-    device-side reference via ``reference_on_device=True`` so both sides are
-    compared under the same semantics.
-    """
-    actual = flag_gems.cast_Char(x, non_blocking)
-    if utils.TO_CPU and not reference_on_device:
-        expected = torch.ops.aten._cast_Char(x.cpu(), non_blocking)
-        torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
-        # The CPU reference copies same-dtype (int8) input into a contiguous
-        # layout while the device implementation returns self per ATen semantics,
-        # so the two layouts are not equivalent; layout assertions still use the
-        # device-side ATen as the source of truth.
-        if not x.is_complex():
-            assert actual.stride() == device_reference(x, non_blocking).stride()
-    else:
-        expected = device_reference(x, non_blocking)
-        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-        assert actual.stride() == expected.stride()
-    return actual, expected
-
-
 @pytest.mark.cast_Char
 @pytest.mark.parametrize(
     "shape", [(), (0,), (2, 0, 3), (1,), (1023,), (1025,), (129, 257)]

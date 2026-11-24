@@ -20,19 +20,6 @@ import flag_gems
 
 pytestmark = pytest.mark.attention
 
-# cuDNN attention-related APIs are implemented only on the NVIDIA backend; the sdpa leg is available on all backends,
-# so backend-capability skips are applied only to the cuDNN leg, ensuring that sdpa combinations with broadcast masks
-# (padding / batch / matrix / expanded) are covered on all backends.
-_CUDNN_ATTENTION_ONLY = pytest.mark.skipif(
-    flag_gems.vendor_name != "nvidia",
-    reason="cuDNN attention is only available on the NVIDIA backend",
-)
-# CUDA Graph capture is also available only on the NVIDIA backend
-_CUDA_GRAPH_ONLY = pytest.mark.skipif(
-    flag_gems.vendor_name != "nvidia",
-    reason="CUDA Graph capture is only available on the NVIDIA backend",
-)
-
 
 def _attention(api, q, k, v, bias):
     if api == "sdpa":
