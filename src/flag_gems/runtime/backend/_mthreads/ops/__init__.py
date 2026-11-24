@@ -82,6 +82,7 @@ from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin_ import _foreach_sin_
 from ._foreach_sqrt_ import _foreach_sqrt_
+from ._foreach_sub__List import _foreach_sub__List
 from ._foreach_tanh import _foreach_tanh
 from ._foreach_tanh_ import _foreach_tanh_
 from ._foreach_trunc_ import _foreach_trunc_
@@ -341,6 +342,7 @@ __all__ = [
     "_foreach_sign_",
     "_foreach_sin_",
     "_foreach_sqrt_",
+    "_foreach_sub__List",
     "_foreach_tanh",
     "_foreach_tanh_",
     "_foreach_trunc_",
