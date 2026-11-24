@@ -28,6 +28,7 @@ from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .affine_grid_generator import affine_grid_generator
 from .all import all, all_dim, all_dims
+from .alpha_dropout import alpha_dropout
 from .alpha_dropout_ import alpha_dropout_
 from .amax import amax
 from .amin import amin
@@ -159,6 +160,14 @@ from .foreach_erf_ import foreach_erf_
 from .foreach_exp_ import foreach_exp_
 from .foreach_expm1_ import foreach_expm1_
 from .foreach_floor_ import foreach_floor_
+from .foreach_lerp import (
+    foreach_lerp_list,
+    foreach_lerp_list_,
+    foreach_lerp_scalar,
+    foreach_lerp_scalar_,
+    foreach_lerp_scalar_list,
+    foreach_lerp_scalar_list_,
+)
 from .foreach_log1p_ import foreach_log1p_
 from .foreach_log2_ import foreach_log2_
 from .foreach_log10_ import foreach_log10_
@@ -174,6 +183,9 @@ from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
 from .foreach_reciprocal_ import foreach_reciprocal_
 from .foreach_round import foreach_round
+from .foreach_round_ import foreach_round_
+from .foreach_rsqrt import foreach_rsqrt
+from .foreach_rsqrt_ import foreach_rsqrt_
 from .foreach_sigmoid_ import foreach_sigmoid_
 from .foreach_sign_ import foreach_sign_
 from .foreach_sin import foreach_sin
@@ -333,6 +345,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .prod import prod, prod_dim
 from .randperm import randperm
 from .relu6_ import relu6_
 from .renorm import renorm
@@ -349,15 +362,17 @@ from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
-from .scatter_add_ import scatter_add_
+from .scatter_add import scatter_add, scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
+from .select_copy import select_copy
 from .select_scatter import select_scatter
 from .silu import silu, silu_
 from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
 from .smm import smm
+from .soft_margin_loss_backward import soft_margin_loss_backward
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .softplus_backward import softplus_backward
 from .softshrink_backward import softshrink_backward
@@ -377,12 +392,14 @@ from .subtract import subtract
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .take import take, take_out
+from .take_along_dim import take_along_dim, take_along_dim_out
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .threshold_ import threshold_
 from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .trilinear import _trilinear, _trilinear_out
 from .triu import triu
 from .true_divide import (
     true_divide,
@@ -413,12 +430,9 @@ from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .xlogy import xlogy
+from .xlogy import xlogy, xlogy_out, xlogy_tensor_scalar, xlogy_tensor_scalar_out
 from .xlogy_ import xlogy_
-from .xlogy_out import xlogy_out
-from .xlogy_tensor_scalar import xlogy_tensor_scalar
-from .xlogy_tensor_scalar_out import xlogy_tensor_scalar_out
-from .zero import zero
+from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
@@ -433,6 +447,8 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_trilinear",
+    "_trilinear_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "absolute_",
@@ -450,6 +466,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "alpha_dropout",
     "alpha_dropout_",
     "amax",
     "amin",
@@ -579,6 +596,12 @@ __all__ = [
     "foreach_exp_",
     "foreach_expm1_",
     "foreach_floor_",
+    "foreach_lerp_list",
+    "foreach_lerp_list_",
+    "foreach_lerp_scalar",
+    "foreach_lerp_scalar_",
+    "foreach_lerp_scalar_list",
+    "foreach_lerp_scalar_list_",
     "foreach_log10_",
     "foreach_log1p_",
     "foreach_log2_",
@@ -594,6 +617,9 @@ __all__ = [
     "foreach_pow_scalar_list_",
     "foreach_reciprocal_",
     "foreach_round",
+    "foreach_round_",
+    "foreach_rsqrt",
+    "foreach_rsqrt_",
     "foreach_sigmoid_",
     "foreach_sign_",
     "foreach_sin",
@@ -789,6 +815,8 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
+    "prod",
+    "prod_dim",
     "randperm",
     "relu6_",
     "renorm",
@@ -812,17 +840,20 @@ __all__ = [
     "ScaleDotProductAttention",
     "scatter",
     "scatter_",
+    "scatter_add",
     "scatter_add_",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "silu",
     "silu_",
     "silu_backward",
     "slice_scatter",
     "smm",
+    "soft_margin_loss_backward",
     "softmax",
     "softmax_backward",
     "softmax_backward_out",
@@ -849,6 +880,8 @@ __all__ = [
     "sum_out",
     "swiglu",
     "take",
+    "take_along_dim",
+    "take_along_dim_out",
     "take_out",
     "thnn_fused_lstm_cell",
     "threshold",
@@ -890,6 +923,7 @@ __all__ = [
     "xlogy_tensor_scalar_out",
     "zero",
     "zero_",
+    "zero_out",
     "zeros",
     "zeros_like",
 ]
