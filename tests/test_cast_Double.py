@@ -24,6 +24,28 @@ _SKIP_FP64 = pytest.mark.skipif(
     reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
 )
 
+# The reference leg of this module always calls the device-side aten
+# _cast_Double, which goes through the backend copy kernel.  For complex input
+# that copy is reported as unsupported and the backend aborts the whole process
+# (gcu_utils.cpp Check failed), and no reference mode can move that call to the
+# CPU, so on enflame the complex cases cannot be exercised at all (--ref=cpu
+# included).  Every other vendor keeps the original condition, i.e. only the
+# device-reference mode is skipped.
+_SKIP_COMPLEX_ON_DEVICE = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame"
+    or (flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU),
+    reason="device aten _cast_Double aborts on complex input",
+)
+
+# Backends without an fp64 path store float64 as 4-byte fp32, so int64 -> float64
+# loses integer precision for |x| >= 2**24 and such extreme-value assertions can
+# never hold on those backends.
+_SKIP_FP64_PRECISION = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="backend stores float64 as fp32: int64->float64 loses precision "
+    "beyond 2**24",
+)
+
 
 DTYPES = [
     torch.bool,
@@ -35,7 +57,7 @@ DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64),
+    torch.float64,
 ]
 
 
@@ -128,7 +150,14 @@ def test_cast_Double_integer_limits(dtype):
 
 
 @pytest.mark.cast_Double
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.complex64])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float64,
+        pytest.param(torch.complex64, marks=_SKIP_COMPLEX_ON_DEVICE),
+    ],
+)
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Double_autograd(dtype, non_blocking):
     x = torch.randn(17, device=flag_gems.device, dtype=dtype, requires_grad=True)
@@ -145,7 +174,15 @@ def test_cast_Double_autograd(dtype, non_blocking):
 
 
 @pytest.mark.cast_Double
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(torch.complex64, marks=_SKIP_COMPLEX_ON_DEVICE),
+        # Same complex-input abort as complex64, so the enflame-only marker covers
+        # it too; vendors that can copy complex128 keep running this case.
+        pytest.param(torch.complex128, marks=_SKIP_COMPLEX_ON_DEVICE),
+    ],
+)
 def test_cast_Double_complex(dtype):
     assert_cast(torch.randn(17, device=flag_gems.device, dtype=dtype).conj())
 

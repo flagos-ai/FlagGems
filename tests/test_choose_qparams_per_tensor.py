@@ -138,6 +138,14 @@ def to_reference(inp, upcast=False):
         )
         if inp.is_conj():
             reference = reference.conj()
+    # On enflame in --ref=cpu mode the aten reference has to run on the CPU: the
+    # device copy of _choose_qparams_per_tensor reduces through topsatenMin,
+    # which rejects 0-dim unsigned inputs and aborts the process instead of
+    # raising. .to() preserves size, stride and storage offset, so the view
+    # metadata the tests assert on survives the move. Other vendors keep the
+    # reference on the device exactly as before.
+    if utils.TO_CPU and flag_gems.vendor_name == "enflame":
+        reference = reference.to("cpu")
     reference.requires_grad_(inp.requires_grad)
     return reference
 

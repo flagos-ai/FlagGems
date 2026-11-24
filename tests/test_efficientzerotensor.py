@@ -133,9 +133,11 @@ for _name in ("float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu", "float8_e4m3fnuz
     if _dtype is not None:
         _OUT_DTYPES.append(_dtype)
 
-# enflame GCU has no 64-bit, complex or float8 element types: allocating the ``out``
-# buffer for them aborts the process inside torch_gcu's device transfer instead of
-# raising, so those dtypes cannot be exercised at all -- skip them rather than fail.
+# enflame GCU cannot fill float8 tensors: building the ``out`` buffer for them
+# aborts the process inside the backend fill (topsatenFill_ reports BAD_PARAM and
+# the backend aborts) instead of raising, so those dtypes cannot be exercised at
+# all -- skip them rather than fail. Every other dtype in ``_OUT_DTYPES`` can be
+# allocated and zeroed on this target.
 # ``None`` means "no restriction known", so other backends keep the full matrix.
 _DEVICE_SUPPORTED_DTYPES = {
     "enflame": (
@@ -147,7 +149,10 @@ _DEVICE_SUPPORTED_DTYPES = {
         torch.int64,
         torch.float16,
         torch.float32,
+        torch.float64,
         torch.bfloat16,
+        torch.complex64,
+        torch.complex128,
     ),
 }.get(flag_gems.vendor_name)
 
@@ -182,7 +187,7 @@ def _assert_zeroed(tensor):
 
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
-@pytest.mark.parametrize("dtype", _OUT_DTYPES)
+@pytest.mark.parametrize("dtype", _OUT_DTYPE_PARAMS)
 def test_efficientzerotensor_out_dtype_matrix(dtype):
     # Every dtype native aten::_efficientzerotensor.out supports must fill:
     # byte-wise fallback covers complex and float8 pointers Triton cannot use.
