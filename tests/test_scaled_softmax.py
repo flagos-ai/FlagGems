@@ -64,12 +64,13 @@ def test_scaled_softmax_forward(
         device=flag_gems.device,
     )
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
         p_ref = _torch_scaled_softmax_forward(s, scale_factor)
     else:
         try:
             from transformer_engine.pytorch import cpp_extensions as tex
-        except ImportError:
+        except (ImportError, RuntimeError):
+            # An empty transformer-engine meta package raises RuntimeError.
             tex = None
 
         te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
@@ -106,13 +107,14 @@ def test_scaled_softmax_backward(
         device=flag_gems.device,
     )
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
         p_ref = _torch_scaled_softmax_forward(s, scale_factor)
         te_scaled_softmax_backward = None
     else:
         try:
             from transformer_engine.pytorch import cpp_extensions as tex
-        except ImportError:
+        except (ImportError, RuntimeError):
+            # An empty transformer-engine meta package raises RuntimeError.
             tex = None
 
         te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
