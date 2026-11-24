@@ -79,6 +79,7 @@ from .block_diag import block_diag
 from .bmm import bmm, bmm_out
 from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
@@ -212,6 +213,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .replication_pad3d_backward import replication_pad3d_backward
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scalar_tensor import scalar_tensor
 from .scatter import scatter, scatter_
@@ -344,6 +346,8 @@ __all__ = [
     "bmm_out",
     "bmm_w8a8",
     "cholesky_inverse",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "conj_physical",
     "conv2d",
     "conv_depthwise2d",
@@ -477,6 +481,7 @@ __all__ = [
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
     "replication_pad3d_backward",
+    "rms_norm_w8a16_fp8",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scalar_tensor",
