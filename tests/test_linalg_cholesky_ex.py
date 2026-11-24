@@ -52,6 +52,58 @@ def _inputs(case):
     return matrix, flag
 
 
+def _numpy_cholesky_ex(inp, upper):
+    import numpy as np
+
+    n = inp.shape[-1]
+    status = np.zeros(tuple(inp.shape[:-2]), dtype=np.int32)
+    if not inp.numel():
+        return torch.empty_like(inp), torch.from_numpy(status)
+
+    matrix = inp.detach().resolve_conj().resolve_neg().numpy()
+    if upper:
+        matrix = matrix.swapaxes(-1, -2).conj()
+    try:
+        factor = np.linalg.cholesky(matrix)
+    except np.linalg.LinAlgError:
+        # NumPy reports a failed factorization without the pivot index. For
+        # those lanes find the first leading minor that cannot be factored.
+        factor = np.zeros(matrix.shape, dtype=matrix.dtype)
+        for index in np.ndindex(status.shape):
+            lane = matrix[index]
+            try:
+                factor[index] = np.linalg.cholesky(lane)
+                continue
+            except np.linalg.LinAlgError:
+                pass
+            lower, upper_bound = 0, n
+            while lower + 1 < upper_bound:
+                pivot = (lower + upper_bound) // 2
+                try:
+                    np.linalg.cholesky(lane[:pivot, :pivot])
+                except np.linalg.LinAlgError:
+                    upper_bound = pivot
+                else:
+                    lower = pivot
+            status[index] = upper_bound
+
+    if upper:
+        factor = factor.swapaxes(-1, -2).conj()
+    return torch.from_numpy(np.ascontiguousarray(factor)), torch.from_numpy(status)
+
+
+def _reference_cholesky_ex(inp, *, upper):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        return _numpy_cholesky_ex(inp, upper)
+    return torch.ops.aten.linalg_cholesky_ex.default(
+        inp, upper=upper, check_errors=False
+    )
+
+
 @pytest.mark.linalg_cholesky_ex
 @pytest.mark.parametrize("case", CASES)
 def test_linalg_cholesky_ex(case):
@@ -59,8 +111,8 @@ def test_linalg_cholesky_ex(case):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
     inputs = _inputs(case)
-    ref = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inputs[0], True), upper=inputs[1], check_errors=False
+    ref = _reference_cholesky_ex(
+        utils.to_reference(inputs[0], True), upper=inputs[1]
     )
     res = flag_gems.linalg_cholesky_ex(inputs[0], upper=inputs[1], check_errors=False)
     ref_L, ref_info = ref
@@ -88,8 +140,8 @@ def _spd(n, batch=(), dtype=torch.float32):
 def test_linalg_cholesky_ex_empty_batch(batch_shape):
     """A zero-sized batch factorises to zero-sized outputs, never a launch."""
     inp = torch.zeros(batch_shape + (3, 3), dtype=torch.float32, device=DEVICE)
-    ref_L, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inp, True), upper=False, check_errors=False
+    ref_L, ref_info = _reference_cholesky_ex(
+        utils.to_reference(inp, True), upper=False
     )
     res_L, res_info = flag_gems.linalg_cholesky_ex(inp)
     assert res_L.shape == ref_L.shape
@@ -101,8 +153,8 @@ def test_linalg_cholesky_ex_empty_batch(batch_shape):
 def test_linalg_cholesky_ex_empty_matrix():
     """A 0x0 matrix is vacuously positive definite, so info is 0."""
     inp = torch.zeros(0, 0, dtype=torch.float32, device=DEVICE)
-    ref_L, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inp, True), upper=False, check_errors=False
+    ref_L, ref_info = _reference_cholesky_ex(
+        utils.to_reference(inp, True), upper=False
     )
     res_L, res_info = flag_gems.linalg_cholesky_ex(inp)
     assert res_L.shape == ref_L.shape == (0, 0)
@@ -116,8 +168,8 @@ def test_linalg_cholesky_ex_noncontiguous(upper):
     base = _spd(5, batch=(2,))
     view = base.transpose(-1, -2)
     assert not view.is_contiguous()
-    ref_L, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(view, True), upper=upper, check_errors=False
+    ref_L, ref_info = _reference_cholesky_ex(
+        utils.to_reference(view, True), upper=upper
     )
     res_L, res_info = flag_gems.linalg_cholesky_ex(view, upper=upper)
     utils.gems_assert_close(
@@ -153,8 +205,8 @@ def test_linalg_cholesky_ex_triangle_is_isolated(upper):
 def test_linalg_cholesky_ex_not_positive_definite(matrix_fn):
     """``info`` reports the 1-based order of the first non-positive pivot."""
     inp = matrix_fn()
-    _, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inp, True), upper=False, check_errors=False
+    _, ref_info = _reference_cholesky_ex(
+        utils.to_reference(inp, True), upper=False
     )
     _, res_info = flag_gems.linalg_cholesky_ex(inp, check_errors=False)
     assert int(res_info) == int(ref_info) != 0
@@ -207,8 +259,8 @@ def test_linalg_cholesky_ex_binds_schema_keywords():
     """
     inp = _spd(4)
     res = flag_gems.linalg_cholesky_ex(inp, upper=False, check_errors=False)
-    ref = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inp, True), upper=False, check_errors=False
+    ref = _reference_cholesky_ex(
+        utils.to_reference(inp, True), upper=False
     )
     utils.gems_assert_close(
         res[0], ref[0].to(torch.float32), torch.float32, reduce_dim=16
@@ -253,8 +305,8 @@ def test_linalg_cholesky_ex_beyond_max_order():
 def test_linalg_cholesky_ex_max_order_supported():
     """The largest supported order still factorises correctly."""
     inp = _spd(64)
-    ref_L, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inp, True), upper=False, check_errors=False
+    ref_L, ref_info = _reference_cholesky_ex(
+        utils.to_reference(inp, True), upper=False
     )
     res_L, res_info = flag_gems.linalg_cholesky_ex(inp)
     utils.gems_assert_close(
