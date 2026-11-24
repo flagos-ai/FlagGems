@@ -43,6 +43,7 @@ from .gemm_utils import (
     _LOAD_REGULAR,
     _PPU_DESCRIPTOR_CHUNK_N,
     _PPU_DESCRIPTOR_MAX_N,
+    _PPU_SMS,
     _PPU_ULTRA_WIDE_DIRECT_M_MAX,
     _SMALL_M_TILE,
     EXPAND_CONFIG_FILENAME,
@@ -668,24 +669,29 @@ def _flagtune_mm_dtype_identity(arguments):
 
 if HAS_PPU_TLE:
 
-    @libentry(cache_binding=True)
-    @libtuner(
-        configs=_ppu_gemv_configs(),
-        key=["FUSE_ADDMM", "READ_BIAS", "TRANSPOSED", "B_TRANSPOSED", "M", "K"],
-        strategy=["default", "default", "default", "default", "default", "default"],
-        policy="flagtune",
-        prune_configs_by={"early_config_prune": _prune_single_gemv_configs},
-        warmup=25,
-        rep=100,
-        # The packaged PPU model was trained with graph-replay candidate timing.
-        benchmark_mode="replay",
-        flagtune_op_name="mm",
-        flagtune_expand_op_name="gemv_ppu",
-        flagtune_op_id="flaggems/mm",
-        flagtune_variant="gemv_ppu",
-        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
-        flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
-    )
+    @triton.jit
+    def _store_ppu_gemv_result(
+        result,
+        Y,
+        Bias,
+        alpha,
+        beta,
+        rows,
+        mask,
+        stride_ym,
+        stride_bias_m,
+        FUSE_ADDMM: tl.constexpr,
+        READ_BIAS: tl.constexpr,
+    ):
+        if FUSE_ADDMM:
+            result = alpha * result
+        if READ_BIAS:
+            bias = tl.load(Bias + rows * stride_bias_m, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            result += beta * bias
+        tl.store(Y + rows * stride_ym, result.to(Y.dtype.element_ty), mask=mask)
+
     @triton.jit(do_not_specialize=["alpha", "beta"])
     def gemv_kernel_ppu(
         A,
@@ -708,44 +714,122 @@ if HAS_PPU_TLE:
         READ_BIAS: tl.constexpr,
         TRANSPOSED: tl.constexpr,
         B_TRANSPOSED: tl.constexpr,
+        MATRIX_COL_MAJOR: tl.constexpr = False,
+        SPLIT_K: tl.constexpr = 1,
     ):
         pid_m = tl.program_id(0)
-        rows = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
-        offs_m = rows[:, None]
-        offs_k = tl.arange(0, BLOCK_K)[None, :]
-        a_ptrs = A + offs_m * stride_am + offs_k * stride_ak
-        x_ptrs = X + offs_k * stride_xk
-        # Reduce each K tile immediately.  Keeping a [BLOCK_M, BLOCK_K]
-        # accumulator until the end needlessly retains every partial product
-        # in registers and is especially expensive for row-vector GEMV.
-        acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+        if MATRIX_COL_MAJOR:
+            # Lay out the tile with contiguous output rows in its inner axis.
+            rows = pid_m.to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)
+            tiles = tl.cdiv(K, BLOCK_K)
+            if SPLIT_K > 1:
+                split = tl.program_id(1)
+                first_tile = split * tiles // SPLIT_K
+                last_tile = (split + 1) * tiles // SPLIT_K
+            else:
+                first_tile = 0
+                last_tile = tiles
+            acc = tl.zeros((BLOCK_K, BLOCK_M), tl.float32)
+            for tile in range(first_tile, last_tile):
+                cols = tile * BLOCK_K + tl.arange(0, BLOCK_K)
+                a = tl.load(
+                    A + cols[:, None].to(tl.int64) * stride_ak + rows[None, :],
+                    (cols[:, None] < K) & (rows[None, :] < M),
+                    0,
+                ).to(tl.float32)
+                x = tl.load(X + cols * stride_xk, cols < K, 0).to(tl.float32)
+                acc += a * x[:, None]
+            result = tl.sum(acc, axis=0)
+        else:
+            rows = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+            offs_m = rows[:, None]
+            offs_k = tl.arange(0, BLOCK_K)[None, :]
+            a_ptrs = A + offs_m * stride_am + offs_k * stride_ak
+            x_ptrs = X + offs_k * stride_xk
+            # Reduce each row-major K tile before accumulating into registers.
+            acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+            for k_start in tl.range(0, K, BLOCK_K, num_stages=PIPE_STAGES):
+                mask = (offs_m < M) & (k_start + offs_k < K)
+                a = tl.load(a_ptrs, mask=mask, other=0.0).to(tl.float32)
+                x = tl.load(x_ptrs, mask=k_start + offs_k < K, other=0.0).to(tl.float32)
+                acc += tl.sum(a * x, axis=1)
+                a_ptrs += BLOCK_K * stride_ak
+                x_ptrs += BLOCK_K * stride_xk
+            result = acc
 
-        for k_start in tl.range(0, K, BLOCK_K, num_stages=PIPE_STAGES):
-            mask = (offs_m < M) & (k_start + offs_k < K)
-            a = tl.load(a_ptrs, mask=mask, other=0.0).to(tl.float32)
-            x = tl.load(
-                x_ptrs,
-                mask=k_start + offs_k < K,
-                other=0.0,
-            ).to(tl.float32)
-            acc += tl.sum(a * x, axis=1)
-            a_ptrs += BLOCK_K * stride_ak
-            x_ptrs += BLOCK_K * stride_xk
+        if MATRIX_COL_MAJOR and SPLIT_K > 1:
+            tl.store(Y + split * M + rows, result, rows < M)
+        else:
+            _store_ppu_gemv_result(
+                result,
+                Y,
+                Bias,
+                alpha,
+                beta,
+                rows,
+                rows < M,
+                stride_ym,
+                stride_bias_m,
+                FUSE_ADDMM,
+                READ_BIAS,
+            )
 
-        result = acc
-        if FUSE_ADDMM:
-            result = alpha * result
-        if READ_BIAS:
-            bias = tl.load(
-                Bias + rows * stride_bias_m,
-                mask=rows < M,
-                other=0.0,
-            ).to(tl.float32)
-            result += beta * bias
-        tl.store(
-            Y + rows * stride_ym,
-            result.to(Y.dtype.element_ty),
-            mask=rows < M,
+    # The column-major schedule picks its launch at the call site. The tuned
+    # launch retains the existing GEMV variant and its candidate configurations.
+    _fixed_gemv_kernel_ppu = libentry()(gemv_kernel_ppu)
+    gemv_kernel_ppu = libentry(cache_binding=True)(
+        libtuner(
+            configs=_ppu_gemv_configs(),
+            key=["FUSE_ADDMM", "READ_BIAS", "TRANSPOSED", "B_TRANSPOSED", "M", "K"],
+            strategy=["default", "default", "default", "default", "default", "default"],
+            policy="flagtune",
+            prune_configs_by={"early_config_prune": _prune_single_gemv_configs},
+            warmup=25,
+            rep=100,
+            # The packaged PPU model was trained with graph-replay candidate timing.
+            benchmark_mode="replay",
+            flagtune_op_name="mm",
+            flagtune_expand_op_name="gemv_ppu",
+            flagtune_op_id="flaggems/mm",
+            flagtune_variant="gemv_ppu",
+            flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
+            flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+        )(gemv_kernel_ppu)
+    )
+
+    @libentry()
+    @triton.jit(do_not_specialize=["alpha", "beta"])
+    def gemv_split_k_reduce_kernel_ppu(
+        Partial,
+        Y,
+        Bias,
+        alpha,
+        beta,
+        M,
+        stride_ym,
+        stride_bias_m,
+        SPLIT_K: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        FUSE_ADDMM: tl.constexpr,
+        READ_BIAS: tl.constexpr,
+    ):
+        rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+        splits = tl.arange(0, SPLIT_K)
+        acc = tl.load(
+            Partial + splits[:, None] * M + rows[None, :], rows[None, :] < M, 0
+        )
+        _store_ppu_gemv_result(
+            tl.sum(acc, axis=0),
+            Y,
+            Bias,
+            alpha,
+            beta,
+            rows,
+            rows < M,
+            stride_ym,
+            stride_bias_m,
+            FUSE_ADDMM,
+            READ_BIAS,
         )
 
     @libentry(cache_binding=True)
@@ -1808,6 +1892,104 @@ def _ppu_device_context(tensor):
     return torch_device_fn.device(tensor.device)
 
 
+def _use_column_major_gemv(rows, k, stride_m, stride_k):
+    # Short reductions do not amortize the column-major launch geometry.
+    return rows > 1 and k >= 128 and stride_m == 1 and stride_k >= rows
+
+
+def _column_major_gemv_config(rows, k, lda):
+    aligned_columns = lda % 16 == 0
+    if triton.cdiv(rows, 64) >= 2 * _PPU_SMS:
+        return (64 if aligned_columns and k > 1024 else 32), 64, 1
+    # A single row per program avoids a second launch for light reductions.
+    if k <= 2048 and rows <= 8 * _PPU_SMS and rows * k <= 8 * _PPU_SMS * 1024:
+        return 1, 128, 1
+    if k <= 1024:
+        return (4 if rows <= 32 * _PPU_SMS else 32), 64, 1
+
+    # A narrower tile reduces wasted work on unaligned columns in small
+    # output grids. Larger grids benefit from more contiguous rows per tile.
+    block_m, block_k = (32, 64)
+    if not aligned_columns and rows <= 32 * _PPU_SMS:
+        block_m, block_k = (16, 128)
+    row_tiles = triton.cdiv(rows, block_m)
+    k_tiles = triton.cdiv(k, block_k)
+    target_splits = triton.next_power_of_2(triton.cdiv(8 * _PPU_SMS, row_tiles))
+    # Keep at least two K tiles per split on average and cap workspace fan-out.
+    max_splits = 1 << max(0, (k_tiles // 2).bit_length() - 1)
+    split_limit = 32 if row_tiles < _PPU_SMS // 4 else 16
+    return block_m, block_k, min(target_splits, max_splits, split_limit)
+
+
+def _launch_column_major_gemv(
+    matrix,
+    vector,
+    out,
+    rows,
+    k,
+    lda,
+    stride_x,
+    stride_out,
+    *,
+    bias=None,
+    alpha=1.0,
+    beta=0.0,
+    stride_bias=0,
+):
+    fuse_bias = bias is not None
+    bias = bias if fuse_bias else out
+    read_bias = fuse_bias and beta != 0
+    block_m, block_k, split = _column_major_gemv_config(rows, k, lda)
+    partial = (
+        torch.empty((split, rows), dtype=torch.float32, device=out.device)
+        if split > 1
+        else out
+    )
+    with _ppu_device_context(matrix):
+        _fixed_gemv_kernel_ppu[(triton.cdiv(rows, block_m), split)](
+            matrix,
+            vector,
+            partial,
+            bias,
+            alpha,
+            beta,
+            rows,
+            k,
+            1,
+            lda,
+            stride_x,
+            stride_out,
+            stride_bias,
+            BLOCK_M=block_m,
+            BLOCK_K=block_k,
+            PIPE_STAGES=1,
+            FUSE_ADDMM=fuse_bias,
+            READ_BIAS=read_bias,
+            TRANSPOSED=False,
+            B_TRANSPOSED=False,
+            MATRIX_COL_MAJOR=True,
+            SPLIT_K=split,
+            num_warps=4,
+        )
+        if split > 1:
+            gemv_split_k_reduce_kernel_ppu[(triton.cdiv(rows, 32),)](
+                partial,
+                out,
+                bias,
+                alpha,
+                beta,
+                rows,
+                stride_out,
+                stride_bias,
+                SPLIT_K=split,
+                BLOCK_M=32,
+                FUSE_ADDMM=fuse_bias,
+                READ_BIAS=read_bias,
+                num_warps=1,
+            )
+    return out
+
+
 def _can_use_ppu_gemm(
     a: torch.Tensor, b: torch.Tensor, out: torch.Tensor, *, output_dtype: torch.dtype
 ) -> bool:
@@ -1818,7 +2000,14 @@ def _can_use_ppu_gemm(
         and b.dtype == a.dtype
         and out.dtype == output_dtype
         and a.device == b.device == out.device
-        and a.is_contiguous()
+        and (
+            a.is_contiguous()
+            or (
+                b.shape[1] == 1
+                and a.layout == torch.strided
+                and _use_column_major_gemv(*a.shape, *a.stride())
+            )
+        )
         and _is_supported_ppu_b_layout(a, b)
         and out.is_contiguous()
     ):
@@ -1900,6 +2089,36 @@ def _run_ppu_gemv_mm(
         stride_out_row = out.stride(1)
         stride_bias_row = expanded_bias.stride(1)
         transposed = True
+
+    # A one-row GEMM can already use a fast tuned single launch. Use the
+    # two-tile column-major schedule when the output pitch is aligned and K
+    # is deep enough to amortize the split-K reduction launch.
+    if (
+        stride_matrix_row == 1
+        and (
+            not transposed
+            or (
+                2 * _GEMV_PROGRAM_WIDTH < rows <= 4 * _GEMV_PROGRAM_WIDTH
+                and stride_matrix_k % (2 * _GEMV_PROGRAM_WIDTH) == 0
+                and 4 * _GEMV_REDUCTION_TILE <= K < 6 * _GEMV_REDUCTION_TILE
+            )
+        )
+        and _use_column_major_gemv(rows, K, stride_matrix_row, stride_matrix_k)
+    ):
+        return _launch_column_major_gemv(
+            matrix,
+            vector,
+            output,
+            rows,
+            K,
+            stride_matrix_k,
+            stride_vector_k,
+            stride_out_row,
+            bias=expanded_bias if fuse_addmm else None,
+            alpha=alpha,
+            beta=beta,
+            stride_bias=stride_bias_row,
+        )
 
     grid = lambda META: (triton.cdiv(rows, META["BLOCK_M"]),)
     with _ppu_device_context(a):
@@ -2527,6 +2746,8 @@ def _dispatch_ppu_gemm(
         return None
     M, K = a.shape
     N = b.shape[1]
+    if N == 1 and not a.is_contiguous():
+        return _run_ppu_gemv_mm(a, b, out, bias=bias, alpha=alpha, beta=beta)
     b_transposed = _b_transposed_layout(b)
     route = _select_ppu_gemm_route(
         M,
@@ -2575,7 +2796,13 @@ def _can_use_ppu_gemv(inp: torch.Tensor, vec: torch.Tensor) -> bool:
         and inp.dtype in (torch.float16, torch.bfloat16)
         and vec.dtype == inp.dtype
         and inp.device == vec.device
-        and inp.is_contiguous()
+        and (
+            inp.is_contiguous()
+            or (
+                inp.layout == torch.strided
+                and _use_column_major_gemv(*inp.shape, *inp.stride())
+            )
+        )
         and vec.is_contiguous()
         and inp.shape[0] > 0
         and inp.shape[1] > 0
@@ -2589,8 +2816,12 @@ def _mv(inp: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
 
     M, K = inp.shape
     out = torch.empty((M,), device=inp.device, dtype=inp.dtype)
+    stride_m, stride_k = inp.stride()
+    if stride_m == 1 and _use_column_major_gemv(M, K, stride_m, stride_k):
+        return _launch_column_major_gemv(inp, vec, out, M, K, stride_k, 1, 1)
+
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
+    with _ppu_device_context(inp):
         gemv_kernel_ppu[grid](
             inp,
             vec,
@@ -2600,8 +2831,8 @@ def _mv(inp: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
             0.0,
             M,
             K,
-            inp.stride(0),
-            inp.stride(1),
+            stride_m,
+            stride_k,
             vec.stride(0),
             out.stride(0),
             out.stride(0),
