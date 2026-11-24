@@ -161,8 +161,12 @@ def sparse_csr_sum(self, dim, keepdim=False, *, dtype=None):
     out_dtype = values.dtype if dtype is None else dtype
     device = values.device
 
-    if dtype is not None and out_dtype != values.dtype:
-        values = values.to(out_dtype)
+    # torch_gcu keeps float64 payloads in float32 storage and its Triton backend
+    # cannot lower fp64 elementwise regions, so the payload handed to the kernels
+    # is floored at float32 and the reduced result is widened to ``out_dtype``.
+    kernel_dtype = torch.float32 if out_dtype == torch.float64 else out_dtype
+    if values.dtype != kernel_dtype:
+        values = values.to(kernel_dtype)
 
     if dims == {1}:
         # Accumulate in fp32, like the native kernel's accumulator width.
@@ -170,11 +174,10 @@ def sparse_csr_sum(self, dim, keepdim=False, *, dtype=None):
         touched = torch.empty(rows, dtype=torch.int64, device=device)
         if rows:
             _row_sum_kernel[(rows,)](crow, values, row_sum32, touched, BLOCK=_BLOCK)
-        row_sum = row_sum32.to(out_dtype)
         # Empty rows survive: the output crow mirrors the input layout with one
         # entry per storing row at its original row position.
         keep = touched.bool()
-        kept = row_sum[keep]
+        kept = row_sum32[keep].to(out_dtype)
         new_crow = torch.zeros(rows + 1, dtype=crow.dtype, device=device)
         torch.cumsum(keep.to(crow.dtype), 0, out=new_crow[1:])
         new_col = torch.zeros(int(keep.sum()), dtype=col.dtype, device=device)
@@ -189,20 +192,22 @@ def sparse_csr_sum(self, dim, keepdim=False, *, dtype=None):
             _col_sum_kernel[(rows,)](
                 crow, col, values, acc32, touched, rows, BLOCK=_BLOCK
             )
-        acc = acc32.to(out_dtype)
         keep = torch.nonzero(touched).reshape(-1)
         new_col = keep.to(col.dtype)
         new_crow = torch.zeros(2, dtype=crow.dtype, device=device)
         new_crow[1] = keep.numel()
-        return _assemble(new_crow, new_col, acc[keep], (1, cols), out_dtype)
+        return _assemble(
+            new_crow, new_col, acc32[keep].to(out_dtype), (1, cols), out_dtype
+        )
 
     # Fully reduced: a single stored value, present only if anything is stored.
     # With nothing stored the native kernel still allocates a 0-d value buffer
     # but leaves the descriptor empty (crow = [0, 0]).
     new_crow = torch.zeros(2, dtype=crow.dtype, device=device)
     if nnz:
-        kept = torch.empty(1, dtype=out_dtype, device=device)
-        _total_sum_kernel[(1,)](values, kept, nnz, BLOCK=_BLOCK)
+        kept32 = torch.empty(1, dtype=torch.float32, device=device)
+        _total_sum_kernel[(1,)](values, kept32, nnz, BLOCK=_BLOCK)
+        kept = kept32.to(out_dtype)
         new_crow[1] = 1
         new_col = torch.zeros(1, dtype=col.dtype, device=device)
     else:
