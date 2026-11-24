@@ -186,6 +186,7 @@ from .hardshrink_out import hardshrink_out
 from .hardsigmoid_backward import hardsigmoid_backward
 from .hardtanh_backward import hardtanh_backward
 from .hinge_embedding_loss import hinge_embedding_loss
+from .histc import histc
 from .hstack import hstack
 from .igammac import igammac, igammac_out
 from .index import index
@@ -573,6 +574,7 @@ __all__ = [
     "hardsigmoid_backward",
     "hardtanh_backward",
     "hinge_embedding_loss",
+    "histc",
     "hstack",
     "igammac",
     "igammac_out",
