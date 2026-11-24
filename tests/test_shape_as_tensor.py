@@ -278,7 +278,8 @@ def test_accuracy_shape_as_tensor_dispatch_sentinel():
         return flag_gems.shape_as_tensor(self)
 
     lib = torch.library.Library("aten", "IMPL")
-    for key in ("CUDA", "SparseCUDA", "SparseCsrCUDA"):
+    backend = "PrivateUse1" if flag_gems.vendor_name == "mthreads" else "CUDA"
+    for key in (backend, f"Sparse{backend}", f"SparseCsr{backend}"):
         lib.impl("_shape_as_tensor", sentinel, key)
 
     dev = flag_gems.device

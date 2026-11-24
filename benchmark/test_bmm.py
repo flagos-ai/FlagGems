@@ -16,8 +16,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import bmm_out as triton_bmm_out  # noqa: F401
 from flag_gems import bmm_w8a8_fp8
+from flag_gems.ops.bmm import bmm_out as triton_bmm_out
 
 from . import base, consts
 
