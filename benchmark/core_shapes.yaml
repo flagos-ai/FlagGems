@@ -1627,3 +1627,15 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+scatter_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape

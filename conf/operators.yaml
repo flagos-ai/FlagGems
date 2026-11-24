@@ -18731,6 +18731,17 @@ ops:
   - Tensor
   stages:
   - stable: '4.2'
+- id: scatter_backward
+  description: First-order backward of scatter, using saved forward state.
+  for:
+  - scatter.src
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: scatter_reduce
   description: 'Writes all values from the tensor `src` into provided tensor at the
     indices
