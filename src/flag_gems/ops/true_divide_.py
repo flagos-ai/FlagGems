@@ -410,10 +410,11 @@ def run(self, other):
                     + " doesn't match the broadcast shape "
                     + str(list(oshape))
                 )
-        if n > _INT32_LIMIT:
-            raise RuntimeError("element count exceeds supported int32 indexing range")
-        _launch_generic(self, other, n, sshape, self.stride(), oshape, other.stride())
-        return self
+        # Broadcast divide: the hand-written generic kernel is rejected by the
+        # MACA Triton backend at launch ("memory size or pointer value too large
+        # to fit in 32 bit"), so route broadcasts through the pointwise_dynamic
+        # div_ which generates backend-compatible code on all vendors.
+        return _div_true_divide_(self, other)
 
     # Python scalar operand.
     if n > _INT32_LIMIT:

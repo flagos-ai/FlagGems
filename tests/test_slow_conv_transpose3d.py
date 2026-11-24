@@ -63,6 +63,12 @@ def _atol(dtype):
     return 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
 
 
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 @pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize("shape, weight_shape", SHAPES_AND_WEIGHTS)
 @pytest.mark.parametrize("stride, padding", STRIDE_PADDING)
@@ -70,8 +76,8 @@ def _atol(dtype):
 def test_slow_conv_transpose3d(shape, weight_shape, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     kernel_size = [weight_shape[2], weight_shape[3], weight_shape[4]]
     st = _triple(stride)
@@ -83,6 +89,7 @@ def test_slow_conv_transpose3d(shape, weight_shape, stride, padding, dtype):
     res_out = flag_gems.slow_conv_transpose3d(
         inp, weight, kernel_size, None, st, pa, [0, 0, 0], [1, 1, 1]
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -94,9 +101,9 @@ def test_slow_conv_transpose3d_bias(shape, weight_shape, stride, padding, dtype)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
     bias = torch.randn(weight_shape[1], dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_bias = utils.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
 
     kernel_size = [weight_shape[2], weight_shape[3], weight_shape[4]]
     st = _triple(stride)
@@ -108,6 +115,7 @@ def test_slow_conv_transpose3d_bias(shape, weight_shape, stride, padding, dtype)
     res_out = flag_gems.slow_conv_transpose3d(
         inp, weight, kernel_size, bias, st, pa, [0, 0, 0], [1, 1, 1]
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -123,9 +131,9 @@ def test_slow_conv_transpose3d_strided_bias():
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
     bias = torch.arange(12, device=flag_gems.device, dtype=dtype)[::2]
     assert not bias.is_contiguous()
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_bias = utils.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
 
     kernel_size = [2, 2, 2]
     stride = [1, 1, 1]
@@ -146,6 +154,7 @@ def test_slow_conv_transpose3d_strided_bias():
     res_out = flag_gems.slow_conv_transpose3d(
         inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -158,8 +167,8 @@ def test_slow_conv_transpose3d_output_padding_dilation(dtype):
     weight_shape = (2, 3, 2, 2, 2)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     kernel_size = [2, 2, 2]
     stride = [2, 2, 2]
@@ -181,6 +190,7 @@ def test_slow_conv_transpose3d_output_padding_dilation(dtype):
         inp, weight, kernel_size, None, stride, padding, output_padding, dilation
     )
 
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -194,8 +204,8 @@ def test_slow_conv_transpose3d_scalar_stride(dtype):
     weight_shape = (3, 4, 3, 3, 3)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp, ref_weight, [3, 3, 3], None, [2, 2, 2], [1, 1, 1], [0, 0, 0], [1, 1, 1]
@@ -203,4 +213,5 @@ def test_slow_conv_transpose3d_scalar_stride(dtype):
     res_out = flag_gems.slow_conv_transpose3d(
         inp, weight, 3, None, stride=2, padding=1, output_padding=0, dilation=1
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
