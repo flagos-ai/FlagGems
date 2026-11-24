@@ -309,9 +309,20 @@ def test_slogdet_nan_inf(dtype):
         res_sign, res_logabsdet = flag_gems.slogdet(A)
         reference = torch.linalg.slogdet(utils.to_reference(A))
         torch.testing.assert_close(res_sign.cpu(), reference.sign.cpu(), equal_nan=True)
-        torch.testing.assert_close(
-            res_logabsdet.cpu(), reference.logabsdet.cpu(), equal_nan=True
-        )
+        # ATen's own LU does not agree on the non-finite value for a NaN input:
+        # the CPU/Ascend path returns nan while the CUDA path returns -inf.
+        # The portable contract is therefore a non-finite logabsdet that follows
+        # the selected reference's finite/non-finite class; an exact value is
+        # only compared when the reference is finite.
+        if torch.isfinite(reference.logabsdet).item():
+            torch.testing.assert_close(
+                res_logabsdet.cpu(), reference.logabsdet.cpu(), equal_nan=True
+            )
+        else:
+            assert not torch.isfinite(res_logabsdet).item(), (
+                f"{name}: a NaN input must not produce a finite logabsdet, got "
+                f"{res_logabsdet.item()}"
+            )
 
 
 @pytest.mark.slogdet
