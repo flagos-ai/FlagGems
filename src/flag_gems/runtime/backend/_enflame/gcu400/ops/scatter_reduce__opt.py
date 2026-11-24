@@ -69,6 +69,12 @@ _MIN_INNER_FOR_TILE_KERNEL = 16
 _DEFAULT_GEN_BLOCK_I = 2048
 _DEFAULT_SCAN_BLOCK_I = 256
 
+# Large 5D extrema scatters are canonicalized to an equivalent 3D problem. The
+# gate and the canonicalization live in the generic module, so the cases above
+# this element threshold delegate there instead of decoding 5D coordinates in
+# every lane here.
+_CANONICALIZE_5D_MIN_ELEMENTS = 1 << 23
+
 
 @triton.jit(
     do_not_specialize=[
@@ -869,6 +875,22 @@ def _scan_candidate(inp, dim, index, src, reduce, include_self):
     return dim, idx_axis, out_numel
 
 
+def _should_canonicalize_5d(inp, dim, index, src, reduce):
+    """Whether a 5D extrema scatter should go through the canonicalizing path."""
+    if (
+        inp.ndim != 5
+        or index.ndim != inp.ndim
+        or src.ndim != inp.ndim
+        or reduce not in ("amax", "amin")
+        or inp.numel() < _CANONICALIZE_5D_MIN_ELEMENTS
+    ):
+        return False
+    dim %= inp.ndim
+    return all(
+        axis == dim or index.size(axis) == inp.size(axis) for axis in range(inp.ndim)
+    )
+
+
 def _fallback_scatter_reduce(inp, dim, index, src, reduce, **kwargs):
     """Generic implementation, split so it never exceeds the device grid.x limit.
 
@@ -921,6 +943,18 @@ def scatter_reduce(
     _product_grid_limit=None,
 ):
     logger.debug("GEMS_ENFLAME SCATTER_REDUCE")
+    if _should_canonicalize_5d(inp, dim, index, src, reduce):
+        return _fallback_scatter_reduce(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            include_self=include_self,
+            _deduplicate_programs=_deduplicate_programs,
+            _use_product_lock=_use_product_lock,
+            _product_grid_limit=_product_grid_limit,
+        )
     # Last-dim scatter with index/src matching inp runs 1-2 orders of magnitude
     # faster as a single relaxed-atomic pass than through the scan or general
     # kernels (sum: 142ms -> 3.4ms, mean: 148ms -> 8ms, amax: 162ms -> 5ms at

@@ -91,6 +91,13 @@ def gather_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::scatter_reduce aborts on GCU, so no native baseline can be timed; "
+        "the candidate latency is still measured"
+    ),
+)
 @pytest.mark.scatter_reduce
 def test_scatter_reduce_optest():
     """Report every functional scatter_reduce case under the optest operator ID."""
@@ -105,8 +112,8 @@ def test_scatter_reduce_optest():
     bench.run()
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
+@pytest.mark.skip_native(
+    vendors=["enflame"],
     reason=(
         "aten::scatter_reduce.two aborts on GCU: topsop CheckArgs rejects the "
         "int64 index that TORCH_GCU_ENABLE_INT64_AND_UINT64=1 keeps as int64, "

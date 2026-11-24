@@ -598,10 +598,7 @@
   },
   "ctc_loss": {},
   "ctc_loss_backward": {},
-  "cudnn_attention_backward": {
-    "skip": "yes",
-    "skip_reason": "There is no matching aten kernel on GCU400 (NotImplementedError) and the tests still fail under fallback_cpu, so the whole module is skipped for enflame."
-  },
+  "cudnn_attention_backward": {},
   "cudnn_attention_forward": {
     "skip": "yes",
     "skip_reason": "There is no matching aten kernel on GCU400 (NotImplementedError) and the tests still fail under fallback_cpu, so the whole module is skipped for enflame."

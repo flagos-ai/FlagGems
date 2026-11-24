@@ -172,6 +172,12 @@ def lgamma(A):
 
 def lgamma_(A):
     logger.debug("GEMS_ENFLAME LGAMMA_")
+    # torch promotes integral inputs of lgamma to float32, so the in-place form
+    # cannot write the result back and raises instead of silently truncating.
+    if not A.dtype.is_floating_point:
+        raise RuntimeError(
+            "lgamma_(): result type Float can't be cast to the desired output type"
+        )
     x = A if A.is_contiguous() else A.contiguous()
     out = _launch_lgamma(x, x)
     if out is not A:

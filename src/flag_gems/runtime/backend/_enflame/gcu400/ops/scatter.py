@@ -357,21 +357,30 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
+def _reduce_needs_fp32_upcast(dtype, reduce):
+    """Whether a reduce scatter must accumulate in fp32.
+
+    The reduce kernels rely on 32-bit atomics, which have no bfloat16 form, so
+    every bf16 reduce is staged through fp32 and rounded back afterwards. fp16
+    multiply needs the extra mantissa as well to stay inside the aten tolerance.
+    """
+    if reduce is None:
+        return False
+    if dtype == torch.bfloat16:
+        return True
+    return reduce == "multiply" and dtype == torch.float16
+
+
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ENFLAME SCATTER")
 
     orig_dtype = inp.dtype
-    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    needs_upcast = _reduce_needs_fp32_upcast(orig_dtype, reduce)
     if needs_upcast:
         inp = inp.to(torch.float32)
         src = src.to(torch.float32)
 
     out = inp.clone()
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -419,17 +428,12 @@ def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ENFLAME SCATTER_")
 
     orig_dtype = inp.dtype
-    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    needs_upcast = _reduce_needs_fp32_upcast(orig_dtype, reduce)
     if needs_upcast:
         out = inp.to(torch.float32)
         src = src.to(torch.float32)
     else:
         out = inp
-
-    if reduce is not None:
-        assert orig_dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
