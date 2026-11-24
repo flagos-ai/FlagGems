@@ -17,6 +17,8 @@ import torch
 
 import flag_gems
 
+from .accuracy_utils import _SKIP_FP64
+
 # On enflame the device-side aten reference leg aborts the whole process on
 # complex input (gcu_utils.cpp Check failed), in both `--ref=cpu` and
 # device-reference mode: the reference tensor itself is always produced by aten
