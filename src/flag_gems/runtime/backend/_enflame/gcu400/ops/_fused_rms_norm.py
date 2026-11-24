@@ -649,9 +649,7 @@ def _fused_rms_norm_backward(
     # whenever pass 1 runs: the kernel writes RS_PART unconditionally inside
     # COMPUTE_DX, so a dummy tensor must never be passed there.
     rs_part = (
-        _bwd_scratch(x.device, "rs_part", (num_tiles, M))
-        if (want_dx and use_1d)
-        else x
+        _bwd_scratch(x.device, "rs_part", (num_tiles, M)) if (want_dx and use_1d) else x
     )
 
     with torch_device_fn.device(x.device):

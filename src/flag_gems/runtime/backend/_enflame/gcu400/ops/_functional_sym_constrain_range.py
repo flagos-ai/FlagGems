@@ -103,9 +103,7 @@ def _launch_copy(src, dst):
     n_total = src.numel()
     if n_total == 0:
         return
-    view_bytes, tile_bytes, num_warps = _choose_launch(
-        n_total, src.element_size()
-    )
+    view_bytes, tile_bytes, num_warps = _choose_launch(n_total, src.element_size())
     src_view, dst_view = src, dst
     if view_bytes > src.element_size():
         # Contiguity has to hold before the flat dtype view can even be built.

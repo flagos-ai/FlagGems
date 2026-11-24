@@ -58,9 +58,7 @@ def _nansum_acc_type(inp_dtype: tl.dtype) -> tl.dtype:
 
 
 @tl.constexpr
-def _nansum_tile_acc_type_or(
-    inp_dtype: tl.dtype, acc_mode: tl.constexpr
-) -> tl.dtype:
+def _nansum_tile_acc_type_or(inp_dtype: tl.dtype, acc_mode: tl.constexpr) -> tl.dtype:
     """Tile accumulator selected by ``acc_mode`` (0 default, 1 int32, 2 float32).
 
     Modes 1 and 2 are only requested by the host when the narrow type is exact
@@ -74,9 +72,7 @@ def _nansum_tile_acc_type_or(
 
 
 @tl.constexpr
-def _nansum_inner_acc_type(
-    inp_dtype: tl.dtype, reduce_len: tl.constexpr
-) -> tl.dtype:
+def _nansum_inner_acc_type(inp_dtype: tl.dtype, reduce_len: tl.constexpr) -> tl.dtype:
     """Accumulator for the last-dim (inner) kernel.
 
     8-bit integers narrow to int32 in :func:`_nansum_tile_acc_type`, but the
@@ -590,9 +586,7 @@ def nansum_dim_kernel_inner(
     # The M axis is flattened over a 2D launch because grid.x is capped at
     # 65535 on gcu400; keeping TILE_M small is what keeps the accumulator tile
     # in registers for wide rows.
-    pid = (
-        ext.program_id(0) + ext.program_id(1) * ext.num_programs(0)
-    ).to(tl.int64)
+    pid = (ext.program_id(0) + ext.program_id(1) * ext.num_programs(0)).to(tl.int64)
     m_start = pid * TILE_M + tl.arange(0, TILE_M)[:, None]
     m_mask = m_start < M
 

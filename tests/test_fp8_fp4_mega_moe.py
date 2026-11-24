@@ -27,7 +27,7 @@ except ImportError:
     SM100_AVAILABLE = False
 
 import flag_gems
-from flag_gems.deprecated.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
+from flag_gems.fused.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
 
 from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close, to_reference

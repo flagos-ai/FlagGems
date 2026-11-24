@@ -259,9 +259,7 @@ def _fill_strided(out, value, is_scalar):
         else:
             fill_value = value
     else:
-        fill_value = (
-            value.view(torch.int8) if out.dtype == torch.bool else value
-        )
+        fill_value = value.view(torch.int8) if out.dtype == torch.bool else value
     block = min(_STRIDED_BLOCK, triton.next_power_of_2(n))
     per_chunk = _STRIDED_MAX_GRID * block
     with torch_device_fn.device(out.device):

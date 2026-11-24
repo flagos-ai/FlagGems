@@ -20,10 +20,9 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
-
+from . import conftest as cfg
 
 if cfg.QUICK_MODE:
     # Single tiny shape keeps the quick smoke run fast.

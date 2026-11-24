@@ -312,9 +312,7 @@ def batch_norm_stats(input, eps):
         if spatial_is_blockable:
             flat_geometry = _flat_launch_config(N, C, spatial, flat_dim)
             flat_tasks = triton.cdiv(flat_dim, flat_geometry[1])
-        use_flat_arm = spatial_is_blockable and (
-            spatial == 1 or flat_tasks >= MAX_GRID
-        )
+        use_flat_arm = spatial_is_blockable and (spatial == 1 or flat_tasks >= MAX_GRID)
         if use_flat_arm:
             block_b, block_f, num_warps, num_stages, deferred = flat_geometry
             channels_per_task = block_f // spatial

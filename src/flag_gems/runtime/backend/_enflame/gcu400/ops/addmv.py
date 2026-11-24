@@ -207,7 +207,8 @@ def _next_pow2(value):
 def _launch_plan(num_rows, reduction_size, dtype, bias_is_scalar):
     """Caches the tier by (rows, K, dtype, scalar_bias) to avoid recomputing pow2/cdiv and branches:
 
-    small shapes take only 5~12us end to end, so ~7us of host arithmetic must be cached away."""
+    small shapes take only 5~12us end to end, so ~7us of host arithmetic must be cached away.
+    """
     key = (num_rows, reduction_size, dtype, bias_is_scalar)
     plan = _LAUNCH_PLAN_CACHE.get(key)
     if plan is not None:

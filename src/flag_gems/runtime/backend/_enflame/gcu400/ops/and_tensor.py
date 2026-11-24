@@ -38,7 +38,9 @@ _FAST_DTYPES = (torch.bool, torch.uint8, torch.int8, torch.int16, torch.int32)
 
 @libentry()
 @triton.jit(do_not_specialize=["numel"])
-def and_tensor_kernel(x_ptr, y_ptr, out_ptr, numel, BLOCK: tl.constexpr, EXACT: tl.constexpr):
+def and_tensor_kernel(
+    x_ptr, y_ptr, out_ptr, numel, BLOCK: tl.constexpr, EXACT: tl.constexpr
+):
     # Flat pid-stride walk over the whole tensor.  Every launch rides this
     # loop (grid = min(cdiv, cap)): direct one-block-per-CTA grids with small
     # tiles are catastrophic on the 11-18 stack (probe: b2048 direct 425.9us

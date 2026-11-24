@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from flag_gems import bucket_sort_topk
-from flag_gems.deprecated.DSA.bin_topk import HAS_TLE
+from flag_gems.fused.DSA.bin_topk import HAS_TLE
 
 
 def assert_set_similar(actual, expected, dtype, equal_nan=False):

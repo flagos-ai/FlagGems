@@ -95,9 +95,7 @@ def bilinear_kernel(
                 other=0.0,
             ).to(tl.float32)
             w_rows = tl.load(
-                weight_ptr
-                + offs_n[:, None] * stride_wn
-                + (i * K2 + offs_j)[None, :],
+                weight_ptr + offs_n[:, None] * stride_wn + (i * K2 + offs_j)[None, :],
                 mask=mask_n[:, None] & mask_j[None, :],
                 other=0.0,
             ).to(tl.float32)
@@ -105,7 +103,9 @@ def bilinear_kernel(
             acc += tl.dot(z_tile, tl.trans(w_rows), allow_tf32=False)
 
     if BIAS:
-        acc += tl.load(bias_ptr + offs_n, mask=mask_n, other=0.0).to(tl.float32)[None, :]
+        acc += tl.load(bias_ptr + offs_n, mask=mask_n, other=0.0).to(tl.float32)[
+            None, :
+        ]
 
     out_ptrs = output_ptr + offs_m[:, None] * stride_om + offs_n[None, :]
     tl.store(

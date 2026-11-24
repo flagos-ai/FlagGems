@@ -147,9 +147,7 @@ def hamming_window_kernel(
                 b = t - a
                 cos_a = tl.cos(a)
                 sin_a = tl.sin(a)
-                c = (cos_a * (1.0 - 0.5 * (b * b)) - sin_a * b).to(dtype).to(
-                    tl.float32
-                )
+                c = (cos_a * (1.0 - 0.5 * (b * b)) - sin_a * b).to(dtype).to(tl.float32)
             term = (c * beta).to(dtype).to(tl.float32)  # beta * cos(2x)
             val = (alpha - term).to(dtype)  # alpha - term
 

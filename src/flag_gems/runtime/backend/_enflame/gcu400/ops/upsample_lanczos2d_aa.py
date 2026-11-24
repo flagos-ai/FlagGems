@@ -538,7 +538,8 @@ def _lanczos_vertical_border_kernel(
 
 def _get_dense_weights(input_size, output_size, align_corners, scale_arg, dtype, dev):
     """Dense [out, in] Lanczos-AA weights (the host caches the device tensor, launching the
-    weight kernel only on a cache miss; the bench reference einsum weights are cached too)."""
+    weight kernel only on a cache miss; the bench reference einsum weights are cached too).
+    """
     cache = getattr(_get_dense_weights, "_cache", None)
     if cache is None:
         cache = OrderedDict()

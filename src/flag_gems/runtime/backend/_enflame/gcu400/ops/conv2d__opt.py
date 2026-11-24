@@ -62,7 +62,7 @@ def conv2d_output_size(
             {"BLOCK_NI_HO_WO": 32, "BLOCK_CI": 16, "BLOCK_CO": 32},
             num_warps=4,
             num_stages=2,
-    )
+        )
     ],
     # Backward-only kernel since the forward moved to the implicit-GEMM
     # conv2d_implicit_gemm_kernel_taps (see _launch_conv2d_implicit_gemm); the
@@ -168,23 +168,23 @@ def conv2d_forward_kernel(
             h * dilation_height
             - padding_height
             + stride_height * output_height_point_value
-    )
+        )
         input_width_offset = (
             w * dilation_width - padding_width + stride_width * output_width_point_value
-    )
+        )
 
         curr_input_pointer = (
             input_pointer
             + (input_c_stride * input_c_offset)[None, :]
             + (input_height_stride * input_height_offset)[:, None]
             + (input_width_stride * input_width_offset)[:, None]
-    )
+        )
         curr_weight_pointer = (
             weight_pointer
             + (weight_c_stride * input_c_offset)[:, None]
             + (weight_height_stride * h)
             + (weight_width_stride * w)
-    )
+        )
 
         input_mask = (
             valid_row[:, None]
@@ -194,7 +194,7 @@ def conv2d_forward_kernel(
             & (input_height_offset < input_height)[:, None]
             & (0 <= input_width_offset)[:, None]
             & (input_width_offset < input_width)[:, None]
-    )
+        )
         weight_mask = (input_c_offset < weight_c)[:, None] & (
             output_c_offset < out_per_group_c
         )[None, :]
@@ -492,7 +492,7 @@ def conv2d_implicit_gemm_kernel_taps(
             + tl.where(v0, i0, 0) * x_0s
             + tl.where(v1, i1, 0) * x_1s
             + tl.where(v2, i2, 0) * x_2s
-    )
+        )
         # Repacked weight row block for this tap: (tap, oc, ic).
         w_tap = tap * (C_out * C_in_pg) + offs_n_c * C_in_pg
 
@@ -694,10 +694,10 @@ class Conv2d(torch.autograd.Function):
 
         out_height = conv2d_output_size(
             input_height, weight_height, stride_height, padding_height, dilation_height
-    )
+        )
         out_width = conv2d_output_size(
             input_width, weight_width, stride_width, padding_width, dilation_width
-    )
+        )
 
         # Forward = one implicit-GEMM kernel launch (see
         # _launch_conv2d_implicit_gemm). The K<16 channel-padding dance of the
@@ -713,7 +713,7 @@ class Conv2d(torch.autograd.Function):
             groups,
             out_height,
             out_width,
-    )
+        )
 
         # Save ORIGINAL tensors for backward
         ctx.save_for_backward(weight, input, bias)
@@ -727,7 +727,7 @@ class Conv2d(torch.autograd.Function):
             weight_c,
             weight_height,
             weight_width,
-    )
+        )
         ctx.input_info = (in_n, input_height, input_width)
         ctx.out_info = (out_height, out_width)
 
@@ -770,7 +770,7 @@ class Conv2d(torch.autograd.Function):
 
         new_out_height = out_grad.shape[2] + (stride_height - 1) * (
             out_grad.shape[2] - 1
-    )
+        )
         new_out_width = out_grad.shape[3] + (stride_width - 1) * (out_grad.shape[3] - 1)
 
         new_out = torch.zeros(
@@ -780,7 +780,7 @@ class Conv2d(torch.autograd.Function):
             new_out_width,
             device=device,
             dtype=out_grad.dtype,
-    )
+        )
 
         # copy out_grad to new_out
         if stride_height > 1 or stride_width > 1:
@@ -799,7 +799,7 @@ class Conv2d(torch.autograd.Function):
             input_width,
             dtype=torch.float32,
             device=device,
-    )
+        )
 
         grid = lambda META: (
             triton.cdiv(
@@ -807,7 +807,7 @@ class Conv2d(torch.autograd.Function):
             ),
             triton.cdiv(int(weight_c), META["BLOCK_CO"]),
             groups,
-    )
+        )
         bias_zero = torch.zeros(groups * weight_c, device=device, dtype=out_grad.dtype)
 
         # Backward path: out_c is passed as kernel's weight_c (constexpr K dim).
@@ -856,7 +856,7 @@ class Conv2d(torch.autograd.Function):
             dilation_height,
             dilation_width,
             groups=groups,
-    )
+        )
 
         weight_back = torch.zeros(
             out_c * groups,
@@ -865,7 +865,7 @@ class Conv2d(torch.autograd.Function):
             weight_width,
             dtype=weight.dtype,
             device=device,
-    )
+        )
 
         grid_weight = lambda meta: (
             triton.cdiv(
@@ -873,7 +873,7 @@ class Conv2d(torch.autograd.Function):
             ),
             groups,
             triton.cdiv(out_c, meta["BLOCK_CO"]),
-    )
+        )
         conv2d_backward_kernel_weight[grid_weight](
             input,
             out_grad,
@@ -896,7 +896,7 @@ class Conv2d(torch.autograd.Function):
             padding_width,
             dilation_height,
             dilation_width,
-    )
+        )
         if bias is not None:
             bias_grad = out_grad.sum(dim=(0, 2, 3))
         else:
@@ -909,7 +909,7 @@ class Conv2d(torch.autograd.Function):
             None,
             None,
             None,
-    )
+        )
 
 
 # todo test SymInt[2] of stride or padding

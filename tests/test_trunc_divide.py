@@ -22,9 +22,9 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+from . import conftest as cfg
 
 
 # Note: tl.math.div_rz only support float32, cast will cause diff

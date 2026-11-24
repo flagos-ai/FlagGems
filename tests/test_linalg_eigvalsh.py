@@ -44,6 +44,17 @@ CASES = [
 ]
 
 
+def _reference_eigvalsh(inp, UPLO="L"):
+    if flag_gems.vendor_name == "mthreads":
+        # This image falls back to CPU for eigvalsh and lacks LAPACK.
+        import numpy as np
+
+        return torch.from_numpy(
+            np.linalg.eigvalsh(inp.detach().cpu().numpy(), UPLO=UPLO)
+        )
+    return torch.ops.aten.linalg_eigvalsh.default(inp, UPLO=UPLO)
+
+
 def _inputs(case):
     batch_shape, n, uplo, dtype = case
     torch.manual_seed(0)
@@ -79,17 +90,6 @@ def _symmetric(n, batch=(), dtype=torch.float32, seed=0):
 @pytest.mark.parametrize(
     "shape", [(0, 0), (0, 3, 3)] if cfg.QUICK_MODE else [(0, 0), (0, 3, 3), (2, 0, 0)]
 )
-def _reference_eigvalsh(inp, UPLO="L"):
-    if flag_gems.vendor_name == "mthreads":
-        # This image falls back to CPU for eigvalsh and lacks LAPACK.
-        import numpy as np
-
-        return torch.from_numpy(
-            np.linalg.eigvalsh(inp.detach().cpu().numpy(), UPLO=UPLO)
-        )
-    return torch.ops.aten.linalg_eigvalsh.default(inp, UPLO=UPLO)
-
-
 def test_linalg_eigvalsh_empty(shape):
     """A zero-order matrix has no eigenvalues, so the result is zero-sized."""
     inp = torch.zeros(shape, dtype=torch.float32, device=DEVICE)

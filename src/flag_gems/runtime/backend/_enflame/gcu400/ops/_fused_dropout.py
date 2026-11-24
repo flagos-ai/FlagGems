@@ -847,6 +847,7 @@ def _fused_dropout(self, p, generator=None):
         )
     return output, mask
 
+
 # Triton Ascend 3.2 crashes when lowering the (BLOCK, 4) broadcast above.
 # Contiguous 1D word lanes also avoid its strided-store UB addressing bug.
 # Repeating each Philox group four times preserves the generic word stream.

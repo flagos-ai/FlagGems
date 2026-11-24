@@ -112,9 +112,9 @@ def linalg_ldl_solve_real_kernel(
     piv_base = pivots + batch_idx * piv_batch_stride
     x_base = X + batch_idx * x_batch_stride
 
-    piv_vec = tl.load(
-        piv_base + rows * piv_row_stride, mask=row_mask, other=1
-    ).to(tl.int32)
+    piv_vec = tl.load(piv_base + rows * piv_row_stride, mask=row_mask, other=1).to(
+        tl.int32
+    )
     w = tl.load(
         x_base + rows[:, None] * x_row_stride + cols[None, :] * x_col_stride,
         mask=row_mask[:, None] & col_mask[None, :],
@@ -165,9 +165,7 @@ def linalg_ldl_solve_real_kernel(
             upd = w - l0[:, None] * xk[None, :] - l1[:, None] * xk1[None, :]
             b = tl.load(ld_base + (k + 1) * ld_row_stride + k * ld_col_stride)
             a = tl.load(ld_base + k * ld_row_stride + k * ld_col_stride)
-            c = tl.load(
-                ld_base + (k + 1) * ld_row_stride + (k + 1) * ld_col_stride
-            )
+            c = tl.load(ld_base + (k + 1) * ld_row_stride + (k + 1) * ld_col_stride)
             akm1 = a / b
             ak = c / b
             denom = akm1 * ak - 1
@@ -440,9 +438,9 @@ def linalg_ldl_solve_complex_kernel(
     x_ptrs = x_base + rows[:, None] * x_row_stride + cols[None, :] * x_col_stride
     tile_mask = row_mask[:, None] & col_mask[None, :]
 
-    piv_vec = tl.load(
-        piv_base + rows * piv_row_stride, mask=row_mask, other=1
-    ).to(tl.int32)
+    piv_vec = tl.load(piv_base + rows * piv_row_stride, mask=row_mask, other=1).to(
+        tl.int32
+    )
     w_r = tl.load(x_ptrs, mask=tile_mask, other=0.0)
     w_i = tl.load(x_ptrs + 1, mask=tile_mask, other=0.0)
 
@@ -483,9 +481,7 @@ def linalg_ldl_solve_complex_kernel(
                 xk_r = xk_r * inv_d
                 xk_i = xk_i * inv_d
             else:
-                d_i = tl.load(
-                    ld_base + k * ld_row_stride + k * ld_col_stride + 1
-                )
+                d_i = tl.load(ld_base + k * ld_row_stride + k * ld_col_stride + 1)
                 xk_r, xk_i = _cdiv(xk_r, xk_i, d_r, d_i)
             w_r = tl.where(rows[:, None] == k, xk_r[None, :], upd_r)
             w_i = tl.where(rows[:, None] == k, xk_i[None, :], upd_i)
@@ -530,28 +526,17 @@ def linalg_ldl_solve_complex_kernel(
             )
             prod0_r = l0_r[:, None] * xk_r[None, :] - l0_i[:, None] * xk_i[None, :]
             prod0_i = l0_r[:, None] * xk_i[None, :] + l0_i[:, None] * xk_r[None, :]
-            prod1_r = (
-                l1_r[:, None] * xk1_r[None, :] - l1_i[:, None] * xk1_i[None, :]
-            )
-            prod1_i = (
-                l1_r[:, None] * xk1_i[None, :] + l1_i[:, None] * xk1_r[None, :]
-            )
+            prod1_r = l1_r[:, None] * xk1_r[None, :] - l1_i[:, None] * xk1_i[None, :]
+            prod1_i = l1_r[:, None] * xk1_i[None, :] + l1_i[:, None] * xk1_r[None, :]
             upd_r = w_r - prod0_r - prod1_r
             upd_i = w_i - prod0_i - prod1_i
             b_r = tl.load(ld_base + (k + 1) * ld_row_stride + k * ld_col_stride)
-            b_i = tl.load(
-                ld_base + (k + 1) * ld_row_stride + k * ld_col_stride + 1
-            )
+            b_i = tl.load(ld_base + (k + 1) * ld_row_stride + k * ld_col_stride + 1)
             a_r = tl.load(ld_base + k * ld_row_stride + k * ld_col_stride)
             a_i = tl.load(ld_base + k * ld_row_stride + k * ld_col_stride + 1)
-            c_r = tl.load(
-                ld_base + (k + 1) * ld_row_stride + (k + 1) * ld_col_stride
-            )
+            c_r = tl.load(ld_base + (k + 1) * ld_row_stride + (k + 1) * ld_col_stride)
             c_i = tl.load(
-                ld_base
-                + (k + 1) * ld_row_stride
-                + (k + 1) * ld_col_stride
-                + 1
+                ld_base + (k + 1) * ld_row_stride + (k + 1) * ld_col_stride + 1
             )
             if HERM:
                 akm1_r, akm1_i = _cdiv(a_r, a_i, b_r, -b_i)
@@ -1052,7 +1037,9 @@ def linalg_ldl_solve(LD, pivots, B, *, hermitian=False):
         X_work = torch.view_as_real(X)
         if n <= LDL_SOLVE_REG_MAX_N:
             block_n = max(triton.next_power_of_2(n), 2)
-            rhs_cap = LDL_SOLVE_CPLX_RHS_BLOCK if block_n >= 128 else LDL_SOLVE_RHS_BLOCK
+            rhs_cap = (
+                LDL_SOLVE_CPLX_RHS_BLOCK if block_n >= 128 else LDL_SOLVE_RHS_BLOCK
+            )
             block_rhs = max(min(triton.next_power_of_2(nrhs), rhs_cap), 1)
             grid = (batch, triton.cdiv(nrhs, block_rhs))
             linalg_ldl_solve_complex_kernel[grid](

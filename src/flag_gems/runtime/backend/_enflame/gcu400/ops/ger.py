@@ -104,8 +104,9 @@ def _ger_kernel(
 
 
 @triton.jit
-def _ger_scale_kernel(src_ptr, scalar_ptr, o_ptr, total, s_src, s_dst,
-                      BLOCK: tl.constexpr):
+def _ger_scale_kernel(
+    src_ptr, scalar_ptr, o_ptr, total, s_src, s_dst, BLOCK: tl.constexpr
+):
     """ger when one operand is a single element: out = other * scalar.
 
     Used for N == 1 (out[i, 0] = a[i] * b[0]) and for M == 1 (out[0, j] =

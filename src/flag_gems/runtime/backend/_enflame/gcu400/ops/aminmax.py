@@ -375,7 +375,8 @@ def aminmax_strided_kernel(
 
 def _flat_acc_dtype(dtype):
     """Accumulator dtype: fp16 uses native width (min/max lose no precision, lane throughput doubles); bf16's
-    ``tl.minimum`` is promoted to fp32 by the backend, so it takes the uint16 key kernel; fp32/integer stay native."""
+    ``tl.minimum`` is promoted to fp32 by the backend, so it takes the uint16 key kernel; fp32/integer stay native.
+    """
     if dtype is torch.float16:
         return tl.float16
     if dtype is torch.int64:

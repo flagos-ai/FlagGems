@@ -209,7 +209,9 @@ def _linalg_bmm_persistent_kernel(
         if EVEN:
             tl.store(c_block_ptr, accumulator.to(C.dtype.element_ty))
         else:
-            tl.store(c_block_ptr, accumulator.to(C.dtype.element_ty), boundary_check=(0, 1))
+            tl.store(
+                c_block_ptr, accumulator.to(C.dtype.element_ty), boundary_check=(0, 1)
+            )
 
 
 def _fit_stages(block_m, block_n, block_k, elem_bytes, num_stages):

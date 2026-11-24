@@ -75,7 +75,9 @@ def _clamp_tile(dim, tile, floor=64):
     return max(floor, min(tile, _pow2_ceil(dim)))
 
 
-def _fit_num_stages(block_m, block_n, block_k, elem_bytes, num_stages, limit=_DSM_LIMIT_BYTES):
+def _fit_num_stages(
+    block_m, block_n, block_k, elem_bytes, num_stages, limit=_DSM_LIMIT_BYTES
+):
     # Shrink the software pipeline until the staged tiles fit the DSM budget.
     while num_stages > 1:
         staged = (block_m * block_k + block_k * block_n) * elem_bytes * num_stages

@@ -60,6 +60,7 @@ _INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
 
 _FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
+
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
 def fix_flat_kernel(

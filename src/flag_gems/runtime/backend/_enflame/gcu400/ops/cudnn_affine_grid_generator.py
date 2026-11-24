@@ -388,7 +388,9 @@ def _vec_plan(hw2, numel, row_elems, itemsize):
         planes = 2
         per_program = 2 * hw2
 
-    block = min(VEC_BLOCK_MAX, max(VEC_BLOCK_MIN, per_program // VEC_CHUNKS_PER_PROGRAM))
+    block = min(
+        VEC_BLOCK_MAX, max(VEC_BLOCK_MIN, per_program // VEC_CHUNKS_PER_PROGRAM)
+    )
     block = min(block, per_program // planes, hw2)
     block = max(block, row_elems)
     # Both are powers of two, so "block is a multiple of a row" holds.
@@ -410,9 +412,15 @@ def _cudnn_affine_grid_generator_impl(theta, N, C, H, W, out=None):
         # ATen's out variant validates dtype/device and resizes shape
         # mismatches, so mirror that instead of writing past a small buffer.
         if out.device != theta.device:
-            raise RuntimeError(f"Expected out tensor to have device {theta.device}, " f"but got {out.device} instead")
+            raise RuntimeError(
+                f"Expected out tensor to have device {theta.device}, "
+                f"but got {out.device} instead"
+            )
         if out.dtype != theta.dtype:
-            raise RuntimeError(f"Expected out tensor to have dtype {theta.dtype}, " f"but got {out.dtype} instead")
+            raise RuntimeError(
+                f"Expected out tensor to have dtype {theta.dtype}, "
+                f"but got {out.dtype} instead"
+            )
         if tuple(out.shape) != out_shape:
             out.resize_(out_shape)
 

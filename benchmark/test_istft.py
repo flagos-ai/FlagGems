@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import flag_gems
 import pytest
 import torch
 
-import flag_gems
 from flag_gems import istft
 
 from . import base

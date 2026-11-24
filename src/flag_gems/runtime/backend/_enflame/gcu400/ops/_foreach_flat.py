@@ -700,9 +700,7 @@ def _empty_output_list(templates, dtype):
     shape = first.shape
     if shape and all(t.shape == shape for t in templates):
         try:
-            flat = torch.empty(
-                (num_tensors,) + shape, dtype=dtype, device=first.device
-            )
+            flat = torch.empty((num_tensors,) + shape, dtype=dtype, device=first.device)
             return list(flat.chunk(num_tensors))
         except Exception:
             pass

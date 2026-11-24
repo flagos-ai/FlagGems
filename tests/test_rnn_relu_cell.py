@@ -32,7 +32,6 @@ from .conftest import TO_CPU
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
-
 # (batch, input_size, hidden_size)
 SHAPES = (
     [(4, 16, 16), (1, 1, 1)]

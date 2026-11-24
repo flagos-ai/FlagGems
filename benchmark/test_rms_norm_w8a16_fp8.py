@@ -14,13 +14,11 @@
 
 import pytest
 import torch
-import yaml
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 
 from . import base
-from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 GROUP_SIZE = 128
 
@@ -47,41 +45,26 @@ def _gems_rms_norm_w8a16_fp8(x, shape, weight_fp8, weight_scale, weight_ref):
     )
 
 
-class RmsNormW8A16FP8Benchmark(ParallelBenchmarkMixin, base.Benchmark):
+class RmsNormW8A16FP8Benchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "M, N"
-    RECORD_PARALLEL_RESULTS = True
-    DEFAULT_SHAPES = [
-        (1, 4096),
-        (16, 4096),
-        (64, 4096),
-        (256, 4096),
-        (1024, 4096),
-        (1, 8192),
-        (64, 8192),
-        (256, 8192),
-        (1, 16384),
-        (64, 16384),
-        (1, 32768),
-        (64, 32768),
-        (4096, 4096),
-        (16, 33024),
-    ]
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = self.DEFAULT_SHAPES[:]
-        self.shape_desc = self.DEFAULT_SHAPE_DESC
-        if shape_file_path is None:
-            return
-        with open(shape_file_path) as shape_file:
-            config = yaml.safe_load(shape_file)
-        for key in (self.op_name, type(self).__name__):
-            if key in config:
-                self.shapes = [
-                    tuple(shape)
-                    for shape in config[key].get("shapes", self.DEFAULT_SHAPES)
-                ]
-                self.shape_desc = config[key].get("shape_desc", self.DEFAULT_SHAPE_DESC)
-                return
+        self.shapes = [
+            (1, 4096),
+            (16, 4096),
+            (64, 4096),
+            (256, 4096),
+            (1024, 4096),
+            (1, 8192),
+            (64, 8192),
+            (256, 8192),
+            (1, 16384),
+            (64, 16384),
+            (1, 32768),
+            (64, 32768),
+            (4096, 4096),
+            (16, 33024),
+        ]
 
     def get_input_iter(self, dtype):
         for shape in self.shapes:

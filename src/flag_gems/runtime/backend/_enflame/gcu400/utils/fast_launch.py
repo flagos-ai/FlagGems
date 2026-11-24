@@ -153,7 +153,9 @@ def launch(
     entry = cache.get(key)
     if entry is None:
         try:
-            entry = _build(kernel, grid, tensors, scalars, constexprs, num_warps, device)
+            entry = _build(
+                kernel, grid, tensors, scalars, constexprs, num_warps, device
+            )
         except Exception:  # any Triton API difference: keep the regular path
             entry = False
         if len(cache) >= _CACHE_MAX:

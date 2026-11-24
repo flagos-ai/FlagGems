@@ -337,7 +337,9 @@ def quantized_max_pool2d_channel_kernel(
     for plane in tl.static_range(0, BLOCK_N):
         n_idx = pid_n * BLOCK_N + plane
         n_mask = n_idx < in_n
-        input_base_ptr = input_ptr + n_idx * in_stride_n + c_offsets[None, :] * in_stride_c
+        input_base_ptr = (
+            input_ptr + n_idx * in_stride_n + c_offsets[None, :] * in_stride_c
+        )
         max_val_acc = tl.full((BLOCK_HW, BLOCK_C), min_val, dtype=dtype)
         for kh in tl.static_range(0, kernel_h):
             h_in = h_in_base + kh * dilation_h

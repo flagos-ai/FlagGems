@@ -78,7 +78,7 @@ def test_batch_norm_gather_stats_with_counts(shape, dtype, num_segments):
         (num_segments,), count_per_segment, dtype=torch.float32, device=flag_gems.device
     )
 
-    if IS_KUNLUNXIN:
+    if IS_KUNLUNXIN or IS_ENFLAME:
         ref_out = _combined_stats_with_counts(mean, invstd, counts, 1e-5)
         res_out = flag_gems.batch_norm_gather_stats_with_counts(
             input_t,

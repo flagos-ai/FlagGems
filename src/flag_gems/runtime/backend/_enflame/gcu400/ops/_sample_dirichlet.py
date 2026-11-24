@@ -79,7 +79,10 @@ def _cos_poly(phi):
 
 @triton.jit
 def sample_gamma_marsaglia_tsang(
-    alpha, key, MAX_ITER: tl.constexpr, COMPUTE_DTYPE: tl.constexpr,
+    alpha,
+    key,
+    MAX_ITER: tl.constexpr,
+    COMPUTE_DTYPE: tl.constexpr,
     USE_POLY_COS: tl.constexpr,
 ):
     """

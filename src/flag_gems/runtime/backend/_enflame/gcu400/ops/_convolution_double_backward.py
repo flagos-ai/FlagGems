@@ -84,9 +84,7 @@ def conv_double_backward_accumulate_kernel(
             element_offsets = plane_offset + plane_offsets
             accum = tl.load(part0_pointer + element_offsets, mask=mask, other=0.0)
             if HAS_PART1:
-                accum += tl.load(
-                    part1_pointer + element_offsets, mask=mask, other=0.0
-                )
+                accum += tl.load(part1_pointer + element_offsets, mask=mask, other=0.0)
             if HAS_BIAS:
                 accum += plane_bias
             tl.store(out_pointer + element_offsets, accum, mask=mask)
@@ -212,13 +210,13 @@ def conv_double_backward_weight_kernel(
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     output_c_valid = output_c_offset < out_c
 
-    out_grad_base = out_grad_pointer + (
-        pid_groups * out_c + output_c_offset
-    ) * output_c_stride
+    out_grad_base = (
+        out_grad_pointer + (pid_groups * out_c + output_c_offset) * output_c_stride
+    )
 
-    weight_pointer += (
-        (pid_groups * out_c + output_c_offset) * weight_n_stride
-    )[None, :] + (
+    weight_pointer += ((pid_groups * out_c + output_c_offset) * weight_n_stride)[
+        None, :
+    ] + (
         ci_point_value * weight_c_stride
         + weight_height_point_value * weight_height_stride
         + weight_width_point_value * weight_width_stride
@@ -226,14 +224,12 @@ def conv_double_backward_weight_kernel(
         :, None
     ]
 
-    input_base = input_pointer + (
-        pid_groups * input_c + ci_point_value
-    ) * input_c_stride
+    input_base = (
+        input_pointer + (pid_groups * input_c + ci_point_value) * input_c_stride
+    )
 
     # Per-filter-tap offset of the input window; constant over the reduction.
-    input_height_origin = (
-        weight_height_point_value * dilation_height - padding_height
-    )
+    input_height_origin = weight_height_point_value * dilation_height - padding_height
     input_width_origin = weight_width_point_value * dilation_width - padding_width
     area_valid = (
         (ci_point_value < input_c)
@@ -250,15 +246,12 @@ def conv_double_backward_weight_kernel(
             out_grad_batch = out_grad_base[None, :] + n * output_n_stride
             input_batch = input_base[:, None] + n * input_n_stride
             for h in range(0, out_height):
-                curr_input_height = (
-                    input_height_origin + h * stride_height
-                )[:, None]
+                curr_input_height = (input_height_origin + h * stride_height)[:, None]
                 for w_base in range(0, out_width, BLOCK_W):
                     curr_w = w_base + w_lane
                     w_valid = curr_w < out_width
                     curr_input_width = (
-                        input_width_origin[:, None]
-                        + (curr_w * stride_width)[None, :]
+                        input_width_origin[:, None] + (curr_w * stride_width)[None, :]
                     )
                     curr_input = tl.load(
                         input_batch
@@ -293,12 +286,9 @@ def conv_double_backward_weight_kernel(
                     curr_h = h_base + h_lane
                     h_valid = curr_h < out_height
                     curr_input_height = (
-                        input_height_origin[:, None]
-                        + (curr_h * stride_height)[None, :]
+                        input_height_origin[:, None] + (curr_h * stride_height)[None, :]
                     )
-                    curr_input_width = (input_width_origin + w * stride_width)[
-                        :, None
-                    ]
+                    curr_input_width = (input_width_origin + w * stride_width)[:, None]
                     curr_input = tl.load(
                         input_batch
                         + curr_input_height * input_height_stride
@@ -387,9 +377,7 @@ def _grad_weight_correlation(
     )
 
     block_ci_hk_wk, block_co = _pick_weight_tile(out_c)
-    reduce_along_width, block_w, block_h = _pick_reduction_axis(
-        out_width, out_height
-    )
+    reduce_along_width, block_w, block_h = _pick_reduction_axis(out_width, out_height)
 
     grid = (
         triton.cdiv(weight_c * weight_height * weight_width, block_ci_hk_wk),

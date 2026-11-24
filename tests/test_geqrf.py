@@ -50,6 +50,23 @@ GEQRF_SHAPES = [
 ]
 
 
+def _reference_geqrf(inp):
+    try:
+        return torch.ops.aten.geqrf(inp)
+    except RuntimeError as error:
+        if (
+            flag_gems.vendor_name != "mthreads"
+            or inp.device.type != "cpu"
+            or "requires compiling PyTorch with LAPACK" not in str(error)
+        ):
+            raise
+
+    import numpy as np
+
+    packed, tau = np.linalg.qr(inp.numpy(), mode="raw")
+    return torch.from_numpy(packed.swapaxes(-1, -2)), torch.from_numpy(tau)
+
+
 def _well_conditioned(shape, dtype, device):
     # A = randn + m * I (diagonal bump over the min(m, n) diagonal): well
     # conditioned for QR, mirrors the det/slogdet/solve_ex recipe.
@@ -87,23 +104,6 @@ def _reconstruction(a, tau, A):
 @pytest.mark.geqrf
 @pytest.mark.parametrize("shape", GEQRF_SHAPES)
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
-def _reference_geqrf(inp):
-    try:
-        return torch.ops.aten.geqrf(inp)
-    except RuntimeError as error:
-        if (
-            flag_gems.vendor_name != "mthreads"
-            or inp.device.type != "cpu"
-            or "requires compiling PyTorch with LAPACK" not in str(error)
-        ):
-            raise
-
-    import numpy as np
-
-    packed, tau = np.linalg.qr(inp.numpy(), mode="raw")
-    return torch.from_numpy(packed.swapaxes(-1, -2)), torch.from_numpy(tau)
-
-
 def test_geqrf(shape, dtype):
     A = _well_conditioned(shape, dtype, DEVICE)
     ref_A = utils.to_reference(A)

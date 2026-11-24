@@ -185,7 +185,8 @@ def embedding_sparse_backward(
                 )
                 # grid.x hard cap 65535: grow the per-program transfer automatically for large element counts.
                 block_elems = max(
-                    block_elems, triton.next_power_of_2(triton.cdiv(total, GRID_X_LIMIT))
+                    block_elems,
+                    triton.next_power_of_2(triton.cdiv(total, GRID_X_LIMIT)),
                 )
                 _masked_copy_flat_kernel[(triton.cdiv(total, block_elems),)](
                     go,

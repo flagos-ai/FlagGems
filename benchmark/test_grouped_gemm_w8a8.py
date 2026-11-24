@@ -24,10 +24,6 @@ deterministically, not captured model values. INT8 uses ContinuousGroupedGEMM.
 Prepared external INT8/FP8 diagnostic JSON files are also accepted; their
 classification must identify synthetic routing.
 
-Without --shape_file, use the existing core_shapes.yaml geometries with
-synthetic balanced expert routing and unit weights. These default cases are
-not captured model calls and do not establish invocation-weighted performance.
-
 Both routes receive A, As, B, Bs, preallocated BF16 C, m_indices and m_rows.
 The mctlass adapter builds segment offsets and identity weight indices on the
 GPU every invocation, selects the native block size, computes the native INT8
@@ -65,48 +61,16 @@ def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constex
 
 
 class GroupedGEMMW8A8Benchmark(base.Benchmark):
-    @staticmethod
-    def _default_dataset(shapes):
-        rows = []
-        for index, (m, n, k, g) in enumerate(shapes, 1):
-            lengths = [m // g + (expert < m % g) for expert in range(g)]
-            offsets, total = [], 0
-            for length in lengths:
-                total += length
-                offsets.append(total)
-            rows.append(
-                {
-                    "index": index,
-                    "source_index": index,
-                    "G": g,
-                    "M": m,
-                    "N": n,
-                    "K": k,
-                    "lengths": lengths,
-                    "offs": offsets,
-                    "stage": "gate_up" if n < k else "down",
-                    "source_shape": [m, n, k, g],
-                    "source_count": 1,
-                    "source_sources": ["benchmark/core_shapes.yaml"],
-                    "routing_seed": None,
-                    "scenario": "synthetic_core",
-                }
-            )
-        return {
-            "classification": "Synthetic balanced routing; unit weights, not model call counts",
-            "routing_origin": "synthetic_balanced",
-            "source_sha256": None,
-            "shapes": rows,
-        }
-
     def set_shapes(self, shape_file_path=None):
         path = Path(shape_file_path or base.Config.shape_file)
         default = Path(__file__).with_name("core_shapes.yaml")
         if path.resolve() == default.resolve():
-            super().set_shapes(str(path))
-            self.dataset = self._default_dataset(self.shapes)
-        else:
-            self.dataset = json.loads(path.read_text())
+            pytest.skip(
+                "External grouped_gemm_w8a8 dataset required: pass --shape_file "
+                "PATH to a prepared benchmark JSON. See this module docstring "
+                "for the real-shape source."
+            )
+        self.dataset = json.loads(path.read_text())
         self.shapes = self.dataset["shapes"]
         self.use_deepgemm = self.dataset.get("reference") == "deep_gemm"
         if self.use_deepgemm or self.dataset.get("input_dtype") == "int8":

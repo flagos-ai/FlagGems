@@ -613,7 +613,6 @@ def _factorize_via_sibling(input_contiguous, pivot, LU, pivots):
     return lu, piv
 
 
-
 def _linalg_lu_factor_ex_impl(input, *, pivot=True, LU=None, pivots=None, info=None):
     _linalg_lu_factor_check(input, pivot)
     input_contiguous = input.contiguous()

@@ -36,11 +36,11 @@ except ImportError:
     VLLM_AVAILABLE = False
 
 # Triton implementation under test
-from flag_gems.deprecated.flash_mla_with_kvcache import FlashMLASchedMeta
-from flag_gems.deprecated.flash_mla_with_kvcache import (
+from flag_gems.fused.flash_mla_with_kvcache import FlashMLASchedMeta
+from flag_gems.fused.flash_mla_with_kvcache import (
     flash_mla_with_kvcache as triton_flash_mla,
 )
-from flag_gems.deprecated.flash_mla_with_kvcache import (
+from flag_gems.fused.flash_mla_with_kvcache import (
     get_mla_metadata as triton_get_mla_metadata,
 )
 

@@ -338,7 +338,9 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
             return out
         except Exception:  # noqa: BLE001 - any Triton API drift falls back
             _FAST_LAUNCH_ENABLED = False
-            logger.debug("repeat_interleave_tensor: warm launch unavailable", exc_info=True)
+            logger.debug(
+                "repeat_interleave_tensor: warm launch unavailable", exc_info=True
+            )
     repeat_interleave_tensor_kernel[grid](
         repeats,
         cumsum,

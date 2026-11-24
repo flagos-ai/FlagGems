@@ -43,9 +43,9 @@ from flag_gems import (
     mhc_pre,
     sinkhorn_forward,
 )
-from flag_gems.deprecated.mhc.hc_split_sinkhorn import mhc_split_sinkhorn_torch_ref
-from flag_gems.deprecated.mhc.mhc_post import mhc_post_ref
-from flag_gems.deprecated.mhc.mhc_pre import mhc_pre_ref
+from flag_gems.fused.mhc.hc_split_sinkhorn import mhc_split_sinkhorn_torch_ref
+from flag_gems.fused.mhc.mhc_post import mhc_post_ref
+from flag_gems.fused.mhc.mhc_pre import mhc_pre_ref
 
 from . import conftest as cfg
 

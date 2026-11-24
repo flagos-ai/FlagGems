@@ -49,15 +49,8 @@ DTYPES = [
 ]
 FORWARD_MODES = [(0, False), (1, False), (2, False), (0, True)]
 
-# Optest selects the alias but reads outcomes and timings under _embedding_bag.
-_embedding_bag_result_mark = pytest.MarkDecorator(
-    pytest.Mark("_embedding_bag", (), {}, _ispytest=True), _ispytest=True
-)
-
 
 class EmbeddingBagBenchmark(base.Benchmark):
-    aggregate_results_by_dtype = True
-
     def __init__(
         self,
         *args,
@@ -133,12 +126,11 @@ class EmbeddingBagBenchmark(base.Benchmark):
 
 
 @pytest.mark.underscore_embedding_bag
-@_embedding_bag_result_mark
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("mode,weighted", FORWARD_MODES)
 def test_embedding_bag(dtype, mode, weighted):
     bench = EmbeddingBagBenchmark(
-        op_name="_embedding_bag",
+        op_name=f"embedding_bag_mode{mode}{'_weighted' if weighted else ''}",
         torch_op=torch.ops.aten._embedding_bag.default,
         gems_op=_embedding_bag,
         dtypes=[dtype],
@@ -153,7 +145,7 @@ def test_embedding_bag(dtype, mode, weighted):
 @pytest.mark.parametrize("mode,weighted", FORWARD_MODES)
 def test_embedding_bag_forward_only(dtype, mode, weighted):
     bench = EmbeddingBagBenchmark(
-        op_name="embedding_bag_forward_only",
+        op_name=f"embedding_bag_forward_only_mode{mode}{'_weighted' if weighted else ''}",
         torch_op=torch.ops.aten._embedding_bag_forward_only.default,
         gems_op=_embedding_bag_forward_only,
         forward_only=True,
@@ -169,7 +161,7 @@ def test_embedding_bag_forward_only(dtype, mode, weighted):
 @pytest.mark.parametrize("mode,weighted", FORWARD_MODES)
 def test_embedding_bag_default(dtype, mode, weighted):
     bench = EmbeddingBagBenchmark(
-        op_name="embedding_bag",
+        op_name=f"embedding_bag_default_mode{mode}{'_weighted' if weighted else ''}",
         torch_op=torch.ops.aten.embedding_bag.default,
         gems_op=flag_gems.embedding_bag,
         default_entry=True,

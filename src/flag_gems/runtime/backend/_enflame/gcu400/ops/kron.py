@@ -858,9 +858,11 @@ def kron(A, B):
             num_rows = M
             num_programs = min(
                 num_rows,
-                _KRON_ROW_SMALL_GRID
-                if num_rows <= _KRON_ROW_LARGE_ROWS
-                else _KRON_ROW_LARGE_GRID,
+                (
+                    _KRON_ROW_SMALL_GRID
+                    if num_rows <= _KRON_ROW_LARGE_ROWS
+                    else _KRON_ROW_LARGE_GRID
+                ),
             )
             kron_row_kernel[(num_programs,)](
                 A_view,

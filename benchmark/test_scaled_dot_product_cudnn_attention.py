@@ -85,7 +85,8 @@ def gems_cudnn_attention(
 )
 @pytest.mark.scaled_dot_product_cudnn_attention
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" and not (flag_gems.vendor_name == "enflame"),
+    flag_gems.device != "cuda"
+    and not (flag_gems.vendor_name == "enflame"),
     reason="_scaled_dot_product_cudnn_attention is a CUDA-only operator (cuDNN)",
 )
 @pytest.mark.parametrize("is_causal", [True, False])

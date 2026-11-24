@@ -32,6 +32,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _reference_input(tensor):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.cpu()
+    return utils.to_reference(tensor)
+
 gems_device = flag_gems.device
 
 # The native thnn_conv2d routes float32 through an im2col + GEMM path whose
@@ -141,12 +147,6 @@ def _reference(inp, weight, kernel, bias, stride, padding):
 @pytest.mark.thnn_conv2d
 @pytest.mark.parametrize("shape,out_channels", _CONV_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
-def _reference_input(tensor):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.cpu()
-    return utils.to_reference(tensor)
-
-
 def test_thnn_conv2d(shape, out_channels, dtype):
     inp, weight, bias = _conv_operands(shape, out_channels, dtype, 3)
 

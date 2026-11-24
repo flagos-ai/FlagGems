@@ -387,7 +387,9 @@ def _cudnn_affine_grid_generator_backward_impl(grad, N, C, H, W, out=None):
         split_block = SPLIT_BLOCK_2B if grad.element_size() <= 2 else SPLIT_BLOCK
         num_chunks = triton.cdiv(num_samples, split_block)
         chunk_block = triton.next_power_of_2(num_chunks)
-        partial = torch.empty((N, num_chunks, NUM_OUTPUTS), dtype=torch.float32, device=grad.device)
+        partial = torch.empty(
+            (N, num_chunks, NUM_OUTPUTS), dtype=torch.float32, device=grad.device
+        )
         # The chunk axis must stay on grid.x: GCU caps grid.y at 255, which is
         # exactly what breaks the shared implementation for large planes.
         batch_on_y = N <= MAX_GRID_Y

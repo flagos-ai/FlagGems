@@ -20,10 +20,9 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
-
+from . import conftest as cfg
 
 _COMPLEX32_UNSUPPORTED_VENDORS = {"tsingmicro"}
 

@@ -50,17 +50,8 @@ def _fp8_available():
     return major * 10 + minor >= 89
 
 
-def _cuda_fp8_available():
-    if flag_gems.device != "cuda" or not torch.cuda.is_available():
-        return False
-    if not hasattr(torch, "float8_e4m3fn"):
-        return False
-    major, minor = torch.cuda.get_device_capability()
-    return major * 10 + minor >= 89
-
-
 def _native_benchmark_available():
-    return _cuda_fp8_available() and hasattr(torch, "_scaled_grouped_mm_v2")
+    return _fp8_available() and hasattr(torch, "_scaled_grouped_mm_v2")
 
 
 class ScaledGroupedMMV2Benchmark(base.Benchmark):

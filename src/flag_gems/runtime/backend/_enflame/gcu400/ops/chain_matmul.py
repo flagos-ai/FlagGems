@@ -279,12 +279,8 @@ def _chain_gemm_kernel(
             b = tl.load(b_ptrs, rn[None, :] < N, other=0.0)
         else:
             mask_k = (k_start + rk) < K
-            a = tl.load(
-                a_ptrs, (rm[:, None] < M) & mask_k[None, :], other=0.0
-            )
-            b = tl.load(
-                b_ptrs, mask_k[:, None] & (rn[None, :] < N), other=0.0
-            )
+            a = tl.load(a_ptrs, (rm[:, None] < M) & mask_k[None, :], other=0.0)
+            b = tl.load(b_ptrs, mask_k[:, None] & (rn[None, :] < N), other=0.0)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         a_ptrs += BLOCK_K * stride_ak
         b_ptrs += BLOCK_K * stride_bk
@@ -370,7 +366,12 @@ def _build_node_launcher(left, right, out, key, tail, grid3, num_warps, num_stag
     """
     try:
         compiled = _chain_gemm_kernel.warmup(
-            left, right, out, *tail, grid=grid3, num_warps=num_warps,
+            left,
+            right,
+            out,
+            *tail,
+            grid=grid3,
+            num_warps=num_warps,
             num_stages=num_stages,
         )
         runner = compiled[grid3]
@@ -546,9 +547,7 @@ def _forward(mats, out=None):
         key = (shape, a.dtype)
         slot = slots.get(key, 0)
         slots[key] = slot + 1
-        t[i, j] = _gemm(
-            a, b, out=_chain_scratch(shape, a.dtype, a.device, slot)
-        )
+        t[i, j] = _gemm(a, b, out=_chain_scratch(shape, a.dtype, a.device, slot))
     return t[0, len(mats) - 1]
 
 

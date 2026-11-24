@@ -102,15 +102,17 @@ def _widen(t, view_bytes):
 
 
 def _launch_copy(src, dst, n_elements):
-    view_bytes, tile_bytes, num_warps = _pick_launch(
-        n_elements, src.element_size()
-    )
+    view_bytes, tile_bytes, num_warps = _pick_launch(n_elements, src.element_size())
     src_view, dst_view = src, dst
     if view_bytes > src.element_size():
         wide_src, wide_dst = _widen(src, view_bytes), _widen(dst, view_bytes)
         aligned = wide_src is not None and wide_dst is not None
         # Both lanes must stay 8-byte aligned for the widened view to be legal.
-        if aligned and src.data_ptr() % view_bytes == 0 and dst.data_ptr() % view_bytes == 0:
+        if (
+            aligned
+            and src.data_ptr() % view_bytes == 0
+            and dst.data_ptr() % view_bytes == 0
+        ):
             src_view, dst_view = wide_src, wide_dst
         else:
             tile_bytes, num_warps = MEDIUM_TILE_BYTES, 2

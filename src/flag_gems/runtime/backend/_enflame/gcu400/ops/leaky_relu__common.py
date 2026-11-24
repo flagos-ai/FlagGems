@@ -61,9 +61,7 @@ def _leaky_relu_backward_kernel(
                 slope = tl.full([1], negative_slope, grad_output.dtype)
                 grad_input = tl.where(x > 0, grad_output, grad_output * slope)
             else:
-                grad_input = tl.where(
-                    x > 0, grad_output, grad_output * negative_slope
-                )
+                grad_input = tl.where(x > 0, grad_output, grad_output * negative_slope)
             tl.store(grad_input_ptr + off, grad_input)
         else:
             mask = off < n_elements
@@ -73,9 +71,7 @@ def _leaky_relu_backward_kernel(
                 slope = tl.full([1], negative_slope, grad_output.dtype)
                 grad_input = tl.where(x > 0, grad_output, grad_output * slope)
             else:
-                grad_input = tl.where(
-                    x > 0, grad_output, grad_output * negative_slope
-                )
+                grad_input = tl.where(x > 0, grad_output, grad_output * negative_slope)
             tl.store(grad_input_ptr + off, grad_input, mask=mask)
 
 
@@ -149,8 +145,7 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
                     negative_slope,
                     BLOCK_SIZE=block_size,
                     EVEN=even,
-                    NATIVE_SLOPE=self.dtype
-                    in (torch.float16, torch.bfloat16),
+                    NATIVE_SLOPE=self.dtype in (torch.float16, torch.bfloat16),
                     num_warps=num_warps,
                 )
             return grad_input

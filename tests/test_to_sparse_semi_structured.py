@@ -23,7 +23,7 @@ from .conftest import QUICK_MODE
 
 # The GCU native kernel's float32 (1:2) metadata nibble order differs from the
 # CUTLASS 2:4 layout this implementation reproduces, so only the float32
-# metadata comparison is unavailable.  The skip therefore stays case-level
+# metadata comparison is unavailable. The skip therefore stays case-level
 # (float32 parametrizations only) instead of covering the whole module.
 _FP32_META_UNAVAILABLE = pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",

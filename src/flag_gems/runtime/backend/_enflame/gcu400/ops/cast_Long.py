@@ -218,7 +218,9 @@ def cast_Long(self, non_blocking=False):
 
     # ``empty_like`` preserves the layout, so a dense footprint (contiguous or a
     # dense permutation such as ``x.t()``) can be swept in memory order.
-    if self.is_contiguous() or _covers_dense_span(list(self.shape), list(self.stride())):
+    if self.is_contiguous() or _covers_dense_span(
+        list(self.shape), list(self.stride())
+    ):
         block = _flat_block(numel)
         grid = (triton.cdiv(numel, block),)
         _cast_long_flat_kernel[grid](

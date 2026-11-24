@@ -19,7 +19,7 @@ import torch
 
 import flag_gems
 
-moe = importlib.import_module("flag_gems.deprecated.fused_moe")
+moe = importlib.import_module("flag_gems.fused.fused_moe")
 pytestmark = pytest.mark.fused_experts_impl
 
 
