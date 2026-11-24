@@ -60,8 +60,6 @@ _HYGON_BLAS_META_FIELDS = {
         "BLOCK_K": "BLOCK_K",
         "GROUP_M": "GROUP_M",
     },
-    "router_gemm_hygon_vector": {"BN": "BN", "BK": "BK"},
-    "router_gemm_hygon_shared_vector": {"BM": "BM", "BN": "BN", "BK": "BK"},
     "router_gemm_hygon_split": {"BM": "BM", "BN": "BN", "BK": "BK", "SK": "SK"},
     "router_gemm_hygon_aligned_split": {
         "BM": "BM",
@@ -72,7 +70,6 @@ _HYGON_BLAS_META_FIELDS = {
         "matrix_instr_nonkdim": "MATRIX_INSTR_NONKDIM",
         "kpack": "KPACK",
     },
-    "router_gemm_hygon_narrow_vector": {"BM": "BM", "BN": "BN", "BK": "BK"},
     "router_gemm_hygon_narrow_matrix": {"BM": "BM", "BN": "BN", "BK": "BK"},
 }
 

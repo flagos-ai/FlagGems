@@ -16,7 +16,8 @@
 # The registered strategies keep exact tuning keys.
 
 router_gemm_hygon_matrix:
-  - param_map:
+  - include_default_configs: true
+    param_map:
       META: {BLOCK_M: block_m, BLOCK_N: block_n, BLOCK_K: block_k, GROUP_M: group_m}
       num_warps: warps
       num_stages: stages
@@ -47,46 +48,9 @@ router_gemm_hygon_matrix:
     warps: [8]
     stages: [1, 2]
 
-router_gemm_hygon_vector:
-  - param_map:
-      META: {BN: bn, BK: bk}
-      num_warps: warps
-      num_stages: stages
-    bn: [1, 2, 4]
-    bk: [512, 1024, 2048]
-    warps: [2, 4]
-    stages: [2]
-  - param_map:
-      META: {BN: bn, BK: bk}
-      num_warps: warps
-      num_stages: stages
-    bn: [8]
-    bk: [512]
-    warps: [4]
-    stages: [2]
-
-router_gemm_hygon_shared_vector:
-  - param_map:
-      META: {BM: bm, BN: bn, BK: bk}
-      num_warps: warps
-      num_stages: stages
-    bm: [1, 2]
-    bn: [4]
-    bk: [512, 1024, 2048]
-    warps: [4]
-    stages: [2]
-  - param_map:
-      META: {BM: bm, BN: bn, BK: bk}
-      num_warps: warps
-      num_stages: stages
-    bm: [2]
-    bn: [8]
-    bk: [512]
-    warps: [4]
-    stages: [2]
-
 router_gemm_hygon_split:
-  - param_map:
+  - include_default_configs: true
+    param_map:
       META: {BM: bm, BN: bn, BK: bk, SK: sk}
       num_warps: warps
       num_stages: stages
@@ -118,7 +82,8 @@ router_gemm_hygon_split:
     stages: [2]
 
 router_gemm_hygon_aligned_split:
-  - param_map:
+  - include_default_configs: true
+    param_map:
       META: {BM: bm, BN: bn, BK: bk, SK: sk, GROUP_M: group_m, matrix_instr_nonkdim: matrix_instr_nonkdim, kpack: kpack}
       num_warps: warps
       num_stages: stages
@@ -184,19 +149,9 @@ router_gemm_hygon_aligned_split:
     warps: [4]
     stages: [2]
 
-router_gemm_hygon_narrow_vector:
-  - param_map:
-      META: {BM: bm, BN: bn, BK: bk}
-      num_warps: warps
-      num_stages: stages
-    bm: [1, 2]
-    bn: [1, 2]
-    bk: [256, 512, 1024]
-    warps: [2, 4]
-    stages: [2]
-
 router_gemm_hygon_narrow_matrix:
-  - param_map:
+  - include_default_configs: true
+    param_map:
       META: {BM: bm, BN: bn, BK: bk}
       num_warps: warps
       num_stages: stages
