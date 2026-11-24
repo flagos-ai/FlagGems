@@ -2244,7 +2244,7 @@ _FULL_CONFIG = (
     ("slice_backward", slice_backward),
     ("slice_copy.Tensor", slice_copy),
     ("slice_copy.Tensor_out", slice_copy_out),
-    ("slice_scatter", slice_scatter),
+    ("slice_scatter", slice_scatter, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("slogdet", slogdet),
     ("slow_conv_dilated2d", slow_conv_dilated2d),
     ("slow_conv_dilated2d.out", slow_conv_dilated2d_out),
