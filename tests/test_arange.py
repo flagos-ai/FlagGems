@@ -36,3 +36,17 @@ def test_arange(end, dtype):
     ref_out = torch.arange(end, dtype=dtype, device="cpu")
 
     utils.gems_assert_equal(res_out.cpu(), ref_out)
+
+
+@pytest.mark.arange
+@pytest.mark.parametrize("dtype", [torch.int64, torch.float32])
+def test_arange_large_grid_stride(dtype):
+    # Exceeds the 65535 * 128 single-wave grid limit so grid-stride indexing is exercised.
+    end = 65535 * 128 + 1029
+    res_out = flag_gems.arange(end, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.arange(end, dtype=dtype, device="cpu")
+
+    assert res_out.shape == ref_out.shape
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out[-4096:].cpu(), ref_out[-4096:])
+    utils.gems_assert_equal(res_out.cpu(), ref_out)

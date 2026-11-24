@@ -119,3 +119,37 @@ def test_arange_start_float_args_follow_default_dtype():
         )
     else:
         utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.arange_start
+@pytest.mark.arange_start_step
+@pytest.mark.parametrize(
+    "start,end,step",
+    [
+        (5, 5, 1),
+        (5.0, 5.0, -0.5),
+    ],
+)
+def test_arange_start_empty_range(start, end, step):
+    target_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    ref_out = torch.arange(start, end, step, device=target_device)
+    res_out = flag_gems.arange_start(start, end, step, device=flag_gems.device)
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.shape == ref_out.shape == (0,)
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.arange_start
+@pytest.mark.arange_start_step
+@pytest.mark.parametrize(
+    "start,end,step",
+    [
+        (5, 1, 1),
+        (1.0, 5.0, -0.5),
+        (0, 5, 0),
+        (0.0, 5.0, 0.0),
+    ],
+)
+def test_arange_start_invalid_bounds_or_step(start, end, step):
+    with pytest.raises(RuntimeError):
+        flag_gems.arange_start(start, end, step, device=flag_gems.device)
