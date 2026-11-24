@@ -357,7 +357,7 @@ class _AscendTensorinvOutReference:
         )
         return us / 1000
 
-    def _measure_input(self, input, case_id=None):
+    def _measure_input(self, input, case_id=None, dtype=None):
         needs_native = (
             "latency_base" in self.to_bench_metrics and not base.Config.skip_native
         )
@@ -378,7 +378,7 @@ class _AscendTensorinvOutReference:
                 "FLAGGEMS_TENSORINV_OUT_H800_BASELINE"
             ):
                 raise ValueError("Missing native H800 tensorinv output reference")
-            metric = super()._measure_input(input, case_id)
+            metric = super()._measure_input(input, case_id=case_id, dtype=dtype)
             if self._tensorinv_imported_reference is None:
                 return metric
             if metric.latency is not None and (
