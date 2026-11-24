@@ -1544,7 +1544,7 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
-from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.sort import sort, sort_backward, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_broadcast_to_copy import sparse_broadcast_to_copy
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
@@ -3341,6 +3341,7 @@ __all__ = [
     "softshrink_backward",
     "softshrink_out",
     "sort",
+    "sort_backward",
     "sort_stable",
     "sparse_broadcast_to",
     "sparse_broadcast_to_copy",
