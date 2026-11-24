@@ -37,9 +37,7 @@ QUANT_PARAMS = [
 ]
 
 
-def _reference_backward(
-    grad, inp, scale, zero_point, quant_min, quant_max, grad_factor
-):
+def _reference_backward(grad, inp, scale, zero_point, quant_min, quant_max, grad_factor):
     if flag_gems.vendor_name == "mthreads" and inp.dtype == torch.bfloat16:
         # MUSA's PyTorch reference rejects BF16 inputs. Promote the already
         # rounded BF16 values to the operation's float32 gradient precision.
