@@ -34,6 +34,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -218,3 +219,33 @@ def frobenius_norm(x, dim, keepdim=False):
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
+
+
+# ---------------------------------------------------------------------------
+# ATen registration for the device key.
+#
+# torch_gcu exposes no `aten::frobenius_norm.dim` kernel: the op is
+# CompositeImplicitAutograd in ATen, so the decomposition runs through the CPU
+# fallback. The accuracy harness calls `torch.ops.aten.*` without
+# `enable()`/`use_gems()`, which means the fused kernel below was never reached
+# and the compared candidate was the CPU fp32 reduction: its sequential
+# accumulation drifts ~5e-3 (relative) from the fp64 reference once the
+# reduction spans millions of elements.
+#
+# Register explicitly on the device key so an explicit kernel outranks the
+# backend fallback (same approach as `atanh.py` / `resize_as_sparse_.py`). The
+# duplicate registration later attempted by `enable()`/`use_gems()` is reported
+# as a warning by the registrar and keeps this same implementation.
+#
+# Guarded by the detected vendor: this module only exists in the enflame
+# backend tree, and the guard keeps the ATen override from being installed in a
+# process that is running a different vendor backend.
+# ---------------------------------------------------------------------------
+if runtime.device.vendor_name == "enflame":
+    _FROBENIUS_NORM_ATEN_LIB = torch.library.Library("aten", "IMPL")
+    _FROBENIUS_NORM_ATEN_LIB.impl(
+        "frobenius_norm.dim",
+        frobenius_norm,
+        "PrivateUse1",
+        allow_override=True,
+    )

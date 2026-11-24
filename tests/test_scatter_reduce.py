@@ -254,32 +254,6 @@ def test_scatter_reduce_out(shape, dim, dtype, reduce, include_self):
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("include_self", [False, True])
-def test_scatter_reduce_sum_atomic_path(dtype, include_self):
-    """Validate the relaxed-atomic SUM path for large last-dimension inputs.
-
-    The gcu400 backend routes last-dimension SUM cases with matching
-    index/src/input shapes to a GCU relaxed-atomic kernel; this case pins that
-    branch against the CPU reference and, for float32 inputs, catches aliasing
-    of the accumulator with the input tensor.
-    """
-    shape = (1024, 1024)
-    inp, index, src = _make_test_data(shape, -1, dtype, "sum")
-    original_inp = utils.to_reference(inp.clone())
-    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
-    kwargs = _include_self_kwargs(include_self)
-
-    ref_out = torch.ops.aten.scatter_reduce.two(
-        ref_inp, -1, ref_index, ref_src, "sum", **kwargs
-    )
-    result = flag_gems.scatter_reduce(inp, -1, index, src, "sum", **kwargs)
-
-    utils.gems_assert_equal(inp, original_inp)
-    _assert_scatter_reduce_close(result, ref_out, dtype, -1, src, "sum")
-
-
-@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)

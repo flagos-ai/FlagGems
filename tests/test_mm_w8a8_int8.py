@@ -411,7 +411,7 @@ def reference(a, b, sa, sb, bias=None, dtype=torch.float32):
     return value.to(dtype)
 
 
-_PREQUANTIZED = ("hygon", "metax", "ascend")
+_PREQUANTIZED = ("hygon", "metax", "ascend", "enflame")
 
 
 @pytest.mark.skipif(

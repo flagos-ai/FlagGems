@@ -286,7 +286,10 @@ def test_row_stack_out_dtype_cast():
         # a genuinely float64 out tensor cannot be created there.
         pytest.skip("float64 is not supported by this device")
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
-    ref_inp = [utils.to_reference(e) for e in inp]
+    ref_inp = [
+        e.cpu() if flag_gems.vendor_name == "iluvatar" else utils.to_reference(e)
+        for e in inp
+    ]
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
     torch.row_stack(ref_inp, out=ref_out)
 

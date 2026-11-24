@@ -136,10 +136,10 @@ def _native(inp, weight, kernel, bias, stride, padding):
 
 def _reference(inp, weight, kernel, bias, stride, padding):
     return _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         kernel,
-        utils.to_reference(bias),
+        _reference_input(bias),
         stride,
         padding,
     )

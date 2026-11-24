@@ -19,33 +19,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# On Enflame GCU the accuracy reference of this operator cannot be evaluated at
-# all, so the WHOLE file is skipped for that vendor (see ENFLAME_SKIP_REASON for
-# the mechanism and for the two ways to unblock it). Nothing in the reference or
-# in the operator is changed here: only the enflame collection is skipped, and
-# benchmark/test_per_token_group_quant_fp8.py still times the FlagGems kernel.
-ENFLAME_SKIP_REASON = (
-    "ENFLAME-SKIP-ALL(accuracy): the reference of this NoCPU-labelled operator "
-    "cannot run on the GCU backend, so every case in this file is skipped. "
-    "(1) Because the operator is labelled NoCPU in conf/operators.yaml, "
-    "tools/run_tests.py never appends '--ref cpu', so the reference below "
-    "(native_per_token_group_quant_fp8) always executes on the device. "
-    "(2) Its first statement, x_.abs().max(dim=-1, keepdim=True), lowers to "
-    "topsatenMax with an int64 index output; bf16 is not an accepted input "
-    "dtype there ('int64 idx requires gcu400+ with int64/fp32/int32 data "
-    "type'), and the topsaten error surface is an uncaught C++ abort rather "
-    "than a Python exception, so the whole pytest process dies instead of "
-    "failing a single case (reproduced on GCU400 with "
-    "TORCH_GCU_ENABLE_INT64_AND_UINT64=1). (3) FP8_QUANT_SHAPES['DTYPES'] is "
-    "[bfloat16], so no other dtype can route around it. Moving the reference "
-    "to the CPU or rewriting it would both be forbidden ways of bypassing the "
-    "reference, hence this skip. Unblock by either supporting bf16 input with "
-    "an int64 index output in topsatenMax, or letting the harness pass "
-    "'--ref cpu' for NoCPU operators whose reference is plain PyTorch."
-)
 
 pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason=ENFLAME_SKIP_REASON
+    flag_gems.vendor_name == "enflame", reason="aten error"
 )
 
 

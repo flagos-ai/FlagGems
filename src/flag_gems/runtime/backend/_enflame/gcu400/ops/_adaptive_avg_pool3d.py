@@ -42,6 +42,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -756,3 +757,76 @@ def _adaptive_avg_pool3d_out(input: torch.Tensor, output_size, out: torch.Tensor
     _launch_adaptive_avg_pool3d_kernel(x5d, out5d)
 
     return out
+
+
+class _AdaptiveAvgPool3dBackwardFn(torch.autograd.Function):
+    """Autograd bridge for `aten::adaptive_avg_pool3d` on the device key.
+
+    The plain ATen op is CompositeImplicitAutograd, so overriding its device key
+    replaces the whole differentiable path: without this wrapper the gradient
+    would stop at the overridden forward. The forward runs the fused kernel and
+    the backward routes to `_adaptive_avg_pool3d_backward`.
+    """
+
+    @staticmethod
+    def forward(ctx, x, output_size):
+        ctx.save_for_backward(x)
+        return _adaptive_avg_pool3d(x, output_size)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        from .adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
+
+        grad_input = _adaptive_avg_pool3d_backward(grad_output.contiguous(), x)
+        return grad_input, None
+
+
+def _adaptive_avg_pool3d_autograd(x, output_size):
+    return _AdaptiveAvgPool3dBackwardFn.apply(x, output_size)
+
+
+# ---------------------------------------------------------------------------
+# ATen registration for the device key.
+#
+# torch_gcu provides no GCU kernel for the public `aten::adaptive_avg_pool3d`
+# overload: it is CompositeImplicitAutograd in ATen, so the decomposition runs
+# on the CPU fallback and accumulates in the input dtype. For 16-bit inputs
+# that costs ~2x the tolerance of the harness, which compares against the fp32
+# CPU reference. The accuracy harness calls `torch.ops.aten.*` without
+# `enable()`/`use_gems()`, so the fused kernel was never reached.
+#
+# Register explicitly on the device key at import (same approach as
+# `atanh.py`): the autograd key carries the wrapper above so gradients keep
+# flowing, the plain key serves the inference path. The duplicate registration
+# later attempted by `enable()`/`use_gems()` is reported as a warning by the
+# registrar and keeps these same implementations.
+#
+# Guarded by the detected vendor: this module only exists in the enflame
+# backend tree, and the guard keeps the ATen override from being installed in a
+# process that is running a different vendor backend.
+# ---------------------------------------------------------------------------
+if runtime.device.vendor_name == "enflame":
+    _ADAPTIVE_AVG_POOL3D_ATEN_LIB = torch.library.Library("aten", "IMPL")
+    _ADAPTIVE_AVG_POOL3D_ATEN_LIB.impl(
+        "adaptive_avg_pool3d",
+        _adaptive_avg_pool3d_autograd,
+        "AutogradPrivateUse1",
+        allow_override=True,
+    )
+    _ADAPTIVE_AVG_POOL3D_ATEN_LIB.impl(
+        "adaptive_avg_pool3d",
+        _adaptive_avg_pool3d,
+        "PrivateUse1",
+        allow_override=True,
+    )
+    # The `.out` overload decomposes through the default overload, which would
+    # add an extra fp16/fp32 rounding round-trip on top of the fused kernel
+    # result. Register it too so both entry points return the kernel result
+    # unchanged.
+    _ADAPTIVE_AVG_POOL3D_ATEN_LIB.impl(
+        "adaptive_avg_pool3d.out",
+        _adaptive_avg_pool3d_out,
+        "PrivateUse1",
+        allow_override=True,
+    )
