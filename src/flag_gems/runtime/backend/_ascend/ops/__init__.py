@@ -135,13 +135,21 @@ from .foreach_add_scalar_list_ import foreach_add_scalar_list_
 from .foreach_addcdiv_scalar import foreach_addcdiv_scalar, foreach_addcdiv_scalar_list
 from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
 from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
+from .foreach_addcmul_scalar import (
+    foreach_addcmul_scalar,
+    foreach_addcmul_scalar_list,
+    foreach_addcmul_scalar_list_,
+)
 from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
 from .foreach_atan_ import foreach_atan_
 from .foreach_ceil import foreach_ceil
+from .foreach_clamp_max_scalar_list_ import foreach_clamp_max_scalar_list_
 from .foreach_copy import foreach_copy
 from .foreach_copy_ import foreach_copy_
 from .foreach_cos_ import foreach_cos_
+from .foreach_cosh import foreach_cosh
 from .foreach_cosh_ import foreach_cosh_
+from .foreach_div_list import foreach_div_list
 from .foreach_div_scalar import foreach_div_scalar
 from .foreach_div_scalar_ import foreach_div_scalar_
 from .foreach_div_scalar_list import foreach_div_scalar_list
@@ -150,6 +158,7 @@ from .foreach_div_tensor_ import foreach_div_tensor_
 from .foreach_erf_ import foreach_erf_
 from .foreach_exp_ import foreach_exp_
 from .foreach_expm1_ import foreach_expm1_
+from .foreach_floor_ import foreach_floor_
 from .foreach_log1p_ import foreach_log1p_
 from .foreach_log2_ import foreach_log2_
 from .foreach_log10_ import foreach_log10_
@@ -159,6 +168,7 @@ from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
 from .foreach_mul_tensor import foreach_mul_tensor
 from .foreach_mul_tensor_ import foreach_mul_tensor_
 from .foreach_neg_ import foreach_neg_
+from .foreach_pow_list import foreach_pow_list
 from .foreach_pow_list_ import foreach_pow_list_
 from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
@@ -526,13 +536,19 @@ __all__ = [
     "foreach_addcdiv_scalar_",
     "foreach_addcdiv_scalar_list",
     "foreach_addcdiv_scalar_list_",
+    "foreach_addcmul_scalar",
     "foreach_addcmul_scalar_",
+    "foreach_addcmul_scalar_list",
+    "foreach_addcmul_scalar_list_",
     "foreach_atan_",
     "foreach_ceil",
+    "foreach_clamp_max_scalar_list_",
     "foreach_copy",
     "foreach_copy_",
     "foreach_cos_",
+    "foreach_cosh",
     "foreach_cosh_",
+    "foreach_div_list",
     "foreach_div_scalar",
     "foreach_div_scalar_",
     "foreach_div_scalar_list",
@@ -541,6 +557,7 @@ __all__ = [
     "foreach_erf_",
     "foreach_exp_",
     "foreach_expm1_",
+    "foreach_floor_",
     "foreach_log10_",
     "foreach_log1p_",
     "foreach_log2_",
@@ -550,6 +567,7 @@ __all__ = [
     "foreach_mul_tensor",
     "foreach_mul_tensor_",
     "foreach_neg_",
+    "foreach_pow_list",
     "foreach_pow_list_",
     "foreach_pow_scalar_",
     "foreach_pow_scalar_list_",
