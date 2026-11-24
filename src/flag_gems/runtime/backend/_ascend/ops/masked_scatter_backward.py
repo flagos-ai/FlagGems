@@ -19,6 +19,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+import triton.runtime.driver as driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -94,9 +95,6 @@ _MAX_SCAN_HS = 4096  # Hillis-Steele fp32 scan bound: prefix sums exact below 2*
 # but hivm.hir.vsort rejects them at verification.  "search" is the
 # binary-lifting path, kept for A/B measurement.
 _EXPAND_MODE = "sort"
-
-# Two waves of vector cores on Ascend 910B4, reusing each program for strided tiles.
-_PERSISTENT_GRID = 80  # Must fit the 128-lane group-total reduction.
 
 
 @triton.jit
@@ -189,6 +187,7 @@ def _expand_persistent_kernel(
     WIDE_ELEM: tl.constexpr,
     DO_TAIL: tl.constexpr,
     RAW_COUNTS: tl.constexpr,
+    GROUP_BLOCK: tl.constexpr,
 ):
     """Process multiple tiles per program, amortizing launch and prefix work.
 
@@ -201,7 +200,7 @@ def _expand_persistent_kernel(
         start = ext.program_id(axis=0) * tiles_per_program
         stop = tl.minimum(start + tiles_per_program, n_blocks)
         step = 1
-        group = tl.arange(0, 128)
+        group = tl.arange(0, GROUP_BLOCK)
         values = tl.load(
             offsets_ptr + n_blocks + 1 + group,
             mask=group < tl.num_programs(axis=0),
@@ -686,18 +685,24 @@ def masked_scatter_backward(grad_output, mask, sizes):
         # Keep the small fused path; larger grids amortize the prefix reduction
         # by processing consecutive tiles in each persistent program.
         counted = merge_tail and not self_count and n_blocks > 128
+        if persistent or counted or (use_sort and not merge_tail):
+            props = driver.active.utils.get_device_properties(
+                torch_device_fn.current_device()
+            )
+            num_vector_cores = props["num_vectorcore"]
+            persistent_grid = min(n_blocks, num_vector_cores)
         if self_count:
             # No counts buffer exists; offsets_ptr is unused by the kernel.
             offsets = out
         elif use_sort:
             # All counts, the sentinel, and any group totals are written.
             counts = torch.empty(
-                n_blocks + 1 + (_PERSISTENT_GRID if counted else 0),
+                n_blocks + 1 + (persistent_grid if counted else 0),
                 dtype=torch.int32,
                 device=device,
             )
             if persistent or counted:
-                _count_persistent_kernel[(min(n_blocks, _PERSISTENT_GRID),)](
+                _count_persistent_kernel[(persistent_grid,)](
                     mask_flat,
                     counts,
                     N,
@@ -740,7 +745,7 @@ def masked_scatter_backward(grad_output, mask, sizes):
         # the compiler CONVERT fp16->bf16 on store, corrupting the bits.
         if use_sort:
             if persistent or counted:
-                _expand_persistent_kernel[(min(n_blocks, _PERSISTENT_GRID),)](
+                _expand_persistent_kernel[(persistent_grid,)](
                     grad_output.ravel().view(torch.float16),
                     mask_flat,
                     offsets,
@@ -751,6 +756,7 @@ def masked_scatter_backward(grad_output, mask, sizes):
                     WIDE_ELEM=wide,
                     DO_TAIL=merge_tail,
                     RAW_COUNTS=counted,
+                    GROUP_BLOCK=triton.next_power_of_2(persistent_grid),
                     num_warps=4,
                 )
             else:
@@ -772,7 +778,7 @@ def masked_scatter_backward(grad_output, mask, sizes):
             if not merge_tail:
                 # only the tail is left: k = offsets[n_blocks]
                 _tail_zero_kernel[
-                    (min((numel + exp_block - 1) // exp_block, _PERSISTENT_GRID),)
+                    (min((numel + exp_block - 1) // exp_block, num_vector_cores),)
                 ](
                     out,
                     offsets,
