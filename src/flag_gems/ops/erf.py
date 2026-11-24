@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -31,6 +32,15 @@ def erf_func(x):
 
 def erf(x):
     logger.debug("GEMS ERF")
+    if (
+        isinstance(x, torch.Tensor)
+        and x.requires_grad
+        and torch.is_grad_enabled()
+        and not x.is_complex()
+    ):
+        from flag_gems.ops.erf_backward import ErfFunction
+
+        return ErfFunction.apply(x)
     return erf_func(x)
 
 

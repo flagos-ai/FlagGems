@@ -1322,7 +1322,6 @@ _FULL_CONFIG = (
     ("equal", equal),
     ("erf", erf),
     ("erf_", erf_),
-    ("erf_backward", erf_backward),
     ("erfc", erfc),
     ("erfc_", erfc_),
     ("erfinv", erfinv),
