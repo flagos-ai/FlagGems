@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from functools import lru_cache
 from numbers import Number
 
 import torch
@@ -22,7 +23,7 @@ import triton.language as tl
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.shape_utils import volume
+from flag_gems.utils.shape_utils import broadcast, volume
 
 logger = logging.getLogger(__name__)
 
@@ -511,10 +512,20 @@ def _needs_runtime_meta_for_constexpr_tuple():
         return False
 
 
+# Cache integer metadata only; tensors and outputs are rebuilt on every call.
+@lru_cache(maxsize=256)
+def _broadcast_shape_metadata(a_shape, b_shape):
+    return broadcast(a_shape, b_shape)
+
+
 def _broadcast_shape(a_t, b_t):
-    return tuple(torch.broadcast_shapes(tuple(a_t.shape), tuple(b_t.shape)))
+    try:
+        return _broadcast_shape_metadata(tuple(a_t.shape), tuple(b_t.shape))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
+@lru_cache(maxsize=256)
 def _broadcasted_stride(shape, stride, out_shape):
     if not out_shape:
         return ()
@@ -871,7 +882,7 @@ def mul_complex_broadcast_func(a, b, out=None, *, parts=_complex_parts, kernels=
     )
 
 
-def _try_contiguous(a, b, out, launch_contiguous, real_output):
+def _try_tensor_tensor(a, b, out, launchers, real_output):
     if not (
         isinstance(a, torch.Tensor)
         and isinstance(b, torch.Tensor)
@@ -879,11 +890,19 @@ def _try_contiguous(a, b, out, launch_contiguous, real_output):
         and a.device.type == _DEVICE_NAME
         and a.device == b.device
         and a.dtype == b.dtype
-        and a.shape == b.shape
-        and a.is_contiguous()
-        and b.is_contiguous()
-        and a.numel() < 2**31
     ):
+        return None
+    if a.shape != b.shape:
+        if a.ndim != 2 or b.ndim != 2 or out is not None:
+            return None
+        # Equal dtypes and devices need no promotion or input conversion.
+        output = real_output(a, b)
+        out_shape = tuple(output.shape)
+        a_stride, b_stride, out_stride = _real_layout(out_shape, a, b, output)
+        return launchers[2](
+            a, b, output, out_shape, a_stride, b_stride, out_stride, a.dtype
+        )
+    if not (a.is_contiguous() and b.is_contiguous() and a.numel() < 2**31):
         return None
     if out is not None and (
         torch._C._is_alias_of(out, a) or torch._C._is_alias_of(out, b)
@@ -892,7 +911,7 @@ def _try_contiguous(a, b, out, launch_contiguous, real_output):
     output = torch.empty_like(a) if out is None else real_output(a, b, out=out)
     if not output.is_contiguous():
         return None
-    return launch_contiguous(a, b, output, a.dtype)
+    return launchers[0](a, b, output, a.dtype)
 
 
 def _mul(
@@ -909,7 +928,7 @@ def _mul(
         and isinstance(A, torch.Tensor)
         and isinstance(B, torch.Tensor)
     ):
-        result = _try_contiguous(A, B, out, launchers[0], real_output)
+        result = _try_tensor_tensor(A, B, out, launchers, real_output)
         if result is not None:
             return result
     logger.debug("GEMS MUL")
