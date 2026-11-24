@@ -16,8 +16,6 @@ import fcntl
 import json
 import logging
 import os
-
-# enflame locally
 import sys
 from datetime import datetime
 

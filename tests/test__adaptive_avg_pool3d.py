@@ -61,17 +61,6 @@ ADAPTIVE_AVG_POOL3D_DISPATCH_CASES = [
 ]
 
 
-# ``aten::_adaptive_avg_pool3d`` (and the public ``adaptive_avg_pool3d`` overloads,
-# which are CompositeImplicitAutograd wrappers around it) has no GCU kernel in
-# torch_gcu: the PrivateUse1 entry is the CPU fallback, so the public overloads
-# never reach the FlagGems kernel here and the arithmetic that runs is the CPU
-# kernel's, which accumulates fp16/bf16 in the input dtype. Against the fp64
-# reference these cases build, that half-precision accumulate is up to 2 ULP off
-# (measured 7.3e-4 on (2, 3, 8, 7, 6) -> (2, 3, 3)), i.e. outside the 1e-4/1e-3
-# tolerance regardless of what the FlagGems kernel does. The FlagGems kernel is
-# covered dtype-for-dtype by the ``flag_gems._adaptive_avg_pool3d`` cases, which
-# match the same fp64 reference bit-exactly, so only the half dtypes of the
-# public overload cases are skipped, and only on enflame.
 _PUBLIC_ATEN_HALF_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason=(
@@ -122,7 +111,7 @@ def test_adaptive_avg_pool3d(shape, output_size, dtype):
 
 @pytest.mark.adaptive_avg_pool3d
 @pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVG_POOL3D_CASES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", _public_aten_dtypes())
 def test_adaptive_avg_pool3d_public(shape, output_size, dtype):
     # The plain public overload has no Autograd kernel in ATen, so this path only
     # works because FlagGems both overrides its device key and supplies the
@@ -218,7 +207,7 @@ def test_adaptive_avg_pool3d_out_4d_input(dtype):
 # so it needs its own registration; these cases exercise that dispatch entry.
 @pytest.mark.adaptive_avg_pool3d_out
 @pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVG_POOL3D_CASES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", _public_aten_dtypes())
 def test_adaptive_avg_pool3d_public_out_overload(shape, output_size, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
@@ -235,7 +224,7 @@ def test_adaptive_avg_pool3d_public_out_overload(shape, output_size, dtype):
 
 
 @pytest.mark.adaptive_avg_pool3d_out
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", _public_aten_dtypes())
 def test_adaptive_avg_pool3d_public_out_overload_4d_input(dtype):
     # A 4D (C, D, H, W) input takes the unsqueeze-to-5D branch of the out variant.
     shape = (3, 8, 7, 6)
@@ -263,7 +252,7 @@ def test_adaptive_avg_pool3d_public_out_overload_4d_input(dtype):
     "shape, output_size",
     [((2, 3, 8, 8, 8), (4, 4, 4)), ((3, 8, 7, 6), (4, 5, 6))],
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", _public_aten_dtypes())
 def test_adaptive_avg_pool3d_public_backward(shape, output_size, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp.detach(), True).requires_grad_(True)
