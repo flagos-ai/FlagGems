@@ -151,6 +151,9 @@ def _aten_qualify_metadata(metadata, source_id):
     }
 
 
+_SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
+
+
 class OrgqrBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = ORGQR_SHAPES
@@ -291,12 +294,12 @@ class _OrgqrH800Baseline:
         self._orgqr_h800_source = dict(source, config=record["config"])
         return ms
 
-    def _measure_input(self, input, case_id=None):
+    def _measure_input(self, input, case_id=None, dtype=None):
         needs_native = (
             "latency_base" in self.to_bench_metrics and not base.Config.skip_native
         )
         if flag_gems.vendor_name != "ascend" or not needs_native:
-            return super()._measure_input(input, case_id)
+            return super()._measure_input(input, case_id=case_id, dtype=dtype)
         if not os.environ.get("FLAGGEMS_ORGQR_H800_BASELINE"):
             raise ValueError(
                 "Ascend native orgqr uses CPU fallback; set "
@@ -310,7 +313,7 @@ class _OrgqrH800Baseline:
         self._orgqr_h800_pending = "latency_base" in self.to_bench_metrics
         self._orgqr_h800_source = None
         try:
-            metric = super()._measure_input(input, case_id)
+            metric = super()._measure_input(input, case_id=case_id, dtype=dtype)
             if self._orgqr_h800_source is not None:
                 if metric.latency is not None and (
                     isinstance(metric.latency, bool)
@@ -368,7 +371,7 @@ def test_orgqr():
     bench = _OrgqrCaseBenchmark(
         op_name="orgqr",
         torch_op=torch.orgqr,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32] + ([torch.float64] if _SUPPORT_FP64 else []),
     )
     bench.run()
 
@@ -384,7 +387,7 @@ def test_orgqr_out():
     bench = OrgqrBenchmark(
         op_name="orgqr_out",
         torch_op=torch_orgqr_out,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32] + ([torch.float64] if _SUPPORT_FP64 else []),
     )
     bench.set_gems(gems_orgqr_out)
     bench.run()
