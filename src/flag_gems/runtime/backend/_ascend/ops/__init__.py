@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .__ilshift__ import __ilshift__
 from ._adaptive_avg_pool3d_backward import (
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
@@ -443,6 +444,7 @@ from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "__ilshift__",
     "_adaptive_avg_pool3d_backward",
     "_dyn_quant_matmul_4bit",
     "_embedding_bag",
