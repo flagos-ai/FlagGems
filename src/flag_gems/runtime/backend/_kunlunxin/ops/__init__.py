@@ -140,6 +140,7 @@ from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin  # noqa: F401
+from ._foreach_sin_ import _foreach_sin_  # noqa: F401
 from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
@@ -162,7 +163,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_reciprocal_,
     _foreach_rsqrt,
     _foreach_rsqrt_,
-    _foreach_sin_,
     _foreach_sqrt_,
     _foreach_tanh,
 )
