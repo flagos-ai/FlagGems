@@ -87,6 +87,19 @@ _LAYOUT_W = 1  # weight packed, input left as-is
 # A @triton.jit body may only read a global that is already a constexpr.
 _JIT_LAYOUT_NCHW = tl.constexpr(_LAYOUT_NCHW)
 
+# Accumulator dtype for conv2d_forward_kernel. fp32 accumulation is fine (and
+# preferred) for fp16/bf16/fp32 inputs, but it is *lower* precision than fp64
+# input -- and the PPU backend requires a loop-carried variable's dtype to
+# stay fixed across iterations, so an fp64 input silently promotes `accum`
+# from fp32 to fp64 on the first `accum += tl.dot(...)` and the compiler
+# rejects it. Starting `accum` at fp64 for fp64 inputs avoids the promotion.
+_ACC_DTYPE_OVERRIDES = {torch.float64: tl.float64}
+
+
+def _conv2d_acc_dtype(dtype: torch.dtype):
+    return _ACC_DTYPE_OVERRIDES.get(dtype, tl.float32)
+
+
 
 _FORWARD_CONFIGS = list(runtime.get_tuned_config("conv2d_forward"))
 
@@ -478,6 +491,7 @@ def conv2d_forward_kernel(
     BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    ACC_DTYPE: tl.constexpr = tl.float32,
 ):
     pid_ni_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
@@ -533,7 +547,7 @@ def conv2d_forward_kernel(
     row_in_range = ni_ho_wo_offset < total_rows
 
     ci_local = tl.arange(0, BLOCK_CI)
-    accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
+    accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=ACC_DTYPE)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
     for hwc in range(weight_height * weight_width * BLOCK_CI_COUNT):
         c = (hwc % BLOCK_CI_COUNT) * BLOCK_CI
@@ -597,7 +611,7 @@ def conv2d_forward_kernel(
             None, :
         ]
         mask_bias = (output_c_offset < out_per_group_c)[None, :]
-        bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
+        bias = tl.load(bias_pointer, mask_bias).to(ACC_DTYPE)
         accum += bias
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
@@ -671,6 +685,7 @@ def conv2d_backward_kernel_weight(
     BLOCK_NO: tl.constexpr,
     BLOCK_CI_HK_WK: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    ACC_DTYPE: tl.constexpr = tl.float32,
 ):
     # load out_grad n (groups out_c)  ho wo
     # load weight (groups out_c) ci h w
@@ -709,7 +724,7 @@ def conv2d_backward_kernel_weight(
     )[None, :]
 
     # calculate the values of the input based on the width and height of the output by looping
-    accum = tl.zeros((BLOCK_CI_HK_WK, BLOCK_CO), dtype=tl.float32)
+    accum = tl.zeros((BLOCK_CI_HK_WK, BLOCK_CO), dtype=ACC_DTYPE)
     for h in range(0, out_height):
         for w in range(0, out_width):
             for n in range(0, in_n, BLOCK_NO):
@@ -885,6 +900,7 @@ class Conv2d(torch.autograd.Function):
                 LAYOUT=_LAYOUT_W,
                 PACKED_CI_TILE=ci_tile,
                 PACKED_CO_TILE=co_tile,
+                ACC_DTYPE=_conv2d_acc_dtype(k_input.dtype),
             )
 
         ctx.save_for_backward(weight, orig_input, bias)
@@ -1031,6 +1047,7 @@ class Conv2d(torch.autograd.Function):
                 LAYOUT=_LAYOUT_NCHW,
                 PACKED_CI_TILE=0,
                 PACKED_CO_TILE=0,
+                ACC_DTYPE=_conv2d_acc_dtype(new_out.dtype),
             )
 
         weight_back = torch.zeros(
@@ -1071,6 +1088,7 @@ class Conv2d(torch.autograd.Function):
             padding_width,
             dilation_height,
             dilation_width,
+            ACC_DTYPE=_conv2d_acc_dtype(input.dtype),
         )
         if bias is not None:
             bias_grad = out_grad.sum(dim=(0, 2, 3))
