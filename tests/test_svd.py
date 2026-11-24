@@ -87,7 +87,11 @@ def _make_spectrum_input(shape, singular_values, seed=0):
     return left @ sigma @ right.mH
 
 
-def _make_input(shape, dtype):
+def _make_input(shape, dtype, seed=0):
+    # Deterministic draws: a CI failure must be replayable from its test id
+    # alone, which an unseeded RNG does not allow (issue #10017). Mirrors the
+    # _make_spectrum_input(seed=...) convention above.
+    torch.manual_seed(seed)
     if dtype.is_complex:
         real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
         imag = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
