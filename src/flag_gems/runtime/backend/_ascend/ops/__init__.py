@@ -422,7 +422,7 @@ from .xlogy_ import xlogy_
 from .xlogy_out import xlogy_out
 from .xlogy_tensor_scalar import xlogy_tensor_scalar
 from .xlogy_tensor_scalar_out import xlogy_tensor_scalar_out
-from .zero import zero
+from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
