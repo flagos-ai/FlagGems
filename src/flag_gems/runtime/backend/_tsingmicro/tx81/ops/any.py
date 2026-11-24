@@ -30,6 +30,7 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
+
 @triton.jit
 def reduce_any(a, b):
     return a or b

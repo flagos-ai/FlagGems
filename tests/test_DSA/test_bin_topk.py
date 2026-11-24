@@ -14,11 +14,11 @@
 
 import random
 
-import flag_gems
 import numpy as np
 import pytest
 import torch
 
+import flag_gems
 from flag_gems import bucket_sort_topk
 from flag_gems.deprecated.DSA.bin_topk import HAS_TLE
 

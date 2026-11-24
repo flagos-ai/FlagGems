@@ -31,6 +31,11 @@ from .randn import (
 
 logger = logging.getLogger(__name__)
 
+# TSM_FORCE_CUDAGRAPH: when set, normal never generates on CPU (float64
+# widens from an on-device f32 scratch), so the op graph can be captured by
+# CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
+
 _CPU_FALLBACK_MAX = int(os.environ.get("FLAGGEMS_NORMAL_CPU_FALLBACK_MAX", "32768"))
 
 
@@ -79,6 +84,24 @@ def normal_distribution(shape, device, *, generator=None, out=None):
         increment, generator=generator
     )
 
+    if _FORCE_CUDAGRAPH:
+        if out is None:
+            out = torch.empty(shape, device=device, dtype=torch.float32)
+        # DSA randn is float32-only; wider dtypes generate into an f32 scratch
+        # on device and convert afterwards (no CPU round-trip).
+        scratch = (
+            out
+            if out.dtype is torch.float32
+            else torch.empty(shape, device=device, dtype=torch.float32)
+        )
+        seed0, seed1 = _philox_to_dsa_seed_scalars(philox_seed, philox_offset)
+        grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
+        with torch_device_fn.device(device):
+            randn_kernel[grid_fn](scratch.view(-1), seed0, seed1, N)
+        if scratch is not out:
+            out.copy_(scratch)
+        return out
+
     # float64 output: DSA randn is float32-only; keep CPU for correctness.
     if out is not None and out.dtype is torch.float64:
         logger.debug("GEMS_TSINGMICRO NORMAL f64 out → CPU")
@@ -114,6 +137,11 @@ def normal_tensor_tensor(mean, std, *, generator=None):
     device = mean.device
     # float64: DSA base is float32-only; keep CPU for correctness.
     if mean.dtype is torch.float64 or std.dtype is torch.float64:
+        if _FORCE_CUDAGRAPH:
+            # float64: DSA base is float32-only; widen the device samples
+            # instead of dropping to CPU.
+            out = normal_distribution(shape, device, generator=generator)
+            return transform_func_tensor_tensor(out.to(torch.float64), std, mean)
         logger.debug("GEMS_TSINGMICRO NORMAL_TENSOR_TENSOR f64 → CPU")
         return torch.ops.aten.normal.Tensor_Tensor(
             mean.cpu(), std.cpu(), generator=generator
@@ -128,6 +156,11 @@ def normal_tensor_float(mean, std, *, generator=None):
     device = mean.device
     # float64: DSA base is float32-only; keep CPU for correctness.
     if mean.dtype is torch.float64:
+        if _FORCE_CUDAGRAPH:
+            # float64: DSA base is float32-only; widen the device samples
+            # instead of dropping to CPU.
+            out = normal_distribution(shape, device, generator=generator)
+            return transform_func_tensor_float(out.to(torch.float64), std, mean)
         logger.debug("GEMS_TSINGMICRO NORMAL_TENSOR_FLOAT f64 → CPU")
         return torch.ops.aten.normal.Tensor_float(
             mean.cpu(), std, generator=generator
@@ -142,6 +175,11 @@ def normal_float_tensor(mean, std, *, generator=None):
     device = std.device
     # float64: DSA base is float32-only; keep CPU for correctness.
     if std.dtype is torch.float64:
+        if _FORCE_CUDAGRAPH:
+            # float64: DSA base is float32-only; widen the device samples
+            # instead of dropping to CPU.
+            out = normal_distribution(shape, device, generator=generator)
+            return transform_func_float_tensor(out.to(torch.float64), std, mean)
         logger.debug("GEMS_TSINGMICRO NORMAL_FLOAT_TENSOR f64 → CPU")
         return torch.ops.aten.normal.float_Tensor(
             mean, std.cpu(), generator=generator

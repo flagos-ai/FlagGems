@@ -19,9 +19,13 @@ import torch
 def sort(inp, dim=-1, descending=False):
     # Callers (including the test suite) compare against a stable reference and
     # require deterministic tie ordering, so always sort stably.
-    return torch.sort(inp, dim=dim, descending=descending, stable=True)  # allow-torch-compute
+    return torch.sort(  # allow-torch-compute
+        inp, dim=dim, descending=descending, stable=True
+    )
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
     # The shared kernel only implements a stable sort and ignores ``stable``.
-    return torch.sort(inp, dim=dim, descending=descending, stable=True)  # allow-torch-compute
+    return torch.sort(  # allow-torch-compute
+        inp, dim=dim, descending=descending, stable=True
+    )

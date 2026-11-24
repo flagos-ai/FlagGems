@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
@@ -29,6 +30,11 @@ from .randn import (
 
 logger = logging.getLogger(__name__)
 
+# TSM_FORCE_CUDAGRAPH: when set, randn_like never generates on CPU (float64
+# widens from an on-device f32 scratch), so the op graph can be captured by
+# CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
+
 
 def randn_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
@@ -43,6 +49,26 @@ def randn_like(
         return torch.empty(x.shape, device=device, dtype=dtype)
 
     philox_seed, philox_offset = philox_backend_seed_offset(max(N, 1))
+
+    if _FORCE_CUDAGRAPH:
+        # Prefer torch.empty over empty_like: empty_like is disproportionately
+        # expensive on TXDA and dominates small-tensor latency.
+        out = torch.empty(x.shape, device=device, dtype=dtype)
+        # DSA randn is float32-only; float64 generates into an f32 scratch on
+        # device and widens afterwards (no CPU round-trip).
+        scratch = (
+            out
+            if dtype is not torch.float64
+            else torch.empty(x.shape, device=device, dtype=torch.float32)
+        )
+        seed0, seed1 = _philox_to_dsa_seed_scalars(philox_seed, philox_offset)
+
+        grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
+        with torch_device_fn.device(device):
+            randn_kernel[grid_fn](scratch.view(-1), seed0, seed1, N)
+        if scratch is not out:
+            out.copy_(scratch)
+        return out
 
     # float64: DSA randn is float32-only; keep CPU for correctness.
     if dtype is torch.float64:

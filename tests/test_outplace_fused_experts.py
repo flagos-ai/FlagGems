@@ -107,6 +107,7 @@ def _synchronize():
         torch.ptpu.synchronize()
     elif flag_gems.vendor_name == "tsingmicro":
         from flag_gems.runtime import torch_device_fn
+
         torch_device_fn.synchronize()
     else:
         torch.cuda.synchronize()

@@ -14,6 +14,7 @@
 
 import logging
 import numbers
+import os
 
 import torch
 import triton
@@ -25,6 +26,11 @@ from ..utils.codegen_config_utils import get_pointwise_nd_codegen_config
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# TSM_FORCE_CUDAGRAPH: when set, integer floor_divide never falls back to
+# CPU (the on-device kernel handles int64 natively), so the op graph can be
+# captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
 
 _DIV_TENSOR_CONFIG = get_pointwise_nd_codegen_config()
 
@@ -316,22 +322,28 @@ def trunc_divide_(A, B):
 def _int_floordiv_corrected(x, y):
     # TXDA int32 division uses an approximate fp32 quotient. Its error is small,
     # so recover the exact truncating quotient by dividing the integer residual.
-    x_i32 = x.to(tl.int32)
-    y_i32 = y.to(tl.int32)
-    is_zero = y_i32 == 0
-    safe_y = tl.where(is_zero, 1, y_i32)
+    # Narrow ints are widened to int32 (avoids overflow in the residual fixups);
+    # int64 stays in int64.
+    if x.dtype == tl.int64:
+        x_i = x
+        y_i = y
+    else:
+        x_i = x.to(tl.int32)
+        y_i = y.to(tl.int32)
+    is_zero = y_i == 0
+    safe_y = tl.where(is_zero, 1, y_i)
 
-    quotient = x_i32 // safe_y
+    quotient = x_i // safe_y
     for _ in tl.static_range(0, 2):
-        residual = x_i32 - quotient * safe_y
+        residual = x_i - quotient * safe_y
         quotient = quotient + residual // safe_y
 
-    remainder = x_i32 - quotient * safe_y
-    different_sign = (x_i32 < 0) ^ (y_i32 < 0)
+    remainder = x_i - quotient * safe_y
+    different_sign = (x_i < 0) ^ (y_i < 0)
     q = quotient - ((remainder != 0) & different_sign)
 
     # Match PyTorch's device integer divide-by-zero result.
-    zero_result = tl.where(x_i32 < 0, -2, -1)
+    zero_result = tl.where(x_i < 0, -2, -1)
     return tl.where(is_zero, zero_result, q)
 
 
@@ -462,7 +474,8 @@ def floor_divide(A, B):
             # Both are Python scalars: no tensor to derive device from.
             # Matches the both-scalar fallback below and the generic impl.
             return torch.tensor(A // B)
-        return _integer_floordiv_cpu(A, B)
+        if not _FORCE_CUDAGRAPH:
+            return _integer_floordiv_cpu(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
@@ -477,7 +490,8 @@ def floor_divide(A, B):
 def floor_divide_(A, B):
     logger.debug("GEMS_TSINGMICRO FLOOR_DIVIDE_")
     if _is_integral_value(A) and _is_integral_value(B):
-        return _integer_floordiv_cpu(A, B, out=A)
+        if not _FORCE_CUDAGRAPH:
+            return _integer_floordiv_cpu(A, B, out=A)
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, True, out0=A)
     else:
