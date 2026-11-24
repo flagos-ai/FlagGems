@@ -64,7 +64,6 @@ import logging
 
 import torch
 import torch_npu  # noqa: F401  # must precede triton on this platform
-
 import triton
 import triton.experimental.tle as tle
 import triton.language as tl
