@@ -190,6 +190,7 @@ from .foreach_tan import foreach_tan
 from .foreach_tan_ import foreach_tan_
 from .foreach_tanh import foreach_tanh
 from .foreach_tanh_ import foreach_tanh_
+from .foreach_trunc_ import foreach_trunc_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -206,6 +207,12 @@ from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
 from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
+from .hamming_window import (
+    hamming_window,
+    hamming_window_periodic,
+    hamming_window_periodic_alpha,
+    hamming_window_periodic_alpha_beta,
+)
 from .hardshrink import hardshrink
 from .hardshrink_out import hardshrink_out
 from .hardsigmoid_backward import hardsigmoid_backward
@@ -268,7 +275,7 @@ from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .log_softmax_backward_data import log_softmax_backward_data
 from .logaddexp2 import logaddexp2
 from .logaddexp2_out import logaddexp2_out
-from .logical_not_ import logical_not_
+from .logical_not import logical_not, logical_not_
 from .logical_xor_ import logical_xor_
 from .logit_ import logit_
 from .lt_ import lt_
@@ -290,7 +297,12 @@ from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
+from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .multi_margin_loss import (
+    multi_margin_loss_backward,
+    multi_margin_loss_backward_out,
+)
 from .multinomial import multinomial
 from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -300,8 +312,11 @@ from .ne_ import ne_
 from .negative import negative
 from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
 from .new_ones import new_ones
+from .nonzero import nonzero
+from .nonzero_numpy import nonzero_numpy
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .norm_scalaropt_dim import norm_scalaropt_dim
+from .normal_functional import normal_functional
 from .not_equal import not_equal
 from .ones import ones
 from .ones_like import ones_like
@@ -596,6 +611,7 @@ __all__ = [
     "foreach_tan_",
     "foreach_tanh",
     "foreach_tanh_",
+    "foreach_trunc_",
     "frac",
     "frac_",
     "full",
@@ -618,6 +634,10 @@ __all__ = [
     "gt_scalar_",
     "gt_tensor_",
     "hadamard_transform",
+    "hamming_window",
+    "hamming_window_periodic",
+    "hamming_window_periodic_alpha",
+    "hamming_window_periodic_alpha_beta",
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid_backward",
@@ -694,6 +714,7 @@ __all__ = [
     "log_softmax_out",
     "logaddexp2",
     "logaddexp2_out",
+    "logical_not",
     "logical_not_",
     "logical_xor_",
     "logit_",
@@ -726,8 +747,11 @@ __all__ = [
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
     "mode",
+    "mse_loss_backward",
     "mul",
     "mul_",
+    "multi_margin_loss_backward",
+    "multi_margin_loss_backward_out",
     "multinomial",
     "mv",
     "nanmedian",
@@ -742,9 +766,12 @@ __all__ = [
     "negative",
     "nested_view_from_jagged_copy",
     "new_ones",
+    "nonzero",
+    "nonzero_numpy",
     "nonzero_static",
     "nonzero_static_out",
     "norm_scalaropt_dim",
+    "normal_functional",
     "normed_cumsum",
     "not_equal",
     "ones",
