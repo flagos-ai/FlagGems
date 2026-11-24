@@ -147,6 +147,7 @@ from .foreach_clamp_max_scalar_list_ import foreach_clamp_max_scalar_list_
 from .foreach_copy import foreach_copy
 from .foreach_copy_ import foreach_copy_
 from .foreach_cos_ import foreach_cos_
+from .foreach_cosh import foreach_cosh
 from .foreach_cosh_ import foreach_cosh_
 from .foreach_div_scalar import foreach_div_scalar
 from .foreach_div_scalar_ import foreach_div_scalar_
@@ -542,6 +543,7 @@ __all__ = [
     "foreach_copy",
     "foreach_copy_",
     "foreach_cos_",
+    "foreach_cosh",
     "foreach_cosh_",
     "foreach_div_scalar",
     "foreach_div_scalar_",
