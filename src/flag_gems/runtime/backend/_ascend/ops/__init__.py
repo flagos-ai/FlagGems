@@ -207,6 +207,12 @@ from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
 from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
+from .hamming_window import (
+    hamming_window,
+    hamming_window_periodic,
+    hamming_window_periodic_alpha,
+    hamming_window_periodic_alpha_beta,
+)
 from .hardshrink import hardshrink
 from .hardshrink_out import hardshrink_out
 from .hardsigmoid_backward import hardsigmoid_backward
@@ -620,6 +626,10 @@ __all__ = [
     "gt_scalar_",
     "gt_tensor_",
     "hadamard_transform",
+    "hamming_window",
+    "hamming_window_periodic",
+    "hamming_window_periodic_alpha",
+    "hamming_window_periodic_alpha_beta",
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid_backward",
