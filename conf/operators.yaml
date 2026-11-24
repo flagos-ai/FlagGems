@@ -16414,6 +16414,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: paged_decode_attention_out
+  description: Single-query BF16 paged causal decode for eight 256-channel query heads and one KV head.
+  for:
+  - paged_decode_attention_out
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: pairwise_distance
   description: 'Computes the pairwise distance between input vectors, or between columns
     of input matrices.
