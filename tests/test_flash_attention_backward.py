@@ -1028,6 +1028,15 @@ _FLASH_BWD_ORACLE_CASES = [
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten unsupported: torch_gcu registers no kernel for "
+        "aten::_flash_attention_backward on any backend (PrivateUse1, CPU and "
+        "CompositeExplicitAutograd all miss), so the reference dQ/dK/dV cannot "
+        "be produced; the forward reference returns rng_state=None as well"
+    ),
+)
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     _FLASH_BWD_ORIGINAL_SHAPES,

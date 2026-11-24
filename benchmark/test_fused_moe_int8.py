@@ -32,6 +32,19 @@ try:
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
+except Exception as vllm_import_error:
+    # The enflame image imports vLLM's fused-MoE reference through
+    # transformers -> sklearn, which raises a numpy ABI ValueError at import
+    # time; that aborts collection of the entire benchmark run. Only this
+    # backend degrades to a module-level skip, every other vendor keeps the
+    # original failure.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    pytest.skip(
+        "enflame GCU cannot import the vLLM fused-MoE reference "
+        f"({type(vllm_import_error).__name__}: {vllm_import_error})",
+        allow_module_level=True,
+    )
 
 
 def to_int8(tensor: torch.Tensor):

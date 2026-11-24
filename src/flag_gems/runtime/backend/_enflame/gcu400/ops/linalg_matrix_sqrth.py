@@ -112,6 +112,33 @@ def _native_keyset(tensor):
     return _CPU_KEYSET if tensor.device.type == "cpu" else _DEVICE_KEYSET
 
 
+def _reset_fp32_matmul_precision_state():
+    """Make the legacy and new fp32 matmul-precision views consistent again.
+
+    torch_gcu's matmul entry points probe the fp32 matmul precision through an
+    empty backend name, which raises ``RuntimeError`` once the process mixed the
+    legacy (``torch.set_float32_matmul_precision`` / ``allow_tf32``) and the new
+    (``fp32_precision``) APIs.  Re-issuing the legacy setter clears that state;
+    IEEE is also the precision the reconstruction GEMM needs, and an ambient
+    TF32 policy would move the fp32 result past the accuracy budget.
+    """
+    try:
+        torch.set_float32_matmul_precision("highest")
+    except (AttributeError, RuntimeError):
+        pass
+
+
+def _vendor_matmul(operator, keyset, left, right):
+    """Call a captured vendor GEMM handle, recovering a broken precision state."""
+    try:
+        return operator.call_boxed(keyset, left, right)
+    except RuntimeError as error:
+        if "matmul precision" not in str(error):
+            raise
+        _reset_fp32_matmul_precision_state()
+        return operator.call_boxed(keyset, left, right)
+
+
 def _native_mul(left, right):
     if _NATIVE_MUL_TENSOR is None:
         return torch.ops.aten.mul.Tensor(left, right)
@@ -158,7 +185,7 @@ def _native_matmul(left, right):
     if left.ndim == 2:
         if _NATIVE_MM is None:
             return torch.ops.aten.mm.default(left, right)
-        return _NATIVE_MM.call_boxed(keyset, left, right)
+        return _vendor_matmul(_NATIVE_MM, keyset, left, right)
 
     n = left.shape[-1]
     batch_count = left.numel() // (n * n)
@@ -173,7 +200,7 @@ def _native_matmul(left, right):
     if _NATIVE_BMM is None:
         result = torch.ops.aten.bmm.default(left_3d, right_3d)
     else:
-        result = _NATIVE_BMM.call_boxed(keyset, left_3d, right_3d)
+        result = _vendor_matmul(_NATIVE_BMM, keyset, left_3d, right_3d)
     return result.reshape(left.shape)
 
 

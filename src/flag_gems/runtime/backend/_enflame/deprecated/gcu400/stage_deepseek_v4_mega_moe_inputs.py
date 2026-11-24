@@ -405,7 +405,7 @@ _stage_deepseek_v4_mega_moe_inputs = stage_deepseek_v4_mega_moe_inputs
 # Generic-module rebinding (test / bench / direct-import routing)
 #
 # SpecOpRegistrar only replaces the top-level ``flag_gems`` entry.
-# ``from flag_gems.deprecated.stage_deepseek_v4_mega_moe_inputs import
+# ``from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import
 # stage_deepseek_v4_mega_moe_inputs`` (used by the accuracy test and the
 # benchmark) keeps resolving to the generic implementation, which makes this
 # vendor copy invisible to them. Rebind the generic module's public function
@@ -418,7 +418,7 @@ _stage_deepseek_v4_mega_moe_inputs = stage_deepseek_v4_mega_moe_inputs
 # every execution rebinds to its own function object, and the identity guard
 # only prevents pathological self-rebinding.
 _generic_stage_module = sys.modules.get(
-    "flag_gems.deprecated.stage_deepseek_v4_mega_moe_inputs"
+    "flag_gems.fused.stage_deepseek_v4_mega_moe_inputs"
 )
 if _generic_stage_module is not None and _generic_stage_module is not sys.modules.get(
     __name__
@@ -430,7 +430,7 @@ if _generic_stage_module is not None and _generic_stage_module is not sys.module
         _stage_deepseek_v4_mega_moe_inputs
     )
 
-_generic_fused_package = sys.modules.get("flag_gems.deprecated")
+_generic_fused_package = sys.modules.get("flag_gems.fused")
 if _generic_fused_package is not None:
     _generic_fused_package.stage_deepseek_v4_mega_moe_inputs = (
         stage_deepseek_v4_mega_moe_inputs

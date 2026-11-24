@@ -363,6 +363,7 @@ def _gru_step_kernel(
     BLOCK_B: tl.constexpr,
     BLOCK_H: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    KB: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
     PACKED: tl.constexpr,
 ):
@@ -404,7 +405,7 @@ def _gru_step_kernel(
     ).to(COMPUTE_DTYPE)
     n_h_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=COMPUTE_DTYPE)
 
-    for k_block in range(0, tl.cdiv(hidden_size, BLOCK_K)):
+    for k_block in tl.static_range(KB):
         offs_k = k_block * BLOCK_K + tl.arange(0, BLOCK_K)
         h = tl.load(
             h_prev_ptr + offs_b[:, None] * hidden_size + offs_k[None, :],
@@ -512,6 +513,7 @@ def _gru_persistent_kernel(
     BLOCK_B: tl.constexpr,
     BLOCK_H: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    KB: tl.constexpr,
     NUM_PROGRAMS: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
     PACKED: tl.constexpr,
@@ -545,7 +547,7 @@ def _gru_persistent_kernel(
         ).to(COMPUTE_DTYPE)
         n_h_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=COMPUTE_DTYPE)
 
-        for k_block in range(0, tl.cdiv(hidden_size, BLOCK_K)):
+        for k_block in tl.static_range(KB):
             offs_k = k_block * BLOCK_K + tl.arange(0, BLOCK_K)
             h = tl.load(
                 h_ptr + read_base + offs_b[:, None] * hidden_size + offs_k[None, :],
@@ -1090,6 +1092,7 @@ def _run_direction(
                 BLOCK_B=block_b_persist,
                 BLOCK_H=block_h_persist,
                 BLOCK_K=block_k_h,
+                KB=triton.cdiv(hidden_size, block_k_h),
                 NUM_PROGRAMS=num_programs_persist,
                 COMPUTE_DTYPE=compute_dtype,
                 PACKED=batch_sizes is not None,
@@ -1126,6 +1129,7 @@ def _run_direction(
                     BLOCK_B=_BLOCK_B,
                     BLOCK_H=block_h_step,
                     BLOCK_K=block_k_step,
+                    KB=triton.cdiv(hidden_size, block_k_step),
                     COMPUTE_DTYPE=compute_dtype,
                     PACKED=batch_sizes is not None,
                     num_warps=step_num_warps,

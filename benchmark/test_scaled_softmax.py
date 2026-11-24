@@ -31,8 +31,16 @@ try:
     TE_AVAILABLE = True
     TE_SCALED_SOFTMAX_FORWARD = getattr(tex, "scaled_softmax_forward", None)
     TE_SCALED_SOFTMAX_BACKWARD = getattr(tex, "scaled_softmax_backward", None)
-except (ImportError, RuntimeError):
-    # An empty transformer-engine meta package raises RuntimeError.
+except ImportError:
+    TE_AVAILABLE = False
+    TE_SCALED_SOFTMAX_FORWARD = None
+    TE_SCALED_SOFTMAX_BACKWARD = None
+except RuntimeError:
+    # An empty transformer-engine meta package raises RuntimeError at import
+    # time. Only enflame replaces the TransformerEngine reference with the plain
+    # torch formulation, so keep the hard failure for every other vendor.
+    if flag_gems.vendor_name != "enflame":
+        raise
     TE_AVAILABLE = False
     TE_SCALED_SOFTMAX_FORWARD = None
     TE_SCALED_SOFTMAX_BACKWARD = None

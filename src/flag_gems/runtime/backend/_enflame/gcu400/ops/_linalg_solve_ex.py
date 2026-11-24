@@ -75,6 +75,24 @@ def _install_complex_eye_shim():
     torch.eye = _complex_safe_eye
 
 
+def _reset_fp32_matmul_precision_state():
+    """Make the legacy and new fp32 matmul-precision views consistent again.
+
+    torch_gcu's matmul entry points probe the fp32 matmul precision through an
+    empty backend name, which raises ``RuntimeError`` ("... checking the matmul
+    precision without a specific backend name ...") once the process has mixed
+    the legacy (``torch.set_float32_matmul_precision`` / ``allow_tf32``) and the
+    new (``fp32_precision``) APIs -- which happens whenever a test module pins
+    both while another module already set the legacy flag.  Re-issuing the
+    legacy setter clears the mixed state and restores IEEE operands, the policy
+    the composed linalg paths expect.
+    """
+    try:
+        torch.set_float32_matmul_precision("highest")
+    except (AttributeError, RuntimeError):
+        pass
+
+
 def _install_complex_matmul_shim():
     # torch_gcu P21 workaround: topsaten matmul aborts for complex dtypes.
     # Only the operator form (`a @ b` -> Tensor.__matmul__) is shimmed; the
@@ -91,10 +109,48 @@ def _install_complex_matmul_shim():
             and isinstance(other, torch.Tensor)
         ):
             return current(self.cpu(), other.cpu()).to(self.device)
-        return current(self, other)
+        try:
+            return current(self, other)
+        except RuntimeError as error:
+            # See _reset_fp32_matmul_precision_state: the vendor GEMM rejects a
+            # process that mixed the two matmul-precision APIs, so recover the
+            # IEEE state once and retry the untouched call.
+            if "matmul precision" not in str(error):
+                raise
+            _reset_fp32_matmul_precision_state()
+            return current(self, other)
 
     _complex_safe_matmul._flaggems_gcu_complex_safe = True
     torch.Tensor.__matmul__ = _complex_safe_matmul
+
+
+def _install_complex_triangular_shim():
+    # torch_gcu P21 workaround: topsaten tril/triu abort the process for complex
+    # dtypes instead of raising (TOPSOP failure), and complex triangular masks
+    # appear in test input construction.  Only gcu complex calls are computed on
+    # CPU and copied back; every other call shape passes through untouched.
+    for name in ("tril", "triu"):
+        current = getattr(torch, name)
+        if getattr(current, "_flaggems_gcu_complex_safe", False):
+            continue
+
+        def _complex_safe_triangular(*args, _current=current, **kwargs):
+            input_tensor = args[0] if args else kwargs.get("input")
+            if not (
+                isinstance(input_tensor, torch.Tensor)
+                and input_tensor.is_complex()
+                and input_tensor.device.type == "gcu"
+            ):
+                return _current(*args, **kwargs)
+            out = kwargs.pop("out", None)
+            result = _current(input_tensor.cpu(), *args[1:], **kwargs)
+            if out is not None:
+                out.copy_(result)
+                return out
+            return result.to(input_tensor.device)
+
+        _complex_safe_triangular._flaggems_gcu_complex_safe = True
+        setattr(torch, name, _complex_safe_triangular)
 
 
 def _install_solve_ex_packet_shim():
@@ -132,6 +188,7 @@ def _install_solve_ex_packet_shim():
 
 _install_complex_eye_shim()
 _install_complex_matmul_shim()
+_install_complex_triangular_shim()
 _install_solve_ex_packet_shim()
 
 

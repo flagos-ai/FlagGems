@@ -162,7 +162,10 @@ class ConvDoubleBackwardBenchmark(base.Benchmark):
                 output_mask,
             )
 
-
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="torch_gcu has no PrivateUse1 kernel for aten::convolution_double_backward; its CPU fallback ",
+)
 @pytest.mark.convolution_double_backward
 def test_convolution_double_backward():
     torch.backends.cudnn.allow_tf32 = False

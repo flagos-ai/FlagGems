@@ -112,7 +112,24 @@ def _launch_with_retry(launch):
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    # Compare in the operand's own dtype.  The wrapper has already promoted
+    # both operands to their common dtype on the host (torch promotion), and
+    # equality is preserved by any injective widening -- while an fp32 up-cast
+    # is NOT injective for integers: 2**24 and 2**24+1 collapse to one fp32
+    # value and distinct int32/int64 ids compared equal (test_eq_integer_precision,
+    # test_equal_integer_precision).
+    return x == y
+
+
+# The fp32 up-cast above is lossless for same-dtype floats but not for wide
+# integers: 2**24 + 1 and 2**24 + 2 both round to 2**24 in fp32, so distinct
+# int32/int64 ids would compare equal.  Integral (and bool) inputs therefore
+# take a native-dtype comparison; same-dtype promotion is a no-op, so the
+# compare stays exact for every integer width.
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@triton.jit
+def eq_func_exact(x, y):
+    return x == y
 
 
 @triton.jit
@@ -194,6 +211,24 @@ def _eq_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr, EVEN: tl.constexpr)
 def _eq_cmp_run(A, B, out):
     """Launch the tuned comparison kernel; False falls back to pointwise."""
     n = A.numel()
+    if n == 0:
+        return False
+    if not A.dtype.is_floating_point:
+        # Integral same-dtype equality must stay in the integer domain: the
+        # pointwise fallback compares in fp32 and collapses ids above 2**24
+        # (2**24 == 2**24+1 measured True).  `_eq_cmp_kernel` compares the
+        # loaded values natively, so a flat launch is enough; the DSM budget
+        # (dual load, 917504 B) caps the tile per element size.
+        if n > _INT32_SAFE_LIMIT - 65536:
+            return False
+        max_block = 917504 // (2 * A.element_size())
+        block = min(65536, max_block, max(256, _NP2(n)))
+        _launch_with_retry(
+            lambda: _eq_cmp_kernel[(triton.cdiv(n, block),)](
+                A, B, out, n, BLOCK=block, EVEN=(n % block == 0), num_warps=4
+            )
+        )
+        return True
     if n < _SMALL_N:
         return False
     if A.dtype == torch.float32:
@@ -276,9 +311,11 @@ def eq(A, B):
         else:
             A = A.to(B.device)
     logger.debug("GEMS_ENFLAME EQ")
+    if A.dtype == B.dtype and not A.dtype.is_floating_point and not A.dtype.is_complex:
+        return eq_func_exact(A, B)
     if (
         A.dtype == B.dtype
-        and A.dtype in _FLOAT_DTYPES
+        and A.dtype not in (torch.bool, torch.complex64, torch.complex128)
         and A.shape == B.shape
         and A.is_contiguous()
         and B.is_contiguous()
@@ -292,11 +329,30 @@ def eq(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func_scalar(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    # Native-dtype compare (see eq_func): an fp32 up-cast collapses integer
+    # ids above 2**24, so eq(x, 2**24+1) reported True for x == 2**24.
+    return x == y
+
+
+# Integer-precision companion of `eq_func_scalar`: a Python int scalar must be
+# compared against the exact integer lanes, otherwise the fp32 up-cast makes
+# 2**24 + 1 and 2**24 + 2 collide.  Float scalars keep the fp32 path, which is
+# what the 2.5-vs-int64 contract needs (no truncation to an integer).
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@triton.jit
+def eq_func_scalar_exact(x, y):
+    return x == y
 
 
 def eq_scalar(A, B):
     logger.debug("GEMS_ENFLAME EQ_SCALAR")
+    if (
+        not A.dtype.is_floating_point
+        and not A.dtype.is_complex
+        and isinstance(B, int)
+        and not isinstance(B, bool)
+    ):
+        return eq_func_scalar_exact(A, B)
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         try:
             y = float(B)
@@ -404,8 +460,10 @@ def _equal_small_k(
     for off in range(0, numel, BLOCK_SIZE):
         offsets = off + tl.arange(0, BLOCK_SIZE)
         mask = offsets < numel
-        x = tl.load(x_ptr + offsets, mask=mask, other=0).to(tl.float32)
-        y = tl.load(y_ptr + offsets, mask=mask, other=0).to(tl.float32)
+        # Compare in the operand dtype: an fp32 up-cast collapses integers
+        # above 2**24 (torch.equal([2**24], [2**24+1]) must be False).
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0)
         eq_val = tl.min((x == y).to(tl.int32), axis=0)
         all_eq = all_eq & eq_val
     tl.store(out_ptr, all_eq)
@@ -426,8 +484,9 @@ def _equal_fused_k(
     while blk * BLOCK_SIZE < numel:
         offsets = blk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < numel
-        x = tl.load(x_ptr + offsets, mask=mask, other=0).to(tl.float32)
-        y = tl.load(y_ptr + offsets, mask=mask, other=0).to(tl.float32)
+        # Native-dtype compare; see _equal_small_k (integer ids > 2**24).
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0)
         eq_val = tl.min((x == y).to(tl.int32), axis=0)
         all_eq = all_eq & eq_val
         blk += num_progs
@@ -448,6 +507,17 @@ def equal(x: torch.Tensor, y: torch.Tensor) -> bool:
         return False
     if x.numel() == 0:
         return True
+
+    if x.dtype != y.dtype:
+        # torch.equal compares after the usual type promotion; promote on the
+        # host so the kernel compares a single native dtype (no fp32 up-cast,
+        # which would collapse integer ids above 2**24).
+        common = torch.promote_types(x.dtype, y.dtype)
+        if common in (torch.float64, torch.complex128):
+            # gcu400 has no fp64 datapath; keep the previous fp32 precision.
+            common = torch.float32
+        x = x.to(common)
+        y = y.to(common)
 
     if not x.is_contiguous():
         x = x.contiguous()

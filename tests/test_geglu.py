@@ -41,6 +41,20 @@ try:
 except ImportError:
     TE_OP = None
     TORCH_TO_TE_DTYPE = {}
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing; the pytestmark above
+    # only skips the tests, which cannot happen if collection already died.
+    # The TE reference op has no GCU implementation (torch aten/TE not
+    # supported on this backend), so skip the whole module on enflame.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: transformer-engine metapackage has no framework "
+            f"extension ({te_import_error}); the TE reference op is not "
+            "supported on this backend (torch aten/TE not supported on GCU)",
+            allow_module_level=True,
+        )
+    raise
 
 
 def _reference_geglu(

@@ -557,6 +557,8 @@ def _launch_strided(vals, dst):
     """Byte-granular copy for strided and/or offset stored values."""
     itemsize = vals.element_size()
     shape = vals.shape
+    # Byte view of the operands: trailing axis is the byte lane inside one
+    # element (byte stride 1), the leading axes are the tensor axes.
     src_strides = [s * itemsize for s in vals.stride()] + [1]
     dst_strides = [s * dst.element_size() for s in dst.stride()] + [1]
     byte_shape = tuple(shape) + (itemsize,)
@@ -564,9 +566,19 @@ def _launch_strided(vals, dst):
     alias = _alias_strided(dst, byte_shape, dst_strides)
     n = vals.numel() * itemsize
     rank = len(byte_shape)
-    s = src_strides + [0] * (6 - rank)
-    d = dst_strides + [0] * (6 - rank)
-    e = list(shape) + [1] * (5 - len(shape))
+    if rank > 6:
+        raise NotImplementedError(
+            "values_copy: stored values with rank > 5 are not supported"
+        )
+    # The flat byte index must be decoded innermost-first (byte lane, then the
+    # tensor axes from the last to the first).  Decoding outermost-first maps
+    # every lane to the wrong offset and silently writes a permuted copy.
+    rev_e = list(reversed(byte_shape))
+    rev_s = list(reversed(src_strides))
+    rev_d = list(reversed(dst_strides))
+    e = (rev_e + [1] * 5)[:5]
+    s = (rev_s + [0] * 6)[:6]
+    d = (rev_d + [0] * 6)[:6]
     grid = ((n + _ND_BLOCK - 1) // _ND_BLOCK,)
     with torch_device_fn.device(src.device):
         _copy_nd_kernel[grid](

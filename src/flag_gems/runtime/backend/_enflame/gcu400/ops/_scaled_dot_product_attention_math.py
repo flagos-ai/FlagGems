@@ -66,13 +66,21 @@ def _sdpa_math_kernel(
     EVEN_N: tl.constexpr,
     D_FULL: tl.constexpr,
     FOLD_SCALE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
 ):
     start_m = tl.program_id(0)
     off_z = tl.program_id(1)
 
+    # off_z indexes the folded (batch, query head) axis.  K/V are folded over
+    # their own (smaller) head count, so a query head maps to key/value head
+    # ``head_index // GROUP_SIZE`` -- exactly the repeat_interleave expansion the
+    # ATen math reference performs for enable_gqa, and the single kv head that
+    # its matmul broadcast uses when GROUP_SIZE == heads.
+    kv_off_z = off_z // GROUP_SIZE
+
     q_base = Q + off_z * stride_qz
-    k_base = K + off_z * stride_kz
-    v_base = V + off_z * stride_vz
+    k_base = K + kv_off_z * stride_kz
+    v_base = V + kv_off_z * stride_vz
     o_base = Out + off_z * stride_oz
     w_base = Weights + off_z * stride_wz
 
@@ -258,17 +266,51 @@ def _scaled_dot_product_attention_math(
     attn_mask=None,
     dropout_p=0.0,
     is_causal=False,
+    dropout_mask=None,
     scale=None,
+    enable_gqa=False,
 ):
     """Computes scaled dot-product attention with an explicit softmax and
-    returns both the attention output and the full attention weight matrix."""
+    returns both the attention output and the full attention weight matrix.
+
+    ``dropout_mask`` and ``enable_gqa`` mirror the ATen math signature.  The
+    mask is only consumed by the reference when ``dropout_p > 0``, which this
+    kernel rejects, so it is accepted and ignored.  ``enable_gqa`` selects the
+    grouped-query head mapping described below.
+    """
     logger.debug("GEMS_ENFLAME _SCALED_DOT_PRODUCT_ATTENTION_MATH")
 
     assert dropout_p == 0.0, "dropout_p != 0.0 is not supported"
     assert query.dim() == 4, "expected 4D (batch, heads, seq_len, head_dim) tensors"
 
     batch, heads, q_seq_len, head_dim = query.shape
+    key_heads = key.shape[1]
+    value_heads = value.shape[1]
     kv_seq_len = key.shape[2]
+
+    # Grouped-query attention: query head h reads key/value head
+    # h // GROUP_SIZE.  With enable_gqa=True this is the repeat_interleave
+    # expansion the ATen math reference does; with a single key/value head the
+    # reference obtains the same mapping from matmul broadcasting, so
+    # enable_gqa=False is accepted there too.
+    assert key_heads == value_heads, (
+        "expected key and value to have the same number of heads, "
+        f"but got {key_heads} and {value_heads}"
+    )
+    if key_heads != heads:
+        assert enable_gqa or key_heads == 1, (
+            "enable_gqa=True is required when the key/value head count "
+            f"({key_heads}) differs from the query head count ({heads}) and is "
+            "larger than one"
+        )
+        assert (
+            heads % key_heads == 0
+        ), f"query heads ({heads}) must be a multiple of key heads ({key_heads})"
+    group_size = heads // key_heads if key_heads else 1
+    logger.debug(
+        "GEMS_ENFLAME _SCALED_DOT_PRODUCT_ATTENTION_MATH group_size=%d",
+        group_size,
+    )
 
     if scale is None:
         scale = 1.0 / math.sqrt(head_dim)
@@ -285,10 +327,11 @@ def _scaled_dot_product_attention_math(
     )
 
     # Fold (batch, heads) into one grid axis; contiguous reshape gives a clean
-    # per-(b, h) leading stride for pointer arithmetic in the kernel.
+    # per-(b, h) leading stride for pointer arithmetic in the kernel.  K/V fold
+    # over their own head count so the kernel can pick the grouped head.
     q2 = query.reshape(batch * heads, q_seq_len, head_dim)
-    k2 = key.reshape(batch * heads, kv_seq_len, head_dim)
-    v2 = value.reshape(batch * heads, kv_seq_len, head_dim)
+    k2 = key.reshape(batch * key_heads, kv_seq_len, head_dim)
+    v2 = value.reshape(batch * key_heads, kv_seq_len, head_dim)
     o2 = out.reshape(batch * heads, q_seq_len, head_dim)
     w2 = weights.reshape(batch * heads, q_seq_len, kv_seq_len)
 
@@ -359,6 +402,7 @@ def _scaled_dot_product_attention_math(
             EVEN_N=(kv_seq_len % BLOCK_N == 0),
             D_FULL=(BLOCK_D == head_dim),
             FOLD_SCALE=(not has_attn_mask),
+            GROUP_SIZE=group_size,
             num_warps=4,
         )
 

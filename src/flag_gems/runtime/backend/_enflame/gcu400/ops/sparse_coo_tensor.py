@@ -44,6 +44,9 @@ Enflame (gcu400) adaptations:
 - The bounds kernel launches a 1D grid (sparse_dim * tiles): the generic 2D
   (sparse_dim, tiles) layout exceeds the 255 limit on grid.y once nnz passes
   255 * BLOCK.
+- ``check_invariants=True`` on a multi-dimensional coordinate matrix is
+  validated on CPU: the validation path calls
+  ``at::sparse::flatten_indices``, which has no GCU dispatch stub.
 """
 
 import logging
@@ -113,9 +116,10 @@ def _install_complex_to_shim():
 
 
 # ---------------------------------------------------------------------------
-# torch.sparse_coo_tensor platform shim (P21 complex casts + values dtype gap)
+# torch.sparse_coo_tensor platform shim (P21 complex casts + values dtype gap
+# + invariant validation)
 #
-# Two torch_gcu factory defects are patched per call, everything else passes
+# Three torch_gcu factory defects are patched per call, everything else passes
 # through untouched:
 #
 # - The factory normalizes non-int64 indices with an on-device cast, so
@@ -128,8 +132,14 @@ def _install_complex_to_shim():
 #   f32, an inconsistent state; CPU/CUDA factories convert). Pre-cast the
 #   device values so the assembled tensor is consistent, matching upstream
 #   semantics. Complex-side casts route through CPU (P21).
+# - ``check_invariants=True`` aborts with "DispatchStub: missing kernel for
+#   gcu": torch's sparse invariant validation reaches
+#   ``at::sparse::flatten_indices``, which only has CPU/CUDA stubs, once the
+#   coordinate matrix holds more than one sparse dimension. Validate CPU
+#   copies of the components (same checks, same RuntimeError on invalid
+#   input) and assemble the device tensor with validation disabled.
 #
-# Both patches drop once torch_gcu's factory handles them natively.
+# All three patches drop once torch_gcu's factory handles them natively.
 # ---------------------------------------------------------------------------
 def _safe_component_cast(tensor, dtype):
     if tensor.dtype == dtype:
@@ -141,35 +151,69 @@ def _safe_component_cast(tensor, dtype):
     return tensor.to(dtype)
 
 
+def _invariants_need_cpu_validation(indices, kwargs):
+    """Whether the on-device invariant check would hit the missing stub.
+
+    Single-dimension coordinate matrices stay on the device; two or more
+    sparse dimensions require ``at::sparse::flatten_indices``, which has no
+    GCU kernel.
+    """
+    if not kwargs.get("check_invariants"):
+        return False
+    if not isinstance(indices, torch.Tensor):
+        return False
+    if indices.device.type != "gcu":
+        return False
+    return indices.dim() == 2 and indices.size(0) > 1
+
+
 def _install_sparse_coo_factory_shim():
     factory = torch.sparse_coo_tensor
     if getattr(factory, "_flaggems_gcu_sparse_coo_safe", False):
         return
 
+    def _validate_invariants_on_cpu(indices, values, size, kwargs):
+        """Run torch's COO invariant checks on CPU copies of the components."""
+        check_kwargs = {"device": "cpu", "check_invariants": True}
+        for key in ("dtype", "is_coalesced"):
+            if kwargs.get(key) is not None:
+                check_kwargs[key] = kwargs[key]
+        cpu_indices = indices.cpu()
+        cpu_values = values.cpu() if isinstance(values, torch.Tensor) else values
+        if size is None:
+            factory(cpu_indices, cpu_values, **check_kwargs)
+        else:
+            factory(cpu_indices, cpu_values, size, **check_kwargs)
+
     def _sparse_coo_safe_factory(*args, **kwargs):
         dtype = kwargs.get("dtype")
-        patch_indices = patch_values = False
-        if args:
-            indices = args[0]
-            patch_indices = (
-                isinstance(indices, torch.Tensor)
-                and indices.is_complex()
-                and indices.device.type == "gcu"
-            )
-            if dtype is not None:
-                values = args[1] if len(args) > 1 else None
-                patch_values = (
-                    isinstance(values, torch.Tensor)
-                    and values.device.type == "gcu"
-                    and values.dtype != dtype
-                )
-        if not (patch_indices or patch_values):
+        indices = args[0] if len(args) > 0 else None
+        values = args[1] if len(args) > 1 else None
+        size = args[2] if len(args) > 2 else kwargs.get("size")
+        patch_indices = (
+            isinstance(indices, torch.Tensor)
+            and indices.is_complex()
+            and indices.device.type == "gcu"
+        )
+        patch_values = (
+            dtype is not None
+            and isinstance(values, torch.Tensor)
+            and values.device.type == "gcu"
+            and values.dtype != dtype
+        )
+        validate_on_cpu = _invariants_need_cpu_validation(indices, kwargs)
+        if not (patch_indices or patch_values or validate_on_cpu):
             return factory(*args, **kwargs)
         moved = list(args)
         if patch_indices:
             moved[0] = _safe_component_cast(moved[0], torch.int64)
         if patch_values:
             moved[1] = _safe_component_cast(moved[1], dtype)
+        if validate_on_cpu:
+            checked_values = moved[1] if len(moved) > 1 else values
+            _validate_invariants_on_cpu(moved[0], checked_values, size, kwargs)
+            kwargs = dict(kwargs)
+            kwargs["check_invariants"] = False
         return factory(*moved, **kwargs)
 
     _sparse_coo_safe_factory._flaggems_gcu_sparse_coo_safe = True

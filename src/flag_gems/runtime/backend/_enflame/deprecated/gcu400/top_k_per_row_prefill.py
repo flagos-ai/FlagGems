@@ -1577,7 +1577,7 @@ def top_k_per_row_prefill(
 # Generic-module rebinding (test / bench / direct-import routing)
 #
 # SpecOpRegistrar only replaces the top-level ``flag_gems`` entry.
-# ``from flag_gems.deprecated import top_k_per_row_prefill`` (used by the accuracy
+# ``from flag_gems.fused import top_k_per_row_prefill`` (used by the accuracy
 # test and the benchmark) and ``import flag_gems.deprecated.top_k_per_row_prefill``
 # keep resolving to the generic implementation, whose histogram+atomic kernel
 # aborts the enflame compiler (``llvm::cast<DenseElementsAttr>`` assertion in
@@ -1594,6 +1594,6 @@ if _generic_topk_module is not None and _generic_topk_module is not sys.modules.
 ):
     _generic_topk_module.top_k_per_row_prefill = top_k_per_row_prefill
 
-_generic_fused_package = sys.modules.get("flag_gems.deprecated")
-if _generic_fused_package is not None:
-    _generic_fused_package.top_k_per_row_prefill = top_k_per_row_prefill
+_generic_deprecated_package = sys.modules.get("flag_gems.deprecated")
+if _generic_deprecated_package is not None:
+    _generic_deprecated_package.top_k_per_row_prefill = top_k_per_row_prefill

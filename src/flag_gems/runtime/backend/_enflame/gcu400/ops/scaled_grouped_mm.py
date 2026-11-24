@@ -122,6 +122,7 @@ def scaled_grouped_mm_kernel(
     BIAS_MODE: tl.constexpr,
     E4M3: tl.constexpr,
     FNUZ: tl.constexpr,
+    IS_FP8: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -181,7 +182,13 @@ def scaled_grouped_mm_kernel(
                 offs_k = tl.arange(0, BLOCK_K)
 
                 acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-                for k_offset in range(0, k_size, BLOCK_K):
+                # Static trip count: a loop-carried ``acc += tl.dot`` inside a
+                # *dynamic* K loop is miscompiled on gcu400 once the tiles
+                # reach 64 (the partial sums come back mangled).  K blocks
+                # beyond a smaller group's k_size stay fully masked and now
+                # contribute exact zeros.
+                for k_block in tl.static_range((K + BLOCK_K - 1) // BLOCK_K):
+                    k_offset = k_block * BLOCK_K
                     group_offs_k = k_offset + offs_k
                     a_ptrs = (
                         A
@@ -206,6 +213,18 @@ def scaled_grouped_mm_kernel(
                     if E4M3:
                         a = _decode_e4m3(a, FNUZ)
                         b = _decode_e4m3(b, FNUZ)
+                    # gcu400 does not reliably zero the masked lanes of a
+                    # strided load feeding tl.dot: an un-cleared NaN bit in the
+                    # padded K tail turns the whole output tile into NaN on
+                    # some allocator histories (measured on the reduction
+                    # addressing case: 3/15 elements NaN).  An fp8 select would
+                    # link against the non-PIC ``tops_select_v1_fp8e4m3fn``
+                    # (ld.lld relocation error), so the clear is for the
+                    # non-fp8 dtypes only -- the fp8 dot keeps the masked-load
+                    # ``other=0.0`` behaviour.
+                    if not IS_FP8:
+                        a = tl.where(a_mask, a, 0.0)
+                        b = tl.where(b_mask, b, 0.0)
                     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
                 if A_IS_2D:
@@ -590,9 +609,17 @@ def scaled_grouped_mm(
             num_groups,
         )
 
-    if self.stride(-2) > 1 and self.stride(-1) > 1:
+    # Both operands reach tl.dot as row-major [tile_rows, tile_k] / [tile_k,
+    # tile_cols] loads, so the innermost stride has to be 1.  Strided loads are
+    # otherwise fine, but on GCU400 a reduction-major operand (e.g. a
+    # transposed B, stride(K)=1 with stride(N)=K) keeps the out-of-range lanes
+    # of the masked tail K tile alive: tl.dot then reduces those lanes into
+    # every output column, so a K=65/N=5 transposed-B probe returned NaN for
+    # column 4.  Normalize that layout on the host instead of paying for a
+    # pointer clamp in the tile address, which downgrades the 2D DMA path.
+    if self.stride(-1) != 1:
         self = self.contiguous()
-    if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
+    if mat2.stride(-1) != 1:
         mat2 = mat2.contiguous()
 
     e4m3 = self.dtype in tuple(
@@ -682,5 +709,6 @@ def scaled_grouped_mm(
             BIAS_MODE=bias_mode,
             E4M3=e4m3,
             FNUZ=fnuz,
+            IS_FP8=_is_float8_dtype(self.dtype),
         )
     return out

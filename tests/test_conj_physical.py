@@ -211,9 +211,21 @@ _LAYOUT_SHAPES = {
     "expanded": (3, 4),
 }
 
+# The native aten::_conj_physical kernel aborts the process for real dtypes on
+# the enflame backend (measured: SIGABRT for float32/float16/int32/int64/bool,
+# while complex64 works), so the on-device ATen reference used by the tests
+# below cannot be built for those dtypes. Only the enflame vendor is affected.
+_ATEN_REAL_ABORTS = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: native aten::_conj_physical aborts "
+        "the process for real dtypes in enflame backend"
+    ),
+)
+
 _UNDERSCORE_DTYPES = ([torch.complex64] if utils.complex_is_supported else []) + [
-    torch.float32,
-    torch.int32,
+    pytest.param(torch.float32, marks=_ATEN_REAL_ABORTS),
+    pytest.param(torch.int32, marks=_ATEN_REAL_ABORTS),
 ]
 
 

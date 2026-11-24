@@ -25,10 +25,9 @@ def _logcumsumexp_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
-)
+# The former ``skipif(vendor_name == "enflame")`` guard was dropped: device ATen
+# supports ``_logcumsumexp`` for fp16/fp32/bf16 on the enflame backend, so only
+# the enflame vendor was excluded and no other vendor's coverage changes.
 @pytest.mark.underscore_logcumsumexp
 def test__logcumsumexp():
     bench = base.GenericBenchmark2DOnly(

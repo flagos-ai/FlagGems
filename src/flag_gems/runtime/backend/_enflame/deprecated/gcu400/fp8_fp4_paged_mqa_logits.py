@@ -24,7 +24,7 @@ different workload distributions.
 GCU (gcu400) adaptations on top of the generic implementation:
 - the row axis is decomposed over grid.y/grid.z (GCU caps grid.y at 255), so
   production decode batches (e.g. 256 x next_n rows) stay launchable;
-- ``_install`` routes the ``flag_gems.deprecated`` submodule namespaces (used by
+- ``_install`` routes the ``flag_gems.fused`` submodule namespaces (used by
   the accuracy test and benchmark) to this copy and installs the vLLM
   DeepGEMM compat layer required by the GCU test environment.
 """
@@ -307,11 +307,11 @@ def _install():
         fp8_fp4_paged_mqa_logits as _generic_fp8_fp4_paged_mqa_logits,
     )
 
-    fused_pkg = sys.modules.get("flag_gems.deprecated")
-    if fused_pkg is not None:
-        cur = getattr(fused_pkg, "fp8_fp4_paged_mqa_logits", None)
+    deprecated_pkg = sys.modules.get("flag_gems.deprecated")
+    if deprecated_pkg is not None:
+        cur = getattr(deprecated_pkg, "fp8_fp4_paged_mqa_logits", None)
         if cur is _generic_fp8_fp4_paged_mqa_logits:
-            fused_pkg.fp8_fp4_paged_mqa_logits = fp8_fp4_paged_mqa_logits
+            deprecated_pkg.fp8_fp4_paged_mqa_logits = fp8_fp4_paged_mqa_logits
 
     sub = sys.modules.get("flag_gems.deprecated.fp8_fp4_paged_mqa_logits")
     if sub is not None:

@@ -73,6 +73,57 @@ def _choose_block(num_elements, is_fp32):
     return BLOCK_LARGE_32BIT if is_fp32 else BLOCK_LARGE_16BIT
 
 
+@libentry()
+@triton.jit(do_not_specialize=["num_elements"])
+def atanh_backward_kernel(
+    grad_ptr,
+    input_ptr,
+    out_ptr,
+    num_elements,
+    BLOCK: tl.constexpr,
+):
+    """d/dx atanh(x) = grad / (1 - x * x), same grid-stride tiling as atanh_kernel."""
+    program_id = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    num_tiles = (num_elements + BLOCK - 1) // BLOCK
+    for tile_index in tl.range(program_id, num_tiles, num_programs, num_stages=1):
+        offsets = tile_index * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < num_elements
+        grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+        x = tl.load(input_ptr + offsets, mask=mask, other=0.0)
+        # ATen evaluates grad / (1 - x * x) in the input dtype instead of fp32
+        # opmath, so for fp16/bf16 the rounding of (1 - x * x) is part of the
+        # reference result: a fp32 denominator diverges from it by more than
+        # the 1e-3 / 1.6e-2 test tolerance near |x| -> 1.
+        tl.store(out_ptr + offsets, grad / (1.0 - x * x), mask=mask)
+
+
+def _atanh_backward(grad_output, input_tensor):
+    """Return grad_output / (1 - input ** 2) as a plain Triton launch."""
+    contiguous_grad = (
+        grad_output if grad_output.is_contiguous() else grad_output.contiguous()
+    )
+    contiguous_input = (
+        input_tensor if input_tensor.is_contiguous() else input_tensor.contiguous()
+    )
+    grad_input = torch.empty_like(contiguous_input)
+    num_elements = contiguous_input.numel()
+    if num_elements == 0:
+        return grad_input
+    block_size = _choose_block(num_elements, contiguous_input.dtype == torch.float32)
+    grid_size = min(triton.cdiv(num_elements, block_size), NUM_CTAS)
+    with torch_device_fn.device(contiguous_input.device):
+        atanh_backward_kernel[(grid_size,)](
+            contiguous_grad,
+            contiguous_input,
+            grad_input,
+            num_elements,
+            BLOCK=block_size,
+            num_warps=NUM_WARPS,
+        )
+    return grad_input
+
+
 def _launch(inp, out):
     num_elements = inp.numel()
     if num_elements == 0:
@@ -97,6 +148,76 @@ def _atanh(A):
 
 
 _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+# GCU tensors only: the AutogradPrivateUse1 slot below must not touch the
+# AutogradCPU/AutogradCUDA formulas of other backends.
+_ATEN_PRIVATEUSE1_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.PrivateUse1)
+
+
+def _run_device_atanh_(A):
+    """Run the registered in-place atanh without entering autograd again."""
+    return torch.ops.aten.atanh_.default.redispatch(_ATEN_PRIVATEUSE1_KEYSET, A)
+
+
+def _atanh_inplace_kernel(A):
+    """Write atanh(A) into A with no autograd bookkeeping."""
+    if not A.is_contiguous():
+        # copy_ is a real ATen in-place op, so it bumps the version counter.
+        A.copy_(_atanh(A))
+        return A
+    out = _launch(A, A)
+    if A.requires_grad or A.grad_fn is not None:
+        # A direct Triton store bypasses ATen's in-place bump; autograd uses
+        # that counter to reject stale saved tensors, so do it by hand.
+        torch.autograd.graph.increment_version(A)
+    return out
+
+
+class _AtanhInplaceFunction(torch.autograd.Function):
+    """Autograd for aten::atanh_.
+
+    ATen's own in-place atanh_ raises "the derivative for 'inplace version of
+    atanh' is not implemented", and the flat Triton kernel writes through the
+    pointer without creating a node, so gradients either raised or silently
+    fell through to the node that produced the buffer.  Both the graph and the
+    backward kernel live here instead.
+    """
+
+    @staticmethod
+    def forward(ctx, A):
+        # The device kernel overwrites A, so the pre-write values have to be
+        # snapshotted: 1 / (1 - x * x) needs the input, not atanh(input).
+        saved_input = A.clone()
+        # A detached alias shares A's version counter but is not the function
+        # output, so autograd still version-checks it (a saved output would be
+        # exempt) and a later in-place write to A trips "modified by an
+        # inplace operation" as it does for any other ATen op.
+        version_probe = A.detach()
+        out = _run_device_atanh_(A)
+        ctx.mark_dirty(A)
+        ctx.save_for_backward(version_probe, saved_input)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        _, saved_input = ctx.saved_tensors
+        return _atanh_backward(grad_output, saved_input)
+
+
+def _atanh_inplace_autograd(A):
+    return _AtanhInplaceFunction.apply(A)
+
+
+# aten::atanh_ has no ATen autograd formula (it always raises), so the free
+# AutogradPrivateUse1 slot is claimed here: the device kernel keeps handling
+# the forward, only the graph node comes from this module.
+_ATEN_AUTOGRAD_LIB = torch.library.Library("aten", "IMPL")
+_ATEN_AUTOGRAD_LIB.impl(
+    "atanh_",
+    _atanh_inplace_autograd,
+    "AutogradPrivateUse1",
+    allow_override=True,
+)
 
 
 def atanh(A):
@@ -125,7 +246,15 @@ def atanh_(A):
         from flag_gems.ops.atanh import atanh_ as _generic_atanh_
 
         return _generic_atanh_(A)
-    if not A.is_contiguous():
-        A.copy_(_atanh(A))
-        return A
-    return _launch(A, A)
+    if A.requires_grad and torch.is_grad_enabled():
+        # ATen rejects the leaf case before touching the buffer, so raise here
+        # rather than letting mark_dirty() report it after the kernel wrote.
+        if A.is_leaf:
+            raise RuntimeError(
+                "a leaf Variable that requires grad is being used in an "
+                "in-place operation."
+            )
+        # apply() disables grad for the forward, so the kernel below runs
+        # exactly once and the node is created only here.
+        return _AtanhInplaceFunction.apply(A)
+    return _atanh_inplace_kernel(A)

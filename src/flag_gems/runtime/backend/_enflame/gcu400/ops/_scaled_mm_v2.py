@@ -35,7 +35,7 @@ GCU400 note: the backend exposes a direct fp8 ``tl.dot`` only for
 tiles (up to 512) are the dominant lever (the per-iteration SIP call cost
 dominates small ``BLOCK_K``).  Every other combination -- fp8 outputs, or
 ``e5m2``/``fnuz`` operands -- routes to the production fp16-conversion
-kernel from ``flag_gems.fused.cutlass_scaled_mm`` (shared with the
+kernel from ``flag_gems.deprecated.cutlass_scaled_mm`` (shared with the
 ``aten::scaled_mm`` path), whose fp8 store lowering pins ``BLOCK_M``/``BLOCK_N``
 to 32/64 for fp8 outputs.
 """
@@ -46,7 +46,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.fused.cutlass_scaled_mm import _scaled_mm_fp8_kernel
+from flag_gems.deprecated.cutlass_scaled_mm import _scaled_mm_fp8_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

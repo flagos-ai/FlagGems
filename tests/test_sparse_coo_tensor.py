@@ -61,7 +61,19 @@ def test_sparse_coo_tensor_infer_size(nnz, sparse_dim, dense_shape, dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize(
-    "index_dtype", [torch.int64, torch.int32, torch.float32, torch.complex64]
+    "index_dtype",
+    [
+        torch.int64,
+        torch.int32,
+        torch.float32,
+        pytest.param(
+            torch.complex64,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "enflame",
+                reason="enflame: device cast to complex64 aborts (topsatenCopy)",
+            ),
+        ),
+    ],
 )
 @pytest.mark.parametrize(
     "dtype", [None, pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16]

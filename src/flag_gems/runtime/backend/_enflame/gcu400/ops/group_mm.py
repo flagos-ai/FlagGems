@@ -50,6 +50,7 @@ def grouped_mm_kernel(
     NUM_N_TILES: tl.constexpr,
     EVEN_K: tl.constexpr,
     EVEN_N: tl.constexpr,
+    USE_WS: tl.constexpr,
 ):
     total_grid = tl.num_programs(axis=0)
     tile_idx = tl.program_id(axis=0)
@@ -61,7 +62,7 @@ def grouped_mm_kernel(
     group_start = 0
     group_end = 0
 
-    for group_idx in tl.range(num_groups):
+    for group_idx in tl.range(num_groups, warp_specialize=USE_WS):
         group_end = tl.load(offs + group_idx).to(tl.int32)
         m = group_end - group_start
         num_m_tiles = tl.cdiv(m, BLOCK_M)
@@ -134,29 +135,13 @@ def grouped_mm_kernel(
 
                 c = accumulator.to(C.dtype.element_ty)
 
-                if offs_am + BLOCK_M <= group_end:
-                    c_block_ptr = tl.make_block_ptr(
-                        base=C,
-                        shape=(M, N),
-                        strides=(stride_cm, stride_cn),
-                        offsets=(offs_am, offs_bn),
-                        block_shape=(BLOCK_M, BLOCK_N),
-                        order=(1, 0),
-                    )
-                    # With EVEN_N the whole block is within C's valid range, so the bounds check can be dropped;
-                    # otherwise keep the original implementation's dual-dimension checks.
-                    if EVEN_N:
-                        tl.store(c_block_ptr, c)
-                    else:
-                        tl.store(c_block_ptr, c, boundary_check=(0, 1))
-                else:
-                    offs_cm = offs_am + tl.arange(0, BLOCK_M)
-                    offs_cn = offs_bn + tl.arange(0, BLOCK_N)
-                    c_ptrs = (
-                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-                    )
-                    c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
-                    tl.store(c_ptrs, c, mask=c_mask)
+                offs_cm = offs_am + tl.arange(0, BLOCK_M)
+                offs_cn = offs_bn + tl.arange(0, BLOCK_N)
+                c_ptrs = (
+                    C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+                )
+                c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
+                tl.store(c_ptrs, c, mask=c_mask)
 
                 tile_idx += total_grid
 
@@ -186,6 +171,7 @@ def grouped_mm_rowtile_kernel(
     BLOCK_K: tl.constexpr,
     EVEN_K: tl.constexpr,
     EVEN_N: tl.constexpr,
+    USE_WS: tl.constexpr,
 ):
     """Short-K shapes: one work item = one (group, M block) that reuses its A block along N.
 
@@ -208,7 +194,7 @@ def grouped_mm_rowtile_kernel(
     group_start = 0
     group_end = 0
     # Accumulate the work-item range group by group; each program advances by the grid stride within its own range
-    for group_idx in tl.range(num_groups):
+    for group_idx in tl.range(num_groups, warp_specialize=USE_WS):
         group_end = tl.load(offs + group_idx).to(tl.int32)
         m = group_end - group_start
         num_m_tiles = tl.cdiv(m, BLOCK_M)
@@ -285,9 +271,54 @@ def grouped_mm_rowtile_kernel(
         group_start = group_end
 
 
+def _select_gemm_config(N, K):
+    """Pick the kernel and its tile/warp config from the problem shape.
+
+    Returns (kernel, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, use_ws) where
+    `kernel` is "rowtile" or "persistent". The rowtile kernel is not selected
+    until its warp-specialized path is fixed (see the K <= 256 branch).
+
+    Measured on GCU400 (2026-11-19, per-group M=8192, M_total=131072):
+
+      rowtile, BM=512/BN=128/nw=4 + WS:   N=2048 K=128  1.24 ms (221 TFLOPS)
+      persistent + WS, BM=256/BN=256/BK=256/nw=4:
+        N=512  K=2048  0.98 ms (279 TFLOPS)
+        N=2560 K=2048  4.77 ms (288 TFLOPS)
+      persistent without WS, BM=128/BN=256/BK=256/nw=2:
+        N=512  K=2048  1.37 ms (200 TFLOPS)
+        N=2560 K=2048  7.09 ms (194 TFLOPS)
+
+    WS wins on the deep-K shapes because it splits the load pipeline (producer)
+    from the MMA (consumer) instead of interleaving both in one warp group, and
+    the 256-wide BM keeps the A tile resident across the whole N loop. On the
+    short-K rowtile kernel WS only pays off with BM=512 (dot 512x128 is big
+    enough to hide the channel round-trip); at BM=256 it loses ~11%.
+
+    num_warps is capped at 4 because the WS pass only supports num_warps <= 4.
+    """
+    block_n = _select_block_n(N)
+    if K <= 256:
+        # Short K: rowtile is the shape match, but its warp specialization is
+        # not usable yet. The WS barrier arrive is a call inside the n-tile
+        # loop, and the backend spills the whole live OACC accumulator across
+        # it (128 groups, 64 KiB, to the L3 stack): 5.02 ms vs 1.24 ms with the
+        # barrier inlined on (64, 2048, 128). The persistent WS tile below
+        # measures 1.24 ms on the same shape.
+        #
+        # Switch back to rowtile once the llvm fix (inline the barrier so the
+        # accumulator is not live across a call) is in:
+        #   return ("rowtile", 512, 128 if N % 128 == 0 else block_n,
+        #           max(16, triton.next_power_of_2(K)), 4, True)
+        return ("persistent", 256, block_n, _select_block_k(K), 4, True)
+    if K >= 1024:
+        return ("persistent", 256, block_n, _select_block_k(K), 4, True)
+    # 256 < K < 1024: the K loop is too short for WS to pay for the partition.
+    return ("persistent", 128, block_n, _select_block_k(K), 2, False)
+
+
 def _select_block_k(K):
-    # Measured: BK=256 wins clearly when K is a multiple of 256 (fewer K-loop
-    # iterations, same tile footprint); K=128 shapes must keep BK=128.
+    # if K >= 512 and K % 512 == 0:
+    #     return 512
     if K >= 256 and K % 256 == 0:
         return 256
     if K >= 128:
@@ -423,51 +454,21 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
 
     assert num_groups == offs.numel()
 
-    BLOCK_M = 128
-    BLOCK_N = _select_block_n(N)
-    # Mid-width N (256..512): the square-ish 256x128 tile with a 2-deep pipeline
-    # reuses the wide A row block across more N tiles than the 128x256 tile and
-    # stays inside the DSM budget, while keeping the K block at 256.
-    # Measured on G=16/K=2048 bf16 (2026-11-21 probe, same-draw A/B comparison):
-    # N=512 2.226 -> 2.146 ms (+3.7%), N=2560 pairwise parity (10.21 vs 10.27 ms),
-    # so the wide-N shapes keep 128x256.
-    mid_width_n = 256 <= N <= 512
-    if mid_width_n:
-        BLOCK_M, BLOCK_N = 256, 128
+    KERNEL, BLOCK_M, BLOCK_N, BLOCK_K, NUM_WARPS, USE_WS = _select_gemm_config(N, K)
     C = A.new_empty(M, N)
     use_block_ptr = _block_ptr_aligned(A, B, C)
 
-    # NOTE: a free-running one-tile-per-program kernel (grouped_mm_flat_kernel)
-    # used to serve deep-K shapes here, but its K-loop dot is nondeterministic
-    # on GCU400: identical inputs produce bitwise-different outputs across
-    # runs (up to ~2x the accuracy tolerance with BLOCK_K=512, still ~30% of
-    # runs deviating below tolerance with BLOCK_K=256). The persistent kernel
-    # below is deterministic across 60+ repeated runs per shape (BK<=256), so
-    # every shape now goes through it. BLOCK_K=512 was re-probed in the
-    # persistent grid on 2026-11-16 (-16% latency) but is bitwise-unstable
-    # there as well (1/120 runs, whole-K-chunk-sized deviations; DSM sits
-    # exactly on the 458752B double-program line) -- do not raise BLOCK_K above
-    # 256.
-    BLOCK_K = _select_block_k(K)
-    # num_warps must stay 1 on this K-loop dot kernel: nw=2 measured -9~-11%
-    # on deep-K core shapes (2026-11-16 probe) BUT is bitwise-unstable on the
-    # production path (~1/480 launches, above-tolerance whole-chunk errors,
-    # CPU-side verified -- same disease family as the removed flat kernel and
-    # the re-probed persistent BLOCK_K=512). BLOCK_K must also stay <=256
-    # (BK512 persistent: -16% latency but bitwise-unstable, DSM exactly on
-    # the 458752B double-program line). Do not raise either without a
-    # 480+ round CPU-compared determinism gate.
-    NUM_WARPS = 1
-    # The 256x128 tile already fills two pipeline stages within DSM
-    # ((256*256 + 256*128) * 2B * 3 stages = 576KB > 512KB budget), so its
-    # pipeline depth is capped at 2.
-    NUM_STAGES = 2 if mid_width_n else 3
+    NUM_STAGES = 2
     # Persistent grid: cap concurrent programs at GCU_NUM_GRID and let the
     # in-kernel stride loop cover the whole tile space. The upper bound uses
     # total M, which is always >= the per-group sum of cdiv tiles, so every
     # real tile gets at least one program.
     total_tiles_upper = triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)
-    grid = (min(GCU_NUM_GRID, total_tiles_upper),)
+    # WS splits each program into a producer and a consumer task, so one program
+    # occupies twice the execution resources; halve the grid to keep the same
+    # occupancy. Measured on case0: 24 -> 0.978 ms, 48 -> 1.003 ms.
+    grid_cap = GCU_NUM_GRID // 2 if USE_WS else GCU_NUM_GRID
+    grid = (min(grid_cap, total_tiles_upper),)
 
     # Skip boundary masks when K / N is divisible; on 2026-11-16 the EVEN path on both N=512/2560 shapes
     # was on par with or slightly better than masked (-0.5~-1.7%), and nw1+EVEN, after gap-tightened 60-round CPU-side
@@ -500,36 +501,25 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
         "NUM_N_TILES": triton.cdiv(N, BLOCK_N),
         "EVEN_K": even_k,
         "EVEN_N": even_n,
+        "USE_WS": USE_WS,
         "num_warps": NUM_WARPS,
         "num_stages": NUM_STAGES,
     }
 
-    # Short K: switch to the row-tile kernel (one work item covers the N tiles of a whole row block, A is moved only
-    # once).
-    # When K <= 256 the A row block is <= 256x256 and can stay resident; the BM=256 / BN=128 / nw=4 combination
-    # measured on 2026-11-16 reduced G=64/N=2048/K=128 from 3.90 to 3.24 us/k-row (-17%):
-    # BM 256 halves the number of B row covers (halves b_read), and BN=128 with EVEN_K/EVEN_N makes
-    # B loads and C writes mask-free. It is independent of block_ptr alignment and works with any stride.
-    if K <= 256:
-        rowtile_block_k = max(16, triton.next_power_of_2(K))
-        rowtile_block_m = 256
-        # Use 128 when N is divisible by 128 (the empirically measured sweet spot for EVEN_N mask-free), otherwise fall
-        # back to
-        # generic BN selection (the masked path is correct for any N).
-        rowtile_block_n = 128 if N % 128 == 0 else _select_block_n(N)
-        rowtile_even_k = K % rowtile_block_k == 0
-        rowtile_even_n = N % rowtile_block_n == 0
-        # Upper bound on the total number of work items = cdiv(M, BM) + num_groups, no need to read offs back to the CPU
-        rowtile_upper = triton.cdiv(M, rowtile_block_m) + num_groups
-        rowtile_grid = (min(GCU_NUM_GRID, rowtile_upper),)
+    # Short K: switch to the row-tile kernel (one work item covers the N tiles of
+    # a whole row block, so the A row block is moved only once).
+    if KERNEL == "rowtile":
+        rowtile_upper = triton.cdiv(M, BLOCK_M)
+        rowtile_grid = (min(grid_cap, rowtile_upper),)
         grouped_mm_rowtile_kernel[rowtile_grid](
             *launch_args,
-            BLOCK_M=rowtile_block_m,
-            BLOCK_N=rowtile_block_n,
-            BLOCK_K=rowtile_block_k,
-            EVEN_K=rowtile_even_k,
-            EVEN_N=rowtile_even_n,
-            num_warps=4,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            EVEN_K=even_k,
+            EVEN_N=even_n,
+            USE_WS=USE_WS,
+            num_warps=NUM_WARPS,
             num_stages=NUM_STAGES,
         )
         return C
@@ -537,6 +527,9 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
     if use_block_ptr:
         grouped_mm_kernel[grid](*launch_args, **launch_kwargs)
     else:
-        grouped_mm_generic_kernel[grid](*launch_args, **launch_kwargs)
+        # The pointer-arithmetic fallback has no USE_WS parameter: it predates
+        # warp specialization and stays on the non-WS path.
+        generic_kwargs = {k: v for k, v in launch_kwargs.items() if k != "USE_WS"}
+        grouped_mm_generic_kernel[grid](*launch_args, **generic_kwargs)
 
     return C

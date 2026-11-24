@@ -103,24 +103,39 @@ def _values_copy_kernel_nd(
     y_ptr,
     shape_ptr,
     stride_ptr,
+    dst_stride_ptr,
     n_elements,
     NDIM: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    DST_STRIDED: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     rem = offs
     phys = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    for d in tl.static_range(NDIM):
+    dst_phys = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    # Row-major decoding must start at the innermost axis: the flat index is
+    # (outermost ... innermost), so the last dimension varies fastest.  Walking
+    # the axes from 0 upwards instead maps every lane to the wrong element and
+    # silently produces a permuted copy for transposed / gapped / expanded
+    # stored values.
+    for k in tl.static_range(NDIM):
+        d = NDIM - 1 - k
         dim = tl.load(shape_ptr + d)
         stride = tl.load(stride_ptr + d)
         idx = rem % dim
         phys += idx.to(tl.int64) * stride
+        if DST_STRIDED:
+            dst_phys += idx.to(tl.int64) * tl.load(dst_stride_ptr + d)
         rem = rem // dim
     x = tl.load(x_ptr + phys, mask=mask)
-    # The output is written at contiguous logical indices; only the input applies strides to compute physical offsets.
-    tl.store(y_ptr + offs, x, mask=mask)
+    # A contiguous output takes the flat logical index; a strided output (e.g.
+    # an empty_like of a transposed values view) needs its own physical offset.
+    if DST_STRIDED:
+        tl.store(y_ptr + dst_phys, x, mask=mask)
+    else:
+        tl.store(y_ptr + offs, x, mask=mask)
 
 
 def _next_pow2(n):
@@ -207,7 +222,7 @@ def _values_copy_impl(self, out=None, vals=None):
     elif out.device.type != target_device.type:
         bridge_out = out
         out = torch.empty(vals.shape, dtype=vals.dtype, device=target_device)
-    if vals.is_contiguous():
+    if vals.is_contiguous() and out.is_contiguous():
         x = vals.view(-1)
         y = out.view(-1)
         _launch_flat(x, y)
@@ -215,11 +230,15 @@ def _values_copy_impl(self, out=None, vals=None):
         ndim = vals.dim()
         shape = torch.zeros(_MAX_NDIM, dtype=torch.int64, device=vals.device)
         stride = torch.zeros(_MAX_NDIM, dtype=torch.int64, device=vals.device)
+        dst_stride = torch.zeros(_MAX_NDIM, dtype=torch.int64, device=vals.device)
         shape[:ndim] = torch.as_tensor(
             vals.shape, dtype=torch.int64, device=vals.device
         )
         stride[:ndim] = torch.as_tensor(
             vals.stride(), dtype=torch.int64, device=vals.device
+        )
+        dst_stride[:ndim] = torch.as_tensor(
+            out.stride(), dtype=torch.int64, device=vals.device
         )
         # nd path: BLOCK=1024 with 4 warps balances the div/mod chain.
         BLOCK = 1024
@@ -229,9 +248,11 @@ def _values_copy_impl(self, out=None, vals=None):
             out,
             shape,
             stride,
+            dst_stride,
             n,
             NDIM=ndim,
             BLOCK_SIZE=BLOCK,
+            DST_STRIDED=not out.is_contiguous(),
             num_warps=4,
         )
     if bridge_out is not None:

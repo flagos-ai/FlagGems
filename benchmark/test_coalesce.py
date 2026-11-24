@@ -86,6 +86,7 @@ def test__coalesce():
     bench = CoalesceBenchmark(
         op_name="_coalesce",
         torch_op=torch.ops.aten._coalesce,
+        gems_op=getattr(flag_gems, "_coalesce", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

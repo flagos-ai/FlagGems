@@ -5,6 +5,8 @@ import flag_gems
 
 from . import base
 
+fp64_is_supported = flag_gems.runtime.device.support_fp64
+
 
 # ormqr benchmark
 # ormqr applies Householder reflectors which have inherent sequential dependency.
@@ -56,6 +58,6 @@ def test_ormqr():
         op_name="ormqr",
         torch_op=torch.ormqr,
         # ormqr only supports float32 and float64 (LAPACK limitation, no half/bfloat16)
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32] + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()

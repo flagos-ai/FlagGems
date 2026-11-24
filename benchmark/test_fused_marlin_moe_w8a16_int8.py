@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 # vLLM imports (baseline). Optional: when vllm is not installed (e.g. in CI),
 # the entire benchmark is skipped via the skipif marker below.
 try:
@@ -33,14 +35,23 @@ try:
     HAS_VLLM_FUSED_MARLIN_MOE = True
 except ImportError:
     HAS_VLLM_FUSED_MARLIN_MOE = False
-
-import flag_gems
+except Exception as vllm_import_error:
+    # The enflame image imports vLLM's fused-Marlin-MoE reference through
+    # transformers -> sklearn, which raises a numpy ABI ValueError at import
+    # time; that aborts collection of the entire benchmark run. Only this
+    # backend degrades to a module-level skip, every other vendor keeps the
+    # original failure.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    pytest.skip(
+        "enflame GCU cannot import the vLLM fused-Marlin-MoE reference "
+        f"({type(vllm_import_error).__name__}: {vllm_import_error})",
+        allow_module_level=True,
+    )
 
 # FlagGems wrapper under test
 from flag_gems.deprecated.fused_marlin_moe import QUANT_TYPE_UINT8B128
-from flag_gems.deprecated.fused_marlin_moe import (
-    fused_marlin_moe as gems_fused_marlin_moe,
-)
+from flag_gems.deprecated.fused_marlin_moe import fused_marlin_moe as gems_fused_marlin_moe
 
 from . import base
 

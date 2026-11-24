@@ -69,8 +69,7 @@ def test_scaled_softmax_forward(
     else:
         try:
             from transformer_engine.pytorch import cpp_extensions as tex
-        except (ImportError, RuntimeError):
-            # An empty transformer-engine meta package raises RuntimeError.
+        except ImportError:
             tex = None
 
         te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
@@ -113,8 +112,7 @@ def test_scaled_softmax_backward(
     else:
         try:
             from transformer_engine.pytorch import cpp_extensions as tex
-        except (ImportError, RuntimeError):
-            # An empty transformer-engine meta package raises RuntimeError.
+        except ImportError:
             tex = None
 
         te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)

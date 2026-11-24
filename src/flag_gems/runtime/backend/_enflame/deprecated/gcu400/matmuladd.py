@@ -28,7 +28,7 @@ addmm kernel - and every future addmm tuning is inherited for free.
 The local Triton kernel below stays as the fallback for the cases the sibling
 does not model: mixed dtypes among input / other / bias, and an explicit
 ``out=`` tensor.  It keeps the broadcast-safe bias loads this copy was created
-for: the common ``flag_gems.deprecated.matmuladd`` loads the bias through a 2-D
+for: the common ``flag_gems.fused.matmuladd`` loads the bias through a 2-D
 tile whose pointer is ``bias.broadcast_to(out.shape)``.  When the bias is 1-D
 (shape ``(N,)``) that view has stride 0 along M, and a masked 2-D ``tl.load``
 from a stride-0 source with more than one valid row aborts the device on

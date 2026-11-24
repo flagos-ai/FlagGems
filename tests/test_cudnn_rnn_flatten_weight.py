@@ -216,12 +216,12 @@ def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
     # Rebinding must keep every weight's own shape and values.
     for w, old in zip(params, values_before):
         assert w.shape == old.shape
-        utils.gems_assert_equal(w, old)
+        utils.gems_assert_equal(w.cpu(), old.cpu())
     # ... and flattening again is idempotent for the module's weights.
     again = flag_gems.cudnn_rnn_flatten_weight(
         module._flat_weights, *_op_args(cfg, mode_info)
     )
-    utils.gems_assert_equal(again, flat)
+    utils.gems_assert_equal(again.cpu(), flat.cpu())
 
 
 @pytest.mark.cudnn_rnn_flatten_weight_out
@@ -236,14 +236,22 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
-    ref_out, ref_weights = _reference(weights, args, dtype)
+    if TO_CPU or ATEN_REFERENCE_UNSUPPORTED:
+        # The CUDA-only aten operator cannot produce the reference here, so the
+        # non-`.out` FlagGems path supplies it; the `.out` contract (buffer
+        # identity, rebinding onto the operator's own buffer) is what this case
+        # pins down.
+        ref_weights = [w.clone() for w in weights]
+        ref_out = flag_gems.cudnn_rnn_flatten_weight(ref_weights, *args)
+    else:
+        ref_out, ref_weights = _reference(weights, args, dtype)
 
     res_weights = [w.clone() for w in weights]
     out = torch.empty_like(ref_out)
     res_out = flag_gems.cudnn_rnn_flatten_weight_out(res_weights, *args, out=out)
 
     assert res_out.data_ptr() == out.data_ptr()
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out.cpu(), ref_out.cpu())
     # `.out` still rebinds (the reference does the same), and the weights alias
     # the operator's own buffer rather than the caller's `out`.
     assert _alias_layout(res_weights) == _alias_layout(ref_weights)

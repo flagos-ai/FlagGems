@@ -70,11 +70,18 @@ class ConvertWeightBenchmark(base.Benchmark):
         gems_args = list(gems_input)
         metric.shape_detail = self.record_shapes(*gems_args)
         try:
-            if "latency_base" in self.to_bench_metrics:
+            # Honor the skip_native marker: on vendors whose torch stack has no
+            # PrivateUse1 kernel for aten::_convert_weight_to_int4pack the native
+            # baseline cannot be timed, so only the gems leg is measured.
+            if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *base_args)
             if "latency" in self.to_bench_metrics:
                 metric.latency = self.get_latency(self.gems_op, *gems_args)
-            if "speedup" in self.to_bench_metrics:
+            if (
+                "speedup" in self.to_bench_metrics
+                and metric.latency_base is not None
+                and metric.latency is not None
+            ):
                 metric.speedup = metric.latency_base / metric.latency
         except (RuntimeError, Exception) as e:
             metric.error_msg = str(e)
