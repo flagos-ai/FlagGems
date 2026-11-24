@@ -173,16 +173,22 @@ from .foreach_pow_list_ import foreach_pow_list_
 from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
 from .foreach_reciprocal_ import foreach_reciprocal_
+from .foreach_round import foreach_round
 from .foreach_sigmoid_ import foreach_sigmoid_
 from .foreach_sign_ import foreach_sign_
+from .foreach_sin import foreach_sin
 from .foreach_sin_ import foreach_sin_
+from .foreach_sinh import foreach_sinh
 from .foreach_sinh_ import foreach_sinh_
 from .foreach_sqrt_ import foreach_sqrt_
+from .foreach_sub_list import foreach_sub_list, foreach_sub_list_
 from .foreach_sub_scalar import foreach_sub_scalar
 from .foreach_sub_scalar_ import foreach_sub_scalar_
 from .foreach_sub_scalar_list import foreach_sub_scalar_list
 from .foreach_sub_scalar_list_ import foreach_sub_scalar_list_
+from .foreach_tan import foreach_tan
 from .foreach_tan_ import foreach_tan_
+from .foreach_tanh import foreach_tanh
 from .foreach_tanh_ import foreach_tanh_
 from .frac import frac
 from .frac_ import frac_
@@ -572,16 +578,23 @@ __all__ = [
     "foreach_pow_scalar_",
     "foreach_pow_scalar_list_",
     "foreach_reciprocal_",
+    "foreach_round",
     "foreach_sigmoid_",
     "foreach_sign_",
+    "foreach_sin",
     "foreach_sin_",
+    "foreach_sinh",
     "foreach_sinh_",
     "foreach_sqrt_",
+    "foreach_sub_list",
+    "foreach_sub_list_",
     "foreach_sub_scalar",
     "foreach_sub_scalar_",
     "foreach_sub_scalar_list",
     "foreach_sub_scalar_list_",
+    "foreach_tan",
     "foreach_tan_",
+    "foreach_tanh",
     "foreach_tanh_",
     "frac",
     "frac_",
