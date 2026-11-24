@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from . import conftest as cfg
-from .accuracy_utils import gems_assert_close
+from .accuracy_utils import _SKIP_FP64, gems_assert_close
 
 if cfg.QUICK_MODE:
     HISTOGRAM_SHAPES = [(128,), (64, 64)]
@@ -26,7 +26,7 @@ if cfg.QUICK_MODE:
 else:
     HISTOGRAM_SHAPES = [(128,), (1024,), (4096,), (64, 64), (32, 64, 16)]
     HISTOGRAM_BINS = [10, 50, 100]
-HISTOGRAM_DTYPES = [torch.float32, torch.float64]
+HISTOGRAM_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 @pytest.mark.histogram

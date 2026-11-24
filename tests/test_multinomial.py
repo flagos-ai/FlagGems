@@ -96,6 +96,24 @@ def test_multinomial_with_replacement_1(shape, dtype, n_samples):
 
 
 @pytest.mark.multinomial
+@pytest.mark.parametrize("strided", [False, True])
+def test_multinomial_does_not_mutate_input(strided):
+    # The float32 fast path clamps probabilities in place, so it must not
+    # operate on caller-owned storage.
+    prob = torch.zeros((8, 2048), dtype=torch.float32, device=flag_gems.device)
+    prob[..., 0] = 1.0
+    if strided:
+        storage = torch.empty((8, 4096), dtype=torch.float32, device=flag_gems.device)
+        storage[:, ::2].copy_(prob)
+        prob = storage[:, ::2]
+    expected = prob.clone()
+
+    flag_gems.multinomial(prob, 1, False)
+
+    utils.gems_assert_equal(prob.cpu(), expected.cpu())
+
+
+@pytest.mark.multinomial
 @pytest.mark.parametrize("pool", utils.UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_multinomial_without_replacement(pool, dtype):

@@ -5,6 +5,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
@@ -124,6 +125,7 @@ def test_vander_negative_values(dtype):
 
 
 @pytest.mark.vander
+@_SKIP_FP64
 def test_vander_fp64():
     # FP64 precision must be preserved end-to-end (no fp32 downcast in the kernel).
     if not utils.fp64_is_supported:
@@ -141,7 +143,9 @@ def test_vander_fp64():
 
 @pytest.mark.vander
 @pytest.mark.parametrize("increasing", [False, True])
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_vander_complex(dtype, increasing):
     # Complex inputs are computed via a dedicated real/imag power kernel and must
     # match ATen's complex-capable implementation.
