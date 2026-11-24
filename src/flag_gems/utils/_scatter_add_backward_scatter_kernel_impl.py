@@ -31,6 +31,16 @@ def vector_to_scalar(tensor):
     return torch.as_strided(tensor, (), ())
 
 
+def scalar_scatter_layout(*tensors):
+    return any((t.ndim == 0 for t in tensors)) and all(
+        (t.ndim <= 1 and t.numel() == 1 for t in tensors)
+    )
+
+
+def restore_scalar_layout(tensor, reference):
+    return vector_to_scalar(tensor) if reference.ndim == 0 else tensor
+
+
 @triton.jit
 def gather_kernel(
     G,
