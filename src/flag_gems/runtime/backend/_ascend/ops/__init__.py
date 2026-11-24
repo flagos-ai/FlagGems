@@ -168,6 +168,7 @@ from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
 from .foreach_mul_tensor import foreach_mul_tensor
 from .foreach_mul_tensor_ import foreach_mul_tensor_
 from .foreach_neg_ import foreach_neg_
+from .foreach_pow_list import foreach_pow_list
 from .foreach_pow_list_ import foreach_pow_list_
 from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
@@ -566,6 +567,7 @@ __all__ = [
     "foreach_mul_tensor",
     "foreach_mul_tensor_",
     "foreach_neg_",
+    "foreach_pow_list",
     "foreach_pow_list_",
     "foreach_pow_scalar_",
     "foreach_pow_scalar_list_",
