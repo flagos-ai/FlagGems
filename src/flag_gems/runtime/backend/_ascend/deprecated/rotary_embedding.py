@@ -20,9 +20,19 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.tensorview import (
+    HAS_TENSORVIEW,
+    MIN_TILE_ROWS,
+    tensorview_call,
+    tile_rows_for_ub,
+)
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+if HAS_TENSORVIEW:
+    import triton.experimental.tle as tle_exp
+    from triton.experimental.tle import tile_load, tile_store
 
 
 @triton.jit
@@ -176,7 +186,7 @@ def rotary_embedding_siso_kernel(
         )
 
 
-def apply_rotary_pos_emb(
+def _apply_rotary_pos_emb_generic(
     q,
     k,
     cos,
@@ -282,3 +292,232 @@ def apply_rotary_pos_emb(
         _launch(q_embed, q, num_q_heads)
         _launch(k_embed, k, num_k_heads)
         return q_embed.view(q_shape), k_embed.view(k_shape)
+
+
+# ---------------------------------------------------------------------------
+# TensorView fast path
+#
+# The generic path materializes cos[position_ids] and sin[position_ids] as
+# [tokens, head_dim // 2] tensors before launching, then runs one program per
+# (token block, head block). Here each program takes BLOCK_T tokens with all of
+# their heads: q, k and both outputs are 3-D PartitionViews over
+# [token, head, half], so a whole tile of head vectors moves as one block DMA
+# and the cos/sin rows are gathered inside the kernel instead of being
+# materialized first. Tail tokens and the heads past the head count fall
+# outside the views and are dropped on store.
+# ---------------------------------------------------------------------------
+TV_MAX_BLOCK_T = 16
+
+if HAS_TENSORVIEW:
+
+    @triton.jit
+    def rotary_tv_kernel(
+        q_out,
+        k_out,
+        q,
+        k,
+        cos,
+        sin,
+        position_ids,
+        num_tokens,
+        cos_stride,
+        NUM_Q: tl.constexpr,
+        NUM_K: tl.constexpr,
+        Q_PAD: tl.constexpr,
+        K_PAD: tl.constexpr,
+        HEAD_DIM: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+    ):
+        tile = tl.program_id(0)
+        half: tl.constexpr = HEAD_DIM // 2
+        rows = tile * BLOCK_T + tl.arange(0, BLOCK_T)
+        live = rows < num_tokens
+        # The cos/sin rows are the only data-dependent access, so they stay
+        # masked loads rather than going through a view.
+        pos = tl.load(position_ids + rows, mask=live, other=0)
+        table = pos[:, None] * cos_stride + tl.arange(0, half)[None, :]
+        c = tl.load(cos + table, mask=live[:, None], other=0).to(tl.float32)[:, None, :]
+        s = tl.load(sin + table, mask=live[:, None], other=0).to(tl.float32)[:, None, :]
+
+        q_view = tle_exp.make_partition_view(
+            q,
+            shape=[num_tokens, NUM_Q, HEAD_DIM],
+            strides=[NUM_Q * HEAD_DIM, HEAD_DIM, 1],
+            tile=[BLOCK_T, Q_PAD, half],
+        )
+        qo_view = tle_exp.make_partition_view(
+            q_out,
+            shape=[num_tokens, NUM_Q, HEAD_DIM],
+            strides=[NUM_Q * HEAD_DIM, HEAD_DIM, 1],
+            tile=[BLOCK_T, Q_PAD, half],
+        )
+        q1 = tile_load(
+            q_view, index=(tile, 0, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        q2 = tile_load(
+            q_view, index=(tile, 0, 1), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        tile_store(
+            qo_view,
+            value=(q1 * c - q2 * s).to(q_out.type.element_ty),
+            index=(tile, 0, 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+        tile_store(
+            qo_view,
+            value=(q2 * c + q1 * s).to(q_out.type.element_ty),
+            index=(tile, 0, 1),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+
+        k_view = tle_exp.make_partition_view(
+            k,
+            shape=[num_tokens, NUM_K, HEAD_DIM],
+            strides=[NUM_K * HEAD_DIM, HEAD_DIM, 1],
+            tile=[BLOCK_T, K_PAD, half],
+        )
+        ko_view = tle_exp.make_partition_view(
+            k_out,
+            shape=[num_tokens, NUM_K, HEAD_DIM],
+            strides=[NUM_K * HEAD_DIM, HEAD_DIM, 1],
+            tile=[BLOCK_T, K_PAD, half],
+        )
+        k1 = tile_load(
+            k_view, index=(tile, 0, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        k2 = tile_load(
+            k_view, index=(tile, 0, 1), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        tile_store(
+            ko_view,
+            value=(k1 * c - k2 * s).to(k_out.type.element_ty),
+            index=(tile, 0, 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+        tile_store(
+            ko_view,
+            value=(k2 * c + k1 * s).to(k_out.type.element_ty),
+            index=(tile, 0, 1),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+
+    def _tv_rows_that_fit(q_pad, k_pad, head_dim, element_size):
+        """Tokens per tile UB can hold. The widest tile is max(q_pad, k_pad)
+        head vectors of half the head dim; a half tile and its fp32 promotion
+        are live for both halves at once, so budget for four."""
+        row_bytes = max(q_pad, k_pad) * (head_dim // 2) * element_size
+        return tile_rows_for_ub(row_bytes, 4, TV_MAX_BLOCK_T)
+
+    def _tv_block_t(q_pad, k_pad, head_dim, element_size):
+        rows = _tv_rows_that_fit(q_pad, k_pad, head_dim, element_size)
+        return max(rows, MIN_TILE_ROWS)
+
+    def _apply_rotary_pos_emb_tensorview(
+        q,
+        k,
+        cos,
+        sin,
+        position_ids=None,
+        rotary_interleaved=False,
+        inplace=False,
+    ):
+        logger.debug("GEMS_ASCEND ROTARY_POS_EMBEDDING(TENSORVIEW)")
+        q_shape, k_shape = q.shape, k.shape
+        q = q.contiguous().view(-1, q.shape[-2], q.shape[-1])
+        k = k.contiguous().view(-1, k.shape[-2], k.shape[-1])
+        num_tokens, num_q, head_dim = q.shape
+        num_k = k.shape[1]
+        q_pad = triton.next_power_of_2(num_q)
+        k_pad = triton.next_power_of_2(num_k)
+        block_t = _tv_block_t(q_pad, k_pad, head_dim, q.element_size())
+
+        q_out = torch.empty_like(q)
+        k_out = torch.empty_like(k)
+        grid = (triton.cdiv(num_tokens, block_t),)
+        with torch_device_fn.device(q.device):
+            rotary_tv_kernel[grid](
+                q_out,
+                k_out,
+                q,
+                k,
+                cos,
+                sin,
+                position_ids.view(-1),
+                num_tokens,
+                cos.stride(0),
+                NUM_Q=num_q,
+                NUM_K=num_k,
+                Q_PAD=q_pad,
+                K_PAD=k_pad,
+                HEAD_DIM=head_dim,
+                BLOCK_T=block_t,
+            )
+        return q_out.view(q_shape), k_out.view(k_shape)
+
+    def _tv_eligible(q, k, cos, sin, position_ids, rotary_interleaved, inplace):
+        # The tile covers the half-split layout only, and writing into the
+        # inputs would race with the second half's read of them.
+        if rotary_interleaved or inplace:
+            return False
+        # Without position_ids the positions are implicit per batch row, which
+        # the kernel would have to materialize; leave that to the generic path.
+        if position_ids is None:
+            return False
+        if q.dim() < 3 or k.dim() < 3 or q.numel() == 0 or k.numel() == 0:
+            return False
+        if q.shape[:-2] != k.shape[:-2] or q.shape[-1] != k.shape[-1]:
+            return False
+        # The kernel reads it as one flat run of tokens.
+        if position_ids.shape != q.shape[:-2] or not position_ids.is_contiguous():
+            return False
+        head_dim = q.shape[-1]
+        half = head_dim // 2
+        if head_dim % 2 != 0:
+            return False
+        # The tile's last extent is `half` and the cos/sin gather indexes it
+        # with tl.arange, so it has to be a power of two.
+        if triton.next_power_of_2(half) != half:
+            return False
+        if cos.shape != sin.shape or cos.dim() != 2 or cos.shape[-1] != half:
+            return False
+        if cos.stride(-1) != 1 or sin.stride(-1) != 1:
+            return False
+        # One row stride is passed for both tables, so they have to agree on it.
+        if cos.stride(0) != sin.stride(0):
+            return False
+        if q.dtype != k.dtype or cos.dtype != sin.dtype:
+            return False
+        q_pad = triton.next_power_of_2(q.shape[-2])
+        k_pad = triton.next_power_of_2(k.shape[-2])
+        return (
+            _tv_rows_that_fit(q_pad, k_pad, head_dim, q.element_size()) >= MIN_TILE_ROWS
+        )
+
+    def apply_rotary_pos_emb(
+        q,
+        k,
+        cos,
+        sin,
+        position_ids: Optional[torch.IntTensor] = None,
+        rotary_interleaved: bool = False,
+        inplace: bool = False,
+    ):
+        if not _tv_eligible(q, k, cos, sin, position_ids, rotary_interleaved, inplace):
+            return _apply_rotary_pos_emb_generic(
+                q, k, cos, sin, position_ids, rotary_interleaved, inplace
+            )
+        return tensorview_call(
+            "ROTARY_POS_EMBEDDING",
+            _apply_rotary_pos_emb_tensorview,
+            _apply_rotary_pos_emb_generic,
+            q,
+            k,
+            cos,
+            sin,
+            position_ids,
+            rotary_interleaved,
+            inplace,
+        )
+
+else:
+    apply_rotary_pos_emb = _apply_rotary_pos_emb_generic

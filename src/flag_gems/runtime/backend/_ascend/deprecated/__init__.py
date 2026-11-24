@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .concat_and_cache_mla import concat_and_cache_mla
+from .cp_gather_indexer_k_quant_cache import cp_gather_indexer_k_quant_cache
 from .cross_entropy_loss import cross_entropy_loss
+from .deepseek_v4_attention_combine_topk_swa_indices import combine_topk_swa_indices
+from .deepseek_v4_attention_compute_global_topk_indices_and_lens import (
+    compute_global_topk_indices_and_lens,
+)
 from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
 from .fused_moe import (
@@ -24,15 +30,26 @@ from .fused_moe import (
 )
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .moe_sum import moe_sum
+from .pack_seq import pack_seq_triton
+from .paged_kv_block_gather import paged_kv_block_gather
+from .reshape_and_cache_flash import reshape_and_cache_flash
 from .rotary_embedding import apply_rotary_pos_emb
 from .skip_layernorm import skip_layer_norm
 from .sparse_attention import sparse_attn_triton
+from .unpack_seq import unpack_seq_triton
 
 __all__ = [
+    "combine_topk_swa_indices",
+    "compute_global_topk_indices_and_lens",
+    "concat_and_cache_mla",
+    "cp_gather_indexer_k_quant_cache",
     "cross_entropy_loss",
     "apply_rotary_pos_emb",
     "flash_mla",
     "fused_add_rms_norm",
+    "pack_seq_triton",
+    "paged_kv_block_gather",
+    "reshape_and_cache_flash",
     "skip_layer_norm",
     "sparse_attn_triton",
     "moe_align_block_size",
@@ -43,4 +60,5 @@ __all__ = [
     "inplace_fused_experts",
     "invoke_fused_moe_triton_kernel",
     "outplace_fused_experts",
+    "unpack_seq_triton",
 ]
