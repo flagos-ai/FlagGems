@@ -152,21 +152,18 @@ def apply_rotary_pos_emb_inplace_kernel(
     # note: set TRITON_DEBUG=1 to enable this check
     tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
 
-    ordered_block = tl.arange(0, PADDED_HEAD_DIM)
-    mask = ordered_block < HEAD_DIM
+    # Load both elements of each pair before either is overwritten.
+    sin_cos_block = tl.arange(0, PADDED_HEAD_DIM // 2)
+    mask = sin_cos_block < HEAD_DIM // 2
     if ROTARY_INTERLEAVED:
-        odd_mask = ordered_block % 2 == 0
-        rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
-        sin_cos_block = ordered_block // 2
-        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(odd_mask, -sin, sin)
+        ordered_block = 2 * sin_cos_block
+        rotated_block = ordered_block + 1
     else:
-        rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
-        sin_cos_block = ordered_block % (HEAD_DIM // 2)
-        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+        ordered_block = sin_cos_block
+        rotated_block = ordered_block + HEAD_DIM // 2
+
+    cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+    sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
 
     q_ptr += s_id * q_stride_s
 
@@ -176,8 +173,9 @@ def apply_rotary_pos_emb_inplace_kernel(
 
         q = tl.load(q_ptr + ordered_cols, mask=mask, other=0.0)
         rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
-        y = q * cos + rotated_q * sin
-        tl.store(q_ptr + ordered_cols, y, mask=mask)  # In-place update
+        y = q * cos - rotated_q * sin
+        tl.store(q_ptr + ordered_cols, y, mask=mask)
+        tl.store(q_ptr + rotated_cols, rotated_q * cos + q * sin, mask=mask)
 
     k_ptr += s_id * k_stride_s
 
@@ -187,8 +185,9 @@ def apply_rotary_pos_emb_inplace_kernel(
 
         k = tl.load(k_ptr + ordered_cols, mask=mask, other=0.0)
         rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
-        y = k * cos + rotated_k * sin
-        tl.store(k_ptr + ordered_cols, y, mask=mask)  # In-place update
+        y = k * cos - rotated_k * sin
+        tl.store(k_ptr + ordered_cols, y, mask=mask)
+        tl.store(k_ptr + rotated_cols, rotated_k * cos + k * sin, mask=mask)
 
 
 def apply_rotary_pos_emb(
