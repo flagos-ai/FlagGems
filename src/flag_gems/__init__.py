@@ -1897,6 +1897,11 @@ _FULL_CONFIG = (
     ("mkldnn_reorder_conv2d_weight.out", mkldnn_reorder_conv2d_weight_out),
     ("mkldnn_rnn_layer", mkldnn_rnn_layer),
     ("mm", mm),
+    *(
+        (("mm.dtype", globals()["mm_dtype"]),)
+        if "mm_dtype" in globals() and torch_has_aten_overload("mm", "dtype")
+        else ()
+    ),
     ("mm.out", mm_out),
     ("mode", mode),
     ("moveaxis.int", moveaxis),

@@ -14477,6 +14477,17 @@ ops:
   stages:
   - stable: '1.0'
   cpp: '4.0'
+- id: mm_dtype
+  description: Matrix multiplication with an explicit output dtype on Atlas A5.
+  for:
+  - mm.dtype
+  labels:
+  - aten
+  - NoCPU
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: mm_out
   description: A variant of `mm()` with `out` specified.
   for:
