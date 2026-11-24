@@ -503,6 +503,11 @@ def test_cholesky_solve_complex(shape, dtype, upper):
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_noncontiguous(dtype, upper):
+    if VENDOR_NAME == "enflame" and dtype == torch.complex64 and upper:
+        pytest.skip(
+            "native complex64 cholesky factor does not match A for the "
+            "non-contiguous upper case on this device"
+        )
     A, L, rhs = _make_cholesky_solve_inputs((2, 16, 5), dtype)
     factor = L.mH.contiguous() if upper else L
     factor = _make_noncontiguous_last_dim(factor)

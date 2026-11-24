@@ -435,7 +435,7 @@ def test_scatter_reduce_out_high_dim_active_prefix(
 @pytest.mark.parametrize("reduce", ("amax", "amin"))
 def test_scatter_reduce_5d_canonical_gate(monkeypatch, reduce):
     """Exercise the large-5D extrema gate without allocating a benchmark shape."""
-    scatter_reduce_module = importlib.import_module("flag_gems.ops.scatter_reduce")
+    scatter_reduce_module = importlib.import_module(flag_gems.scatter_reduce.__module__)
     monkeypatch.setattr(scatter_reduce_module, "_CANONICALIZE_5D_MIN_ELEMENTS", 0)
 
     shape, dim, dtype = (2, 2, 3, 2, 2), 2, torch.float32
