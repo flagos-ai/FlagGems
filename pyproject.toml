@@ -262,6 +262,30 @@ tsingmicro-tsm260610 = [
 # Test packages group for flagos-ai/flagos-optest
 ascend = [
     "decorator==5.2.1",  # used for gru operator test
+    "numpy>=1.26.4,<2.0",
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.3.0",
+]
+
+hygon = [
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.3.0",
+]
+
+metax = [
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.3.0",
+]
+
+mthreads = [
+    "scikit-learn>=1.4,<2.0",
+    "torchada==0.1.54",
+    "xgboost==3.3.0",
+]
+
+thead = [
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.3.0",
 ]
 
 # Test packages
