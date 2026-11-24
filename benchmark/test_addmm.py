@@ -74,6 +74,8 @@ def _input_fn_vector_bias_out(b, m, n, k, dtype, device, b_column_major):
 
 @pytest.mark.addmm
 def test_addmm(monkeypatch):
+    from .test_blas_perf_parallel import use_native_cache_flush
+
     bench = base.BlasBenchmark(
         op_name="addmm",
         input_fn=_input_fn,
@@ -81,6 +83,7 @@ def test_addmm(monkeypatch):
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
+    use_native_cache_flush(monkeypatch, bench.op_name)
     bench.run()
 
 

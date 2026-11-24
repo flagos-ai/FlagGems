@@ -2008,44 +2008,6 @@ addmm_column:
   num_warps: 4
   num_stages: 1
 
-addmm_ring:
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 16
-    GROUP_SIZE_M: 8
-  num_warps: 8
-  num_stages: 1
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 16
-    GROUP_SIZE_M: 4
-  num_warps: 8
-  num_stages: 1
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 16
-    GROUP_SIZE_M: 1
-  num_warps: 8
-  num_stages: 1
-
-baddbmm_ring:
-- META:
-    GROUP_M: 1
-  num_warps: 8
-  num_stages: 1
-- META:
-    GROUP_M: 4
-  num_warps: 8
-  num_stages: 1
-- META:
-    GROUP_M: 8
-  num_warps: 8
-  num_stages: 1
-
-# Small shared split-K space. Large GEMM spaces remain in the expand files.
 bmm_splitk:
   - META: {TM: 16, TN: 16, TK: 128}
     num_warps: 4
