@@ -19273,10 +19273,23 @@ ops:
   labels:
   - aten
   - pointwise
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: silu_backward_out
+  description: Destination-buffer variant of silu backward.
+  for:
+  - silu_backward.grad_input
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: 5.5.0
 - id: sin
   description: 'Returns a new tensor with the sine of the elements in the `input`
     tensor,
