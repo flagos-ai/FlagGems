@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sum import sum as gems_sum
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
@@ -57,8 +58,6 @@ def _fill_tensor(input, value):
 class _GradSum(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
-        from flag_gems.ops.sum import sum as gems_sum
-
         ctx.shape = input.shape
         ctx.dtype = input.dtype
         ctx.device = input.device
@@ -71,8 +70,6 @@ class _GradSum(torch.autograd.Function):
 
 
 def _value_gradient(grad_output, value_device):
-    from flag_gems.ops.sum import sum as gems_sum
-
     grad_value = (
         _GradSum.apply(grad_output)
         if torch.is_grad_enabled()
