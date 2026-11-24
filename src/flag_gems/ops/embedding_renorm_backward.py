@@ -20,6 +20,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +57,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@libentry()
 @triton.jit
 def _copy_kernel(src, dst, numel, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
@@ -62,6 +66,7 @@ def _copy_kernel(src, dst, numel, BLOCK: tl.constexpr):
     tl.store(dst + offs, tl.load(src + offs, mask=mask), mask=mask)
 
 
+@libentry()
 @triton.jit
 def _zero_i8(ptr, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
@@ -70,6 +75,7 @@ def _zero_i8(ptr, n, BLOCK: tl.constexpr):
     tl.store(ptr + offs, tl.zeros([BLOCK], dtype=tl.int8), mask=mask)
 
 
+@libentry()
 @triton.jit
 def _mark_i8(ptr, idx_ptr, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
@@ -94,6 +100,7 @@ def _p2_safe(base, e):
     return tl.where(is_zero, 0.0, tl.exp2(e * tl.log2(safe)))
 
 
+@libentry()
 @triton.jit
 def _renorm_bwd_row(
     weight_ptr,
@@ -153,6 +160,7 @@ def _renorm_bwd_row(
     tl.store(out_ptr + base + offs, grad.to(g.dtype), mask=m)
 
 
+@libentry()
 @triton.jit
 def _renorm_bwd_fused(
     weight_ptr,
@@ -235,6 +243,14 @@ def embedding_renorm_backward(grad_output, weight, indices, max_norm, norm_type)
     for the formula.
     """
     logger.debug("GEMS EMBEDDING_RENORM_BACKWARD")
+    with torch_device_fn.device(weight.device):
+        out = _embedding_renorm_backward_impl(
+            grad_output, weight, indices, max_norm, norm_type
+        )
+    return out
+
+
+def _embedding_renorm_backward_impl(grad_output, weight, indices, max_norm, norm_type):
     out = torch.empty_like(grad_output)
     V, D = weight.shape
     n_idx = indices.numel()
@@ -296,3 +312,36 @@ def embedding_renorm_backward(grad_output, weight, indices, max_norm, norm_type)
             num_warps=nw,
         )
     return out
+
+
+class EmbeddingRenormFunction(torch.autograd.Function):
+    """``embedding_renorm_`` forward paired with the Triton VJP above.
+
+    ``aten::embedding_renorm_`` has no derivative registered in ATen (an
+    in-place op; ATen autograd raises for it), so the FlagGems forward must be
+    paired with an ``autograd.Function`` to make the fused backward reachable
+    through ``flag_gems.embedding_renorm_``.
+    """
+
+    @staticmethod
+    def forward(ctx, weight, indices, max_norm, norm_type):
+        from flag_gems.ops.embedding_renorm_ import _embedding_renorm_impl
+
+        # The forward renormalizes ``weight`` rows IN PLACE, so by the time
+        # backward runs, ``weight`` already holds post-mutation values. The
+        # VJP is a function of the PRE-mutation row values, so save a snapshot
+        # clone taken before the kernel mutates the tensor.
+        ctx.save_for_backward(weight.clone(), indices)
+        ctx.max_norm = max_norm
+        ctx.norm_type = norm_type
+        return _embedding_renorm_impl(weight, indices, max_norm, norm_type)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        weight, indices = ctx.saved_tensors
+        if not ctx.needs_input_grad[0]:
+            return None, None, None, None
+        grad = embedding_renorm_backward(
+            grad_output, weight, indices, ctx.max_norm, ctx.norm_type
+        )
+        return grad, None, None, None
