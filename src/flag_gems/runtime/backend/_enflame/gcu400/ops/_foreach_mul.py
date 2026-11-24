@@ -36,7 +36,6 @@ from ._foreach_flat import (
     MODE_SCALAR_LIST,
     MODE_TENSOR,
     OP_MUL,
-    _fused_grid,
     can_use_flat,
     fused_binary_list_kernel,
     fused_binary_scalar_kernel,

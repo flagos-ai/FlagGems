@@ -3619,14 +3619,14 @@ from .to_dense_backward import to_dense_backward  # noqa: E402, F811
 from .transpose_ import transpose_  # noqa: E402, F811
 
 # The unpack_seq cases in tests/ and benchmark/ directly call the package attribute via
-# `from flag_gems.deprecated import unpack_seq_triton`; without syncing here,
-# that direct-call path would bypass the gcu400 implementation and keep running
-# the public path. This follows the same approach as the upsample series above:
-# only change backend loading behavior, do not modify the common op source,
+# `from flag_gems.fused import unpack_seq_triton`; without syncing here, that direct-call path would bypass the gcu400
+# implementation and keep running
+# the public path. This follows the same approach as the upsample series above: only change backend loading behavior, do
+# not modify the common op source,
 # and do not modify test files.
 from _enflame.fused.gcu400.unpack_seq import unpack_seq_triton  # noqa: E402
 
-import flag_gems.deprecated as _flag_gems_fused_module  # noqa: E402
+import flag_gems.fused as _flag_gems_fused_module  # noqa: E402
 
 _flag_gems_fused_module.unpack_seq_triton = unpack_seq_triton
 del _flag_gems_fused_module
