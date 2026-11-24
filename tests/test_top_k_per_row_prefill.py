@@ -25,8 +25,6 @@ Test shapes match DeepSeek V4 production config:
     - num_rows=32/64/2048: prefill batch sizes
 """
 
-from importlib import import_module
-
 import pytest
 import torch
 
