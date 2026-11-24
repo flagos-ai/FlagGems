@@ -305,5 +305,3 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         num_warps=_SAMPLE_NUM_WARPS,
     )
     return out
-
-

@@ -75,9 +75,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.bincount import bincount
     from .gcu400.chunk_gated_delta_rule import chunk_gated_delta_rule
     from .gcu400.concat_and_cache_mla import concat_and_cache_mla
-    from .gcu400.cp_gather_indexer_k_quant_cache import (
-        cp_gather_indexer_k_quant_cache,
-    )
+    from .gcu400.cp_gather_indexer_k_quant_cache import cp_gather_indexer_k_quant_cache
     from .gcu400.cross_entropy_loss import cross_entropy_loss
     from .gcu400.cutlass_scaled_mm import (
         cutlass_scaled_mm,
@@ -137,6 +135,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.reshape_and_cache import reshape_and_cache
     from .gcu400.reshape_and_cache_flash import reshape_and_cache_flash
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
+    from .gcu400.rwkv_ka_fusion import rwkv_ka_fusion  # noqa: F401
     from .gcu400.silu_and_mul import silu_and_mul, silu_and_mul_out
     from .gcu400.silu_and_mul_with_clamp import (
         silu_and_mul_with_clamp,
@@ -155,7 +154,6 @@ elif arch_version == 400 or arch_version == 410:
         top_k_per_row_prefill,
     )
     from .gcu400.topk_softmax import topk_softmax
-    from .gcu400.rwkv_ka_fusion import rwkv_ka_fusion  # noqa: F401
 
     __all__ = [
         "dispatch_fused_moe_kernel",

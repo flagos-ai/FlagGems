@@ -137,9 +137,7 @@ def grouped_mm_kernel(
 
                 offs_cm = offs_am + tl.arange(0, BLOCK_M)
                 offs_cn = offs_bn + tl.arange(0, BLOCK_N)
-                c_ptrs = (
-                    C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-                )
+                c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
                 c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
                 tl.store(c_ptrs, c, mask=c_mask)
 

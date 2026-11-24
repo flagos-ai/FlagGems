@@ -26,7 +26,8 @@ from .accuracy_utils import _SKIP_FP64
 # never construct their own reference.  Gate them on that backend only; other
 # vendors keep their previous behaviour.
 _skip_if_kunlunxin_no_fp64 = pytest.mark.skipif(
-    flag_gems.vendor_name in ("kunlunxin", "enflame") and not flag_gems.runtime.device.support_fp64,
+    flag_gems.vendor_name in ("kunlunxin", "enflame")
+    and not flag_gems.runtime.device.support_fp64,
     reason="Kunlunxin and Enflame does not support FP64",
 )
 

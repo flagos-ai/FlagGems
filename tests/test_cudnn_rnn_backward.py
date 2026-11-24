@@ -102,7 +102,9 @@ def _cudnn_rnn_backward_ref(
     def _to_device(t):
         return None if t is None else t.to(device=input.device, dtype=dtype)
 
-    inp32 = input.to(device=ref_device, dtype=torch.float32).detach().requires_grad_(True)
+    inp32 = (
+        input.to(device=ref_device, dtype=torch.float32).detach().requires_grad_(True)
+    )
     hx32 = hx.to(device=ref_device, dtype=torch.float32)
     cx32 = cx.to(device=ref_device, dtype=torch.float32)
     out, (hy, cy) = rnn(inp32, (hx32, cx32))

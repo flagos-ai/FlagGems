@@ -52,7 +52,9 @@ _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 
 @triton.jit
-def _sin_flat_kernel(x_ptr, out_ptr, n_elements, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+def _sin_flat_kernel(
+    x_ptr, out_ptr, n_elements, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
     """Elementwise sin over a flattened, contiguous buffer (grid-stride loop)."""
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)

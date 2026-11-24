@@ -704,9 +704,9 @@ def _ctc_loss_grad_reduce_kernel(
             else:
                 target_origin = batch * MAX_TARGET
                 target_ptrs = targets + target_origin + target_safe_index
-            target_value = tl.load(
-                target_ptrs, mask=target_mask, other=BLANK
-            ).to(tl.int32)
+            target_value = tl.load(target_ptrs, mask=target_mask, other=BLANK).to(
+                tl.int32
+            )
             labels = tl.where((states % 2) == 0, BLANK, target_value)
 
             post = tl.load(
@@ -1135,7 +1135,7 @@ class CtcLossFunction(torch.autograd.Function):
                 block,
                 init_grid,
                 num_warps=2,
-                )
+            )
 
             scratch_beta = torch.empty(
                 (ctx.batch_size, 2, ctx.state_count_max),

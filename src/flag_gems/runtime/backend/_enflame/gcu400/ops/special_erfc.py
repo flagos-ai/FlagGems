@@ -131,8 +131,7 @@ def erfc_(x):
         # ATen refuses the in-place form on integral input because the float
         # result cannot be cast back into the integer buffer.
         raise RuntimeError(
-            "result type Float can't be cast to the desired output type "
-            f"{x.dtype}"
+            "result type Float can't be cast to the desired output type " f"{x.dtype}"
         )
     if not x.is_contiguous():
         x.copy_(erfc(x))

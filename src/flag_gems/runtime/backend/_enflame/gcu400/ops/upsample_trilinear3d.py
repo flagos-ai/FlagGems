@@ -229,7 +229,9 @@ def upsample_trilinear3d(
     # 16-bit gathers run at ~1/6 of the fp32 rate on this backend, so large
     # 16-bit outputs are computed through an fp32 staging buffer: the extra
     # cast passes are cheap compared with the slower gather traffic.
-    staged = self.dtype in (torch.float16, torch.bfloat16) and out_numel >= _STAGE_MIN_NUMEL
+    staged = (
+        self.dtype in (torch.float16, torch.bfloat16) and out_numel >= _STAGE_MIN_NUMEL
+    )
     work_dtype = torch.float32 if staged else self.dtype
     if staged:
         inp = inp.to(torch.float32)

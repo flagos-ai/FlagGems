@@ -180,10 +180,7 @@ class WeightInt4PackMmBenchmark(base.Benchmark):
                 metric.latency = self.get_latency(self.gems_op, *args)
             if "speedup" in self.to_bench_metrics:
                 if _ENFLAME:
-                    if (
-                        metric.latency_base is not None
-                        and metric.latency is not None
-                    ):
+                    if metric.latency_base is not None and metric.latency is not None:
                         metric.speedup = metric.latency_base / metric.latency
                 else:
                     metric.speedup = metric.latency_base / metric.latency

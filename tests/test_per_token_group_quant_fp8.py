@@ -19,10 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten error"
-)
+pytestmark = pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten error")
 
 
 def native_per_token_group_quant_fp8(
