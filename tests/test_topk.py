@@ -103,6 +103,38 @@ def test_topk_3d_lastdim(shape, topk, dtype):
 
 
 @pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.topk.__module__ != "flag_gems.ops.topk",
+    reason="Requires the generic bitonic topk implementation",
+)
+@pytest.mark.parametrize(
+    "n,k,largest,prefix",
+    [
+        (17, 4, True, ()),
+        (17, 4, True, (10.0, 9.0, 8.0)),
+        (100, 100, True, (0.3, 2.0, 1.0)),
+        (17, 17, False, (2.0, -3.0, 1.0)),
+    ],
+)
+def test_topk_padding_indices(n, k, largest, prefix):
+    fill = float("-inf") if largest else float("inf")
+    x_cpu = torch.full((1, n), fill, dtype=torch.float32, device="cpu")
+    x_cpu[0, : len(prefix)] = torch.tensor(prefix, dtype=x_cpu.dtype, device="cpu")
+    ref_values, _ = torch.topk(x_cpu, k, dim=-1, largest=largest, sorted=True)
+
+    values, indices = flag_gems.topk(
+        x_cpu.to(flag_gems.device), k, dim=-1, largest=largest, sorted=True
+    )
+    values, indices = values.cpu(), indices.cpu()
+    torch.testing.assert_close(values, ref_values, rtol=0, atol=0)
+    assert indices.shape == ref_values.shape and indices.dtype == torch.long
+    # Equal values can legally use different indices than the CPU result.
+    assert ((indices >= 0) & (indices < n)).all()
+    assert indices.unique().numel() == k
+    torch.testing.assert_close(x_cpu.gather(-1, indices), values, rtol=0, atol=0)
+
+
+@pytest.mark.topk
 def test_topk_radix_tle_config_uses_large_fp32_shape_heuristic():
     topk_op = import_module(flag_gems.topk.__module__)
 

@@ -107,13 +107,14 @@ def topk_single_stage_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    pad_val = float("-inf") if DESCENDING else float("inf")
-    mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
-
-    x_val = tl.load(x_ptr + cols, mask=mask, other=pad_val).to(tl.float32)
-    idx_val = tl.where(mask, cols, mask_index_val).to(tl.int32)
-
-    sorted_x, sorted_idx = argsort(x_val, idx_val, dim=0, descending=DESCENDING)
+    x_val = tl.load(x_ptr + cols, mask=mask, other=0).to(tl.float32)
+    sorted_x, sorted_idx = argsort(
+        x_val,
+        cols,
+        dim=0,
+        descending=DESCENDING,
+        valid_count=N if N < BLOCK_SIZE else None,
+    )
 
     out_mask = cols < k
     out_val = sorted_x.to(tl.load(x_ptr).dtype)
@@ -177,7 +178,15 @@ Just add indices to sort with values.
 
 
 @triton.jit
-def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
+def _compare_and_swap(
+    x,
+    ids,
+    flip,
+    i: core.constexpr,
+    n_dims: core.constexpr,
+    valid_count: core.constexpr,
+    descending: core.constexpr,
+):
     n_outer: core.constexpr = x.numel >> n_dims
     shape: core.constexpr = [n_outer * 2**i, 2, 2 ** (n_dims - i - 1)]
 
@@ -222,7 +231,14 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     iright = right.to(idtype, bitcast=True)
     ix = x.to(idtype, bitcast=True)
 
-    cond = (left > right) ^ flip
+    greater = left > right
+    if valid_count is not None:
+        # Validity is part of the sort key even in the alternating bitonic rounds.
+        left_valid = left_idx < valid_count
+        right_valid = right_idx < valid_count
+        valid_first = left_valid if descending else right_valid
+        greater = core.where(left_valid != right_valid, valid_first, greater)
+    cond = greater ^ flip
     ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
 
     if core.constexpr(ids.dtype.primitive_bitwidth) == 8:
@@ -246,7 +262,13 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
 @triton.jit
 def _bitonic_merge(
-    x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr
+    x,
+    ids,
+    stage: core.constexpr,
+    order: core.constexpr,
+    n_dims: core.constexpr,
+    valid_count: core.constexpr,
+    descending: core.constexpr,
 ):
     """
     order_type 0 == ascending
@@ -269,17 +291,27 @@ def _bitonic_merge(
         flip = order
     # perform `stage` rounds of `compare-and-swap`
     for i in core.static_range(stage):
-        x, ids = _compare_and_swap(x, ids, flip, i + (n_dims - stage), n_dims)
+        x, ids = _compare_and_swap(
+            x, ids, flip, i + (n_dims - stage), n_dims, valid_count, descending
+        )
     return x, ids
 
 
 @triton.jit
-def argsort(x, ids, dim: tl.constexpr, descending: core.constexpr):
+def argsort(
+    x,
+    ids,
+    dim: tl.constexpr,
+    descending: core.constexpr,
+    valid_count: core.constexpr = None,
+):
     # handle default dimension or check that it is the most minor dim
     _dim: core.constexpr = dim
     n_dims: core.constexpr = _log2(x.shape[_dim])
     for i in core.static_range(1, n_dims + 1):
-        x, ids = _bitonic_merge(x, ids, i, 2 if i < n_dims else descending, n_dims)
+        x, ids = _bitonic_merge(
+            x, ids, i, 2 if i < n_dims else descending, n_dims, valid_count, descending
+        )
     return x, ids
 
 
