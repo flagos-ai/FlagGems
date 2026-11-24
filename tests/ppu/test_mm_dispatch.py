@@ -50,6 +50,25 @@ def test_dense_transpose_detection_matches_torch(kind):
     assert mm._is_transposed_contiguous_2d(value) == expected
 
 
+@pytest.mark.router_gemm
+@pytest.mark.parametrize("nt", [False, True], ids=["nn", "nt"])
+def test_fp16_router_gemm_uses_ppu(monkeypatch, nt):
+    router = importlib.import_module(flag_gems.router_gemm.__module__)
+
+    def reject_fallback(*args, **kwargs):
+        pytest.fail("dense FP16 router GEMM fell back to the generic kernel")
+
+    monkeypatch.setattr(router, "_generic_router_gemm", reject_fallback)
+    x = torch.randn(1, 4096, dtype=torch.float16, device=flag_gems.device)
+    b_shape = (64, 4096) if nt else (4096, 64)
+    b = torch.randn(b_shape, dtype=x.dtype, device=x.device)
+    weight = b if nt else b.t()
+    out = flag_gems.router_gemm(x, weight)
+
+    expected = x.cpu().float() @ weight.cpu().float().t()
+    torch.testing.assert_close(out.cpu(), expected, rtol=1e-4, atol=1e-3)
+
+
 def test_split_reducer_uses_this_launch_metadata_without_rebuilding_configs(
     monkeypatch,
 ):

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""BF16 router GEMM with FP32 output on T-Head PPU."""
+"""FP16 and BF16 router GEMM with FP32 output on T-Head PPU."""
 
 import logging
 
@@ -30,14 +30,15 @@ def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     if not (
         x.ndim == weight.ndim == 2
         and x.shape[1] == weight.shape[1]
-        and x.dtype == weight.dtype == torch.bfloat16
+        and x.dtype == weight.dtype
+        and x.dtype in (torch.float16, torch.bfloat16)
     ):
         return _generic_router_gemm(x, weight)
 
     m, _ = x.shape
     n = weight.shape[0]
     out = torch.empty((m, n), device=x.device, dtype=torch.float32)
-    # The MM kernels accept the dense [N, K] storage directly as an NT view.
+    # Pass either layout through its strides, without materializing weight.t().
     routed = _dispatch_ppu_gemm(x, weight.t(), out, output_dtype=torch.float32)
     if routed is not None:
         return routed
