@@ -81,6 +81,7 @@ from .bmm import bmm, bmm_out
 from .bmm_w8a8 import bmm_w8a8
 from .bmm_w8a8_fp8 import bmm_w8a8_fp8
 from .cholesky_inverse import cholesky_inverse
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
 from .conj_physical import conj_physical
 from .conv2d import conv2d
@@ -223,6 +224,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .replication_pad3d_backward import replication_pad3d_backward
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scalar_tensor import scalar_tensor
 from .scatter import scatter, scatter_
@@ -357,6 +359,8 @@ __all__ = [
     "bmm_w8a8",
     "bmm_w8a8_fp8",
     "cholesky_inverse",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -507,6 +511,7 @@ __all__ = [
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
     "replication_pad3d_backward",
+    "rms_norm_w8a16_fp8",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scalar_tensor",
