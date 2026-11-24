@@ -1433,6 +1433,7 @@ _FULL_CONFIG = (
     ("erfc_", erfc_),
     ("erfinv", erfinv),
     ("erfinv_", erfinv_),
+    ("euclidean_dist_backward", euclidean_dist_backward),
     ("exp", exp),
     ("exp.out", exp_out),
     ("exp2", exp2),
