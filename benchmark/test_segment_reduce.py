@@ -106,9 +106,7 @@ class SegmentReduceBenchmark(base.Benchmark):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten not working"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten not working")
 def test_segment_reduce():
     bench = SegmentReduceBenchmark(
         op_name="segment_reduce",
@@ -130,9 +128,7 @@ def test_segment_reduce():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten not working"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten not working")
 def test_segment_reduce_out():
     bench = SegmentReduceBenchmark(
         op_name="segment_reduce_out",
@@ -155,9 +151,7 @@ def test_segment_reduce_out():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten not working"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten not working")
 def test_segment_reduce_backward():
     bench = SegmentReduceBenchmark(
         op_name="segment_reduce_backward",
@@ -180,9 +174,7 @@ def test_segment_reduce_backward():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten not working"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten not working")
 def test_segment_reduce_backward_out():
     bench = SegmentReduceBenchmark(
         op_name="segment_reduce_backward_out",
