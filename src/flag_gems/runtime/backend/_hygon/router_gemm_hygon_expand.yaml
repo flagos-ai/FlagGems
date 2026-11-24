@@ -1,71 +1,216 @@
-# Hygon RouterGEMM tile search used when FlagTune is enabled.
-# Dimensions in META describe kernel tiles and split counts.
-matrix:
-  - gen: true
-    param_map: {META: metas, num_warps: warps, num_stages: stages}
-    metas:
-      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 4}
-      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 64, GROUP_M: 4}
-      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 4}
-      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 4}
-      - {BLOCK_M: 128, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 4}
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagTune search domains for Hygon RouterGEMM kernel variants.
+# The registered strategies keep exact tuning keys.
+
+router_gemm_hygon_matrix:
+  - param_map:
+      META: {BLOCK_M: block_m, BLOCK_N: block_n, BLOCK_K: block_k, GROUP_M: group_m}
+      num_warps: warps
+      num_stages: stages
+    block_m: [16, 32]
+    block_n: [16, 32, 64]
+    block_k: [128, 256]
+    group_m: [1, 4]
     warps: [4]
     stages: [2]
-  - gen: true
-    param_map: {META: metas, num_warps: warps, num_stages: stages}
-    metas:
-      - {BLOCK_M: 128, BLOCK_N: 256, BLOCK_K: 32, GROUP_M: 8}
+  - param_map:
+      META: {BLOCK_M: block_m, BLOCK_N: block_n, BLOCK_K: block_k, GROUP_M: group_m}
+      num_warps: warps
+      num_stages: stages
+    block_m: [64]
+    block_n: [64, 128]
+    block_k: [32, 64, 128]
+    group_m: [4]
+    warps: [4]
+    stages: [2]
+  - param_map:
+      META: {BLOCK_M: block_m, BLOCK_N: block_n, BLOCK_K: block_k, GROUP_M: group_m}
+      num_warps: warps
+      num_stages: stages
+    block_m: [128]
+    block_n: [128, 256]
+    block_k: [32, 64]
+    group_m: [8]
     warps: [8]
     stages: [1, 2]
 
-vector:
-  - gen: true
-    param_map: {META: {BN: block_n, BK: block_k}, num_warps: warps, num_stages: stages}
-    block_n: [1, 2, 4]
-    block_k: [512, 1024, 2048]
+router_gemm_hygon_vector:
+  - param_map:
+      META: {BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bn: [1, 2, 4]
+    bk: [512, 1024, 2048]
+    warps: [2, 4]
+    stages: [2]
+  - param_map:
+      META: {BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bn: [8]
+    bk: [512]
+    warps: [4]
+    stages: [2]
+
+router_gemm_hygon_shared_vector:
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bm: [1, 2]
+    bn: [4]
+    bk: [512, 1024, 2048]
+    warps: [4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bm: [2]
+    bn: [8]
+    bk: [512]
+    warps: [4]
+    stages: [2]
+
+router_gemm_hygon_split:
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk}
+      num_warps: warps
+      num_stages: stages
+    bm: [16, 32]
+    bn: [16, 32, 64]
+    bk: [128]
+    sk: [4, 8, 16]
+    warps: [4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk}
+      num_warps: warps
+      num_stages: stages
+    bm: [16]
+    bn: [16]
+    bk: [256]
+    sk: [8]
+    warps: [4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk}
+      num_warps: warps
+      num_stages: stages
+    bm: [32, 64]
+    bn: [64, 128]
+    bk: [64]
+    sk: [4, 8, 16]
+    warps: [4]
+    stages: [2]
+
+router_gemm_hygon_aligned_split:
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk, GROUP_M: group_m, matrix_instr_nonkdim: matrix_instr_nonkdim, kpack: kpack}
+      num_warps: warps
+      num_stages: stages
+    bm: [16]
+    bn: [16, 64]
+    bk: [128]
+    sk: [4, 8, 16]
+    group_m: [1]
+    matrix_instr_nonkdim: [16]
+    kpack: [2]
+    warps: [2, 4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk, GROUP_M: group_m, matrix_instr_nonkdim: matrix_instr_nonkdim, kpack: kpack}
+      num_warps: warps
+      num_stages: stages
+    bm: [16]
+    bn: [32]
+    bk: [64, 128]
+    sk: [8]
+    group_m: [1]
+    matrix_instr_nonkdim: [0]
+    kpack: [1]
+    warps: [2, 4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk, GROUP_M: group_m, matrix_instr_nonkdim: matrix_instr_nonkdim, kpack: kpack}
+      num_warps: warps
+      num_stages: stages
+    bm: [32]
+    bn: [32, 64]
+    bk: [128]
+    sk: [4]
+    group_m: [2]
+    matrix_instr_nonkdim: [16]
+    kpack: [2]
+    warps: [4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk, GROUP_M: group_m, matrix_instr_nonkdim: matrix_instr_nonkdim, kpack: kpack}
+      num_warps: warps
+      num_stages: stages
+    bm: [16, 32]
+    bn: [32, 64]
+    bk: [128]
+    sk: [8]
+    group_m: [2]
+    matrix_instr_nonkdim: [0]
+    kpack: [1]
+    warps: [4]
+    stages: [2]
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk, SK: sk, GROUP_M: group_m, matrix_instr_nonkdim: matrix_instr_nonkdim, kpack: kpack}
+      num_warps: warps
+      num_stages: stages
+    bm: [16]
+    bn: [64]
+    bk: [128]
+    sk: [8]
+    group_m: [1]
+    matrix_instr_nonkdim: [0]
+    kpack: [1]
+    warps: [4]
+    stages: [2]
+
+router_gemm_hygon_narrow_vector:
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bm: [1, 2]
+    bn: [1, 2]
+    bk: [256, 512, 1024]
     warps: [2, 4]
     stages: [2]
 
-shared_vector:
-  - gen: true
-    param_map: {META: metas, num_warps: warps, num_stages: stages}
-    metas:
-      - {BM: 2, BN: 4, BK: 2048}
-      - {BM: 2, BN: 8, BK: 512}
-    warps: [4]
-    stages: [2]
-
-split:
-  - gen: true
-    param_map: {META: metas, num_warps: warps, num_stages: stages}
-    metas:
-      - {BM: 16, BN: 16, BK: 256, SK: 8}
-      - {BM: 16, BN: 64, BK: 128, SK: 4}
-      - {BM: 16, BN: 64, BK: 128, SK: 8}
-      - {BM: 32, BN: 32, BK: 128, SK: 8}
-      - {BM: 32, BN: 64, BK: 128, SK: 4}
-      - {BM: 32, BN: 128, BK: 64, SK: 8}
-      - {BM: 64, BN: 64, BK: 64, SK: 8}
-      - {BM: 64, BN: 64, BK: 64, SK: 16}
-    warps: [4]
-    stages: [2]
-
-aligned_split:
-  - gen: true
-    param_map: {META: metas, num_warps: warps, num_stages: stages}
-    metas:
-      - {BM: 16, BN: 16, BK: 128, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
-      - {BM: 16, BN: 32, BK: 64, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 0, kpack: 1}
-      - {BM: 16, BN: 64, BK: 128, SK: 16, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
+router_gemm_hygon_narrow_matrix:
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bm: [16, 32]
+    bn: [16, 32, 64]
+    bk: [128, 256]
     warps: [2, 4]
     stages: [2]
-  - gen: true
-    param_map: {META: metas, num_warps: warps, num_stages: stages}
-    metas:
-      - {BM: 16, BN: 64, BK: 128, SK: 4, GROUP_M: 1, matrix_instr_nonkdim: 16, kpack: 2}
-      - {BM: 16, BN: 64, BK: 128, SK: 8, GROUP_M: 1, matrix_instr_nonkdim: 0, kpack: 1}
-      - {BM: 32, BN: 32, BK: 128, SK: 4, GROUP_M: 2, matrix_instr_nonkdim: 16, kpack: 2}
-      - {BM: 32, BN: 64, BK: 128, SK: 4, GROUP_M: 2, matrix_instr_nonkdim: 16, kpack: 2}
-      - {BM: 32, BN: 64, BK: 128, SK: 8, GROUP_M: 2, matrix_instr_nonkdim: 0, kpack: 1}
+  - param_map:
+      META: {BM: bm, BN: bn, BK: bk}
+      num_warps: warps
+      num_stages: stages
+    bm: [64]
+    bn: [32, 64]
+    bk: [128, 256]
     warps: [4]
-    stages: [2]
+    stages: [1, 2]

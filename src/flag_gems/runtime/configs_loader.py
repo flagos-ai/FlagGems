@@ -54,6 +54,26 @@ _HYGON_BLAS_META_FIELDS = {
         "GROUP_M": "GROUP_M",
         "SPLIT_ROWS": "SPLIT_ROWS",
     },
+    "router_gemm_hygon_matrix": {
+        "BLOCK_M": "BLOCK_M",
+        "BLOCK_N": "BLOCK_N",
+        "BLOCK_K": "BLOCK_K",
+        "GROUP_M": "GROUP_M",
+    },
+    "router_gemm_hygon_vector": {"BN": "BN", "BK": "BK"},
+    "router_gemm_hygon_shared_vector": {"BM": "BM", "BN": "BN", "BK": "BK"},
+    "router_gemm_hygon_split": {"BM": "BM", "BN": "BN", "BK": "BK", "SK": "SK"},
+    "router_gemm_hygon_aligned_split": {
+        "BM": "BM",
+        "BN": "BN",
+        "BK": "BK",
+        "SK": "SK",
+        "GROUP_M": "GROUP_M",
+        "matrix_instr_nonkdim": "MATRIX_INSTR_NONKDIM",
+        "kpack": "KPACK",
+    },
+    "router_gemm_hygon_narrow_vector": {"BM": "BM", "BN": "BN", "BK": "BK"},
+    "router_gemm_hygon_narrow_matrix": {"BM": "BM", "BN": "BN", "BK": "BK"},
 }
 
 
@@ -1032,6 +1052,13 @@ class TunedConfigLoader(object):
             "baddbmm_gemm": self._build_single_expand_spec("baddbmm_gemm"),
             "baddbmm_vector": self._build_single_expand_spec("baddbmm_vector"),
             "router_gemm": self._build_single_expand_spec("router_gemm"),
+            **{
+                name: self._build_single_expand_spec(
+                    name, expand_yaml_path=self._get_expand_config_path("router_gemm")
+                )
+                for name in _HYGON_BLAS_META_FIELDS
+                if name.startswith("router_gemm_hygon_")
+            },
             **{
                 name: {
                     "yaml_op_name": name,
