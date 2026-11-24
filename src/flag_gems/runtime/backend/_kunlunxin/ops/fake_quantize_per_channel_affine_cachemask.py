@@ -475,24 +475,23 @@ def fake_quantize_per_channel_affine_cachemask(
 # uses a correctly rounded reciprocal multiply ``x * (1 / scale)`` (the master
 # CPU reference and the old kunlunxin path agree on all 48 diagnostic cases),
 # so the kernel uses the same form. Ties round half-to-even (no native rint on
-# this backend).
+# this backend) via an explicit floor/fraction RNE that also defeats FMA
+# contraction of the product into the rounding add.
 # Both destinations (out0, out1) are written in place and returned.
 
 _OUT_NDIM_MAX = 8
 
 
 @triton.jit
-def _out_round_half_to_even(x, magic, FAST: tl.constexpr):
+def _out_round_half_to_even(x):
     """round-to-nearest, ties-to-even (matches std::nearbyint in fp32).
 
-    FAST uses the shift trick: for |x| <= 2^22, x + 1.5*2^23 lands where the fp32
-    spacing is exactly 1, so the add rounds to the nearest integer with ties to
-    even and subtracting the constant is exact - 2 ops instead of ~14. The host
-    enables it only when max(|quant_min|, |quant_max|) < 2^22, so no result that
-    can reach the clamp range is affected.
+    The fp32 magic-constant add is deliberately not used: on this backend the
+    compiler contracts ``(x * inv + magic)`` into an FMA, which skips the
+    intermediate rounding of the product and changes half-way results (measured
+    one-step divergence from the ATen reference). The explicit floor/fraction
+    form forces the product to be materialised and is exact for all magnitudes.
     """
-    if FAST:
-        return (x + magic) - magic
     fl = tl.floor(x)
     frac = x - fl
     is_even = (tl.floor(fl * 0.5) * 2.0) == fl
@@ -509,12 +508,10 @@ def _fq_cachemask_kernel(
     n_elements,
     qmin,
     qmax,
-    magic,
     INNER: tl.constexpr,
     C: tl.constexpr,
     BLOCK: tl.constexpr,
     FULL: tl.constexpr,
-    FAST: tl.constexpr,
     MB: tl.constexpr,
 ):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -530,7 +527,7 @@ def _fq_cachemask_kernel(
         z = tl.load(z_ptr + ch).to(tl.float32)
         x = tl.load(x_ptr + off).to(tl.float32)
         inv = tl.div_rn(1.0, s)
-        q = _out_round_half_to_even(x * inv, magic, FAST) + z
+        q = _out_round_half_to_even(x * inv) + z
         qc = tl.minimum(tl.maximum(q, qmin), qmax)
         # in-range == clamp did not change the value (identical to the inclusive
         # qmin/qmax test, and False for NaN), so reuse the clamp result.
@@ -545,7 +542,7 @@ def _fq_cachemask_kernel(
         z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
         x = tl.load(x_ptr + off, mask=ok, other=0.0).to(tl.float32)
         inv = tl.div_rn(1.0, s)
-        q = _out_round_half_to_even(x * inv, magic, FAST) + z
+        q = _out_round_half_to_even(x * inv) + z
         qc = tl.minimum(tl.maximum(q, qmin), qmax)
         if MB:
             tl.store(m_ptr + off, q == qc, mask=ok)
@@ -566,7 +563,6 @@ def _fq_cachemask_strided_kernel(
     C,
     qmin,
     qmax,
-    magic,
     d0,
     d1,
     d2,
@@ -601,7 +597,6 @@ def _fq_cachemask_strided_kernel(
     ms7,
     NDIM: tl.constexpr,
     BLOCK: tl.constexpr,
-    FAST: tl.constexpr,
 ):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
     ok = off < n_elements
@@ -662,7 +657,7 @@ def _fq_cachemask_strided_kernel(
     mo += i0 * ms0
 
     x = tl.load(x_ptr + xo, mask=ok, other=0.0).to(tl.float32)
-    q = _out_round_half_to_even(x * inv, magic, FAST) + z
+    q = _out_round_half_to_even(x * inv) + z
     qc = tl.minimum(tl.maximum(q, qmin), qmax)
     tl.store(m_ptr + mo, (q == qc).to(tl.uint8), mask=ok)
     tl.store(o_ptr + oo, ((qc - z) * s).to(o_ptr.dtype.element_ty), mask=ok)
@@ -700,8 +695,6 @@ def _out_run(
 
     qmin = float(quant_min)
     qmax = float(quant_max)
-    magic = 12582912.0  # 1.5 * 2**23, exact in fp32
-    fast_rne = max(abs(quant_min), abs(quant_max)) < (1 << 22)
 
     if input.is_contiguous() and out0.is_contiguous() and mask_arg.is_contiguous():
         # Cost on this target tracks CTAs and tile bytes: the measured optimum
@@ -727,12 +720,10 @@ def _out_run(
                 n_elements,
                 qmin,
                 qmax,
-                magic,
                 INNER=inner,
                 C=C,
                 BLOCK=BLOCK,
                 FULL=(n_elements % BLOCK == 0),
-                FAST=fast_rne,
                 MB=mask_bool,
                 num_warps=nw,
             )
@@ -761,14 +752,12 @@ def _out_run(
             C,
             qmin,
             qmax,
-            magic,
             *ds,
             *xs,
             *os_,
             *ms,
             NDIM=nd,
             BLOCK=BLOCK,
-            FAST=fast_rne,
             num_warps=4,
         )
     return out0, out1
