@@ -354,6 +354,7 @@ from .scatter_add import scatter_add, scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
+from .select_copy import select_copy
 from .select_scatter import select_scatter
 from .silu import silu, silu_
 from .silu_backward import silu_backward
@@ -821,6 +822,7 @@ __all__ = [
     "scatter_reduce_",
     "scatter_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "silu",
     "silu_",
