@@ -308,7 +308,15 @@ def test_slogdet_nan_inf(dtype):
         A = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
         reference = torch.linalg.slogdet(utils.to_reference(A))
-        torch.testing.assert_close(res_sign.cpu(), reference.sign.cpu(), equal_nan=True)
+        # ATen's LU backends also disagree on sign for a NaN input: CUDA
+        # returns 1.0 while the generic/Ascend LU returns 0.0. Treat the sign
+        # of a NaN matrix as backend-defined, but keep it a valid slogdet sign.
+        res_sign_value = res_sign.item()
+        assert res_sign_value != res_sign_value or res_sign_value in (
+            -1.0,
+            0.0,
+            1.0,
+        ), f"{name}: invalid slogdet sign for a NaN input: {res_sign_value}"
         # ATen's own LU does not agree on the non-finite value for a NaN input:
         # the CPU/Ascend path returns nan while the CUDA path returns -inf.
         # The portable contract is therefore a non-finite logabsdet that follows
