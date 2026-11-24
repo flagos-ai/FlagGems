@@ -299,6 +299,10 @@ from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .multi_margin_loss import (
+    multi_margin_loss_backward,
+    multi_margin_loss_backward_out,
+)
 from .multinomial import multinomial
 from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -743,6 +747,8 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "multi_margin_loss_backward",
+    "multi_margin_loss_backward_out",
     "multinomial",
     "mv",
     "nanmedian",
