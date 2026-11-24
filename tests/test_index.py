@@ -459,6 +459,9 @@ def test_index_noncontiguous_leading(dtype, layout, mode):
 
 
 @pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend strided negative indexing"
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("layout", ["transpose", "slice"])
 def test_index_noncontiguous_negative(dtype, layout):
@@ -502,6 +505,9 @@ def test_index_noncontiguous_graph(dtype, layout):
 
 
 @pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend Boolean and byte masks"
+)
 @pytest.mark.parametrize("payload_dtype", [torch.float32, torch.int64])
 @pytest.mark.parametrize("mask_dtype", [torch.bool, torch.uint8])
 @pytest.mark.parametrize("pattern", ["none", "all", "strided", "multiblock"])
@@ -532,6 +538,9 @@ def test_index_mask_coordinate_order(payload_dtype, mask_dtype, pattern):
 
 
 @pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend advanced indexing metadata"
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 @pytest.mark.parametrize("mode", ["scalar", "nonleading", "nonadjacent", "broadcast"])
 def test_index_tensor_metadata_forms(dtype, mode):
@@ -619,6 +628,9 @@ def test_index_out_of_bounds_block_tail(count, bad):
 
 
 @pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend strided negative indexing"
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 @pytest.mark.parametrize("layout", ["transpose", "slice"])
 @pytest.mark.parametrize("paired", [False, True])
@@ -641,6 +653,9 @@ def test_index_noncontiguous_suffix_tail(dtype, layout, paired):
 
 
 @pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend sparse strided indexing"
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("extent", [1025, 4097])
 def test_index_large_sparse_noncontiguous(dtype, extent):
