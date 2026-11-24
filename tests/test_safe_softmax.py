@@ -50,8 +50,7 @@ def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
     else:
         ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=dtype_arg)
 
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten._safe_softmax(x, dim, dtype=dtype_arg)
+    act_out = flag_gems._safe_softmax(x, dim, dtype=dtype_arg)
     expected_dtype = dtype_arg if dtype_arg is not None else in_dtype
 
     utils.gems_assert_close(act_out, ref_out, expected_dtype)

@@ -22,30 +22,6 @@ import torch
 import triton
 import triton.language as tl
 
-# ---------------------------------------------------------------------------
-# PPU toolchain compatibility fix (required on this ZW810 backend).
-# The installed Triton "ppu" backend emits PTX-style inline assembly with a
-# "ppu." opcode prefix (e.g. "ppu.mov.u32"), but the installed PPU SDK
-# assembler (ppu-llc) parses the bare PTX-style dialect ("mov.u32").  Without
-# this fix every Triton kernel fails to compile on this target
-# ("token recognition error at '.mo'").
-# ---------------------------------------------------------------------------
-try:
-    from triton.backends.ppu import compiler as _ppu_compiler_mod
-
-    if not getattr(_ppu_compiler_mod.PPUBackend, "_ppu_prefix_patched", False):
-        _orig_make_hgbin = _ppu_compiler_mod.PPUBackend.make_hgbin
-
-        def _make_hgbin_no_ppu_prefix(self, src, metadata, opt, capability):
-            return _orig_make_hgbin(
-                self, src.replace("ppu.", ""), metadata, opt, capability
-            )
-
-        _ppu_compiler_mod.PPUBackend.make_hgbin = _make_hgbin_no_ppu_prefix
-        _ppu_compiler_mod.PPUBackend._ppu_prefix_patched = True
-except Exception:
-    pass
-
 logger = logging.getLogger(__name__)
 
 

@@ -23,11 +23,17 @@ from . import accuracy_utils as utils
 
 logger = logging.getLogger(__name__)
 
+DTYPES = [
+    torch.float16,
+    torch.float32,
+] + ([torch.float64] if utils.fp64_is_supported else [])
+DTYPES_NO_FP16 = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+
 
 @pytest.mark.adaptive_max_pool1d
 @pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 32), (1, 16, 64)])
 @pytest.mark.parametrize("output_size", [8, 4, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_adaptive_max_pool1d_accuracy(shape, output_size, dtype, caplog):
     """Test adaptive_max_pool1d accuracy."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -44,7 +50,10 @@ def test_adaptive_max_pool1d_accuracy(shape, output_size, dtype, caplog):
         res_out, res_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
 
     # Verify dispatch
-    assert "GEMS ADAPTIVE_MAX_POOL1D" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.adaptive_max_pool1d)} ADAPTIVE_MAX_POOL1D"
+        in caplog.text
+    )
 
     # Verify output values
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -54,7 +63,7 @@ def test_adaptive_max_pool1d_accuracy(shape, output_size, dtype, caplog):
 
 
 @pytest.mark.adaptive_max_pool1d
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES_NO_FP16)
 def test_adaptive_max_pool1d_list_output_size(dtype):
     """Test adaptive_max_pool1d with list output_size."""
     inp = torch.randn(2, 4, 20, dtype=dtype, device=flag_gems.device)

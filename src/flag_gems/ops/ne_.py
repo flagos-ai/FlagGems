@@ -26,6 +26,6 @@ def ne_(A, B):
 
 
 def ne_scalar_(A, B):
-    logger.debug("GEMS NE_ SCALAR")
+    logger.debug("GEMS NE__SCALAR")
     ne_func_scalar(A, B, out0=A)
     return A

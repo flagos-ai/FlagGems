@@ -28,8 +28,7 @@ def test_arctanh(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arctanh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arctanh(inp)
+    res_out = flag_gems.arctanh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,8 +41,7 @@ def test_arctanh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.arctanh_()
-    with flag_gems.use_gems():
-        res_out = inp.arctanh_()
+    res_out = flag_gems.arctanh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -58,7 +56,6 @@ def test_arctanh_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
 
     torch.arctanh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.arctanh(inp, out=out)
+    flag_gems.arctanh_out(inp, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)

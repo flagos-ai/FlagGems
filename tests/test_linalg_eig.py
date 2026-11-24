@@ -22,6 +22,22 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _reference_eigenvalues(inp):
+    try:
+        return torch.linalg.eig(inp).eigenvalues
+    except RuntimeError as error:
+        if (
+            flag_gems.vendor_name != "mthreads"
+            or inp.device.type != "cpu"
+            or "requires compiling PyTorch with LAPACK" not in str(error)
+        ):
+            raise
+
+    import numpy as np
+
+    return torch.from_numpy(np.linalg.eigvals(inp.numpy()).astype(np.complex64))
+
+
 @pytest.mark.linalg_eig
 @pytest.mark.parametrize("shape", [(2, 2), (3, 3), (5, 5), (8, 8), (16, 16)])
 # linalg_eig computes a general (non-symmetric) eigendecomposition; the Triton
@@ -35,19 +51,40 @@ def test_linalg_eig(shape, dtype):
     A @ V == V @ diag(eigenvalues).
     """
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    use_cpu_reference = flag_gems.vendor_name == "mthreads"
+    ref_inp = inp.cpu() if use_cpu_reference else utils.to_reference(inp)
 
-    ref_w, _ = torch.linalg.eig(ref_inp)
+    ref_w = _reference_eigenvalues(ref_inp)
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
 
-    # eigenvalue set: sort by (real, imag) before comparing
-    def _sort_key(w):
-        r = torch.view_as_real(w)
-        return torch.argsort(r[:, 0] * 1e6 + r[:, 1])
-
-    res_sorted = res_w[_sort_key(res_w)]
-    ref_sorted = ref_w[_sort_key(ref_w)]
-    utils.gems_assert_close(res_sorted, ref_sorted, res_w.dtype, atol=1e-3)
+    # Eigenvalues carry no order and no fixed phase, so pair each reference
+    # eigenvalue with its nearest kernel counterpart before comparing. Sorting
+    # both lists by a scalar key is not enough: two eigenvalues with close real
+    # parts can still be ordered differently on the two sides.
+    assert len(res_w) == len(ref_w)
+    if use_cpu_reference:
+        assert res_w.device == inp.device
+        ref_cpu = ref_w.to(device="cpu", dtype=torch.complex128)
+        res_cpu = res_w.cpu().to(torch.complex128)
+    else:
+        ref_cpu = ref_w.to(torch.complex128).cpu()
+        res_cpu = res_w.to(torch.complex128).cpu()
+    remaining = list(range(len(res_cpu)))
+    matched = []
+    for ref_val in ref_cpu:
+        dists = [(abs(res_cpu[i] - ref_val), i) for i in remaining]
+        _, best = min(dists)
+        remaining.remove(best)
+        matched.append(res_cpu[best])
+    matched_w = torch.stack(matched).to(res_w.dtype)
+    if not use_cpu_reference:
+        matched_w = matched_w.to(res_w.device)
+    utils.gems_assert_close(
+        matched_w,
+        ref_w,
+        res_w.dtype,
+        atol=1e-3,
+    )
 
     # reconstruction residual A @ V - V @ diag(w)
     a_c = inp.to(res_v.dtype)

@@ -20,30 +20,6 @@ import torch
 import triton
 import triton.language as tl
 
-# ---------------------------------------------------------------------------
-# PPU (thead ZW810) toolchain compatibility fix.
-# The installed Triton "ppu" backend emits PTX-style inline assembly with a
-# "ppu." opcode prefix (e.g. "ppu.mov.u32", "ppu.ld.global.v4.b32"), but the
-# installed PPU SDK assembler (ppu-llc) parses the bare dialect ("mov.u32",
-# "ld.global.v4.b32").  Stripping the prefix in the emitted LLVM IR restores
-# the dialect the assembler expects (verified on this backend).
-# ---------------------------------------------------------------------------
-try:
-    from triton.backends.ppu import compiler as _ppu_compiler_mod
-
-    if not getattr(_ppu_compiler_mod.PPUBackend, "_ppu_prefix_patched", False):
-        _orig_make_hgbin = _ppu_compiler_mod.PPUBackend.make_hgbin
-
-        def _make_hgbin_no_ppu_prefix(self, src, metadata, opt, capability):
-            return _orig_make_hgbin(
-                self, src.replace("ppu.", ""), metadata, opt, capability
-            )
-
-        _ppu_compiler_mod.PPUBackend.make_hgbin = _make_hgbin_no_ppu_prefix
-        _ppu_compiler_mod.PPUBackend._ppu_prefix_patched = True
-except Exception:
-    pass
-
 logger = logging.getLogger(__name__)
 
 

@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 IS_ASCEND = flag_gems.vendor_name == "ascend"
 # Nonzero_static is not supported for cuda <= 11.4
@@ -44,7 +45,7 @@ DTYPES = (
 )
 CUDA_COMPLEX_DTYPES = [  # Complex input is supported by the CUDA path.
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ]
 
 QUICK_CASES = [
@@ -129,12 +130,11 @@ def assert_nonzero_static_matches(input, size, fill_value):
             fill_value=fill_value,
         )
 
-    with flag_gems.use_gems(include=["nonzero_static"]):
-        actual = torch.nonzero_static(
-            input,
-            size=size,
-            fill_value=fill_value,
-        )
+    actual = flag_gems.nonzero_static(
+        input,
+        size=size,
+        fill_value=fill_value,
+    )
 
     assert actual.dtype == torch.int64
     assert tuple(actual.shape) == (size, input.dim())

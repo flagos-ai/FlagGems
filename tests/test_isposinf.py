@@ -16,7 +16,6 @@ def test_isposinf(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.isposinf(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.isposinf(inp)
+    res_out = flag_gems.isposinf(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

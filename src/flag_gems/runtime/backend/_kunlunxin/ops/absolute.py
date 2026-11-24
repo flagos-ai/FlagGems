@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -42,6 +43,16 @@ def absolute_func(x):
 
 def absolute(A):
     logger.debug("GEMS_KUNLUNXIN ABSOLUTE")
+    if A.is_floating_point():
+        if (
+            A.dtype == torch.bfloat16
+            and A.dim() >= 1
+            and A.numel() > 0
+            and A.is_contiguous()
+        ):
+            B = A.view(torch.float16)
+            return absolute_func(B, out0=torch.empty_like(B)).view(torch.bfloat16)
+        return absolute_func(A, out0=torch.empty_like(A))
     return absolute_func(A)
 
 

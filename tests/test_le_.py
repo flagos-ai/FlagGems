@@ -17,8 +17,7 @@ def test_le_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
     ref_out = ref_inp1.le_(ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.le_.Tensor(inp1, inp2)
+    res_out = flag_gems.le_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp1, dtype)
@@ -35,8 +34,7 @@ def test_le_scalar_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = ref_inp.le_(scalar)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.le_.Scalar(inp, scalar)
+    res_out = flag_gems.le_scalar_(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

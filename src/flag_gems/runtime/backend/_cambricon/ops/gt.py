@@ -48,10 +48,10 @@ def gt_scalar(A, B):
 
 
 def gt_tensor_(A, B):
-    logger.debug("GEMS_CAMBRICON GT_ TENSOR")
+    logger.debug("GEMS_CAMBRICON GT__TENSOR")
     return gt_func(A, B, True, out0=A)
 
 
 def gt_scalar_(A, B):
-    logger.debug("GEMS_CAMBRICON GT_ SCALAR")
+    logger.debug("GEMS_CAMBRICON GT__SCALAR")
     return gt_func_scalar(A, B, True, out0=A)

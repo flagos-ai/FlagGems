@@ -16,6 +16,7 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -73,6 +74,14 @@ _PACK_MIN_NUMEL = 1 << 18
 
 def bitwise_or_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_OR")
+    if (
+        A.dtype == B.dtype
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+    ):
+        out = torch.empty_strided(A.shape, A.stride(), dtype=A.dtype, device=A.device)
+        return bitwise_or_func(A, B, out0=out)
     return bitwise_or_func(A, B)
 
 
@@ -86,7 +95,22 @@ def bitwise_or_tensor_(A, B):
 )
 @triton.jit
 def bitwise_or_func_scalar(x, y):
-    return x | y
+    # `y` is a runtime scalar (do_not_specialize); `x | y` would promote x to
+    # i32 (int16/int32) or emit a mixed-width `arith.ori (i8, i1 splat)` (bool),
+    # both of which the XPU backend lowers far slower than the same-shape tensor
+    # kernel. Casting the scalar to a matching width is bit-identical to torch's
+    # scalar-truncation semantics (trunc(a | b) == trunc(a) | trunc(b)).
+    #
+    # 8-bit path widened to int16: the XPU3 LLVM 19 backend has no pattern for a
+    # `v64i8` integer `or` and aborts in `llc` ("Cannot select: v64i8 = or")
+    # whenever a bool/int8 OR vectorizes to that exact width (e.g. numel == 4096).
+    # Doing the OR in int16 and truncating back is bit-identical (the low byte of
+    # (ext(x) | ext(y)) equals x | y) and uses a selectable vector op.
+    if x.dtype == tl.int1:
+        return (x.to(tl.int16) | y.to(tl.int16)).to(tl.int1)
+    if x.dtype == tl.int8:
+        return (x.to(tl.int16) | y.to(tl.int16)).to(tl.int8)
+    return x | y.to(x.dtype)
 
 
 def bitwise_or_scalar(A, B):

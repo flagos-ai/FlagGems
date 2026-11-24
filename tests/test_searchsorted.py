@@ -122,7 +122,10 @@ def test_searchsorted_tensor_nan_inf(dtype, right):
 def test_searchsorted_tensor_sorter(dtype, right):
     sorted_sequence = _tensor([[4, 1, 3, 2], [10, 5, 7, 6]], dtype, flag_gems.device)
     values = _tensor([[0, 2, 5], [5, 6, 8]], dtype, flag_gems.device)
-    sorter = torch.argsort(sorted_sequence, dim=-1)
+    # Build the sorter on CPU: the XPU runtime does not implement argsort for
+    # every integer dtype (uint8), and the sorter is fixture data independent
+    # of the operator under test (same CPU-workaround pattern as test_allclose).
+    sorter = sorted_sequence.cpu().argsort(dim=-1).to(flag_gems.device)
     ref = torch.searchsorted(
         utils.to_reference(sorted_sequence),
         utils.to_reference(values),

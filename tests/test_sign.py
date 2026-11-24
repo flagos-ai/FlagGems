@@ -18,6 +18,23 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+# The XPU (xpu) device reference does not implement sign for integer dtypes
+# ("kint8 is unsupported in xdnn_pytorch_wrapper"), so the on-device torch
+# reference raises for them. The integer in-place/out-of-place semantics are
+# covered by the --ref=cpu run (see test-op.sh TEST_CASES_CPU); the device run
+# records them as SKIP (reference-side limitation, not a kernel defect).
+_INT_REF_UNSUPPORTED = (torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64)
+
+
+def _skip_if_device_ref_int(dtype):
+    if not cfg.TO_CPU and dtype in _INT_REF_UNSUPPORTED:
+        pytest.skip(
+            f"XPU device reference does not implement sign for {dtype}; "
+            "run with --ref=cpu"
+        )
+
 
 REAL_DTYPES = (
     utils.ALL_FLOAT_DTYPES
@@ -47,6 +64,7 @@ def _to_reference(inp):
 
 
 def _assert_matches_torch(inp, out=None):
+    _skip_if_device_ref_int(inp.dtype)
     ref_inp = _to_reference(inp)
     if out is None:
         ref_out = torch.sign(ref_inp)
@@ -62,6 +80,7 @@ def _assert_matches_torch(inp, out=None):
 
 
 def _assert_inplace_matches_torch(inp):
+    _skip_if_device_ref_int(inp.dtype)
     ref_inp = _to_reference(inp.clone())
     ref_out = ref_inp.sign_()
     # Call the FlagGems implementation directly rather than through the

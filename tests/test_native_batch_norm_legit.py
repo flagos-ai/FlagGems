@@ -81,21 +81,20 @@ def test_native_batch_norm_legit(shape, dtype, affine, training):
         eps,
     )
 
-    with flag_gems.use_gems():
-        (
-            res_out,
-            res_save_mean,
-            res_save_var,
-        ) = torch.ops.aten._native_batch_norm_legit.default(
-            inp,
-            weight,
-            bias,
-            running_mean,
-            running_var,
-            training,
-            momentum,
-            eps,
-        )
+    (
+        res_out,
+        res_save_mean,
+        res_save_var,
+    ) = flag_gems._native_batch_norm_legit(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        momentum,
+        eps,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(running_mean, ref_running_mean, dtype)
@@ -128,10 +127,9 @@ def test_native_batch_norm_legit_no_stats(shape, dtype, affine):
         0.1,
         1e-5,
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._native_batch_norm_legit.no_stats(
-            inp, weight, bias, True, 0.1, 1e-5
-        )
+    result = flag_gems._native_batch_norm_legit_no_stats(
+        inp, weight, bias, True, 0.1, 1e-5
+    )
 
     for actual, expected in zip(result, ref):
         utils.gems_assert_close(actual, expected, dtype)
@@ -189,20 +187,19 @@ def test_native_batch_norm_legit_out(overload, dtype):
             save_mean=ref_mean,
             save_invstd=ref_invstd,
         )
-        with flag_gems.use_gems():
-            result = torch.ops.aten._native_batch_norm_legit.out(
-                inp,
-                weight,
-                bias,
-                running_mean,
-                running_var,
-                True,
-                0.1,
-                1e-5,
-                out=out,
-                save_mean=save_mean,
-                save_invstd=save_invstd,
-            )
+        result = flag_gems._native_batch_norm_legit_out(
+            inp,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            True,
+            0.1,
+            1e-5,
+            out=out,
+            save_mean=save_mean,
+            save_invstd=save_invstd,
+        )
         utils.gems_assert_close(running_mean, ref_running_mean, dtype)
         utils.gems_assert_close(running_var, ref_running_var, dtype)
     else:
@@ -217,18 +214,17 @@ def test_native_batch_norm_legit_out(overload, dtype):
             save_mean=ref_mean,
             save_invstd=ref_invstd,
         )
-        with flag_gems.use_gems():
-            result = torch.ops.aten._native_batch_norm_legit.no_stats_out(
-                inp,
-                weight,
-                bias,
-                True,
-                0.1,
-                1e-5,
-                out=out,
-                save_mean=save_mean,
-                save_invstd=save_invstd,
-            )
+        result = flag_gems._native_batch_norm_legit_no_stats_out(
+            inp,
+            weight,
+            bias,
+            True,
+            0.1,
+            1e-5,
+            out=out,
+            save_mean=save_mean,
+            save_invstd=save_invstd,
+        )
 
     assert result[0].data_ptr() == out.data_ptr()
     assert result[1].data_ptr() == save_mean.data_ptr()

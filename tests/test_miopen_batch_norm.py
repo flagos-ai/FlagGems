@@ -69,17 +69,16 @@ def test_miopen_batch_norm(shape, dtype, affine):
         eps,
     )[0]
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.miopen_batch_norm(
-            inp,
-            weight,
-            bias,
-            running_mean,
-            running_var,
-            True,  # training
-            momentum,
-            eps,
-        )[0]
+    res_out = flag_gems.miopen_batch_norm(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        True,  # training
+        momentum,
+        eps,
+    )[0]
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(running_mean, ref_running_mean, dtype)
@@ -133,16 +132,15 @@ def test_miopen_batch_norm_eval(shape, dtype, affine):
         eps,
     )[0]
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.miopen_batch_norm(
-            inp,
-            weight,
-            bias,
-            running_mean,
-            running_var,
-            False,  # eval mode
-            momentum,
-            eps,
-        )[0]
+    res_out = flag_gems.miopen_batch_norm(
+        inp,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        False,  # eval mode
+        momentum,
+        eps,
+    )[0]
 
     utils.gems_assert_close(res_out, ref_out, dtype)

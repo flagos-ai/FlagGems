@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # (shape, ch_axis) pairs. ch_axis is only used in per-channel mode.
 FMAOFQ_SHAPES = [
@@ -28,7 +29,11 @@ FMAOFQ_SHAPES = [
     ((8, 1024), 0),
 ]
 
-UNSUPPORTED_DTYPES = [torch.float16, torch.bfloat16, torch.float64]
+UNSUPPORTED_DTYPES = [
+    torch.float16,
+    torch.bfloat16,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
+]
 
 
 def _run_reference(x, observer_on, fake_quant_on, per_channel, ch_axis, symmetric):
@@ -104,22 +109,21 @@ def test_fused_moving_avg_obs_fq_helper(
     zero_point = torch.zeros((n,), dtype=torch.int32, device=dev)
     qmin, qmax = (-128, 127) if symmetric else (0, 255)
 
-    with flag_gems.use_gems():
-        res_out, res_mask = torch.ops.aten._fused_moving_avg_obs_fq_helper(
-            base,
-            obs,
-            fq,
-            running_min,
-            running_max,
-            scale,
-            zero_point,
-            0.01,
-            qmin,
-            qmax,
-            ch_axis,
-            per_channel,
-            symmetric,
-        )
+    res_out, res_mask = flag_gems._fused_moving_avg_obs_fq_helper(
+        base,
+        obs,
+        fq,
+        running_min,
+        running_max,
+        scale,
+        zero_point,
+        0.01,
+        qmin,
+        qmax,
+        ch_axis,
+        per_channel,
+        symmetric,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert torch.equal(res_mask.bool().cpu(), ref_mask.bool().cpu()), "mask mismatch"
@@ -163,5 +167,5 @@ def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
     # dtype check runs first, but every supported version rejects these inputs.
     with pytest.raises(RuntimeError):
         torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match=error):
-        torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
+    with pytest.raises(RuntimeError, match=error):
+        flag_gems._fused_moving_avg_obs_fq_helper(x, *args)

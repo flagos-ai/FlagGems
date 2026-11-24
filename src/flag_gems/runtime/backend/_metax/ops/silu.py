@@ -34,7 +34,7 @@ _SILU_CONFIG = CodeGenConfig(
 
 # MetaX backend modules are dynamically imported under ``_metax`` while the
 # record handler listens to the ``flag_gems`` logger hierarchy.
-logger = logging.getLogger("flag_gems.runtime.backend._metax.ops.silu")
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -51,5 +51,5 @@ silu_forward = pointwise_dynamic(
 def silu(self: torch.Tensor) -> torch.Tensor:
     if not self.is_contiguous() or self.dtype not in _SUPPORTED_DTYPES:
         return _generic_silu(self)
-    logger.debug("GEMS_METAX SILU FORWARD")
+    logger.debug("GEMS_METAX SILU_FORWARD")
     return silu_forward(self)

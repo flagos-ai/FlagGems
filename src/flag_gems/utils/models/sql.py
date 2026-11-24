@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import sqlite3
 from hashlib import md5
 from itertools import chain
 from typing import (
@@ -75,7 +76,18 @@ class SQLPersistantModel(PersistantModel):
             @sqlalchemy.event.listens_for(self.engine, "connect")
             def set_sqlite_pragma(dbapi_conn, connection_record):
                 cursor = dbapi_conn.cursor()
-                cursor.execute("PRAGMA journal_mode=WAL")
+                try:
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                except sqlite3.OperationalError:
+                    # Switching a database into WAL mode needs an exclusive
+                    # lock that SQLite will not wait for (busy_timeout does not
+                    # apply here).  When multiple processes cold-start at the
+                    # same time and race to flip the journal mode, only one
+                    # wins and the others get "database is locked".  The WAL
+                    # switch is persisted in the file header once it succeeds,
+                    # so the losing connections still read/write in WAL mode
+                    # afterwards — safe to ignore this race.
+                    pass
                 cursor.execute("PRAGMA synchronous=NORMAL")
                 cursor.close()
 
@@ -176,10 +188,18 @@ class SQLPersistantModel(PersistantModel):
         name: str,
         engine: sqlalchemy.engine.Engine,
     ) -> Optional[Type[Base]]:
+        # Only reflect the single requested table instead of the whole database.
+        # The old automap_base().prepare(engine) reflected every table + index,
+        # which is O(total_tables) and became a dominant host-side cost as the
+        # cache grew to thousands of tables (each new autotune shape adds one).
+        if not sqlalchemy.inspect(engine).has_table(name):
+            return None
+        metadata = sqlalchemy.MetaData()
+        sqlalchemy.Table(name, metadata, autoload_with=engine)
         AutoBase: sqlalchemy.ext.automap.AutomapBase = (
-            sqlalchemy.ext.automap.automap_base()
+            sqlalchemy.ext.automap.automap_base(metadata=metadata)
         )
-        AutoBase.prepare(engine)
+        AutoBase.prepare()
         ModelCls: Optional[Type[Base]] = AutoBase.classes.get(name)
         return ModelCls
 

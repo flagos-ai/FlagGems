@@ -24,7 +24,9 @@ from . import accuracy_utils as utils
 
 @pytest.mark.and_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.SMALL_INT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+)
 def test_and_scalar(shape, dtype, caplog):
     if dtype in utils.BOOL_TYPES:
         inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
@@ -32,16 +34,14 @@ def test_and_scalar(shape, dtype, caplog):
         )
         inp2 = bool(random.randint(0, 2))
     else:
-        inp1 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
+        inp1 = utils.randint_in_range(shape, dtype).to(flag_gems.device)
         inp2 = 0x00FF
 
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.ops.aten.__and__.Scalar(ref_inp1, inp2)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.and_scalar"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.and_scalar)):
         res_out = flag_gems.and_scalar(inp1, inp2)
 
-    assert "GEMS AND SCALAR" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.and_scalar)} AND_SCALAR" in caplog.text
     utils.gems_assert_equal(res_out, ref_out)

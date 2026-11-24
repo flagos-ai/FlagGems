@@ -37,7 +37,6 @@ def test_nan_to_num(shape, dtype, nan, posinf, neginf):
     ref_input = utils.to_reference(base)
     ref_out = torch.nan_to_num(ref_input, nan=nan, posinf=posinf, neginf=neginf)
 
-    with flag_gems.use_gems():
-        res_out = torch.nan_to_num(base, nan=nan, posinf=posinf, neginf=neginf)
+    res_out = flag_gems.nan_to_num(base, nan=nan, posinf=posinf, neginf=neginf)
 
     utils.gems_assert_equal(res_out, ref_out)

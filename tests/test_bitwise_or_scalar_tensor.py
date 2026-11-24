@@ -39,7 +39,6 @@ def test_bitwise_or_scalar_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.bitwise_or(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_or(inp1, inp2)
+    res_out = flag_gems.bitwise_or_scalar_tensor(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

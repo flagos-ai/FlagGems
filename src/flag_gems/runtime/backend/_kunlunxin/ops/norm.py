@@ -116,7 +116,7 @@ def _l2_final_kernel(Partial, Out, N):
 def _norm_scalar_l2(x):
     n = x.numel()
     x1 = x.view(-1)
-    out = torch.empty((), dtype=x.dtype, device=x.device)
+    out = torch.empty_strided((), (), dtype=x.dtype, device=x.device)
     if n <= _L2_SMALL_LIMIT:
         _l2_small_kernel[(1,)](x1, out, n)
         return out
@@ -124,7 +124,7 @@ def _norm_scalar_l2(x):
     rows = n // _ROW_LEN
     tail = n - rows * _ROW_LEN
     mid_cnt = rows + (1 if tail else 0)
-    mid = torch.empty((mid_cnt,), dtype=torch.float32, device=x.device)
+    mid = torch.empty_strided((mid_cnt,), (1,), dtype=torch.float32, device=x.device)
     is_fp32 = x.dtype == torch.float32
 
     bm, bn = _pick_row_tile(rows, is_fp32)
@@ -136,7 +136,9 @@ def _norm_scalar_l2(x):
         rows2 = mid_cnt // _ROW_LEN
         rem2 = mid_cnt - rows2 * _ROW_LEN
         next_cnt = rows2 + (1 if rem2 else 0)
-        nxt = torch.empty((next_cnt,), dtype=torch.float32, device=x.device)
+        nxt = torch.empty_strided(
+            (next_cnt,), (1,), dtype=torch.float32, device=x.device
+        )
         bm2, bn2 = _pick_row_tile(rows2, False)
         if rows2:
             _l2_row_kernel[(rows2 // bm2,)](

@@ -48,8 +48,7 @@ def test_gather(inp_shape, dim, dtype):
             inp_shape[:2], dtype=torch.long, device=flag_gems.device
         )
         with pytest.raises(IndexError):
-            with flag_gems.use_gems():
-                torch.gather(mismatch_inp, 0, mismatch_index)
+            flag_gems.gather(mismatch_inp, 0, mismatch_index)
 
     inp = torch.randn(
         inp_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -78,8 +77,7 @@ def test_gather(inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_out = torch.gather(ref_inp, dim, ref_index)
 
-    with flag_gems.use_gems():
-        res_out = torch.gather(inp, dim, index)
+    res_out = flag_gems.gather(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -90,11 +88,56 @@ def test_gather(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    # The GEMS forward is called directly (no dispatcher), so the backward is
+    # exercised through the explicit gather_backward entry point.
+    res_in_grad = flag_gems.gather_backward(out_grad, inp, dim, index, False)
 
     res_in_grad = utils.to_reference(res_in_grad)
     utils.gems_assert_equal(res_in_grad, ref_in_grad)
+
+
+def _strided_index(kind):
+    if kind == "expand_last_axis":
+        # The reporter's index: `full((B, 1, 1), S - 1).expand(B, 1, H)`.
+        idx = torch.full((4, 1, 1), 15, dtype=torch.int64, device=flag_gems.device)
+        return idx.expand(4, 1, 384)
+    if kind.startswith("expand_dim"):
+        shape = [4, 16, 384]
+        shape[int(kind[-1])] = 1
+        idx = torch.full(shape, 0, dtype=torch.int64, device=flag_gems.device)
+        return idx.expand(4, 16, 384)
+    base = torch.randint(0, 16, (4, 1, 768), dtype=torch.int64, device=flag_gems.device)
+    return base[:, :, ::2]
+
+
+_STRIDED_INDEX_CASES = [
+    ("expand_last_axis", 1),
+    ("expand_dim0", 0),
+    ("expand_dim1", 1),
+    ("expand_dim2", 2),
+    ("sliced_last_axis", 1),
+]
+
+
+# Regression test for issue #5746: a strided `index` (an `expand`ed one is the
+# usual source -- the broadcast axis gets stride 0, e.g. an attention gather
+# with `index.expand(B, 1, H)`) used to fault the device with
+# "AclrtSynchronizeStreamWithTimeout ... error code is 507035" on Ascend.
+@pytest.mark.gather
+@pytest.mark.parametrize("kind,dim", _STRIDED_INDEX_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_gather_strided_index(kind, dim, dtype):
+    inp = torch.randn((4, 16, 384), dtype=dtype, device=flag_gems.device)
+    index = _strided_index(kind)
+    assert not index.is_contiguous()
+
+    ref_inp = utils.to_reference(inp)
+    ref_index = utils.to_reference(index.contiguous())
+    ref_out = torch.gather(ref_inp, dim, ref_index)
+
+    res_out = flag_gems.gather(inp, dim, index)
+
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 def _make_gather_backward_index(inp_shape, dim, duplicate_indices):
@@ -137,7 +180,6 @@ def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
         ref_grad, ref_inp, dim, ref_index, False
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    res_out = flag_gems.gather_backward(grad, inp, dim, index, False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

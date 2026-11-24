@@ -35,10 +35,7 @@ def test_binary_cross_entropy(shape, dtype, reduction):
     ref_out = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, reduction=reduction
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.binary_cross_entropy(
-            inp, target, reduction=reduction
-        )
+    res_out = flag_gems.binary_cross_entropy(inp, target, reduction=reduction)
 
     if reduction == "none":
         # Elementwise comparison, no reduction error to account for
@@ -77,10 +74,9 @@ def test_binary_cross_entropy_weight(shape, dtype, reduction):
     ref_out = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, weight=ref_weight, reduction=reduction
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.binary_cross_entropy(
-            inp, target, weight=weight, reduction=reduction
-        )
+    res_out = flag_gems.binary_cross_entropy(
+        inp, target, weight=weight, reduction=reduction
+    )
 
     if reduction == "none":
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -101,6 +97,7 @@ _REDUCTION_ENUM = {"none": 0, "mean": 1, "sum": 2}
 
 
 @pytest.mark.binary_cross_entropy
+@pytest.mark.binary_cross_entropy_out
 @pytest.mark.parametrize("with_weight", [False, True])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
@@ -129,10 +126,9 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, with_weight):
         out = torch.full((), -123.0, dtype=inp.dtype, device=flag_gems.device)
 
     red_enum = _REDUCTION_ENUM[reduction]
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.binary_cross_entropy.out(
-            inp, target, weight, red_enum, out=out
-        )
+    returned = flag_gems.binary_cross_entropy_out(
+        inp, target, weight, red_enum, out=out
+    )
 
     # out-variant semantics: the returned tensor must be the same object as `out`,
     # and the result must actually live in the caller-provided buffer.
@@ -176,10 +172,9 @@ def test_binary_cross_entropy_boundary(dtype, reduction, with_weight):
     ref_out = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, weight=ref_weight, reduction=reduction
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.binary_cross_entropy(
-            inp, target, weight=weight, reduction=reduction
-        )
+    res_out = flag_gems.binary_cross_entropy(
+        inp, target, weight=weight, reduction=reduction
+    )
 
     if reduction == "sum":
         utils.gems_assert_close(

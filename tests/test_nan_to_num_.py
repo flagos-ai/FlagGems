@@ -38,8 +38,7 @@ def test_nan_to_num_(shape, dtype, nan, posinf, neginf):
     ref_out = ref_input.nan_to_num_(nan=nan, posinf=posinf, neginf=neginf)
 
     inp1 = base.clone()
-    with flag_gems.use_gems():
-        res_out = inp1.nan_to_num_(nan=nan, posinf=posinf, neginf=neginf)
+    res_out = flag_gems.nan_to_num_(inp1, nan=nan, posinf=posinf, neginf=neginf)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp1, ref_input)

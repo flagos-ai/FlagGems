@@ -459,7 +459,7 @@ def cummax(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummax:
-    logger.debug("GEMS cummax")
+    logger.debug("GEMS CUMMAX")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim
@@ -587,7 +587,7 @@ def cummaxmin_backward(
     Returns:
         grad_input: Gradient w.r.t. the input (same shape and dtype as input)
     """
-    logger.debug("GEMS cummaxmin_backward")
+    logger.debug("GEMS CUMMAXMIN_BACKWARD")
 
     ndim = grad_output.ndim
     if dim < 0:

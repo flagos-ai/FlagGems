@@ -28,7 +28,32 @@ def test_digamma(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.digamma(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.digamma(inp)
+    res_out = flag_gems.digamma(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.digamma
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_digamma_byte(shape, dtype):
+    # torch promotes integral digamma inputs to float32.
+    inp = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.digamma(ref_inp)
+    res_out = flag_gems.digamma(inp)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.digamma_
+def test_digamma_int_rejects_inplace():
+    # torch.digamma_ rejects integral inputs -- "result type Float can't be
+    # cast to the desired output type Int"; so does FlagGems.
+    inp = torch.tensor([1, 2, 3], dtype=torch.int32, device=flag_gems.device)
+    ref_inp = inp.cpu()
+    with pytest.raises(RuntimeError):
+        ref_inp.digamma_()
+    with pytest.raises(RuntimeError):
+        flag_gems.digamma_(inp)

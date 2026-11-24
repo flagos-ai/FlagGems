@@ -40,5 +40,5 @@ def chebyshev_polynomial_v_func(x, n):
 
 
 def special_chebyshev_polynomial_v(x, n):
-    logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_V")
+    logger.debug("GEMS_HYGON SPECIAL_CHEBYSHEV_POLYNOMIAL_V")
     return chebyshev_polynomial_v_func(x, n)

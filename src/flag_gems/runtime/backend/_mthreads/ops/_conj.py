@@ -74,7 +74,7 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
     ("SetMUTensorDType Unsupported tensor dtype: ComplexHalf"), so complex32
     falls back to a physical copy with the vectorized kernel above.
     """
-    logger.debug("GEMS CONJ")
+    logger.debug("GEMS_MTHREADS CONJ")
 
     if not input.is_complex():
         # Real tensors: conjugate is the identity; mirror torch._conj's

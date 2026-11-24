@@ -58,6 +58,21 @@ logger = logging.getLogger(__name__)
 
 _tanh = tl_extra_shim.tanh
 
+
+@triton.jit
+def _sigmoid(x):
+    """sigmoid expressed through tanh, avoiding ``triton_xpu.vsigmoidf``.
+
+    On the 2026-11-03 TritonXPU image the vectorized lowering of ``tl.sigmoid``
+    on a flat 1-D tile fails to legalize:
+        failed to legalize operation 'triton_xpu.vsigmoidf'
+                that was explicitly marked illegal  (tensor<128xvector<16xf32>>)
+    The tanh path used elsewhere in this kernel lowers fine, and
+    0.5 * (1 + tanh(x / 2)) is the same function, so use it instead.
+    """
+    return 0.5 * (1.0 + _tanh(0.5 * x))
+
+
 # Dequantized (and, if the shape is ragged, tile-padded) weights keyed by
 # (params object, device, dtype, geometry). The prepacked int8 handles are
 # CPU-only, so unpacking involves a host copy; the weights are constant across
@@ -220,8 +235,8 @@ def quantized_lstm_gate_kernel(
     pre_o = tl.load(s_ptr + 3 * n_total + off)
     c_prev = tl.load(c_prev_ptr + off).to(tl.float32)
 
-    cy = tl.sigmoid(pre_f) * c_prev + tl.sigmoid(pre_i) * _tanh(pre_g)
-    hy = tl.sigmoid(pre_o) * _tanh(cy)
+    cy = _sigmoid(pre_f) * c_prev + _sigmoid(pre_i) * _tanh(pre_g)
+    hy = _sigmoid(pre_o) * _tanh(cy)
 
     tl.store(cy_ptr + off, cy.to(cy_ptr.dtype.element_ty))
     tl.store(hy_ptr + off, hy.to(hy_ptr.dtype.element_ty))

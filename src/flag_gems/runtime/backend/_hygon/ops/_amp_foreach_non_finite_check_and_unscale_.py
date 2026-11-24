@@ -25,10 +25,96 @@ from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-# Memory-bound in-place scaling kernel. A fixed block size keeps things simple
-# and avoids re-running the kernel many times on the same buffer (which
-# autotuning would do, causing repeated *inv_scale -> overflow to inf).
-BLOCK_SIZE = 2048
+# Memory-bound in-place scaling kernel. Fixed configs keep things simple and
+# avoid re-running the kernel many times on the same buffer (which autotuning
+# would do, causing repeated *inv_scale -> overflow to inf). Tuned on DCU:
+# 2 warps per program, ~4KB of elements per block.
+NUM_WARPS = 2
+
+# Groups with at least this many tensors use the fused single-launch kernel.
+# Below it, per-tensor async launches hide their own launch latency behind
+# kernel execution, which beats paying the fused kernel's metadata setup.
+FUSE_MIN_TENSORS = 4
+
+# Staging slots for the fused kernel's metadata: filling a pinned buffer
+# through its numpy view and copying with non_blocking=True keeps the H2D
+# transfer fully asynchronous -- a pageable torch.tensor(..., device=...) here
+# would sync the stream and leave the GPU idle before the kernel.
+#
+# Each slot is guarded by an event recorded right after its H2D copy: the host
+# may only refill a pinned buffer once the copy that reads it has completed.
+# A small ring makes the wait a no-op in practice, while a single reused
+# buffer would race with back-to-back calls (the host can lap a queued H2D).
+_META_SLOT_TENSORS = 2048  # capacity per slot, in tensors
+_META_RINGS = {}  # device -> list of (pinned, dev, event), rotated per launch
+
+
+def _get_meta_slot(device):
+    ring = _META_RINGS.get(device)
+    if ring is None:
+        ring = []
+        for _ in range(8):
+            pinned = torch.empty(
+                2 * _META_SLOT_TENSORS, dtype=torch.int64, pin_memory=True
+            )
+            dev = torch.empty(2 * _META_SLOT_TENSORS, dtype=torch.int64, device=device)
+            # The event guards the pinned buffer: synchronizing an event that
+            # was never recorded is a no-op, so slots are born ready.
+            ring.append([pinned, dev, torch.cuda.Event()])
+        _META_RINGS[device] = ring
+    slot = ring.pop(0)
+    ring.append(slot)
+    slot[2].synchronize()
+    return slot
+
+
+@triton.jit
+def _amp_foreach_non_finite_check_and_unscale_fused_kernel(
+    meta_ptr,  # int64 layout: [data_ptrs(n) | numels(n)]
+    anchor_ptr,  # only used for its dtype; every tensor in the group shares it
+    inv_scale_ptr,
+    found_inf_ptr,
+    n_tensors,
+    BLOCK_SIZE: tl.constexpr,
+):
+    tensor_idx = tl.program_id(1)
+    local_block = tl.program_id(0)
+
+    numel = tl.load(meta_ptr + n_tensors + tensor_idx)
+    block_start = local_block * BLOCK_SIZE
+    # Tensors shorter than the grid's first axis are padded with blocks that
+    # exit immediately.
+    if block_start >= numel:
+        return
+
+    base = tl.load(meta_ptr + tensor_idx)
+    inp_ptr = base.to(tl.pointer_type(anchor_ptr.dtype.element_ty))
+
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < numel
+
+    inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
+    scale = tl.load(inv_scale_ptr).to(tl.float32)
+
+    inp_fp32 = inp.to(tl.float32)
+
+    # Detect inf / nan in float32 to cover fp16 / bf16 inputs.
+    is_non_finite = ~tl_extra_shim.finitef(inp_fp32)
+
+    # Fuse the finite-check into the kernel. Every writer stores the same
+    # value (1.0) and the host-side 0.0 is written before launch, so a plain
+    # conditional store is race-free -- no atomic traffic at all on the common
+    # all-finite path (previously every block of every tensor serialized on a
+    # single-address atomic_max).
+    block_flag = tl.max(tl.where(is_non_finite & mask, 1.0, 0.0), axis=0)
+    if block_flag > 0.5:
+        tl.store(found_inf_ptr, 1.0)
+
+    # Scale everything (non-finite * finite scale stays non-finite anyway), then
+    # store back in the loaded value's dtype -- NOT inp_ptr.dtype.element_ty,
+    # which mis-casts and produces all-inf on hygon.
+    scaled = (inp_fp32 * scale).to(inp.dtype)
+    tl.store(inp_ptr + offsets, scaled, mask=mask)
 
 
 @triton.jit
@@ -52,16 +138,83 @@ def _amp_foreach_non_finite_check_and_unscale_kernel(
     # Detect inf / nan in float32 to cover fp16 / bf16 inputs.
     is_non_finite = ~tl_extra_shim.finitef(inp_fp32)
 
-    # Fuse the finite-check into the kernel: flag found_inf via atomic_max so we
-    # never sync back to host with torch.all(torch.isfinite(...)) per tensor.
+    # Same conditional-store scheme as the fused kernel: benign race, since
+    # the only value ever written by the kernel is 1.0.
     block_flag = tl.max(tl.where(is_non_finite & mask, 1.0, 0.0), axis=0)
-    tl.atomic_max(found_inf_ptr, block_flag)
+    if block_flag > 0.5:
+        tl.store(found_inf_ptr, 1.0)
 
     # Scale everything (non-finite * finite scale stays non-finite anyway), then
     # store back in the loaded value's dtype -- NOT inp_ptr.dtype.element_ty,
     # which mis-casts and produces all-inf on hygon.
     scaled = (inp_fp32 * scale).to(inp.dtype)
     tl.store(inp_ptr + offsets, scaled, mask=mask)
+
+
+# ~4KB of elements per block regardless of dtype.
+_BLOCK_SIZES = {
+    torch.float16: 2048,
+    torch.bfloat16: 2048,
+    torch.float32: 1024,
+    torch.float64: 512,
+}
+
+
+def _block_size(dtype):
+    return _BLOCK_SIZES.get(dtype, 1024)
+
+
+def _launch_fused_group(tensors, inv_scale, found_inf):
+    """One kernel launch for a group of contiguous same-dtype tensors."""
+    block = _block_size(tensors[0].dtype)
+    n = len(tensors)
+
+    # Pack [data_ptrs | numels] into a pinned staging slot and ship it with
+    # one async H2D copy; record an event so the slot is only refilled after
+    # the copy has completed.
+    slot = _get_meta_slot(tensors[0].device)
+    pinned, dev = slot[0], slot[1]
+    pinned_np = pinned.numpy()
+    pinned_np[:n] = [t.data_ptr() for t in tensors]
+    pinned_np[n : 2 * n] = [t.numel() for t in tensors]
+    dev[: 2 * n].copy_(pinned[: 2 * n], non_blocking=True)
+    slot[2].record()
+
+    # grid axis 1 is limited to 65535 programs.
+    max_blocks = max(triton.cdiv(t.numel(), block) for t in tensors)
+    grid = (max_blocks, n)
+    _amp_foreach_non_finite_check_and_unscale_fused_kernel[grid](
+        dev,
+        tensors[0],
+        inv_scale,
+        found_inf,
+        n,
+        BLOCK_SIZE=block,
+        num_warps=NUM_WARPS,
+    )
+
+
+def _launch_single(tensor, inv_scale, found_inf):
+    """Fallback per-tensor path (non-contiguous or unusual dtypes)."""
+    num_elements = tensor.numel()
+    block = _block_size(tensor.dtype)
+
+    # Operate on a contiguous view; scaling is elementwise so layout is
+    # irrelevant to the result, and this keeps the kernel a simple 1-D pass.
+    work = tensor if tensor.is_contiguous() else tensor.contiguous()
+
+    grid = (triton.cdiv(num_elements, block),)
+    _amp_foreach_non_finite_check_and_unscale_kernel[grid](
+        work,
+        inv_scale,
+        found_inf,
+        num_elements,
+        BLOCK_SIZE=block,
+        num_warps=NUM_WARPS,
+    )
+
+    if work is not tensor:
+        tensor.copy_(work)
 
 
 def _amp_foreach_non_finite_check_and_unscale_(
@@ -76,9 +229,15 @@ def _amp_foreach_non_finite_check_and_unscale_(
     - Scale values by inv_scale in-place.
     - If any element is non-finite (inf, nan), set found_inf to 1.0.
 
-    The finite check is fused into the scaling kernel via tl.atomic_max on the
-    found_inf buffer, avoiding the per-tensor device->host sync that the general
-    layer incurs with torch.all(torch.isfinite(...)).
+    Two key optimizations over the per-tensor scheme:
+    - Groups of >= FUSE_MIN_TENSORS contiguous same-dtype tensors are handled
+      by a single fused kernel launch on a 2-D grid (local block x tensor
+      index), removing per-tensor launch overhead; metadata is staged through
+      a pinned buffer with an async H2D copy so the GPU never idles. Smaller
+      groups keep per-tensor async launches, which already hide their launch
+      latency behind kernel execution.
+    - found_inf is set with a conditional plain store instead of a per-block
+      atomic_max on one address, removing global atomic serialization.
     """
     logger.debug("GEMS_HYGON AMP_FOREACH_NON_FINITE_CHECK_AND_UNSCALE")
 
@@ -91,26 +250,37 @@ def _amp_foreach_non_finite_check_and_unscale_(
     # PyTorch guarantees inv_scale / found_inf are float32 scalar tensors.
     inv_scale = inv_scale.to(dtype=torch.float32)
 
-    for tensor in tensors:
-        if not tensor.is_floating_point():
-            continue
+    work = [t for t in tensors if t.is_floating_point() and t.numel() > 0]
 
-        num_elements = tensor.numel()
-        if num_elements == 0:
-            continue
+    # Fast path for short lists: per-tensor async launches already hide their
+    # launch latency behind kernel execution, so skip the grouping machinery.
+    if len(work) < FUSE_MIN_TENSORS:
+        for tensor in work:
+            _launch_single(tensor, inv_scale, found_inf)
+        return
 
-        # Operate on a contiguous view; scaling is elementwise so layout is
-        # irrelevant to the result, and this keeps the kernel a simple 1-D pass.
-        work = tensor if tensor.is_contiguous() else tensor.contiguous()
+    groups = {}
+    for tensor in work:
+        # The fused kernel needs contiguous storage and a dtype the anchor
+        # pointer can express; anything else takes the per-tensor fallback.
+        if tensor.is_contiguous() and tensor.dtype in (
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+            torch.float64,
+        ):
+            groups.setdefault(tensor.dtype, []).append(tensor)
+        else:
+            _launch_single(tensor, inv_scale, found_inf)
 
-        grid = (triton.cdiv(num_elements, BLOCK_SIZE),)
-        _amp_foreach_non_finite_check_and_unscale_kernel[grid](
-            work,
-            inv_scale,
-            found_inf,
-            num_elements,
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-
-        if work is not tensor:
-            tensor.copy_(work)
+    for group in groups.values():
+        if len(group) >= FUSE_MIN_TENSORS:
+            # Chunked by metadata slot capacity (and the 65535-program limit
+            # of grid axis 1).
+            for start in range(0, len(group), _META_SLOT_TENSORS):
+                _launch_fused_group(
+                    group[start : start + _META_SLOT_TENSORS], inv_scale, found_inf
+                )
+        else:
+            for tensor in group:
+                _launch_single(tensor, inv_scale, found_inf)

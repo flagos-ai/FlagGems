@@ -26,112 +26,43 @@ weight: 10
 ## Rich Collection of Operators
 
 FlagGems features a large collection of PyTorch compatible operators.
-Refer to [operator supported](/FlagGems/references/operators/) and
-[experimental operators](/FlagGems/references/experiental/)
+Refer to [operator supported](../references/operators.md) and
+[experimental operators](../references/experimental.md)
 for list of formally supported operators and experimental operators.
 -->
 # 功能特性概览
 
-## 丰富的算子集合
+## 丰富的算子生态
 
-*FlagGems* 的一大特性是提供丰富的 PyTorch 兼容算子集合。
-参阅[支持的算子](/FlagGems/zh-cnreferences/operators/)和
-[实验性算子](/FlagGems/zh-cn/references/experimental/)
-页面了解正式支持的算子集合以及当前处于实验阶段的其他算子。
+*FlagGems* 提供了涵盖大模型训练与推理主流场景的丰富 PyTorch 兼容算子库。
+详情请参阅[正式支持算子清单](../references/operators.md)与[实验性算子清单](../references/experimental.md)。
 
-<!--
-## Hand-optimized Performance for Selected Operators
+## 关键算子的手工极致优化
 
-The following chart shows the speedup of FlagGems compared with PyTorch ATen library
-in eager mode. The speedup is calculated by averaging the speedup on each shape,
-representing the overall performance of the operator.
+下图展示了在 Eager 模式下，*FlagGems* 算子相比 PyTorch ATen 原生算子实现的加速比。数据通过对不同典型 Tensor Shape 的加速比取平均计算得出，直观反映了算子的端到端综合性能优势：
 
-![Operator Speedup](./assets/speedup-20251225.png)
--->
-## 针对部分算子的选择性手工性能优化
+![算子加速比](../../../assets/speedup-20251225.png)
 
-下面的图表中显示的是 FlagGems 与 PyTorch ATen 算子库在 Eager 模式下的性能比较。
-所展示的数据是针对不同数据形状下加速比的平均值，代表了算子的总体性能。
+## 原生 Eager 模式支持，脱离 `torch.compile` 依赖
 
-![算子加速比](/FlagGems/images/speedup-20251225.png)
+*FlagGems* 算子能够直接注册到 ATen 并在原生的 Eager 模式下无缝运行，无需提前经过 `torch.compile` 的编译追踪流程，极大简化了调试与部署流程，即插即用。
 
-<!--
-## Eager-mode ready, independent of `torch.compile`
+## 算子自动代码生成
 
-> TBD
--->
-## 直接进入 Eager 模式，无需 `torch.compile`
+*FlagGems* 提供了强大的算子代码自动生成机制，帮助开发者低门槛生成高质量的逐点（Pointwise）算子和融合（Fused）算子。自动生成系统全面支持标准逐元素计算、混合标量/非张量参数、动态输出类型推断等多样化需求。
+更多详情请参阅[逐点动态算子](pointwise-dynamic.md)文档。
 
-> TODO: 内容待补充。
+## 函数级 Kernel 分发调度
 
-<!--
-## Automatic Code Generation
+*FlagGems* 引入了 `LibEntry` 机制，独立管理 Kernel 缓存并绕过 Triton 默认 `Autotuner`、`Heuristics` 与 `JitFunction` 的部分运行时开销。开发者只需使用 `@libentry` 修饰对应的 Triton Kernel 即可享受到此特性。
 
-FlagGems provides an automatic code generation mechanism that enables developers
-to easily generate both pointwise and fused operators.
-The auto-generation system supports a variety of requirements, including standard
-element-wise computations, non-tensor parameters, and specifying output data types.
-For more details, please refer to the [pointwise dynamic](/FlagGems/contribution/pointwise_dynamic/)
-documentation.
--->
-## 自动代码生成
+`LibEntry` 还支持直接包装 `Autotuner`、`Heuristics` 和 `JitFunction`，在完整保留参数调优能力的同时，消除嵌套运行时的层层类型转换与冗余参数校验，从而大幅简化缓存键（Cache Key）的生成逻辑并降低无谓的计算开销。
 
-*FlagGems* 提供一种自动代码生成的机制，方便开发者生成逐点（pointwise）
-算子和融合（fused）算子。代码自动生成系统能够满足多种不同的需求，
-包括标准的逐元素（element-wise）计算、非张量参数以及设定输出数据类型等等。
-参阅[逐点动态算子](/FlagGems/zh-cn/overview/pointwise-dynamic/)文档以了解更多细节。
+## 广泛的多硬件平台支持
 
-<!--
-## Function-level kernel dispatching
+*FlagGems* 已支持超过 10 种主流 AI 加速芯片及硬件后端，并在多种硬件架构及异构集群中完成了深入的精度与性能验证。
+有关各厂商芯片的适配程度与数据类型支持情况，请参阅[硬件平台支持](platforms.md)。
 
-FlagGems introduces `LibEntry`, which independently manages the kernel cache and
-bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`.
-To use this feature, simply decorate the Triton kernel with `LibEntry`.
--->
-## 函数层级内核派发
+## C++ 扩展与轻量级分发
 
-*FlagGems* 提供 `LibEntry` 来独立管理对内核的缓存，从而越过 `Autotuner`、
-`Heuristics` 和 `JitFunction` 等运行时处理机制。要使用这一特性，
-你可以为对应的 Triton 内核添加 `libentry` 修饰符。
-
-<!--
-`LibEntry` also supports direct wrapping of `Autotuner`, `Heuristics`, and `JitFunction`,
-preserving full tuning functionality. However, it avoids nested runtime type invocations,
-eliminating redundant parameter processing. This means no kneed for binding or type wrapping,
-resulting in a simplified cache key format and reduced unnecessary key computation.
--->
-`LibEntry` 类也支持对 `Autotuner`、`Heuristics` 和 `JitFunction` 的直接封装，
-从而完整地保留性能调优能力。不过，`LibEntry` 能够避免嵌套的运行时类型调用，
-消除冗余的参数处理操作。这就意味着，开发者不需要绑定或者封装类型信息，
-所使用的将是一种简化的缓存键格式，减少了不必要的键值计算操作。
-
-<!--
-### Multi-backend hardware support
-
-FlagGems supports a wide range of hardware platforms (10+ backends) and
-has been extensively tested across different hardware configurations.
-For a comprehensive and up to date list of supported platforms,
-please check [platforms supported](/FlagGems/overview/platforms/).
--->
-### 多种后端硬件支持
-
-*FlagGems* 支持很多种硬件平台（后端超过 10 种），并且已经在不同硬件配置环境下通过了大量测测试。
-参阅[平台支持](/FlagGems/zh-cn/overview/platforms/)了解完整的、最新的支持平台列表。
-
-<!--
-### C++-wrapped operators
-
-*FlagGems* can be installed either as a pure Python package or as a package with C++ extensions.
-The C++ runtime is designed to address the overhead of the Python runtime
-and improve end-to-end performance.
-
-There is an ongoing work that implements the Triton function dispatcher
-in C++ language. Stay tuned.
--->
-### C++ 封装的算子
-
-*FlagGems* 可以作为纯 Python 包来安装，也可以附带 C++ 扩展支持特性来安装。
-其中的 C++ 运行时被设计用来解决 Python 运行时的性能开销问题，
-旨在提高最终系统的端到端性能。
-
-开发团队目前正在尝试用 C++ 语言实现 Triton 的函数派发程序。敬请留意。
+*FlagGems* 既可作为纯 Python 包开箱即用，也支持构建 C++ 高性能扩展。C++ 运行时专为消除 Python 解释器的 Dispatch 开销而设计，在端到端高频小算子调用场景下能带来显著的延迟降低与吞吐提升。目前团队也在持续推进基于 C++ 的底层 Triton 函数分发器，敬请期待。

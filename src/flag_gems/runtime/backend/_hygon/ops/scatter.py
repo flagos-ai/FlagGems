@@ -397,7 +397,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    logger.debug("GEMS_HYGON SCATTER")
     out = inp.clone()
 
     if reduce is not None:
@@ -432,7 +432,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    logger.debug("GEMS_HYGON SCATTER_")
     out = inp
 
     if reduce is not None:

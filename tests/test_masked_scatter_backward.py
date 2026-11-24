@@ -75,7 +75,6 @@ def test_accuracy_masked_scatter_backward(shape, dtype, threshold):
     ref_grad = utils.to_reference(grad_output)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.ops.aten.masked_scatter_backward(ref_grad, ref_mask, sizes)
-    with flag_gems.use_gems():
-        res_out = flag_gems.masked_scatter_backward(grad_output, mask, sizes)
+    res_out = flag_gems.masked_scatter_backward(grad_output, mask, sizes)
 
     utils.gems_assert_equal(res_out, ref_out)

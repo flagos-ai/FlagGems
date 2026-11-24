@@ -25,6 +25,7 @@ from flag_gems import median_out as gems_median_out
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
@@ -85,8 +86,18 @@ def _assert_indices_select_values(inp, dim, values, indices, *, keepdim, equal_n
 
     dim = dim % inp.ndim
     gather_indices = indices if keepdim else indices.unsqueeze(dim)
-    gathered = torch.gather(inp, dim, gather_indices)
-    expected = values if keepdim else values.unsqueeze(dim)
+    try:
+        gathered = torch.gather(inp, dim, gather_indices)
+        expected = values if keepdim else values.unsqueeze(dim)
+    except RuntimeError:
+        # Kunlunxin has no gather kernel for (integer value dtype, int64 index)
+        # pairs. This is a test-side reference computation only, so redo it on
+        # the host there rather than reporting the operator as failed; other
+        # backends must keep seeing the error.
+        if flag_gems.vendor_name != "kunlunxin":
+            raise
+        gathered = torch.gather(inp.cpu(), dim, gather_indices.cpu())
+        expected = (values if keepdim else values.unsqueeze(dim)).cpu()
     flag_gems.testing.assert_equal(gathered, expected, equal_nan=equal_nan)
 
 
@@ -408,7 +419,9 @@ def test_median_empty_no_dim(dtype):
 
 
 @pytest.mark.median
-@pytest.mark.parametrize("dtype", [torch.float64, torch.int8, torch.uint8])
+@pytest.mark.parametrize(
+    "dtype", [pytest.param(torch.float64, marks=_SKIP_FP64), torch.int8, torch.uint8]
+)
 def test_median_extra_no_dim_dtypes(dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
@@ -421,17 +434,32 @@ def test_median_extra_no_dim_dtypes(dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+def _bool_no_dim_reference(inp):
+    """Reference value for a no-dim bool median.
+
+    Other backends keep the eager reference.  Kunlunxin has none for this
+    input: the call is redirected to CPU, which has no bool kernel
+    (`median_cpu ... Bool`), so the lower median of the flattened tensor is
+    computed on the host instead.  A no-dim bool median carries no indices, so
+    that closed form is a complete oracle.
+    """
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.median(inp)
+    flat = inp.detach().to("cpu").reshape(-1)
+    return torch.sort(flat).values[(flat.numel() - 1) // 2]
+
+
 @pytest.mark.median
 def test_median_bool_no_dim():
     if torch.device(flag_gems.device).type != "cuda":
         pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
 
     inp = torch.tensor([True, False, True], device=flag_gems.device)
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -441,11 +469,11 @@ def test_median_bool_no_dim_full_registration():
         pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
 
     inp = torch.tensor([True, False, True, False, True], device=flag_gems.device)
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -457,11 +485,11 @@ def test_median_bool_no_dim_large(width):
 
     vals = torch.arange(width, device=flag_gems.device)
     inp = (vals * 37) % 5 < 3
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -473,11 +501,11 @@ def test_median_bool_no_dim_beyond_old_flat_limit():
     width = 1024 * 1024 + 1
     vals = torch.arange(width, device=flag_gems.device)
     inp = vals % 5 < 3
-    ref_out = torch.median(inp)
+    ref_out = _bool_no_dim_reference(inp)
     res_out = gems_median(inp)
 
     assert res_out.dtype == ref_out.dtype
-    assert res_out.device == ref_out.device
+    assert res_out.device == inp.device
     assert res_out.item() == ref_out.item()
 
 
@@ -570,9 +598,24 @@ def test_median_empty_output_unsupported_dtype(shape, dim, dtype):
         pytest.skip("empty-output bool/complex median semantics differ on CPU")
 
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin has no eager reference for these inputs: the call is
+        # redirected to CPU, which has no bool/complex median kernel.  An empty
+        # output reduces nothing, so assert the contract directly: values keep
+        # the input dtype, indices are int64, both keep the input device and the
+        # input shape minus `dim`.
+        res_out = gems_median_dim(inp, dim=dim)
+        expected_shape = tuple(size for index, size in enumerate(shape) if index != dim)
+        assert tuple(res_out.values.shape) == expected_shape
+        assert tuple(res_out.indices.shape) == expected_shape
+        assert res_out.values.dtype == dtype
+        assert res_out.indices.dtype == torch.int64
+        assert res_out.values.device == inp.device
+        assert res_out.indices.device == inp.device
+        return
+
     ref_out = torch.median(inp, dim=dim)
     res_out = gems_median_dim(inp, dim=dim)
-
     assert tuple(res_out.values.shape) == tuple(ref_out.values.shape)
     assert tuple(res_out.indices.shape) == tuple(ref_out.indices.shape)
     assert res_out.values.dtype == ref_out.values.dtype
@@ -645,6 +688,7 @@ def test_median_large_width(width):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="Not supported float64")
 @pytest.mark.median
 @pytest.mark.parametrize("width", [257, 1024, 4096])
 @pytest.mark.parametrize("keepdim", KEEPDIM)
@@ -673,8 +717,10 @@ def test_median_float64_key_select(width, keepdim):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="Not supported float64")
 @pytest.mark.median
 @pytest.mark.parametrize("width", [640, 4096])
+@_SKIP_FP64
 def test_median_float64_key_select_nan_first_index(width):
     inp = torch.randn((3, width), dtype=torch.float64, device=flag_gems.device)
     expected_indices = torch.tensor([0, width // 2, width - 1], device=flag_gems.device)
@@ -732,7 +778,13 @@ def test_median_extended_lastdim_width(dtype):
 def test_median_lastdim_sort_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    # Kunlunxin has no `roll` kernel for every integer dtype, so the rolled row
+    # is built on the host there; this is test input construction, and other
+    # backends keep the device-side call.
+    if flag_gems.vendor_name == "kunlunxin":
+        second = torch.arange(width, dtype=dtype).roll(7).to(flag_gems.device)
+    else:
+        second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -1058,7 +1110,18 @@ def test_median_f16_key_select_signed_zero_index_bits(dtype, width):
     _assert_median_dim_equal(
         res_out, ref_out, dtype, exact_indices=False, inp=inp, dim=1
     )
-    gathered = torch.gather(inp, 1, res_out.indices.unsqueeze(1)).reshape(-1)
+    try:
+        gathered = torch.gather(inp, 1, res_out.indices.unsqueeze(1)).reshape(-1)
+    except RuntimeError:
+        # Kunlunxin's gather has no (integer dtype, int64 index) kernel; this is
+        # a test-side reference computation, so redo it on the host there.
+        if flag_gems.vendor_name != "kunlunxin":
+            raise
+        gathered = (
+            torch.gather(inp.cpu(), 1, res_out.indices.cpu().unsqueeze(1))
+            .reshape(-1)
+            .to(inp.device)
+        )
     flag_gems.testing.assert_equal(
         torch.signbit(gathered), torch.signbit(res_out.values)
     )
@@ -1315,7 +1378,13 @@ def test_median_int_lastdim_select_boundaries(dtype, width):
 def test_median_int_lastdim_select_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    # Kunlunxin has no `roll` kernel for every integer dtype, so the rolled row
+    # is built on the host there; this is test input construction, and other
+    # backends keep the device-side call.
+    if flag_gems.vendor_name == "kunlunxin":
+        second = torch.arange(width, dtype=dtype).roll(7).to(flag_gems.device)
+    else:
+        second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -1430,3 +1499,342 @@ def test_median_error_paths():
     inp = torch.randn((2, 3), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(IndexError):
         gems_median_dim(inp, dim=3)
+
+
+# ---------------------------------------------------------------------------
+# backward (`median_backward`)
+# ---------------------------------------------------------------------------
+
+BACKWARD_NO_DIM_SHAPES = NO_DIM_SHAPES + [(257,), (1024,), (4096,), (4, 8, 16, 8)]
+
+
+def _backward_input(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp.requires_grad_(True)
+    ref_inp = utils.to_reference(inp.detach().clone(), True).requires_grad_(True)
+    return inp, ref_inp
+
+
+def _assert_backward_close(res_grad, ref_grad, dtype, *, equal_nan=False):
+    assert res_grad.dtype == dtype
+    assert tuple(res_grad.shape) == tuple(ref_grad.shape)
+    utils.gems_assert_close(res_grad, ref_grad, dtype, equal_nan=equal_nan)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("shape", BACKWARD_NO_DIM_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_no_dim(shape, dtype):
+    inp, ref_inp = _backward_input(shape, dtype)
+    out_grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_out_grad = utils.to_reference(out_grad.clone(), True)
+
+    res_out = gems_median(inp)
+    ref_out = torch.median(ref_inp)
+
+    (res_in_grad,) = torch.autograd.grad(res_out, (inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, (ref_inp,), ref_out_grad)
+
+    _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+    # the global median distributes the scalar gradient over the median
+    # element(s) only, so the total mass is preserved
+    utils.gems_assert_close(res_in_grad.sum(), ref_in_grad.sum(), dtype, atol=1e-4)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "values",
+    [
+        # even length: the lower median, not the average of the two middle ones
+        [9.0, 1.0, 5.0, 3.0, 7.0, 0.0, 2.0, 4.0],
+        # the median value appears six times out of twelve elements
+        [2.0, 2.0, 2.0, 5.0, 7.0, 9.0, 2.0, 2.0, 2.0, 5.0, 7.0, 9.0],
+        # every element is the median
+        [3.5] * 16,
+        # single element
+        [-1.25],
+        # +-inf must not disturb the finite median
+        [float("inf"), -float("inf"), 1.0, 2.0, 3.0, -3.0, -1.0],
+    ],
+)
+def test_median_backward_ties_and_special_values(dtype, values):
+    res_inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
+    res_inp.requires_grad_(True)
+    ref_inp = utils.to_reference(res_inp.detach().clone(), True).requires_grad_(True)
+
+    out_grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_out_grad = utils.to_reference(out_grad.clone(), True)
+
+    (res_in_grad,) = torch.autograd.grad(gems_median(res_inp), (res_inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(
+        torch.median(ref_inp), (ref_inp,), ref_out_grad
+    )
+
+    _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+    median_value = torch.median(res_inp.detach())
+    matches = res_inp.detach() == median_value
+    expected = torch.zeros_like(res_in_grad)
+    expected[matches] = out_grad / matches.sum()
+    torch.testing.assert_close(res_in_grad, expected, atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_nan(dtype):
+    values = [
+        float("nan"),
+        -2.0,
+        5.0,
+        1.0,
+        8.0,
+        4.0,
+        float("nan"),
+        2.0,
+        float("nan"),
+        1.0,
+        0.0,
+        3.0,
+        -1.0,
+        6.0,
+        7.0,
+    ]
+    res_inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
+    res_inp.requires_grad_(True)
+    ref_inp = utils.to_reference(res_inp.detach().clone(), True).requires_grad_(True)
+
+    out_grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_out_grad = utils.to_reference(out_grad.clone(), True)
+
+    res_out = gems_median(res_inp)
+    assert torch.isnan(res_out).item()
+    (res_in_grad,) = torch.autograd.grad(res_out, (res_inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(
+        torch.median(ref_inp), (ref_inp,), ref_out_grad
+    )
+
+    _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+    # every NaN element matches a NaN median, everything else gets nothing
+    nan_mask = torch.isnan(res_inp.detach())
+    expected = torch.zeros_like(res_in_grad)
+    expected[nan_mask] = out_grad / nan_mask.sum()
+    torch.testing.assert_close(res_in_grad, expected, atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_no_dim_non_contiguous(dtype):
+    base = torch.randn((33, 5), dtype=dtype, device=flag_gems.device)
+    res_inp = base.detach().t()
+    assert not res_inp.is_contiguous()
+    res_inp.requires_grad_(True)
+    ref_inp = utils.to_reference(res_inp.detach().clone(), True).requires_grad_(True)
+
+    out_grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_out_grad = utils.to_reference(out_grad.clone(), True)
+
+    (res_in_grad,) = torch.autograd.grad(gems_median(res_inp), (res_inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(
+        torch.median(ref_inp), (ref_inp,), ref_out_grad
+    )
+
+    assert res_in_grad.shape == res_inp.shape
+    _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("shape", NO_DIM_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_is_a_graph_node(shape, dtype):
+    """`gems_median` must build a real autograd node and use the saved median."""
+    res_inp, _ = _backward_input(shape, dtype)
+    res_out = gems_median(res_inp)
+    assert res_out.requires_grad
+    assert res_out.grad_fn is not None
+
+    zeros_grad = torch.zeros((), dtype=dtype, device=flag_gems.device)
+    (grad_from_zero,) = torch.autograd.grad(
+        res_out, (res_inp,), zeros_grad, retain_graph=True
+    )
+    assert torch.count_nonzero(grad_from_zero).item() == 0
+
+    # a different upstream gradient always scales the same mask: the backward
+    # must not cache or ignore the incoming gradient
+    ones_grad = torch.ones((), dtype=dtype, device=flag_gems.device)
+    (grad_from_ones,) = torch.autograd.grad(res_out, (res_inp,), ones_grad)
+    matches = res_inp.detach() == torch.median(res_inp.detach())
+    assert torch.count_nonzero(grad_from_ones).item() == matches.sum().item()
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("shape, dim", DIM_CASES)
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_dim(shape, dim, keepdim, dtype):
+    if any(size == 0 for size in shape):
+        pytest.skip("empty reduction has no median index to scatter to")
+    res_inp, ref_inp = _backward_input(shape, dtype)
+
+    res_values, res_indices = gems_median_dim(res_inp, dim=dim, keepdim=keepdim)
+    ref_values, ref_indices = torch.median(ref_inp, dim=dim, keepdim=keepdim)
+    assert res_indices.dtype == torch.int64
+    assert not res_indices.requires_grad
+
+    out_grad = torch.randn_like(res_values)
+    ref_out_grad = utils.to_reference(out_grad.detach().clone(), True)
+    (res_in_grad,) = torch.autograd.grad(res_values, (res_inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_values, (ref_inp,), ref_out_grad)
+
+    # The backward contract is "scatter the values gradient at the index this
+    # forward selected", so validate it against the indices returned by the
+    # same forward call. Comparing elementwise against the native reference is
+    # only meaningful when both forwards selected the same element: for tied
+    # medians the chosen index is not part of the contract.
+    gather_indices = res_indices if keepdim else res_indices.unsqueeze(dim)
+    grad_shape = out_grad if keepdim else out_grad.unsqueeze(dim)
+    expected = torch.zeros_like(res_in_grad).scatter(dim, gather_indices, grad_shape)
+    torch.testing.assert_close(res_in_grad, expected)
+    # gradient mass is conserved and at most the selected index of each slice
+    # receives it
+    assert torch.all(res_in_grad.count_nonzero(dim=dim) <= 1).item()
+    if torch.equal(res_indices.cpu(), ref_indices.cpu()):
+        _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+    else:
+        picked = torch.gather(res_inp.detach(), dim, gather_indices)
+        torch.testing.assert_close(
+            picked, res_values if keepdim else res_values.unsqueeze(dim)
+        )
+        assert torch.allclose(
+            res_in_grad.float().sum(dim=dim).cpu(),
+            ref_in_grad.float().sum(dim=dim).cpu(),
+            atol=1e-3,
+            rtol=1e-3,
+        )
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_median_backward_dim_ties_follow_saved_index(dtype, keepdim):
+    values = [[5, 1, 5, 9, 2], [4, 4, 4, 1, 8], [7, 0, 7, 0, 7]]
+    res_inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
+    res_inp.requires_grad_(True)
+
+    res_values, res_indices = gems_median_dim(res_inp, dim=1, keepdim=keepdim)
+    out_grad = torch.randn_like(res_values)
+    (res_in_grad,) = torch.autograd.grad(res_values, (res_inp,), out_grad)
+
+    gather_indices = res_indices if keepdim else res_indices.unsqueeze(1)
+    grad_shape = out_grad if keepdim else out_grad.unsqueeze(1)
+    expected = torch.zeros_like(res_in_grad).scatter(1, gather_indices, grad_shape)
+    torch.testing.assert_close(res_in_grad, expected)
+
+    # the index comes from the same forward call, so it really selects the
+    # returned median value even when the row has repeated medians
+    picked = torch.gather(res_inp.detach(), 1, gather_indices)
+    expected_values = res_values if keepdim else res_values.unsqueeze(1)
+    torch.testing.assert_close(picked, expected_values)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_median_backward_dim_nan_follows_saved_index(dtype, keepdim):
+    values = [
+        [float("nan"), -2.0, 5.0, 1.0, 8.0],
+        [4.0, 3.0, 2.0, float("nan"), 1.0],
+    ]
+    res_inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
+    res_inp.requires_grad_(True)
+
+    res_values, res_indices = gems_median_dim(res_inp, dim=1, keepdim=keepdim)
+    out_grad = torch.randn_like(res_values)
+    (res_in_grad,) = torch.autograd.grad(res_values, (res_inp,), out_grad)
+
+    gather_indices = res_indices if keepdim else res_indices.unsqueeze(1)
+    grad_shape = out_grad if keepdim else out_grad.unsqueeze(1)
+    expected = torch.zeros_like(res_in_grad).scatter(1, gather_indices, grad_shape)
+    torch.testing.assert_close(res_in_grad, expected)
+    assert torch.all(res_in_grad.count_nonzero(dim=1) <= 1).item()
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("shape", [(2, 3), (17, 5, 9)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_requires_grad_inputs(shape, dtype):
+    """Only the differentiable input may receive a gradient."""
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_inp.requires_grad_(True)
+    res_values, res_indices = gems_median_dim(res_inp, dim=1)
+    out_grad = torch.randn_like(res_values)
+    grads = torch.autograd.grad(res_values, (res_inp,), out_grad, allow_unused=True)
+    assert len(grads) == 1 and grads[0] is not None
+    assert grads[0].shape == res_inp.shape
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("shape", [(8192,), (128, 128)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_median_backward_no_dim_large(shape, dtype):
+    """Exercise the multi-program counting path (> one Triton block).
+
+    The FlagGems median forward supports at most 16384 elements, so 8192 and
+    16384 are the largest reachable reductions through the real entry.
+    """
+    inp, ref_inp = _backward_input(shape, dtype)
+    out_grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_out_grad = utils.to_reference(out_grad.clone(), True)
+
+    (res_in_grad,) = torch.autograd.grad(gems_median(inp), (inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(
+        torch.median(ref_inp), (ref_inp,), ref_out_grad
+    )
+
+    _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_median_backward_no_dim_large_duplicate_median(dtype):
+    """Cross-program counting must see every duplicate of the median."""
+    numel = 8192
+    res_inp = torch.randn(numel, dtype=dtype, device=flag_gems.device)
+    median_value = torch.median(res_inp)
+    res_inp[:1000] = median_value
+    res_inp.requires_grad_(True)
+    ref_inp = utils.to_reference(res_inp.detach().clone(), True).requires_grad_(True)
+
+    out_grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_out_grad = utils.to_reference(out_grad.clone(), True)
+
+    (res_in_grad,) = torch.autograd.grad(gems_median(res_inp), (res_inp,), out_grad)
+    (ref_in_grad,) = torch.autograd.grad(
+        torch.median(ref_inp), (ref_inp,), ref_out_grad
+    )
+
+    _assert_backward_close(res_in_grad, ref_in_grad, dtype)
+    matches = res_inp.detach() == median_value
+    assert matches.sum().item() >= 1000
+    expected = torch.zeros_like(res_in_grad)
+    expected[matches] = out_grad / matches.sum()
+    torch.testing.assert_close(res_in_grad, expected, atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.median_backward
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_median_backward_dim_non_contiguous(dtype, keepdim):
+    base = torch.randn((5, 33, 144), dtype=dtype, device=flag_gems.device)
+    res_inp = base.detach().permute(2, 0, 1)
+    assert not res_inp.is_contiguous()
+    res_inp.requires_grad_(True)
+
+    res_values, res_indices = gems_median_dim(res_inp, dim=0, keepdim=keepdim)
+    out_grad = torch.randn_like(res_values)
+    (res_in_grad,) = torch.autograd.grad(res_values, (res_inp,), out_grad)
+
+    gather_indices = res_indices if keepdim else res_indices.unsqueeze(0)
+    grad_shape = out_grad if keepdim else out_grad.unsqueeze(0)
+    expected = torch.zeros_like(res_in_grad).scatter(0, gather_indices, grad_shape)
+    torch.testing.assert_close(res_in_grad, expected)
+    assert res_in_grad.shape == res_inp.shape

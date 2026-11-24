@@ -31,7 +31,7 @@ def xor_func_scalar(x, y):
 
 
 def xor_scalar(A, B):
-    logger.debug("GEMS XOR SCALAR")
+    logger.debug("GEMS XOR_SCALAR")
     return xor_func_scalar(A, B)
 
 
@@ -41,5 +41,5 @@ def xor_scalar_(A, B):
 
 
 def xor_scalar_tensor(A, B):
-    logger.debug("GEMS XOR SCALAR TENSOR")
+    logger.debug("GEMS XOR_SCALAR_TENSOR")
     return xor_func_scalar(B, A)

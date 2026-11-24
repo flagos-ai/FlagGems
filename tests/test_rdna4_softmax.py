@@ -170,8 +170,7 @@ def test_rdna4_softmax(shape, dim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.softmax(inp, dim=dim)
+    res_out = flag_gems.softmax(inp, dim)
 
     utils.gems_assert_close(
         res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim]
@@ -188,8 +187,7 @@ def test_rdna4_softmax_out(shape, dim, dtype):
     out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        torch.ops.aten._softmax.out(inp, dim, False, out=out)
+    flag_gems.softmax_out(inp, dim, False, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
 
@@ -204,8 +202,7 @@ def test_rdna4_softmax_half_to_float(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._softmax(inp, dim, True)
+    res_out = flag_gems.softmax(inp, dim, True)
 
     assert res_out.dtype is torch.float32
     utils.gems_assert_close(
@@ -247,8 +244,7 @@ def test_rdna4_softmax_neg_inf(dtype):
         ref_inp = utils.to_reference(inp, True)
 
         ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-        with flag_gems.use_gems():
-            res_out = torch.nn.functional.softmax(inp, dim=dim)
+        res_out = flag_gems.softmax(inp, dim)
 
         assert split_plan(shape, dim, itemsize_of(dtype)) is not None, name
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=n)
@@ -279,8 +275,7 @@ def test_rdna4_softmax_at_row_cap(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=-1)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.softmax(inp, dim=-1)
+    res_out = flag_gems.softmax(inp, -1)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=n)
 
@@ -297,8 +292,7 @@ def test_rdna4_softmax_non_contiguous():
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.softmax(inp, dim=dim)
+    res_out = flag_gems.softmax(inp, dim)
 
     utils.gems_assert_close(
         res_out, ref_out, torch.float32, equal_nan=True, reduce_dim=n

@@ -22,9 +22,7 @@ from flag_gems.ops.log10 import log10_ as default_log10_
 from flag_gems.ops.log10 import log10_out as default_log10_out
 from flag_gems.runtime.backend._mthreads.ops.log import _launch_log, _use_triton_kernel
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _INV_LN10 = 0.4342944819032518
 

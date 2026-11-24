@@ -50,8 +50,7 @@ def test_cumsum_(shape, dtype):
         ref_inp = utils.to_reference(inp, True)
 
     ref_out = ref_inp.cumsum_(dim=dim)
-    with flag_gems.use_gems():
-        res_out = inp.cumsum_(dim=dim)
+    res_out = flag_gems.cumsum_(inp, dim=dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
     assert res_out is inp

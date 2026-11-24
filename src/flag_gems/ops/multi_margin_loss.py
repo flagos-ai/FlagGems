@@ -45,11 +45,10 @@ _TARGET_CHECK_BLOCK_SIZE = 256
 _TARGET_VALIDATION_CACHE_LIMIT = 128
 _REDUCTION_CODES = {"none": 0, "mean": 1, "sum": 2}
 
-# Some vendor compilers do not provide a reliable tl.device_assert contract:
-# CoreX only prints, MUSA can hang after reporting, and CANN 8.5 removes the
-# assertion during lowering. Keep the CUDA/NVIDIA device-assert path, but make
-# affected backends report a reliable host error before the loss kernel runs.
-_SYNCHRONOUS_TARGET_CHECK_VENDORS = {"ascend", "iluvatar", "mthreads"}
+# Some backends cannot reliably raise an error through tl.device_assert.
+# On MetaX C550 the assertion can surface as an illegal address and poison
+# the MACA context. Report invalid targets before launching the loss kernel.
+_SYNCHRONOUS_TARGET_CHECK_VENDORS = {"ascend", "iluvatar", "metax", "mthreads"}
 _REQUIRES_SYNCHRONOUS_TARGET_CHECK = _VENDOR_NAME in _SYNCHRONOUS_TARGET_CHECK_VENDORS
 _USE_DEVICE_ASSERT = not _REQUIRES_SYNCHRONOUS_TARGET_CHECK
 _IS_HYGON_BACKEND = _VENDOR_NAME == "hygon"
@@ -915,10 +914,13 @@ def _target_validation_key(target, N, C):
 
 
 def _validate_target_range(target, contiguous_target, N, C):
-    key = _target_validation_key(target, N, C)
-    cached_target = _TARGET_VALIDATION_CACHE.get(key)
-    if cached_target is not None and cached_target() is target:
-        return
+    key = None
+    # MetaX also validates inference tensors, which have no version counter.
+    if _VENDOR_NAME != "metax" or not target.is_inference():
+        key = _target_validation_key(target, N, C)
+        cached_target = _TARGET_VALIDATION_CACHE.get(key)
+        if cached_target is not None and cached_target() is target:
+            return
 
     invalid = torch.empty((), dtype=torch.int32, device=contiguous_target.device)
     with torch_device_fn.device(contiguous_target.device):
@@ -931,6 +933,8 @@ def _validate_target_range(target, contiguous_target, N, C):
         )
     if invalid.item() != 0:
         raise RuntimeError("multi_margin_loss: target index is out of bounds")
+    if key is None:
+        return
 
     # Identity-checking a weak reference prevents stale data_ptr reuse without
     # retaining up to 128 potentially large target tensors. Standard in-place
@@ -1176,7 +1180,7 @@ def multi_margin_loss_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS MULTI_MARGIN_LOSS OUT")
+    logger.debug("GEMS MULTI_MARGIN_LOSS_OUT")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:
@@ -1336,7 +1340,7 @@ def multi_margin_loss_backward(
     weight=None,
     reduction=1,
 ) -> torch.Tensor:
-    logger.debug("GEMS MULTI_MARGIN_LOSS BACKWARD")
+    logger.debug("GEMS MULTI_MARGIN_LOSS_BACKWARD")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:
@@ -1369,7 +1373,7 @@ def multi_margin_loss_backward_out(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS MULTI_MARGIN_LOSS BACKWARD OUT")
+    logger.debug("GEMS MULTI_MARGIN_LOSS_BACKWARD_OUT")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:

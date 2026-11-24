@@ -15,7 +15,20 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+_IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _ref_float_power_out_of_place(*args, out=None):
+    # Kunlunxin (XPU) hard-maps float64 -> float32, so the native aten
+    # float_power.*_out baseline rejects the float64 out buffer ("requires
+    # Double"). Use the out-of-place float_power as the torch reference for
+    # this backend (numerically identical); the `out` kwarg is accepted and
+    # ignored. Other backends keep the stock native *_out baseline untouched.
+    return torch.float_power(*args)
 
 
 class FloatPowerBenchmark(base.GenericBenchmark):
@@ -58,16 +71,18 @@ def _scalar_tensor_out_input(shape, dtype, device):
     yield 2.0, exponent, {"out": out}
 
 
-def _run_benchmark(op_name, input_fn, torch_op):
+def _run_benchmark(op_name, input_fn, torch_op, gems_op=None):
     bench = FloatPowerBenchmark(
         input_fn=input_fn,
         op_name=op_name,
         torch_op=torch_op,
+        gems_op=gems_op,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor
 def test_float_power_tensor_tensor():
     _run_benchmark(
@@ -77,6 +92,7 @@ def test_float_power_tensor_tensor():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar
 def test_float_power_tensor_scalar():
     _run_benchmark(
@@ -86,6 +102,7 @@ def test_float_power_tensor_scalar():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor
 def test_float_power_scalar_tensor():
     _run_benchmark(
@@ -95,28 +112,46 @@ def test_float_power_scalar_tensor():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor_out
 def test_float_power_tensor_tensor_out():
     _run_benchmark(
         "float_power_tensor_tensor_out",
         _tensor_tensor_out_input,
-        torch.ops.aten.float_power.Tensor_Tensor_out,
+        (
+            _ref_float_power_out_of_place
+            if _IS_KUNLUNXIN
+            else torch.ops.aten.float_power.Tensor_Tensor_out
+        ),
+        gems_op=flag_gems.float_power_tensor_tensor_out if _IS_KUNLUNXIN else None,
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar_out
 def test_float_power_tensor_scalar_out():
     _run_benchmark(
         "float_power_tensor_scalar_out",
         _tensor_scalar_out_input,
-        torch.ops.aten.float_power.Tensor_Scalar_out,
+        (
+            _ref_float_power_out_of_place
+            if _IS_KUNLUNXIN
+            else torch.ops.aten.float_power.Tensor_Scalar_out
+        ),
+        gems_op=flag_gems.float_power_tensor_scalar_out if _IS_KUNLUNXIN else None,
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor_out
 def test_float_power_scalar_tensor_out():
     _run_benchmark(
         "float_power_scalar_tensor_out",
         _scalar_tensor_out_input,
-        torch.ops.aten.float_power.Scalar_out,
+        (
+            _ref_float_power_out_of_place
+            if _IS_KUNLUNXIN
+            else torch.ops.aten.float_power.Scalar_out
+        ),
+        gems_op=flag_gems.float_power_scalar_tensor_out if _IS_KUNLUNXIN else None,
     )

@@ -43,8 +43,7 @@ def test_gcd(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.gcd(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.gcd(inp1, inp2)
+    res_out = flag_gems.gcd(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -63,8 +62,7 @@ def test_gcd_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp1)
 
     torch.gcd(ref_inp1, ref_inp2, out=ref_out)
-    with flag_gems.use_gems():
-        torch.gcd(inp1, inp2, out=out)
+    flag_gems.gcd_out(inp1, inp2, out=out)
 
     utils.gems_assert_equal(out, ref_out)
 
@@ -87,8 +85,7 @@ def test_gcd_special_values(dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.gcd(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.gcd(inp1, inp2)
+    res_out = flag_gems.gcd(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -102,8 +99,7 @@ def test_gcd_empty(dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.gcd(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.gcd(inp1, inp2)
+    res_out = flag_gems.gcd(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -121,7 +117,6 @@ def test_gcd_noncontiguous_broadcast(dtype):
     ref_rhs = utils.to_reference(rhs, False)
     ref_out = torch.gcd(ref_lhs, ref_rhs)
 
-    with flag_gems.use_gems():
-        res_out = torch.gcd(lhs, rhs)
+    res_out = flag_gems.gcd(lhs, rhs)
 
     utils.gems_assert_equal(res_out, ref_out)
