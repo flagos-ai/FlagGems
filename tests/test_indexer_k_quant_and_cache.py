@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import flag_gems
 import os
 
 import pytest
 import torch
 from packaging.version import InvalidVersion, Version
 
+import flag_gems
 from flag_gems import indexer_k_quant_and_cache
 
 from . import accuracy_utils as utils

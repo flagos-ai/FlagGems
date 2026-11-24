@@ -788,8 +788,6 @@ def _last_cfg(M, K):
     return bm, bk, False
 
 
-
-
 def _last_split_cfg(M, K, esz=4):
     """Chunking for the split-reduction last-axis forward (large M only).
 

@@ -38,6 +38,7 @@ def _reference_input(tensor):
         return tensor.cpu()
     return utils.to_reference(tensor)
 
+
 gems_device = flag_gems.device
 
 # The native thnn_conv2d routes float32 through an im2col + GEMM path whose

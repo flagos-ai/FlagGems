@@ -17,6 +17,7 @@ def _tensorinv_out_reference(inp, ind):
         return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
     return torch.linalg.tensorinv(inp, ind=ind)
 
+
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 

@@ -39,6 +39,7 @@ def _reference_input(tensor, upcast=False):
         return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
     return utils.to_reference(tensor, upcast)
 
+
 # (input shape, weight shape, kernel_size) triples. The first two keep the
 # kernel smaller than the input under every stride/padding/dilation combination
 # exercised below; the third is a non-square plane with a matching 1 x 2 kernel

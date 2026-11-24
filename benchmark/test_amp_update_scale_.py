@@ -1,8 +1,9 @@
-import flag_gems
 from typing import Generator
 
 import pytest
 import torch
+
+import flag_gems
 
 from . import base
 

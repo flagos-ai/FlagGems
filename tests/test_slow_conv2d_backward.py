@@ -41,6 +41,7 @@ def _reference_input(tensor, upcast=False):
         return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
     return utils.to_reference(tensor, upcast)
 
+
 # The registry id is ``slow_conv2d_backward`` (the aten name starts with an
 # underscore; see naming Rule 2). CI derives the pytest marker from the
 # implementation file name via the #6359 convention:

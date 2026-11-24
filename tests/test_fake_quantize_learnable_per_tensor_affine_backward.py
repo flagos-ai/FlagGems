@@ -20,7 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _reference_backward(grad, inp, scale, zero_point, quant_min, quant_max, grad_factor):
+def _reference_backward(
+    grad, inp, scale, zero_point, quant_min, quant_max, grad_factor
+):
     if flag_gems.vendor_name == "mthreads" and inp.dtype == torch.bfloat16:
         # MUSA's PyTorch reference rejects BF16 inputs. Promote the already
         # rounded BF16 values to the operation's float32 gradient precision.
@@ -30,6 +32,7 @@ def _reference_backward(grad, inp, scale, zero_point, quant_min, quant_max, grad
     return torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
         grad, inp, scale, zero_point, quant_min, quant_max, grad_factor
     )
+
 
 # The ATen reference rejects float16 gradients ("Expected dY_.scalar_type() ==
 # Float"), so we only exercise the float32 and bfloat16 paths here. Both the

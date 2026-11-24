@@ -210,7 +210,9 @@ def test_flash_attn_varlen_func(
         and head_size == 128
         and num_blocks == 32768
     ):
-        pytest.skip("ref_paged_attn accumulates in bf16; reference-side tolerance defect")
+        pytest.skip(
+            "ref_paged_attn accumulates in bf16; reference-side tolerance defect"
+        )
 
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)

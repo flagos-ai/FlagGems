@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import flag_gems
 from typing import Generator
 
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.ops.quantized_max_pool2d import (
     _parse_pool_params,
     max_pool2d_output_size,

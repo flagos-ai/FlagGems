@@ -22,8 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-
-
 SHAPES = [(16,), (1024,), (2, 3, 4), (16, 128, 64, 60)]
 if QUICK_MODE:
     SHAPES = [(2, 3)]

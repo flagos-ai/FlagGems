@@ -38,6 +38,7 @@ def _reference_input(tensor, upcast=False):
         return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
     return utils.to_reference(tensor, upcast)
 
+
 # (input_shape, weight_shape) pairs, weight is (C_in, C_out, kD, kH, kW).
 # Input volumes are kept at D=8, H=16, W=16 or smaller: 3D conv outputs scale
 # as D*H*W*kD*kH*kW*C_in*C_out, and larger volumes push the slow reference

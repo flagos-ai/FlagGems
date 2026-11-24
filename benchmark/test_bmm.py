@@ -87,9 +87,7 @@ def _is_fp8e4nv_supported():
     # torch_gcu redirects torch.cuda.* to gcu, so the check must be based on the actual vendor,
     # otherwise non-CUDA backends enter the CUDA capability query, get 0.0, and are mistakenly skipped
     if flag_gems.device != "cuda":
-        return (
-            flag_gems.vendor_name == "enflame" and flag_gems.device != "cpu"
-        )
+        return flag_gems.vendor_name == "enflame" and flag_gems.device != "cpu"
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
 

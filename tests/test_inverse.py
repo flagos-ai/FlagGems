@@ -36,6 +36,7 @@ def ref_inverse(a):
         ref = ref.to(a.dtype).to(a.device)
     return ref
 
+
 # torch.inverse rejects the low precision dtypes, so only fp32/fp64 are covered.
 INVERSE_DTYPES = [torch.float32]
 if flag_gems.runtime.device.support_fp64:

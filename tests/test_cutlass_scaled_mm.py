@@ -54,9 +54,7 @@ def is_backend_supported():
         return False
     if flag_gems.device == "cuda":
         return VLLM_AVAILABLE and CUDA_AVAILABLE
-    return (
-        flag_gems.vendor_name == "enflame" and flag_gems.device != "cpu"
-    )
+    return flag_gems.vendor_name == "enflame" and flag_gems.device != "cpu"
 
 
 def to_int8(tensor: torch.Tensor):
