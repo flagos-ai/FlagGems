@@ -66,8 +66,8 @@ import torch
 import torch_npu  # noqa: F401  # must precede triton on this platform
 
 import triton
-import triton.language as tl
 import triton.experimental.tle as tle
+import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
