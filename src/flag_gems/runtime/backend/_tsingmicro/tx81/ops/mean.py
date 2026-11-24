@@ -76,12 +76,33 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     tl.store(out, mean_val)
 
 
-def mean(inp, *, dtype=None):
-    logger.debug("GEMS_TSINGMICRO MEAN")
-    inp = inp.contiguous()
-    M = inp.numel()
+def _mean_dtype(inp, dtype):
     if dtype is None:
         dtype = inp.dtype
+        if not (dtype.is_floating_point or dtype.is_complex):
+            raise RuntimeError(
+                "mean(): could not infer output dtype. Input dtype must be either "
+                f"a floating point or complex dtype. Got: {dtype}"
+            )
+    elif not (dtype.is_floating_point or dtype.is_complex):
+        raise RuntimeError(
+            "mean(): could not infer output dtype. Optional dtype must be either "
+            f"a floating point or complex dtype. Got: {dtype}"
+        )
+    return dtype
+
+
+def mean(inp, *, dtype=None):
+    logger.debug("GEMS_TSINGMICRO MEAN")
+    M = inp.numel()
+    dtype = _mean_dtype(inp, dtype)
+
+    if M == 0:
+        out = torch.empty([], dtype=dtype, device=inp.device)
+        out.fill_(float("nan"))
+        return out
+
+    inp = inp.contiguous()
     cdtype = dtype
     if cdtype != torch.float32:
         cdtype = torch.float32

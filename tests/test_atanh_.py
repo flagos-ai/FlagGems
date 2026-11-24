@@ -25,7 +25,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_atanh_(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 1.8 - 0.9
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = ref_inp.atanh_()
 

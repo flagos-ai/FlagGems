@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import numbers
 
 import torch
 import triton
@@ -38,12 +39,20 @@ def true_div_func(x, y):
     return x / y
 
 
+# The scalar operand must stay in fp32: narrowing it to the tensor dtype
+# (``y = y.to(x.dtype)``) makes the tx backend emit ``arith.truncf`` for the
+# f32->f16/bf16 conversion, which is lowered as round-toward-zero.  That adds
+# 0..1 ULP of *biased* error to the divisor, so the quotient drifts by up to
+# 2 ULP versus ATen (whose half-precision divide keeps the scalar in fp32) and
+# fp16 ``rtol=1e-3`` (~= 1 ULP) comparisons fail.  For integer tensors the
+# narrow is worse still: ``2.5`` becomes ``2`` and ``0.5`` becomes ``0``
+# (``x / 0`` -> inf/nan).  Leaving ``y`` at fp32 lets Triton promote the tile
+# to fp32 for the divide and round once on the way back into the output.
 @pointwise_dynamic(
     is_tensor=[True, False, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
 )
 @triton.jit
 def true_div_func_tensor_scalar(x, y, inplace):
-    y = y.to(x.dtype)
     return x / y
 
 
@@ -52,7 +61,6 @@ def true_div_func_tensor_scalar(x, y, inplace):
 )
 @triton.jit
 def true_div_func_scalar_tensor(x, y, inplace):
-    x = x.to(y.dtype)
     return x / y
 
 
@@ -267,8 +275,27 @@ def trunc_divide(A, B):
     elif isinstance(B, torch.Tensor):
         return trunc_div_func_scalar_tensor(A, B, False)
     else:
-        # Both scalar
-        return torch.tensor(A / B)
+        return _trunc_divide_scalars(A, B)
+
+
+def _trunc_divide_scalars(A, B):
+    """Both operands are Python/NumPy scalars: mirror aten's wrapped-number
+    semantics for ``div(..., rounding_mode="trunc")``.
+    Keep in sync with ``flag_gems/ops/div.py::_trunc_divide_scalars``.
+    """
+    if isinstance(A, bool) or isinstance(B, bool):
+        raise NotImplementedError("\"div_trunc_cpu\" not implemented for 'Bool'")
+    if isinstance(A, numbers.Integral) and isinstance(B, numbers.Integral):
+        if B == 0:
+            raise RuntimeError("ZeroDivisionError")
+        # int() before abs() so huge NumPy ints cannot overflow the negation
+        quot = abs(int(A)) // abs(int(B))
+        return torch.tensor(-quot if (A < 0) != (B < 0) else quot)
+    # At least one float operand: compute in the default float dtype so inf/nan
+    # and the sign of zero come out exactly as torch produces them.
+    a = torch.tensor(float(A), dtype=torch.get_default_dtype())
+    b = torch.tensor(float(B), dtype=torch.get_default_dtype())
+    return torch.trunc(a / b)
 
 
 def trunc_divide_(A, B):
@@ -431,6 +458,10 @@ def _integer_floordiv_cpu(A, B, out=None):
 def floor_divide(A, B):
     logger.debug("GEMS_TSINGMICRO FLOOR_DIVIDE")
     if _is_integral_value(A) and _is_integral_value(B):
+        if not isinstance(A, torch.Tensor) and not isinstance(B, torch.Tensor):
+            # Both are Python scalars: no tensor to derive device from.
+            # Matches the both-scalar fallback below and the generic impl.
+            return torch.tensor(A // B)
         return _integer_floordiv_cpu(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B, False)

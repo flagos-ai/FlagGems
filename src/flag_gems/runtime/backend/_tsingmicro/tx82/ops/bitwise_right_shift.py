@@ -30,7 +30,10 @@ def bitwise_right_shift_kernel(a, b):
 
 def bitwise_right_shift(self, other, *, out=None):
     logger.debug("GEMS_TSINGMICRO BITWISE_RIGHT_SHIFT")
-    return bitwise_right_shift_kernel(self, other, out=out)
+    if out is None:
+        return bitwise_right_shift_kernel(self, other)
+    bitwise_right_shift_kernel(self, other, out0=out)
+    return out
 
 
 def bitwise_right_shift_(self, other, *, out=None):

@@ -754,7 +754,16 @@ def median_fp32_strided_key_select_kernel(
     tl.store(indices + out_offsets, first_match.to(tl.int64), mask=out_mask)
 
 
+# Some vendor torch builds (e.g. txda) strip the experimental named-tensor
+# API entirely, so Tensor has no `names`/`rename`/`refine_names`. Probe once
+# at import time: on such builds no tensor can carry names, so report False
+# instead of crashing every median call.
+_HAS_NAMES_API = hasattr(torch.Tensor, "names")
+
+
 def _has_names(inp):
+    if not _HAS_NAMES_API:
+        return False
     return any(name is not None for name in inp.names)
 
 

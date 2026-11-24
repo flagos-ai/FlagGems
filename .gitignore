@@ -47,3 +47,6 @@ docs/benchmark/
 # Packaging build outputs (packaging/{debian,rpm} helpers)
 debian-packages/
 rpm-packages/
+
+# flag_gems test-run artifacts
+log/

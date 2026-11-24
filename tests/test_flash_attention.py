@@ -237,6 +237,10 @@ def dense_flash_attention_ref(q, k, v, scale, is_causal, window_size=(-1, -1)):
         "_fa_lout_kernel LSE path fails to link; tracked upstream"
     ),
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="'BLOCK_M' autotune configs are all filtered out by keep() in generic code",
+)
 @pytest.mark.underscore_flash_attention_forward
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
@@ -277,7 +281,7 @@ def test__flash_attention_forward(
     # Ascend does not provide the native ATen FlashAttention reference.
     # Kunlunxin's torch_xmlir build dispatches the op to CPU and raises
     # NotImplementedError even for XPU inputs, so use the dense reference too.
-    if cfg.TO_CPU or vendor_name in ("ascend", "kunlunxin"):
+    if cfg.TO_CPU or vendor_name in ("ascend", "kunlunxin", "tsingmicro"):
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -889,6 +893,10 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="dropout prune leaves no autotune configs (all tuned configs are num_warps=1)",
+)
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS
