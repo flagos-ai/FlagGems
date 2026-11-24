@@ -36,9 +36,7 @@ try:
 except ImportError:
     HAS_CUDA_FLASHMLA = False
 
-from flag_gems.fused.flash_mla_with_kvcache import (
-    flash_mla_with_kvcache as triton_flash_mla,
-)
+from flag_gems import flash_mla_with_kvcache as triton_flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import (
     get_mla_metadata as triton_get_mla_metadata,
 )

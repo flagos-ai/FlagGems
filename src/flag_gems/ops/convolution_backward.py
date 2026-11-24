@@ -15,6 +15,9 @@ _ASCEND = tl.constexpr(runtime_device.vendor_name == "ascend")
 _LEGACY_ASCEND = (
     runtime_device.vendor_name == "ascend" and triton.__version__.startswith("3.2.")
 )
+_MAX_UNROLLED_REDUCTION = 32
+_DIRECT_BLOCK_SIZE = 16
+_LAUNCH_PLAN_ALIGNMENT = 16
 
 
 @triton.jit
@@ -1809,8 +1812,15 @@ def _launch_gradient(kernel, grid, *args, pending=None, record=None):
         compiled, _ = compact[grid](*call_args)
         if record is not None:
             record.append((compiled, grid, call_args, pointers))
-    else:
+    elif record is None:
         kernel[grid](*args)
+    else:
+        compiled, _ = kernel[grid](*args)
+        pointers = 0
+        while pointers < len(args) and isinstance(args[pointers], torch.Tensor):
+            pointers += 1
+        args += tuple(p.default for p in kernel.jit_function.params[len(args) :])
+        record.append((compiled, grid, args, pointers))
 
 
 @libentry()
@@ -2186,6 +2196,17 @@ def _empty_gradient(tensor):
     return torch.empty(tensor.shape, dtype=tensor.dtype, device=tensor.device)
 
 
+def _bounded_input_gradient(
+    kernel, grid, block, *, input_numel, input_spatial, reduction_size
+):
+    # Backend overrides opt in to bound compiler IR from unrolled strided gathers.
+    if kernel is _input_gradient_vector and reduction_size > _MAX_UNROLLED_REDUCTION:
+        kernel = _input_gradient
+        block = _DIRECT_BLOCK_SIZE
+        grid = (triton.cdiv(input_numel, block),)
+    return kernel, grid, block
+
+
 def _convolution_backward_uncached(
     grad_output,
     input,
@@ -2200,6 +2221,7 @@ def _convolution_backward_uncached(
     output_mask,
     _outputs=None,
     _record=None,
+    _input_gradient_config=None,
 ):
     dimensions = input.ndim - 2
     if (
@@ -2565,6 +2587,15 @@ def _convolution_backward_uncached(
                 if use_dot_input
                 else (triton.cdiv(input.numel(), dx_block),)
             )
+            if _input_gradient_config is not None:
+                dx_kernel, dx_grid, dx_block = _input_gradient_config(
+                    dx_kernel,
+                    dx_grid,
+                    dx_block,
+                    input_numel=input.numel(),
+                    input_spatial=math.prod(i),
+                    reduction_size=channels // groups * math.prod(k),
+                )
             _launch_gradient(
                 dx_kernel,
                 dx_grid,
@@ -2962,7 +2993,10 @@ def _convolution_backward_impl(
     groups,
     output_mask,
     _outputs=None,
+    _input_gradient_config=None,
 ):
+    if _input_gradient_config is None and runtime_device.vendor_name == "thead":
+        _input_gradient_config = _bounded_input_gradient
     arguments = (
         grad_output,
         input,
@@ -2976,12 +3010,35 @@ def _convolution_backward_impl(
         groups,
         output_mask,
     )
+    # Raw compiled kernels retain alignment specialization. Unaligned views
+    # keep the regular JIT path instead of replaying an aligned launch.
+    backend_plan = (
+        runtime_device.vendor_name in ("mthreads", "thead")
+        and isinstance(output_mask, (tuple, list))
+        and len(output_mask) == 3
+        and all(output_mask)
+        and all(
+            isinstance(t, torch.Tensor) and t.data_ptr() % _LAUNCH_PLAN_ALIGNMENT == 0
+            for t in (grad_output, input, weight)
+            + (() if _outputs is None else _outputs)
+        )
+    )
     if (
-        runtime_device.vendor_name not in ("nvidia", "hygon")
+        (
+            not backend_plan
+            and (
+                _input_gradient_config is not None
+                or runtime_device.vendor_name not in ("nvidia", "hygon")
+            )
+        )
         or input.numel() == 0
         or grad_output.numel() == 0
     ):
-        return _convolution_backward_uncached(*arguments, _outputs=_outputs)
+        return _convolution_backward_uncached(
+            *arguments,
+            _outputs=_outputs,
+            _input_gradient_config=_input_gradient_config,
+        )
     # Include types so True/1 and 1.0/1 cannot reuse an integer-validated plan.
     try:
         parameter_key = tuple(
@@ -3017,9 +3074,13 @@ def _convolution_backward_impl(
             (type(transposed), transposed),
             output_key,
         )
+        if backend_plan:
+            key = (key, _input_gradient_config)
         plan = _LAUNCH_PLANS.get(key)
     except (TypeError, AttributeError):
-        return _convolution_backward_uncached(*arguments, _outputs=_outputs)
+        return _convolution_backward_uncached(
+            *arguments, _outputs=_outputs, _input_gradient_config=_input_gradient_config
+        )
     if plan is not None:
         launches, workspace, bias_shape = plan
         if _outputs is None:
@@ -3039,13 +3100,24 @@ def _convolution_backward_impl(
             for shape, dtype in workspace
         )
         with torch_device_fn.device(input.device):
+            stream = (
+                triton.runtime.driver.active.get_current_stream(input.device.index)
+                if backend_plan
+                else None
+            )
             for kernel, grid, slots, metadata in launches:
                 pointers = tuple(tensors[slot] for slot in slots)
-                kernel[grid](*pointers, *metadata)
+                if backend_plan:
+                    kernel[grid](*pointers, *metadata, stream=stream)
+                else:
+                    kernel[grid](*pointers, *metadata)
         return outputs
     record = []
     outputs = _convolution_backward_uncached(
-        *arguments, _outputs=_outputs, _record=record
+        *arguments,
+        _outputs=_outputs,
+        _record=record,
+        _input_gradient_config=_input_gradient_config,
     )
     if not record:
         return outputs
@@ -3111,7 +3183,7 @@ def convolution_backward(
     )
 
 
-def convolution_backward_out(
+def _convolution_backward_out_impl(
     grad_output,
     input,
     weight,
@@ -3127,8 +3199,8 @@ def convolution_backward_out(
     out0,
     out1,
     out2,
+    _input_gradient_config=None,
 ):
-    logger.debug("GEMS CONVOLUTION_BACKWARD_OUT")
     if not all(output_mask):
         raise RuntimeError(
             "convolution_backward.out: a defined out tensor cannot represent an undefined masked gradient"
@@ -3161,9 +3233,10 @@ def convolution_backward_out(
             groups,
             output_mask,
             _outputs=outputs,
+            _input_gradient_config=_input_gradient_config,
         )
     # Aliased outputs retain ATen's compute-first, copy-afterwards semantics.
-    results = convolution_backward(
+    results = _convolution_backward_impl(
         grad_output,
         input,
         weight,
@@ -3175,6 +3248,7 @@ def convolution_backward_out(
         output_padding,
         groups,
         output_mask,
+        _input_gradient_config=_input_gradient_config,
     )
     for out, result in zip((out0, out1, out2), results):
         if result is not None:
@@ -3199,3 +3273,39 @@ def convolution_backward_out(
                         512,
                     )
     return out0, out1, out2
+
+
+def convolution_backward_out(
+    grad_output,
+    input,
+    weight,
+    bias_sizes,
+    stride,
+    padding,
+    dilation,
+    transposed,
+    output_padding,
+    groups,
+    output_mask,
+    *,
+    out0,
+    out1,
+    out2,
+):
+    logger.debug("GEMS CONVOLUTION_BACKWARD_OUT")
+    return _convolution_backward_out_impl(
+        grad_output,
+        input,
+        weight,
+        bias_sizes,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
+        output_mask,
+        out0=out0,
+        out1=out1,
+        out2=out2,
+    )
