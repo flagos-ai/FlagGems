@@ -30,6 +30,44 @@ else:
     SVD_SOME_FALSE_SHAPES = [(3, 5), (5, 3), (4, 4)]
 
 
+@pytest.fixture(autouse=True)
+def _fp32_matmul_ieee():
+    # The reconstruction and orthonormality checks run torch matmuls on the
+    # device and the reconstruction is compared at atol=2e-3. On runners where
+    # cuBLAS TF32 is enabled globally (e.g. TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1)
+    # those matmuls carry ~1e-3 absolute error on a ~N(0,1) input, so a random
+    # draw crosses the tolerance (issue #10017: 1/128 elements, 2.09e-3 > 2e-3)
+    # while the SVD itself reconstructs at ~1e-6. Pin both precision APIs to
+    # ieee for the module and restore afterwards; mirrors
+    # tests/test_chain_matmul.py.
+    saved_precision = None
+    try:
+        saved_precision = torch.backends.cuda.matmul.fp32_precision
+    except (AttributeError, RuntimeError):
+        pass
+    saved_tf32 = None
+    try:
+        saved_tf32 = torch.backends.cuda.matmul.allow_tf32
+    except RuntimeError:
+        pass
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "ieee"
+    except AttributeError:
+        pass
+    torch.backends.cuda.matmul.allow_tf32 = False
+    yield
+    if saved_precision is not None:
+        try:
+            torch.backends.cuda.matmul.fp32_precision = saved_precision
+        except RuntimeError:
+            pass
+    if saved_tf32 is not None:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = saved_tf32
+        except RuntimeError:
+            pass
+
+
 def _make_spectrum_input(shape, singular_values, seed=0):
     torch.manual_seed(seed)
     *batch_shape, m, n = shape
