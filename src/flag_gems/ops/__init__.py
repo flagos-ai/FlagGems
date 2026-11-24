@@ -1479,6 +1479,7 @@ from flag_gems.ops.scatter_add import scatter_add, scatter_add_
 from flag_gems.ops.scatter_reduce import (
     scatter_reduce,
     scatter_reduce_,
+    scatter_reduce_backward,
     scatter_reduce_out,
 )
 from flag_gems.ops.searchsorted import (
@@ -3277,6 +3278,7 @@ __all__ = [
     "scatter_add_",
     "scatter_reduce",
     "scatter_reduce_",
+    "scatter_reduce_backward",
     "scatter_reduce_out",
     "searchsorted",
     "searchsorted_out",

@@ -2204,7 +2204,12 @@ _FULL_CONFIG = (
     ("scatter_.src", scatter_),
     ("scatter_add", scatter_add),
     ("scatter_add_", scatter_add_),
-    ("scatter_reduce.two", scatter_reduce),
+    (
+        "scatter_reduce.two",
+        scatter_reduce,
+        None,
+        (f"Autograd{backend_info.dispatch_key}",),
+    ),
     ("scatter_reduce.two_out", scatter_reduce_out),
     ("scatter_reduce_.two", scatter_reduce_),
     ("searchsorted.Scalar", searchsorted_scalar),
