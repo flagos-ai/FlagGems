@@ -139,6 +139,7 @@ from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
 from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sin import _foreach_sin  # noqa: F401
 from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
@@ -161,7 +162,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_reciprocal_,
     _foreach_rsqrt,
     _foreach_rsqrt_,
-    _foreach_sin,
     _foreach_sin_,
     _foreach_sqrt_,
     _foreach_tanh,
@@ -744,6 +744,7 @@ from .negative_ import negative_
 from .nested_tensor_from_mask import _nested_tensor_from_mask
 from .new_full import new_full
 from .new_ones import new_ones
+from .new_zeros import new_zeros
 from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d,
@@ -1804,6 +1805,7 @@ __all__ = [
     "negative_",
     "new_full",
     "new_ones",
+    "new_zeros",
     "nextafter",
     "nextafter_",
     "nll_loss2d",
