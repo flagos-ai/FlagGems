@@ -376,9 +376,10 @@ def test_index_backward(input_shape, indices_shape, dtype):
     indices = gen_indices(input_shape, indices_shape, True)
 
     res_out = flag_gems.index(inp, indices)
+    ref_indices = [utils.to_reference(index, False) for index in indices]
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.ops.aten.index(ref_inp, indices)
+    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
 
     out_grad = torch.randn_like(res_out)
     ref_out_grad = utils.to_reference(out_grad, True)
