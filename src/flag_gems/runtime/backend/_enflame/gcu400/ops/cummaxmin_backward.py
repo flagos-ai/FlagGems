@@ -71,7 +71,8 @@ def _sub_kernel(OUT, SUB, N, BLOCK: tl.constexpr):
 
 @triton.jit
 def _sub_cast_kernel(OUT, SUB, DST, N, BLOCK: tl.constexpr):
-    """DST = OUT - SUB written directly in the input dtype: one pass for both the closing subtraction and the dtype write-back."""
+    """DST = OUT - SUB written directly in the input dtype: one pass for both the
+    closing subtraction and the dtype write-back."""
     ar = tl.arange(0, BLOCK)
     step = tl.num_programs(0) * BLOCK
     for bs in tl.range(tl.program_id(0) * BLOCK, N, step):

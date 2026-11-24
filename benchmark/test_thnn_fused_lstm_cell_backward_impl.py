@@ -15,7 +15,7 @@
 import pytest
 import torch
 
-import flag_gems
+import flag_gems  # noqa: F401
 
 from . import base
 

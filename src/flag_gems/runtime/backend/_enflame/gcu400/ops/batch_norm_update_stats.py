@@ -21,7 +21,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-import flag_gems
+import flag_gems  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

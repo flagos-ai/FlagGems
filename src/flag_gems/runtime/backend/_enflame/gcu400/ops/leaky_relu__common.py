@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # `grid = cdiv(n, BLOCK)` and BLOCK <= 4096, i.e. tens of thousands of CTAs plus a
 # scratch buffer + `copy_` for the in-place form; both are strictly slower than the
 # capped 48-CTA grid-stride kernel (measured 2026-11-19).
-from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out  # noqa: F401
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out  # noqa: E402, F401
 
 
 @libentry()

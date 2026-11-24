@@ -178,7 +178,8 @@ def index_select(inp, dim, index):
         # One launch rule for the whole contiguous-gather family: BLOCK spans the largest contiguous run of a row
         # (capped at 65536 elements), grid.x is pinned at 48 and a stride loop covers the p axis. That keeps the CTA
         # count near the GCU400 compute-unit count while giving every CTA a DMA-sized contiguous chunk; the earlier
-        # "small BLOCK + more CTAs" shape paid a per-CTA gather-index load and short transfers on exactly the large-inner
+        # "small BLOCK + more CTAs" shape paid a per-CTA gather-index load and short
+        # transfers on exactly the large-inner
         # cases (measured 2026-11-21, do_bench median, core shapes):
         #   (1024x65536, idx 102) fp16: B2048/gx96 181us -> B65536/nw8/gx48 15.5us (native 15.7us, 1.01x)
         #   (4096x4096,  idx 409) fp32: B1024        35.2us -> B4096/nw2/gx48  10.9us (native 10.2us, 0.93x)

@@ -21,8 +21,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 from . import conftest as cfg
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 if cfg.QUICK_MODE:
     # Single tiny shape keeps the quick smoke run fast.

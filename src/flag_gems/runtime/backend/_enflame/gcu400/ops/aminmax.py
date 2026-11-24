@@ -128,7 +128,8 @@ def aminmax_flat_key_partial_kernel(
     and fp32 accumulation halves lane throughput versus 16-bit. Mapping bf16 bit patterns through
     ``u ^ ((u>>15)*0x7FFF + 0x8000)`` to unsigned 16-bit keys ordered like floats lets min/max run
     in the uint16 domain, with the inverse map done once per CTA. Note: NaN is just a large number
-    in the key domain with no propagation guarantee (same-level approximation as the original minnum NaN drop; aten::aminmax's dim path has no NaN cases).
+    in the key domain with no propagation guarantee (same-level approximation as the
+    original minnum NaN drop; aten::aminmax's dim path has no NaN cases).
     """
     pid = tl.program_id(0)
     lane_offset = tl.arange(0, BLOCK)
@@ -387,7 +388,8 @@ def _flat_acc_dtype(dtype):
 
 
 def _aminmax_flat_kernels(inp, min_out, max_out):
-    """Whole-tensor reduction: table lookup by dtype/size -> small tensors take the single-CTA path, otherwise striped persistent + finalize.
+    """Whole-tensor reduction: table lookup by dtype/size -> small tensors take the
+    single-CTA path, otherwise striped persistent + finalize.
 
     2026-11-18 on-board calibration (probe4, per-size sweep):
     - fp16: native accumulation b16384/g48/nw4 is best at all sizes (1M 8.7us, 512M 560us/1.92TB/s);

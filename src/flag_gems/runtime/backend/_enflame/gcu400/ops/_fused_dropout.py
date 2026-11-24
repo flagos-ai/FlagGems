@@ -22,7 +22,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import uint_to_uniform_float

@@ -57,13 +57,7 @@ class CudnnRnnBackwardBenchmark(base.Benchmark):
             weight = [w_ih, w_hh, b_ih, b_hh]
 
             # Forward pass to obtain the cuDNN reserve / weight_buf.
-            forward_op = torch.ops.aten._cudnn_rnn
-            if base.vendor_name == "enflame":
-                # torch_gcu has no PrivateUse1 kernel for the aten forward, so the
-                # FlagGems forward supplies the reserve / weight_buf -- the same
-                # substitution the accuracy test makes on that backend.
-                forward_op = flag_gems.cudnn_rnn
-            output, hy, cy, reserve, weight_buf = forward_op(
+            output, hy, cy, reserve, weight_buf = torch.ops.aten._cudnn_rnn(
                 input,
                 weight,
                 4,
@@ -110,13 +104,9 @@ class CudnnRnnBackwardBenchmark(base.Benchmark):
                 [True, True, True, True],
             )
 
-
-@pytest.mark.skip_native(
-    vendors=["enflame"],
-    reason=(
-        "torch_gcu has no PrivateUse1 kernel for aten::_cudnn_rnn; its CPU fallback "
-        "cannot serve the benchmark, so there is no native baseline"
-    ),
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten dose not support",
 )
 @pytest.mark.cudnn_rnn_backward
 def test_cudnn_rnn_backward():

@@ -189,7 +189,8 @@ def mean_kernel_dim_mid(
 
 
 def _row_params(inp, M, N):
-    """Row-reduction hyperparameters: column width pinned to min(np2(N), 4096), rows from the byte budget and 48-way spreading.
+    """Row-reduction hyperparameters: column width pinned to min(np2(N), 4096), rows
+    from the byte budget and 48-way spreading.
 
     Measured (2026-11-17, official do_bench median w1000/r100):
     (4096,4096) fp16 58.9 -> 22.4us, fp32 66.0 -> 34.7us;

@@ -1074,7 +1074,7 @@ def get_scheduler_metadata_ref(
     seqused_k_host = _to_host_list(seqused_k, batch_size) or [0] * batch_size
     seqused_q_host = _to_host_list(seqused_q, batch_size)
     cu_seqlens_q_host = _to_host_list(cu_seqlens_q, batch_size + 1)
-    cu_seqlens_k_host = _to_host_list(cu_seqlens_k, batch_size + 1)
+    cu_seqlens_k_host = _to_host_list(cu_seqlens_k, batch_size + 1)  # noqa: F841
     cu_seqlens_k_new_host = _to_host_list(cu_seqlens_k_new, batch_size + 1)
     leftpad_k_host = _to_host_list(leftpad_k, batch_size)
 

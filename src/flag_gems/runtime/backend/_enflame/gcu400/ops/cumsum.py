@@ -216,7 +216,7 @@ def _cumsum_dot_path(inp, out, dim):
     N = inp.shape[dim]
     K = inp.numel() // M // N
     rows = M * K
-    half = inp.dtype in (torch.float16, torch.bfloat16)
+    half = inp.dtype in (torch.float16, torch.bfloat16)  # noqa: F841
     with torch_device_fn.device(inp.device):
         if N >= _LONG_ROW_N and rows < _LONG_ROW_MAX_ROWS:
             num_chunks = triton.cdiv(N, _LONG_V)
