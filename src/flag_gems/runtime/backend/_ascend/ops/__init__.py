@@ -186,6 +186,7 @@ from .foreach_sub_scalar import foreach_sub_scalar
 from .foreach_sub_scalar_ import foreach_sub_scalar_
 from .foreach_sub_scalar_list import foreach_sub_scalar_list
 from .foreach_sub_scalar_list_ import foreach_sub_scalar_list_
+from .foreach_tan import foreach_tan
 from .foreach_tan_ import foreach_tan_
 from .foreach_tanh_ import foreach_tanh_
 from .frac import frac
@@ -590,6 +591,7 @@ __all__ = [
     "foreach_sub_scalar_",
     "foreach_sub_scalar_list",
     "foreach_sub_scalar_list_",
+    "foreach_tan",
     "foreach_tan_",
     "foreach_tanh_",
     "frac",
