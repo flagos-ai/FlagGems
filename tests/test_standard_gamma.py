@@ -140,6 +140,10 @@ def test_standard_gamma_rejects_non_floating(dtype):
 
 
 @pytest.mark.standard_gamma
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
 def test_standard_gamma_rejects_float64():
     """The fp32 sampling kernel cannot preserve the float64 tiny value, so
     float64 inputs are rejected explicitly instead of silently downcasting."""

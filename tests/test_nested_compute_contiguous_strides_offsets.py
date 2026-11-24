@@ -272,6 +272,8 @@ def test_nested_compute_contiguous_strides_offsets_dtype_error(shape, dtype):
     # any 2-D non-int64 input. Both sides must raise; the implementation's
     # message is pinned only for the class + the Long/scalar fragment, never
     # for the reference build's wording.
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = _cpu_ref(inp)
 
@@ -322,6 +324,11 @@ def test_nested_compute_contiguous_strides_offsets_constructs_nested_tensor():
     utils.gems_assert_equal(res_offsets, ref_offsets)
 
     nt = nested_tensor(tensors, layout=torch.strided)
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU has no NestedTensorGCU backend for aten::unbind.int; "
+            "the FlagGems strides/offsets equality checks above already passed"
+        )
     assert [tuple(t.shape) for t in nt.unbind()] == [(2, 3), (4, 3), (1, 3)]
 
 

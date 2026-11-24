@@ -105,6 +105,10 @@ FFT_IRFFTN_COMPLEX128_SHAPES = FFT_IRFFTN_SHAPES
 @pytest.mark.fft_irfftn
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Not supported on metax")
 @pytest.mark.parametrize("shape", FFT_IRFFTN_COMPLEX128_SHAPES)
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
 def test_fft_irfftn_complex128(shape):
     """Test fft_irfftn with complex128 (fp64 complex) input produces float64 output."""
     half_shape = list(shape)

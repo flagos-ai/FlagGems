@@ -5,6 +5,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame dosenot support yet",
+)
+
+
 # Restricted dtype list: the generator limits the tested precisions for numerical-stability reasons (see worktree).
 FLOAT_DTYPES = [torch.float16, torch.float32]
 
