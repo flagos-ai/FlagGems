@@ -67,6 +67,23 @@ def _gather_flat_kernel_fixed(
 def gather_flat_fixed(inp: torch.Tensor, dim: int, index: torch.Tensor, out=None):
     logger.debug("GEMS_ASCEND GATHER")
 
+    # `_gather_flat_kernel_fixed` walks `index` in flat row-major order -- it
+    # loads `index + offset` and never looks at `index.stride()` -- and then
+    # uses the value it loaded as the gather offset into `inp`. A strided index
+    # is therefore read from the wrong addresses, and because those values are
+    # used as offsets the input load goes out of bounds, which the device
+    # reports as
+    #
+    #   NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(
+    #   stream), error code is 507035
+    #
+    # `index.expand(...)` is the usual source: expanding along a size-1 axis
+    # leaves stride 0 there, so e.g. an attention gather with
+    # `index.expand(B, 1, H)` faults. Materialise it so the flat order the
+    # kernel assumes matches the logical order `compute_base_offset` encodes.
+    if not index.is_contiguous():
+        index = index.contiguous()
+
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
 

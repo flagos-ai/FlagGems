@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.fill import fill_scalar_ as _fill_scalar_
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
@@ -56,6 +57,17 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS ZERO_")
+    if not x.is_contiguous():
+        # `zeros_kernel` walks flat offsets 0..numel-1 from the view's data
+        # pointer and ignores strides, so a non-contiguous view would be zeroed
+        # outside its own memory and partly left untouched. Fall back to the
+        # scalar fill, which writes through the tensor's strides (the same path
+        # ATen's `zero_` uses) and needs no temporary buffer. See Issue #7115.
+        # The generic `fill_scalar_` is called directly rather than through
+        # `x.fill_(0)`: some vendor overrides of `fill_` still store flat
+        # offsets and would reintroduce the same defect on a strided view.
+        _fill_scalar_(x, 0)
+        return x
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
