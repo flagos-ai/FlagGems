@@ -53,6 +53,15 @@ def _reference(grad, x1, x2):
     return grad_x1, grad_x2
 
 
+def _assert_close(res, ref, dtype, d):
+    # The gradient reduces over the D feature dimensions and the ATen forward
+    # feeds it a mm-expansion distance (norm terms of magnitude ~D inside a
+    # single GEMM), so both the reference and the kernel carry a rounding
+    # residual that grows with D. Scale the comparator atol by that reduction
+    # depth, matching the addmm/logcumsumexp convention.
+    utils.gems_assert_close(res, ref, dtype, reduce_dim=d)
+
+
 @pytest.mark.euclidean_dist_backward
 @pytest.mark.parametrize("shape", EUC_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -71,8 +80,8 @@ def test_euclidean_dist_backward(shape, dtype):
 
     res_out1, res_out2 = flag_gems.euclidean_dist_backward(grad, x1, x2)
 
-    utils.gems_assert_close(res_out1, ref_out1, dtype)
-    utils.gems_assert_close(res_out2, ref_out2, dtype)
+    _assert_close(res_out1, ref_out1, dtype, d)
+    _assert_close(res_out2, ref_out2, dtype, d)
 
 
 @pytest.mark.euclidean_dist_backward
@@ -138,17 +147,20 @@ def test_euclidean_dist_backward_zero_distance(dtype):
 @pytest.mark.euclidean_dist_backward
 def test_euclidean_dist_backward_autograd_link():
     # The FlagGems gradient also matches the native autograd chain within the
-    # comparator tolerance (the ATen backward itself is GEMM-noisy).
+    # comparator tolerance (the ATen backward itself is GEMM-noisy). The
+    # reference chain runs on the reference device (to_reference), so the
+    # result devices always line up for the comparator.
     x1 = torch.randn(16, 32, dtype=torch.float32, device=flag_gems.device)
     x2 = torch.randn(12, 32, dtype=torch.float32, device=flag_gems.device)
     grad = torch.randn(16, 12, dtype=torch.float32, device=flag_gems.device)
 
-    x1r = x1.detach().requires_grad_(True)
-    x2r = x2.detach().requires_grad_(True)
-    out = torch._euclidean_dist(x1r, x2r)
-    ref_out1, ref_out2 = torch.autograd.grad(out, (x1r, x2r), grad)
+    ref_x1 = utils.to_reference(x1).detach().requires_grad_(True)
+    ref_x2 = utils.to_reference(x2).detach().requires_grad_(True)
+    ref_grad = utils.to_reference(grad)
+    out = torch._euclidean_dist(ref_x1, ref_x2)
+    ref_out1, ref_out2 = torch.autograd.grad(out, (ref_x1, ref_x2), ref_grad)
 
     res_out1, res_out2 = flag_gems.euclidean_dist_backward(grad, x1, x2)
 
-    utils.gems_assert_close(res_out1, ref_out1, torch.float32, atol=1e-3)
-    utils.gems_assert_close(res_out2, ref_out2, torch.float32, atol=1e-3)
+    _assert_close(res_out1, ref_out1, torch.float32, 32)
+    _assert_close(res_out2, ref_out2, torch.float32, 32)
