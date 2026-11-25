@@ -49,13 +49,39 @@ def one_hot_kernel(
 
 def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     logger.debug("GEMS ONE_HOT")
+    if num_classes == -1:
+        if tensor.numel() == 0:
+            # torch's composite reports this itself; torch_npu's max() on an
+            # empty tensor does not, so state it explicitly.
+            raise RuntimeError(
+                "Can not infer total number of classes from empty tensor."
+            )
+        num_classes = int(tensor.max().item()) + 1
+
     if not tensor.is_cuda:
-        return torch.nn.functional.one_hot(tensor, num_classes)
+        # Expand the composite here rather than delegating to
+        # torch.nn.functional.one_hot. That function is
+        # CompositeImplicitAutograd, so calling it from this kernel re-enters
+        # flag_gems' own registration as soon as the Autograd key is excluded
+        # (torch.inference_mode) and recurses until the stack overflows.
+        # zeros + scatter_ is the decomposition torch itself applies.
+        #
+        # The class-value bounds are checked here explicitly because scatter_
+        # does not report them on every backend (torch_npu's one_hot silently
+        # accepts negative classes), while the CPU/aten composite does.
+        if tensor.numel() > 0:
+            if int(tensor.min().item()) < 0:
+                raise RuntimeError("Class values must be non-negative.")
+            if int(tensor.max().item()) >= num_classes:
+                raise RuntimeError("Class values must be smaller than num_classes.")
+        out = torch.zeros(
+            (*tensor.shape, num_classes), dtype=torch.int64, device=tensor.device
+        )
+        return out.scatter_(-1, tensor.unsqueeze(-1), 1)
+
     if not tensor.is_contiguous():
         tensor = tensor.contiguous()
     numel = tensor.numel()
-    if num_classes == -1:
-        num_classes = int(tensor.max().item()) + 1
 
     out = torch.empty(
         (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
