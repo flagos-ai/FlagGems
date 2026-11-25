@@ -18,11 +18,11 @@ from numbers import Number
 import torch
 import triton
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
 from ..bmm.splitk import launch_small_splitk
-from ..gemm_utils import gemm_device_context
 from .kernels import (
     _transpose_addmm_b,
     addmm_column_kernel,
@@ -118,7 +118,7 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
         ((M + META["BLOCK_SIZE_M"] - 1) // META["BLOCK_SIZE_M"])
         * ((N + META["BLOCK_SIZE_N"] - 1) // META["BLOCK_SIZE_N"]),
     )
-    with gemm_device_context(mat1.device):
+    with torch_device_fn.device(mat1.device):
         if kernel is addmm_rowmajor_kernel or kernel is addmm_column_kernel:
             # Materialize on every call: inputs may be mutated between launches.
             transposed_b = torch.empty((N, K), device=mat2.device, dtype=mat2.dtype)
@@ -298,21 +298,21 @@ def _use_ring_addmm(bias, mat1, mat2, out):
 
 def _launch_addmm(bias, mat1, mat2, out, *, beta=1, alpha=1):
     if not _scalar_eq(alpha, 0):
-        sizes = (1,) * (2 - bias.ndim) + bias.shape
-        strides = (0,) * (2 - bias.ndim) + bias.stride()
-        bias_strides = (0,) + tuple(
-            0 if size == 1 else stride for size, stride in zip(sizes, strides)
-        )
-        with gemm_device_context(mat1.device):
+        with torch_device_fn.device(mat1.device):
             if launch_small_splitk(
-                mat1, mat2, out, bias, alpha, beta, bias_strides=bias_strides
+                mat1.unsqueeze(0),
+                mat2.unsqueeze(0),
+                out.unsqueeze(0),
+                bias.broadcast_to(out.shape).unsqueeze(0),
+                alpha,
+                beta,
             ):
                 return out
     if _scalar_eq(alpha, 0) or not _use_ring_addmm(bias, mat1, mat2, out):
         return _launch_addmm_generic(bias, mat1, mat2, out, beta=beta, alpha=alpha)
     m, k = mat1.shape
     n = mat2.shape[1]
-    with gemm_device_context(mat1.device):
+    with torch_device_fn.device(mat1.device):
         addmm_ring_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
             mat1,
             mat2,

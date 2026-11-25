@@ -44,13 +44,11 @@ except ImportError:
     accumulator_fence = cta_phase = None
 
 from flag_gems import runtime
-from flag_gems.ops.mm import general_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.flagtune import _flagtune_state_key
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-from .bmm.splitk import launch_small_splitk
 from .gemm_config_profiles import SHARED_HCU_OPTIONS as _SHARED_HCU_OPTIONS
 from .gemm_utils import (
     HAS_FULL_LAUNCH_ARGUMENTS,
@@ -3911,28 +3909,3 @@ def mm_out(a, b, *, out):
 
     _dispatch_hygon_mm(a, b, c)
     return c
-
-
-def router_gemm(x, weight):
-    """Project FP16/BF16 router inputs, accumulating and writing FP32."""
-    m, k = x.shape
-    n, weight_k = weight.shape
-    if k != weight_k or x.device != weight.device:
-        raise RuntimeError(
-            "router_gemm expects matching reduction dimensions and devices"
-        )
-    if not (m and n and k):
-        return torch.zeros((m, n), device=x.device, dtype=torch.float32)
-    out = torch.empty((m, n), device=x.device, dtype=torch.float32)
-    b = weight.t()
-    if x.dtype == b.dtype and x.dtype in (torch.float16, torch.bfloat16):
-        if m == 1:
-            _mv_out(weight, x[0], out[0])
-        elif n == 1:
-            _mv_out(x, weight[0], out[:, 0])
-        else:
-            with gemm_device_context(x.device):
-                if not launch_small_splitk(x, b, out):
-                    _launch_ordinary_mm(x, b, out)
-        return out
-    return general_mm(x, b, out, m, n, k)

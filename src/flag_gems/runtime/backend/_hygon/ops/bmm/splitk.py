@@ -15,22 +15,12 @@
 
 """Shared split-K path for GEMMs with too few output tiles to fill the device."""
 
-from functools import lru_cache
-
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.runtime.flagtune import _flagtune_state_key
 from flag_gems.utils import libentry, libtuner
-
-from ..gemm_utils import (
-    HAS_FULL_LAUNCH_ARGUMENTS,
-    GemmChoiceCache,
-    bind_gemm_launch,
-    gemm_storage_is_wide,
-)
 
 
 @triton.jit
@@ -90,7 +80,7 @@ def _partials(
     tl.store(P + offsets, acc, (rm[:, None] < M) & (rn[None, :] < N))
 
 
-@libentry(cache_binding=True)
+@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("bmm_splitk"),
     key=["BATCH", "M", "N", "K", "AB", "AM", "AK", "BB", "BK", "BN", "SPLITS"],
@@ -121,7 +111,7 @@ def _small_partials(
     _partials(A, B, P, M, N, K, AB, AM, AK, BB, BK, BN, BATCH, SPLITS, TM, TN, TK)
 
 
-@libentry(cache_binding=True)
+@libentry()
 @triton.jit
 def _finish_splitk(
     P,
@@ -171,34 +161,29 @@ def _finish_splitk(
     )
 
 
-def _reduction_launch(
+def _launch_reduction(
     partials, out, splits, bias=None, alpha=1, beta=0, *, bias_strides=None
 ):
-    unbatched = out.ndim == 2
-    batch, m, n = (1, *out.shape) if unbatched else out.shape
-    out_strides = (0, *out.stride()) if unbatched else out.stride()
+    batch, m, n = out.shape
     if bias_strides is None:
         bias_strides = bias.stride() if bias is not None else (0, 0, 0)
-    return (triton.cdiv(batch * m * n, 256), 1, 1), (
+    _finish_splitk[(triton.cdiv(batch * m * n, 256),)](
         partials,
         out,
         bias if bias is not None else out,
         m,
         n,
         batch,
-        *out_strides,
+        *out.stride(),
         splits,
         256,
         *bias_strides,
         alpha,
         beta,
         bias is not None,
+        num_warps=4,
+        num_stages=1,
     )
-
-
-def _launch_reduction(partials, out, splits):
-    grid, args = _reduction_launch(partials, out, splits)
-    _finish_splitk[grid](*args, num_warps=4, num_stages=1)
 
 
 def launch_splitk(a, b, out, config):
@@ -227,109 +212,39 @@ def launch_splitk(a, b, out, config):
     _launch_reduction(partials, out, splits)
 
 
-@lru_cache(maxsize=512)
-def _small_split_count(batch, m, n, k):
-    if min(batch, m, n, k) <= 0 or k < 1024 or min(m, n) > 128 or max(m, n) > 4096:
-        return 0
-    tiles = batch * triton.cdiv(m, 32) * triton.cdiv(n, 64)
-    if tiles >= 128:
-        return 0
-    splits = min(32, triton.next_power_of_2(triton.cdiv(128, tiles)))
-    splits = min(splits, triton.next_power_of_2(k) // 256)
-    return splits if splits >= 2 else 0
-
-
-# Compiled launchers retain static geometry only. The workspace, output, and
-# operand addresses always come from the current invocation.
-_small_launches = GemmChoiceCache(maxsize=512)
-
-
-def _small_launch_key(a, b, out, bias, geometry, alpha, beta):
-    if (
-        not HAS_FULL_LAUNCH_ARGUMENTS
-        or _small_partials.fn._run_mode != "normal"
-        or triton.knobs.autotuning.adjust_block_size
-    ):
-        return None
-    if type(alpha) not in (int, float, bool) or type(beta) not in (int, float, bool):
-        return None
-    tensors = (a, b, out) if bias is None else (a, b, out, bias)
-    if any(type(t) is not torch.Tensor or t.device != a.device for t in tensors):
-        return None
-    return (
-        a.device,
-        geometry,
-        tuple(
-            (t.dtype, t.data_ptr() % 16 == 0, gemm_storage_is_wide(t)) for t in tensors
-        ),
-        type(alpha),
-        alpha,
-        type(beta),
-        beta,
-        _flagtune_state_key(),
-        _small_partials.fn._benchmark_protocol,
-        triton.knobs.runtime.override_arch,
-        triton.knobs.hcu.use_buffer_ops,
-    )
-
-
 def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0, *, bias_strides=None):
     """Return whether a long reduction was split across additional workgroups.
 
     Each call allocates fresh FP32 partials. The second kernel reduces them and
     applies the optional bias once, before casting to the output dtype.
-    Rank-two inputs share the batch-one kernel. Supply broadcast bias strides
-    when the bias does not already have three dimensions.
+    Pass the broadcast strides explicitly when bias is not already expanded.
     """
-    unbatched = a.ndim == 2
-    batch, m, k = (1, *a.shape) if unbatched else a.shape
-    n = b.shape[-1]
-    if a.dtype not in (torch.float16, torch.bfloat16):
+    batch, m, k = a.shape
+    n = b.shape[2]
+    if (
+        min(batch, m, n, k) <= 0
+        or a.dtype not in (torch.float16, torch.bfloat16)
+        or k < 1024
+        or min(m, n) > 128
+        or max(m, n) > 4096
+    ):
         return False
-    splits = _small_split_count(batch, m, n, k)
-    if not splits:
+    tiles = batch * triton.cdiv(m, 32) * triton.cdiv(n, 64)
+    if tiles >= 128:
+        return False
+    splits = min(32, triton.next_power_of_2(triton.cdiv(128, tiles)))
+    splits = min(splits, triton.next_power_of_2(k) // 256)
+    if splits < 2:
         return False
     partials = torch.empty((splits, batch, m, n), dtype=torch.float32, device=a.device)
-    a_strides = (0, *a.stride()) if unbatched else a.stride()
-    b_strides = (0, *b.stride()) if unbatched else b.stride()
-    post_grid, post_args = _reduction_launch(
-        partials, out, splits, bias, alpha, beta, bias_strides=bias_strides
-    )
-    geometry = (k, a_strides, b_strides, post_args[3:])
-    key = _small_launch_key(a, b, out, bias, geometry, alpha, beta)
-    plan = _small_launches.get(key) if key is not None else None
-    if plan is not None:
-        launch_partial, partial_constants, launch_post, post_constants = plan
-        launch_partial(a, b, partials, *partial_constants)
-        launch_post(partials, out, post_args[2], *post_constants)
-        return True
-
-    def partial_grid(meta):
-        return (
+    _small_partials[
+        lambda meta: (
             triton.cdiv(m, meta["TM"]) * triton.cdiv(n, meta["TN"]),
             batch,
             splits,
         )
-
-    partial_constants = (m, n, k, *a_strides, *b_strides, batch, splits)
-    partial_args = (a, b, partials, *partial_constants)
-    partial_kernel, meta = _small_partials[partial_grid](*partial_args)
-    post_kernel, post_meta = _finish_splitk[post_grid](
-        *post_args, num_warps=4, num_stages=1
+    ](a, b, partials, m, n, k, *a.stride(), *b.stride(), batch, splits)
+    _launch_reduction(
+        partials, out, splits, bias, alpha, beta, bias_strides=bias_strides
     )
-    if key is not None and not torch.cuda.is_current_stream_capturing():
-        partial = bind_gemm_launch(
-            _small_partials,
-            partial_kernel,
-            partial_grid(meta),
-            partial_args,
-            {},
-            meta,
-            3,
-        )
-        post = bind_gemm_launch(
-            _finish_splitk, post_kernel, post_grid, post_args, {}, post_meta, 3
-        )
-        if partial is not None and post is not None:
-            _small_launches.remember(key, (*partial, *post))
     return True

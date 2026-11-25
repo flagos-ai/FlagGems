@@ -18,7 +18,6 @@
 import hashlib
 import logging
 import threading
-from functools import lru_cache
 from pathlib import Path
 
 import torch
@@ -31,14 +30,12 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import LibTuner
 
-from ..gemm_utils import gemm_device_context
 from . import regular, ring
 from .splitk import launch_small_splitk, launch_splitk
 
 logger = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=512)
 def select_kernel(dtype, batch, m, n, k):
     """Return (family, tile config) from dimensions, dtype and parallelism.
 
@@ -109,9 +106,9 @@ def supports_isa(a):
 
 def supports_vector_layout(a, b, out):
     """Check physical layout requirements independently of shape selection."""
-    if not (a.is_contiguous() and b.is_contiguous() and out.is_contiguous()):
-        return False
     if not supports_isa(a):
+        return False
+    if not (a.is_contiguous() and b.is_contiguous() and out.is_contiguous()):
         return False
     # Contiguous views may start at an unaligned storage offset.
     return all(t.data_ptr() % 16 == 0 for t in (a, b, out))
@@ -402,9 +399,11 @@ def supports_packing(a, b, out):
 
 
 def launch_packed_if_supported(a, b, out):
+    if not supports_packing(a, b, out):
+        return False
     batch, m, k = a.shape
     n = b.shape[2]
-    if m < 256 or not supports_packing(a, b, out):
+    if m < 256:
         return False
     family, config = select_kernel(a.dtype, batch, m, n, k)
     if family not in ("ring", "regular"):
@@ -749,7 +748,7 @@ def _dispatch_bmm(A, B, out):
     N = B.shape[2]
     if batch == 0 or M == 0 or N == 0:
         return out
-    with gemm_device_context(A.device):
+    with torch_device_fn.device(A.device):
         if launch_small_splitk(A, B, out):
             return out
         if _launch_autotuned(A, B, out):

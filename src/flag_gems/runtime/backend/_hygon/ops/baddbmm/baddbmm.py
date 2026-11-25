@@ -21,11 +21,11 @@ import triton
 from torch.autograd.function import once_differentiable
 
 from flag_gems.ops.sum import sum_dim
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
 from ..bmm.bmm import check_out_autograd, copy_tensor, supports_isa
 from ..bmm.splitk import launch_small_splitk
-from ..gemm_utils import gemm_device_context
 from .kernels import _TUNERS, _bias_kernel, _fp32_kernel, _pack_b
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
     n = b.shape[2]
     if not batch or not m or not n:
         return out
-    with gemm_device_context(a.device):
+    with torch_device_fn.device(a.device):
         if k == 0 or alpha == 0:
             _bias_kernel[(triton.cdiv(m * n, 256), batch)](
                 bias, out, m, n, *bias_strides, *out.stride(), beta, 256

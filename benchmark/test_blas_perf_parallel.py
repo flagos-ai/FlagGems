@@ -40,6 +40,7 @@ from .consts import (
     FLOAT_DTYPES,
     BenchLevel,
     BenchmarkMetrics,
+    BenchmarkResult,
     OperationAttribute,
     model_shapes,
 )
@@ -540,8 +541,6 @@ def _parallel_device_count():
 def _parallel_visible_devices_env():
     if flag_gems.vendor_name == "metax":
         return "MACA_VISIBLE_DEVICES"
-    if flag_gems.vendor_name == "hygon":
-        return "HIP_VISIBLE_DEVICES"
     env_name_map = {
         "cuda": "CUDA_VISIBLE_DEVICES",
         "musa": "MUSA_VISIBLE_DEVICES",
@@ -553,8 +552,6 @@ def _parallel_device_ids():
     visible_devices_env = _parallel_visible_devices_env()
     if visible_devices_env:
         configured_devices = os.environ.get(visible_devices_env, "")
-        if not configured_devices and flag_gems.vendor_name == "hygon":
-            configured_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
         if configured_devices:
             return [
                 device.strip()
@@ -905,10 +902,6 @@ class ParallelBenchmarkMixin:
                 f"--parallel is not supported on device type '{flag_gems.device}'."
             )
         env[visible_devices_env] = str(gpu_id)
-        if flag_gems.vendor_name == "hygon":
-            # HIP takes priority over CUDA visibility. Hygon's Torch import
-            # may populate HIP visibility in the parent; pin both per worker.
-            env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         if flag_gems.vendor_name == "metax":
             # mcPytorch prefers MACA_VISIBLE_DEVICES while vLLM-MetaX and some
             # helper processes use CUDA_VISIBLE_DEVICES. Keep both consistent.
@@ -1040,7 +1033,15 @@ class ParallelBenchmarkMixin:
                 self._emit_result(dtype, metrics)
                 continue
 
-            result = self._emit_result(dtype, metrics)
+            result = BenchmarkResult(
+                level=Config.bench_level.value,
+                op_name=self.op_name,
+                dtype=str(dtype),
+                mode=Config.mode.value,
+                result=metrics,
+            )
+            print(result)
+            emit_record_logger(result.to_json())
             if os.environ.get(PARALLEL_RESULT_FILE_ENV):
                 with open(os.environ[PARALLEL_RESULT_FILE_ENV], "wb") as result_file:
                     pickle.dump(result, result_file)
