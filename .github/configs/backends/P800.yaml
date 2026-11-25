@@ -25,7 +25,7 @@ runner_labels: p800-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0
+container_image: harbor.baai.ac.cn/flaggems/flaggems-test-kunlunxin-p800:20261014
 
 # Container volumes to mount for this backends
 container_volumes:

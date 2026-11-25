@@ -23,6 +23,11 @@ from . import base, utils
 
 vendor_name = flag_gems.vendor_name
 
+# vLLM's Python package can be importable while its compiled flash-attention
+# kernels are not registered; the benchmark baseline then fails inside
+# torch.ops._vllm_fa2_C with `_OpNamespace has no attribute 'varlen_fwd'`.
+HAS_VLLM_FA2 = hasattr(torch.ops._vllm_fa2_C, "varlen_fwd")
+
 
 class FlashAttnVarlenOptInitBenchmark(base.Benchmark):
     """
@@ -276,33 +281,36 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
     # TODO(Qiming): don't import things in the middle
     from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
+    # Keyword arguments: the vLLM signature orders the FA3 tail parameters
+    # (num_splits / fa_version / s_aux / cp_*) differently across releases,
+    # so positional passing would bind fa_version into num_splits.
     result = flash_attn_varlen_func(
-        q,
-        k,
-        v,
-        max_seqlen_q,
-        cu_seqlens_q,
-        max_seqlen_k,
-        cu_seqlens_k,  # only used for non-paged prefill
-        seqused_k,
-        q_v,
-        dropout_p,
-        softmax_scale,
-        causal,
-        window_size,
-        softcap,  # 0.0 means deactivated
-        alibi_slopes,
-        deterministic,
-        return_attn_probs,
-        block_table,
-        return_softmax_lse,
-        out,
+        q=q,
+        k=k,
+        v=v,
+        max_seqlen_q=max_seqlen_q,
+        cu_seqlens_q=cu_seqlens_q,
+        max_seqlen_k=max_seqlen_k,
+        cu_seqlens_k=cu_seqlens_k,  # only used for non-paged prefill
+        seqused_k=seqused_k,
+        q_v=q_v,
+        dropout_p=dropout_p,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        softcap=softcap,  # 0.0 means deactivated
+        alibi_slopes=alibi_slopes,
+        deterministic=deterministic,
+        return_attn_probs=return_attn_probs,
+        block_table=block_table,
+        return_softmax_lse=return_softmax_lse,
+        out=out,
         # Dummy FA3 arguments
-        scheduler_metadata,
-        q_descale,
-        k_descale,
-        v_descale,
-        fa_version,
+        scheduler_metadata=scheduler_metadata,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+        fa_version=fa_version,
     )
     return result
 
@@ -319,6 +327,10 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2887: Not working")
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2888: RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="#2889: TypeError")
+@pytest.mark.skipif(
+    not HAS_VLLM_FA2,
+    reason="vllm flash-attn kernels are not registered (torch.ops._vllm_fa2_C.varlen_fwd)",
+)
 def test_flash_attn_varlen_opt_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
 

@@ -16,7 +16,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # Only take the block-copy fast path when the contiguous inner run is long
 # enough for a block DMA to beat launch overhead; otherwise defer to the

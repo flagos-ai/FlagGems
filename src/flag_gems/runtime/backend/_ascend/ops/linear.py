@@ -34,9 +34,27 @@ _CUBE_CORES = 20
 _MODERATE_TILES = 64
 _PIN_MODERATE_KWARGS = {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256}
 _PIN_STARVED_NODIV_KWARGS = {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128}
+# fp32 doubles the bytes per tile, so a 64-row A tile keeps the DMA footprint
+# down: 4% faster at 384^3, which is this band (N=384 is not a multiple of 256).
+_PIN_STARVED_NODIV_FP32_KWARGS = {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128}
 _PIN_STARVED_KWARGS = {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 256}
 
+# Deep-K tile: BK=512 halves the K-loop trip count and the 128-wide N tile
+# doubles the program count, which only pays when the 128x256 grid leaves a bad
+# wave remainder on the 20 cube cores (2048^3: 128 tiles -> 91% vs 256 -> 98%).
+# Short K wastes the second (masked) trip and wide-N / narrow-M shapes lose L0B
+# reuse, so gate on all three.
+_PIN_DEEP_K_KWARGS = {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 512}
+_DEEP_K_MIN_K = 2048
+_DEEP_K_MIN_N = 2048
+_DEEP_K_MAX_N = 4096
+
 _PIN_FP32_LARGE_KWARGS = {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 256}
+
+# Very large fp32 grids: the 256-row tile halves the program count and wins ~1.6%
+# at 4096^3; below ~256 tiles the 128-row tile is still better.
+_PIN_FP32_HUGE_KWARGS = {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128}
+_HUGE_TILES = 256
 
 # Skinny-M band: pin the 16-row tile when M <= 16, where the 64/128-row tiles the
 # bands below pin spend their A-tile DMA on masked rows.
@@ -106,18 +124,40 @@ def _prune_configs_by_ub(configs, named_args, **kwargs):
             return pinned
     if starved:
         if N >= 256 and N % 256 != 0:
-            pinned = [c for c in pruned if c.kwargs == _PIN_STARVED_NODIV_KWARGS]
+            want = (
+                _PIN_STARVED_NODIV_FP32_KWARGS
+                if element_size() == 4
+                else _PIN_STARVED_NODIV_KWARGS
+            )
+            pinned = [c for c in pruned if c.kwargs == want]
             if pinned:
                 return pinned
         pinned = [c for c in pruned if c.kwargs == _PIN_STARVED_KWARGS]
         if pinned:
             return pinned
     if element_size() == 4 and ref is not None:
-        want = _PIN_STARVED_KWARGS if ref <= _MODERATE_TILES else _PIN_FP32_LARGE_KWARGS
+        if ref <= _MODERATE_TILES:
+            want = _PIN_STARVED_KWARGS
+        elif ref <= _HUGE_TILES:
+            want = _PIN_FP32_LARGE_KWARGS
+        else:
+            want = _PIN_FP32_HUGE_KWARGS
         pinned = [c for c in pruned if c.kwargs == want]
         if pinned:
             return pinned
     pruned = [c for c in pruned if c.kwargs != _PIN_STARVED_KWARGS]
+    K = _int("K")
+    if (
+        element_size() == 2
+        and ref is not None
+        and _MODERATE_TILES < ref <= 256
+        and K is not None
+        and K >= _DEEP_K_MIN_K
+        and _DEEP_K_MIN_N <= N <= _DEEP_K_MAX_N
+    ):
+        pinned = [c for c in pruned if c.kwargs == _PIN_DEEP_K_KWARGS]
+        if pinned:
+            return pinned
     if ref is not None and ref <= _MODERATE_TILES:
         pinned = [c for c in pruned if c.kwargs == _PIN_MODERATE_KWARGS]
         if pinned:
@@ -160,39 +200,93 @@ def linear_kernel(
 
     accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
-    # A one-trip K loop miscompiles the epilogue, so floor it at 2 (the extra
-    # iteration's mask is all-false).
-    n_iter = tl.cdiv(K, BLOCK_K)
-    if n_iter < 2:
-        n_iter = 2
-
-    for k in range(0, n_iter):
-        k_remaining = K - k * BLOCK_K
-        a = tl.load(
-            input_ptrs,
-            mask=(ram < M)[:, None] & (rk < k_remaining)[None, :],
-            other=0.0,
-        )
-        b = tl.load(
-            weight_ptrs,
-            mask=(rk < k_remaining)[:, None] & (rbn < N)[None, :],
-            other=0.0,
-        )
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        input_ptrs += BLOCK_K
-        weight_ptrs += BLOCK_K
-
-    if BIAS:
-        bias = tl.load(bias_ptr + rbn, mask=rbn < N, other=0.0).to(tl.float32)
-        accumulator = accumulator + tl.broadcast_to(bias[None, :], (BLOCK_M, BLOCK_N))
-
     output_ptrs = output_ptr + (ram[:, None] * N + rbn[None, :])
     output_mask = (ram < M)[:, None] & (rbn < N)[None, :]
-    tl.store(
-        output_ptrs,
-        accumulator.to(output_ptr.dtype.element_ty),
-        mask=output_mask,
+    out_ty = output_ptr.dtype.element_ty
+
+    # The BiSheng backend miscompiles the epilogue when a single tl.dot's f32
+    # result is consumed by an elementwise bias add: it fuses the add into the
+    # Cube/FixPipe epilogue and returns garbage. Only the *fusion* is broken --
+    # the bias load itself is fine at any position, and the same add is correct
+    # after two accumulations, so anything non-fusable between the dot and the
+    # add avoids it. Two workarounds are measured, and which one is cheaper
+    # depends only on whether a truncation is available to hide behind:
+    #
+    #   * no truncation available (fp32 out, or K > BLOCK_K): run the K loop with
+    #     a floor of two iterations. The second iteration's mask is all-false so
+    #     it contributes zero.
+    #   * fp16/bf16 out and K <= BLOCK_K: one dot, then add the bias *after* the
+    #     truncation, in the output dtype. This keeps f32->f16 as the only f32
+    #     consumer of the accumulator, so the broken fusion never forms, and it
+    #     drops the wasted iteration: 1.25x over the loop at (4096,14336,64)
+    #     fp16, 1.60x over torch, and 1.46-1.60x across the small-K shapes.
+    #
+    # The cost is one extra rounding when the sum is truncated, so the worst-case
+    # error goes from half an fp16 ulp of the result magnitude to a full one
+    # (1.56e-02 -> 3.13e-02 on values in [32,64)). It still passes
+    # flag_gems.testing.assert_close(fp16: atol=1e-4*K, rtol=1e-3) on every shape
+    # tried, using 0.81-0.87 of the allowance where the loop uses 0.69.
+    #
+    # Every f32-preserving alternative measured *slower* than the wasted second
+    # iteration, so the floor is kept where it is still the cheaper fix: an
+    # equivalent no-op barrier (tl.where(acc == acc, acc, 0.0) or -(-acc)), a
+    # rank-32 outer-product dot for the bias, and folding the bias into the
+    # reduction as an extra unit column all cost 1.13-2.2x the floor. `acc * 1.0`
+    # is folded away and does not work; tl.minimum/tl.maximum fail to compile.
+    single_dot = (
+        BIAS and K <= BLOCK_K and (out_ty == tl.float16 or out_ty == tl.bfloat16)
     )
+
+    if single_dot:
+        # Distinct names from the loop arm below: triton joins the two branches
+        # as real control flow and would otherwise unify `bias` across them,
+        # where it is fp16 here and fp32 there.
+        a1 = tl.load(
+            input_ptrs,
+            mask=(ram < M)[:, None] & (rk < K)[None, :],
+            other=0.0,
+        )
+        b1 = tl.load(
+            weight_ptrs,
+            mask=(rk < K)[:, None] & (rbn < N)[None, :],
+            other=0.0,
+        )
+        acc1 = accumulator + tl.dot(a1, b1, allow_tf32=False)
+        bias1 = tl.load(bias_ptr + rbn, mask=rbn < N, other=0.0).to(out_ty)
+        out1 = acc1.to(out_ty) + tl.broadcast_to(bias1[None, :], (BLOCK_M, BLOCK_N))
+        tl.store(output_ptrs, out1, mask=output_mask)
+    else:
+        # A one-trip K loop miscompiles the epilogue, so floor it at 2 (the extra
+        # iteration's mask is all-false).
+        n_iter = tl.cdiv(K, BLOCK_K)
+        if n_iter < 2:
+            n_iter = 2
+
+        for k in range(0, n_iter):
+            k_remaining = K - k * BLOCK_K
+            a = tl.load(
+                input_ptrs,
+                mask=(ram < M)[:, None] & (rk < k_remaining)[None, :],
+                other=0.0,
+            )
+            b = tl.load(
+                weight_ptrs,
+                mask=(rk < k_remaining)[:, None] & (rbn < N)[None, :],
+                other=0.0,
+            )
+            accumulator += tl.dot(a, b, allow_tf32=False)
+            input_ptrs += BLOCK_K
+            weight_ptrs += BLOCK_K
+
+        # Truncate before the bias add: an f32 elementwise op on the Cube result
+        # forces a full-precision L0C -> UB round trip that costs more than the
+        # half-precision add. The fp16 ulp shift is within the operator's
+        # tolerance.
+        output = accumulator.to(out_ty)
+        if BIAS:
+            bias = tl.load(bias_ptr + rbn, mask=rbn < N, other=0.0).to(out_ty)
+            output = output + tl.broadcast_to(bias[None, :], (BLOCK_M, BLOCK_N))
+        tl.store(output_ptrs, output, mask=output_mask)
 
 
 @libentry()

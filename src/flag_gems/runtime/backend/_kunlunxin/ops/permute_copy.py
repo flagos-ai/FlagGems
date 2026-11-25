@@ -7,7 +7,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from ..utils.tle_copy import tle_copy
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # permute_copy materializes a permuted (strided) view into a fresh contiguous
 # tensor. The generic KernelGen kernels (src/flag_gems/ops/permute_copy.py) take

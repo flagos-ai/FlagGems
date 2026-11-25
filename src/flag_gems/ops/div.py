@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import numbers
 
 import torch
 import triton
@@ -177,8 +178,32 @@ def trunc_divide(A, B):
     elif isinstance(B, torch.Tensor):
         return trunc_div_func_scalar_tensor(A, B)
     else:
-        # Both scalar
-        return torch.tensor(A / B)
+        return _trunc_divide_scalars(A, B)
+
+
+def _trunc_divide_scalars(A, B):
+    """Both operands are Python/NumPy scalars: mirror aten's wrapped-number
+    semantics for ``div(..., rounding_mode="trunc")``.
+
+    A plain ``A / B`` is wrong twice over: it does not truncate, and it turns
+    int inputs into a float result. aten promotes two int scalars to int64 and
+    truncates toward zero; any float operand promotes to the default float
+    dtype. Bool operands are rejected, and int division by zero raises, as they
+    do in aten.
+    """
+    if isinstance(A, bool) or isinstance(B, bool):
+        raise NotImplementedError("\"div_trunc_cpu\" not implemented for 'Bool'")
+    if isinstance(A, numbers.Integral) and isinstance(B, numbers.Integral):
+        if B == 0:
+            raise RuntimeError("ZeroDivisionError")
+        # int() before abs() so huge NumPy ints cannot overflow the negation
+        quot = abs(int(A)) // abs(int(B))
+        return torch.tensor(-quot if (A < 0) != (B < 0) else quot)
+    # At least one float operand: compute in the default float dtype so inf/nan
+    # and the sign of zero come out exactly as torch produces them.
+    a = torch.tensor(float(A), dtype=torch.get_default_dtype())
+    b = torch.tensor(float(B), dtype=torch.get_default_dtype())
+    return torch.trunc(a / b)
 
 
 def trunc_divide_(A, B):

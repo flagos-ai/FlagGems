@@ -62,6 +62,10 @@ def test_conj_physical_():
 
         Config.mode = consts.BenchMode.OPERATOR
         dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
+    elif flag_gems.vendor_name == "kunlunxin":
+        # XPU native conj_physical_ has no complex kernel; exclude complex
+        # dtypes from the baseline comparison.
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
     else:
         dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
 

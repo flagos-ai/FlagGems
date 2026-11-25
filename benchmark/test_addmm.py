@@ -19,6 +19,8 @@ import flag_gems
 
 from . import base, consts, utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
     inp1 = torch.randn([m, k], dtype=dtype, device=device)
@@ -76,7 +78,7 @@ def test_addmm(monkeypatch):
         op_name="addmm",
         input_fn=_input_fn,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -88,7 +90,7 @@ def test_addmm_vector_bias(monkeypatch):
         op_name="addmm_vector_bias",
         input_fn=_input_fn_vector_bias,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -105,6 +107,23 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
         yield bias, inp1, inp2, torch.float32
 
 
+def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
+    return torch.addmm(bias.to(mat1.dtype), mat1, mat2, beta=beta, alpha=alpha).to(
+        out_dtype
+    )
+
+
+def _native_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
+    out.copy_(_native_addmm_dtype(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha))
+    return out
+
+
+def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
+    return flag_gems.addmm_dtype_out(
+        bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
+    )
+
+
 @pytest.mark.addmm_dtype
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.8"),
@@ -118,7 +137,8 @@ def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
         input_fn=_input_fn_dtype,
-        torch_op=torch.ops.aten.addmm.dtype,
+        torch_op=_native_addmm_dtype if IS_KUNLUNXIN else torch.ops.aten.addmm.dtype,
+        gems_op=flag_gems.addmm_dtype if IS_KUNLUNXIN else None,
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
@@ -150,9 +170,14 @@ def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype_out",
         input_fn=_input_fn_dtype_out,
-        torch_op=lambda bias, mat1, mat2, out_dtype, out: torch.ops.aten.addmm.dtype_out(
-            bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
+        torch_op=(
+            _native_addmm_dtype_out
+            if IS_KUNLUNXIN
+            else lambda bias, mat1, mat2, out_dtype, out: torch.ops.aten.addmm.dtype_out(
+                bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
+            )
         ),
+        gems_op=_gems_addmm_dtype_out if IS_KUNLUNXIN else None,
         dtypes=consts.FP16_BF16_DTYPES,
     )
 
@@ -177,7 +202,7 @@ def test_addmm_out(monkeypatch):
         op_name="addmm_out",
         input_fn=_input_fn_out,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -189,7 +214,7 @@ def test_addmm_out_vector_bias(monkeypatch):
         op_name="addmm_out_vector_bias",
         input_fn=_input_fn_vector_bias_out,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()

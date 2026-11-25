@@ -38,6 +38,19 @@ def test_dropout():
     bench.run()
 
 
+@pytest.mark.native_dropout
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_native_dropout():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="native_dropout",
+        torch_op=torch.nn.Dropout(p=0.5),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.native_dropout_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

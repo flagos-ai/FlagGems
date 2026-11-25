@@ -40,14 +40,20 @@ def _decode(bits):
 
 
 @triton.jit
-def _pack(value, index, valid, DESC: tl.constexpr, WIDE: tl.constexpr):
-    # Compare the rounded A16 values, matching TopK on a dequantized tensor.
+def _a16_key(value, DESC: tl.constexpr):
     bits = value.to(tl.uint16, bitcast=True)
     bits = tl.where(value == 0, 0, bits).to(tl.uint16)
     key = bits ^ tl.where((bits & 32768) != 0, 65535, 32768).to(tl.uint16)
     key = tl.where(value != value, 65535, key).to(tl.uint16)
     if not DESC:
         key = key ^ 65535
+    return key
+
+
+@triton.jit
+def _pack(value, index, valid, DESC: tl.constexpr, WIDE: tl.constexpr):
+    # Compare the rounded A16 values, matching TopK on a dequantized tensor.
+    key = _a16_key(value, DESC)
     if WIDE:
         packed = (key.to(tl.uint64) << 32) | (4294967295 - index.to(tl.uint64))
     else:
@@ -182,6 +188,211 @@ def _single_group(
         _store(fallback_packed, Y, Indices, row * K + col, col < K, DESC, False)
 
 
+@triton.jit
+def _load_row(X, row, col, valid, STRIDE_ROW: tl.constexpr, STRIDE_COL: tl.constexpr):
+    # Widen before multiplication: a legal strided view can exceed 2 GiB.
+    offsets = row.to(tl.int64) * STRIDE_ROW + col.to(tl.int64) * STRIDE_COL
+    return tl.load(X + offsets, valid, other=0)
+
+
+@triton.jit
+def _byte_histogram(
+    X,
+    H,
+    N: tl.constexpr,
+    PARTS: tl.constexpr,
+    STRIDE_ROW: tl.constexpr,
+    STRIDE_COL: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    row = tl.program_id(0).to(tl.int64)
+    tile = tl.program_id(1)
+    col = tile * BLOCK + tl.arange(0, BLOCK)
+    bits = _load_row(X, row, col, col < N, STRIDE_ROW, STRIDE_COL)
+    counts = tl.histogram(bits.to(tl.int32), 256, mask=col < N)
+    tl.store(H + (row * PARTS + tile) * 256 + tl.arange(0, 256), counts)
+
+
+@triton.jit
+def _byte_reduce(
+    H,
+    S,
+    Y,
+    Meta,
+    Prefix,
+    Keys,
+    K: tl.constexpr,
+    PARTS: tl.constexpr,
+    PAD_PARTS: tl.constexpr,
+    DESC: tl.constexpr,
+):
+    row = tl.program_id(0).to(tl.int64)
+    tiles = tl.arange(0, PAD_PARTS)
+    bins = tl.arange(0, 256)
+    counts = tl.load(
+        H + (row * PARTS + tiles[:, None]) * 256 + bins[None, :],
+        tiles[:, None] < PARTS,
+        other=0,
+    )
+    totals = tl.sum(counts, axis=0)
+    scale = tl.load(S + row).to(tl.float32)
+    value = (_decode(bins.to(tl.uint8)) * scale).to(Y.dtype.element_ty)
+    keys = _a16_key(value, DESC).to(tl.uint32)
+    # Sort the 256-entry decoded codebook, not the full input. This also
+    # handles negative/extreme scales and A16 rounding collisions exactly.
+    ordered = tl.sort((keys << 8) | bins.to(tl.uint32), descending=True)
+    order = (ordered & 255).to(tl.int32)
+    sorted_counts = tl.gather(totals, order, axis=0)
+    ordered_keys = ordered >> 8
+    previous = tl.gather(ordered_keys, tl.maximum(bins - 1, 0), axis=0)
+    rank = 256 - tl.cumsum(((bins == 0) | (ordered_keys != previous)).to(tl.int32))
+    tl.store(Keys + row * 256 + order, rank.to(tl.uint8))
+    cumulative = tl.cumsum(sorted_counts)
+    at_k = (cumulative >= K) & (cumulative - sorted_counts < K)
+    threshold = tl.sum(tl.where(at_k, ordered >> 8, 0), axis=0)
+    greater = tl.sum(tl.where(keys[None, :] > threshold, counts, 0), axis=1)
+    equal = tl.sum(tl.where(keys[None, :] == threshold, counts, 0), axis=1)
+    tl.store(
+        Prefix + (row * PARTS + tiles) * 2, tl.cumsum(greater) - greater, tiles < PARTS
+    )
+    tl.store(
+        Prefix + (row * PARTS + tiles) * 2 + 1, tl.cumsum(equal) - equal, tiles < PARTS
+    )
+    tl.store(Meta + row * 2, tl.sum(tl.where(at_k, rank, 0), axis=0))
+    tl.store(Meta + row * 2 + 1, tl.sum(greater, axis=0))
+
+
+@triton.jit
+def _byte_collect(
+    X,
+    C,
+    Meta,
+    Prefix,
+    Keys,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    PARTS: tl.constexpr,
+    STRIDE_ROW: tl.constexpr,
+    STRIDE_COL: tl.constexpr,
+    BLOCK: tl.constexpr,
+    INDEX_BITS: tl.constexpr,
+):
+    row = tl.program_id(0).to(tl.int64)
+    tile = tl.program_id(1)
+    col = tile * BLOCK + tl.arange(0, BLOCK)
+    valid = col < N
+    bits = _load_row(X, row, col, valid, STRIDE_ROW, STRIDE_COL)
+    key = tl.load(Keys + row * 256 + bits.to(tl.int32)).to(tl.uint32)
+    threshold = tl.load(Meta + row * 2)
+    greater = valid & (key > threshold)
+    equal = valid & (key == threshold)
+    gt_base = tl.load(Prefix + (row * PARTS + tile) * 2)
+    eq_base = tl.load(Prefix + (row * PARTS + tile) * 2 + 1)
+    total_greater = tl.load(Meta + row * 2 + 1)
+    gt_rank = gt_base + tl.cumsum(greater.to(tl.int32)) - 1
+    eq_rank = eq_base + tl.cumsum(equal.to(tl.int32)) - 1
+    take_equal = equal & (eq_rank < K - total_greater)
+    offset = tl.where(greater, gt_rank, total_greater + eq_rank)
+    packed = (key << INDEX_BITS) | ((1 << INDEX_BITS) - 1 - col.to(tl.uint32))
+    tl.store(C + row * K + offset, packed, greater | take_equal)
+
+
+@triton.jit
+def _byte_sort(
+    C,
+    X,
+    S,
+    Y,
+    Indices,
+    K: tl.constexpr,
+    BLOCK: tl.constexpr,
+    STRIDE_ROW: tl.constexpr,
+    STRIDE_COL: tl.constexpr,
+    INDEX_BITS: tl.constexpr,
+):
+    row = tl.program_id(0).to(tl.int64)
+    col = tl.arange(0, BLOCK)
+    packed = tl.load(C + row * K + col, col < K, other=0)
+    packed = tl.sort(packed, descending=True)
+    index_mask: tl.constexpr = (1 << INDEX_BITS) - 1
+    selected = index_mask - (packed & index_mask)
+    bits = _load_row(X, row, selected, col < K, STRIDE_ROW, STRIDE_COL)
+    scale = tl.load(S + row).to(tl.float32)
+    value = _decode(bits) * scale
+    tl.store(Y + row * K + col, value, col < K)
+    tl.store(Indices + row * K + col, selected.to(tl.int64), col < K)
+
+
+def _byte_topk(x_fp8, scales, values, indices, m, n, k, largest):
+    x = x_fp8.view(torch.uint8)
+    stride_row = x.stride(0) if x.ndim == 2 else 0
+    stride_col = x.stride(-1)
+    block = 1024 if n <= 16384 else 2048
+    parts = triton.cdiv(n, block)
+    reduce_warps = 16 if parts >= 64 else 4
+    histogram = torch.empty((m, parts, 256), device=x.device, dtype=torch.int32)
+    meta = torch.empty((m, 2), device=x.device, dtype=torch.int32)
+    prefix = torch.empty((m, parts, 2), device=x.device, dtype=torch.int32)
+    keys = torch.empty((m, 256), device=x.device, dtype=torch.uint8)
+    index_bits = max(1, (n - 1).bit_length())
+    candidates = torch.empty((m, k), device=x.device, dtype=torch.uint32)
+    with torch_device_fn.device(x.device):
+        _byte_histogram[(m, parts)](
+            x,
+            histogram,
+            n,
+            parts,
+            stride_row,
+            stride_col,
+            block,
+            num_warps=4,
+        )
+        _byte_reduce[(m,)](
+            histogram,
+            scales,
+            values,
+            meta,
+            prefix,
+            keys,
+            k,
+            parts,
+            triton.next_power_of_2(parts),
+            largest,
+            num_warps=reduce_warps,
+            enable_fp_fusion=False,
+        )
+        _byte_collect[(m, parts)](
+            x,
+            candidates,
+            meta,
+            prefix,
+            keys,
+            n,
+            k,
+            parts,
+            stride_row,
+            stride_col,
+            block,
+            index_bits,
+            num_warps=4,
+        )
+        _byte_sort[(m,)](
+            candidates,
+            x,
+            scales,
+            values,
+            indices,
+            k,
+            triton.next_power_of_2(k),
+            stride_row,
+            stride_col,
+            index_bits,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+    return values, indices
+
+
 def topk_w8a16_fp8(
     x_fp8,
     x_scale,
@@ -198,8 +409,10 @@ def topk_w8a16_fp8(
     ``x_fp8.shape[:-1] + (ceil(N/group_size),)`` and may be FP16/BF16/FP32.
     Returns A16 values and INT64 indices along the last dimension. Equal
     values select lower indices first; NaNs sort above finite values.
-    Noncontiguous inputs are copied on each invocation. ``sorted=False``
-    also returns sorted results. No input contents are cached. Forward only.
+    The row-scale histogram path reads strided 1D/2D inputs directly;
+    other noncontiguous inputs are copied on each invocation.
+    ``sorted=False`` also returns sorted results. No input contents are
+    cached. Forward only.
     """
     logger.debug("GEMS_MTHREADS TOPK_W8A16_FP8")
     if not isinstance(x_fp8, torch.Tensor) or not isinstance(x_scale, torch.Tensor):
@@ -238,9 +451,17 @@ def topk_w8a16_fp8(
     indices = torch.empty(shape, device=x_fp8.device, dtype=torch.int64)
     if k == 0 or m == 0:
         return values, indices
+    scales = x_scale.contiguous()
+    if (
+        x_fp8.ndim <= 2
+        and 4096 <= n <= 262144
+        and n >= 4 * k
+        and 128 <= k <= 1024
+        and group_size >= n
+    ):
+        return _byte_topk(x_fp8, scales, values, indices, m, n, k, largest)
     # Use byte storage so E4M3FN decoding is independent of target FP8 casts.
     x = x_fp8.view(torch.uint8).contiguous()
-    scales = x_scale.contiguous()
     if n <= 128 and group_size >= n:
         with torch_device_fn.device(x.device):
             _single_group[(m,)](

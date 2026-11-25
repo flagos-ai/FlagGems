@@ -821,12 +821,6 @@ class WrapperGenerator:
             code.writeline("if num_tasks == 0:")
             with code.indent():
                 self.gen_return(code)
-            max_tile_size = self.config.max_tile_size
-            code.writeline(
-                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
-            )
-            code.writeline("tile_size = tile_sizes[0]")
-            code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
             determine_num_ctas_and_tiles = [
                 # The auto-grid threshold is a numel window (2048*64 == 131072,
                 # matches log.py _MULTI_CTA_MAX_NUMEL).  It must be tested on
@@ -843,23 +837,44 @@ class WrapperGenerator:
                 "   num_ctas = 12 # XPU BLOCK_NUM",
                 "   num_tiles = 12 # XPU BLOCK_NUM",
             ]
-            if self.config.kunlunAutoGrid is True:
-                code.writelines(determine_num_ctas_and_tiles)
-            else:
-                code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
-                code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
-            code.writeline(
-                "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
-            )
-            code.writeline(f"if tile_size == {_BAD_TILE_SIZE_1D}: # XPU BAD TILE")
-            code.writeline(f"    tile_size = {_BAD_TILE_SIZE_1D_FALLBACK}")
-            code.writeline("    num_tiles = triton.cdiv(num_tasks, tile_size)")
-            code.writeline("    num_ctas = num_tiles")
+            code.writeline("_geo = _PW_GEO_CACHE.get(num_tasks)")
+            code.writeline("if _geo is None:")
+            with code.indent():
+                if self.config.num_ctas_1d > 0:
+                    code.writelines(
+                        [
+                            "if num_tasks <= 2048*64:",
+                            "   num_ctas = 1 # XPU BLOCK_NUM",
+                            "   num_tiles = 1 # XPU BLOCK_NUM",
+                            "else:",
+                            f"   num_ctas = {self.config.num_ctas_1d} # XPU BLOCK_NUM",
+                            f"   num_tiles = {self.config.num_ctas_1d} # XPU BLOCK_NUM",
+                        ]
+                    )
+                elif self.config.kunlunAutoGrid is True:
+                    code.writelines(determine_num_ctas_and_tiles)
+                else:
+                    code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
+                    code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
+                code.writeline(
+                    "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
+                )
+                code.writeline(f"if tile_size == {_BAD_TILE_SIZE_1D}: # XPU BAD TILE")
+                code.writeline(f"    tile_size = {_BAD_TILE_SIZE_1D_FALLBACK}")
+                code.writeline("    num_tiles = triton.cdiv(num_tasks, tile_size)")
+                code.writeline("    num_ctas = num_tiles")
 
-            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
-            code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
-            code.writeline("one_tile_per_cta = tiles_per_cta==1")
-        code.writeline("grid = (num_ctas, 1, 1)")
+                code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+                code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
+                code.writeline("one_tile_per_cta = tiles_per_cta==1")
+                code.writeline("grid = (num_ctas, 1, 1)")
+                code.writeline(
+                    "_geo = _PW_GEO_CACHE[num_tasks] = ("
+                    "num_ctas, tile_size, tiles_per_cta, num_warps, one_tile_per_cta, grid)"
+                )
+            code.writeline(
+                "num_ctas, tile_size, tiles_per_cta, num_warps, one_tile_per_cta, grid = _geo"
+            )
 
     def gen_kernel_launch(
         self,
@@ -1102,6 +1117,10 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
+        code.writeline(
+            "# 1D-tile geometry depends only on num_tasks for a given config."
+        )
+        code.writeline("_PW_GEO_CACHE = {}")
         code.newline()
         return code
 

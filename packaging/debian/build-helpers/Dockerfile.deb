@@ -45,11 +45,16 @@ COPY src /src/src
 COPY tests /src/tests
 COPY benchmark /src/benchmark
 
-# setuptools-scm cannot see .git inside the build context; pin the
-# version explicitly (keep in sync with packaging/debian/changelog).
-ARG FLAGGEMS_VERSION=5.3.5
+# setuptools-scm cannot see .git inside the build context, so the version
+# comes in as a build-arg: build-flaggems.sh derives it from git. There is
+# no default on purpose -- a stale one once shipped a 5.3.5 wheel inside a
+# 5.4.0 package -- so a build that passes nothing stops here.
+ARG FLAGGEMS_VERSION
 
 RUN cd /src && \
+    test -n "${FLAGGEMS_VERSION}" || { \
+        echo "FLAGGEMS_VERSION build-arg is empty; run packaging/debian/build-helpers/build-flaggems.sh" >&2; \
+        exit 1; } && \
     SETUPTOOLS_SCM_PRETEND_VERSION=${FLAGGEMS_VERSION} \
     pip3 wheel . --no-build-isolation -w /wheels -v && \
     ls -lh /wheels/ && \
