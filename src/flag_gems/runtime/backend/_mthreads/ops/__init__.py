@@ -142,6 +142,7 @@ from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_, floor_divide, floor_divide_, true_divide_out
 from .dropout import dropout, dropout_backward
+from .einsum import einsum
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .erfinv import erfinv
@@ -421,6 +422,7 @@ __all__ = [
     "div_mode_",
     "dropout",
     "dropout_backward",
+    "einsum",
     "erfinv",
     "erfinv_",
     "expand_copy",
