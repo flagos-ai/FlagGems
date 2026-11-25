@@ -563,17 +563,18 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
 @pytest.mark.parametrize("m", list(range(1, 14)))
 @pytest.mark.parametrize("dtype", TENSORINV_DTYPES)
 def test_linalg_tensorinv_small_boundaries(m, dtype):
-    """Closed-form (m <= 4) and row-register Gauss-Jordan (5 <= m <= 13)
-    dispatch boundaries for the kunlunxin fast paths."""
+    """Closed-form (m <= 4) and row-register Gauss-Jordan (5 <= m <= 12)
+    dispatch boundaries for the kunlunxin fast paths (m = 13 exercises the
+    LU fallback, which is correct but slower)."""
     shape = (m, m)
     if dtype == torch.float16:
         A = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
-        A = (A @ A.T + torch.eye(m, dtype=torch.float32, device=flag_gems.device)).to(
-            torch.float16
-        )
+        A = (
+            A @ A.T + torch.eye(m, dtype=torch.float32, device=flag_gems.device) * 0.1
+        ).to(torch.float16)
     else:
         A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        A = A @ A.T + torch.eye(m, dtype=dtype, device=flag_gems.device)
+        A = A @ A.T + torch.eye(m, dtype=dtype, device=flag_gems.device) * 0.1
     ref_A = utils.to_reference(A)
     if dtype == torch.float16:
         ref_out = torch.linalg.tensorinv(ref_A.to(torch.float32), ind=1).to(

@@ -39,9 +39,10 @@ prod(shape[:ind])``), so the override dispatches on ``m``:
   tile cannot be compiled here.  Every reduction is a full reduce of a 1-D
   vector that is an elementwise function of a global load, which this backend
   tiles correctly.  The fully unrolled row-register form is validated up to
-  ``m = 13`` here: past that point the backend miscompiles the unrolled
-  reduction chain (illegal memory access observed with the same kernel shape
-  in ``linalg_inv``), so larger ``m`` goes through the LU path below.
+  ``m = 12`` (the CI runtime miscompiles the unrolled chain already at
+  ``m = 13`` - large wrong entries, not reproducible on the newer local
+  compiler - and the earlier ``linalg_inv``-shaped form went illegal at
+  ``m = 14``), so ``m >= 13`` goes through the LU path below.
 * ``m > _TINV_GJ_MAX`` — the LU factorisation + column substitution
   combination (``_linalg_lu_factor`` + ``_xpu_lu_solve_serial``): ``A^-1`` is
   obtained by solving ``A X = I`` column by column, so no register tile
@@ -73,7 +74,7 @@ from .linalg_lu_factor import _linalg_lu_factor
 logger = logging.getLogger(__name__)
 
 _TINV_SMALL_N = 4
-_TINV_GJ_MAX = 13
+_TINV_GJ_MAX = 12
 
 
 @libentry()
@@ -376,7 +377,7 @@ def _tinv_row_kernel(
     n: tl.constexpr,
     BN: tl.constexpr,
 ):
-    """Partial-pivoted Gauss-Jordan on 1-D row registers (5 <= n <= 13).
+    """Partial-pivoted Gauss-Jordan on 1-D row registers (5 <= n <= _TINV_GJ_MAX).
 
     The working matrix and the accumulated inverse are kept as fully unrolled
     Python tuples of n vectors of length BN; every reduction is a full
