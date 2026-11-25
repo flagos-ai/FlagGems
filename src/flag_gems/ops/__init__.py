@@ -524,7 +524,7 @@ from flag_gems.ops._wrapped_quantized_linear_prepacked import (
 )
 from flag_gems.ops.abs import abs, abs_, abs_backward
 from flag_gems.ops.absolute import absolute, absolute_
-from flag_gems.ops.acos import acos
+from flag_gems.ops.acos import acos, acos_backward
 from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
@@ -2267,6 +2267,7 @@ __all__ = [
     "absolute_",
     "acos",
     "acos_",
+    "acos_backward",
     "acosh",
     "acosh_",
     "adaptive_avg_pool1d",
