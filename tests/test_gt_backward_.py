@@ -53,9 +53,9 @@ def test_gt_inplace_backward(dtype, overload, shape, strided):
 
     ref_out, ref_grads = run(True)
     out, grads = run(False)
-    utils.gems_assert_equal(out, ref_out)
+    utils.gems_assert_equal(out, utils.to_reference(ref_out))
     for grad, ref_grad in zip(grads, ref_grads):
-        utils.gems_assert_equal(grad, ref_grad)
+        utils.gems_assert_equal(grad, utils.to_reference(ref_grad))
 
 
 @pytest.mark.gt_backward_
@@ -94,7 +94,7 @@ def test_gt_inplace_rejects_grad_leaf(overload, view):
     with pytest.raises(RuntimeError, match="leaf Variable that requires grad"):
         op(receiver, operand)
     assert receiver._version == version
-    utils.gems_assert_equal(receiver, values)
+    utils.gems_assert_equal(receiver, utils.to_reference(values))
 
 
 @pytest.mark.gt_backward_
@@ -105,11 +105,11 @@ def test_gt_inplace_tensor_other_only_grad_broadcast():
     ref_operand = operand.detach().clone().requires_grad_()
     ref = ref_receiver.gt_(ref_operand)
     out = flag_gems.gt_tensor_(receiver, operand)
-    utils.gems_assert_equal(out, ref)
+    utils.gems_assert_equal(out, utils.to_reference(ref))
     grad = torch.randn_like(out)
     (ref_grad,) = torch.autograd.grad(ref, ref_operand, grad)
     (actual_grad,) = torch.autograd.grad(out, operand, grad)
-    utils.gems_assert_equal(actual_grad, ref_grad)
+    utils.gems_assert_equal(actual_grad, utils.to_reference(ref_grad))
 
 
 @pytest.mark.gt_backward_
