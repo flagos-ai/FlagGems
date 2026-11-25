@@ -67,6 +67,10 @@ def test_masked_softmax_backward(shape_dim, dtype):
 
     res_grad_input = flag_gems._masked_softmax_backward(grad_output, output, mask, dim)
 
+    assert isinstance(res_grad_input, torch.Tensor)
+    assert res_grad_input.device == grad_output.device
+    assert res_grad_input.dtype == grad_output.dtype
+    assert res_grad_input.shape == grad_output.shape
     utils.gems_assert_close(
         res_grad_input, ref_grad_input, dtype, reduce_dim=shape[dim]
     )
