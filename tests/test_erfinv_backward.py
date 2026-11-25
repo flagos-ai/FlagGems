@@ -166,6 +166,43 @@ def test_erfinv_backward_boundary():
 
 
 @pytest.mark.erfinv_backward
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_erfinv_backward_lowp_tail_bit_exact(dtype):
+    """fp16/bf16 tails stay bit-exact where the gradient is most extreme.
+
+    The kernel's ``LOWP`` path rounds every intermediate to the storage dtype.
+    The harshest spot is the tail near |x| = 1: ``exp(erfinv(x)^2)`` overflows
+    the low-precision range there, so the boundary between finite and inf (and
+    the rounding of the largest finite values) is exactly what this test pins
+    down against native autograd.
+    """
+    torch.manual_seed(0)
+    # Dense sampling near both tails, plus a couple of mid-range controls.
+    x = torch.tensor(
+        [0.98, 0.99, 0.995, 0.999, 0.9995, 0.9999, 0.99995, 0.99999]
+        + [-v for v in (0.98, 0.99, 0.995, 0.999, 0.9995, 0.9999, 0.99995, 0.99999)]
+        + [0.0, 0.5, -0.5],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    grad_output = torch.ones_like(x)
+
+    ref_inp = x.detach().clone().requires_grad_(True)
+    (ref_grad,) = torch.autograd.grad(torch.erfinv(ref_inp), (ref_inp,), (grad_output,))
+    res_grad = flag_gems.erfinv_backward(grad_output, x)
+
+    # Tails are the point of this test: finite elements must match bit-exactly
+    # (including the largest finite values), and every non-finite element must
+    # agree in both kind and sign.
+    res_c, ref_c = res_grad.cpu(), ref_grad.cpu()
+    utils.gems_assert_equal(res_c[torch.isfinite(ref_c)], ref_c[torch.isfinite(ref_c)])
+    assert torch.equal(torch.isnan(res_c), torch.isnan(ref_c))
+    assert torch.equal(
+        torch.sign(res_c[torch.isinf(res_c)]), torch.sign(ref_c[torch.isinf(ref_c)])
+    )
+
+
+@pytest.mark.erfinv_backward
 def test_erfinv_backward_dispatch():
     """The registered forward and the bridge share one gradient.
 

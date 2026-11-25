@@ -44,6 +44,7 @@ import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ _LARGE_BLOCK = 1024
 _NUM_WARPS = 4
 
 
+@libentry()
 @triton.jit
 def _erfinv_backward_kernel(
     grad_output_ptr,

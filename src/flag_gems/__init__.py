@@ -1326,7 +1326,6 @@ _FULL_CONFIG = (
     ("erfc_", erfc_),
     ("erfinv", erfinv),
     ("erfinv_", erfinv_),
-    ("erfinv_backward", erfinv_backward),
     ("exp", exp),
     ("exp.out", exp_out),
     ("exp2", exp2),
