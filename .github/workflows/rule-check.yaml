@@ -25,6 +25,9 @@ on:
       - opened
       - reopened
       - synchronize
+  merge_group:
+    branches:
+      - master
 
 permissions:
   contents: read
