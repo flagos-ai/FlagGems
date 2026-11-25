@@ -18,9 +18,191 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils._sign_backward_pointwise_impl import sign_backward
+from flag_gems.utils import pointwise_dynamic
+
+_CODE = {}
+
+
+class Launch:
+
+    def __init__(self, kernel, grid, constants, key, options=()):
+        self.kernel, self.grid, self.constants = (kernel, grid, constants)
+        self.key = (kernel, grid, constants, key, options)
+        self.options = dict(options)
+        self.run = _CODE.get(self.key)
+        self.device = (
+            key[0][0]
+            if isinstance(key[0], tuple)
+            else key[0] if isinstance(key[0], torch.device) else key[1]
+        )
+
+    def __call__(self, *pointers):
+        if self.run is None:
+            compiled = self.kernel[self.grid,](
+                *pointers, *self.constants, num_warps=4, **self.options
+            )
+            grid = (self.grid, 1, 1)
+            launch, function, metadata = (
+                compiled.run,
+                compiled.function,
+                compiled.packed_metadata,
+            )
+            device = self.device.index
+            constants = self.constants
+
+            def run(*current):
+                stream = driver.active.get_current_stream(device)
+                info = compiled.launch_metadata(grid, stream, *current, *constants)
+                launch(
+                    *grid,
+                    stream,
+                    function,
+                    metadata,
+                    info,
+                    knobs.runtime.launch_enter_hook,
+                    knobs.runtime.launch_exit_hook,
+                    *current,
+                    *constants,
+                )
+
+            self.run = run
+            _CODE[self.key] = run
+        else:
+            self.run(*pointers)
+
+
+@triton.jit
+def _zero(OUT, N: tl.constexpr, B: tl.constexpr):
+    i = tl.program_id(0) * B + tl.arange(0, B)
+    tl.store(OUT + i, 0, i < N)
+
+
+def prepare_sign(x):
+    shape, dtype, device, n = (tuple(x.shape), x.dtype, x.device, x.numel())
+    launch = Launch(_zero, 1, (1, 256), (dtype, device))
+
+    def backward(grad):
+        out = torch.empty_strided(shape, (0,) * len(shape), dtype=dtype, device=device)
+        if n:
+            if torch_device_fn.current_device() == device.index:
+                launch(out)
+            else:
+                with torch_device_fn.device(device):
+                    launch(out)
+        return out
+
+    return backward
+
+
+def _run(kernel, grad, saved, *params, out=None):
+    if grad.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        raise RuntimeError("backward requires a real floating gradient")
+    if saved.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        raise RuntimeError("backward requires a real floating saved tensor")
+    if grad.device != saved.device:
+        raise RuntimeError("gradient and saved tensor must be on the same device")
+    if torch_device_fn.current_device() != saved.device.index:
+        with torch_device_fn.device(saved.device):
+            return _run(kernel, grad, saved, *params, out=out)
+    if (
+        grad.shape == saved.shape
+        and grad.is_contiguous()
+        and saved.is_contiguous()
+        and (out is None or out.is_contiguous())
+    ):
+        target = (
+            out
+            if out is not None
+            else torch.empty_like(
+                saved, dtype=torch.promote_types(grad.dtype, saved.dtype)
+            )
+        )
+        n = target.numel()
+        if n:
+            first = params[0] if params else 0.0
+            second = params[1] if len(params) > 1 else 0.0
+            _pointwise_flat[triton.cdiv(n, 1024),](
+                grad,
+                saved,
+                target,
+                n,
+                "sign",
+                first,
+                second,
+                1024,
+                enable_fp_fusion=False,
+            )
+        return target
+    if out is None:
+        return kernel(grad, saved, *params)
+    return kernel(grad, saved, *params, out0=out)
+
+
+@triton.jit
+def _sign_value(grad_output, self):
+    return tl.full(grad_output.shape, 0, grad_output.dtype)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def _sign_backward_kernel(grad_output, self):
+    return _sign_value(grad_output, self)
+
+
+def sign_backward(grad_output, self):
+    return _run(_sign_backward_kernel, grad_output, self)
+
+
+class PointwiseBackwardFunction(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, x, op, raw, params):
+        ctx.save_for_backward(x)
+        ctx.op, ctx.params = ("sign", params)
+        ctx.prepared = prepare_sign(x)
+        return raw(x, *params)
+
+    @staticmethod
+    def backward(ctx, grad):
+        if torch.is_grad_enabled():
+            return _once_backward(ctx, grad)
+        (_,) = ctx.saved_tensors
+        return (ctx.prepared(grad), None, None, None)
+
+
+def pointwise_autograd(x, op, raw, *params):
+    if torch.is_grad_enabled() and x.requires_grad:
+        return PointwiseBackwardFunction.apply(x, "sign", raw, params)
+    return raw(x, *params)
+
+
+@triton.jit
+def _pointwise_flat(
+    G,
+    X,
+    O,
+    N: tl.constexpr,
+    OP: tl.constexpr,
+    P0: tl.constexpr,
+    P1: tl.constexpr,
+    B: tl.constexpr,
+):
+    i = tl.program_id(0) * B + tl.arange(0, B)
+    live = i < N
+    g = tl.load(G + i, live, other=0).to(O.dtype.element_ty)
+    x = tl.load(X + i, live, other=0).to(O.dtype.element_ty)
+    value = _sign_value(g, x)
+    tl.store(O + i, value, live)
+
+
+@torch.autograd.function.once_differentiable
+def _once_backward(ctx, grad):
+    return PointwiseBackwardFunction.backward(ctx, grad)
+
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +278,6 @@ def _sign_impl(x: torch.Tensor, out: torch.Tensor):
 
 
 def sign(x):
-    from flag_gems.utils._sign_backward_pointwise_impl import pointwise_autograd
-
     return pointwise_autograd(x, "sign", _sign_forward_impl)
 
 

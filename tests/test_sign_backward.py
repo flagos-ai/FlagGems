@@ -15,20 +15,21 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
+from triton import knobs
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
 DTYPES = list(dict.fromkeys([*utils.FLOAT_DTYPES, torch.float64]))
-
 TOL = {
     torch.float16: (0.002, 0.0005),
     torch.bfloat16: (0.016, 0.003),
     torch.float32: (3e-05, 2e-06),
     torch.float64: (2e-12, 2e-13),
 }
-
 CASES = [pytest.param("sign", marks=[pytest.mark.sign, pytest.mark.sign_backward])]
 
 
@@ -62,6 +63,7 @@ def check(op, x, g, **kw):
     )
 
 
+@pytest.mark.sign
 @pytest.mark.sign_backward
 @pytest.mark.parametrize("op", CASES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -76,7 +78,6 @@ def test_vjp(op, dtype, shape, strided):
     torch.testing.assert_close(g, before[1])
 
 
-@pytest.mark.sign_backward
 @pytest.mark.sign
 @pytest.mark.sign_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -90,4 +91,216 @@ def test_sign_always_zero(dtype):
     check("sign", x, g)
 
 
-pytestmark = [pytest.mark.sign, pytest.mark.sign_backward]
+@pytest.mark.sign
+@pytest.mark.sign_backward
+@pytest.mark.skipif(
+    torch_device_fn.device_count() < 2, reason="requires two visible devices"
+)
+def test_backward_input_device_guard():
+    kind = torch.device(flag_gems.device).type
+    target_device = torch.device(kind, 1)
+    with torch_device_fn.device(target_device):
+        x = torch.linspace(-0.8, 0.8, 257, device=target_device)
+        grad = torch.ones_like(x)
+        expected = flag_gems.sign_backward(grad, x)
+    with torch_device_fn.device(torch.device(kind, 0)):
+        actual = flag_gems.sign_backward(grad, x)
+        torch.testing.assert_close(actual, expected)
+        assert torch_device_fn.current_device() == 0
+
+
+class NoNativeCompute(TorchDispatchMode):
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        blocked = {
+            "mul",
+            "add",
+            "sub",
+            "div",
+            "cos",
+            "cosh",
+            "sin",
+            "sinh",
+            "sigmoid",
+            "silu_backward",
+            "softplus_backward",
+            "softshrink_backward",
+            "gather",
+            "scatter",
+            "scatter_add",
+            "scatter_reduce",
+            "index",
+            "index_put",
+            "clone",
+            "copy_",
+            "_to_copy",
+        }
+        if func._schema.name.split("::")[-1] in blocked:
+            raise AssertionError("native computation in backward: " + str(func))
+        return func(*args, **kwargs or {})
+
+
+_sign_pointwise_OPS = ["sign"]
+
+
+@pytest.mark.sign
+@pytest.mark.sign_backward
+@pytest.mark.parametrize("op", ("sign",) + ())
+def test_registered_forward_backward(op):
+    xs = [torch.randn(7, 13, device=flag_gems.device, requires_grad=True)]
+    refs = [xs[0].detach().requires_grad_()]
+    expected = native("sign", refs[0])
+
+    def invoke():
+        return native("sign", xs[0])
+
+    grad = torch.randn_like(expected)
+    want = torch.autograd.grad(expected, refs, grad)
+    included = "sign"
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=[included])
+        actual = invoke()
+        assert type(actual.grad_fn).__name__ in (
+            "PointwiseBackwardFunctionBackward",
+            "IndexBackwardFunctionBackward",
+        )
+        with NoNativeCompute():
+            got = torch.autograd.grad(actual, xs, grad)
+    finally:
+        lib._destroy()
+    for a, b in zip(got, want):
+        torch.testing.assert_close(a, b, rtol=3e-05, atol=2e-06)
+
+
+def make_tensor(shape, dtype, device, strided=False):
+    if strided:
+        return torch.randn((*shape, 2), dtype=dtype, device=device)[..., 1]
+    return torch.randn(shape, dtype=dtype, device=device)
+
+
+@pytest.mark.sign
+@pytest.mark.sign_backward
+@pytest.mark.parametrize(
+    "op",
+    [
+        pytest.param("sign", marks=getattr(pytest.mark, "sign_backward"))
+        for op in _sign_pointwise_OPS
+    ],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("strided", [False, True])
+def test_pointwise_autograd(op, dtype, strided):
+    x = make_tensor((7, 13), dtype, flag_gems.device, strided).requires_grad_()
+    ref = x.detach().requires_grad_()
+    y = getattr(flag_gems, "sign")(x)
+    expected = native("sign", ref)
+    torch.testing.assert_close(y, expected, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+    g = make_tensor(y.shape, dtype, flag_gems.device, strided)
+    want = torch.autograd.grad(expected, ref, g)[0]
+    with NoNativeCompute():
+        got = torch.autograd.grad(y, x, g)[0]
+    torch.testing.assert_close(got, want, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+OPS = ["sign"]
+_test_sign_prepared_DTYPES = list(dict.fromkeys([*utils.FLOAT_DTYPES, torch.float64]))
+
+
+def _graph(op, dtype, variant):
+    x = torch.randn((7, 13), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref = x.detach().requires_grad_()
+    return ([x], [ref], getattr(flag_gems, "sign")(x), getattr(torch, "sign")(ref))
+
+
+@pytest.mark.sign
+@pytest.mark.sign_backward
+@pytest.mark.parametrize(
+    "op",
+    [pytest.param("sign", marks=getattr(pytest.mark, "sign_backward")) for op in OPS],
+)
+@pytest.mark.parametrize("dtype", _test_sign_prepared_DTYPES)
+@pytest.mark.parametrize("variant", [0, 1, 2])
+@pytest.mark.parametrize("layout", ["dense", "offset", "strided"])
+def test_prepared_fresh_gradients(op, dtype, variant, layout):
+    xs, refs, y, expected = _graph("sign", dtype, variant)
+    for _ in range(3):
+        if layout == "offset":
+            g = torch.randn(y.numel() + 1, dtype=dtype, device=y.device)[1:].view(
+                y.shape
+            )
+        else:
+            g = make_tensor(y.shape, dtype, y.device, layout == "strided")
+        want = torch.autograd.grad(expected, refs, g, retain_graph=True)
+        with NoNativeCompute():
+            got = torch.autograd.grad(y, xs, g, retain_graph=True)
+        for a, b in zip(got, want):
+            torch.testing.assert_close(a, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+@pytest.mark.sign
+@pytest.mark.sign_backward
+@pytest.mark.parametrize(
+    "op",
+    [pytest.param("sign", marks=getattr(pytest.mark, "sign_backward")) for op in OPS],
+)
+def test_prepared_current_stream_and_hooks(op, monkeypatch):
+    xs, refs, y, expected = _graph("sign", torch.float32, 0)
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    events = []
+    monkeypatch.setattr(
+        knobs.runtime, "launch_enter_hook", lambda metadata: events.append(metadata)
+    )
+    for value in (2.0, -3.0, 0.5):
+        with torch.cuda.stream(stream):
+            g = torch.full_like(y, value)
+            got = torch.autograd.grad(y, xs, g, retain_graph=True)
+            want = torch.autograd.grad(expected, refs, g, retain_graph=True)
+        stream.synchronize()
+        for a, b in zip(got, want):
+            torch.testing.assert_close(
+                a, b, rtol=TOL[torch.float32][0], atol=TOL[torch.float32][1]
+            )
+    assert len(events) >= 3
+
+
+@pytest.mark.sign
+@pytest.mark.sign_backward
+@pytest.mark.parametrize(
+    "op",
+    [pytest.param("sign", marks=getattr(pytest.mark, "sign_backward")) for op in OPS],
+)
+@pytest.mark.parametrize("dtype", _test_sign_prepared_DTYPES)
+def test_prepared_saved_tensor_hook_layout(op, dtype):
+
+    def pack(tensor):
+        storage = torch.empty(
+            (*tensor.shape, 2), device=tensor.device, dtype=tensor.dtype
+        )
+        value = storage[..., 1]
+        value.copy_(tensor)
+        return value
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+        xs, refs, y, expected = _graph("sign", dtype, 0)
+        grad = torch.randn_like(y)
+        want = torch.autograd.grad(expected, refs, grad)
+        with NoNativeCompute():
+            got = torch.autograd.grad(y, xs, grad)
+    for a, b in zip(got, want):
+        torch.testing.assert_close(a, b, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+_MISSING_REGISTRAR = object()
+
+
+@pytest.fixture(autouse=True)
+def _restore_registrar_state():
+    previous = getattr(flag_gems, "current_work_registrar", _MISSING_REGISTRAR)
+    yield
+    if previous is _MISSING_REGISTRAR:
+        if hasattr(flag_gems, "current_work_registrar"):
+            delattr(flag_gems, "current_work_registrar")
+    else:
+        flag_gems.current_work_registrar = previous

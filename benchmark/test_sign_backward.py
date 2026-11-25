@@ -47,7 +47,7 @@ def input_fn(op):
         torch.manual_seed(20261123)
         for reduce in ["sum"]:
             with torch.enable_grad():
-                inputs, p = _inputs("sign", shape, dtype, device, reduce)
+                inputs, _ = _inputs("sign", shape, dtype, device, reduce)
                 native = _native_pointwise("sign", inputs[0])
                 gems = getattr(flag_gems, "sign")(inputs[0])
                 grad = torch.randn_like(native)
@@ -80,6 +80,7 @@ def gems_callback(*args, plan, reducer):
     )
 
 
+@pytest.mark.sign
 @pytest.mark.sign_backward
 @pytest.mark.parametrize(
     "op",
@@ -98,6 +99,3 @@ def test_backward20(op, monkeypatch):
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
-
-
-pytestmark = [pytest.mark.sign, pytest.mark.sign_backward]
