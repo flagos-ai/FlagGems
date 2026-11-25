@@ -1,15 +1,14 @@
-"""Kunlunxin XPU3 override of `aten::_scaled_dot_product_attention_math`.
+"""Kunlunxin override of `aten::_scaled_dot_product_attention_math`.
 
 Why the generic kernel cannot be used here
 ------------------------------------------
 * It feeds masked 2-D loads straight into `tl.dot`, which fails to lower in
-  `ConvertTritonSDNNToLLVM` (wiki
-  ``patterns/xpu3-dot-masked-load-miscompile.md``).
+  `ConvertTritonSDNNToLLVM`.
 * It uses a float select on the softmax denominator
   (`tl.where(l == 0.0, 1.0, l)`), which the sibling `_for_mps` generic kernel
   reports as `LLVM ERROR: Invalid selectType_: cannot invert non-select EW
   funct`.
-* Even after removing those, XPU3 miscompiles a `tl.dot` whose operand is a
+* Even after removing those,  miscompiles a `tl.dot` whose operand is a
   *register-derived* tile: the PV product `dot(exp2(dot(q, k^T)), v)` came back
   with order-1 relative error for fp16/bf16/fp32 in a standalone probe, while
   the QK dot itself and every `tl.max`/`tl.sum` on it were exact.  Only
@@ -29,8 +28,7 @@ Design (three kernels)
 Every `tl.dot` operand is an unmasked, affine, in-bounds load.  Partial tiles
 are handled by clamping the block *base address* (a scalar) so the tail block
 overlaps instead of masking lanes (per-lane `tl.minimum` inside a dot kernel
-trips the SDNN i1-DMA lowering:
-``patterns/xpu3-clamp-in-dot-kernel-bf16.md``).  Masks are applied with
+trips the SDNN i1-DMA lowering:  Masks are applied with
 `tl.where` to the *dot result*, never to an operand.  Both dots are 2-arg with
 an explicit accumulator; the denominator is ``1 / l`` with no select.
 """
