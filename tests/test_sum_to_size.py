@@ -61,3 +61,19 @@ def test_sum_to_size_extreme(dtype):
     ref_out = ref_inp.sum_to_size(size)
     res_out = flag_gems.sum_to_size(res_inp, size)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[0])
+
+
+@pytest.mark.sum_to_size
+def test_sum_to_size_bfloat16_scalar_partial_sums():
+    # These backward contributions expose premature rounding of each partial sum.
+    values = torch.tensor(
+        [
+            [0.396484375, -0.56640625, 0.0225830078125],
+            [1.078125, 0.275390625, -1.0703125],
+        ],
+        dtype=torch.bfloat16,
+        device=flag_gems.device,
+    )
+    expected = values.sum_to_size(())
+    actual = flag_gems.sum_to_size(values, ())
+    utils.gems_assert_equal(actual, utils.to_reference(expected))
