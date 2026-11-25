@@ -19,6 +19,7 @@ There is no ``aten::cos_backward`` operator, so this kernel is not registered
 with the dispatcher. It is reached through the autograd of the forward
 ``flag_gems.cos`` (see ``CosFunction`` in ``flag_gems.ops.cos``).
 """
+
 import logging
 
 import torch

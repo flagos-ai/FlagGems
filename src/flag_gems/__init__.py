@@ -16,6 +16,7 @@
 import warnings
 
 import torch
+from packaging.version import parse as _parse_version
 
 from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
@@ -34,7 +35,6 @@ from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
-from packaging.version import parse as _parse_version
 
 try:
     from flag_gems._version import commit_id as _commit_id
