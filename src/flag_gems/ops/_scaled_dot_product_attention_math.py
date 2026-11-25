@@ -23,6 +23,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,8 @@ def _sdpa_math_kernel(
     stride_vz,
     stride_vn,
     stride_vk,
-    stride_mz,
+    stride_mb,
+    stride_mh,
     stride_mm,
     stride_mn,
     stride_oz,
@@ -57,6 +59,8 @@ def _sdpa_math_kernel(
     stride_wn,
     Q_CTX,
     KV_CTX,
+    HEADS,
+    Z_TOTAL,
     HEAD_DIM: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_M: tl.constexpr,
@@ -66,119 +70,181 @@ def _sdpa_math_kernel(
     K_GROUP_SIZE: tl.constexpr,
     V_GROUP_SIZE: tl.constexpr,
 ):
-    start_m = tl.program_id(0)
-    off_z = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_z = tle.program_id(1)
+    step_m = tle.num_programs(0)
+    step_z = tle.num_programs(1)
+    zero64 = step_m * 0
 
-    q_base = Q + off_z * stride_qz
-    k_base = K + (off_z // K_GROUP_SIZE) * stride_kz
-    v_base = V + (off_z // V_GROUP_SIZE) * stride_vz
-    o_base = Out + off_z * stride_oz
-    w_base = Weights + off_z * stride_wz
+    m_blocks = (Q_CTX + zero64 + BLOCK_M - 1) // BLOCK_M
+    z_limit = Z_TOTAL + zero64
 
-    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    stride_qz64 = stride_qz + zero64
+    stride_qm64 = stride_qm + zero64
+    stride_qk64 = stride_qk + zero64
+    stride_kz64 = stride_kz + zero64
+    stride_kn64 = stride_kn + zero64
+    stride_kk64 = stride_kk + zero64
+    stride_vz64 = stride_vz + zero64
+    stride_vn64 = stride_vn + zero64
+    stride_vk64 = stride_vk + zero64
+    stride_mb64 = stride_mb + zero64
+    stride_mh64 = stride_mh + zero64
+    stride_mm64 = stride_mm + zero64
+    stride_mn64 = stride_mn + zero64
+    stride_oz64 = stride_oz + zero64
+    stride_om64 = stride_om + zero64
+    stride_ok64 = stride_ok + zero64
+    stride_wz64 = stride_wz + zero64
+    stride_wm64 = stride_wm + zero64
+    stride_wn64 = stride_wn + zero64
+
     offs_d = tl.arange(0, BLOCK_D)
     d_mask = offs_d < HEAD_DIM
-
-    q_mask = offs_m < Q_CTX
-    q_ptrs = q_base + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
-    # Keep Q/K/V in their native dtype so tl.dot uses tensor cores; only the
-    # softmax statistics and accumulators run in fp32.
-    query = tl.load(q_ptrs, mask=q_mask[:, None] & d_mask[None, :], other=0.0)
-
     LOG2E: tl.constexpr = 1.4426950408889634
 
-    m_i = tl.full([BLOCK_M], -float("inf"), dtype=tl.float32)
-    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
-    acc = tl.zeros([BLOCK_M, BLOCK_D], dtype=tl.float32)
+    for off_z in range(pid_z, z_limit, step_z):
+        off_b = off_z // HEADS
+        off_h = off_z % HEADS
 
-    if IS_CAUSAL:
-        # Top-left causal masking: query row i attends to key j when j <= i,
-        # matching torch's tril(diagonal=0) in the math reference.
-        hi = tl.minimum((start_m + 1) * BLOCK_M, KV_CTX)
-    else:
-        hi = KV_CTX
+        q_base = Q + off_z * stride_qz64
+        k_base = K + (off_z // K_GROUP_SIZE) * stride_kz64
+        v_base = V + (off_z // V_GROUP_SIZE) * stride_vz64
+        o_base = Out + off_z * stride_oz64
+        w_base = Weights + off_z * stride_wz64
+        m_base = ATTN_MASK + off_b * stride_mb64 + off_h * stride_mh64
 
-    # Pass 1: online softmax to compute row max (m_i), row sum (l_i) and the
-    # unnormalized output accumulator in a single streaming loop.
-    for start_n in range(0, hi, BLOCK_N):
-        offs_n = start_n + tl.arange(0, BLOCK_N)
-        kv_mask = offs_n < KV_CTX
-
-        k_ptrs = k_base + offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kk
-        key = tl.load(k_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0)
-
-        qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
-
-        if HAS_ATTN_MASK:
-            m_ptrs = (
-                ATTN_MASK
-                + off_z * stride_mz
-                + offs_m[:, None] * stride_mm
-                + offs_n[None, :] * stride_mn
+        for start_m in range(pid_m, m_blocks, step_m):
+            offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+            q_mask = offs_m < Q_CTX
+            q_ptrs = (
+                q_base + offs_m[:, None] * stride_qm64 + offs_d[None, :] * stride_qk64
             )
-            load_mask = q_mask[:, None] & kv_mask[None, :]
-            add_mask = tl.load(m_ptrs, mask=load_mask, other=0.0).to(tl.float32)
-            qk += add_mask
+            # Keep Q/K/V in their native dtype so tl.dot uses tensor cores; only the
+            # softmax statistics and accumulators run in fp32.
+            query = tl.load(q_ptrs, mask=q_mask[:, None] & d_mask[None, :], other=0.0)
 
-        qk = tl.where(kv_mask[None, :], qk, -float("inf"))
+            m_i = tl.full([BLOCK_M], -float("inf"), dtype=tl.float32)
+            l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+            acc = tl.zeros([BLOCK_M, BLOCK_D], dtype=tl.float32)
 
-        if IS_CAUSAL:
-            causal = offs_m[:, None] >= offs_n[None, :]
-            qk = tl.where(causal, qk, -float("inf"))
+            if IS_CAUSAL:
+                # Top-left causal masking: query row i attends to key j when j <= i,
+                # matching torch's tril(diagonal=0) in the math reference.
+                hi = tl.minimum((start_m + 1) * BLOCK_M, KV_CTX)
+            else:
+                hi = KV_CTX
 
-        m_ij = tl.maximum(m_i, tl.max(qk, 1))
-        m_ij_safe = tl.where(m_ij == -float("inf"), 0.0, m_ij)
-        p = tl.exp2((qk - m_ij_safe[:, None]) * LOG2E)
-        alpha = tl.exp2((m_i - m_ij_safe) * LOG2E)
-        l_i = l_i * alpha + tl.sum(p, 1)
+            # Pass 1: online softmax to compute row max (m_i), row sum (l_i) and the
+            # unnormalized output accumulator in a single streaming loop.
+            for start_n in range(0, hi, BLOCK_N):
+                offs_n = start_n + tl.arange(0, BLOCK_N)
+                kv_mask = offs_n < KV_CTX
 
-        v_ptrs = v_base + offs_n[:, None] * stride_vn + offs_d[None, :] * stride_vk
-        value = tl.load(v_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0)
+                k_ptrs = (
+                    k_base
+                    + offs_n[:, None] * stride_kn64
+                    + offs_d[None, :] * stride_kk64
+                )
+                key = tl.load(
+                    k_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0
+                )
 
-        acc = acc * alpha[:, None]
-        acc += tl.dot(p.to(value.dtype), value).to(tl.float32)
-        m_i = m_ij_safe
+                qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
 
-    l_safe = tl.where(l_i == 0.0, 1.0, l_i)
-    acc = acc / l_safe[:, None]
+                if HAS_ATTN_MASK:
+                    m_ptrs = (
+                        m_base
+                        + offs_m[:, None] * stride_mm64
+                        + offs_n[None, :] * stride_mn64
+                    )
+                    load_mask = q_mask[:, None] & kv_mask[None, :]
+                    add_mask = tl.load(m_ptrs, mask=load_mask, other=0.0).to(tl.float32)
+                    qk += add_mask
 
-    o_ptrs = o_base + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
-    tl.store(
-        o_ptrs, acc.to(Out.dtype.element_ty), mask=q_mask[:, None] & d_mask[None, :]
-    )
+                qk = tl.where(kv_mask[None, :], qk, -float("inf"))
 
-    # Pass 2: recompute normalized probabilities with the finalized m_i / l_i
-    # and materialize the full (Q_CTX, KV_CTX) attention weight matrix.
-    for start_n in range(0, KV_CTX, BLOCK_N):
-        offs_n = start_n + tl.arange(0, BLOCK_N)
-        kv_mask = offs_n < KV_CTX
+                if IS_CAUSAL:
+                    causal = offs_m[:, None] >= offs_n[None, :]
+                    qk = tl.where(causal, qk, -float("inf"))
 
-        k_ptrs = k_base + offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kk
-        key = tl.load(k_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0)
-        qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
+                m_ij = tl.maximum(m_i, tl.max(qk, 1))
+                m_ij_safe = tl.where(m_ij == -float("inf"), 0.0, m_ij)
+                p = tl.exp2((qk - m_ij_safe[:, None]) * LOG2E)
+                alpha = tl.where(
+                    m_i == -float("inf"),
+                    0.0,
+                    tl.exp2((m_i - m_ij_safe) * LOG2E),
+                )
+                l_i = l_i * alpha + tl.sum(p, 1)
 
-        if HAS_ATTN_MASK:
-            m_ptrs = (
-                ATTN_MASK
-                + off_z * stride_mz
-                + offs_m[:, None] * stride_mm
-                + offs_n[None, :] * stride_mn
+                v_ptrs = (
+                    v_base
+                    + offs_n[:, None] * stride_vn64
+                    + offs_d[None, :] * stride_vk64
+                )
+                value = tl.load(
+                    v_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0
+                )
+
+                acc = acc * alpha[:, None]
+                acc += tl.dot(p.to(value.dtype), value).to(tl.float32)
+                m_i = m_ij
+
+            m_i_safe = tl.where(m_i == -float("inf"), 0.0, m_i)
+            l_safe = tl.where(l_i == 0.0, 1.0, l_i)
+            acc = acc / l_safe[:, None]
+
+            o_ptrs = (
+                o_base + offs_m[:, None] * stride_om64 + offs_d[None, :] * stride_ok64
             )
-            load_mask = q_mask[:, None] & kv_mask[None, :]
-            add_mask = tl.load(m_ptrs, mask=load_mask, other=0.0).to(tl.float32)
-            qk += add_mask
+            tl.store(
+                o_ptrs,
+                acc.to(Out.dtype.element_ty),
+                mask=q_mask[:, None] & d_mask[None, :],
+            )
 
-        keep = kv_mask[None, :]
-        if IS_CAUSAL:
-            causal = offs_m[:, None] >= offs_n[None, :]
-            keep = keep & causal
+            # Pass 2: recompute normalized probabilities with the finalized m_i / l_i
+            # and materialize the full (Q_CTX, KV_CTX) attention weight matrix.
+            for start_n in range(0, KV_CTX, BLOCK_N):
+                offs_n = start_n + tl.arange(0, BLOCK_N)
+                kv_mask = offs_n < KV_CTX
 
-        p = tl.exp2((qk - m_i[:, None]) * LOG2E)
-        p = tl.where(keep, p, 0.0) / l_safe[:, None]
+                k_ptrs = (
+                    k_base
+                    + offs_n[:, None] * stride_kn64
+                    + offs_d[None, :] * stride_kk64
+                )
+                key = tl.load(
+                    k_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0
+                )
+                qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
 
-        w_ptrs = w_base + offs_m[:, None] * stride_wm + offs_n[None, :] * stride_wn
-        store_mask = q_mask[:, None] & kv_mask[None, :]
-        tl.store(w_ptrs, p.to(Weights.dtype.element_ty), mask=store_mask)
+                keep = kv_mask[None, :]
+                if HAS_ATTN_MASK:
+                    m_ptrs = (
+                        m_base
+                        + offs_m[:, None] * stride_mm64
+                        + offs_n[None, :] * stride_mn64
+                    )
+                    load_mask = q_mask[:, None] & kv_mask[None, :]
+                    add_mask = tl.load(m_ptrs, mask=load_mask, other=0.0).to(tl.float32)
+                    qk += add_mask
+
+                if IS_CAUSAL:
+                    causal = offs_m[:, None] >= offs_n[None, :]
+                    keep = keep & causal
+
+                p = tl.exp2((qk - m_i_safe[:, None]) * LOG2E)
+                p = tl.where(keep, p, 0.0) / l_safe[:, None]
+
+                w_ptrs = (
+                    w_base
+                    + offs_m[:, None] * stride_wm64
+                    + offs_n[None, :] * stride_wn64
+                )
+                store_mask = q_mask[:, None] & kv_mask[None, :]
+                tl.store(w_ptrs, p.to(Weights.dtype.element_ty), mask=store_mask)
 
 
 def _scaled_dot_product_attention_math(
@@ -229,16 +295,18 @@ def _scaled_dot_product_attention_math(
     if scale is None:
         scale = 1.0 / math.sqrt(head_dim)
 
-    query = query.contiguous()
-    key = key.contiguous()
-    value = value.contiguous()
-
     out = torch.empty_like(query)
     weights = torch.empty(
         (batch, heads, q_seq_len, kv_seq_len),
         dtype=query.dtype,
         device=query.device,
     )
+    if out.numel() == 0:
+        return out, weights
+
+    query = query.contiguous()
+    key = key.contiguous()
+    value = value.contiguous()
 
     # Fold each tensor's (batch, heads) into one grid axis. K and V may have
     # fewer heads; each query head maps to the corresponding K/V group.
@@ -250,14 +318,22 @@ def _scaled_dot_product_attention_math(
 
     has_attn_mask = attn_mask is not None
     if has_attn_mask:
-        assert attn_mask.dtype != torch.bool, "boolean attn_mask is not supported"
-        # Broadcast the mask to (batch, heads, q, kv) then fold like the rest.
-        attn_mask = attn_mask.expand(batch, heads, q_seq_len, kv_seq_len).contiguous()
-        am2 = attn_mask.reshape(batch * heads, q_seq_len, kv_seq_len)
-        m_strides = (am2.stride(0), am2.stride(1), am2.stride(2))
+        if attn_mask.dtype == torch.bool:
+            attn_mask = attn_mask.to(torch.float32)
+        if attn_mask.ndim < 4:
+            attn_mask = attn_mask.reshape(
+                (1,) * (4 - attn_mask.ndim) + tuple(attn_mask.shape)
+            )
+        elif attn_mask.ndim > 4:
+            raise RuntimeError(
+                f"Expected attn_mask with at most 4 dims, got {attn_mask.ndim}"
+            )
+        # Keep zero-copy 0-stride broadcasting without materializing a full 4D copy.
+        am4 = attn_mask.expand(batch, heads, q_seq_len, kv_seq_len)
+        m_strides = (am4.stride(0), am4.stride(1), am4.stride(2), am4.stride(3))
     else:
-        am2 = query  # unused placeholder; HAS_ATTN_MASK guards all accesses
-        m_strides = (0, 0, 0)
+        am4 = query  # unused placeholder; HAS_ATTN_MASK guards all accesses
+        m_strides = (0, 0, 0, 0)
 
     # BLOCK_M/BLOCK_N = 32 to stay within shared memory limits (166KB on T4/A10).
     # The two-pass algorithm (forward + materialize weights) requires ~2x memory
@@ -267,14 +343,21 @@ def _scaled_dot_product_attention_math(
     # tl.arange over the head dim requires a power-of-2 span; pad and mask.
     BLOCK_D = triton.next_power_of_2(head_dim)
 
-    grid = (triton.cdiv(q_seq_len, BLOCK_M), batch * heads)
+    num_m_blocks = triton.cdiv(q_seq_len, BLOCK_M)
+    total_z = batch * heads
+    if num_m_blocks * total_z <= 65535:
+        grid = (num_m_blocks, total_z)
+    else:
+        gm = min(num_m_blocks, 256)
+        gz = min(total_z, max(1, 65535 // gm))
+        grid = (gm, gz)
 
     with torch_device_fn.device(query.device):
         _sdpa_math_kernel[grid](
             q2,
             k2,
             v2,
-            am2,
+            am4,
             o2,
             w2,
             scale,
@@ -290,6 +373,7 @@ def _scaled_dot_product_attention_math(
             m_strides[0],
             m_strides[1],
             m_strides[2],
+            m_strides[3],
             o2.stride(0),
             o2.stride(1),
             o2.stride(2),
@@ -298,6 +382,8 @@ def _scaled_dot_product_attention_math(
             w2.stride(2),
             q_seq_len,
             kv_seq_len,
+            heads,
+            total_z,
             HEAD_DIM=head_dim,
             BLOCK_D=BLOCK_D,
             BLOCK_M=BLOCK_M,
