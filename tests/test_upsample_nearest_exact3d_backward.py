@@ -35,6 +35,9 @@ CASES = [
     "dtype", [*utils.FLOAT_DTYPES, pytest.param(torch.float64, marks=_SKIP_FP64)]
 )
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float64:
+        if not utils.TO_CPU or scales == (1.5, 2.5, 0.75):
+            pytest.skip("MUSA native nearest-exact3d backward does not support float64")
     grad_output = torch.randn(
         (*input_size[:2], *output_size), dtype=dtype, device=flag_gems.device
     )
@@ -59,12 +62,9 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 
 @pytest.mark.upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
-    if flag_gems.vendor_name == "enflame":
+    if flag_gems.vendor_name in ("ascend", "kunlunxin", "enflame"):
         pytest.skip(
-            "aten reference: _upsample_nearest_exact3d_backward has no Byte "
-            "implementation on the enflame backend (the GCU/CPU fallback "
-            "reference raises NotImplementedError for uint8), so the "
-            "reference leg cannot be evaluated"
+            "Native nearest-exact3d backward does not support uint8 on this backend"
         )
     input_size = (1, 2, 3, 4, 5)
     output_size = (7, 6, 9)

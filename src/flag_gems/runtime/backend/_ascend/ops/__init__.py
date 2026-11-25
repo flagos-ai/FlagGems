@@ -16,6 +16,7 @@ from ._adaptive_avg_pool3d_backward import (
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from ._add_relu import _add_relu
 from ._conj_copy import _conj_copy, _conj_copy_out
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -449,6 +450,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_adaptive_avg_pool3d_backward",
+    "_add_relu",
     "_conj_copy",
     "_conj_copy_out",
     "_dyn_quant_matmul_4bit",
