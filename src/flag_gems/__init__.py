@@ -1539,7 +1539,12 @@ _FULL_CONFIG = (
     ("floor_divide.Scalar", floor_divide),
     ("floor_divide_.Scalar", floor_divide_),
     ("floor_divide_.Tensor", floor_divide_),
-    ("fmax", fmax),
+    (
+        "fmax",
+        fmax,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("fmax.out", fmax_out),
     ("fmin", fmin),
     ("fmin.out", fmin_out),
