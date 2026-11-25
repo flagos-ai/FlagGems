@@ -1679,7 +1679,7 @@ pixel_shuffle_backward:
     - 64
     - 64
   shape_desc: Frozen backward30 pixel input shape
-  
+
 narrow_copy_backward:
   shapes:
   - - 5
