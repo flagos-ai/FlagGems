@@ -39,6 +39,7 @@ Lazy conj/neg bits on the input are folded into per-parity sign flags:
     logical = conj^c(neg^n(storage)), out = conj(logical)
     flip_even = n, flip_odd = (n == c)
 """
+
 import logging
 
 import torch
@@ -49,11 +50,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-
-
-import torch
-import triton
-import triton.language as tl
 
 # ---------------------------------------------------------------------------
 # Kernels

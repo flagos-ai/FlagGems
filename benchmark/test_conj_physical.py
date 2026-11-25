@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
 
 # torch.randn has no FP8 implementation, so FP8 inputs are built from an FP32
 # tensor; int8/uint8 go through the existing truncating path.
