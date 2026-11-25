@@ -107,7 +107,7 @@ backends:
       - /usr/local/Ascend/cann/set_env.sh
     deps:
       - cann-shmem==1.6.0
-      - flagcx==0.14.0+cann9.0.0
+      - flagcx==0.14.1
       - numpy==1.26.4
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
