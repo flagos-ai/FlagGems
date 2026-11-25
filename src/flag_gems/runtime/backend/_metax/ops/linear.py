@@ -189,6 +189,44 @@ def _use_small_fp32_entry(input, weight, bias, rows):
     )
 
 
+@lru_cache(maxsize=1)
+def _small_bf16_entry():
+    """Tune BF16 small-M Linear against a short list of narrow-N tiles only."""
+    configs = copy.deepcopy(runtime.get_tuned_config("linear_small_bf16"))
+    return libentry()(
+        libtuner(
+            configs=configs,
+            key=["M", "N", "K"],
+            strategy=["align32", "align32", "align32"],
+            warmup=5,
+            rep=10,
+        )(linear_kernel.jit_function)
+    )
+
+
+def _use_small_bf16_entry(input, weight, bias, rows):
+    # Measured BF16 decode region; the default pool has no BLOCK_SIZE_N < 64.
+    return (
+        0 < rows <= 16
+        and input.device.type == "cuda"
+        and input.device == weight.device
+        and input.dtype == weight.dtype == torch.bfloat16
+        and (
+            bias is None or (bias.device == input.device and bias.dtype == input.dtype)
+        )
+        and input.is_contiguous()
+        and weight.is_contiguous()
+        and not (
+            torch.is_grad_enabled()
+            and (
+                input.requires_grad
+                or weight.requires_grad
+                or (bias is not None and bias.requires_grad)
+            )
+        )
+    )
+
+
 def linear(input, weight, bias=None):
     """
     Applies a linear transformation to the incoming data: y = xA^T + b
@@ -227,6 +265,8 @@ def linear(input, weight, bias=None):
     entry = (
         _small_fp32_entry()
         if not single_1d and _use_small_fp32_entry(input, weight, bias, M)
+        else _small_bf16_entry()
+        if not single_1d and _use_small_bf16_entry(input, weight, bias, M)
         else linear_kernel
     )
     # Accept ordinary Parameter subclasses through the same public ATen API.
