@@ -19,6 +19,8 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
 hygon_op = None
 if flag_gems.vendor_name == "hygon":
     hygon_op = importlib.import_module(flag_gems.masked_fill.__module__)
@@ -44,8 +46,8 @@ def _assert_result(inp, mask, value):
     expected = torch.masked_fill(inp.cpu(), mask.cpu(), ref_value)
     before = inp.clone()
     actual = flag_gems.masked_fill(inp, mask, value)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0, equal_nan=True)
-    torch.testing.assert_close(inp, before, rtol=0, atol=0, equal_nan=True)
+    utils.gems_assert_equal(actual, expected, equal_nan=True)
+    utils.gems_assert_equal(inp, before, equal_nan=True)
     assert actual.shape == expected.shape
     assert actual.dtype == inp.dtype
     assert actual.device == inp.device
@@ -234,7 +236,7 @@ def test_masked_fill_hygon_invalid_fallback(kind, monkeypatch):
             flag_gems.masked_fill(inp, mask, value)
     else:
         actual = flag_gems.masked_fill(inp, mask, value)
-        torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
+        utils.gems_assert_equal(actual, expected, equal_nan=True)
 
 
 @pytest.mark.parametrize("tensor_value", [False, True])
@@ -250,6 +252,6 @@ def test_masked_fill_hygon_dispatch_and_inplace(tensor_value):
     actual = torch.masked_fill(inp, mask, value)
     target = inp.clone()
     returned = target.masked_fill_(mask, value)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
-    torch.testing.assert_close(target.cpu(), expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(target, expected)
     assert returned is target
