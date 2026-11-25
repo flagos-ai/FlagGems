@@ -4019,6 +4019,24 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_depthwise2d_backward
+  description: |
+    Backward of the depthwise 2D convolution (`_conv_depthwise2d`): returns the
+    input gradient (a per-channel transposed-correlation of the upstream
+    gradient with the depthwise weight) and the weight gradient (a per-channel
+    reduction of the upstream gradient over the input), for groups == C.
+    Exposed as an explicit entry point because this Torch build has no
+    standalone `aten::conv_depthwise2d_backward` schema - ATen derives the
+    depthwise gradients through the generic `convolution_backward` formula.
+  for:
+  - conv_depthwise2d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.6'
 - id: conv_depthwise3d
   description: Applies a 3D depthwise convolution over an input signal composed of
     several input planes.
