@@ -16,10 +16,9 @@ pytestmark = [
     pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon GEMM coverage"),
 ]
 CASES = json.loads(
-    (
-        Path(__file__).resolve().parents[1]
-        / "docs/hygon-optimization/mm/extended-cases-20261110.json"
-    ).read_text(encoding="utf-8")
+    (Path(__file__).parent / "data/hygon_mm_extended_cases.json").read_text(
+        encoding="utf-8"
+    )
 )
 
 

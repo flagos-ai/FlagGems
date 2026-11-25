@@ -27,16 +27,11 @@ pytestmark = [
     ),
 ]
 
-_DOCS = Path(__file__).resolve().parents[1] / "docs/hygon-optimization/mm"
-_TARGET_ROWS = {
-    case["row"]
-    for case in json.loads((_DOCS / "cases.json").read_text(encoding="utf-8"))
-}
-_CONTROL_CASES = [
-    case
-    for case in json.loads((_DOCS / "all-mm-cases.json").read_text(encoding="utf-8"))
-    if case["row"] not in _TARGET_ROWS
-]
+_CONTROL_CASES = json.loads(
+    (Path(__file__).parent / "data/hygon_mm_control_cases.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 @pytest.mark.parametrize("case", _CONTROL_CASES, ids=lambda case: str(case["row"]))
