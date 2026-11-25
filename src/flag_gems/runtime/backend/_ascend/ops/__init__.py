@@ -22,6 +22,7 @@ from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._index_put_impl_ import _index_put_impl_
 from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
@@ -455,6 +456,7 @@ __all__ = [
     "_flash_attention_forward",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_index_put_impl_",
     "_nested_sum_backward",
     "_pad_enum",
     "_safe_softmax",
