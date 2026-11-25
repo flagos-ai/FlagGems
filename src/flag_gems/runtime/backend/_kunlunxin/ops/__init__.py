@@ -140,6 +140,7 @@ from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin  # noqa: F401
+from ._foreach_sin_ import _foreach_sin_  # noqa: F401
 from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
@@ -162,7 +163,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_reciprocal_,
     _foreach_rsqrt,
     _foreach_rsqrt_,
-    _foreach_sin_,
     _foreach_sqrt_,
     _foreach_tanh,
 )
@@ -193,6 +193,8 @@ from ._nested_tensor_from_mask_left_aligned import (  # noqa: F401
 )
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
+from ._pack_padded_sequence import _pack_padded_sequence
 from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
@@ -395,6 +397,7 @@ from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
+from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
 from .corrcoef import corrcoef
@@ -1233,6 +1236,8 @@ __all__ = [
     "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_new_zeros_with_same_feature_meta",
+    "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
@@ -1424,6 +1429,7 @@ __all__ = [
     "conv_transpose3d",
     "copy",
     "copy_",
+    "copy_sparse_to_sparse_",
     "copysign",
     "copysign_",
     "copysign_out",

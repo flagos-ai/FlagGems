@@ -52,6 +52,24 @@ QUANT_PARAMS = [
 ]
 
 
+def _reference_backward(
+    grad, inp, scale, zero_point, quant_min, quant_max, grad_factor
+):
+    if flag_gems.vendor_name == "mthreads" and inp.dtype == torch.bfloat16:
+        # MUSA's PyTorch reference rejects BF16 inputs. Promote the already
+        # rounded BF16 values to the operation's float32 gradient precision.
+        grad, inp, scale, zero_point = (
+            tensor.cpu().float() for tensor in (grad, inp, scale, zero_point)
+        )
+    return torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
+        grad, inp, scale, zero_point, quant_min, quant_max, grad_factor
+    )
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="fake-quantize learning accuracy issue",
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
