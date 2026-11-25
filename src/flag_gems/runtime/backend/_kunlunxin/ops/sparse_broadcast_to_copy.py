@@ -1,11 +1,11 @@
-"""Kunlunxin XPU3 override of ``aten::_sparse_broadcast_to_copy``.
+"""Kunlunxin override of ``aten::_sparse_broadcast_to_copy``.
 
 The copy variant shares the broadcasting semantics of
-``aten::_sparse_broadcast_to`` (which is materialised by the XPU-safe backend
-override) and adds the ``out=`` form.  The generic module imports the generic
+``aten::_sparse_broadcast_to`` (materialised by the backend override) and adds
+the ``out=`` form.  The generic module imports the generic
 ``sparse_broadcast_to`` implementation at import time, so it would keep using
-the kernel that fails XPU MLIR legalization; this override routes through the
-backend implementation instead.
+the kernel that fails MLIR legalization on this backend; this override routes
+through the backend implementation instead.
 """
 
 import logging

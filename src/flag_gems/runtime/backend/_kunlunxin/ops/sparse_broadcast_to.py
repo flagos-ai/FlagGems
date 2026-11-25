@@ -1,9 +1,8 @@
-"""Kunlunxin XPU3 override of ``aten::_sparse_broadcast_to``.
+"""Kunlunxin override of ``aten::_sparse_broadcast_to``.
 
 The generic KernelGen implementation fuses the coordinate recomputation and the
 payload copy into one kernel that keeps the entry index in int32 and widens
-only the addresses.  On the XPU3 Triton backend that kernel fails MLIR
-legalization:
+only the addresses, which fails MLIR legalization on this backend:
 
     PassManager::run failed: loc("e"(.../ops/sparse_broadcast_to.py:119:23)):
     'arith.addi' op requires the same type for all operands and results
@@ -11,7 +10,7 @@ legalization:
 so every case that needs sparse replication (a prepended dimension or an
 expanded size-1 sparse dim, i.e. ``F > 1``) raised ``OutOfResources`` before
 launching.  This override keeps the generic host-side metadata logic but
-launches two XPU-safe kernels instead:
+launches two safe kernels instead:
 
 * the index kernel is 2-D (entry blocks x output sparse dim) so the per-dim
   ``ext``/``srcrow``/``strd`` selection is scalar, which removes the
