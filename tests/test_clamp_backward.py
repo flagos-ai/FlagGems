@@ -57,7 +57,9 @@ def test_clamp_backward_one_sided(dtype, bound_kwarg):
     torch_kwargs = {"min" if bound_kwarg == "mini" else "max": 0.5}
 
     (dx,) = torch.autograd.grad(flag_gems.clamp(x, **gems_kwargs), x, grad)
-    (ref_dx,) = torch.autograd.grad(torch.clamp(ref_x, **torch_kwargs), ref_x, grad)
+    (ref_dx,) = torch.autograd.grad(
+        torch.clamp(ref_x, **torch_kwargs), ref_x, utils.to_reference(grad)
+    )
     utils.gems_assert_close(dx, ref_dx, dtype)
 
 
@@ -103,5 +105,7 @@ def test_clamp_backward_nan_and_boundary(dtype):
     grad = torch.ones_like(inp)
 
     (dx,) = torch.autograd.grad(flag_gems.clamp(inp, -0.5, 0.5), inp, grad)
-    (ref_dx,) = torch.autograd.grad(torch.clamp(ref_inp, -0.5, 0.5), ref_inp, grad)
+    (ref_dx,) = torch.autograd.grad(
+        torch.clamp(ref_inp, -0.5, 0.5), ref_inp, utils.to_reference(grad)
+    )
     utils.gems_assert_close(dx, ref_dx, dtype)
