@@ -373,12 +373,15 @@ def _sdpa_forward_bshd(query, key, value, is_causal, scale, compute_lse=True):
 
     cmask = None
     if is_causal:
-        cmask2d = torch.full((q_len, k_pad), 50.0, dtype=torch.float32, device=device)
+        # Additive causal mask (0.0 on/under the diagonal, 50.0 above).  It is
+        # built from a broadcast comparison rather than an in-place boolean
+        # index assignment, which hangs on XPU at the first synchronize once
+        # the registered backend is active, and without a torch compute call
+        # (torch.where is rejected by tools/ci_checks/check_no_torch_fallback.py).
         rows = torch.arange(q_len, device=device)[:, None]
         cols = torch.arange(k_pad, device=device)[None, :]
         off = k_len - q_len
-        valid = cols <= (rows + off)
-        cmask2d[valid] = 0.0
+        cmask2d = (cols > (rows + off)).to(torch.float32) * 50.0
         cmask = (
             cmask2d.unsqueeze(0).expand(batch * q_head_num, q_len, k_pad).contiguous()
         )
