@@ -95,7 +95,7 @@ def test_fmin_backward_nan_tie_and_strided():
     ref_b = utils.to_reference(b.detach()).requires_grad_()
     expected = torch.fmin(ref_a, ref_b)
     actual = flag_gems.fmin(a, b)
-    torch.testing.assert_close(actual, expected, equal_nan=True)
+    utils.gems_assert_equal(actual, expected, equal_nan=True)
     grad = torch.arange(1, 11, device=flag_gems.device, dtype=a.dtype).reshape(5, 2)
     expected.backward(utils.to_reference(grad))
     actual.backward(grad)
