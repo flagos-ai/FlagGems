@@ -72,6 +72,10 @@ class SlowConvDilated2DBenchmark(base.Benchmark):
 
 
 @pytest.mark.slow_conv_dilated2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The MUSA build has no native ATen reference for this operator",
+)
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_slow_conv_dilated2d(dtype):
     bench = SlowConvDilated2DBenchmark(

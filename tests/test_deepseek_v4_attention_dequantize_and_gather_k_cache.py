@@ -16,9 +16,7 @@ import pytest
 import torch
 
 import flag_gems.testing as fg_testing
-from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import (
-    dequantize_and_gather_k_cache,
-)
+from flag_gems import dequantize_and_gather_k_cache
 from flag_gems.utils.device_info import get_device_capability
 
 try:

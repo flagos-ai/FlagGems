@@ -52,7 +52,7 @@ $ cat ./gems_debug.log
 [DEBUG] flag_gems.ops.fill: GEMS FILL_SCALAR_
 [DEBUG] flag_gems.ops.fill: GEMS FILL_SCALAR_
 [DEBUG] flag_gems.ops.mm: GEMS MM
-[DEBUG] flag_gems.fused.reshape_and_cache: GEMS RESHAPE_AND_CACHE
+[DEBUG] flag_gems.deprecated.reshape_and_cache: GEMS RESHAPE_AND_CACHE
 ```
 
 > [!WARNING]

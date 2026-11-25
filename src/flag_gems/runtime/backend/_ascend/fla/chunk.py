@@ -10,7 +10,7 @@
 # mypy: ignore-errors
 import torch
 
-from flag_gems.fused.FLA.utils import SUPPRESS_LEVEL
+from flag_gems.deprecated.FLA.utils import SUPPRESS_LEVEL
 
 from .chunk_delta_h import chunk_gated_delta_rule_fwd_h
 from .chunk_o import chunk_fwd_o
