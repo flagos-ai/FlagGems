@@ -72,6 +72,11 @@ def digamma_kernel_(
     cot_term = tl.cos(pi * x_f32) / tl.sin(pi * x_f32)
     result = tl.where(reflect_mask, psi_y - pi * cot_term, psi_y)
 
+    # digamma has poles at non-positive integers: torch yields nan there
+    # (0 keeps the -inf from the recurrence, matching ATen).
+    int_mask = (x_f32 == tl.floor(x_f32)) & (x_f32 <= -1.0)
+    result = tl.where(int_mask, float("nan"), result)
+
     result = result.to(x.dtype)
     tl.store(x_ptr + offsets, result, mask=mask)
 
@@ -158,6 +163,11 @@ def digamma_kernel(
     # Apply reflection if needed
     cot_term = tl.cos(pi * x_f32) / tl.sin(pi * x_f32)
     result = tl.where(reflect_mask, psi_y - pi * cot_term, psi_y)
+
+    # digamma has poles at non-positive integers: torch yields nan there
+    # (0 keeps the -inf from the recurrence, matching ATen).
+    int_mask = (x_f32 == tl.floor(x_f32)) & (x_f32 <= -1.0)
+    result = tl.where(int_mask, float("nan"), result)
 
     result = result.to(x.dtype)
     tl.store(output_ptr + offsets, result, mask=mask)

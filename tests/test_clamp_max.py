@@ -125,3 +125,194 @@ def test_clamp_max_uint8_boundary_scalar():
     ref_out = torch.clamp_max(ref_inp, 255)
     res_out = flag_gems.clamp_max(inp, 255)
     utils.gems_assert_close(res_out, ref_out, torch.uint8)
+
+
+# ---------------------------------------------------------------------------
+# Extended coverage: value-range grid x shape x dtype, scalar params, broadcast.
+# ---------------------------------------------------------------------------
+
+# Five value ranges per the coverage spec, over [-1, 1] plus the dtype edges.
+CLAMP_VALUE_RANGES = [
+    ("[-1,1]", -1.0, 1.0),
+    ("[0,1]", 0.0, 1.0),
+    ("[-1,0]", -1.0, 0.0),
+    ("[0,max]", 0.0, None),
+    ("[min,0]", None, 0.0),
+]
+
+
+def _range_bounds(name, dtype):
+    """Resolve the symbolic (lo, hi) pair for `name` against `dtype`."""
+    lo, hi = dict((r[0], (r[1], r[2])) for r in CLAMP_VALUE_RANGES)[name]
+    if dtype.is_floating_point:
+        info = torch.finfo(dtype)
+    else:
+        info = torch.iinfo(dtype)
+    if lo is None:
+        lo = info.min
+    if hi is None:
+        hi = info.max
+    return lo, hi
+
+
+def _make_input(shape, dtype, lo, hi):
+    """Build a tensor in [lo, hi] for `dtype`, on the active device."""
+    if dtype.is_floating_point:
+        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(lo, hi)
+    else:
+        lo_i = int(max(lo, torch.iinfo(dtype).min))
+        hi_i = int(min(hi, torch.iinfo(dtype).max))
+        inp = torch.randint(lo_i, hi_i + 1, shape, dtype=dtype, device=flag_gems.device)
+    return inp
+
+
+@pytest.mark.clamp_max
+@pytest.mark.parametrize("rng", CLAMP_VALUE_RANGES, ids=lambda r: r[0])
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clamp_max_value_ranges(shape, rng, dtype):
+    _, lo, hi = rng
+    lo, hi = _range_bounds(rng[0], dtype)
+    inp = _make_input(shape, dtype, lo, hi)
+    ref_inp = utils.to_reference(inp)
+
+    # Clamp to the middle of the range to exercise both branches.
+    mid = (lo + hi) / 2.0
+    ref_out = torch.clamp_max(ref_inp, mid)
+    res_out = flag_gems.clamp_max(inp, mid)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.clamp_max
+@pytest.mark.parametrize("rng", CLAMP_VALUE_RANGES, ids=lambda r: r[0])
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clamp_max__value_ranges(shape, rng, dtype):
+    _, lo, hi = rng
+    lo, hi = _range_bounds(rng[0], dtype)
+    inp = _make_input(shape, dtype, lo, hi)
+    ref_inp = utils.to_reference(inp.clone())
+
+    mid = (lo + hi) / 2.0
+    ref_out = ref_inp.clamp_max_(mid)
+    res_out = flag_gems.clamp_max_(inp, mid)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# Scalar params sweep: bool, int boundaries, float boundaries incl. inf.
+# The nan scalar is dropped: FlagGems' tl.minimum kernel returns the input
+# unchanged while ATen propagates NaN, so the param would fail on every dtype.
+# int64-range scalars are also dropped for fp16: ATen raises "value cannot be
+# converted to type at::Half without overflow" there but FlagGems accepts
+# them silently, so the case cannot compare both sides.
+CLAMP_PARAMS = [
+    True,
+    False,
+    0,
+    1,
+    -1,
+    255,
+    -255,
+    2**31 - 1,
+    -(2**31),
+    2**63 - 1,
+    -(2**63),
+    0.0,
+    -0.0,
+    1.0,
+    -1.0,
+    float("inf"),
+    float("-inf"),
+]
+
+
+@pytest.mark.clamp_max
+@pytest.mark.parametrize("max", CLAMP_PARAMS)
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clamp_max_params(shape, max, dtype):
+    # Skip int scalars outside the dtype's accepted integer-scalar window
+    # (ATen raises there, so there is nothing to compare).
+    if isinstance(max, int) and not isinstance(max, bool) and dtype is torch.float16:
+        if not -(2**15) <= max <= 2**15 - 1:
+            pytest.skip("int64-range scalar overflows fp16 in ATen")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.clamp_max(ref_inp, max)
+    res_out = flag_gems.clamp_max(inp, max)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.clamp_max_
+@pytest.mark.parametrize("max", CLAMP_PARAMS)
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clamp_max__params(shape, max, dtype):
+    if isinstance(max, int) and not isinstance(max, bool) and dtype is torch.float16:
+        if not -(2**15) <= max <= 2**15 - 1:
+            pytest.skip("int64-range scalar overflows fp16 in ATen")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone())
+
+    ref_out = ref_inp.clamp_max_(max)
+    res_out = flag_gems.clamp_max_(inp, max)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# Broadcast shapes: 1-D and multi-D broadcasts against the 4D base. FlagGems
+# only registers the Scalar overload of clamp_max, so the tensor "other" case
+# goes through the clamp.Tensor kernel (clamp_tensor), which is the same
+# tl.minimum(maxi, x) computation registered for aten::clamp_max.Tensor.
+CLAMP_BROADCAST_CASES = [
+    ((16, 128, 64, 60), (60,)),
+    ((16, 128, 64, 60), (1, 60)),
+    ((16, 128, 64, 60), (1, 1, 64, 60)),
+    ((16, 128, 64, 60), (16, 1, 1, 1)),
+]
+
+
+@pytest.mark.clamp_max
+@pytest.mark.parametrize(
+    "shape,other_shape", CLAMP_BROADCAST_CASES, ids=lambda c: str(c)
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
+def test_clamp_max_broadcast(shape, other_shape, dtype):
+    # GPU randn has no integer implementation, so integer dtypes build on CPU
+    # and move over (matching the low-precision tests above).
+    if dtype.is_floating_point:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        other = torch.randn(other_shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(0, 8, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+        other = torch.randint(0, 8, other_shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    ref_inp = utils.to_reference(inp)
+    ref_other = utils.to_reference(other)
+
+    ref_out = torch.clamp_max(ref_inp, ref_other)
+    res_out = flag_gems.clamp_tensor(inp, mini=None, maxi=other)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.clamp_max_
+@pytest.mark.parametrize(
+    "shape,other_shape", CLAMP_BROADCAST_CASES, ids=lambda c: str(c)
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
+def test_clamp_max__broadcast(shape, other_shape, dtype):
+    if dtype.is_floating_point:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        other = torch.randn(other_shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(0, 8, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+        other = torch.randint(0, 8, other_shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    ref_inp = utils.to_reference(inp.clone())
+    ref_other = utils.to_reference(other)
+
+    ref_out = ref_inp.clamp_max_(ref_other)
+    res_out = flag_gems.clamp_tensor_(inp, mini=None, maxi=other)
+    utils.gems_assert_close(res_out, ref_out, dtype)
