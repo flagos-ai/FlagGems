@@ -9529,6 +9529,18 @@ ops:
   - Math
   stages:
   - stable: '2.0'
+- id: ge_backward_
+  description: Autograd backward for the in-place tensor and scalar `ge_()` comparisons.
+  for:
+  - ge_.Tensor
+  - ge_.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: ge_scalar
   description: The scalar version of `ge()`.
   for:
