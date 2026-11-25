@@ -144,7 +144,7 @@ def _make_celu_gradient(shape, dtype, device, n, alpha, use_result):
         nonlocal common
         if (n and torch_device_fn.current_device() != device.index) or not x.is_contiguous() or not grad.is_contiguous():
             return unary_backward(x, grad, operation, alpha)
-        out = torch.empty(shape, dtype=dtype, device=device)
+        out = torch.empty_like(x, memory_format=torch.contiguous_format)
         if n:
             (xa, ga) = (x.data_ptr() % 16 == 0, grad.data_ptr() % 16 == 0)
             aligned = xa and ga
@@ -163,9 +163,6 @@ def _make_celu_gradient(shape, dtype, device, n, alpha, use_result):
         return out
     return gradient
 
-def _celu_gradient(ctx, grad):
-    # Read saved_tensors on every invocation to preserve version checks/hooks.
-    return ctx.gradient_factory(ctx.saved_tensors[0], grad)
 
 class CeluAutograd(torch.autograd.Function):
     @staticmethod
@@ -183,9 +180,11 @@ class CeluAutograd(torch.autograd.Function):
     def backward(ctx, grad):
         if torch.is_grad_enabled():
             return CeluAutograd._backward_once(ctx, grad)
+        # Reading saved_tensors each time preserves version checks and unpack hooks.
         return ctx.gradient_factory(ctx.saved_tensors[0], grad), None, None
 
     @staticmethod
     @once_differentiable
     def _backward_once(ctx, grad):
+        # Reading saved_tensors each time preserves version checks and unpack hooks.
         return ctx.gradient_factory(ctx.saved_tensors[0], grad), None, None
