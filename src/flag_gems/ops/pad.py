@@ -518,8 +518,7 @@ class _ConstantPadNdFunction(torch.autograd.Function):
         # gradient runs a Triton kernel from
         # ``flag_gems.ops.constant_pad_nd_backward``.
         (self,) = ctx.saved_tensors
-        from flag_gems.ops.constant_pad_nd_backward import \
-            constant_pad_nd_backward
+        from flag_gems.ops.constant_pad_nd_backward import constant_pad_nd_backward
 
         return constant_pad_nd_backward(grad_output, self, ctx.pad_list), None, None
 
