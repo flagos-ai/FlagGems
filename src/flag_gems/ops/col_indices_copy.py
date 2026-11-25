@@ -67,20 +67,28 @@ def _col_indices_copy_exact(src_ptr, dst_ptr, BLOCK: tl.constexpr):
 def _col_indices_copy_impl(self, out=None):
     """Copy ``self.col_indices()`` into a fresh buffer or the given ``out``."""
     src = self.col_indices()
+    if not src.is_contiguous():
+        src = src.contiguous()
     n = src.numel()
 
     if out is None:
         out = torch.empty_like(src)
 
+    tmp = out
+    if not out.is_contiguous():
+        tmp = torch.empty_like(src)
+
     if n:
         if n & _MASK:
             _col_indices_copy_masked[((n + _MASK) // _BLOCK,)](
-                src, out, n, BLOCK=_BLOCK, num_warps=_NUM_WARPS
+                src, tmp, n, BLOCK=_BLOCK, num_warps=_NUM_WARPS
             )
         else:
             _col_indices_copy_exact[(n >> 10,)](
-                src, out, BLOCK=_BLOCK, num_warps=_NUM_WARPS
+                src, tmp, BLOCK=_BLOCK, num_warps=_NUM_WARPS
             )
+    if tmp is not out:
+        out.copy_(tmp)
     return out
 
 

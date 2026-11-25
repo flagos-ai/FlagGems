@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 CASES = [
     ((1, 1, 2, 3, 4), (4, 6, 8), (None, None, None)),
@@ -30,7 +31,9 @@ CASES = [
 
 @pytest.mark.upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("input_size,output_size,scales", CASES)
-@pytest.mark.parametrize("dtype", [*utils.FLOAT_DTYPES, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [*utils.FLOAT_DTYPES, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
     grad_output = torch.randn(
         (*input_size[:2], *output_size), dtype=dtype, device=flag_gems.device
@@ -56,6 +59,10 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 
 @pytest.mark.upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
+    if flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        pytest.skip(
+            "Native nearest-exact3d backward does not support uint8 on this backend"
+        )
     input_size = (1, 2, 3, 4, 5)
     output_size = (7, 6, 9)
     grad_output = torch.randint(

@@ -3,7 +3,7 @@
 #
 # This script is called by postCreateCommand via the vendor-specific
 # install-dev-tools.sh wrapper, which sources flaggems.env first to set
-# FLAGGEMS_DEVCONTAINER_BACKEND (e.g. "nvidia-cuda128", "hygon").
+# FLAGGEMS_DEVCONTAINER_BACKEND (e.g. "nvidia-cuda128", "hygon-dtk2604").
 #
 # What this script does:
 #   1. Syncs git submodules (libtriton_jit etc.)

@@ -20,12 +20,36 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
+
+
+def _reference_cholesky(inp, upper=False):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        matrix = inp.detach().numpy()
+        if upper:
+            matrix = matrix.swapaxes(-1, -2).conj()
+        try:
+            factor = np.linalg.cholesky(matrix)
+        except np.linalg.LinAlgError as error:
+            raise torch.linalg.LinAlgError(str(error)) from error
+        if upper:
+            factor = factor.swapaxes(-1, -2).conj()
+        return torch.from_numpy(factor)
+    return torch.cholesky(inp, upper=upper)
 
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky(shape, dtype):
     # Create a positive-definite matrix: A = B @ B^T + I
     n = shape[-1]
@@ -36,7 +60,7 @@ def test_cholesky(shape, dtype):
     )
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.cholesky(ref_A)
+    ref_out = _reference_cholesky(ref_A)
 
     res_out = flag_gems.cholesky(A)
 
@@ -46,7 +70,9 @@ def test_cholesky(shape, dtype):
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_upper(shape, dtype):
     # Test with upper=True
     n = shape[-1]
@@ -57,7 +83,7 @@ def test_cholesky_upper(shape, dtype):
     )
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.cholesky(ref_A, upper=True)
+    ref_out = _reference_cholesky(ref_A, upper=True)
 
     res_out = flag_gems.cholesky(A, upper=True)
 
@@ -67,7 +93,9 @@ def test_cholesky_upper(shape, dtype):
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_batch(shape, dtype):
     # Create positive-definite matrices for batched input: A = B @ B^T + I
     n = shape[-1]
@@ -78,7 +106,7 @@ def test_cholesky_batch(shape, dtype):
     )
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.cholesky(ref_A)
+    ref_out = _reference_cholesky(ref_A)
 
     res_out = flag_gems.cholesky(A)
 
@@ -87,7 +115,9 @@ def test_cholesky_batch(shape, dtype):
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (32, 32)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_non_contiguous(shape, dtype):
     # Transposed views are the most common way to build a symmetric matrix and
     # must not produce NaNs (the old kernel assumed contiguous strides).
@@ -99,7 +129,7 @@ def test_cholesky_non_contiguous(shape, dtype):
     )
 
     ref_A = utils.to_reference(A.transpose(-2, -1))
-    ref_out = torch.cholesky(ref_A)
+    ref_out = _reference_cholesky(ref_A)
 
     res_out = flag_gems.cholesky(A.transpose(-2, -1))
 
@@ -122,14 +152,16 @@ def test_cholesky_non_contiguous_batch(shape, dtype):
     for view in (A.transpose(1, 2), A[::2] if A.shape[0] >= 2 else A):
         if view.shape[-2] != view.shape[-1]:
             continue
-        ref_out = torch.cholesky(utils.to_reference(view))
+        ref_out = _reference_cholesky(utils.to_reference(view))
         res_out = flag_gems.cholesky(view)
         utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_batched_4d(shape, dtype):
     shape = (2, 3) + shape
     n = shape[-1]
@@ -140,7 +172,7 @@ def test_cholesky_batched_4d(shape, dtype):
     )
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.cholesky(ref_A)
+    ref_out = _reference_cholesky(ref_A)
 
     res_out = flag_gems.cholesky(A)
 
@@ -156,7 +188,9 @@ def _spd(n, dtype=torch.float32):
 
 
 @pytest.mark.cholesky
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_not_positive_definite_raises(dtype):
     # A non-positive pivot must surface as LinAlgError, not silent NaNs.
     inp = -_spd(4, dtype)
@@ -164,7 +198,7 @@ def test_cholesky_not_positive_definite_raises(dtype):
         flag_gems.cholesky(inp)
     # torch must raise the same class of error for the same input
     with pytest.raises(torch.linalg.LinAlgError):
-        torch.cholesky(utils.to_reference(inp))
+        _reference_cholesky(utils.to_reference(inp))
 
 
 @pytest.mark.cholesky
@@ -173,6 +207,7 @@ def test_cholesky_empty_batch():
     inp = torch.empty(0, 4, 4, device=flag_gems.device)
     res_out = flag_gems.cholesky(inp)
     assert res_out.shape == inp.shape
+    assert res_out.device == inp.device and res_out.dtype == inp.dtype
     assert res_out is not inp
 
 
@@ -184,13 +219,15 @@ def test_cholesky_non_square_raises():
 
 
 @pytest.mark.cholesky
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cholesky_large_n_fallback(dtype):
     # N > 64 is out of scope for the blocked kernel; the operator delegates to
     # the native ``aten::cholesky`` captured at import time and must return the
     # same result as torch instead of raising.
     inp = _spd(128, dtype)
-    ref_out = torch.cholesky(utils.to_reference(inp))
+    ref_out = _reference_cholesky(utils.to_reference(inp))
 
     res_out = flag_gems.cholesky(inp)
 

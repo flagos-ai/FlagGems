@@ -23,11 +23,16 @@
 
 ATen runs the two ``linear`` calls and then ``_thnn_fused_lstm_cell``, so both
 ``(batch, 4 * hidden)`` gate matrices plus a workspace tensor are materialized
-in global memory.  Here one program computes all eight gate slices for its
-``(BLOCK_B, BLOCK_H)`` output tile in registers: the four slices of a linear
-share the same activation operand tile, so each reduced GEMM reads ``input`` /
-``hx[0]`` once and only the weight tiles differ.  Only ``hy`` and ``cy`` are
-written, and the backward workspace is never built.
+in global memory.  This implementation follows that split: one kernel computes
+the rounded input projection, a second kernel computes the rounded hidden
+projection, and a third kernel adds both biases and runs the gate chain.
+
+Keeping the two reductions in separate kernels is required on XPU: a single
+kernel holding both GEMM loops plus the gate chain exceeds the backend's
+pipeline-event budget (``pipeline event id 64 exceeds the limit 64``).  Each
+kernel here stays below that budget, and the split is numerically transparent --
+the rounded projection tiles are stored in accumulator precision, which is the
+exact value the fused kernel would have kept in a register.
 
 The arithmetic reproduces ATen's rounding boundaries rather than being more
 accurate than ATen, which is what the accuracy tests compare against.  ATen
@@ -63,34 +68,20 @@ def _round(value, ROUND_DTYPE: tl.constexpr, ACC_DTYPE: tl.constexpr):
 
 
 @libentry()
-@triton.jit
-def _lstm_cell_kernel(
+@triton.jit(do_not_specialize=["B", "H"])
+def _lstm_cell_ih_kernel(
     x_ptr,
-    h_ptr,
-    c_ptr,
     w_ih_ptr,
-    w_hh_ptr,
-    b_ih_ptr,
-    b_hh_ptr,
-    hy_ptr,
-    cy_ptr,
+    gi_ptr,
     B,
     I,
     H,
     s_xb,
     s_xk,
-    s_hb,
-    s_hk,
-    s_cb,
-    s_ck,
     s_wi_n,
     s_wi_k,
-    s_wh_n,
-    s_wh_k,
-    s_ob,
-    s_on,
-    HAS_BIH: tl.constexpr,
-    HAS_BHH: tl.constexpr,
+    s_gb,
+    s_gn,
     ACC_DTYPE: tl.constexpr,
     ROUND_DTYPE: tl.constexpr,
     BLOCK_B: tl.constexpr,
@@ -114,7 +105,7 @@ def _lstm_cell_kernel(
     acc_g = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     acc_o = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
 
-    # ---- linear(input, w_ih, b_ih) ---------------------------------------
+    # ---- linear(input, w_ih) ---------------------------------------------
     for k0 in range(0, I, BLOCK_K):
         offs_k = k0 + tl.arange(0, BLOCK_K)
         k_mask = offs_k < I
@@ -133,16 +124,70 @@ def _lstm_cell_kernel(
         acc_f = tl.dot(x, wf, acc_f, input_precision="ieee", out_dtype=ACC_DTYPE)
         acc_g = tl.dot(x, wg, acc_g, input_precision="ieee", out_dtype=ACC_DTYPE)
         acc_o = tl.dot(x, wo, acc_o, input_precision="ieee", out_dtype=ACC_DTYPE)
-    gate_i = _round(acc_i, ROUND_DTYPE, ACC_DTYPE)
-    gate_f = _round(acc_f, ROUND_DTYPE, ACC_DTYPE)
-    gate_g = _round(acc_g, ROUND_DTYPE, ACC_DTYPE)
-    gate_o = _round(acc_o, ROUND_DTYPE, ACC_DTYPE)
 
-    # ---- linear(hx[0], w_hh, b_hh) ---------------------------------------
+    # ATen's matmul rounds to the input dtype before the shared fused kernel
+    # adds the biases, so round here and hand the exact accumulator-precision
+    # value to the second kernel.
+    out_mask = b_mask[:, None] & n_mask[None, :]
+    base = offs_b[:, None] * s_gb
+    tl.store(
+        gi_ptr + base + row_i[None, :] * s_gn,
+        _round(acc_i, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+    tl.store(
+        gi_ptr + base + row_f[None, :] * s_gn,
+        _round(acc_f, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+    tl.store(
+        gi_ptr + base + row_g[None, :] * s_gn,
+        _round(acc_g, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+    tl.store(
+        gi_ptr + base + row_o[None, :] * s_gn,
+        _round(acc_o, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "H"])
+def _lstm_cell_hh_kernel(
+    h_ptr,
+    w_hh_ptr,
+    gh_ptr,
+    B,
+    H,
+    s_hb,
+    s_hk,
+    s_wh_n,
+    s_wh_k,
+    s_gb,
+    s_gn,
+    ACC_DTYPE: tl.constexpr,
+    ROUND_DTYPE: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    offs_b = tl.program_id(0) * BLOCK_B + tl.arange(0, BLOCK_B)
+    offs_n = tl.program_id(1) * BLOCK_H + tl.arange(0, BLOCK_H)
+    b_mask = offs_b < B
+    n_mask = offs_n < H
+
+    row_i = offs_n
+    row_f = offs_n + H
+    row_g = offs_n + 2 * H
+    row_o = offs_n + 3 * H
+
     acc_i = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     acc_f = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     acc_g = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     acc_o = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+
+    # ---- linear(hx[0], w_hh) ---------------------------------------------
     for k0 in range(0, H, BLOCK_K):
         offs_k = k0 + tl.arange(0, BLOCK_K)
         k_mask = offs_k < H
@@ -161,10 +206,77 @@ def _lstm_cell_kernel(
         acc_f = tl.dot(hx, wf, acc_f, input_precision="ieee", out_dtype=ACC_DTYPE)
         acc_g = tl.dot(hx, wg, acc_g, input_precision="ieee", out_dtype=ACC_DTYPE)
         acc_o = tl.dot(hx, wo, acc_o, input_precision="ieee", out_dtype=ACC_DTYPE)
-    gate_i += _round(acc_i, ROUND_DTYPE, ACC_DTYPE)
-    gate_f += _round(acc_f, ROUND_DTYPE, ACC_DTYPE)
-    gate_g += _round(acc_g, ROUND_DTYPE, ACC_DTYPE)
-    gate_o += _round(acc_o, ROUND_DTYPE, ACC_DTYPE)
+
+    out_mask = b_mask[:, None] & n_mask[None, :]
+    base = offs_b[:, None] * s_gb
+    tl.store(
+        gh_ptr + base + row_i[None, :] * s_gn,
+        _round(acc_i, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+    tl.store(
+        gh_ptr + base + row_f[None, :] * s_gn,
+        _round(acc_f, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+    tl.store(
+        gh_ptr + base + row_g[None, :] * s_gn,
+        _round(acc_g, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+    tl.store(
+        gh_ptr + base + row_o[None, :] * s_gn,
+        _round(acc_o, ROUND_DTYPE, ACC_DTYPE),
+        mask=out_mask,
+    )
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "H"])
+def _lstm_cell_combine_kernel(
+    gi_ptr,
+    gh_ptr,
+    c_ptr,
+    b_ih_ptr,
+    b_hh_ptr,
+    hy_ptr,
+    cy_ptr,
+    B,
+    H,
+    s_gb,
+    s_gn,
+    s_cb,
+    s_ck,
+    s_ob,
+    s_on,
+    HAS_BIH: tl.constexpr,
+    HAS_BHH: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    offs_b = tl.program_id(0) * BLOCK_B + tl.arange(0, BLOCK_B)
+    offs_n = tl.program_id(1) * BLOCK_H + tl.arange(0, BLOCK_H)
+    b_mask = offs_b < B
+    n_mask = offs_n < H
+
+    row_i = offs_n
+    row_f = offs_n + H
+    row_g = offs_n + 2 * H
+    row_o = offs_n + 3 * H
+
+    out_mask = b_mask[:, None] & n_mask[None, :]
+    base = offs_b[:, None] * s_gb
+    # ``gi`` already holds the rounded input projection, so adding the rounded
+    # hidden projection reproduces the order the fused kernel accumulates in.
+    gate_i = tl.load(gi_ptr + base + row_i[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_f = tl.load(gi_ptr + base + row_f[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_g = tl.load(gi_ptr + base + row_g[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_o = tl.load(gi_ptr + base + row_o[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_i += tl.load(gh_ptr + base + row_i[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_f += tl.load(gh_ptr + base + row_f[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_g += tl.load(gh_ptr + base + row_g[None, :] * s_gn, mask=out_mask, other=0.0)
+    gate_o += tl.load(gh_ptr + base + row_o[None, :] * s_gn, mask=out_mask, other=0.0)
 
     # The fused ATen kernel adds both biases to the two rounded gate matrices in
     # accumulator precision, so there is no rounding between the adds.
@@ -197,14 +309,13 @@ def _lstm_cell_kernel(
 
     c_prev = tl.load(
         c_ptr + offs_b[:, None] * s_cb + offs_n[None, :] * s_ck,
-        mask=b_mask[:, None] & n_mask[None, :],
+        mask=out_mask,
         other=0.0,
     ).to(ACC_DTYPE)
 
     cy = tl.sigmoid(gate_f) * c_prev + tl.sigmoid(gate_i) * _tanh(gate_g)
     hy = tl.sigmoid(gate_o) * _tanh(cy)
 
-    out_mask = b_mask[:, None] & n_mask[None, :]
     out_off = offs_b[:, None] * s_ob + offs_n[None, :] * s_on
     tl.store(hy_ptr + out_off, hy.to(hy_ptr.dtype.element_ty), mask=out_mask)
     tl.store(cy_ptr + out_off, cy.to(cy_ptr.dtype.element_ty), mask=out_mask)
@@ -214,7 +325,8 @@ def _block(value, limit):
     """Smallest power of two at least ``value``, clamped to [16, limit].
 
     16 is ``tl.dot``'s minimum tile extent. The upper clamps are small on
-    purpose: the kernel keeps eight accumulator tiles live at once, so a wider
+    purpose: each projection kernel keeps four accumulator tiles live at once,
+    so a wider
     tile buys no extra reuse and only costs registers and occupancy. Capping
     the tile instead lets a wide layer spread over more blocks.
     """
@@ -291,6 +403,14 @@ _ROUND_DTYPE = {
     torch.float32: tl.float32,
     torch.float64: tl.float64,
 }
+# Torch dtype of the intermediate gate matrix: it must be able to hold the
+# rounded input projection exactly, which is the accumulator precision.
+_ACC_TORCH_DTYPE = {
+    torch.float16: torch.float32,
+    torch.bfloat16: torch.float32,
+    torch.float32: torch.float32,
+    torch.float64: torch.float64,
+}
 
 
 def lstm_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
@@ -333,40 +453,89 @@ def lstm_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
 
     block_b = _block(batch, 16)
     block_h = _block(hidden_size, 32)
-    block_k = _block(max(input_size, hidden_size), 64)
+    # XPU's Triton pipeline crashes ("Inliner" / pipeline-event limit) when a
+    # kernel carries four ``tl.dot`` ops in one loop with a K tile below 64, so
+    # the reduction tile is fixed at 64 and the edges are masked instead.
+    block_k = 64
+    grid = (triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))
 
-    _lstm_cell_kernel[(triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))](
-        input,
+    # Rounded ``linear(input, w_ih)`` and ``linear(hx[0], w_hh)`` tiles, in
+    # accumulator precision, consumed by the combine kernel.
+    gi = torch.empty(
+        (batch, 4 * hidden_size),
+        dtype=_ACC_TORCH_DTYPE[input.dtype],
+        device=input.device,
+    )
+    gh = torch.empty_like(gi)
+
+    if input_size == 0:
+        # An empty reduction contributes nothing (the bias is added by the
+        # combine kernel), and a zero-trip loop is miscompiled on XPU, so write
+        # the zeros directly instead of launching the projection kernel.
+        gi.zero_()
+    else:
+        _lstm_cell_ih_kernel[grid](
+            input,
+            w_ih,
+            gi,
+            batch,
+            input_size,
+            hidden_size,
+            input.stride(0),
+            input.stride(1),
+            w_ih.stride(0),
+            w_ih.stride(1),
+            gi.stride(0),
+            gi.stride(1),
+            ACC_DTYPE=_ACC_DTYPE[input.dtype],
+            ROUND_DTYPE=_ROUND_DTYPE[input.dtype],
+            BLOCK_B=block_b,
+            BLOCK_H=block_h,
+            BLOCK_K=block_k,
+            num_warps=4,
+            num_stages=3,
+        )
+    _lstm_cell_hh_kernel[grid](
         h_prev,
-        c_prev,
-        w_ih,
         w_hh,
-        b_ih if b_ih is not None else input,
-        b_hh if b_hh is not None else input,
-        hy,
-        cy,
+        gh,
         batch,
-        input_size,
         hidden_size,
-        input.stride(0),
-        input.stride(1),
         h_prev.stride(0),
         h_prev.stride(1),
-        c_prev.stride(0),
-        c_prev.stride(1),
-        w_ih.stride(0),
-        w_ih.stride(1),
         w_hh.stride(0),
         w_hh.stride(1),
-        hy.stride(0),
-        hy.stride(1),
-        HAS_BIH=b_ih is not None,
-        HAS_BHH=b_hh is not None,
+        gh.stride(0),
+        gh.stride(1),
         ACC_DTYPE=_ACC_DTYPE[input.dtype],
         ROUND_DTYPE=_ROUND_DTYPE[input.dtype],
         BLOCK_B=block_b,
         BLOCK_H=block_h,
         BLOCK_K=block_k,
+        num_warps=4,
+        num_stages=3,
+    )
+    _lstm_cell_combine_kernel[grid](
+        gi,
+        gh,
+        c_prev,
+        b_ih if b_ih is not None else input,
+        b_hh if b_hh is not None else input,
+        hy,
+        cy,
+        batch,
+        hidden_size,
+        gi.stride(0),
+        gi.stride(1),
+        c_prev.stride(0),
+        c_prev.stride(1),
+        hy.stride(0),
+        hy.stride(1),
+        HAS_BIH=b_ih is not None,
+        HAS_BHH=b_hh is not None,
+        ACC_DTYPE=_ACC_DTYPE[input.dtype],
+        BLOCK_B=block_b,
+        BLOCK_H=block_h,
         num_warps=4,
         num_stages=3,
     )

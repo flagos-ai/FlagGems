@@ -22,17 +22,25 @@ from . import accuracy_utils as utils
 
 @pytest.mark.multiply_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES)
 def test_multiply_(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp1 = torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+        inp2 = torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), True)
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.multiply_(ref_inp2)
     res_out = flag_gems.multiply_(inp1, inp2)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
 
 
 @pytest.mark.multiply_

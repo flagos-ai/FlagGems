@@ -21,6 +21,49 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _ieee_fp32_matmul():
+    # The blocked Jacobi path rebuilds pinv with a native fp32 matmul.  Runners
+    # that start torch with TF32 enabled (TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1 is
+    # set on CI's a100-worker-1) then evaluate that matmul with a 10-bit
+    # mantissa, which moves the result ~1e-4 away from the cuSOLVER reference
+    # on (48, 48) -- the fused path never uses a matmul and stays at ~3e-7.
+    # That is an ambient precision policy, not a property of the kernel under
+    # test, so pin both precision APIs off (torch >= 2.9 new API plus the legacy
+    # flag, which older versions only have) and restore the process state
+    # afterwards.  Same approach as tests/test_chain_matmul.py.
+    saved_precision = None
+    try:
+        saved_precision = torch.backends.cuda.matmul.fp32_precision
+    except (AttributeError, RuntimeError):
+        pass
+    saved_tf32 = None
+    try:
+        saved_tf32 = torch.backends.cuda.matmul.allow_tf32
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "ieee"
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+    except (AttributeError, RuntimeError):
+        pass
+    yield
+    if saved_precision is not None:
+        try:
+            torch.backends.cuda.matmul.fp32_precision = saved_precision
+        except (AttributeError, RuntimeError):
+            pass
+    if saved_tf32 is not None:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = saved_tf32
+        except (AttributeError, RuntimeError):
+            pass
+
+
 # Jacobi SVD kernel operates in float32; float16/bfloat16 lack precision for convergence
 PINV_DTYPES = [torch.float32]
 
@@ -104,3 +147,73 @@ def test_linalg_pinv_large_batched(shape, dtype):
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out(shape, dtype):
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    out = torch.empty((n, m), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.linalg_pinv_out(A, out=out)
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+def test_linalg_pinv_rejects_complex():
+    # Construct on CPU: some backends (e.g. GCU) cannot materialize complex
+    # tensors on the device, while the dtype contract is device independent.
+    A = torch.randn(4, 4, dtype=torch.complex64)
+    with pytest.raises(RuntimeError, match="complex"):
+        flag_gems.linalg_pinv(A)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out_resizes_and_warns(shape, dtype):
+    # A non-empty out buffer with the wrong shape is resized with a warning,
+    # matching ATen's out= contract.
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    out = torch.empty((1, 1), dtype=dtype, device=flag_gems.device)
+    with pytest.warns(UserWarning, match="resized"):
+        res_out = flag_gems.linalg_pinv_out(A, out=out)
+    assert res_out is out
+    assert out.shape == (n, m)
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out_rejects_unsafe_cast(shape, dtype):
+    # float32 -> int32 is not a safe cast, so the out buffer is rejected.
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    out = torch.empty((n, m), dtype=torch.int32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="safely castable"):
+        flag_gems.linalg_pinv_out(A, out=out)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out_noncontiguous(shape, dtype):
+    # The kernel result must be copied into a same-shaped non-contiguous out.
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    holder = torch.empty((n, m * 2), dtype=dtype, device=flag_gems.device)
+    out = holder[:, ::2]
+    assert not out.is_contiguous()
+    res_out = flag_gems.linalg_pinv_out(A, out=out)
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)

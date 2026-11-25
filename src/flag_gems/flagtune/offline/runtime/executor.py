@@ -834,8 +834,9 @@ class BenchmarkWorker:
         trials: int,
         benchmark_mode: str,
         benchmark_retries: int,
+        measurement_order: str = "interleaved",
     ) -> dict[str, list[tuple[float, float, float]]]:
-        """Measure several explicit configs for one shape, interleaved in place.
+        """Measure explicit configs on the same tensors and device.
 
         Args:
             payload: Prepared task mapping from
@@ -849,6 +850,8 @@ class BenchmarkWorker:
             trials: Positive number of measurements taken for each config.
             benchmark_mode: Architecture-neutral ``event`` or ``replay`` mode.
             benchmark_retries: Replay samples sharing each trial's budget.
+            measurement_order: ``interleaved`` reverses labels each trial;
+                ``sequential`` finishes all trials of one label before the next.
 
         Returns:
             Mapping from each input label to ``trials`` finite ``(p20, p50,
@@ -868,7 +871,7 @@ class BenchmarkWorker:
             ``LibTuner.run``; this method obtains it by scoping the tuner to a
             single config, which takes ``run``'s no-policy branch and selects
             that config without tuning or touching either cache. The label order
-            is reversed on every odd trial so drift across the measurement
+            is reversed on every odd trial in interleaved mode so drift across the measurement
             window cannot systematically favour whichever side is measured
             first.
 
@@ -893,6 +896,9 @@ class BenchmarkWorker:
             raise BenchmarkExecutionError("iterations must be positive")
         if trials <= 0:
             raise BenchmarkExecutionError("trials must be positive")
+
+        if measurement_order not in ("interleaved", "sequential"):
+            raise BenchmarkExecutionError("unknown measurement order")
 
         values = dict(payload["values"])
         variant = str(payload["variant"])
@@ -950,19 +956,25 @@ class BenchmarkWorker:
         samples: dict[str, list[tuple[float, float, float]]] = {
             label: [] for label in labels
         }
-        for trial in range(trials):
-            order = labels if trial % 2 == 0 else list(reversed(labels))
-            for label in order:
-                config = configs[label]
-                raw = tuner.benchmark_config(
-                    config,
-                    warmup=warmup,
-                    rep=iterations,
-                    benchmark_mode=benchmark_mode,
-                    benchmark_retries=benchmark_retries,
-                    quantiles=(0.5, 0.2, 0.8),
-                )
-                samples[label].append(self._single_config_quantiles({config: raw}))
+        if measurement_order == "sequential":
+            schedule = ((label, trial) for label in labels for trial in range(trials))
+        else:
+            schedule = (
+                (label, trial)
+                for trial in range(trials)
+                for label in (labels if trial % 2 == 0 else reversed(labels))
+            )
+        for label, _trial in schedule:
+            config = configs[label]
+            raw = tuner.benchmark_config(
+                config,
+                warmup=warmup,
+                rep=iterations,
+                benchmark_mode=benchmark_mode,
+                benchmark_retries=benchmark_retries,
+                quantiles=(0.5, 0.2, 0.8),
+            )
+            samples[label].append(self._single_config_quantiles({config: raw}))
         return samples
 
     def benchmark(

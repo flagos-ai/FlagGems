@@ -24,10 +24,19 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# 单 block 路径的最大元素数(小于等于该值走单 kernel 方案)
-SINGLE_BLOCK_LIMIT = 65536
-# 单 block 路径的最小 BLOCK(避免过小向量触发编译器缺陷)
+# Max element count for the single-block path (<= this uses the single-kernel scheme)
+# Bound by DSM (on-chip shared memory): the single-block kernel keeps
+# out_off(int64,8B) + per-dimension coordinates(int32) ~= 16~20B/elem alive during store; BLOCK=65536 peaks
+# at ~1.05MB, over the 917504B hardware limit (OutOfResources: dsm memory).
+# BLOCK=32768 peaks at ~0.5~0.65MB and is safe, so element counts >32768 take the multi-block path
+# (count+offset+compact, three kernels, each block<=16384, with multi-SP parallelism).
+SINGLE_BLOCK_LIMIT = 32768
+# Minimum BLOCK of the single-block path (avoid tiny vectors triggering compiler defects)
 MIN_BLOCK = 1024
+# grid_x cap of the multi-block path (GCU hardware: grid_x<=65535, grid_y<=255)
+MAX_GRID_X = 65535
+# Max elements per block in the multi-block path (DSM bound, compact kernel peak<=20B/elem)
+MAX_MULTI_BLOCK = 32768
 
 
 @libentry()
@@ -89,7 +98,7 @@ def nonzero_small_kernel_2d_pow2(
     d1_mask,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """1-block 2D 特化: d1 为 2 的幂, 移位/掩码替代 div/mod。"""
+    """1-block 2D specialization: d1 is a power of two, shifts/masks replace div/mod."""
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     x = tl.load(inp + offs, mask=mask, other=0)
@@ -118,7 +127,7 @@ def nonzero_small_kernel_3d(
     d2,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """1-block 3D 特化: 标量 d0/d1/d2 替代 shape tensor。"""
+    """1-block 3D specialization: scalar d0/d1/d2 replace the shape tensor."""
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     x = tl.load(inp + offs, mask=mask, other=0)
@@ -151,8 +160,9 @@ def nonzero_small_kernel_2d_fp(
     inv_d1,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """1-block 2D 特化: d1 非 2 的幂, 用 f32 倒数近似除法(GCU 软件整数除法慢)。
-    要求 n_elements < 2^24(f32 精确性), 带商/余数修正。"""
+    """1-block 2D specialization: d1 is not a power of two, f32 reciprocal approximates division (GCU software integer
+    division is slow).
+    Requires n_elements < 2^24 (f32 exactness), with quotient/remainder correction."""
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     x = tl.load(inp + offs, mask=mask, other=0)
@@ -186,7 +196,7 @@ def nonzero_small_kernel_3d_pow2(
     d2_mask,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """1-block 3D 特化: d1/d2 均为 2 的幂, 移位/掩码替代 div/mod。"""
+    """1-block 3D specialization: d1/d2 are powers of two, shifts/masks replace div/mod."""
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     x = tl.load(inp + offs, mask=mask, other=0)
@@ -250,7 +260,7 @@ def nonzero_count_kernel(
     mask = offs < n_elements
     x = tl.load(inp + offs, mask=mask, other=0)
     nz = (x != 0).to(tl.int32)
-    # 同时输出 int32 化的非零标记, 供 compact kernel 使用(避免 host 二次转换)
+    # Also emit int32 nonzero flags for the compact kernel (avoids a second host-side conversion)
     tl.store(inp_i32 + offs, nz, mask=mask)
     cnt = tl.sum(nz)
     tl.store(counts + pid, cnt)
@@ -268,7 +278,7 @@ def nonzero_block_offset_kernel(
     mask = offs < n_blocks
     c = tl.load(counts + offs, mask=mask, other=0)
     p = tl.cumsum(c, axis=0)
-    # 排他前缀和(每个 block 的输出起始位置)
+    # Exclusive prefix sum (output start offset of each block)
     tl.store(offsets + offs, p - c, mask=mask)
 
 
@@ -288,7 +298,7 @@ def nonzero_compact_kernel_1d(
     nz = (x != 0).to(tl.int32)
     local = tl.cumsum(nz, axis=0)
     base = tl.load(offsets + pid)
-    # 排他局部前缀和: 第 k 个非零元素的输出行号
+    # Exclusive local prefix sum: output row index of the k-th nonzero element
     out_pos = local - nz + base
     out_off = out_pos.to(tl.int64)
     tl.store(out + out_off, offs, mask=(nz == 1))
@@ -334,7 +344,8 @@ def nonzero_compact_kernel_2d_pow2(
     d1_mask,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """2D compact 特化: 最后一维 d1 为 2 的幂, 用移位/掩码替代运行时 div/mod(GCU 无硬件除法器)。"""
+    """2D compact specialization: last dim d1 is a power of two, shifts/masks replace runtime div/mod (GCU has no
+    hardware divider)."""
     pid = ext.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
@@ -364,7 +375,7 @@ def nonzero_compact_kernel_3d(
     d2,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """3D compact 特化: 标量 d0/d1/d2 替代 shape tensor。"""
+    """3D compact specialization: scalar d0/d1/d2 replace the shape tensor."""
     pid = ext.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
@@ -398,8 +409,9 @@ def nonzero_compact_kernel_2d_fp(
     inv_d1,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """2D compact 特化: d1 非 2 的幂, 用 f32 倒数近似除法(GCU 软件整数除法慢)。
-    要求 n_elements < 2^24(f32 精确性), 带商/余数修正。"""
+    """2D compact specialization: d1 is not a power of two, f32 reciprocal approximates division (GCU software integer
+    division is slow).
+    Requires n_elements < 2^24 (f32 exactness), with quotient/remainder correction."""
     pid = ext.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
@@ -434,7 +446,7 @@ def nonzero_compact_kernel_3d_pow2(
     d2_mask,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """3D compact 特化: d1/d2 均为 2 的幂, 移位/掩码替代 div/mod。"""
+    """3D compact specialization: d1/d2 are powers of two, shifts/masks replace div/mod."""
     pid = ext.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
@@ -474,7 +486,7 @@ def nonzero_compact_kernel(
     nz = (x != 0).to(tl.int32)
     local = tl.cumsum(nz, axis=0)
     base = tl.load(offsets + pid)
-    # 排他局部前缀和: 第 k 个非零元素的输出行号
+    # Exclusive local prefix sum: output row index of the k-th nonzero element
     out_pos = local - nz + base
 
     idx_flat = offs
@@ -498,7 +510,7 @@ def nonzero(inp, *, as_tuple=False):
     if n_elements == 0:
         out = torch.empty((0, inp_ndim), dtype=torch.int64, device=inp.device)
         if as_tuple:
-            # torch 语义: 每个维度一个索引张量
+            # torch semantics: one index tensor per dimension
             return torch.unbind(out, dim=1)
         return out
 
@@ -514,7 +526,7 @@ def nonzero(inp, *, as_tuple=False):
 
     with torch_device_fn.device(inp.device):
         if n_elements <= SINGLE_BLOCK_LIMIT:
-            # small path: host 端转 int32(GCU 编译器对非 int32 输入 + cumsum 有缺陷)
+            # small path: host-side conversion to int32 (GCU compiler has a defect with non-int32 inputs + cumsum)
             inp_bool = inp_view
             if inp_view.dtype != torch.bool:
                 inp_bool = inp_view != 0
@@ -583,8 +595,8 @@ def nonzero(inp, *, as_tuple=False):
                 )
             num_nonzeros = int(total.item())
         else:
-            # 按元素数自适应 BLOCK_SIZE / num_warps(实测 tune 结论)
-            # 3D 坐标计算多, 小 shape 用更大 BLOCK 收益明显
+            # Adapt BLOCK_SIZE / num_warps to element count (measured tuning result)
+            # 3D needs more coordinate math; larger BLOCKs clearly help small shapes
             if is_3d and n_elements <= 1048576:
                 block, num_warps = 8192, 2
             elif n_elements <= 262144:
@@ -594,6 +606,12 @@ def nonzero(inp, *, as_tuple=False):
             else:
                 block, num_warps = 16384, 4
             n_blocks = triton.cdiv(n_elements, block)
+            # grid_x hardware limit 65535: on overflow enlarge the block (cap MAX_MULTI_BLOCK, DSM
+            # bound compact kernel peak<=20B/elem, 32768*20=655360<917504 is safe) to
+            # cut block count; covers n_elements <= 65535*32768 ~= 2.1e9.
+            while n_blocks > MAX_GRID_X and block < MAX_MULTI_BLOCK:
+                block *= 2
+                n_blocks = triton.cdiv(n_elements, block)
             inp_i32 = torch.empty(n_elements, dtype=torch.int32, device=inp.device)
             counts = torch.empty(n_blocks, dtype=torch.int32, device=inp.device)
             offsets = torch.empty(n_blocks, dtype=torch.int32, device=inp.device)
@@ -623,7 +641,7 @@ def nonzero(inp, *, as_tuple=False):
                     )
                 else:
                     if n_elements < (1 << 24):
-                        # f32 倒数近似除法(仅当元素数 < 2^24 保证 f32 精确)
+                        # f32 reciprocal division approximation (only when element count < 2^24 keeps f32 exact)
                         nonzero_compact_kernel_2d_fp[grid](
                             inp_i32,
                             offsets,
@@ -689,7 +707,7 @@ def nonzero(inp, *, as_tuple=False):
     out = out[0:num_nonzeros]
 
     if as_tuple:
-        # torch 语义: 每个维度一个索引张量(out 为 (nnz, ndim))
+        # torch semantics: one index tensor per dimension (out is (nnz, ndim))
         return torch.unbind(out, dim=1)
     else:
         return out
