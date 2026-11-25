@@ -21,6 +21,9 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+mul_backward:
+  <<: *single_dim_shapes
+
 vdot:
   <<: *single_dim_shapes
 
@@ -462,6 +465,15 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+addbmm_backward:
+  # Representative backward cases cover skinny, rectangular and non-aligned
+  # GEMMs without the multi-gigabyte gradients of the shared forward BLAS set.
+  shapes:
+    - [2, 1, 64, 4096]
+    - [4, 32, 256, 2048]
+    - [8, 65, 127, 1025]
+  shape_desc: "B, M, N, K"
+
 linear:
   # Matched by op_name, which set_shapes() looks up before falling back to
   # the MRO class name, so this override leaves every other BlasBenchmark op
@@ -887,6 +899,17 @@ multilabel_margin_loss_backward:
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
 multilabel_margin_loss_forward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
+# Backward shares the forward's O(N*C^2) shape envelope.
+multilabel_margin_loss_forward_backward:
   shapes:
     - [8, 128]
     - [32, 256]
@@ -1456,6 +1479,15 @@ addmm:
   shape_desc: B, M, N, K
   accuracy_shapes: *id002
   quick_shapes: *id003
+amin_backward:
+  # Row, tail, square and batched reductions exercise the fused tie-count path.
+  shapes:
+  - [64, 64]
+  - [65, 129]
+  - [256, 512]
+  - [1024, 1024]
+  - [64, 512, 64]
+  shape_desc: M, N
 mv:
   shapes: &id004
   - [1, 2048]
@@ -1627,6 +1659,18 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+narrow_copy_backward:
+  shapes:
+  - - 5
+    - 7
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 narrow input shape
 
 ne_backward_:
   shapes:
