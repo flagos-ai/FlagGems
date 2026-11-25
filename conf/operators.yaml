@@ -617,6 +617,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: abs_backward
+  description: Computes the gradient of abs in one fused Triton kernel.
+  for:
+  - abs
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: absolute
   description: 'This is an alias for `abs()` with the low-level operations implemented
 
@@ -986,6 +998,17 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: addbmm_backward
+  description: Computes the three addbmm input gradients in one fused Triton launch.
+  for:
+  - addbmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: addcdiv
   description: 'Performs the element-wise division of `tensor1` by `tensor2`, multiplies
     the result
@@ -1476,6 +1499,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: amin_backward
+  description: Computes tie-aware input gradients for amin in one Triton launch.
+  for:
+  - amin
+  labels:
+  - aten
+  - KernelGen
+  - reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: aminmax
   description: 'Computes the minimum and maximum values of the `input` tensor.
 
@@ -4274,6 +4309,18 @@ ops:
   - Convolution
   stages:
   - alpha: '5.4'
+- id: convolution_overrideable_backward
+  description: |
+    Triton kernel implementation for convolution_overrideable_backward.
+  for:
+    - convolution_overrideable_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: convolution_overrideable_out
   description: 'A variant of convolution_overrideable() that writes the result into
     the out tensor.
@@ -4472,6 +4519,19 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: cosh_backward
+  description: The backward computation of `cosh()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - cosh
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: cosh_out
   description: This is an variant of `cosh()` that assigns the output to the provided
     `out`.
@@ -5133,6 +5193,25 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: cumsum_backward
+  description: |
+    Backward pass for `cumsum`: the gradient with respect to the input is the reverse
+    cumulative sum of the upstream gradient along the cumulative dimension, i.e.
+    `grad_input[i] = sum_{j >= i} grad_output[j]`. Implemented as a single-pass Triton
+    kernel that walks the reduce axis in reversed index order inside `tl.cumsum`, so no
+    flip kernels or extra full-tensor copies are needed. Accumulation is performed in
+    float32 for numerical stability. Exposed through `torch.autograd.Function` because
+    `aten::cumsum` has no dedicated backward operator.
+  for:
+  - cumsum_backward
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: cumsum_out
   description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
@@ -5182,6 +5261,23 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: deg2rad_backward
+  description: |
+    Backward pass for `deg2rad`: the gradient with respect to the input is the
+    elementwise product of the upstream gradient with pi/180. The multiply is
+    performed in float32 opmath for fp16/bf16 and the result is cast back to the
+    input dtype, matching ATen's Deg2RadBackward0. Exposed through a
+    `torch.autograd.Function` bridge because this Torch build has no standalone
+    `aten::deg2rad_backward` schema.
+  for:
+  - deg2rad_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: deg2rad_out
   description: Out-of-place variant of deg2rad with pre-allocated output tensor.
   for:
@@ -6674,6 +6770,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: fill_backward_
+  description: Backward of in-place fill for scalar and tensor values through autograd.
+  for:
+  - fill_.Scalar
+  - fill_.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -7139,6 +7247,17 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fmax_backward
+  description: Backward of fmax through autograd, including NaN and tie handling.
+  for:
+  - fmax
+  labels:
+  - aten
+  - pointwise
   kind:
   - Math
   stages:
@@ -12517,8 +12636,15 @@ ops:
   - beta: '5.4'
 - id: linalg_pinv
   description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
+    The registered atol_rtol overloads support real floating-point inputs only;
+    complex inputs raise RuntimeError instead of falling back to the native
+    kernel (ATen itself supports complex).
   for:
   - linalg_pinv
+  - linalg_pinv.atol_rtol_float
+  - linalg_pinv.atol_rtol_float_out
+  - linalg_pinv.atol_rtol_tensor
+  - linalg_pinv.atol_rtol_tensor_out
   labels:
   - aten
   - KernelGen
@@ -14628,6 +14754,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: mul_backward
+  description: Computes both tensor-input gradients of `mul` in one fused Triton kernel.
+  for:
+  - mul.Tensor
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: multi_margin_loss
   description: Computes the multi-class margin loss with optional class weights.
   for:
@@ -14709,6 +14847,19 @@ ops:
   - multilabel_margin_loss_forward
   labels:
   - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: multilabel_margin_loss_forward_backward
+  description: Computes the input gradient of multilabel_margin_loss_forward with
+    a fused Triton kernel.
+  for:
+  - multilabel_margin_loss_forward
+  labels:
+  - aten
+  - KernelGen
   - Loss
   kind:
   - NeuralNetwork
@@ -15001,6 +15152,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: narrow_copy_backward
+  description: Extended narrow_copy gradient, validated against narrow followed by clone.
+  for:
+  - narrow_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: native_batch_norm
   description: Apply native batch normalization using the existing implementation.
   for:
