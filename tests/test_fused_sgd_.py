@@ -53,23 +53,34 @@ SGD_CASES = [
 SHAPES = utils.POINTWISE_SHAPES
 
 
-def _skip_if_cpu_ref():
-    """Skip when the CPU reference path is requested.
+def _skip_if_untrusted_cpu_ref(*shapes, dtype=None):
+    """Skip only the rows whose native CPU reference is measurably broken.
 
-    ``torch._fused_sgd_``'s CPU kernel silently leaves ``param`` unchanged when
-    the tensors are half precision (float16/bfloat16) and ``numel % 16 == 0``
-    -- the momentum buffer is updated but the parameter is not, with no error
-    or warning. ``torch.optim.SGD`` on the same inputs updates correctly, so
-    the CPU reference is not trustworthy for those shapes. CI runs this file
-    with ``--ref=cpu`` (``utils.TO_CPU``), where the parametrised shapes are
-    all multiples of 16 in half precision, so the whole file is skipped rather
-    than reporting mismatches against a reference that does not move.
+    ``torch._fused_sgd_``'s CPU kernel silently mis-updates half-precision
+    (float16/bfloat16) tensors once ``numel >= 16``: at ``numel % 16 == 0`` the
+    parameter is left untouched while the momentum buffer moves, and for other
+    numels the vector-sized prefix is mis-written (shape ``(17,)`` updates only
+    element 16) -- with no error or warning. Measured on torch 2.11.0+cu130 for
+    both dtypes over numel 1..40 and 47/63/127/255/266/343/1000/4096/8721,
+    across every ``SGD_CASES`` entry: ``numel <= 15`` matches a float64
+    reference, ``numel >= 16`` does not (float32/float64 match it exactly for
+    all cases and parametrised shapes). ``torch.optim.SGD`` updates correctly,
+    so the CPU reference is untrustworthy for exactly that half-precision set
+    and every other row keeps a real CPU reference.
     """
-    if utils.TO_CPU:
-        pytest.skip(
-            "torch._fused_sgd_ CPU reference does not update param for "
-            "half-precision tensors whose numel is a multiple of 16"
-        )
+    if not utils.TO_CPU:
+        return
+    if dtype not in (torch.float16, torch.bfloat16):
+        return
+    for shape in shapes:
+        numel = 1
+        for dim in shape:
+            numel *= dim
+        if numel >= 16:
+            pytest.skip(
+                "torch._fused_sgd_ CPU reference mis-updates half-precision "
+                "tensors with numel >= 16"
+            )
 
 
 def _make_inputs(shape, dtype, device, momentum):
@@ -84,16 +95,27 @@ def _make_inputs(shape, dtype, device, momentum):
 def _run_ref(op, params, grads, mbufs, **kwargs):
     """Run the reference (native aten) implementation.
 
-    ``torch._fused_sgd_`` dispatches to the FlagGems registered kernel when
-    lists are passed (the FlagGems wrapper accepts list inputs), but the native
-    CUDA fused-SGD op expects tuple inputs. Passing tuples therefore reaches
-    the native path directly, without an explicit dispatch context. The
-    reference inputs are routed through ``utils.to_reference`` so the
-    cross-device reference path is consistent with the rest of the suite
-    (callers guard ``utils.TO_CPU`` so the native CUDA op never runs on CPU).
+    The native aten fused-SGD op takes the tensor lists positionally, so they
+    are passed as tuples. Every input reaches the reference device through
+    ``utils.to_reference`` -- the tensor lists and also tensor-valued keyword
+    arguments such as ``lr``/``grad_scale``/``found_inf`` -- so the reference
+    runs entirely on the reference device under ``--ref cpu`` while the
+    ``--ref`` device lane is unchanged.
+
+    ``to_reference`` returns the same tensors on the device lane but new CPU
+    tensors under ``--ref cpu``, and the op updates its inputs in place, so the
+    stepped tensors are returned: callers must compare against the returned
+    lists, not the tensors they passed in.
     """
-    ref = lambda xs: [utils.to_reference(x) for x in xs]
-    return op(tuple(ref(params)), tuple(ref(grads)), tuple(ref(mbufs)), **kwargs)
+    params = [utils.to_reference(x) for x in params]
+    grads = [utils.to_reference(x) for x in grads]
+    mbufs = [utils.to_reference(x) for x in mbufs]
+    ref_kwargs = {
+        name: utils.to_reference(value) if isinstance(value, torch.Tensor) else value
+        for name, value in kwargs.items()
+    }
+    op(tuple(params), tuple(grads), tuple(mbufs), **ref_kwargs)
+    return params, grads, mbufs
 
 
 def _run_gems(op, params, grads, mbufs, **kwargs):
@@ -116,7 +138,7 @@ def test_fused_sgd_(
     shape, dtype, wd, momentum, lr, dampening, nesterov, maximize, is_first_step
 ):
     """In-place fused SGD step: compare gems vs native on params/grads/momentum."""
-    _skip_if_cpu_ref()
+    _skip_if_untrusted_cpu_ref(shape, dtype=dtype)
     device = flag_gems.device
     p, g, mb = _make_inputs(shape, dtype, device, momentum)
     # Reference clones
@@ -128,7 +150,7 @@ def test_fused_sgd_(
     gems_g = g.clone()
     gems_mb = mb.clone()
 
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch._fused_sgd_,
         [ref_p],
         [ref_g],
@@ -155,9 +177,9 @@ def test_fused_sgd_(
         is_first_step=is_first_step,
     )
 
-    utils.gems_assert_close(gems_p, ref_p, dtype)
-    utils.gems_assert_close(gems_mb, ref_mb, dtype)
-    utils.gems_assert_close(gems_g, ref_g, dtype)
+    utils.gems_assert_close(gems_p, ref_p[0], dtype)
+    utils.gems_assert_close(gems_mb, ref_mb[0], dtype)
+    utils.gems_assert_close(gems_g, ref_g[0], dtype)
 
 
 @pytest.mark.fused_sgd_
@@ -175,9 +197,11 @@ def test_fused_sgd__multitensor(
     launch (see ``test_fused_sgd__single_launch``), so this is what exercises the
     per-program tensor lookup rather than one grid per parameter.
     """
-    _skip_if_cpu_ref()
-    device = flag_gems.device
     shapes = [shape, (64, 64), (128,), (7, 7, 7)]
+    # The fixed companion tensors (64, 64) and (128,) are >= 16 elements, so a
+    # half-precision row is untrusted whatever the parametrised shape is.
+    _skip_if_untrusted_cpu_ref(*shapes, dtype=dtype)
+    device = flag_gems.device
     tensors = [_make_inputs(s, dtype, device, momentum) for s in shapes]
     ref_p = [t[0].clone() for t in tensors]
     ref_g = [t[1].clone() for t in tensors]
@@ -186,7 +210,7 @@ def test_fused_sgd__multitensor(
     res_g = [t[1].clone() for t in tensors]
     res_mb = [t[2].clone() for t in tensors]
 
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch._fused_sgd_,
         ref_p,
         ref_g,
@@ -222,7 +246,6 @@ def test_fused_sgd__multitensor(
 @pytest.mark.fused_sgd_
 def test_fused_sgd__grad_scale():
     """AMP gradient scaling: grad is divided by grad_scale in-place."""
-    _skip_if_cpu_ref()
     device = flag_gems.device
     dtype = torch.float32
     # A single representative size is enough for the grad_scale / found_inf code
@@ -233,7 +256,7 @@ def test_fused_sgd__grad_scale():
     res_p, res_g, res_mb = p.clone(), g.clone(), mb.clone()
     gs = torch.tensor([4.0], device=device)
 
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch._fused_sgd_,
         [ref_p],
         [ref_g],
@@ -262,9 +285,9 @@ def test_fused_sgd__grad_scale():
         grad_scale=gs,
     )
 
-    utils.gems_assert_close(res_p, ref_p, dtype)
-    utils.gems_assert_close(res_mb, ref_mb, dtype)
-    utils.gems_assert_close(res_g, ref_g, dtype)
+    utils.gems_assert_close(res_p, ref_p[0], dtype)
+    utils.gems_assert_close(res_mb, ref_mb[0], dtype)
+    utils.gems_assert_close(res_g, ref_g[0], dtype)
 
 
 @pytest.mark.fused_sgd_
@@ -276,7 +299,6 @@ def test_fused_sgd__found_inf(found_inf_val):
     update. Testing only 1.0 passes under either comparison and cannot catch a
     kernel that loosened the condition to ``> 0``.
     """
-    _skip_if_cpu_ref()
     device = flag_gems.device
     dtype = torch.float32
     # A single representative size is enough: the skip path is independent of
@@ -296,14 +318,16 @@ def test_fused_sgd__found_inf(found_inf_val):
     )
 
     ref_p, ref_g, ref_mb = p.clone(), g.clone(), mb.clone()
-    _run_ref(torch._fused_sgd_, [ref_p], [ref_g], [ref_mb], **opts)
+    ref_p, ref_g, ref_mb = _run_ref(
+        torch._fused_sgd_, [ref_p], [ref_g], [ref_mb], **opts
+    )
 
     res_p, res_g, res_mb = p.clone(), g.clone(), mb.clone()
     _run_gems(flag_gems._fused_sgd_, [res_p], [res_g], [res_mb], **opts)
 
-    utils.gems_assert_close(res_p, ref_p, dtype)
-    utils.gems_assert_close(res_g, ref_g, dtype)
-    utils.gems_assert_close(res_mb, ref_mb, dtype)
+    utils.gems_assert_close(res_p, ref_p[0], dtype)
+    utils.gems_assert_close(res_g, ref_g[0], dtype)
+    utils.gems_assert_close(res_mb, ref_mb[0], dtype)
 
     if found_inf_val == 1.0:
         # Buffers must be untouched, not merely close to the reference.
@@ -327,7 +351,6 @@ def test_fused_sgd__tensor_lr(lr_shape, dtype):
     through a ``tl.float64``-annotated scalar. Both overflow-independent paths
     must agree with ATen.
     """
-    _skip_if_cpu_ref()
     device = flag_gems.device
     shape = (256, 128)
     p, g, mb = _make_inputs(shape, dtype, device, momentum=0.9)
@@ -346,7 +369,7 @@ def test_fused_sgd__tensor_lr(lr_shape, dtype):
     )
 
     ref_p, ref_g, ref_mb = p.clone(), g.clone(), mb.clone()
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch.ops.aten._fused_sgd_.tensor_lr,
         [ref_p],
         [ref_g],
@@ -357,8 +380,8 @@ def test_fused_sgd__tensor_lr(lr_shape, dtype):
     res_p, res_g, res_mb = p.clone(), g.clone(), mb.clone()
     _run_gems(flag_gems._fused_sgd__tensor_lr, [res_p], [res_g], [res_mb], **opts)
 
-    utils.gems_assert_close(res_p, ref_p, dtype)
-    utils.gems_assert_close(res_mb, ref_mb, dtype)
+    utils.gems_assert_close(res_p, ref_p[0], dtype)
+    utils.gems_assert_close(res_mb, ref_mb[0], dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +419,6 @@ def test_fused_sgd__rejects_mixed_dtype_list(order):
     applies nothing when it fires, so neither the shape of the error nor the
     order of the mismatched pair may leave a partial update behind.
     """
-    _skip_if_cpu_ref()
     device = flag_gems.device
     shape = (64, 64)
     dtypes = [torch.float32, torch.float16]
@@ -425,7 +447,6 @@ def test_fused_sgd__rejects_mixed_device_list():
     updated and the mismatch would only surface later, leaving a half-applied
     optimizer step.
     """
-    _skip_if_cpu_ref()
     ps = [
         torch.randn(64, 64, device="cuda:0"),
         torch.randn(64, 64, device="cuda:1"),
@@ -450,7 +471,6 @@ def test_fused_sgd__launches_on_param_device():
     ATen accepts a list on any one device; the launch must target the
     parameters' device rather than whatever the caller left current.
     """
-    _skip_if_cpu_ref()
     device = "cuda:1"
     with torch.cuda.device("cuda:0"):
         # Build and run while cuda:0 is current, so only an explicit device
@@ -459,9 +479,11 @@ def test_fused_sgd__launches_on_param_device():
         ps = [torch.randn(s, device=device) for s in shapes]
         gs = [torch.randn_like(p) for p in ps]
         mbs = [torch.randn_like(p) for p in ps]
-        ref_p = [t.clone() for t in ps]
-        ref_g = [t.clone() for t in gs]
-        ref_mb = [t.clone() for t in mbs]
+        # ``to_reference`` is the identity on the device lane and moves the
+        # clones to the CPU reference device under ``--ref cpu``.
+        ref_p = [utils.to_reference(t.clone()) for t in ps]
+        ref_g = [utils.to_reference(t.clone()) for t in gs]
+        ref_mb = [utils.to_reference(t.clone()) for t in mbs]
         torch.ops.aten._fused_sgd_(ref_p, ref_g, ref_mb, **_step_kwargs())
         flag_gems._fused_sgd_(ps, gs, mbs, **_step_kwargs())
         torch.cuda.synchronize()
@@ -478,7 +500,6 @@ def test_fused_sgd__rejects_grad_dtype_mismatch():
     This is the within-index half of the same rule: ATen compares grads and
     buffers against the shared dtype rather than only against their own param.
     """
-    _skip_if_cpu_ref()
     device = flag_gems.device
     p = torch.randn(64, 64, dtype=torch.float32, device=device)
     g = torch.randn(64, 64, dtype=torch.float64, device=device)
@@ -527,7 +548,6 @@ def _count_launches(n_params, shape=(256, 256)):
 @pytest.mark.parametrize("n_params", [1, 4, 16])
 def test_fused_sgd__single_launch(n_params):
     """The whole parameter list costs one kernel launch, whatever its length."""
-    _skip_if_cpu_ref()
     assert _count_launches(n_params) == 1
 
 
@@ -539,7 +559,6 @@ def test_fused_sgd__heterogeneous_batch_accuracy():
     single-element tensor), so a batched kernel that mis-derives the owning
     tensor or its mask shows up as a shape-indexed mismatch rather than noise.
     """
-    _skip_if_cpu_ref()
     device = flag_gems.device
     shapes = [(4096, 4096), (1000,), (7, 7, 7), (1,), (513, 17)]
     tensors = [_make_inputs(s, torch.float32, device, 0.9) for s in shapes]
@@ -555,7 +574,7 @@ def test_fused_sgd__heterogeneous_batch_accuracy():
         dampening=0.2,
         nesterov=True,
     )
-    _run_ref(torch._fused_sgd_, ref_p, ref_g, ref_mb, **opts)
+    ref_p, ref_g, ref_mb = _run_ref(torch._fused_sgd_, ref_p, ref_g, ref_mb, **opts)
     _run_gems(flag_gems._fused_sgd_, res_p, res_g, res_mb, **opts)
 
     for i in range(len(shapes)):
@@ -587,8 +606,12 @@ def _assert_replay_matches_eager(op, params, grads, mbs, opts):
     ``params``/``grads``/``mbs`` are stepped by the capture warmup; the eager
     reference is taken from that state, then the graph is replayed once and the
     result compared against a second eager step taken from the same state.
+
+    Both sides are device tensors -- this compares Gems replay against Gems
+    eager, not against a CPU reference -- so under ``--ref cpu`` both sides are
+    copied to the CPU before comparison. ``gems_assert_close`` only moves the
+    actual tensor, which would otherwise leave the operands on two devices.
     """
-    _skip_if_cpu_ref()
     graph = _capture_step(op, params, grads, mbs, opts)
 
     # Eager step from the post-warmup state == what one replay must produce.
@@ -599,6 +622,13 @@ def _assert_replay_matches_eager(op, params, grads, mbs, opts):
 
     graph.replay()
     torch.cuda.synchronize()
+    if utils.TO_CPU:
+        params = [t.cpu() for t in params]
+        expected_p = [t.cpu() for t in expected_p]
+        grads = [t.cpu() for t in grads]
+        expected_g = [t.cpu() for t in expected_g]
+        mbs = [t.cpu() for t in mbs]
+        expected_mb = [t.cpu() for t in expected_mb]
     return params, expected_p, grads, expected_g, mbs, expected_mb
 
 

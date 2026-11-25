@@ -169,6 +169,10 @@ def generate_scatter_kernel(
                 code.writeline("cur_index = cur_index.to(tl.int32)")
                 code.writeline("stride_dim = stride_dim.to(tl.int32)")
 
+            code.writeline("# Suppress out-of-bound indices to prevent OOB writes.")
+            code.writeline(
+                "mask = mask & (cur_index >= 0) & (cur_index < inp_size_dim)"
+            )
             code.writeline("dim_offsets = cur_index * stride_dim")
             code.writeline("inp_offsets += dim_offsets")
             code.newline()
