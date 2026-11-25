@@ -42,3 +42,15 @@ def test_amin_(dtype):
         gems_op=flag_gems.amin_,
     )
     bench.run()
+
+
+@pytest.mark.amin_backward
+def test_amin_backward():
+    bench = base.UnaryReductionBenchmark(
+        op_name="amin_backward",
+        torch_op=torch.amin,
+        gems_op=flag_gems.amin,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
