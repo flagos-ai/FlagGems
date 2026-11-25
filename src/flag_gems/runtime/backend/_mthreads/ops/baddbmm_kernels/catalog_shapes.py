@@ -19,7 +19,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from ..gemm_common import small_m_nt_gemv_kernel
+from ..gemm_common import small_m_nn_gemv_kernel, small_m_nt_gemv_kernel
 
 
 def _supported_b_layout(tensor):
@@ -36,12 +36,26 @@ def _direct_config(batch, m, n, k, transposed_b):
     if not (2 <= batch <= 8 and batch & (batch - 1) == 0) or m <= 0 or n <= 0 or k <= 0:
         return None
 
-    # One/two-row NT operands are GEMVs over physical [B, N, K] rows.  Keep
-    # the M=1 contiguous case on the direct tiled implementation.
+    # A column group per row exposes more parallelism for narrow, long-K products.
+    if 16 <= m <= 128 and n <= 4 and 8192 <= k <= 16384:
+        return ("row_gemv", 1, 2, 2048 if transposed_b else 1024, 8)
+
+    # With one or two rows, a reduction avoids doing work for padded MMA rows.
     if m <= 2 and n <= 64 and 1024 <= k <= 16384:
+        if m == 2 and transposed_b and n <= 16 and k <= 4096:
+            return ("row_gemv", 1, 1, 1024, 8)
         if transposed_b:
             block_k, num_warps = (2048, 4) if m == 1 else (1024, 2)
             return ("nt_gemv", 1, 1, block_k, num_warps)
+        if n >= 8 and k <= 4096:
+            block_n, max_block_k = (4, 4096) if m == 1 else (1, 2048)
+            return (
+                "row_gemv",
+                1,
+                block_n,
+                min(triton.next_power_of_2(k), max_block_k),
+                8,
+            )
         if m == 1:
             return ("direct_tiled", 16, 64, 64, 4)
         return None
@@ -180,9 +194,16 @@ def launch(bias, a, b, out=None, *, alpha=1.0, beta=1.0):
     if config is None:
         raise ValueError("unsupported direct baddbmm shape")
     algorithm, block_m, block_n, block_k, num_warps = config
-    if algorithm == "nt_gemv":
+    if algorithm in ("row_gemv", "nt_gemv"):
+        columns = triton.cdiv(n, block_n)
+        if algorithm == "row_gemv":
+            gemv_kernel = small_m_nn_gemv_kernel
+            grid = (columns, m, batch)
+        else:
+            gemv_kernel = small_m_nt_gemv_kernel
+            grid = (columns, batch)
         with torch_device_fn.device(a.device):
-            small_m_nt_gemv_kernel[(n, batch)](
+            gemv_kernel[grid](
                 a,
                 b,
                 bias,
@@ -204,7 +225,7 @@ def launch(bias, a, b, out=None, *, alpha=1.0, beta=1.0):
                 M=m,
                 N=n,
                 K=k,
-                BLOCK_N=1,
+                BLOCK_N=block_n,
                 BLOCK_K=block_k,
                 FUSE_BIAS=True,
                 BETA_ZERO=float(beta) == 0.0,

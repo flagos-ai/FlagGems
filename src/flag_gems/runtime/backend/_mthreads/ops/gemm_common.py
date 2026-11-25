@@ -182,4 +182,75 @@ def small_m_nt_gemv_kernel(
             )
 
 
-__all__ = ["small_m_nt_gemv_kernel"]
+@libentry()
+@triton.jit(do_not_specialize=["alpha", "beta"])
+def small_m_nn_gemv_kernel(
+    a,
+    b,
+    bias,
+    out,
+    alpha,
+    beta,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_bias_b,
+    stride_bias_m,
+    stride_bias_n,
+    stride_out_b,
+    stride_out_m,
+    stride_out_n,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    FUSE_BIAS: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
+):
+    """Reduce one row against adjacent columns of NN or NT weights."""
+
+    pid_n = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_b = tl.program_id(2)
+    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offsets_k = tl.arange(0, BLOCK_K)
+    mask_n = offsets_n < N
+    a_base = a + pid_b * stride_ab + pid_m * stride_am
+    b_base = b + pid_b * stride_bb + offsets_n[None, :] * stride_bn
+    accumulator = tl.zeros((BLOCK_K, BLOCK_N), dtype=tl.float32)
+
+    for start in range(0, K, BLOCK_K):
+        k = start + offsets_k
+        vector = tl.load(a_base + k * stride_ak, mask=k < K, other=0).to(tl.float32)
+        weight = tl.load(
+            b_base + k[:, None] * stride_bk,
+            mask=(k[:, None] < K) & mask_n[None, :],
+            other=0,
+        ).to(tl.float32)
+        accumulator += vector[:, None] * weight
+
+    result = tl.sum(accumulator, axis=0)
+    if FUSE_BIAS:
+        result *= alpha
+        if not BETA_ZERO:
+            bias_value = tl.load(
+                bias
+                + pid_b * stride_bias_b
+                + pid_m * stride_bias_m
+                + offsets_n * stride_bias_n,
+                mask=mask_n,
+                other=0,
+            ).to(tl.float32)
+            result += bias_value * beta
+    tl.store(
+        out + pid_b * stride_out_b + pid_m * stride_out_m + offsets_n * stride_out_n,
+        result,
+        mask=mask_n,
+    )
+
+
+__all__ = ["small_m_nn_gemv_kernel", "small_m_nt_gemv_kernel"]

@@ -24,7 +24,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-from .gemm_common import small_m_nt_gemv_kernel
+from .gemm_common import small_m_nn_gemv_kernel, small_m_nt_gemv_kernel
 
 # Reuse the warp-specialized mm building blocks.  addmm is a single GEMM with
 # a bias epilogue, so it shares the tuned 256x256x64 tile pipeline, the
@@ -93,7 +93,7 @@ _NT_GEMV_CONFIGS = {
     (2, 64, 4096): (1, 2048, 4),
     (1, 256, 2048): (1, 1024, 2),
     (1, 4096, 128): (16, 128, 4),
-    (1, 4, 16384): (1, 4096, 8),
+    (1, 4, 16384): (1, 16384, 16),
 }
 
 # For these very wide NT matrices, materializing the logical KxN view costs
@@ -161,11 +161,12 @@ def _prepare_bias(bias, out):
         return bias, 0, bias.stride(0), True, False
     if bias_is_scalar:
         return bias, 0, 0, False, True
-    bias = bias.broadcast_to(out.shape)
+    if bias.shape != out.shape:
+        bias = bias.broadcast_to(out.shape)
     return bias, bias.stride(0), bias.stride(1), False, False
 
 
-def _launch_addmm_nt_gemv(
+def _launch_addmm_gemv(
     bias,
     mat1,
     mat2,
@@ -176,33 +177,45 @@ def _launch_addmm_nt_gemv(
     block_n,
     block_k,
     num_warps,
+    separate_rows,
 ):
     m, k = mat1.shape
     n = mat2.shape[1]
     if out is None:
         out = torch.empty((m, n), dtype=mat1.dtype, device=mat1.device)
     bias, stride_bias_m, stride_bias_n, _, _ = _prepare_bias(bias, out)
+    grid_n = triton.cdiv(n, block_n)
+    if separate_rows and n > 1 and mat2.is_contiguous():
+        # Adjacent columns in NN layout share the K loop and can reduce once.
+        kernel = small_m_nn_gemv_kernel
+        grid = (grid_n, m, 1)
+        row_as_batch = False
+    else:
+        kernel = small_m_nt_gemv_kernel
+        grid = (grid_n, m if separate_rows else 1)
+        row_as_batch = separate_rows
+
     with torch_device_fn.device(mat1.device):
-        small_m_nt_gemv_kernel[(triton.cdiv(n, block_n), 1)](
+        kernel[grid](
             mat1,
             mat2,
             bias,
             out,
             alpha,
             beta,
-            0,
+            mat1.stride(0) if row_as_batch else 0,
             mat1.stride(0),
             mat1.stride(1),
             0,
             mat2.stride(0),
             mat2.stride(1),
-            0,
+            stride_bias_m if row_as_batch else 0,
             stride_bias_m,
             stride_bias_n,
-            0,
+            out.stride(0) if row_as_batch else 0,
             out.stride(0),
             out.stride(1),
-            M=m,
+            M=1 if row_as_batch else m,
             N=n,
             K=k,
             BLOCK_N=block_n,
@@ -215,23 +228,20 @@ def _launch_addmm_nt_gemv(
     return out
 
 
-def _nt_gemv_config(bias, mat1, mat2, out):
-    shape = (mat1.shape[0], mat2.shape[1], mat1.shape[1])
-    config = _NT_GEMV_CONFIGS.get(shape)
-    if config is None:
-        return None
+def _gemv_config(bias, mat1, mat2, out):
     m, k = mat1.shape
     n = mat2.shape[1]
+    row_gemv = (3 <= m <= 256 and 1 <= n <= 4) or (3 <= m <= 16384 and n == 1)
+    if not (1 <= m <= 2 or row_gemv):
+        return None
+    trans_b = mat2.stride() == (1, k)
     if not (
         mat1.dtype in (torch.float16, torch.bfloat16)
         and mat2.dtype == mat1.dtype
         and bias.dtype == mat1.dtype
-        and mat1.stride(0) == k
-        and mat1.stride(1) == 1
-        and (
-            (mat2.stride(0) == 1 and mat2.stride(1) == k)
-            or (shape == (1, 4, 16384) and mat2.is_contiguous())
-        )
+        and mat1.device == mat2.device == bias.device
+        and mat1.stride() == (k, 1)
+        and (mat2.is_contiguous() or trans_b)
     ):
         return None
     if out is not None and not (
@@ -242,7 +252,27 @@ def _nt_gemv_config(bias, mat1, mat2, out):
         and _out_is_disjoint(out, bias, mat1, mat2)
     ):
         return None
-    return config
+
+    shape = (m, n, k)
+    config = _NT_GEMV_CONFIGS.get(shape)
+    if config is not None and (trans_b or n == 4):
+        return (*config, False)
+    # For a narrow output, each row has enough arithmetic to run independently.
+    # Use the GEMV batch dimension as the row index and share a single B matrix.
+    if row_gemv and 256 <= k <= 16384:
+        if m >= 1024:
+            return (1, min(2048, triton.next_power_of_2(k)), 4, True)
+        return (1, min(4096, triton.next_power_of_2(k)), 8, True)
+    # Use coalesced N groups for contiguous logical K x N weights.
+    if m in (1, 2) and 0 < n <= 4096 and 64 <= k <= 16384:
+        if n <= 4:
+            return (1, min(4096, triton.next_power_of_2(k)), 8, False)
+        if k <= 512:
+            return (16, triton.next_power_of_2(k), 4, False)
+        if n <= 64:
+            return (1, min(4096, triton.next_power_of_2(k)), 8, False)
+        return (4, min(512, triton.next_power_of_2(k)), 4, False)
+    return None
 
 
 def _out_is_disjoint(out, *inputs):
@@ -2769,10 +2799,10 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     if _matches_core_half_dot_contract(bias, mat1, mat2, out, beta, alpha):
         return _launch_core_half_dot(bias, mat1, mat2, out)
 
-    nt_gemv_config = _nt_gemv_config(bias, mat1, mat2, out)
-    if nt_gemv_config is not None:
-        block_n, block_k, num_warps = nt_gemv_config
-        return _launch_addmm_nt_gemv(
+    gemv_config = _gemv_config(bias, mat1, mat2, out)
+    if gemv_config is not None:
+        block_n, block_k, num_warps, separate_rows = gemv_config
+        return _launch_addmm_gemv(
             bias,
             mat1,
             mat2,
@@ -2782,6 +2812,7 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
             block_n=block_n,
             block_k=block_k,
             num_warps=num_warps,
+            separate_rows=separate_rows,
         )
 
     if _small_m_tle_eligible(bias, mat1, mat2, out):
