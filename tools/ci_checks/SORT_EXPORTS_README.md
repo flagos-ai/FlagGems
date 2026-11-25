@@ -1,15 +1,20 @@
 # Auto-Sort Exports Feature
 
-自动排序 `__all__` 导出列表和 `operators.yaml` 的三层防护机制。
+自动排序 `__all__` 导出列表和 `operators.yaml` 的四层防护机制。
 
 ## 快速开始
 
 ### 开发者本地使用
 
-1. **安装 pre-commit hooks**（首次）：
+1. **安装 pre-commit hooks 和 git merge driver**（首次，每个 clone 执行一次）：
    ```bash
    pip install pre-commit
    pre-commit install
+
+   # 注册语义 merge driver（避免同字母区间插入时产生冲突）
+   git config merge.flaggems-sort.driver \
+       "python tools/git_merge_driver.py %O %A %B %L %P"
+   git config merge.flaggems-sort.name "FlagGems sorted-list merge driver"
    ```
 
 2. **正常开发和提交**：
@@ -63,15 +68,19 @@ git push --force-with-lease
 
 ## 说明
 
-### 三层防护
+### 四层防护
 
 ```
-Layer 1: pre-commit hook (本地自动修复)
+Layer 0: git merge driver (merge/rebase 时自动集合并，从源头消解纯追加式冲突)
+  ↓ 如果冲突来自内容改动而非追加
+Layer 1: pre-commit hook (本地 commit 时自动重排)
   ↓ 如果开发者没装 pre-commit
-Layer 2: CI 检查 (报错 + 提示修复命令)
-  ↓ 如果 merge 后乱了
+Layer 2: CI 检查 (rule-check + merge_group 两次触发，报错 + 提示修复命令)
+  ↓ 如果 merge 后仍乱了
 Layer 3: /fix-sort 评论触发 (自动修复 + push)
 ```
+
+**Layer 0 的原理**：`.gitattributes` 给 `operators.yaml`、`__init__.py`、`ops/__init__.py` 注册了 `merge=flaggems-sort`。当两个分支在同一字母区间分别插入条目时，`tools/git_merge_driver.py` 对它们做集合并（added/deleted 按集合语义合并），然后重新按 casefold 排序，不产生冲突标记。只有同一个 key 被两边改成不同内容时才回退到标准冲突。
 
 ### 涉及的文件
 
