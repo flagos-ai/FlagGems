@@ -45,15 +45,21 @@ import torch
 import torch_npu  # noqa: F401  # must precede triton on this platform
 
 import triton
-import triton.language as tl
 import triton.experimental.tle as tle
+import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 
 @triton.jit
 def _conj_copy_clamped_kernel(
-    src_ptr, dst_ptr, n_elements, SIGN: tl.constexpr, MASK: tl.constexpr, REM: tl.constexpr, BLOCK: tl.constexpr
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    SIGN: tl.constexpr,
+    MASK: tl.constexpr,
+    REM: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """Full-tile, unmasked path with a DSA-staged store.
 
@@ -77,7 +83,13 @@ def _conj_copy_clamped_kernel(
 
 @triton.jit
 def _conj_copy_clamped_store_kernel(
-    src_ptr, dst_ptr, n_elements, SIGN: tl.constexpr, MASK: tl.constexpr, REM: tl.constexpr, BLOCK: tl.constexpr
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    SIGN: tl.constexpr,
+    MASK: tl.constexpr,
+    REM: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """Latency-bound variant of the clamped tile: no explicit DSA staging.
 
@@ -105,7 +117,13 @@ def _conj_copy_clamped_store_kernel(
 )
 @triton.jit
 def _conj_copy_clamped_store_tuned_kernel(
-    src_ptr, dst_ptr, n_elements, SIGN: tl.constexpr, MASK: tl.constexpr, REM: tl.constexpr, BLOCK: tl.constexpr
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    SIGN: tl.constexpr,
+    MASK: tl.constexpr,
+    REM: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """Same body as ``_conj_copy_clamped_store_kernel``, program count searched.
 
@@ -126,7 +144,13 @@ def _conj_copy_clamped_store_tuned_kernel(
 
 @triton.jit
 def _conj_copy_masked_kernel(
-    src_ptr, dst_ptr, n_elements, SIGN: tl.constexpr, MASK: tl.constexpr, REM: tl.constexpr, BLOCK: tl.constexpr
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    SIGN: tl.constexpr,
+    MASK: tl.constexpr,
+    REM: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """Masked single-program path for n_elements < _SMALL_BLOCK.
 
@@ -155,7 +179,13 @@ _SMALL_BLOCK = _NARROW_BLOCK
 def _launch(src_flat, dst_flat, n_elements, sign, mask, rem):
     if n_elements >= _WIDE_MIN:
         _conj_copy_clamped_kernel[(triton.cdiv(n_elements, _WIDE_BLOCK),)](
-            src_flat, dst_flat, n_elements, SIGN=sign, MASK=mask, REM=rem, BLOCK=_WIDE_BLOCK
+            src_flat,
+            dst_flat,
+            n_elements,
+            SIGN=sign,
+            MASK=mask,
+            REM=rem,
+            BLOCK=_NARROW_BLOCK,
         )
     elif n_elements >= _TUNED_MIN:
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK"]),)
@@ -164,7 +194,13 @@ def _launch(src_flat, dst_flat, n_elements, sign, mask, rem):
         )
     elif n_elements >= 2 * _NARROW_BLOCK:
         _conj_copy_clamped_store_kernel[(triton.cdiv(n_elements, _NARROW_BLOCK),)](
-            src_flat, dst_flat, n_elements, SIGN=sign, MASK=mask, REM=rem, BLOCK=_NARROW_BLOCK
+            src_flat,
+            dst_flat,
+            n_elements,
+            SIGN=sign,
+            MASK=mask,
+            REM=rem,
+            BLOCK=_NARROW_BLOCK,
         )
     else:
         tile = triton.next_power_of_2(n_elements)
