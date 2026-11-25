@@ -15,52 +15,81 @@
 
 import pytest
 import torch
+
 import flag_gems
+
 from . import base, consts
+
 
 class Backward20Benchmark(base.GenericBenchmark):
 
     def set_shapes(self, shape_file_path=None):
-        _ = self.op_name.removesuffix('_backward')
+        _ = self.op_name.removesuffix("_backward")
         self.shapes = [(257,), (4096,), (1048576,), (16777216,)]
-        self.shape_desc = 'shape'
+        self.shape_desc = "shape"
 
     def set_more_shapes(self):
         return None
+
 
 def input_fn(op):
 
     def generate(shape, dtype, device):
         torch.manual_seed(20261123)
-        yield (torch.randn(shape, device=device, dtype=dtype), torch.randn(shape, device=device, dtype=dtype))
+        yield (
+            torch.randn(shape, device=device, dtype=dtype),
+            torch.randn(shape, device=device, dtype=dtype),
+        )
         return
+
     return generate
+
 
 @pytest.mark.softplus_backward_out
 @pytest.mark.softplus
 @pytest.mark.softplus_backward
-@pytest.mark.parametrize('op', [pytest.param('softplus', marks=getattr(pytest.mark, 'softplus_backward')) for op in ('softplus',) + ()])
+@pytest.mark.parametrize(
+    "op",
+    [
+        pytest.param("softplus", marks=getattr(pytest.mark, "softplus_backward"))
+        for op in ("softplus",) + ()
+    ],
+)
 def test_backward20(op, monkeypatch):
     extra = [1.0, 20.0]
-    native = lambda g, x: getattr(torch.ops.aten, 'softplus_backward').default(g, x, *extra)
-    gems = getattr(flag_gems, 'softplus_backward')
-    bench = Backward20Benchmark(op_name='softplus_backward', input_fn=input_fn('softplus'), torch_op=native, gems_op=gems, dtypes=consts.FLOAT_DTYPES)
+    native = lambda g, x: getattr(torch.ops.aten, "softplus_backward").default(
+        g, x, *extra
+    )
+    gems = getattr(flag_gems, "softplus_backward")
+    bench = Backward20Benchmark(
+        op_name="softplus_backward",
+        input_fn=input_fn("softplus"),
+        torch_op=native,
+        gems_op=gems,
+        dtypes=consts.FLOAT_DTYPES,
+    )
     bench.run()
+
 
 class Backward20OutBenchmark(Backward20Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [(257,), (4096,), (1048576,), (16777216,)]
-        self.shape_desc = 'shape'
+        self.shape_desc = "shape"
+
 
 @pytest.mark.softplus
 @pytest.mark.softplus_backward
 @pytest.mark.softplus_backward_out
-@pytest.mark.parametrize('op', ['softplus'])
+@pytest.mark.parametrize("op", ["softplus"])
 def test_backward20_out(op):
     extra = [1.0, 20.0]
-    native = lambda g, x, grad_input: getattr(torch.ops.aten, 'softplus_backward').grad_input(g, x, *extra, grad_input=grad_input)
-    gems = lambda g, x, grad_input: getattr(flag_gems, 'softplus_backward_out')(g, x, *extra, grad_input=grad_input)
+    native = lambda g, x, grad_input: getattr(
+        torch.ops.aten, "softplus_backward"
+    ).grad_input(g, x, *extra, grad_input=grad_input)
+    gems = lambda g, x, grad_input: getattr(flag_gems, "softplus_backward_out")(
+        g, x, *extra, grad_input=grad_input
+    )
 
     def inputs(shape, dtype, device):
         torch.manual_seed(20261123)
@@ -70,7 +99,18 @@ def test_backward20_out(op):
         expected = torch.empty_like(x)
         native(g, x, expected)
         gems(g, x, target)
-        (rtol, atol) = {torch.float16: (0.002, 0.0005), torch.bfloat16: (0.016, 0.003), torch.float32: (3e-05, 2e-06)}[dtype]
+        rtol, atol = {
+            torch.float16: (0.002, 0.0005),
+            torch.bfloat16: (0.016, 0.003),
+            torch.float32: (3e-05, 2e-06),
+        }[dtype]
         torch.testing.assert_close(target, expected, rtol=rtol, atol=atol)
-        yield (g, x, {'grad_input': target})
-    Backward20OutBenchmark(op_name='softplus_backward_out', input_fn=inputs, torch_op=native, gems_op=gems, dtypes=consts.FLOAT_DTYPES).run()
+        yield (g, x, {"grad_input": target})
+
+    Backward20OutBenchmark(
+        op_name="softplus_backward_out",
+        input_fn=inputs,
+        torch_op=native,
+        gems_op=gems,
+        dtypes=consts.FLOAT_DTYPES,
+    ).run()
