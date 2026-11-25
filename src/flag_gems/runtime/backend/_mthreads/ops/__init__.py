@@ -30,6 +30,7 @@ from ._fake_quantize_learnable_per_tensor_affine import (
 from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
     _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
+from ._foreach_abs import _foreach_abs
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_acos_ import _foreach_acos_
 from ._foreach_add__List import _foreach_add__List
@@ -294,6 +295,7 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+    "_foreach_abs",
     "_foreach_abs_",
     "_foreach_acos_",
     "_foreach_add__List",
