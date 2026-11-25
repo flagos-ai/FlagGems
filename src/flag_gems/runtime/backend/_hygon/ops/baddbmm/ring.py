@@ -19,6 +19,7 @@ import triton.language as tl
 
 from ..bmm.ring_core import _RING_CONSTRAINTS, _RING_OUTPUT_DTYPES, ring_asm
 
+_F16_RING_ASM = ring_asm("_baddbmm_ring")
 _BF16_RING_ASM = ring_asm("_baddbmm_ring", bf16=True)
 
 
@@ -77,8 +78,12 @@ def baddbmm_ring_kernel(
         + wn * 128
     )
     bp3 = tl.where((wn == 1) & (lane >> 2 & 3 == 3), bp - 512, bp)
+    if A.dtype.element_ty == tl.bfloat16:
+        asm: tl.constexpr = _BF16_RING_ASM
+    else:
+        asm: tl.constexpr = _F16_RING_ASM
     acc = tl.inline_asm_elementwise(
-        _BF16_RING_ASM,
+        asm,
         _RING_CONSTRAINTS,
         [
             aptr.to(tl.uint32),
@@ -123,7 +128,7 @@ def baddbmm_ring_kernel(
                         Bias
                         + batch.to(tl.int64) * CB
                         + rr[:, None].to(tl.int64) * CM
-                        + cc * CN,
+                        + cc.to(tl.int64) * CN,
                         mask,
                         0,
                     ).to(tl.float32)
