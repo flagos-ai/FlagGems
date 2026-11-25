@@ -130,7 +130,21 @@ def test_flagos_sparse_sparse_mm_strided(coalesced, value_layout, flagos_device)
         )
         for device in ("cpu", flagos_device)
     ]
-    ref, actual = (torch.sparse.mm(*pair) for pair in operands)
+    # CPU COO-to-CSR on PyTorch 2.10 may misread already coalesced strided
+    # coordinates. Pack only the oracle buffers; keep the DCU views intact.
+    reference_inputs = [
+        _coo(x._indices().contiguous(), x._values().contiguous(), x.shape, coalesced)
+        for x in operands[0]
+    ]
+    ref = torch.sparse.mm(*reference_inputs)
+    if coalesced:
+        expected = (
+            [[4.0, 0.0, 4.0], [4.0, 4.0, 4.0]]
+            if value_layout == "expanded"
+            else [[8.0, 0.0, 4.0], [-4.0, 9.0, -2.0]]
+        )
+        torch.testing.assert_close(ref.to_dense(), torch.tensor(expected))
+    actual = torch.sparse.mm(*operands[1])
     _assert_coo(actual, ref, flagos_device)
 
 
