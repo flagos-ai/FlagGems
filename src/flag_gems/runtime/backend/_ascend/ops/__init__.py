@@ -251,6 +251,7 @@ from .inner import inner
 from .inverse import inverse
 from .isin import isin
 from .isposinf import isposinf
+from .isreal import isreal
 from .kl_div import kl_div
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
@@ -702,6 +703,7 @@ __all__ = [
     "inverse",
     "isin",
     "isposinf",
+    "isreal",
     "kl_div",
     "l1_loss",
     "layer_norm",
