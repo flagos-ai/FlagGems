@@ -49,7 +49,7 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "mthreads",
     "metax",
 )
-_ADDMM_BETA_ZERO_VENDORS = ("ascend", "nvidia", "hygon", "thead", "metax")
+_ADDMM_BETA_ZERO_VENDORS = ("ascend", "nvidia", "hygon", "thead", "mthreads", "metax")
 
 if IS_KUNLUNXIN:
     _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)
@@ -250,10 +250,12 @@ def test_addmm_out_beta_zero_ignores_bias(dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name != "mthreads", reason="MThreads specialized addmm paths"
 )
-@pytest.mark.parametrize("M,N,K", [(1, 64, 4096), (64, 64, 4096)])
+@pytest.mark.parametrize(
+    "M,N,K", [(1, 64, 4096), (17, 64, 64), (64, 64, 4096), (256, 256, 128)]
+)
 @pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_addmm_mthreads_specialized_beta_zero_ignores_bias(M, N, K, dtype):
-    if M > 1:
+    if M >= 64:
         try:
             from triton.experimental.tle import is_tle_supported
         except ImportError:
@@ -268,7 +270,7 @@ def test_addmm_mthreads_specialized_beta_zero_ignores_bias(M, N, K, dtype):
                 "gpu.wgmma",
             )
         ):
-            pytest.skip("installed FlagTree lacks the small-M TLE primitives")
+            pytest.skip("installed FlagTree lacks the addmm TLE primitives")
 
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()

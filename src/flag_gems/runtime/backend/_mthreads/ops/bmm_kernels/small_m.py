@@ -14,11 +14,9 @@
 
 """FP16/BF16 MThreads BMM kernel for small-M shapes.
 
-The kernel mirrors the geometry selected by the native MUSA library:
-BM64 x BN64 x BK128 payloads and one CTA per (batch, N tile).  SQMMA on
-MTT S5000 consumes K=64 fragments, so every BK128 payload is sliced into two
-K64 issues.  Both NN (contiguous B) and NT (transpose-view B) are supported
-without materializing a copy.
+The kernel uses BM64 x BN64 x BK64 payloads and one CTA per (batch, N tile).
+Each tile is consumed by one SQMMA. Both NN (contiguous B) and NT
+(transpose-view B) are supported without materializing a copy.
 """
 
 from __future__ import annotations
@@ -33,11 +31,11 @@ from flag_gems.runtime import torch_device_fn
 
 BM = tl.constexpr(64)
 BN = tl.constexpr(64)
-K_FRAG = tl.constexpr(64)
+BK = 64
 
 
 @triton.jit
-def _bm64_bn64_bk128_s2_producer(
+def _bm64_bn64_bk64_s2_producer(
     a_writer,
     b_writer,
     a_desc,
@@ -71,7 +69,7 @@ def _bm64_bn64_bk128_s2_producer(
 
 
 @triton.jit
-def _bm64_bn64_bk128_s2_consumer(
+def _bm64_bn64_bk64_s2_consumer(
     a_reader,
     b_reader,
     out_ptr,
@@ -83,7 +81,6 @@ def _bm64_bn64_bk128_s2_consumer(
     M: tl.constexpr,
     N: tl.constexpr,
     K_TILES: tl.constexpr,
-    K_PARTS: tl.constexpr,
     TRANS_B: tl.constexpr,
     UNROLL: tl.constexpr,
 ):
@@ -96,14 +93,9 @@ def _bm64_bn64_bk128_s2_consumer(
     ):
         a_wait = a_reader.wait(k_iter)
         b_wait = b_reader.wait(k_iter)
-        for k_part in tl.static_range(K_PARTS):
-            a_k = a_wait.slot.a.subslice(k_part * K_FRAG, K_FRAG, dim=1)
-            if TRANS_B:
-                b_k = b_wait.slot.b.subslice(k_part * K_FRAG, K_FRAG, dim=1)
-            else:
-                b_k = b_wait.slot.b.subslice(k_part * K_FRAG, K_FRAG, dim=0)
-            acc = tle.gpu.wgmma(a_k, b_k, acc, trans_b=TRANS_B)
-            acc = tle.gpu.wgmma_wait(0, acc)
+        # A single SQMMA per tile keeps the loop-carried accumulator layout consistent.
+        acc = tle.gpu.wgmma(a_wait.slot.a, b_wait.slot.b, acc, trans_b=TRANS_B)
+        acc = tle.gpu.wgmma_wait(0, acc)
         a_reader.release(k_iter)
         b_reader.release(k_iter)
 
@@ -123,7 +115,7 @@ def _bm64_bn64_bk128_s2_consumer(
 
 
 @triton.jit
-def _bmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
+def _bmm_bm64_bn64_bk64_s2_small_m_ws_kernel(
     a_desc,
     b_desc,
     out_ptr,
@@ -157,21 +149,20 @@ def _bmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
     a_pipe = tle.pipe(
         capacity=NUM_SLOTS,
         scope="cta",
-        name="bmm_small_m_bm64_bn64_bk128_s2_a",
+        name="bmm_small_m_bm64_bn64_bk64_s2_a",
         a=a_smem,
     )
     b_pipe = tle.pipe(
         capacity=NUM_SLOTS,
         scope="cta",
-        name="bmm_small_m_bm64_bn64_bk128_s2_b",
+        name="bmm_small_m_bm64_bn64_bk64_s2_b",
         b=b_smem,
     )
-    k_tiles: tl.constexpr = K // BLOCK_K
-    k_parts: tl.constexpr = BLOCK_K // K_FRAG
+    k_tiles: tl.constexpr = tl.cdiv(K, BLOCK_K)
     tle.gpu.warp_specialize(
         [
             (
-                _bm64_bn64_bk128_s2_consumer,
+                _bm64_bn64_bk64_s2_consumer,
                 (
                     a_pipe.reader(),
                     b_pipe.reader(),
@@ -184,13 +175,12 @@ def _bmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
                     M,
                     N,
                     k_tiles,
-                    k_parts,
                     TRANS_B,
                     UNROLL,
                 ),
             ),
             (
-                _bm64_bn64_bk128_s2_producer,
+                _bm64_bn64_bk64_s2_producer,
                 (
                     a_pipe.writer(),
                     b_pipe.writer(),
@@ -215,12 +205,12 @@ def _bmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
 def _descriptors(a: torch.Tensor, b: torch.Tensor, *, trans_b: bool):
     batch, m, k = a.shape
     n = b.shape[2]
-    a_desc = TensorDescriptor(a, [batch * m, k], [k, 1], [64, 128])
+    a_desc = TensorDescriptor(a, [batch * m, k], [k, 1], [64, BK])
     if trans_b:
         # The logical transpose-view has storage physically arranged B,N,K.
-        b_desc = TensorDescriptor(b, [batch * n, k], [k, 1], [64, 128])
+        b_desc = TensorDescriptor(b, [batch * n, k], [k, 1], [64, BK])
     else:
-        b_desc = TensorDescriptor(b, [batch * k, n], [n, 1], [128, 64])
+        b_desc = TensorDescriptor(b, [batch * k, n], [n, 1], [BK, 64])
     return a_desc, b_desc
 
 
@@ -236,7 +226,7 @@ def _launch_with_descriptors(
     k: int,
 ) -> torch.Tensor:
     grid = (triton.cdiv(n, 64), batch)
-    _bmm_bm64_bn64_bk128_s2_small_m_ws_kernel[grid](
+    _bmm_bm64_bn64_bk64_s2_small_m_ws_kernel[grid](
         a_desc,
         b_desc,
         out,
@@ -246,7 +236,7 @@ def _launch_with_descriptors(
         M=m,
         N=n,
         K=k,
-        BLOCK_K=128,
+        BLOCK_K=BK,
         NUM_SLOTS=2,
         TRANS_B=trans_b,
         UNROLL=1,
@@ -258,7 +248,7 @@ def _launch_with_descriptors(
     return out
 
 
-def bmm_bm64_bn64_bk128_s2_small_m_ws_out(
+def bmm_bm64_bn64_bk64_s2_small_m_ws_out(
     a: torch.Tensor,
     b: torch.Tensor,
     out: torch.Tensor,

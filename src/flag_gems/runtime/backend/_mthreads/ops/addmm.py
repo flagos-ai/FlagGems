@@ -251,11 +251,10 @@ def _out_is_disjoint(out, *inputs):
 
 _SMALL_M_BM = tl.constexpr(64)
 _SMALL_M_BN = tl.constexpr(64)
-_SMALL_M_K_FRAGMENT = tl.constexpr(64)
 
 
 @triton.jit
-def _small_m_bm64_bn64_bk128_s2_consumer(
+def _small_m_bm64_bn64_bk64_s2_consumer(
     a_reader,
     b_reader,
     bias,
@@ -271,7 +270,6 @@ def _small_m_bm64_bn64_bk128_s2_consumer(
     M: tl.constexpr,
     N: tl.constexpr,
     K_TILES: tl.constexpr,
-    K_PARTS: tl.constexpr,
     TRANS_B: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
@@ -281,26 +279,11 @@ def _small_m_bm64_bn64_bk128_s2_consumer(
     for k_iter in tl.range(0, K_TILES, num_stages=1):
         a_ready = a_reader.wait(k_iter)
         b_ready = b_reader.wait(k_iter)
-        for k_part in tl.static_range(K_PARTS):
-            a_k = a_ready.slot.a.subslice(
-                k_part * _SMALL_M_K_FRAGMENT,
-                _SMALL_M_K_FRAGMENT,
-                dim=1,
-            )
-            if TRANS_B:
-                b_k = b_ready.slot.b.subslice(
-                    k_part * _SMALL_M_K_FRAGMENT,
-                    _SMALL_M_K_FRAGMENT,
-                    dim=1,
-                )
-            else:
-                b_k = b_ready.slot.b.subslice(
-                    k_part * _SMALL_M_K_FRAGMENT,
-                    _SMALL_M_K_FRAGMENT,
-                    dim=0,
-                )
-            accumulator = tle.gpu.wgmma(a_k, b_k, accumulator, trans_b=TRANS_B)
-            accumulator = tle.gpu.wgmma_wait(0, accumulator)
+        # A single SQMMA per tile keeps the loop-carried accumulator layout consistent.
+        accumulator = tle.gpu.wgmma(
+            a_ready.slot.a, b_ready.slot.b, accumulator, trans_b=TRANS_B
+        )
+        accumulator = tle.gpu.wgmma_wait(0, accumulator)
         a_reader.release(k_iter)
         b_reader.release(k_iter)
 
@@ -334,7 +317,7 @@ def _small_m_bm64_bn64_bk128_s2_consumer(
 
 @libentry()
 @triton.jit(do_not_specialize=["alpha", "beta"])
-def _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
+def _addmm_bm64_bn64_bk64_s2_small_m_ws_kernel(
     a_desc,
     b_desc,
     bias,
@@ -374,21 +357,20 @@ def _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
     a_pipe = tle.pipe(
         capacity=NUM_SLOTS,
         scope="cta",
-        name="addmm_small_m_bm64_bn64_bk128_s2_a",
+        name="addmm_small_m_bm64_bn64_bk64_s2_a",
         a=a_smem,
     )
     b_pipe = tle.pipe(
         capacity=NUM_SLOTS,
         scope="cta",
-        name="addmm_small_m_bm64_bn64_bk128_s2_b",
+        name="addmm_small_m_bm64_bn64_bk64_s2_b",
         b=b_smem,
     )
-    k_tiles: tl.constexpr = K // BLOCK_K
-    k_parts: tl.constexpr = BLOCK_K // _SMALL_M_K_FRAGMENT
+    k_tiles: tl.constexpr = tl.cdiv(K, BLOCK_K)
     tle.gpu.warp_specialize(
         [
             (
-                _small_m_bm64_bn64_bk128_s2_consumer,
+                _small_m_bm64_bn64_bk64_s2_consumer,
                 (
                     a_pipe.reader(),
                     b_pipe.reader(),
@@ -405,7 +387,6 @@ def _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
                     M,
                     N,
                     k_tiles,
-                    k_parts,
                     TRANS_B,
                     BIAS_IS_VECTOR,
                     BIAS_IS_SCALAR,
@@ -436,7 +417,7 @@ def _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel(
     )
 
 
-def _launch_addmm_bm64_bn64_bk128_s2_small_m_ws(
+def _launch_addmm_bm64_bn64_bk64_s2_small_m_ws(
     bias,
     mat1,
     mat2,
@@ -452,13 +433,14 @@ def _launch_addmm_bm64_bn64_bk128_s2_small_m_ws(
         bias, out
     )
     trans_b = mat2.stride(0) == 1 and mat2.stride(1) == k
-    a_desc = TensorDescriptor.from_tensor(mat1, [64, 128])
+    block_k = 64
+    a_desc = TensorDescriptor.from_tensor(mat1, [64, block_k])
     if trans_b:
-        b_desc = TensorDescriptor(mat2, [n, k], [k, 1], [64, 128])
+        b_desc = TensorDescriptor(mat2, [n, k], [k, 1], [64, block_k])
     else:
-        b_desc = TensorDescriptor.from_tensor(mat2, [128, 64])
+        b_desc = TensorDescriptor.from_tensor(mat2, [block_k, 64])
     with torch_device_fn.device(mat1.device):
-        _addmm_bm64_bn64_bk128_s2_small_m_ws_kernel[
+        _addmm_bm64_bn64_bk64_s2_small_m_ws_kernel[
             (triton.cdiv(n, 64), triton.cdiv(m, 64))
         ](
             a_desc,
@@ -474,7 +456,7 @@ def _launch_addmm_bm64_bn64_bk128_s2_small_m_ws(
             M=m,
             N=n,
             K=k,
-            BLOCK_K=128,
+            BLOCK_K=block_k,
             NUM_SLOTS=2,
             TRANS_B=trans_b,
             BIAS_IS_VECTOR=bias_is_vector,
@@ -566,6 +548,7 @@ def addmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
     IS_FP64: tl.constexpr = False,
 ):
     pid_m = ext.program_id(0)
@@ -602,21 +585,23 @@ def addmm_kernel(
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    if BIAS_IS_VECTOR:
-        bias = tl.load(
-            i_ptr + stride_in * offs_cn,
-            mask=offs_cn < N,
-            other=0.0,
-        )[None, :]
-    elif BIAS_IS_SCALAR:
-        bias = tl.load(i_ptr)
+    if BETA_ZERO:
+        result = accumulator * alpha
     else:
-        i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-        bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+        if BIAS_IS_VECTOR:
+            bias = tl.load(
+                i_ptr + stride_in * offs_cn,
+                mask=offs_cn < N,
+                other=0.0,
+            )[None, :]
+        elif BIAS_IS_SCALAR:
+            bias = tl.load(i_ptr)
+        else:
+            i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
+            bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+        result = accumulator * alpha + bias * beta
 
-    accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(c_ptr.dtype.element_ty)
-    tl.store(c_ptrs, c, mask=c_mask)
+    tl.store(c_ptrs, result.to(c_ptr.dtype.element_ty), mask=c_mask)
 
 
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
@@ -641,14 +626,15 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
+    beta_zero = float(beta) == 0.0
     bias_is_vector = bias.ndim == 1 and bias.shape[0] == N
     bias_is_scalar = not bias_is_vector and bias.numel() == 1
-    if bias_is_vector:
-        bias_stride_m = 0
-        bias_stride_n = bias.stride(0)
-    elif bias_is_scalar:
+    if beta_zero or bias_is_scalar:
         bias_stride_m = 0
         bias_stride_n = 0
+    elif bias_is_vector:
+        bias_stride_m = 0
+        bias_stride_n = bias.stride(0)
     else:
         bias = bias.broadcast_to(out.shape).contiguous()
         bias_stride_m = bias.stride(0)
@@ -679,6 +665,7 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
             out.stride(1),
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
+            BETA_ZERO=beta_zero,
             IS_FP64=mat1.dtype == torch.float64,
         )
     return out
@@ -957,6 +944,7 @@ def addmm_sqmma_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -976,19 +964,24 @@ def addmm_sqmma_kernel(
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-    if BIAS_IS_VECTOR:
-        bias = tl.load(
-            bias_ptr + offs_n * stride_in,
-            mask=offs_n < N,
-            other=0.0,
-        )[None, :]
-    elif BIAS_IS_SCALAR:
-        bias = tl.load(bias_ptr)
+    if BETA_ZERO:
+        result = alpha * accumulator
     else:
-        bias_ptrs = bias_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
-        bias = tl.load(bias_ptrs, mask=mask, other=0.0)
-    result = (alpha * accumulator + beta * bias).to(c_desc.dtype)
-    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], result)
+        if BIAS_IS_VECTOR:
+            bias = tl.load(
+                bias_ptr + offs_n * stride_in,
+                mask=offs_n < N,
+                other=0.0,
+            )[None, :]
+        elif BIAS_IS_SCALAR:
+            bias = tl.load(bias_ptr)
+        else:
+            bias_ptrs = (
+                bias_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
+            )
+            bias = tl.load(bias_ptrs, mask=mask, other=0.0)
+        result = alpha * accumulator + beta * bias
+    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], result.to(c_desc.dtype))
 
 
 def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K, out=None):
@@ -1035,6 +1028,7 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K, out=None):
         str(a_type).split(".")[-1],
         BIAS_IS_VECTOR=bias_is_vector,
         BIAS_IS_SCALAR=bias_is_scalar,
+        BETA_ZERO=float(beta) == 0.0,
     )
     return out
 
@@ -1068,6 +1062,7 @@ def _ws_addmm_consumer(
     block_k: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
 ):
     offset_m = pid_m * block_m + tl.arange(0, block_m)
     offset_n = pid_n * block_n + tl.arange(0, block_n)
@@ -1088,23 +1083,26 @@ def _ws_addmm_consumer(
         a_reader.release(k_iter)
         b_reader.release(k_iter)
 
-    if BIAS_IS_VECTOR:
-        bias = tl.load(
-            bias_ptr + offset_n * stride_in,
-            mask=offset_n < N,
-            other=0.0,
-        )[None, :]
-    elif BIAS_IS_SCALAR:
-        bias = tl.load(bias_ptr)
+    if BETA_ZERO:
+        result = alpha * acc
     else:
-        bias_ptrs = (
-            bias_ptr + offset_m[:, None] * stride_im + offset_n[None, :] * stride_in
-        )
-        bias = tl.load(bias_ptrs, mask=mask, other=0.0)
+        if BIAS_IS_VECTOR:
+            bias = tl.load(
+                bias_ptr + offset_n * stride_in,
+                mask=offset_n < N,
+                other=0.0,
+            )[None, :]
+        elif BIAS_IS_SCALAR:
+            bias = tl.load(bias_ptr)
+        else:
+            bias_ptrs = (
+                bias_ptr + offset_m[:, None] * stride_im + offset_n[None, :] * stride_in
+            )
+            bias = tl.load(bias_ptrs, mask=mask, other=0.0)
+        result = alpha * acc + beta * bias
 
-    result = (alpha * acc + beta * bias).to(c_ptr.dtype.element_ty)
     c_block_ptr = c_ptr + N * offset_m[:, None] + offset_n[None, :]
-    tl.store(c_block_ptr, result, mask=mask)
+    tl.store(c_block_ptr, result.to(c_ptr.dtype.element_ty), mask=mask)
 
 
 @triton.jit
@@ -1128,6 +1126,7 @@ def addmm_sqmma_ws_kernel(
     full_panel: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
 ):
     raw_bx = tl.program_id(axis=0)
     raw_by = tl.program_id(axis=1)
@@ -1180,6 +1179,7 @@ def addmm_sqmma_ws_kernel(
                     block_k,
                     BIAS_IS_VECTOR,
                     BIAS_IS_SCALAR,
+                    BETA_ZERO,
                 ),
             ),
             (
@@ -1275,6 +1275,7 @@ def addmm_sqmma_ws(mat1, mat2, bias, alpha, beta, M, N, K, out=None):
             grid[0] % _WS_PANEL_WIDTH == 0,
             bias_is_vector,
             bias_is_scalar,
+            float(beta) == 0.0,
             num_warps=_WS_NUM_WARPS,
             num_stages=stages,
         )
@@ -2784,7 +2785,7 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
         )
 
     if _small_m_tle_eligible(bias, mat1, mat2, out):
-        return _launch_addmm_bm64_bn64_bk128_s2_small_m_ws(
+        return _launch_addmm_bm64_bn64_bk64_s2_small_m_ws(
             bias,
             mat1,
             mat2,
@@ -2892,7 +2893,7 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
         raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
 
-    bias_c = bias.to(out_dtype)
+    bias_c = bias if float(beta) == 0.0 else bias.to(out_dtype)
     M, K = mat1.shape
     _, N = mat2.shape
     a_dtype = mat1.dtype

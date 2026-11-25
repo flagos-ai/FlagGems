@@ -69,13 +69,11 @@ if _BADDBMM_TLE_ON:
     from . import direct_tiled as _direct_tiled
     from . import explicit_barrier_ws as _explicit_barrier_ws
     from . import persistent_ws as _persistent_ws
-    from . import small_m as _small_m
 else:  # Keep the vendor fallback importable on older FlagTree builds.
     _cooperative_split_m_dualpipe = _cooperative_split_m_exact_a = None
-    _direct_tiled = _explicit_barrier_ws = _persistent_ws = _small_m = None
+    _direct_tiled = _explicit_barrier_ws = _persistent_ws = None
 
 _TINY_FORWARD_PATH = "tiny_b4_m1_n1_k32"
-_SMALL_M_FORWARD_PATH = "small_m_b4_m15_n160_k1024"
 _K71_FORWARD_PATH = "k71_b4_m495_n5333"
 _DIRECT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -97,6 +95,7 @@ _DUALPIPE_BM384_BN256_BK32_S3_COOP_M2_SYNTHETIC_BIAS_PATH = (
 
 _OFFICIAL_FORWARD_SHAPES = {
     (4, 1, 1, 32),
+    # The former small-M TLE path failed SQMMA accumulator layout verification.
     (4, 15, 160, 1024),
     (4, 495, 5333, 71),
 }
@@ -210,35 +209,6 @@ def _tle_forward_path(bias, A, B, alpha, beta, out=None):
     return path
 
 
-def _small_m_forward_path(bias, A, B, out=None):
-    """Select the shared-test TLE path for contiguous half inputs."""
-    if (
-        not _BADDBMM_TLE_ON
-        or tuple(bias.shape) != (160,)
-        or tuple(A.shape) != (4, 15, 1024)
-        or tuple(B.shape) != (4, 1024, 160)
-        or A.dtype not in (torch.float16, torch.bfloat16)
-        or bias.dtype != A.dtype
-        or B.dtype != A.dtype
-        or not bias.is_contiguous()
-        or not A.is_contiguous()
-        or not B.is_contiguous()
-        or bias.device != A.device
-        or B.device != A.device
-        or A.device.type != "musa"
-    ):
-        return None
-    if out is not None and (
-        tuple(out.shape) != (4, 15, 160)
-        or out.dtype != A.dtype
-        or not out.is_contiguous()
-        or out.device != A.device
-        or not _out_is_disjoint(out, bias, A, B)
-    ):
-        return None
-    return _SMALL_M_FORWARD_PATH
-
-
 def _launch_tle_forward(path, bias, A, B, out):
     """Launch one exact-shape path selected by :func:`_tle_forward_path`."""
     if path in (
@@ -323,18 +293,6 @@ def _dispatch_specialized_forward(bias, A, B, alpha, beta, out=None):
     if tle_path is not None:
         out = _new_output(A, B) if out is None else out
         return _launch_tle_forward(tle_path, bias, A, B, out)
-
-    small_m_path = _small_m_forward_path(bias, A, B, out)
-    if small_m_path is not None:
-        out = _new_output(A, B) if out is None else out
-        return _small_m.baddbmm_bm64_bn64_bk128_s3_small_m_ws_out(
-            bias,
-            A,
-            B,
-            out,
-            alpha=alpha,
-            beta=beta,
-        )
 
     direct_path = _direct_forward_path(bias, A, B, out)
     if direct_path is not None:

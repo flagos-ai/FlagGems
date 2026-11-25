@@ -814,7 +814,7 @@ def _try_bmm_fast_path(a, b, out=None):
         return square_kernels.bmm_bm256_bn256_bk64_s3_batch_persistent_ws_out(a, b, out)
     if _small_m_path_eligible(a, b, out):
         out = _new_fast_output(a, b, out)
-        return small_m.bmm_bm64_bn64_bk128_s2_small_m_ws_out(a, b, out)
+        return small_m.bmm_bm64_bn64_bk64_s2_small_m_ws_out(a, b, out)
     if _contiguous_bf16_path_eligible(
         a, b, out, _PERSISTENT_BM256_BN256_BK64_S3_GROUP2_UNROLL2_SHAPE
     ):
