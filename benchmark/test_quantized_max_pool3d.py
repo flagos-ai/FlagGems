@@ -111,6 +111,11 @@ def _torch_op(qx, **kwargs):
 
 
 class QuantizedMaxPool3dBenchmark(base.GenericBenchmark):
+    # PyTorch ships no native QuantizedCUDA kernel for this operator, so the
+    # baseline is QuantizedCPU by construction; --kernel-check must verify the
+    # FlagGems candidate instead.
+    cpu_only_baseline = True
+
     def get_input_iter(self, dtype) -> Generator:
         for shape in QUANTIZED_MAX_POOL3D_SHAPES:
             yield from self.input_fn(shape, dtype, self.device)
