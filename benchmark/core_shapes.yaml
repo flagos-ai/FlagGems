@@ -1672,7 +1672,7 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-celu_backward:
+celu_backward_:
   shapes:
   - - 257
   - - 64
@@ -1683,7 +1683,7 @@ celu_backward:
     - 4096
   shape_desc: backward input shape
 
-celu_backward_:
+celu_backward:
   shapes:
   - - 257
   - - 64
