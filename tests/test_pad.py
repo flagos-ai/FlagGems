@@ -89,3 +89,41 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         ref_out = ref_out.to(res_out.dtype)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pad
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "shape,pad_params,value",
+    [
+        ((1, 24, 2, 128), [0, 0, 0, 62], 0.0),
+        ((1, 24, 2, 128), [0, 0, 0, 62], -3.5),
+        ((1, 8, 2, 16), [0, 12, 0, 30], 1.25),
+    ],
+)
+def test_pad_rank4_issue_9151(shape, pad_params, value, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    ref_out = torch.nn.functional.pad(ref_x, pad_params, mode="constant", value=value)
+    res_out = flag_gems.pad(x, pad_params, mode="constant", value=value)
+    if ref_out.dtype != res_out.dtype:
+        ref_out = ref_out.to(res_out.dtype)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pad
+@pytest.mark.parametrize(
+    "shape,pad_params,value",
+    [
+        ((4, 8, 12), [-2, -3, -1, 4], 0.5),
+        ((4, 8, 12), [2, -2, -2, 2], -1.0),
+        ((2, 0, 4), [0, 0, 1, 2], 7.0),
+        ((2, 4, 4), [-2, -2], 0.0),
+    ],
+)
+def test_pad_negative_and_empty(shape, pad_params, value):
+    x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_x = to_reference(x)
+    ref_out = torch.nn.functional.pad(ref_x, pad_params, mode="constant", value=value)
+    res_out = flag_gems.pad(x, pad_params, mode="constant", value=value)
+    gems_assert_equal(res_out, ref_out)
