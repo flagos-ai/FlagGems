@@ -18,6 +18,7 @@ import torch
 import triton
 from triton import language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
@@ -30,6 +31,59 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def copy_func(x):
     return x
+
+
+@triton.jit
+def repeat_interleave_self_int_word_kernel(
+    src_ptr,
+    dst_ptr,
+    n_words,
+    repeats,
+    row_words,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Word-granularity repeat copy for element types Triton cannot handle.
+
+    ``row_words`` is the number of 32-bit words in one contiguous inner block
+    of the input; each input row is duplicated ``repeats`` times.
+    """
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_words
+    col = offsets % row_words
+    row = offsets // row_words
+    src_offset = (row // repeats) * row_words + col
+    tl.store(dst_ptr + offsets, tl.load(src_ptr + src_offset, mask=mask), mask=mask)
+
+
+def _repeat_interleave_self_int_wide(inp, repeats, dim, output):
+    """Repeat contiguous int64 elements as pairs of int32 words.
+
+    GCU300 rejects 64-bit element types inside Triton kernels ("64-bit data
+    type not supported on GCU300"), but repeat_interleave is a pure layout
+    copy, so the payload can be copied as 32-bit words (FlagGems #8531).
+    """
+    word_ratio = inp.element_size() // 4
+    inner = 1
+    for size in inp.shape[dim + 1 :]:
+        inner *= size
+    row_words = inner * word_ratio
+
+    src_words = inp.view(torch.int32)
+    dst_words = output.view(torch.int32)
+    n_words = dst_words.numel()
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(n_words, BLOCK_SIZE),)
+    with torch_device_fn.device(inp.device):
+        repeat_interleave_self_int_word_kernel[grid](
+            src_words,
+            dst_words,
+            n_words,
+            repeats,
+            row_words,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+    return output
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
@@ -64,6 +118,14 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
     if repeats == 0:
         return output
+
+    # Triton on GCU300 rejects 64-bit element types, so the pointwise copy
+    # below cannot compile for int64 payloads. The repeat is a pure layout
+    # copy, hence copy the data as 32-bit words instead. Only int64 is routed
+    # here: torch_gcu emulates float64 with 32-bit storage, so viewing such a
+    # tensor as int32 would read the wrong bytes.
+    if inp.dtype == torch.int64 and inp.is_contiguous():
+        return _repeat_interleave_self_int_wide(inp, repeats, dim, output)
 
     in_view_stride = inp_stride[: dim + 1] + [0] + inp_stride[dim + 1 :]
     out_view_shape = inp_shape[: dim + 1] + [repeats] + inp_shape[dim + 1 :]

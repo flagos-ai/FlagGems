@@ -72,7 +72,25 @@ from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
+from ._foreach_mul__List import _foreach_mul__List
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_mul_Tensor import _foreach_mul_Tensor
+from ._foreach_neg_ import _foreach_neg_
+from ._foreach_pow__List import _foreach_pow__List
+from ._foreach_pow__Scalar import _foreach_pow__Scalar
+from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_pow_ScalarAndTensor import _foreach_pow_ScalarAndTensor
 from ._foreach_reciprocal_ import _foreach_reciprocal_
+from ._foreach_rsqrt import _foreach_rsqrt
+from ._foreach_sigmoid_ import _foreach_sigmoid_
+from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sin_ import _foreach_sin_
+from ._foreach_sqrt_ import _foreach_sqrt_
+from ._foreach_sub__List import _foreach_sub__List
+from ._foreach_sub__ScalarList import _foreach_sub__ScalarList
+from ._foreach_tanh import _foreach_tanh
+from ._foreach_tanh_ import _foreach_tanh_
+from ._foreach_trunc_ import _foreach_trunc_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -319,7 +337,25 @@ __all__ = [
     "_foreach_minimum__Scalar",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
+    "_foreach_mul__List",
+    "_foreach_mul__ScalarList",
+    "_foreach_mul_Tensor",
+    "_foreach_neg_",
+    "_foreach_pow__List",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
+    "_foreach_pow_ScalarAndTensor",
     "_foreach_reciprocal_",
+    "_foreach_rsqrt",
+    "_foreach_sigmoid_",
+    "_foreach_sign_",
+    "_foreach_sin_",
+    "_foreach_sqrt_",
+    "_foreach_sub__List",
+    "_foreach_sub__ScalarList",
+    "_foreach_tanh",
+    "_foreach_tanh_",
+    "_foreach_trunc_",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
