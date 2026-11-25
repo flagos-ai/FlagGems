@@ -157,8 +157,6 @@ from ._foreach_ternary_scalar import (  # noqa: F401
     _foreach_lerp_ScalarList,
 )
 from ._foreach_unary import (  # noqa: F401
-    _foreach_cos,
-    _foreach_cos_,
     _foreach_exp,
     _foreach_log10,
     _foreach_log10_,
