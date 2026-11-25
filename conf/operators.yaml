@@ -4262,6 +4262,18 @@ ops:
   - Convolution
   stages:
   - alpha: '5.4'
+- id: convolution_overrideable_backward
+  description: |
+    Triton kernel implementation for convolution_overrideable_backward.
+  for:
+    - convolution_overrideable_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: convolution_overrideable_out
   description: 'A variant of convolution_overrideable() that writes the result into
     the out tensor.
@@ -15045,6 +15057,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: narrow_copy_backward
+  description: Extended narrow_copy gradient, validated against narrow followed by clone.
+  for:
+  - narrow_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: native_batch_norm
   description: Apply native batch normalization using the existing implementation.
   for:
