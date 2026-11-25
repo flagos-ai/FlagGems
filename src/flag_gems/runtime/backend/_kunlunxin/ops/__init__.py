@@ -213,6 +213,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
 )
 from ._slow_conv2d_forward import _slow_conv2d_forward  # noqa: F401
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
+from ._sparse_mm_reduce_impl import _sparse_mm_reduce_impl  # noqa: F401
 from ._sparse_semi_structured_linear import _sparse_semi_structured_linear  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401

@@ -60,6 +60,8 @@ else:
 DTYPES = utils.FLOAT_DTYPES
 _LOW_PREC_DTYPES = (torch.float16, torch.bfloat16)
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _make_sparse(M, K, dtype, device, sparsity, layout):
     """Build the masked dense values and the sparse tensor in ``layout``."""
@@ -120,6 +122,10 @@ def _reduce_reference(sparse, mat2, reduce):
     return out, arg_out
 
 
+def _cpu_reduce_reference(sparse, mat2, reduce):
+    return _reduce_reference(sparse.cpu(), mat2.cpu(), reduce)
+
+
 @pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 @pytest.mark.parametrize("M, N, K", MNK)
@@ -133,7 +139,11 @@ def test_sparse_mm_reduce_impl(M, N, K, layout, sparsity, dtype):
     mat2 = torch.randn((K, N), dtype=dtype, device=device)
 
     for reduce in REDUCES:
-        ref_out, _ = _reduce_reference(sparse, mat2, reduce)
+        ref_out, _ = (
+            _cpu_reduce_reference(sparse, mat2, reduce)
+            if IS_KUNLUNXIN
+            else _reduce_reference(sparse, mat2, reduce)
+        )
         res_out, res_arg = flag_gems._sparse_mm_reduce_impl(sparse, mat2, reduce)
 
         # arg_out is not deterministic across backends: aten only fills it in
@@ -156,7 +166,11 @@ def test_sparse_mm_reduce_impl_selector(M, N, K, reduce, dtype):
     _, sparse = _make_sparse(M, K, dtype, device, 0.5, "csr")
     mat2 = torch.randn((K, N), dtype=dtype, device=device)
 
-    ref_out, _ = _reduce_reference(sparse, mat2, reduce)
+    ref_out, _ = (
+        _cpu_reduce_reference(sparse, mat2, reduce)
+        if IS_KUNLUNXIN
+        else _reduce_reference(sparse, mat2, reduce)
+    )
     res_out, res_arg = flag_gems._sparse_mm_reduce_impl(sparse, mat2, reduce)
 
     assert res_arg.dtype == torch.int64
@@ -177,7 +191,11 @@ def test_sparse_mm_reduce_impl_dense_noncontiguous(dtype):
     pool = torch.randn((K, N * 2), dtype=dtype, device=device)
     mat2 = pool[:, ::2]
 
-    ref_out, _ = _reduce_reference(sparse, mat2, "sum")
+    ref_out, _ = (
+        _cpu_reduce_reference(sparse, mat2, "sum")
+        if IS_KUNLUNXIN
+        else _reduce_reference(sparse, mat2, "sum")
+    )
     res_out, _ = flag_gems._sparse_mm_reduce_impl(sparse, mat2, "sum")
 
     atol = 1e-2 if dtype in _LOW_PREC_DTYPES else 1e-4
