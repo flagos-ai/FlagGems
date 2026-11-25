@@ -59,6 +59,7 @@ ALLOWED_TORCH_CALLS = {
     "promote_types",
     "is_grad_enabled",
     "set_grad_enabled",
+    "sparse_coo_tensor",
     # view ops: return aliases of the input storage, no kernel launch
     "adjoint",
     "broadcast_to",
