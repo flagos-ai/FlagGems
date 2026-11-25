@@ -15,20 +15,20 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
 DTYPES = list(dict.fromkeys([*utils.FLOAT_DTYPES, torch.float64]))
-
 TOL = {
     torch.float16: (0.002, 0.0005),
     torch.bfloat16: (0.016, 0.003),
     torch.float32: (3e-05, 2e-06),
     torch.float64: (2e-12, 2e-13),
 }
-
 CASES = [pytest.param("sinc", marks=[pytest.mark.sinc, pytest.mark.sinc_backward])]
 
 
@@ -62,6 +62,7 @@ def check(op, x, g, **kw):
     )
 
 
+@pytest.mark.sinc
 @pytest.mark.sinc_backward
 @pytest.mark.parametrize("op", CASES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -76,7 +77,6 @@ def test_vjp(op, dtype, shape, strided):
     torch.testing.assert_close(g, before[1])
 
 
-@pytest.mark.sinc_backward
 @pytest.mark.sinc
 @pytest.mark.sinc_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -89,4 +89,124 @@ def test_sinc_small_values(dtype):
     check("sinc", x, torch.ones_like(x))
 
 
-pytestmark = [pytest.mark.sinc, pytest.mark.sinc_backward]
+@pytest.mark.sinc
+@pytest.mark.sinc_backward
+@pytest.mark.skipif(
+    torch_device_fn.device_count() < 2, reason="requires two visible devices"
+)
+def test_backward_input_device_guard():
+    kind = torch.device(flag_gems.device).type
+    target_device = torch.device(kind, 1)
+    with torch_device_fn.device(target_device):
+        x = torch.linspace(-0.8, 0.8, 257, device=target_device)
+        grad = torch.ones_like(x)
+        expected = flag_gems.sinc_backward(grad, x)
+    with torch_device_fn.device(torch.device(kind, 0)):
+        actual = flag_gems.sinc_backward(grad, x)
+        torch.testing.assert_close(actual, expected)
+        assert torch_device_fn.current_device() == 0
+
+
+class NoNativeCompute(TorchDispatchMode):
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        blocked = {
+            "mul",
+            "add",
+            "sub",
+            "div",
+            "cos",
+            "cosh",
+            "sin",
+            "sinh",
+            "sigmoid",
+            "silu_backward",
+            "softplus_backward",
+            "softshrink_backward",
+            "gather",
+            "scatter",
+            "scatter_add",
+            "scatter_reduce",
+            "index",
+            "index_put",
+            "clone",
+            "copy_",
+            "_to_copy",
+        }
+        if func._schema.name.split("::")[-1] in blocked:
+            raise AssertionError("native computation in backward: " + str(func))
+        return func(*args, **kwargs or {})
+
+
+OPS = ["sinc"]
+
+
+@pytest.mark.sinc
+@pytest.mark.sinc_backward
+@pytest.mark.parametrize("op", ("sinc",) + ())
+def test_registered_forward_backward(op):
+    xs = [torch.randn(7, 13, device=flag_gems.device, requires_grad=True)]
+    refs = [xs[0].detach().requires_grad_()]
+    expected = native("sinc", refs[0])
+
+    def invoke():
+        return native("sinc", xs[0])
+
+    grad = torch.randn_like(expected)
+    want = torch.autograd.grad(expected, refs, grad)
+    included = "sinc"
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=[included])
+        actual = invoke()
+        assert type(actual.grad_fn).__name__ in (
+            "PointwiseBackwardFunctionBackward",
+            "IndexBackwardFunctionBackward",
+        )
+        with NoNativeCompute():
+            got = torch.autograd.grad(actual, xs, grad)
+    finally:
+        lib._destroy()
+    for a, b in zip(got, want):
+        torch.testing.assert_close(a, b, rtol=3e-05, atol=2e-06)
+
+
+def make_tensor(shape, dtype, device, strided=False):
+    if strided:
+        return torch.randn((*shape, 2), dtype=dtype, device=device)[..., 1]
+    return torch.randn(shape, dtype=dtype, device=device)
+
+
+@pytest.mark.sinc
+@pytest.mark.sinc_backward
+@pytest.mark.parametrize(
+    "op",
+    [pytest.param("sinc", marks=getattr(pytest.mark, "sinc_backward")) for op in OPS],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("strided", [False, True])
+def test_pointwise_autograd(op, dtype, strided):
+    x = make_tensor((7, 13), dtype, flag_gems.device, strided).requires_grad_()
+    ref = x.detach().requires_grad_()
+    y = getattr(flag_gems, "sinc")(x)
+    expected = native("sinc", ref)
+    torch.testing.assert_close(y, expected, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+    g = make_tensor(y.shape, dtype, flag_gems.device, strided)
+    want = torch.autograd.grad(expected, ref, g)[0]
+    with NoNativeCompute():
+        got = torch.autograd.grad(y, x, g)[0]
+    torch.testing.assert_close(got, want, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+_MISSING_REGISTRAR = object()
+
+
+@pytest.fixture(autouse=True)
+def _restore_registrar_state():
+    previous = getattr(flag_gems, "current_work_registrar", _MISSING_REGISTRAR)
+    yield
+    if previous is _MISSING_REGISTRAR:
+        if hasattr(flag_gems, "current_work_registrar"):
+            delattr(flag_gems, "current_work_registrar")
+    else:
+        flag_gems.current_work_registrar = previous
