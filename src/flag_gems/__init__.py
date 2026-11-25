@@ -1946,7 +1946,7 @@ _FULL_CONFIG = (
     ("nanquantile.scalar_out", nanquantile_scalar_out),
     ("nansum", nansum),
     ("nansum.out", nansum_out),
-    ("narrow_copy", narrow_copy),
+    ("narrow_copy", narrow_copy, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("native_batch_norm", native_batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_channel_shuffle", native_channel_shuffle),
