@@ -134,21 +134,22 @@ def celu_(A, alpha=1.0):
     return result
 
 def _make_celu_gradient(shape, dtype, device, n, alpha, use_result):
-    grid = (triton.cdiv(n, 512), 1, 1)
-    prefix = (device, dtype, n, alpha, use_result)
+    block = 1024 if n >= 65536 else 256
+    grid = (triton.cdiv(n, block), 1, 1)
+    prefix = (device, dtype, n, alpha, use_result, block)
     common = _CELU_GRAD_LAUNCHERS.get((*prefix, True, True))
     operation = 'celu_result' if use_result else 'celu'
 
     def gradient(x, grad):
         nonlocal common
-        if not x.is_contiguous() or not grad.is_contiguous():
+        if (n and torch_device_fn.current_device() != device.index) or not x.is_contiguous() or not grad.is_contiguous():
             return unary_backward(x, grad, operation, alpha)
         out = torch.empty(shape, dtype=dtype, device=device)
         if n:
             (xa, ga) = (x.data_ptr() % 16 == 0, grad.data_ptr() % 16 == 0)
             aligned = xa and ga
             launch = common if aligned else _CELU_GRAD_LAUNCHERS.get((*prefix, xa, ga))
-            args = (x, grad, out, n, alpha, use_result, 512)
+            args = (x, grad, out, n, alpha, use_result, block)
             if launch is None:
                 kernel = _celu_backward_contiguous_kernel[grid](*args)
                 launch = kernel[grid]
@@ -182,9 +183,9 @@ class CeluAutograd(torch.autograd.Function):
     def backward(ctx, grad):
         if torch.is_grad_enabled():
             return CeluAutograd._backward_once(ctx, grad)
-        return _celu_gradient(ctx, grad), None, None
+        return ctx.gradient_factory(ctx.saved_tensors[0], grad), None, None
 
     @staticmethod
     @once_differentiable
     def _backward_once(ctx, grad):
-        return _celu_gradient(ctx, grad), None, None
+        return ctx.gradient_factory(ctx.saved_tensors[0], grad), None, None
