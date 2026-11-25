@@ -491,6 +491,7 @@ from .fix import fix, fix_out  # noqa: F401
 from .fix_ import fix_  # noqa: F401
 from .flip import flip
 from .fliplr import fliplr
+from .flipud import flipud  # noqa: F401
 from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_scalar_tensor,
     float_power_scalar_tensor_out,
@@ -1510,6 +1511,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "fliplr",
+    "flipud",
     "float_power_tensor_tensor",
     "floor",
     "floor_",
