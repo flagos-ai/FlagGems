@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.libentry import libentry
 
@@ -36,99 +37,90 @@ def _thnn_fused_lstm_cell_kernel(
     hy_ptr,
     cy_ptr,
     workspace_ptr,
-    batch_size: tl.constexpr,
-    hidden_size: tl.constexpr,
+    hidden_size,
+    ig_stride_0,
+    ig_stride_1,
+    hg_stride_0,
+    hg_stride_1,
+    cx_stride_0,
+    cx_stride_1,
+    ib_stride_0,
+    hb_stride_0,
     has_input_bias: tl.constexpr,
     has_hidden_bias: tl.constexpr,
+    IS_FP64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # Grid: (batch_size,)
     batch_idx = tl.program_id(0)
+    hid_blk = tl.program_id(1)
 
-    # Each program (thread block) processes one batch element
-    # We use BLOCK_SIZE threads to process the hidden dimension
-
-    # Pointers for this batch
-    ig_ptr = input_gates_ptr + batch_idx * 4 * hidden_size
-    hg_ptr = hidden_gates_ptr + batch_idx * 4 * hidden_size
-    cx_ptr_batch = cx_ptr + batch_idx * hidden_size
+    ig_row_ptr = input_gates_ptr + batch_idx * ig_stride_0
+    hg_row_ptr = hidden_gates_ptr + batch_idx * hg_stride_0
+    cx_row_ptr = cx_ptr + batch_idx * cx_stride_0
     hy_ptr_batch = hy_ptr + batch_idx * hidden_size
     cy_ptr_batch = cy_ptr + batch_idx * hidden_size
     ws_ptr = workspace_ptr + batch_idx * 4 * hidden_size
 
-    # Offsets for this block
-    offsets = tl.arange(0, BLOCK_SIZE)
+    offsets = hid_blk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < hidden_size
+    acc_dtype = tl.float64 if IS_FP64 else tl.float32
 
-    # Load cell state cx
-    cx_vals = tl.load(cx_ptr_batch + offsets, mask=mask, other=0.0).to(tl.float32)
+    cx_vals = tl.load(cx_row_ptr + offsets * cx_stride_1, mask=mask, other=0.0).to(
+        acc_dtype
+    )
 
-    # Initialize all gate values outside the loop
-    i_gate = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    f_gate = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    g_gate = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    o_gate = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    i_gate = tl.zeros([BLOCK_SIZE], dtype=acc_dtype)
+    f_gate = tl.zeros([BLOCK_SIZE], dtype=acc_dtype)
+    g_gate = tl.zeros([BLOCK_SIZE], dtype=acc_dtype)
+    o_gate = tl.zeros([BLOCK_SIZE], dtype=acc_dtype)
 
-    # Process each of the 4 gates
     for gate_idx in tl.static_range(4):
-        gate_offset = gate_idx * hidden_size
+        gate_cols = gate_idx * hidden_size + offsets
 
-        # Load input and hidden gates for this gate
-        ig = tl.load(ig_ptr + gate_offset + offsets, mask=mask, other=0.0).to(
-            tl.float32
+        ig = tl.load(ig_row_ptr + gate_cols * ig_stride_1, mask=mask, other=0.0).to(
+            acc_dtype
         )
-        hg = tl.load(hg_ptr + gate_offset + offsets, mask=mask, other=0.0).to(
-            tl.float32
+        hg = tl.load(hg_row_ptr + gate_cols * hg_stride_1, mask=mask, other=0.0).to(
+            acc_dtype
         )
 
-        # Add biases if present
         if has_input_bias:
             ib = tl.load(
-                input_bias_ptr + gate_offset + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
+                input_bias_ptr + gate_cols * ib_stride_0, mask=mask, other=0.0
+            ).to(acc_dtype)
             ig = ig + ib
         if has_hidden_bias:
             hb = tl.load(
-                hidden_bias_ptr + gate_offset + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
+                hidden_bias_ptr + gate_cols * hb_stride_0, mask=mask, other=0.0
+            ).to(acc_dtype)
             hg = hg + hb
 
-        # Sum gates
         g = ig + hg
 
-        # Apply activation based on gate type and store
-        # gate_idx: 0=input, 1=forget, 2=cell, 3=output
         if gate_idx == 0:
-            # Input gate - sigmoid
             i_gate = tl.sigmoid(g)
             activated_gate = i_gate
         elif gate_idx == 1:
-            # Forget gate - sigmoid
             f_gate = tl.sigmoid(g)
             activated_gate = f_gate
         elif gate_idx == 2:
-            # Cell gate - tanh
             g_gate = tl_extra_shim.tanh(g)
             activated_gate = g_gate
-        else:  # gate_idx == 3
-            # Output gate - sigmoid
+        else:
             o_gate = tl.sigmoid(g)
             activated_gate = o_gate
 
         # The backward operator consumes activated gates, matching ATen's
         # workspace contract.
         tl.store(
-            ws_ptr + gate_offset + offsets,
+            ws_ptr + gate_cols,
             activated_gate.to(workspace_ptr.dtype.element_ty),
             mask=mask,
         )
 
-    # Compute cy = f * cx + i * g
     cy_acc = f_gate * cx_vals + i_gate * g_gate
-    # Compute hy = o * tanh(cy)
     hy_acc = o_gate * tl_extra_shim.tanh(cy_acc)
 
-    # Store results
     tl.store(cy_ptr_batch + offsets, cy_acc.to(cy_ptr.dtype.element_ty), mask=mask)
     tl.store(hy_ptr_batch + offsets, hy_acc.to(hy_ptr.dtype.element_ty), mask=mask)
 
@@ -137,8 +129,8 @@ def _thnn_fused_lstm_cell(
     input_gates: torch.Tensor,
     hidden_gates: torch.Tensor,
     cx: torch.Tensor,
-    input_bias: torch.Tensor = None,
-    hidden_bias: torch.Tensor = None,
+    input_bias: torch.Tensor | None = None,
+    hidden_bias: torch.Tensor | None = None,
 ):
     """Fused LSTM cell computation.
 
@@ -156,11 +148,13 @@ def _thnn_fused_lstm_cell(
     """
     logger.debug("GEMS _THNN_FUSED_LSTM_CELL")
 
+    if input_gates.ndim != 2 or hidden_gates.ndim != 2 or cx.ndim != 2:
+        raise RuntimeError("_thnn_fused_lstm_cell expects 2-D gate and state tensors")
+
     batch_size, gates_dim = input_gates.shape
     assert gates_dim % 4 == 0, "gates_dim must be divisible by 4"
     hidden_size = gates_dim // 4
 
-    # Validate input shapes
     assert (
         hidden_gates.shape == input_gates.shape
     ), "hidden_gates must have same shape as input_gates"
@@ -178,7 +172,6 @@ def _thnn_fused_lstm_cell(
             4 * hidden_size,
         ), f"hidden_bias must have shape ({4 * hidden_size},)"
 
-    # Allocate outputs
     hy = torch.empty(
         (batch_size, hidden_size), device=input_gates.device, dtype=input_gates.dtype
     )
@@ -189,31 +182,39 @@ def _thnn_fused_lstm_cell(
         (batch_size, gates_dim), device=input_gates.device, dtype=input_gates.dtype
     )
 
-    # Determine bias flags
+    if batch_size == 0 or hidden_size == 0:
+        return hy, cy, workspace
+
     has_input_bias = input_bias is not None
     has_hidden_bias = hidden_bias is not None
+    BLOCK_SIZE = max(32, min(triton.next_power_of_2(hidden_size), 128))
+    dummy = cx
 
-    # Choose BLOCK_SIZE based on hidden_size
-    BLOCK_SIZE = triton.next_power_of_2(hidden_size)
-    BLOCK_SIZE = max(32, min(BLOCK_SIZE, 128))
-
-    # Launch kernel
-    grid = (batch_size,)
-    _thnn_fused_lstm_cell_kernel[grid](
-        input_gates,
-        hidden_gates,
-        cx,
-        input_bias if input_bias is not None else input_gates.new_empty(0),
-        hidden_bias if hidden_bias is not None else input_gates.new_empty(0),
-        hy,
-        cy,
-        workspace,
-        batch_size,
-        hidden_size,
-        has_input_bias,
-        has_hidden_bias,
-        BLOCK_SIZE,
-        num_warps=4,
-    )
+    grid = (batch_size, triton.cdiv(hidden_size, BLOCK_SIZE))
+    with torch_device_fn.device(input_gates.device):
+        _thnn_fused_lstm_cell_kernel[grid](
+            input_gates,
+            hidden_gates,
+            cx,
+            input_bias if has_input_bias else dummy,
+            hidden_bias if has_hidden_bias else dummy,
+            hy,
+            cy,
+            workspace,
+            hidden_size,
+            input_gates.stride(0),
+            input_gates.stride(1),
+            hidden_gates.stride(0),
+            hidden_gates.stride(1),
+            cx.stride(0),
+            cx.stride(1),
+            input_bias.stride(0) if has_input_bias else 1,
+            hidden_bias.stride(0) if has_hidden_bias else 1,
+            has_input_bias,
+            has_hidden_bias,
+            input_gates.dtype == torch.float64,
+            BLOCK_SIZE,
+            num_warps=4,
+        )
 
     return hy, cy, workspace
