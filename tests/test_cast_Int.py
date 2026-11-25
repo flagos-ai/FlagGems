@@ -45,7 +45,9 @@ def make_input(shape, dtype):
 def assert_cast(x, non_blocking=False):
     expected = torch.ops.aten._cast_Int(x, non_blocking)
     actual = flag_gems.cast_Int(x, non_blocking)
-    utils.gems_assert_close(actual, expected, TARGET, equal_nan=True, atol=0)
+    utils.gems_assert_close(
+        actual, utils.to_reference(expected), TARGET, equal_nan=True, atol=0
+    )
     assert actual.stride() == expected.stride()
     assert actual.requires_grad == expected.requires_grad
     if x.dtype == TARGET:
@@ -104,8 +106,12 @@ def test_cast_Int_sparse_coo():
     x = torch.sparse_coo_tensor(indices, values, (2, 3), is_coalesced=False)
     expected = torch.ops.aten._cast_Int(x)
     actual = flag_gems.cast_Int(x)
-    utils.gems_assert_close(actual._indices(), expected._indices(), torch.int64, atol=0)
-    utils.gems_assert_close(actual._values(), expected._values(), TARGET, atol=0)
+    utils.gems_assert_close(
+        actual._indices(), utils.to_reference(expected._indices()), torch.int64, atol=0
+    )
+    utils.gems_assert_close(
+        actual._values(), utils.to_reference(expected._values()), TARGET, atol=0
+    )
     assert actual.is_coalesced() == expected.is_coalesced()
 
 
