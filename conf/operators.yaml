@@ -13113,7 +13113,7 @@ ops:
   kind:
   - Math
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: logaddexp2_out
   description: A variant of `logaddexp2` that allows the output to be assigned to
     an `out` tensor.
