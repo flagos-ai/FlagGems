@@ -122,7 +122,7 @@ def test_round_half_to_even(shape, dtype):
 
 @pytest.mark.round
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_round_transposed_bug90(dtype):
+def test_round_transposed_bug90(dtype, monkeypatch):
     torch.manual_seed(0)
     base_cpu = torch.randn(128, 128, dtype=torch.float32).to(dtype)
     base_dev = base_cpu.to(flag_gems.device)
@@ -138,8 +138,14 @@ def test_round_transposed_bug90(dtype):
     utils.gems_assert_equal(res_direct, ref_out)
     assert res_direct.data_ptr() != inp.data_ptr()
 
-    with flag_gems.use_gems():
-        res_dispatch = torch.round(inp)
+    with monkeypatch.context() as registration:
+        registration.setattr(flag_gems, "current_work_registrar", None)
+        library = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=library, include=["round"])
+            res_dispatch = torch.round(inp)
+        finally:
+            library._destroy()
     utils.gems_assert_equal(res_dispatch, ref_out)
     utils.gems_assert_equal(base_dev, utils.to_reference(base_before))
 
