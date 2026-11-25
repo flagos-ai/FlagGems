@@ -89,7 +89,11 @@ def to_copy(
         and not x.is_neg()
         and not x.is_conj()
         and 0 < x.numel() <= 2147483647
-        and (x.is_contiguous() or torch.ops.aten.is_non_overlapping_and_dense(x))
+        and (
+            x.is_contiguous()
+            # This predicate reads layout metadata, not tensor data.
+            or torch.ops.aten.is_non_overlapping_and_dense(x)  # allow-torch-compute
+        )
     ):
         # Dense permutations have no storage holes. Casting their physical order
         # into an output with identical strides preserves logical coordinates.
