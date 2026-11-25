@@ -80,7 +80,7 @@ def test_fmod_single_input_gradient(requires_x, requires_y):
     actual = torch.autograd.grad(flag_gems.fmod_tensor(x, y), inputs, grad)
     expected = torch.autograd.grad(torch.fmod(ref_x, ref_y), ref_inputs, grad)
     for result, reference in zip(actual, expected):
-        torch.testing.assert_close(result, reference)
+        utils.gems_assert_close(result, utils.to_reference(reference), torch.float32)
 
 
 @pytest.mark.fmod_backward
@@ -95,7 +95,7 @@ def test_fmod_backward_grad_fn():
     ref_y = y.detach().clone().requires_grad_()
     expected = torch.autograd.grad(torch.fmod(ref_x, ref_y), (ref_x, ref_y), grad)
     for value, reference in zip(actual, expected):
-        torch.testing.assert_close(value, reference)
+        utils.gems_assert_close(value, utils.to_reference(reference), torch.float32)
 
 
 @pytest.mark.fmod_backward
