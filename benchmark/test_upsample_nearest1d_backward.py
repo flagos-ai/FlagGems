@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.upsample_nearest1d_backward import (
+from flag_gems import (
     upsample_nearest1d_backward,
     upsample_nearest1d_backward_grad_input,
 )

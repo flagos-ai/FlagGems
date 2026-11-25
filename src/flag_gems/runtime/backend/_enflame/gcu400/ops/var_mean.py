@@ -146,7 +146,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         mid_sum = torch.empty([mid_size], dtype=torch.float32, device=x.device)
         mid_sum2 = torch.empty([mid_size], dtype=torch.float32, device=x.device)
 
-        grid_size = min(mid_size, 24)
+        grid_size = min(mid_size, 8)
 
         with torch_device_fn.device(x.device):
             var_mean_global_kernel_1[(grid_size, 1, 1)](

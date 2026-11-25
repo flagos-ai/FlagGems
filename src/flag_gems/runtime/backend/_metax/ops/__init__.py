@@ -28,6 +28,7 @@ from .exponential_ import exponential_
 from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
+from .flash_attention_backward import flash_attention_backward
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
 from .foreach_abs import foreach_abs
 from .foreach_abs_ import foreach_abs_
@@ -145,7 +146,7 @@ from .full_like import full_like
 from .gcd_ import gcd_
 from .greater_equal import greater_equal_
 from .grid_sampler_3d import grid_sampler_3d
-from .grouped_mm_w8a8 import grouped_mm_w8a8
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .groupnorm import group_norm
 from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
@@ -208,7 +209,6 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
-from ._make_dep_token import _make_dep_token
 from .mode import mode
 from .mul import mul, mul_
 from .mv import mv
@@ -280,7 +280,6 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
     "_convolution_double_backward",
-    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_scaled_dot_product_attention_math_for_mps",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -318,6 +317,7 @@ __all__ = [
     "erfinv_",
     "exponential_",
     "fake_quantize_per_tensor_affine_cachemask_backward",
+    "flash_attention_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
     "foreach_abs",
@@ -437,7 +437,7 @@ __all__ = [
     "greater_equal_",
     "grid_sampler_3d",
     "group_norm",
-    "grouped_mm_w8a8",
+    "grouped_gemm_w8a8",
     "gru",
     "gru_data",
     "gt_scalar_",

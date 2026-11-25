@@ -5,6 +5,50 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+@pytest.fixture(autouse=True)
+def _force_cpu_reference():
+    # On-device native linalg references are unreliable without ``--ref cpu``
+    # (CI runs without it; the on-device svd reference in the polar tests hung
+    # with a NOC idle timeout, same class), so the oracle is computed on CPU
+    # and handed back on the result device for comparison.  Patched inside an
+    # autouse fixture (not at module import) so the shared ``utils``
+    # monkeypatch cannot leak into other test modules collected into the same
+    # pytest process (CI's combined ``-m "linalg_polar or ..."`` run).
+    if not IS_KUNLUNXIN:
+        yield
+        return
+
+    _orig_to_reference = utils.to_reference
+    _orig_gems_assert_close = utils.gems_assert_close
+
+    def _to_reference(inp, upcast=False):
+        ref = _orig_to_reference(inp, upcast)
+        return ref.cpu() if isinstance(ref, torch.Tensor) and ref.is_cuda else ref
+
+    def _gems_assert_close(res, ref, *args, **kwargs):
+        if (
+            isinstance(ref, torch.Tensor)
+            and isinstance(res, torch.Tensor)
+            and ref.is_cpu
+            and not res.is_cpu
+            and not utils.TO_CPU
+        ):
+            # without --ref cpu the shared to_cpu helper keeps both on device
+            ref = ref.to(res.device)
+        _orig_gems_assert_close(res, ref, *args, **kwargs)
+
+    utils.to_reference = _to_reference
+    utils.gems_assert_close = _gems_assert_close
+    try:
+        yield
+    finally:
+        utils.to_reference = _orig_to_reference
+        utils.gems_assert_close = _orig_gems_assert_close
+
+
 # Shapes for linalg_tensorinv tests
 # Each shape must satisfy prod(shape[:ind]) == prod(shape[ind:])
 TENSORINV_SHAPES_IND2 = [
@@ -263,6 +307,18 @@ def test_linalg_tensorinv_singular(A_cpu):
     )
 
 
+def _tensorinv_out_reference(inp, ind):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
+    return torch.linalg.tensorinv(inp, ind=ind)
+
+
 @pytest.mark.linalg_tensorinv_out
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND2)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.
@@ -295,9 +351,9 @@ def test_linalg_tensorinv_out(shape, dtype):
     ref_A = utils.to_reference(A)
     if dtype == torch.float16:
         ref_A_fp32 = ref_A.to(torch.float32)
-        ref_out = torch.linalg.tensorinv(ref_A_fp32, ind=ind).to(torch.float16)
+        ref_out = _tensorinv_out_reference(ref_A_fp32, ind=ind).to(torch.float16)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_out_reference(ref_A, ind=ind)
 
     out = torch.empty(
         A.shape[ind:] + A.shape[:ind], dtype=dtype, device=flag_gems.device
@@ -473,9 +529,9 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
 
     ref_A = utils.to_reference(A)
     if dtype == torch.float16:
-        ref_out = torch.linalg.tensorinv(ref_A.to(torch.float32), ind=ind).to(dtype)
+        ref_out = _tensorinv_out_reference(ref_A.to(torch.float32), ind=ind).to(dtype)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_out_reference(ref_A, ind=ind)
 
     # Pre-fill with values that would be obviously wrong if left in place.
     out = torch.full((m, m), float("nan"), dtype=dtype, device=flag_gems.device)
@@ -491,11 +547,11 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
     out2 = torch.empty_like(A)
     ref_view_A = utils.to_reference(A_view)
     if dtype == torch.float16:
-        ref_view = torch.linalg.tensorinv(ref_view_A.to(torch.float32), ind=ind).to(
+        ref_view = _tensorinv_out_reference(ref_view_A.to(torch.float32), ind=ind).to(
             dtype
         )
     else:
-        ref_view = torch.linalg.tensorinv(ref_view_A, ind=ind)
+        ref_view = _tensorinv_out_reference(ref_view_A, ind=ind)
     res_view = flag_gems.linalg_tensorinv(A_view, ind=ind, out=out2)
 
     assert res_view is out2

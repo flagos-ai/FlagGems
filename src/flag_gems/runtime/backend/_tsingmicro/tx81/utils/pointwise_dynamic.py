@@ -574,10 +574,18 @@ class KernelGenerator:
 
     def gen_body_gsl_with_bptr(self, code):
         code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline(
+            "num_tiles_total = " + " * ".join(f"num_tiles{i}" for i in range(self.ndim))
+        )
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
-            self.gen_body_one_tile_per_cta_with_bptr(code)
+            # cdiv overshoot: the last CTA-wave launches tiles_per_cta per CTA
+            # but only < tiles_per_cta * num_ctas tiles exist. Guard the fake
+            # tiles: their out-of-range offsets must not reach the loads/stores.
+            code.writeline("if tile_id < num_tiles_total:")
+            with code.indent():
+                self.gen_body_one_tile_per_cta_with_bptr(code)
 
     def gen_body_one_tile_per_cta_without_bptr(self, code):
         ndim = self.ndim
@@ -672,10 +680,18 @@ class KernelGenerator:
 
     def gen_body_gsl_without_bptr(self, code):
         code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline(
+            "num_tiles_total = " + " * ".join(f"num_tiles{i}" for i in range(self.ndim))
+        )
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
-            self.gen_body_one_tile_per_cta_without_bptr(code)
+            # cdiv overshoot: the last CTA-wave launches tiles_per_cta per CTA
+            # but only < tiles_per_cta * num_ctas tiles exist. Guard the fake
+            # tiles: their out-of-range offsets must not reach the loads/stores.
+            code.writeline("if tile_id < num_tiles_total:")
+            with code.indent():
+                self.gen_body_one_tile_per_cta_without_bptr(code)
 
     def codegen_nd_tile_with_bptr(self, code):
         """Generate kernel nd tile & 1d grid with gsl support with block pointer."""
@@ -798,7 +814,13 @@ class KernelGenerator:
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
-            self.gen_body_one_tile_per_cta_1d_tile(code)
+            # cdiv overshoot: the last CTA-wave launches tiles_per_cta per CTA
+            # but only < tiles_per_cta * num_ctas tiles exist. Guard the fake
+            # tiles: their out-of-range flat index must not reach the
+            # loads/stores (it would compute out-of-shape multi-indices).
+            code.writeline("if tile_id * tile_size < num_tasks:")
+            with code.indent():
+                self.gen_body_one_tile_per_cta_1d_tile(code)
 
     def gen_body_row_broadcast_1d_tile(self, code):
         """Generate a row-aligned kernel for broadcast or pitched operands.

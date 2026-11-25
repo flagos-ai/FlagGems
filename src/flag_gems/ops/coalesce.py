@@ -177,17 +177,52 @@ def _coalesce_scan(
 
 
 @triton.jit
-def _coalesce_blkoff(
+def _coalesce_blkoff_l1(
     blk_tot_ptr,
     blk_off_ptr,
+    chunk_tot_ptr,
     NB2,
-    NTP: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    idx = tl.arange(0, NTP)
-    m = idx < NB2
-    t = tl.load(blk_tot_ptr + idx, mask=m, other=0)
+    """Per-chunk exclusive prefix of the superblock totals + chunk totals."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < NB2
+    t = tl.load(blk_tot_ptr + offs, mask=m, other=0)
     inc = tl.cumsum(t, axis=0)
-    tl.store(blk_off_ptr + idx, inc - t, mask=m)
+    tl.store(blk_off_ptr + offs, inc - t, mask=m)
+    tl.store(chunk_tot_ptr + pid, tl.sum(t, axis=0))
+
+
+@triton.jit
+def _coalesce_blkoff_l2(
+    chunk_tot_ptr,
+    chunk_base_ptr,
+    nchunks,
+    BLOCK: tl.constexpr,
+):
+    """Single-program exclusive prefix over the per-chunk totals."""
+    idx = tl.arange(0, BLOCK)
+    m = idx < nchunks
+    t = tl.load(chunk_tot_ptr + idx, mask=m, other=0)
+    inc = tl.cumsum(t, axis=0)
+    tl.store(chunk_base_ptr + idx, inc - t, mask=m)
+
+
+@triton.jit
+def _coalesce_blkoff_add(
+    blk_off_ptr,
+    chunk_base_ptr,
+    NB2,
+    BLOCK: tl.constexpr,
+):
+    """Fold each chunk's base into its local superblock prefixes."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < NB2
+    v = tl.load(blk_off_ptr + offs, mask=m, other=0)
+    base = tl.load(chunk_base_ptr + pid)
+    tl.store(blk_off_ptr + offs, v + base, mask=m)
 
 
 @triton.jit
@@ -370,9 +405,11 @@ def coalesce(self):
         blk_tot = torch.empty(NB2, dtype=torch.int32, device=dev)
         blk_off = blk_tot
     else:
-        blk = torch.empty(NB2 + NTP, dtype=torch.int32, device=dev)
-        blk_tot = blk[:NB2]
-        blk_off = blk[NB2:]
+        blk_tot = torch.empty(NB2, dtype=torch.int32, device=dev)
+        blk_off = torch.empty(NB2, dtype=torch.int32, device=dev)
+        nchunks = (NB2 + 2047) // 2048
+        chunk_tot = torch.empty(nchunks, dtype=torch.int32, device=dev)
+        chunk_base = torch.empty(nchunks, dtype=torch.int32, device=dev)
 
     grid_n = (triton.cdiv(n, _HIST_BLOCK),)
     _coalesce_hist[grid_n](
@@ -395,7 +432,13 @@ def coalesce(self):
         bits, table, blk_tot, cnt, NW, BLOCK=_SCAN_BLOCK, num_warps=8
     )
     if not inreg_sb:
-        _coalesce_blkoff[(1,)](blk_tot, blk_off, NB2, NTP=NTP)
+        # NB2 can exceed 1024 here (the single-program 16-lane version read
+        # uninitialized / out-of-bounds offsets).  Scan in two levels instead.
+        _coalesce_blkoff_l1[(nchunks,)](blk_tot, blk_off, chunk_tot, NB2, BLOCK=2048)
+        _coalesce_blkoff_l2[(1,)](
+            chunk_tot, chunk_base, nchunks, BLOCK=triton.next_power_of_2(nchunks)
+        )
+        _coalesce_blkoff_add[(nchunks,)](blk_off, chunk_base, NB2, BLOCK=2048)
     _coalesce_scatter[grid_n](
         keyin,
         indices,

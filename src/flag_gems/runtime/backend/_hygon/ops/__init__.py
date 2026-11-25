@@ -23,9 +23,30 @@ from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_add__List import _foreach_add__List
+from ._foreach_add__Scalar import _foreach_add__Scalar
+from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
+from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
+from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_copy_ import _foreach_copy_
+from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_mul__List import _foreach_mul__List
+from ._foreach_mul__Scalar import _foreach_mul__Scalar
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_pow__Scalar import _foreach_pow__Scalar
+from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_round_ import _foreach_round_
+from ._foreach_sign_ import _foreach_sign_
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
+from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._scaled_dot_product_attention_math_for_mps import (
     _scaled_dot_product_attention_math_for_mps,
 )
@@ -34,6 +55,7 @@ from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
@@ -50,12 +72,17 @@ from .attention import (
 )
 from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
+from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .block_diag import block_diag
+from .bmm import bmm, bmm_out
 from .bmm_w8a8 import bmm_w8a8
+from .bmm_w8a8_fp8 import bmm_w8a8_fp8
 from .cholesky_inverse import cholesky_inverse
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
 from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
@@ -95,6 +122,7 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .flash_attention_backward import flash_attention_backward
 from .float_power_ import (
     float_power_scalar_tensor,
     float_power_scalar_tensor_out,
@@ -124,9 +152,11 @@ from .inner import inner
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
-from .layernorm import layer_norm, native_layer_norm
+from .layernorm import layer_norm, layer_norm_backward, native_layer_norm
 from .lcm import lcm, lcm_
 from .ldexp_ import ldexp_
+from .ldl_factor_ex import ldl_factor_ex
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .lift_fresh import lift_fresh
 from .linalg_ldl_factor import ldl_factor, linalg_ldl_factor
 from .linalg_lstsq import linalg_lstsq
@@ -162,10 +192,13 @@ from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .neg import neg
+from .nll_loss2d import nll_loss2d
 from .nll_loss_backward import heur_block_n, nll_loss_backward
+from .nll_loss_nd import nll_loss_forward, nll_loss_nd_backward
 from .nonzero_numpy import nonzero_numpy
 from .norm_scalaropt_dim import norm_scalaropt_dim
 from .nuclear_norm import nuclear_norm
+from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad_sequence import pad_sequence
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
@@ -181,12 +214,18 @@ from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .replication_pad2d import replication_pad2d
 from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
 from .replication_pad3d_backward import replication_pad3d_backward
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scalar_tensor import scalar_tensor
 from .scatter import scatter, scatter_
@@ -265,7 +304,28 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_foreach_add__List",
+    "_foreach_add__Scalar",
+    "_foreach_add__ScalarList",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_copy_",
+    "_foreach_div__Scalar",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_minimum__Scalar",
+    "_foreach_mul__List",
+    "_foreach_mul__Scalar",
+    "_foreach_mul__ScalarList",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
+    "_foreach_round_",
+    "_foreach_sign_",
     "_masked_scale",
+    "_native_batch_norm_legit_no_training",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_gru_cell_backward",
@@ -275,7 +335,11 @@ __all__ = [
     "adaptive_avg_pool2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "addmm",
     "addmm_",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "addmv_",
     "addr",
     "any",
@@ -285,12 +349,25 @@ __all__ = [
     "as_strided_scatter",
     "avg_pool1d",
     "avg_pool3d_backward",
+    "baddbmm",
     "baddbmm_",
+    "baddbmm_out",
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",
+    "bmm",
+    "bmm_out",
     "bmm_w8a8",
+    "bmm_w8a8_fp8",
     "cholesky_inverse",
+    "cholesky_solve",
+    "cholesky_solve_out",
+    "clamp",
+    "clamp_",
+    "clamp_min",
+    "clamp_min_",
+    "clamp_tensor",
+    "clamp_tensor_",
     "conj_physical",
     "conv2d",
     "conv_depthwise2d",
@@ -315,6 +392,7 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "float_power_scalar_tensor",
@@ -353,10 +431,16 @@ __all__ = [
     "isin",
     "jagged_to_padded_dense_forward",
     "layer_norm",
+    "layer_norm_backward",
     "lcm",
     "lcm_",
     "ldexp_",
     "ldl_factor",
+    "ldl_factor_ex",
+    "lerp_scalar",
+    "lerp_scalar_",
+    "lerp_tensor",
+    "lerp_tensor_",
     "lift_fresh",
     "linalg_ldl_factor",
     "linalg_lstsq",
@@ -397,10 +481,14 @@ __all__ = [
     "nansum_out",
     "native_layer_norm",
     "neg",
+    "nll_loss2d",
     "nll_loss_backward",
+    "nll_loss_forward",
+    "nll_loss_nd_backward",
     "nonzero_numpy",
     "norm_scalaropt_dim",
     "nuclear_norm",
+    "or_tensor",
     "ormqr",
     "pad_sequence",
     "per_token_group_quant_fp8",
@@ -418,10 +506,14 @@ __all__ = [
     "renorm",
     "renorm_",
     "repeat",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
     "replication_pad2d",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
     "replication_pad3d_backward",
+    "rms_norm_w8a16_fp8",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scalar_tensor",

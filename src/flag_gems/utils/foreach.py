@@ -2037,7 +2037,15 @@ def _meta_from_values(values: List[int], device: Any) -> torch.Tensor:
     """
     host = torch.frombuffer(array.array("q", values), dtype=torch.int64)
     out = torch.empty(len(values), dtype=torch.int64, device=device)
-    if _ATEN_COPY_REDISPATCH is None or _ATEN_COMPOSITE_KEYSET is None:
+    if (
+        _ATEN_COPY_REDISPATCH is None
+        or _ATEN_COMPOSITE_KEYSET is None
+        or out.device.type == "npu"
+    ):
+        # Ascend NPU registers aten::_copy_from under PrivateUse1, not under
+        # CompositeExplicitAutograd.  Redispatching at CompositeExplicitAutograd
+        # skips that key and raises NotImplementedError on NPU; use the regular
+        # copy_ path instead, which routes through the full dispatch stack.
         out.copy_(host, non_blocking=True)
     else:
         # Skip the Python-level copy_ registration and go straight to the
@@ -3376,7 +3384,14 @@ def _ternary_upload(values: List[Any], dtype: torch.dtype, device: Any) -> torch
             )
         host_dtype = dtype
     out = torch.empty(len(values), dtype=host_dtype, device=device)
-    _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
+    if out.device.type == "npu":
+        # Ascend NPU registers aten::_copy_from under PrivateUse1, not under
+        # CompositeExplicitAutograd.  Redispatching at CompositeExplicitAutograd
+        # skips that key and raises NotImplementedError on NPU; use the regular
+        # copy_ path instead, which routes through the full dispatch stack.
+        out.copy_(host, non_blocking=True)
+    else:
+        _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
     return out
 
 
