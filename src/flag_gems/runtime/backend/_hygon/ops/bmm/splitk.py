@@ -15,6 +15,8 @@
 
 """Shared split-K path for GEMMs with too few output tiles to fill the device."""
 
+from functools import lru_cache
+
 import torch
 import triton
 import triton.language as tl
@@ -80,7 +82,7 @@ def _partials(
     tl.store(P + offsets, acc, (rm[:, None] < M) & (rn[None, :] < N))
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("bmm_splitk"),
     key=["BATCH", "M", "N", "K", "AB", "AM", "AK", "BB", "BK", "BN", "SPLITS"],
@@ -111,7 +113,7 @@ def _small_partials(
     _partials(A, B, P, M, N, K, AB, AM, AK, BB, BK, BN, BATCH, SPLITS, TM, TN, TK)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _finish_splitk(
     P,
@@ -161,9 +163,14 @@ def _finish_splitk(
     )
 
 
-def _launch_reduction(partials, out, splits, bias=None, alpha=1, beta=0):
-    batch, m, n = out.shape
-    cb, cm, cn = bias.stride() if bias is not None else (0, 0, 0)
+def _launch_reduction(
+    partials, out, splits, bias=None, alpha=1, beta=0, *, bias_strides=None
+):
+    unbatched = out.ndim == 2
+    batch, m, n = (1, *out.shape) if unbatched else out.shape
+    out_strides = (0, *out.stride()) if unbatched else out.stride()
+    if bias_strides is None:
+        bias_strides = bias.stride() if bias is not None else (0, 0, 0)
     _finish_splitk[(triton.cdiv(batch * m * n, 256),)](
         partials,
         out,
@@ -171,12 +178,10 @@ def _launch_reduction(partials, out, splits, bias=None, alpha=1, beta=0):
         m,
         n,
         batch,
-        *out.stride(),
+        *out_strides,
         splits,
         256,
-        cb,
-        cm,
-        cn,
+        *bias_strides,
         alpha,
         beta,
         bias is not None,
@@ -211,36 +216,45 @@ def launch_splitk(a, b, out, config):
     _launch_reduction(partials, out, splits)
 
 
-def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0):
+@lru_cache(maxsize=512)
+def _small_split_count(batch, m, n, k):
+    if min(batch, m, n, k) <= 0 or k < 1024 or min(m, n) > 128 or max(m, n) > 4096:
+        return 0
+    tiles = batch * triton.cdiv(m, 32) * triton.cdiv(n, 64)
+    if tiles >= 128:
+        return 0
+    splits = min(32, triton.next_power_of_2(triton.cdiv(128, tiles)))
+    splits = min(splits, triton.next_power_of_2(k) // 256)
+    return splits if splits >= 2 else 0
+
+
+def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0, *, bias_strides=None):
     """Return whether a long reduction was split across additional workgroups.
 
     Each call allocates fresh FP32 partials. The second kernel reduces them and
     applies the optional bias once, before casting to the output dtype.
+    Rank-two inputs share the batch-one kernel. Supply broadcast bias strides
+    when the bias does not already have three dimensions.
     """
-    batch, m, k = a.shape
-    n = b.shape[2]
-    if (
-        min(batch, m, n, k) <= 0
-        or a.dtype not in (torch.float16, torch.bfloat16)
-        or k < 1024
-        or min(m, n) > 128
-        or max(m, n) > 4096
-    ):
+    unbatched = a.ndim == 2
+    batch, m, k = (1, *a.shape) if unbatched else a.shape
+    n = b.shape[-1]
+    if a.dtype not in (torch.float16, torch.bfloat16):
         return False
-    tiles = batch * triton.cdiv(m, 32) * triton.cdiv(n, 64)
-    if tiles >= 128:
-        return False
-    splits = min(32, triton.next_power_of_2(triton.cdiv(128, tiles)))
-    splits = min(splits, triton.next_power_of_2(k) // 256)
-    if splits < 2:
+    splits = _small_split_count(batch, m, n, k)
+    if not splits:
         return False
     partials = torch.empty((splits, batch, m, n), dtype=torch.float32, device=a.device)
+    a_strides = (0, *a.stride()) if unbatched else a.stride()
+    b_strides = (0, *b.stride()) if unbatched else b.stride()
     _small_partials[
         lambda meta: (
             triton.cdiv(m, meta["TM"]) * triton.cdiv(n, meta["TN"]),
             batch,
             splits,
         )
-    ](a, b, partials, m, n, k, *a.stride(), *b.stride(), batch, splits)
-    _launch_reduction(partials, out, splits, bias, alpha, beta)
+    ](a, b, partials, m, n, k, *a_strides, *b_strides, batch, splits)
+    _launch_reduction(
+        partials, out, splits, bias, alpha, beta, bias_strides=bias_strides
+    )
     return True

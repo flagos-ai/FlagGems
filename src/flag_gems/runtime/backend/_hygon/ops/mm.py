@@ -25,6 +25,7 @@ from math import inf, isfinite, prod
 import torch
 import triton
 import triton.language as tl
+from torch import is_inference_mode_enabled
 
 try:
     import triton.experimental.tle.language as tle
@@ -43,10 +44,13 @@ except ImportError:
     accumulator_fence = cta_phase = None
 
 from flag_gems import runtime
+from flag_gems.ops.mm import general_mm
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.flagtune import _flagtune_state_key
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from .bmm.splitk import launch_small_splitk
 from .gemm_config_profiles import SHARED_HCU_OPTIONS as _SHARED_HCU_OPTIONS
 from .gemm_utils import (
     I32_GEMM_COORD_LIMIT,
@@ -54,6 +58,7 @@ from .gemm_utils import (
     GemmChoiceCache,
     benchmark_gemm_candidate,
     capture_gemm_fallback,
+    gemm_device_context,
     gemm_has_wide_storage,
     gemm_replay_benchmarker,
     gemm_storage_is_wide,
@@ -1749,41 +1754,16 @@ def _splitk_eligible(a, b, c, *, allow_single_row=False, expanded_pool=False):
         and not knobs.hcu.use_in_thread_transpose
     ):
         return False
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         target = triton.runtime.driver.active.get_current_target()
     return target.backend == "hip" and target.arch == "gfx936"
 
 
 def _splitk_alignment_facts(M, N):
-    """Divisibility facts for the exact ceil-grid used by try_mm_splitk."""
+    """Divisibility facts for the exact ceil-grid used by Split-K."""
     if any(type(x) is not int or not 0 < x <= 2**31 - 1 for x in (M, N)):
         return 1, 1
     return M & -M, N & -N
-
-
-def try_mm_splitk(a, b, c, *, compare_local_split=False):
-    """Write c using the small-output family; return False outside its domain."""
-    if not _splitk_eligible(a, b, c):
-        return False
-    if compare_local_split:
-        with torch_device_fn.device(a.device):
-            _mm_splitk_partial._apply_flagtune()
-        tuner = _mm_splitk_partial.fn
-        if tuner._run_mode == "normal":
-            key = gemm_tuning_key(tuner)
-            if try_mm_family(
-                a,
-                b,
-                c,
-                lambda: _launch_mm_splitk(a, b, c),
-                tuning_key=key,
-                ordinary_with_output=lambda output: _launch_mm_splitk(a, b, output),
-                splitk_pool=True,
-                expanded=tuner._flagtune_mode == runtime.TuningMode.EXPANDED,
-            ):
-                return True
-    _launch_mm_splitk(a, b, c)
-    return True
 
 
 def _launch_mm_splitk(a, b, c, *, symmetric_async=False):
@@ -1797,7 +1777,7 @@ def _launch_mm_splitk(a, b, c, *, symmetric_async=False):
     capacity = min(64, _SPLITK_WORKSPACE_BYTES // (4 * M * N))
     max_splits = 1 << (capacity.bit_length() - 1)
     workspace = torch.empty((max_splits, M, N), device=a.device, dtype=torch.float32)
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         # Preserve the qualified Split-K load modes while ordinary MM is
         # validated with the per-operand layout contract.
         mask = (
@@ -2042,7 +2022,7 @@ def launch_shared_mm(a, b, c, config):
         # shapes/strides and global input origins retain their i64 arithmetic.
         USE_I32_INDEX=_mm_output_indices_fit_i32(m, n, bm, bn, config.group_m),
     )
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         if config.a_row_padding:
             pitch = k + config.a_row_padding
             packed = torch.empty((m, pitch), dtype=a.dtype, device=a.device)
@@ -2328,7 +2308,7 @@ def launch_short_k_mm(a, b, c, config):
     use_i32_index = c.stride() == (n, 1) and _mm_output_indices_fit_i32(
         m, n, bm, bn, group_m
     )
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         return _ordinary_mm_entry()[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
             a,
             b,
@@ -2508,7 +2488,7 @@ def launch_cooperative_mm(a, b, c, config):
         raise ValueError("unsupported cooperative matrix storage or pipeline extent")
     m, k = a.shape
     n = b.shape[1]
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         target = triton.runtime.driver.active.get_current_target()
         if target.backend != "hip" or target.arch != "gfx936":
             raise ValueError("cooperative GEMM currently requires gfx936")
@@ -2747,16 +2727,19 @@ def local_split_mm_configs():
     return ()
 
 
-def launch_local_split_mm(a, b, c, config):
-    if not isinstance(config, LocalSplitMMConfig) or not config.supports(a, b, c):
+def launch_local_split_mm(a, b, c, config, *, validate=True):
+    if validate and (
+        not isinstance(config, LocalSplitMMConfig) or not config.supports(a, b, c)
+    ):
         raise ValueError("unsupported local split matrix storage or coordinate range")
     m, k = a.shape
     n = b.shape[1]
     bm, bn = config.tile
-    with torch_device_fn.device(a.device):
-        target = triton.runtime.driver.active.get_current_target()
-        if target.backend != "hip" or target.arch != "gfx936":
-            raise ValueError("local split GEMM currently requires gfx936")
+    with gemm_device_context(a.device):
+        if validate:
+            target = triton.runtime.driver.active.get_current_target()
+            if target.backend != "hip" or target.arch != "gfx936":
+                raise ValueError("local split GEMM currently requires gfx936")
         return _mm_local_splitk_kernel[
             (triton.cdiv(m, bm * config.m_tiles), triton.cdiv(n, bn), 1)
         ](
@@ -2811,12 +2794,55 @@ def grouped_mv_candidates(a, b, compute_units):
     )
 
 
-@libentry(cache_miss_fallback=capture_gemm_fallback)
+# Vector reductions use few candidates in Default, even for unaligned strides.
+# The explicit Expanded catalog remains available for offline search.
+_MV_DEFAULT_TILES = (
+    (128, 1, 1, 1),
+    (256, 1, 1, 1),
+    (512, 1, 2, 1),
+    (1024, 2, 2, 1),
+    (2048, 1, 4, 1),
+    (4096, 1, 4, 1),
+    (4096, 2, 8, 2),
+    (128, 4, 1, 1),
+    (128, 8, 1, 1),
+    (128, 16, 2, 1),
+    (256, 4, 2, 1),
+    (256, 8, 2, 2),
+    (256, 16, 4, 1),
+    (512, 4, 4, 1),
+    (512, 16, 4, 1),
+    (64, 16, 4, 1),
+    (16, 32, 4, 1),
+    (32, 64, 2, 1),
+    (16, 128, 4, 1),
+    (32, 128, 4, 1),
+    (64, 128, 4, 1),
+)
+
+
+def _prune_default_mv(configs, named_args, **kwargs):
+    if runtime.resolve_tuning_mode("mv") != runtime.TuningMode.DEFAULT:
+        return configs
+    n = named_args["N"]
+    column_major = named_args["stride_an"] == 1 and named_args["stride_am"] >= n
+    # A wider output tile amortizes strided K loads when the grid stays large.
+    max_rows = (
+        min(128, max(16, triton.next_power_of_2(n) // 64)) if column_major else 16
+    )
+    return [c for c in configs if c.kwargs["BLOCK_N"] <= max_rows]
+
+
+@libentry(cache_binding=True, cache_miss_fallback=capture_gemm_fallback)
 @libtuner(
-    # Keep the default config fallback for callers that do not opt into
-    # FlagTune.  The real-model acceptance path sets FLAGTUNE_INCLUDE=mv,
-    # which selects the MV section of mm_hygon_expand.yaml at first launch.
-    configs=runtime.get_tuned_config("mv"),
+    configs=[
+        triton.Config(
+            dict(BLOCK_M=bk, BLOCK_N=bn, LOOP_STAGES=loop),
+            num_warps=warps,
+            num_stages=2,
+        )
+        for bk, bn, warps, loop in _MV_DEFAULT_TILES
+    ],
     key=["M", "N", "stride_an", "stride_am", "stride_bm"],
     strategy=runtime.common.DEFAULT_STRATEGIES["mv_hygon"],
     benchmark_mode="replay",
@@ -2825,6 +2851,7 @@ def grouped_mv_candidates(a, b, compute_units):
     replay_refinement=(25, 100),
     flagtune_op_name="mv",
     flagtune_expand_op_name="mv_hygon",
+    prune_configs_by={"early_config_prune": _prune_default_mv},
 )
 @triton.jit
 def mv_kernel(
@@ -2866,6 +2893,7 @@ def mv_kernel(
     k_bound = M
     if WIDE_INDEX:
         k_bound = tl.cast(M, tl.int64)
+        offset_n = tl.cast(offset_n, tl.int64)
         stride_am = tl.cast(stride_am, tl.int64)
         stride_bm = tl.cast(stride_bm, tl.int64)
 
@@ -2897,14 +2925,14 @@ def mv_kernel(
 
 @lru_cache(maxsize=1)
 def _fixed_mv_entry():
-    return libentry()(mv_kernel.fn.fn)
+    return libentry(cache_binding=True)(mv_kernel.fn.fn)
 
 
 def launch_grouped_mv(a, b, c, config):
     """Run one GEMV per A row against the shared matrix B transpose."""
     m, k = a.shape
     n = b.shape[1]
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         return _fixed_mv_entry()[(triton.cdiv(n, config.block_n), m)](
             b,
             a,
@@ -2943,34 +2971,71 @@ def _mv_out(inp, vec, out):
     assert inp.dim() == 2 and vec.dim() == out.dim() == 1
     N, M = inp.shape
     assert vec.shape[0] == M and out.shape[0] == N
-    _dispatch_hygon_mv(inp, vec, out)
+    if N:
+        _dispatch_hygon_mv(inp, vec, out)
     return out
 
 
 def _dispatch_hygon_mv(inp, vec, out):
     """Choose the vector reduction or a matrix-instruction candidate."""
-    with torch_device_fn.device(inp.device):
-        mv_kernel._apply_flagtune()
     tuner = mv_kernel.fn
-    if tuner._run_mode == "normal":
-        tuning_key = gemm_tuning_key(tuner)
+    if tuner._run_mode == "normal" and _launch_default_row_mv(inp, vec, out):
+        return
+    if tuner._run_mode == "normal" and inp.dtype == vec.dtype == out.dtype:
+        with gemm_device_context(inp.device):
+            mv_kernel._apply_flagtune()
         if try_mv_mmac(
             inp,
             vec,
             out,
             lambda output: _launch_ordinary_mv(inp, vec, output),
-            tuning_key=tuning_key,
+            tuning_key=gemm_tuning_key(tuner),
             expanded=tuner._flagtune_mode == runtime.TuningMode.EXPANDED,
         ):
             return
     _launch_ordinary_mv(inp, vec, out)
 
 
+def _launch_default_row_mv(inp, vec, out):
+    n, k = inp.shape
+    if not (
+        n <= 2048
+        and 512 <= k <= 4096
+        and inp.dtype == vec.dtype
+        and inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and inp.is_contiguous()
+        and vec.is_contiguous()
+        and out.stride(0) == 1
+        and runtime.resolve_tuning_mode("mv") == runtime.TuningMode.DEFAULT
+    ):
+        return False
+    tile_k = triton.next_power_of_2(k)
+    with gemm_device_context(inp.device):
+        _fixed_mv_entry()[(n,)](
+            inp,
+            vec,
+            out,
+            n,
+            k,
+            k,
+            1,
+            1,
+            1,
+            BLOCK_N=1,
+            BLOCK_M=tile_k,
+            LOOP_STAGES=1,
+            FULL_N_TILE=True,
+            num_warps=2 if tile_k <= 2048 else 4,
+            num_stages=2,
+        )
+    return True
+
+
 def _launch_ordinary_mv(inp, vec, out):
     N, M = inp.shape
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
 
-    with torch_device_fn.device(inp.device):
+    with gemm_device_context(inp.device):
         mv_kernel[grid](
             inp,
             vec,
@@ -2983,6 +3048,12 @@ def _launch_ordinary_mv(inp, vec, out):
             out.stride(0),
             WIDE_INDEX=max(M, N) >= I32_GEMM_COORD_LIMIT
             or gemm_has_wide_storage(inp, vec, out),
+            FULL_N_TILE=(
+                inp.stride(0) == 1
+                and N % 128 == 0
+                and mv_kernel.fn._run_mode == "normal"
+                and runtime.resolve_tuning_mode("mv") == runtime.TuningMode.DEFAULT
+            ),
         )
 
     return out
@@ -3012,7 +3083,7 @@ def _mv_mmac_eligible(inp, vec, out):
         return False
     if not config.supports(vec.view(1, k), inp.t(), out.view(1, n)):
         return False
-    with torch_device_fn.device(inp.device):
+    with gemm_device_context(inp.device):
         target = triton.runtime.driver.active.get_current_target()
     return target.backend == "hip" and target.arch == "gfx936"
 
@@ -3154,42 +3225,64 @@ def _measure_mv_family(inp, vec, out, ordinary_with_output, candidates):
     return GemmChoice(choice, candidates)
 
 
-def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key, expanded=False):
+def _measure_eligible_mv(inp, vec, out, ordinary_with_output, expanded):
     candidates = (_mmac_config(),) if _mv_mmac_eligible(inp, vec, out) else ()
     if expanded:
         candidates += _mv_splitk_candidates(inp, vec, out)
     if not candidates:
-        return False
+        return GemmChoice(0)
+    return _measure_mv_family(inp, vec, out, ordinary_with_output, candidates)
+
+
+def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key, expanded=False):
+    n, k = inp.shape
+    begin = out.data_ptr()
+    end = begin + out.element_size() * n
+    tensors = inp, vec, out
     key = (
-        inp.device,
-        inp.dtype,
-        vec.dtype,
-        out.dtype,
-        candidates,
-        tuple(inp.shape),
-        tuple(inp.stride()),
-        tuple(vec.stride()),
-        tuple(out.stride()),
+        tuple(t.device for t in tensors),
+        tuple(t.dtype for t in tensors),
+        n,
+        k,
+        inp.stride(),
+        vec.stride(),
+        out.stride(),
         tuning_key,
-        tuple(map(gemm_storage_is_wide, (inp, vec, out))),
+        tuple(t.data_ptr() % 16 for t in tensors),
+        all(
+            end <= t.data_ptr() or t.data_ptr() + t.element_size() * size <= begin
+            for t, size in ((inp, n * k), (vec, k))
+        ),
+        out.requires_grad,
+        out.is_inference(),
+        is_inference_mode_enabled(),
     )
-    with torch_device_fn.device(inp.device):
-        choice = _mv_mmac_choices.get(key)
-        if choice is None:
+    if expanded and _HYGON_SPLITK_OPTIONS_SUPPORTED:
+        from triton import knobs
+
+        key += (
+            tuple(map(gemm_storage_is_wide, tensors)),
+            out.untyped_storage().data_ptr()
+            not in (inp.untyped_storage().data_ptr(), vec.untyped_storage().data_ptr()),
+            knobs.hcu.use_buffer_ops,
+            knobs.hcu.use_async_copy,
+            knobs.hcu.use_block_pingpong,
+            knobs.hcu.use_in_thread_transpose,
+        )
+    choice = _mv_mmac_choices.get(key)
+    if choice is None:
+        with gemm_device_context(inp.device):
             choice = _mv_mmac_choices.get_or_measure(
-                key, _measure_mv_family, inp, vec, out, ordinary_with_output, candidates
+                key, _measure_eligible_mv, inp, vec, out, ordinary_with_output, expanded
             )
-        if choice is None:
-            return False
-        if choice.index:
-            succeeded, _ = try_gemm_candidate(
-                _launch_mv_candidate, inp, vec, out, choice.candidates[choice.index - 1]
-            )
-            if succeeded:
-                return True
-            _mv_mmac_choices.fallback(key, choice)
-        ordinary_with_output(out)
-    return True
+    if choice is None or choice.index == 0:
+        return False
+    succeeded, _ = try_gemm_candidate(
+        _launch_mv_candidate, inp, vec, out, choice.candidates[choice.index - 1]
+    )
+    if not succeeded:
+        _mv_mmac_choices.fallback(key, choice)
+    return succeeded
 
 
 # MM family shortlist, replay selection and choice cache.
@@ -3252,7 +3345,7 @@ def _shared_record_pitch_candidates(configs, b):
 def mm_family_candidates(a, b, c, *, splitk_pool=False, expanded=False):
     if a.ndim != 2 or b.ndim != 2 or c.ndim != 2 or a.device.type != "cuda":
         return ()
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         target = triton.runtime.driver.active.get_current_target()
     if target.backend != "hip" or target.arch != "gfx936":
         return ()
@@ -3436,89 +3529,89 @@ def _measure_mm_family(
     return GemmChoice(choice, candidates)
 
 
-def try_mm_family(
-    a,
-    b,
-    c,
-    ordinary,
-    *,
-    tuning_key,
-    ordinary_with_output=None,
-    splitk_pool=False,
-    expanded=False,
-):
-    """Compare real candidates with the existing Default/Expanded TL tuner.
+@dataclass(frozen=True)
+class _MMChoice(GemmChoice):
+    splitk: bool = False
 
-    Cache the winner and its candidate descriptors. A cold graph capture
-    defers family selection to the incumbent path. In the Split-K region, the
-    incumbent is the Split-K tuner and only a fixed shortlist challenges it.
-    """
-    if any(t.ndim != 2 for t in (a, b, c)) or a.device.type != "cuda":
-        return False
+
+def _measure_mm_launch(a, b, c):
+    splitk = _splitk_eligible(a, b, c)
+    entry = _mm_splitk_partial if splitk else mm_kernel
+    launch = _launch_mm_splitk if splitk else _launch_ordinary_mm
+    with gemm_device_context(a.device):
+        entry._apply_flagtune()
+    tuner = entry.fn
+    choice = _measure_mm_family(
+        a,
+        b,
+        c,
+        lambda: launch(a, b, c),
+        lambda output: launch(a, b, output),
+        splitk,
+        tuner._flagtune_mode == runtime.TuningMode.EXPANDED,
+    )
+    if choice is None:
+        return _MMChoice(0, splitk=splitk)
+    return _MMChoice(choice.index, choice.candidates, splitk)
+
+
+def _mm_launch_key(a, b, c, fresh_output):
+    from triton import knobs
+
     m, k = a.shape
     n = b.shape[1]
-    begin, end = c.data_ptr(), c.data_ptr() + 2 * m * n
-    storage = (
-        tuple(t.data_ptr() % 16 == 0 for t in (a, b, c)),
-        all(
+    begin = c.data_ptr()
+    end = begin + 2 * m * n
+    tensors = a, b, c
+    if fresh_output:
+        disjoint = separate_storage = True
+    else:
+        disjoint = all(
             end <= t.data_ptr() or t.data_ptr() + 2 * count <= begin
             for t, count in ((a, m * k), (b, k * n))
-        ),
-        c.untyped_storage().data_ptr()
-        not in (a.untyped_storage().data_ptr(), b.untyped_storage().data_ptr()),
-        c.requires_grad,
-        c.is_inference(),
-        torch.is_inference_mode_enabled(),
-        tuple(map(gemm_storage_is_wide, (a, b, c))),
+        )
+        separate_storage = c.untyped_storage().data_ptr() not in (
+            a.untyped_storage().data_ptr(),
+            b.untyped_storage().data_ptr(),
+        )
+    splitk_options = (
+        (
+            knobs.hcu.use_buffer_ops,
+            knobs.hcu.use_async_copy,
+            knobs.hcu.use_block_pingpong,
+            knobs.hcu.use_in_thread_transpose,
+        )
+        if _HYGON_SPLITK_OPTIONS_SUPPORTED
+        else ()
     )
-    key = (
+    return (
         a.device,
         b.device,
         c.device,
         a.dtype,
         b.dtype,
         c.dtype,
-        tuple(a.shape),
-        tuple(b.shape),
-        tuple(c.shape),
-        tuple(a.stride()),
-        tuple(b.stride()),
-        tuple(c.stride()),
-        tuning_key,
-        storage,
-        splitk_pool,
-        expanded,
-        ordinary_with_output is not None,
+        a.shape,
+        b.shape,
+        c.shape,
+        a.stride(),
+        b.stride(),
+        c.stride(),
+        a.data_ptr() % 16,
+        b.data_ptr() % 16,
+        begin % 16,
+        disjoint,
+        separate_storage,
+        c.requires_grad,
+        c.is_inference(),
+        is_inference_mode_enabled(),
+        tuple(map(gemm_storage_is_wide, tensors)),
+        _flagtune_state_key(),
+        mm_kernel.fn._benchmark_protocol,
+        _mm_splitk_partial.fn._benchmark_protocol,
+        knobs.runtime.override_arch,
+        splitk_options,
     )
-    with torch_device_fn.device(a.device):
-        choice = _mm_family_choices.get(key)
-        if choice is None:
-            choice = _mm_family_choices.get_or_measure(
-                key,
-                _measure_mm_family,
-                a,
-                b,
-                c,
-                ordinary,
-                ordinary_with_output,
-                splitk_pool,
-                expanded,
-            )
-        if choice is None:
-            return False
-        if choice.index:
-            succeeded, _ = try_gemm_candidate(
-                _dispatch_hygon_mm_candidate,
-                a,
-                b,
-                c,
-                choice.candidates[choice.index - 1],
-            )
-            if succeeded:
-                return True
-            _mm_family_choices.fallback(key, choice)
-        ordinary()
-    return True
 
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
@@ -3565,11 +3658,11 @@ def mm(a, b):
             return mv(b.transpose(0, 1), a[0]).reshape(1, N)
 
     c = torch.empty((M, N), device=device, dtype=c_dtype)
-    _dispatch_hygon_mm(a, b, c)
+    _dispatch_hygon_mm(a, b, c, fresh_output=True)
     return c
 
 
-def _dispatch_hygon_mm_candidate(a, b, c, candidate):
+def _dispatch_hygon_mm_candidate(a, b, c, candidate, *, validate=True):
     """Launch a fixed configuration selected by the family tuner."""
     if candidate == _TUNED_SPLITK_CANDIDATE:
         return _launch_mm_splitk(a, b, c, symmetric_async=True)
@@ -3581,31 +3674,41 @@ def _dispatch_hygon_mm_candidate(a, b, c, candidate):
         return launch_grouped_mv(a, b, c, candidate)
     if isinstance(candidate, ShortKMMConfig):
         return launch_short_k_mm(a, b, c, candidate)
-    return launch_local_split_mm(a, b, c, candidate)
+    return launch_local_split_mm(a, b, c, candidate, validate=validate)
 
 
-def _dispatch_hygon_mm(a, b, c):
-    """Choose the regular or small-output MM pool and launch its winner."""
-    tuner = mm_kernel.fn
-    # Offline fixed-config collection must reach the requested ordinary tuner.
-    if tuner._run_mode != "normal":
+def _dispatch_hygon_mm(a, b, c, *, fresh_output=False):
+    """Resolve the GEMM family once per layout and launch the cached winner."""
+    if mm_kernel.fn._run_mode != "normal":
         _launch_ordinary_mm(a, b, c)
         return
-    if try_mm_splitk(a, b, c, compare_local_split=True):
+    if _mm_splitk_partial.fn._run_mode != "normal":
+        launch = _launch_mm_splitk if _splitk_eligible(a, b, c) else _launch_ordinary_mm
+        launch(a, b, c)
         return
-    with torch_device_fn.device(a.device):
-        mm_kernel._apply_flagtune()
-    tuning_key = gemm_tuning_key(tuner)
-    if not try_mm_family(
-        a,
-        b,
-        c,
-        lambda: _launch_ordinary_mm(a, b, c),
-        tuning_key=tuning_key,
-        ordinary_with_output=lambda output: _launch_ordinary_mm(a, b, output),
-        expanded=tuner._flagtune_mode == runtime.TuningMode.EXPANDED,
-    ):
-        _launch_ordinary_mm(a, b, c)
+    key = _mm_launch_key(a, b, c, fresh_output)
+    choice = _mm_family_choices.get(key)
+    if choice is None:
+        with gemm_device_context(a.device):
+            choice = _mm_family_choices.get_or_measure(key, _measure_mm_launch, a, b, c)
+    if choice is None:
+        launch = _launch_mm_splitk if _splitk_eligible(a, b, c) else _launch_ordinary_mm
+        launch(a, b, c)
+        return
+    if choice.index:
+        succeeded, _ = try_gemm_candidate(
+            _dispatch_hygon_mm_candidate,
+            a,
+            b,
+            c,
+            choice.candidates[choice.index - 1],
+            validate=False,
+        )
+        if succeeded:
+            return
+        _mm_family_choices.fallback(key, choice)
+    launch = _launch_mm_splitk if choice.splitk else _launch_ordinary_mm
+    launch(a, b, c)
 
 
 def _hygon_mm_requires_edge_mask(M, N, large_tile_configs=False):
@@ -3631,7 +3734,7 @@ def _launch_ordinary_mm(a, b, c):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    with torch_device_fn.device(a.device):
+    with gemm_device_context(a.device):
         load_mask = (
             0 if not bounded_coords else _hygon_mm_async_load_mask(a, b, c, M, N, K)
         )
@@ -3715,3 +3818,28 @@ def mm_out(a, b, *, out):
 
     _dispatch_hygon_mm(a, b, c)
     return c
+
+
+def router_gemm(x, weight):
+    """Project FP16/BF16 router inputs, accumulating and writing FP32."""
+    m, k = x.shape
+    n, weight_k = weight.shape
+    if k != weight_k or x.device != weight.device:
+        raise RuntimeError(
+            "router_gemm expects matching reduction dimensions and devices"
+        )
+    if not (m and n and k):
+        return torch.zeros((m, n), device=x.device, dtype=torch.float32)
+    out = torch.empty((m, n), device=x.device, dtype=torch.float32)
+    b = weight.t()
+    if x.dtype == b.dtype and x.dtype in (torch.float16, torch.bfloat16):
+        if m == 1:
+            _mv_out(weight, x[0], out[0])
+        elif n == 1:
+            _mv_out(x, weight[0], out[:, 0])
+        else:
+            with gemm_device_context(x.device):
+                if not launch_small_splitk(x, b, out):
+                    _launch_ordinary_mm(x, b, out)
+        return out
+    return general_mm(x, b, out, m, n, k)

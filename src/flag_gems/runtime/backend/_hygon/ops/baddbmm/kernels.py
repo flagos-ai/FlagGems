@@ -476,7 +476,7 @@ def _make_tuner(kernel, contract, prune=None, key=None):
             "ALPHA",
             "BETA",
         ]
-    return libentry()(
+    return libentry(cache_binding=True)(
         libtuner(
             configs=configs,
             key=key,

@@ -14,7 +14,8 @@
 
 import logging
 import threading
-from dataclasses import dataclass
+from contextlib import nullcontext
+from dataclasses import dataclass, replace
 from functools import cache
 from math import inf
 
@@ -22,6 +23,7 @@ import torch
 from triton.compiler.errors import CompilationError
 from triton.runtime import errors
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,16 @@ _CANDIDATE_FAILURES = (
     for name in ("BackendCompilerError", "HSACOError")
     if hasattr(errors, name)
 )
+
+
+_CURRENT_DEVICE = nullcontext()
+
+
+def gemm_device_context(device):
+    """LibEntry uses the current stream and device even for a tensor argument."""
+    if device.index == torch_device_fn.current_device():
+        return _CURRENT_DEVICE
+    return torch_device_fn.device(device)
 
 
 def gemm_storage_is_wide(tensor):
@@ -94,7 +106,7 @@ class GemmChoiceCache:
     def fallback(self, key, expected):
         with self._lock:
             if self.get(key) is expected:
-                self._choices[key] = GemmChoice(0, expected.candidates)
+                self._choices[key] = replace(expected, index=0)
 
     def clear(self):
         with self._lock:

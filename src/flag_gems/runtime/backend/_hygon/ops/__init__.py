@@ -177,7 +177,7 @@ from .max_pool3d_with_indices import (
 from .max_unpool2d import max_unpool2d
 from .median import median_dim, median_dim_values
 from .mixed_dtypes_linear import mixed_dtypes_linear
-from .mm import mm, mm_out
+from .mm import mm, mm_out, router_gemm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
@@ -478,6 +478,7 @@ __all__ = [
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
     "replication_pad3d_backward",
+    "router_gemm",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scalar_tensor",
