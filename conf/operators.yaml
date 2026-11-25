@@ -20129,6 +20129,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_coo_tensor_unsafe
+  description: 'Assembles a torch.sparse_coo tensor from already-materialised indices
+    and values without validating the index/size consistency; indices may be unsorted,
+    duplicated or out of range, and the payload dtype wins over the dtype argument.
+
+    '
+  for:
+  - _sparse_coo_tensor_unsafe
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_coo_tensor_with_dims
   description: 'Allocates an empty sparse COO tensor descriptor from its dimension
     counts: sparse_dim coordinate dimensions, dense_dim trailing dense dimensions

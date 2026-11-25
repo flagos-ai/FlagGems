@@ -26,6 +26,7 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._upsample_nearest_exact3d_backward import _upsample_nearest_exact3d_backward
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -465,6 +466,7 @@ __all__ = [
     "_trilinear_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_nearest_exact3d_backward",
     "absolute_",
     "acos_",
     "acosh",
