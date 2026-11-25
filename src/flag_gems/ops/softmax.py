@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.copy import copy_
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -321,11 +322,16 @@ def softmax_out(self, dim, half_to_float=False, *, out):
         raise RuntimeError(f"_softmax.out: expected out dtype {dtype}, got {out.dtype}")
     K = self.numel() // M // N
 
+    # The kernels write linear offsets, so a strided out needs a staging buffer.
+    kernel_out = out
+    if not out.is_contiguous():
+        kernel_out = torch.empty_like(out, memory_format=torch.contiguous_format)
+
     with torch_device_fn.device(self.device):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_kernel_non_inner[grid](
-                out,
+                kernel_out,
                 self,
                 M,
                 N,
@@ -334,11 +340,13 @@ def softmax_out(self, dim, half_to_float=False, *, out):
         else:
             grid = (M, 1, 1)
             softmax_kernel_inner[grid](
-                out,
+                kernel_out,
                 self,
                 M,
                 N,
             )
+    if kernel_out is not out:
+        copy_(out, kernel_out)
     return out
 
 
@@ -354,7 +362,7 @@ def softmax(self, dim, half_to_float=False):
         return out
 
     dtype = torch.float32 if half_to_float else self.dtype
-    out = torch.empty_like(self, dtype=dtype)
+    out = torch.empty_like(self, dtype=dtype, memory_format=torch.contiguous_format)
     return softmax_out(self, dim, half_to_float, out=out)
 
 
@@ -369,6 +377,7 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
         M *= output.shape[i]
 
     grad_output = grad_output.contiguous()
+    output = output.contiguous()
     if tuple(grad_input.shape) != tuple(output.shape):
         grad_input.resize_(output.shape)
     if grad_input.dtype != input_dtype:
@@ -377,13 +386,19 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
         )
     K = output.numel() // M // N
 
+    kernel_grad_input = grad_input
+    if not grad_input.is_contiguous():
+        kernel_grad_input = torch.empty_like(
+            grad_input, memory_format=torch.contiguous_format
+        )
+
     with torch_device_fn.device(grad_input.device):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_backward_kernel_non_inner[grid](
                 output,
                 grad_output,
-                grad_input,
+                kernel_grad_input,
                 M,
                 N,
                 K,
@@ -393,16 +408,20 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
             softmax_backward_kernel_inner[grid](
                 output,
                 grad_output,
-                grad_input,
+                kernel_grad_input,
                 M,
                 N,
             )
+    if kernel_grad_input is not grad_input:
+        copy_(grad_input, kernel_grad_input)
     return grad_input
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
     logger.debug("GEMS SOFTMAX_BACKWARD")
-    in_grad = torch.empty_like(output, dtype=input_dtype)
+    in_grad = torch.empty_like(
+        output, dtype=input_dtype, memory_format=torch.contiguous_format
+    )
     return softmax_backward_out(
         grad_output, output, dim, input_dtype, grad_input=in_grad
     )
