@@ -75,6 +75,7 @@ from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_mul_Tensor import _foreach_mul_Tensor
+from ._foreach_neg import _foreach_neg
 from ._foreach_neg_ import _foreach_neg_
 from ._foreach_pow__List import _foreach_pow__List
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
@@ -339,6 +340,7 @@ __all__ = [
     "_foreach_mul__List",
     "_foreach_mul__ScalarList",
     "_foreach_mul_Tensor",
+    "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
     "_foreach_pow__Scalar",
