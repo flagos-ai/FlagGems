@@ -55,6 +55,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+
 logger = logging.getLogger(__name__)
 
 # Largest dense key space this implementation materialises.  2**24 covers the
@@ -276,9 +278,9 @@ def _as_u8(t):
     return t.view(torch.uint8)
 
 
-def _empty_out_like(shape, sp, dv, dtype, values, device):
-    idx = torch.empty((sp, 0), dtype=torch.int64, device=device)
-    val = torch.empty((0,) + tuple(values.shape[1:]), dtype=dtype, device=device)
+def _empty_out_like(shape, sp, values):
+    idx = torch.empty((sp, 0), dtype=torch.int64, device=values.device)
+    val = torch.empty((0, *values.shape[1:]), dtype=values.dtype, device=values.device)
     return torch.sparse_coo_tensor(idx, val, shape, is_coalesced=True)
 
 
@@ -295,8 +297,10 @@ def _coalesce_impl(self, out=None):
             '"flag_gems/ops/_coalesce.py", please report a bug to PyTorch.'
         )
     device = self.device
-    if device.type != "cuda":
-        raise NotImplementedError("_coalesce triton implementation requires CUDA")
+    if device.type not in ("cuda", "flagos"):
+        raise NotImplementedError(
+            "_coalesce Triton implementation requires CUDA or FlagOS"
+        )
     dtype = self.dtype
     if dtype not in _ACC_DTYPE:
         raise RuntimeError(f"_coalesce does not support values dtype {dtype}")
@@ -305,38 +309,45 @@ def _coalesce_impl(self, out=None):
     shape = tuple(self.shape)
     values = self._values()
     n = self._nnz()
-    dense_shape = tuple(values.shape[1:])
-    dv = 1
-    for d in dense_shape:
-        dv *= d
-
-    def _finish(res):
-        if out is None:
-            return res
+    if out is not None:
         if not isinstance(out, torch.Tensor) or out.layout != torch.sparse_coo:
             raise RuntimeError(
                 "copy_() between dense and sparse Tensors is not implemented"
             )
-        if out.dtype != res.dtype:
+        if out.dtype != dtype:
             raise RuntimeError(
                 "Expected out tensor to have dtype %s, but got %s instead"
                 % (
-                    _DTYPE_NAMES.get(res.dtype, str(res.dtype)),
+                    _DTYPE_NAMES.get(dtype, str(dtype)),
                     _DTYPE_NAMES.get(out.dtype, str(out.dtype)),
                 )
             )
-        if tuple(out.shape) != tuple(res.shape):
+        if out.device != device:
+            raise RuntimeError("_coalesce.out expects self and out on the same device")
+        if tuple(out.shape) != shape:
             raise NotImplementedError(
-                "Could not run 'aten::resize_' with arguments from the "
-                "'SparseCUDA' backend."
+                "Could not run 'aten::resize_' to resize the sparse COO out tensor"
             )
+    with torch_device_fn.device(device):
+        res = (
+            _coalesce_dense(self, shape, sp, n, values)
+            if n
+            else _empty_out_like(shape, sp, values)
+        )
+        if out is None:
+            return res
         out.copy_(res)
         out._coalesced_(True)
         return out
 
-    if self._nnz() == 0 or sp == 0:
-        return _finish(_empty_out_like(shape, sp, dv, dtype, values, device))
 
+def _coalesce_dense(self, shape, sp, n, values):
+    device = values.device
+    dtype = values.dtype
+    dense_shape = tuple(values.shape[1:])
+    dv = 1
+    for d in dense_shape:
+        dv *= d
     if sp > _MAX_SPARSE_DIM:
         raise NotImplementedError(
             f"_coalesce supports at most {_MAX_SPARSE_DIM} sparse dimensions "
@@ -344,38 +355,34 @@ def _coalesce_impl(self, out=None):
         )
 
     dims = list(shape[:sp])
-    numel = 1
-    for d in dims:
-        numel *= d
-    if numel == 0:
-        return _finish(_empty_out_like(shape, sp, dv, dtype, values, device))
-
     strides = [1] * sp
-    acc = 1
+    numel = 1
     for d in range(sp - 1, -1, -1):
-        strides[d] = acc
-        acc *= dims[d]
+        strides[d] = numel
+        numel *= dims[d]
+    if numel == 0:
+        return _empty_out_like(shape, sp, values)
 
-    # The dense key space is only materialised when it stays small relative
-    # to the number of stored elements; larger key spaces fall back to the
-    # native implementation.
-    if numel * dv > _DENSE_MAX:
+    # Even a zero-width payload needs an occupancy slot for every key.
+    if numel * max(dv, 1) > _DENSE_MAX:
         raise NotImplementedError(
             f"_coalesce currently handles dense accumulators up to {_DENSE_MAX} "
             f"elements (got numel={numel}, dense_numel={dv}, "
-            f"numel*dv={numel * dv})"
+            f"numel*max(dense_numel, 1)={numel * max(dv, 1)})"
         )
-    if numel > 64 * self._nnz():
+    if numel > 64 * n:
         raise NotImplementedError(
             f"_coalesce currently handles dense key spaces up to 64x the stored "
-            f"count (got numel={numel}, nnz={self._nnz()})"
+            f"count (got numel={numel}, nnz={n})"
         )
 
     is_bool = dtype == torch.bool
     acc_dtype = _ACC_DTYPE[dtype]
-    idx = self._indices()
+    # Sparse COO constructors keep the original component strides. The scatter
+    # kernel expects row-major coordinates and contiguous flattened payloads.
+    idx = self._indices().contiguous()
+    values = values.contiguous()
     vals = _as_u8(values) if is_bool else values
-    n = self._nnz()
 
     s = strides + [0] * (_MAX_SPARSE_DIM - sp)
     d = dims + [1] * (_MAX_SPARSE_DIM - sp)
@@ -442,7 +449,7 @@ def _coalesce_impl(self, out=None):
 
     m = int(mtens.item())
     if m == 0:
-        return _finish(_empty_out_like(shape, sp, dv, dtype, values, device))
+        return _empty_out_like(shape, sp, values)
 
     oidx = torch.empty((sp, m), dtype=torch.int64, device=device)
     oval = torch.empty((m,) + dense_shape, dtype=dtype, device=device)
@@ -473,7 +480,7 @@ def _coalesce_impl(self, out=None):
     )
 
     res = torch.sparse_coo_tensor(oidx, oval, shape, is_coalesced=True)
-    return _finish(res)
+    return res
 
 
 def _coalesce(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Tensor:

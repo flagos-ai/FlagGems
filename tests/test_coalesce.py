@@ -381,6 +381,128 @@ def _make_empty_out(shape, dtype, device):
     return torch.sparse_coo_tensor(indices, values, shape, device=device)
 
 
+@pytest.fixture
+def coalesce_regression_device():
+    # Prefer the renamed device even when Torch-FL exposes a CUDA alias.
+    if hasattr(torch, "flagos") and torch.flagos.is_available():
+        return torch.device("flagos")
+    if flag_gems.device == "cuda" and torch.cuda.is_available():
+        return torch.device("cuda")
+    pytest.skip("_coalesce requires CUDA or FlagOS")
+
+
+_COALESCE_CPU_CASES = ("issue9523", "strided_hybrid", "zero_width", "scalar", "empty")
+
+
+def _make_coalesce_cpu_case(case, device):
+    if case == "issue9523":
+        shape = (2, 2)
+        indices = torch.tensor([[0, 1], [1, 0]], dtype=torch.int64).to(device)
+        values = torch.tensor([2.0, 3.0], dtype=torch.float32).to(device)
+    elif case == "strided_hybrid":
+        shape = (3, 3, 2)
+        indices = (
+            torch.tensor([[2, 1], [0, 1], [2, 1], [1, 0]], dtype=torch.int64)
+            .to(device)
+            .t()
+        )
+        values = (
+            torch.tensor(
+                [[3.0, 6.0, -3.0, 8.0], [4.0, 6.0, -4.0, 9.0]], dtype=torch.float32
+            )
+            .to(device)
+            .t()
+        )
+    elif case == "zero_width":
+        shape = (3, 0)
+        indices = torch.tensor([[2, 0, 2]], dtype=torch.int64).to(device)
+        values = torch.empty((3, 0), dtype=torch.float32, device=device)
+    elif case == "scalar":
+        shape = ()
+        indices = torch.empty((0, 3), dtype=torch.int64, device=device)
+        values = torch.tensor([2.0, -5.0, 1.0], dtype=torch.float32).to(device)
+    else:
+        assert case == "empty"
+        shape = (3, 3, 2)
+        indices = torch.empty((2, 0), dtype=torch.int64, device=device)
+        values = torch.empty((0, 2), dtype=torch.float32, device=device)
+
+    inp = torch.sparse_coo_tensor(indices, values, shape, is_coalesced=False)
+    if case == "strided_hybrid":
+        assert not inp._indices().is_contiguous()
+        assert not inp._values().is_contiguous()
+    return inp
+
+
+def _assert_exact_cpu_coo(actual, expected, inp):
+    assert actual.layout == torch.sparse_coo
+    assert actual.device == inp.device
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    assert actual.is_coalesced() and not inp.is_coalesced()
+    assert actual._nnz() == expected._nnz()
+    assert actual.sparse_dim() == expected.sparse_dim()
+    assert actual.dense_dim() == expected.dense_dim()
+    torch.testing.assert_close(
+        actual._indices().cpu(), expected._indices(), rtol=0, atol=0
+    )
+    torch.testing.assert_close(
+        actual._values().cpu(), expected._values(), rtol=0, atol=0
+    )
+
+
+@pytest.mark.underscore_coalesce
+@pytest.mark.parametrize("case", _COALESCE_CPU_CASES)
+def test__coalesce_cpu_regression(case, coalesce_regression_device):
+    ref = _make_coalesce_cpu_case(case, "cpu")
+    inp = _make_coalesce_cpu_case(case, coalesce_regression_device)
+    expected = torch.ops.aten._coalesce(ref)
+    actual = flag_gems._coalesce(inp)
+    assert actual is not inp
+    _assert_exact_cpu_coo(actual, expected, inp)
+
+
+def _make_coalesce_regression_out(inp):
+    indices = torch.zeros((inp.sparse_dim(), 1), dtype=torch.int64, device=inp.device)
+    values = torch.full(
+        (1, *inp._values().shape[1:]), -17, dtype=inp.dtype, device=inp.device
+    )
+    return torch.sparse_coo_tensor(indices, values, inp.shape, is_coalesced=True)
+
+
+@pytest.mark.underscore_coalesce_out
+@pytest.mark.parametrize("case", _COALESCE_CPU_CASES)
+def test__coalesce_out_cpu_regression(case, coalesce_regression_device):
+    ref = _make_coalesce_cpu_case(case, "cpu")
+    inp = _make_coalesce_cpu_case(case, coalesce_regression_device)
+    ref_out = _make_coalesce_regression_out(ref)
+    out = _make_coalesce_regression_out(inp)
+    expected = torch.ops.aten._coalesce.out(ref, out=ref_out)
+    actual = flag_gems._coalesce_out(inp, out=out)
+    assert actual is out
+    _assert_exact_cpu_coo(out, expected, inp)
+
+
+@pytest.mark.underscore_coalesce
+@pytest.mark.parametrize("keyspace", [2047, 2048, 2049, 2**22 - 1, 2**22, 2**22 + 1])
+def test__coalesce_compaction_boundary(keyspace, coalesce_regression_device):
+    # Straddle the occupancy tile and in-program prefix limits while filling
+    # the last key, including the partially occupied final tile.
+    n = (keyspace + 63) // 64
+    indices = torch.arange(n, dtype=torch.int64).mul_(64).reshape(1, n)
+    indices[0, :2] = keyspace - 1
+    values = torch.ones(n, dtype=torch.float32)
+    ref = torch.sparse_coo_tensor(indices, values, (keyspace,), is_coalesced=False)
+    inp = torch.sparse_coo_tensor(
+        indices.to(coalesce_regression_device),
+        values.to(coalesce_regression_device),
+        (keyspace,),
+        is_coalesced=False,
+    )
+    expected = torch.ops.aten._coalesce(ref)
+    _assert_exact_cpu_coo(flag_gems._coalesce(inp), expected, inp)
+
+
 @pytest.mark.underscore_coalesce
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
