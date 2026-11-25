@@ -4262,6 +4262,18 @@ ops:
   - Convolution
   stages:
   - alpha: '5.4'
+- id: convolution_overrideable_backward
+  description: |
+    Triton kernel implementation for convolution_overrideable_backward.
+  for:
+    - convolution_overrideable_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: convolution_overrideable_out
   description: 'A variant of convolution_overrideable() that writes the result into
     the out tensor.
