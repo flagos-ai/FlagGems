@@ -91,7 +91,7 @@ def test_accuracy_linalg_det(shape, dtype):
     # product of n elimination roundings does not get amplified by an extreme
     # condition number, so a plain relative-tolerance comparison stays valid.
     n = shape[-1]
-    inp = torch.randn(shape, dtype=dtype, device="cuda") / math.sqrt(n)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device) / math.sqrt(n)
     ref_inp = to_reference(inp, False)
 
     ref_result, ref_LU, ref_pivots = torch.ops.aten._linalg_det(ref_inp)
