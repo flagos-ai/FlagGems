@@ -21,6 +21,9 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+mul_backward:
+  <<: *single_dim_shapes
+
 vdot:
   <<: *single_dim_shapes
 
@@ -896,6 +899,17 @@ multilabel_margin_loss_forward:
     - [1, 4096]
   shape_desc: "N, C"
 
+# Backward shares the forward's O(N*C^2) shape envelope.
+multilabel_margin_loss_forward_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
 # default 4d-only shapes
 GenericBenchmark4DOnly:
   shapes:
@@ -1636,3 +1650,15 @@ as_strided_scatter_backward:
   - [262144, 256, 256, 768, 2, 7]
   - [1048576, 512, 512, 1536, 2, 11]
   shape_desc: STORAGE_SIZE, ROWS, COLS, ROW_STRIDE, COL_STRIDE, OFFSET
+
+narrow_copy_backward:
+  shapes:
+  - - 5
+    - 7
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 narrow input shape

@@ -45,8 +45,12 @@ echo "PR_ID=${PR_ID}"
 
 COLLECT_COVERAGE=""
 FAIL_FAST=false
+# Remember whether this is a full-range run: CHANGED_FILES is overwritten with
+# the discovered test list below, so it cannot be compared with "__ALL__" later.
+FULL_RUN=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  FULL_RUN=true
   # Replace "__ALL__" with all tests
   CHANGED_FILES=$(find tests -name "test*.py")
   # add options to generate summary report
@@ -209,7 +213,7 @@ run_batch() {
   local label="$1"; shift
   local report_file="$1"; shift
   local flags="$1"; shift
-  local timeout_s="${TEST_BATCH_TIMEOUT:-1800}"
+  local timeout_s="${TEST_BATCH_TIMEOUT:-3600}"
   local extra_flags=""
   if [[ "$report_file" != "-" ]]; then
     extra_flags="--md-report-output=${report_file}"
@@ -231,9 +235,9 @@ run_batch() {
 
 FAILURES=()
 _BATCH_IDX=0
-if [[ "${CHANGED_FILES}" == "__ALL__" && ${#TEST_CASES[@]} -gt 0 ]]; then
+if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   # Full-range daily run: batch files so each pytest process covers many files.
-  BATCH_SIZE="${TEST_BATCH_SIZE:-20}"
+  BATCH_SIZE="${TEST_BATCH_SIZE:-100}"
   batch=()
   for item in "${TEST_CASES[@]}"; do
     batch+=("$item")
@@ -307,7 +311,7 @@ fi
 # Skipped for full-range daily runs (CHANGED_FILES == __ALL__) because the GPU
 # accuracy run already covers all files; running them again on CPU reference
 # doubles the runtime for negligible extra signal in that context.
-if [[ "${CHANGED_FILES}" != "__ALL__" ]]; then
+if ! $FULL_RUN; then
   for item in "${TEST_CASES_CPU[@]}"; do
     echo "Running quick-cpu mode unit tests for ${item}"
     if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
