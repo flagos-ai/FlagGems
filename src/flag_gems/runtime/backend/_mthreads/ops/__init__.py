@@ -177,6 +177,7 @@ from .index_select_backward import index_select_backward
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div
 from .kthvalue import kthvalue
 from .layernorm import layer_norm_backward
@@ -463,6 +464,9 @@ __all__ = [
     "int_mm_out",
     "inverse",
     "isin",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kthvalue",
     "layer_norm_backward",
