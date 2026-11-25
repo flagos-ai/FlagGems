@@ -54,9 +54,7 @@ _SPECIAL_X = [
 _SPECIAL_GRAD = [1.0, -1.0, 0.0, 2.5, float("inf"), float("nan")]
 
 # log2 promotes integral inputs to float in ATen, so 1-byte ints are accepted.
-LOG2_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES
 
-COMPLEX_DTYPES = utils.COMPLEX_DTYPES
 # ATen's ``log2_cuda`` raises NotImplementedError for ComplexHalf, so the
 # complex coverage targets the two dtypes ATen actually implements.
 LOG2_COMPLEX_DTYPES = [torch.complex64, torch.complex128]
@@ -64,9 +62,9 @@ LOG2_COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 @pytest.mark.log2
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", LOG2_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
 def test_log2(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         inp = torch.randint(1, 100, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
@@ -90,7 +88,9 @@ def test_log2_complex(shape, dtype):
     single-tensor operator contract. Zeros and negative reals are included
     so the branch cuts and the signed infinities stay pinned.
     """
-    base = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) + 0.25
+    # Build from the component dtype so the operator, not the input
+    # constructor, is what propagates the complex dtype.
+    base = torch.rand(shape, dtype=torch.float64, device=flag_gems.device) + 0.25
     inp = torch.complex(base, base * 0.5).to(dtype)
     # Fold in the domain corners ATen defines: zero, negative real, pure
     # imaginary, and a full-plane point.
@@ -114,7 +114,7 @@ def test_log2_complex(shape, dtype):
 @pytest.mark.parametrize("dtype", LOG2_COMPLEX_DTYPES)
 def test_log2__complex(shape, dtype):
     """In-place complex log2 keeps the input tensor's dtype and values updated."""
-    base = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) + 0.25
+    base = torch.rand(shape, dtype=torch.float64, device=flag_gems.device) + 0.25
     inp = torch.complex(base, base * 0.5).to(dtype)
 
     ref_inp = utils.to_reference(inp.clone(), True)

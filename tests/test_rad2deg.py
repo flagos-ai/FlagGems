@@ -20,15 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close, to_reference
 
-FLOAT_DTYPES = utils.FLOAT_DTYPES
 POINTWISE_SHAPES = utils.POINTWISE_SHAPES
 
 # rad2deg promotes integral inputs to float in ATen, so 1-byte ints are accepted.
-RAD2DEG_DTYPES = FLOAT_DTYPES + utils.BYTE_INT_DTYPES
 
 
 def _make_rad2deg_input(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         # uint8 wraps negatives modulo 256 (bin913's P3: the intended
         # negative-angle coverage is lost on uint8), so both byte ints draw
         # from [0, 100) and the comparison stays against the same values.
@@ -40,7 +38,7 @@ def _make_rad2deg_input(shape, dtype):
 
 @pytest.mark.rad2deg
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", RAD2DEG_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
 def test_rad2deg(shape, dtype):
     inp = _make_rad2deg_input(shape, dtype)
     ref_inp = to_reference(inp)
@@ -53,7 +51,7 @@ def test_rad2deg(shape, dtype):
 
 @pytest.mark.rad2deg_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_rad2deg_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone())

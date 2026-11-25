@@ -8,7 +8,7 @@ from . import conftest as cfg
 
 
 def _rand_input(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         return torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
@@ -40,7 +40,7 @@ else:
 @pytest.mark.resize_as
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.FP8_DTYPES
 )
 def test_resize_as(shape, dtype):
     # resize_as requires same number of elements
@@ -72,7 +72,7 @@ def test_resize_as(shape, dtype):
 @pytest.mark.resize_as_
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize(
-    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.FP8_DTYPES
 )
 def test_resize_as_(shape, dtype):
     numel = 1

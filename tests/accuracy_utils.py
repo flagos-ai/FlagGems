@@ -286,6 +286,8 @@ SMALL_INT_DTYPES = [torch.int8, torch.uint8]
 BOOL_TYPES = [torch.bool]
 # 1-byte dtypes (int8/uint8) and fp8 dtypes are not part of the default CI lists;
 # tests that target them parametrize over these constants explicitly.
+# Kept as an alias until #9827 (which deletes it and renames its 19 remaining
+# consumers to BYTE_DTYPES) merges; this PR's own files already use BYTE_DTYPES.
 BYTE_INT_DTYPES = SMALL_INT_DTYPES
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])

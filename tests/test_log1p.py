@@ -22,15 +22,14 @@ from . import accuracy_utils as utils
 # log1p is defined over floats in ATen, but the CUDA kernel promotes integral
 # inputs to float first, so 1-byte ints are also accepted. Byte-int inputs stay
 # in [0, 100) to keep log1p finite and away from the domain boundary.
-LOG1P_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES
 
 
 @pytest.mark.log1p
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", LOG1P_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
 def test_log1p(shape, dtype):
     torch.manual_seed(0)
-    if dtype in utils.BYTE_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         inp = torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )

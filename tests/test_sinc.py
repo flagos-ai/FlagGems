@@ -20,14 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # sinc promotes integral inputs to float in ATen, so 1-byte ints are accepted.
-SINC_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES
 
 
 @pytest.mark.sinc
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", SINC_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
 def test_sinc(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         inp = torch.randint(-50, 50, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
