@@ -1672,7 +1672,7 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-silu_backward:
+silu_backward_out:
   shapes:
   - - 257
   - - 4096
@@ -1680,7 +1680,7 @@ silu_backward:
   - - 16777216
   shape_desc: Fixed accepted backward input shape
 
-silu_backward_out:
+silu_backward:
   shapes:
   - - 257
   - - 4096
