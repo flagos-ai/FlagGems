@@ -113,10 +113,11 @@ def test_conv_depthwise2d_backward_half(config):
         # fp16 accumulation-order noise sits well below one fp16 ulp at the
         # output magnitude; bf16 rounding dominates at ~2^-8 of the max value.
         atol = 2e-2 if dtype == torch.float16 else 6e-2
-        torch.testing.assert_close(res_grad_input, ref_grad_input, atol=atol, rtol=2e-2)
-        torch.testing.assert_close(
-            res_grad_weight, ref_grad_weight, atol=atol * 4, rtol=5e-2
-        )
+        # gems_assert_close follows the reference device (to_cpu handles
+        # --ref cpu); a bare assert_close would reject cuda-vs-cpu on device
+        # alone. rtol comes from the dtype RESOLUTION table.
+        utils.gems_assert_close(res_grad_input, ref_grad_input, dtype, atol=atol)
+        utils.gems_assert_close(res_grad_weight, ref_grad_weight, dtype, atol=atol * 4)
 
 
 @pytest.mark.conv_depthwise2d_backward
@@ -138,7 +139,12 @@ def test_conv_depthwise2d_backward_non_contiguous(dtype):
 
     weight = torch.randn((c, 1, kh, kw), dtype=dtype, device=flag_gems.device)
     ref_grad_input, ref_grad_weight = _depthwise_conv2d_input_grad(
-        grad_out, x, weight, (1, 1), (1, 1), (1, 1)
+        utils.to_reference(grad_out, False),
+        utils.to_reference(x, False),
+        utils.to_reference(weight, False),
+        (1, 1),
+        (1, 1),
+        (1, 1),
     )
     res_grad_input, res_grad_weight = flag_gems.conv_depthwise2d_backward(
         grad_out, x, weight, (1, 1), (1, 1), (1, 1)
