@@ -8613,6 +8613,31 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: foreach_pow_backward
+  description: |
+    Backward pass of the `_foreach_pow` family: the input gradients of the
+    `.List`, `.ScalarList` and `.ScalarAndTensor` overloads, evaluated the
+    way the `ForeachPowBackward{0,1,2}` autograd nodes do.  The `.List`
+    overload differentiates both operands, so it produces two gradient
+    lists: `grad_self = where(exponent == 0, 0, grad * (exponent *
+    self.pow(exponent - 1)))` and `grad_exponent = grad * where((self == 0)
+    & (exponent >= 0), 0, result * log(self))`.  The scalar overloads carry
+    no gradient on the scalar side: `.ScalarList` gives `grad * (exp_i *
+    self.pow(exp_i - 1))` (zero when the exponent is zero) with the scalar
+    kept at full double precision, and `.ScalarAndTensor` gives `grad *
+    (result * log(base))` with the product right-associated.  This Torch
+    build has no standalone `aten::_foreach_pow_backward` schema, so the
+    Triton kernel is exposed as explicit entry points plus
+    `torch.autograd.Function` bridges (same pattern as `deg2rad_backward`).
+  for:
+  - foreach_pow_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.6'
 - id: foreach_pow_list
   description: element-wise power for each tensor in a list, paired with a second
     tensor list.
