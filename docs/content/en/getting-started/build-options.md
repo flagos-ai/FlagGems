@@ -43,7 +43,7 @@ The table below summarizes the mainstream hardware accelerator platforms, recomm
 | :--- | :--- | :--- | :--- | :--- |
 | `nvidia-cuda128` | NVIDIA GPU (CUDA 12.8) | 3.12 | `CUDA` | FlagTree / Triton |
 | `nvidia-cuda133` | NVIDIA GPU (CUDA 13.3) | 3.12 | `CUDA` | FlagTree / Triton |
-| `ascend-cann900` | Huawei Ascend NPU (CANN 9.0.0) | 3.11 | `NPU` | FlagTree / Triton |
+| `ascend-cann900` | Huawei Ascend NPU (CANN 9.0.0) | 3.12 | `NPU` | FlagTree / Triton |
 | `ascend-cann850` | Huawei Ascend NPU (CANN 8.5.0) | 3.11 | `NPU` | FlagTree / Triton |
 | `hygon-dtk2604` | Hygon DCU (DTK) | 3.10 | Python-only / Under adaptation | Triton |
 | `metax-maca3810` | MetaX GPU (MACA 3.8.1) | 3.12 | Python-only | Triton |
