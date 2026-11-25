@@ -114,6 +114,13 @@ def test_cudnn_rnn_backward():
     bench = CudnnRnnBackwardBenchmark(
         op_name="cudnn_rnn_backward",
         torch_op=torch.ops.aten._cudnn_rnn_backward,
+        # Measure the registered FlagGems implementation directly. Without an
+        # explicit gems_op the harness runs torch_op under flag_gems.use_gems(),
+        # and this op's internal BLAS matmuls are then dispatched to the Hopper
+        # ``mm`` LibTuner (thousands of candidate configs per GEMM shape), whose
+        # cold tuning alone exceeds the benchmark timeout. This is the same
+        # callable registered as the override for aten::_cudnn_rnn_backward.
+        gems_op=flag_gems.cudnn_rnn_backward,
         # cuDNN RNN forward is CUDA-only; use float32 for stable timing.
         dtypes=[torch.float32],
     )
