@@ -273,6 +273,7 @@ def test_nn_lstm_backward_optional_grads_cpu_parity(
     has_bias,
     batch_first,
     noncontiguous,
+    monkeypatch,
 ):
     """End-to-end nn.LSTM forward/backward parity vs independent CPU reference."""
     if flag_gems.vendor_name == "cambricon" and dtype == torch.bfloat16:
@@ -379,14 +380,28 @@ def test_nn_lstm_backward_optional_grads_cpu_parity(
     # Exercise FlagGems fused cell ops directly (avoiding aten::lstm forward
     # override so Autograd runs THNNFusedLSTMCellBackward0 ->
     # _thnn_fused_lstm_cell_backward_impl on both CUDA and PrivateUse1/flagos).
-    with flag_gems.use_gems(
-        include=["_thnn_fused_lstm_cell", "_thnn_fused_lstm_cell_backward_impl"]
-    ):
-        y_dev, (hn_dev, cn_dev) = dev_model(x_dev_leaf, (h0_dev_leaf, c0_dev_leaf))
-        if grad_y_dev is not None:
-            torch.autograd.backward([y_dev], [grad_y_dev])
-        else:
-            _compute_loss(x_dev_leaf, y_dev, hn_dev, cn_dev).backward()
+    with monkeypatch.context() as registration:
+        registration.setattr(flag_gems, "current_work_registrar", None)
+        library = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(
+                lib=library,
+                include=[
+                    "_thnn_fused_lstm_cell",
+                    "_thnn_fused_lstm_cell_backward_impl",
+                ],
+            )
+            # Vendor RNN frontends require contiguous initial hidden states.
+            # Retain strided leaves and let autograd track the copies.
+            y_dev, (hn_dev, cn_dev) = dev_model(
+                x_dev_leaf, (h0_dev_leaf.contiguous(), c0_dev_leaf.contiguous())
+            )
+            if grad_y_dev is not None:
+                torch.autograd.backward([y_dev], [grad_y_dev])
+            else:
+                _compute_loss(x_dev_leaf, y_dev, hn_dev, cn_dev).backward()
+        finally:
+            library._destroy()
 
     atol, rtol = {
         torch.float32: (5e-4, 3e-3),
