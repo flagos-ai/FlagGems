@@ -139,6 +139,7 @@ from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
 from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sin import _foreach_sin  # noqa: F401
 from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
@@ -161,7 +162,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_reciprocal_,
     _foreach_rsqrt,
     _foreach_rsqrt_,
-    _foreach_sin,
     _foreach_sin_,
     _foreach_sqrt_,
     _foreach_tanh,
@@ -362,6 +362,7 @@ from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .choose_qparams_optimized import choose_qparams_optimized
+from .choose_qparams_per_tensor import choose_qparams_per_tensor  # noqa: F401
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -744,6 +745,7 @@ from .negative_ import negative_
 from .nested_tensor_from_mask import _nested_tensor_from_mask
 from .new_full import new_full
 from .new_ones import new_ones
+from .new_zeros import new_zeros
 from .nextafter import nextafter, nextafter_
 from .nllloss import (
     nll_loss2d,
@@ -1008,6 +1010,7 @@ from .trapezoid import trapezoid_x  # noqa: F401
 from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
+from .triplet_margin_loss import triplet_margin_loss  # noqa: F401
 from .triu import triu, triu_
 from .triu_indices import triu_indices  # noqa: F401
 from .trunc import trunc, trunc_
@@ -1804,6 +1807,7 @@ __all__ = [
     "negative_",
     "new_full",
     "new_ones",
+    "new_zeros",
     "nextafter",
     "nextafter_",
     "nll_loss2d",
@@ -2096,6 +2100,7 @@ __all__ = [
     "tril_",
     "tril_indices",
     "tril_out",
+    "triplet_margin_loss",
     "triu",
     "triu_",
     "triu_indices",

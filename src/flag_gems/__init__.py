@@ -1286,6 +1286,7 @@ _FULL_CONFIG = (
     ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
+    ("convolution_overrideable_backward", convolution_overrideable_backward),
     (
         "copy_",
         copy_,
@@ -1945,7 +1946,7 @@ _FULL_CONFIG = (
     ("nanquantile.scalar_out", nanquantile_scalar_out),
     ("nansum", nansum),
     ("nansum.out", nansum_out),
-    ("narrow_copy", narrow_copy),
+    ("narrow_copy", narrow_copy, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("native_batch_norm", native_batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_channel_shuffle", native_channel_shuffle),
