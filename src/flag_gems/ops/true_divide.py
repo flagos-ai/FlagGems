@@ -340,14 +340,17 @@ def true_divide(A, B):
     if not isinstance(A, torch.Tensor) and not isinstance(B, torch.Tensor):
         return torch.tensor(A / B)
     # This Torch build has no standalone ``aten::div_backward`` schema, so
-    # differentiable tensor/tensor inputs are routed through the FlagGems
+    # differentiable *tensor/tensor* inputs are routed through the FlagGems
     # ``autograd.Function`` bridge to reach the Triton backward kernel
-    # (the deg2rad_backward pattern merged in #9331). Scalar operands and
-    # non-differentiable calls keep their previous behaviour.
+    # (the deg2rad_backward pattern merged in #9331). Scalar operands,
+    # complex inputs and non-differentiable calls keep their previous
+    # behaviour (ATen's own DivBackward0 covers the scalar case).
     if (
-        (isinstance(A, torch.Tensor) and A.requires_grad)
-        or (isinstance(B, torch.Tensor) and B.requires_grad)
-    ) and torch.is_grad_enabled():
+        isinstance(A, torch.Tensor)
+        and isinstance(B, torch.Tensor)
+        and (A.requires_grad or B.requires_grad)
+        and torch.is_grad_enabled()
+    ):
         from flag_gems.ops.div_backward import DivFunction
 
         return DivFunction.apply(A, B)
