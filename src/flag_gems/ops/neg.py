@@ -17,9 +17,89 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils._neg_backward_fast_impl import _make_negative_backward
+
+
+@triton.jit
+def _offset(index, shape: tl.constexpr, strides: tl.constexpr):
+    offset = tl.full(index.shape, 0, tl.int64)
+    for axis in tl.static_range(len(shape) - 1, -1, -1):
+        offset += index % shape[axis] * strides[axis]
+        index //= shape[axis]
+    return offset
+
+
+@triton.jit
+def _negative_kernel(
+    G,
+    O,
+    N,
+    SHAPE: tl.constexpr,
+    GS: tl.constexpr,
+    CONTIGUOUS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    offset = i if CONTIGUOUS else _offset(i, SHAPE, GS)
+    g = tl.load(G + offset, i < N, other=0)
+    tl.store(O + i, -g, i < N)
+
+
+_NEGATIVE_CODE = {}
+
+
+def _execute(kernel, cache, key, grid, args):
+    launch = cache.get(key)
+    if launch is None:
+        compiled = kernel[grid,](*args, num_warps=4)
+        cache[key] = compiled[grid, 1, 1]
+    else:
+        launch(*args)
+
+
+def _make_negative_backward(inp):
+    shape, dtype, device = (tuple(inp.shape), inp.dtype, inp.device)
+    n = inp.numel()
+    block = 1024
+    grid = (n + block - 1) // block
+    base = (device, dtype, shape)
+    common_key = (base, (), 0)
+    contiguous_launch = _NEGATIVE_CODE.get(common_key)
+    contiguous_args = (n, shape, (), True, block)
+
+    def backward(grad):
+        nonlocal contiguous_launch
+        out = torch.empty(shape, dtype=dtype, device=device)
+        if n:
+            contiguous = grad.is_contiguous()
+            alignment = grad.data_ptr() & 15
+            with torch_device_fn.device(device):
+                if contiguous and alignment == 0:
+                    if contiguous_launch is None:
+                        compiled = _negative_kernel[grid,](
+                            grad, out, *contiguous_args, num_warps=4
+                        )
+                        contiguous_launch = compiled[grid, 1, 1]
+                        _NEGATIVE_CODE[common_key] = contiguous_launch
+                    else:
+                        contiguous_launch(grad, out, *contiguous_args)
+                else:
+                    strides = () if contiguous else tuple(grad.stride())
+                    key = (base, strides, alignment)
+                    _execute(
+                        _negative_kernel,
+                        _NEGATIVE_CODE,
+                        key,
+                        grid,
+                        (grad, out, n, shape, strides, contiguous, block),
+                    )
+        return out
+
+    return backward
+
 
 logger = logging.getLogger(__name__)
 
