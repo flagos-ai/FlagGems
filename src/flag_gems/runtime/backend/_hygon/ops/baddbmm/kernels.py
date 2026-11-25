@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generic GEMM, packed GEMM and BF16 ring tuning families."""
+"""Generic, packed, regular and ring GEMM kernels for Hygon baddbmm."""
 
 import torch
 import triton
@@ -25,6 +25,7 @@ from flag_gems.utils.triton_version_utils import HAS_TLE
 if HAS_TLE:
     import triton.experimental.tle.language as tle
 
+    from ..bmm.regular import _native_dot
     from .ring import baddbmm_ring_kernel
 
 
@@ -417,6 +418,25 @@ def _ring_kernel(
     BATCH: tl.constexpr = 1,
 ):
     baddbmm_ring_kernel(A, B, Out, Bias, CB, CM, CN, ALPHA, BETA, M, N, K, GROUP_M)
+
+
+@libentry()
+@triton.jit
+def _fp32_kernel(
+    A,
+    B,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    CB: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    ALPHA: tl.constexpr,
+    BETA: tl.constexpr,
+):
+    _native_dot(A, B, Out, M, N, K, 8, 64, 128, 16, 2, Bias, CB, CM, CN, ALPHA, BETA)
 
 
 def _make_tuner(kernel, contract, prune=None, key=None):

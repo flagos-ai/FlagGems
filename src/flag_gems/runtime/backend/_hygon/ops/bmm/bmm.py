@@ -778,7 +778,7 @@ def _validate_inputs(A, B):
 
 
 def bmm(A, B):
-    logger.debug("GEMS BMM")
+    logger.debug("GEMS_HYGON BMM")
     _validate_inputs(A, B)
     batch, M, K = A.shape
     N = B.shape[2]
@@ -847,7 +847,7 @@ def check_out_autograd(op, *tensors):
 
 
 def bmm_out(A, B, out):
-    logger.debug("GEMS BMM_OUT")
+    logger.debug("GEMS_HYGON BMM_OUT")
     check_out_autograd("bmm", A, B, out)
     _validate_inputs(A, B)
     if out.dtype != A.dtype or out.device != A.device:
