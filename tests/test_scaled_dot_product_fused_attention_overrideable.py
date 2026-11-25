@@ -29,13 +29,10 @@ def test_scaled_dot_product_fused_attention_overrideable(
         batch, num_head, seq_len, head_dim, dtype=dtype, device=device
     ).uniform_(-0.1, 0.1)
 
-    ref_q, ref_k, ref_v = (utils.to_reference(x) for x in (q, k, v))
-    if (
-        flag_gems.vendor_name in ("iluvatar", "hygon", "metax")
-        and dtype == torch.bfloat16
-    ):
-        # The native BF16 attention reference loses precision on causal rows.
-        ref_q, ref_k, ref_v = (x.float() for x in (ref_q, ref_k, ref_v))
+    # Compute the reference above the input dtype. Native BF16 SDPA loses
+    # precision on causal rows (also observed on the Nvidia python-op lane),
+    # so the reference must not run in BF16 itself.
+    ref_q, ref_k, ref_v = (utils.to_reference(x, upcast=True) for x in (q, k, v))
     ref_output = torch.nn.functional.scaled_dot_product_attention(
         ref_q, ref_k, ref_v, is_causal=is_causal
     ).to(dtype)
