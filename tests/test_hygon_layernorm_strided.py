@@ -16,6 +16,8 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
 pytestmark = [
     pytest.mark.native_layer_norm,
     pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon fast path"),
@@ -47,10 +49,8 @@ def test_strided_native_outputs(dtype, width, entrypoint):
     for index, (actual, expected) in enumerate(zip(result, reference)):
         output_dtype = torch.float32 if index else dtype
         assert actual.dtype == output_dtype and actual.shape == expected.shape
-        torch.testing.assert_close(
-            actual.cpu(), expected.to(output_dtype), rtol=tolerance, atol=tolerance
-        )
-    torch.testing.assert_close(x.cpu(), before, rtol=0, atol=0)
+        utils.gems_assert_close(actual, expected, output_dtype, atol=tolerance)
+    utils.gems_assert_equal(x, before)
 
 
 def test_warm_plan_uses_current_data_and_epsilon():
@@ -62,7 +62,7 @@ def test_warm_plan_uses_current_data_and_epsilon():
         x.cpu() + 3, (320,), None, None, 1e-2
     )
     for actual, expected in zip(second, reference):
-        torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-4)
+        utils.gems_assert_close(actual, expected, torch.float32)
 
 
 def test_last_axis_stride_generic_path():
@@ -72,7 +72,7 @@ def test_last_axis_stride_generic_path():
         x.cpu(), (320,), None, None, 1e-5
     )
     for actual, expected in zip(result, reference):
-        torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-4)
+        utils.gems_assert_close(actual, expected, torch.float32)
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -92,6 +92,4 @@ def test_fallback_preserves_fp32_statistics(dtype, entrypoint, shape, normalized
     for index, (actual, expected) in enumerate(zip(result, reference)):
         output_dtype = torch.float32 if index else dtype
         assert actual.dtype == output_dtype and actual.shape == expected.shape
-        torch.testing.assert_close(
-            actual.cpu(), expected.to(output_dtype), rtol=tolerance, atol=tolerance
-        )
+        utils.gems_assert_close(actual, expected, output_dtype, atol=tolerance)
