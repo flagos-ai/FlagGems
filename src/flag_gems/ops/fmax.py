@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -76,8 +77,65 @@ def _prepare_inputs(a, b, out=None):
     return a_c, b_c, out_dtype, compute_dtype
 
 
-def fmax(a, b):
-    logger.debug("GEMS FMAX")
+@triton.jit
+def fmax_backward_kernel(
+    x_ptr, y_ptr, grad_ptr, dx_ptr, dy_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask, other=0)
+    y = tl.load(y_ptr + offsets, mask=mask, other=0)
+    grad = tl.load(grad_ptr + offsets, mask=mask, other=0)
+    # ATen assigns ties (including two NaNs) to self and ignores a single NaN.
+    choose_self = (x >= y) | (y != y)
+    choose_self = choose_self & (x == x) | ((x != x) & (y != y))
+    tl.store(dx_ptr + offsets, tl.where(choose_self, grad, 0), mask=mask)
+    tl.store(dy_ptr + offsets, tl.where(choose_self, 0, grad), mask=mask)
+
+
+def _sum_to_shape(grad, shape):
+    if grad.shape == shape:
+        return grad
+    if grad.numel() == 0:
+        # A size-0 broadcast may have come from a size-1 input; its gradient
+        # needs zeros, not an uninitialised reduction output.
+        return torch.zeros(shape, dtype=grad.dtype, device=grad.device)
+    padded_shape = (1,) * (grad.ndim - len(shape)) + tuple(shape)
+    dims = tuple(
+        i
+        for i, (size, target) in enumerate(zip(grad.shape, padded_shape))
+        if target == 1 and size != 1
+    )
+    if dims:
+        grad = sum_dim(grad, dim=dims, keepdim=True)
+    return grad.reshape(shape)
+
+
+class FmaxFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        out, x, y = _fmax_forward(a, b)
+        ctx.save_for_backward(x, y)
+        ctx.a_shape = a.shape
+        ctx.b_shape = b.shape
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, y = ctx.saved_tensors
+        grad = grad_output.contiguous()
+        dx = torch.empty_like(x)
+        dy = torch.empty_like(y)
+        n_elements = x.numel()
+        if n_elements:
+            with torch_device_fn.device(x.device):
+                fmax_backward_kernel[(triton.cdiv(n_elements, 1024),)](
+                    x, y, grad, dx, dy, n_elements, BLOCK_SIZE=1024
+                )
+        return _sum_to_shape(dx, ctx.a_shape), _sum_to_shape(dy, ctx.b_shape)
+
+
+def _fmax_forward(a, b):
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=None)
     out_shape = a_c.shape
     if compute_dtype == out_dtype:
@@ -87,12 +145,25 @@ def fmax(a, b):
         out = torch.empty(out_shape, dtype=out_dtype, device=a_c.device)
         out_c = torch.empty(out_shape, dtype=compute_dtype, device=a_c.device)
     n_elements = out_c.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(a_c.device):
-        fmax_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
+    if n_elements:
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        with torch_device_fn.device(a_c.device):
+            fmax_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
     if out_c.dtype != out.dtype:
         out.copy_(out_c.to(out_dtype))
-    return out
+    return out, a_c, b_c
+
+
+def fmax(a, b):
+    logger.debug("GEMS FMAX")
+    if (
+        torch.is_grad_enabled()
+        and isinstance(a, torch.Tensor)
+        and isinstance(b, torch.Tensor)
+        and (a.requires_grad or b.requires_grad)
+    ):
+        return FmaxFunction.apply(a, b)
+    return _fmax_forward(a, b)[0]
 
 
 def fmax_out(a, b, out):
@@ -114,9 +185,10 @@ def fmax_out(a, b, out):
     else:
         out_c = torch.empty(expected_shape, dtype=compute_dtype, device=out.device)
     n_elements = out_c.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(out.device):
-        fmax_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
+    if n_elements:
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        with torch_device_fn.device(out.device):
+            fmax_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
     if out_c is not out:
         if out_c.dtype != out.dtype:
             out.copy_(out_c.to(out.dtype))
