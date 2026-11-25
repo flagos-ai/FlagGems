@@ -63,7 +63,7 @@ def test_frac_backward(dtype, layout):
     assert "FracFunctionBackward" in type(out.grad_fn).__name__
     result = torch.autograd.grad(out, actual, grad)[0]
     utils.gems_assert_equal(result, expected)
-    utils.gems_assert_equal(result, grad)
+    utils.gems_assert_equal(result, utils.to_reference(grad))
 
 
 @pytest.mark.frac_backward
