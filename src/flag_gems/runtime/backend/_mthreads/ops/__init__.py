@@ -86,6 +86,7 @@ from ._foreach_pow__List import _foreach_pow__List
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
 from ._foreach_pow_ScalarAndTensor import _foreach_pow_ScalarAndTensor
+from ._foreach_reciprocal import _foreach_reciprocal
 from ._foreach_rsqrt import _foreach_rsqrt
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
@@ -361,6 +362,7 @@ __all__ = [
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
     "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal",
     "_foreach_rsqrt",
     "_foreach_sigmoid_",
     "_foreach_sign_",
