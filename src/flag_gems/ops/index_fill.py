@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.index_select import index_select
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -344,11 +345,42 @@ def _prepare_tensor_value(inp, value):
     return True, value
 
 
-def index_fill(inp, dim, index, value):
+class IndexFillOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, index, value):
+        ctx.dim = dim
+        ctx.index = index
+        ctx.value_is_tensor = isinstance(value, torch.Tensor)
+        ctx.save_for_backward(index)
+        return _index_fill_forward(inp, dim, index, value)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (index,) = ctx.saved_tensors
+        grad_input, grad_value = index_fill_backward(
+            grad_output, ctx.dim, index, ctx.value_is_tensor
+        )
+        return grad_input, None, None, grad_value
+
+
+def index_fill_backward(grad_output, dim, index, value_is_tensor):
+    """Backward of ``index_fill``.
+
+    The filled positions are cut out of the ``inp`` gradient, and the ``value``
+    gradient sums the output gradient over the filled positions.
+    """
+    logger.debug("GEMS INDEX_FILL_BACKWARD")
+    grad_input = index_fill(grad_output, dim, index, 0)
+    grad_value = None
+    if value_is_tensor:
+        grad_value = index_select(grad_output, dim, index).sum()
+    return grad_input, grad_value
+
+
+def _index_fill_forward(inp, dim, index, value):
     # Entry for both `index_fill.int_Scalar` and `index_fill.int_Tensor`: the
     # dispatcher routes by value type, so a 0-dimensional tensor value arrives
     # as a Tensor and a plain number as a Python scalar.
-    logger.debug("GEMS INDEX_FILL")
     dim, index = _prepare_index(inp, dim, index)
     if isinstance(value, torch.Tensor):
         value_is_tensor, value = _prepare_tensor_value(inp, value)
@@ -369,6 +401,14 @@ def index_fill(inp, dim, index, value):
         return _index_fill_impl(out, dim, index, value, value_is_tensor)
     out = _native_clone(inp)
     return _index_fill_impl(out, dim, index, value, value_is_tensor)
+
+
+def index_fill(inp, dim, index, value):
+    # Entry for both `index_fill.int_Scalar` and `index_fill.int_Tensor`: the
+    # dispatcher routes by value type, so a 0-dimensional tensor value arrives
+    # as a Tensor and a plain number as a Python scalar.
+    logger.debug("GEMS INDEX_FILL")
+    return IndexFillOpFunction.apply(inp, dim, index, value)
 
 
 def index_fill_(inp, dim, index, value):
