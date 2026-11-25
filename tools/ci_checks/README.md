@@ -12,13 +12,14 @@ rule-check.yaml (GitHub Actions workflow)
     ├── check-kernelgen-tests      [blocking]  use_gems() prohibition
     ├── check-operator-markers     [blocking]  test file + marker
     ├── check-aten-operators       [blocking]  aten name format
+    ├── check-no-torch-fallback    [blocking]  no torch compute calls on added lines
     ├── check-api-logs             [warning]   logger.debug convention
     └── check-benchmark-coverage   [warning]   benchmark file existence
 ```
 
 ## How It Works
 
-1. `derive_changed_operators.py` diffs `base..head` and maps changed files to operator IDs using `conf/operators.yaml`
+1. `derive_changed_operators.py` diffs `base..head` and maps changed files to operator IDs using `conf/operators.yaml` and `conf/deprecated_operators.yaml`
 2. Each check script receives the list of affected operators via `--operators '[...]'`
 3. Blocking checks exit 1 on failure; warning checks always exit 0 but emit `::warning` annotations
 
@@ -31,12 +32,13 @@ python tools/ci_checks/check_operator_markers.py --operators '["my_new_op"]'
 python tools/ci_checks/check_aten_operators.py --operators '["my_new_op"]'
 python tools/ci_checks/check_kernelgen_tests.py --operators '["my_new_op"]'
 python tools/ci_checks/check_api_logs.py --operators '["my_new_op"]'
+python tools/ci_checks/check_no_torch_fallback.py --base origin/master src/flag_gems/ops/my_new_op.py
 python tools/ci_checks/check_performance_reference.py --operators '["my_new_op"]'
 
 # Check all (for __init__.py)
 python tools/ci_checks/check_init_exports.py
 
-# Check all operators.yaml entries
+# Check entries in both operator inventories
 python tools/ci_checks/check_operators_yaml.py --all
 ```
 
@@ -45,7 +47,7 @@ python tools/ci_checks/check_operators_yaml.py --all
 Two checks run as local pre-commit hooks:
 
 - **check-init-exports**: triggers when `src/flag_gems/__init__.py` is modified
-- **check-operators-yaml**: triggers when `conf/operators.yaml` is modified
+- **check-operators-yaml**: triggers when `conf/operators.yaml` or `conf/deprecated_operators.yaml` is modified
 
 These run automatically on `git commit`. To install:
 
@@ -57,9 +59,9 @@ pre-commit install
 
 ### check_operators_yaml.py (blocking)
 
-- Required fields: `id`, `name`, `labels`
-- No duplicate `id` entries (global check, catches merge conflicts)
-- Sort order check (disabled, available for future)
+- Required fields: `id`, `description`, `for`, `labels`, `kind`, `stages`
+- No duplicate `id` entries within or across the two inventories
+- Entries sorted by `id.casefold()` in each inventory
 
 ### check_init_exports.py (blocking)
 
@@ -114,3 +116,9 @@ Some `_FULL_CONFIG` duplicates are intentional (overloads). These are listed in 
 ## Dependencies
 
 Only `pyyaml` is needed (already a project dependency). All checks use Python stdlib AST parsing — no import of FlagGems or PyTorch required.
+
+The CI metadata lookups and `tools/add_labels.py` include deprecated operators.
+`tools/run_tests.py` keeps its default inventory limited to active operators;
+deprecated operators can still be selected explicitly with `--ops`.
+`tools/stat_operators.py --yaml conf/deprecated_operators.yaml` reports the
+deprecated inventory separately.

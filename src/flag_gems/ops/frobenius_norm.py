@@ -27,6 +27,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import logging
 
 import torch
@@ -58,7 +59,11 @@ def _prune_frobenius_norm_configs(configs, named_args, **kwargs):
     configs=runtime.get_tuned_config("frobenius_norm"),
     key=["M", "N"],
     prune_configs_by={"early_config_prune": _prune_frobenius_norm_configs},
-    cache_results=True,
+    **(
+        {"cache_results": True}
+        if "cache_results" in inspect.signature(triton.autotune).parameters
+        else {}
+    ),
 )
 @triton.jit
 def frobenius_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):

@@ -24,7 +24,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
-MAX_GRID = 48
+MAX_GRID = 64
 
 
 @libentry()

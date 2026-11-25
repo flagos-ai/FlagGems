@@ -18,8 +18,6 @@ import math
 
 import torch
 
-from flag_gems.ops.bmm import bmm as triton_bmm
-
 logger = logging.getLogger(__name__)
 
 # Taylor terms used after scaling. With scaling to ||A/2^s|| <= 1 the remainder
@@ -29,8 +27,14 @@ _TAYLOR_TERMS = 18
 
 
 def _batched_bmm(a, b):
-    # triton_bmm expects contiguous (B, M, K) x (B, K, N) tensors.
-    return triton_bmm(a.contiguous(), b.contiguous())
+    # Both operands are made contiguous because every bmm implementation in the
+    # tree expects (B, M, K) x (B, K, N) contiguous inputs. Go through the
+    # registered operator rather than importing the generic kernel directly:
+    # a backend override ships its own tuned config, and the generic kernel
+    # would pick that config up and fail on the missing constexprs.
+    from flag_gems import bmm
+
+    return bmm(a.contiguous(), b.contiguous())
 
 
 def matrix_exp(A):

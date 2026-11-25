@@ -40,9 +40,12 @@ SWEEP_DTYPES = (
     utils.FLOAT_DTYPES
     + utils.INT_DTYPES
     + utils.BOOL_TYPES
-    + [torch.float64, torch.int64]
+    + ([torch.float64] if utils.fp64_is_supported else [])
+    + [torch.int64]
 )
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64] + (
+    [torch.complex128] if utils.fp64_is_supported else []
+)
 
 
 @pytest.mark.atleast_2d

@@ -59,30 +59,36 @@ def batch_norm_elemt_kernel(
     Each program instance handles one (n, c) pair across all spatial elements.
     Grid size = N * C.
     """
+    # One program per (n, c) pair, walked with a grid-stride loop: `N * C` can
+    # exceed the launch's `grid.x` cap (65535 on some backends, e.g. a
+    # (64, 1024, 7, 7) input needs 65536), and the grid is capped at the call
+    # site. For grids that fit, the loop body runs exactly once.
     pid = tl.program_id(0)
-    n = pid // C
-    c = pid % C
+    num_programs = tl.num_programs(0)
+    for pair in range(pid, N * C, num_programs):
+        n = pair // C
+        c = pair % C
 
-    # Load per-channel parameters in fp32 for numerical stability
-    mean_val = tl.load(mean_ptr + c).to(tl.float32)
-    invstd_val = tl.load(invstd_ptr + c).to(tl.float32)
-    weight_val = tl.load(weight_ptr + c).to(tl.float32)
-    bias_val = tl.load(bias_ptr + c).to(tl.float32)
+        # Load per-channel parameters in fp32 for numerical stability
+        mean_val = tl.load(mean_ptr + c).to(tl.float32)
+        invstd_val = tl.load(invstd_ptr + c).to(tl.float32)
+        weight_val = tl.load(weight_ptr + c).to(tl.float32)
+        bias_val = tl.load(bias_ptr + c).to(tl.float32)
 
-    base_offset = n * stride_n + c * stride_c
+        base_offset = n * stride_n + c * stride_c
 
-    # Tiled loop over the spatial (HW) dimension
-    for hw_offset in range(0, HW, BLOCK_HW):
-        hw_idx = hw_offset + tl.arange(0, BLOCK_HW)
-        mask = hw_idx < HW
+        # Tiled loop over the spatial (HW) dimension
+        for hw_offset in range(0, HW, BLOCK_HW):
+            hw_idx = hw_offset + tl.arange(0, BLOCK_HW)
+            mask = hw_idx < HW
 
-        offset = base_offset + hw_idx * stride_hw
-        x = tl.load(input_ptr + offset, mask=mask).to(tl.float32)
+            offset = base_offset + hw_idx * stride_hw
+            x = tl.load(input_ptr + offset, mask=mask).to(tl.float32)
 
-        # Fused computation in fp32: (x - mean) * invstd * weight + bias
-        out = (x - mean_val) * invstd_val * weight_val + bias_val
+            # Fused computation in fp32: (x - mean) * invstd * weight + bias
+            out = (x - mean_val) * invstd_val * weight_val + bias_val
 
-        tl.store(output_ptr + offset, out, mask=mask)
+            tl.store(output_ptr + offset, out, mask=mask)
 
 
 def batch_norm_elemt(input, weight, bias, mean, invstd, eps=0.0):
@@ -130,7 +136,8 @@ def batch_norm_elemt(input, weight, bias, mean, invstd, eps=0.0):
     stride_c = input_flat.stride(1)
     stride_hw = input_flat.stride(2)
 
-    grid = (N * C,)
+    # `grid.x` is capped by the backend (65535 here); the kernel grid-strides.
+    grid = (min(N * C, 65535),)
     batch_norm_elemt_kernel[grid](
         input_flat,
         weight,

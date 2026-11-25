@@ -317,7 +317,9 @@ def normal_tensor_tensor(mean, std, *, generator=None):
 
     BLOCK, grid = _get_block_and_grid(N, has_tensor_io=True, use_grid_stride=True)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     with torch_device_fn.device(device):
         normal_tt_fused_kernel[grid](
             out,
@@ -343,7 +345,9 @@ def normal_tensor_float(mean, std, *, generator=None):
 
     BLOCK, grid = _get_block_and_grid(N, has_tensor_io=True, use_grid_stride=True)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     with torch_device_fn.device(device):
         normal_tf_fused_kernel[grid](
             out,
@@ -369,7 +373,9 @@ def normal_float_tensor(mean, std, *, generator=None):
 
     BLOCK, grid = _get_block_and_grid(N, has_tensor_io=True, use_grid_stride=True)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     with torch_device_fn.device(device):
         normal_ft_fused_kernel[grid](
             out,
