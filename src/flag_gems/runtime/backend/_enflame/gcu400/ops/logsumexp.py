@@ -173,7 +173,11 @@ def _inner_rows(M, N):
     tile_n = triton.next_power_of_2(N)
     if tile_n > MAX_TILE_2D:
         return 1
-    return min(max(1, INNER_ROW_ELEMENTS // tile_n), M)
+    # ROWS feeds ``tl.arange(0, ROWS)``, which only accepts a power of two, so a
+    # non-power-of-two row count must round up: (2,3,4,5) reduced on dim 3 has
+    # M=24 and used to fail to compile. Overshooting M is harmless, the tile
+    # carries a row mask.
+    return min(max(1, INNER_ROW_ELEMENTS // tile_n), triton.next_power_of_2(M))
 
 
 @libentry()
@@ -244,6 +248,20 @@ def logsumexp_kernel_inner_rowloop(
 def logsumexp(inp, dim, keepdim=False):
     logger.debug("GEMS_ENFLAME LOGSUMEXP")
 
+    dims = tuple(dim) if isinstance(dim, (list, tuple)) else (dim,)
+    normalized = []
+    for axis in dims:
+        if not -inp.ndim <= axis < inp.ndim:
+            raise IndexError(f"Dimension out of range: {axis}")
+        axis %= inp.ndim
+        if axis in normalized:
+            raise RuntimeError(f"dim {axis} appears multiple times in the list of dims")
+        normalized.append(axis)
+    # Route differentiable inputs through this backend's autograd bridge: the shared
+    # implementation is replaced here, so its backward kernels are unreachable otherwise.
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return _LogSumExp.apply(inp, tuple(normalized), keepdim)
+
     if isinstance(dim, (list, tuple)):
         # Handle multi-dimensional reduction
         if len(dim) == 0:
@@ -271,6 +289,17 @@ def logsumexp(inp, dim, keepdim=False):
     for i in range(dim):
         M *= inp.shape[i]
     inp = inp.contiguous()
+    if M == 0 or N == 0:
+        # Empty reduction axis: ATen returns -inf for every output element and
+        # the historical code divided by N right here.
+        empty_shape = list(inp.shape)
+        if keepdim:
+            empty_shape[dim] = 1
+        else:
+            empty_shape.pop(dim)
+        return torch.full(
+            empty_shape, float("-inf"), dtype=inp.dtype, device=inp.device
+        )
     K = inp.numel() // M // N
 
     # Output shape with reduction dimension set to 1
@@ -327,3 +356,269 @@ def logsumexp(inp, dim, keepdim=False):
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
+
+
+# --- TUNING PARAMS START ---
+# Backward tile budget: elements (fp32 operands) a single program owns in the inner path. The
+# adjoint is elementwise work over ``grad_out``/``out`` broadcast along the reduced axis, so the
+# budget only trades the per-program epilogue against the program count.
+BACKWARD_TILE_ELEMENTS = 16384
+NUM_WARPS_BACKWARD = 4
+BACKWARD_MIN_ROWS = 4
+BACKWARD_MAX_ROWS = 64
+# Flat single-axis path: lanes per program (byte budget / operand size).
+BACKWARD_LANE_BYTES = 4096
+BACKWARD_MAX_BLOCK = 4096
+# --- TUNING PARAMS END ---
+
+# ``out``/``grad_out`` metadata for the multi-axis adjoint, keyed by (shape, reduced axes). Both
+# index vectors are constants of the layout, so caching them removes the per-call upload that
+# dominates these (small) shapes.
+_META_CACHE = {}
+_META_CACHE_LIMIT = 64
+
+
+@triton.jit
+def _logsumexp_backward_inner_kernel(
+    grad_out_ptr,
+    input_ptr,
+    out_ptr,
+    grad_in_ptr,
+    M,
+    N,
+    ROWS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Adjoint of an innermost reduction: ``grad_out[m] * exp(input[m, n] - out[m])``.
+
+    ``out`` (keepdim) and ``grad_out`` are scalars per row, so one tile covers ``ROWS`` rows and
+    the broadcast is implicit - the tile needs no index arithmetic at all.
+    """
+    pid_r = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    rows = pid_r * ROWS + tl.arange(0, ROWS)
+    cols = pid_c * BLOCK_N + tl.arange(0, BLOCK_N)
+    row_mask = rows < M
+    mask = row_mask[:, None] & (cols < N)[None, :]
+    grad_out = tl.load(grad_out_ptr + rows, mask=row_mask, other=0.0)
+    out = tl.load(out_ptr + rows, mask=row_mask, other=0.0)
+    offset = rows[:, None] * N + cols[None, :]
+    inp = tl.load(input_ptr + offset, mask=mask, other=0.0)
+    # Same rounding as ATen's composite expression: subtract and multiply in the operand dtype,
+    # exponentiate in fp32.
+    grad_in = grad_out[:, None] * tl.exp((inp - out[:, None]).to(tl.float32)).to(
+        grad_out.dtype
+    )
+    tl.store(grad_in_ptr + offset, grad_in, mask=mask)
+
+
+@triton.jit
+def _logsumexp_backward_axis_kernel(
+    grad_out_ptr,
+    input_ptr,
+    out_ptr,
+    grad_in_ptr,
+    N_ELEMENTS,
+    NK: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Adjoint of a single non-innermost reduction, one flat block per program.
+
+    The keepdim source of element ``(m, n, k)`` is ``(m, k)``: with ``N*K`` and ``K`` as
+    compile-time constants both divisions fold into multiply-shift sequences.
+    """
+    pid = tl.program_id(0)
+    index = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = index < N_ELEMENTS
+    source = (index // NK) * K + index % K
+    grad_out = tl.load(grad_out_ptr + source, mask=mask, other=0.0)
+    out = tl.load(out_ptr + source, mask=mask, other=0.0)
+    inp = tl.load(input_ptr + index, mask=mask, other=0.0)
+    grad_in = grad_out * tl.exp((inp - out).to(tl.float32)).to(grad_out.dtype)
+    tl.store(grad_in_ptr + index, grad_in, mask=mask)
+
+
+@triton.jit
+def _logsumexp_backward_multi_axis_kernel(
+    grad_out_ptr,
+    input_ptr,
+    out_ptr,
+    grad_in_ptr,
+    sizes_ptr,
+    out_strides_ptr,
+    n_elements,
+    NDIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Adjoint of an interleaved set of reduced axes."""
+    pid = tl.program_id(0)
+    index = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = index < n_elements
+    remaining = index
+    source = tl.zeros([BLOCK], dtype=tl.int32)
+    for step in tl.static_range(NDIM):
+        axis = NDIM - 1 - step
+        size = tl.load(sizes_ptr + axis)
+        stride = tl.load(out_strides_ptr + axis)
+        coord = remaining % size
+        remaining = remaining // size
+        source += coord * stride
+    grad_out = tl.load(grad_out_ptr + source, mask=mask, other=0.0)
+    out = tl.load(out_ptr + source, mask=mask, other=0.0)
+    inp = tl.load(input_ptr + index, mask=mask, other=0.0)
+    grad_in = grad_out * tl.exp((inp - out).to(tl.float32)).to(grad_out.dtype)
+    tl.store(grad_in_ptr + index, grad_in, mask=mask)
+
+
+def _contiguous_or_self(tensor):
+    return tensor if tensor.is_contiguous() else tensor.contiguous()
+
+
+def _broadcast_keepdim(grad_out, out, dims, keepdim):
+    """Restore the reduced axes of ``grad_out`` so it broadcasts against the keepdim ``out``."""
+    if not keepdim:
+        for reduced in sorted(dims):
+            grad_out = grad_out.unsqueeze(reduced)
+    return _contiguous_or_self(grad_out), _contiguous_or_self(out)
+
+
+def _backward_lane_block(element_size):
+    return min(
+        BACKWARD_MAX_BLOCK,
+        triton.next_power_of_2(max(16, BACKWARD_LANE_BYTES // max(element_size, 1))),
+    )
+
+
+def _backward_inner(grad_out, inp, out, dim):
+    """Adjoint when the reduced axis is the innermost one (``K == 1``)."""
+    n_reduce = inp.shape[dim]
+    n_rows = inp.numel() // n_reduce if n_reduce else 0
+    grad_in = torch.empty_like(inp)
+    if n_rows == 0 or n_reduce == 0:
+        return grad_in
+    block_n = min(2048, triton.next_power_of_2(n_reduce))
+    rows = max(BACKWARD_MIN_ROWS, BACKWARD_TILE_ELEMENTS // block_n)
+    rows = min(rows, BACKWARD_MAX_ROWS, triton.next_power_of_2(max(n_rows, 1)))
+    grid = (triton.cdiv(n_rows, rows), triton.cdiv(n_reduce, block_n))
+    with torch_device_fn.device(inp.device):
+        _logsumexp_backward_inner_kernel[grid](
+            grad_out,
+            inp,
+            out,
+            grad_in,
+            n_rows,
+            n_reduce,
+            rows,
+            block_n,
+            num_warps=NUM_WARPS_BACKWARD,
+            num_stages=1,
+        )
+    return grad_in
+
+
+def _backward_axis(grad_out, inp, out, dim):
+    """Adjoint when a single non-innermost axis is reduced (``K > 1``)."""
+    n_reduce = inp.shape[dim]
+    inner = 1
+    for size in inp.shape[dim + 1 :]:
+        inner *= size
+    n_elements = inp.numel()
+    grad_in = torch.empty_like(inp)
+    if n_elements == 0:
+        return grad_in
+    block = _backward_lane_block(inp.element_size())
+    with torch_device_fn.device(inp.device):
+        _logsumexp_backward_axis_kernel[(triton.cdiv(n_elements, block),)](
+            grad_out,
+            inp,
+            out,
+            grad_in,
+            n_elements,
+            NK=n_reduce * inner,
+            K=inner,
+            BLOCK=block,
+            num_warps=NUM_WARPS_BACKWARD,
+            num_stages=1,
+        )
+    return grad_in
+
+
+def _axis_metadata(inp, out, dims):
+    """Device-side layout description of the keepdim ``out`` for the multi-axis adjoint."""
+    key = (inp.shape, dims)
+    cached = _META_CACHE.get(key)
+    if cached is not None:
+        return cached
+    out_strides = list(out.stride())
+    for reduced in dims:
+        out_strides[reduced] = 0
+    sizes = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+    strides = torch.tensor(out_strides, dtype=torch.int32, device=inp.device)
+    if len(_META_CACHE) < _META_CACHE_LIMIT:
+        _META_CACHE[key] = (sizes, strides)
+    return sizes, strides
+
+
+def _backward_multi_axis(grad_out, inp, out, dims):
+    """Adjoint for an interleaved set of reduced axes."""
+    grad_in = torch.empty_like(inp)
+    if inp.numel() == 0:
+        return grad_in
+    sizes, out_strides = _axis_metadata(inp, out, dims)
+    block = _backward_lane_block(inp.element_size())
+    with torch_device_fn.device(inp.device):
+        _logsumexp_backward_multi_axis_kernel[(triton.cdiv(inp.numel(), block),)](
+            grad_out,
+            inp,
+            out,
+            grad_in,
+            sizes,
+            out_strides,
+            inp.numel(),
+            NDIM=inp.ndim,
+            BLOCK=block,
+            num_warps=NUM_WARPS_BACKWARD,
+            num_stages=1,
+        )
+    return grad_in
+
+
+class _LogSumExp(torch.autograd.Function):
+    """Autograd bridge for ``aten::logsumexp``.
+
+    ``d/dx logsumexp(x) = exp(x - logsumexp(x))``, so the adjoint is one elementwise pass over the
+    input multiplied by the broadcast saved result - no second reduction.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, dims, keepdim):
+        contiguous = inp.contiguous()
+        out = logsumexp(contiguous, dims, keepdim=True)
+        ctx.dims = dims
+        ctx.keepdim = keepdim
+        ctx.save_for_backward(contiguous, out)
+        if keepdim:
+            return out
+        for reduced in sorted(dims, reverse=True):
+            out = out.squeeze(reduced)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        if not ctx.needs_input_grad[0]:
+            return None, None, None
+        contiguous, out = ctx.saved_tensors
+        grad_out, out = _broadcast_keepdim(grad_out, out, ctx.dims, ctx.keepdim)
+        if not ctx.dims:
+            # Empty dim list: the forward is an identity, so is the adjoint.
+            return grad_out, None, None
+        if len(ctx.dims) == 1:
+            dim = ctx.dims[0]
+            if dim == contiguous.ndim - 1:
+                grad_in = _backward_inner(grad_out, contiguous, out, dim)
+            else:
+                grad_in = _backward_axis(grad_out, contiguous, out, dim)
+        else:
+            grad_in = _backward_multi_axis(grad_out, contiguous, out, ctx.dims)
+        return grad_in, None, None

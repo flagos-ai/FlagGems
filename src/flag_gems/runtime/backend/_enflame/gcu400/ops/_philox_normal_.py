@@ -492,7 +492,7 @@ def _batched_key_plan(out, key):
 
 
 def _philox_normal_(self, key, mean=0.0, std=1.0):
-    logger.debug("GEMS _PHILOX_NORMAL_")
+    logger.debug("GEMS_ENFLAME_PHILOX_NORMAL_")
     _check_args(self, key)
     if self.numel() == 0:
         return self

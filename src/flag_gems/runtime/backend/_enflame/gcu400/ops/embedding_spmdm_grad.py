@@ -276,7 +276,7 @@ def embedding_spmdm_grad(
         ``grad_per_sample_weights`` is ``None`` when ``per_sample_weights``
         itself was ``None``.
     """
-    logger.debug("GEMS EMBEDDING_SPMDM_GRAD")
+    logger.debug("GEMS_ENFLAMEEMBEDDING_SPMDM_GRAD")
     num_embeddings, embedding_dim, batch_size, bag_size = (
         _validate_embedding_spmdm_grad_inputs(
             embedding_table, indices, per_sample_weights

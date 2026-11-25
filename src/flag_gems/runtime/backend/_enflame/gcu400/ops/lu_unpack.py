@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -173,7 +174,47 @@ def lu_unpack_u_kernel(
         )
 
 
+class LuUnpackFunction(torch.autograd.Function):
+    """Autograd wrapper around :func:`lu_unpack`.
+
+    The forward keeps the existing unpack kernels; the backward repacks
+    ``grad_L`` / ``grad_U`` with the fused :func:`lu_unpack_backward` kernel
+    instead of the ``tril`` / ``triu`` / ``add`` / ``cat`` composite that
+    ``torch/csrc/autograd/FunctionsManual.cpp`` builds.
+
+    ``P`` and ``LU_pivots`` are non-differentiable, matching the ATen schema
+    (``output_differentiability: [False, True, True]``), so no gradient is
+    fabricated for them. Only ``L`` and ``U`` receive one, and either may be
+    ``None`` when that output was unused.
+    """
+
+    @staticmethod
+    def forward(ctx, LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
+        ctx.lu_shape = (LU_data.shape[-2], LU_data.shape[-1])
+        P, L, U = lu_unpack_forward(LU_data, LU_pivots, unpack_data, unpack_pivots)
+        ctx.mark_non_differentiable(P)
+        return P, L, U
+
+    @staticmethod
+    def backward(ctx, grad_P, grad_L, grad_U):
+        m, n = ctx.lu_shape
+        return lu_unpack_backward(grad_L, grad_U, m, n), None, None, None
+
+
 def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
+    """Device-dispatch entry for ``aten::lu_unpack`` (differentiable).
+
+    The unpack kernels are launched unchanged; when a graph is being recorded
+    the call is routed through :class:`LuUnpackFunction` so ``torch.lu_unpack``
+    gets the fused backward. ``autograd.Function.forward`` runs with grad mode
+    disabled, so the recursive entry resolves to the raw kernels.
+    """
+    if torch.is_grad_enabled() and LU_data.requires_grad:
+        return LuUnpackFunction.apply(LU_data, LU_pivots, unpack_data, unpack_pivots)
+    return lu_unpack_forward(LU_data, LU_pivots, unpack_data, unpack_pivots)
+
+
+def lu_unpack_forward(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
     """
     Unpacks the LU decomposition into P, L, U matrices.
 
@@ -346,3 +387,196 @@ def lu_unpack_out(
         U = U_result
 
     return (P, L, U)
+
+
+@libentry()
+@triton.jit
+def lu_unpack_grad_kernel(
+    grad_l_ptr,
+    grad_u_ptr,
+    grad_lu_ptr,
+    m,
+    n,
+    HAS_L: tl.constexpr,
+    HAS_U: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Repack ``grad_L`` / ``grad_U`` into the packed ``grad_LU`` layout.
+
+    Grid: ``(batch, cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))``. The three tensors are
+    contiguous, so offsets follow from ``m``, ``n`` and ``k = min(m, n)`` alone.
+
+    ``L``'s strict lower triangle and ``U``'s closed upper triangle have
+    disjoint supports inside the ``k x k`` square, so every ATen branch is one
+    masked pass over the ``(..., m, n)`` packed result:
+
+    * ``HAS_L and HAS_U``: strict lower from ``grad_L``, closed upper (diagonal
+      included) from ``grad_U``; rows ``>= k`` (only reachable when ``m > n``)
+      come from ``grad_L`` and columns ``>= k`` (only when ``m < n``) from
+      ``grad_U``;
+    * ``HAS_L`` only: ``tril(grad_L, -1)`` zero-padded to ``(..., m, n)``;
+    * ``HAS_U`` only: ``triu(grad_U)`` zero-padded to ``(..., m, n)``.
+
+    Each position is therefore at most one real value plus an exact ``0.0``, so
+    the repack is bit-exact for every supported dtype.
+    """
+    batch_id = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_n = tl.program_id(2)
+
+    k = tl.minimum(m, n)
+    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    row_out = rows[:, None]
+    col_out = cols[None, :]
+    in_tile = (row_out < m) & (col_out < n)
+
+    # 64-bit batch bases: a packed gradient can exceed 2**31 elements, while the
+    # trailing-dimension offsets are the same either way.
+    batch = batch_id.to(tl.int64)
+    l_ptr = (
+        grad_l_ptr
+        + batch * tl.cast(m, tl.int64) * tl.cast(k, tl.int64)
+        + row_out * k
+        + col_out
+    )
+    u_ptr = (
+        grad_u_ptr
+        + batch * tl.cast(k, tl.int64) * tl.cast(n, tl.int64)
+        + row_out * n
+        + col_out
+    )
+
+    if HAS_L and HAS_U:
+        l_mask = in_tile & (
+            ((row_out < k) & (col_out < k) & (row_out > col_out)) | (row_out >= k)
+        )
+        u_mask = in_tile & (
+            ((row_out < k) & (col_out < k) & (row_out <= col_out)) | (col_out >= k)
+        )
+        value = tl.load(l_ptr, mask=l_mask, other=0.0) + tl.load(
+            u_ptr, mask=u_mask, other=0.0
+        )
+    elif HAS_L:
+        l_mask = in_tile & (col_out < k) & (row_out > col_out)
+        value = tl.load(l_ptr, mask=l_mask, other=0.0)
+    elif HAS_U:
+        u_mask = in_tile & (row_out < k) & (row_out <= col_out)
+        value = tl.load(u_ptr, mask=u_mask, other=0.0)
+    else:
+        value = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    tl.store(
+        grad_lu_ptr
+        + batch * tl.cast(m, tl.int64) * tl.cast(n, tl.int64)
+        + row_out * n
+        + col_out,
+        value,
+        mask=in_tile,
+    )
+
+
+# (m, n, numel, element_size) -> launch geometry. The heuristic is a pure
+# function of the workload, so caching it only removes per-call Python work.
+_LAUNCH_PLAN_CACHE = {}
+
+
+def _launch_plan(m, n, numel, element_size):
+    """Tile geometry and warp count for one packed-gradient shape.
+
+    GCU400 launches are capped per grid dimension, so the column tile is limited
+    to 512 and the row tile shrinks accordingly; total programs per CTA stay
+    within the DSM budget shared with the unpack kernels.
+    """
+    cells = m * n
+    if cells <= 4096:
+        target, col_cap, warps = 256, 256, 1
+    elif cells <= 65536:
+        target, col_cap, warps = (2048, 256, 4) if element_size >= 8 else (1024, 256, 2)
+    elif element_size >= 8:
+        target, col_cap, warps = 4096, 256, 4
+    else:
+        target, col_cap, warps = 4096, 512, 4
+
+    block_n = min(triton.next_power_of_2(max(n, 1)), col_cap)
+    block_m = min(triton.next_power_of_2(max(m, 1)), max(1, target // block_n))
+    if warps == 2 and block_m * block_n > 1024:
+        warps = 4
+    return block_m, block_n, warps
+
+
+def lu_unpack_backward(grad_L, grad_U, m, n):
+    """Gradient of :func:`lu_unpack` with respect to the packed ``LU_data``.
+
+    Mirrors ``lu_unpack_backward`` in ``torch/csrc/autograd/FunctionsManual``:
+    the packed gradient of an ``(..., m, n)`` factorization is built from
+    ``grad_L`` (``(..., m, k)``) and ``grad_U`` (``(..., k, n)``) with
+    ``k = min(m, n)``. Either argument may be ``None`` when only the other
+    unpacked matrix took part in the graph; a supplied but zero-element
+    gradient (a zero-size batch) yields a zero-element ``(..., m, n)`` result.
+    """
+    # A 1-D empty tensor is the placeholder returned by ``unpack_data=False``,
+    # i.e. an unused output rather than a zero-size matrix.
+    has_l = grad_L is not None and grad_L.dim() >= 2
+    has_u = grad_U is not None and grad_U.dim() >= 2
+    if not (has_l or has_u):
+        return None
+
+    m = int(m)
+    n = int(n)
+    k = min(m, n)
+    if has_l and tuple(grad_L.shape[-2:]) != (m, k):
+        raise RuntimeError(
+            f"lu_unpack_backward: grad_L must end with ({m}, {k}), "
+            f"got {tuple(grad_L.shape)}"
+        )
+    if has_u and tuple(grad_U.shape[-2:]) != (k, n):
+        raise RuntimeError(
+            f"lu_unpack_backward: grad_U must end with ({k}, {n}), "
+            f"got {tuple(grad_U.shape)}"
+        )
+
+    source = grad_L if has_l else grad_U
+    grad_lu = torch.empty(
+        source.shape[:-2] + (m, n), dtype=source.dtype, device=source.device
+    )
+    numel = grad_lu.numel()
+    if numel == 0:
+        return grad_lu
+
+    # The kernel derives its offsets from `m` / `n` alone, so the inputs must be
+    # contiguous; the autograd-produced gradients already are, so the copy is a
+    # rare fallback for exotic strides.
+    if has_l and not grad_L.is_contiguous():
+        grad_L = grad_L.contiguous()
+    if has_u and not grad_U.is_contiguous():
+        grad_U = grad_U.contiguous()
+
+    plan_key = (m, n, numel, source.element_size())
+    plan = _LAUNCH_PLAN_CACHE.get(plan_key)
+    if plan is None:
+        block_m, block_n, num_warps = _launch_plan(m, n, numel, source.element_size())
+        plan = (
+            (numel // (m * n), triton.cdiv(m, block_m), triton.cdiv(n, block_n)),
+            block_m,
+            block_n,
+            num_warps,
+        )
+        _LAUNCH_PLAN_CACHE[plan_key] = plan
+    grid, block_m, block_n, num_warps = plan
+
+    with torch_device_fn.device(source.device):
+        lu_unpack_grad_kernel[grid](
+            grad_L if has_l else grad_U,
+            grad_U if has_u else grad_L,
+            grad_lu,
+            m,
+            n,
+            HAS_L=has_l,
+            HAS_U=has_u,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+        )
+    return grad_lu

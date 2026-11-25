@@ -73,7 +73,7 @@ def sparse_coo_tensor_with_dims(
     pin_memory=False,
 ):
     """Create an empty sparse COO tensor of the requested descriptor."""
-    logger.debug("GEMS SPARSE_COO_TENSOR_WITH_DIMS")
+    logger.debug("GEMS_ENFLAMESPARSE_COO_TENSOR_WITH_DIMS")
     if layout is not None and layout is not _SPARSE_COO:
         raise RuntimeError(
             "_sparse_coo_tensor_with_dims expected sparse_coo layout but got "
@@ -89,7 +89,7 @@ def sparse_coo_tensor_with_dims(
 
 def sparse_coo_tensor_with_dims_out(sparse_dim, dense_dim, size, *, out):
     """Out form: rewrite ``out`` in place and return it."""
-    logger.debug("GEMS SPARSE_COO_TENSOR_WITH_DIMS OUT")
+    logger.debug("GEMS_ENFLAMESPARSE_COO_TENSOR_WITH_DIMS OUT")
     built = _empty_coo(sparse_dim, dense_dim, size, out.dtype, out.device, False)
     # ``resize_`` is not implemented for the SparseCUDA key in this build, so
     # the descriptor is rewritten through a sparse copy instead.

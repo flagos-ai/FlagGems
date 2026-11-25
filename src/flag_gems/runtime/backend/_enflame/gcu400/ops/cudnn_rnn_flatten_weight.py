@@ -546,7 +546,7 @@ def cudnn_rnn_flatten_weight(
     batch_first,
     bidirectional,
 ):
-    logger.debug("GEMS CUDNN_RNN_FLATTEN_WEIGHT")
+    logger.debug("GEMS_ENFLAMECUDNN_RNN_FLATTEN_WEIGHT")
     return _flatten_weight_impl(
         weight_arr,
         weight_stride0,
@@ -573,7 +573,7 @@ def cudnn_rnn_flatten_weight_out(
     *,
     out,
 ):
-    logger.debug("GEMS CUDNN_RNN_FLATTEN_WEIGHT_OUT")
+    logger.debug("GEMS_ENFLAMECUDNN_RNN_FLATTEN_WEIGHT_OUT")
     return _flatten_weight_impl(
         weight_arr,
         weight_stride0,

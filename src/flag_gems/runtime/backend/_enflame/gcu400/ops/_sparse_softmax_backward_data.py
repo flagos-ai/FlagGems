@@ -402,7 +402,7 @@ def _sparse_strides(size, sparse_dim):
 
 def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
 
-    logger.debug("GEMS SPARSE_SOFTMAX_BACKWARD_DATA")
+    logger.debug("GEMS_ENFLAMESPARSE_SOFTMAX_BACKWARD_DATA")
     if not torch.is_tensor(grad_output) or not grad_output.is_sparse:
         raise NotImplementedError(
             "Could not run 'aten::_sparse_softmax_backward_data' with arguments "

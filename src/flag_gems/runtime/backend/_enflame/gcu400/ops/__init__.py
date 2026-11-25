@@ -107,12 +107,14 @@ from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos
 from .acosh import acosh, acosh_
+from .act_quant import act_quant_triton
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .add import add, add_
 from .addcmul import addcmul, addcmul_out
 from .addmm import addmm, addmm_out
 from .addmm_dtype import addmm_dtype, addmm_dtype_out
+from .add_rms_norm import add_rms_norm
 from .addmv import addmv, addmv_out
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
@@ -189,6 +191,7 @@ from .clip___opt import clip_
 from .clip__opt import clip
 from .combinations import combinations
 from .concat__opt import concat
+from .concat_and_cache_mla import concat_and_cache_mla
 from .concatenate import concatenate
 from .constant_pad_nd import constant_pad_nd
 from .contiguous import contiguous
@@ -216,6 +219,7 @@ from .thnn_conv2d import thnn_conv2d
 from .cos import cos, cos_
 from .cosh___opt import cosh_
 from .cosh__opt import cosh
+from .cosh_backward import cosh_backward
 from .cosh_out__opt import cosh_out
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -223,7 +227,9 @@ from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
+from .deg2rad_backward import deg2rad_backward
 from .diag_embed import diag_embed
+from .diag_embed_backward import diag_embed_backward
 from .diagonal import diagonal_backward
 from .digamma import digamma, digamma_out
 from .digamma_ import digamma_
@@ -240,6 +246,7 @@ from .div import (
 from .dot import dot
 from .dropout import dropout, dropout_backward, native_dropout_backward
 from .elu import elu, elu_
+from .elu_backward_out import elu_backward_out
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .erfinv_ import erfinv, erfinv_
@@ -279,14 +286,23 @@ from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_
 from .fractional_max_pool3d_backward import fractional_max_pool3d_backward
 from .full__opt import full
 from .full_like__opt import full_like
+from .fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
+    fused_deepseek_v4_qnorm_rope_kv_rope_insert,
+)
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
+from .geglu import dgeglu, geglu
 from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu, glu_backward
 from .glu_backward_jvp import glu_backward_jvp
 from .greater import greater, greater_out
-from .greater_equal import greater_equal, greater_equal_, greater_equal_scalar
+from .greater_equal import (
+    greater_equal,
+    greater_equal_,
+    greater_equal_scalar,
+    greater_equal_scalar_,
+)
 from .greater_scalar__opt import greater_scalar
 from .greater_scalar_out__opt import greater_scalar_out
 from .grid_sample import grid_sample
@@ -314,6 +330,7 @@ from .index_add import index_add, index_add_
 from .index_copy import index_copy, index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .instance_norm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -370,7 +387,12 @@ from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .masked_select_backward import masked_select_backward
-from .max import max, max_dim
+from .max import (
+    evenly_distribute_backward,
+    max,
+    max_backward,
+    max_dim,
+)
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
@@ -437,6 +459,7 @@ from .randn_like import randn_like
 from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from .reglu import dreglu, reglu
 from .relu import relu, relu_
 from .relu6 import relu6
 from .remainder import remainder, remainder_
@@ -460,6 +483,7 @@ from .rrelu_with_noise_backward__opt import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_tensor
 from .rsub__opt import rsub_scalar
+from .rwkv_ka_fusion import rwkv_ka_fusion
 from .rwkv_mm_sparsity import rwkv_mm_sparsity
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
@@ -886,9 +910,11 @@ from ._sparse_softmax_backward_data import (
     _sparse_softmax_backward_data,
     _sparse_softmax_backward_data_out,
 )
+from ._sparse_addmm import _sparse_addmm, _sparse_addmm_out
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
 from ._sparse_sparse_matmul import _sparse_sparse_matmul, _sparse_sparse_matmul_out
 from ._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
+from ._sparse_mm_reduce_impl_backward import _sparse_mm_reduce_impl_backward
 from ._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from ._sparse_semi_structured_tile import _sparse_semi_structured_tile
@@ -922,9 +948,13 @@ from ._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward_grad_input,
 )
 from ._validate_compressed_sparse_indices import _validate_compressed_sparse_indices
+from ._validate_sparse_bsc_tensor_args import _validate_sparse_bsc_tensor_args
 from ._validate_sparse_bsr_tensor_args import _validate_sparse_bsr_tensor_args
 from ._validate_sparse_coo_tensor_args import _validate_sparse_coo_tensor_args
 from ._validate_sparse_csc_tensor_args import _validate_sparse_csc_tensor_args
+from ._validate_sparse_compressed_tensor_args import (
+    _validate_sparse_compressed_tensor_args,
+)
 from ._validate_sparse_csr_tensor_args import _validate_sparse_csr_tensor_args
 from ._values_copy import _values_copy, _values_copy_out
 from ._weight_int4pack_mm_with_scales_and_zeros import (
@@ -985,6 +1015,7 @@ from .batch_norm_gather_stats import batch_norm_gather_stats
 from .batch_norm_gather_stats_with_counts import batch_norm_gather_stats_with_counts
 from .batch_norm_stats import batch_norm_stats
 from .batch_norm_update_stats import batch_norm_update_stats
+from .beam_search_score import beam_search_score, beam_search_score_
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
 from .bilinear import bilinear
@@ -998,6 +1029,7 @@ from .cartesian_prod import run as cartesian_prod
 from .cast_Char import cast_Char
 from .cast_Double import cast_Double
 from .cast_Float import cast_Float
+from .cast_Half import cast_Half
 from .cast_Long import cast_Long
 from .cast_Short import cast_Short
 from .ccol_indices import ccol_indices
@@ -1074,6 +1106,7 @@ from .cudnn_rnn_flatten_weight import (
 )
 from .cumprod import cumprod, cumprod_, cumprod_backward
 from .cumsum_ import cumsum_
+from .cumsum_backward import cumsum_backward  # noqa: F401
 from .dense_dim import dense_dim
 from .dequantize import dequantize
 from .det import det
@@ -1082,6 +1115,7 @@ from .diag import diag
 from .diagflat import run as diagflat
 from .diagonal_copy import diagonal_copy
 from .diagonal_scatter import diagonal_scatter
+from .diagonal_scatter_backward import diagonal_scatter_backward
 from .diff import diff
 from .dim import dim
 from .dimV import _dimV as dimV
@@ -1295,6 +1329,7 @@ from .make_per_tensor_quantized_tensor import (
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_backward import matmul_backward
+from .matmul_bias_activation import matmul_bias_activation
 from .matrix_exp import matrix_exp
 from .matrix_exp_backward import matrix_exp_backward
 from .matrix_power import matrix_power, matrix_power_out
@@ -1303,9 +1338,11 @@ from .max_pool1d_with_indices import max_pool1d_with_indices
 from .max_pool3d import max_pool3d
 from .max_pool3d_with_indices import max_pool3d_with_indices
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
-from .max_unpool2d import max_unpool2d
-from .max_unpool3d import max_unpool3d
+from .max_unpool2d import max_unpool2d, max_unpool2d_backward
+from .max_unpool3d import max_unpool3d, max_unpool3d_backward
 from .mean import mean
+from .bf16_paged_mqa_logits import bf16_paged_mqa_logits
+from .matrix_H import matrix_H
 from .median import median, median_dim, median_dim_values, median_out
 from .miopen_batch_norm import miopen_batch_norm
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
@@ -1374,6 +1411,7 @@ from .pinverse import pinverse
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .poisson_nll_loss import poisson_nll_loss
+from .post_layer_norm_residual import post_layer_norm_residual
 from .put_ import put_
 from .quantize_per_channel import quantize_per_channel, quantize_per_channel_out
 from .quantize_per_tensor import quantize_per_tensor, quantize_per_tensor_out
@@ -1400,6 +1438,7 @@ from .renorm_ import renorm_
 from .replication_pad1d_backward import replication_pad1d_backward
 from .replication_pad2d import replication_pad2d, replication_pad2d_out
 from .replication_pad3d_backward import replication_pad3d_backward
+from .reshape_and_cache_flash import reshape_and_cache_flash
 from .reshape_as import reshape_as
 from .resize import resize, resize_
 from .resize_as import resize_as, resize_as_
@@ -1463,8 +1502,10 @@ from .sparse_coo_tensor_with_dims_and_tensors import (
 )
 from .sparse_csc_tensor import sparse_csc_tensor
 from .sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from .sparse_csr_prod import sparse_csr_prod, sparse_csr_prod_out
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from .sparse_csr_tensor import sparse_csr_tensor
+from .sparse_csr_tensor_unsafe import sparse_csr_tensor_unsafe
 from .sparse_dim import sparse_dim
 from .sparse_mask import sparse_mask, sparse_mask_out
 from .sparse_resize_ import sparse_resize_
@@ -1643,10 +1684,14 @@ from .vander import vander
 from .vdot import vdot
 from .version import version
 from .view_as_complex import view_as_complex
+from .add_rms_norm import add_rms_norm
+from .rwkv_ka_fusion import rwkv_ka_fusion
+from .weight_norm import weight_norm
 from .view_as_complex_copy import view_as_complex_copy
 from .view_as_real_copy import view_as_real_copy
 from .weight_int4pack_mm import weight_int4pack_mm
 from .weight_int8pack_mm import weight_int8pack_mm
+from .weight_norm import weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .xlogy import (
     xlogy,
@@ -1994,8 +2039,11 @@ __all__ = [
     "_sparse_log_softmax_out",
     "_sparse_mask_projection",
     "_sparse_mask_projection_out",
+    "_sparse_addmm",
+    "_sparse_addmm_out",
     "_sparse_mm",
     "_sparse_mm_reduce_impl",
+    "_sparse_mm_reduce_impl_backward",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
     "_sparse_semi_structured_linear",
@@ -2008,6 +2056,8 @@ __all__ = [
     "_sparse_softmax_out",
     "_sparse_sparse_matmul",
     "_sparse_sparse_matmul_out",
+    "_sparse_addmm",
+    "_sparse_addmm_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
     "_stack",
@@ -2051,8 +2101,10 @@ __all__ = [
     "_upsample_nearest_exact3d_out",
     "_upsample_nearest_exact3d_vec",
     "_validate_compressed_sparse_indices",
+    "_validate_sparse_bsc_tensor_args",
     "_validate_sparse_bsr_tensor_args",
     "_validate_sparse_coo_tensor_args",
+    "_validate_sparse_compressed_tensor_args",
     "_validate_sparse_csc_tensor_args",
     "_validate_sparse_csr_tensor_args",
     "_values_copy",
@@ -2069,6 +2121,7 @@ __all__ = [
     "acos_",
     "acosh",
     "acosh_",
+    "act_quant_triton",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
     "adaptive_avg_pool2d_out",
@@ -2082,6 +2135,7 @@ __all__ = [
     "adaptive_max_pool3d_backward",
     "add",
     "add_",
+    "add_rms_norm",
     "addbmm",
     "addbmm_",
     "addcdiv",
@@ -2095,6 +2149,7 @@ __all__ = [
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",
+    "add_rms_norm",
     "addmv",
     "addmv_",
     "addmv_out",
@@ -2182,6 +2237,7 @@ __all__ = [
     "batch_norm_update_stats",
     "bernoulli",
     "bernoulli_",
+    "bf16_paged_mqa_logits",
     "bilinear",
     "binary_cross_entropy",
     "binary_cross_entropy_backward",
@@ -2226,6 +2282,7 @@ __all__ = [
     "cast_Char",
     "cast_Double",
     "cast_Float",
+    "cast_Half",
     "cast_Long",
     "cast_Short",
     "cat",
@@ -2272,6 +2329,7 @@ __all__ = [
     "column_stack_out",
     "combinations",
     "concat",
+    "concat_and_cache_mla",
     "concatenate",
     "conj",
     "conj_physical",
@@ -2307,6 +2365,7 @@ __all__ = [
     "cos_",
     "cosh",
     "cosh_",
+    "cosh_backward",
     "cosh_out",
     "cosine_embedding_loss",
     "cosine_similarity",
@@ -2349,9 +2408,11 @@ __all__ = [
     "cumprod_backward",
     "cumsum",
     "cumsum_",
+    "cumsum_backward",
     "cumsum_out",
     "cumulative_trapezoid",
     "deg2rad",
+    "deg2rad_backward",
     "deg2rad_",
     "deg2rad_out",
     "dense_dim",
@@ -2360,10 +2421,12 @@ __all__ = [
     "detach_copy",
     "diag",
     "diag_embed",
+    "diag_embed_backward",
     "diagflat",
     "diagonal_backward",
     "diagonal_copy",
     "diagonal_scatter",
+    "diagonal_scatter_backward",
     "diff",
     "digamma",
     "digamma_",
@@ -2379,12 +2442,14 @@ __all__ = [
     "dropout",
     "dropout_",
     "dropout_backward",
+    "dreglu",
     "dstack",
     "efficient_attention_backward",
     "einsum",
     "elu",
     "elu_",
     "elu_backward",
+    "elu_backward_out",
     "embedding",
     "embedding_backward",
     "embedding_bag",
@@ -2487,6 +2552,7 @@ __all__ = [
     "frobenius_norm",
     "full",
     "full_like",
+    "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",
@@ -2613,6 +2679,7 @@ __all__ = [
     "indices_copy_out",
     "infinitely_differentiable_gelu_backward",
     "inner",
+    "instance_norm",
     "int_mm",
     "int_mm_out",
     "int_repr",
@@ -2798,6 +2865,8 @@ __all__ = [
     "masked_select",
     "masked_select_backward",
     "matmul_backward",
+    "matmul_bias_activation",
+    "matrix_H",
     "matrix_exp",
     "matrix_exp_backward",
     "matrix_power",
@@ -2813,7 +2882,9 @@ __all__ = [
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
     "max_unpool2d",
+    "max_unpool2d_backward",
     "max_unpool3d",
+    "max_unpool3d_backward",
     "maximum",
     "mean",
     "mean_dim",
@@ -2954,6 +3025,7 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
+    "post_layer_norm_residual",
     "prelu",
     "prod",
     "prod_dim",
@@ -2998,6 +3070,7 @@ __all__ = [
     "reflection_pad2d_out",
     "reflection_pad3d",
     "reflection_pad3d_backward",
+    "reglu",
     "relu",
     "relu6",
     "relu6_",
@@ -3019,6 +3092,7 @@ __all__ = [
     "replication_pad2d_out",
     "replication_pad3d",
     "replication_pad3d_backward",
+    "reshape_and_cache_flash",
     "reshape_as",
     "resize",
     "resize_",
@@ -3057,6 +3131,7 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
     "scalar_tensor",
     "scaled_dot_product_attention",
@@ -3161,9 +3236,12 @@ __all__ = [
     "sparse_coo_tensor_with_dims_out",
     "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
+    "sparse_csr_prod",
+    "sparse_csr_prod_out",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
     "sparse_csr_tensor",
+    "sparse_csr_tensor_unsafe",
     "sparse_dim",
     "sparse_mask",
     "sparse_mask_out",
@@ -3411,6 +3489,7 @@ __all__ = [
     "weight_int4pack_mm",
     "weight_int8pack_mm",
     "weight_norm_differentiable_backward",
+    "weight_norm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
@@ -3652,3 +3731,13 @@ _flag_gems_ops_module.reshape_as = reshape_as
 # implementation through `flag_gems.slow_conv_transpose2d`.
 _flag_gems_ops_module.slow_conv_transpose2d = slow_conv_transpose2d
 del _flag_gems_ops_module
+
+# `tests/test_cumsum_backward.py` imports `CumsumFunction` from
+# `flag_gems.ops.cumsum_backward`, and that class resolves `cumsum_backward`
+# through its own module globals. Syncing the module attribute makes the autograd
+# path (torch.cumsum backward) run the gcu400 kernel as well, so the test and the
+# benchmark exercise the same implementation; the common source is untouched.
+import flag_gems.ops.cumsum_backward as _flag_gems_cumsum_backward_module  # noqa: E402
+
+_flag_gems_cumsum_backward_module.cumsum_backward = cumsum_backward
+del _flag_gems_cumsum_backward_module

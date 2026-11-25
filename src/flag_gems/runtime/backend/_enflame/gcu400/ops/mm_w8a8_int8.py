@@ -561,7 +561,7 @@ def mm_w8a8_int8(a, b, scale_a, scale_b, out_dtype=torch.bfloat16, bias=None):
     if out_dtype not in _FLOATS:
         raise TypeError("out_dtype must be FP16, BF16 or FP32")
     out = torch.empty((m, n), device=a.device, dtype=out_dtype)
-    logger.debug("GEMS MM_W8A8_INT8")
+    logger.debug("GEMS_ENFLAMEMM_W8A8_INT8")
     return _run(a, b, scale_a, scale_b, bias, out, m, n, k)
 
 
@@ -579,7 +579,7 @@ def mm_w8a8_int8_out(a, b, scale_a, scale_b, *, out, bias=None):
         for x in (a, b, scale_a, scale_b, bias)
     ):
         raise ValueError("out must not alias inputs, scales or bias")
-    logger.debug("GEMS MM_W8A8_INT8_OUT")
+    logger.debug("GEMS_ENFLAMEMM_W8A8_INT8_OUT")
     return _run(a, b, scale_a, scale_b, bias, out, m, n, k)
 
 

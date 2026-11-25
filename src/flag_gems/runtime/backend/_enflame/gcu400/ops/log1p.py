@@ -133,3 +133,75 @@ def log1p_out(x: torch.Tensor, out: torch.Tensor):
         _launch(x_contig.view(-1), out_contig.view(-1))
         out.copy_(out_contig)
     return out
+
+
+@triton.jit
+def _log1p_backward_grad(grad, x):
+    """``grad / (1 + x)`` with ATen's two-rounding order and IEEE division.
+
+    ATen evaluates ``1 + x`` in float32 opmath, rounds the sum back to the input
+    dtype, then divides in float32 opmath and rounds to the output dtype.
+    Reproducing that order keeps fp16/bf16 bit-exact, and ``div_rn`` replaces
+    Triton's fast division so the quotient is round-to-nearest as well.
+    """
+    value = x.to(tl.float32)
+    denominator = (1.0 + value).to(x.dtype)
+    return tl.math.div_rn(grad.to(tl.float32), denominator.to(tl.float32)).to(
+        grad.dtype
+    )
+
+
+@libentry()
+@triton.jit
+def log1p_backward_kernel(
+    grad_ptr,
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+):
+    """Fixed-grid strided kernel: one fused pass, no aten add/div composite."""
+    pid = tl.program_id(axis=0)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+        x = tl.load(x_ptr + offsets, mask=mask, other=1.0)
+        tl.store(out_ptr + offsets, _log1p_backward_grad(grad, x), mask=mask)
+
+
+def log1p_backward(grad_output: torch.Tensor, x: torch.Tensor):
+    """Fused gradient of ``log1p``: ``grad_output / (1 + x)``.
+
+    Both operands are flattened in elementwise order after materializing
+    non-contiguous / zero-stride (expanded) gradients, so a single flat kernel
+    serves every stride pattern while still reading x's logical values.
+    """
+    x_contig = x if x.is_contiguous() else x.contiguous()
+    grad_contig = (
+        grad_output if grad_output.is_contiguous() else grad_output.contiguous()
+    )
+    if x_contig.dtype != grad_contig.dtype:
+        grad_contig = grad_contig.to(x_contig.dtype)
+
+    out = torch.empty_like(x_contig)
+    n_elements = out.numel()
+    if n_elements == 0:
+        return out
+
+    BS, G, nw, ST = _config(n_elements, out.dtype)
+    with torch_device_fn.device(out.device.index):
+        log1p_backward_kernel[(G, 1, 1)](
+            grad_contig.view(-1),
+            x_contig.view(-1),
+            out.view(-1),
+            n_elements,
+            BLOCK_SIZE=BS,
+            GRID_SIZE=G,
+            NUM_STAGES=ST,
+            num_warps=nw,
+        )
+    return out

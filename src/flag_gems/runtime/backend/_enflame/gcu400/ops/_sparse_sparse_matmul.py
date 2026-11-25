@@ -252,7 +252,7 @@ def _sspm_emit(
 
 
 def _sparse_sparse_matmul(self, other):
-    logger.debug("GEMS _SPARSE_SPARSE_MATMUL")
+    logger.debug("GEMS_ENFLAME_SPARSE_SPARSE_MATMUL")
 
     if not self.is_sparse or not other.is_sparse:
         raise RuntimeError(
@@ -369,7 +369,7 @@ def _sparse_sparse_matmul(self, other):
 
 
 def _sparse_sparse_matmul_out(self, other, *, out):
-    logger.debug("GEMS _SPARSE_SPARSE_MATMUL.OUT")
+    logger.debug("GEMS_ENFLAME_SPARSE_SPARSE_MATMUL.OUT")
     result = _sparse_sparse_matmul(self, other)
     if out.layout != torch.sparse_coo:
         raise RuntimeError(

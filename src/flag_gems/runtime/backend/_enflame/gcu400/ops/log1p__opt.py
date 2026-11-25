@@ -42,17 +42,37 @@ sweeps and gates must use fully positive inputs.
 import torch
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend._enflame.gcu400.ops.log1p import _config
+from flag_gems.runtime.backend._enflame.gcu400.ops.log1p import _config, log1p_backward
 from flag_gems.runtime.backend._enflame.gcu400.ops.log1p import (
     log1p_kernel as _kernel_wrapped,
 )
 
 _K = _kernel_wrapped.fn
 
-__all__ = ["log1p"]
+__all__ = ["log1p", "Log1pFunction"]
 
 
-def log1p(x: torch.Tensor):
+class Log1pFunction(torch.autograd.Function):
+    """Autograd wrapper that gives log1p its fused first-order backward.
+
+    ``aten::log1p`` is CompositeImplicitAutograd, so serving only the forward
+    kernel leaves the backward to ATen's composite ``1 + x`` add followed by a
+    division. Saving ``x`` and launching the fused ``log1p_backward_kernel``
+    keeps the whole path inside one pass; higher-order gradients are not built.
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        ctx.save_for_backward(x)
+        return _log1p_functional(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        return log1p_backward(grad_output, x)
+
+
+def _log1p_functional(x: torch.Tensor):
     if x.is_floating_point():
         result_dtype = x.dtype
     else:
@@ -77,3 +97,9 @@ def log1p(x: torch.Tensor):
             num_warps=nw,
         )
     return out.view_as(x)
+
+
+def log1p(x: torch.Tensor):
+    if torch.is_grad_enabled() and x.requires_grad:
+        return Log1pFunction.apply(x)
+    return _log1p_functional(x)

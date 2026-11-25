@@ -56,6 +56,20 @@ def _skip_if_device_ref_16bit_dim(dtype):
         )
 
 
+def _skip_if_cpu_ref_scalar_compare():
+    # With --ref=cpu the 0-dim reference scalar lives on the host, and the tie
+    # tests compare it against the device tensor (`inp == ref_out`). aten::eq
+    # requires both operands on the GCU here ("tensor's device must be gcu, but
+    # with cpu") and aborts the process, so this case stays on the
+    # device-reference path only. The tie split itself is still covered by
+    # _grad_global above, which runs on both paths.
+    if cfg.TO_CPU and flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame: aten::eq aborts on a device-vs-cpu 0-dim compare; "
+            "run without --ref=cpu"
+        )
+
+
 def _skip_if_device_ref_all_inf():
     # The XPU (xpu) device reduction initializes with +FLT_MAX, so an all-inf
     # input reduces to +FLT_MAX instead of inf; skipped on the device run
@@ -214,6 +228,7 @@ def test_min_backward(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_min_backward_ties(shape, dtype):
     # The global adjoint must split grad_output evenly between every tie.
+    _skip_if_cpu_ref_scalar_compare()
     inp = _tie_input(shape, dtype)
     res_out, ref_out, res_dx, ref_dx = _grad_global(inp, dtype)
     tie_count = int((inp == ref_out).sum())

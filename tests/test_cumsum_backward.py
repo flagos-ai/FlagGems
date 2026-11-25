@@ -86,6 +86,23 @@ def test_cumsum_backward(shape, dim, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
+    if flag_gems.vendor_name == "enflame":
+        # enflame GCU: an innermost reduce axis with a non power-of-two length
+        # needs a masked tail tile, and that construct aborts the GCU compiler
+        # (make_gcuir crash in the toolkit) for both the common kernel and the
+        # gcu400 kernel.  Only this vendor is affected; every other layout and
+        # the power-of-two lengths keep running and cover the kernel.
+        reduce_axis = dim if dim >= 0 else len(shape) + dim
+        reduce_len = shape[reduce_axis]
+        inner_size = 1
+        for size in shape[reduce_axis + 1 :]:
+            inner_size *= size
+        if inner_size == 1 and reduce_len & (reduce_len - 1):
+            pytest.skip(
+                "enflame GCU: toolkit aborts on the masked tail tile of a non "
+                f"power-of-two innermost reduce length ({reduce_len})"
+            )
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     grad_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 

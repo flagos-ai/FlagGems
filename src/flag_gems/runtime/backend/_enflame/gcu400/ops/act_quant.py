@@ -92,6 +92,21 @@ def fast_round_scale(amax, fp8_max_inv):
     return fast_pow2(fast_log2_ceil(amax * fp8_max_inv))
 
 
+NUM_SIPS = 48
+# Cap on the number of resident programs of the quantisation kernel.  The body
+# is grid-strided, so a bounded program count keeps the launch valid for every
+# (M, N) while staying inside the GCU grid limits (grid.x 65535, grid.y 255).
+GRID_CAP = NUM_SIPS * 2
+# Elements per program iteration.  32K elements is the documented GCU DSM
+# budget ceiling for a single tile.
+TILE_BUDGET = 32768
+# Quantisation groups folded into one tile iteration; widening the tile along
+# the group axis is what keeps very wide, single-row inputs streaming instead
+# of paying one loop iteration per 128-element group.
+MAX_GROUPS_PER_TILE = 256
+NUM_WARPS = 4
+
+
 # @libentry()
 @triton.jit(
     do_not_specialize=[
@@ -103,62 +118,109 @@ def act_quant_triton_kernel(
     Y_ptr,
     S_ptr,
     M,
-    N,
+    n_tiles,
+    total_tiles,
     stride_xm,
     stride_ym,
     stride_sm,
     BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    GROUPS: tl.constexpr,
     ROUND_SCALE: tl.constexpr,
+    WIDE: tl.constexpr,
 ):
-    # 2-D grid: a 1-D grid of m_blocks * n_blocks programs exceeds the GCU
-    # grid.x limit (65535) for the largest benchmark shapes (e.g. M=38594,
-    # N=8192, block_size=128 -> 76,956 programs) and also costs a per-program
-    # div/mod to recover (pid_m, pid_n).
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-
-    row_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    col_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    mask_row = row_offset < M
-    mask_col = col_offsets < N
-    mask = mask_row[:, None] & mask_col[None, :]
-
-    x = tl.load(
-        X_ptr + row_offset[:, None] * stride_xm + col_offsets[None, :],
-        mask=mask,
-        other=0.0,
-    )
-
-    amax = tl.max(tl.abs(x), axis=1)
-    amax = tl.maximum(amax, 1e-4)
-
+    # Flat grid-stride over the (row block, group tile) program space.  A 2-D
+    # grid is not usable here: the 1-D benchmark shape (2**30,) makes N = 2**30,
+    # i.e. millions of column tiles, far above the GCU grid.y limit of 255.
     FP8_MAX: tl.constexpr = 448.0
     FP8_MAX_INV: tl.constexpr = 1.0 / 448.0
+    BLOCK_N: tl.constexpr = GROUPS * GROUP_SIZE
 
-    if ROUND_SCALE:
-        # Round scale to power of 2: scale = 2^ceil(log2(amax / 448))
-        # scale_raw = amax * FP8_MAX_INV
-        # log2_scale = tl.math.log2(scale_raw)
-        # log2_ceil = tl.math.ceil(log2_scale)
-        # scale = tl.math.exp2(log2_ceil)
-        scale = fast_round_scale(amax, FP8_MAX_INV)
-    else:
-        scale = amax * FP8_MAX_INV
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    while pid < total_tiles:
+        pid_m = pid // n_tiles
+        pid_n = pid % n_tiles
 
-    y = x / scale[:, None]
-    y = tl.clamp(y, -FP8_MAX, FP8_MAX)
+        row_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        col_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        group_offset = pid_n * GROUPS + tl.arange(0, GROUPS)
 
-    y_offset = row_offset
-    tl.store(
-        Y_ptr + y_offset[:, None] * stride_ym + col_offsets[None, :],
-        y.to(tl.float8e4nv),
-        mask=mask,
-    )
+        # Offsets are materialised for the whole tile before masking, so tensors
+        # wider than 2**31 elements need 64-bit address arithmetic.
+        if WIDE:
+            row_index = row_offset.to(tl.int64)
+            col_index = col_offset.to(tl.int64)
+            s_row_index = row_offset.to(tl.int64)
+        else:
+            row_index = row_offset
+            col_index = col_offset
+            s_row_index = row_offset
 
-    s_offset = row_offset
-    tl.store(S_ptr + s_offset * stride_sm + pid_n, scale, mask=mask_row)
+        mask_row = row_offset < M
+        mask = mask_row[:, None]
+
+        x = tl.load(
+            X_ptr + row_index[:, None] * stride_xm + col_index[None, :],
+            mask=mask,
+            other=0.0,
+            eviction_policy="evict_first",
+        )
+
+        if GROUPS == 1:
+            # One quantisation group per row of the tile: the reduction stays on
+            # the natural 2-D layout (a reshape to (BLOCK_M, 1, BLOCK_N) costs an
+            # extra layout conversion and halves the streaming throughput).
+            amax = tl.max(tl.abs(x), axis=1)
+            amax = tl.maximum(amax, 1e-4)
+            if ROUND_SCALE:
+                scale = fast_round_scale(amax, FP8_MAX_INV)
+            else:
+                scale = amax * FP8_MAX_INV
+            y = tl.clamp(x / scale[:, None], -FP8_MAX, FP8_MAX)
+            scale_store = scale[:, None]
+        else:
+            # Wide, shallow inputs (M == 1 for the 1-D benchmark shape) fold many
+            # groups into one tile so a single iteration still moves 32K
+            # elements instead of 128.
+            x_groups = tl.reshape(x, (BLOCK_M, GROUPS, GROUP_SIZE))
+            amax = tl.max(tl.abs(x_groups), axis=2)
+            amax = tl.maximum(amax, 1e-4)
+            if ROUND_SCALE:
+                scale = fast_round_scale(amax, FP8_MAX_INV)
+            else:
+                scale = amax * FP8_MAX_INV
+            y = tl.clamp(x_groups / scale[:, :, None], -FP8_MAX, FP8_MAX)
+            y = tl.reshape(y, (BLOCK_M, BLOCK_N))
+            scale_store = scale
+
+        tl.store(
+            Y_ptr + row_index[:, None] * stride_ym + col_index[None, :],
+            y.to(tl.float8e4nv),
+            mask=mask,
+        )
+
+        tl.store(
+            S_ptr + s_row_index[:, None] * stride_sm + group_offset[None, :],
+            scale_store,
+            mask=mask,
+        )
+
+        pid += num_programs
+
+
+def _largest_group_count(n_groups_total, cap):
+    """Largest power of two that divides the group count and stays below cap.
+
+    Folding groups into one tile is only exact when the tile divides the row, so
+    the count follows the divisors of n_groups_total instead of a plain
+    power-of-two clamp (a 896-wide row has 7 groups of 128 and must not be tiled
+    in 4).
+    """
+    result = 1
+    while result * 2 <= cap and n_groups_total % (result * 2) == 0:
+        result *= 2
+    return result
 
 
 def act_quant_triton(
@@ -190,10 +252,9 @@ def act_quant_triton(
     M = x_2d.size(0)
 
     # GCU tile ladder: fatter row tiles cut the program count (and the
-    # per-program launch cost) on large M.  Cap the tile at 32K elements
-    # (BLOCK_M * BLOCK_N), the documented GCU DSM budget ceiling; the 2-D
-    # grid keeps grid.x = cdiv(M, BLOCK_M) and grid.y = n_blocks far below
-    # the GCU limits for all benchmark shapes.
+    # per-program launch cost) on large M.  The tile is capped at 32K elements
+    # (BLOCK_M * BLOCK_N), the documented GCU DSM budget ceiling, and the row
+    # tile never exceeds M so short inputs do not burn lanes on masked rows.
     if M <= 64:
         BLOCK_M = 32
     elif M <= 1024:
@@ -207,28 +268,42 @@ def act_quant_triton(
     # else:
     #     BLOCK_M = 32
 
-    BLOCK_N = block_size
+    BLOCK_M = min(BLOCK_M, triton.next_power_of_2(M))
+    n_groups_total = N // block_size
+    # Fold as many quantisation groups into one tile as the tile budget allows;
+    # the tile is reshaped in-kernel to (BLOCK_M, GROUPS, block_size).
+    GROUPS = _largest_group_count(
+        n_groups_total,
+        min(MAX_GROUPS_PER_TILE, max(1, TILE_BUDGET // (BLOCK_M * block_size))),
+    )
+    BLOCK_N = GROUPS * block_size
+    n_tiles = N // BLOCK_N
     m_blocks = triton.cdiv(M, BLOCK_M)
-    n_blocks = N // BLOCK_N
+    total_tiles = m_blocks * n_tiles
 
     y = torch.empty_like(x, dtype=torch.float8_e4m3fn)
-    s = x.new_empty(*x.size()[:-1], n_blocks, dtype=torch.float32)
+    s = x.new_empty(*x.size()[:-1], n_groups_total, dtype=torch.float32)
     y_view = y.view(-1, N)
-    s_view = s.view(-1, n_blocks)
+    s_view = s.view(-1, n_groups_total)
 
-    grid = (m_blocks, n_blocks)
+    grid = (min(total_tiles, GRID_CAP),)
+    WIDE = M * N >= 1 << 31
     act_quant_triton_kernel[grid](
         x_2d,
         y_view,
         s_view,
         M,
-        N,
+        n_tiles,
+        total_tiles,
         x_2d.stride(0),
         y_view.stride(0),
         s_view.stride(0),
         BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
+        GROUP_SIZE=block_size,
+        GROUPS=GROUPS,
         ROUND_SCALE=(scale_fmt is not None),
+        WIDE=WIDE,
+        num_warps=NUM_WARPS,
     )
 
     # y = y.view(original_shape)

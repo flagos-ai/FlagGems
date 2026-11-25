@@ -381,7 +381,7 @@ def _to_sparse_semi_structured_baseline(dense):
     int64-word kernel does not cover (compact-order buffers, element stride
     != 1, odd meta width).
     """
-    logger.debug("GEMS TO_SPARSE_SEMI_STRUCTURED BASELINE")
+    logger.debug("GEMS_ENFLAMETO_SPARSE_SEMI_STRUCTURED BASELINE")
     if not isinstance(dense, torch.Tensor):
         raise RuntimeError(
             "_to_sparse_semi_structured: dense argument must be a Tensor"

@@ -28,6 +28,49 @@ from flag_gems.utils.random_utils import (
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
+# Zero-fill geometry: 2 programs per SIP saturates the store path (see
+# ``zero_fill_kernel``), and 4096 elements per tile keeps the loop short.
+_ZERO_FILL_GRID = 48
+_ZERO_FILL_BLOCK = 4096
+
+
+@libentry()
+@triton.jit
+def zero_fill_kernel(out_ptr, N, BLOCK: tl.constexpr, GRID: tl.constexpr):
+    """Write exact zeros: the gradient of an in-place sample is all zeros.
+
+    Fixed grid plus a strided tile loop, not one program per tile. GCU400 only
+    has 24 SIPS, so a launch with thousands of CTAs collapses store bandwidth:
+    a 2Mi-element fp16 fill takes 22.9ms with one program per 1024 elements
+    (2048 CTAs) but 9.5us with 48 striding programs, matching ``zero_()``.
+    """
+    pid = tl.program_id(0)
+    num_tile = (N + BLOCK - 1) // BLOCK
+    for tile in tl.range(pid, num_tile, GRID):
+        offsets = tile * BLOCK + tl.arange(0, BLOCK)
+        tl.store(out_ptr + offsets, 0.0, mask=offsets < N)
+
+
+def _zeros_like_contiguous(t):
+    """Zero-filled, elementwise-order copy of ``t`` (trivial zero compute).
+
+    No arithmetic is involved, so a flat store kernel replaces the native fill;
+    ``memory_format=contiguous_format`` keeps the view usable as a 1-D buffer
+    even when the incoming gradient has exotic strides.
+    """
+    out = torch.empty_like(t, memory_format=torch.contiguous_format)
+    n = out.numel()
+    if n:
+        grid = min(_ZERO_FILL_GRID, triton.cdiv(n, _ZERO_FILL_BLOCK))
+        with torch_device_fn.device(out.device):
+            zero_fill_kernel[(grid,)](
+                out.view(-1),
+                n,
+                BLOCK=_ZERO_FILL_BLOCK,
+                GRID=grid,
+                num_warps=4,
+            )
+    return out
 
 
 @triton.jit
@@ -86,7 +129,41 @@ def fused_exponential_kernel_f32(
     tl.store(out_ptr + off3, y3, mask=off3 < N)
 
 
+class _ExponentialInplace(torch.autograd.Function):
+    """Autograd record for the in-place sampler.
+
+    ``exponential_`` is differentiable in ATen with an all-zero gradient (the
+    sample does not depend on the incoming values), so the backward is a plain
+    zero fill and the mutated input is marked dirty instead of copied.
+    """
+
+    @staticmethod
+    def forward(ctx, x, lambd, generator):
+        ctx.mark_dirty(x)
+        return _exponential_impl(x, lambd, generator=generator)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _zeros_like_contiguous(grad_output), None, None
+
+
 def exponential_(x, lambd: float = 1.0, *, generator=None):
+    """In-place exponential sampler with autograd support.
+
+    The aten schema is CompositeImplicitAutograd, so a bare kernel launch leaves
+    autograd to treat the mutation as opaque: no version bump is recorded and
+    the backward produces an identity instead of zeros. Routing the
+    differentiable case through ``_ExponentialInplace`` and bumping the version
+    counter on the plain path reproduces ATen for both.
+    """
+    if torch.is_grad_enabled() and x.requires_grad:
+        return _ExponentialInplace.apply(x, lambd, generator)
+    result = _exponential_impl(x, lambd, generator=generator)
+    torch.autograd.graph.increment_version(x)
+    return result
+
+
+def _exponential_impl(x, lambd: float = 1.0, *, generator=None):
     logger.debug("GEMS_ENFLAME EXPONENTIAL_")
 
     dtype = x.dtype

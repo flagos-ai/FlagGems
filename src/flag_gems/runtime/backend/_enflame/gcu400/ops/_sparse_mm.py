@@ -362,5 +362,5 @@ def _sparse_mm(sparse, dense, reduce=None):
     the latter passes the reduction selector as a third positional argument
     (the same one-wrapper-for-many-overloads pattern as ``scatter``).
     """
-    logger.debug("GEMS _SPARSE_MM")
+    logger.debug("GEMS_ENFLAME_SPARSE_MM")
     return _sparse_mm_impl(sparse, dense, reduce=reduce)

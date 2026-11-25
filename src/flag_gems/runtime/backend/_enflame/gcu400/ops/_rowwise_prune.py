@@ -235,5 +235,5 @@ def _rowwise_prune_impl(weight, mask, compressed_indices_dtype):
 
 
 def _rowwise_prune(weight, mask, compressed_indices_dtype):
-    logger.debug("GEMS _ROWWISE_PRUNE")
+    logger.debug("GEMS_ENFLAME_ROWWISE_PRUNE")
     return _rowwise_prune_impl(weight, mask, compressed_indices_dtype)

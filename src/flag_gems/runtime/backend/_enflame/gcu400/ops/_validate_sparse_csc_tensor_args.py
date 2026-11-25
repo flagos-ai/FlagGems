@@ -21,6 +21,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ._sparse_mm_reduce_impl import _gcu_int64_indices
+
 logger = logging.getLogger(__name__)
 
 # A warp scans one compressed segment in tiles; larger segments loop without
@@ -56,7 +58,14 @@ def _check_indices_kernel(
     PSTRIDES: tl.constexpr,
     BLOCK: tl.constexpr,
     NUM_PROGRAMS: tl.constexpr,
+    INT32_IDX: tl.constexpr,
 ):
+    if INT32_IDX:
+        # See _gcu_int64_indices: with the int64 layout disabled torch_gcu gives
+        # an int64 index tensor a 4-byte element stride, so the declared int64
+        # loads below would step past the end of the buffer.
+        comp = comp.to(tl.pointer_type(tl.int32))
+        plain = plain.to(tl.pointer_type(tl.int32))
     program = tl.program_id(0)
     cdim_safe = tl.maximum(cdim, 1)
     lanes = tl.arange(0, BLOCK)
@@ -77,23 +86,30 @@ def _check_indices_kernel(
             batch = batch // BSHAPE[d]
             cb += coord * CSTRIDES[d]
             pb += coord * PSTRIDES[d]
-        lo = tl.load(comp + cb + row * cs).to(tl.int64)
-        hi = tl.load(comp + cb + (row + 1) * cs, mask=row < cdim, other=0).to(tl.int64)
         if cdim == 0:
-            valid = (lo == 0) & (nnz == 0)
+            # ATen has no compressed segments to check, but still validates every
+            # plain coordinate against dim. Compressed offsets and ordering are
+            # irrelevant in this case, including when nnz is nonzero.
+            start = tl.full((), 0, tl.int64)
+            end = nnz.to(tl.int64)
+            bad = tl.full((BLOCK,), False, tl.int1)
         else:
+            lo = tl.load(comp + cb + row * cs).to(tl.int64)
+            hi = tl.load(comp + cb + (row + 1) * cs, mask=row < cdim, other=0).to(
+                tl.int64
+            )
             valid = (lo >= 0) & (hi >= lo) & (hi <= nnz) & (hi - lo <= dim)
             valid &= (row != 0) | (lo == 0)
             valid &= (row != cdim - 1) | (hi == nnz)
-        bad = (lanes == 0) & ~valid
-        # Invalid offsets must be rejected without allowing an out-of-bounds read.
-        start = tl.minimum(tl.maximum(lo, 0), nnz)
-        end = tl.minimum(tl.maximum(hi, 0), nnz)
+            bad = (lanes == 0) & ~valid
+            # Invalid offsets must be rejected without an out-of-bounds read.
+            start = tl.minimum(tl.maximum(lo, 0), nnz)
+            end = tl.minimum(tl.maximum(hi, 0), nnz)
         for offset in range(start, end, BLOCK):
             idx = offset + lanes
             mask = idx < end
             val = tl.load(plain + pb + idx * ps, mask=mask, other=0).to(tl.int64)
-            predecessor = mask & (idx > start)
+            predecessor = mask & (idx > start) & (cdim != 0)
             prev = tl.load(plain + pb + (idx - 1) * ps, mask=predecessor, other=0).to(
                 tl.int64
             )
@@ -152,6 +168,13 @@ def _check_indices(is_crow, compressed_idx, plain_idx, cdim, dim, nnz):
     for extent in batch_shape:
         count *= extent
     total_segments = max(cdim, 1) * count
+    # torch_gcu's int64 layout regime decides the element width the kernel must
+    # load (see _gcu_int64_indices); host tensors always keep 8-byte elements.
+    int32_idx = (
+        compressed_idx.device.type not in ("cpu", "meta")
+        and compressed_idx.dtype == torch.int64
+        and not _gcu_int64_indices()
+    )
     if total_segments:
         if total_segments >= _WIDE_SEGMENT_THRESHOLD:
             programs, num_warps = _WIDE_NUM_PROGRAMS, _WIDE_NUM_WARPS
@@ -177,6 +200,7 @@ def _check_indices(is_crow, compressed_idx, plain_idx, cdim, dim, nnz):
                 PSTRIDES=plain_idx.stride()[:-1],
                 BLOCK=_BLOCK,
                 NUM_PROGRAMS=programs,
+                INT32_IDX=int32_idx,
                 num_warps=num_warps,
             )
         # Single device-to-host read supplies the verdict; invalid indices are
@@ -226,8 +250,12 @@ def _validate_metadata(
         raise RuntimeError(
             "values must have dimensionality > sum of batch and block dimensionalities"
         )
-    if compressed_indices.stride(-1) != 1 or plain_indices.stride(-1) != 1:
-        raise RuntimeError("indices must be contiguous per batch")
+    # ATen skips the plain-index stride check only when it has no elements.
+    # Compressed indices must retain unit last stride even for zero batches.
+    if plain_indices.numel() != 0 and plain_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {pname} to be a contiguous tensor per batch")
+    if compressed_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {cname} to be a contiguous tensor per batch")
     size = tuple(operator.index(extent) for extent in size)
     if len(size) != batch_ndim + 2 + dense_ndim:
         raise RuntimeError(

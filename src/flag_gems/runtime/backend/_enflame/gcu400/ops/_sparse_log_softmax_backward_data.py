@@ -421,7 +421,7 @@ def _keys(idx, nnz, strides, rank):
 
 def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None):
 
-    logger.debug("GEMS SPARSE_LOG_SOFTMAX_BACKWARD_DATA")
+    logger.debug("GEMS_ENFLAMESPARSE_LOG_SOFTMAX_BACKWARD_DATA")
     for t in (grad_output, output, self_):
         if not torch.is_tensor(t) or not t.is_sparse:
             raise RuntimeError(

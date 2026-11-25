@@ -422,12 +422,12 @@ def _cudnn_affine_grid_generator_backward_impl(grad, N, C, H, W, out=None):
 
 
 def cudnn_affine_grid_generator_backward(grad, N, C, H, W):
-    logger.debug("GEMS CUDNN_AFFINE_GRID_GENERATOR_BACKWARD")
+    logger.debug("GEMS_ENFLAMECUDNN_AFFINE_GRID_GENERATOR_BACKWARD")
     return _cudnn_affine_grid_generator_backward_impl(grad, N, C, H, W)
 
 
 def cudnn_affine_grid_generator_backward_out(grad, N, C, H, W, *, out):
-    logger.debug("GEMS CUDNN_AFFINE_GRID_GENERATOR_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAMECUDNN_AFFINE_GRID_GENERATOR_BACKWARD_OUT")
     if out is None:
         return _cudnn_affine_grid_generator_backward_impl(grad, N, C, H, W)
     return _cudnn_affine_grid_generator_backward_impl(grad, N, C, H, W, out=out)

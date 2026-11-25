@@ -406,6 +406,19 @@ def _diag_embed_large(x, offset, dim1, dim2, y_shape, diagonal_length, y_strides
 def diag_embed(x, offset=0, dim1=-2, dim2=-1):
     logger.debug("GEMS_GCU400 DIAG_EMBED")
 
+    # Route differentiable inputs through this backend's autograd bridge, so the gradient comes
+    # from the GCU400 gather kernel instead of the shared one. Inside ``forward`` grad mode is off,
+    # so the nested call below takes the plain path.
+    if (
+        torch.is_grad_enabled()
+        and isinstance(x, torch.Tensor)
+        and x.requires_grad
+        and x.is_floating_point()
+    ):
+        from .diag_embed_backward import DiagEmbedFunction
+
+        return DiagEmbedFunction.apply(x, offset, dim1, dim2)
+
     rank = x.ndim + 1
     assert dim1 >= -rank and dim1 < rank, f"Invalid dim1: {dim1}"
     assert dim2 >= -rank and dim2 < rank, f"Invalid dim2: {dim2}"

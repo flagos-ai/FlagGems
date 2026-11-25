@@ -1014,7 +1014,7 @@ def _lift_fp8(self, target_dtype):
 
 def _sparse_softmax(self, dim, half_to_float=False, dtype=None, out=None):
 
-    logger.debug("GEMS SPARSE_SOFTMAX")
+    logger.debug("GEMS_ENFLAMESPARSE_SOFTMAX")
     if not self.is_sparse or self.layout != torch.sparse_coo:
         raise NotImplementedError(
             "aten::_sparse_softmax: only sparse COO inputs are supported"

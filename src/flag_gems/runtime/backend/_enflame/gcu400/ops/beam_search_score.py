@@ -12,6 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""GCU400 specialization of ``beam_search_score`` / ``beam_search_score_``.
+
+The op itself is a broadcast add ``out[row, :] = log_probs[row, :] + bs[row]``,
+so it runs in the 3-30us range where host-side Python work is a measurable
+fraction of the reported latency. Two cost centres are removed here:
+
+1. The generic ``pointwise_dynamic`` tile materializes the stride-0
+   ``beam_scores`` operand element-wise and pays a boundary mask on both
+   operands (~20 GB/s on GCU400). The specialized kernel below consumes
+   ``beam_scores`` as one scalar load per row and streams whole contiguous
+   row segments (~1.0-1.1 TB/s).
+2. ``type_promotion`` + ``torch.empty(shape, dtype, device)`` on the
+   out-of-place entry cost ~20us of pure host time on GCU400, which dwarfs
+   the ~3us kernel. The common case (both operands share a dtype) now takes
+   a dtype-equality fast path with ``torch.empty_like`` and a cached launch
+   plan; promotion semantics are preserved on the rare mixed-dtype path.
+"""
+
 import logging
 
 import torch
@@ -172,16 +190,26 @@ def _beam_search_score_seg_kernel(
                     )
 
 
-def _beam_search_score_rows_dispatch(log_probs, beam_scores, out):
+# Launch plans are pure functions of (contiguous log_probs shape, itemsize), so
+# the arithmetic below is memoized: the op runs in a few microseconds and the
+# per-call Python work would otherwise exceed the kernel time.
+_PLAN_CACHE = {}
+
+
+def _build_plan(shape, itemsize):
     # Shape-bucketed launch heuristics for _beam_search_score_seg_kernel,
-    # calibrated by A/B probes on GCU400 (see knowledge/case_log.md).
+    # calibrated by A/B probes on GCU400.
     # Autotuner exemption: this op runs in ~3-9us, where the per-call Python
     # key lookup of libtuner costs a measurable fraction of the op itself;
     # constexpr specialization (BLOCK_V/RPP/EVEN_*/ONE_TILE + num_warps)
     # already gives one compiled kernel per shape class.
-    V = log_probs.shape[-1]
-    n_rows = log_probs.numel() // V
-    itemsize = log_probs.element_size()
+    V = shape[-1]
+    numel = 1
+    for dim in shape:
+        numel *= dim
+    if V == 0:
+        return None
+    n_rows = numel // V
     v_pow2 = triton.next_power_of_2(V)
     block_v = min(v_pow2, _MAX_SEGMENT_BYTES // itemsize)
     bytes_per_row = block_v * itemsize
@@ -190,7 +218,7 @@ def _beam_search_score_rows_dispatch(log_probs, beam_scores, out):
     rpp = min(rpp, max(1, triton.next_power_of_2(n_rows) // 16))
     num_ctas = triton.cdiv(n_rows, rpp)
     if num_ctas > _GRID_X_MAX:
-        return False
+        return None
     bytes_per_cta = rpp * bytes_per_row
     if bytes_per_cta <= 32768:
         num_warps = 1
@@ -198,7 +226,65 @@ def _beam_search_score_rows_dispatch(log_probs, beam_scores, out):
         num_warps = 2
     else:
         num_warps = 4
-    with torch_device_fn.device(log_probs.device):
+    return (
+        num_ctas,
+        n_rows,
+        V,
+        block_v,
+        rpp,
+        (V % block_v == 0),
+        (n_rows % rpp == 0),
+        (block_v >= V),
+        num_warps,
+    )
+
+
+def _fast_eligible(log_probs, beam_scores):
+    # Eligibility for the row-segment kernel: contiguous row-major log_probs
+    # whose rows are addressed by a flat row id, and a contiguous beam_scores
+    # that broadcasts to log_probs.shape with exactly one value per row
+    # (numel == n_rows, first dim == n_rows, all trailing dims == 1) so the
+    # per-row scalar load bs_ptr[row] matches torch's broadcast value.
+    # beam_scores must share log_probs' dtype so the in-kernel add keeps
+    # torch's type-promotion semantics. Everything else falls back to the
+    # pointwise kernel.
+    if log_probs.dtype != beam_scores.dtype:
+        return False
+    if beam_scores.dim() == 0 or beam_scores.dim() > log_probs.dim():
+        return False
+    if not log_probs.is_contiguous() or not beam_scores.is_contiguous():
+        return False
+    shape = log_probs.shape
+    V = shape[-1]
+    if V == 0:
+        return False
+    n_rows = log_probs.numel() // V
+    if beam_scores.numel() != n_rows:
+        return False
+    bs_shape = beam_scores.shape
+    if bs_shape[0] != n_rows:
+        return False
+    for dim in bs_shape[1:]:
+        if dim != 1:
+            return False
+    return True
+
+
+def _launch_seg_kernel(log_probs, beam_scores, out):
+    itemsize = log_probs.element_size()
+    key = (tuple(log_probs.shape), itemsize)
+    plan = _PLAN_CACHE.get(key)
+    if plan is None:
+        if key in _PLAN_CACHE:
+            # Known-ineligible shape: keep the negative result memoized.
+            return False
+        plan = _build_plan(key[0], itemsize)
+        _PLAN_CACHE[key] = plan
+    if plan is None:
+        return False
+    num_ctas, n_rows, V, block_v, rpp, even_v, even_r, one_tile, num_warps = plan
+
+    def _launch():
         _beam_search_score_seg_kernel[(num_ctas, 1, 1)](
             log_probs,
             beam_scores,
@@ -207,52 +293,22 @@ def _beam_search_score_rows_dispatch(log_probs, beam_scores, out):
             V,
             BLOCK_V=block_v,
             RPP=rpp,
-            EVEN_V=(V % block_v == 0),
-            EVEN_R=(n_rows % rpp == 0),
-            ONE_TILE=(block_v >= V),
+            EVEN_V=even_v,
+            EVEN_R=even_r,
+            ONE_TILE=one_tile,
             num_warps=num_warps,
         )
+
+    # The device guard costs ~5us of host time on GCU400, which is more than
+    # the kernel itself here, so it is only entered when the operands really
+    # live on a non-current device.
+    device_index = log_probs.device.index
+    if device_index is not None and device_index != torch_device_fn.current_device():
+        with torch_device_fn.device(log_probs.device):
+            _launch()
+    else:
+        _launch()
     return True
-
-
-def _beam_search_score_fast_path(log_probs, beam_scores, out):
-    # Eligibility: contiguous row-major log_probs whose rows are addressed by
-    # a flat row id, and a contiguous beam_scores that broadcasts to
-    # log_probs.shape with exactly one value per row (numel == n_rows, first
-    # dim == n_rows, all trailing dims == 1) so the per-row scalar load
-    # bs_ptr[row] matches torch's broadcast value. beam_scores must share
-    # log_probs' dtype so the in-kernel add keeps torch's type-promotion
-    # semantics. Everything else falls back to the pointwise kernel.
-    if log_probs.dtype != beam_scores.dtype:
-        return False
-    if log_probs.dtype == torch.bool:
-        return False
-    if not log_probs.is_contiguous() or not beam_scores.is_contiguous():
-        return False
-    numel = log_probs.numel()
-    if numel == 0:
-        return False
-    if numel > 2147483647:
-        return False
-    if beam_scores.dim() == 0:
-        return False
-    if beam_scores.dim() > log_probs.dim():
-        return False
-    V = log_probs.shape[-1]
-    n_rows = numel // V
-    if beam_scores.numel() != n_rows:
-        return False
-    bs_shape = beam_scores.shape
-    if bs_shape[0] != n_rows or any(dim != 1 for dim in bs_shape[1:]):
-        return False
-    try:
-        if torch.broadcast_shapes(beam_scores.shape, log_probs.shape) != tuple(
-            log_probs.shape
-        ):
-            return False
-    except RuntimeError:
-        return False
-    return _beam_search_score_rows_dispatch(log_probs, beam_scores, out)
 
 
 def _bss_promote_dtype(log_probs, beam_scores):
@@ -278,16 +334,11 @@ def beam_search_score(log_probs, beam_scores):
         Updated beam scores with shape [batch_size, vocab_size]
     """
     logger.debug("GEMS_ENFLAME BEAM_SEARCH_SCORE")
-    logger.debug("GEMS_ENFLAME BEAM_SEARCH_SCORE_")
 
-    log_probs_ndim = log_probs.dim()
-    beam_scores_ndim = beam_scores.dim()
-
-    if beam_scores_ndim < log_probs_ndim and beam_scores_ndim == 1:
+    # Only the documented [batch] + [batch, vocab] pairing is re-shaped; any
+    # other rank combination keeps torch's own broadcasting rules.
+    if beam_scores.dim() == 1 and log_probs.dim() > 1:
         beam_scores = beam_scores.unsqueeze(-1)
-
-    if torch.is_tensor(log_probs) and log_probs.device.type == "cpu":
-        return log_probs + beam_scores
 
     if log_probs.numel() == 0:
         return torch.empty(
@@ -296,13 +347,18 @@ def beam_search_score(log_probs, beam_scores):
             device=log_probs.device,
         )
 
+    # Common case: identical dtypes, so the output dtype is log_probs' dtype
+    # and the promotion helper (pure host cost) can be skipped entirely.
+    if beam_scores.dtype == log_probs.dtype and _fast_eligible(log_probs, beam_scores):
+        out = torch.empty_like(log_probs)
+        if _launch_seg_kernel(log_probs, beam_scores, out):
+            return out
+
     out = torch.empty(
         log_probs.shape,
         dtype=_bss_promote_dtype(log_probs, beam_scores),
         device=log_probs.device,
     )
-    if _beam_search_score_fast_path(log_probs, beam_scores, out):
-        return out
     return beam_search_score_kernel(log_probs, beam_scores, out0=out)
 
 
@@ -311,19 +367,12 @@ def beam_search_score_(log_probs, beam_scores):
 
     Computes Beam Search scores in-place, modifying log_probs directly.
     """
+    logger.debug("GEMS_ENFLAME BEAM_SEARCH_SCORE_")
 
-    log_probs_ndim = log_probs.dim()
-    beam_scores_ndim = beam_scores.dim()
-
-    if beam_scores_ndim < log_probs_ndim and beam_scores_ndim == 1:
+    if beam_scores.dim() == 1 and log_probs.dim() > 1:
         beam_scores = beam_scores.unsqueeze(-1)
 
-    if torch.is_tensor(log_probs) and log_probs.device.type == "cpu":
-        log_probs.copy_(log_probs + beam_scores)
-        return log_probs
-
-    if log_probs.numel() > 0 and _beam_search_score_fast_path(
-        log_probs, beam_scores, log_probs
-    ):
-        return log_probs
+    if log_probs.numel() > 0 and _fast_eligible(log_probs, beam_scores):
+        if _launch_seg_kernel(log_probs, beam_scores, log_probs):
+            return log_probs
     return beam_search_score_kernel(log_probs, beam_scores, out0=log_probs)

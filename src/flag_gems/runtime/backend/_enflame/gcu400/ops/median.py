@@ -1338,8 +1338,289 @@ def _copy_out(src, out, name):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Autograd support
+#
+# The GCU400 forward kernels only produce values/indices, so the two ATen
+# backward paths have to live in the backend as well:
+#   * global median -- the scalar gradient is spread evenly over every element
+#     equal to the median (NaNs match a NaN median);
+#   * median(dim)   -- the gradient is gathered back to the saved index of each
+#     slice (value_selecting_reduction_backward).
+# Both backwards are pure streaming kernels, so they use the GCU400 grid-stride
+# shape (48 resident programs, wide tiles) instead of one CTA per 1K elements.
+# ---------------------------------------------------------------------------
+
+_MEDIAN_BWD_SINGLE_LIMIT = 8192
+_MEDIAN_BWD_GRID = 48
+_MEDIAN_BWD_TILE = 8192
+_MEDIAN_BWD_DIM_TILE = 16384
+_MEDIAN_BWD_LAUNCH_CACHE = {}
+
+
+@libentry()
+@triton.jit
+def median_backward_single_kernel(
+    inp,
+    grad_output,
+    value,
+    out,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    """One-program ``evenly_distribute_backward`` for a small flat reduction."""
+    offsets = tl.arange(0, BLOCK)
+    valid = offsets < n_elements
+    # The two 0-D loads are issued first so their latency overlaps the bulk
+    # input loads and the cross-lane reduction.
+    grad = tl.load(grad_output)
+    median_value = tl.load(value)
+    data = tl.load(inp + offsets, mask=valid, other=0.0)
+    nan_value = median_value != median_value
+    # Keep the predicate arithmetic in int32: mixing the int1 tensor predicate
+    # with the scalar NaN flag and the mask through bitwise boolean ops
+    # miscompiles on the GCU400 backend for this kernel.
+    match = (data == median_value).to(tl.int32)
+    match += (data != data).to(tl.int32) * nan_value.to(tl.int32)
+    match *= valid.to(tl.int32)
+    count = tl.sum(match, axis=0)
+    scale = grad / count.to(grad.dtype)
+    tl.store(out + offsets, scale * match.to(grad.dtype), mask=valid)
+
+
+@libentry()
+@triton.jit
+def median_backward_count_kernel(
+    inp,
+    value,
+    count,
+    n_elements,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    median_value = tl.load(value)
+    nan_value = median_value != median_value
+    num_tile = (n_elements + BLOCK - 1) // BLOCK
+    partial = 0
+    for tile_id in tl.range(pid, num_tile, GRID):
+        offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        valid = offsets < n_elements
+        data = tl.load(inp + offsets, mask=valid, other=0.0)
+        match = (data == median_value).to(tl.int32)
+        match += (data != data).to(tl.int32) * nan_value.to(tl.int32)
+        match *= valid.to(tl.int32)
+        partial += tl.sum(match, axis=0)
+    # One atomic per program instead of one per tile keeps the scalar counter
+    # contention negligible.
+    tl.atomic_add(count, partial)
+
+
+@libentry()
+@triton.jit
+def median_backward_write_kernel(
+    inp,
+    grad_output,
+    value,
+    count,
+    out,
+    n_elements,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    median_value = tl.load(value)
+    nan_value = median_value != median_value
+    grad = tl.load(grad_output)
+    total = tl.load(count)
+    scale = grad / total.to(grad.dtype)
+    num_tile = (n_elements + BLOCK - 1) // BLOCK
+    for tile_id in tl.range(pid, num_tile, GRID):
+        offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        valid = offsets < n_elements
+        data = tl.load(inp + offsets, mask=valid, other=0.0)
+        match = (data == median_value).to(tl.int32)
+        match += (data != data).to(tl.int32) * nan_value.to(tl.int32)
+        match *= valid.to(tl.int32)
+        tl.store(out + offsets, scale * match.to(grad.dtype), mask=valid)
+
+
+@libentry()
+@triton.jit
+def median_dim_backward_kernel(
+    grad_values,
+    indices,
+    out,
+    total_elements,
+    reduction_size,
+    inner_size,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+):
+    """Gather-style ``value_selecting_reduction_backward``.
+
+    Every input-gradient element is written, so no separate zero-fill launch is
+    needed: an element keeps ``grad_values`` only when its offset along ``dim``
+    equals the median index the forward saved for that slice.
+    """
+    pid = tl.program_id(0)
+    num_tile = (total_elements + BLOCK - 1) // BLOCK
+    for tile_id in tl.range(pid, num_tile, GRID):
+        offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        valid = offsets < total_elements
+        inner_offsets = offsets % inner_size
+        outer_offsets = offsets // (reduction_size * inner_size)
+        dim_offsets = (offsets // inner_size) % reduction_size
+        src = outer_offsets * inner_size + inner_offsets
+        grad = tl.load(grad_values + src, mask=valid, other=0.0)
+        grad_indices = tl.load(indices + src, mask=valid, other=0)
+        tl.store(
+            out + offsets,
+            grad * (dim_offsets == grad_indices).to(grad.dtype),
+            mask=valid,
+        )
+
+
+def _median_backward_launch_config(n_elements):
+    """Launch shape for the single-program kernel, memoized per reduction size."""
+    config = _MEDIAN_BWD_LAUNCH_CACHE.get(n_elements)
+    if config is None:
+        block = triton.next_power_of_2(n_elements)
+        config = (block, min(32, max(1, block // 128)))
+        _MEDIAN_BWD_LAUNCH_CACHE[n_elements] = config
+    return config
+
+
+def _median_backward(grad_output, src, value):
+    n_elements = src.numel()
+    grad_input = torch.empty_like(src)
+    if n_elements == 0:
+        return grad_input
+    if n_elements <= _MEDIAN_BWD_SINGLE_LIMIT:
+        block, num_warps = _median_backward_launch_config(n_elements)
+        with torch_device_fn.device(src.device):
+            median_backward_single_kernel[(1,)](
+                src,
+                grad_output,
+                value,
+                grad_input,
+                n_elements,
+                BLOCK=block,
+                num_warps=num_warps,
+            )
+        return grad_input
+    tile = _MEDIAN_BWD_TILE
+    grid = (min(_MEDIAN_BWD_GRID, triton.cdiv(n_elements, tile)),)
+    count = torch.zeros((), dtype=torch.int32, device=src.device)
+    with torch_device_fn.device(src.device):
+        median_backward_count_kernel[grid](
+            src,
+            value,
+            count,
+            n_elements,
+            BLOCK=tile,
+            GRID=grid[0],
+            num_warps=4,
+        )
+        median_backward_write_kernel[grid](
+            src,
+            grad_output,
+            value,
+            count,
+            grad_input,
+            n_elements,
+            BLOCK=tile,
+            GRID=grid[0],
+            num_warps=4,
+        )
+    return grad_input
+
+
+def _median_dim_backward(grad_values, indices, input_shape, reduction_size, inner_size):
+    if len(input_shape) == 0:
+        # 0-dim input: median(x, dim=0) is the identity, so is its gradient
+        return grad_values.clone()
+    grad_input = torch.empty(
+        input_shape, dtype=grad_values.dtype, device=grad_values.device
+    )
+    total_elements = grad_input.numel()
+    if total_elements == 0:
+        return grad_input
+    grad_values = grad_values.contiguous()
+    indices = indices.contiguous()
+    tile = (
+        _MEDIAN_BWD_DIM_TILE
+        if total_elements > _MEDIAN_BWD_DIM_TILE
+        else (max(1024, triton.next_power_of_2(total_elements)))
+    )
+    grid = (min(_MEDIAN_BWD_GRID, triton.cdiv(total_elements, tile)),)
+    with torch_device_fn.device(grad_values.device):
+        median_dim_backward_kernel[grid](
+            grad_values,
+            indices,
+            grad_input,
+            total_elements,
+            reduction_size,
+            inner_size,
+            BLOCK=tile,
+            GRID=grid[0],
+            num_warps=4,
+        )
+    return grad_input
+
+
+class _MedianGlobal(torch.autograd.Function):
+    """Autograd entry for the global reduction ``median``."""
+
+    @staticmethod
+    def forward(ctx, inp):
+        contiguous = _anonymous(inp).contiguous()
+        value = _median_flat(contiguous)
+        ctx.save_for_backward(contiguous, value)
+        return value
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        contiguous, value = ctx.saved_tensors
+        return _median_backward(grad_output, contiguous, value)
+
+
+class _MedianDimFn(torch.autograd.Function):
+    """Autograd entry for ``median(input, dim, keepdim)``.
+
+    ``indices`` is an integer output and carries no gradient; the gradient of
+    ``values`` is scattered back to the element each saved index selected.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        values, indices = _median_dim_forward(inp, dim, keepdim)
+        dim_int = _name_to_dim(inp, dim) if isinstance(dim, str) else dim
+        dim_int = _canonical_dim(inp.ndim, dim_int)
+        ctx.input_shape = tuple(inp.shape)
+        ctx.reduction_size = inp.shape[dim_int] if inp.ndim else 0
+        ctx.inner_size = math.prod(inp.shape[dim_int + 1 :]) if inp.ndim else 1
+        ctx.mark_non_differentiable(indices)
+        ctx.save_for_backward(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        (indices,) = ctx.saved_tensors
+        grad_input = _median_dim_backward(
+            grad_values,
+            indices,
+            ctx.input_shape,
+            ctx.reduction_size,
+            ctx.inner_size,
+        )
+        return grad_input, None, None
+
+
 def median(inp):
     logger.debug("GEMS_ENFLAME MEDIAN")
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return _MedianGlobal.apply(inp)
     return _median_flat(inp)
 
 
@@ -1421,7 +1702,12 @@ def median_out(inp, *, out):
 
 def median_dim(inp, dim=0, keepdim=False):
     logger.debug("GEMS_ENFLAME MEDIAN.DIM")
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return _MedianDimFn.apply(inp, dim, keepdim)
+    return _median_dim_forward(inp, dim, keepdim)
 
+
+def _median_dim_forward(inp, dim=0, keepdim=False):
     if isinstance(dim, str):
         dim = _name_to_dim(inp, dim)
     dim = _canonical_dim(inp.ndim, dim)
@@ -1531,7 +1817,7 @@ def median_dim(inp, dim=0, keepdim=False):
 
 def median_dim_values(inp, dim=0, keepdim=False, *, values, indices):
     logger.debug("GEMS_ENFLAME MEDIAN.DIM_VALUES")
-    result = median_dim(inp, dim=dim, keepdim=keepdim)
+    result = _median_dim_forward(inp, dim=dim, keepdim=keepdim)
     _copy_out(result.values, values, "values")
     _copy_out(result.indices, indices, "indices")
     return MedianResult(values=values, indices=indices)

@@ -214,7 +214,7 @@ def grouped_mm_w8a8(
     m_rows: torch.Tensor,
 ) -> None:
     """Writes the W8A8 grouped NT GEMM result into the caller BF16 output."""
-    logger.debug("GEMS GROUPED_MM_W8A8")
+    logger.debug("GEMS_ENFLAMEGROUPED_MM_W8A8")
     if mat_a.ndim != 2 or mat_b.ndim != 3:
         raise ValueError("mat_a must be [M,K] and mat_b must be [E,N,K]")
 

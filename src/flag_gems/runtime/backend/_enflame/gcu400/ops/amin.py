@@ -588,7 +588,7 @@ def _amin_classify(inp, dim):
 
 
 def amin(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMIN")
+    logger.debug("GEMS_ENFLAMEAMIN")
     assert inp.dtype in AMIN_SUPPORTED_DTYPES, "amin supports float and int dtypes"
     kind, reduced, out_shape, plan = _amin_classify(inp, dim)
     if kind == "full":

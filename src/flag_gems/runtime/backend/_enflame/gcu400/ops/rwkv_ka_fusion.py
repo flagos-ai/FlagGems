@@ -116,7 +116,7 @@ def rwkv_ka_fusion_kernel(
 def rwkv_ka_fusion(
     k: torch.Tensor, kk: torch.Tensor, a: torch.Tensor, ka: torch.Tensor, H: int, N: int
 ):
-    logger.debug("GEMS RWKV_KA_FUSION")
+    logger.debug("GEMS_ENFLAMERWKV_KA_FUSION")
     if k.dim() == 1:
         T = 1
         C = k.shape[0]
@@ -132,17 +132,21 @@ def rwkv_ka_fusion(
         # fp32 exact-product square chain with reciprocal norm: margin 0.69
         # of tolerance; BLOCK_T=128 would need >917504B DSM on every probed
         # chain variant, so it stays at the DSM-fitting 64.
-        bt_cap, square_f32, ok_first = 64, True, False
+        # num_warps=1 plus the early o_k store measured 300us against 355us for
+        # the num_warps=4 late-store order at T=4096, so this wins on 16-bit.
+        bt_cap, square_f32, ok_first, num_warps = 64, True, True, 1
     elif dtype == torch.bfloat16:
         # elem square + fp32 reciprocal chain: margins <= 0.55 of tolerance.
         # BLOCK_T=128 needs 1187840B DSM > 917504B limit on every probed
         # chain variant, so it stays at 64.
-        bt_cap, square_f32, ok_first = 64, False, False
+        bt_cap, square_f32, ok_first, num_warps = 64, False, True, 1
     elif dtype == torch.float32:
         # OK_FIRST store order trims liveness enough that BT=64 compiles,
         # but measured 327us vs 301us at BT=32 (T=32768); the late-store
         # order at BT=32 was 406us, so 32 + OK_FIRST is the sweet spot.
-        bt_cap, square_f32, ok_first = 32, False, True
+        # fp32 keeps num_warps=4: the 32-bit tiles are the DSM-critical ones
+        # and the single-warp variant measured 0.0908ms vs 0.0905ms.
+        bt_cap, square_f32, ok_first, num_warps = 32, False, True, 4
     else:
         raise NotImplementedError(f"rwkv_ka_fusion: unsupported dtype {dtype}")
 
@@ -172,7 +176,7 @@ def rwkv_ka_fusion(
         EVEN_HN,
         square_f32,
         ok_first,
-        num_warps=4,
+        num_warps=num_warps,
     )
 
     return o_k, o_kk, o_kka

@@ -543,12 +543,12 @@ def _launch_grid(theta, N, H, W, out):
 
 
 def cudnn_affine_grid_generator(theta, N, C, H, W):
-    logger.debug("GEMS CUDNN_AFFINE_GRID_GENERATOR")
+    logger.debug("GEMS_ENFLAMECUDNN_AFFINE_GRID_GENERATOR")
     return _cudnn_affine_grid_generator_impl(theta, N, C, H, W)
 
 
 def cudnn_affine_grid_generator_out(theta, N, C, H, W, *, out):
-    logger.debug("GEMS CUDNN_AFFINE_GRID_GENERATOR_OUT")
+    logger.debug("GEMS_ENFLAMECUDNN_AFFINE_GRID_GENERATOR_OUT")
     if out is None:
         return _cudnn_affine_grid_generator_impl(theta, N, C, H, W)
     return _cudnn_affine_grid_generator_impl(theta, N, C, H, W, out=out)

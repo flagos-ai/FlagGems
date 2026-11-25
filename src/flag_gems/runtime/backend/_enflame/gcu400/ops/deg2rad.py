@@ -138,15 +138,26 @@ def _flat_path_ok(A):
     )
 
 
+def _deg2rad_forward(x: torch.Tensor):
+    """Forward launch without the autograd bridge (used by the bridge itself)."""
+    out = torch.empty_like(x)
+    _launch_flat(x, out, False)
+    return out
+
+
 def deg2rad(x: torch.Tensor):
     logger.debug("GEMS_ENFLAME DEG2RAD")
     if not _flat_path_ok(x):
         from flag_gems.ops.deg2rad import deg2rad as _public
 
         return _public(x)
-    out = torch.empty_like(x)
-    _launch_flat(x, out, False)
-    return out
+    # The flat launcher is a plain Python function, so routing a requiring-grad
+    # input through it would drop the graph edge the backward test asserts on.
+    if torch.is_grad_enabled() and x.requires_grad and not x.is_complex():
+        from .deg2rad_backward import Deg2RadFunction
+
+        return Deg2RadFunction.apply(x)
+    return _deg2rad_forward(x)
 
 
 def deg2rad_(x: torch.Tensor):

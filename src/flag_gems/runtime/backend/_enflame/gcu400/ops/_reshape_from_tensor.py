@@ -757,7 +757,7 @@ class _ReshapeFromTensor(torch.autograd.Function):
 
 
 def _reshape_from_tensor(self, shape):
-    logger.debug("GEMS _RESHAPE_FROM_TENSOR")
+    logger.debug("GEMS_ENFLAME_RESHAPE_FROM_TENSOR")
     dims = _make_target(shape, self.numel())
     # computeStride is the port of the ATen helper behind view: consulting it in
     # Python first keeps the frequent "not viewable" case from paying for the

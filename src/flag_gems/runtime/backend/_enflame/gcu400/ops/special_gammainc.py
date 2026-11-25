@@ -186,7 +186,7 @@ def _launch(a_c: torch.Tensor, x_c: torch.Tensor, out: torch.Tensor):
 
 def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
     """Elementwise P(a, x); each element is written by exactly one of the two kernels."""
-    logger.debug("GEMS SPECIAL_GAMMAINC")
+    logger.debug("GEMS_ENFLAMESPECIAL_GAMMAINC")
     if a.shape != x.shape:
         a, x = torch.broadcast_tensors(a, x)
     a_c = a.contiguous()

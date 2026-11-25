@@ -127,6 +127,24 @@ def test_median_dim_values():
     bench.run()
 
 
+def _entry_numel(entry):
+    """Element count of a core-shape entry that may carry trailing arguments.
+
+    `median_dim` shapes are either a bare shape (`[1536, 640]`) or
+    `[shape, dim, keepdim]`; the backward VRAM filter needs the shape part only.
+    Returns 0 for entries it cannot interpret so they are kept, not dropped.
+    """
+    shape = entry[0] if entry and isinstance(entry[0], (list, tuple)) else entry
+    if not isinstance(shape, (list, tuple)):
+        return 0
+    numel = 1
+    for dim in shape:
+        if not isinstance(dim, int):
+            return 0
+        numel *= dim
+    return numel
+
+
 class _ForwardShapeBenchmark:
     """Resolve the core shapes of the forward operator for a backward bench.
 
@@ -141,7 +159,25 @@ class _ForwardShapeBenchmark:
         if op_name.endswith("_backward"):
             self.op_name = op_name[: -len("_backward")]
         try:
-            super().set_shapes(shape_file_path)
+            if flag_gems.vendor_name == "enflame" and self.is_backward:
+                # `Benchmark.set_shapes` applies its backward VRAM filter with
+                # `math.prod()` over every core-shape entry. `median_dim` also
+                # ships argument tuples such as `[[32, 384, 128], 1, false]`,
+                # where `math.prod()` raises TypeError before any kernel runs.
+                # Load without that filter, then apply it to the shape part of
+                # each entry so the memory budget is still honoured.
+                self.is_backward = False
+                try:
+                    super().set_shapes(shape_file_path)
+                finally:
+                    self.is_backward = True
+                limit = self.MAX_BACKWARD_ELEMENTS
+                if limit is not None:
+                    kept = [s for s in self.shapes if _entry_numel(s) <= limit]
+                    if kept:
+                        self.shapes = kept
+            else:
+                super().set_shapes(shape_file_path)
         finally:
             self.op_name = op_name
 
@@ -183,6 +219,13 @@ def test_median_backward():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::median.dim_values has no usable GCU kernel; the native call "
+        "aborts the process (SIGABRT), so there is no native baseline to time"
+    ),
+)
 @pytest.mark.median_backward
 def test_median_dim_backward():
     bench = MedianDimBackwardBenchmark(

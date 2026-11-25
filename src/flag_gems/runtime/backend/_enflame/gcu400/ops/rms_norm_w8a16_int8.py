@@ -393,7 +393,7 @@ def _rows_per_cta(m, block_n):
 def rms_norm_w8a16_int8(
     x, normalized_shape, weight_q, weight_scale, eps=1e-5, group_size=128
 ):
-    logger.debug("GEMS RMS_NORM_W8A16_INT8")
+    logger.debug("GEMS_ENFLAMERMS_NORM_W8A16_INT8")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

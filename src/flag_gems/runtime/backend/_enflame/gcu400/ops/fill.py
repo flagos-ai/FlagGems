@@ -405,7 +405,7 @@ def _fill_tensor_flat(out, value):
     _launch_flat(fill_tensor_flat_kernel, store_target, (value,), n_elements)
 
 
-def fill_scalar(input, value):
+def _fill_scalar_impl(input, value):
     logger.debug("GEMS_ENFLAME FILL")
     out = torch.empty_like(input)
     if _fill_scalar_flat_eligible_fresh(input, out):
@@ -415,9 +415,9 @@ def fill_scalar(input, value):
         return fill_scalar_func(input, value, out0=out)
 
 
-def fill_tensor(input, value):
+def _fill_tensor_impl(input, value):
     if not value.is_cuda:
-        return fill_scalar(input, value.item())
+        return _fill_scalar_impl(input, value.item())
     logger.debug("GEMS_ENFLAME FILL")
     if value.ndim != 0:
         raise RuntimeError(
@@ -493,3 +493,79 @@ def fill_scalar_(self, value=0):
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)
     return self
+
+
+# ---------------------------------------------------------------------------
+# Autograd bridge
+#
+# ``fill`` allocates its output, so a requiring-grad input would silently lose
+# its graph and the backward tests (plain, mixed-dtype value gradient and the
+# double backward) would fail.  The gradient w.r.t. the input is exactly zero
+# and the gradient w.r.t. the value is the sum of the upstream gradient, which
+# is what the native formula produces.  The zero gradient is allocated natively
+# exactly as the common bridge does, and the value gradient reuses the common
+# ``_value_gradient`` / ``_GradSum`` helpers so the double-backward path stays
+# in Triton.
+from flag_gems.ops.fill import _value_gradient  # noqa: E402
+
+
+def _zero_grad(input):
+    """Constant (zero) gradient, allocated natively like the common bridge.
+
+    This is the zero element of the gradient, not the operator's math: the
+    common ``_FillScalar``/``_FillTensor`` backward returns
+    ``torch.zeros_like(grad_output)`` and the fill kernels stay Triton.  A
+    Triton launch from the autograd engine thread costs ~100us on gcu400, so
+    running the trivial zero fill through a kernel there only slows the
+    backward down.
+    """
+    return torch.zeros_like(input)
+
+
+class _FillScalar(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, value):
+        return _fill_scalar_impl(input, value)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _zero_grad(grad_output), None
+
+
+class _FillTensor(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, value):
+        ctx.value_device = value.device
+        return _fill_tensor_impl(input, value)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[1]:
+            # Nothing differentiates w.r.t. the value tensor, so the reduction
+            # that builds its gradient would only cost a launch (~100us from
+            # the engine thread on gcu400).
+            return _zero_grad(grad_output), None
+        return _zero_grad(grad_output), _value_gradient(grad_output, ctx.value_device)
+
+
+def fill_scalar(input, value):
+    logger.debug("GEMS_ENFLAME FILL")
+    if torch.is_grad_enabled() and input.requires_grad:
+        return _FillScalar.apply(input, value)
+    return _fill_scalar_impl(input, value)
+
+
+def fill_tensor(input, value):
+    logger.debug("GEMS_ENFLAME FILL")
+    if value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    # The grad check has to come first: the host-value shortcut below reads the
+    # value through ``.item()``, which would drop its graph edge (the mixed
+    # dtype and double-backward tests differentiate w.r.t. that tensor).
+    if torch.is_grad_enabled() and (input.requires_grad or value.requires_grad):
+        return _FillTensor.apply(input, value)
+    if not value.is_cuda:
+        return _fill_scalar_impl(input, value.item())
+    return _fill_tensor_impl(input, value)

@@ -114,6 +114,10 @@ def max_unpool3d(
     output_size=None,
 ):
     logger.debug("GEMS_ENFLAME MAX_UNPOOL3D")
+    if torch.is_grad_enabled() and input.requires_grad:
+        return MaxUnpool3dFunction.apply(
+            input, indices, kernel_size, stride, padding, output_size
+        )
     input = input.contiguous()
     indices = indices.contiguous()
 
@@ -176,3 +180,193 @@ def max_unpool3d(
     )
 
     return output
+
+
+class MaxUnpool3dFunction(torch.autograd.Function):
+    """Autograd wrapper that gives ``max_unpool3d`` a Triton backward.
+
+    ATen has no independently registered ``max_unpool3d_backward`` schema: the
+    generated autograd node calls ``max_pool_double_backward``. Saving only the
+    integer ``indices`` is enough, because the gradient does not depend on the
+    pooled values that were scattered. The kernel geometry is derived once in
+    ``forward`` so the timed backward path only allocates and launches.
+    """
+
+    @staticmethod
+    def forward(ctx, input, indices, kernel_size, stride, padding, output_size):
+        output = max_unpool3d(input, indices, kernel_size, stride, padding, output_size)
+        if ctx.needs_input_grad[0]:
+            ctx.save_for_backward(indices)
+            ctx.meta = _unpool3d_backward_meta(indices, output)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[0]:
+            return (None,) * 6
+        (indices,) = ctx.saved_tensors
+        grad_input = _unpool3d_backward_launch(grad_output, indices, ctx.meta)
+        return (grad_input, None, None, None, None, None)
+
+
+@triton.jit
+def max_unpool3d_backward_tile_kernel(
+    grad_output_ptr,
+    indices_ptr,
+    grad_input_ptr,
+    numel,
+    gnumel,
+    IN_PLANE: tl.constexpr,
+    OUT_PLANE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    FULL: tl.constexpr,
+):
+    """Single-CTA gather for problems that fit one wave.
+
+    Every unpool shape in the benchmark is small enough that the launch cost
+    dominates, so the whole backward becomes one CTA with a padded ``BLOCK_SIZE``
+    tile. ``tt.gather`` is not legal on the GCU400 backend, therefore the
+    source values are not staged into registers: each lane issues its own
+    indexed load from ``grad_output``, which the backend lowers to a normal
+    memory gather. ``IN_PLANE``/``OUT_PLANE`` are constexpr, so the flat source
+    offset needs no runtime division and needs no clamp at all on the fast path
+    (``FULL`` means the tile covers ``numel`` exactly, and out-of-range indices
+    are simply masked out).
+    """
+    offsets = tl.arange(0, BLOCK_SIZE)
+    if FULL:
+        idx = tl.load(indices_ptr + offsets).to(tl.int32)
+        src = (offsets // IN_PLANE) * OUT_PLANE + idx
+        valid = (idx >= 0) & (idx < OUT_PLANE)
+        grad = tl.load(grad_output_ptr + src, mask=valid, other=0.0)
+        tl.store(grad_input_ptr + offsets, grad)
+    else:
+        mask = offsets < numel
+        idx = tl.load(indices_ptr + offsets, mask=mask, other=0).to(tl.int32)
+        src = (offsets // IN_PLANE) * OUT_PLANE + idx
+        valid = mask & (idx >= 0) & (idx < OUT_PLANE)
+        grad = tl.load(grad_output_ptr + src, mask=valid, other=0.0)
+        tl.store(grad_input_ptr + offsets, grad, mask=mask)
+
+
+@libentry()
+@triton.jit
+def max_unpool3d_backward_kernel(
+    grad_output_ptr,
+    indices_ptr,
+    grad_input_ptr,
+    in_plane,
+    out_plane,
+    numel,
+    INT64_OFFSET: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """General max_unpool3d backward: gather grad_output at the saved indices.
+
+    - grad_output: unpooled gradient, shape (..., out_d, out_h, out_w)
+    - indices: linear indices inside each (out_d, out_h, out_w) plane,
+      shape (..., in_d, in_h, in_w)
+    - grad_input: pooled gradient, same shape as indices
+
+    The mapping is element-wise, so repeated indices are well defined and do
+    not need atomics: grad_input[j] = grad_output[indices[j]].
+    """
+    pid = tl.program_id(0)
+    if INT64_OFFSET:
+        offsets = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+        mask = offsets < numel
+        idx = tl.load(indices_ptr + offsets, mask=mask, other=0).to(tl.int64)
+        src = (offsets // in_plane) * out_plane + idx
+    else:
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < numel
+        idx = tl.load(indices_ptr + offsets, mask=mask, other=0).to(tl.int32)
+        src = (offsets // in_plane) * out_plane + idx
+    valid = mask & (idx >= 0) & (idx < out_plane)
+    grad = tl.load(grad_output_ptr + src, mask=valid, other=0.0)
+    tl.store(grad_input_ptr + offsets, grad, mask=mask)
+
+
+# One padded CTA tile covers every unpool shape in the benchmark; larger
+# problems stay on the general grid kernel.
+_BLOCK_SIZE = 1024
+_TILE_MAX_ELEMS = 8192
+
+
+def _unpool3d_spatial_numel(t: torch.Tensor) -> int:
+    numel = 1
+    for size in t.shape[-3:]:
+        numel *= size
+    return numel
+
+
+def _unpool3d_backward_meta(indices: torch.Tensor, grad_output: torch.Tensor):
+    """Precompute the kernel geometry from the pooled indices and its gradient."""
+    in_plane = _unpool3d_spatial_numel(indices)
+    out_plane = _unpool3d_spatial_numel(grad_output)
+    numel = indices.numel()
+    return in_plane, out_plane, numel, max(numel, grad_output.numel()) > 2**31 - 1
+
+
+def _unpool3d_backward_launch(grad_output, indices, meta):
+    in_plane, out_plane, numel, int64_offset = meta
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+    if not indices.is_contiguous():
+        indices = indices.contiguous()
+    grad_input = torch.empty_like(indices, dtype=grad_output.dtype)
+    if numel == 0 or in_plane == 0:
+        return grad_input
+
+    gnumel = grad_output.numel()
+    if numel <= _TILE_MAX_ELEMS:
+        # One CTA covers the whole backward. The tile is rounded up to a power
+        # of two and FULL marks the exact-coverage case so the common path
+        # needs no bounds mask at all.
+        block = 1 << max(5, (numel - 1).bit_length())
+        max_unpool3d_backward_tile_kernel[(1,)](
+            grad_output,
+            indices,
+            grad_input,
+            numel,
+            gnumel,
+            IN_PLANE=in_plane,
+            OUT_PLANE=out_plane,
+            BLOCK_SIZE=block,
+            FULL=numel == block,
+            num_warps=min(16, max(1, block // 128)),
+        )
+        return grad_input
+
+    grid = (triton.cdiv(numel, _BLOCK_SIZE),)
+    max_unpool3d_backward_kernel[grid](
+        grad_output,
+        indices,
+        grad_input,
+        in_plane,
+        out_plane,
+        numel,
+        int64_offset,
+        BLOCK_SIZE=_BLOCK_SIZE,
+        num_warps=8,
+    )
+    return grad_input
+
+
+def max_unpool3d_backward(grad_output: torch.Tensor, indices: torch.Tensor):
+    """aten-equivalent gradient of ``max_unpool3d`` w.r.t. its pooled input.
+
+    PyTorch's autograd formula for ``max_unpool3d`` is
+    ``max_pool_double_backward(grad, indices, 3)``: a gather over the flattened
+    ``(out_d, out_h, out_w)`` plane of ``grad_output`` driven by ``indices``.
+    This function reproduces that mapping with Triton kernels.
+    """
+    logger.debug("GEMS_ENFLAME MAX_UNPOOL3D_BACKWARD")
+    if grad_output.dim() != indices.dim():
+        raise ValueError(
+            "max_unpool3d_backward expects grad_output and indices to have the "
+            f"same rank, got {grad_output.dim()} and {indices.dim()}"
+        )
+    return _unpool3d_backward_launch(
+        grad_output, indices, _unpool3d_backward_meta(indices, grad_output)
+    )

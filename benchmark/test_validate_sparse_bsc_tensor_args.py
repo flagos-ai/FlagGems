@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -71,6 +73,12 @@ class SparseValidationBenchmark(base.Benchmark):
                 yield comp, plain, values, size
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame GCU aborts inside the aten _validate_sparse_bsc_tensor_args "
+    "baseline (the BSC argument check is not lowered on this backend), so no "
+    "baseline latency can be measured",
+)
 @pytest.mark.validate_sparse_bsc_tensor_args
 @pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test_validate_sparse_bsc_tensor_args():

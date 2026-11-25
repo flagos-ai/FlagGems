@@ -400,7 +400,7 @@ def _lift_payload(t, dtype):
 
 def _sparse_sum_backward(grad, self, dim, out=None):
 
-    logger.debug("GEMS SPARSE_SUM_BACKWARD")
+    logger.debug("GEMS_ENFLAMESPARSE_SUM_BACKWARD")
     if not getattr(self, "is_sparse", False) or self.layout != torch.sparse_coo:
         raise RuntimeError("_sparse_sum_backward: self must be a sparse COO tensor")
 

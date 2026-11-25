@@ -110,6 +110,87 @@ def fused_add_rms_norm_kernel(
                 tl.store(row_in + cols2, yi, mask=mask2)
 
 
+@triton.jit(do_not_specialize=["eps", "inv_N"])
+def fused_add_rms_norm_kernel_2d(
+    input_ptr,
+    residual_ptr,
+    w_ptr,
+    M,
+    N,
+    eps,
+    inv_N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Row-tiled variant: one tile covers BLOCK_M whole rows.
+
+    The row-at-a-time kernel above spends ~8us per row when N is tiny (a
+    1-element row is a chain of dependent 4-byte accesses), which dominates
+    shapes such as (10000, 1) or (100, 256, 100). Rows are contiguous, so a
+    (BLOCK_M, BLOCK_N) tile turns those cases into one streaming load and the
+    per-row mean becomes a reduction along axis 1.
+    """
+    cdtype = tl.float32
+
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
+
+    cols = tl.arange(0, BLOCK_N)
+    col_mask = cols < N
+    # weight is shared by every row, load it once per program
+    w = tl.load(w_ptr + cols, mask=col_mask, other=0.0).to(cdtype)
+    rows_off = tl.arange(0, BLOCK_M)
+    num_row_tiles = (M + BLOCK_M - 1) // BLOCK_M
+
+    for tile in tl.range(pid, num_row_tiles, step, num_stages=1):
+        rows = tile * BLOCK_M + rows_off
+        offs = rows[:, None] * N + cols[None, :]
+        mask = (rows < M)[:, None] & col_mask[None, :]
+        x = tl.load(input_ptr + offs, mask=mask, other=0.0).to(cdtype)
+        r = tl.load(residual_ptr + offs, mask=mask, other=0.0).to(cdtype)
+        t = x + r
+        tl.store(residual_ptr + offs, t, mask=mask)
+        var = tl.sum(t * t, axis=1) * inv_N
+        rrms = tl.math.rsqrt(var + eps)
+        y = t * rrms[:, None] * w[None, :]
+        tl.store(input_ptr + offs, y.to(x.dtype), mask=mask)
+
+
+# (BLOCK_M, minimum M) per BLOCK_N, measured on GCU400:
+# the wide 512-column tile only pays off once M is large enough to fill the
+# machine, below that the row-at-a-time kernel is up to 2.6x faster.
+_TILED_ROW_TABLE = {
+    1: (512, 1024),
+    2: (512, 1024),
+    4: (256, 1024),
+    8: (256, 1024),
+    16: (256, 1024),
+    32: (256, 1024),
+    64: (128, 1024),
+    128: (128, 1024),
+    256: (128, 1024),
+    512: (64, 4096),
+    1024: (32, 512),
+    2048: (16, 4096),
+    4096: (8, 4096),
+}
+
+
+def _pick_tiled_rows(M, N):
+    """Return (BLOCK_M, BLOCK_N) for the row-tiled kernel, or None."""
+    block_n = triton.next_power_of_2(N)
+    entry = _TILED_ROW_TABLE.get(block_n)
+    if entry is None:
+        return None
+    block_m, min_rows = entry
+    if M < min_rows:
+        return None
+    # keep at least a handful of waves so the 48 fixed CTAs stay busy
+    if triton.cdiv(M, block_m) < 8:
+        return None
+    return block_m, block_n
+
+
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     logger.debug(
         "GEMS_ENFLAME FUSED_ADD_RMS_NORM, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
@@ -128,9 +209,28 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     residual = residual.contiguous()
     weight = weight.contiguous()
 
+    inv_N = 1.0 / N
+    tiled = _pick_tiled_rows(M, N)
+    if tiled is not None:
+        block_m, tiled_n = tiled
+        tiled_grid = min(_GRID_SIZE, triton.cdiv(M, block_m))
+        with torch_device_fn.device(x.device):
+            fused_add_rms_norm_kernel_2d[(tiled_grid,)](
+                x,
+                residual,
+                weight,
+                M,
+                N,
+                eps,
+                inv_N,
+                BLOCK_M=block_m,
+                BLOCK_N=tiled_n,
+                num_warps=1,
+            )
+        return x, residual
+
     grid_size = min(_GRID_SIZE, M)
     nw = _num_warps(M, N)
-    inv_N = 1.0 / N
 
     with torch_device_fn.device(x.device):
         fused_add_rms_norm_kernel[(grid_size,)](

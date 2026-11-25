@@ -340,7 +340,7 @@ def _dense_self(self):
 
 def sparse_mask(self, mask, out=None):
 
-    logger.debug("GEMS SPARSE_MASK")
+    logger.debug("GEMS_ENFLAMESPARSE_MASK")
     if not isinstance(self, torch.Tensor) or not isinstance(mask, torch.Tensor):
         raise TypeError("sparse_mask expects two tensors")
 
@@ -392,5 +392,5 @@ def sparse_mask(self, mask, out=None):
 
 def sparse_mask_out(self, mask, out):
     """``aten::sparse_mask.out`` overload."""
-    logger.debug("GEMS SPARSE_MASK.OUT")
+    logger.debug("GEMS_ENFLAMESPARSE_MASK.OUT")
     return sparse_mask(self, mask, out=out)

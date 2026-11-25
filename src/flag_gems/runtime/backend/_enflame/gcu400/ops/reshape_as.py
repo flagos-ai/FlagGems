@@ -503,7 +503,7 @@ def reshape_as(self: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
     target returns a view of ``self``, anything else a materialized copy.
     """
     # The dispatch test greps this exact string; keep the shared wording.
-    logger.debug("GEMS RESHAPE_AS")
+    logger.debug("GEMS_ENFLAMERESHAPE_AS")
     if not isinstance(self, torch.Tensor):
         raise TypeError("reshape_as expects a torch.Tensor input for 'self'")
     if not isinstance(other, torch.Tensor):

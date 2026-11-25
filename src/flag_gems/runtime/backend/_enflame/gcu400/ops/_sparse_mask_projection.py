@@ -351,7 +351,7 @@ def _write_out(out, result):
 
 def _sparse_mask_projection(self, mask, accumulate_matches=False, out=None):
 
-    logger.debug("GEMS SPARSE_MASK_PROJECTION")
+    logger.debug("GEMS_ENFLAMESPARSE_MASK_PROJECTION")
     if not isinstance(self, torch.Tensor) or not isinstance(mask, torch.Tensor):
         raise TypeError("_sparse_mask_projection expects two tensors")
     if not isinstance(accumulate_matches, bool):

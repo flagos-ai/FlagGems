@@ -24,6 +24,11 @@
 # - i32 addptr chains truncate element offsets >= 2**31, and paged KV caches
 #   beyond that size are routine, so every scalar cache offset term folds
 #   into one i64 expression before the stores.
+# - The destination offset inside the block is the flat token-local index:
+#   ``(i // head_size) * head_size + i % head_size`` is exactly ``i`` for
+#   every tile element, so the per-element integer div/mod pair is dropped.
+# - ``k_scale``/``v_scale`` are part of the public ABI but unused (fp8 caches
+#   are not supported yet), so they are not passed to the kernel at all.
 
 import logging
 import os
@@ -72,9 +77,9 @@ def reshape_and_cache_flash_kernel(
     num_heads,
     head_size,
     block_size,
-    k_scale,
-    v_scale,
-    n: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     token_idx = tl.program_id(0)
     slot_idx = tl.load(slot_words + token_idx * slot_word_stride)
@@ -83,27 +88,28 @@ def reshape_and_cache_flash_kernel(
 
     block_idx = slot_idx // block_size
     block_offset = slot_idx % block_size
-    i = tl.arange(0, triton.next_power_of_2(n))
-    mask = i < n
+    i = tl.arange(0, BLOCK)
 
     src_key_idx = token_idx * key_stride + i
     src_value_idx = token_idx * value_stride + i
-    head_idx = i // head_size
-    head_offset = i % head_size
     # Fold every scalar cache offset term into one i64 expression: i32 addptr
     # chains truncate element offsets >= 2**31 elements.
     cache_base = (
         block_idx.to(tl.int64) * block_stride
         + block_offset.to(tl.int64) * num_heads * head_size
     )
-    tgt_offsets = head_idx * head_size + head_offset
 
-    tgt_key = tl.load(key + src_key_idx, mask=mask)
-    tgt_value = tl.load(value + src_value_idx, mask=mask)
-
-    # TODO: support fp8 dtype
-    tl.store(key_cache + cache_base + tgt_offsets, tgt_key, mask=mask)
-    tl.store(value_cache + cache_base + tgt_offsets, tgt_value, mask=mask)
+    if EVEN:
+        tgt_key = tl.load(key + src_key_idx)
+        tgt_value = tl.load(value + src_value_idx)
+        tl.store(key_cache + cache_base + i, tgt_key)
+        tl.store(value_cache + cache_base + i, tgt_value)
+    else:
+        mask = i < N
+        tgt_key = tl.load(key + src_key_idx, mask=mask)
+        tgt_value = tl.load(value + src_value_idx, mask=mask)
+        tl.store(key_cache + cache_base + i, tgt_key, mask=mask)
+        tl.store(value_cache + cache_base + i, tgt_value, mask=mask)
 
 
 def reshape_and_cache_flash(
@@ -128,23 +134,37 @@ def reshape_and_cache_flash(
             k_scale,
             v_scale,
         )
-    else:
-        logger.debug("GEMS_ENFLAME RESHAPE_AND_CACHE_FLASH")
-        num_tokens = slot_mapping.size(0)
-        num_heads = key.size(1)
-        head_size = key.size(2)
-        block_size = key_cache.size(1)
+        return
 
-        key_stride = key.stride(0)
-        value_stride = value.stride(0)
-        block_stride = key_cache.stride(0)
-        assert key_cache.stride(0) == value_cache.stride(0)
+    logger.debug("GEMS_ENFLAME RESHAPE_AND_CACHE_FLASH")
+    num_tokens = slot_mapping.size(0)
+    num_heads = key.size(1)
+    head_size = key.size(2)
+    block_size = key_cache.size(1)
+    if num_tokens == 0:
+        return
 
-        slot_words, slot_word_stride = _slot_words(slot_mapping)
+    key_stride = key.stride(0)
+    value_stride = value.stride(0)
+    block_stride = key_cache.stride(0)
+    assert key_cache.stride(0) == value_cache.stride(0)
 
-        grid = (num_tokens,)
+    slot_words, slot_word_stride = _slot_words(slot_mapping)
+
+    n = num_heads * head_size
+    block = triton.next_power_of_2(n)
+    # One CTA per token, tile width = whole token row. A GCU400 sweep over
+    # splits x num_warps shows that splitting the row across CTAs is strictly
+    # worse (the per-CTA scalar prologue is paid per split), and that the row
+    # copy is element-rate bound: 2-byte dtypes want a single warp, 4-byte
+    # dtypes two.
+    num_warps = 1 if key.element_size() <= 2 else 2
+    # The device guard costs ~5us of host time on GCU400, so it is only entered
+    # when the operands live on a non-current device.
+    device_index = key.device.index
+    if device_index is not None and device_index != torch_device_fn.current_device():
         with torch_device_fn.device(key.device):
-            reshape_and_cache_flash_kernel[grid](
+            reshape_and_cache_flash_kernel[(num_tokens,)](
                 key,
                 value,
                 key_cache,
@@ -157,7 +177,27 @@ def reshape_and_cache_flash(
                 num_heads,
                 head_size,
                 block_size,
-                k_scale,
-                v_scale,
-                num_heads * head_size,
+                N=n,
+                BLOCK=block,
+                EVEN=n == block,
+                num_warps=num_warps,
             )
+    else:
+        reshape_and_cache_flash_kernel[(num_tokens,)](
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_words,
+            slot_word_stride,
+            block_stride,
+            key_stride,
+            value_stride,
+            num_heads,
+            head_size,
+            block_size,
+            N=n,
+            BLOCK=block,
+            EVEN=n == block,
+            num_warps=num_warps,
+        )

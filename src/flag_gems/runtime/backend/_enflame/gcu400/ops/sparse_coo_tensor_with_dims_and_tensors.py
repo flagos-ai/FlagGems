@@ -108,7 +108,7 @@ def sparse_coo_tensor_with_dims_and_tensors(
     is_coalesced=None,
 ):
     """Build a sparse COO tensor from explicit indices and values."""
-    logger.debug("GEMS SPARSE_COO_TENSOR_WITH_DIMS_AND_TENSORS")
+    logger.debug("GEMS_ENFLAMESPARSE_COO_TENSOR_WITH_DIMS_AND_TENSORS")
     if layout is not None and layout is not _SPARSE_COO:
         raise RuntimeError(
             "_sparse_coo_tensor_with_dims_and_tensors expected sparse_coo "
@@ -134,7 +134,7 @@ def sparse_coo_tensor_with_dims_and_tensors_out(
     sparse_dim, dense_dim, size, indices, values, *, is_coalesced=None, out
 ):
     """Out form: rewrite ``out`` in place and return it."""
-    logger.debug("GEMS SPARSE_COO_TENSOR_WITH_DIMS_AND_TENSORS OUT")
+    logger.debug("GEMS_ENFLAMESPARSE_COO_TENSOR_WITH_DIMS_AND_TENSORS OUT")
     # The descriptor is assembled in ``out``'s dtype, exactly like the native
     # out kernel, which casts the payload to the destination dtype.
     built = _coo_with_tensors(

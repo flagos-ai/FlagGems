@@ -246,7 +246,7 @@ def pack_seq_triton(
     # block_t/block_d are accepted for signature compatibility with the
     # generic implementation; the fixed-grid flat-run kernel derives its
     # own tiling and ignores them.
-    logger.debug("GEMS PACK_SEQ_TRITON")
+    logger.debug("GEMS_ENFLAMEPACK_SEQ_TRITON")
     dt = x.dtype
     is_uint8 = dt is torch.uint8
     fp8_format = None if is_uint8 else _FP8_ELEMENT_FORMATS.get(dt)

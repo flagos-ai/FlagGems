@@ -145,7 +145,7 @@ def _convert_weight_to_int4pack(inp: torch.Tensor, innerKTiles: int) -> torch.Te
     buffer as an int64 view, so anything but a contiguous int32 tensor is
     rejected loudly instead of silently misread.
     """
-    logger.debug("GEMS CONVERT_WEIGHT_TO_INT4PACK")
+    logger.debug("GEMS_ENFLAMECONVERT_WEIGHT_TO_INT4PACK")
     assert innerKTiles in (
         2,
         4,
@@ -307,7 +307,7 @@ def _convert_weight_to_int4pack_baseline(
       weight columns -- runnable but value-broken for every downstream
       consumer.)
     """
-    logger.debug("GEMS CONVERT_WEIGHT_TO_INT4PACK")
+    logger.debug("GEMS_ENFLAMECONVERT_WEIGHT_TO_INT4PACK")
     assert innerKTiles in (
         2,
         4,

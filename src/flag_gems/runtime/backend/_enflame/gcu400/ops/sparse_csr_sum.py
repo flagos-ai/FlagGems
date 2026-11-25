@@ -140,7 +140,7 @@ def _empty_selection(device):
 
 def sparse_csr_sum(self, dim, keepdim=False, *, dtype=None):
     """Sum a sparse CSR tensor along ``dim``, returning a sparse CSR tensor."""
-    logger.debug("GEMS SPARSE_CSR_SUM")
+    logger.debug("GEMS_ENFLAMESPARSE_CSR_SUM")
     if self.layout != torch.sparse_csr:
         raise RuntimeError("_sparse_csr_sum expects a sparse CSR input")
     if not keepdim:
@@ -218,7 +218,7 @@ def sparse_csr_sum(self, dim, keepdim=False, *, dtype=None):
 
 def sparse_csr_sum_out(self, dim, keepdim=False, *, dtype=None, out):
     """Out form: rewrite ``out`` with the reduced descriptor and return it."""
-    logger.debug("GEMS SPARSE_CSR_SUM OUT")
+    logger.debug("GEMS_ENFLAMESPARSE_CSR_SUM OUT")
     built = sparse_csr_sum(self, dim, keepdim, dtype=dtype)
     # ``copy_`` between compressed tensors requires an identical stored-element
     # count; anything else raises exactly like the native out kernel.

@@ -122,7 +122,7 @@ def _choose_block_and_warps(n_total, itemsize):
 
 
 def _saturate_weight_to_fp16(A):
-    logger.debug("GEMS _SATURATE_WEIGHT_TO_FP16")
+    logger.debug("GEMS_ENFLAME_SATURATE_WEIGHT_TO_FP16")
     if A.is_contiguous() and A.dtype.is_floating_point:
         n_total = A.numel()
         if n_total == 0:

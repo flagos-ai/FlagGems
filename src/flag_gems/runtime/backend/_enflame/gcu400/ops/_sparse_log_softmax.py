@@ -1004,7 +1004,7 @@ def _sparse_log_softmax_out(self, dim, half_to_float, out=None):
 
 def _sparse_log_softmax(self, dim, half_to_float=False, dtype=None, out=None):
 
-    logger.debug("GEMS SPARSE_LOG_SOFTMAX")
+    logger.debug("GEMS_ENFLAMESPARSE_LOG_SOFTMAX")
     if not self.is_sparse or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "Could not run 'aten::_sparse_log_softmax' with arguments from the "

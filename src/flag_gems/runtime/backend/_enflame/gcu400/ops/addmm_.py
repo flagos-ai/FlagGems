@@ -142,12 +142,12 @@ def addmm_(self, mat1, mat2, *, beta=1, alpha=1):
             and mat2.dtype == mat1.dtype
             and _should_delegate_to_native(self, mat1, mat2)
         ):
-            logger.debug("GEMS ADDMM_ (native delegate)")
+            logger.debug("GEMS_ENFLAMEADDMM_ (native delegate)")
             _NATIVE_ADDMM_OUT.call_boxed(
                 _DEVICE_KEYSET, self, mat1, mat2, beta=beta, alpha=alpha, out=self
             )
             return self
-        logger.debug("GEMS ADDMM_ (inplace)")
+        logger.debug("GEMS_ENFLAMEADDMM_ (inplace)")
         return _addmm_inplace(self, mat1, mat2, alpha, beta)
 
     logger.debug("GEMS_ENFLAME ADDMM_")

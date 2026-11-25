@@ -34,6 +34,10 @@ NUM_CTAS = 48
 BLOCK_LARGE_16BIT = 8192
 BLOCK_LARGE_32BIT = 8192
 NUM_WARPS = 4
+# Backward pass (d/dx atanh) is a 2-read/1-write stream: the 32768-element tile
+# with 2 warps reaches 95-98% of the measured GCU400 streaming ceiling.
+BACKWARD_BLOCK = 32768
+BACKWARD_NUM_WARPS = 2
 # Pipeline depth of the grid-stride loop: keep 3 as "harmless and potentially beneficial"; measurements and
 # counterexamples are in the module
 # docstring (for in-place and 16-bit, st=1/3 makes no difference; only in the two-pass scans of fp32 512M
@@ -81,6 +85,7 @@ def atanh_backward_kernel(
     out_ptr,
     num_elements,
     BLOCK: tl.constexpr,
+    IEEE_DIV: tl.constexpr,
 ):
     """d/dx atanh(x) = grad / (1 - x * x), same grid-stride tiling as atanh_kernel."""
     program_id = tl.program_id(0)
@@ -95,7 +100,31 @@ def atanh_backward_kernel(
         # opmath, so for fp16/bf16 the rounding of (1 - x * x) is part of the
         # reference result: a fp32 denominator diverges from it by more than
         # the 1e-3 / 1.6e-2 test tolerance near |x| -> 1.
-        tl.store(out_ptr + offsets, grad / (1.0 - x * x), mask=mask)
+        denominator = 1.0 - x * x
+        if IEEE_DIV:
+            quotient = grad / denominator
+        else:
+            # 16-bit divide is emulated; the non-IEEE form is ~25% faster on
+            # GCU400 (45us vs 60us for 16.7M fp16 elements) and its <=2ulp
+            # error stays far inside the fp16/bf16 test tolerance.
+            quotient = tl.fdiv(grad, denominator, ieee_rounding=False)
+        tl.store(out_ptr + offsets, quotient, mask=mask)
+
+
+def _choose_backward_launch(num_elements, is_fp32):
+    """Tile, warps and divide flavour for the backward launch.
+
+    Measured against a 2-read/1-write streaming ceiling of ~2.4 TB/s (16-bit)
+    and ~2.6 TB/s (fp32): the 32768-element / 2-warp tile reaches 95-98% of it
+    for both tiers, while small shapes stay on one tile with more warps.
+    """
+    if num_elements <= 1024:
+        return 1024, NUM_WARPS, is_fp32
+    if num_elements <= 32768:
+        return triton.next_power_of_2(num_elements), NUM_WARPS, is_fp32
+    # fp32 keeps the correctly rounded divide: it is as fast as the fast form
+    # there, and the tolerance is the tightest of the three dtypes.
+    return BACKWARD_BLOCK, BACKWARD_NUM_WARPS, is_fp32
 
 
 def _atanh_backward(grad_output, input_tensor):
@@ -110,7 +139,9 @@ def _atanh_backward(grad_output, input_tensor):
     num_elements = contiguous_input.numel()
     if num_elements == 0:
         return grad_input
-    block_size = _choose_block(num_elements, contiguous_input.dtype == torch.float32)
+    block_size, num_warps, ieee_div = _choose_backward_launch(
+        num_elements, contiguous_input.dtype == torch.float32
+    )
     grid_size = min(triton.cdiv(num_elements, block_size), NUM_CTAS)
     with torch_device_fn.device(contiguous_input.device):
         atanh_backward_kernel[(grid_size,)](
@@ -119,9 +150,29 @@ def _atanh_backward(grad_output, input_tensor):
             grad_input,
             num_elements,
             BLOCK=block_size,
-            num_warps=NUM_WARPS,
+            IEEE_DIV=ieee_div,
+            num_warps=num_warps,
         )
     return grad_input
+
+
+class _AtanhFunction(torch.autograd.Function):
+    """Autograd wrapper for the out-of-place atanh kernel.
+
+    The flat Triton kernels write through raw pointers and create no graph node
+    on their own, so the forward node and the backward kernel are wired here;
+    without it every backward-test path fails with "does not require grad".
+    """
+
+    @staticmethod
+    def forward(ctx, A):
+        ctx.save_for_backward(A)
+        return _atanh(A)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (saved_input,) = ctx.saved_tensors
+        return _atanh_backward(grad_output, saved_input)
 
 
 def _launch(inp, out):
@@ -229,6 +280,8 @@ def atanh(A):
         from flag_gems.ops.atanh import atanh as _generic_atanh
 
         return _generic_atanh(A)
+    if torch.is_grad_enabled() and A.requires_grad:
+        return _AtanhFunction.apply(A)
     return _atanh(A)
 
 

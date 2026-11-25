@@ -92,7 +92,7 @@ def _expm1_kernel(
         tl.store(y_ptr + offsets, y.to(y_ptr.type.element_ty), mask=mask)
 
 
-def expm1(A):
+def _expm1_forward(A):
     logger.debug("GEMS_ENFLAME EXPM1")
     if A.is_floating_point() and A.is_contiguous() and A.numel() > 0:
         n = A.numel()
@@ -112,3 +112,99 @@ def expm1(A):
                 )
             return out
     return _expm1_func(A)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def _expm1_backward_func(grad_output, output):
+    # Strided fallback: ATen rounds output + 1 to the output dtype first.
+    scale = (output.to(tl.float32) + 1.0).to(output.dtype)
+    return grad_output * scale
+
+
+@triton.jit
+def _expm1_backward_kernel(
+    grad_ptr,
+    output_ptr,
+    grad_in_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+):
+    # d/dx expm1(x) = exp(x) = output + 1, so the forward value replaces a
+    # second exp evaluation. Grid-stride with wide tiles keeps the 48 resident
+    # programs streaming over the flat buffers instead of launching n/512 CTAs.
+    pid = tl.program_id(axis=0)
+    num_tile = (n_elements + BLOCK - 1) // BLOCK
+    for tile_id in tl.range(pid, num_tile, GRID):
+        offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+        grad = tl.load(grad_ptr + offsets, mask=mask)
+        value = tl.load(output_ptr + offsets, mask=mask)
+        scale = (value.to(tl.float32) + 1.0).to(value.dtype)
+        tl.store(grad_in_ptr + offsets, grad * scale, mask=mask)
+
+
+_BACKWARD_LAUNCH_CACHE = {}
+
+
+def _backward_launch_config(n, itemsize):
+    """Memoized (BLOCK, grid) pair; the backward is called once per step and
+    the Python launch path is the dominant cost for small tensors."""
+    config = _BACKWARD_LAUNCH_CACHE.get((n, itemsize))
+    if config is None:
+        # Pure streaming kernel (two loads + one store): one 64KB tile per
+        # iteration for the narrow dtypes, halved for fp32/fp64.
+        block = 65536 if itemsize <= 2 else 32768
+        if n < block:
+            block = max(1024, triton.next_power_of_2(n))
+        grid = min(_GRID_SIZE, (n + block - 1) // block)
+        config = (block, grid)
+        _BACKWARD_LAUNCH_CACHE[(n, itemsize)] = config
+    return config
+
+
+def _expm1_backward(grad_output, output):
+    if not (output.is_contiguous() and grad_output.is_contiguous()):
+        return _expm1_backward_func(grad_output, output)
+    grad_input = torch.empty_like(output)
+    n = output.numel()
+    if n == 0:
+        return grad_input
+    block, grid_size = _backward_launch_config(n, output.element_size())
+    if (n + block - 1) // block * block > _INT32_MAX:
+        return _expm1_backward_func(grad_output, output)
+    with torch_device_fn.device(output.device.index):
+        # Contiguous buffers are addressed flat by the kernel, so the tensors
+        # are passed directly (no .view(-1) object churn on the hot path).
+        _expm1_backward_kernel[(grid_size,)](
+            grad_output,
+            output,
+            grad_input,
+            n,
+            BLOCK=block,
+            GRID=grid_size,
+            num_warps=2,
+        )
+    return grad_input
+
+
+class Expm1Function(torch.autograd.Function):
+    """Autograd entry for expm1; the backward is a fused scale-by-(out+1)."""
+
+    @staticmethod
+    def forward(ctx, x):
+        output = _expm1_forward(x)
+        ctx.save_for_backward(output)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (output,) = ctx.saved_tensors
+        return _expm1_backward(grad_output, output)
+
+
+def expm1(A):
+    if torch.is_grad_enabled() and A.requires_grad:
+        return Expm1Function.apply(A)
+    return _expm1_forward(A)

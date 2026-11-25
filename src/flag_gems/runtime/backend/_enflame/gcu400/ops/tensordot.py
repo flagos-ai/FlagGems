@@ -774,7 +774,7 @@ class TensordotFunction(torch.autograd.Function):
 
 
 def tensordot(self, other, dims_self, dims_other):
-    logger.debug("GEMS TENSORDOT")
+    logger.debug("GEMS_ENFLAMETENSORDOT")
     # The autograd Function only serves direct python calls with grad-requiring
     # operands (a dispatched call with grad takes the composite decomposition
     # instead and never reaches this kernel). Every other caller - inference,

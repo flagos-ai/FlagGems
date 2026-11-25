@@ -1078,7 +1078,7 @@ def _apply_unary_chunked(op, tensors, inplace: bool):
 def apply_unary(name: str, self, inplace: bool):
     """Dispatch one table row through the shared executor."""
     op = UNARY_OPS[name]
-    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug("GEMS_ENFLAME_FOREACH_%s%s", name.upper(), "_" if inplace else "")
     # ATen raises RuntimeError for an empty TensorList or non-Tensor elements, while the route probe's
     # numel() / is_contiguous() raises AttributeError first. Wrap the entire routing decision in exception
     # translation to align error semantics; the normal TensorList path adds no Python overhead.

@@ -163,7 +163,7 @@ def _launch(A, B, OUT, alpha, n, chunk, use_chunk):
 
 def subtract(A, B, *, alpha=1):
     """Subtracts `other`, scaled by `alpha`, from `input`."""
-    logger.debug("GEMS SUBTRACT")
+    logger.debug("GEMS_ENFLAMESUBTRACT")
     params = _fast_params(A, B, alpha, inplace=False)
     if params is not None:
         n, chunk, use_chunk = params
@@ -175,7 +175,7 @@ def subtract(A, B, *, alpha=1):
 
 def subtract_(A, B, *, alpha=1):
     """In-place subtraction: A.subtract_(B, alpha=alpha) is equivalent to A -= B * alpha"""
-    logger.debug("GEMS SUBTRACT_")
+    logger.debug("GEMS_ENFLAMESUBTRACT_")
     params = _fast_params(A, B, alpha, inplace=True)
     if params is not None:
         n, chunk, use_chunk = params
