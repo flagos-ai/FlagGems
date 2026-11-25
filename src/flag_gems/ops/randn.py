@@ -94,7 +94,12 @@ def randn_kernel(
     r3 = uint_to_uniform_float(r3)
     n0, n1 = pair_uniform_to_normal_fast(r0, r1)
     n2, n3 = pair_uniform_to_normal_fast(r2, r3)
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    # `pid * BLOCK * 4` is an int32 product. Above 2**31 elements it wraps to a
+    # negative offset that still satisfies `off < N` for a 64-bit N, so the
+    # store lands 4 GiB before the allocation and the tail is never written.
+    # Compute the store offsets in int64; the philox counter above stays 32-bit
+    # on purpose. See Issue #7269.
+    off_0 = tl.program_id(0).to(tl.int64) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
@@ -114,6 +119,26 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
+
+    # Triton cannot handle complex pointer types on some backends; generate randn
+    # in the underlying real dtype and view as complex.
+    if dtype.is_complex:
+        if dtype == torch.complex32:
+            real_dtype = torch.float16
+        elif dtype == torch.complex64:
+            real_dtype = torch.float32
+        else:  # complex128
+            real_dtype = torch.float64
+        real_size = tuple(size) + (2,)
+        real_out = torch.empty(real_size, device=device, dtype=real_dtype)
+        N = volume(real_size)
+        grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+        increment = triton.cdiv(N, UNROLL)
+        philox_seed, philox_offset = philox_backend_seed_offset(increment)
+        with torch_device_fn.device(device):
+            randn_kernel[grid_fn](real_out, N, philox_seed, philox_offset)
+        return torch.view_as_complex(real_out.contiguous())
+
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)

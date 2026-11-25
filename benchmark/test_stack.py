@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import Generator
 
 import pytest
@@ -23,9 +24,16 @@ from . import base, consts, utils
 
 
 class StackBenchmark(base.Benchmark):
+    # stack creates 3 inputs + 1 output (4x one input's memory). Cap to avoid OOM.
+    MAX_ELEMENTS = 2**29
+
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
+
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
@@ -56,6 +64,20 @@ def test_stack():
         op_name="stack",
         input_fn=_input_fn,
         torch_op=torch.stack,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test__stack():
+    bench = StackBenchmark(
+        op_name="_stack",
+        input_fn=_input_fn,
+        torch_op=torch._stack,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

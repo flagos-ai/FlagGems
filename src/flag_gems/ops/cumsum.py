@@ -225,15 +225,8 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
     dim = dim % inp.ndim
-    M = 1
-    N = shape[dim]
-    for i in range(dim):
-        M *= shape[i]
     inp = inp.contiguous()
-    K = inp.numel() // M // N
-
     if dtype is None:
         dtype = inp.dtype
         if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
@@ -241,6 +234,15 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
 
+    if inp.numel() == 0:
+        return out
+
+    shape = inp.shape
+    M = 1
+    N = shape[dim]
+    for i in range(dim):
+        M *= shape[i]
+    K = inp.numel() // M // N
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
@@ -381,6 +383,20 @@ def reduce_then_scan_block_scan_kernel_row(
 
 def cumsum(inp, dim=1, *, dtype=None):
     logger.debug("GEMS CUMSUM")
+    # Route differentiable inputs through the autograd bridge so the Triton
+    # reverse-scan kernel is reachable from ``flag_gems.cumsum``; ATen has no
+    # ``aten::cumsum_backward`` schema. When the dispatcher calls this under the
+    # Autograd key (``torch.cumsum``), grad mode is already disabled, so ATen's
+    # own ``CumsumBackward0`` keeps owning that path.
+    if (
+        torch.is_grad_enabled()
+        and isinstance(inp, torch.Tensor)
+        and inp.requires_grad
+        and inp.is_floating_point()
+    ):
+        from flag_gems.ops.cumsum_backward import CumsumFunction
+
+        return CumsumFunction.apply(inp, dim, dtype)
     return cumsum_wrapper(inp, dim, dtype)
 
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-def backend_not_support(device_name, backend_list):
+def backend_not_support(device_name, backend_list=None):
     raise RuntimeError(f"The {device_name} device is not supported currently. ")
 
 

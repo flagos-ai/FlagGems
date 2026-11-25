@@ -27,6 +27,25 @@ class AttentionBenchmark(base.GenericBenchmark):
         return []
 
 
+def scaled_dot_product_flash_attention_input_fn(shape, dtype, device):
+    query = torch.randn(shape, device=device, dtype=dtype)
+    key = torch.randn(shape, device=device, dtype=dtype)
+    value = torch.randn(shape, device=device, dtype=dtype)
+    yield query, key, value, 0.0, False, False
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+def test_scaled_dot_product_flash_attention():
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_flash_attention",
+        input_fn=scaled_dot_product_flash_attention_input_fn,
+        torch_op=torch.ops.aten._scaled_dot_product_flash_attention.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
+
+
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])
@@ -68,5 +87,36 @@ def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
             torch.float16,
             torch.bfloat16,
         ],
+    )
+    bench.run()
+
+
+SDPA_FORWARD_SHAPES = [
+    (4, 8, 1024, 64),
+    (2, 4, 2048, 128),
+    (2, 4, 512, 64),
+]
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("shape", SDPA_FORWARD_SHAPES)
+def test_scaled_dot_product_attention_forward(shape, is_causal):
+    batch, num_heads, seq_len, head_size = shape
+
+    def input_fn(_shape, dtype, device):
+        query = torch.randn(
+            (batch, num_heads, seq_len, head_size), device=device, dtype=dtype
+        )
+        key = torch.randn_like(query)
+        value = torch.randn_like(query)
+        yield query, key, value, None, 0.0, is_causal
+
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_attention_forward",
+        input_fn=input_fn,
+        torch_op=torch.nn.functional.scaled_dot_product_attention,
+        gems_op=flag_gems.scaled_dot_product_attention_forward,
+        dtypes=[torch.float16, torch.bfloat16],
     )
     bench.run()

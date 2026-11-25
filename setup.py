@@ -25,6 +25,11 @@ setup(
         "flaggems_tests": "tests",
         "flaggems_benchmark": "benchmark",
     },
+    # flaggems_setup is a top-level module (the flaggems-setup console script),
+    # kept out of the flag_gems package so its entry point does not import
+    # torch/triton — it runs before those are installed. package_dir[""]="src"
+    # means it is found at src/flaggems_setup.py.
+    py_modules=["flaggems_setup"],
     packages=(
         find_packages("src")
         + ["flaggems_tests", *(f"flaggems_tests.{p}" for p in find_packages("tests"))]

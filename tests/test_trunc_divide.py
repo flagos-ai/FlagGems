@@ -24,6 +24,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 # Note: tl.math.div_rz only support float32, cast will cause diff
 # with torch, so we only do float32 test for now.
@@ -45,16 +47,14 @@ def test_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
-    upcast = False
-    if flag_gems.vendor_name not in ["cambricon", "iluvatar", "kunlunxin"]:
-        upcast = True
-
-    ref_inp1 = utils.to_reference(inp1, upcast)
-    ref_inp2 = utils.to_reference(inp2, upcast)
+    # The reference stays in the operator's dtype: an fp64 reference disagrees
+    # with fp32 trunc semantics when the exact quotient sits just below an
+    # integer boundary (fp32 rounds it up to the boundary, then trunc drops it).
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
 
     if not cfg.TO_CPU:
         logging.debug(
@@ -83,15 +83,14 @@ def test_trunc_divide_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    upcast = True
-    if flag_gems.vendor_name in ("cambricon", "kunlunxin", "iluvatar", "tsingmicro"):
-        upcast = False
-    ref_inp1 = utils.to_reference(inp1, upcast)
-    ref_inp2 = utils.to_reference(inp2, upcast)
+    # The reference stays in the operator's dtype: an fp64 reference disagrees
+    # with fp32 trunc semantics when the exact quotient sits just below an
+    # integer boundary (fp32 rounds it up to the boundary, then trunc drops it).
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode="trunc")
 
     if not cfg.TO_CPU:
         logging.debug(
@@ -113,8 +112,7 @@ def test_trunc_divide_scalar_scalar(dtype):
         inp2 = random.randint(1, 100)
 
     ref_out = torch.div(inp1, inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -128,15 +126,26 @@ def test_trunc_divide_scalar_scalar(dtype):
 def test_trunc_divide_tensor_int(shape, dtype):
     # Regression test: integer types must be dispatched at Python layer to avoid
     # passing int tensors to div_rz which only supports floating point.
-    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
+    if IS_KUNLUNXIN and not inp1.is_floating_point():
+        ref_inp1 = ref_inp1.cpu()
+        ref_inp2 = ref_inp2.cpu()
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -147,13 +156,20 @@ def test_trunc_divide_tensor_int(shape, dtype):
 def test_trunc_divide_tensor_scalar_int(shape, dtype):
     # Regression test: integer types must be dispatched at Python layer to avoid
     # passing int tensors to div_rz which only supports floating point.
-    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 10)
     ref_inp1 = utils.to_reference(inp1, False)
+    if IS_KUNLUNXIN and not inp1.is_floating_point():
+        ref_inp1 = ref_inp1.cpu()
 
     ref_out = torch.div(ref_inp1, scalar, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, scalar, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, scalar, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -164,12 +180,19 @@ def test_trunc_divide_tensor_scalar_int(shape, dtype):
 def test_trunc_div_scalar_tensor_int(shape, dtype):
     # Regression test: integer types must be dispatched at Python layer to avoid
     # passing int tensors to div_rz which only supports floating point.
-    inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 100)
     ref_inp2 = utils.to_reference(inp2, False)
+    if IS_KUNLUNXIN and not inp2.is_floating_point() and ref_inp2.device.type != "cpu":
+        ref_inp2 = ref_inp2.cpu()
 
     ref_out = torch.div(scalar, ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(scalar, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(scalar, inp2, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)

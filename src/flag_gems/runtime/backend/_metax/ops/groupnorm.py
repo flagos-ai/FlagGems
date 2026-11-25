@@ -53,7 +53,11 @@ def group_norm_kernel(
     wb_offset = group * group_size + group_offset
     wb_mask = wb_offset < C
 
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_offset = (
+        pid * num_elements
+        + group_offset[:, None].to(tl.int64) * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
     xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
 
     Mean_ptr = Mean + pid
@@ -111,7 +115,11 @@ def group_norm_backward_kernel(
 
     wb_mask = wb_offset < C
 
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_offset = (
+        pid * num_elements
+        + group_offset[:, None].to(tl.int64) * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
     xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
 
     Mean_ptr = Mean + pid
@@ -170,8 +178,18 @@ def weight_bias_backward_kernel(
     mean_ptr = Mean + group + n_offset * num_groups
     rstd_ptr = Rstd + group + n_offset * num_groups
 
-    dY_ptr = dY + pid * BLOCK_HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-    x_ptr = X + pid * BLOCK_HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+    dY_ptr = (
+        dY
+        + pid * BLOCK_HW
+        + n_offset[:, None].to(tl.int64) * C * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
+    x_ptr = (
+        X
+        + pid * BLOCK_HW
+        + n_offset[:, None].to(tl.int64) * C * HW
+        + hw_offset[None, :].to(tl.int64)
+    )
 
     grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
     x = tl.load(x_ptr, mask=xy_mask, other=0.0)

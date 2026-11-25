@@ -48,8 +48,7 @@ def test_new_full(shape, dtype, xdtype, fill_value):
             return
 
     ref_out = ref_inp.new_full(shape, fill_value)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value)
+    res_out = flag_gems.new_full(inp, shape, fill_value)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
@@ -62,7 +61,6 @@ def test_new_full(shape, dtype, xdtype, fill_value):
             return
 
     ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
+    res_out = flag_gems.new_full(inp, shape, fill_value, dtype=xdtype)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)

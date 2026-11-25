@@ -28,8 +28,7 @@ def test_log10(shape, dtype):
 
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
+    res_out = flag_gems.log10(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,8 +41,7 @@ def test_log10_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.log10_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10_(inp)
+    res_out = flag_gems.log10_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -57,9 +55,8 @@ def test_log10_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp)
     torch.log10(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.log10(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.log10_out(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -75,8 +72,7 @@ def test_log10_special_values(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
+    res_out = flag_gems.log10(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -90,8 +86,7 @@ def test_log10_empty(dtype):
         ref_inp = utils.to_reference(inp, True)
 
         ref_out = torch.log10(ref_inp)
-        with flag_gems.use_gems():
-            res_out = torch.log10(inp)
+        res_out = flag_gems.log10(inp)
 
         utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -103,8 +98,7 @@ def test_log10_noncontiguous(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
+    res_out = flag_gems.log10(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -118,7 +112,63 @@ def test_log10_int_promotes_to_float(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
+    res_out = flag_gems.log10(inp)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.log10_backward
+@pytest.mark.parametrize("shape", [(), (0,), (257,), (19, 37)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_log10_backward(shape, dtype):
+    x = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.5
+    if x.ndim == 2:
+        x = x.t()
+    x.requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.randn_like(x, memory_format=torch.contiguous_format)
+
+    out = flag_gems.log10(x)
+    ref_out = torch.log10(ref_x)
+    (dx,) = torch.autograd.grad(out, x, grad)
+    (ref_dx,) = torch.autograd.grad(ref_out, ref_x, utils.to_reference(grad))
+
+    utils.gems_assert_close(out, ref_out, dtype)
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.log10_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_log10_backward_expanded_grad(dtype):
+    x = torch.rand((7, 13), dtype=dtype, device=flag_gems.device) + 0.5
+    x.requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.randn((7, 1), dtype=dtype, device=x.device).expand_as(x)
+
+    (dx,) = torch.autograd.grad(flag_gems.log10(x), x, grad)
+    (ref_dx,) = torch.autograd.grad(torch.log10(ref_x), ref_x, utils.to_reference(grad))
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.log10_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_log10_backward_special_values(dtype):
+    x = torch.tensor(
+        [
+            0.0,
+            -0.0,
+            -1.0,
+            float("inf"),
+            float("-inf"),
+            float("nan"),
+            torch.finfo(dtype).max,
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.ones_like(x)
+    (dx,) = torch.autograd.grad(flag_gems.log10(x), x, grad)
+    (ref_dx,) = torch.autograd.grad(torch.log10(ref_x), ref_x, utils.to_reference(grad))
+    utils.gems_assert_close(dx, ref_dx, dtype, equal_nan=True)

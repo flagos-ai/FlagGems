@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
 import triton
 
 
@@ -84,6 +85,19 @@ def index_select_heur_block_n(args):
 
 def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+
+
+def mm_heur_k_blocks(args):
+    """Unrolled K-loop trip count.
+
+    gcu400 miscompiles a loop-carried fp32 ``tl.dot`` accumulator inside a
+    dynamic ``range`` loop (the tile matmul path used from BLOCK_M/BLOCK_N >=
+    64): with 2+ K iterations only part of the partial sums survive (measured:
+    K=1024 BLOCK_K=128 -> max |err| ~110 vs fp64 on a 256x256x1024 fp32 mm,
+    correct with ``tl.static_range``).  The trip count is derived from the
+    tuned BLOCK_K here so the kernel can unroll it.
+    """
+    return triton.cdiv(args["K"], args["BLOCK_K"] * args["SPLIT_K"])
 
 
 def rand_heur_block(args):
@@ -226,7 +240,137 @@ def simple_elementwise_blocksize_heur(args):
         return 16384
 
 
+def argmax_heur_tile_k(args):
+    # With a fixed grid + grid-stride, TILE_K prioritizes memory contiguity:
+    # k is the contiguous dim, so cover the whole row K when possible
+    # (long contiguous runs are friendly to DTE/DMA).
+    # Measured: [64,512,512] fp16 +14x / fp32 +4.2x when TILE_K 64/128->512,
+    # [1024,1024,512] fp32 +95%.
+    # Cap at 512: TILE_K=1024 with a partial n-tile (e.g. (200,2560,3))
+    # makes the GCU Triton compiler emit wrong indices (tile id leaks into
+    # the high bits); values <= 512 are verified safe.
+    K = args["K"]
+    if K <= 0:
+        return 1
+    return min(triton.next_power_of_2(K), 512)
+
+
+def argmax_heur_tile_n_non_inner(args):
+    n = args["N"]
+    tile_k = args["TILE_K"]
+
+    if n <= 128:
+        return triton.next_power_of_2(n)
+
+    target_tile = min(8192, n)
+    tile_n = triton.next_power_of_2(target_tile)
+    tile_n = max(64, min(tile_n, 4096))
+
+    # Measured (GCU400, grid-stride + pipelining): a 65536-element tile cap
+    # beats 32768: [64,512,512] fp16 +97% / fp32 +39% / bf16 +54%,
+    # [64,4096,64] +46~112%. 131072 fails to compile/run on some dtypes.
+    if tile_n * tile_k > 65536:
+        tile_n = max(64, 65536 // tile_k)
+
+    return tile_n
+
+
+def argmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def argmax_heur_num_warps_non_inner(args):
+    tile_n = args["TILE_N"]
+    m_size = args["M"]
+    inp_dtype = args["inp"].dtype
+    if inp_dtype == torch.float32:
+        dtype = "fp32"
+    elif inp_dtype == torch.float16:
+        dtype = "fp16"
+    else:
+        dtype = "bf16"
+    if tile_n <= 128:
+        # Small tile: few warps suffice when the grid is small.
+        # NOTE: measured num_warps=1 on this 2D-tile non_inner kernel
+        # produces wrong results on shapes with masked partial tiles
+        # (e.g. (200,2560,3) dim=0), so the floor is 2.
+        if m_size <= 512:
+            return 2
+        # Large M + small tile (measured on [1024,1024,512]): fp16 prefers
+        # 2, fp32/bf16 prefer 4
+        return 2 if dtype == "fp16" else 4
+    if tile_n <= 512:
+        # Mid tile (measured: [64,512,512] fp32 nw=2 is optimal, +56%)
+        return 2
+    return 4
+
+
+def argmax_heur_tile_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
+
+
+def argmax_heur_block_m_inner(args):
+    # 2D tile (BLOCK_M rows x TILE_N). Measured on GCU400 (fp32/fp16/bf16):
+    # - BM=8 is optimal when the tile has <=32768 elements
+    #   ([1024,256] 1.54x, [4096,4096] 0.57x)
+    # - BM=32 (131072-element tile) fails to compile; small M (<=128) needs
+    #   a smaller BM to keep enough CTAs ([64,64] BM=4 is optimal, 0.68x)
+    tile_n = args["TILE_N"]
+    m = args["M"]
+    cap = max(1, 32768 // tile_n)
+    bm = min(8, cap)
+    if m <= 128:
+        bm = min(bm, max(1, triton.next_power_of_2(m // 16)))
+    return bm
+
+
+def argmax_heur_grid_size(args):
+    return 48
+
+
+def argmax_heur_num_stages_inner(args):
+    return 4
+
+
+def argmax_heur_num_stages_non_inner(args):
+    return 4
+
+
+def argmax_heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    m_size = args["M"]
+    if tile_size <= 16:
+        # Tiny tile: extra warps bring no gain (measured: [1024,1]/[1024,16]
+        # prefer nw=1)
+        return 1
+    if m_size <= 128:
+        # Small grid (<=128 CTAs): more warps hide memory latency
+        # (measured: [64,64] prefers nw=4)
+        return 4
+    # Large grid: fewer warps raise occupancy (measured: [1024,256+] prefers
+    # nw=1)
+    return 2 if tile_size <= 128 else 1
+
+
 HEURISTICS_CONFIGS = {
+    "argmax_non_inner": {
+        "TILE_K": argmax_heur_tile_k,
+        "TILE_N": argmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "GRID_SIZE": argmax_heur_grid_size,
+        "NUM_STAGES": argmax_heur_num_stages_non_inner,
+        "num_warps": argmax_heur_num_warps_non_inner,
+    },
+    "argmax_inner": {
+        "TILE_N": argmax_heur_tile_n_inner,
+        "BLOCK_M": argmax_heur_block_m_inner,
+        "GRID_SIZE": argmax_heur_grid_size,
+        "NUM_STAGES": argmax_heur_num_stages_inner,
+        "num_warps": argmax_heur_num_warps_inner,
+    },
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,
@@ -282,6 +426,7 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+        "K_BLOCKS": mm_heur_k_blocks,
     },
     "rand": {
         "BLOCK": rand_heur_block,

@@ -25,6 +25,9 @@ if cfg.QUICK_MODE:
 else:
     LIFT_FRESH_COPY_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
+# Shapes with a zero dimension: numel() == 0, which the shapes above never hit.
+EMPTY_SHAPES = [(0,), (3, 0), (2, 0, 4)]
+
 
 @pytest.mark.lift_fresh_copy
 @pytest.mark.parametrize("shape", LIFT_FRESH_COPY_SHAPES)
@@ -34,7 +37,20 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.lift_fresh_copy(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.lift_fresh_copy(inp)
+    res_out = flag_gems.lift_fresh_copy(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.lift_fresh_copy
+@pytest.mark.parametrize("shape", EMPTY_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_accuracy_lift_fresh_copy_empty(shape, dtype):
+    # Regression test: with numel() == 0 the copy kernel was launched with a
+    # zero grid, which aborts the process on the Ascend backend.
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.ops.aten.lift_fresh_copy(utils.to_reference(inp))
+    res_out = flag_gems.lift_fresh_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

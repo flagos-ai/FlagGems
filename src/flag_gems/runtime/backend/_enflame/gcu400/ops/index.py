@@ -15,6 +15,7 @@
 import importlib
 import logging
 import os
+import types
 from typing import Any, Callable, Mapping, Tuple
 
 import torch
@@ -25,6 +26,17 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 logger = logging.getLogger(__name__)
 
 GCU_MAX_GRID_Y = 255
+# Row-copy fast path tile budget: keep the DSM tile at/below 128KB so wide
+# element types (fp64) do not blow the DSM limit (32768 fp32 elems verified).
+GCU_ROWCOPY_BLOCK_BYTES = 128 * 1024
+# General 2D-tile gather kernel: maximum BLOCK_SIZE1 (row width). Rows of
+# >=512 lanes in the 2D broadcast-mask gather lower through the
+# tops_cvt_v0_si8_to_v1_si8__4 intrinsic whose ICALL relocation is rejected
+# by ld.lld (P03 family), so any tile with BLOCK_SIZE1 >= 512 fails to link.
+# Measured safe region (fp32 + int64, leading/non-leading index, B0 8..64):
+# BLOCK_SIZE1 <= 256 always links; BLOCK_SIZE1 >= 512 fails on every probed
+# case family (with an erratic non-monotonic pass at 1024 for one shape).
+GCU_INDEX_MAX_BLOCK_N = 256
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -61,6 +73,7 @@ def generate_index_kernel(
             "N,",
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
+            "GRID_Y_MAX: tl.constexpr = 255,",
         ]
         code.writelines(args)
     code.writeline("):")
@@ -68,8 +81,15 @@ def generate_index_kernel(
     with code.indent():
         code.writeline("pid0 = tl.program_id(axis=0)")
         code.writeline("pid1 = tl.program_id(axis=1)")
+        # Fold the N-direction grid into the M direction: keep grid.y within the
+        # hardware limit (GRID_Y_MAX) by iterating y_rounds along pid0.
+        code.writeline("y_blocks_total = (N + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
+        code.writeline("y_rounds = (y_blocks_total + GRID_Y_MAX - 1) // GRID_Y_MAX")
+        code.writeline("row_block = pid0 // y_rounds")
+        code.writeline("y_round = pid0 - row_block * y_rounds")
+        code.writeline("pid1 = pid1 + y_round * GRID_Y_MAX")
         code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            "offset0 = row_block * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
         )
         if inp_rank == indices_len:
             code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
@@ -103,7 +123,17 @@ def generate_index_kernel(
         code.writeline("mask1 = offset1 < N")
         code.writeline("mask = index_mask & mask0 & mask1")
         code.newline()
-        comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+        # GCU hardware validates addresses at instruction issue time, before the
+        # mask is applied. Clamp each gathered index to the valid range so that
+        # out-of-bounds/negative user indices cannot form invalid addresses
+        # (they are still masked out via index_mask). cur_index has shape
+        # (BLOCK_SIZE0, 1), so this is one op per M row, not per element.
+        for i in range(indices_len):
+            code.writeline(
+                f"safe_index{i} = tl.where(cur_index{i} >= 0, "
+                f"tl.minimum(cur_index{i}, input_shape{i} - 1), 0)"
+            )
+        comp = [f"safe_index{i} * input_stride{i}" for i in range(indices_len)]
         comp += [
             f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
         ]
@@ -117,6 +147,82 @@ def generate_index_kernel(
         code.newline()
         code.writeline("cur_value = tl.load(input_ptr + input_offset, mask=mask)")
         code.writeline("tl.store(out_ptr + out_offset, cur_value, mask=mask)")
+
+    code.newline()
+    code.newline()
+    return code
+
+
+def generate_index_rowcopy_kernel(
+    inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
+):
+    """Fast path for "leading advanced index + wide contiguous tail" gathers.
+
+    GCU measured behavior: a 2D (BLOCK_SIZE0, BLOCK_SIZE1) DSM tile whose rows
+    start at loaded (per-row dynamic) bases is ~10-30x slower than an affine
+    contiguous span, because DSM bulk transfers only kick in when each row is a
+    contiguous run at a *scalar* base. When the indexed dims are leading and the
+    remaining (tail) dims are memory-contiguous in both input and output, the
+    gather reduces to M row-copies of N contiguous elements: launch one CTA per
+    (row, tail-chunk), load the per-dimension indices as *scalars*, clamp them
+    for address safety, and issue a single wide DSM copy per CTA.
+    """
+    code.writeline("@libentry()")
+    code.writeline("@triton.jit")
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        args = ["input_ptr,"]
+        args += [f"indices{i}_ptr," for i in range(indices_len)]
+        args += ["out_ptr,"]
+        args += [f"input_shape{i}," for i in range(indices_len)]
+        args += ["M,", "N,"]
+        args += [f"input_stride{i}," for i in range(indices_len)]
+        args += [f"indices0_shape{j}," for j in range(index_rank)]
+        for i in range(indices_len):
+            args += [f"indices{i}_stride{j}," for j in range(index_rank)]
+        args += [
+            "BLOCK_SIZE1: tl.constexpr,",
+            "GRID_Y_MAX: tl.constexpr = 255,",
+        ]
+        code.writelines(args)
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid0 = tl.program_id(axis=0)")
+        code.writeline("pid1 = tl.program_id(axis=1)")
+        # Fold the N-direction chunk grid into the M direction (same pattern as
+        # the general kernel): keep grid.y within GRID_Y_MAX by iterating
+        # y_rounds along pid0.
+        code.writeline("y_blocks_total = (N + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
+        code.writeline("y_rounds = (y_blocks_total + GRID_Y_MAX - 1) // GRID_Y_MAX")
+        code.writeline("row = pid0 // y_rounds")
+        code.writeline("y_round = pid0 - row * y_rounds")
+        code.writeline("pid1 = pid1 + y_round * GRID_Y_MAX")
+        # row is the flat index over the (broadcast) index block; decompose it
+        # back to block coordinates so every index tensor (even strided ones
+        # produced by broadcast_tensors) is addressed with its own strides.
+        code.writeline("cur = row")
+        for j in range(index_rank - 1, -1, -1):
+            code.writeline(f"coord{j} = cur % indices0_shape{j}")
+            code.writeline(f"cur = cur // indices0_shape{j}")
+        code.newline()
+        # One scalar index value per gather row. Clamping keeps the addresses
+        # valid: GCU validates addresses before the store mask is applied, so
+        # an out-of-range user index must not form an invalid pointer.
+        code.writeline("row_base = input_ptr")
+        for i in range(indices_len):
+            comp = [f"coord{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            code.writeline(f"idxval{i} = tl.load(indices{i}_ptr + {' + '.join(comp)})")
+            code.writeline(
+                f"idxval{i} = tl.where(idxval{i} >= 0, "
+                f"tl.minimum(idxval{i}, input_shape{i} - 1), 0)"
+            )
+            code.writeline(f"row_base = row_base + idxval{i} * input_stride{i}")
+        code.writeline("out_base = out_ptr + row * N")
+        code.writeline("n = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]")
+        code.writeline("mask1 = n < N")
+        code.writeline("cur_value = tl.load(row_base + n, mask=mask1)")
+        code.writeline("tl.store(out_base + n, cur_value, mask=mask1)")
 
     code.newline()
     code.newline()
@@ -143,17 +249,91 @@ def generate_index_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
-        code.writeline("BLOCK_SIZE0 = min(_next_pow2(M), 4)")
-        if inp_rank == indices_len:
-            code.writeline("BLOCK_SIZE1 = 1")
-        else:
-            code.writeline("BLOCK_SIZE1 = min(_next_pow2(N), 4096)")
-            code.writeline("BLOCK_SIZE1 = max(BLOCK_SIZE1, 2048)")
-        code.newline()
-        code.writeline("grid = (")
+        # Row-copy fast path: applies when the indexed dims are leading and the
+        # tail (dims indices_len..) is a contiguous span in both input and the
+        # freshly allocated output, i.e. the gather is M row-copies of N
+        # contiguous elements. Measured 10-30x faster than the general 2D tile
+        # gather on GCU (see generate_index_rowcopy_kernel docstring).
+        code.writeline(f"_rc_ok = {indices_len} < {inp_rank}")
+        code.writeline("_v = 1")
+        code.writeline(f"for _d in range({inp_rank} - 1, {indices_len} - 1, -1):")
         with code.indent():
-            code.writeline("triton.cdiv(M, BLOCK_SIZE0),")
-            code.writeline("triton.cdiv(N, BLOCK_SIZE1),")
+            code.writeline("_rc_ok = _rc_ok and input_stride[_d] == _v")
+            code.writeline("_v = _v * input_shape[_d]")
+        code.writeline("_rc_vol = 1")
+        code.writeline("for _s in out_shape:")
+        with code.indent():
+            code.writeline("_rc_vol = _rc_vol * _s")
+        code.writeline(
+            "_rc_ok = _rc_ok and (_rc_vol == M * N) and (N >= 64) and (M >= 1)"
+        )
+        code.writeline("if _rc_ok:")
+        with code.indent():
+            code.writeline(
+                f"_RC_B1 = min(triton.next_power_of_2(max(N, 1)), "
+                f"32768, {128 * 1024} // max(input.element_size(), 1))"
+            )
+            code.writeline("_yblk = triton.cdiv(N, _RC_B1)")
+            code.writeline("_yr = triton.cdiv(_yblk, 255)")
+            code.writeline("if M * _yr <= 65535:")
+            with code.indent():
+                code.writeline("_rc_grid = (M * _yr, min(255, _yblk))")
+                code.writeline("_index_rowcopy_jit_function[_rc_grid](")
+                with code.indent():
+                    args = ["input,"]
+                    args += [f"indices[{i}]," for i in range(indices_len)]
+                    args += ["out,"]
+                    args += [f"input_shape[{i}]," for i in range(indices_len)]
+                    args += ["M,", "N,"]
+                    args += [f"input_stride[{i}]," for i in range(indices_len)]
+                    args += [f"indices0_shape[{j}]," for j in range(index_rank)]
+                    for i in range(indices_len):
+                        args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
+                    args += ["BLOCK_SIZE1=_RC_B1,"]
+                    args += ["num_warps=8,"]
+                    code.writelines(args)
+                code.writeline(")")
+                code.writeline("return input")
+        code.newline()
+        # GCU400 measured (GATHER kernel; differs from index_put's scatter):
+        # - BLOCK_SIZE1 hugs the sliced width N, capped at
+        #   GCU_INDEX_MAX_BLOCK_N (256): wider rows (>=512 lanes) lower the
+        #   gather mask through the ld.lld-broken si8 cvt intrinsic (P03
+        #   family) and fail to link. Wide-slice cases blow the DSM budget
+        #   with larger tiles anyway.
+        # - BLOCK_SIZE0 targets ~128 CTAs along M (measured sweet spot: 1D
+        #   full-gather keeps improving up to grid.x~128; tiny M stays at a
+        #   floor of 8 lanes per CTA), then is clamped by the DSM tile budget
+        #   (b0*b1 <= ~16K elements measured safe).
+        # - BLOCK_SIZE0 is only enlarged beyond the above when the M grid
+        #   (incl. y_rounds folding) approaches the hardware limit 65535, to
+        #   avoid launch failure on huge gather volumes.
+        code.writeline(
+            "_BLOCK_SIZE1 = min(triton.next_power_of_2(max(N, 1)), "
+            f"{GCU_INDEX_MAX_BLOCK_N})"
+        )
+        code.writeline("_y_rounds = triton.cdiv(triton.cdiv(N, _BLOCK_SIZE1), 255)")
+        code.writeline(
+            "_BLOCK_SIZE0 = max(8, min(triton.next_power_of_2("
+            "triton.cdiv(M, 128)), 512))"
+        )
+        code.writeline(
+            "_BLOCK_SIZE0 = min(_BLOCK_SIZE0, " "16384 // max(_BLOCK_SIZE1, 1))"
+        )
+        code.writeline(
+            "_BLOCK_SIZE0 = max(_BLOCK_SIZE0, triton.next_power_of_2("
+            "triton.cdiv(M * max(_y_rounds, 1), 60000)))"
+        )
+        code.newline()
+        code.writeline("grid = lambda meta: (")
+        with code.indent():
+            code.writeline(
+                "triton.cdiv(M, meta['BLOCK_SIZE0']) "
+                "* triton.cdiv(triton.cdiv(N, meta['BLOCK_SIZE1']), meta['GRID_Y_MAX']), "
+            )
+            code.writeline(
+                "min(meta['GRID_Y_MAX'], triton.cdiv(N, meta['BLOCK_SIZE1'])), "
+            )
         code.writeline(")")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
@@ -171,7 +351,7 @@ def generate_index_wrapper(
                 f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)
             ]
             args += ["M,", "N,"]
-            args += ["BLOCK_SIZE0=BLOCK_SIZE0,", "BLOCK_SIZE1=BLOCK_SIZE1,"]
+            args += ["BLOCK_SIZE0=_BLOCK_SIZE0,", "BLOCK_SIZE1=_BLOCK_SIZE1,"]
             args += ["num_warps=4,"]
             code.writelines(args)
         code.writeline(")")
@@ -195,13 +375,14 @@ def generate_code(
     index_rank = tensor_indices[0].ndim
     code = generate_imports(code)
     code.newline()
-    code.writeline("def _next_pow2(n):")
-    with code.indent():
-        code.writeline("if n <= 1: return 1")
-        code.writeline("return 1 << (n - 1).bit_length()")
-    code.newline()
-    code.newline()
     generate_index_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
+    generate_index_rowcopy_kernel(
+        inp_rank,
+        indices_len,
+        index_rank,
+        "_index_rowcopy_jit_function",
+        code,
+    )
     generate_index_wrapper(
         inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
     )
@@ -379,29 +560,15 @@ def index(inp, indices):
                 replacement_shape = list(idx_item.shape)
 
     out_shape = before_shape + replacement_shape + after_shape
-    original_dtype = inp.dtype
-
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
 
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
     if inp.numel() == 0:
-        if original_dtype == torch.int64:
-            out = out.to(torch.int64)
         return out.contiguous()
 
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
-        result = inp.view(*out_shape)
-        if original_dtype == torch.int64:
-            result = result.to(torch.int64)
-        return result.contiguous()
-
-    tensor_indices = [
-        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
-        for idx in tensor_indices
-    ]
+        return inp.view(*out_shape).contiguous()
 
     _index_func(inp, tensor_indices, out)
 
@@ -412,7 +579,97 @@ def index(inp, indices):
         post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
         new_order = pre_dims + broadcast_dims + post_dims
         out = out.permute(new_order)
+        result = torch.empty(out.shape, dtype=out.dtype, device=out.device)
+        result.copy_(out)
+        out = result
 
-    if original_dtype == torch.int64:
-        out = out.to(torch.int64)
     return out.contiguous()
+
+
+# ============================================================================
+# aten::index native bridge (torch_gcu topsatenIndex broadcast defect)
+# ============================================================================
+#
+# torch_gcu's native ``aten::index`` (topsatenIndex) hard-aborts the whole
+# process (CHECK terminate, not an exception) when the tensor indices need
+# broadcasting: the internal index expansion runs ``op_aten_repeat`` with a
+# dtype-mismatched output and dies in ``op_aten_repeat_base.h`` /
+# ``gcu_utils.cpp`` (TOPSATEN_STATUS_BAD_PARAM -> "Check failed: 0").  Any
+# caller of ``torch.ops.aten.index`` on GCU tensors -- in particular the
+# reference arm of the accuracy tests -- is killed before the FlagGems
+# candidate even runs.  Probes (fp32/int64, leading/non-leading, bool masks,
+# empty, k=0): every non-broadcast pattern works natively; only
+# shape-differing multi-index calls abort; handing the SAME native kernel
+# pre-broadcast same-shape index views computes correctly.
+#
+# This bridge therefore registers ``index.Tensor`` on the device dispatch key
+# (allow_override, cholesky/values_copy conventions): it pre-broadcasts the
+# indices with ``torch.broadcast_tensors`` -- a metadata-only view expansion,
+# semantically identical per aten::index broadcast rules -- and delegates to
+# the native kernel captured at import time via ``torch.library.get_kernel``
+# (``call_boxed`` bypasses the dispatcher, so it can never re-enter this
+# shim).  Non-broadcast calls are delegated unchanged, so the reference arm
+# keeps its native GCU semantics and never routes through FlagGems code.
+#
+# The captured handle and the Library live on a ``torch``-attached state
+# because this module is imported under several names at once (gcu400.ops...,
+# _enflame.gcu400..., flag_gems.runtime.backend...); a plain module global
+# would be duplicated per alias and re-capture after registration would
+# capture this shim itself, recursing forever.
+
+_INDEX_BRIDGE_FLAG = "_flag_gems_gcu400_index_native_bridge"
+
+
+def _index_needs_prebroadcast(indices):
+    tensor_indices = [t for t in indices if t is not None]
+    if len(tensor_indices) < 2:
+        return False
+    first = tensor_indices[0].shape
+    return any(t.shape != first for t in tensor_indices[1:])
+
+
+def _install_index_native_bridge():
+    if getattr(torch, _INDEX_BRIDGE_FLAG, None) is not None:
+        return
+    if not hasattr(torch.library, "get_kernel"):
+        return
+
+    from flag_gems.runtime import device as _runtime_device
+
+    dispatch_key = _runtime_device.dispatch_key
+    try:
+        native = torch.library.get_kernel(torch.ops.aten.index.Tensor, dispatch_key)
+        keyset = torch._C.DispatchKeySet(getattr(torch._C.DispatchKey, dispatch_key))
+    except Exception:
+        # No native kernel to delegate to (or unsupported torch build): keep
+        # the default dispatch untouched instead of installing a bridge that
+        # could never complete a call.
+        return
+    if native is None:
+        return
+
+    def _aten_index_tensor_gcu(self, indices):
+        if _index_needs_prebroadcast(indices):
+            tensor_indices = [t for t in indices if t is not None]
+            broadcast = torch.broadcast_tensors(*tensor_indices)
+            expanded = iter(broadcast)
+            indices = [next(expanded) if t is not None else None for t in indices]
+        return native.call_boxed(keyset, self, indices)
+
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        library.impl(
+            "index.Tensor", _aten_index_tensor_gcu, dispatch_key, allow_override=True
+        )
+    except TypeError:
+        # Older torch builds have no allow_override parameter.
+        library.impl("index.Tensor", _aten_index_tensor_gcu, dispatch_key)
+
+    setattr(
+        torch,
+        _INDEX_BRIDGE_FLAG,
+        types.SimpleNamespace(native=native, library=library),
+    )
+
+
+_install_index_native_bridge()

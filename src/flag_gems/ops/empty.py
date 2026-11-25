@@ -43,7 +43,15 @@ def empty_kernel(
     tl.store(output_ptr + offsets, 0.0, mask=mask)
 
 
-def empty(*size, dtype=None, layout=None, device=None, pin_memory=None):
+def empty(
+    size,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=None,
+    memory_format=None,
+):
     """Returns a tensor filled with uninitialized data."""
     logger.debug("GEMS EMPTY")
     if dtype is None:
@@ -52,9 +60,38 @@ def empty(*size, dtype=None, layout=None, device=None, pin_memory=None):
         import flag_gems.runtime as _rt
 
         device = torch.device(_rt.device.name)
+    if layout is None:
+        layout = torch.strided
+    if pin_memory is None:
+        pin_memory = False
+    if memory_format is None:
+        memory_format = torch.contiguous_format
 
-    out = torch.zeros(size, device=device, dtype=dtype)
-    N = volume(size)
+    # Allocate via empty_strided instead of torch.empty to avoid self-recursion
+    # through aten::empty.memory_format. Meta is used only to get strides for
+    # the requested memory_format (compatible with PyTorch < 2.8 without
+    # torch.library.get_kernel).
+    shape = tuple(size)
+    meta = torch.empty(shape, dtype=dtype, device="meta", memory_format=memory_format)
+    out = torch.empty_strided(
+        shape,
+        meta.stride(),
+        dtype=dtype,
+        layout=layout,
+        device=device,
+        pin_memory=pin_memory,
+    )
+    # Skip triton kernel for complex dtypes — triton cannot canonicalize complex
+    # pointer types on some backends, and empty() returns uninitialized memory
+    # anyway so skipping the store is functionally safe for all backends.
+    if dtype.is_complex:
+        return out
+    N = volume(shape)
+    # Skip kernel launch for zero-element tensors to avoid invalid grid size on
+    # backends that validate coreDim > 0 (e.g., Ascend NPU). With N=0 the kernel's
+    # store is fully masked out anyway, so skipping is semantically identical.
+    if N == 0:
+        return out
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
         empty_kernel[grid_fn](out, N, BLOCK_SIZE=1024)

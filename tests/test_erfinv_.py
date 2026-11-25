@@ -29,8 +29,7 @@ def test_erfinv(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.erfinv(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.erfinv(inp)
+    res_out = flag_gems.erfinv(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -45,8 +44,7 @@ def test_erfinv_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.erfinv_()
-    with flag_gems.use_gems():
-        res_out = inp.erfinv_()
+    res_out = flag_gems.erfinv_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

@@ -24,6 +24,9 @@ BINCOUNT_SIZES = [16, 100, 1024, 10000] if not QUICK_MODE else [100, 1024]
 BINCOUNT_MAXVALS = [10, 100, 1000] if not QUICK_MODE else [100]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.bincount
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
@@ -33,12 +36,14 @@ def test_accuracy_bincount(size, max_val):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bincount(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp)
+    res_out = flag_gems.bincount(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.bincount
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
@@ -54,12 +59,14 @@ def test_accuracy_bincount_with_weights(size, max_val, dtype):
     ref_weights = utils.to_reference(weights)
 
     ref_out = torch.bincount(ref_inp, weights=ref_weights)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp, weights=weights)
+    res_out = flag_gems.bincount(inp, weights=weights)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.bincount
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
@@ -70,8 +77,7 @@ def test_accuracy_bincount_with_minlength(size, max_val, minlength):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bincount(ref_inp, minlength=minlength)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp, minlength=minlength)
+    res_out = flag_gems.bincount(inp, minlength=minlength)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -83,12 +89,14 @@ def test_accuracy_bincount_empty():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bincount(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp)
+    res_out = flag_gems.bincount(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.bincount
 def test_accuracy_bincount_single():
     """Test bincount with single element."""
@@ -96,12 +104,14 @@ def test_accuracy_bincount_single():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bincount(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp)
+    res_out = flag_gems.bincount(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.bincount
 def test_accuracy_bincount_all_zeros():
     """Test bincount with all zeros."""
@@ -109,8 +119,7 @@ def test_accuracy_bincount_all_zeros():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bincount(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp)
+    res_out = flag_gems.bincount(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -130,7 +139,6 @@ def test_accuracy_bincount_weights_edge_cases(dtype):
     ref_weights = utils.to_reference(weights)
 
     ref_out = torch.bincount(ref_inp, weights=ref_weights)
-    with flag_gems.use_gems():
-        res_out = torch.bincount(inp, weights=weights)
+    res_out = flag_gems.bincount(inp, weights=weights)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

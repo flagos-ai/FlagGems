@@ -46,12 +46,12 @@ def softplus_backward_kernel(grad_output, x, beta, threshold):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS SOFTPLUS FORWARD")
+    logger.debug("GEMS SOFTPLUS_FORWARD")
     output = softplus_forward(self, beta, threshold)
     return output
 
 
 def softplus_backward(grad_output, self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS SOFTPLUS BACKWARD")
+    logger.debug("GEMS SOFTPLUS_BACKWARD")
     grad_input = softplus_backward_kernel(grad_output, self, beta, threshold)
     return grad_input

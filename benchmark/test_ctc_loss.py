@@ -128,11 +128,11 @@ def test_ctc_loss():
         torch_op=_ctc_loss_reference,
         dtypes=CTC_DTYPES,
     )
-    bench.set_gems(flag_gems.ctc_loss)
+    bench.set_gems(lambda *args, **kwargs: flag_gems.ctc_loss(*args, **kwargs))
     bench.run()
 
 
-@pytest.mark.ctc_loss
+@pytest.mark.ctc_loss_backward
 def test_ctc_loss_backward():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",

@@ -134,7 +134,9 @@ def generate_index_kernel(
         code.writeline("mask1 = offset1 < N")
         code.writeline("mask = index_mask & mask0 & mask1")
         code.newline()
-        comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+        comp = [
+            f"cur_index{i}.to(tl.int64) * input_stride{i}" for i in range(indices_len)
+        ]
         comp += [
             f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
         ]

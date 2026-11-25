@@ -17,8 +17,5 @@ def test_upsample_nearest_exact3d(shape, dtype, factor):
     ref_out = torch.ops.aten._upsample_nearest_exact3d(
         ref_x, out_size, None, None, None
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._upsample_nearest_exact3d(
-            x, out_size, None, None, None
-        )
+    res_out = flag_gems._upsample_nearest_exact3d(x, out_size, None, None, None)
     utils.gems_assert_close(res_out, ref_out, dtype)

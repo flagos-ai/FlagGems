@@ -42,8 +42,11 @@ def gems_rope_forward(
     rotary_interleaved: bool = False,
     inplace: bool = False,
 ) -> Union[torch.Tensor, torch.Tensor]:
+    # NOTE: Dynamo cannot trace logging.Logger methods
+    # (torch._dynamo.exc.Unsupported "logging.Logger method not supported
+    # for non-export cases"), so this entry point must not log.
+    # Debug-only removal; numerics/control flow unchanged.
     if use_c_extension:
-        logger.debug("GEMS CUSTOM ROPE FORWARD(C EXTENSION)")
         if inplace:
             torch.ops.flag_gems.rotary_embedding_inplace(
                 query, key, cos, sin, position_ids, rotary_interleaved
@@ -54,7 +57,6 @@ def gems_rope_forward(
                 query, key, cos, sin, position_ids, rotary_interleaved
             )
     else:
-        logger.debug("GEMS CUSTOM ROPE FORWARD")
         # Fallback to pure python implementation
         return flag_gems.apply_rotary_pos_emb(
             query, key, cos, sin, position_ids, rotary_interleaved, inplace

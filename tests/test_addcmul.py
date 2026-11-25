@@ -55,8 +55,7 @@ def test_addcmul(shape, dtype):
     v = float(np.float32(random.random()))
 
     ref_out = torch.addcmul(ref_inp, ref_t1, ref_t2, value=v)
-    with flag_gems.use_gems():
-        res_out = torch.addcmul(res_inp, t1, t2, value=v)
+    res_out = flag_gems.addcmul(res_inp, t1, t2, value=v)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -86,8 +85,7 @@ def test_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape, dtype):
     ref_result = torch.addcmul(ref_inp, ref_t1, ref_t2, value=v, out=ref_out_tensor)
 
     res_out_tensor = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_result = torch.addcmul(res_inp, t1, t2, value=v, out=res_out_tensor)
+    res_result = flag_gems.addcmul_out(res_inp, t1, t2, value=v, out=res_out_tensor)
 
     broadcast_shape = torch.broadcast_shapes(inp_shape, t1_shape, t2_shape)
     assert list(res_out_tensor.shape) == list(

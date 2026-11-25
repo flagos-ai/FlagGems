@@ -92,19 +92,31 @@ version cycle:
 -->
 ## 开发周期
 
-每次稳定版发布后，创建一个开发标签来标记下一个版本周期的开始：
+每次稳定版发布后，创建一个开发标签来标记下一个版本周期的开始。
+**dev 标签不能和发布标签打在同一个 commit 上**，否则后续补丁发布时需要
+`git tag -f` 移动 dev 标签，容易遗漏。
+
+做法：发布标签推送后，立即用一个空提交作为下一开发周期的起点，再把 dev 标签打上去：
+
+```bash
+# 发布标签已经推送（v5.4.0），继续执行：
+git commit --allow-empty -m "Start v5.5.0 development cycle"
+git tag v5.5.0.dev0
+git push origin master v5.5.0.dev0
+```
 
 ```
-v5.3.0          ← 稳定版发布
+v5.4.0              ← 稳定版发布
   │
-  ├── commit 1  ← 5.4.0.dev1+gabcdef0
-  ├── commit 2  ← 5.4.0.dev2+g1234567
+  │  Start v5.5.0 development cycle   ← 空提交
+  │  v5.5.0.dev0                      ← dev 标签打在此处
+  │
+  ├── commit 1  ← 5.5.0.dev1+gabcdef0
+  ├── commit 2  ← 5.5.0.dev2+g1234567
   ├── ...
-  ├── commit N  ← 5.4.0.devN+g<hash>
+  ├── commit N
   │
-v5.4.0          ← 下一个稳定版发布
-  │
-v5.5.0.dev0     ← 新的开发周期开始
+v5.5.0              ← 下一个稳定版发布
 ```
 
 <!--
@@ -145,8 +157,9 @@ v5.5.0.dev0     ← 新的开发周期开始
 
 4. **启动下一个开发周期：**
    ```bash
+   git commit --allow-empty -m "Start v5.5.0 development cycle"
    git tag v5.5.0.dev0
-   git push origin v5.5.0.dev0
+   git push origin master v5.5.0.dev0
    ```
    此后 `master` 上的所有提交将生成 `5.5.0.dev1+gabcdef0` 格式的版本号。
 

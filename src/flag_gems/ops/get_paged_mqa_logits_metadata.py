@@ -12,9 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -72,7 +76,12 @@ def _paged_mqa_logits_metadata_kernel(
 def get_paged_mqa_logits_metadata(
     context_lens: torch.Tensor, block_size: int, num_sms: int
 ) -> torch.Tensor:
-    SPLIT_KV = 256
+    logger.debug("GEMS GET_PAGED_MQA_LOGITS_METADATA")
+    # DeepGEMM's schedule splits each sequence into KV blocks of `block_size`
+    # (its `block_kv`); the caller passes the paged-cache block size, e.g. 64.
+    # Using a fixed 256 here produced a different partitioning than the
+    # reference for every caller that does not happen to use 256.
+    split_kv = block_size
     device = context_lens.device
 
     # 1. Handle 1D / 2D input
@@ -101,7 +110,7 @@ def get_paged_mqa_logits_metadata(
         effective_context_lens.stride(0),
         schedule_metadata,
         batch_size,
-        SPLIT_KV,
+        split_kv,
         num_sms,
         BLOCK_SIZE=BLOCK_SIZE,
     )

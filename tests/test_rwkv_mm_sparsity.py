@@ -43,11 +43,14 @@ def test_rwkv_mmsparsity(dtype):
 
     V_ = torch.randn(n, embedding_dim, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res = flag_gems.rwkv_mm_sparsity(k, V_)
+    res = flag_gems.rwkv_mm_sparsity(k, V_)
 
     ref_k = utils.to_reference(k, True)
     ref_V_ = utils.to_reference(V_, True)
     ref_res = ref_k @ ref_V_
 
-    utils.gems_assert_close(res, ref_res, dtype, equal_nan=True)
+    # Cambricon accumulates a length-n dot product, so scale tolerance by the reduction size.
+    if flag_gems.vendor_name == "cambricon":
+        utils.gems_assert_close(res, ref_res, dtype, equal_nan=True, reduce_dim=n)
+    else:
+        utils.gems_assert_close(res, ref_res, dtype, equal_nan=True)

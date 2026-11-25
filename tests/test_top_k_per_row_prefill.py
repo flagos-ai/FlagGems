@@ -29,7 +29,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import top_k_per_row_prefill
+from flag_gems import top_k_per_row_prefill
+from flag_gems.deprecated.top_k_per_row_prefill import _use_radix_final_for_prefill
 
 from . import conftest as cfg
 
@@ -53,18 +54,17 @@ pytestmark = pytest.mark.skipif(
 # --- vLLM CUDA reference (optional) ---
 try:
     import vllm._custom_ops  # noqa: F401 — loads torch.ops._C
-
-    def _vllm_top_k_per_row_prefill(
-        logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
-    ):
-        torch.ops._C.top_k_per_row_prefill(
-            logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
-        )
-
-    HAS_VLLM = True
 except (ImportError, AttributeError):
-    HAS_VLLM = False
-    _vllm_top_k_per_row_prefill = None
+    vllm_top_k_per_row_prefill = None
+else:
+    vllm_top_k_per_row_prefill = getattr(torch.ops._C, "top_k_per_row_prefill", None)
+
+HAS_VLLM_TOP_K_PREFILL = (
+    vllm_top_k_per_row_prefill is not None
+    and torch._C._dispatch_has_kernel_for_dispatch_key(
+        "_C::top_k_per_row_prefill", "CUDA"
+    )
+)
 
 
 def reference_top_k_per_row(logits, row_starts, row_ends, top_k):
@@ -117,6 +117,13 @@ def check_topk_values_match(logits, indices_test, indices_ref, row_starts, top_k
 
 
 @pytest.mark.top_k_per_row_prefill
+def test_top_k_per_row_prefill_radix_final_config_prefers_large_vocab():
+    assert _use_radix_final_for_prefill(129280)
+    assert not _use_radix_final_for_prefill(8193)
+    assert not _use_radix_final_for_prefill(4095)
+
+
+@pytest.mark.top_k_per_row_prefill
 @pytest.mark.parametrize("num_rows", NUM_ROWS_FULL_VOCAB)
 @pytest.mark.parametrize("vocab_size", [129280])  # DeepSeek V4 vocab size
 @pytest.mark.parametrize("top_k", [1024])  # DeepSeek V4 KV cache topk
@@ -147,6 +154,31 @@ def test_top_k_per_row_prefill_full_vocab(num_rows, vocab_size, top_k):
     assert check_topk_values_match(
         logits, indices_test, indices_ref, row_starts, top_k
     ), f"FAIL: num_rows={num_rows}, vocab_size={vocab_size}, top_k={top_k}"
+
+
+@pytest.mark.top_k_per_row_prefill
+def test_top_k_per_row_prefill_large_vocab_partial_nonzero_range():
+    torch.manual_seed(321)
+    num_rows = 2
+    vocab_size = 65536
+    top_k = 1024
+
+    logits = torch.randn(num_rows, vocab_size, device=device, dtype=torch.float32)
+    row_starts = torch.tensor([128, 4096], dtype=torch.int32, device=device)
+    row_ends = torch.tensor([4096, 8192], dtype=torch.int32, device=device)
+    stride0 = logits.stride(0)
+    stride1 = logits.stride(1)
+
+    indices_ref = reference_top_k_per_row(logits.clone(), row_starts, row_ends, top_k)
+
+    indices_test = torch.empty((num_rows, top_k), dtype=torch.int32, device=device)
+    top_k_per_row_prefill(
+        logits, row_starts, row_ends, indices_test, num_rows, stride0, stride1, top_k
+    )
+
+    assert check_topk_values_match(
+        logits, indices_test, indices_ref, row_starts, top_k
+    ), "FAIL: large vocab partial nonzero range"
 
 
 @pytest.mark.top_k_per_row_prefill
@@ -218,7 +250,10 @@ def test_top_k_per_row_prefill_nonzero_starts(num_rows):
 
 
 @pytest.mark.top_k_per_row_prefill
-@pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
+@pytest.mark.skipif(
+    not HAS_VLLM_TOP_K_PREFILL,
+    reason="vLLM _C::top_k_per_row_prefill has no registered CUDA kernel",
+)
 @pytest.mark.parametrize("num_rows", [1, 32, 64])
 def test_top_k_per_row_prefill_vs_vllm(num_rows):
     """Test against vLLM CUDA kernel (persistent_topk)."""
@@ -235,7 +270,7 @@ def test_top_k_per_row_prefill_vs_vllm(num_rows):
     # vLLM CUDA reference
     logits_vllm = logits.clone()
     indices_vllm = torch.empty((num_rows, top_k), dtype=torch.int32, device=device)
-    _vllm_top_k_per_row_prefill(
+    vllm_top_k_per_row_prefill(
         logits_vllm,
         row_starts,
         row_ends,

@@ -20,6 +20,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import heuristics_for_num_warps, volume
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -35,26 +36,26 @@ config_ = CodeGenConfig(
 )
 
 
+fill_scalar_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseDtypeConvert=True,
+    kunlunAutoGrid=True,
+)
+
+
 @pointwise_dynamic(
     is_tensor=[True, False],
     promotion_methods=[(0, "DEFAULT")],
     num_outputs=1,
-    config=config_,
+    config=fill_scalar_config,
 )
 @triton.jit
 def fill_scalar_func(inp, value_scalar):
     return tl.full(inp.shape, value_scalar, dtype=inp.dtype)
-
-
-@pointwise_dynamic(
-    is_tensor=[True, True],
-    promotion_methods=[(0, "DEFAULT")],
-    num_outputs=1,
-    config=config_,
-)
-@triton.jit
-def fill_tensor_func(inp, value):
-    return value
 
 
 def fill_scalar(input, value):
@@ -77,49 +78,67 @@ def fill_scalar_out(input, value, *, out=None):
     return out
 
 
-def fill_tensor(input, value):
-    if not value.is_cuda:
-        return fill_scalar(input, value.item())
-    logger.debug("GEMS_KUNLUNXIN FILL")
+def _check_value_0d(value):
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
-    out = torch.empty_like(input)
-    with torch_device_fn.device(input.device):
-        return fill_tensor_func(input, value, out0=out)
+
+
+# NOTE(KUNLUNXIN, 2026-09-19): the 0-d tensor `value` is materialized on the host
+# (`value.item()`) and the fill is done by `fill_scalar_func`, whose `value` is a
+# *scalar* argument (no per-lane tensor load of `value`).  This matches ATen's own
+# semantics -- native `fill_.Tensor` is literally `self.fill_(value.item())` -- and
+# avoids a reproducible device fault: the old `pointwise_dynamic(is_tensor=[True,
+# True])` tensor-value path emitted a per-lane 0-stride tensor load of `value` at
+# the full `tile_size`, which on this backend raises `KL_XID_KERNEL_EXCEPTION` /
+# `status 700` (`reason[4] load/store operation exceed memory size`) for 1-byte
+# dtypes.  Deterministic at `int8 (1024, 1024)`: gems faulted, while both the
+# native op and the scalar path (`aten.fill.Scalar`) were verified fine on the very
+# same shape/dtype.  Evidence: harness/solution/fill_tensor/README.md (section 2).
+def fill_tensor(input, value):
+    logger.debug("GEMS_KUNLUNXIN FILL")
+    _check_value_0d(value)
+    return fill_scalar(input, value.item())
+
+
+@triton.jit
+def _fill_tensor_out_kernel(out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs < n_elements
+    tl.store(
+        out_ptr + offs,
+        tl.full([BLOCK_SIZE], value, dtype=out_ptr.dtype.element_ty),
+        mask=mask,
+    )
 
 
 def fill_tensor_out(input, value, *, out=None):
-    # fill.Tensor_out fills `out` with a single 0-dim `value`. The generic
-    # ops/fill.py routes a cuda value through fill_tensor_func (`return value`),
-    # which broadcasts a 0-dim (stride-0) tensor read: on XPU that scalar-load
-    # per element defeats the block DMA and is CATASTROPHIC (measured 74ms for a
-    # (4096,4096) fill vs 0.07ms for a pure write) -> the IR dump
-    # ir-fill_tensor_out-dev0.log shows 1110 modules / 1389 kernel recompiles.
-    # Since value is 0-dim, this is semantically identical to fill.Scalar_out;
-    # read it once and reuse the fast tl.full pure-write fill_scalar_func.
     logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
-    if value.is_cuda and value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+    _check_value_0d(value)
+    N = volume(input.shape)
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
+    num_warps = heuristics_for_num_warps(block_size)
+    with torch_device_fn.device(input.device):
+        _fill_tensor_out_kernel[grid_fn](
+            out,
+            N,
+            value.item(),
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            isCloseDtypeConvert=True,
         )
-    return fill_scalar_out(input, value.item(), out=out)
+    return out
 
 
 def fill_tensor_(self, value):
-    if not value.is_cuda:
-        return fill_scalar_(self, value.item())
     logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_")
-    if value.ndim != 0:
-        raise RuntimeError(
-            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
-        )
-    with torch_device_fn.device(self.device):
-        fill_tensor_func(self, value, out0=self)
-    return self
+    _check_value_0d(value)
+    return fill_scalar_(self, value.item())
 
 
 def fill_scalar_(self, value):

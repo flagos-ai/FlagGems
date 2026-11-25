@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -29,20 +31,37 @@ def test_gcd():
 
 
 def gcd_out_input_fn(shape, dtype, device):
-    inp1 = torch.randint(
-        torch.iinfo(dtype).min,
-        torch.iinfo(dtype).max,
-        shape,
-        dtype=dtype,
-        device=device,
-    )
-    inp2 = torch.randint(
-        torch.iinfo(dtype).min,
-        torch.iinfo(dtype).max,
-        shape,
-        dtype=dtype,
-        device=device,
-    )
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp1 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cpu",
+        ).to(device)
+        inp2 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cpu",
+        ).to(device)
+    else:
+        inp1 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device=device,
+        )
+        inp2 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device=device,
+        )
     out = torch.empty(shape, dtype=dtype, device=device)
     yield inp1, inp2, {"out": out}
 

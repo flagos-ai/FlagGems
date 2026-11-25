@@ -17,7 +17,14 @@ from contextlib import contextmanager
 from . import backend, common, error
 from .backend.device_finder import DeviceDetector
 from .configs_loader import TunedConfigLoader
-from .flagtune import flagtune, flagtune_enabled
+from .flagtune import (
+    CostModelIntent,
+    TuningMode,
+    flagtune,
+    flagtune_enabled,
+    resolve_cost_model_intent,
+    resolve_tuning_mode,
+)
 
 config_loader = TunedConfigLoader()
 device = DeviceDetector()
@@ -76,7 +83,10 @@ def ops_get_configs(op_name, pre_hook=None, yaml_path=None):
 
 
 __all__ = [
+    "CostModelIntent",
+    "resolve_cost_model_intent",
     "TunedConfigLoader",
+    "TuningMode",
     "DeviceDetector",
     "backend",
     "common",
@@ -90,6 +100,7 @@ __all__ = [
     "get_tuned_config",
     "ops_get_configs",
     "replace_customized_ops",
+    "resolve_tuning_mode",
     "torch_backend_device",
     "torch_device_fn",
 ]

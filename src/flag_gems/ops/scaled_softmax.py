@@ -137,7 +137,7 @@ def scaled_softmax_forward_kernel(
 
 
 def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
-    logger.debug("GEMS SCALED SOFTMAX FORWARD")
+    logger.debug("GEMS SCALED_SOFTMAX_FORWARD")
     assert input_t.dim() == 4, "expected 4D tensor"
     batch_size, attn_heads, query_seq_len, key_seq_len = input_t.shape
     assert input_t.dtype in [
@@ -257,7 +257,7 @@ def scaled_softmax_backward_kernel(
 def scaled_softmax_backward(
     grad_output: torch.Tensor, softmax_results: torch.Tensor, scale_factor: float
 ):
-    logger.debug("GEMS SCALED SOFTMAX BACKWARD")
+    logger.debug("GEMS SCALED_SOFTMAX_BACKWARD")
     assert grad_output.dim() == 4, "expected 4D tensor"
     assert softmax_results.dim() == 4, "expected 4D tensor"
     assert grad_output.dtype in [

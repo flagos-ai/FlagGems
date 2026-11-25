@@ -28,8 +28,7 @@ def test_mish(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.mish(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.mish(inp)
+    res_out = flag_gems.mish(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +41,22 @@ def test_mish_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.mish_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.mish_(inp)
+    res_out = flag_gems.mish_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mish_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mish_backward(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad_out = torch.randn_like(inp)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_grad_out = utils.to_reference(grad_out, True)
+
+    ref_in_grad = torch.ops.aten.mish_backward(ref_grad_out, ref_inp)
+    res_in_grad = flag_gems.mish_backward(grad_out, inp)
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

@@ -20,6 +20,23 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.special_exp2
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_exp2(shape, dtype, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.ops.aten.special_exp2(ref_inp)
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_exp2)):
+        res_out = flag_gems.special_exp2(inp)
+
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_exp2)} SPECIAL_EXP2" in caplog.text
+    )
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.exp2
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -28,8 +45,7 @@ def test_exp2(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.exp2(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.exp2(inp)
+    res_out = flag_gems.exp2(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +58,6 @@ def test_exp2_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.exp2_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.exp2_(inp)
+    res_out = flag_gems.exp2_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -12,15 +12,73 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
+import logging
 import math
+import struct
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device
 
-def _parse_rng_state(rng_state: torch.Tensor) -> Tuple[int, int]:
+try:
+    from triton.knobs import autotuning as _autotuning_knobs
+except (ImportError, ModuleNotFoundError):
+    # Triton < 3.6 does not have triton.knobs module
+    _autotuning_knobs = None
+
+logger = logging.getLogger(__name__)
+
+_COMPENSATED_DV_PRECISION = "split"
+if device.vendor_name == "ascend":
+    from torch_npu.npu.utils import get_cann_version
+
+    # CANN 9.1.1 miscompiles the FP32 dV dot. Keep IEEE accumulation on
+    # toolchains where it works, particularly for causal attention.
+    _COMPENSATED_DV_PRECISION = (
+        "scaled_split" if get_cann_version() == "9.1.1" else "ieee"
+    )
+
+
+@contextlib.contextmanager
+def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
+    """Temporarily disable FlagTree AABS for very short sequences.
+
+    AABS shrinks a tl.load-driven BLOCK to next_power_of_2(seqlen) when
+    BLOCK > seqlen. For seqlen < 16 it lowers BLOCK_M/BLOCK_N below Triton's
+    tl.dot K>=16 lower bound (these blocks double as a dot operand), which
+    makes _flash_attn_bwd_dq_fused / _flash_attn_bwd_dkv fail to compile with
+    "Input shapes should have M >= 1, N >= 1 and K >= 16" (decode: seqlen 1).
+    Fall back to the plain (non-adjusted) configs for such shapes.
+    """
+    # The AABS knob exists only on Triton builds that carry FlagTree's
+    # auto-adjust-block-size feature; on stock Triton (knobs present but no
+    # such knob) there is nothing to disable.
+    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
+        yield
+        return
+
+    if min(seqlen_q, seqlen_k) >= 16:
+        yield
+        return
+    previous = _autotuning_knobs.adjust_block_size
+    _autotuning_knobs.adjust_block_size = False
+    try:
+        yield
+    finally:
+        _autotuning_knobs.adjust_block_size = previous
+
+
+def _parse_rng_state(
+    rng_state: torch.Tensor, offset: torch.Tensor = None
+) -> Tuple[int, int]:
+    if rng_state.dim() == 0 and offset is not None:
+        # ROCm (AOTriton) passes philox seed and offset as two 0-dim tensors
+        # instead of one packed [seed, offset] tensor.
+        return int(rng_state.item()), int(offset.item())
     rng_state = rng_state.cpu()
     return int(rng_state[0].item()), int(rng_state[1].item())
 
@@ -58,9 +116,27 @@ _DKV_CONFIGS = [
 ]
 
 
+_SINGLE_STAGE_DENSE_CONFIG = triton.Config(
+    {"BLOCK_M": 32 if device.vendor_name == "metax" else 64, "BLOCK_N": 64},
+    num_warps=8,
+    num_stages=1,
+)
+
+
+def _prune_dense_dq_configs(configs, named_args, **kwargs):
+    if kwargs["S5000"] and kwargs["HEAD_DIM"] == 128:
+        # Pipelined D128 dQ candidates can fault during MUSA autotuning.
+        return [cfg for cfg in configs if cfg.num_stages == 1]
+    return [cfg for cfg in configs if cfg != _SINGLE_STAGE_DENSE_CONFIG]
+
+
 @triton.autotune(
-    configs=_DQ_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    configs=[*_DQ_CONFIGS, _SINGLE_STAGE_DENSE_CONFIG],
+    prune_configs_by={"early_config_prune": _prune_dense_dq_configs},
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD", "S5000"],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -121,6 +197,7 @@ def _flash_attn_bwd_dq_fused(
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     DO_BIAS_GRAD: tl.constexpr,
+    S5000: tl.constexpr,
 ):
     start_m = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -266,9 +343,26 @@ def _flash_attn_bwd_dq_fused(
     )
 
 
+def _prune_dense_dkv_configs(configs, named_args, **kwargs):
+    if kwargs.get("S5000", False):
+        # Multi-stage MUSA lowering can corrupt dK and dV on the S5000.
+        return [cfg for cfg in configs if cfg.num_stages == 1]
+
+    split_dv = (
+        kwargs.get("DV_PRECISION") == "split"
+        and device.vendor_name == "metax"
+        and kwargs["HEAD_DIM"] == 128
+    )
+    return [cfg for cfg in configs if cfg != _SINGLE_STAGE_DENSE_CONFIG or split_dv]
+
+
 @triton.autotune(
-    configs=_DKV_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    configs=[*_DKV_CONFIGS, _SINGLE_STAGE_DENSE_CONFIG],
+    prune_configs_by={"early_config_prune": _prune_dense_dkv_configs},
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "S5000", "DV_PRECISION"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -325,6 +419,8 @@ def _flash_attn_bwd_dkv(
     HAS_WINDOW: tl.constexpr,
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
+    S5000: tl.constexpr,
+    DV_PRECISION: tl.constexpr,
 ):
     start_n = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -480,7 +576,18 @@ def _flash_attn_bwd_dkv(
 
         ds = p * (dp - Di[:, None]) * sm_scale
         dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-        dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+        if DV_PRECISION == "ieee":
+            dv += tl.dot(tl.trans(p), do.to(tl.float32), input_precision="ieee")
+        else:
+            p_hi = p.to(q.dtype)
+            dv += tl.dot(tl.trans(p_hi), do)
+            if DV_PRECISION != "input":
+                # Scale the residual before narrowing to retain FP16 subnormals on Ascend.
+                residual_scale: tl.constexpr = (
+                    4096.0 if DV_PRECISION == "scaled_split" else 1.0
+                )
+                p_lo = ((p - p_hi.to(tl.float32)) * residual_scale).to(q.dtype)
+                dv += tl.dot(tl.trans(p_lo), do) * (1.0 / residual_scale)
 
     tl.store(
         dK + k_base + offs_n[:, None] * stride_km + offs_d[None, :] * stride_kd,
@@ -496,7 +603,10 @@ def _flash_attn_bwd_dkv(
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -706,7 +816,10 @@ def _flash_attn_bwd_varlen_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
@@ -994,6 +1107,7 @@ def flash_attn_backward(
     softmax_scale=None,
     attn_bias=None,
     bias_requires_grad=False,
+    compensate_dv=False,
 ):
     if is_dropout and dropout_p > 0.0 and rng_state is None:
         raise ValueError("开启 dropout 时，必须传入 rng_state")
@@ -1170,121 +1284,1021 @@ def flash_attn_backward(
             attn_bias if has_bias else None
         )
 
-        grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
-        _flash_attn_bwd_dq_fused[grid_dq](
-            Q,
-            K,
-            V,
-            dOut,
-            Out,
-            L,
-            D,
-            dQ,
-            bias_ptr,
-            dbias_ptr,
-            alibi_ptr,
-            scale,
-            group_size,
-            wl,
-            wr,
-            dropout_p,
-            drop_scale,
-            seed_int,
-            base_offset_int,
-            drop_stride_b,
-            drop_stride_h,
-            drop_stride_m,
-            Q.stride(0),
-            Q.stride(1),
-            Q.stride(2),
-            Q.stride(3),
-            K.stride(0),
-            K.stride(1),
-            K.stride(2),
-            K.stride(3),
-            V.stride(0),
-            V.stride(1),
-            V.stride(2),
-            V.stride(3),
-            Out.stride(0),
-            Out.stride(1),
-            Out.stride(2),
-            Out.stride(3),
-            L.stride(0),
-            L.stride(1),
-            D.stride(0),
-            D.stride(1),
-            sb_b,
-            sb_h,
-            sb_m,
-            sb_n,
-            SeqLen_q,
-            SeqLen_k,
-            HEAD_DIM=Head_Dim,
-            IS_CAUSAL=is_causal,
-            IS_DROPOUT=use_dropout,
-            HAS_WINDOW=has_window,
-            HAS_ALIBI=has_alibi,
-            HAS_BIAS=has_bias,
-            DO_BIAS_GRAD=do_bias_grad,
+        s5000 = (
+            Q.device.type == "musa"
+            and Head_Dim in (64, 128)
+            and Q.dtype in (torch.float16, torch.bfloat16)
+            and "S5000" in torch.musa.get_device_name(Q.device)
         )
 
-        grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
-        _flash_attn_bwd_dkv[grid_dkv](
-            Q,
-            K,
-            V,
-            dOut,
-            L,
-            D,
-            dK,
-            dV,
-            bias_ptr,
-            alibi_ptr,
-            scale,
-            group_size,
-            wl,
-            wr,
-            dropout_p,
-            drop_scale,
-            seed_int,
-            base_offset_int,
-            drop_stride_b,
-            drop_stride_h,
-            drop_stride_m,
-            Q.stride(0),
-            Q.stride(1),
-            Q.stride(2),
-            Q.stride(3),
-            K.stride(0),
-            K.stride(1),
-            K.stride(2),
-            K.stride(3),
-            V.stride(0),
-            V.stride(1),
-            V.stride(2),
-            V.stride(3),
-            Out.stride(0),
-            Out.stride(1),
-            Out.stride(2),
-            Out.stride(3),
-            L.stride(0),
-            L.stride(1),
-            sb_b,
-            sb_h,
-            sb_m,
-            sb_n,
-            SeqLen_q,
-            SeqLen_k,
-            HEAD_DIM=Head_Dim,
-            IS_CAUSAL=is_causal,
-            IS_DROPOUT=use_dropout,
-            HAS_WINDOW=has_window,
-            HAS_ALIBI=has_alibi,
-            HAS_BIAS=has_bias,
-        )
+        with _disable_aabs_for_small_seqlen(SeqLen_q, SeqLen_k):
+            grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
+            _flash_attn_bwd_dq_fused[grid_dq](
+                Q,
+                K,
+                V,
+                dOut,
+                Out,
+                L,
+                D,
+                dQ,
+                bias_ptr,
+                dbias_ptr,
+                alibi_ptr,
+                scale,
+                group_size,
+                wl,
+                wr,
+                dropout_p,
+                drop_scale,
+                seed_int,
+                base_offset_int,
+                drop_stride_b,
+                drop_stride_h,
+                drop_stride_m,
+                Q.stride(0),
+                Q.stride(1),
+                Q.stride(2),
+                Q.stride(3),
+                K.stride(0),
+                K.stride(1),
+                K.stride(2),
+                K.stride(3),
+                V.stride(0),
+                V.stride(1),
+                V.stride(2),
+                V.stride(3),
+                Out.stride(0),
+                Out.stride(1),
+                Out.stride(2),
+                Out.stride(3),
+                L.stride(0),
+                L.stride(1),
+                D.stride(0),
+                D.stride(1),
+                sb_b,
+                sb_h,
+                sb_m,
+                sb_n,
+                SeqLen_q,
+                SeqLen_k,
+                HEAD_DIM=Head_Dim,
+                IS_CAUSAL=is_causal,
+                IS_DROPOUT=use_dropout,
+                HAS_WINDOW=has_window,
+                HAS_ALIBI=has_alibi,
+                HAS_BIAS=has_bias,
+                DO_BIAS_GRAD=do_bias_grad,
+                S5000=s5000,
+            )
+
+            grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
+            dv_precision = "input"
+            if (
+                compensate_dv
+                and not use_dropout
+                and Q.dtype in (torch.float16, torch.bfloat16)
+            ):
+                dv_precision = _COMPENSATED_DV_PRECISION
+            _flash_attn_bwd_dkv[grid_dkv](
+                Q,
+                K,
+                V,
+                dOut,
+                L,
+                D,
+                dK,
+                dV,
+                bias_ptr,
+                alibi_ptr,
+                scale,
+                group_size,
+                wl,
+                wr,
+                dropout_p,
+                drop_scale,
+                seed_int,
+                base_offset_int,
+                drop_stride_b,
+                drop_stride_h,
+                drop_stride_m,
+                Q.stride(0),
+                Q.stride(1),
+                Q.stride(2),
+                Q.stride(3),
+                K.stride(0),
+                K.stride(1),
+                K.stride(2),
+                K.stride(3),
+                V.stride(0),
+                V.stride(1),
+                V.stride(2),
+                V.stride(3),
+                Out.stride(0),
+                Out.stride(1),
+                Out.stride(2),
+                Out.stride(3),
+                L.stride(0),
+                L.stride(1),
+                sb_b,
+                sb_h,
+                sb_m,
+                sb_n,
+                SeqLen_q,
+                SeqLen_k,
+                HEAD_DIM=Head_Dim,
+                IS_CAUSAL=is_causal,
+                IS_DROPOUT=use_dropout,
+                HAS_WINDOW=has_window,
+                HAS_ALIBI=has_alibi,
+                HAS_BIAS=has_bias,
+                DV_PRECISION=dv_precision,
+                S5000=s5000,
+            )
 
     return dQ, dK, dV, dBias
+
+
+_PPU_DROPOUT_LAYOUT = tl.constexpr(device.vendor_name == "thead")
+
+
+@triton.jit
+def _aten_flash_dropout(
+    RNG, batch, head, m, n, HQ: tl.constexpr, threshold, drop_scale
+):
+    # Native forward assigns Philox bytes by its MMA accumulator layout.
+    # Counter coordinates are local to each sequence, independent of our tiles.
+    seed = tl.load(RNG).to(tl.uint64)
+    offset = tl.load(RNG + 1).to(tl.uint64)
+    if _PPU_DROPOUT_LAYOUT:
+        lane = 4 * (m[:, None] % 8) + n[None, :] % 4
+        word = 2 * ((n[None, :] % 32) // 16) + (m[:, None] % 16) // 8
+        shift = 8 * ((n[None, :] % 16) // 4)
+    else:
+        lane = 4 * (m[:, None] % 8) + (n[None, :] % 8) // 2
+        word = (n[None, :] % 32) // 8
+        shift = 8 * (2 * ((m[:, None] % 16) // 8) + n[None, :] % 2)
+    offset = offset + ((batch * HQ + head) * 32 + lane).to(tl.uint64)
+    c0, c1 = offset.to(tl.uint32), (offset >> 32).to(tl.uint32)
+    c2 = tl.broadcast_to((m[:, None] // 16).to(tl.uint32), c0.shape)
+    c3 = tl.broadcast_to((n[None, :] // 32).to(tl.uint32), c0.shape)
+    k0, k1 = seed.to(tl.uint32), (seed >> 32).to(tl.uint32)
+    for _ in tl.static_range(7):
+        hi0 = tl.umulhi(c0, 0xD2511F53)
+        hi1 = tl.umulhi(c2, 0xCD9E8D57)
+        lo0 = c0 * 0xD2511F53
+        lo1 = c2 * 0xCD9E8D57
+        c0, c1, c2, c3 = hi1 ^ c1 ^ k0, lo1, hi0 ^ c3 ^ k1, lo0
+        k0 = (k0 + 0x9E3779B9).to(tl.uint32)
+        k1 = (k1 + 0xBB67AE85).to(tl.uint32)
+    bits = tl.where(word == 0, c0, tl.where(word == 1, c1, tl.where(word == 2, c2, c3)))
+    random_byte = (bits >> shift.to(tl.uint32)) & 255
+    return (random_byte <= threshold).to(tl.float32) * drop_scale
+
+
+@triton.jit
+def _aten_flash_probability(
+    q,
+    k,
+    lse,
+    m,
+    n,
+    sq,
+    sk,
+    scale,
+    scale_log2,
+    LSE_SCALE: tl.constexpr,
+    WL: tl.constexpr,
+    WR: tl.constexpr,
+    TOP_LEFT_CAUSAL: tl.constexpr,
+):
+    scores = tl.dot(q, tl.trans(k))
+    offset = 0 if TOP_LEFT_CAUSAL else sk - sq
+    distance = m[:, None] + offset - n[None, :]
+    valid = (m[:, None] < sq) & (n[None, :] < sk)
+    if WL >= 0:
+        valid &= distance <= WL
+    if WR >= 0:
+        valid &= distance >= -WR
+    # Native forward uses +inf for empty rows; mathematical oracles may use -inf.
+    valid &= (lse[:, None] != float("inf")) & (lse[:, None] != -float("inf"))
+    if scale_log2 is None:
+        probability = tl.exp(scores * scale - lse[:, None])
+    else:
+        # PyTorch FlashAttention builds with UNFUSE_FMA and rounds the
+        # host-computed scale*log2(e) once before reconstructing probabilities.
+        probability = tl.exp2(scores * scale_log2 - lse[:, None] * LSE_SCALE)
+    return tl.where(valid, probability, 0.0)
+
+
+# Some vendor dependency finders inspect dead constexpr branches. Define the
+# CUDA-only helper only on CUDA so older language APIs are never traversed.
+if device.vendor_name == "nvidia":
+
+    @triton.jit
+    def _aten_flash_delta(
+        o, do, OUT_PTR, DO_PTR, base, rows, DIM: tl.constexpr, BM: tl.constexpr
+    ):
+        # Preserve native lane/page accumulation and XOR reduction order.
+        # Direct loads avoid expensive gathers from the full dot operand tile.
+        HD: tl.constexpr = ((DIM + 31) // 32) * 32
+        STRIDE: tl.constexpr = 64 if HD % 64 == 0 else 32
+        THREADS: tl.constexpr = STRIDE // 8
+        lane = tl.arange(0, THREADS)
+        col = lane * 8
+        index = base[:, None] + col[None, :]
+        mask = rows[:, None] & (col[None, :] < DIM)
+        a = tl.load(OUT_PTR + index, mask, 0).to(tl.float32)
+        b = tl.load(DO_PTR + index, mask, 0).to(tl.float32)
+        acc = a * b
+        for i in tl.static_range(1, (HD // STRIDE) * 8):
+            col = (i // 8) * STRIDE + lane * 8 + i % 8
+            index = base[:, None] + col[None, :]
+            mask = rows[:, None] & (col[None, :] < DIM)
+            a = tl.load(OUT_PTR + index, mask, 0).to(tl.float32)
+            b = tl.load(DO_PTR + index, mask, 0).to(tl.float32)
+            acc = acc + a * b
+        for step in tl.static_range(0, 3 if THREADS == 8 else 2):
+            xor_col = tl.broadcast_to(
+                (lane ^ (THREADS >> (step + 1)))[None, :], (BM, THREADS)
+            )
+            acc = acc + tl.gather(acc, xor_col, 1)
+        return tl.sum(tl.where(lane[None, :] == 0, acc, 0.0), 1)
+
+else:
+
+    @triton.jit
+    def _aten_flash_delta(
+        o, do, OUT_PTR, DO_PTR, base, rows, DIM: tl.constexpr, BM: tl.constexpr
+    ):
+        return tl.sum(o * do.to(tl.float32), 1)
+
+
+@triton.jit
+def _aten_flash_bwd_dq(
+    Q,
+    K,
+    V,
+    O,
+    DO,
+    LSE,
+    DELTA,
+    DQ,
+    CQ,
+    CK,
+    RNG,
+    threshold,
+    drop_scale,
+    keep_prob,
+    sq_max,
+    sk_max,
+    total_q,
+    HQ: tl.constexpr,
+    HK: tl.constexpr,
+    DIM: tl.constexpr,
+    BD: tl.constexpr,
+    scale,
+    scale_log2,
+    LSE_SCALE: tl.constexpr,
+    LB: tl.constexpr,
+    LH: tl.constexpr,
+    LT: tl.constexpr,
+    WL: tl.constexpr,
+    WR: tl.constexpr,
+    TOP_LEFT_CAUSAL: tl.constexpr,
+    VARLEN: tl.constexpr,
+    PADDED_LSE: tl.constexpr,
+    DROPOUT: tl.constexpr,
+    WIDE_SEQUENCE_INDICES: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    WRITE_DELTA: tl.constexpr = True,
+    ASCEND_LEGACY_COMPILER: tl.constexpr = False,
+    FULL_PRECISION: tl.constexpr = False,
+):
+    block = tl.program_id(0)
+    if WIDE_SEQUENCE_INDICES:
+        block = block.to(tl.int64)
+    batch = tl.program_id(1).to(tl.int64)
+    head = tl.program_id(2).to(tl.int64)
+    if VARLEN:
+        q0 = tl.load(CQ + batch).to(tl.int64)
+        k0 = tl.load(CK + batch).to(tl.int64)
+        sq = tl.load(CQ + batch + 1).to(tl.int64) - q0
+        sk = tl.load(CK + batch + 1).to(tl.int64) - k0
+        lbase = head * LH + q0 * LT
+        if PADDED_LSE:
+            lbase = batch * LB + head * LH
+    else:
+        sq, sk = sq_max, sk_max
+        if WIDE_SEQUENCE_INDICES:
+            sq, sk = tl.cast(sq, tl.int64), tl.cast(sk, tl.int64)
+        q0, k0 = batch * sq, batch * sk
+        lbase = batch * LB + head * LH
+    m = (block * BM + tl.arange(0, BM)).to(tl.int64)
+    n = tl.arange(0, BN).to(tl.int64)
+    d = tl.arange(0, BD)
+    qi = ((q0 + m[:, None]) * HQ + head) * DIM + d[None, :]
+    qm = (m[:, None] < sq) & (d[None, :] < DIM)
+    q = tl.load(Q + qi, qm, 0)
+    do = tl.load(DO + qi, qm, 0)
+    o = tl.load(O + qi, qm, 0).to(tl.float32)
+    delta = (
+        _aten_flash_delta(o, do, O, DO, ((q0 + m) * HQ + head) * DIM, m < sq, DIM, BM)
+        * keep_prob
+    )
+    if WRITE_DELTA:
+        tl.store(DELTA + head * total_q + q0 + m, delta, m < sq)
+    lse = tl.load(LSE + lbase + m * LT, m < sq, float("inf"))
+    dq = tl.full((BM, BD), 0, tl.float32)
+    lo = 0
+    hi = sk
+    offset = 0 if TOP_LEFT_CAUSAL else sk - sq
+    if not ASCEND_LEGACY_COMPILER:
+        if WL >= 0:
+            lo = tl.maximum(0, block * BM + offset - WL)
+        if WR >= 0:
+            hi = tl.minimum(sk, (block + 1) * BM + offset + WR)
+    for tile in range(lo // BN, tl.cdiv(tl.maximum(hi, 0), BN)):
+        kn = tile * BN + n
+        ki = ((k0 + kn[:, None]) * HK + head // (HQ // HK)) * DIM + d[None, :]
+        km = (kn[:, None] < sk) & (d[None, :] < DIM)
+        k = tl.load(K + ki, km, 0)
+        v = tl.load(V + ki, km, 0)
+        p = _aten_flash_probability(
+            q,
+            k,
+            lse,
+            m,
+            kn,
+            sq,
+            sk,
+            scale,
+            scale_log2,
+            LSE_SCALE,
+            WL,
+            WR,
+            TOP_LEFT_CAUSAL,
+        )
+        dp = tl.dot(do, tl.trans(v))
+        # Some NPU dot lowerings leave out-of-bounds tile lanes undefined.
+        # A zero probability does not suppress a NaN in those lanes.
+        dp_valid = (m[:, None] < sq) & (kn[None, :] < sk)
+        if ASCEND_LEGACY_COMPILER:
+            dp_valid |= dp == 0.0
+        dp = tl.where(dp_valid, dp, 0.0)
+        if DROPOUT:
+            dp *= _aten_flash_dropout(RNG, batch, head, m, kn, HQ, threshold, 1.0)
+        ds = p * (dp - delta[:, None])
+        ds_valid = (m[:, None] < sq) & (kn[None, :] < sk)
+        if ASCEND_LEGACY_COMPILER:
+            ds_valid |= ds == 0.0
+        ds = tl.where(ds_valid, ds, 0.0)
+        if FULL_PRECISION:
+            dq += tl.dot(ds, k.to(tl.float32), input_precision="ieee")
+        else:
+            dq += tl.dot(ds.to(q.dtype), k)
+    tl.store(DQ + qi, tl.where(sk > 0, dq * (scale * drop_scale), 0.0), qm)
+
+
+@triton.jit
+def _aten_flash_bwd_dkv(
+    Q,
+    K,
+    V,
+    O,
+    DO,
+    LSE,
+    DELTA,
+    DK,
+    DV,
+    CQ,
+    CK,
+    RNG,
+    threshold,
+    drop_scale,
+    keep_prob,
+    sq_max,
+    sk_max,
+    total_q,
+    HQ: tl.constexpr,
+    HK: tl.constexpr,
+    DIM: tl.constexpr,
+    BD: tl.constexpr,
+    scale,
+    scale_log2,
+    LSE_SCALE: tl.constexpr,
+    LB: tl.constexpr,
+    LH: tl.constexpr,
+    LT: tl.constexpr,
+    WL: tl.constexpr,
+    WR: tl.constexpr,
+    TOP_LEFT_CAUSAL: tl.constexpr,
+    VARLEN: tl.constexpr,
+    PADDED_LSE: tl.constexpr,
+    DROPOUT: tl.constexpr,
+    WIDE_SEQUENCE_INDICES: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    HEAD_OFFSET: tl.constexpr = 0,
+    COMPUTE_DELTA: tl.constexpr = False,
+    ASCEND_LEGACY_COMPILER: tl.constexpr = False,
+    FULL_PRECISION: tl.constexpr = False,
+):
+    block = tl.program_id(0)
+    if WIDE_SEQUENCE_INDICES:
+        block = block.to(tl.int64)
+    batch = tl.program_id(1).to(tl.int64)
+    head_k = tl.program_id(2).to(tl.int64) - HEAD_OFFSET
+    if VARLEN:
+        q0 = tl.load(CQ + batch).to(tl.int64)
+        k0 = tl.load(CK + batch).to(tl.int64)
+        sq = tl.load(CQ + batch + 1).to(tl.int64) - q0
+        sk = tl.load(CK + batch + 1).to(tl.int64) - k0
+        lbase = q0 * LT
+        if PADDED_LSE:
+            lbase = batch * LB
+    else:
+        sq, sk = sq_max, sk_max
+        if WIDE_SEQUENCE_INDICES:
+            sq, sk = tl.cast(sq, tl.int64), tl.cast(sk, tl.int64)
+        q0, k0 = batch * sq, batch * sk
+        lbase = batch * LB
+    m = tl.arange(0, BM).to(tl.int64)
+    n = (block * BN + tl.arange(0, BN)).to(tl.int64)
+    d = tl.arange(0, BD)
+    ki = ((k0 + n[:, None]) * HK + head_k) * DIM + d[None, :]
+    km = (n[:, None] < sk) & (d[None, :] < DIM)
+    k = tl.load(K + ki, km, 0)
+    v = tl.load(V + ki, km, 0)
+    dk = tl.full((BN, BD), 0, tl.float32)
+    dv = tl.full((BN, BD), 0, tl.float32)
+    lo = 0
+    hi = sq
+    offset = 0 if TOP_LEFT_CAUSAL else sk - sq
+    if not ASCEND_LEGACY_COMPILER:
+        if WR >= 0:
+            lo = tl.maximum(0, block * BN - offset - WR)
+        if WL >= 0:
+            hi = tl.minimum(sq, (block + 1) * BN - offset + WL)
+    # Native stores each query head's contribution in the input dtype before
+    # reducing the GQA group. Keep that rounding boundary, with a fixed-order
+    # FP32 group reduction and no expanded KV workspace or atomics.
+    for group in range(HQ // HK):
+        head = head_k * (HQ // HK) + group
+        dk_head = tl.full((BN, BD), 0, tl.float32)
+        dv_head = tl.full((BN, BD), 0, tl.float32)
+        for tile in range(lo // BM, tl.cdiv(tl.maximum(hi, 0), BM)):
+            qm = tile * BM + m
+            qi = ((q0 + qm[:, None]) * HQ + head) * DIM + d[None, :]
+            mask = (qm[:, None] < sq) & (d[None, :] < DIM)
+            q = tl.load(Q + qi, mask, 0)
+            do = tl.load(DO + qi, mask, 0)
+            if COMPUTE_DELTA:
+                o = tl.load(O + qi, mask, 0).to(tl.float32)
+                delta = (
+                    _aten_flash_delta(
+                        o, do, O, DO, ((q0 + qm) * HQ + head) * DIM, qm < sq, DIM, BM
+                    )
+                    * keep_prob
+                )
+            else:
+                delta = tl.load(DELTA + head * total_q + q0 + qm, qm < sq, 0)
+            lse = tl.load(LSE + lbase + head * LH + qm * LT, qm < sq, float("inf"))
+            p = _aten_flash_probability(
+                q,
+                k,
+                lse,
+                qm,
+                n,
+                sq,
+                sk,
+                scale,
+                scale_log2,
+                LSE_SCALE,
+                WL,
+                WR,
+                TOP_LEFT_CAUSAL,
+            )
+            dp = tl.dot(do, tl.trans(v))
+            dp_valid = (qm[:, None] < sq) & (n[None, :] < sk)
+            if ASCEND_LEGACY_COMPILER:
+                dp_valid |= dp == 0.0
+            dp = tl.where(dp_valid, dp, 0.0)
+            p_drop = p
+            if DROPOUT:
+                keep = _aten_flash_dropout(RNG, batch, head, qm, n, HQ, threshold, 1.0)
+                dp *= keep
+                p_drop = p * keep
+            ds = p * (dp - delta[:, None])
+            ds_valid = (qm[:, None] < sq) & (n[None, :] < sk)
+            if ASCEND_LEGACY_COMPILER:
+                ds_valid |= ds == 0.0
+            ds = tl.where(ds_valid, ds, 0.0)
+            if FULL_PRECISION:
+                dk_head += tl.dot(
+                    tl.trans(ds), q.to(tl.float32), input_precision="ieee"
+                )
+                dv_head += tl.dot(
+                    tl.trans(p_drop), do.to(tl.float32), input_precision="ieee"
+                )
+            else:
+                dk_head += tl.dot(tl.trans(ds.to(q.dtype)), q)
+                dv_head += tl.dot(tl.trans(p_drop.to(q.dtype)), do)
+        if FULL_PRECISION:
+            dk += dk_head * (scale * drop_scale)
+            dv += dv_head * drop_scale
+        else:
+            dk += (dk_head * (scale * drop_scale)).to(k.dtype).to(tl.float32)
+            dv += (dv_head * drop_scale).to(v.dtype).to(tl.float32)
+    tl.store(DK + ki, tl.where(sq > 0, dk, 0.0), km)
+    tl.store(DV + ki, tl.where(sq > 0, dv, 0.0), km)
+
+
+@triton.jit
+def _aten_flash_bwd_small(
+    Q,
+    K,
+    V,
+    O,
+    DO,
+    LSE,
+    DQ,
+    DK,
+    DV,
+    CQ,
+    CK,
+    RNG,
+    threshold,
+    drop_scale,
+    keep_prob,
+    sq_max,
+    sk_max,
+    total_q,
+    HQ: tl.constexpr,
+    HK: tl.constexpr,
+    DIM: tl.constexpr,
+    BD: tl.constexpr,
+    scale,
+    scale_log2,
+    LSE_SCALE: tl.constexpr,
+    LB: tl.constexpr,
+    LH: tl.constexpr,
+    LT: tl.constexpr,
+    WL: tl.constexpr,
+    WR: tl.constexpr,
+    TOP_LEFT_CAUSAL: tl.constexpr,
+    VARLEN: tl.constexpr,
+    PADDED_LSE: tl.constexpr,
+    DROPOUT: tl.constexpr,
+    WIDE_SEQUENCE_INDICES: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    FULL_PRECISION: tl.constexpr = False,
+):
+    block = tl.program_id(0)
+    if WIDE_SEQUENCE_INDICES:
+        block = block.to(tl.int64)
+    # Disjoint programs own Q or KV outputs. KV programs recompute their small
+    # delta tiles, removing the inter-kernel dependency and delta allocation.
+    if tl.program_id(2) < HQ:
+        if block * BM < sq_max:
+            _aten_flash_bwd_dq(
+                Q,
+                K,
+                V,
+                O,
+                DO,
+                LSE,
+                Q,
+                DQ,
+                CQ,
+                CK,
+                RNG,
+                threshold,
+                drop_scale,
+                keep_prob,
+                sq_max,
+                sk_max,
+                total_q,
+                HQ,
+                HK,
+                DIM,
+                BD,
+                scale,
+                scale_log2,
+                LSE_SCALE,
+                LB,
+                LH,
+                LT,
+                WL,
+                WR,
+                TOP_LEFT_CAUSAL,
+                VARLEN,
+                PADDED_LSE,
+                DROPOUT,
+                WIDE_SEQUENCE_INDICES,
+                BM,
+                BN,
+                WRITE_DELTA=False,
+                FULL_PRECISION=FULL_PRECISION,
+            )
+    else:
+        if block * BN < sk_max:
+            _aten_flash_bwd_dkv(
+                Q,
+                K,
+                V,
+                O,
+                DO,
+                LSE,
+                Q,
+                DK,
+                DV,
+                CQ,
+                CK,
+                RNG,
+                threshold,
+                drop_scale,
+                keep_prob,
+                sq_max,
+                sk_max,
+                total_q,
+                HQ,
+                HK,
+                DIM,
+                BD,
+                scale,
+                scale_log2,
+                LSE_SCALE,
+                LB,
+                LH,
+                LT,
+                WL,
+                WR,
+                TOP_LEFT_CAUSAL,
+                VARLEN,
+                PADDED_LSE,
+                DROPOUT,
+                WIDE_SEQUENCE_INDICES,
+                BM,
+                BN,
+                HEAD_OFFSET=HQ,
+                COMPUTE_DELTA=True,
+                FULL_PRECISION=FULL_PRECISION,
+            )
+
+
+def _aten_flash_backward(
+    grad_out,
+    query,
+    key,
+    value,
+    out,
+    logsumexp,
+    cum_seq_q,
+    cum_seq_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    rng_state,
+    unused,
+    *,
+    scale=None,
+    window_size_left=None,
+    window_size_right=None,
+    _tile_override=None,
+    _kernel_override=None,
+    _full_precision=False,
+):
+    # torch-musa 2.9.1 forwards the dense ATen call directly to MuDNN's
+    # BHSD SDPA entry. Normalize that producer ABI before the shared kernel.
+    musa_dense = device.vendor_name == "mthreads" and query.ndim == 4
+    if musa_dense:
+        query, key, value, out, grad_out = (
+            t.transpose(1, 2) for t in (query, key, value, out, grad_out)
+        )
+    # Validate metadata without reading device values or synchronizing the stream.
+    varlen = query.ndim == 3
+    rank = 3 if varlen else 4
+    if query.ndim not in (3, 4) or any(
+        t.ndim != rank for t in (key, value, out, grad_out)
+    ):
+        raise ValueError("flash_attention_backward expects BSHD or packed THD tensors")
+    if any(
+        t.dtype != query.dtype for t in (key, value, out, grad_out)
+    ) or query.dtype not in (torch.float16, torch.bfloat16):
+        raise ValueError(
+            "flash_attention_backward requires matching float16 or bfloat16 tensors"
+        )
+    if any(t.device != query.device for t in (key, value, out, grad_out, logsumexp)):
+        raise ValueError("flash_attention_backward tensors must be on the same device")
+    if (
+        query.shape != out.shape
+        or query.shape != grad_out.shape
+        or key.shape != value.shape
+    ):
+        raise ValueError("incompatible query/output/gradient or key/value shapes")
+    dim, hq, hk = query.shape[-1], query.shape[-2], key.shape[-2]
+    if dim != key.shape[-1] or dim <= 0 or dim > 256 or dim % 8:
+        raise ValueError("head dimension must match and be a multiple of 8 in [8, 256]")
+    if hq <= 0 or hk <= 0 or hq % hk:
+        raise ValueError("query heads must be a positive multiple of KV heads")
+    if any(t.stride(-1) != 1 for t in (query, key, value, out)):
+        raise ValueError(
+            "query, key, value and out must have contiguous last dimensions"
+        )
+    if not 0.0 <= dropout_p < 1.0:
+        raise ValueError("dropout_p must be in [0, 1)")
+    # Match native float32 probability conversion without reading device state.
+    threshold, drop_scale, keep32 = 255, 1.0, 1.0
+    if dropout_p:
+        p32 = struct.unpack("f", struct.pack("f", dropout_p))[0]
+        if p32 >= 1.0:
+            raise ValueError("dropout_p must remain below 1 after float32 conversion")
+        keep32 = struct.unpack("f", struct.pack("f", 1.0 - p32))[0]
+        threshold = int(keep32 * 255.0)
+        drop_scale = struct.unpack("f", struct.pack("f", 1.0 / keep32))[0]
+        if device.vendor_name not in ("nvidia", "thead") or torch.version.cuda is None:
+            raise NotImplementedError(
+                "native dropout ABI is only implemented for NVIDIA CUDA and PPU"
+            )
+        schema = torch.ops.aten._flash_attention_backward.default._schema
+        if schema.arguments[12].name != "rng_state":
+            raise NotImplementedError(
+                "legacy seed/offset dropout ABI is not implemented"
+            )
+        rng_dtype = torch.int64 if device.vendor_name == "thead" else torch.uint64
+        if (
+            rng_state is None
+            or rng_state.dtype != rng_dtype
+            or rng_state.device != query.device
+            or rng_state.shape != (2,)
+            or not rng_state.is_contiguous()
+        ):
+            raise ValueError(
+                f"FlashAttention requires a contiguous device {rng_dtype}[2] saved rng_state"
+            )
+    wl = -1 if window_size_left is None else window_size_left
+    wr = -1 if window_size_right is None else window_size_right
+    wl, wr = max(-1, wl), max(-1, wr)
+    if is_causal:
+        wr = 0
+    if max_q < 0 or max_k < 0:
+        raise ValueError("maximum sequence lengths must be nonnegative")
+    # torch-musa 2.9.1 uses padded BHS; CUDA uses packed HT for varlen LSE.
+    # CoreX 4.4 native returns either rank, depending on its forward path.
+    # Accept its two observed formats with strict shape checks below.
+    padded_lse = device.vendor_name == "mthreads" or (
+        device.vendor_name == "iluvatar" and logsumexp.ndim == 3
+    )
+    if varlen:
+        if cum_seq_q is None or cum_seq_k is None:
+            raise ValueError("packed tensors require both cumulative sequence arrays")
+        for cu in (cum_seq_q, cum_seq_k):
+            if (
+                cu.dtype != torch.int32
+                or cu.device != query.device
+                or cu.ndim != 1
+                or not cu.is_contiguous()
+                or cu.numel() < 1
+            ):
+                raise ValueError("cu_seqlens must be contiguous device int32 vectors")
+        if cum_seq_q.shape != cum_seq_k.shape:
+            raise ValueError("cumulative sequence arrays must have equal lengths")
+        batch = cum_seq_q.numel() - 1
+        total_q = query.shape[0]
+        expected_lse = (hq, total_q)
+        lb, lh, lt = (
+            0,
+            logsumexp.stride(0) if logsumexp.ndim == 2 else 0,
+            logsumexp.stride(1) if logsumexp.ndim == 2 else 0,
+        )
+        if padded_lse:
+            expected_lse = (batch, hq, max_q)
+            lb, lh, lt = logsumexp.stride() if logsumexp.ndim == 3 else (0, 0, 0)
+        # Monotone offsets, endpoints and per-sequence maxima are caller preconditions,
+        # as in native FlashAttention. Checking their values would synchronize here.
+        if (max_q == 0 and total_q) or (max_k == 0 and key.shape[0]):
+            raise ValueError("nonempty packed inputs need nonzero maximum lengths")
+    else:
+        if cum_seq_q is not None or cum_seq_k is not None:
+            raise ValueError(
+                "dense tensors require undefined cumulative sequence arrays"
+            )
+        batch, sq = query.shape[:2]
+        if key.shape[0] != batch:
+            raise ValueError("query and key batch sizes must match")
+        max_q, max_k = sq, key.shape[1]
+        total_q = batch * sq
+        expected_lse = (batch, hq, sq)
+        lb, lh, lt = logsumexp.stride() if logsumexp.ndim == 3 else (0, 0, 0)
+    if logsumexp.dtype != torch.float32 or tuple(logsumexp.shape) != expected_lse:
+        raise ValueError(f"logsumexp must be float32 with shape {expected_lse}")
+    # FlashAttention canonicalizes windows using the public K length bound.
+    # In particular, a wide right window can unmask early rows when Sq > Sk.
+    if wl >= max_k:
+        wl = -1
+    if wr >= max_k:
+        wr = -1
+    scale = dim**-0.5 if scale is None else scale
+    scale_log2 = None
+    lse_scale = math.log2(math.e)
+    if device.vendor_name == "iluvatar":
+        # CoreX 4.4's head-dimension kernels save either -ln or -log2 LSE.
+        # This mapping is validated for every multiple of 8 through D=256.
+        lse_scale = -math.log2(math.e) if dim in (32, 96, 160, 192, 256) else -1.0
+    launch_options = {"FULL_PRECISION": True} if _full_precision else {}
+    cuda_flash_arithmetic = device.vendor_name in ("nvidia", "thead")
+    if cuda_flash_arithmetic or device.vendor_name == "iluvatar":
+        try:
+            scale32 = struct.unpack("f", struct.pack("f", scale))[0]
+            scale_log2 = struct.unpack(
+                "f", struct.pack("f", scale32 * math.log2(math.e))
+            )[0]
+        except OverflowError:
+            scale_log2 = math.copysign(math.inf, scale)
+    # Nonpositive scales use mathematical gradients, including an unrounded
+    # GQA head reduction, on both CUDA and PPU.
+    if cuda_flash_arithmetic and scale <= 0:
+        launch_options["FULL_PRECISION"] = True
+    if cuda_flash_arithmetic:
+        launch_options["enable_fp_fusion"] = False
+    q, k, v, o, do = (t.contiguous() for t in (query, key, value, out, grad_out))
+    dq, dk, dv = (torch.empty_like(t) for t in (q, k, v))
+    if batch == 0:
+        if q.numel() or k.numel():
+            raise ValueError("zero sequences require empty packed inputs")
+        return (
+            tuple(t.transpose(1, 2) for t in (dq, dk, dv))
+            if musa_dense
+            else (dq, dk, dv)
+        )
+    # CANN 8.5.0 / FlagTree 0.6.0+ascend3.2 showed compiler failures
+    # with geometric selects and window-dependent loop bounds. Keep element
+    # masks, using the validated selects and full tile range on this compiler.
+    ascend_legacy_compiler = (
+        device.vendor_name == "ascend" and triton.__version__ == "3.2.0"
+    )
+    # Below 2**29, all tile/window expressions (at most three lengths plus
+    # a tile <= 128) fit int32. Pointers still widen before head/D products.
+    # Large length bounds and the legacy Ascend compiler use int64 throughout.
+    wide_sequence_indices = ascend_legacy_compiler or max(max_q, max_k) >= 2**29
+    common = (
+        rng_state if dropout_p else q,
+        threshold,
+        drop_scale,
+        keep32,
+        max_q,
+        max_k,
+        total_q,
+        hq,
+        hk,
+        dim,
+        max(16, triton.next_power_of_2(dim)),
+        scale,
+        scale_log2,
+        lse_scale,
+        lb,
+        lh,
+        lt,
+        wl,
+        wr,
+        device.vendor_name == "mthreads" and is_causal,
+        varlen,
+        varlen and padded_lse,
+        dropout_p > 0,
+        wide_sequence_indices,
+    )
+    ppu_small_math = (
+        device.vendor_name == "thead"
+        and not varlen
+        and scale <= 0
+        and dim <= 128
+        and max(max_q, max_k) <= 128
+    )
+    tile = 16 if ppu_small_math else 32
+    num_warps = 4
+    # Head dimensions above 128 pad to 256 lanes; a 32-row tile exceeds Ascend UB.
+    if device.vendor_name == "ascend" and dim > 128:
+        tile = 16
+    if (
+        (
+            (device.vendor_name == "nvidia" and dim <= 128)
+            or (device.vendor_name == "iluvatar" and not varlen and dim in (64, 128))
+        )
+        and hq == hk
+        and min(max_q, max_k) >= 256
+    ):
+        tile = 64
+        if (
+            device.vendor_name == "iluvatar"
+            and dim == 64
+            and min(max_q, max_k) >= 1024
+            and not is_causal
+            and wl < 0
+            and wr < 0
+        ):
+            tile = 128
+            num_warps = 8
+    if _tile_override is not None:
+        tile = _tile_override
+    # NVIDIA GQA reuses the saved delta across KV tiles; recomputing it in
+    # the fused entry is slower than the second launch for these native shapes.
+    if (
+        ppu_small_math
+        or (device.vendor_name == "nvidia" and hq == hk and max(max_q, max_k) <= 256)
+        or (device.vendor_name in ("iluvatar", "hygon") and max(max_q, max_k) <= 128)
+        or (
+            musa_dense
+            and hq == hk
+            and dim == 64
+            and max_q == max_k
+            and max_q <= 128
+            and not is_causal
+            and wl < 0
+            and wr < 0
+        )
+    ):
+        if max_q or max_k:
+            _aten_flash_bwd_small[
+                (triton.cdiv(max(max_q, max_k), tile), batch, hq + hk)
+            ](
+                q,
+                k,
+                v,
+                o,
+                do,
+                logsumexp,
+                dq,
+                dk,
+                dv,
+                cum_seq_q,
+                cum_seq_k,
+                *common,
+                BM=tile,
+                BN=tile,
+                num_warps=num_warps,
+                num_stages=1,
+                **launch_options,
+            )
+        return (
+            tuple(t.transpose(1, 2) for t in (dq, dk, dv))
+            if musa_dense
+            else (dq, dk, dv)
+        )
+    dq_kernel, dkv_kernel = (
+        (_aten_flash_bwd_dq, _aten_flash_bwd_dkv)
+        if _kernel_override is None
+        else _kernel_override
+    )
+    delta = torch.empty((hq, total_q), dtype=torch.float32, device=q.device)
+    # Fixed-order, disjoint writes: deterministic in strict/warn/off modes.
+    if max_q:
+        dq_kernel[(triton.cdiv(max_q, tile), batch, hq)](
+            q,
+            k,
+            v,
+            o,
+            do,
+            logsumexp,
+            delta,
+            dq,
+            cum_seq_q,
+            cum_seq_k,
+            *common,
+            BM=tile,
+            BN=tile,
+            num_warps=num_warps,
+            num_stages=1,
+            ASCEND_LEGACY_COMPILER=ascend_legacy_compiler,
+            **launch_options,
+        )
+    if max_k:
+        dkv_kernel[(triton.cdiv(max_k, tile), batch, hk)](
+            q,
+            k,
+            v,
+            o,
+            do,
+            logsumexp,
+            delta,
+            dk,
+            dv,
+            cum_seq_q,
+            cum_seq_k,
+            *common,
+            BM=tile,
+            BN=tile,
+            num_warps=num_warps,
+            num_stages=1,
+            ASCEND_LEGACY_COMPILER=ascend_legacy_compiler,
+            **launch_options,
+        )
+    return (
+        tuple(t.transpose(1, 2) for t in (dq, dk, dv)) if musa_dense else (dq, dk, dv)
+    )
 
 
 def flash_attention_backward(
@@ -1307,30 +2321,52 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
-    is_dropout = dropout_p > 0.0
-    rng_tuple = _parse_rng_state(rng_state) if is_dropout else None
-    wl = -1 if window_size_left is None else int(window_size_left)
-    wr = -1 if window_size_right is None else int(window_size_right)
-    dQ, dK, dV, _ = flash_attn_backward(
+    logger.debug("GEMS FLASH_ATTENTION_BACKWARD")
+    # AOTriton has a distinct RNG ABI and uses the original Triton path.
+    if device.vendor_name == "amd":
+        is_dropout = dropout_p > 0.0
+        rng_tuple = _parse_rng_state(rng_state, unused) if is_dropout else None
+        wl = -1 if window_size_left is None else int(window_size_left)
+        wr = -1 if window_size_right is None else int(window_size_right)
+        dQ, dK, dV, _ = flash_attn_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cu_seq_q=cum_seq_q,
+            cu_seq_k=cum_seq_k,
+            max_seqlen_q=int(max_q),
+            max_seqlen_k=int(max_k),
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            window_size_left=wl,
+            window_size_right=wr,
+            softmax_scale=scale,
+        )
+        return dQ, dK, dV
+    return _aten_flash_backward(
         grad_out,
         query,
         key,
         value,
         out,
         logsumexp,
-        cu_seq_q=cum_seq_q,
-        cu_seq_k=cum_seq_k,
-        max_seqlen_q=int(max_q),
-        max_seqlen_k=int(max_k),
-        is_dropout=is_dropout,
-        dropout_p=dropout_p,
-        rng_state=rng_tuple,
-        is_causal=is_causal,
-        window_size_left=wl,
-        window_size_right=wr,
-        softmax_scale=scale,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        dropout_p,
+        is_causal,
+        rng_state,
+        unused,
+        scale=scale,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
     )
-    return dQ, dK, dV
 
 
 def scaled_dot_product_flash_attention_backward(
@@ -1351,9 +2387,32 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
+    # The opaque ATen entry and the flash backward kernels share the
+    # (B, S, H, D) layout; tensors pass straight through. The log-sum-exp
+    # arrives from the ATen forward in (B, H, S) already, so no transpose is
+    # needed either — only a varlen caller's cumulative-sequence path differs.
+    if use_varlen:
+        return flash_attn_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cu_seq_q=cum_seq_q,
+            cu_seq_k=cum_seq_k,
+            max_seqlen_q=int(max_q),
+            max_seqlen_k=int(max_k),
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            softmax_scale=scale,
+        )[:3]
     dQ, dK, dV, _ = flash_attn_backward(
         grad_out,
         query,
@@ -1361,8 +2420,6 @@ def scaled_dot_product_flash_attention_backward(
         value,
         out,
         logsumexp,
-        cu_seq_q=cum_seq_q if use_varlen else None,
-        cu_seq_k=cum_seq_k if use_varlen else None,
         max_seqlen_q=int(max_q),
         max_seqlen_k=int(max_k),
         is_dropout=is_dropout,
@@ -1394,6 +2451,7 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
     query_bshd = query.permute(0, 2, 1, 3).contiguous()
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
@@ -1423,6 +2481,8 @@ def scaled_dot_product_cudnn_attention_backward(
         softmax_scale=scale,
         attn_bias=attn_bias,
         bias_requires_grad=bias_requires_grad,
+        compensate_dv=device.vendor_name
+        in ("mthreads", "metax", "hygon", "ascend", "thead"),
     )
 
     dQ = dQ_bshd.permute(0, 2, 1, 3).contiguous()
@@ -1454,6 +2514,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
+    logger.debug("GEMS EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1510,6 +2571,7 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 
     grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()
@@ -1540,6 +2602,8 @@ def scaled_dot_product_efficient_attention_backward(
         softmax_scale=scale,
         attn_bias=attn_bias,
         bias_requires_grad=bias_req_grad,
+        compensate_dv=need_dv
+        and device.vendor_name in ("mthreads", "metax", "hygon", "ascend"),
     )
 
     dQ_bhsd = dQ_bshd.permute(0, 2, 1, 3).contiguous()

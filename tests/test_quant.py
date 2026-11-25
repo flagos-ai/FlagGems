@@ -58,6 +58,8 @@ CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 e
 # We assume fp8 is always enabled for testing.
 if flag_gems.vendor_name in ["kunlunxin", "cambricon", "sunrise"]:
     KV_CACHE_DTYPE = ["auto"]
+elif flag_gems.vendor_name == "thead" and torch.cuda.get_device_capability() == (8, 0):
+    KV_CACHE_DTYPE = ["auto"]
 else:
     KV_CACHE_DTYPE = ["auto", "fp8"]
 
@@ -156,10 +158,9 @@ def test_concat_and_cache_mla(
             convert_fp8(ref_kv_cache, ref_temp, scale.item(), kv_dtype=kv_cache_dtype)
         else:
             ref_kv_cache = to_reference(ref_temp)
-        with flag_gems.use_gems():
-            flag_gems.concat_and_cache_mla(
-                kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
-            )
+        flag_gems.concat_and_cache_mla(
+            kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+        )
 
         if kv_cache_dtype == "fp8":
             result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)

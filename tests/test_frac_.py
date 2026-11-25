@@ -29,7 +29,6 @@ def test_frac_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.frac_()
-    with flag_gems.use_gems():
-        res_out = inp.frac_()
+    res_out = flag_gems.frac_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

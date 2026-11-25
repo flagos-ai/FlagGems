@@ -20,8 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # Kernel uses generic int bitcast based on input dtype bitwidth;
-# supports fp16, bf16, fp32, and fp64.
-NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+# supports fp16, bf16, and fp32.
+NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    NEXTAFTER_DTYPES.append(torch.float64)
 
 
 @pytest.mark.nextafter_
@@ -29,6 +31,8 @@ NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_(shape, dtype):
     # Test nextafter_: returns the next representable value from x toward y
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -36,10 +40,9 @@ def test_nextafter_(shape, dtype):
     ref_y = utils.to_reference(y)
     ref_x.nextafter_(ref_y)
 
-    with flag_gems.use_gems():
-        x_clone = x.clone()
-        x_clone.nextafter_(y)
-        utils.gems_assert_close(x_clone, ref_x, dtype)
+    x_clone = x.clone()
+    flag_gems.nextafter_(x_clone, y)
+    utils.gems_assert_close(x_clone, ref_x, dtype)
 
 
 # --- Boundary tests for nextafter_ ---
@@ -50,6 +53,8 @@ def test_nextafter_(shape, dtype):
 def test_nextafter_zero_boundary(dtype):
     """Test +0/-0 crossing: +0 toward -inf => -0, -0 toward +inf => min pos subnormal."""
     # +0.0 toward -1.0 should produce -0.0
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x_pos_zero = torch.zeros(10, dtype=dtype, device=flag_gems.device)
     y_neg = torch.full((10,), -1.0, dtype=dtype, device=flag_gems.device)
 
@@ -57,11 +62,10 @@ def test_nextafter_zero_boundary(dtype):
     ref_y = utils.to_reference(y_neg)
     ref_x.nextafter_(ref_y)
 
-    with flag_gems.use_gems():
-        imp_x = x_pos_zero.clone()
-        imp_x.nextafter_(y_neg)
-        # +0 becomes -0; check by comparing to reference
-        utils.gems_assert_close(imp_x, ref_x, dtype)
+    imp_x = x_pos_zero.clone()
+    flag_gems.nextafter_(imp_x, y_neg)
+    # +0 becomes -0; check by comparing to reference
+    utils.gems_assert_close(imp_x, ref_x, dtype)
 
     # -0.0 toward +1.0 should produce the smallest positive subnormal (denormal) number
     x_neg_zero = -torch.zeros(10, dtype=dtype, device=flag_gems.device)
@@ -71,12 +75,14 @@ def test_nextafter_zero_boundary(dtype):
     ref_y2 = utils.to_reference(y_pos)
     ref_x2.nextafter_(ref_y2)
 
-    with flag_gems.use_gems():
-        imp_x2 = x_neg_zero.clone()
-        imp_x2.nextafter_(y_pos)
-        utils.gems_assert_close(imp_x2, ref_x2, dtype)
+    imp_x2 = x_neg_zero.clone()
+    flag_gems.nextafter_(imp_x2, y_pos)
+    utils.gems_assert_close(imp_x2, ref_x2, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_nan(dtype):
@@ -95,10 +101,9 @@ def test_nextafter_nan(dtype):
     # PyTorch: nextafter(NaN, any) = NaN, nextafter(any, NaN) = NaN
     ref_nan_mask = torch.isnan(ref_x)
 
-    with flag_gems.use_gems():
-        imp_x = x_nan.clone()
-        imp_x.nextafter_(y)
-        imp_nan_mask = torch.isnan(imp_x)
+    imp_x = x_nan.clone()
+    flag_gems.nextafter_(imp_x, y)
+    imp_nan_mask = torch.isnan(imp_x)
 
     assert torch.equal(
         ref_nan_mask.cpu(), imp_nan_mask.cpu()
@@ -117,6 +122,8 @@ def test_nextafter_nan(dtype):
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_inf(dtype):
     """Test nextafter_ with Inf inputs."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.tensor(
         [1.0, float("inf"), float("-inf"), 0.0], dtype=dtype, device=flag_gems.device
     )
@@ -130,10 +137,9 @@ def test_nextafter_inf(dtype):
     ref_y = utils.to_reference(y)
     ref_x.nextafter_(ref_y)
 
-    with flag_gems.use_gems():
-        imp_x = x.clone()
-        imp_x.nextafter_(y)
-        utils.gems_assert_close(imp_x, ref_x, dtype)
+    imp_x = x.clone()
+    flag_gems.nextafter_(imp_x, y)
+    utils.gems_assert_close(imp_x, ref_x, dtype)
 
 
 @pytest.mark.nextafter_
@@ -161,10 +167,9 @@ def test_nextafter_finfo_extremes():
     ref_y = utils.to_reference(y)
     ref_x.nextafter_(ref_y)
 
-    with flag_gems.use_gems():
-        imp_x = x.clone()
-        imp_x.nextafter_(y)
-        utils.gems_assert_close(imp_x, ref_x, torch.float32)
+    imp_x = x.clone()
+    flag_gems.nextafter_(imp_x, y)
+    utils.gems_assert_close(imp_x, ref_x, torch.float32)
 
 
 # --- Scalar input tests for nextafter_ ---
@@ -174,6 +179,8 @@ def test_nextafter_finfo_extremes():
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_y(dtype):
     """Test nextafter_ with tensor x and 0-dim tensor y (tests tensor-scalar kernel path)."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.randn(16, dtype=dtype, device=flag_gems.device)
     scalar_y = torch.tensor(0.5, dtype=dtype, device=flag_gems.device)
 
@@ -181,10 +188,9 @@ def test_nextafter_scalar_y(dtype):
     ref_y = utils.to_reference(scalar_y)
     ref_x.nextafter_(ref_y)
 
-    with flag_gems.use_gems():
-        imp_x = x.clone()
-        imp_x.nextafter_(scalar_y)
-        utils.gems_assert_close(imp_x, ref_x, dtype)
+    imp_x = x.clone()
+    flag_gems.nextafter_(imp_x, scalar_y)
+    utils.gems_assert_close(imp_x, ref_x, dtype)
 
 
 @pytest.mark.nextafter_
@@ -193,6 +199,8 @@ def test_nextafter_scalar_x(dtype):
     """Test nextafter_ with scalar x: this goes through Python numpy path."""
     # When x is a scalar Python float, nextafter_ falls back to numpy.nextafter
     # and returns a tensor (consistent with torch op signature)
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     scalar_x = 0.5
     y = torch.full((16,), 1.0, dtype=dtype, device=flag_gems.device)
 
@@ -202,14 +210,16 @@ def test_nextafter_scalar_x(dtype):
 
     # Our implementation: scalar x + tensor y -> kernel returns new tensor,
     # but nextafter_ should be in-place.  Test the kernel path.
-    with flag_gems.use_gems():
-        imp_x = torch.tensor(scalar_x, dtype=dtype, device=flag_gems.device)
-        imp_x = imp_x.expand_as(y).contiguous().clone()
-        imp_x.nextafter_(y)
+    imp_x = torch.tensor(scalar_x, dtype=dtype, device=flag_gems.device)
+    imp_x = imp_x.expand_as(y).contiguous().clone()
+    flag_gems.nextafter_(imp_x, y)
 
     utils.gems_assert_close(imp_x, ref_x, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_nan_y(dtype):
@@ -223,16 +233,17 @@ def test_nextafter_scalar_nan_y(dtype):
     # PyTorch: nextafter(any, NaN) = NaN
     assert torch.isnan(ref_x).all(), "Reference should be all NaN"
 
-    with flag_gems.use_gems():
-        imp_x = x.clone()
-        imp_x.nextafter_(scalar_y)
-        assert torch.isnan(imp_x).all(), f"Should be all NaN, got {imp_x}"
+    imp_x = x.clone()
+    flag_gems.nextafter_(imp_x, scalar_y)
+    assert torch.isnan(imp_x).all(), f"Should be all NaN, got {imp_x}"
 
 
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_inf_y(dtype):
     """Test nextafter_ with tensor x and Inf 0-dim tensor y."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.ones(8, dtype=dtype, device=flag_gems.device)
     scalar_y = torch.tensor(float("inf"), dtype=dtype, device=flag_gems.device)
 
@@ -240,7 +251,6 @@ def test_nextafter_scalar_inf_y(dtype):
     ref_y = utils.to_reference(scalar_y)
     ref_x.nextafter_(ref_y)
 
-    with flag_gems.use_gems():
-        imp_x = x.clone()
-        imp_x.nextafter_(scalar_y)
-        utils.gems_assert_close(imp_x, ref_x, dtype)
+    imp_x = x.clone()
+    flag_gems.nextafter_(imp_x, scalar_y)
+    utils.gems_assert_close(imp_x, ref_x, dtype)

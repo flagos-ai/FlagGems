@@ -12,12 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base, consts, utils
+
+# isin internally calls unique/sort which uses kernels that exceed Iluvatar's
+# 1024-thread-per-block limit when input elements >= 2^29. Cap here.
+MAX_ELEMENTS = 2**29
+
+
+class IsinBenchmark(base.GenericBenchmark2DOnly):
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [s for s in self.shapes if math.prod(s) <= MAX_ELEMENTS]
 
 
 def _input_fn(shape, dtype, device):
@@ -40,7 +52,7 @@ def _input_fn(shape, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_isin():
-    bench = base.GenericBenchmark2DOnly(
+    bench = IsinBenchmark(
         op_name="isin",
         input_fn=_input_fn,
         torch_op=torch.isin,
@@ -69,7 +81,7 @@ def _scalar_tensor_input_fn(shape, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_isin_scalar_tensor():
-    bench = base.GenericBenchmark2DOnly(
+    bench = IsinBenchmark(
         op_name="isin_scalar_tensor",
         input_fn=_scalar_tensor_input_fn,
         torch_op=torch.isin,
@@ -95,7 +107,7 @@ def _input_fn_tensor_scalar(shape, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_isin_tensor_scalar():
-    bench = base.GenericBenchmark2DOnly(
+    bench = IsinBenchmark(
         op_name="isin_tensor_scalar",
         input_fn=_input_fn_tensor_scalar,
         torch_op=torch.isin,

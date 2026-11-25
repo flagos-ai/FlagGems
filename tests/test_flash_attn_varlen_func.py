@@ -449,6 +449,11 @@ def test_flash_attn_varlen_func_swap_qg(
 ) -> None:
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
+
+        if vendor_name == "cambricon":
+            torch.manual_seed(123456)
+            torch.mlu.manual_seed_all(123456)
+
         num_seqs = len(seq_lens)
         query_lens = [x[0] for x in seq_lens]
         kv_lens = [x[1] for x in seq_lens]
