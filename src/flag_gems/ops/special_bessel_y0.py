@@ -158,16 +158,12 @@ def _bessel_y0(x):
     return y
 
 
-# Launch parameters are chosen host-side: `triton.autotune` nested inside the
-# benchmark's do_bench can abort the process on this backend, and none of its
-# configs used num_warps=1, which measures fastest here.
+# One tile per program with a conventional pointwise launch shape. Fat tiles
+# with a single warp leave hundreds of elements per lane and spill; the grid is
+# simply capped and the kernel walks the remainder with its grid-stride loop.
 _MAX_GRID = 65535
-_TARGET_ITERS = 16  # aim for this many tiles per program
-_MIN_PROGRAMS = 64
-_BLOCK = 1024  # small inputs: one tile per program
-_BLOCK_BIG = 16384  # large inputs: fat tiles keep the grid (launch cost) small
-_BIG_TOTAL = 1 << 20
-_NUM_WARPS = 1
+_BLOCK = 1024
+_NUM_WARPS = 4
 
 
 @triton.jit
@@ -282,16 +278,8 @@ def special_bessel_y0(A):
         return out
 
     use_i64 = n > 2147483647
-    if n >= _BIG_TOTAL:
-        block = _BLOCK_BIG
-    else:
-        block = min(max(_BLOCK, triton.next_power_of_2(n)), _BLOCK_BIG)
-    nblocks = triton.cdiv(n, block)
-    if nblocks <= _TARGET_ITERS:
-        grid_n = nblocks
-    else:
-        grid_n = max(_MIN_PROGRAMS, triton.cdiv(nblocks, _TARGET_ITERS))
-        grid_n = min(grid_n, _MAX_GRID)
+    block = _BLOCK
+    grid_n = min(triton.cdiv(n, block), _MAX_GRID)
     grid = (grid_n,)
 
     if x.dtype == torch.float64 and flag_gems.vendor_name == "enflame":
