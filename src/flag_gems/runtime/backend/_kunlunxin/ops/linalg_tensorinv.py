@@ -12,44 +12,48 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Kunlunxin backend override for linalg_tensorinv / linalg_tensorinv.out.
+"""Kunlunxin backend override for ``linalg_tensorinv`` / ``linalg_tensorinv.out``.
 
-The generic _tinv_reg_kernel keeps a full BLOCK_N-by-BLOCK_N
+The generic ``_tinv_reg_kernel`` keeps a full ``BLOCK_N``-by-``BLOCK_N``
 register tile live across a data-dependent serial pivot loop.  The
-TritonXPULegalize MLIR pipeline crashes on exactly that combination on this
-backend (same class of failure as linalg_inv / linalg_eig:
-arith.cmpi op failed to verify ...), so the generic entry point cannot
+``TritonXPULegalize`` MLIR pipeline crashes on exactly that combination on this
+backend (same class of failure as ``linalg_inv`` / ``linalg_eig``:
+``'arith.cmpi' op failed to verify ...``), so the generic entry point cannot
 compile here.
 
-tensorinv reduces to a single dense m x m inversion (m =
-prod(shape[:ind])), so the override dispatches on m:
+``tensorinv`` reduces to a single dense ``m x m`` inversion (``m =
+prod(shape[:ind])``), so the override dispatches on ``m``:
 
-* m <= _TINV_SMALL_N — closed-form inverse computed from scalar element
-  loads (_tinv_small), with no cross-lane reduction at all.  On this
+* ``m <= _TINV_SMALL_N`` — closed-form inverse computed from scalar element
+  loads (``_tinv_small``), with no cross-lane reduction at all.  On this
   backend a full reduction is a fixed-cost cross-core synchronisation
   whatever the register width, so the reduce-free path removes the dominant
-  term for tiny matrices.
-* _TINV_SMALL_N < m <= _TINV_GJ_MAX — partial-pivoted Gauss-Jordan on
-  separate 1-D row registers (_tinv_row_kernel).  The row-wise (1-D)
+  term for tiny matrices.  For ``m == 4`` the full 4x4 adjugate is expanded
+  (no 2x2 block dependency), so an invertible matrix with a singular leading
+  2x2 block still gets a finite inverse.
+* ``_TINV_SMALL_N < m <= _TINV_GJ_MAX`` — partial-pivoted Gauss-Jordan on
+  separate 1-D row registers (``_tinv_row_kernel``).  The row-wise (1-D)
   formulation is deliberate: the XPU core-tiling pass rejects axis = 0
   reductions on 2-D tiles, reductions over broadcast-derived tiles, and any
   reduction whose operand already came out of a reduction, so a 2-D register
   tile cannot be compiled here.  Every reduction is a full reduce of a 1-D
   vector that is an elementwise function of a global load, which this backend
   tiles correctly.  The fully unrolled row-register form is validated up to
-  m = 13 here: past that point the backend miscompiles the unrolled reduction
-  chain (illegal memory access observed with the same kernel shape in
-  linalg_inv), so larger m goes through the LU path below.
-* m > _TINV_GJ_MAX — the LU factorisation + column substitution
-  combination (_linalg_lu_factor + _xpu_lu_solve_serial): A^-1 is
-  obtained by solving A X = I column by column, so no register tile
-  survives across the pivot loop (m = 80 in the test matrix is well
-  within the N <= 128 register-resident range).
+  ``m = 13`` here: past that point the backend miscompiles the unrolled
+  reduction chain (illegal memory access observed with the same kernel shape
+  in ``linalg_inv``), so larger ``m`` goes through the LU path below.
+* ``m > _TINV_GJ_MAX`` — the LU factorisation + column substitution
+  combination (``_linalg_lu_factor`` + ``_xpu_lu_solve_serial``): ``A^-1`` is
+  obtained by solving ``A X = I`` column by column, so no register tile
+  survives across the pivot loop (``m = 80`` in the test matrix is well
+  within the ``N <= 128`` register-resident range).
 
-fp16/bf16 inputs are upcast to fp32 for the arithmetic and downcast on store
-via the kernel dtype-generic stores, mirroring the generic kernel internal
-fp32 tile arithmetic.  A zero pivot (exactly singular input) propagates
-inf/nan instead of a finite wrong inverse.
+Only floating point inputs are accepted (ATen-compatible guard); complex
+input is not supported by these kernels and is rejected explicitly.  fp16/
+bf16 inputs are upcast to fp32 for the arithmetic and downcast on store via
+the kernel dtype-generic stores, mirroring the generic kernel internal fp32
+tile arithmetic.  A zero pivot / zero determinant (exactly singular input)
+propagates inf/nan instead of a finite wrong inverse.
 """
 
 import logging
@@ -84,9 +88,9 @@ def _cast_kernel(src, dst, numel, BLOCK: tl.constexpr):
 
 
 def _cast_tensor(x, dtype):
-    """Cast x to dtype via a Triton kernel.
+    """Cast ``x`` to ``dtype`` via a Triton kernel.
 
-    Replaces x.to(dtype) (which dispatches to the aten _to_copy cast on
+    Replaces ``x.to(dtype)`` (which dispatches to the aten ``_to_copy`` cast on
     the host path) so the dtype conversion for fp16/bf16 <-> fp32 stays inside a
     real XPU kernel and the host function only allocates.
     """
@@ -107,8 +111,21 @@ def _cast_tensor(x, dtype):
 def check_inv_input(A, ind):
     """Validate input for tensorinv: ind is strictly positive, A is >=2D, and
     prod(A.shape[:ind]) == prod(A.shape[ind:]). Raises RuntimeError on
-    violation, matching torch.linalg.tensorinv behaviour.
+    violation, matching torch.linalg.tensorinv's behaviour.
     """
+    # dtype guard first, as in torch: only floating point (or complex, which
+    # this backend cannot lower and rejects below) inputs are accepted, so an
+    # integer input cannot silently reach a kernel that truncates on the fp32
+    # cast and store a wrong "inverse".
+    if A.is_complex():
+        raise RuntimeError(
+            "linalg.tensorinv: complex tensors are not supported on the "
+            "Kunlunxin backend"
+        )
+    if not A.is_floating_point():
+        raise RuntimeError(
+            "linalg.tensorinv: Expected a floating point or complex tensor " "as input"
+        )
     # Checked first, as in torch: a non-positive ind is rejected before any
     # shape reasoning, so ind=0 cannot slip through to the prod comparison
     # below (which it would satisfy trivially for a 1x1 input, yielding a
@@ -116,7 +133,7 @@ def check_inv_input(A, ind):
     if ind <= 0:
         raise RuntimeError(
             "linalg.tensorinv: Expected a strictly positive integer for "
-            f"ind, but got {ind}"
+            f"'ind', but got {ind}"
         )
     if A.dim() < 2:
         raise RuntimeError(
@@ -141,6 +158,7 @@ def check_inv_input(A, ind):
         )
 
 
+@libentry()
 @triton.jit
 def _tinv_small(
     Ap,
@@ -153,9 +171,11 @@ def _tinv_small(
     """Closed-form inverse for n <= 4 from scalar element loads.
 
     Loads are upcast to fp32 and stored back through the element type of
-    Op, so the arithmetic runs in fp32 even for fp16/bf16 input.  A zero
-    determinant (exactly singular input) yields inf/nan through 1.0 / det
-    instead of a finite wrong inverse.
+    Op, so the arithmetic runs in fp32 even for fp16/bf16 input.  The 3x3
+    and 4x4 branches expand the adjugate directly (no 2x2 block dependency
+    for n == 4), so an invertible matrix with a singular leading 2x2 block
+    gets a finite inverse.  A zero determinant (exactly singular input)
+    yields inf/nan through 1.0 / det instead of a finite wrong inverse.
     """
     c = tl.arange(0, BN)
     cm = c < n
@@ -212,75 +232,141 @@ def _tinv_small(
         tl.store(Op + 2 * n + c, o2.to(Op.dtype.element_ty), mask=cm)
 
     if n == 4:
-        # block inverse of [[P, Q], [R, S]] with 2x2 blocks
-        detp = e[0] * e[5] - e[1] * e[4]
-        gp = 1.0 / detp
-        p00 = e[5] * gp
-        p01 = -e[1] * gp
-        p10 = -e[4] * gp
-        p11 = e[0] * gp
-        # T = R P^-1
-        t00 = e[8] * p00 + e[9] * p10
-        t01 = e[8] * p01 + e[9] * p11
-        t10 = e[12] * p00 + e[13] * p10
-        t11 = e[12] * p01 + e[13] * p11
-        # U = T Q, Sm = S - U
-        sm00 = e[10] - (t00 * e[2] + t01 * e[6])
-        sm01 = e[11] - (t00 * e[3] + t01 * e[7])
-        sm10 = e[14] - (t10 * e[2] + t11 * e[6])
-        sm11 = e[15] - (t10 * e[3] + t11 * e[7])
-        dets = sm00 * sm11 - sm01 * sm10
-        gs = 1.0 / dets
-        i00 = sm11 * gs
-        i01 = -sm01 * gs
-        i10 = -sm10 * gs
-        i11 = sm00 * gs
-        # W = P^-1 Q Si
-        w00 = (p00 * e[2] + p01 * e[6]) * i00 + (p00 * e[3] + p01 * e[7]) * i10
-        w01 = (p00 * e[2] + p01 * e[6]) * i01 + (p00 * e[3] + p01 * e[7]) * i11
-        w10 = (p10 * e[2] + p11 * e[6]) * i00 + (p10 * e[3] + p11 * e[7]) * i10
-        w11 = (p10 * e[2] + p11 * e[6]) * i01 + (p10 * e[3] + p11 * e[7]) * i11
-        # TL = P^-1 + W R P^-1
-        y00 = w00 * e[8] + w01 * e[12]
-        y01 = w00 * e[9] + w01 * e[13]
-        y10 = w10 * e[8] + w11 * e[12]
-        y11 = w10 * e[9] + w11 * e[13]
-        a00 = p00 + y00 * p00 + y01 * p10
-        a01 = p01 + y00 * p01 + y01 * p11
-        a10 = p10 + y10 * p00 + y11 * p10
-        a11 = p11 + y10 * p01 + y11 * p11
-        # BL = -Si R P^-1
-        z00 = i00 * e[8] + i01 * e[12]
-        z01 = i00 * e[9] + i01 * e[13]
-        z10 = i10 * e[8] + i11 * e[12]
-        z11 = i10 * e[9] + i11 * e[13]
-        b00 = -(z00 * p00 + z01 * p10)
-        b01 = -(z00 * p01 + z01 * p11)
-        b10 = -(z10 * p00 + z11 * p10)
-        b11 = -(z10 * p01 + z11 * p11)
+        # Full 4x4 adjugate expansion: inv[i][j] = (-1)^(i+j) * M(j,i) / det,
+        # where M(j,i) is the 3x3 minor with row j and column i removed (the
+        # standard adjugate, so no 2x2 block inverse is involved and a
+        # singular leading block cannot poison an invertible matrix).
+        det = (
+            e[0]
+            * (
+                e[5] * (e[10] * e[15] - e[11] * e[14])
+                - e[6] * (e[9] * e[15] - e[11] * e[13])
+                + e[7] * (e[9] * e[14] - e[10] * e[13])
+            )
+            - e[1]
+            * (
+                e[4] * (e[10] * e[15] - e[11] * e[14])
+                - e[6] * (e[8] * e[15] - e[11] * e[12])
+                + e[7] * (e[8] * e[14] - e[10] * e[12])
+            )
+            + e[2]
+            * (
+                e[4] * (e[9] * e[15] - e[11] * e[13])
+                - e[5] * (e[8] * e[15] - e[11] * e[12])
+                + e[7] * (e[8] * e[13] - e[9] * e[12])
+            )
+            - e[3]
+            * (
+                e[4] * (e[9] * e[14] - e[10] * e[13])
+                - e[5] * (e[8] * e[14] - e[10] * e[12])
+                + e[6] * (e[8] * e[13] - e[9] * e[12])
+            )
+        )
+        g = 1.0 / det
+        m0 = (
+            e[5] * (e[10] * e[15] - e[11] * e[14])
+            - e[6] * (e[9] * e[15] - e[11] * e[13])
+            + e[7] * (e[9] * e[14] - e[10] * e[13])
+        )
+        m1 = -(
+            e[1] * (e[10] * e[15] - e[11] * e[14])
+            - e[2] * (e[9] * e[15] - e[11] * e[13])
+            + e[3] * (e[9] * e[14] - e[10] * e[13])
+        )
+        m2 = (
+            e[1] * (e[6] * e[15] - e[7] * e[14])
+            - e[2] * (e[5] * e[15] - e[7] * e[13])
+            + e[3] * (e[5] * e[14] - e[6] * e[13])
+        )
+        m3 = -(
+            e[1] * (e[6] * e[11] - e[7] * e[10])
+            - e[2] * (e[5] * e[11] - e[7] * e[9])
+            + e[3] * (e[5] * e[10] - e[6] * e[9])
+        )
+        m4 = -(
+            e[4] * (e[10] * e[15] - e[11] * e[14])
+            - e[6] * (e[8] * e[15] - e[11] * e[12])
+            + e[7] * (e[8] * e[14] - e[10] * e[12])
+        )
+        m5 = (
+            e[0] * (e[10] * e[15] - e[11] * e[14])
+            - e[2] * (e[8] * e[15] - e[11] * e[12])
+            + e[3] * (e[8] * e[14] - e[10] * e[12])
+        )
+        m6 = -(
+            e[0] * (e[6] * e[15] - e[7] * e[14])
+            - e[2] * (e[4] * e[15] - e[7] * e[12])
+            + e[3] * (e[4] * e[14] - e[6] * e[12])
+        )
+        m7 = (
+            e[0] * (e[6] * e[11] - e[7] * e[10])
+            - e[2] * (e[4] * e[11] - e[7] * e[8])
+            + e[3] * (e[4] * e[10] - e[6] * e[8])
+        )
+        m8 = (
+            e[4] * (e[9] * e[15] - e[11] * e[13])
+            - e[5] * (e[8] * e[15] - e[11] * e[12])
+            + e[7] * (e[8] * e[13] - e[9] * e[12])
+        )
+        m9 = -(
+            e[0] * (e[9] * e[15] - e[11] * e[13])
+            - e[1] * (e[8] * e[15] - e[11] * e[12])
+            + e[3] * (e[8] * e[13] - e[9] * e[12])
+        )
+        m10 = (
+            e[0] * (e[5] * e[15] - e[7] * e[13])
+            - e[1] * (e[4] * e[15] - e[7] * e[12])
+            + e[3] * (e[4] * e[13] - e[5] * e[12])
+        )
+        m11 = -(
+            e[0] * (e[5] * e[11] - e[7] * e[9])
+            - e[1] * (e[4] * e[11] - e[7] * e[8])
+            + e[3] * (e[4] * e[9] - e[5] * e[8])
+        )
+        m12 = -(
+            e[4] * (e[9] * e[14] - e[10] * e[13])
+            - e[5] * (e[8] * e[14] - e[10] * e[12])
+            + e[6] * (e[8] * e[13] - e[9] * e[12])
+        )
+        m13 = (
+            e[0] * (e[9] * e[14] - e[10] * e[13])
+            - e[1] * (e[8] * e[14] - e[10] * e[12])
+            + e[2] * (e[8] * e[13] - e[9] * e[12])
+        )
+        m14 = -(
+            e[0] * (e[5] * e[14] - e[6] * e[13])
+            - e[1] * (e[4] * e[14] - e[6] * e[12])
+            + e[2] * (e[4] * e[13] - e[5] * e[12])
+        )
+        m15 = (
+            e[0] * (e[5] * e[10] - e[6] * e[9])
+            - e[1] * (e[4] * e[10] - e[6] * e[8])
+            + e[2] * (e[4] * e[9] - e[5] * e[8])
+        )
 
-        o0 = tl.where(c == 0, a00, z)
-        o0 = tl.where(c == 1, a01, o0)
-        o0 = tl.where(c == 2, -w00, o0)
-        o0 = tl.where(c == 3, -w01, o0)
-        o1 = tl.where(c == 0, a10, z)
-        o1 = tl.where(c == 1, a11, o1)
-        o1 = tl.where(c == 2, -w10, o1)
-        o1 = tl.where(c == 3, -w11, o1)
-        o2 = tl.where(c == 0, b00, z)
-        o2 = tl.where(c == 1, b01, o2)
-        o2 = tl.where(c == 2, i00, o2)
-        o2 = tl.where(c == 3, i01, o2)
-        o3 = tl.where(c == 0, b10, z)
-        o3 = tl.where(c == 1, b11, o3)
-        o3 = tl.where(c == 2, i10, o3)
-        o3 = tl.where(c == 3, i11, o3)
+        o0 = tl.where(c == 0, m0 * g, z)
+        o0 = tl.where(c == 1, m1 * g, o0)
+        o0 = tl.where(c == 2, m2 * g, o0)
+        o0 = tl.where(c == 3, m3 * g, o0)
+        o1 = tl.where(c == 0, m4 * g, z)
+        o1 = tl.where(c == 1, m5 * g, o1)
+        o1 = tl.where(c == 2, m6 * g, o1)
+        o1 = tl.where(c == 3, m7 * g, o1)
+        o2 = tl.where(c == 0, m8 * g, z)
+        o2 = tl.where(c == 1, m9 * g, o2)
+        o2 = tl.where(c == 2, m10 * g, o2)
+        o2 = tl.where(c == 3, m11 * g, o2)
+        o3 = tl.where(c == 0, m12 * g, z)
+        o3 = tl.where(c == 1, m13 * g, o3)
+        o3 = tl.where(c == 2, m14 * g, o3)
+        o3 = tl.where(c == 3, m15 * g, o3)
         tl.store(Op + c, o0.to(Op.dtype.element_ty), mask=cm)
         tl.store(Op + n + c, o1.to(Op.dtype.element_ty), mask=cm)
         tl.store(Op + 2 * n + c, o2.to(Op.dtype.element_ty), mask=cm)
         tl.store(Op + 3 * n + c, o3.to(Op.dtype.element_ty), mask=cm)
 
 
+@libentry()
 @triton.jit
 def _tinv_row_kernel(
     Ap,
@@ -290,7 +376,7 @@ def _tinv_row_kernel(
     n: tl.constexpr,
     BN: tl.constexpr,
 ):
-    """Partial-pivoted Gauss-Jordan on 1-D row registers (5 <= n <= 32).
+    """Partial-pivoted Gauss-Jordan on 1-D row registers (5 <= n <= 13).
 
     The working matrix and the accumulated inverse are kept as fully unrolled
     Python tuples of n vectors of length BN; every reduction is a full
@@ -322,6 +408,8 @@ def _tinv_row_kernel(
 
         # partial pivoting: largest magnitude among rows k..n-1, ties -> lowest
         best = tl.abs(col[k])
+        # p carries the pivot row index as a tensor (0.0 * best gives it the
+        # tile type) so the tl.where selects below can branch on it.
         p = float(k) + 0.0 * best
         for i in tl.static_range(k + 1, n):
             a = tl.abs(col[i])
@@ -421,9 +509,20 @@ def linalg_tensorinv(A, ind=2, *, out=None):
 
     if m <= _TINV_GJ_MAX:
         # Single-kernel register path: closed-form for m <= 4 (no cross-lane
-        # reduction), otherwise the 1-D row-register Gauss-Jordan.
-        res = torch.empty(output_shape, dtype=A.dtype, device=A.device)
-        res_flat = res.reshape(m, m)
+        # reduction), otherwise the 1-D row-register Gauss-Jordan.  When `out`
+        # is contiguous and already the right shape the kernels write straight
+        # into it (their dtype-generic stores perform the same downcast the
+        # copy_ fallback would), avoiding a full-size temporary + second pass;
+        # otherwise compute into a temporary and let out.copy_ handle other
+        # layouts/dtypes.
+        direct = (
+            out is not None and out.is_contiguous() and tuple(out.shape) == output_shape
+        )
+        if direct:
+            target = out
+        else:
+            target = torch.empty(output_shape, dtype=A.dtype, device=A.device)
+        res_flat = target.reshape(m, m)
         with torch_device_fn.device(A.device):
             if m <= _TINV_SMALL_N:
                 bm = max(2, triton.next_power_of_2(m))
@@ -432,8 +531,10 @@ def linalg_tensorinv(A, ind=2, *, out=None):
                 bn = 8 if m <= 8 else triton.next_power_of_2(m)
                 _tinv_row_kernel[(1,)](src, res_flat, s0, s1, m, bn, num_warps=1)
         if out is None:
-            return res
-        out.copy_(res)
+            return target
+        if direct:
+            return out
+        out.copy_(target)
         return out
 
     # Large m: LU factorisation and substitution only run in fp32/fp64.
@@ -564,7 +665,7 @@ def _check_tensorinv_out(A, ind, out):
 
 def linalg_tensorinv_out(A, ind=2, *, out=None):
     """Out-of-place variant of linalg_tensorinv: computes the tensor inverse
-    and writes the result into the provided out tensor."""
+    and writes the result into the provided ``out`` tensor."""
     logger.debug("GEMS_KUNLUNXIN LINALG_TENSORINV_OUT")
     if out is not None:
         _check_tensorinv_out(A, ind, out)
