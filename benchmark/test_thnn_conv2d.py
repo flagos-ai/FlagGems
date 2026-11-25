@@ -86,6 +86,10 @@ class ThnnConv2dBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.thnn_conv2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The MUSA build has no native ATen reference for this operator",
+)
 def test_thnn_conv2d():
     bench = ThnnConv2dBenchmark(
         op_name="thnn_conv2d",

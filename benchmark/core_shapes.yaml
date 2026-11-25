@@ -1647,3 +1647,15 @@ native_group_norm_backward:
     - 32
     - 32
   shape_desc: Frozen backward30 native_norm input shape
+
+narrow_copy_backward:
+  shapes:
+  - - 5
+    - 7
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 narrow input shape
