@@ -29,3 +29,16 @@ def test_acos():
         op_name="acos", torch_op=torch.acos, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+@pytest.mark.acos_backward
+def test_acos_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="acos",
+        torch_op=torch.acos,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # The Autograd fallthrough routes the default use_gems() path through
+    # AcosFunction, so this measures the fused registered backward kernel.
+    bench.run()
