@@ -13641,7 +13641,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: mean
   description: Returns the mean value of all elements in the `input` tensor. Input
     must be floating point or complex.
