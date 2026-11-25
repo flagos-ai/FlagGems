@@ -2035,7 +2035,18 @@ def _pack_shared_mm_left(
     tl.store(packed + row[:, None] * PITCH + col[None, :], values, valid)
 
 
-def launch_shared_mm(a, b, c, config):
+_mm_fixed_launches = GemmChoiceCache(maxsize=512)
+
+
+def _bind_fixed_mm_launch(launch_key, entry, grid, args, options, result):
+    if launch_key is not None and not torch.cuda.is_current_stream_capturing():
+        kernel, meta = result
+        plan = bind_gemm_launch(entry, kernel, grid, args, options, meta, 3)
+        if plan is not None:
+            _mm_fixed_launches.remember(launch_key, plan)
+
+
+def launch_shared_mm(a, b, c, config, *, launch_key=None):
     """Launch one explicit ordinary GEMM candidate through the real LibEntry."""
     if not config.supports(a, b, c):
         raise ValueError("unsupported matrix storage, vector extent or address range")
@@ -2065,7 +2076,9 @@ def launch_shared_mm(a, b, c, config):
                 a, packed, m, k, pitch, block_rows, block_cols, num_warps=4
             )
             a = packed
-        return _ordinary_mm_entry()[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
+        entry = _ordinary_mm_entry()
+        grid = (triton.cdiv(m, bm) * triton.cdiv(n, bn),)
+        args = (
             a,
             b,
             c,
@@ -2075,8 +2088,11 @@ def launch_shared_mm(a, b, c, config):
             *(tl.constexpr(s) for s in a.stride()),
             *(tl.constexpr(s) for s in b.stride()),
             *(tl.constexpr(s) for s in c.stride()),
-            **options,
         )
+        result = entry[grid](*args, **options)
+        if not config.a_row_padding:
+            _bind_fixed_mm_launch(launch_key, entry, grid, args, options, result)
+        return result
 
 
 _SHARED_PREFETCH_CONFIG = SharedMMConfig((64, 128, 32))
@@ -2329,7 +2345,7 @@ def short_k_mm_candidates(a, b, c, *, extended=False):
     )
 
 
-def launch_short_k_mm(a, b, c, config):
+def launch_short_k_mm(a, b, c, config, *, launch_key=None):
     m, k = a.shape
     n = b.shape[1]
     bm, bn, group_m = 128, 128, 4
@@ -2337,7 +2353,9 @@ def launch_short_k_mm(a, b, c, config):
         m, n, bm, bn, group_m
     )
     with gemm_device_context(a.device):
-        return _ordinary_mm_entry()[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
+        entry = _ordinary_mm_entry()
+        grid = (triton.cdiv(m, bm) * triton.cdiv(n, bn),)
+        args = (
             a,
             b,
             c,
@@ -2347,6 +2365,8 @@ def launch_short_k_mm(a, b, c, config):
             *a.stride(),
             *b.stride(),
             *c.stride(),
+        )
+        options = dict(
             BLOCK_M=bm,
             BLOCK_N=bn,
             BLOCK_K=config.block_k,
@@ -2362,6 +2382,9 @@ def launch_short_k_mm(a, b, c, config):
             num_stages=2,
             **_SHORT_K_HCU_OPTIONS,
         )
+        result = entry[grid](*args, **options)
+        _bind_fixed_mm_launch(launch_key, entry, grid, args, options, result)
+        return result
 
 
 # Cooperative kernel capability, configurations and launch.
@@ -3465,7 +3488,9 @@ def _mm_candidate_label(candidate):
 
 def clear_mm_family_choices():
     _mm_family_choices.clear()
+    _mm_fixed_launches.clear()
     _mm_splitk_launches.clear()
+    _ordinary_mm_launches.clear()
 
 
 def _measure_mm_family(
@@ -3692,18 +3717,18 @@ def mm(a, b):
     return c
 
 
-def _dispatch_hygon_mm_candidate(a, b, c, candidate, *, validate=True):
+def _dispatch_hygon_mm_candidate(a, b, c, candidate, *, validate=True, launch_key=None):
     """Launch a fixed configuration selected by the family tuner."""
     if candidate == _TUNED_SPLITK_CANDIDATE:
         return _launch_mm_splitk(a, b, c, symmetric_async=True)
     if isinstance(candidate, SharedMMConfig):
-        return launch_shared_mm(a, b, c, candidate)
+        return launch_shared_mm(a, b, c, candidate, launch_key=launch_key)
     if isinstance(candidate, CooperativeMMConfig):
         return launch_cooperative_mm(a, b, c, candidate)
     if isinstance(candidate, GroupedMVConfig):
         return launch_grouped_mv(a, b, c, candidate)
     if isinstance(candidate, ShortKMMConfig):
-        return launch_short_k_mm(a, b, c, candidate)
+        return launch_short_k_mm(a, b, c, candidate, launch_key=launch_key)
     return launch_local_split_mm(a, b, c, candidate, validate=validate)
 
 
@@ -3725,24 +3750,33 @@ def _dispatch_hygon_mm(a, b, c, *, fresh_output=False):
         launch = _launch_mm_splitk if _splitk_eligible(a, b, c) else _launch_ordinary_mm
         launch(a, b, c)
         return
-    if choice.index:
-        succeeded, _ = try_gemm_candidate(
-            _dispatch_hygon_mm_candidate,
-            a,
-            b,
-            c,
-            choice.candidates[choice.index - 1],
-            validate=False,
-        )
-        if succeeded:
-            return
-        _mm_family_choices.fallback(key, choice)
     bind = (
         HAS_FULL_LAUNCH_ARGUMENTS
         and not triton.knobs.autotuning.adjust_block_size
         and runtime.resolve_tuning_mode("mm") == runtime.TuningMode.DEFAULT
         and type(a) is type(b) is type(c) is torch.Tensor
     )
+    if choice.index:
+        candidate = choice.candidates[choice.index - 1]
+        fixed_key = (key, candidate) if bind else None
+        plan = _mm_fixed_launches.get(fixed_key) if fixed_key is not None else None
+        if plan is not None:
+            launch, constants = plan
+            with gemm_device_context(a.device):
+                launch(a, b, c, *constants)
+            return
+        succeeded, _ = try_gemm_candidate(
+            _dispatch_hygon_mm_candidate,
+            a,
+            b,
+            c,
+            candidate,
+            validate=False,
+            launch_key=fixed_key,
+        )
+        if succeeded:
+            return
+        _mm_family_choices.fallback(key, choice)
     if choice.splitk:
         if _mm_splitk_post.fn._run_mode != "normal":
             bind = False
