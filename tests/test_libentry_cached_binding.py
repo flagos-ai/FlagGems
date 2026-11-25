@@ -74,6 +74,7 @@ def entry(monkeypatch, request):
     )
     e.specialize_indices = [0, 1]
     e.do_not_specialize_indices = [2]
+    e._kernel_params = frozenset(p.name for p in e.jit_function.params)
     e.divisibility = 16
     e._tensor_spec_fn = None
     e._has_flagtune_tuner = True

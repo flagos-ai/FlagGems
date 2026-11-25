@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
 try:  # low-overhead launch path (see below)
@@ -472,7 +473,7 @@ def _launcher(kern, grid, num_warps, consts):
         return kern[(grid_x,)](*args, *consts, num_warps=num_warps)
 
     def launch(*args):
-        dev = torch.gcu.current_device()
+        dev = torch_device_fn.current_device()
         st = _LAUNCH_STATE.get(key)
         if st is not None and st[0] == dev:
             st[1](*args, *consts)
@@ -663,7 +664,7 @@ def _run_tensor(t, other):
         other.stride(),
         o_off,
     )
-    dev = torch.gcu.current_device()
+    dev = torch_device_fn.current_device()
     cached = _PLAN_CACHE.get(key)
     if cached is not None and cached[0] == dev:
         cached[1](t, other)
@@ -737,7 +738,7 @@ def _run_scalar(t, other):
     rank = t.dim()
     s_off = int(t.storage_offset())
     key = (t.dtype, other, t.shape, t.stride(), s_off)
-    dev = torch.gcu.current_device()
+    dev = torch_device_fn.current_device()
     cached = _PLAN_CACHE.get(key)
     if cached is not None and cached[0] == dev:
         cached[1](t)
