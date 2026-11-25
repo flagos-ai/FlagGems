@@ -18,6 +18,8 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -61,7 +63,7 @@ def generate_scatter_kernel(
         code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
         with code.indent():
             code.writeline("return 256")
-        code.writeline("return 128")
+        code.writeline("return 32")
     code.newline()
     code.newline()
 
@@ -375,6 +377,17 @@ def scatter(inp, dim, index, src, reduce=None):
         out = out.contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
+    # src must be judged by the as_strided view: the original src's leading dim may be larger
+    if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_strided):
+        scatter_last_dim(out, dim, index, src_strided, reduce == "add")
+        if needs_upcast:
+            out = out.to(orig_dtype)
+        return out
+    if reduce == "multiply" and is_last_dim_flat(out, dim, index, src_strided):
+        scatter_last_dim_multiply(out, dim, index, src_strided)
+        if needs_upcast:
+            out = out.to(orig_dtype)
+        return out
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
@@ -420,6 +433,16 @@ def scatter_(inp, dim, index, src, reduce=None):
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     src_restrided = src.as_strided(index.shape, src.stride())
+    if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_restrided):
+        scatter_last_dim(out, dim, index, src_restrided, reduce == "add")
+        if needs_upcast:
+            inp.copy_(out.to(orig_dtype))
+        return inp
+    if reduce == "multiply" and is_last_dim_flat(out, dim, index, src_restrided):
+        scatter_last_dim_multiply(out, dim, index, src_restrided)
+        if needs_upcast:
+            inp.copy_(out.to(orig_dtype))
+        return inp
     inp_restrided = restride_dim(out, dim, index.shape)
     dim_size = out.size(dim)
     dim_stride = out.stride(dim)
@@ -442,3 +465,302 @@ def scatter_(inp, dim, index, src, reduce=None):
     if needs_upcast:
         inp.copy_(out.to(orig_dtype))
     return inp
+
+
+# ---------------------------------------------------------------------------
+# Last-dimension scatter fast path
+#
+# Benchmarks and most real calls scatter along the last dimension: index/src positions outside the scatter
+# dimension map to the output, so the write address = row base + index value. No per-element
+# rank-times `/` `%` coordinate decomposition is needed - compress leading dims into "rows" and treat the last as
+# "columns",
+# covering with a BLOCK_M x BLOCK_N 2D tile, with only one multiply-add inside the tile.
+# ---------------------------------------------------------------------------
+
+LAST_DIM_TILE_BYTES = 4 * 1024
+LAST_DIM_MAX_BLOCK_N = 2048
+LAST_DIM_ATOMIC_BLOCK_N = 4096
+
+
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "width",
+        "idx_row_stride",
+        "src_row_stride",
+        "out_row_stride",
+        "num_col_tile",
+    ]
+)
+def scatter_last_dim_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    width,
+    idx_row_stride,
+    src_row_stride,
+    out_row_stride,
+    num_col_tile,
+    IS_ADD: tl.constexpr,
+    INT32: tl.constexpr,
+    EVEN: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Scatter along the last dim: tile = BLOCK_M rows x BLOCK_N columns.
+
+    rows/width are the flattened index's row count and row width; the three row_strides are
+    index/src/out's flattened row strides (leading dims must be chain-homogeneous, see is_last_dim_flat).
+    """
+    pid = tl.program_id(0)
+    num_cta = tl.num_programs(0)
+    num_tile = tl.cdiv(rows, BLOCK_M) * num_col_tile
+    for tile in range(pid, num_tile, num_cta):
+        # Each tile does one division here, amortized over BLOCK_M*BLOCK_N elements
+        row_tile = tile // num_col_tile
+        col_tile = tile - row_tile * num_col_tile
+        row_idx = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        col_idx = col_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        idx_off = row_idx[:, None] * idx_row_stride + col_idx[None, :]
+        src_off = row_idx[:, None] * src_row_stride + col_idx[None, :]
+        if EVEN:
+            # Whole tile inside the compute domain: drop per-element predicates, especially worthwhile for the atomic
+            # path
+            index_val = tl.load(index_ptr + idx_off)
+            src_val = tl.load(src_ptr + src_off)
+        else:
+            mask = (row_idx[:, None] < rows) & (col_idx[None, :] < width)
+            index_val = tl.load(index_ptr + idx_off, mask=mask, other=0)
+            src_val = tl.load(src_ptr + src_off, mask=mask, other=0)
+        if INT32:
+            out_off = row_idx[:, None].to(tl.int32) * out_row_stride
+            out_off += index_val.to(tl.int32)
+        else:
+            out_off = row_idx[:, None].to(tl.int64) * out_row_stride
+            out_off += index_val
+        if IS_ADD:
+            if EVEN:
+                tl.atomic_add(out_ptr + out_off, src_val, sem="relaxed")
+            else:
+                tl.atomic_add(out_ptr + out_off, src_val, mask=mask, sem="relaxed")
+        else:
+            if EVEN:
+                tl.store(out_ptr + out_off, src_val)
+            else:
+                tl.store(out_ptr + out_off, src_val, mask=mask)
+
+
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "width",
+        "idx_row_stride",
+        "src_row_stride",
+        "out_row_stride",
+        "num_col_tile",
+    ]
+)
+def scatter_last_dim_mul_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    width,
+    idx_row_stride,
+    src_row_stride,
+    out_row_stride,
+    num_col_tile,
+    INT32: tl.constexpr,
+    EVEN: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Last-dim scatter multiplication: out[.., index] *= src, CAS loop keeps commutativity semantics.
+
+    Unlike scatter_last_dim_kernel this multiplies; with no native atomic_mul it can only use
+    atomic_cas for read-multiply-write retry. One multiply-add inside the tile locates addresses (saving the generic
+    kernel's
+    rank-times / %), i32 offsets, unfinished lanes spin by "writing back the old value".
+    """
+    pid = tl.program_id(0)
+    num_cta = tl.num_programs(0)
+    num_tile = tl.cdiv(rows, BLOCK_M) * num_col_tile
+    for tile in range(pid, num_tile, num_cta):
+        row_tile = tile // num_col_tile
+        col_tile = tile - row_tile * num_col_tile
+        row_idx = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        col_idx = col_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        idx_off = row_idx[:, None] * idx_row_stride + col_idx[None, :]
+        src_off = row_idx[:, None] * src_row_stride + col_idx[None, :]
+        if EVEN:
+            index_val = tl.load(index_ptr + idx_off)
+            src_val = tl.load(src_ptr + src_off)
+        else:
+            mask = (row_idx[:, None] < rows) & (col_idx[None, :] < width)
+            index_val = tl.load(index_ptr + idx_off, mask=mask, other=0)
+            src_val = tl.load(src_ptr + src_off, mask=mask, other=0)
+        if INT32:
+            out_off = row_idx[:, None].to(tl.int32) * out_row_stride
+            out_off += index_val.to(tl.int32)
+        else:
+            out_off = row_idx[:, None].to(tl.int64) * out_row_stride
+            out_off += index_val
+        running = tl.load(out_ptr + out_off)
+        pending = tl.full((BLOCK_M, BLOCK_N), 1, dtype=tl.int1)
+        if not EVEN:
+            pending = pending & mask
+        block_stop = tl.sum(pending.to(tl.int32)) == 0
+        while not block_stop:
+            updated = tl.where(pending, running * src_val, running)
+            observed = tl.atomic_cas(out_ptr + out_off, running, updated)
+            done = (observed == running) & pending
+            running = tl.where(done, updated, observed)
+            pending = pending & (~done)
+            block_stop = tl.sum(pending.to(tl.int32)) == 0
+
+
+# Measured grid enlargement gives no gain on the multiply CAS path (atomic throughput is the cap), so use a sufficient
+# constant cap
+SCATTER_MUL_MAX_GRID = 4096
+
+
+def scatter_last_dim_multiply(out, dim, index, src):
+    """Host dispatch for last-dim scatter (multiply), writes out in place and returns it."""
+    rank = index.dim()
+    width = index.shape[-1]
+    rows = index.numel() // width
+    block_m = 1
+    block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
+    num_col_tile = triton.cdiv(width, block_n)
+    # When parallelism is low, narrow the column block so more CTAs join the same row
+    while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
+        block_n //= 2
+        num_col_tile = triton.cdiv(width, block_n)
+    grid = min(triton.cdiv(rows, block_m) * num_col_tile, SCATTER_MUL_MAX_GRID)
+    even = rows % block_m == 0 and width % block_n == 0
+    int32 = all(_max_offset(t) < 2**31 for t in (out, index, src))
+    scatter_last_dim_mul_kernel[(grid,)](
+        src,
+        index,
+        out,
+        rows,
+        width,
+        index.stride(rank - 2),
+        src.stride(rank - 2),
+        out.stride(rank - 2),
+        num_col_tile,
+        INT32=int32,
+        EVEN=even,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=4,
+    )
+    return out
+
+
+def _max_offset(tensor):
+    """Maximum linear offset a tensor may access, used to decide whether addresses fit int32."""
+    return sum(
+        (size - 1) * stride
+        for size, stride in zip(tensor.shape, tensor.stride())
+        if size > 1
+    )
+
+
+def _flat_leading(tensor, rank):
+    """Whether leading dims are chain-homogeneous: rank-1 leading dims can be flattened into one "row" dim."""
+    if tensor.stride(rank - 1) != 1:
+        return False
+    for i in range(rank - 2):
+        if tensor.stride(i) != tensor.shape[i + 1] * tensor.stride(i + 1):
+            return False
+    return True
+
+
+def is_last_dim_flat(out, dim, index, src):
+    """Decide whether the last-dim 2D tile fast path applies.
+
+    Row flattening is based on index's leading dims, so all three tensors' leading shapes must match
+    index exactly (larger dims cannot map row numbers with a single stride).
+    """
+    rank = index.dim()
+    if rank < 2:
+        return False
+    # dim may be negative (-1 is most common); normalize before checking for the last dim
+    if dim % rank != rank - 1:
+        return False
+    if out.dim() != rank or src.dim() != rank:
+        return False
+    if index.shape[-1] == 0 or index.numel() == 0:
+        return False
+    leading = tuple(index.shape[:-1])
+    for tensor in (out, index, src):
+        if tuple(tensor.shape[:-1]) != leading:
+            return False
+        if not _flat_leading(tensor, rank):
+            return False
+    return True
+
+
+def _last_dim_tile(rows, width, element_size, add):
+    """Choose (BLOCK_M, BLOCK_N).
+
+    Transactional writes (plain scatter) lay tiles by a 16 KiB byte budget; atomic writes (scatter_add)
+    cost is entirely determined by atomic count, and one row covering 4096 columns measured faster than 2048, so
+    use one row + a large column block. When parallelism is low, narrow columns first, then rows.
+    """
+    budget = max(1, LAST_DIM_TILE_BYTES // element_size)
+
+    def _rows_per_tile(col_block):
+        """Non-atomic path lays rows by byte budget; with enough rows a single-row tile is faster."""
+        if rows >= 8 * MAX_GRID_DIM:
+            return 1
+        return max(1, min(triton.next_power_of_2(rows), budget // col_block))
+
+    if add:
+        block_n = min(triton.next_power_of_2(width), LAST_DIM_ATOMIC_BLOCK_N)
+        block_m = 1
+    else:
+        block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
+        block_m = _rows_per_tile(block_n)
+    num_col_tile = triton.cdiv(width, block_n)
+    # With low parallelism narrow only the column block: splitting rows on small cases makes the tile loop overhead
+    # dominant
+    while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
+        block_n //= 2
+        num_col_tile = triton.cdiv(width, block_n)
+        if not add:
+            block_m = _rows_per_tile(block_n)
+    return block_m, block_n, num_col_tile
+
+
+def scatter_last_dim(out, dim, index, src, add):
+    """Host dispatch for last-dim scatter, writes out in place and returns it."""
+    rank = index.dim()
+    width = index.shape[-1]
+    rows = index.numel() // width
+    element_size = max(out.element_size(), index.element_size())
+    block_m, block_n, num_col_tile = _last_dim_tile(rows, width, element_size, add)
+    grid = min(MAX_GRID_DIM, triton.cdiv(rows, block_m) * num_col_tile)
+    even = rows % block_m == 0 and width % block_n == 0
+    int32 = all(_max_offset(t) < 2**31 for t in (out, index, src))
+    scatter_last_dim_kernel[(grid,)](
+        src,
+        index,
+        out,
+        rows,
+        width,
+        index.stride(rank - 2),
+        src.stride(rank - 2),
+        out.stride(rank - 2),
+        num_col_tile,
+        IS_ADD=add,
+        INT32=int32,
+        EVEN=even,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        # Atomic write throughput grows linearly with warp count and saturates at 4; plain writes need only 2 warps
+        num_warps=4 if add else 2,
+    )
+    return out
