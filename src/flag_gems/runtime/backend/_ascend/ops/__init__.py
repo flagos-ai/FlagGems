@@ -26,6 +26,7 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._upsample_nearest_exact3d_backward import _upsample_nearest_exact3d_backward
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -251,6 +252,7 @@ from .inner import inner
 from .inverse import inverse
 from .isin import isin
 from .isposinf import isposinf
+from .isreal import isreal
 from .kl_div import kl_div
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
@@ -464,6 +466,7 @@ __all__ = [
     "_trilinear_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_nearest_exact3d_backward",
     "absolute_",
     "acos_",
     "acosh",
@@ -702,6 +705,7 @@ __all__ = [
     "inverse",
     "isin",
     "isposinf",
+    "isreal",
     "kl_div",
     "l1_loss",
     "layer_norm",

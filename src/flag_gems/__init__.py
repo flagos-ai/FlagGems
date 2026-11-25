@@ -659,6 +659,7 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    ("_sparse_coo_tensor_unsafe", sparse_coo_tensor_unsafe),
     (
         "_sparse_coo_tensor_with_dims",
         sparse_coo_tensor_with_dims,
@@ -1724,8 +1725,18 @@ _FULL_CONFIG = (
     ("leaky_relu.out", leaky_relu_out),
     ("leaky_relu_", leaky_relu_),
     ("leaky_relu_backward", leaky_relu_backward),
-    ("lerp.Scalar", lerp_scalar),
-    ("lerp.Tensor", lerp_tensor),
+    (
+        "lerp.Scalar",
+        lerp_scalar,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
+    (
+        "lerp.Tensor",
+        lerp_tensor,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
     ("less.Scalar", lt_scalar),
