@@ -224,7 +224,7 @@ def test_floor_hygon_aten_registration(numel, expected_route, monkeypatch):
             result = torch.floor(inp)
         finally:
             library._destroy()
-    torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+    utils.gems_assert_equal(result, reference)
     assert calls == [expected_route]
 
 
