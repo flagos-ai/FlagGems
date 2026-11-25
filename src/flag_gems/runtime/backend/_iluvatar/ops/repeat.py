@@ -270,10 +270,6 @@ def repeat_kernel_4d(
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 8192}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 16384}, num_warps=8, num_stages=1),
     ],
     key=["num_tasks"],
 )
