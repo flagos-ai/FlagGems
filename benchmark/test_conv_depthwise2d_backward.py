@@ -19,6 +19,15 @@ import flag_gems
 
 from . import base, consts
 
+# Depthwise conv2d backward shapes: (N, C, H, W, KH, KW, stride, padding).
+# Dilation stays (1, 1) for the benchmark sweep.
+SHAPES = [
+    (8, 32, 64, 64, 3, 3, 1, 1),
+    (16, 64, 128, 128, 3, 3, 1, 1),
+    (4, 96, 130, 130, 5, 5, 2, 2),
+    (2, 128, 224, 224, 3, 3, 2, 1),
+]
+
 
 class ConvDepthwise2dBackwardBenchmark(base.GenericBenchmark):
     """Depthwise conv2d backward: both gradients through the entry point.
@@ -29,22 +38,19 @@ class ConvDepthwise2dBackwardBenchmark(base.GenericBenchmark):
     depthwise backward on this build.
     """
 
-    def get_input_iter(self, dtype):
-        shapes = [
-            (8, 32, 64, 64, 3, 3, (1, 1), (1, 1)),
-            (16, 64, 128, 128, 3, 3, (1, 1), (1, 1)),
-            (4, 96, 130, 130, 5, 5, (2, 2), (2, 2)),
-            (2, 128, 224, 224, 3, 3, (2, 2), (1, 1)),
-        ]
-        for n, c, h, w, kh, kw, stride, padding in shapes:
-            out_h = (h + 2 * padding[0] - (kh - 1) - 1) // stride[0] + 1
-            out_w = (w + 2 * padding[1] - (kw - 1) - 1) // stride[1] + 1
-            x = torch.randn((n, c, h, w), dtype=dtype, device=self.device)
-            weight = torch.randn((c, 1, kh, kw), dtype=dtype, device=self.device)
-            grad_output = torch.randn(
-                (n, c, out_h, out_w), dtype=dtype, device=self.device
-            )
-            yield grad_output, x, weight, stride, padding, (1, 1)
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [tuple(s) for s in SHAPES]
+
+
+def _input_fn(shape, dtype, device):
+    n, c, h, w, kh, kw, stride, padding = shape
+    out_h = (h + 2 * padding - (kh - 1) - 1) // stride + 1
+    out_w = (w + 2 * padding - (kw - 1) - 1) // stride + 1
+    x = torch.randn((n, c, h, w), dtype=dtype, device=device)
+    weight = torch.randn((c, 1, kh, kw), dtype=dtype, device=device)
+    grad_output = torch.randn((n, c, out_h, out_w), dtype=dtype, device=device)
+    yield grad_output, x, weight, [stride, stride], [padding, padding], (1, 1)
 
 
 def _depthwise_conv2d_backward(grad_output, x, weight, stride, padding, dilation):
@@ -90,6 +96,7 @@ def test_conv_depthwise2d_backward():
     bench = ConvDepthwise2dBackwardBenchmark(
         op_name="conv_depthwise2d_backward",
         torch_op=_depthwise_conv2d_backward,
+        input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.conv_depthwise2d_backward)
