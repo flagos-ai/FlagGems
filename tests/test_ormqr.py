@@ -18,6 +18,28 @@ ORMQR_SHAPES = [
 ORMQR_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
+def _ormqr_cpu_reference(inp, tau, other, *, left, transpose):
+    # Apply the packed Householder reflectors without calling CPU LAPACK.
+    # Q = H0 H1 ...; left multiplication reverses the application order.
+    indices = range(tau.shape[-1])
+    if left != transpose:
+        indices = reversed(indices)
+    result = other.clone()
+    for i in indices:
+        tail = inp[..., i + 1 :, i]
+        v = torch.cat((torch.ones_like(inp[..., i : i + 1, i]), tail), dim=-1)
+        scale = tau[..., i, None, None]
+        if left:
+            block = result[..., i:, :]
+            projection = v.unsqueeze(-2) @ block
+            block.sub_(scale * (v.unsqueeze(-1) @ projection))
+        else:
+            block = result[..., :, i:]
+            projection = block @ v.unsqueeze(-1)
+            block.sub_(scale * (projection @ v.unsqueeze(-2)))
+    return result
+
+
 @pytest.mark.ormqr
 @pytest.mark.parametrize("M, N", ORMQR_SHAPES)
 @pytest.mark.parametrize("dtype", ORMQR_DTYPES)
@@ -48,7 +70,14 @@ def test_ormqr(M, N, dtype, left, transpose):
     ref_tau = utils.to_reference(tau, True)
     ref_other = utils.to_reference(other, True)
 
-    ref_out = torch.ormqr(ref_input, ref_tau, ref_other, left=left, transpose=transpose)
+    reference = torch.ormqr
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and ref_input.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        reference = _ormqr_cpu_reference
+    ref_out = reference(ref_input, ref_tau, ref_other, left=left, transpose=transpose)
     res_out = flag_gems.ormqr(input_tensor, tau, other, left=left, transpose=transpose)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
