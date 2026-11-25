@@ -19,6 +19,26 @@ import flag_gems
 
 from . import base, consts
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+# substituted / non-contract baseline: the native aten op has no device kernel
+def _substituted_batch_norm_gather_stats_with_counts(
+    input, mean, invstd, running_mean, running_var, momentum, eps, counts
+):
+    var = 1.0 / (invstd * invstd) - eps
+    weights = counts.unsqueeze(1)
+    total = counts.sum()
+    combined_mean = (weights * mean).sum(dim=0) / total
+    combined_var = (weights * var).sum(dim=0) / total + (
+        weights * (mean - combined_mean) ** 2
+    ).sum(dim=0) / total
+    if running_mean is not None:
+        running_mean.mul_(1.0 - momentum).add_(combined_mean, alpha=momentum)
+    if running_var is not None:
+        running_var.mul_(1.0 - momentum).add_(combined_var, alpha=momentum)
+    return combined_mean, 1.0 / torch.sqrt(combined_var + eps)
+
 
 class NormBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
@@ -62,7 +82,11 @@ def test_batch_norm_gather_stats_with_counts():
     bench = NormBenchmark(
         input_fn=batch_norm_gather_stats_with_counts_input_fn,
         op_name="batch_norm_gather_stats_with_counts",
-        torch_op=torch.batch_norm_gather_stats_with_counts,
+        torch_op=(
+            _substituted_batch_norm_gather_stats_with_counts
+            if IS_KUNLUNXIN
+            else torch.batch_norm_gather_stats_with_counts
+        ),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.batch_norm_gather_stats_with_counts)

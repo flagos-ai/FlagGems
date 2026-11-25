@@ -18,6 +18,7 @@ import logging
 
 import torch
 
+from flag_gems.ops.baddbmm import BaddbmmFunction
 from flag_gems.ops.baddbmm import baddbmm as _generic_baddbmm
 from flag_gems.ops.baddbmm import baddbmm_out as _generic_baddbmm_out
 from flag_gems.utils import broadcastable_to
@@ -43,15 +44,28 @@ def _can_use_ppu_baddbmm(bias, A, B, out=None) -> bool:
     )
 
 
+def _ppu_baddbmm_forward(bias, A, B, beta, alpha):
+    out = torch.empty(
+        (A.shape[0], A.shape[1], B.shape[2]),
+        dtype=A.dtype,
+        device=A.device,
+    )
+    return _dispatch_ppu_bmm(A, B, out, bias=bias, alpha=alpha, beta=beta)
+
+
+class _PPUBaddbmmFunction(BaddbmmFunction):
+    @staticmethod
+    def forward(ctx, bias, A, B, beta, alpha):
+        BaddbmmFunction._save_context(ctx, bias, A, B, beta, alpha)
+        return _ppu_baddbmm_forward(bias, A, B, beta, alpha)
+
+
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
     logger.debug("GEMS_THEAD BADDBMM")
     if _can_use_ppu_baddbmm(bias, A, B):
-        out = torch.empty(
-            (A.shape[0], A.shape[1], B.shape[2]),
-            dtype=A.dtype,
-            device=A.device,
-        )
-        return _dispatch_ppu_bmm(A, B, out, bias=bias, alpha=alpha, beta=beta)
+        if torch.is_grad_enabled() and any(t.requires_grad for t in (bias, A, B)):
+            return _PPUBaddbmmFunction.apply(bias, A, B, beta, alpha)
+        return _ppu_baddbmm_forward(bias, A, B, beta, alpha)
     return _generic_baddbmm(bias, A, B, beta=beta, alpha=alpha)
 
 

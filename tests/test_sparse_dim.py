@@ -211,10 +211,10 @@ def _resolve_dense_dim():
     # local implementation of the same ATen semantics. The coexistence test
     # only needs a second metadata operator to register on the same keys.
     try:
-        from flag_gems.ops.dense_dim import dense_dim
+        dense_dim = flag_gems.dense_dim
 
         return dense_dim
-    except ImportError:
+    except AttributeError:
 
         def dense_dim(self):
             if self.layout == torch.strided:

@@ -123,7 +123,7 @@ def make_special_input(dtype, scenario):
     ).to(dtype)
 
 
-def to_reference(inp, upcast=False):
+def _to_reference_upstream(inp, upcast=False):
     """Independent tensor oracle for these tests, retaining view metadata."""
     if inp is None:
         return None
@@ -140,6 +140,15 @@ def to_reference(inp, upcast=False):
             reference = reference.conj()
     reference.requires_grad_(inp.requires_grad)
     return reference
+
+
+def to_reference(inp, upcast=False):
+    if flag_gems.vendor_name == "kunlunxin":  # noqa: SIM108
+        reference = _to_reference_upstream(inp, upcast)
+        if reference is None:
+            return None
+        return reference.to("cpu")
+    return _to_reference_upstream(inp, upcast)
 
 
 def assert_result_close(result, reference, *, atol=1e-4):
@@ -293,6 +302,35 @@ def test_choose_qparams_per_tensor_tiny_scale(values, reduce_range):
     _assert_pair(res_pair, ref_pair)
 
 
+# Cases where the reference's fp32 narrowing of the raw scale is observable.
+# A subnormal raw scale makes the fp32 reciprocal overflow, selecting the
+# fixed 0.1 scale; a raw scale in [fp32-subnormal, floor) raises the scale to
+# the floor and rescales the range by the fp32 amplifier, which moves the
+# half-integer zero point of [-0.005, 0.005] from 128 to 127.
+_CQPT_F32_SCALE_EDGE_CASES = [
+    ([0.0, 1e-38], False),
+    ([0.0, 5e-37], False),
+    ([0.0, 1e-37], False),
+    ([0.0, 1e-37], True),
+    ([-1e-38, 0.0], False),
+    ([-1e-38, 0.0], True),
+    ([-0.005, 0.005], False),
+    ([-0.005, 0.005], True),
+]
+
+
+@pytest.mark.choose_qparams_per_tensor
+@pytest.mark.parametrize("values,reduce_range", _CQPT_F32_SCALE_EDGE_CASES)
+def test_choose_qparams_per_tensor_f32_scale_edges(values, reduce_range):
+    inp = torch.tensor(values, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
+    res_pair = flag_gems.choose_qparams_per_tensor(inp, reduce_range)
+
+    _assert_pair(res_pair, ref_pair)
+
+
 @pytest.mark.choose_qparams_per_tensor
 @pytest.mark.parametrize("value", _CQPT_CONSTANT_VALUES)
 # The constant and non-contiguous families pin the half/full/bfloat16 trio:
@@ -392,7 +430,10 @@ def test_choose_qparams_per_tensor_rejects_complex():
 
 @pytest.mark.choose_qparams_per_tensor
 def test_choose_qparams_per_tensor_rejects_fp8():
-    inp = torch.zeros((4,), dtype=torch.float8_e4m3fn, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        inp = torch.zeros((4,), dtype=torch.float8_e4m3fn)
+    else:
+        inp = torch.zeros((4,), dtype=torch.float8_e4m3fn, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     with pytest.raises(RuntimeError):

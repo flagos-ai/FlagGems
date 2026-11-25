@@ -49,3 +49,15 @@ def test_max_unpool3d():
     )
     bench.set_gems(flag_gems.max_unpool3d)
     bench.run()
+
+
+@pytest.mark.max_unpool3d_backward
+def test_max_unpool3d_backward():
+    bench = MaxUnpool3dBenchmark(
+        op_name="max_unpool3d",
+        torch_op=torch.nn.functional.max_unpool3d,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.max_unpool3d)
+    bench.run()

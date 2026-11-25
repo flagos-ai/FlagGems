@@ -19,10 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -33,78 +30,206 @@ logger = logging.getLogger(__name__)
 #       output[i, ...] = sum_j coefficients[i, j] * input[j, ...]
 #   i.e. a batched matrix-vector product ``coefficients @ input.flatten(1)``.
 #
-# The kernel computes ``out_2d (M, N) = coefficients (M, K) @ in_2d (K, N)`` where
-# ``K`` is the contraction dimension (``input.shape[0]``) and ``N`` is the flattened
-# remainder of ``input``.
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
-    flagtune_op_name="mm",
-)
-@triton.jit
-def _compute_linear_combination_kernel(
-    In,  # input  of shape (K, N), flattened to 2D
-    Coeff,  # coefficients of shape (M, K)
-    Out,  # output of shape (M, N), flattened to 2D
+# The kernel computes ``out_2d (M, P) = coefficients (M, K) @ in_2d (K, P)`` where
+# ``K`` is the contraction dimension (``input.shape[0]``) and ``P`` is the flattened
+# remainder of ``input``.  The trailing dimensions are addressed through their own
+# strides (no copy) by precomputing a per-lane ``in_off_p`` vector.
+#
+# The fast path is a single ``tl.dot`` tiled over (M, P, K); on this backend it
+# lowers to the matrix units for fp16/bf16/fp32 and is far faster than the
+# unrolled outer-product formulation, which was limited by scalar address
+# bookkeeping and by an output tile capped at 4096 elements.
+@triton.jit(do_not_specialize=["M", "K", "P"])
+def _compute_linear_combination_dot_kernel(
+    In,  # input, viewed as (K, P) through its strides
+    Coeff,  # coefficients, (M, K)
+    Out,  # output, contiguous (M, P)
     M,
-    N,
-    K,
-    stride_in_k,
-    stride_in_n,
-    stride_coeff_m,
-    stride_coeff_k,
-    stride_out_m,
-    stride_out_n,
+    K,  # contraction length
+    P,
+    IN_S0: tl.constexpr,  # stride of input dim 0
+    COEFF_SM: tl.constexpr,
+    COEFF_SK: tl.constexpr,
+    T1D: tl.constexpr,
+    T1S: tl.constexpr,
+    T2D: tl.constexpr,
+    T2S: tl.constexpr,
+    T3D: tl.constexpr,
+    T3S: tl.constexpr,
+    T4S: tl.constexpr,
+    ACCUM: tl.constexpr,  # add into an existing ``out`` buffer
+    NTAIL: tl.constexpr,  # number of (extent, stride) slots describing the tail
     BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK_P: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    # NOTE: accepted and unused. This kernel shares the "mm" tune configs
-    # (see the libtuner decorator above), and on the backends whose own mm
-    # kernel implements split-K those configs carry SPLIT_K. Declaring it
-    # keeps the shared config list usable here; a kernel that reduces the
-    # whole K extent in one pass IS the SPLIT_K == 1 case.
-    SPLIT_K: tl.constexpr = 1,
 ):
-    pid_m = ext.program_id(0)
-    pid_n = ext.program_id(1)
+    pid_m = tl.program_id(0)
+    pid_p = tl.program_id(1)
 
-    offset_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    offset_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-    offset_k = tl.arange(0, BLOCK_K)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_p = pid_p * BLOCK_P + tl.arange(0, BLOCK_P)
+    m_mask = offs_m < M
+    p_mask = offs_p < P
 
-    m_mask = offset_m < M
-    n_mask = offset_n < N
+    # Offset of flat tail index ``p`` inside ``input``.
+    if NTAIL == 1:
+        in_off_p = offs_p * T1S
+    elif NTAIL == 2:
+        r1 = offs_p // T1D
+        in_off_p = (offs_p % T1D) * T1S + r1 * T2S
+    elif NTAIL == 3:
+        r1 = offs_p // T1D
+        r2 = r1 // T2D
+        in_off_p = (offs_p % T1D) * T1S + (r1 % T2D) * T2S + r2 * T3S
+    else:
+        r1 = offs_p // T1D
+        r2 = r1 // T2D
+        r3 = r2 // T3D
+        in_off_p = (offs_p % T1D) * T1S + (r1 % T2D) * T2S + (r2 % T3D) * T3S + r3 * T4S
 
-    coeff_ptrs = Coeff + offset_m * stride_coeff_m
-    in_base = In + offset_n * stride_in_n
-    out_ptrs = Out + offset_m * stride_out_m + offset_n * stride_out_n
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(0, K, BLOCK_K):
-        k_off = k + offset_k
-        k_mask = k_off < K
-        # coefficients[m, k]
-        a = tl.load(
-            coeff_ptrs + k_off[None, :] * stride_coeff_k,
-            mask=m_mask & k_mask[None, :],
+    coeff_base = Coeff + offs_m[:, None] * COEFF_SM
+    acc = tl.zeros((BLOCK_M, BLOCK_P), dtype=tl.float32)
+    for k0 in range(0, K, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        k_mask = offs_k < K
+        # NOTE: the coefficient pointer is recomputed from ``offs_k`` on every
+        # iteration instead of being advanced in place.  Advancing a [BM, 1]
+        # pointer tensor across loop iterations miscompiles on this backend when
+        # the loaded tile feeds ``tl.dot`` (silently wrong values for K > BLOCK_K),
+        # so keep the address arithmetic purely a function of the loop index.
+        av = tl.load(
+            coeff_base + offs_k[None, :] * COEFF_SK,
+            mask=m_mask[:, None] & k_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
-        # input[k, n]
-        b = tl.load(
-            in_base + k_off[:, None] * stride_in_k,
-            mask=k_mask[:, None] & n_mask,
+        )
+        bv = tl.load(
+            In + offs_k[:, None] * IN_S0 + in_off_p[None, :],
+            mask=k_mask[:, None] & p_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
-        acc += tl.dot(a, b, allow_tf32=False)
+        )
+        acc = tl.dot(av, bv, acc, allow_tf32=False)
 
-    tl.store(out_ptrs, acc.to(Out.dtype.element_ty), mask=m_mask & n_mask)
+    # The output is always contiguous, i.e. flat (M, P) with row stride P.
+    out_ptrs = Out + offs_m[:, None] * P + offs_p[None, :]
+    store_mask = m_mask[:, None] & p_mask[None, :]
+    if ACCUM:
+        acc += tl.load(out_ptrs, mask=store_mask, other=0.0).to(tl.float32)
+    tl.store(out_ptrs, acc.to(Out.dtype.element_ty), mask=store_mask)
+
+
+@triton.jit(do_not_specialize=["M", "K", "P"])
+def _compute_linear_combination_kernel(
+    In,  # input, viewed as (n0, P) through its strides
+    Coeff,  # coefficients, (m, n)
+    Out,  # output, contiguous (m, P)
+    M,
+    K,  # contraction length
+    P,
+    IN_S0: tl.constexpr,  # stride of input dim 0
+    COEFF_SM: tl.constexpr,
+    COEFF_SK: tl.constexpr,
+    T1D: tl.constexpr,
+    T1S: tl.constexpr,
+    T2D: tl.constexpr,
+    T2S: tl.constexpr,
+    T3D: tl.constexpr,
+    T3S: tl.constexpr,
+    T4S: tl.constexpr,
+    ACCUM: tl.constexpr,  # add into an existing ``out`` buffer
+    NTAIL: tl.constexpr,  # number of (extent, stride) slots describing the tail
+    BLOCK_M: tl.constexpr,
+    BLOCK_P: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_p = tl.program_id(1)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_p = pid_p * BLOCK_P + tl.arange(0, BLOCK_P)
+    m_mask = offs_m < M
+    p_mask = offs_p < P
+
+    # Offset of flat tail index ``p`` inside ``input``.
+    if NTAIL == 1:
+        in_off_p = offs_p * T1S
+    elif NTAIL == 2:
+        r1 = offs_p // T1D
+        in_off_p = (offs_p % T1D) * T1S + r1 * T2S
+    elif NTAIL == 3:
+        r1 = offs_p // T1D
+        r2 = r1 // T2D
+        in_off_p = (offs_p % T1D) * T1S + (r1 % T2D) * T2S + r2 * T3S
+    else:
+        r1 = offs_p // T1D
+        r2 = r1 // T2D
+        r3 = r2 // T3D
+        in_off_p = (offs_p % T1D) * T1S + (r1 % T2D) * T2S + (r2 % T3D) * T3S + r3 * T4S
+
+    coeff_base = Coeff + offs_m * COEFF_SM
+    in_base = In + in_off_p
+
+    acc = tl.zeros((BLOCK_M, BLOCK_P), dtype=tl.float32)
+    for k0 in range(0, K, BLOCK_K):
+        for kk in tl.static_range(0, BLOCK_K):
+            k = k0 + kk
+            k_mask = k < K
+            av = tl.load(
+                coeff_base + kk * COEFF_SK, mask=m_mask & k_mask, other=0.0
+            ).to(tl.float32)
+            bv = tl.load(in_base + kk * IN_S0, mask=p_mask & k_mask, other=0.0).to(
+                tl.float32
+            )
+            acc += av[:, None] * bv[None, :]
+        coeff_base += BLOCK_K * COEFF_SK
+        in_base += BLOCK_K * IN_S0
+
+    # The output is always contiguous, i.e. flat (M, P) with row stride P.
+    out_ptrs = Out + offs_m[:, None] * P + offs_p[None, :]
+    store_mask = m_mask[:, None] & p_mask[None, :]
+    if ACCUM:
+        acc += tl.load(out_ptrs, mask=store_mask, other=0.0).to(tl.float32)
+    tl.store(out_ptrs, acc.to(Out.dtype.element_ty), mask=store_mask)
+
+
+def _next_pow2(x):
+    p = 1
+    while p < x:
+        p *= 2
+    return p
+
+
+def _tail_slots(tensor):
+    """Reduce dims >= 1 of ``tensor`` to (extent, stride) slots.
+
+    Adjacent dims whose strides are compatible are merged, so a contiguous tail
+    collapses to a single slot.
+    """
+    extents = []
+    strides = []
+    for d in range(1, tensor.dim()):
+        size = tensor.shape[d]
+        stride = tensor.stride(d)
+        if size == 1:
+            continue
+        if extents and strides[-1] == stride * size:
+            extents[-1] *= size
+            strides[-1] = stride
+        else:
+            extents.append(size)
+            strides.append(stride)
+    if not extents:
+        return [1], [0]
+    return extents, strides
+
+
+# ``tl.dot`` on this backend lowers to the matrix units for these dtypes.
+_DOT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+_dot_usable = True
 
 
 def _compute_linear_combination(input, coefficients, *, out=None):
+    global _dot_usable
+
     logger.debug("GEMS _COMPUTE_LINEAR_COMBINATION")
     assert input.ndimension() > 0 and input.numel() > 0, "Empty tensor not supported"
 
@@ -117,33 +242,133 @@ def _compute_linear_combination(input, coefficients, *, out=None):
 
     if out is None:
         out = torch.empty(output_shape, device=input.device, dtype=input.dtype)
+        accum = False
+        write_out = out
     else:
         assert tuple(out.shape) == output_shape, "Incompatible output shape"
+        accum = True
+        # The kernel writes a contiguous (m, P) buffer; stage through a
+        # temporary for a non-contiguous ``out`` and copy back at the end.
+        if out.is_contiguous():
+            write_out = out
+        else:
+            write_out = torch.empty(output_shape, device=out.device, dtype=out.dtype)
+            write_out.copy_(out)
 
-    # Flatten the non-contraction dimensions for the kernel.
-    in_2d = input.reshape(n, -1)
-    out_2d = out.reshape(m, -1)
-    N = in_2d.shape[1]
+    N = 1
+    for dim in input.shape[1:]:
+        N *= dim
+    if m == 0 or N == 0:
+        if write_out is not out:
+            out.copy_(write_out)
+        return out
 
-    grid = lambda META: (
-        triton.cdiv(m, META["BLOCK_M"]),
-        triton.cdiv(N, META["BLOCK_N"]),
+    extents, strides = _tail_slots(input)
+    if len(extents) > 4:
+        raise RuntimeError("unsupported non-contiguous input layout")
+    slots = [(extents[i], strides[i]) for i in range(len(extents) - 1, -1, -1)]
+    while len(slots) < 4:
+        slots.append((1, 0))
+    # The kernel peels the innermost tail dimension first, so the slots are
+    # supplied most-rapidly-varying-first.
+    ntail = len(extents)
+
+    use_dot = (
+        _dot_usable and input.dtype == coefficients.dtype and input.dtype in _DOT_DTYPES
     )
+
+    if use_dot:
+        block_m = min(max(_next_pow2(m), 16), 64)
+        # Wide P tiles amortise the per-tile reload of the coefficient block;
+        # for very wide problems a 512-wide tile measured faster (fewer, larger
+        # CTAs), while narrower problems prefer staying at 256.
+        block_p = min(max(_next_pow2(N), 16), 512 if N >= 2048 else 256)
+        block_k = min(max(_next_pow2(n), 16), 128)
+        num_stages = 3 if n >= 128 else 2
+        grid = (triton.cdiv(m, block_m), triton.cdiv(N, block_p))
+        try:
+            with torch_device_fn.device(input.device):
+                _compute_linear_combination_dot_kernel[grid](
+                    input,
+                    coefficients,
+                    write_out,
+                    m,
+                    n,
+                    N,
+                    IN_S0=input.stride(0),
+                    COEFF_SM=coefficients.stride(0),
+                    COEFF_SK=coefficients.stride(1),
+                    T1D=slots[0][0],
+                    T1S=slots[0][1],
+                    T2D=slots[1][0],
+                    T2S=slots[1][1],
+                    T3D=slots[2][0],
+                    T3S=slots[2][1],
+                    T4S=slots[3][1],
+                    ACCUM=accum,
+                    NTAIL=ntail,
+                    BLOCK_M=block_m,
+                    BLOCK_P=block_p,
+                    BLOCK_K=block_k,
+                    num_warps=4,
+                    num_stages=num_stages,
+                )
+            if write_out is not out:
+                out.copy_(write_out)
+            return out
+        except Exception:
+            # Matrix path rejected by this backend/dtype/layout: fall through to
+            # the generic outer-product kernel for the rest of the process.
+            _dot_usable = False
+
+    block_m = min(_next_pow2(m), 64)
+    block_p = min(_next_pow2(N), 256)
+    while block_m * block_p > 4096:
+        if block_p >= 64:
+            block_p //= 2
+        elif block_m > 1:
+            block_m //= 2
+        else:
+            break
+    block_k = 16
+
+    tile = block_m * block_p
+    if tile <= 256:
+        num_warps = 1
+    elif tile <= 1024:
+        num_warps = 2
+    else:
+        num_warps = 4
+
+    grid = (triton.cdiv(m, block_m), triton.cdiv(N, block_p))
     with torch_device_fn.device(input.device):
         _compute_linear_combination_kernel[grid](
-            in_2d,
+            input,
             coefficients,
-            out_2d,
+            write_out,
             m,
-            N,
             n,
-            in_2d.stride(0),
-            in_2d.stride(1),
-            coefficients.stride(0),
-            coefficients.stride(1),
-            out_2d.stride(0),
-            out_2d.stride(1),
+            N,
+            IN_S0=input.stride(0),
+            COEFF_SM=coefficients.stride(0),
+            COEFF_SK=coefficients.stride(1),
+            T1D=slots[0][0],
+            T1S=slots[0][1],
+            T2D=slots[1][0],
+            T2S=slots[1][1],
+            T3D=slots[2][0],
+            T3S=slots[2][1],
+            T4S=slots[3][1],
+            ACCUM=accum,
+            NTAIL=ntail,
+            BLOCK_M=block_m,
+            BLOCK_P=block_p,
+            BLOCK_K=block_k,
+            num_warps=num_warps,
+            num_stages=2,
         )
+    if write_out is not out:
+        out.copy_(write_out)
     return out
 
 

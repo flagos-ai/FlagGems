@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import unpack_seq_triton
+from flag_gems import unpack_seq_triton
 
 from . import accuracy_utils as utils
 from . import conftest as cfg

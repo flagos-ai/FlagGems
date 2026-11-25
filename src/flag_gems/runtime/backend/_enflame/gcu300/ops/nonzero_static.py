@@ -64,7 +64,7 @@ def _nonzero_static_count_kernel(
     flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX, ENABLE_I64)
 
     cnt = tl.sum(flags.to(tl.int32), axis=0)
-    tl.store(counts_ptr + pid, cnt.to(tl.int64))
+    tl.store(counts_ptr + pid, cnt)
 
 
 @libentry()
@@ -80,7 +80,7 @@ def _nonzero_static_fill_kernel(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_out
 
-    vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + offsets, vals, mask=mask)
 
 
@@ -106,7 +106,7 @@ def _nonzero_static_fill_tail_kernel(
     offsets = tail_start + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_out
 
-    vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + offsets, vals, mask=mask)
 
 
@@ -135,8 +135,14 @@ def _nonzero_static_single_block_kernel(
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
     write_mask = mask & flags & (local_rank < size)
-    linear = offsets.to(tl.int64)
-    global_rank = local_rank.to(tl.int64)
+    # Coordinates and ranks stay in int32 for the whole kernel. Lane-varying
+    # int64 arithmetic is miscompiled on this backend once a tile reaches 256
+    # lanes (half of a 256-lane block ends up holding another lane's value, so a
+    # 4096-element tile writes perfectly plausible but wrong coordinates), and
+    # the output is widened to int64 on the host instead. Every index here is
+    # bounded by `numel`, well inside int32.
+    linear = offsets
+    global_rank = local_rank
 
     if ndim == 1:
         c0 = linear
@@ -176,7 +182,7 @@ def _nonzero_static_single_block_kernel(
     valid_rows = tl.minimum(total_nnz, size)
     tail_offsets = valid_rows * ndim + offsets
     tail_mask = tail_offsets < total_out
-    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
@@ -201,10 +207,10 @@ def _nonzero_static_single_block_generic_kernel(
     flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX, ENABLE_I64)
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
-    global_rank = local_rank.to(tl.int64)
+    global_rank = local_rank
     write_mask = mask & flags & (local_rank < size)
 
-    idx_flat = offsets.to(tl.int64)
+    idx_flat = offsets
     for dim in range(ndim - 1, -1, -1):
         dim_size = tl.load(shape_ptr + dim)
         coord = idx_flat % dim_size
@@ -215,7 +221,7 @@ def _nonzero_static_single_block_generic_kernel(
     valid_rows = tl.minimum(total_nnz, size)
     tail_offsets = valid_rows * ndim + offsets
     tail_mask = tail_offsets < total_out
-    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
@@ -250,10 +256,10 @@ def _nonzero_static_write_kernel(
     prefix = tl.load(prefix_ptr + pid) - block_nnz
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
-    global_rank = prefix + local_rank.to(tl.int64)
+    global_rank = prefix + local_rank
 
     write_mask = mask & flags & (global_rank < size)
-    linear = offsets.to(tl.int64)
+    linear = offsets
 
     if ndim == 1:
         c0 = linear
@@ -293,7 +299,7 @@ def _nonzero_static_write_kernel(
     valid_rows = tl.minimum(total_nnz, size)
     tail_offsets = valid_rows * ndim + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     tail_mask = tail_offsets < total_out
-    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
@@ -331,10 +337,10 @@ def _nonzero_static_write_small_counts_kernel(
     flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX, ENABLE_I64)
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
-    global_rank = prefix + local_rank.to(tl.int64)
+    global_rank = prefix + local_rank
 
     write_mask = mask & flags & (global_rank < size)
-    linear = offsets.to(tl.int64)
+    linear = offsets
 
     if ndim == 1:
         c0 = linear
@@ -373,7 +379,7 @@ def _nonzero_static_write_small_counts_kernel(
     valid_rows = tl.minimum(total_nnz, size)
     tail_offsets = valid_rows * ndim + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     tail_mask = tail_offsets < total_out
-    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
@@ -405,10 +411,10 @@ def _nonzero_static_write_generic_kernel(
     prefix = tl.load(prefix_ptr + pid) - block_nnz
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
-    global_rank = prefix + local_rank.to(tl.int64)
+    global_rank = prefix + local_rank
     write_mask = mask & flags & (global_rank < size)
 
-    idx_flat = offsets.to(tl.int64)
+    idx_flat = offsets
     for dim in range(ndim - 1, -1, -1):
         dim_size = tl.load(shape_ptr + dim)
         coord = idx_flat % dim_size
@@ -419,7 +425,7 @@ def _nonzero_static_write_generic_kernel(
     valid_rows = tl.minimum(total_nnz, size)
     tail_offsets = valid_rows * ndim + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     tail_mask = tail_offsets < total_out
-    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+    tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int32)
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
@@ -473,6 +479,11 @@ def nonzero_static_ref(
 
 
 def _finish_nonzero_static_out(out, work_out, transpose=False):
+    # The kernel path builds the result in int32 (see the note in
+    # `_nonzero_static_single_block_kernel`); widen back to the int64 the aten
+    # operator returns. The host reference path already hands over int64.
+    if work_out.dtype != torch.int64:
+        work_out = work_out.to(torch.int64)
     if out is None:
         return work_out
     if transpose:
@@ -496,11 +507,16 @@ def _nonzero_static_impl(
     if input.device.type != flag_gems.device:
         return nonzero_static_ref(input, size=size, fill_value=fill_value, out=out)
 
+    # The kernels below hold indices and the fill value in int32; a `fill_value`
+    # outside that range cannot be represented there, so it takes the host path.
+    if not (-(1 << 31) <= fill_value < (1 << 31)):
+        return nonzero_static_ref(input, size=size, fill_value=fill_value, out=out)
+
     if out is None:
-        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
+        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int32)
     else:
         out = _prepare_nonzero_static_out(input, size, out, transpose=False)
-        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
+        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int32)
 
     if size == 0:
         return _finish_nonzero_static_out(out, work_out, transpose=False)
@@ -536,7 +552,7 @@ def _nonzero_static_impl(
     use_generic_ndim = ndim > 4
 
     if use_generic_ndim:
-        shape = torch.tensor(input.shape, dtype=torch.int64, device=input.device)
+        shape = torch.tensor(input.shape, dtype=torch.int32, device=input.device)
     else:
         shape = list(input.shape) + [1] * (4 - ndim)
 
@@ -577,7 +593,7 @@ def _nonzero_static_impl(
                 )
         return _finish_nonzero_static_out(out, work_out, transpose=False)
 
-    counts = torch.empty((num_blocks,), device=input.device, dtype=torch.int64)
+    counts = torch.empty((num_blocks,), device=input.device, dtype=torch.int32)
 
     with torch_device_fn.device(input.device):
         _nonzero_static_count_kernel[(num_blocks,)](
