@@ -118,6 +118,46 @@ def _embedding_bag_dense_backward_kernel(
     tl.atomic_add(gw_ptrs, go, mask=mask)
 
 
+MAX_BLOCK = 1024
+
+
+@libentry()
+@triton.jit
+def _embedding_bag_dense_backward_max_kernel(
+    grad_ptr,
+    maximum_indices_ptr,
+    grad_weight_ptr,
+    n_max,
+    num_bags,
+    num_weights,
+    stride_gb,
+    stride_gd,
+    padding_idx,
+    EMBED_DIM: tl.constexpr,
+    HAS_PAD: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Max-mode scatter: g[maximum_indices[b, d], d] += grad[b, d].
+
+    ATen routes each (bag, dim) upstream gradient to the table row that
+    produced the bag maximum; ``maximum_indices`` holds that row per (bag,
+    dim). Padding-row and out-of-range targets are dropped.
+    """
+    pid = tl.program_id(0).to(tl.int64)
+    offs = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    mask = offs < n_max
+    row = tl.load(maximum_indices_ptr + offs, mask=mask, other=-1).to(tl.int64)
+    d = offs % EMBED_DIM
+    bag = offs // EMBED_DIM
+    live = mask & (bag < num_bags) & (row >= 0) & (row < num_weights)
+    if HAS_PAD:
+        live = live & (row != padding_idx)
+    value = tl.load(
+        grad_ptr + bag * stride_gb + d * stride_gd, mask=live, other=0.0
+    ).to(tl.float32)
+    tl.atomic_add(grad_weight_ptr + row * EMBED_DIM + d, value, mask=live)
+
+
 def _embedding_bag_dense_backward(
     grad: torch.Tensor,
     indices: torch.Tensor,
@@ -183,6 +223,31 @@ def _embedding_bag_dense_backward(
     grad_weight = torch.zeros(
         (num_weights, D), device=device, dtype=torch.float32
     ).contiguous()
+
+    if mode == 2:
+        # Max mode never reads offset2bag/bag_size: every (bag, dim) gradient
+        # belongs to the single row recorded in maximum_indices.
+        if maximum_indices.dtype == torch.int64:
+            maximum_indices = maximum_indices.to(torch.int32)
+        n_max = maximum_indices.numel()
+        if n_max > 0:
+            _embedding_bag_dense_backward_max_kernel[(triton.cdiv(n_max, MAX_BLOCK),)](
+                grad,
+                maximum_indices,
+                grad_weight,
+                n_max,
+                num_bags,
+                num_weights,
+                grad.stride(0),
+                grad.stride(1) if grad.dim() > 1 else 1,
+                padding_idx,
+                EMBED_DIM=D,
+                HAS_PAD=0 <= padding_idx < num_weights,
+                BLOCK=MAX_BLOCK,
+            )
+        if grad.dtype != torch.float32:
+            return grad_weight.to(grad.dtype)
+        return grad_weight
 
     # BLOCK_D chosen for optimal occupancy on common GPU architectures
     BLOCK_D = 128
