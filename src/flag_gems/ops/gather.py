@@ -65,7 +65,13 @@ def generate_gather_kernel(
         args += [f"inp_stride{i}, " for i in range(rank)]
         args += [f"index_stride{i}, " for i in range(rank)]
         args += [f"out_stride{i}, " for i in range(rank)]
-        args += ["dim, ", "dim_stride, ", "N, ", "BLOCK_SIZE_N: tl.constexpr, "]
+        args += [
+            "dim, ",
+            "dim_stride, ",
+            "inp_dim_size, ",
+            "N, ",
+            "BLOCK_SIZE_N: tl.constexpr, ",
+        ]
         code.writelines(args)
     code.writeline("):")
 
@@ -84,6 +90,8 @@ def generate_gather_kernel(
         code.writeline(f"index_offset = {' + '.join(comp)}")
         code.writeline("mask = offset < N")
         code.writeline("cur_index = tl.load(index + index_offset, mask=mask, other=0)")
+        code.writeline("# Suppress out-of-bound indices to prevent OOB reads.")
+        code.writeline("mask = mask & (cur_index >= 0) & (cur_index < inp_dim_size)")
         code.newline()
         comp = [f"index_idx{i} * inp_stride{i}" for i in range(rank)]
         code.writeline(f"inp_offset = {' + '.join(comp)}")
@@ -105,7 +113,9 @@ def generate_gather_wrapper(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    code.writeline(f"def {wrapper_name}(inp, dim, index, out, dim_stride, N):")
+    code.writeline(
+        f"def {wrapper_name}(inp, dim, index, out, dim_stride, inp_dim_size, N):"
+    )
     with code.indent():
         code.writeline("inp_shape = inp.shape")
         code.writeline("inp_stride = inp.stride()")
@@ -130,6 +140,7 @@ def generate_gather_wrapper(
             args += [
                 "dim, ",
                 "dim_stride, ",
+                "inp_dim_size, ",
                 "N, ",
             ]
             code.writelines(args)
@@ -206,9 +217,10 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
     dim_stride = inp.stride(dim)
+    inp_dim_size = inp.size(dim)
     inp_strided = restride_dim(inp, dim, index.shape)
     N = index.numel()
-    _gather_func(inp_strided, dim, index, out, dim_stride, N)
+    _gather_func(inp_strided, dim, index, out, dim_stride, inp_dim_size, N)
     return out
 
 

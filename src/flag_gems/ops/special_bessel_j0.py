@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,13 @@ logger = logging.getLogger(__name__)
 #   > 131072 15.3ms ~= 262144 15.2ms      (nw=8 is 2.2x worse than nw=4)
 # 16.7M: 4096 2.26ms -> 131072 0.53ms.  Floor-bound 4096-element case keeps the
 # small tile (4096/nw4 15.3us vs 18.2us at 32768).
-_BLOCK_BIG = 131072
+#
+# The tile is also bounded from above by the warp width of the target: on a
+# 32-lane NVIDIA warp a 131072-element tile holds 1024 values per thread, so
+# ptxas spills and a single such program takes tens of minutes to compile
+# (the (512, 256) accuracy case is exactly one 131072-element tile).  Cap at
+# 16384 elements (128 per thread at nw=4) and let the grid cover the rest.
+_BLOCK_BIG = 16384
 _BLOCK_SMALL = 4096
 _SMALL_N = 1 << 16
 _WARPS = 4
@@ -103,13 +110,16 @@ def _j0_flat_kernel(x_ptr, o_ptr, total, BLOCK: tl.constexpr):
     for it in range(0, iters):
         offs = base + it * step + tl.arange(0, BLOCK)
         mask = offs < total
-        x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+        # Cephes is a float32 approximation; fp64 inputs are narrowed for the
+        # math and widened again on the store (same contract as
+        # special_bessel_y0).
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
         a = tl.abs(x)
         if tl.max(a) < 8.0:
             v = _j0_rational(a)
         else:
             v = _j0_cephes(a)
-        tl.store(o_ptr + offs, v, mask=mask)
+        tl.store(o_ptr + offs, v.to(o_ptr.dtype.element_ty), mask=mask)
 
 
 @triton.jit
@@ -131,7 +141,7 @@ def _j0_words_kernel(x_ptr, o_ptr, total, BLOCK: tl.constexpr):
 
 
 def _words_view(t):
-    """Zero-copy 32-bit word view of a float64 tensor on this backend."""
+    """Zero-copy 32-bit word view of a float64 tensor on 32-bit-fp64 backends."""
     if t.dim() == 0:
         t = t.view(1)
     return t.view(torch.int32)
@@ -144,8 +154,11 @@ def special_bessel_j0(A):
             f"special_bessel_j0: unsupported dtype {A.dtype}, only float32 and float64 are supported"
         )
 
-    # The backend supports only 32-bit element arithmetic inside Triton kernels,
-    # so float64 tensors are addressed through a zero-copy 32-bit word view.
+    # float64 is addressed directly when the target has a real fp64 ALU: the
+    # kernel narrows to fp32 for the Cephes math and widens on the store.  Only
+    # backends whose fp64 storage is 32-bit wide (support_fp64 is False, e.g.
+    # GCU300) keep the zero-copy 32-bit word view, where one word is one
+    # element.
     x = A.contiguous()
     out = torch.empty(x.shape, dtype=x.dtype, device=x.device)
     n = x.numel()
@@ -155,7 +168,7 @@ def special_bessel_j0(A):
     block, warps = _pick(n)
     grid = _persist_grid(n, block)
     with torch_device_fn.device(x.device):
-        if x.dtype == torch.float64:
+        if x.dtype == torch.float64 and not runtime.device.support_fp64:
             _j0_words_kernel[grid](
                 _words_view(x), _words_view(out), n, BLOCK=block, num_warps=warps
             )
