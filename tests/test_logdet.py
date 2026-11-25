@@ -48,7 +48,9 @@ def _reference_logdet(inp):
 
         matrix = inp.numpy()
         sign, logabsdet = np.linalg.slogdet(matrix)
-        reference = np.asarray(np.where(sign < 0, np.nan, logabsdet), dtype=matrix.dtype)
+        reference = np.asarray(
+            np.where(sign < 0, np.nan, logabsdet), dtype=matrix.dtype
+        )
         return torch.from_numpy(reference)
     return torch.logdet(inp)
 

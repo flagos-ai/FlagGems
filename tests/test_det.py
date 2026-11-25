@@ -98,7 +98,11 @@ def _small_ops_det(A):
 
 
 def _ref_det(A):
-    if flag_gems.vendor_name == "mthreads" and A.device.type == "cpu" and not torch._C.has_lapack:
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and A.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
         import numpy as np
 
         matrix = A.numpy()
@@ -222,7 +226,9 @@ def test_det_empty(dtype):
 
         if flag_gems.vendor_name == "mthreads":
             # There are no values to reduce. The determinant is the empty product.
-            ref_out = torch.ones(shape[:-2], dtype=dtype, device=utils.to_reference(A).device)
+            ref_out = torch.ones(
+                shape[:-2], dtype=dtype, device=utils.to_reference(A).device
+            )
         else:
             ref_out = _ref_det(utils.to_reference(A))
 
