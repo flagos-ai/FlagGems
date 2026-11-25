@@ -77,7 +77,7 @@ def test_frexp_backward_special_values(dtype):
     (ref_dx,) = torch.autograd.grad(ref_mantissa, ref_x, utils.to_reference(grad))
 
     assert not exponent.requires_grad
-    assert torch.equal(torch.isnan(mantissa).cpu(), torch.isnan(ref_mantissa).cpu())
+    utils.gems_assert_equal(torch.isnan(mantissa), torch.isnan(ref_mantissa))
     assert torch.equal(torch.signbit(mantissa).cpu(), torch.signbit(ref_mantissa).cpu())
     utils.gems_assert_equal(exponent, ref_exponent)
     utils.gems_assert_close(dx, ref_dx, dtype)
