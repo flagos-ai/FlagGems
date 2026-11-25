@@ -102,7 +102,7 @@ def _polygamma_kernel(
     tl.store(O + i, value, i < N)
 
 
-def make_polygamma_plan(x, n):
+def _make_strided_polygamma_plan(x, n):
     shape, dtype, device, count = (tuple(x.shape), x.dtype, x.device, x.numel())
     scale = (-1.0 if n % 2 else 1.0) * math.factorial(n + 1)
     grid = (count + 255) // 256
@@ -133,6 +133,47 @@ def make_polygamma_plan(x, n):
                     launch(grad, saved, out, *constants)
         return out
 
+    return backward
+
+
+def make_polygamma_plan(x, n):
+    shape, dtype, device, count = tuple(x.shape), x.dtype, x.device, x.numel()
+    scale = (-1.0 if n % 2 else 1.0) * math.factorial(n + 1)
+    grid = ((count + 255) // 256, 1, 1)
+    constants = (count, shape, (), (), True, True, n + 2, scale, 256)
+    common_key = (device, dtype, dtype, constants, 0, 0)
+    common = _CODE.get(common_key)
+    strided = _make_strided_polygamma_plan(x, n)
+
+    def backward(grad, saved):
+        nonlocal common
+        if not saved.is_contiguous() or not grad.is_contiguous() or grad.dtype != dtype:
+            return strided(grad, saved)
+        if count and torch_device_fn.current_device() != device.index:
+            with torch_device_fn.device(device):
+                return backward(grad, saved)
+        out = torch.empty_like(saved, memory_format=torch.contiguous_format)
+        if count:
+            sa, ga = saved.data_ptr() & 15, grad.data_ptr() & 15
+            aligned = sa == 0 and ga == 0
+            launch = (
+                common
+                if aligned
+                else _CODE.get((device, dtype, dtype, constants, sa, ga))
+            )
+            args = (grad, saved, out, *constants)
+            if launch is None:
+                compiled = _polygamma_kernel[grid](*args, enable_fp_fusion=False)
+                launch = compiled[grid]
+                _CODE[(device, dtype, dtype, constants, sa, ga)] = launch
+            else:
+                launch(*args)
+            if aligned:
+                common = launch
+        return out
+
+    # Plans retain metadata/executables only. Each call consumes current saved
+    # tensors and gradients, allocates a fresh result and uses the current stream.
     return backward
 
 
@@ -464,6 +505,8 @@ class _PolygammaFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, n, value, inplace):
+        if n < 0:
+            raise RuntimeError("polygamma(n, x) does not support negative n.")
         ctx.order = n
         ctx.poly_plan = make_polygamma_plan(value, n)
         ctx.save_for_backward(copy_tensor(value) if inplace else value)
