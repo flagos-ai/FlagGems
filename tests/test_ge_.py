@@ -347,6 +347,7 @@ def test_ge__scalar(dtype, scalar):
 
 @pytest.mark.ge_
 @pytest.mark.ge_tensor_
+@pytest.mark.ge_backward_
 @pytest.mark.parametrize("dtype,shape,value_range", BACKWARD_CASES)
 def test_ge__backward(dtype, shape, value_range):
     inp = make_input(dtype, shape, value_range)
@@ -376,6 +377,125 @@ def test_ge__backward(dtype, shape, value_range):
     assert_result_equal(res_receiver, ref_receiver)
     assert_result_close(res_grad, ref_grad)
     assert_result_equal(other, ref_other)
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_tensor_
+@pytest.mark.ge_backward_
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shape,other_shape", [((2, 3), (3,)), ((0, 3), (3,))])
+def test_ge__backward_other(dtype, shape, other_shape):
+    inp = make_input(dtype, shape, ["-1", "1"])
+    other = make_input(dtype, other_shape, ["-1", "1"])
+
+    def run(receiver, operand, op):
+        base = receiver.detach().clone().requires_grad_(True)
+        rhs = operand.detach().clone().requires_grad_(True)
+        view = base * 2
+        version = view._version
+        out = op(view, rhs)
+        grads = torch.autograd.grad(out, (base, rhs), torch.ones_like(out))
+        return out, view, version, grads
+
+    ref_out, ref_view, ref_before, ref_grads = run(
+        to_reference(inp), to_reference(other), torch.ops.aten.ge_.Tensor
+    )
+    res_out, res_view, res_before, res_grads = run(inp, other, flag_gems.ge_tensor_)
+    assert_result_equal(res_out, ref_out)
+    assert res_out is res_view
+    assert_result_equal(res_view, ref_view)
+    assert res_view._version - res_before == ref_view._version - ref_before == 1
+    for result, reference in zip(res_grads, ref_grads):
+        assert_result_equal(result, reference)
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_tensor_
+@pytest.mark.ge_backward_
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("kind", ("transposed", "offset"))
+def test_ge__backward_view(dtype, kind):
+    storage_shape, other_shape = _VIEW_KINDS[kind]
+    inp = make_input(dtype, storage_shape, ["-1", "1"])
+    other = make_input(dtype, other_shape, ["-1", "1"])
+
+    def run(storage, operand, op):
+        base = storage.detach().clone().requires_grad_(True)
+        rhs = operand.detach().clone().requires_grad_(True)
+        receiver = _view_of(base * 2, kind)
+        version = receiver._version
+        out = op(receiver, rhs)
+        grads = torch.autograd.grad(out, (base, rhs), torch.ones_like(out))
+        return out, receiver, version, grads
+
+    ref_out, ref_view, ref_before, ref_grads = run(
+        to_reference(inp), to_reference(other), torch.ops.aten.ge_.Tensor
+    )
+    res_out, res_view, res_before, res_grads = run(inp, other, flag_gems.ge_tensor_)
+    assert_result_equal(res_out, ref_out)
+    assert res_out is res_view
+    assert_result_equal(res_view, ref_view)
+    assert res_view._version - res_before == ref_view._version - ref_before == 1
+    for result, reference in zip(res_grads, ref_grads):
+        assert_result_equal(result, reference)
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_scalar_
+@pytest.mark.ge_backward_
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", ((256,), (0,)))
+def test_ge__scalar_backward(dtype, shape):
+    inp = make_input(dtype, shape, ["-1", "1"])
+
+    def run(receiver, op):
+        base = receiver.detach().clone().requires_grad_(True)
+        view = base * 2
+        version = view._version
+        out = op(view, 0.5)
+        (grad,) = torch.autograd.grad(out, base, torch.ones_like(out))
+        return out, view, version, grad
+
+    ref_out, ref_view, ref_before, ref_grad = run(
+        to_reference(inp), torch.ops.aten.ge_.Scalar
+    )
+    res_out, res_view, res_before, res_grad = run(inp, flag_gems.ge_scalar_)
+    assert_result_equal(res_out, ref_out)
+    assert res_out is res_view
+    assert_result_equal(res_view, ref_view)
+    assert res_view._version - res_before == ref_view._version - ref_before == 1
+    assert_result_equal(res_grad, ref_grad)
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_tensor_
+@pytest.mark.ge_backward_
+@pytest.mark.parametrize("empty", (False, True))
+def test_ge__backward_rejects_leaf(empty):
+    size = 0 if empty else 2
+    other = torch.ones(size, device=flag_gems.device)
+    for op in (torch.ops.aten.ge_.Tensor, flag_gems.ge_tensor_):
+        leaf = torch.ones(size, device=flag_gems.device, requires_grad=True)
+        with pytest.raises(RuntimeError, match="leaf Variable"):
+            op(leaf, other)
+        view = leaf[:]
+        with pytest.raises(RuntimeError, match="view of a leaf Variable"):
+            op(view, other)
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_scalar_
+@pytest.mark.ge_backward_
+@pytest.mark.parametrize("empty", (False, True))
+def test_ge__scalar_backward_rejects_leaf(empty):
+    size = 0 if empty else 2
+    for op in (torch.ops.aten.ge_.Scalar, flag_gems.ge_scalar_):
+        leaf = torch.ones(size, device=flag_gems.device, requires_grad=True)
+        with pytest.raises(RuntimeError, match="leaf Variable"):
+            op(leaf, 0.0)
+        view = leaf[:]
+        with pytest.raises(RuntimeError, match="view of a leaf Variable"):
+            op(view, 0.0)
 
 
 @pytest.mark.ge_
