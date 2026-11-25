@@ -53,6 +53,7 @@ ADAPTIVE_AVG_POOL3D_SHAPES = [
 
 
 @pytest.mark.adaptive_avg_pool3d_backward
+@pytest.mark.adaptive_avg_pool3d_backward_grad_input
 @pytest.mark.parametrize("shape", ADAPTIVE_AVG_POOL3D_SHAPES)
 @pytest.mark.parametrize("output_size", ADAPTIVE_AVG_POOL3D_OUTPUT_SIZES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
