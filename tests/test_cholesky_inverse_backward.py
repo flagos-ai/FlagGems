@@ -15,15 +15,19 @@
 
 import pytest
 import torch
-import flag_gems
 from torch.utils._python_dispatch import TorchDispatchMode
+
+import flag_gems
+
 
 @pytest.mark.cholesky_inverse_backward
 @pytest.mark.cholesky_inverse
-@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
-@pytest.mark.parametrize('shape', [(0, 0), (1, 1), (4, 4), (17, 17), (2, 32, 32), (2, 2, 8, 8), (0, 4, 4)])
-@pytest.mark.parametrize('upper', [False, True])
-@pytest.mark.parametrize('strided', [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "shape", [(0, 0), (1, 1), (4, 4), (17, 17), (2, 32, 32), (2, 2, 8, 8), (0, 4, 4)]
+)
+@pytest.mark.parametrize("upper", [False, True])
+@pytest.mark.parametrize("strided", [False, True])
 def test_cholesky_inverse_backward(dtype, shape, upper, strided):
     n = shape[-1]
     value = torch.randn(shape, device=flag_gems.device, dtype=dtype) * 0.01
@@ -42,13 +46,16 @@ def test_cholesky_inverse_backward(dtype, shape, upper, strided):
     expected_grad = torch.autograd.grad(expected, ref, grad)[0]
     tolerance = 1e-05 if dtype == torch.float32 else 1e-10
     torch.testing.assert_close(out, expected, rtol=tolerance, atol=tolerance)
-    torch.testing.assert_close(actual_grad, expected_grad, rtol=tolerance, atol=tolerance)
+    torch.testing.assert_close(
+        actual_grad, expected_grad, rtol=tolerance, atol=tolerance
+    )
+
 
 @pytest.mark.cholesky_inverse_backward
 @pytest.mark.cholesky_inverse
-@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
-@pytest.mark.parametrize('n', [33, 64, 65, 129])
-@pytest.mark.parametrize('upper', [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("n", [33, 64, 65, 129])
+@pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_inverse_backward_boundaries(dtype, n, upper):
     value = torch.randn((2, n, n), device=flag_gems.device, dtype=dtype) * 0.01
     value = value.triu() if upper else value.tril()
@@ -62,38 +69,52 @@ def test_cholesky_inverse_backward_boundaries(dtype, n, upper):
     expected_grad = torch.autograd.grad(expected, reference_x, grad)[0]
     tolerance = 1e-05 if dtype == torch.float32 else 1e-10
     torch.testing.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
-    torch.testing.assert_close(actual_grad, expected_grad, rtol=tolerance, atol=tolerance)
-OPERATORS = ['cholesky_inverse']
+    torch.testing.assert_close(
+        actual_grad, expected_grad, rtol=tolerance, atol=tolerance
+    )
+
+
+OPERATORS = ["cholesky_inverse"]
+
 
 def build_case(name):
 
     def rand(shape):
         return torch.rand(shape, device=flag_gems.device, requires_grad=True)
-    return ([torch.eye(4, device=flag_gems.device).requires_grad_()], lambda fn, xs: fn(xs[0]))
+
+    return (
+        [torch.eye(4, device=flag_gems.device).requires_grad_()],
+        lambda fn, xs: fn(xs[0]),
+    )
+
 
 def marker(name):
-    op = 'cholesky_inverse_backward'
-    return pytest.param(name, marks=[getattr(pytest.mark, name), getattr(pytest.mark, op)])
+    op = "cholesky_inverse_backward"
+    return pytest.param(
+        name, marks=[getattr(pytest.mark, name), getattr(pytest.mark, op)]
+    )
 
-@pytest.mark.parametrize('name', [marker(name) for name in OPERATORS])
+
+@pytest.mark.parametrize("name", [marker(name) for name in OPERATORS])
 def test_backward_real_dispatch(name):
-    (inputs, call) = build_case(name)
+    inputs, call = build_case(name)
     refs = [x.detach().clone().requires_grad_() for x in inputs]
     reference = call(getattr(torch, name), refs)
     grad = torch.randn_like(reference)
     expected = torch.autograd.grad(reference, refs, grad)
-    lib = torch.library.Library('aten', 'IMPL')
+    lib = torch.library.Library("aten", "IMPL")
     try:
         flag_gems.only_enable(lib=lib, include=[name])
         target = getattr(torch.ops.aten, name)
         out = call(target, inputs)
         assert out.grad_fn is not None
-        assert not type(out.grad_fn).__name__.endswith('Backward0')
+        assert not type(out.grad_fn).__name__.endswith("Backward0")
         actual = torch.autograd.grad(out, inputs, grad)
     finally:
         lib._destroy()
-    for (got, want) in zip(actual, expected):
+    for got, want in zip(actual, expected):
         torch.testing.assert_close(got, want, atol=1e-05, rtol=0.0001)
+
 
 class RecordCompute(TorchDispatchMode):
 
@@ -104,19 +125,40 @@ class RecordCompute(TorchDispatchMode):
         self.names.append(func._schema.name)
         return func(*args, **kwargs or {})
 
-@pytest.mark.parametrize('name', [marker(name) for name in OPERATORS])
+
+@pytest.mark.parametrize("name", [marker(name) for name in OPERATORS])
 def test_backward_uses_gems_compute(name):
-    (inputs, call) = build_case(name)
+    inputs, call = build_case(name)
     output = call(getattr(flag_gems, name), inputs)
     grad = torch.randn_like(output)
     torch.autograd.grad(output, inputs, grad, retain_graph=True)
     recorder = RecordCompute()
     with recorder:
         torch.autograd.grad(output, inputs, grad)
-    forbidden = {'aten::pow', 'aten::mul', 'aten::add', 'aten::sub', 'aten::div', 'aten::sum', 'aten::mean', 'aten::sqrt', 'aten::rsqrt', 'aten::exp', 'aten::sigmoid', 'aten::bmm', 'aten::mm', 'aten::matmul', 'aten::channel_shuffle', 'aten::elu_backward', 'aten::neg'}
+    forbidden = {
+        "aten::pow",
+        "aten::mul",
+        "aten::add",
+        "aten::sub",
+        "aten::div",
+        "aten::sum",
+        "aten::mean",
+        "aten::sqrt",
+        "aten::rsqrt",
+        "aten::exp",
+        "aten::sigmoid",
+        "aten::bmm",
+        "aten::mm",
+        "aten::matmul",
+        "aten::channel_shuffle",
+        "aten::elu_backward",
+        "aten::neg",
+    }
     assert forbidden.isdisjoint(recorder.names), recorder.names
 
+
 _MISSING_REGISTRAR = object()
+
 
 @pytest.fixture(autouse=True)
 def _restore_registrar_state():
