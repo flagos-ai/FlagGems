@@ -110,3 +110,66 @@ def test_ge_scalar_():
         is_inplace=True,
     )
     bench.run()
+
+
+class _GeBackwardBenchmark(base.Benchmark):
+    """Benchmark backward through a fresh non-leaf receiver for each graph."""
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(256,), (1024, 1024)]
+
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            receiver = torch.randn(shape, dtype=dtype, device=self.device)
+            other = torch.randn(shape, dtype=dtype, device=self.device)
+            yield receiver, other
+
+
+class _GeScalarBackwardBenchmark(_GeBackwardBenchmark):
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            yield torch.randn(shape, dtype=dtype, device=self.device), SCALAR_OTHER
+
+
+def _torch_tensor_backward(receiver, other):
+    return torch.ops.aten.ge_.Tensor(receiver * 2, other)
+
+
+def _gems_tensor_backward(receiver, other):
+    return flag_gems.ge_tensor_(receiver * 2, other)
+
+
+def _torch_scalar_backward(receiver, other):
+    return torch.ops.aten.ge_.Scalar(receiver * 2, other)
+
+
+def _gems_scalar_backward(receiver, other):
+    return flag_gems.ge_scalar_(receiver * 2, other)
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_tensor_
+@pytest.mark.ge_backward_
+def test_ge_backward_():
+    bench = _GeBackwardBenchmark(
+        op_name="ge_backward_",
+        torch_op=_torch_tensor_backward,
+        gems_op=_gems_tensor_backward,
+        dtypes=BENCH_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
+@pytest.mark.ge_
+@pytest.mark.ge_scalar_
+@pytest.mark.ge_backward_
+def test_ge_scalar_backward_():
+    bench = _GeScalarBackwardBenchmark(
+        op_name="ge_scalar_backward_",
+        torch_op=_torch_scalar_backward,
+        gems_op=_gems_scalar_backward,
+        dtypes=BENCH_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

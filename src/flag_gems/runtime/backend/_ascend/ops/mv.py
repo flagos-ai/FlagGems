@@ -27,24 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 def _prune_mv_configs(configs, named_args, **kwargs):
-    """Keep the Ascend GEMV search space focused on useful row tiles."""
-    args = {**named_args, **kwargs}
-    try:
-        n = int(args["N"])
-        m = int(args["M"])
-    except (KeyError, TypeError, ValueError):
-        return configs
-    # Larger row tiles reduce the number of Ascend programs for contiguous
-    # model GEMVs; retain the generic candidates for small or unusual inputs.
-    if m not in (2048, 4096) or n < 128:
-        return configs
-    selected = [
-        c
-        for c in configs
-        if c.kwargs.get("BLOCK_M", 0) in (128, 256, 512, 1024, 2048, 4096)
-        and c.kwargs.get("BLOCK_N", 0) in (1, 2, 4, 8, 16, 32)
+    # FP32 accumulators, converted operands, and lowering temporaries share UB.
+    # Leave headroom even for a matrix with neither stride equal to one.
+    return [
+        config
+        for config in configs
+        if config.kwargs["BLOCK_M"] * config.kwargs["BLOCK_N"] <= 4096
     ]
-    return selected or configs
 
 
 @libentry()
@@ -91,13 +80,100 @@ def mv_kernel(
     tl.store(C_ptrs, acc[:, None], mask=n_mask)
 
 
+@libentry()
+@triton.jit
+def _mv_column_major(
+    A,
+    B,
+    C,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    STRIDE_AK: tl.constexpr,
+    STRIDE_BK: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    CHUNK_K: tl.constexpr,
+):
+    rows = tl.program_id(0) * BLOCK_N + tl.arange(0, BLOCK_N)
+    split = tl.program_id(1)
+    ks = split * CHUNK_K + tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_K, BLOCK_N), dtype=tl.float32)
+    for offset in range(0, CHUNK_K, BLOCK_K):
+        k = ks + offset
+        a = tl.load(
+            A + k[:, None].to(tl.int64) * STRIDE_AK + rows[None, :],
+            (k[:, None] < K) & (rows[None, :] < N),
+            other=0,
+        ).to(tl.float32)
+        b = tl.load(B + k.to(tl.int64) * STRIDE_BK, k < K, other=0).to(tl.float32)
+        acc += a * b[:, None]
+    tl.store(C + split * N + rows, tl.sum(acc, axis=0), rows < N)
+
+
+@libentry()
+@triton.jit
+def _mv_merge(
+    P,
+    C,
+    N: tl.constexpr,
+    SPLITS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_SPLITS: tl.constexpr,
+):
+    rows = tl.program_id(0) * BLOCK_N + tl.arange(0, BLOCK_N)
+    splits = tl.arange(0, BLOCK_SPLITS)
+    parts = tl.load(
+        P + splits[:, None] * N + rows[None, :],
+        (splits[:, None] < SPLITS) & (rows[None, :] < N),
+        other=0,
+    )
+    tl.store(C + rows, tl.sum(parts, axis=0), rows < N)
+
+
+def _launch_column_major(inp, vec, out, n, k):
+    # Keep the physically contiguous row axis innermost. Narrow matrices lack
+    # row tiles; splitting K supplies more work without growing the UB tile.
+    block_n = 16 if n <= 64 else 64
+    block_k = 128 if block_n == 16 else 64
+    row_tiles = triton.cdiv(n, block_n)
+    target_splits = triton.cdiv(32, row_tiles)
+    chunk_k = triton.cdiv(k, target_splits * block_k) * block_k
+    splits = triton.cdiv(k, chunk_k)
+    partial = (
+        torch.empty((splits, n), device=out.device, dtype=torch.float32)
+        if splits > 1
+        else out
+    )
+    _mv_column_major[(row_tiles, splits)](
+        inp,
+        vec,
+        partial,
+        n,
+        k,
+        inp.stride(1),
+        vec.stride(0),
+        block_n,
+        block_k,
+        chunk_k,
+    )
+    if splits > 1:
+        _mv_merge[(triton.cdiv(n, 128),)](
+            partial, out, n, splits, 128, triton.next_power_of_2(splits)
+        )
+
+
 def mv(inp, vec):
     logger.debug("GEMS_ASCEND MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
+    if N == 0:
+        return out
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(inp.device):
+        if M > 0 and inp.stride(0) == 1 and inp.stride(1) != 1:
+            _launch_column_major(inp, vec, out, N, M)
+            return out
         mv_kernel[grid](
             inp,
             vec,
