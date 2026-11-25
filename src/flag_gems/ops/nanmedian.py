@@ -91,7 +91,7 @@ def nanmedian_dim_scatter_kernel(grad_out, indices, in_sizes, in_strides, mapg, 
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < numel
     rem = offs.to(tl.int64)
-    _ = tl.zeros(offs.shape, dtype=tl.int64)
+    off_in = tl.zeros(offs.shape, dtype=tl.int64)
     off_g = tl.zeros(offs.shape, dtype=tl.int64)
     off_r = tl.zeros(offs.shape, dtype=tl.int64)
     coord_dim = tl.zeros(offs.shape, dtype=tl.int64)
