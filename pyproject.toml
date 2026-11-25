@@ -223,9 +223,10 @@ nvidia-cuda128 = [
 
 nvidia-cuda133 = [
     "flagcx==0.14.1+cuda13.3",
-    "torch==2.11.0+cu130",
+    "numpy==1.26.4",
+    "torch==2.13.0+cu130",
     "torchaudio==2.11.0+cu130",
-    "torchvision==0.26.0+cu130",
+    "torchvision==0.28.0+cu130",
     "flagtree==0.7.0",
 ]
 
