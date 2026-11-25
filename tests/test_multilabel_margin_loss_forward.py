@@ -407,3 +407,104 @@ def test_multilabel_margin_loss_forward_invalid_input_shape_raises(shape):
 
     with pytest.raises(RuntimeError):
         flag_gems.multilabel_margin_loss_forward(input, target, 1)
+
+
+@pytest.mark.multilabel_margin_loss_forward_backward
+@pytest.mark.parametrize("shape", [(3, 17), (2, 257)])
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_multilabel_margin_loss_forward_backward(shape, reduction):
+    """The public forward owns a correct custom autograd path."""
+    dtype = torch.float32
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = _make_target(shape, "mixed", flag_gems.device)
+
+    ref_input = input.detach().cpu()
+    ref_target = target.detach().cpu()
+    ref_loss, ref_is_target = torch.ops.aten.multilabel_margin_loss_forward(
+        ref_input, ref_target, reduction
+    )
+    ref_grad = torch.linspace(
+        0.75,
+        1.25,
+        max(1, ref_loss.numel()),
+        dtype=dtype,
+    ).reshape(ref_loss.shape)
+    ref_input_grad = torch.ops.aten.multilabel_margin_loss_backward(
+        ref_grad,
+        ref_input,
+        ref_target,
+        reduction,
+        ref_is_target,
+    )
+
+    input.requires_grad_()
+    loss, is_target = flag_gems.multilabel_margin_loss_forward(input, target, reduction)
+    (input_grad,) = torch.autograd.grad(
+        loss,
+        (input,),
+        ref_grad.to(flag_gems.device),
+    )
+
+    assert not is_target.requires_grad
+    reference = ref_input_grad if cfg.TO_CPU else ref_input_grad.to(flag_gems.device)
+    utils.gems_assert_close(
+        input_grad,
+        reference,
+        dtype,
+        reduce_dim=shape[0] * shape[1],
+    )
+
+
+@pytest.mark.multilabel_margin_loss_forward_backward
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_multilabel_margin_loss_forward_backward_dtypes(dtype):
+    """Cover every dtype against the device's native autograd formula."""
+    shape = (3, 17)
+    values = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = _make_target(shape, "middle", flag_gems.device)
+
+    ref_input = values.detach().clone().requires_grad_()
+    ref_loss, _ = torch.ops.aten.multilabel_margin_loss_forward(ref_input, target, 1)
+    (ref_grad,) = torch.autograd.grad(ref_loss, (ref_input,), torch.ones_like(ref_loss))
+
+    input = values.detach().clone().requires_grad_()
+    loss, _ = flag_gems.multilabel_margin_loss_forward(input, target, 1)
+    (input_grad,) = torch.autograd.grad(loss, (input,), torch.ones_like(loss))
+
+    reference = ref_grad.cpu() if cfg.TO_CPU else ref_grad
+    utils.gems_assert_close(
+        input_grad,
+        reference,
+        dtype,
+        reduce_dim=shape[0] * shape[1],
+    )
+
+
+@pytest.mark.multilabel_margin_loss_forward_backward
+def test_multilabel_margin_loss_forward_backward_single_kernel():
+    from torch.profiler import ProfilerActivity, profile
+
+    shape = (8, 128)
+    input = torch.randn(
+        shape, dtype=torch.float32, device=flag_gems.device, requires_grad=True
+    )
+    target = _make_target(shape, "middle", flag_gems.device)
+    loss, _ = flag_gems.multilabel_margin_loss_forward(input, target, 1)
+    grad = torch.ones_like(loss)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(loss, (input,), grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [
+        (name, count)
+        for name, count in launches
+        if "multilabel_margin_loss_forward_backward_kernel" in name
+    ]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
