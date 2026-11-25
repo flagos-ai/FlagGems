@@ -27,6 +27,7 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._upsample_nearest_exact3d_backward import _upsample_nearest_exact3d_backward
 from .absolute_ import absolute_
 from .acos_ import acos_
@@ -467,6 +468,7 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_transform_bias_rescale_qkv",
     "_trilinear",
     "_trilinear_out",
     "_unique2",
