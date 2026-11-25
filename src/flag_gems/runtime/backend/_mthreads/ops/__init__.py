@@ -183,6 +183,7 @@ from .linalg_householder_product import linalg_householder_product
 from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_multi_dot import linalg_multi_dot
 from .linalg_tensorinv import linalg_tensorinv
 from .log import log
 from .log2_ import log2_
@@ -463,6 +464,7 @@ __all__ = [
     "linalg_householder_product",
     "linalg_inv_ex",
     "linalg_ldl_solve",
+    "linalg_multi_dot",
     "linalg_tensorinv",
     "log",
     "log10",
