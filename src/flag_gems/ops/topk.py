@@ -334,6 +334,420 @@ def topk_stage2_kernel(
         available = available & (cols != select_idx)
 
 
+@triton.jit
+def _topk_row_offset(
+    row,
+    stride_m,
+    BATCH_SHAPE: tl.constexpr,
+    BATCH_STRIDES: tl.constexpr,
+):
+    if tl.constexpr(len(BATCH_SHAPE) == 0):
+        offset = row.to(tl.int64) * stride_m
+    else:
+        rem = row.to(tl.int64)
+        offset = rem * 0
+        for axis in tl.static_range(len(BATCH_SHAPE) - 1, 0, -1):
+            dim_size = BATCH_SHAPE[axis]
+            coord = rem % dim_size
+            rem = rem // dim_size
+            offset += coord * BATCH_STRIDES[axis]
+        offset += rem * BATCH_STRIDES[0]
+    return offset
+
+
+@triton.jit
+def _strided_compare_and_swap(
+    x,
+    ids,
+    flip,
+    i: core.constexpr,
+    n_dims: core.constexpr,
+    valid_count: core.constexpr,
+    descending: core.constexpr,
+):
+    n_outer: core.constexpr = x.numel >> n_dims
+    shape: core.constexpr = [n_outer * 2**i, 2, 2 ** (n_dims - i - 1)]
+
+    y = core.reshape(x, shape)
+    y_idx = core.reshape(ids, shape)
+
+    mask = core.arange(0, 2)[None, :, None]
+
+    zero_x = zeros_like(y)
+    y_left_val = core.where(mask == 0, y, zero_x)
+    y_right_val = core.where(mask == 1, y, zero_x)
+    left = core.broadcast_to(tl.sum(y_left_val, 1)[:, None, :], shape).to(x.dtype)
+    right = core.broadcast_to(tl.sum(y_right_val, 1)[:, None, :], shape).to(x.dtype)
+    left = core.reshape(left, x.shape)
+    right = core.reshape(right, x.shape)
+
+    idx_left_val = core.where(mask == 0, y_idx, 0)
+    idx_right_val = core.where(mask == 1, y_idx, 0)
+    left_idx = core.broadcast_to(tl.sum(idx_left_val, 1)[:, None, :], shape).to(
+        ids.dtype
+    )
+    right_idx = core.broadcast_to(tl.sum(idx_right_val, 1)[:, None, :], shape).to(
+        ids.dtype
+    )
+    left_idx = core.reshape(left_idx, ids.shape)
+    right_idx = core.reshape(right_idx, ids.shape)
+
+    if core.constexpr(x.dtype.primitive_bitwidth) == 32:
+        idtype = core.int32
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 64:
+        idtype = core.int64
+    else:
+        raise ValueError("Unsupported dtype")
+
+    ileft = left.to(idtype, bitcast=True)
+    iright = right.to(idtype, bitcast=True)
+    ix = x.to(idtype, bitcast=True)
+
+    tie_greater = left_idx < right_idx if descending else left_idx > right_idx
+    greater = core.where(left == right, tie_greater, left > right)
+    if tl.constexpr(x.dtype.is_floating()):
+        left_nan = left != left
+        right_nan = right != right
+        both_nan = left_nan & right_nan
+        greater = core.where(
+            both_nan,
+            tie_greater,
+            core.where(left_nan != right_nan, left_nan, greater),
+        )
+    if valid_count is not None:
+        left_valid = left_idx < valid_count
+        right_valid = right_idx < valid_count
+        valid_first = left_valid if descending else right_valid
+        greater = core.where(left_valid != right_valid, valid_first, greater)
+    cond = greater ^ (flip != 0)
+    ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
+
+    idx_dtype = core.int32
+    ileft_idx = left_idx.to(idx_dtype, bitcast=True)
+    iright_idx = right_idx.to(idx_dtype, bitcast=True)
+    ix_idx = ids.to(idx_dtype, bitcast=True)
+    ret_idx = ix_idx ^ core.where(cond, ileft_idx ^ iright_idx, zeros_like(ix_idx))
+
+    return ret.to(x.dtype, bitcast=True), ret_idx.to(ids.dtype, bitcast=True)
+
+
+@triton.jit
+def _strided_bitonic_merge(
+    x,
+    ids,
+    stage: core.constexpr,
+    order: core.constexpr,
+    n_dims: core.constexpr,
+    valid_count: core.constexpr,
+    descending: core.constexpr,
+):
+    n_outer: core.constexpr = x.numel >> n_dims
+    core.static_assert(stage <= n_dims)
+    if order == 2:
+        shape: core.constexpr = [n_outer * 2 ** (n_dims - 1 - stage), 2, 2**stage]
+        flip = core.reshape(
+            core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape
+        )
+    else:
+        flip = order
+    for i in core.static_range(stage):
+        x, ids = _strided_compare_and_swap(
+            x, ids, flip, i + (n_dims - stage), n_dims, valid_count, descending
+        )
+    return x, ids
+
+
+@triton.jit
+def _strided_argsort(
+    x,
+    ids,
+    dim: tl.constexpr,
+    descending: core.constexpr,
+    valid_count: core.constexpr = None,
+):
+    _dim: core.constexpr = dim
+    n_dims: core.constexpr = _log2(x.shape[_dim])
+    for i in core.static_range(1, n_dims + 1):
+        x, ids = _strided_bitonic_merge(
+            x, ids, i, 2 if i < n_dims else descending, n_dims, valid_count, descending
+        )
+    return x, ids
+
+
+@libentry()
+@triton.jit
+def topk_strided_single_stage_kernel(
+    y_ptr,
+    index_ptr,
+    x_ptr,
+    stride_xm,
+    stride_xn,
+    stride_ym,
+    stride_yn,
+    k: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    DESCENDING: tl.constexpr,
+    BATCH_SHAPE: tl.constexpr,
+    X_BATCH_STRIDES: tl.constexpr,
+    Y_BATCH_STRIDES: tl.constexpr,
+):
+    cur_batch = tle.program_id(0)
+    x_row_offset = _topk_row_offset(cur_batch, stride_xm, BATCH_SHAPE, X_BATCH_STRIDES)
+    y_row_offset = _topk_row_offset(cur_batch, stride_ym, BATCH_SHAPE, Y_BATCH_STRIDES)
+
+    cols = tl.arange(0, BLOCK_SIZE)
+    mask = cols < N
+
+    elem_ty: tl.constexpr = x_ptr.dtype.element_ty
+    if tl.constexpr(elem_ty == tl.float16) or tl.constexpr(elem_ty == tl.bfloat16):
+        compute_ty: tl.constexpr = tl.float32
+    elif (
+        tl.constexpr(elem_ty == tl.int8)
+        or tl.constexpr(elem_ty == tl.uint8)
+        or tl.constexpr(elem_ty == tl.int16)
+    ):
+        compute_ty: tl.constexpr = tl.int32
+    else:
+        compute_ty: tl.constexpr = elem_ty
+
+    x_ptrs = x_ptr + x_row_offset + cols.to(tl.int64) * stride_xn
+    x_val = tl.load(x_ptrs, mask=mask, other=0).to(compute_ty)
+    idx_val = cols.to(tl.int32)
+
+    if BLOCK_SIZE > 1:
+        sorted_x, sorted_idx = _strided_argsort(
+            x_val,
+            idx_val,
+            dim=0,
+            descending=DESCENDING,
+            valid_count=N if N < BLOCK_SIZE else None,
+        )
+    else:
+        sorted_x, sorted_idx = x_val, idx_val
+
+    out_mask = cols < k
+    out_offsets = y_row_offset + cols.to(tl.int64) * stride_yn
+    tl.store(y_ptr + out_offsets, sorted_x.to(elem_ty), mask=out_mask)
+    tl.store(index_ptr + out_offsets, sorted_idx.to(tl.int64), mask=out_mask)
+
+
+@libentry()
+@triton.jit
+def topk_strided_stage1_kernel(
+    y_ptr,
+    index_ptr,
+    x_ptr,
+    stride_xm,
+    stride_xn,
+    k,
+    N: tl.constexpr,
+    CHUNK_SIZE: tl.constexpr,
+    DESCENDING: tl.constexpr,
+    BATCH_SHAPE: tl.constexpr,
+    X_BATCH_STRIDES: tl.constexpr,
+):
+    cur_batch = tle.program_id(0)
+    cur_chunk_idx = tle.program_id(1)
+    chunk_num = tle.num_programs(1)
+
+    out_base = (cur_batch.to(tl.int64) * chunk_num + cur_chunk_idx) * k
+    y_ptr += out_base
+    index_ptr += out_base
+
+    x_row_offset = _topk_row_offset(cur_batch, stride_xm, BATCH_SHAPE, X_BATCH_STRIDES)
+    chunk_offset = cur_chunk_idx * CHUNK_SIZE
+    cols = tl.arange(0, CHUNK_SIZE)
+    col_indices = chunk_offset + cols
+    mask = col_indices < N
+
+    elem_ty: tl.constexpr = x_ptr.dtype.element_ty
+    if tl.constexpr(elem_ty == tl.float16) or tl.constexpr(elem_ty == tl.bfloat16):
+        compute_ty: tl.constexpr = tl.float32
+    elif (
+        tl.constexpr(elem_ty == tl.int8)
+        or tl.constexpr(elem_ty == tl.uint8)
+        or tl.constexpr(elem_ty == tl.int16)
+    ):
+        compute_ty: tl.constexpr = tl.int32
+    else:
+        compute_ty: tl.constexpr = elem_ty
+
+    if tl.constexpr(compute_ty.is_floating()):
+        pad_val = tl.full((), float("-inf") if DESCENDING else float("inf"), compute_ty)
+    elif tl.constexpr(compute_ty == tl.int32):
+        pad_val = tl.full(
+            (), _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL, tl.int32
+        )
+    else:
+        pad_val = tl.full(
+            (), _MIN_INT64_VAL if DESCENDING else _MAX_INT64_VAL, tl.int64
+        )
+
+    x_ptrs = x_ptr + x_row_offset + col_indices.to(tl.int64) * stride_xn
+    raw_val = tl.load(x_ptrs, mask=mask, other=0).to(compute_ty)
+    x_val = tl.where(mask, raw_val, pad_val)
+    available = mask
+
+    for k_idx in range(k):
+        if DESCENDING:
+            chunk_select_val = tl.max(x_val, axis=0)
+        else:
+            chunk_select_val = tl.min(x_val, axis=0)
+        is_candidate = available & (x_val == chunk_select_val)
+        if tl.constexpr(compute_ty.is_floating()) and DESCENDING:
+            is_nan_candidate = available & (x_val != x_val)
+            has_nan = tl.max(is_nan_candidate.to(tl.int32), axis=0) != 0
+            is_candidate = tl.where(has_nan, is_nan_candidate, is_candidate)
+        candidate_indices = tl.where(is_candidate, cols, CHUNK_SIZE)
+        best_col = tl.min(candidate_indices, axis=0)
+        has_valid = best_col < CHUNK_SIZE
+        out_idx = tl.where(has_valid, (best_col + chunk_offset).to(tl.int64), -1)
+        if tl.constexpr(compute_ty.is_floating()) and DESCENDING:
+            nan_val = tl.full((), float("nan"), compute_ty)
+            store_val = tl.where(has_nan, nan_val, chunk_select_val)
+        else:
+            store_val = chunk_select_val
+
+        tl.store(y_ptr + k_idx, store_val.to(elem_ty))
+        tl.store(index_ptr + k_idx, out_idx)
+        x_val = tl.where(cols == best_col, pad_val, x_val)
+        available = available & (cols != best_col)
+
+
+@libentry()
+@triton.jit
+def topk_strided_stage2_kernel(
+    y_ptr,
+    index_ptr,
+    chunk_x,
+    chunk_index,
+    stride_ym,
+    stride_yn,
+    k,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    DESCENDING: tl.constexpr,
+    BATCH_SHAPE: tl.constexpr,
+    Y_BATCH_STRIDES: tl.constexpr,
+):
+    cur_batch = tle.program_id(0)
+    chunk_base = cur_batch.to(tl.int64) * N
+    chunk_x += chunk_base
+    chunk_index += chunk_base
+    y_row_offset = _topk_row_offset(cur_batch, stride_ym, BATCH_SHAPE, Y_BATCH_STRIDES)
+
+    cols = tl.arange(0, BLOCK_SIZE)
+    mask = cols < N
+
+    elem_ty: tl.constexpr = chunk_x.dtype.element_ty
+    if tl.constexpr(elem_ty == tl.float16) or tl.constexpr(elem_ty == tl.bfloat16):
+        compute_ty: tl.constexpr = tl.float32
+    elif (
+        tl.constexpr(elem_ty == tl.int8)
+        or tl.constexpr(elem_ty == tl.uint8)
+        or tl.constexpr(elem_ty == tl.int16)
+    ):
+        compute_ty: tl.constexpr = tl.int32
+    else:
+        compute_ty: tl.constexpr = elem_ty
+
+    if tl.constexpr(compute_ty.is_floating()):
+        pad_val = tl.full((), float("-inf") if DESCENDING else float("inf"), compute_ty)
+    elif tl.constexpr(compute_ty == tl.int32):
+        pad_val = tl.full(
+            (), _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL, tl.int32
+        )
+    else:
+        pad_val = tl.full(
+            (), _MIN_INT64_VAL if DESCENDING else _MAX_INT64_VAL, tl.int64
+        )
+
+    raw_x_val = tl.load(chunk_x + cols, mask=mask, other=0).to(compute_ty)
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=-1).to(tl.int64)
+    available = mask & (chunk_index_val >= 0)
+    chunk_x_val = tl.where(available, raw_x_val, pad_val)
+    stride_yn_i64 = tl.full((), stride_yn, tl.int64)
+
+    for k_idx in range(k):
+        if DESCENDING:
+            select_val = tl.max(chunk_x_val, axis=0)
+        else:
+            select_val = tl.min(chunk_x_val, axis=0)
+        is_candidate = available & (chunk_x_val == select_val)
+        if tl.constexpr(compute_ty.is_floating()) and DESCENDING:
+            is_nan_candidate = available & (chunk_x_val != chunk_x_val)
+            has_nan = tl.max(is_nan_candidate.to(tl.int32), axis=0) != 0
+            is_candidate = tl.where(has_nan, is_nan_candidate, is_candidate)
+        candidate_indices = tl.where(is_candidate, cols, BLOCK_SIZE)
+        select_idx = tl.min(candidate_indices, axis=0)
+        if tl.constexpr(compute_ty.is_floating()) and DESCENDING:
+            nan_val = tl.full((), float("nan"), compute_ty)
+            store_val = tl.where(has_nan, nan_val, select_val)
+        else:
+            store_val = select_val
+
+        out_offset = y_row_offset + k_idx * stride_yn_i64
+        select_global_idx = tl.sum(
+            tl.where(cols == select_idx, chunk_index_val, 0), axis=0
+        )
+        tl.store(y_ptr + out_offset, store_val.to(elem_ty))
+        tl.store(index_ptr + out_offset, select_global_idx)
+        chunk_x_val = tl.where(cols == select_idx, pad_val, chunk_x_val)
+        available = available & (cols != select_idx)
+
+
+def _prepare_topk_strided_layout(x, y_vals, dim):
+    batch_shape = []
+    x_batch_strides = []
+    y_batch_strides = []
+    x_strides = x.stride()
+    y_strides = y_vals.stride()
+    for i, size in enumerate(x.shape):
+        if i == dim or size == 1:
+            continue
+        s = int(size)
+        xs = int(x_strides[i])
+        ys = int(y_strides[i])
+        if (
+            batch_shape
+            and x_batch_strides[-1] == s * xs
+            and y_batch_strides[-1] == s * ys
+        ):
+            batch_shape[-1] *= s
+            x_batch_strides[-1] = xs
+            y_batch_strides[-1] = ys
+        else:
+            batch_shape.append(s)
+            x_batch_strides.append(xs)
+            y_batch_strides.append(ys)
+
+    stride_xn = int(x_strides[dim])
+    stride_yn = int(y_strides[dim])
+    if len(batch_shape) == 0:
+        return 0, stride_xn, 0, stride_yn, (), (), ()
+    if len(batch_shape) == 1:
+        return (
+            x_batch_strides[0],
+            stride_xn,
+            y_batch_strides[0],
+            stride_yn,
+            (),
+            (),
+            (),
+        )
+    kernel_batch_shape = (1,) + tuple(batch_shape[1:])
+    return (
+        0,
+        stride_xn,
+        0,
+        stride_yn,
+        kernel_batch_shape,
+        tuple(x_batch_strides),
+        tuple(y_batch_strides),
+    )
+
+
 if HAS_TLE:
 
     @triton.jit
@@ -374,8 +788,15 @@ if HAS_TLE:
         K_PAD: tl.constexpr,
         BLOCK_N: tl.constexpr,
         RADIX_BITS: tl.constexpr,
+        stride_xn=1,
+        stride_yn=1,
+        BATCH_SHAPE: tl.constexpr = (),
+        X_BATCH_STRIDES: tl.constexpr = (),
+        Y_BATCH_STRIDES: tl.constexpr = (),
     ):
         pid = tl.program_id(0)
+        x_row_offset = _topk_row_offset(pid, stride_xm, BATCH_SHAPE, X_BATCH_STRIDES)
+        y_row_offset = _topk_row_offset(pid, stride_ym, BATCH_SHAPE, Y_BATCH_STRIDES)
         x_dtype = X.dtype.element_ty
         x_nbits: tl.constexpr = x_dtype.primitive_bitwidth
         if x_nbits < 16:
@@ -409,7 +830,7 @@ if HAS_TLE:
             for t in tl.range(0, n_tiles):
                 offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
                 mask_n = offs_n < n_cols
-                x_ptrs = X + pid * stride_xm + offs_n
+                x_ptrs = X + x_row_offset + offs_n.to(tl.int64) * stride_xn
                 x = tl.load(x_ptrs, mask=mask_n, other=float("-inf"))
                 x_bits = x.to(x_utype, bitcast=True)
                 x_key = _fpval_to_key_with_nan(x, x_bits)
@@ -479,7 +900,7 @@ if HAS_TLE:
         for t in tl.range(0, n_tiles):
             offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
             mask_n = offs_n < n_cols
-            x_ptrs = X + pid * stride_xm + offs_n
+            x_ptrs = X + x_row_offset + offs_n.to(tl.int64) * stride_xn
             x = tl.load(x_ptrs, mask=mask_n, other=float("-inf"))
             x_bits = x.to(x_utype, bitcast=True)
             x_key = _fpval_to_key_with_nan(x, x_bits)
@@ -496,7 +917,7 @@ if HAS_TLE:
         for t in tl.range(0, n_tiles):
             offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
             mask_n = offs_n < n_cols
-            x_ptrs = X + pid * stride_xm + offs_n
+            x_ptrs = X + x_row_offset + offs_n.to(tl.int64) * stride_xn
             x = tl.load(x_ptrs, mask=mask_n, other=float("-inf"))
             x_bits = x.to(x_utype, bitcast=True)
             x_key = _fpval_to_key_with_nan(x, x_bits)
@@ -520,8 +941,9 @@ if HAS_TLE:
         y_values = _key_to_fpval(y_values_raw).to(x_dtype, bitcast=True)
 
         mask_k = offs_k < K
-        yv_ptrs = Yv + pid * stride_ym + offs_k
-        yi_ptrs = Yi + pid * stride_ym + offs_k
+        out_offsets = y_row_offset + offs_k.to(tl.int64) * stride_yn
+        yv_ptrs = Yv + out_offsets
+        yi_ptrs = Yi + out_offsets
         tl.store(yv_ptrs, y_values, mask=mask_k)
         tl.store(yi_ptrs, y_indices, mask=mask_k)
 
@@ -558,29 +980,57 @@ def _get_topk_radix_tle_config(x_dtype, topk_elem_cnt, k, k_pad):
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logger.debug("GEMS TOPK")
-    # If dim equals to last dim, we set it to -1.
+    ndim = x.ndim
+    rank = max(ndim, 1)
+    if dim < -rank or dim >= rank:
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [{-rank}, {rank - 1}], but got {dim})"
+        )
     if dim < 0:
-        dim = dim + x.ndim
+        dim = dim + rank
 
-    assert dim == x.ndim - 1, "Currently only support topk in last dimension"
-    # assert sorted, "Currently only support sorted == True"
+    descending = bool(largest)
 
-    # Early return for k=0 to avoid Triton kernel compilation error.
+    if ndim == 0:
+        if k < 0 or k > 1:
+            raise RuntimeError("selected index k out of range")
+        y_vals = torch.empty((), device=x.device, dtype=x.dtype)
+        y_idx = torch.empty((), device=x.device, dtype=torch.int64)
+        with torch_device_fn.device(x.device):
+            topk_strided_single_stage_kernel[(1,)](
+                y_vals,
+                y_idx,
+                x,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                descending,
+                (),
+                (),
+                (),
+            )
+        return (y_vals, y_idx)
+
+    topk_elem_cnt = x.shape[dim]
+    if k < 0 or k > topk_elem_cnt:
+        raise RuntimeError("selected index k out of range")
+
+    out_shape = tuple(k if i == dim else s for i, s in enumerate(x.shape))
+
+    # Early return for k=0 or empty batch to avoid Triton kernel compilation error.
     # Triton's tl.arange(0, BLOCK_SIZE) requires BLOCK_SIZE > 0.
-    # When k=0, stage2_elem_cnt becomes 0, leading to BLOCK_SIZE=0.
-    if k == 0:
-        out_shape = list(x.shape[:-1]) + [0]
+    if k == 0 or x.numel() == 0:
         return (
             torch.empty(out_shape, device=x.device, dtype=x.dtype),
             torch.empty(out_shape, device=x.device, dtype=torch.int64),
         )
 
-    descending = True
-    if not largest:
-        descending = False
-
-    topk_elem_cnt = x.shape[dim]
     batch_size = math.prod(x.shape) // topk_elem_cnt
+    use_contiguous_last_dim = dim == ndim - 1 and x.is_contiguous()
 
     if (
         HAS_TLE
@@ -594,51 +1044,96 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         and triton.next_power_of_2(k) <= 1024
     ):
         k_pad = triton.next_power_of_2(k)
-        out_shape = x.shape[:-1] + (k,)
         y_vals = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
         block_n_radix, radix_bits, num_warps = _get_topk_radix_tle_config(
             x.dtype, topk_elem_cnt, k, k_pad
         )
 
-        x_2d = x.reshape(batch_size, topk_elem_cnt)
-        y_vals_2d = y_vals.reshape(batch_size, k)
-        y_idx_2d = y_idx.reshape(batch_size, k)
+        if use_contiguous_last_dim:
+            stride_xm = topk_elem_cnt
+            stride_xn = 1
+            stride_ym = k
+            stride_yn = 1
+            batch_shape = ()
+            x_batch_strides = ()
+            y_batch_strides = ()
+        else:
+            (
+                stride_xm,
+                stride_xn,
+                stride_ym,
+                stride_yn,
+                batch_shape,
+                x_batch_strides,
+                y_batch_strides,
+            ) = _prepare_topk_strided_layout(x, y_vals, dim)
+
         with torch_device_fn.device(x.device):
             topk_kernel_radix_tle[(batch_size,)](
-                x_2d,
-                y_vals_2d,
-                y_idx_2d,
-                x_2d.stride(0),
-                y_vals_2d.stride(0),
+                x,
+                y_vals,
+                y_idx,
+                stride_xm,
+                stride_ym,
                 topk_elem_cnt,
                 K=k,
                 K_PAD=k_pad,
                 BLOCK_N=block_n_radix,
                 RADIX_BITS=radix_bits,
+                stride_xn=stride_xn,
+                stride_yn=stride_yn,
+                BATCH_SHAPE=batch_shape,
+                X_BATCH_STRIDES=x_batch_strides,
+                Y_BATCH_STRIDES=y_batch_strides,
                 num_warps=num_warps,
                 num_stages=1,
             )
         return (y_vals, y_idx)
 
     if topk_elem_cnt < 4096:
-        out_shape = x.shape[:-1] + (k,)
-
         y_vals = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
         BLOCK_SIZE = triton.next_power_of_2(topk_elem_cnt)
 
         with torch_device_fn.device(x.device):
-            topk_single_stage_kernel[(batch_size,)](
-                y_vals,
-                y_idx,
-                x,
-                k,
-                topk_elem_cnt,
-                BLOCK_SIZE,
-                descending,
-            )
+            if use_contiguous_last_dim:
+                topk_single_stage_kernel[(batch_size,)](
+                    y_vals,
+                    y_idx,
+                    x,
+                    k,
+                    topk_elem_cnt,
+                    BLOCK_SIZE,
+                    descending,
+                )
+            else:
+                (
+                    stride_xm,
+                    stride_xn,
+                    stride_ym,
+                    stride_yn,
+                    batch_shape,
+                    x_batch_strides,
+                    y_batch_strides,
+                ) = _prepare_topk_strided_layout(x, y_vals, dim)
+                topk_strided_single_stage_kernel[(batch_size,)](
+                    y_vals,
+                    y_idx,
+                    x,
+                    stride_xm,
+                    stride_xn,
+                    stride_ym,
+                    stride_yn,
+                    k,
+                    topk_elem_cnt,
+                    BLOCK_SIZE,
+                    descending,
+                    batch_shape,
+                    x_batch_strides,
+                    y_batch_strides,
+                )
         return (y_vals, y_idx)
 
     # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
@@ -658,37 +1153,79 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         batch_size * chunk_num * k, device=x.device, dtype=torch.int64
     )
 
-    out_shape = x.shape[:-1] + (k,)
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
     stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
-    with torch_device_fn.device(x.device):
-        topk_stage1_kernel[
-            batch_size,
-            chunk_num,
-        ](
-            stage1_out,  # pointer to the output
-            stage1_out_idx,  # pointer to the output
-            x,  # pointer to the input
-            k,
-            topk_elem_cnt,
-            chunk_size,
-            descending,
-        )
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-    with torch_device_fn.device(x.device):
-        topk_stage2_kernel[batch_size,](
-            stage2_out,
-            stage2_out_idx,
-            stage1_out,
-            stage1_out_idx,
-            dim,
-            k,
-            stage2_elem_cnt,
-            BLOCK_SIZE,
-            descending,
-        )
+    if use_contiguous_last_dim:
+        with torch_device_fn.device(x.device):
+            topk_stage1_kernel[
+                batch_size,
+                chunk_num,
+            ](
+                stage1_out,  # pointer to the output
+                stage1_out_idx,  # pointer to the output
+                x,  # pointer to the input
+                k,
+                topk_elem_cnt,
+                chunk_size,
+                descending,
+            )
+
+        with torch_device_fn.device(x.device):
+            topk_stage2_kernel[batch_size,](
+                stage2_out,
+                stage2_out_idx,
+                stage1_out,
+                stage1_out_idx,
+                dim,
+                k,
+                stage2_elem_cnt,
+                BLOCK_SIZE,
+                descending,
+            )
+    else:
+        (
+            stride_xm,
+            stride_xn,
+            stride_ym,
+            stride_yn,
+            batch_shape,
+            x_batch_strides,
+            y_batch_strides,
+        ) = _prepare_topk_strided_layout(x, stage2_out, dim)
+        with torch_device_fn.device(x.device):
+            topk_strided_stage1_kernel[
+                batch_size,
+                chunk_num,
+            ](
+                stage1_out,
+                stage1_out_idx,
+                x,
+                stride_xm,
+                stride_xn,
+                k,
+                topk_elem_cnt,
+                chunk_size,
+                descending,
+                batch_shape,
+                x_batch_strides,
+            )
+            topk_strided_stage2_kernel[batch_size,](
+                stage2_out,
+                stage2_out_idx,
+                stage1_out,
+                stage1_out_idx,
+                stride_ym,
+                stride_yn,
+                k,
+                stage2_elem_cnt,
+                BLOCK_SIZE,
+                descending,
+                batch_shape,
+                y_batch_strides,
+            )
 
     return (stage2_out, stage2_out_idx)

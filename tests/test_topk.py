@@ -199,3 +199,156 @@ def test_topk_ascend_dsa(m, n, k):
         x.gather(1, res_index.to(torch.int64)),
         utils.to_reference(res_value.to(torch.float32)),
     )
+
+
+def _assert_topk_matches_reference(x_cpu, res_val, res_idx, k, dim, largest):
+    ref_val, ref_idx = torch.topk(x_cpu, k, dim=dim, largest=largest, sorted=True)
+    res_val_cpu = res_val.cpu()
+    res_idx_cpu = res_idx.cpu()
+    assert res_val_cpu.shape == ref_val.shape
+    assert res_idx_cpu.shape == ref_idx.shape
+    assert res_idx_cpu.dtype == torch.int64
+    assert res_val.is_contiguous()
+    assert res_idx.is_contiguous()
+    torch.testing.assert_close(res_val_cpu, ref_val, rtol=0, atol=0)
+    if k > 0 and x_cpu.numel() > 0:
+        dim_size = x_cpu.shape[dim]
+        assert bool(((res_idx_cpu >= 0) & (res_idx_cpu < dim_size)).all())
+        gathered = torch.gather(x_cpu, dim, res_idx_cpu)
+        torch.testing.assert_close(gathered, res_val_cpu, rtol=0, atol=0)
+
+
+@pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op",
+)
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_topk_transposed_2d_repro(largest, dtype):
+    torch.manual_seed(0)
+    x_cpu = torch.randn(128, 128, dtype=torch.float32).to(dtype)
+    x_dev = x_cpu.to(flag_gems.device)
+    x_cpu_t = x_cpu.transpose(0, 1)
+    x_dev_t = x_dev.transpose(0, 1)
+    assert not x_dev_t.is_contiguous()
+    assert x_dev_t.stride() == (1, 128)
+
+    res_val, res_idx = flag_gems.topk(x_dev_t, 8, dim=-1, largest=largest, sorted=True)
+    _assert_topk_matches_reference(x_cpu_t, res_val, res_idx, 8, -1, largest)
+
+    # Issue #7829: distinct linspace values with stride (1, 2) verify exact index parity too.
+    lin_cpu = (
+        torch.linspace(-12, 13, 128, dtype=dtype, device="cpu")
+        .reshape(2, 64)
+        .t()
+        .contiguous()
+        .t()
+    )
+    lin_dev = lin_cpu.t().contiguous().to(flag_gems.device).t()
+    assert lin_dev.stride() == (1, 2)
+    for k in (1, 7, 64):
+        v_res, i_res = flag_gems.topk(lin_dev, k, dim=-1, largest=largest, sorted=True)
+        _assert_topk_matches_reference(lin_cpu, v_res, i_res, k, -1, largest)
+        if dtype == torch.float32:
+            _, i_ref = torch.topk(lin_cpu, k, dim=-1, largest=largest, sorted=True)
+            torch.testing.assert_close(i_res.cpu(), i_ref, rtol=0, atol=0)
+
+
+@pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op",
+)
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_topk_noncontiguous_dims_and_offsets(largest, dtype):
+    # 1D sliced view with non-zero storage_offset and step > 1
+    base_1d = torch.arange(220, dtype=torch.float32).sin().to(dtype)
+    view_1d_cpu = base_1d[7:199:3]
+    view_1d_dev = base_1d.to(flag_gems.device)[7:199:3]
+    assert view_1d_dev.storage_offset() == 7
+    assert view_1d_dev.stride() == (3,)
+    for k in (0, 1, 9, view_1d_cpu.numel()):
+        res_v, res_i = flag_gems.topk(
+            view_1d_dev, k, dim=-1, largest=largest, sorted=True
+        )
+        _assert_topk_matches_reference(view_1d_cpu, res_v, res_i, k, -1, largest)
+
+    # 2D sliced + transposed view across dim=0, dim=1, dim=-1
+    torch.manual_seed(11)
+    base_2d = torch.randn(40, 90, dtype=torch.float32).to(dtype)
+    view_2d_cpu = base_2d[3:35:2, 5:77:3].transpose(0, 1)
+    view_2d_dev = base_2d.to(flag_gems.device)[3:35:2, 5:77:3].transpose(0, 1)
+    assert view_2d_dev.storage_offset() > 0
+    assert not view_2d_dev.is_contiguous()
+    for dim in (0, 1, -1):
+        res_v, res_i = flag_gems.topk(
+            view_2d_dev, 6, dim=dim, largest=largest, sorted=True
+        )
+        _assert_topk_matches_reference(view_2d_cpu, res_v, res_i, 6, dim, largest)
+
+    # 3D permuted + sliced view across dim=0, dim=1, dim=-1
+    torch.manual_seed(22)
+    base_3d = torch.randn(7, 19, 13, dtype=torch.float32).to(dtype)
+    view_3d_cpu = base_3d[1:6, 2:18:2, 1:12].permute(2, 0, 1)
+    view_3d_dev = base_3d.to(flag_gems.device)[1:6, 2:18:2, 1:12].permute(2, 0, 1)
+    assert view_3d_dev.storage_offset() > 0
+    for dim in (0, 1, -1):
+        res_v, res_i = flag_gems.topk(
+            view_3d_dev, 4, dim=dim, largest=largest, sorted=True
+        )
+        _assert_topk_matches_reference(view_3d_cpu, res_v, res_i, 4, dim, largest)
+
+    # 4D permuted + sliced view across dim=0, dim=1, dim=2, dim=-1
+    torch.manual_seed(33)
+    base_4d = torch.randn(4, 6, 9, 11, dtype=torch.float32).to(dtype)
+    view_4d_cpu = base_4d[1:4, :, 1:8:2, 2:10].permute(2, 0, 3, 1)
+    view_4d_dev = base_4d.to(flag_gems.device)[1:4, :, 1:8:2, 2:10].permute(2, 0, 3, 1)
+    assert view_4d_dev.storage_offset() > 0
+    for dim in (0, 1, 2, -1):
+        k = min(3, view_4d_cpu.shape[dim])
+        res_v, res_i = flag_gems.topk(
+            view_4d_dev, k, dim=dim, largest=largest, sorted=True
+        )
+        _assert_topk_matches_reference(view_4d_cpu, res_v, res_i, k, dim, largest)
+
+
+@pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op",
+)
+@pytest.mark.parametrize("largest", [True, False])
+def test_topk_strided_multistage_and_infinities(largest):
+    # Multi-stage (>= 4096) transposed view with both small k and large k (chunk_size < k -> 2048)
+    torch.manual_seed(44)
+    base_large = torch.randn(4120, 4, dtype=torch.float32)
+    x_cpu = base_large[8:4116, :].transpose(0, 1)  # shape (4, 4108), stride (1, 4)
+    x_dev = base_large.to(flag_gems.device)[8:4116, :].transpose(0, 1)
+    assert x_dev.shape == (4, 4108)
+    assert x_dev.stride() == (1, 4)
+    for k in (8, 256, 1200):
+        res_v, res_i = flag_gems.topk(x_dev, k, dim=-1, largest=largest, sorted=True)
+        _assert_topk_matches_reference(x_cpu, res_v, res_i, k, -1, largest)
+
+    # Multi-stage along non-last dim (dim=1) on a 3D non-contiguous view
+    base_3d_large = torch.randn(2, 4105, 3, dtype=torch.float32)
+    res_v, res_i = flag_gems.topk(
+        base_3d_large.to(flag_gems.device), 16, dim=1, largest=largest, sorted=True
+    )
+    _assert_topk_matches_reference(base_3d_large, res_v, res_i, 16, 1, largest)
+
+    # Non-power-of-two strided view containing +/-inf values (padding-index safety)
+    fill = float("-inf") if largest else float("inf")
+    inf_base = torch.full((100, 3), fill, dtype=torch.float32)
+    inf_base[0, :] = 0.3
+    inf_base[1, :] = 2.0
+    inf_base[2, :] = 1.0
+    inf_base[3, :] = float("inf") if largest else float("-inf")
+    inf_cpu = inf_base.transpose(0, 1)  # shape (3, 100), stride (1, 3)
+    inf_dev = inf_base.to(flag_gems.device).transpose(0, 1)
+    res_v, res_i = flag_gems.topk(inf_dev, 100, dim=-1, largest=largest, sorted=True)
+    _assert_topk_matches_reference(inf_cpu, res_v, res_i, 100, -1, largest)
+    for row in range(3):
+        assert res_i[row].cpu().unique().numel() == 100
