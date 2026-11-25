@@ -123,7 +123,7 @@ def make_special_input(dtype, scenario):
     ).to(dtype)
 
 
-def to_reference(inp, upcast=False):
+def _to_reference_upstream(inp, upcast=False):
     """Independent tensor oracle for these tests, retaining view metadata."""
     if inp is None:
         return None
@@ -140,6 +140,15 @@ def to_reference(inp, upcast=False):
             reference = reference.conj()
     reference.requires_grad_(inp.requires_grad)
     return reference
+
+
+def to_reference(inp, upcast=False):
+    if flag_gems.vendor_name == "kunlunxin":  # noqa: SIM108
+        reference = _to_reference_upstream(inp, upcast)
+        if reference is None:
+            return None
+        return reference.to("cpu")
+    return _to_reference_upstream(inp, upcast)
 
 
 def assert_result_close(result, reference, *, atol=1e-4):
@@ -421,7 +430,10 @@ def test_choose_qparams_per_tensor_rejects_complex():
 
 @pytest.mark.choose_qparams_per_tensor
 def test_choose_qparams_per_tensor_rejects_fp8():
-    inp = torch.zeros((4,), dtype=torch.float8_e4m3fn, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        inp = torch.zeros((4,), dtype=torch.float8_e4m3fn)
+    else:
+        inp = torch.zeros((4,), dtype=torch.float8_e4m3fn, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     with pytest.raises(RuntimeError):

@@ -37,7 +37,7 @@ DTYPES = [
     pytest.param(
         torch.float64,
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name in ("ascend", "iluvatar")
+            flag_gems.vendor_name in ("ascend", "iluvatar", "enflame")
             or (
                 flag_gems.vendor_name == "mthreads"
                 and not TO_CPU
@@ -46,6 +46,7 @@ DTYPES = [
             reason=(
                 "FP64 arithmetic is unavailable on Iluvatar; "
                 "native backward rejects FP64 on Ascend/MUSA; "
+                "enflame/GCU does not support FP64; "
                 "MUSA CPU-reference validation remains enabled"
             ),
         ),
@@ -518,8 +519,11 @@ def test_upsample_bilinear2d_backward_grad_input_channels_last_cache_reuse(dtype
 @pytest.mark.upsample_bilinear2d_backward
 @pytest.mark.upsample_bilinear2d_backward_grad_input
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("ascend", "iluvatar"),
-    reason="Ascend native rejects DT_DOUBLE; Iluvatar FP64 arithmetic is unavailable",
+    flag_gems.vendor_name in ("ascend", "iluvatar", "enflame"),
+    reason=(
+        "Ascend native rejects DT_DOUBLE; Iluvatar FP64 arithmetic is unavailable; "
+        "enflame/GCU does not support FP64"
+    ),
 )
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("out_variant", [False, True])
@@ -582,8 +586,11 @@ def test_upsample_bilinear2d_backward_fp64_opmath(
             (128, 132),
             torch.float64,
             marks=pytest.mark.skipif(
-                flag_gems.vendor_name in ("ascend", "iluvatar"),
-                reason="Ascend native rejects DT_DOUBLE; Iluvatar FP64 arithmetic is unavailable",
+                flag_gems.vendor_name in ("ascend", "iluvatar", "enflame"),
+                reason=(
+                    "Ascend native rejects DT_DOUBLE; Iluvatar FP64 arithmetic is unavailable; "
+                    "enflame/GCU does not support FP64"
+                ),
             ),
         ),
     ],

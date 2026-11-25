@@ -28,9 +28,7 @@ except ImportError:
     VLLM_AVAILABLE = False
 
 import flag_gems
-from flag_gems.ops.fp8_paged_mqa_logits import (
-    fp8_paged_mqa_logits as gems_fp8_paged_mqa_logits,
-)
+from flag_gems import fp8_paged_mqa_logits as gems_fp8_paged_mqa_logits
 
 from . import base
 

@@ -133,6 +133,20 @@ def pytest_configure(config):
     QUICK_MODE = config.getoption("--quick") is True
     FIRST_PARAMETER_ONLY = config.getoption("--first-parameter-only") is True
 
+    # On Ascend, ATen conv runs with HF32 operands by default (ALLOW_CONV_HF32
+    # is enabled by default while ALLOW_MATMUL_HF32 is not). Unless --ref cpu
+    # is given, the accuracy tests' reference conv runs in fp32 on the device
+    # (no fp64 to upcast to), so the reference would carry ~1e-3 error while
+    # the kernels under test compute ieee fp32 (~1e-7) -- fp32 conv cases then
+    # fail at atol=1e-4 over a difference that lives entirely in the reference.
+    if flag_gems.vendor_name == "ascend":
+        import torch
+
+        try:
+            torch.npu.conv.allow_hf32 = False
+        except AttributeError:
+            pass
+
     if RECORD_JSON:
         report_file = config.getoption("--output")
         if report_file:

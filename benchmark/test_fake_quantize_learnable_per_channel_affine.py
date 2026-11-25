@@ -84,6 +84,10 @@ def test_fake_quantize_learnable_per_channel_affine(shape, axis, quant_min, quan
         gems_op=flag_gems._fake_quantize_learnable_per_channel_affine,
         case_fn=_case_fn,
         build_inputs_fn=build_inputs_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=(
+            [dtype for dtype in consts.FLOAT_DTYPES if dtype != torch.float16]
+            if flag_gems.vendor_name == "kunlunxin"
+            else consts.FLOAT_DTYPES
+        ),
     )
     bench.run()

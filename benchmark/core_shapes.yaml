@@ -21,6 +21,9 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+mul_backward:
+  <<: *single_dim_shapes
+
 vdot:
   <<: *single_dim_shapes
 
@@ -462,6 +465,15 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+addbmm_backward:
+  # Representative backward cases cover skinny, rectangular and non-aligned
+  # GEMMs without the multi-gigabyte gradients of the shared forward BLAS set.
+  shapes:
+    - [2, 1, 64, 4096]
+    - [4, 32, 256, 2048]
+    - [8, 65, 127, 1025]
+  shape_desc: "B, M, N, K"
+
 linear:
   # Matched by op_name, which set_shapes() looks up before falling back to
   # the MRO class name, so this override leaves every other BlasBenchmark op
@@ -534,6 +546,36 @@ sparse_mm:
     - [8, 4096, 256, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
 
+sparse_mm_reduce_impl_backward:
+  shapes:
+    - [2, 512, 512, 512]
+    - [8, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [4, 4096, 4096, 4096]
+    - [2, 4096, 1024, 4096]
+    - [8, 4096, 256, 4096]
+  shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
+
+sparse_addmm:
+  shapes:
+    - [2, 512, 512, 512]
+    - [8, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [4, 4096, 4096, 4096]
+    - [2, 4096, 1024, 4096]
+    - [8, 4096, 256, 4096]
+  shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
+
+sparse_sum:
+  shapes:
+    - [128, 128]
+    - [512, 512]
+    - [2048, 2048]
+    - [4096, 4096]
+    - [1024, 4096]
+    - [4096, 256]
+  shape_desc: "M, N"   # 2-D sparse COO shapes; density is set by the benchmark input fn
+
 sparse_sampled_addmm:
   shapes:
     - [2, 128, 128, 128]
@@ -599,6 +641,15 @@ NormBenchmark:
     - [16, 16, 128]
     - [20, 6, 65536] # from perf
   shape_desc: "N, C, *"
+
+LayerNormBackwardLargeMBenchmark:
+  shapes:
+    - [[64, 16, 64, 16], [16]]
+    - [[128, 16, 16, 32], [32]]
+    - [[32768, 128], [128]]
+    - [[32768, 256], [256]]
+    - [[32768, 257], [257]]
+  shape_desc: "input_shape, normalized_shape"
 
 TensorSelectBenchmark:
   shapes:
@@ -848,6 +899,17 @@ multilabel_margin_loss_backward:
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
 multilabel_margin_loss_forward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
+# Backward shares the forward's O(N*C^2) shape envelope.
+multilabel_margin_loss_forward_backward:
   shapes:
     - [8, 128]
     - [32, 256]
@@ -1347,7 +1409,213 @@ bmm_w8a8:
     - [2, 33, 65, 129]
   shape_desc: "B, M, N, K"
 
-layernorm:
+# GEMM workloads from recent LLMs, with square controls and M/N/K tails.
+# B=1 is a placeholder for two-dimensional operations.
+mm:
+  shapes: &id001
+  - [1, 1, 1, 2048]
+  - [1, 16384, 1, 4096]
+  - [1, 1, 64, 4096]
+  - [1, 2, 64, 4096]
+  - [1, 1, 256, 2048]
+  - [1, 1, 4096, 128]
+  - [1, 16, 256, 2048]
+  - [1, 32, 512, 4096]
+  - [1, 64, 2560, 4096]
+  - [1, 48, 2112, 7168]
+  - [1, 64, 384, 7168]
+  - [1, 64, 64, 4096]
+  - [1, 100, 64, 4096]
+  - [1, 16384, 64, 4096]
+  - [1, 1, 4, 16384]
+  - [1, 64, 4, 16384]
+  - [1, 64, 16, 4096]
+  - [1, 512, 256, 2048]
+  - [1, 16384, 2048, 4096]
+  - [1, 16384, 7168, 1024]
+  - [1, 16384, 2048, 512]
+  - [1, 16384, 1536, 1536]
+  - [1, 100, 16160, 7168]
+  - [1, 100, 20480, 7168]
+  - [1, 100, 248320, 2048]
+  - [1, 512, 512, 512]
+  - [1, 4096, 4096, 4096]
+  - [1, 63, 256, 2048]
+  - [1, 64, 255, 2048]
+  - [1, 64, 256, 2047]
+  - [1, 65, 257, 2049]
+  - [1, 144, 4096, 1024]
+  shape_desc: B, M, N, K
+  accuracy_shapes: &id002
+  - [1, 1, 2048]
+  - [1, 64, 4096]
+  - [2, 64, 4096]
+  - [1, 256, 2048]
+  - [1, 4096, 128]
+  - [16, 256, 2048]
+  - [32, 512, 4096]
+  - [64, 2560, 4096]
+  - [48, 2112, 7168]
+  - [64, 384, 7168]
+  - [64, 64, 4096]
+  - [100, 64, 4096]
+  - [1, 4, 16384]
+  - [64, 4, 16384]
+  - [64, 16, 4096]
+  - [63, 256, 2048]
+  - [64, 255, 2048]
+  - [64, 256, 2047]
+  - [65, 257, 2049]
+  - [144, 4096, 1024]
+  quick_shapes: &id003
+  - [1, 1, 2048]
+  - [1, 64, 4096]
+  - [32, 512, 4096]
+  - [64, 16, 4096]
+  - [64, 256, 2047]
+  - [65, 257, 2049]
+addmm:
+  shapes: *id001
+  shape_desc: B, M, N, K
+  accuracy_shapes: *id002
+  quick_shapes: *id003
+amin_backward:
+  # Row, tail, square and batched reductions exercise the fused tie-count path.
+  shapes:
+  - [64, 64]
+  - [65, 129]
+  - [256, 512]
+  - [1024, 1024]
+  - [64, 512, 64]
+  shape_desc: M, N
+mv:
+  shapes: &id004
+  - [1, 2048]
+  - [1, 4096]
+  - [16, 2048]
+  - [16, 4096]
+  - [64, 2048]
+  - [64, 4096]
+  - [512, 2048]
+  - [512, 4096]
+  - [16384, 2048]
+  - [16384, 4096]
+  - [127, 2047]
+  - [129, 4097]
+  shape_desc: N, K
+  accuracy_shapes: *id004
+  quick_shapes:
+  - [1, 2048]
+  - [64, 4096]
+  - [127, 2047]
+router_gemm:
+  shapes:
+  - [1, 1, 64, 4096]
+  - [1, 2, 64, 4096]
+  - [1, 64, 64, 4096]
+  - [1, 100, 64, 4096]
+  - [1, 16384, 64, 4096]
+  - [1, 1, 256, 2048]
+  - [1, 16, 256, 2048]
+  - [1, 512, 256, 2048]
+  - [1, 16384, 256, 2048]
+  - [1, 32, 256, 7168]
+  - [1, 64, 384, 7168]
+  - [1, 16384, 384, 7168]
+  shape_desc: B, M, N, K
+  accuracy_shapes:
+  - [1, 64, 4096]
+  - [2, 64, 4096]
+  - [64, 64, 4096]
+  - [100, 64, 4096]
+  - [1, 256, 2048]
+  - [16, 256, 2048]
+  - [512, 256, 2048]
+  - [32, 256, 7168]
+  - [64, 384, 7168]
+  quick_shapes:
+  - [1, 64, 4096]
+  - [32, 256, 7168]
+  - [64, 384, 7168]
+bmm:
+  shapes: &id005
+  - [2, 1, 64, 4096]
+  - [2, 2, 16, 4096]
+  - [2, 32, 512, 4096]
+  - [2, 64, 4, 16384]
+  - [2, 16384, 1, 4096]
+  - [2, 512, 256, 2048]
+  - [2, 128, 128, 64]
+  - [2, 65, 257, 2049]
+  - [4, 1, 64, 4096]
+  - [4, 2, 16, 4096]
+  - [4, 32, 512, 4096]
+  - [4, 64, 4, 16384]
+  - [4, 16384, 1, 4096]
+  - [4, 512, 256, 2048]
+  - [4, 128, 128, 64]
+  - [4, 65, 257, 2049]
+  - [8, 1, 64, 4096]
+  - [8, 2, 16, 4096]
+  - [8, 32, 512, 4096]
+  - [8, 64, 4, 16384]
+  - [8, 16384, 1, 4096]
+  - [8, 512, 256, 2048]
+  - [8, 128, 128, 64]
+  - [8, 65, 257, 2049]
+  shape_desc: B, M, N, K
+  accuracy_shapes: &id006
+  - [2, 1, 64, 4096]
+  - [2, 2, 16, 4096]
+  - [2, 32, 512, 4096]
+  - [2, 64, 4, 16384]
+  - [2, 64, 1, 4096]
+  - [2, 512, 256, 2048]
+  - [2, 128, 128, 64]
+  - [2, 65, 257, 2049]
+  - [4, 1, 64, 4096]
+  - [4, 2, 16, 4096]
+  - [4, 32, 512, 4096]
+  - [4, 64, 4, 16384]
+  - [4, 64, 1, 4096]
+  - [4, 512, 256, 2048]
+  - [4, 128, 128, 64]
+  - [4, 65, 257, 2049]
+  - [8, 1, 64, 4096]
+  - [8, 2, 16, 4096]
+  - [8, 32, 512, 4096]
+  - [8, 64, 4, 16384]
+  - [8, 64, 1, 4096]
+  - [8, 512, 256, 2048]
+  - [8, 128, 128, 64]
+  - [8, 65, 257, 2049]
+  quick_shapes: &id007
+  - [2, 1, 64, 4096]
+  - [4, 32, 512, 4096]
+  - [8, 65, 257, 2049]
+baddbmm:
+  shapes: *id005
+  shape_desc: B, M, N, K
+  accuracy_shapes: *id006
+  quick_shapes: *id007
+
+grouped_gemm_w8a8:
+  shapes:
+    # Top 10 FlagOSTune 7173d21 GLM shapes by count summed across all three captures.
+    # Sort by descending count, then lexicographically by (M, N, K, E).
+    - [512, 256, 6144, 256]  # count: 25200
+    - [512, 6144, 128, 256]  # count: 25200
+    - [8, 256, 6144, 256]  # count: 10800
+    - [8, 6144, 128, 256]  # count: 10800
+    - [16, 256, 6144, 256]  # count: 10800
+    - [16, 6144, 128, 256]  # count: 10800
+    - [32, 256, 6144, 256]  # count: 10800
+    - [32, 6144, 128, 256]  # count: 10800
+    - [64, 256, 6144, 256]  # count: 10800
+    - [64, 6144, 128, 256]  # count: 10800
+  shape_desc: "M,N,K,E"
+# Keep these structured cases separate from the generic NormBenchmark shapes.
+LayernormBenchmark:
   shape_desc: "input_shape, normalized_shape, eps"
   shapes:
     - [[200, 36], [36], 1e-05]
@@ -1369,3 +1637,37 @@ layernorm:
     - [[200, 40999], [40999], 1e-05]
     - [[2, 32], [32], 1e-05]
     - [[65536, 1, 1152], [1152], 1e-06]
+
+atanh_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
+atanh_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
+narrow_copy_backward:
+  shapes:
+  - - 5
+    - 7
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 narrow input shape
