@@ -59,6 +59,7 @@ extent exactly. The store predicate is always the tile-ownership mask, never the
 in-window mask, so padded cells are still written -- with the exact zero produced
 by `other=0` on the load.
 """
+
 import logging
 
 import torch
@@ -69,11 +70,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-
-
-import torch
-import triton
-import triton.language as tl
 
 
 @libentry()
@@ -176,7 +172,7 @@ def _im2col_kernel(
 ):
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
 
-    l = idx % L  # constexpr divisor -> strength reduced
+    pos = idx % L  # constexpr divisor -> strength reduced
     row = idx // L
     kk = row % KK  # constexpr
     nc = row // KK
@@ -185,8 +181,8 @@ def _im2col_kernel(
     kh = kk // KW  # constexpr
     kw = kk - kh * KW
 
-    oh = l // OW  # constexpr divisor -> strength reduced
-    ow = l - oh * OW
+    oh = pos // OW  # constexpr divisor -> strength reduced
+    ow = pos - oh * OW
 
     h = oh * stH - pH + kh * dH
     w = ow * stW - pW + kw * dW
