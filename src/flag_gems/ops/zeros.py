@@ -59,8 +59,6 @@ def zero_(x: torch.Tensor) -> torch.Tensor:
     if not x.is_contiguous():
         # fill imports sum, which imports zero_; defer this dependency until
         # package initialization has finished.
-        from flag_gems.ops.fill import fill_scalar_ as _fill_scalar_
-
         # `zeros_kernel` walks flat offsets 0..numel-1 from the view's data
         # pointer and ignores strides, so a non-contiguous view would be zeroed
         # outside its own memory and partly left untouched. Fall back to the
