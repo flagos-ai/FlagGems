@@ -48,6 +48,24 @@ def _make_positive_definite(shape, dtype, device):
     return L
 
 
+def _reference_cholesky_inverse(factor, upper):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and factor.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        # PyTorch's CPU cholesky_inverse requires LAPACK in the MUSA build.
+        import numpy as np
+
+        matrix = factor.numpy()
+        triangle = np.triu(matrix) if upper else np.tril(matrix)
+        inverse = np.linalg.inv(triangle)
+        transposed = inverse.swapaxes(-1, -2)
+        result = inverse @ transposed if upper else transposed @ inverse
+        return torch.from_numpy(result)
+    return torch.cholesky_inverse(factor, upper=upper)
+
+
 @pytest.mark.cholesky_inverse
 @pytest.mark.parametrize("shape", CHOLESKY_INVERSE_SHAPES)
 # cholesky_inverse only supports float32/float64
@@ -56,7 +74,7 @@ def test_cholesky_inverse(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
 
-    ref_out = torch.cholesky_inverse(ref_L, upper=False)
+    ref_out = _reference_cholesky_inverse(ref_L, upper=False)
     res_out = flag_gems.cholesky_inverse(L, upper=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -70,7 +88,7 @@ def test_cholesky_inverse_upper(shape, dtype):
     U = L.transpose(-2, -1).contiguous()
     ref_U = utils.to_reference(U)
 
-    ref_out = torch.cholesky_inverse(ref_U, upper=True)
+    ref_out = _reference_cholesky_inverse(ref_U, upper=True)
     res_out = flag_gems.cholesky_inverse(U, upper=True)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -83,7 +101,7 @@ def test_cholesky_inverse_batch(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
 
-    ref_out = torch.cholesky_inverse(ref_L, upper=False)
+    ref_out = _reference_cholesky_inverse(ref_L, upper=False)
     res_out = flag_gems.cholesky_inverse(L, upper=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
