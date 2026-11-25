@@ -399,3 +399,21 @@ def _restore_registrar_state():
             delattr(flag_gems, "current_work_registrar")
     else:
         flag_gems.current_work_registrar = previous
+
+
+@pytest.mark.polygamma
+@pytest.mark.polygamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("order", [-1, -2, -5])
+def test_negative_order_autograd_error_and_no_mutation(dtype, order):
+    leaf = torch.rand(7, device=flag_gems.device, dtype=dtype, requires_grad=True)
+    value = leaf.clone()
+    before = value.detach().clone()
+    version = value._version
+    with pytest.raises(RuntimeError, match="does not support negative n"):
+        torch.polygamma(order, value)
+    assert value._version == version
+    with pytest.raises(RuntimeError, match="does not support negative n"):
+        flag_gems.polygamma(order, value)
+    assert value._version == version
+    torch.testing.assert_close(value, before, rtol=0, atol=0)
