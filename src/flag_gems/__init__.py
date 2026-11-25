@@ -1238,7 +1238,24 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    ("chunk_backward", chunk_backward),
+    # chunk_backward has no aten schema of its own: chunk's VJP is ATen's
+    # SplitBackward node, which simply concatenates the per-chunk gradients.
+    # The Triton chunk_backward kernel is therefore reached from
+    # ChunkFunction.backward rather than from an entry of its own.
+    #
+    # Both the device key and the Autograd key get ``chunk`` itself. The
+    # Autograd slot cannot be a fallthrough here: falling through hands the call
+    # back to ATen's chunk formula, which rebuilds the outputs as views of the
+    # *differentiable* input and then trips PyTorch's "Attempted to make a
+    # tensor into a differentiable view" check. Registering the wrapper on both
+    # keys keeps the eager path (a plain narrow view) and the differentiating
+    # path (ChunkFunction) on the same entry point.
+    (
+        "chunk",
+        chunk,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, chunk),),
+    ),
     # Autograd fallthrough: the ClampFunction wrapper owns
     # the differentiable path. Without it the device-key override drops ATen's
     # autograd formula and the backward falls back to the native kernel.
