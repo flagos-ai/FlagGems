@@ -433,6 +433,7 @@ from .upsample_nearest3d_backward_grad_input import (
 from .upsample_nearest_exact3d_backward_grad_input import (
     upsample_nearest_exact3d_backward_grad_input,
 )
+from .value_selecting_reduction_backward import value_selecting_reduction_backward
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .view_copy import view_copy
@@ -923,6 +924,7 @@ __all__ = [
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
     "upsample_nearest_exact3d_backward_grad_input",
+    "value_selecting_reduction_backward",
     "var_mean",
     "vector_norm",
     "view_copy",
