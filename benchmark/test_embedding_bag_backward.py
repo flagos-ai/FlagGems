@@ -89,12 +89,8 @@ class EmbeddingBagBackwardBenchmark(EmbeddingBagBenchmark):
     BACKWARD_CASES,
 )
 def test_embedding_bag_backward(dtype, mode, weighted, frequency, sparse):
-    suffix = f"_mode{mode}"
-    suffix += "_weighted" if weighted else ""
-    suffix += "_frequency" if frequency else ""
-    suffix += "_sparse" if sparse else ""
     bench = EmbeddingBagBackwardBenchmark(
-        op_name=f"embedding_bag_backward{suffix}",
+        op_name="embedding_bag_backward",
         torch_op=torch.ops.aten._embedding_bag_backward.default,
         gems_op=_embedding_bag_backward,
         dtypes=[dtype],
