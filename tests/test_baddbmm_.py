@@ -49,7 +49,7 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     inp = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
-    ref_inp = to_reference(inp, True)
+    ref_inp = to_reference(inp, True).clone()
 
     alpha = beta = scalar
 

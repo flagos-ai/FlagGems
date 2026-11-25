@@ -153,14 +153,14 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
     logger.debug("GEMS AMINMAX")
 
     if dim is None:
-        # The whole-tensor kernels use flat offsets, so materialize strided views.
-        inp = contiguous(inp)
         M = inp.numel()
         if M == 0:
             raise RuntimeError(
                 "aminmax(): cannot compute aminmax over an empty dimension "
                 "as the operation has no identity."
             )
+        # The whole-tensor kernels use flat offsets, so materialize strided views.
+        inp = contiguous(inp)
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -175,10 +175,13 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
                 min_out = min_out.squeeze()
                 max_out = max_out.squeeze()
         else:
-            # A global reduction retains every reduced dimension when requested.
-            shape = (1,) * inp.ndim if keepdim else ()
-            min_out = torch.empty(shape, dtype=dtype, device=inp.device)
-            max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            if not keepdim:
+                min_out = torch.empty([], dtype=dtype, device=inp.device)
+                max_out = torch.empty([], dtype=dtype, device=inp.device)
+            else:
+                shape = [1] * inp.dim()
+                min_out = torch.empty(shape, dtype=dtype, device=inp.device)
+                max_out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
             aminmax_kernel_1[(mid_size, 1)](
