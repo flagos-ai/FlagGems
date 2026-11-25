@@ -12,12 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+
+
+@contextmanager
+def _register_rsqrt(monkeypatch):
+    with monkeypatch.context() as registration:
+        registration.setattr(flag_gems, "current_work_registrar", None)
+        library = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=library, include=["rsqrt"])
+            yield
+        finally:
+            library._destroy()
+
+
+def _assert_fp32_close(actual, expected, *, equal_nan=False):
+    utils.gems_assert_close(
+        actual, expected, torch.float32, equal_nan=equal_nan, atol=0
+    )
+    # Keep the tighter operator-specific relative-error bound.
+    torch.testing.assert_close(
+        actual.cpu(), expected, rtol=1e-6, atol=0, equal_nan=equal_nan
+    )
 
 
 @pytest.mark.rsqrt
@@ -65,11 +89,11 @@ def test_hygon_rsqrt_layout(n, layout):
     before = backing.cpu().clone()
     expected = torch.rsqrt(inp.cpu().double()).float()
     actual = flag_gems.rsqrt(inp)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-6, atol=0)
+    _assert_fp32_close(actual, expected)
     assert actual.shape == inp.shape
     assert actual.dtype == inp.dtype
     assert actual.device == inp.device
-    torch.testing.assert_close(backing.cpu(), before, rtol=0, atol=0)
+    utils.gems_assert_equal(backing, before)
 
 
 @pytest.mark.rsqrt
@@ -107,20 +131,20 @@ def test_hygon_rsqrt_special_values(offset):
     before = inp.cpu().view(torch.int32).clone()
     expected = torch.rsqrt(values.double()).float()
     actual = flag_gems.rsqrt(inp).cpu()
-    torch.testing.assert_close(actual, expected, rtol=1e-6, atol=0, equal_nan=True)
+    _assert_fp32_close(actual, expected, equal_nan=True)
     non_nan = ~torch.isnan(expected)
     assert torch.equal(torch.signbit(actual[non_nan]), torch.signbit(expected[non_nan]))
-    assert torch.equal(inp.cpu().view(torch.int32), before)
+    utils.gems_assert_equal(inp.view(torch.int32), before)
 
 
 @pytest.mark.rsqrt
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon dispatcher path")
-def test_hygon_rsqrt_dispatch():
+def test_hygon_rsqrt_dispatch(monkeypatch):
     inp = torch.rand(65537, device=flag_gems.device) + 0.125
     expected = torch.rsqrt(inp.cpu().double()).float()
-    with flag_gems.use_gems(include=["rsqrt"]):
+    with _register_rsqrt(monkeypatch):
         actual = torch.rsqrt(inp)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-6, atol=0)
+    _assert_fp32_close(actual, expected)
 
 
 @pytest.mark.rsqrt
@@ -132,26 +156,24 @@ def test_hygon_rsqrt_dtype_fallback(dtype):
     inp = torch.full((65537,), 4, dtype=dtype, device=flag_gems.device)
     actual = flag_gems.rsqrt(inp)
     expected = torch.rsqrt(inp.cpu())
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual, expected)
 
 
 @pytest.mark.rsqrt
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon view fallback")
-def test_hygon_rsqrt_negative_view():
+def test_hygon_rsqrt_negative_view(monkeypatch):
     inp = torch._neg_view(-torch.ones(65537, device=flag_gems.device))
-    with flag_gems.use_gems(include=["rsqrt"]):
+    with _register_rsqrt(monkeypatch):
         actual = torch.rsqrt(inp)
-    torch.testing.assert_close(actual.cpu(), torch.ones(65537), rtol=0, atol=0)
+    utils.gems_assert_equal(actual, torch.ones(65537))
 
 
 @pytest.mark.rsqrt
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon autograd fallback")
-def test_hygon_rsqrt_autograd():
+def test_hygon_rsqrt_autograd(monkeypatch):
     inp = torch.full((65537,), 4.0, device=flag_gems.device, requires_grad=True)
-    with flag_gems.use_gems(include=["rsqrt"]):
+    with _register_rsqrt(monkeypatch):
         actual = torch.rsqrt(inp)
         actual.sum().backward()
-    torch.testing.assert_close(actual.cpu(), torch.full((65537,), 0.5), rtol=0, atol=0)
-    torch.testing.assert_close(
-        inp.grad.cpu(), torch.full((65537,), -0.0625), rtol=0, atol=0
-    )
+    utils.gems_assert_equal(actual, torch.full((65537,), 0.5))
+    utils.gems_assert_equal(inp.grad, torch.full((65537,), -0.0625))
