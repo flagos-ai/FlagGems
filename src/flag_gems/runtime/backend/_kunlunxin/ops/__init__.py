@@ -100,6 +100,8 @@ from ._foreach_ceil import _foreach_ceil
 from ._foreach_ceil_ import _foreach_ceil_
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
+from ._foreach_cos import _foreach_cos  # noqa: F401
+from ._foreach_cos_ import _foreach_cos_  # noqa: F401
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_expm1 import _foreach_expm1, _foreach_expm1_  # noqa: F401
@@ -140,6 +142,7 @@ from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin  # noqa: F401
+from ._foreach_sin_ import _foreach_sin_  # noqa: F401
 from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
@@ -162,7 +165,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_reciprocal_,
     _foreach_rsqrt,
     _foreach_rsqrt_,
-    _foreach_sin_,
     _foreach_sqrt_,
     _foreach_tanh,
 )
@@ -193,6 +195,7 @@ from ._nested_tensor_from_mask_left_aligned import (  # noqa: F401
 )
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
 from ._pack_padded_sequence import _pack_padded_sequence
 from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
@@ -210,6 +213,7 @@ from ._scaled_dot_product_efficient_attention import (
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from ._slow_conv2d_forward import _slow_conv2d_forward  # noqa: F401
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
@@ -363,6 +367,7 @@ from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .choose_qparams_optimized import choose_qparams_optimized
+from .choose_qparams_per_tensor import choose_qparams_per_tensor  # noqa: F401
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -394,6 +399,7 @@ from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
+from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
 from .corrcoef import corrcoef
@@ -491,6 +497,7 @@ from .fix import fix, fix_out  # noqa: F401
 from .fix_ import fix_  # noqa: F401
 from .flip import flip
 from .fliplr import fliplr
+from .flipud import flipud  # noqa: F401
 from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_scalar_tensor,
     float_power_scalar_tensor_out,
@@ -1010,6 +1017,7 @@ from .trapezoid import trapezoid_x  # noqa: F401
 from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
+from .triplet_margin_loss import triplet_margin_loss  # noqa: F401
 from .triu import triu, triu_
 from .triu_indices import triu_indices  # noqa: F401
 from .trunc import trunc, trunc_
@@ -1230,6 +1238,7 @@ __all__ = [
     "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_new_zeros_with_same_feature_meta",
     "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
@@ -1244,6 +1253,7 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_slow_conv2d_forward",
     "_thnn_fused_gru_cell",
     "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
@@ -1421,6 +1431,7 @@ __all__ = [
     "conv_transpose3d",
     "copy",
     "copy_",
+    "copy_sparse_to_sparse_",
     "copysign",
     "copysign_",
     "copysign_out",
@@ -1510,6 +1521,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "fliplr",
+    "flipud",
     "float_power_tensor_tensor",
     "floor",
     "floor_",
@@ -2100,6 +2112,7 @@ __all__ = [
     "tril_",
     "tril_indices",
     "tril_out",
+    "triplet_margin_loss",
     "triu",
     "triu_",
     "triu_indices",
