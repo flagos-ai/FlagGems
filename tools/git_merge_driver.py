@@ -115,7 +115,9 @@ def merge_operators_yaml(base: Path, ours: Path, theirs: Path) -> bool:
             if not in_base:
                 merged[op_id] = ours_by_id[op_id]  # added by ours only
             else:
-                merged[op_id] = ours_by_id[op_id]  # kept by ours, deleted by theirs → ours wins
+                merged[op_id] = ours_by_id[
+                    op_id
+                ]  # kept by ours, deleted by theirs → ours wins
             continue
 
         if in_theirs and not in_ours:
@@ -142,11 +144,15 @@ def merge_operators_yaml(base: Path, ours: Path, theirs: Path) -> bool:
     # Preserve copyright header; rebuild ops body via pyyaml
     header = _yaml_header_text(ours)
     ours_data["ops"] = sorted_ops
-    dumped = _yaml.dump(ours_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    dumped = _yaml.dump(
+        ours_data, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
     # Strip everything up to and including "ops:" from the dump; we keep our
     # header which already has that line.
     dump_lines = dumped.splitlines()
-    ops_start = next((i + 1 for i, l in enumerate(dump_lines) if l.strip() == "ops:"), 0)
+    ops_start = next(
+        (i + 1 for i, l in enumerate(dump_lines) if l.strip() == "ops:"), 0
+    )
     ops_body = "\n".join(dump_lines[ops_start:])
 
     ours.write_text(header + ops_body + "\n")
@@ -170,8 +176,7 @@ def _parse_full_config(source: str) -> tuple[int, int, list[tuple[str, str]]]:
         if (
             isinstance(node, ast.Assign)
             and any(
-                isinstance(t, ast.Name) and t.id == "_FULL_CONFIG"
-                for t in node.targets
+                isinstance(t, ast.Name) and t.id == "_FULL_CONFIG" for t in node.targets
             )
             and isinstance(node.value, ast.Tuple)
         ):
@@ -219,11 +224,13 @@ def merge_full_config(base: Path, ours: Path, theirs: Path) -> bool:
     ours_by_key = dict(ours_entries)
     theirs_by_key = dict(theirs_entries)
 
-    all_keys = list(dict.fromkeys(
-        [k for k, _ in base_entries]
-        + [k for k, _ in ours_entries]
-        + [k for k, _ in theirs_entries]
-    ))
+    all_keys = list(
+        dict.fromkeys(
+            [k for k, _ in base_entries]
+            + [k for k, _ in ours_entries]
+            + [k for k, _ in theirs_entries]
+        )
+    )
 
     merged: dict[str, str] = {}
     for key in all_keys:
@@ -252,7 +259,14 @@ def merge_full_config(base: Path, ours: Path, theirs: Path) -> bool:
         else:
             return False
 
-    sorted_entries = sorted(merged.values(), key=lambda raw: raw.strip().lstrip("(").split('"')[1].casefold() if '"' in raw else raw.casefold())
+    sorted_entries = sorted(
+        merged.values(),
+        key=lambda raw: (
+            raw.strip().lstrip("(").split('"')[1].casefold()
+            if '"' in raw
+            else raw.casefold()
+        ),
+    )
 
     ours_lines = ours_src.splitlines()
     new_lines = ours_lines[:start_line]
@@ -260,7 +274,7 @@ def merge_full_config(base: Path, ours: Path, theirs: Path) -> bool:
     for raw in sorted_entries:
         new_lines.extend(raw.split("\n"))
     new_lines.append(")")
-    new_lines.extend(ours_lines[end_line + 1:])
+    new_lines.extend(ours_lines[end_line + 1 :])
 
     ours.write_text("\n".join(new_lines) + "\n")
     return True
@@ -340,7 +354,7 @@ def merge_all_list(base: Path, ours: Path, theirs: Path) -> bool:
     for item in merged:
         new_lines.append(f"{indent_str}{quote}{item}{quote},")
     new_lines.append("]")
-    new_lines.extend(ours_lines[end_line + 1:])
+    new_lines.extend(ours_lines[end_line + 1 :])
 
     ours.write_text("\n".join(new_lines) + "\n")
     return True
@@ -353,7 +367,10 @@ def merge_all_list(base: Path, ours: Path, theirs: Path) -> bool:
 
 def main() -> int:
     if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} <base> <ours> <theirs> [<marker_size> <path>]", file=sys.stderr)
+        print(
+            f"Usage: {sys.argv[0]} <base> <ours> <theirs> [<marker_size> <path>]",
+            file=sys.stderr,
+        )
         return 1
 
     base = Path(sys.argv[1])
