@@ -77,6 +77,11 @@ def test_constant_pad_nd_backward_reference_grad_values(shape, pad, value, dtype
 
     res_in_grad = flag_gems.constant_pad_nd_backward(out_grad, inp, pad, value)
 
+    # Slice the reference-side copy so the comparison stays on the reference
+    # device: under ``--ref=cpu`` it lives on the CPU while ``res_in_grad``
+    # stays on the accelerator, and ``gems_assert_equal`` only moves the
+    # result, never the reference.
+    ref_out_grad = utils.to_reference(out_grad)
     # Pads are listed from the last dimension backwards.
     slices = []
     for dim in range(inp.ndim):
@@ -86,6 +91,8 @@ def test_constant_pad_nd_backward_reference_grad_values(shape, pad, value, dtype
             slices.append(slice(left, left + inp.shape[dim]))
         else:
             slices.append(slice(0, inp.shape[dim]))
-    expected = out_grad[(slice(None),) * (out_grad.ndim - inp.ndim) + tuple(slices)]
+    expected = ref_out_grad[
+        (slice(None),) * (ref_out_grad.ndim - inp.ndim) + tuple(slices)
+    ]
     assert res_in_grad.shape == expected.shape
     gems_assert_equal(res_in_grad, expected)
