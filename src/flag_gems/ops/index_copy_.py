@@ -21,6 +21,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.index_fill import index_fill
+from flag_gems.ops.index_select import index_select
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
@@ -289,8 +291,7 @@ def _clone_without_copy_dispatch(inp):
     return out
 
 
-def index_copy(inp, dim, index, src):
-    logger.debug("GEMS INDEX_COPY")
+def _index_copy_forward(inp, dim, index, src):
     assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
     dim %= inp.ndim
     assert index.numel() == src.size(
@@ -325,6 +326,36 @@ def index_copy(inp, dim, index, src):
                 inp.numel(),
             )
     return out
+
+
+def index_copy_backward(grad_output, dim, index):
+    """Backward of ``index_copy``.
+
+    The copied rows are removed from the ``inp`` gradient, and the ``src``
+    gradient gathers the output gradient at ``index``.
+    """
+    logger.debug("GEMS INDEX_COPY_BACKWARD")
+    grad_input = index_fill(grad_output, dim, index, 0)
+    grad_src = index_select(grad_output, dim, index)
+    return grad_input, grad_src
+
+
+class IndexCopyOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, index, src):
+        ctx.dim = dim
+        ctx.index = index
+        return _index_copy_forward(inp, dim, index, src)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_input, grad_src = index_copy_backward(grad_output, ctx.dim, ctx.index)
+        return grad_input, None, None, grad_src
+
+
+def index_copy(inp, dim, index, src):
+    logger.debug("GEMS INDEX_COPY")
+    return IndexCopyOpFunction.apply(inp, dim, index, src)
 
 
 def index_copy_(inp, dim, index, src):

@@ -1666,7 +1666,12 @@ _FULL_CONFIG = (
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
-    ("index_copy", index_copy),
+    (
+        "index_copy",
+        index_copy,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("index_copy_", index_copy_),
     ("index_fill.int_Scalar", index_fill),
     ("index_fill.int_Tensor", index_fill),
