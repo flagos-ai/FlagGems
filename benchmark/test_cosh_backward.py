@@ -12,19 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
+import pytest
 import torch
 
-logger = logging.getLogger(__name__)
+import flag_gems
+
+from . import base, consts
 
 
-def _unsafe_view(self: torch.Tensor, size):
-    """Reshape the tensor to the given size without safety checks.
-
-    Uses PyTorch's reshape which returns a view for contiguous tensors
-    and a copy for non-contiguous tensors.
-    """
-    logger.debug("GEMS_ENFLAME_GCU400 _UNSAFE_VIEW")
-    target_size = tuple(size) if not isinstance(size, tuple) else size
-    return self.reshape(target_size)
+@pytest.mark.cosh_backward
+def test_cosh_backward():
+    # ``is_backward=True`` makes the harness time
+    # ``torch.autograd.grad(out, xs, dout)`` on the forward graph, so both the
+    # reference (torch.cosh's autograd) and the candidate (flag_gems.cosh's
+    # CoshFunction) exercise their own backward kernel.
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="cosh",
+        torch_op=torch.cosh,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.cosh)
+    bench.run()
