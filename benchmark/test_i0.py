@@ -56,3 +56,19 @@ def test_i0_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.i0_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_i0_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="i0",
+        torch_op=torch.i0,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # i0 registers the Autograd fallthrough, so the default use_gems() path
+    # routes torch.i0 through I0Function and times our i0_backward kernel.
+    bench.run()
