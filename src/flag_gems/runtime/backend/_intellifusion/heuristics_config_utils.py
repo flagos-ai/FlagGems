@@ -12,19 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+"""Use upstream generic heuristics until IFWA tuning is measured."""
 
-import torch
-
-logger = logging.getLogger(__name__)
-
-
-def _unsafe_view(self: torch.Tensor, size):
-    """Reshape the tensor to the given size without safety checks.
-
-    Uses PyTorch's reshape which returns a view for contiguous tensors
-    and a copy for non-contiguous tensors.
-    """
-    logger.debug("GEMS_ENFLAME_GCU400 _UNSAFE_VIEW")
-    target_size = tuple(size) if not isinstance(size, tuple) else size
-    return self.reshape(target_size)
+HEURISTICS_CONFIGS = {}
