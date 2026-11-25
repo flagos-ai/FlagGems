@@ -16,10 +16,9 @@ pytestmark = [
     pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon cast coverage"),
 ]
 CASES = json.loads(
-    (
-        Path(__file__).resolve().parents[1]
-        / "docs/hygon-optimization/to_dtype/cases.json"
-    ).read_text(encoding="utf-8")
+    (Path(__file__).parent / "data/hygon_to_dtype_cases.json").read_text(
+        encoding="utf-8"
+    )
 )
 
 
@@ -237,10 +236,9 @@ def test_hygon_to_dtype_dense_pairs(source, target, view):
 
 
 _EXTENDED_CASES = json.loads(
-    (
-        Path(__file__).resolve().parents[1]
-        / "docs/hygon-optimization/to_dtype/extended-cases-20261110.json"
-    ).read_text(encoding="utf-8")
+    (Path(__file__).parent / "data/hygon_to_dtype_extended_cases.json").read_text(
+        encoding="utf-8"
+    )
 )
 
 
