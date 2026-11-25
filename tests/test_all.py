@@ -156,7 +156,7 @@ def _assert_exact(result, expected, native):
     assert result.shape == expected.shape
     assert result.device == native.device
     # all is a logical reduction: any differing bit is an accuracy failure.
-    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+    utils.gems_assert_equal(result, expected)
     torch.testing.assert_close(result, native, rtol=0, atol=0)
 
 
@@ -528,7 +528,7 @@ class TestHygonAllDim:
         assert result.shape == expected.shape
         assert not result.requires_grad
         assert not torch._C._is_alias_of(result, inp)
-        torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+        utils.gems_assert_equal(result, expected)
         torch.testing.assert_close(inp.cpu(), before, rtol=0, atol=0, equal_nan=True)
         return result
 
@@ -614,8 +614,8 @@ class TestHygonAllDim:
                 actual = torch.all(inp, dim=dim, keepdim=keepdim)
             finally:
                 library._destroy()
-        torch.testing.assert_close(
-            actual.cpu(), torch.all(inp.cpu(), dim=dim, keepdim=keepdim), rtol=0, atol=0
+        utils.gems_assert_equal(
+            actual.cpu(), torch.all(inp.cpu(), dim=dim, keepdim=keepdim)
         )
         # Positive/negative dimension aliases must agree, without output aliasing.
         if dim is not None:
@@ -753,7 +753,7 @@ class TestHygonAllDim:
         inp = backing[:, -1]
         expected = torch.all(inp.cpu())
         result = flag_gems.all(inp)
-        torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+        utils.gems_assert_equal(result, expected)
 
     @pytest.mark.xfail(
         strict=True,
@@ -764,7 +764,7 @@ class TestHygonAllDim:
         expected = torch.all(inp.cpu())
         result = flag_gems.all(inp)
         assert result.dtype == expected.dtype
-        torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+        utils.gems_assert_equal(result, expected)
 
     def test_fast_launch_is_selected(self, monkeypatch):
         module = self._module()
