@@ -76,6 +76,11 @@ SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
 SPARSE_CUDA_DISPATCH_KEY = torch._C.DispatchKey.SparseCUDA.name
 SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
+# The Hygon descriptor uses CUDA, but Torch-FL COO tensors dispatch on
+# SparsePrivateUse1. Keep the dense addmm implementations on their usual key.
+_FLAGOS_COO_ADDMM = (
+    vendor_name == "hygon" and torch._C._get_privateuse1_backend_name() == "flagos"
+)
 
 
 def torch_ge(v):
@@ -1061,10 +1066,20 @@ _FULL_CONFIG = (
     ("addcmul", addcmul),
     ("addcmul.out", addcmul_out),
     ("addcmul_", addcmul_),
-    ("addmm", addmm),
+    (
+        "addmm",
+        addmm,
+        None,
+        (("SparsePrivateUse1", _sparse_addmm),) if _FLAGOS_COO_ADDMM else (),
+    ),
     ("addmm.dtype", addmm_dtype),
     ("addmm.dtype_out", addmm_dtype_out),
-    ("addmm.out", addmm_out),
+    (
+        "addmm.out",
+        addmm_out,
+        None,
+        (("SparsePrivateUse1", _sparse_addmm_out),) if _FLAGOS_COO_ADDMM else (),
+    ),
     ("addmm_", addmm_),
     ("addmv", addmv),
     ("addmv.out", addmv_out),
