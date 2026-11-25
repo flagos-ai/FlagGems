@@ -27,10 +27,18 @@ exp = tl_extra_shim.exp
 
 
 def _run(kernel, grad, saved, *params, out=None):
-    if grad.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-        raise RuntimeError("backward requires a real floating gradient")
-    if saved.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-        raise RuntimeError("backward requires a real floating saved tensor")
+    if grad.is_complex() or saved.is_complex():
+        raise RuntimeError("backward requires real-valued inputs")
+    result_dtype = (
+        out.dtype if out is not None else torch.promote_types(grad.dtype, saved.dtype)
+    )
+    if result_dtype not in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+    ):
+        raise RuntimeError("backward requires a real floating result dtype")
     if grad.device != saved.device:
         raise RuntimeError("gradient and saved tensor must be on the same device")
     if torch_device_fn.current_device() != saved.device.index:

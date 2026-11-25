@@ -137,6 +137,52 @@ def test_backward_mixed_dtype_contract(grad_dtype, saved_dtype, destination, lay
     utils.gems_assert_close(actual, utils.to_reference(expected), expected.dtype)
 
 
+@pytest.mark.silu
+@pytest.mark.silu_backward
+@pytest.mark.silu_backward_out
+@pytest.mark.parametrize(
+    "pair",
+    [(torch.int32, dtype) for dtype in utils.FLOAT_DTYPES]
+    + [(dtype, torch.int64) for dtype in utils.FLOAT_DTYPES]
+    + [
+        (torch.bool, torch.float64),
+        (torch.float64, torch.int64),
+        (torch.int64, torch.int64),
+    ],
+)
+@pytest.mark.parametrize("destination", [None, torch.float32, torch.float64])
+@pytest.mark.parametrize("layout", ["contiguous", "strided", "broadcast"])
+def test_backward_integral_promotion(pair, destination, layout):
+    grad_dtype, saved_dtype = pair
+    base = torch.arange(30, device=flag_gems.device).reshape(3, 10)
+    grad = (base % 3).to(grad_dtype)
+    x = (base.to(torch.float64) / 7.0 - 2.0).to(saved_dtype)
+    if layout == "strided":
+        grad, x = (grad[:, 1::2], x[:, 1::2])
+    elif layout == "broadcast":
+        grad = grad[:1]
+    aten = torch.ops.aten.silu_backward
+    if destination is None and (
+        not torch.promote_types(grad_dtype, saved_dtype).is_floating_point
+    ):
+        with pytest.raises(RuntimeError):
+            aten.default(grad, x)
+        with pytest.raises(RuntimeError):
+            flag_gems.silu_backward(grad, x)
+        return
+    if destination is None:
+        expected = aten.default(grad, x)
+        actual = flag_gems.silu_backward(grad, x)
+    else:
+        expected = torch.empty(x.shape, dtype=destination, device=x.device)
+        target = torch.empty_like(expected)
+        aten.grad_input(grad, x, grad_input=expected)
+        actual = flag_gems.silu_backward_out(grad, x, grad_input=target)
+        assert actual is target
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_close(actual, utils.to_reference(expected), expected.dtype)
+
+
 class NoNativeCompute(TorchDispatchMode):
 
     def __torch_dispatch__(self, func, types, args=(), kwargs=None):
