@@ -29,6 +29,11 @@ def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
     """
     logger.debug("GEMS EXPAND")
 
+    if isinstance(inp, torch.Tensor) and inp.requires_grad and torch.is_grad_enabled():
+        from flag_gems.ops.expand_backward import ExpandFunction
+
+        return ExpandFunction.apply(inp, size)
+
     # Normalize sizes to be a list
     input_shape = list(inp.shape)
     original_input_ndim = len(input_shape)

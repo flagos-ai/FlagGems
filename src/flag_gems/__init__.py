@@ -1362,7 +1362,6 @@ _FULL_CONFIG = (
     ("exp2_", exp2_),
     ("exp_", exp_),
     ("expand", expand),
-    ("expand_backward", expand_backward),
     ("expand_copy", expand_copy),
     ("expm1", expm1),
     ("expm1.out", expm1_out),
