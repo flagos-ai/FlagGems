@@ -20,10 +20,13 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.linspace import linspace as generic_linspace
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+
+# fmt: off
+from flag_gems.ops.linspace import linspace as generic_linspace  # isort: skip  # noqa: flag_gems_dispatch
+# fmt: on
 
 random.seed(time.time() // 100)
 
