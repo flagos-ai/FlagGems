@@ -740,6 +740,9 @@ from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
 )
+from flag_gems.ops.convolution_overrideable_backward import (
+    convolution_overrideable_backward,
+)
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
@@ -747,6 +750,7 @@ from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.corrcoef import corrcoef
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
+from flag_gems.ops.cosh_backward import cosh_backward
 from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.cosine_similarity import cosine_similarity
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -794,8 +798,10 @@ from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_, cumprod_backward
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.cumsum_ import cumsum_
+from flag_gems.ops.cumsum_backward import cumsum_backward
 from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
+from flag_gems.ops.deg2rad_backward import deg2rad_backward
 from flag_gems.ops.dense_dim import dense_dim
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.det import det
@@ -1139,7 +1145,7 @@ from flag_gems.ops.linalg_matrix_sqrth import (
 )
 from flag_gems.ops.linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from flag_gems.ops.linalg_norm import linalg_norm
-from flag_gems.ops.linalg_pinv import linalg_pinv
+from flag_gems.ops.linalg_pinv import linalg_pinv, linalg_pinv_out
 from flag_gems.ops.linalg_polar import linalg_polar, linalg_polar_out
 from flag_gems.ops.linalg_qr import linalg_qr, linalg_qr_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
@@ -2484,6 +2490,7 @@ __all__ = [
     "convolution_backward_overrideable",
     "convolution_backward_overrideable_out",
     "convolution_overrideable",
+    "convolution_overrideable_backward",
     "convolution_overrideable_out",
     "copy",
     "copy_",
@@ -2496,6 +2503,7 @@ __all__ = [
     "cos_",
     "cosh",
     "cosh_",
+    "cosh_backward",
     "cosh_out",
     "cosine_embedding_loss",
     "cosine_similarity",
@@ -2538,10 +2546,12 @@ __all__ = [
     "cumprod_backward",
     "cumsum",
     "cumsum_",
+    "cumsum_backward",
     "cumsum_out",
     "cumulative_trapezoid",
     "deg2rad",
     "deg2rad_",
+    "deg2rad_backward",
     "deg2rad_out",
     "dense_dim",
     "dequantize",
@@ -2905,6 +2915,7 @@ __all__ = [
     "linalg_multi_dot_out",
     "linalg_norm",
     "linalg_pinv",
+    "linalg_pinv_out",
     "linalg_polar",
     "linalg_polar_out",
     "linalg_qr",
