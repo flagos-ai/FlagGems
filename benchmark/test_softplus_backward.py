@@ -45,6 +45,8 @@ def input_fn(op):
     return generate
 
 
+@pytest.mark.softplus_backward_out
+@pytest.mark.softplus
 @pytest.mark.softplus_backward
 @pytest.mark.parametrize(
     "op",
@@ -76,6 +78,7 @@ class Backward20OutBenchmark(Backward20Benchmark):
         self.shape_desc = "shape"
 
 
+@pytest.mark.softplus
 @pytest.mark.softplus_backward
 @pytest.mark.softplus_backward_out
 @pytest.mark.parametrize("op", ["softplus"])
@@ -111,10 +114,3 @@ def test_backward20_out(op):
         gems_op=gems,
         dtypes=consts.FLOAT_DTYPES,
     ).run()
-
-
-pytestmark = [
-    pytest.mark.softplus,
-    pytest.mark.softplus_backward,
-    pytest.mark.softplus_backward_out,
-]

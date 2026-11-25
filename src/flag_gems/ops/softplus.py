@@ -15,11 +15,248 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils._softplus_backward_pointwise_impl import softplus_backward_out
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+
+exp = tl_extra_shim.exp
+
+
+def _run(kernel, grad, saved, *params, out=None):
+    if grad.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        raise RuntimeError("backward requires a real floating gradient")
+    if saved.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        raise RuntimeError("backward requires a real floating saved tensor")
+    if grad.device != saved.device:
+        raise RuntimeError("gradient and saved tensor must be on the same device")
+    if torch_device_fn.current_device() != saved.device.index:
+        with torch_device_fn.device(saved.device):
+            return _run(kernel, grad, saved, *params, out=out)
+    if (
+        grad.shape == saved.shape
+        and grad.is_contiguous()
+        and saved.is_contiguous()
+        and (out is None or out.is_contiguous())
+    ):
+        target = (
+            out
+            if out is not None
+            else torch.empty_like(
+                saved, dtype=torch.promote_types(grad.dtype, saved.dtype)
+            )
+        )
+        n = target.numel()
+        if n:
+            first = params[0] if params else 0.0
+            second = params[1] if len(params) > 1 else 0.0
+            _pointwise_flat[triton.cdiv(n, 1024),](
+                grad,
+                saved,
+                target,
+                n,
+                "softplus",
+                first,
+                second,
+                1024,
+                enable_fp_fusion=False,
+            )
+        return target
+    if out is None:
+        return kernel(grad, saved, *params)
+    return kernel(grad, saved, *params, out0=out)
+
+
+@triton.jit
+def _softplus_value(grad_output, self, beta, threshold):
+    x = self if self.dtype == tl.float64 else self.to(tl.float32)
+    g = grad_output if grad_output.dtype == tl.float64 else grad_output.to(tl.float32)
+    z = x * beta
+    ez = exp(z)
+    return tl.where(z > threshold, g, g * ez / (ez + 1.0))
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def _softplus_fp16(grad_output, self, beta, threshold):
+    return _softplus_value(
+        grad_output.to(tl.float16), self.to(tl.float16), beta, threshold
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def _softplus_bf16(grad_output, self, beta, threshold):
+    return _softplus_value(
+        grad_output.to(tl.bfloat16), self.to(tl.bfloat16), beta, threshold
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def _softplus_fp32(grad_output, self, beta, threshold):
+    return _softplus_value(
+        grad_output.to(tl.float32), self.to(tl.float32), beta, threshold
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def _softplus_fp64(grad_output, self, beta, threshold):
+    return _softplus_value(
+        grad_output.to(tl.float64), self.to(tl.float64), beta, threshold
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def _softplus_backward_kernel(grad_output, self, beta, threshold):
+    return _softplus_value(grad_output, self, beta, threshold)
+
+
+def _softplus_pointwise_softplus_backward(grad_output, self, beta=1.0, threshold=20.0):
+    return _run(_softplus_backward_kernel, grad_output, self, beta, threshold)
+
+
+def _dense(tensor):
+    expected = 1
+    for stride, size in sorted(
+        ((s, n) for (n, s) in zip(tensor.shape, tensor.stride()) if n > 1)
+    ):
+        if stride != expected:
+            return False
+        expected *= size
+    return True
+
+
+def _check_overlap(target, source):
+    if not torch._C._overlaps(target, source):
+        return
+    if (
+        not target.numel()
+        or not source.numel()
+        or (not (_dense(target) and _dense(source)))
+    ):
+        return
+    a, b = (target.data_ptr(), source.data_ptr())
+    identical = (
+        a == b
+        and target.dtype == source.dtype
+        and (target.shape == source.shape)
+        and (target.stride() == source.stride())
+    )
+    if not identical and max(a, b) < min(
+        a + target.numel() * target.element_size(),
+        b + source.numel() * source.element_size(),
+    ):
+        raise RuntimeError("input and output tensors partially overlap")
+
+
+def _out(kernel, grad, saved, params, target):
+    from flag_gems.utils.shape_utils import broadcast_shapes
+
+    if not isinstance(target, torch.Tensor):
+        raise TypeError("grad_input must be a tensor")
+    if target.dtype not in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+    ):
+        raise RuntimeError("invalid destination dtype")
+    if target.device != grad.device:
+        raise RuntimeError("destination on different device")
+    _check_overlap(target, grad)
+    _check_overlap(target, saved)
+    shape = (
+        tuple(grad.shape)
+        if grad.shape == saved.shape
+        else tuple(broadcast_shapes([grad.shape, saved.shape]))
+    )
+    if tuple(target.shape) != shape:
+        target.resize_(shape)
+    table = _OUT_KERNELS[kernel]
+    return _run(table[target.dtype], grad, saved, *params, out=target)
+
+
+def softplus_backward_out(grad_output, self, beta=1.0, threshold=20.0, *, grad_input):
+    return _out(
+        _softplus_backward_kernel, grad_output, self, (beta, threshold), grad_input
+    )
+
+
+class PointwiseBackwardFunction(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, x, op, raw, params):
+        ctx.save_for_backward(x)
+        ctx.op, ctx.params = ("softplus", params)
+        return raw(x, *params)
+
+    @staticmethod
+    def backward(ctx, grad):
+        if torch.is_grad_enabled():
+            return _once_backward(ctx, grad)
+        (x,) = ctx.saved_tensors
+        return (
+            _softplus_pointwise_softplus_backward(grad, x, *ctx.params),
+            None,
+            None,
+            None,
+        )
+
+
+def pointwise_autograd(x, op, raw, *params):
+    if torch.is_grad_enabled() and x.requires_grad:
+        return PointwiseBackwardFunction.apply(x, "softplus", raw, params)
+    return raw(x, *params)
+
+
+_OUT_KERNELS = {
+    _softplus_backward_kernel: {
+        torch.float16: _softplus_fp16,
+        torch.bfloat16: _softplus_bf16,
+        torch.float32: _softplus_fp32,
+        torch.float64: _softplus_fp64,
+    }
+}
+
+
+@triton.jit
+def _pointwise_flat(
+    G,
+    X,
+    O,
+    N: tl.constexpr,
+    OP: tl.constexpr,
+    P0: tl.constexpr,
+    P1: tl.constexpr,
+    B: tl.constexpr,
+):
+    i = tl.program_id(0) * B + tl.arange(0, B)
+    live = i < N
+    g = tl.load(G + i, live, other=0).to(O.dtype.element_ty)
+    x = tl.load(X + i, live, other=0).to(O.dtype.element_ty)
+    value = _softplus_value(g, x, P0, P1)
+    tl.store(O + i, value, live)
+
+
+@torch.autograd.function.once_differentiable
+def _once_backward(ctx, grad):
+    return PointwiseBackwardFunction.backward(ctx, grad)
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +285,11 @@ def softplus_backward_kernel(grad_output, x, beta, threshold):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    from flag_gems.utils._softplus_backward_pointwise_impl import pointwise_autograd
-
     return pointwise_autograd(self, "softplus", _softplus_forward_impl, beta, threshold)
 
 
 def softplus_backward(grad_output, self, beta=1.0, threshold=20.0):
-    from flag_gems.utils._softplus_backward_pointwise_impl import (
-        softplus_backward as backward_impl,
-    )
-
-    return backward_impl(grad_output, self, beta, threshold)
+    return _softplus_pointwise_softplus_backward(grad_output, self, beta, threshold)
 
 
 def _softplus_forward_impl(self, beta=1.0, threshold=20.0):
