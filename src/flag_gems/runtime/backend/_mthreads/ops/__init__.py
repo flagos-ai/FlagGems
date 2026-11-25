@@ -45,6 +45,7 @@ from ._foreach_addcmul__ScalarList import _foreach_addcmul__ScalarList
 from ._foreach_addcmul__Tensor import _foreach_addcmul__Tensor
 from ._foreach_asin_ import _foreach_asin_
 from ._foreach_atan import _foreach_atan
+from ._foreach_atan_ import _foreach_atan_
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max__List import _foreach_clamp_max__List
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
@@ -309,6 +310,7 @@ __all__ = [
     "_foreach_addcmul__Tensor",
     "_foreach_asin_",
     "_foreach_atan",
+    "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
