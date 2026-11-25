@@ -265,9 +265,11 @@ def linear(input, weight, bias=None):
     entry = (
         _small_fp32_entry()
         if not single_1d and _use_small_fp32_entry(input, weight, bias, M)
-        else _small_bf16_entry()
-        if not single_1d and _use_small_bf16_entry(input, weight, bias, M)
-        else linear_kernel
+        else (
+            _small_bf16_entry()
+            if not single_1d and _use_small_bf16_entry(input, weight, bias, M)
+            else linear_kernel
+        )
     )
     # Accept ordinary Parameter subclasses through the same public ATen API.
     # Keep the original Parameter and its loader metadata on the owning layer.
