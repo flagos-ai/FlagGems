@@ -8412,6 +8412,27 @@ ops:
   - PointWise
   stages:
   - alpha: '5.4'
+- id: foreach_minimum_backward
+  description: |
+    Backward pass of the scalar forms of `_foreach_minimum`
+    (`torch._foreach_minimum` with a scalar or scalar-list operand): the
+    gradient with respect to each input tensor is `where(self == s, grad / 2,
+    grad)` masked to zero where `self > s`, matching ATen's autograd formula
+    for `_foreach_minimum.Scalar` and `_foreach_minimum.ScalarList` bit-exactly
+    in the storage dtype. The scalar operand is not differentiable, so each
+    input tensor yields one gradient. Exposed as an explicit
+    `foreach_minimum_backward` entry point because this Torch build has no
+    standalone `aten::_foreach_minimum_backward` schema.
+  for:
+  - foreach_minimum_backward
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.6.0'
 - id: foreach_minimum_list
   description: element-wise minimum for each tensor in a list, paired with a second
     tensor list.
