@@ -1016,7 +1016,12 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("acos_", acos_),
-    ("acosh", acosh),
+    (
+        "acosh",
+        acosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("acosh_", acosh_),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
     # adaptive_avg_pool3d is CompositeImplicitAutograd in ATen with no dedicated
