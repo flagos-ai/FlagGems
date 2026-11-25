@@ -18,6 +18,7 @@ import warnings
 import torch
 from packaging.version import parse as _parse_version
 
+from flag_gems import deprecated as _deprecated
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
@@ -999,13 +1000,28 @@ _FULL_CONFIG = (
         "_wrapped_quantized_linear_prepacked",
         _wrapped_quantized_linear_prepacked,
     ),
-    ("abs", abs),
+    (
+        "abs",
+        abs,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("abs_", abs_),
     ("absolute", absolute),
     ("absolute_", absolute_),
-    ("acos", acos),
+    (
+        "acos",
+        acos,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("acos_", acos_),
-    ("acosh", acosh),
+    (
+        "acosh",
+        acosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("acosh_", acosh_),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
     # adaptive_avg_pool3d is CompositeImplicitAutograd in ATen with no dedicated
@@ -1031,7 +1047,12 @@ _FULL_CONFIG = (
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
-    ("addbmm", addbmm),
+    (
+        "addbmm",
+        addbmm,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addbmm_", addbmm_),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
@@ -1066,7 +1087,12 @@ _FULL_CONFIG = (
     ("alpha_dropout", alpha_dropout),
     ("alpha_dropout_", alpha_dropout_),
     ("amax", amax),
-    ("amin", amin),
+    (
+        "amin",
+        amin,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("aminmax", aminmax),
     ("angle", angle),
     ("any", any),
@@ -1216,13 +1242,37 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    ("clamp", clamp),
+    # Autograd fallthrough: the ClampFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp",
+        clamp,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
-    ("clamp_max", clamp_max),
+    # Autograd fallthrough: the ClampMaxFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_max",
+        clamp_max,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_max_", clamp_max_),
-    ("clamp_min", clamp_min),
+    # Autograd fallthrough: the ClampMinFunction wrapper owns
+    # the differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "clamp_min",
+        clamp_min,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
@@ -1266,6 +1316,7 @@ _FULL_CONFIG = (
     ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
+    ("convolution_overrideable_backward", convolution_overrideable_backward),
     (
         "copy_",
         copy_,
@@ -1273,13 +1324,34 @@ _FULL_CONFIG = (
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
-    ("copysign.Scalar", copysign),
-    ("copysign.Tensor", copysign),
+    # Autograd fallthrough: the CopysignFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and the backward falls back to the native kernel.
+    (
+        "copysign.Scalar",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    (
+        "copysign.Tensor",
+        copysign,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),
-    ("cosh", cosh),
+    # Autograd fallthrough: the CoshFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and the backward falls back to the native kernel instead of ours.
+    (
+        "cosh",
+        cosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("cosine_embedding_loss", cosine_embedding_loss),
@@ -1731,6 +1803,10 @@ _FULL_CONFIG = (
     ("linalg_norm", linalg_norm),
     ("linalg_norm.ord_str", linalg_norm),
     ("linalg_pinv", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float", linalg_pinv),
+    ("linalg_pinv.atol_rtol_float_out", linalg_pinv_out),
+    ("linalg_pinv.atol_rtol_tensor", linalg_pinv),
+    ("linalg_pinv.atol_rtol_tensor_out", linalg_pinv_out),
     ("linalg_polar", linalg_polar),
     ("linalg_polar.out", linalg_polar_out),
     ("linalg_qr", linalg_qr),
@@ -1864,7 +1940,16 @@ _FULL_CONFIG = (
     ("msort.out", msort_out),
     ("mT", mT),
     ("mul.Scalar", mul),
-    ("mul.Tensor", mul),
+    (
+        "mul.Tensor",
+        mul,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("mul_.Scalar", mul_),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
@@ -1877,7 +1962,16 @@ _FULL_CONFIG = (
     ("multilabel_margin_loss", multilabel_margin_loss),
     ("multilabel_margin_loss.out", multilabel_margin_loss),
     ("multilabel_margin_loss_backward", multilabel_margin_loss_backward),
-    ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
+    (
+        "multilabel_margin_loss_forward",
+        multilabel_margin_loss_forward,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("multinomial", multinomial),
     ("multiply.Scalar", multiply),
     ("multiply.Tensor", multiply),
@@ -1900,7 +1994,7 @@ _FULL_CONFIG = (
     ("nanquantile.scalar_out", nanquantile_scalar_out),
     ("nansum", nansum),
     ("nansum.out", nansum_out),
-    ("narrow_copy", narrow_copy),
+    ("narrow_copy", narrow_copy, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("native_batch_norm", native_batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_channel_shuffle", native_channel_shuffle),
@@ -2706,6 +2800,15 @@ class use_gems:
         import flag_gems.experimental_ops
 
         return flag_gems.experimental_ops
+
+
+def __getattr__(name):
+    # Deprecated operators that are imported lazily (see flag_gems.deprecated).
+    if name in _deprecated._LAZY_EXPORTS:
+        value = _deprecated._resolve_lazy(name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def all_registered_ops():
