@@ -34,6 +34,14 @@ def bracket_next_power_of_2(N, lower, upper):
     return min(max(triton.next_power_of_2(N), lower), upper)
 
 
+class BroadcastError(RuntimeError, ValueError):
+    """Raised when two shapes cannot be broadcast together.
+
+    Inherits from both ``RuntimeError`` (matching PyTorch broadcast errors) and
+    ``ValueError`` (preserving compatibility with existing callers).
+    """
+
+
 def broadcast(s1: Shape, s2: Shape) -> Shape:
     _s1, _s2 = s1, s2
     r1 = len(s1)
@@ -57,7 +65,7 @@ def broadcast(s1: Shape, s2: Shape) -> Shape:
         elif s2[i] == s1[d + i]:
             s[d + i] = s2[i]
         else:
-            raise ValueError(f"Unbroadcastable {_s1} and {_s2}")
+            raise BroadcastError(f"Unbroadcastable {_s1} and {_s2}")
     s = tuple(s)
     return s
 

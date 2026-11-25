@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from flag_gems.runtime import device
@@ -174,3 +175,19 @@ def test_compute_stride_matches_torch_view():
             assert (stride is None) == (expected is None), (oldshape, newshape)
             if stride is not None:
                 assert stride == expected
+
+
+@pytest.mark.parametrize(
+    "s1,s2",
+    [
+        ((3,), (4,)),
+        ((2, 3), (4, 3)),
+        ((2, 1, 5), (3, 4, 5)),
+    ],
+)
+def test_broadcast_unbroadcastable_raises_runtime_and_value_error(s1, s2):
+    with pytest.raises(RuntimeError) as exc_info:
+        shape_utils.broadcast(s1, s2)
+    assert isinstance(exc_info.value, ValueError)
+    with pytest.raises(RuntimeError):
+        shape_utils.broadcast_shapes([s1, s2])
