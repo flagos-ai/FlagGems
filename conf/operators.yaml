@@ -6735,6 +6735,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: fill_backward_
+  description: Backward of in-place fill for scalar and tensor values through autograd.
+  for:
+  - fill_.Scalar
+  - fill_.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
