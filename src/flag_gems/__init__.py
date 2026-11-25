@@ -659,6 +659,7 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    ("_sparse_coo_tensor_unsafe", sparse_coo_tensor_unsafe),
     (
         "_sparse_coo_tensor_with_dims",
         sparse_coo_tensor_with_dims,
