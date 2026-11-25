@@ -265,7 +265,7 @@ The following environment variables are essential during installation, build, an
 
 For detailed specifications and advanced build parameters, please refer to the dedicated reference document:
 
-- **[Full Accelerator Backends Matrix](build-options.md#1-supported-accelerator-backends)**: View all supported hardware platform identifiers (`nvidia-cuda128`, `ascend-cann900`, `hygon`, `metax-maca3810`, `mthreads-musa520`, etc.) and dependencies.
+- **[Full Accelerator Backends Matrix](build-options.md#1-supported-accelerator-backends)**: View all supported hardware platform identifiers (`nvidia-cuda128`, `ascend-cann900`, `hygon-dtk2604`, `metax-maca3810`, `mthreads-musa520`, etc.) and dependencies.
 - **[CMake Options Reference](build-options.md#cmake-options)** {#cmake-options}: Definitions for `FLAGGEMS_BUILD_C_EXTENSIONS`, `FLAGGEMS_BACKEND`, `FLAGGEMS_BUILD_CTESTS`, and `CMAKE_ARGS` usage.
 - **[`scikit-build-core` Configuration](build-options.md#scikit-build-core-options)** {#scikit-build-core-options}: Build backend settings for packaging C++ extensions (`SKBUILD_CMAKE_BUILD_TYPE`, `SKBUILD_BUILD_DIR`).
 - **[External `libtriton_jit` Integration](build-options.md#libtriton-jit)** {#libtriton-jit}: Instructions for linking custom-built TritonJIT libraries.

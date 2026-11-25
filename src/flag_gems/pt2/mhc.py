@@ -39,18 +39,18 @@ closure grid pattern (``lambda META: (N, cdiv(H, META["BLOCK_H"]))``), which
 """
 
 # ``import a.b.c as name`` resolves to the attribute ``c`` of package ``a.b``
-# when a.b.__init__ eagerly re-exports a same-named symbol (flag_gems.fused.mhc
+# when a.b.__init__ eagerly re-exports a same-named symbol (flag_gems.deprecated.mhc
 # does exactly that), so bind the submodules through importlib instead.
 import importlib as _importlib
 
 import torch
 
-import flag_gems.fused.mhc as _mhc_pkg  # noqa: F401  (ensures submodules loaded)
+import flag_gems.deprecated.mhc as _mhc_pkg  # noqa: F401  (ensures submodules loaded)
 from flag_gems.pt2.manifest import CompileKind, CompileOpSpec, register_compile_spec
 
-_hc_head_mod = _importlib.import_module("flag_gems.fused.mhc.hc_head_fused_kernel")
-_mhc_post_mod = _importlib.import_module("flag_gems.fused.mhc.mhc_post")
-_mhc_pre_mod = _importlib.import_module("flag_gems.fused.mhc.mhc_pre")
+_hc_head_mod = _importlib.import_module("flag_gems.deprecated.mhc.hc_head_fused_kernel")
+_mhc_post_mod = _importlib.import_module("flag_gems.deprecated.mhc.mhc_post")
+_mhc_pre_mod = _importlib.import_module("flag_gems.deprecated.mhc.mhc_pre")
 
 # The original autotune-wrapped kernel objects: ``*.fn`` chains end at the
 # same JITFunction objects the eager launchers invoke.
@@ -72,7 +72,7 @@ def supports_pt2_triton() -> bool:
 
 
 def _num_tokens_bucket(num_tokens: int) -> int:
-    """Mirror of the bucket table in ``flag_gems.fused.mhc.mhc_pre.mhc_pre``.
+    """Mirror of the bucket table in ``flag_gems.deprecated.mhc.mhc_pre.mhc_pre``.
 
     It is passed to the kernel as the ``num_tokens_bucket`` autotune-key
     argument, so the traced path must produce the identical value for every
@@ -340,7 +340,7 @@ MHC_PRE_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::mhc_pre",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.mhc.mhc_pre.mhc_pre_fused_kernel_hc_mult_4 "
+            "flag_gems.deprecated.mhc.mhc_pre.mhc_pre_fused_kernel_hc_mult_4 "
             "(original @triton.autotune object wrapped by wrap_triton; "
             "generic fallback: mhc_pre_generic_kernel)"
         ),
@@ -360,7 +360,7 @@ MHC_POST_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::mhc_post",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.mhc.mhc_post.mhc_post_kernel_hc_mult_4 "
+            "flag_gems.deprecated.mhc.mhc_post.mhc_post_kernel_hc_mult_4 "
             "(original @triton.autotune object wrapped by wrap_triton; "
             "generic fallback: mhc_post_kernel_generic)"
         ),
@@ -375,7 +375,7 @@ HC_HEAD_FUSED_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::hc_head_fused",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.mhc.hc_head_fused_kernel._hc_head_fused_kernel "
+            "flag_gems.deprecated.mhc.hc_head_fused_kernel._hc_head_fused_kernel "
             "(original @triton.autotune object wrapped by wrap_triton)"
         ),
         mutates_args=("out",),

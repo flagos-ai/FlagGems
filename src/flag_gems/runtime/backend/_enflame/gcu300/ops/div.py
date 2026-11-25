@@ -19,7 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils.shape_utils import broadcast_shapes
-from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
+from flag_gems.utils.triton_lang_extension import trunc
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -142,52 +142,108 @@ def true_divide_(A, B):
         return true_div_func_tensor_scalar(A, B, out0=A)
 
 
+@triton.jit
+def _float_div_quotients(x, y):
+    """Return ``(floor(x / y), trunc(x / y))`` for fp32 ``x`` and ``y``.
+
+    gcu300's fp32 ``/`` is an approximate (fast) division and its libdevice
+    div_rn/div_rz round the quotient to an integer, so neither can be used
+    directly.  Refine ``x / y`` to the correctly rounded quotient with one FMA
+    residual step, then truncate and correct floor from the fp32 remainder.
+    """
+    q0 = x / y
+    residual = tl.math.fma(-y, q0, x)
+    q = q0 + residual / y
+    q = tl.where(y == 0.0, q0, q)
+
+    trunc_q = trunc(q)
+    # fma keeps the residual exact; `x - y * trunc_q` loses the low bits when
+    # |q| is large, which flips the floor decision for quotients that sit within
+    # half an ulp of an integer.
+    remainder = tl.math.fma(-y, trunc_q, x)
+    different_sign = (remainder < 0) != (y < 0)
+    floor_q = tl.where((remainder != 0.0) & different_sign, trunc_q - 1.0, trunc_q)
+    # The rounded quotient can also land one representable step *below* the true
+    # one, which happens once |q| exceeds 2**24 and the step becomes 2. The
+    # residual is exact, so `|remainder| >= |y|` proves the true quotient is at
+    # least `trunc_q + 1`.
+    overshoot = (remainder * y > 0.0) & (tl.abs(remainder) >= tl.abs(y))
+    floor_q = tl.where(overshoot, trunc_q + 1.0, floor_q)
+    return floor_q, trunc_q
+
+
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(div_rz(x, y))
+    # gcu300 has no fp16/bf16 div lowering: compute the float path in fp32 and
+    # narrow the integer-valued result back to the input dtype.
+    _, trunc_q = _float_div_quotients(x.to(tl.float32), y.to(tl.float32))
+    return trunc_q.to(x.dtype)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    _, trunc_q = _float_div_quotients(x.to(tl.float32), y.to(tl.float32))
+    return trunc_q.to(x.dtype)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    _, trunc_q = _float_div_quotients(x.to(tl.float32), y.to(tl.float32))
+    return trunc_q.to(y.dtype)
+
+
+# Integer truncation division: Triton's // on integers truncates toward zero.
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_tensor_scalar(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_scalar_tensor(x, y):
+    return x // y
 
 
 def trunc_divide(A, B):
     logger.debug("GEMS_ENFLAME TRUNC_DIVIDE")
     if _is_float64(A, B):
         return _cpu_div(A, B, rounding_mode="trunc")
+    if isinstance(A, torch.Tensor) and not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B)
+        return trunc_div_int_func_tensor_scalar(A, B)
+    if isinstance(B, torch.Tensor) and not B.is_floating_point():
+        return trunc_div_int_func_scalar_tensor(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        if A.dtype == torch.int64:
-            A = A.to(torch.int32)
-        if B.dtype == torch.int64:
-            B = B.to(torch.int32)
         A, B = _prepare_out_of_place_operands(A, B)
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
-        if A.dtype == torch.int64:
-            A = A.to(torch.int32)
         return trunc_div_func_tensor_scalar(A, B)
     elif isinstance(B, torch.Tensor):
-        if B.dtype == torch.int64:
-            B = B.to(torch.int32)
         return trunc_div_func_scalar_tensor(A, B)
     else:
         # Both scalar
-        return torch.tensor(A / B)
+        return torch.div(A, B, rounding_mode="trunc")
 
 
 def trunc_divide_(A, B):
     logger.debug("GEMS_ENFLAME TRUNC_DIVIDE_")
     if _is_float64(A, B):
         return _cpu_div_inplace(A, B, rounding_mode="trunc")
+    if not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, out0=A)
+        return trunc_div_int_func_tensor_scalar(A, B, out0=A)
     if isinstance(B, torch.Tensor):
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
@@ -232,26 +288,18 @@ def _int_floordiv(x, y):
 # https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
 @triton.jit
 def _float_floordiv(x, y):
-    # NOTE: fmod's sign is the same as the dividend
-    remainder = fmod(x, y)
-    imperfect = remainder != 0.0
-    different_sign = (x < 0) ^ (y < 0)
+    # gcu300 has no fp16/bf16 div lowering: compute in fp32 and narrow the
+    # integer-valued result back to the promoted input dtype.
+    orig_dtype = x.dtype
+    x = x.to(tl.float32)
+    y = y.to(tl.float32)
 
-    # NOTE: we have to use div_rn explicitly here
-    q = div_rn(x - remainder, y)
-    q = tl.where(imperfect & different_sign, q - 1, q)
-
-    floor_q = tl.math.floor(q)
-    c = q - floor_q > 0.5
-    floor_q = tl.where(c, floor_q + 1.0, floor_q)
-
-    q_is_zeros = q == 0.0
-    floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
+    floor_q, _ = _float_div_quotients(x, y)
 
     is_div_by_zero = y == 0.0
     float_division = x / y
     out = tl.where(is_div_by_zero, float_division, floor_q)
-    return out
+    return out.to(orig_dtype)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -409,3 +457,16 @@ def remainder_(A, B):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
         return rem_ts(A, B, out0=A)
+
+
+import sys as _sys  # noqa: E402
+
+# The generic div_mode path truncates with libdevice div_rn, which gcu300
+# implements as round-to-nearest-integer instead of IEEE division, so trunc and
+# floor results land one integer step away.  flag_gems.ops still exposes those
+# generic helpers, so rebind them to the gcu300 implementations (same pattern as
+# the _kunlunxin backend specializations).
+_generic_ops_module = _sys.modules.get("flag_gems.ops")
+if _generic_ops_module is not None:
+    setattr(_generic_ops_module, "div_mode", div_mode)
+    setattr(_generic_ops_module, "div_mode_", div_mode_)

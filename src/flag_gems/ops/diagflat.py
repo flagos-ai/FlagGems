@@ -387,6 +387,7 @@ def _backward(grad_out, shape, k):
     grad_in = torch.empty(shape, dtype=grad_out.dtype, device=grad_out.device)
     if n <= 0 or grad_in.numel() == 0:
         return grad_in
+    grad_out = grad_out.contiguous()
 
     if grad_out.is_complex():
         real_dtype = _COMPLEX_REAL[grad_out.dtype]

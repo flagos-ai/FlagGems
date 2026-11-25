@@ -55,13 +55,23 @@ ATEN_NAME_PATTERN = re.compile(
 
 
 def load_operators_yaml() -> dict[str, dict]:
-    """Load operators.yaml and return dict keyed by id."""
-    if not OPERATORS_YAML.exists():
-        print(f"::error::Cannot find {OPERATORS_YAML}", file=sys.stderr)
-        sys.exit(2)
-    with open(OPERATORS_YAML) as f:
-        data = yaml.safe_load(f)
-    return {op["id"]: op for op in data.get("ops", []) if "id" in op}
+    """Load active and deprecated metadata, keyed by operator ID."""
+    operators = {}
+    for path in (Path(OPERATORS_YAML), Path("conf/deprecated_operators.yaml")):
+        if not path.exists():
+            print(f"::error::Cannot find {path}", file=sys.stderr)
+            sys.exit(2)
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        for op in data.get("ops", []):
+            if "id" in op:
+                if op["id"] in operators:
+                    print(
+                        f"::error::Duplicate operator ID: {op['id']}", file=sys.stderr
+                    )
+                    sys.exit(2)
+                operators[op["id"]] = op
+    return operators
 
 
 def load_allowlist() -> set[str] | None:
