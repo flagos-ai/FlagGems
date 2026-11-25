@@ -1,6 +1,13 @@
 # Copyright 2026 FlagOS Contributors
 # SPDX-License-Identifier: Apache-2.0
 
+"""Packed INT8 grouped GEMM for Hygon with BF16 output.
+
+Small-M gate/up uses register GEMV on supported gfx936 builds, with Split-K
+as a fallback. Small-M K=256 uses two independent dot accumulators. Larger
+inputs use expert-prefix routing, with 128x128x128 tiles for gate/up.
+"""
+
 import logging
 from importlib.util import find_spec
 
@@ -57,9 +64,10 @@ else:
         b2,
         scale_b,
         N: gl.constexpr,
+        K_WORDS: gl.constexpr,
         layout: gl.constexpr,
     ):
-        off = row * 1536 + k
+        off = row * K_WORDS + k
         acc = gl.full((2, 2, 256), 0, gl.int32, layout)
         acc = _dot_packed_int8(buffer_load(A, off), b0, acc)
         acc = _dot_packed_int8(buffer_load(A, off + 256), b1, acc)
@@ -69,8 +77,18 @@ else:
 
     @gluon.jit
     def _grouped_gemm_w8a8_gemv(
-        A, As, B, Bs, C, RowIndices, Rows, M: gl.constexpr, N: gl.constexpr
+        A,
+        As,
+        B,
+        Bs,
+        C,
+        RowIndices,
+        Rows,
+        M: gl.constexpr,
+        N: gl.constexpr,
+        K: gl.constexpr,
     ):
+        gl.static_assert(N == 512 and K == 6144)
         row = gl.program_id(1)
         expert = gl.load(RowIndices + row)
         previous = gl.load(RowIndices + row - 1, row > 0, other=-1)
@@ -88,7 +106,7 @@ else:
             has_second = expert != second_next
 
         # Each wave covers half of K for two output columns.
-        K_WORDS: gl.constexpr = 6144 // 4
+        K_WORDS: gl.constexpr = K // 4
         BLOCK_WORDS: gl.constexpr = 1024 // 4
         layout: gl.constexpr = BlockedLayout(
             [1, 1, 4], [1, 1, 64], [2, 1, 1], [2, 0, 1]
@@ -108,8 +126,12 @@ else:
         b2 = buffer_load(b, w + 2 * BLOCK_WORDS)
         # Keep a single row accumulator live for pairs in longer expert runs.
         if has_second and gl.load(Rows + expert) > 2:
-            _store_gemv_row(a, As, C, row, k, cols, b0, b1, b2, scale_b, N, layout)
-            _store_gemv_row(a, As, C, row + 1, k, cols, b0, b1, b2, scale_b, N, layout)
+            _store_gemv_row(
+                a, As, C, row, k, cols, b0, b1, b2, scale_b, N, K_WORDS, layout
+            )
+            _store_gemv_row(
+                a, As, C, row + 1, k, cols, b0, b1, b2, scale_b, N, K_WORDS, layout
+            )
             return
 
         acc = gl.full((2, 2, BLOCK_WORDS), 0, gl.int32, layout)
@@ -347,8 +369,10 @@ def grouped_gemm_w8a8(
 ) -> None:
     """Write packed INT8 NT grouped GEMM to the caller's BF16 output.
 
-    The caller supplies sorted INT32 expert indices and matching nonnegative
-    row counts summing to M. All operands are contiguous and on one device.
+    The caller supplies sorted INT32 expert indices in [0, E) and nonnegative
+    row counts summing to M. Each m_rows[e] must equal the number of entries
+    with expert e in m_indices. Routing values are caller preconditions.
+    All operands are contiguous and on one device.
     """
     logger.debug("GEMS_HYGON GROUPED_GEMM_W8A8")
     tensors = (A, As, B, Bs, C, m_indices, m_rows)
@@ -419,6 +443,7 @@ def grouped_gemm_w8a8(
     with torch_device_fn.device(A.device):
         if (
             split_k > 1
+            and (n, k) == (512, 6144)
             and _HAS_GEMV
             and A.data_ptr() % 16 == 0
             and B.data_ptr() % 16 == 0
@@ -435,6 +460,7 @@ def grouped_gemm_w8a8(
                 m_rows,
                 m,
                 n,
+                k,
                 num_warps=2,
                 num_stages=1,
                 enable_fp_fusion=False,

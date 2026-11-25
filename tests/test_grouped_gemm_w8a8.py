@@ -406,9 +406,30 @@ class TestHygonGroupedGEMM:
         TestMetaXGroupedGEMM.test_grouped_gemm_w8a8_sparse_changing_groups
     )
 
+    @pytest.mark.parametrize(
+        "lengths,n,k",
+        [
+            ([1, 2, 0, 3, 0, 0], 512, 6144),
+            ([1, 2, 0, 3, 0, 0], 6144, 256),
+            ([2, 1], 512, 6144),
+        ],
+    )
     @pytest.mark.grouped_gemm_w8a8
-    def test_grouped_gemm_w8a8_gate_up(self):
-        lengths = [1, 2, 0, 3, 0, 0]
+    def test_grouped_gemm_w8a8_specialized_paths(self, lengths, n, k):
+        args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
+        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+        assert flag_gems.grouped_gemm_w8a8(*args) is None
+        gems_assert_equal(args[4].cpu(), expected)
+
+    @pytest.mark.parametrize("lengths", [[5, 0, 0, 0, 0], [1, 5, 0, 0, 0, 0]])
+    @pytest.mark.grouped_gemm_w8a8
+    def test_grouped_gemm_w8a8_gemv_long_runs(self, lengths):
+        module = importlib.import_module(flag_gems.grouped_gemm_w8a8.__module__)
+        if (
+            not module._HAS_GEMV
+            or triton.runtime.driver.active.get_current_target().arch != "gfx936"
+        ):
+            pytest.skip("requires gfx936 with Hygon Gluon GEMV support")
         args = make_grouped_gemm_case(lengths, 512, 6144, flag_gems.device)
         expected = grouped_gemm_cpu_reference(*args[:4], lengths)
         assert flag_gems.grouped_gemm_w8a8(*args) is None
