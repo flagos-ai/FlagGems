@@ -522,11 +522,11 @@ from flag_gems.ops._wrapped_linear_prepack import _wrapped_linear_prepack
 from flag_gems.ops._wrapped_quantized_linear_prepacked import (
     _wrapped_quantized_linear_prepacked,
 )
-from flag_gems.ops.abs import abs, abs_
+from flag_gems.ops.abs import abs, abs_, abs_backward
 from flag_gems.ops.absolute import absolute, absolute_
-from flag_gems.ops.acos import acos
+from flag_gems.ops.acos import acos, acos_backward
 from flag_gems.ops.acos_ import acos_
-from flag_gems.ops.acosh import acosh, acosh_
+from flag_gems.ops.acosh import acosh, acosh_, acosh_backward
 from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
 from flag_gems.ops.adaptive_avg_pool2d import (
     _adaptive_avg_pool2d_out as adaptive_avg_pool2d_out,
@@ -542,7 +542,7 @@ from flag_gems.ops.adaptive_max_pool2d_backward import adaptive_max_pool2d_backw
 from flag_gems.ops.adaptive_max_pool3d import adaptive_max_pool3d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
-from flag_gems.ops.addbmm import addbmm, addbmm_
+from flag_gems.ops.addbmm import addbmm, addbmm_, addbmm_backward
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -559,7 +559,7 @@ from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
 from flag_gems.ops.alpha_dropout_ import alpha_dropout_
 from flag_gems.ops.amax import amax
-from flag_gems.ops.amin import amin, amin_
+from flag_gems.ops.amin import amin, amin_, amin_backward
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.and_tensor import and_tensor
@@ -741,6 +741,9 @@ from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
 )
+from flag_gems.ops.convolution_overrideable_backward import (
+    convolution_overrideable_backward,
+)
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
@@ -748,6 +751,7 @@ from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.corrcoef import corrcoef
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
+from flag_gems.ops.cosh_backward import cosh_backward
 from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.cosine_similarity import cosine_similarity
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -1259,7 +1263,7 @@ from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
 from flag_gems.ops.mT import mT
-from flag_gems.ops.mul import mul, mul_
+from flag_gems.ops.mul import mul, mul_, mul_backward
 from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss,
     multi_margin_loss_backward,
@@ -1270,7 +1274,10 @@ from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
 from flag_gems.ops.multilabel_margin_loss_backward import (
     multilabel_margin_loss_backward,
 )
-from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
+from flag_gems.ops.multilabel_margin_loss_forward import (
+    multilabel_margin_loss_forward,
+    multilabel_margin_loss_forward_backward,
+)
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
 from flag_gems.ops.multiply_ import multiply_
@@ -1553,6 +1560,7 @@ from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
+from flag_gems.ops.sparse_coo_tensor_unsafe import sparse_coo_tensor_unsafe
 from flag_gems.ops.sparse_coo_tensor_with_dims import (
     sparse_coo_tensor_with_dims,
     sparse_coo_tensor_with_dims_out,
@@ -2256,12 +2264,15 @@ __all__ = [
     "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
+    "abs_backward",
     "absolute",
     "absolute_",
     "acos",
     "acos_",
+    "acos_backward",
     "acosh",
     "acosh_",
+    "acosh_backward",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
     "adaptive_avg_pool2d_out",
@@ -2277,6 +2288,7 @@ __all__ = [
     "add_",
     "addbmm",
     "addbmm_",
+    "addbmm_backward",
     "addcdiv",
     "addcdiv_",
     "addcdiv_out",
@@ -2307,6 +2319,7 @@ __all__ = [
     "amax",
     "amin",
     "amin_",
+    "amin_backward",
     "aminmax",
     "and_scalar",
     "and_tensor",
@@ -2488,6 +2501,7 @@ __all__ = [
     "convolution_backward_overrideable",
     "convolution_backward_overrideable_out",
     "convolution_overrideable",
+    "convolution_overrideable_backward",
     "convolution_overrideable_out",
     "copy",
     "copy_",
@@ -2500,6 +2514,7 @@ __all__ = [
     "cos_",
     "cosh",
     "cosh_",
+    "cosh_backward",
     "cosh_out",
     "cosine_embedding_loss",
     "cosine_similarity",
@@ -3041,6 +3056,7 @@ __all__ = [
     "mT",
     "mul",
     "mul_",
+    "mul_backward",
     "multi_margin_loss",
     "multi_margin_loss_backward",
     "multi_margin_loss_backward_out",
@@ -3048,6 +3064,7 @@ __all__ = [
     "multilabel_margin_loss",
     "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
+    "multilabel_margin_loss_forward_backward",
     "multinomial",
     "multiply",
     "multiply_",
@@ -3350,6 +3367,7 @@ __all__ = [
     "sparse_bsr_tensor_unsafe",
     "sparse_compressed_tensor",
     "sparse_coo_tensor",
+    "sparse_coo_tensor_unsafe",
     "sparse_coo_tensor_with_dims",
     "sparse_coo_tensor_with_dims_and_tensors",
     "sparse_coo_tensor_with_dims_and_tensors_out",
