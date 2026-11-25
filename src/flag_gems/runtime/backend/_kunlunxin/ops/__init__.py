@@ -100,8 +100,6 @@ from ._foreach_ceil import _foreach_ceil
 from ._foreach_ceil_ import _foreach_ceil_
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
-from ._foreach_cos import _foreach_cos  # noqa: F401
-from ._foreach_cos_ import _foreach_cos_  # noqa: F401
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_expm1 import _foreach_expm1, _foreach_expm1_  # noqa: F401
