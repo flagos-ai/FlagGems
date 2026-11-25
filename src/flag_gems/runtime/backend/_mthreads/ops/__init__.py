@@ -30,6 +30,7 @@ from ._fake_quantize_learnable_per_tensor_affine import (
 from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
     _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
+from ._foreach_abs import _foreach_abs
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_acos_ import _foreach_acos_
 from ._foreach_add__List import _foreach_add__List
@@ -45,6 +46,7 @@ from ._foreach_addcmul__ScalarList import _foreach_addcmul__ScalarList
 from ._foreach_addcmul__Tensor import _foreach_addcmul__Tensor
 from ._foreach_asin_ import _foreach_asin_
 from ._foreach_atan import _foreach_atan
+from ._foreach_atan_ import _foreach_atan_
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max__List import _foreach_clamp_max__List
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
@@ -70,11 +72,13 @@ from ._foreach_log10_ import _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_minimum__ScalarList import _foreach_minimum__ScalarList
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_mul_Tensor import _foreach_mul_Tensor
+from ._foreach_neg import _foreach_neg
 from ._foreach_neg_ import _foreach_neg_
 from ._foreach_pow__List import _foreach_pow__List
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
@@ -84,6 +88,7 @@ from ._foreach_rsqrt import _foreach_rsqrt
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin_ import _foreach_sin_
+from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sqrt_ import _foreach_sqrt_
 from ._foreach_sub__List import _foreach_sub__List
 from ._foreach_sub__ScalarList import _foreach_sub__ScalarList
@@ -296,6 +301,7 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+    "_foreach_abs",
     "_foreach_abs_",
     "_foreach_acos_",
     "_foreach_add__List",
@@ -311,6 +317,7 @@ __all__ = [
     "_foreach_addcmul__Tensor",
     "_foreach_asin_",
     "_foreach_atan",
+    "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
@@ -336,11 +343,13 @@ __all__ = [
     "_foreach_maximum__Scalar",
     "_foreach_maximum_Scalar",
     "_foreach_minimum__Scalar",
+    "_foreach_minimum__ScalarList",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
     "_foreach_mul__List",
     "_foreach_mul__ScalarList",
     "_foreach_mul_Tensor",
+    "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
     "_foreach_pow__Scalar",
@@ -350,6 +359,7 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_foreach_sin_",
+    "_foreach_sqrt",
     "_foreach_sqrt_",
     "_foreach_sub__List",
     "_foreach_sub__ScalarList",
