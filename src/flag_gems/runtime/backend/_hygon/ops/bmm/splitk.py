@@ -22,7 +22,15 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.runtime.flagtune import _flagtune_state_key
 from flag_gems.utils import libentry, libtuner
+
+from ..gemm_utils import (
+    HAS_FULL_LAUNCH_ARGUMENTS,
+    GemmChoiceCache,
+    bind_gemm_launch,
+    gemm_storage_is_wide,
+)
 
 
 @triton.jit
@@ -163,7 +171,7 @@ def _finish_splitk(
     )
 
 
-def _launch_reduction(
+def _reduction_launch(
     partials, out, splits, bias=None, alpha=1, beta=0, *, bias_strides=None
 ):
     unbatched = out.ndim == 2
@@ -171,7 +179,7 @@ def _launch_reduction(
     out_strides = (0, *out.stride()) if unbatched else out.stride()
     if bias_strides is None:
         bias_strides = bias.stride() if bias is not None else (0, 0, 0)
-    _finish_splitk[(triton.cdiv(batch * m * n, 256),)](
+    return (triton.cdiv(batch * m * n, 256), 1, 1), (
         partials,
         out,
         bias if bias is not None else out,
@@ -185,9 +193,12 @@ def _launch_reduction(
         alpha,
         beta,
         bias is not None,
-        num_warps=4,
-        num_stages=1,
     )
+
+
+def _launch_reduction(partials, out, splits):
+    grid, args = _reduction_launch(partials, out, splits)
+    _finish_splitk[grid](*args, num_warps=4, num_stages=1)
 
 
 def launch_splitk(a, b, out, config):
@@ -228,6 +239,40 @@ def _small_split_count(batch, m, n, k):
     return splits if splits >= 2 else 0
 
 
+# Compiled launchers retain static geometry only. The workspace, output, and
+# operand addresses always come from the current invocation.
+_small_launches = GemmChoiceCache(maxsize=512)
+
+
+def _small_launch_key(a, b, out, bias, geometry, alpha, beta):
+    if (
+        not HAS_FULL_LAUNCH_ARGUMENTS
+        or _small_partials.fn._run_mode != "normal"
+        or triton.knobs.autotuning.adjust_block_size
+    ):
+        return None
+    if type(alpha) not in (int, float, bool) or type(beta) not in (int, float, bool):
+        return None
+    tensors = (a, b, out) if bias is None else (a, b, out, bias)
+    if any(type(t) is not torch.Tensor or t.device != a.device for t in tensors):
+        return None
+    return (
+        a.device,
+        geometry,
+        tuple(
+            (t.dtype, t.data_ptr() % 16 == 0, gemm_storage_is_wide(t)) for t in tensors
+        ),
+        type(alpha),
+        alpha,
+        type(beta),
+        beta,
+        _flagtune_state_key(),
+        _small_partials.fn._benchmark_protocol,
+        triton.knobs.runtime.override_arch,
+        triton.knobs.hcu.use_buffer_ops,
+    )
+
+
 def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0, *, bias_strides=None):
     """Return whether a long reduction was split across additional workgroups.
 
@@ -247,14 +292,44 @@ def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0, *, bias_strides=N
     partials = torch.empty((splits, batch, m, n), dtype=torch.float32, device=a.device)
     a_strides = (0, *a.stride()) if unbatched else a.stride()
     b_strides = (0, *b.stride()) if unbatched else b.stride()
-    _small_partials[
-        lambda meta: (
+    post_grid, post_args = _reduction_launch(
+        partials, out, splits, bias, alpha, beta, bias_strides=bias_strides
+    )
+    geometry = (k, a_strides, b_strides, post_args[3:])
+    key = _small_launch_key(a, b, out, bias, geometry, alpha, beta)
+    plan = _small_launches.get(key) if key is not None else None
+    if plan is not None:
+        launch_partial, partial_constants, launch_post, post_constants = plan
+        launch_partial(a, b, partials, *partial_constants)
+        launch_post(partials, out, post_args[2], *post_constants)
+        return True
+
+    def partial_grid(meta):
+        return (
             triton.cdiv(m, meta["TM"]) * triton.cdiv(n, meta["TN"]),
             batch,
             splits,
         )
-    ](a, b, partials, m, n, k, *a_strides, *b_strides, batch, splits)
-    _launch_reduction(
-        partials, out, splits, bias, alpha, beta, bias_strides=bias_strides
+
+    partial_constants = (m, n, k, *a_strides, *b_strides, batch, splits)
+    partial_args = (a, b, partials, *partial_constants)
+    partial_kernel, meta = _small_partials[partial_grid](*partial_args)
+    post_kernel, post_meta = _finish_splitk[post_grid](
+        *post_args, num_warps=4, num_stages=1
     )
+    if key is not None and not torch.cuda.is_current_stream_capturing():
+        partial = bind_gemm_launch(
+            _small_partials,
+            partial_kernel,
+            partial_grid(meta),
+            partial_args,
+            {},
+            meta,
+            3,
+        )
+        post = bind_gemm_launch(
+            _finish_splitk, post_kernel, post_grid, post_args, {}, post_meta, 3
+        )
+        if partial is not None and post is not None:
+            _small_launches.remember(key, (*partial, *post))
     return True

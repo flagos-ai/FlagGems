@@ -17,6 +17,7 @@ import threading
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from functools import cache
+from inspect import Parameter
 from math import inf
 
 import torch
@@ -25,6 +26,7 @@ from triton.runtime import errors
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.libentry import major_version, minor_version
 
 logger = logging.getLogger(__name__)
 # Leave room for a complete padded tile in signed i32 coordinate arithmetic.
@@ -48,6 +50,22 @@ def gemm_device_context(device):
     if device.index == torch_device_fn.current_device():
         return _CURRENT_DEVICE
     return torch_device_fn.device(device)
+
+
+# LibEntry forwards the full JIT signature to compiled launchers on this ABI.
+HAS_FULL_LAUNCH_ARGUMENTS = (3, 3) <= (major_version, minor_version) <= (3, 9)
+
+
+def bind_gemm_launch(entry, kernel, grid, args, options, meta, dynamic_args):
+    """Bind only scalars, leaving tensor addresses and stream selection dynamic."""
+    constants = args[dynamic_args:]
+    constants += tuple(
+        options.get(param.name, meta.get(param.name, param.default))
+        for param in entry.jit_function.params[len(args) :]
+    )
+    if any(value is Parameter.empty for value in constants):
+        return None
+    return kernel[(grid + (1, 1))[:3]], constants
 
 
 def gemm_storage_is_wide(tensor):
@@ -107,6 +125,12 @@ class GemmChoiceCache:
         with self._lock:
             if self.get(key) is expected:
                 self._choices[key] = replace(expected, index=0)
+
+    def remember(self, key, choice):
+        with self._lock:
+            if len(self._choices) >= self._maxsize:
+                del self._choices[next(iter(self._choices))]
+            self._choices[key] = choice
 
     def clear(self):
         with self._lock:

@@ -53,10 +53,12 @@ from flag_gems.utils import triton_lang_extension as ext
 from .bmm.splitk import launch_small_splitk
 from .gemm_config_profiles import SHARED_HCU_OPTIONS as _SHARED_HCU_OPTIONS
 from .gemm_utils import (
+    HAS_FULL_LAUNCH_ARGUMENTS,
     I32_GEMM_COORD_LIMIT,
     GemmChoice,
     GemmChoiceCache,
     benchmark_gemm_candidate,
+    bind_gemm_launch,
     capture_gemm_fallback,
     gemm_device_context,
     gemm_has_wide_storage,
@@ -1455,17 +1457,15 @@ def _mm_splitk_post(W, C, MN: tl.constexpr, SPLITS: tl.constexpr, BLOCK: tl.cons
     tl.store(C + i, acc, i < MN)
 
 
+def _launch_splitk_post(workspace, out, mn, splits):
+    return _mm_splitk_post[lambda meta: (triton.cdiv(mn, meta["BLOCK"]),)](
+        workspace, out, mn, splits
+    )
+
+
 def _splitk_post_hook(args, exception):
-    # Triton invokes this inside its timed kernel_call. The final launch and
-    # LibEntry cache hits are completed by the public wrapper below.
     if exception is None and args["KIND"] == 0 and args["SPLITS"] > 1:
-        mn = args["M"] * args["N"]
-        _mm_splitk_post[lambda meta: (triton.cdiv(mn, meta["BLOCK"]),)](
-            args["W"],
-            args["C"],
-            mn,
-            args["SPLITS"],
-        )
+        _launch_splitk_post(args["W"], args["C"], args["M"] * args["N"], args["SPLITS"])
 
 
 _SPLITK_WORKSPACE_BYTES = 16 * 1024 * 1024
@@ -1766,7 +1766,10 @@ def _splitk_alignment_facts(M, N):
     return M & -M, N & -N
 
 
-def _launch_mm_splitk(a, b, c, *, symmetric_async=False):
+_mm_splitk_launches = GemmChoiceCache(maxsize=512)
+
+
+def _launch_mm_splitk(a, b, c, *, symmetric_async=False, launch_key=None):
     M, K = a.shape
     N = b.shape[1]
     ma, na = _splitk_alignment_facts(M, N)
@@ -1777,6 +1780,16 @@ def _launch_mm_splitk(a, b, c, *, symmetric_async=False):
     capacity = min(64, _SPLITK_WORKSPACE_BYTES // (4 * M * N))
     max_splits = 1 << (capacity.bit_length() - 1)
     workspace = torch.empty((max_splits, M, N), device=a.device, dtype=torch.float32)
+    plan = _mm_splitk_launches.get(launch_key) if launch_key is not None else None
+    if plan is not None:
+        (launch_partial, constants), post = plan
+        with gemm_device_context(a.device):
+            launch_partial(a, b, workspace, c, *constants)
+            if post is not None:
+                launch_post, constants = post
+                launch_post(workspace, c, *constants)
+        return
+
     with gemm_device_context(a.device):
         # Preserve the qualified Split-K load modes while ordinary MM is
         # validated with the per-operand layout contract.
@@ -1790,24 +1803,39 @@ def _launch_mm_splitk(a, b, c, *, symmetric_async=False):
             triton.cdiv(N, meta["BN"]),
             meta["SPLITS"] if meta["KIND"] == 0 else 1,
         )
-        partial, meta = _mm_splitk_partial[grid](
-            a,
-            b,
-            workspace,
-            c,
-            M,
-            N,
-            K,
-            *b.stride(),
+        args = (a, b, workspace, c, M, N, K, *b.stride())
+        options = dict(
             B_K_CONTIGUOUS=b.stride(0) == 1,
             ASYNC_LOAD_MASK=mask,
             WAVE_PRIVATE_SYNC_SUPPORTED=_SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED,
             M_ALIGNMENT=ma,
             N_ALIGNMENT=na,
         )
-        # LibEntry returns the metadata for this exact launch, including on
-        # cache hits; do not read a mutable global tuner's best_config.
-        _splitk_post_hook(dict(meta, W=workspace, C=c, M=M, N=N, K=K), None)
+        partial, meta = _mm_splitk_partial[grid](*args, **options)
+        mn = M * N
+        post = None
+        needs_post = meta["KIND"] == 0 and meta["SPLITS"] > 1
+        if needs_post:
+            post_kernel, post_meta = _launch_splitk_post(
+                workspace, c, mn, meta["SPLITS"]
+            )
+            if launch_key is not None:
+                post_grid = (triton.cdiv(mn, post_meta["BLOCK"]),)
+                post = bind_gemm_launch(
+                    _mm_splitk_post,
+                    post_kernel,
+                    post_grid,
+                    (workspace, c, mn, meta["SPLITS"]),
+                    {},
+                    post_meta,
+                    2,
+                )
+        if launch_key is not None and not torch.cuda.is_current_stream_capturing():
+            bound = bind_gemm_launch(
+                _mm_splitk_partial, partial, grid(meta), args, options, meta, 4
+            )
+            if bound is not None and (not needs_post or post is not None):
+                _mm_splitk_launches.remember(launch_key, (bound, post))
         return partial, meta
 
 
@@ -3437,6 +3465,7 @@ def _mm_candidate_label(candidate):
 
 def clear_mm_family_choices():
     _mm_family_choices.clear()
+    _mm_splitk_launches.clear()
 
 
 def _measure_mm_family(
@@ -3609,6 +3638,7 @@ def _mm_launch_key(a, b, c, fresh_output):
         _flagtune_state_key(),
         mm_kernel.fn._benchmark_protocol,
         _mm_splitk_partial.fn._benchmark_protocol,
+        _mm_splitk_post.fn._benchmark_protocol,
         knobs.runtime.override_arch,
         splitk_options,
     )
@@ -3707,8 +3737,18 @@ def _dispatch_hygon_mm(a, b, c, *, fresh_output=False):
         if succeeded:
             return
         _mm_family_choices.fallback(key, choice)
-    launch = _launch_mm_splitk if choice.splitk else _launch_ordinary_mm
-    launch(a, b, c)
+    bind = (
+        HAS_FULL_LAUNCH_ARGUMENTS
+        and not triton.knobs.autotuning.adjust_block_size
+        and runtime.resolve_tuning_mode("mm") == runtime.TuningMode.DEFAULT
+        and type(a) is type(b) is type(c) is torch.Tensor
+    )
+    if choice.splitk:
+        if _mm_splitk_post.fn._run_mode != "normal":
+            bind = False
+        _launch_mm_splitk(a, b, c, launch_key=key if bind else None)
+    else:
+        _launch_ordinary_mm(a, b, c, launch_key=key if bind else None)
 
 
 def _hygon_mm_requires_edge_mask(M, N, large_tile_configs=False):
@@ -3726,7 +3766,17 @@ def _hygon_mm_requires_edge_mask(M, N, large_tile_configs=False):
     )
 
 
-def _launch_ordinary_mm(a, b, c):
+_ordinary_mm_launches = GemmChoiceCache(maxsize=512)
+
+
+def _launch_ordinary_mm(a, b, c, *, launch_key=None):
+    plan = _ordinary_mm_launches.get(launch_key) if launch_key is not None else None
+    if plan is not None:
+        launch, constants = plan
+        with gemm_device_context(a.device):
+            launch(a, b, c, *constants)
+        return
+
     M, K = a.shape
     N = b.shape[1]
     bounded_coords = max(M, N, K) < I32_GEMM_COORD_LIMIT
@@ -3739,7 +3789,7 @@ def _launch_ordinary_mm(a, b, c):
             0 if not bounded_coords else _hygon_mm_async_load_mask(a, b, c, M, N, K)
         )
         large_tile_configs = _hygon_mm_large_tile_eligible(a, M, N, K, load_mask)
-        mm_kernel[grid](
+        args = (
             a,
             b,
             c,
@@ -3752,6 +3802,8 @@ def _launch_ordinary_mm(a, b, c):
             b.stride(1),
             c.stride(0),
             c.stride(1),
+        )
+        options = dict(
             IS_FP64=a.dtype == torch.float64,
             MASK_EDGES=_hygon_mm_requires_edge_mask(M, N, large_tile_configs),
             # Triton block-pointer offsets are i32 even with i64 strides.
@@ -3762,6 +3814,13 @@ def _launch_ordinary_mm(a, b, c):
             K_DIVISIBLE_BY_16=K % 16 == 0,
             B_K_CONTIGUOUS=b.stride(0) == 1,
         )
+        kernel, meta = mm_kernel[grid](*args, **options)
+        if launch_key is not None and not torch.cuda.is_current_stream_capturing():
+            plan = bind_gemm_launch(
+                mm_kernel, kernel, grid(meta), args, options, meta, 3
+            )
+            if plan is not None:
+                _ordinary_mm_launches.remember(launch_key, plan)
 
 
 def _hygon_mm_direct_mv_out(a, b, c, M, N):
