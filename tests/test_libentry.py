@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import importlib
 import importlib.util
 import inspect
@@ -22,6 +23,7 @@ import sqlite3
 import sys
 import threading
 import time
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -2266,6 +2268,58 @@ def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(
     }
     assert tuner.do_bench is tuner.original_do_bench
     assert tuner.nargs is None
+
+
+def test_run_holds_tensor_arguments_weakly():
+    """A per-shape tuner must not pin the caller's input storage (issue #9315)."""
+    config = triton.Config({"BLOCK": 16})
+
+    class FakeFn:
+        @staticmethod
+        def run(*args, **kwargs):
+            return None
+
+    class FakeTuner:
+        arg_names = ["x", "M"]
+        configs = [config]
+        fn = FakeFn()
+        best_config = None
+
+    tuner = FakeTuner()
+    tensor = torch.zeros(64)
+    LibTuner.run(tuner, tensor, 64)
+
+    assert isinstance(tuner._last_benchmark_args[0], weakref.ReferenceType)
+    assert (
+        libentry_mod.revive_benchmark_arguments(tuner._last_benchmark_args)[0] is tensor
+    )
+    del tensor
+    gc.collect()
+    assert (
+        libentry_mod.revive_benchmark_arguments(tuner._last_benchmark_args)[0] is None
+    )
+
+
+def test_benchmark_config_rejects_released_tensor_context():
+    """Do not silently benchmark a context whose tensors were already freed."""
+    config = triton.Config({"BLOCK": 16})
+
+    class FakeTuner:
+        arg_names = ["x"]
+        _last_benchmark_meta = {}
+        _benchmark_retries = 10
+        benchmark_protocol = None
+        seen_tuned_metas = {}
+        nargs = None
+
+    tuner = FakeTuner()
+    tensor = torch.zeros(8)
+    tuner._last_benchmark_args = libentry_mod._hold_benchmark_value((tensor,))
+    del tensor
+    gc.collect()
+
+    with pytest.raises(RuntimeError, match="still alive"):
+        LibTuner.benchmark_config(tuner, config, warmup=5, rep=10)
 
 
 @pytest.mark.skipif(
