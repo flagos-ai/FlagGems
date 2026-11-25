@@ -185,13 +185,24 @@ def narrow_copy(inp, dim, start, length):
                     inp_start_offset,
                 )
             else:
-                # Chunked launch for pre_dim_size > 65535
-                grid_x = triton.cdiv(block_size, 2048)
+                # Chunked launch for pre_dim_size > 65535.
+                # Use flat views so each chunk receives a real storage slice
+                # rather than the result of an element-wise tensor addition,
+                # and use a grid lambda so the autotuned BLOCK_SIZE is respected
+                # instead of a hardcoded 2048.
+                flat_out = out.view(-1)
+                flat_inp = inp.view(-1)
                 for chunk_start in range(0, pre_dim_size, _MAX_CUDA_GRID_Y):
                     chunk_sz = min(pre_dim_size - chunk_start, _MAX_CUDA_GRID_Y)
-                    cur_out = out + chunk_start * block_size
-                    cur_inp = inp + chunk_start * inp_stride
-                    narrow_copy_kernel[(grid_x, chunk_sz)](
+                    cur_out = flat_out[
+                        chunk_start * block_size : (chunk_start + chunk_sz) * block_size
+                    ]
+                    cur_inp = flat_inp[chunk_start * inp_stride :]
+                    grid = lambda meta, csz=chunk_sz: (
+                        triton.cdiv(block_size, meta["BLOCK_SIZE"]),
+                        csz,
+                    )
+                    narrow_copy_kernel[grid](
                         cur_out,
                         cur_inp,
                         chunk_sz,
