@@ -93,7 +93,7 @@ def nonzero(inp, *, as_tuple=False):
     scalars). Empty inputs need only metadata. All other nonempty signatures
     use the generic FlagGems path, whose costs are outside this optimization.
     """
-    logger.debug("GEMS HYGON NONZERO")
+    logger.debug("GEMS_HYGON NONZERO")
     ndim, n = inp.ndim, inp.numel()
     if n == 0:
         out = torch.empty((0, ndim), dtype=torch.int64, device=inp.device)
