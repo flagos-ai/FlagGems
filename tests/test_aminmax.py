@@ -273,3 +273,184 @@ def test_underscore_aminmax_empty_matches_aten():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems._aminmax(inp)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("column", [0, 1])
+def test_aminmax_coordinate_view(dtype, column):
+    coords_cpu = torch.tensor([[0, 5], [2, 1], [3, 6]], dtype=dtype)
+    coords = coords_cpu.to(flag_gems.device)
+    inp = coords[:, column]
+    assert inp.stride() == (2,)
+    assert inp.storage_offset() == column
+
+    expected = torch.aminmax(coords_cpu[:, column])
+    actual = flag_gems.aminmax(inp)
+
+    for result, reference in zip(actual, expected):
+        torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+
+
+def _aminmax_strided_view(base, view):
+    return {
+        "column": lambda: base[:, 1],
+        "slice": lambda: base[:, 1::3],
+        "transpose": lambda: base.t(),
+        "narrow": lambda: base[2:6, 3:9],
+        "expand": lambda: base[:1, :1].expand(6, 9),
+        "broadcast": lambda: base[:1].expand(8, 12),
+    }[view]()
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize(
+    "view", ["column", "slice", "transpose", "narrow", "expand", "broadcast"]
+)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+        torch.int32,
+        torch.int64,
+    ],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("with_out", [False, True])
+def test_aminmax_no_dim_strided(view, dtype, keepdim, with_out):
+    base_cpu = torch.arange(-50, 46, dtype=dtype).reshape(8, 12)
+    base = base_cpu.to(flag_gems.device)
+    inp = _aminmax_strided_view(base, view)
+    ref_inp = _aminmax_strided_view(base_cpu, view)
+    assert not inp.is_contiguous()
+    expected = torch.aminmax(ref_inp, keepdim=keepdim)
+    out = None
+    if with_out:
+        out = tuple(
+            torch.empty(ref.shape, dtype=dtype, device=flag_gems.device)
+            for ref in expected
+        )
+
+    actual = flag_gems.aminmax(inp, keepdim=keepdim, out=out)
+
+    for i, (result, reference) in enumerate(zip(actual, expected)):
+        assert result.dtype == dtype
+        assert result.device == inp.device
+        torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+        if with_out:
+            assert result.data_ptr() == out[i].data_ptr()
+    torch.testing.assert_close(base.cpu(), base_cpu, rtol=0, atol=0)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("n", [3, 1025, 65537])
+@pytest.mark.parametrize("nan_pattern", ["first", "last", "all"])
+@pytest.mark.parametrize("strided", [False, True])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_aminmax_global_logical_nan_contract(
+    dtype, n, nan_pattern, strided, keepdim, use_out
+):
+    cpu_storage = torch.full((2 * n if strided else n,), 99, dtype=dtype)
+    cpu_inp = cpu_storage[::2] if strided else cpu_storage
+    if nan_pattern == "all":
+        cpu_inp.fill_(float("nan"))
+    else:
+        cpu_inp[0 if nan_pattern == "first" else -1] = float("nan")
+    storage = cpu_storage.to(device=flag_gems.device)
+    inp = storage[::2] if strided else storage
+    metadata = (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr())
+    expected = torch.aminmax(cpu_inp, keepdim=keepdim)
+    shape = (1,) if keepdim else ()
+    out = tuple(torch.empty(shape, dtype=dtype, device=inp.device) for _ in range(2))
+    actual = flag_gems.aminmax(inp, keepdim=keepdim, out=out if use_out else None)
+    for result, reference, target in zip(actual, expected, out):
+        assert result.shape == shape
+        assert result.dtype == dtype and result.device == inp.device
+        torch.testing.assert_close(
+            result.cpu(), reference, rtol=0, atol=0, equal_nan=True
+        )
+        if use_out:
+            assert result.data_ptr() == target.data_ptr()
+    torch.testing.assert_close(
+        storage.cpu(), cpu_storage, rtol=0, atol=0, equal_nan=True
+    )
+    assert (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr()) == metadata
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_aminmax_global_storage_hole_nans(dtype, keepdim):
+    cpu_storage = torch.tensor(
+        [float("nan"), -3, float("nan"), 5, float("nan"), 1], dtype=dtype
+    )
+    storage = cpu_storage.to(device=flag_gems.device)
+    inp = storage[1::2]
+    expected = torch.aminmax(cpu_storage[1::2], keepdim=keepdim)
+    actual = flag_gems.aminmax(inp, keepdim=keepdim)
+    for result, reference in zip(actual, expected):
+        torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+    torch.testing.assert_close(
+        storage.cpu(), cpu_storage, rtol=0, atol=0, equal_nan=True
+    )
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("shape", [(0,), (2, 0, 3), (0, 4)])
+@pytest.mark.parametrize("dtype", [torch.bool, torch.int64, torch.float32])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_aminmax_global_empty_matches_aten(shape, dtype, keepdim, use_out):
+    cpu = torch.empty(shape, dtype=dtype)
+    storage = cpu.to(device=flag_gems.device)
+    inp = storage if len(shape) == 1 else storage.transpose(0, -1)
+    with pytest.raises(RuntimeError, match="identity") as expected:
+        torch.aminmax(cpu, keepdim=keepdim)
+    out_shape = (1,) * inp.ndim if keepdim else ()
+    out = tuple(
+        torch.empty(out_shape, dtype=dtype, device=inp.device) for _ in range(2)
+    )
+    with pytest.raises(RuntimeError, match="identity") as actual:
+        flag_gems.aminmax(inp, keepdim=keepdim, out=out if use_out else None)
+    assert str(actual.value) == str(expected.value)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.bool,
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        *utils.ALL_FLOAT_DTYPES,
+    ],
+)
+@pytest.mark.parametrize("n", [1, 31, 32, 33, 1023, 1024, 1025, 65537])
+@pytest.mark.parametrize("strided", [False, True])
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_aminmax_global_finite_controls(dtype, n, strided, keepdim):
+    cpu_storage = torch.full((2 * n + 1,), 99, dtype=dtype)
+    cpu_inp = cpu_storage[1 : 2 * n + 1 : 2] if strided else cpu_storage[1 : n + 1]
+    cpu_inp.fill_(1)
+    cpu_inp[0] = 0
+    if dtype == torch.int64:
+        cpu_inp[-1] = 2**60 + 3
+    storage = cpu_storage.to(device=flag_gems.device)
+    inp = storage[1 : 2 * n + 1 : 2] if strided else storage[1 : n + 1]
+    expected = torch.aminmax(cpu_inp, keepdim=keepdim)
+    actual = flag_gems.aminmax(inp, keepdim=keepdim)
+    shape = (1,) if keepdim else ()
+    for result, reference in zip(actual, expected):
+        assert result.shape == shape and result.dtype == dtype
+        torch.testing.assert_close(
+            result.cpu(), reference.reshape(shape), rtol=0, atol=0
+        )
+    torch.testing.assert_close(storage.cpu(), cpu_storage, rtol=0, atol=0)

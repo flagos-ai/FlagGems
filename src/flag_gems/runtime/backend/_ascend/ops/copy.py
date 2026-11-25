@@ -53,7 +53,6 @@ from typing import Optional
 import torch
 import triton
 import triton.language as tl
-from torch._prims_common import is_non_overlapping_and_dense
 
 from flag_gems.ops.copy import _int32_viewable
 from flag_gems.ops.copy import copy_ as _generic_copy_
@@ -314,7 +313,9 @@ def _check_copy_overlap(dst, src):
         )
     if not torch._C._is_alias_of(dst, src) or not dst.numel() or not src.numel():
         return src
-    if is_non_overlapping_and_dense(dst) and is_non_overlapping_and_dense(src):
+    if torch.ops.aten.is_non_overlapping_and_dense(
+        dst
+    ) and torch.ops.aten.is_non_overlapping_and_dense(src):
         dst_begin, src_begin = dst.data_ptr(), src.data_ptr()
         dst_end = dst_begin + dst.numel() * dst.element_size()
         src_end = src_begin + src.numel() * src.element_size()

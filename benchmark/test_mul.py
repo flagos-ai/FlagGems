@@ -81,3 +81,44 @@ def test_mul_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.mul_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or flag_gems.device != "cuda",
+    reason="mul_backward is an NVIDIA general-operator implementation",
+)
+def test_mul_backward():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="mul_backward",
+        torch_op=torch.mul,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.mul)
+    bench.run()
+
+
+class MulOutCastBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1024,), (65536,), (1048576,)]
+
+
+def _mul_cast_inputs(shape, dtype, device):
+    left = base.generate_tensor_input(shape, dtype, device)
+    right = base.generate_tensor_input(shape, dtype, device)
+    output = torch.empty(shape, dtype=torch.float32, device=device)
+    yield left, right, {"out": output}
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend out dtype cast")
+def test_mul_out_cast():
+    bench = MulOutCastBenchmark(
+        op_name="mul",
+        input_fn=_mul_cast_inputs,
+        torch_op=torch.mul,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.mul)
+    bench.run()
