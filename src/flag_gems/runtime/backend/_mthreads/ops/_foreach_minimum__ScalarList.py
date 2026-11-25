@@ -27,8 +27,9 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver as _driver
 
-from flag_gems.ops._foreach_minimum__ScalarList import (
+from flag_gems.ops._foreach_binary import (
     _foreach_minimum__ScalarList as default__foreach_minimum__ScalarList,
 )
 
@@ -249,6 +250,44 @@ def _launch_strided(x, n_elem, scalar, block):
     )
 
 
+_FAST = {}
+
+
+def _dispatch(jit_fn, grid, args, const, num_warps, key):
+    """Launch ``jit_fn``, replaying the compiled variant once it exists.
+
+    Triton's Python-level launch costs ~20 us on this target, which is the whole
+    budget for the short lists this op sees, so the CompiledKernel is replayed
+    directly. The ordinary launch stays as the fallback.
+    """
+    entry = _FAST.get(key)
+    if entry is not None:
+        compiled, stream = entry
+        try:
+            compiled.run(
+                grid[0],
+                grid[1] if len(grid) > 1 else 1,
+                1,
+                stream,
+                compiled.function,
+                compiled.packed_metadata,
+                None,
+                None,
+                None,
+                *args,
+                *const.values(),
+            )
+            return
+        except Exception:
+            _FAST.pop(key, None)
+    compiled = jit_fn[grid](*args, num_warps=num_warps, **const)
+    try:
+        drv = _driver.active
+        _FAST[key] = (compiled, drv.get_current_stream(drv.get_current_device()))
+    except Exception:
+        _FAST.pop(key, None)
+
+
 def _foreach_minimum__ScalarList(self, scalars):
     logger.debug("GEMS_MTHREADS _FOREACH_MINIMUM__SCALARLIST")
     if not isinstance(self, (list, tuple)) or any(
@@ -274,7 +313,7 @@ def _foreach_minimum__ScalarList(self, scalars):
             )
 
     dtype = tensors[0].dtype
-    fused = n_tensors <= _MAX_FUSED_SLOTS
+    fused = True
     numels = None
     if fused:
         for x in tensors:
@@ -287,33 +326,52 @@ def _foreach_minimum__ScalarList(self, scalars):
                 fused = False
 
     if fused:
-        max_numel = max(numels)
-        if max_numel == 0:
-            return None
         vec = 16 // tensors[0].element_size()
-        head = tensors[0]
-        pad = _MAX_FUSED_SLOTS - n_tensors
-        ptrs = list(tensors) + [head] * pad
-        lens = numels + [0] * pad
-        vals = [float(v) for v in scalars] + [0.0] * pad
-        grid = ((max_numel + _TILE - 1) // _TILE, n_tensors)
-        _min_scalar_list_kernel[grid](
-            ptrs[0],
-            ptrs[1],
-            ptrs[2],
-            ptrs[3],
-            lens[0],
-            lens[1],
-            lens[2],
-            lens[3],
-            vals[0],
-            vals[1],
-            vals[2],
-            vals[3],
-            BLOCK=_TILE // vec,
-            VEC=vec,
-            num_warps=4,
-        )
+        # The fused kernel has four slots; a longer list goes out as several
+        # four-wide launches rather than one launch per tensor.
+        for start in range(0, n_tensors, _MAX_FUSED_SLOTS):
+            chunk_t = tensors[start : start + _MAX_FUSED_SLOTS]
+            chunk_n = numels[start : start + _MAX_FUSED_SLOTS]
+            chunk_v = scalars[start : start + _MAX_FUSED_SLOTS]
+            k = len(chunk_t)
+            max_numel = max(chunk_n)
+            if max_numel == 0:
+                continue
+            pad = _MAX_FUSED_SLOTS - k
+            ptrs = list(chunk_t) + [chunk_t[0]] * pad
+            lens = list(chunk_n) + [0] * pad
+            vals = [float(v) for v in chunk_v] + [0.0] * pad
+            grid = ((max_numel + _TILE - 1) // _TILE, k)
+            args = (
+                ptrs[0],
+                ptrs[1],
+                ptrs[2],
+                ptrs[3],
+                lens[0],
+                lens[1],
+                lens[2],
+                lens[3],
+                vals[0],
+                vals[1],
+                vals[2],
+                vals[3],
+            )
+            key = (
+                "list",
+                chunk_t[0].dtype,
+                k,
+                tuple(lens),
+                tuple(p.data_ptr() & 15 for p in ptrs),
+                _TILE // vec,
+            )
+            _dispatch(
+                _min_scalar_list_kernel,
+                grid,
+                args,
+                {"BLOCK": _TILE // vec, "VEC": vec},
+                4,
+                key,
+            )
         return None
 
     for x, scalar in zip(tensors, scalars):
