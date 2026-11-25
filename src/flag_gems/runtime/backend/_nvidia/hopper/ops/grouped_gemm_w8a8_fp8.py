@@ -166,13 +166,13 @@ def grouped_fp8_matmul(
                     cols[None, :] < N,
                     0.0,
                 )
-            # Promote every 64 K elements, preserving the established accuracy.
+            # Use K32 promotion when independently scaled K blocks can cancel.
             # A zero limit makes Triton lower this dot through FP16 instead.
             partial = tl.dot(a, b, max_num_imprecise_acc=IMPRECISE)
             sa = tl.load(SA + rows.to(tl.int64) * SAM + block * SAK, valid, 0.0)
             if K > 128 and GROUP_M > 0 and BN <= 128:
                 # One B scale covers this N tile; retain K=128 TMA transactions
-                # and 64-element FP32 promotion without a broadcast scale tile.
+                # and FP32 promotion without a broadcast scale tile.
                 sb = tl.load(
                     SB
                     + expert.to(tl.int64) * SBE
@@ -670,7 +670,16 @@ def grouped_gemm_w8a8_fp8(
                 (experts - extra_rows) * triton.cdiv(average_rows, 128)
                 + extra_rows * triton.cdiv(average_rows + 1, 128)
             )
-            bm = 128 if padded_rows * 4 <= m * 5 else 64
+            # K32 promotion increases live accumulators in the ordinary dot.
+            # Reserve BM128 for the explicit TLE pipeline to avoid spills.
+            bm = (
+                128
+                if HAS_TLE_GROUPED_FP8
+                and k >= 1024
+                and m >= 256 * experts
+                and padded_rows * 4 <= m * 5
+                else 64
+            )
             group_m = 512 // bm
             num_warps, num_stages = 8, (3 if bm == 128 else 4)
             loop_unroll = 2 if bm == 128 else 1
@@ -793,6 +802,6 @@ def grouped_gemm_w8a8_fp8(
             num_stages=num_stages,
             USE_TMA=use_tma,
             GROUP_M=group_m,
-            IMPRECISE=64,
+            IMPRECISE=32 if k > 128 else 64,
             LOOP_UNROLL=loop_unroll,
         )
