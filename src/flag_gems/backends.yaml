@@ -97,7 +97,7 @@ backends:
       - psutil==6.0.0
 
   ascend-cann900:
-    python: "3.12"
+    python: "3.12.13"
     cmake_backend: NPU
     triton: triton==3.5.0
     triton_post_install:
