@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.fill import fill_scalar_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
@@ -162,6 +163,11 @@ def bmm(A, B):
     _, _, N = B.shape
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
+    if batch == 0 or M == 0 or N == 0:
+        return out
+    if K == 0:
+        return fill_scalar_(out, 0)
+
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
         triton.cdiv(meta["N"], meta["TILE_N"]),
@@ -195,6 +201,11 @@ def bmm_out(A, B, out):
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape
     _, _, N = B.shape
+
+    if batch == 0 or M == 0 or N == 0:
+        return out
+    if K == 0:
+        return fill_scalar_(out, 0)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
