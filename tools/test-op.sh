@@ -253,10 +253,19 @@ if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   fi
 else
   # Per-PR run: a handful of changed files, run individually for precise
-  # failure attribution and -x fail-fast.
+  # failure attribution and -x fail-fast. Guard each file with the same shell
+  # timeout as the batched daily runs, and print node ids, so a hung test fails
+  # with rc=124 and leaves the last started test in the log instead of blocking
+  # the job until the workflow timeout.
   for item in "${TEST_CASES[@]}"; do
     echo "Running unit tests for ${item}"
-    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+    PYTHONUNBUFFERED=1 timeout "${TEST_BATCH_TIMEOUT:-3600}" \
+      coverage run -m pytest -s -v ${EXTRA_OPTS} ${item}
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+      if [[ $rc -eq 124 ]]; then
+        echo "::error::${item} timed out after ${TEST_BATCH_TIMEOUT:-3600}s"
+      fi
       if $FAIL_FAST; then exit 1; fi
       FAILURES+=("${item}")
     fi
