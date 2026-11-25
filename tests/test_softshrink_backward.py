@@ -15,20 +15,21 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
+from triton import knobs
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
 DTYPES = list(dict.fromkeys([*utils.FLOAT_DTYPES, torch.float64]))
-
 TOL = {
     torch.float16: (0.002, 0.0005),
     torch.bfloat16: (0.016, 0.003),
     torch.float32: (3e-05, 2e-06),
     torch.float64: (2e-12, 2e-13),
 }
-
 CASES = [
     pytest.param(
         "softshrink", marks=[pytest.mark.softshrink, pytest.mark.softshrink_backward]
@@ -66,6 +67,8 @@ def check(op, x, g, **kw):
     )
 
 
+@pytest.mark.softshrink_backward_out
+@pytest.mark.softshrink
 @pytest.mark.softshrink_backward
 @pytest.mark.parametrize("op", CASES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -80,7 +83,7 @@ def test_vjp(op, dtype, shape, strided):
     torch.testing.assert_close(g, before[1])
 
 
-@pytest.mark.softshrink_backward
+@pytest.mark.softshrink_backward_out
 @pytest.mark.softshrink
 @pytest.mark.softshrink_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -94,8 +97,246 @@ def test_softshrink_boundaries(dtype, lambd):
     check("softshrink", x, torch.ones_like(x), lambd=lambd)
 
 
-pytestmark = [
-    pytest.mark.softshrink,
-    pytest.mark.softshrink_backward,
-    pytest.mark.softshrink_backward_out,
-]
+@pytest.mark.softshrink_backward_out
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.skipif(
+    torch_device_fn.device_count() < 2, reason="requires two visible devices"
+)
+def test_backward_input_device_guard():
+    kind = torch.device(flag_gems.device).type
+    target_device = torch.device(kind, 1)
+    with torch_device_fn.device(target_device):
+        x = torch.linspace(-0.8, 0.8, 257, device=target_device)
+        grad = torch.ones_like(x)
+        expected = flag_gems.softshrink_backward(grad, x, 0.5)
+    with torch_device_fn.device(torch.device(kind, 0)):
+        actual = flag_gems.softshrink_backward(grad, x, 0.5)
+        torch.testing.assert_close(actual, expected)
+        assert torch_device_fn.current_device() == 0
+
+
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.softshrink_backward_out
+@pytest.mark.parametrize("grad_dtype", [*utils.FLOAT_DTYPES, torch.float64])
+@pytest.mark.parametrize("saved_dtype", [*utils.FLOAT_DTYPES, torch.float64])
+@pytest.mark.parametrize(
+    "destination", [None, torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+@pytest.mark.parametrize("layout", ["contiguous", "strided", "broadcast"])
+def test_backward_mixed_dtype_contract(grad_dtype, saved_dtype, destination, layout):
+    shape = (3, 5)
+    x = torch.linspace(
+        -1.1, 1.1, 15, device=flag_gems.device, dtype=saved_dtype
+    ).reshape(shape)
+    grad = torch.linspace(
+        -0.9, 0.9, 15, device=flag_gems.device, dtype=grad_dtype
+    ).reshape(shape)
+    if layout == "strided":
+        x_storage = torch.empty((3, 5, 2), device=x.device, dtype=saved_dtype)
+        g_storage = torch.empty((3, 5, 2), device=x.device, dtype=grad_dtype)
+        x_storage[..., 1] = x
+        g_storage[..., 1] = grad
+        x, grad = (x_storage[..., 1], g_storage[..., 1])
+    elif layout == "broadcast":
+        grad = grad[:1]
+    aten = torch.ops.aten.softshrink_backward
+    if destination is None:
+        expected = aten.default(grad, x, 0.5)
+        actual = flag_gems.softshrink_backward(grad, x, 0.5)
+    else:
+        expected = torch.empty(shape, dtype=destination, device=x.device)
+        target = torch.empty_like(expected)
+        aten.grad_input(grad, x, 0.5, grad_input=expected)
+        actual = flag_gems.softshrink_backward_out(grad, x, 0.5, grad_input=target)
+        assert actual is target
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_close(actual, utils.to_reference(expected), expected.dtype)
+
+
+class NoNativeCompute(TorchDispatchMode):
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        blocked = {
+            "mul",
+            "add",
+            "sub",
+            "div",
+            "cos",
+            "cosh",
+            "sin",
+            "sinh",
+            "sigmoid",
+            "silu_backward",
+            "softplus_backward",
+            "softshrink_backward",
+            "gather",
+            "scatter",
+            "scatter_add",
+            "scatter_reduce",
+            "index",
+            "index_put",
+            "clone",
+            "copy_",
+            "_to_copy",
+        }
+        if func._schema.name.split("::")[-1] in blocked:
+            raise AssertionError("native computation in backward: " + str(func))
+        return func(*args, **kwargs or {})
+
+
+OPS = ["softshrink"]
+
+
+@pytest.mark.softshrink_backward_out
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.parametrize("op", ("softshrink",) + ())
+def test_registered_forward_backward(op):
+    xs = [torch.randn(7, 13, device=flag_gems.device, requires_grad=True)]
+    refs = [xs[0].detach().requires_grad_()]
+    expected = native("softshrink", refs[0])
+
+    def invoke():
+        return native("softshrink", xs[0])
+
+    grad = torch.randn_like(expected)
+    want = torch.autograd.grad(expected, refs, grad)
+    included = "softshrink"
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=[included])
+        actual = invoke()
+        assert type(actual.grad_fn).__name__ in (
+            "PointwiseBackwardFunctionBackward",
+            "IndexBackwardFunctionBackward",
+        )
+        with NoNativeCompute():
+            got = torch.autograd.grad(actual, xs, grad)
+    finally:
+        lib._destroy()
+    for a, b in zip(got, want):
+        torch.testing.assert_close(a, b, rtol=3e-05, atol=2e-06)
+
+
+@pytest.mark.softshrink_backward_out
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.parametrize("op", ("softshrink",))
+@pytest.mark.parametrize("out", [False, True])
+def test_registered_backward_schema(op, out, monkeypatch):
+    g = torch.randn(57, device=flag_gems.device)
+    x = torch.randn_like(g)
+    extra = [0.5]
+    aten = getattr(torch.ops.aten, "softshrink_backward")
+    want = aten.default(g, x, *extra)
+    target = torch.empty_like(g)
+    events = []
+    monkeypatch.setattr(
+        knobs.runtime, "launch_enter_hook", lambda metadata: events.append(metadata)
+    )
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(
+            lib=lib, include=["softshrink_backward" + ("_out" if out else "")]
+        )
+        actual = (
+            aten.grad_input(g, x, *extra, grad_input=target)
+            if out
+            else aten.default(g, x, *extra)
+        )
+        assert events, "The registered backward did not launch a Triton kernel"
+        if out:
+            assert actual is target
+    finally:
+        lib._destroy()
+    torch.testing.assert_close(actual, want, rtol=TOL[g.dtype][0], atol=TOL[g.dtype][1])
+
+
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.softshrink_backward_out
+@pytest.mark.parametrize("op", ["softshrink"])
+def test_out_partial_overlap(op):
+    base = torch.randn(33, device=flag_gems.device)
+    g = base[:31]
+    target = base[1:32]
+    x = torch.randn_like(g)
+    extra = [0.5]
+    with pytest.raises(RuntimeError):
+        getattr(torch.ops.aten, "softshrink_backward").grad_input(
+            g, x, *extra, grad_input=target
+        )
+    with pytest.raises(RuntimeError):
+        getattr(flag_gems, "softshrink_backward_out")(g, x, *extra, grad_input=target)
+
+
+def make_tensor(shape, dtype, device, strided=False):
+    if strided:
+        return torch.randn((*shape, 2), dtype=dtype, device=device)[..., 1]
+    return torch.randn(shape, dtype=dtype, device=device)
+
+
+@pytest.mark.softshrink_backward_out
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.parametrize(
+    "op",
+    [
+        pytest.param("softshrink", marks=getattr(pytest.mark, "softshrink_backward"))
+        for op in OPS
+    ],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("strided", [False, True])
+def test_pointwise_autograd(op, dtype, strided):
+    x = make_tensor((7, 13), dtype, flag_gems.device, strided).requires_grad_()
+    ref = x.detach().requires_grad_()
+    y = getattr(flag_gems, "softshrink")(x)
+    expected = native("softshrink", ref)
+    torch.testing.assert_close(y, expected, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+    g = make_tensor(y.shape, dtype, flag_gems.device, strided)
+    want = torch.autograd.grad(expected, ref, g)[0]
+    with NoNativeCompute():
+        got = torch.autograd.grad(y, x, g)[0]
+    torch.testing.assert_close(got, want, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+@pytest.mark.softshrink_backward_out
+@pytest.mark.softshrink
+@pytest.mark.softshrink_backward
+@pytest.mark.parametrize("op", ["softshrink"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("target_dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["empty", "strided"])
+def test_native_out(op, dtype, target_dtype, layout):
+    g = torch.randn(31, device=flag_gems.device, dtype=dtype)
+    x = torch.randn_like(g)
+    args = [g, x] + [0.5]
+    target = (
+        torch.empty((0,), device=g.device, dtype=target_dtype)
+        if layout == "empty"
+        else torch.empty((31, 2), device=g.device, dtype=target_dtype)[:, 1]
+    )
+    expected = torch.empty(31, device=g.device, dtype=target_dtype)
+    getattr(torch.ops.aten, "softshrink_backward").grad_input(
+        *args, grad_input=expected
+    )
+    result = getattr(flag_gems, "softshrink_backward_out")(*args, grad_input=target)
+    assert result is target
+    torch.testing.assert_close(result, expected, rtol=TOL[dtype][0], atol=TOL[dtype][1])
+
+
+_MISSING_REGISTRAR = object()
+
+
+@pytest.fixture(autouse=True)
+def _restore_registrar_state():
+    previous = getattr(flag_gems, "current_work_registrar", _MISSING_REGISTRAR)
+    yield
+    if previous is _MISSING_REGISTRAR:
+        if hasattr(flag_gems, "current_work_registrar"):
+            delattr(flag_gems, "current_work_registrar")
+    else:
+        flag_gems.current_work_registrar = previous

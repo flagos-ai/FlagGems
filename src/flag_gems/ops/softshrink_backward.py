@@ -18,8 +18,8 @@ import logging
 import triton
 import triton.language as tl
 
+from flag_gems.ops.softshrink import softshrink_backward_out
 from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils._softshrink_backward_pointwise_impl import softshrink_backward_out
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,7 @@ def softshrink_backward_kernel(grad_output, self, lambd):
 
 
 def softshrink_backward(grad_output, self, lambd=0.5):
-    from flag_gems.utils._softshrink_backward_pointwise_impl import (
-        softshrink_backward as backward_impl,
-    )
+    from flag_gems.ops.softshrink import softshrink_backward as backward_impl
 
     return backward_impl(grad_output, self, lambd)
 
