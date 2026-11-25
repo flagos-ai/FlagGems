@@ -77,9 +77,10 @@ backends:
       USE_FLAGCX: "OFF"
     deps:
       - flagcx==0.14.1+cuda13.3
-      - torch==2.11.0+cu130
+      - numpy==1.26.4
+      - torch==2.13.0+cu130
       - torchaudio==2.11.0+cu130
-      - torchvision==0.26.0+cu130
+      - torchvision==0.28.0+cu130
 
   ascend-cann850:
     python: "3.11"
@@ -96,7 +97,7 @@ backends:
       - psutil==6.0.0
 
   ascend-cann900:
-    python: "3.11"
+    python: "3.12"
     cmake_backend: NPU
     triton: triton==3.5.0
     triton_post_install:
