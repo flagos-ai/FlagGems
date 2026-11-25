@@ -6735,6 +6735,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fft_r2c_backward
+  description: >-
+    Backward of the onesided real-to-complex FFT (aten::_fft_r2c, used by
+    torch.fft.rfft), computed as the real part of the inverse c2c transform of
+    the zero-padded complex grad_output.
+  for:
+  - fft_r2c_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_rfft
   description: Computes the one-dimensional real-input discrete Fourier transform.
   for:
