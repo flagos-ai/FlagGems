@@ -26,6 +26,7 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._upsample_nearest_exact3d_backward import _upsample_nearest_exact3d_backward
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -424,6 +425,7 @@ from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
 from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d_backward import upsample_nearest3d_backward
@@ -433,6 +435,7 @@ from .upsample_nearest3d_backward_grad_input import (
 from .upsample_nearest_exact3d_backward_grad_input import (
     upsample_nearest_exact3d_backward_grad_input,
 )
+from .value_selecting_reduction_backward import value_selecting_reduction_backward
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .view_copy import view_copy
@@ -465,6 +468,7 @@ __all__ = [
     "_trilinear_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_nearest_exact3d_backward",
     "absolute_",
     "acos_",
     "acosh",
@@ -918,11 +922,13 @@ __all__ = [
     "unsafe_index",
     "unsafe_index_put",
     "unsafe_masked_index",
+    "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
     "upsample_nearest_exact3d_backward_grad_input",
+    "value_selecting_reduction_backward",
     "var_mean",
     "vector_norm",
     "view_copy",
