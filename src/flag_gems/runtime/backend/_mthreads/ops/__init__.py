@@ -88,6 +88,7 @@ from ._foreach_rsqrt import _foreach_rsqrt
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin_ import _foreach_sin_
+from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sqrt_ import _foreach_sqrt_
 from ._foreach_sub__List import _foreach_sub__List
 from ._foreach_sub__ScalarList import _foreach_sub__ScalarList
@@ -356,6 +357,7 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_foreach_sin_",
+    "_foreach_sqrt",
     "_foreach_sqrt_",
     "_foreach_sub__List",
     "_foreach_sub__ScalarList",
