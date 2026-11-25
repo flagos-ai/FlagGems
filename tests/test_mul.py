@@ -554,3 +554,45 @@ def test_mul_complex_grid_stride_review(
     torch.npu.synchronize()
     assert launches
     torch.testing.assert_close(result.cpu(), expected, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or triton.__version__ < "3.5",
+    reason="Hopper tiled broadcast kernel requires triton >= 3.5",
+)
+@pytest.mark.parametrize("n_cols", [7, 96])
+def test_mul_hopper_broadcast_survives_monkeypatched_next_power_of_2(
+    monkeypatch, n_cols
+):
+    """The tiled broadcast kernel must not depend on a mutable triton global.
+
+    Some downstream packages replace ``triton.next_power_of_2`` with an
+    int-only implementation. The kernel evaluates next_power_of_2 on a
+    ``tl.constexpr``, so a helper that only accepts ``int`` makes compilation
+    fail. Here we install an int-only version (the one sglang uses) and assert
+    the broadcast path still compiles and computes the right result.
+    """
+    hopper_mul = importlib.import_module(
+        "flag_gems.runtime.backend._nvidia.hopper.ops.mul"
+    )
+
+    def _int_only_next_power_of_2(n):
+        return 1 << (n - 1).bit_length() if n > 0 else 1
+
+    monkeypatch.setattr(triton, "next_power_of_2", _int_only_next_power_of_2)
+
+    rows = 262144
+    inp1 = torch.randn((rows, 1), dtype=torch.float32, device=flag_gems.device)
+    inp2 = torch.randn((1, n_cols), dtype=torch.float32, device=flag_gems.device)
+    ref_out = utils.to_reference(inp1, True) * utils.to_reference(inp2, True)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    assert res_out.shape == ref_out.shape, (
+        f"Shape mismatch: FlagGems produced {res_out.shape}, "
+        f"expected {ref_out.shape}"
+    )
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    # Guard against the fix silently losing the helper (e.g. helper removed but
+    # call sites reverted): the module must own its constexpr-safe version.
+    assert hasattr(hopper_mul, "_next_power_of_2")
