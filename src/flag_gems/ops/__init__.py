@@ -522,7 +522,7 @@ from flag_gems.ops._wrapped_linear_prepack import _wrapped_linear_prepack
 from flag_gems.ops._wrapped_quantized_linear_prepacked import (
     _wrapped_quantized_linear_prepacked,
 )
-from flag_gems.ops.abs import abs, abs_
+from flag_gems.ops.abs import abs, abs_, abs_backward
 from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.acos_ import acos_
@@ -2262,6 +2262,7 @@ __all__ = [
     "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
+    "abs_backward",
     "absolute",
     "absolute_",
     "acos",
