@@ -15,11 +15,22 @@
 
 import math
 from dataclasses import dataclass
-import torch
-import flag_gems
-from . import base, consts
+
 import pytest
-OP_SPEC = {'id': 'native_layer_norm_backward', 'forward': 'layer_norm_backward', 'schemas': ['native_layer_norm_backward'], 'mode': 'direct', 'dtypes': ['float16', 'float32', 'bfloat16']}
+import torch
+
+import flag_gems
+
+from . import base, consts
+
+OP_SPEC = {
+    "id": "native_layer_norm_backward",
+    "forward": "layer_norm_backward",
+    "schemas": ["native_layer_norm_backward"],
+    "mode": "direct",
+    "dtypes": ["float16", "float32", "bfloat16"],
+}
+
 
 @dataclass
 class Case:
@@ -42,9 +53,10 @@ class Case:
         result = fn(*args, **kwargs)
         return result[0] if self.select else result
 
+
 def make_case(op, dtype, shape, strided=False, variant=0, benchmark=False):
     device = flag_gems.device
-    name = 'layer_norm_backward'
+    name = "layer_norm_backward"
 
     def tensor(size, positive=False):
         value = torch.rand(size, device=device, dtype=dtype)
@@ -60,34 +72,60 @@ def make_case(op, dtype, shape, strided=False, variant=0, benchmark=False):
             copied = []
             for arg in args:
                 if isinstance(arg, torch.Tensor):
-                    storage = torch.empty((*arg.shape, 2), dtype=arg.dtype, device=arg.device)
+                    storage = torch.empty(
+                        (*arg.shape, 2), dtype=arg.dtype, device=arg.device
+                    )
                     storage[..., 1] = arg
                     arg = storage[..., 1]
                 copied.append(arg)
             args = copied
         return Case(tuple(args), kwargs or {}, name, reference, **options)
+
     value = tensor(shape)
     grad = tensor(shape)
     mask = [(True, True, True), (True, False, False), (False, True, True)][variant % 3]
     normalized = tuple(shape[-2:]) if variant == 2 and len(shape) > 2 else (shape[-1],)
     weight = tensor(normalized) if variant != 1 else None
     bias = tensor(normalized) if variant != 1 else None
-    (_, mean, rstd) = torch.ops.aten.native_layer_norm(value, normalized, weight, bias, 1e-05)
+    _, mean, rstd = torch.ops.aten.native_layer_norm(
+        value, normalized, weight, bias, 1e-05
+    )
     args = (grad, value, normalized, mean, rstd, weight, bias, mask)
     reduction = max(1, value.numel() // math.prod(normalized))
-    return case(args, _native_group_backward_reference if op == 'native_group_norm_backward' else getattr(torch.ops.aten, op), grad_inputs=(), reduction_size=reduction)
+    return case(
+        args,
+        (
+            _native_group_backward_reference
+            if op == "native_group_norm_backward"
+            else getattr(torch.ops.aten, op)
+        ),
+        grad_inputs=(),
+        reduction_size=reduction,
+    )
+
 
 def _native_group_backward_reference(*args):
     args = tuple((x.contiguous() if isinstance(x, torch.Tensor) else x for x in args))
     return torch.ops.aten.native_group_norm_backward(*args)
+
 
 class BackwardBenchmark(base.Benchmark):
 
     def __init__(self, op):
         self.task_id = op
         self.spec = OP_SPEC
-        dtypes = consts.FLOAT_DTYPES if self.spec['dtypes'] == ['float16', 'float32', 'bfloat16'] else [getattr(torch, name) for name in self.spec['dtypes']]
-        super().__init__(op_name=op, torch_op=lambda *args: None, gems_op=lambda *args: None, dtypes=dtypes, is_backward=self.spec['mode'] != 'direct')
+        dtypes = (
+            consts.FLOAT_DTYPES
+            if self.spec["dtypes"] == ["float16", "float32", "bfloat16"]
+            else [getattr(torch, name) for name in self.spec["dtypes"]]
+        )
+        super().__init__(
+            op_name=op,
+            torch_op=lambda *args: None,
+            gems_op=lambda *args: None,
+            dtypes=dtypes,
+            is_backward=self.spec["mode"] != "direct",
+        )
 
     def get_input_iter(self, dtype):
         for shape in self.shapes:
@@ -98,13 +136,22 @@ class BackwardBenchmark(base.Benchmark):
             yield (*case.args, case.kwargs)
 
     def unpack_to_args_kwargs(self, values):
-        (args, kwargs) = super().unpack_to_args_kwargs(values)
+        args, kwargs = super().unpack_to_args_kwargs(values)
         if self.is_backward:
-            args = [x.detach() if isinstance(x, torch.Tensor) and i not in self.current_case.grad_inputs else x for (i, x) in enumerate(args)]
+            args = [
+                (
+                    x.detach()
+                    if isinstance(x, torch.Tensor)
+                    and i not in self.current_case.grad_inputs
+                    else x
+                )
+                for (i, x) in enumerate(args)
+            ]
         return (args, kwargs)
+
 
 @pytest.mark.layer_norm_backward
 @pytest.mark.layernorm
 @pytest.mark.native_layer_norm_backward
 def test_backward():
-    BackwardBenchmark('native_layer_norm_backward').run()
+    BackwardBenchmark("native_layer_norm_backward").run()
