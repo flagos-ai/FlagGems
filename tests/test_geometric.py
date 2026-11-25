@@ -130,7 +130,7 @@ def test_geometric_inplace_generator_and_identity():
     assert receiver._version > version
     assert not torch.equal(gen.get_state(), state)
     result.sum().backward()
-    assert torch.equal(leaf.grad, torch.zeros_like(leaf))
+    utils.gems_assert_equal(leaf.grad, utils.to_reference(torch.zeros_like(leaf)))
 
 
 def _check_backend_distribution(inplace, dtype, p):
