@@ -424,6 +424,7 @@ from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
 from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d_backward import upsample_nearest3d_backward
@@ -918,6 +919,7 @@ __all__ = [
     "unsafe_index",
     "unsafe_index_put",
     "unsafe_masked_index",
+    "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "upsample_nearest3d_backward",
