@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -33,4 +35,5 @@ def test_is_same_size():
         torch_op=torch.ops.aten.is_same_size,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.is_same_size)
     bench.run()
