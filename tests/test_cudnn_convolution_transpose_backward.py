@@ -16,6 +16,7 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -62,35 +63,25 @@ def test_cudnn_convolution_transpose_backward(
     ref_inp = utils.to_reference(inp, True)
     ref_weight = utils.to_reference(weight, True)
 
-    # The forward output size is the reference's; grad_output must match it.
-    with torch.no_grad():
-        ref_out_shape = torch.cudnn_convolution_transpose(
-            ref_inp,
-            ref_weight,
-            padding=(padding, padding),
-            output_padding=(output_padding, output_padding),
-            stride=(stride, stride),
-            dilation=(dilation, dilation),
-            groups=groups,
-            benchmark=False,
-            deterministic=False,
-            allow_tf32=False,
-        ).shape
-    out_grad = torch.randn(ref_out_shape, dtype=dtype, device=flag_gems.device)
-    ref_grad = utils.to_reference(out_grad, True)
-
-    ref_out = torch.cudnn_convolution_transpose(
+    # The reference forward is the generic conv_transpose2d: aten
+    # ``cudnn_convolution_transpose`` has no CPU implementation, so it cannot
+    # serve as the reference under ``--ref=cpu`` (nor on backends without
+    # cuDNN). Both compute the same forward, so the autograd of this one is the
+    # reference gradient.
+    ref_out = F.conv_transpose2d(
         ref_inp,
         ref_weight,
+        bias=None,
+        stride=(stride, stride),
         padding=(padding, padding),
         output_padding=(output_padding, output_padding),
-        stride=(stride, stride),
-        dilation=(dilation, dilation),
         groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
+        dilation=(dilation, dilation),
     )
+    # grad_output must match the forward output shape.
+    out_grad = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_out = ref_out.to(dtype)
+    ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
     res_in_grad = flag_gems.cudnn_convolution_transpose_backward(
