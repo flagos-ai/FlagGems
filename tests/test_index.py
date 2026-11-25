@@ -356,3 +356,38 @@ def test_index_int32_offset_overflow():
     ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
     out_t = flag_gems.index(inp.t(), [None, idx])
     utils.gems_assert_close(out_t, ref_out_t, torch.int8)
+
+
+INDEX_BACKWARD_CASES = [
+    ((2**24,), ((2**16,),)),
+    ((32, 32), ((8,), (8,))),
+    ((512, 512, 512), ((2, 128),)),
+    ((64, 64, 64), ((2, 8), (2, 8))),
+]
+
+
+@pytest.mark.index_backward
+@pytest.mark.parametrize("input_shape, indices_shape", INDEX_BACKWARD_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_backward(input_shape, indices_shape, dtype):
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    indices = gen_indices(input_shape, indices_shape, True)
+
+    res_out = flag_gems.index(inp, indices)
+    ref_indices = [utils.to_reference(index, False) for index in indices]
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    (res_dx,) = torch.autograd.grad(res_out, inp, out_grad)
+    (ref_dx,) = torch.autograd.grad(ref_out, ref_inp, ref_out_grad)
+    utils.gems_assert_close(res_dx, ref_dx, dtype)
+
+    # The public backward primitive scatters the gradient with accumulation.
+    res_direct = flag_gems.index_backward(out_grad, indices, input_shape)
+    utils.gems_assert_close(res_direct, ref_dx, dtype)

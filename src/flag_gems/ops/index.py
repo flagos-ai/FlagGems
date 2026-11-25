@@ -20,6 +20,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems import runtime
+from flag_gems.ops.index_put import index_put_
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -725,8 +726,44 @@ def _run_linearized_adjacent_index(inp, indices):
     return out.contiguous()
 
 
+class IndexOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, indices):
+        ctx.indices = list(indices)
+        ctx.input_size = tuple(inp.shape)
+        return _index_forward(inp, indices)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return (
+            index_backward(grad_output, ctx.indices, ctx.input_size),
+            None,
+        )
+
+
+def index_backward(grad_output, indices, input_size):
+    """Backward of ``index`` with respect to ``inp``.
+
+    Advanced indexing scatters the output gradient back to the selected rows;
+    duplicate indices accumulate, matching ``torch.ops.aten.index`` autograd.
+    """
+    logger.debug("GEMS INDEX_BACKWARD")
+    compute_dtype = (
+        torch.float32
+        if grad_output.dtype in (torch.float16, torch.bfloat16)
+        else grad_output.dtype
+    )
+    inp = torch.zeros(input_size, dtype=compute_dtype, device=grad_output.device)
+    out = index_put_(inp, list(indices), grad_output.to(compute_dtype), accumulate=True)
+    return out.to(grad_output.dtype)
+
+
 def index(inp, indices):
     logger.debug("GEMS INDEX")
+    return IndexOpFunction.apply(inp, list(indices))
+
+
+def _index_forward(inp, indices):
     original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 

@@ -1663,7 +1663,12 @@ _FULL_CONFIG = (
     ("igammac.out", igammac_out),
     ("igammac_", igammac_),
     ("im2col", im2col),
-    ("index.Tensor", index),
+    (
+        "index.Tensor",
+        index,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("index_add", index_add),
     ("index_add_", index_add_),
     ("index_copy", index_copy),
