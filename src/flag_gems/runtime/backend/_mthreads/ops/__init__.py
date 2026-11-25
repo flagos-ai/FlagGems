@@ -56,12 +56,14 @@ from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
 from ._foreach_clamp_min__List import _foreach_clamp_min__List
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_cos import _foreach_cos
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._foreach_div__Tensor import _foreach_div__Tensor
 from ._foreach_erf import _foreach_erf
 from ._foreach_erf_ import _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_exp import _foreach_exp
 from ._foreach_exp_ import _foreach_exp_
 from ._foreach_frac import _foreach_frac
 from ._foreach_frac_ import _foreach_frac_
@@ -84,6 +86,7 @@ from ._foreach_pow__List import _foreach_pow__List
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
 from ._foreach_pow_ScalarAndTensor import _foreach_pow_ScalarAndTensor
+from ._foreach_reciprocal import _foreach_reciprocal
 from ._foreach_rsqrt import _foreach_rsqrt
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
@@ -329,12 +332,14 @@ __all__ = [
     "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
     "_foreach_clamp_min__ScalarList",
+    "_foreach_cos",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc_",
+    "_foreach_exp",
     "_foreach_exp_",
     "_foreach_frac",
     "_foreach_frac_",
@@ -357,6 +362,7 @@ __all__ = [
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
     "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal",
     "_foreach_rsqrt",
     "_foreach_sigmoid_",
     "_foreach_sign_",
