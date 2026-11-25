@@ -223,9 +223,10 @@ nvidia-cuda128 = [
 
 nvidia-cuda133 = [
     "flagcx==0.14.1+cuda13.3",
-    "torch==2.11.0+cu130",
+    "numpy==1.26.4",
+    "torch==2.13.0+cu130",
     "torchaudio==2.11.0+cu130",
-    "torchvision==0.26.0+cu130",
+    "torchvision==0.28.0+cu130",
     "flagtree==0.7.0",
 ]
 
@@ -262,6 +263,35 @@ tsingmicro-tsm260610 = [
 # Test packages group for flagos-ai/flagos-optest
 ascend = [
     "decorator==5.2.1",  # used for gru operator test
+    "numpy>=1.26.4,<2.0",
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.2.0; python_version < '3.12'",
+    "xgboost==3.3.0; python_version >= '3.12'",
+]
+
+hygon = [
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.2.0; python_version < '3.12'",
+    "xgboost==3.3.0; python_version >= '3.12'",
+]
+
+metax = [
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.2.0; python_version < '3.12'",
+    "xgboost==3.3.0; python_version >= '3.12'",
+]
+
+mthreads = [
+    "scikit-learn>=1.4,<2.0",
+    "torchada==0.1.54",
+    "xgboost==3.2.0; python_version < '3.12'",
+    "xgboost==3.3.0; python_version >= '3.12'",
+]
+
+thead = [
+    "scikit-learn>=1.4,<2.0",
+    "xgboost==3.2.0; python_version < '3.12'",
+    "xgboost==3.3.0; python_version >= '3.12'",
 ]
 
 # Test packages
