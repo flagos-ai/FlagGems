@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -63,11 +64,59 @@ def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
         _clone_kernel[grid](src, dst, n_elements, BLOCK_SIZE=1024)
 
 
+def _is_fake_or_meta(inp: torch.Tensor) -> bool:
+    """Whether ``inp`` carries metadata only, with no storage to read or write.
+
+    ``aten::clone`` is a CompositeExplicitAutograd op whose Meta implementation
+    is a "default backend kernel": shape propagation re-runs the backend
+    implementation under the fake/meta mode instead of using a dedicated meta
+    function.  Because FlagGems takes over the device dispatch key, that
+    fallback lands in this module, and the Triton launch below would ask a
+    FakeTensor for ``data_ptr()`` -- which raises.  Handle this case by
+    deriving the output layout only.
+
+    ``FakeTensor`` is detected by its ``fake_mode`` attribute rather than by
+    importing the class: it lives in a private module that has moved across
+    torch releases, and a real meta tensor (``is_meta``) has no ``fake_mode``,
+    so both spellings are covered without a version-sensitive import.  A plain
+    eager tensor on a real device has neither attribute and never takes this
+    path.
+    """
+    return inp.is_meta or hasattr(inp, "fake_mode")
+
+
+def _clone_meta(inp: torch.Tensor, memory_format: torch.memory_format) -> torch.Tensor:
+    """Allocate the output for a metadata-only input without launching kernels."""
+    if memory_format == torch.preserve_format:
+        return _allocate_preserve_format(inp)
+    return torch.empty_like(inp, memory_format=memory_format)
+
+
 def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
+    # Tensors that live outside the accelerator (e.g. CPU tensors materialised by
+    # a multimodal front-end) must never reach the Triton kernel: the device
+    # guard inside ``_launch_copy`` rejects them on backends such as torch_gcu
+    # ("Expected a gcu device, but got: cpu", FlagGems #8529). A native copy
+    # keeps the requested memory format and dtype without touching the device.
+    if inp.device.type != runtime.device.name:
+        if memory_format == torch.preserve_format:
+            out = _allocate_preserve_format(inp)
+        else:
+            out = torch.empty_like(inp, memory_format=memory_format)
+        out.copy_(inp)
+        return out
+
     if inp.numel() == 0:
         if memory_format == torch.preserve_format:
             return _allocate_preserve_format(inp)
         return torch.empty_like(inp, memory_format=memory_format)
+
+    # Metadata-only inputs (FakeTensor under torch.compile/export, or a tensor
+    # on the meta device) have no storage: every branch below would either
+    # launch a Triton kernel or dispatch a copy that eventually reads a data
+    # pointer.  Resolve the layout here instead.
+    if _is_fake_or_meta(inp):
+        return _clone_meta(inp, memory_format)
 
     # Triton has no complex dtype mapping.  Following the project convention
     # (see detach_copy, ravel, slice_copy, etc.), complex tensors are

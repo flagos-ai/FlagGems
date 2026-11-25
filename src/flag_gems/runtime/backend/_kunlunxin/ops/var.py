@@ -19,54 +19,128 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
 
+_ROW_BLOCK = 32
+_IN_TILE = 1024
+_TARGET_ELEMS = 4096
+_SPLIT_ELEMS = 32768
+_MAX_SPLIT = 1024
+_SINGLE_MIN_ROWS = 64
+_SINGLE_MAX_REDUCE = 1 << 18
+_ROW_TILE = 4096
+
+
+def _warps_for(block_n, block_m):
+    # Two float32 accumulators per element of the tile: keep the tile per thread
+    # small enough that they stay in registers.
+    elems = block_n * block_m
+    if elems <= 512:
+        return 4
+    if elems <= 1024:
+        return 8
+    return 16
+
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
-@triton.jit(do_not_specialize=["correction"])
-def _var_dim_kernel(
+@triton.jit(do_not_specialize=["correction", "N"])
+def _var_rows_kernel(
     out,
     x,
+    M,
     N,
     correction,
-    TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    row_mask = row < M
+    x = x + row * N
+
+    sum_acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    sq_acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for start in range(0, N, BLOCK_N):
+        cols = start + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask & (cols < N)
+        values = tl.load(x + cols, mask=mask, other=0.0).to(tl.float32)
+        sum_acc += values
+        sq_acc += values * values
+
+    total = tl.sum(sum_acc, axis=1)
+    total_sq = tl.sum(sq_acc, axis=1)
+    count = N.to(tl.float32)
+    mean = total / count
+    denominator = count - correction
+    variance = (total_sq - total * mean) / denominator
+    variance = tl.where(denominator > 0, variance, float("nan"))
+    tl.store(out + row, variance[:, None], row_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "nsplit", "chunk"])
+def _var_partial_kernel(
+    part_sum,
+    part_sq,
+    x,
+    M,
+    N,
+    nsplit,
+    chunk,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    row = tl.program_id(1)
+    base = x + row.to(tl.int64) * N + pid * chunk
+    limit = N - pid * chunk
+
+    sum_acc = tl.zeros((BLOCK_N,), dtype=tl.float32)
+    sq_acc = tl.zeros((BLOCK_N,), dtype=tl.float32)
+    for start in range(0, chunk, BLOCK_N):
+        cols = start + tl.arange(0, BLOCK_N)
+        mask = cols < limit
+        values = tl.load(base + cols, mask=mask, other=0.0).to(tl.float32)
+        sum_acc += values
+        sq_acc += values * values
+
+    off = row.to(tl.int64) * nsplit + pid
+    tl.store(part_sum + off, tl.sum(sum_acc))
+    tl.store(part_sq + off, tl.sum(sq_acc))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["correction", "N", "nsplit"])
+def _var_combine_kernel(
+    out,
+    part_sum,
+    part_sq,
+    M,
+    N,
+    nsplit,
+    correction,
+    BLOCK_S: tl.constexpr,
 ):
     row = tl.program_id(0)
-    if ONE_TILE_PER_CTA:
-        offsets = tl.arange(0, TILE_N)
-        mask = offsets < N
-        values = tl.load(x + row * N + offsets, mask=mask, other=0.0).to(tl.float32)
-        mean = tl.sum(values, axis=0) / N
-        diff = values - mean
-        squared_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
-    else:
-        sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start in range(0, N, TILE_N):
-            offsets = start + tl.arange(0, TILE_N)
-            mask = offsets < N
-            values = tl.load(x + row * N + offsets, mask=mask, other=0.0).to(tl.float32)
-            sum_acc += values
-        mean = tl.sum(sum_acc, axis=0) / N
+    base = row.to(tl.int64) * nsplit
 
-        squared_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start in range(0, N, TILE_N):
-            offsets = start + tl.arange(0, TILE_N)
-            mask = offsets < N
-            values = tl.load(x + row * N + offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = values - mean
-            squared_acc += tl.where(mask, diff * diff, 0.0)
-        squared_sum = tl.sum(squared_acc, axis=0)
+    sum_acc = tl.zeros((BLOCK_S,), dtype=tl.float32)
+    sq_acc = tl.zeros((BLOCK_S,), dtype=tl.float32)
+    for start in range(0, nsplit, BLOCK_S):
+        idx = start + tl.arange(0, BLOCK_S)
+        mask = idx < nsplit
+        sum_acc += tl.load(part_sum + base + idx, mask=mask, other=0.0)
+        sq_acc += tl.load(part_sq + base + idx, mask=mask, other=0.0)
 
-    denominator = N - correction
-    variance = squared_sum / denominator
-    result = tl.where(denominator > 0, variance, float("nan"))
-    tl.store(out + row, result)
+    total = tl.sum(sum_acc)
+    total_sq = tl.sum(sq_acc)
+    count = N.to(tl.float32)
+    mean = total / count
+    denominator = count - correction
+    variance = (total_sq - total * mean) / denominator
+    variance = tl.where(denominator > 0, variance, float("nan"))
+    tl.store(out + row, variance)
 
 
 def _normalize_dims(x, dim):
@@ -100,6 +174,14 @@ def _output_shape(x, dims, keepdim):
     return tuple(size for index, size in enumerate(x.shape) if index not in dims)
 
 
+def _resolve_correction(correction, unbiased):
+    if isinstance(correction, bool):
+        return 1 if correction else 0
+    if isinstance(unbiased, bool):
+        return 1 if unbiased else 0
+    return 1 if correction is None else correction
+
+
 def _var_impl(x, dim, correction, keepdim):
     dims = _normalize_dims(x, dim)
     N = math.prod(x.shape[index] for index in dims)
@@ -112,23 +194,69 @@ def _var_impl(x, dim, correction, keepdim):
         )
 
     work = dim_compress(x, dims).reshape(-1, N)
-    result = torch.empty(work.shape[0], dtype=x.dtype, device=x.device)
+    M = work.shape[0]
+    out = torch.empty(M, dtype=x.dtype, device=x.device)
+
     with torch_device_fn.device(x.device):
-        _var_dim_kernel[(work.shape[0],)](result, work, N, float(correction))
-    return result.reshape(_output_shape(x, dims, keepdim))
+        if M >= _SINGLE_MIN_ROWS or N <= _SINGLE_MAX_REDUCE:
+            block_m = max(1, min(_ROW_BLOCK, _TARGET_ELEMS // max(N, 1)))
+            block_m = triton.next_power_of_2(block_m)
+            block_n = min(_ROW_TILE, triton.next_power_of_2(N))
+            warps = _warps_for(block_n, block_m)
+            _var_rows_kernel[(triton.cdiv(M, block_m),)](
+                out,
+                work,
+                M,
+                N,
+                correction,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_warps=warps,
+            )
+        else:
+            block_n = min(_IN_TILE, triton.next_power_of_2(N))
+            nsplit = min(_MAX_SPLIT, max(1, triton.cdiv(M * N, _SPLIT_ELEMS)))
+            chunk = triton.cdiv(triton.cdiv(N, nsplit), block_n) * block_n
+            nsplit = triton.cdiv(N, chunk)
+            part_sum = torch.empty(M * nsplit, dtype=torch.float32, device=x.device)
+            part_sq = torch.empty(M * nsplit, dtype=torch.float32, device=x.device)
+            _var_partial_kernel[(nsplit, M)](
+                part_sum,
+                part_sq,
+                work,
+                M,
+                N,
+                nsplit,
+                chunk,
+                BLOCK_N=block_n,
+            )
+            _var_combine_kernel[(M,)](
+                out,
+                part_sum,
+                part_sq,
+                M,
+                N,
+                nsplit,
+                correction,
+                BLOCK_S=min(_IN_TILE, triton.next_power_of_2(nsplit)),
+            )
+
+    return out.reshape(_output_shape(x, dims, keepdim))
 
 
-def var(x, unbiased=True):
+def var(x, dim=None, correction=None, keepdim=False, unbiased=None):
     logger.debug("GEMS_KUNLUNXIN VAR")
-    return _var_impl(x, None, 1 if unbiased else 0, False)
+    if isinstance(dim, bool):
+        unbiased = dim
+        dim = None
+    return _var_impl(x, dim, _resolve_correction(correction, unbiased), keepdim)
 
 
-def var_dim(x, dim=None, unbiased=True, keepdim=False):
+def var_dim(x, dim=None, correction=None, keepdim=False, unbiased=None):
     logger.debug("GEMS_KUNLUNXIN VAR_DIM")
-    return _var_impl(x, dim, 1 if unbiased else 0, keepdim)
+    return _var_impl(x, dim, _resolve_correction(correction, unbiased), keepdim)
 
 
-def var_correction(x, dim=None, *, correction=None, keepdim=False):
+def var_correction(x, dim=None, correction=None, keepdim=False, unbiased=None):
     logger.debug("GEMS_KUNLUNXIN VAR_CORRECTION")
-    effective_correction = 1 if correction is None else correction
-    return _var_impl(x, dim, effective_correction, keepdim)
+    return _var_impl(x, dim, _resolve_correction(correction, unbiased), keepdim)

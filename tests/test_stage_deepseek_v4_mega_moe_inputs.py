@@ -16,9 +16,7 @@ import pytest
 import torch
 
 import flag_gems.testing as fg_testing
-from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
-    stage_deepseek_v4_mega_moe_inputs,
-)
+from flag_gems import stage_deepseek_v4_mega_moe_inputs
 
 from . import accuracy_utils as utils
 

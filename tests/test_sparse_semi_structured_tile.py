@@ -151,7 +151,8 @@ def _reference_mask(dense, algorithm):
     padded[:rows, :cols] = vals
     keys = torch.full((rows_r, cols_r), float("-inf"), dtype=torch.float32)
     keys[:rows, :cols] = key
-    out = torch.zeros((rows_r, cols_r), dtype=torch.float64)
+    out_type = torch.float64 if utils.fp64_is_supported else torch.float32
+    out = torch.zeros((rows_r, cols_r), dtype=out_type)
     nb, ntb = rows_r // 4, cols_r // 4
     for i in range(nb):
         for j in range(ntb):

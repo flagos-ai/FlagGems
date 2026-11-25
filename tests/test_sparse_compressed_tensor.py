@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
+
 import pytest
 import torch
 
@@ -116,3 +118,32 @@ def test_sparse_compressed_tensor_rejects_bad_layout(dtype):
         flag_gems.sparse_compressed_tensor(
             c_indices, p_indices, values, size=(256, 256), layout=torch.sparse_coo
         )
+
+
+@pytest.mark.sparse_compressed_tensor
+def test_sparse_compressed_tensor_infer_size_scans_past_the_grid_cap(monkeypatch):
+    """The size-inference scan reads every plain index, not just the first
+    ``_MAX_BLOCK * _BLOCK_ELEMS`` of them.
+
+    The launcher caps the grid so the reduction cannot oversubscribe the
+    device. A kernel that visits only its own block then stops scanning at the
+    cap and infers an extent that is too small. Shrinking the two constants
+    makes the same defect reachable with 20 elements instead of 4,194,305.
+    """
+    mod = sys.modules["flag_gems.ops.sparse_compressed_tensor"]
+    monkeypatch.setattr(mod, "_MAX_BLOCK", 2)
+    monkeypatch.setattr(mod, "_BLOCK_ELEMS", 4)
+
+    nnz, rows, cols = 20, 2, 27
+    device = flag_gems.device
+    crow = torch.tensor([0, nnz // 2, nnz], dtype=torch.int64, device=device)
+    col = torch.arange(nnz, dtype=torch.int64, device=device) % 8
+    # The only index past the two-program cap: missing it shrinks cols to 8.
+    col[nnz - 1] = cols - 1
+    values = torch.ones(nnz, dtype=torch.float32, device=device)
+
+    out = flag_gems.sparse_compressed_tensor(
+        crow, col, values, dtype=values.dtype, layout=torch.sparse_csr
+    )
+
+    assert tuple(out.shape) == (rows, cols)

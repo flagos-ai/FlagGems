@@ -30,6 +30,160 @@ from flag_gems.utils.limits import get_dtype_max
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _logical_offset(linear, shapes: tl.constexpr, strides: tl.constexpr):
+    offset = linear * 0
+    for axis in tl.static_range(len(shapes) - 1, -1, -1):
+        coordinate = linear % shapes.value[axis]
+        linear = linear // shapes.value[axis]
+        offset += coordinate * strides.value[axis]
+    return offset
+
+
+@libentry()
+@triton.jit
+def amin_backward_kernel(
+    grad_output,
+    inp,
+    output,
+    grad_input,
+    M,
+    N: tl.constexpr,
+    BATCH_SHAPES: tl.constexpr,
+    BATCH_INPUT_STRIDES: tl.constexpr,
+    BATCH_RESULT_STRIDES: tl.constexpr,
+    BATCH_GRAD_STRIDES: tl.constexpr,
+    BATCH_OUTPUT_STRIDES: tl.constexpr,
+    REDUCE_SHAPES: tl.constexpr,
+    REDUCE_INPUT_STRIDES: tl.constexpr,
+    REDUCE_OUTPUT_STRIDES: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(0)
+    row_mask = row < M
+    input_base = _logical_offset(row, BATCH_SHAPES, BATCH_INPUT_STRIDES)
+    result_offset = _logical_offset(row, BATCH_SHAPES, BATCH_RESULT_STRIDES)
+    grad_offset = _logical_offset(row, BATCH_SHAPES, BATCH_GRAD_STRIDES)
+    output_base = _logical_offset(row, BATCH_SHAPES, BATCH_OUTPUT_STRIDES)
+    minimum = tl.load(output + result_offset, mask=row_mask)
+
+    count = 0
+    nan_count = 0
+    for start in range(0, N, BLOCK_N):
+        reduced = start + tl.arange(0, BLOCK_N)
+        mask = row_mask & (reduced < N)
+        input_offset = input_base + _logical_offset(
+            reduced, REDUCE_SHAPES, REDUCE_INPUT_STRIDES
+        )
+        value = tl.load(inp + input_offset, mask=mask)
+        count += tl.sum((value == minimum).to(tl.int32), axis=0)
+        nan_count += tl.sum((value != value).to(tl.int32), axis=0)
+
+    grad = tl.load(grad_output + grad_offset, mask=row_mask).to(tl.float32)
+    count = tl.where(nan_count > 0, 0, count)
+    scaled_grad = grad / count
+    for start in range(0, N, BLOCK_N):
+        reduced = start + tl.arange(0, BLOCK_N)
+        mask = row_mask & (reduced < N)
+        input_offset = input_base + _logical_offset(
+            reduced, REDUCE_SHAPES, REDUCE_INPUT_STRIDES
+        )
+        output_offset = output_base + _logical_offset(
+            reduced, REDUCE_SHAPES, REDUCE_OUTPUT_STRIDES
+        )
+        value = tl.load(inp + input_offset, mask=mask)
+        result = tl.where(value == minimum, scaled_grad, 0.0)
+        # A NaN minimum compares unequal to every input value. PyTorch's
+        # scale_grad_by_count consequently returns NaN for the whole group.
+        result = tl.where(count == 0, float("nan"), result)
+        tl.store(grad_input + output_offset, result, mask=mask)
+
+
+def _contiguous_strides(shape):
+    strides = [0] * len(shape)
+    stride = 1
+    for axis in range(len(shape) - 1, -1, -1):
+        strides[axis] = stride
+        stride *= shape[axis]
+    return tuple(strides)
+
+
+def amin_backward(grad_output, inp, output, dim=None, keepdim=False):
+    """Compute the tie-aware amin input gradient in one Triton launch."""
+    logger.debug("GEMS AMIN_BACKWARD")
+    if dim is None or (not isinstance(dim, int) and len(dim) == 0):
+        reduce_dims = tuple(range(inp.ndim))
+    elif isinstance(dim, int):
+        reduce_dims = (dim % inp.ndim,)
+    else:
+        reduce_dims = tuple(axis % inp.ndim for axis in dim)
+
+    batch_dims = tuple(axis for axis in range(inp.ndim) if axis not in reduce_dims)
+    batch_shapes = tuple(inp.shape[axis] for axis in batch_dims)
+    reduce_shapes = tuple(inp.shape[axis] for axis in reduce_dims)
+    contiguous_strides = _contiguous_strides(inp.shape)
+    batch_input_strides = tuple(inp.stride(axis) for axis in batch_dims)
+    reduce_input_strides = tuple(inp.stride(axis) for axis in reduce_dims)
+    batch_output_strides = tuple(contiguous_strides[axis] for axis in batch_dims)
+    reduce_output_strides = tuple(contiguous_strides[axis] for axis in reduce_dims)
+    if keepdim:
+        batch_result_strides = tuple(output.stride(axis) for axis in batch_dims)
+        batch_grad_strides = tuple(grad_output.stride(axis) for axis in batch_dims)
+    else:
+        batch_result_strides = tuple(
+            output.stride(axis) for axis in range(len(batch_dims))
+        )
+        batch_grad_strides = tuple(
+            grad_output.stride(axis) for axis in range(len(batch_dims))
+        )
+
+    M = math.prod(batch_shapes)
+    N = math.prod(reduce_shapes)
+    grad_input = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
+    # A 512-element tile keeps register pressure modest while amortizing the
+    # two passes (tie count and gradient write) over each reduction group.
+    block_n = min(512, triton.next_power_of_2(N))
+    with torch_device_fn.device(inp.device):
+        amin_backward_kernel[(M,)](
+            grad_output,
+            inp,
+            output,
+            grad_input,
+            M,
+            N=N,
+            BATCH_SHAPES=batch_shapes,
+            BATCH_INPUT_STRIDES=batch_input_strides,
+            BATCH_RESULT_STRIDES=batch_result_strides,
+            BATCH_GRAD_STRIDES=batch_grad_strides,
+            BATCH_OUTPUT_STRIDES=batch_output_strides,
+            REDUCE_SHAPES=reduce_shapes,
+            REDUCE_INPUT_STRIDES=reduce_input_strides,
+            REDUCE_OUTPUT_STRIDES=reduce_output_strides,
+            BLOCK_N=block_n,
+            num_warps=4,
+        )
+    return grad_input
+
+
+class AminFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        output = _amin_impl(inp, dim=dim, keepdim=keepdim)
+        ctx.save_for_backward(inp, output)
+        ctx.dim = dim
+        ctx.keepdim = keepdim
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        inp, output = ctx.saved_tensors
+        return (
+            amin_backward(grad_output, inp, output, ctx.dim, ctx.keepdim),
+            None,
+            None,
+        )
+
+
 @libentry()
 @triton.jit
 def amin_kernel_1(
@@ -98,13 +252,9 @@ def amin_kernel(
     tl.store(out, all, row_mask)
 
 
-def amin(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMIN")
-    assert inp.dtype in (
-        torch.float32,
-        torch.float16,
-        torch.bfloat16,
-    ), "amin only supports float dtypes"
+def _amin_impl(inp, dim=None, keepdim=False):
+    if isinstance(dim, int):
+        dim = [dim]
     if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -155,13 +305,19 @@ def amin(inp, dim=None, keepdim=False):
         return out
 
 
+def amin(inp, dim=None, keepdim=False):
+    logger.debug("GEMS AMIN")
+    if isinstance(dim, int):
+        dim = (dim,)
+    elif dim is not None:
+        dim = tuple(dim)
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        return AminFunction.apply(inp, dim, keepdim)
+    return _amin_impl(inp, dim=dim, keepdim=keepdim)
+
+
 def amin_(inp, dim=None, keepdim=False):
     logger.debug("GEMS AMIN_")
-    assert inp.dtype in (
-        torch.float32,
-        torch.float16,
-        torch.bfloat16,
-    ), "amin_ only supports float dtypes"
     if isinstance(dim, int):
         dim = [dim]
     if dim is None or len(dim) == 0:

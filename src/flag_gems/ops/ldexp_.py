@@ -43,7 +43,14 @@ _WRAP_INTEGER_EXPONENT = tuple(map(int, torch.__version__.split(".")[:2])) >= (2
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def ldexp_inplace_func(x, other):
-    return x.to(tl.float32) * _exp2(other.to(tl.float32))
+    # IEEE: 0 * 2**(+inf) and ±inf * 2**(-inf) are NaN; a plain x * exp2(e)
+    # relies on the backend's exp2/MAC handling of the non-finite exponent.
+    # Build the scale explicitly so every backend produces the same result.
+    xf = x.to(tl.float32)
+    ef = other.to(tl.float32)
+    scale = _exp2(ef)
+    zero_times_inf = (xf == 0.0) & (ef == float("inf"))
+    return tl.where(zero_times_inf, float("nan"), xf * scale)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])

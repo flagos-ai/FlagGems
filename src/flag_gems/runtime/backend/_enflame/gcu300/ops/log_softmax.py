@@ -192,53 +192,6 @@ def log_softmax_kernel_non_inner(
                 tl.store(output_ptr + offset, out, mask=mask)
 
 
-@libentry()
-@triton.autotune(configs=runtime.get_tuned_config("log_softmax"), key=["M", "N"])
-@triton.jit
-def log_softmax_backward_kernel(
-    out_ptr,
-    out_grad_ptr,
-    in_grad_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 3,
-):
-    pid = tl.program_id(0)
-    num_pid = tl.num_programs(0)
-
-    num_m_blocks = tl.cdiv(M, BLOCK_M)
-    total_blocks = num_m_blocks * K
-
-    LOG2E: tl.constexpr = 1.4426950408889634
-
-    for block_id in range(pid, total_blocks, num_pid):
-        pid_m = block_id // K
-        pid_k = block_id % K
-
-        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        row_mask = m_offset < M
-
-        scale = tl.zeros((BLOCK_M,), dtype=tl.float32)
-        for start_n in range(0, N, BLOCK_N):
-            n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-            mask = row_mask[:, None] & (n_offset[None, :] < N)
-            out_grad = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
-            scale += tl.sum(out_grad, 1)
-
-        for start_n in range(0, N, BLOCK_N):
-            n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-            mask = row_mask[:, None] & (n_offset[None, :] < N)
-            out_val = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
-            out_grad = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
-            in_grad = out_grad - tl.math.exp2(out_val * LOG2E) * scale[:, None]
-            tl.store(in_grad_ptr + offset, in_grad, mask=mask)
-
-
 def log_softmax(self, dim, half_to_float=False):
     logger.debug("GEMS_ENFLAME LOG_SOFTMAX")
 
@@ -327,31 +280,110 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
     return out
 
 
+@triton.jit
+def _log_softmax_backward_last_kernel(
+    g_ptr,
+    y_ptr,
+    o_ptr,
+    outer,
+    R,
+    stride_o,
+    BLOCK_M: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+    ONE_PASS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    m = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    m_mask = m < outer
+    base = m * stride_o
+
+    if ONE_PASS:
+        r = tl.arange(0, BLOCK_R)
+        mask = m_mask[:, None] & (r[None, :] < R)
+        off = base[:, None] + r[None, :]
+        g = tl.load(g_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        s = tl.sum(g, axis=1)
+        y = tl.load(y_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        res = g - tl.math.exp2(y * 1.4426950408889634) * s[:, None]
+        tl.store(o_ptr + off, res.to(o_ptr.dtype.element_ty), mask=mask)
+    else:
+        s = tl.zeros([BLOCK_M], dtype=tl.float32)
+        for r0 in range(0, R, BLOCK_R):
+            r = r0 + tl.arange(0, BLOCK_R)
+            mask = m_mask[:, None] & (r[None, :] < R)
+            g = tl.load(g_ptr + base[:, None] + r[None, :], mask=mask, other=0.0).to(
+                tl.float32
+            )
+            s += tl.sum(g, axis=1)
+        for r0 in range(0, R, BLOCK_R):
+            r = r0 + tl.arange(0, BLOCK_R)
+            mask = m_mask[:, None] & (r[None, :] < R)
+            off = base[:, None] + r[None, :]
+            g = tl.load(g_ptr + off, mask=mask, other=0.0).to(tl.float32)
+            y = tl.load(y_ptr + off, mask=mask, other=0.0).to(tl.float32)
+            res = g - tl.math.exp2(y * 1.4426950408889634) * s[:, None]
+            tl.store(o_ptr + off, res.to(o_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _log_softmax_backward_inner_kernel(
+    g_ptr,
+    y_ptr,
+    o_ptr,
+    outer,
+    R,
+    inner,
+    stride_o,
+    stride_r,
+    stride_i,
+    BLOCK_M: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    ONE_PASS: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    m_mask = (m < outer)[:, None, None]
+    n_mask = (n < inner)[None, None, :]
+    base = m[:, None, None] * stride_o + n[None, None, :] * stride_i
+
+    if ONE_PASS:
+        r = tl.arange(0, BLOCK_R)
+        mask = m_mask & n_mask & (r[None, :, None] < R)
+        off = base + r[None, :, None] * stride_r
+        g = tl.load(g_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        s = tl.sum(g, axis=1)
+        y = tl.load(y_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        res = g - tl.math.exp2(y * 1.4426950408889634) * s[:, None, :]
+        tl.store(o_ptr + off, res.to(o_ptr.dtype.element_ty), mask=mask)
+    else:
+        s = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for r0 in range(0, R, BLOCK_R):
+            r = r0 + tl.arange(0, BLOCK_R)
+            mask = m_mask & n_mask & (r[None, :, None] < R)
+            g = tl.load(
+                g_ptr + base + r[None, :, None] * stride_r, mask=mask, other=0.0
+            ).to(tl.float32)
+            s += tl.sum(g, axis=1)
+        for r0 in range(0, R, BLOCK_R):
+            r = r0 + tl.arange(0, BLOCK_R)
+            mask = m_mask & n_mask & (r[None, :, None] < R)
+            off = base + r[None, :, None] * stride_r
+            g = tl.load(g_ptr + off, mask=mask, other=0.0).to(tl.float32)
+            y = tl.load(y_ptr + off, mask=mask, other=0.0).to(tl.float32)
+            res = g - tl.math.exp2(y * 1.4426950408889634) * s[:, None, :]
+            tl.store(o_ptr + off, res.to(o_ptr.dtype.element_ty), mask=mask)
+
+
 def log_softmax_backward(grad_output, output, dim, input_dtype):
     logger.debug("GEMS_ENFLAME LOG_SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
-    M = 1
-    N = output.shape[dim]
-    for i in range(dim):
-        M *= output.shape[i]
-
-    grad_output = grad_output.contiguous()
     in_grad = torch.empty_like(output, dtype=input_dtype)
-    K = output.numel() // M // N
-
-    grid = lambda meta: (min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),)
-    with torch_device_fn.device(in_grad.device):
-        log_softmax_backward_kernel[grid](
-            output,
-            grad_output,
-            in_grad,
-            M,
-            N,
-            K,
-        )
-    return in_grad
+    return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)
 
 
 def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
@@ -359,28 +391,73 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
-    M = 1
-    N = output.shape[dim]
+
+    shape = tuple(output.shape)
+    ndim = len(shape)
+    outer = 1
     for i in range(dim):
-        M *= output.shape[i]
+        outer *= shape[i]
+    R = shape[dim]
+    inner = 1
+    for i in range(dim + 1, ndim):
+        inner *= shape[i]
 
     grad_output = grad_output.contiguous()
-    if tuple(out.shape) != tuple(output.shape):
-        out.resize_(output.shape)
+    if tuple(out.shape) != shape:
+        out.resize_(shape)
     if out.dtype != input_dtype:
         raise RuntimeError(
             f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
         )
-    K = output.numel() // M // N
+    if out.numel() == 0:
+        return out
 
-    grid = lambda meta: (min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),)
+    # Collapsed strides: exact for a contiguous tensor or a single-axis permutation.
+    st = output.stride()
+    stride_o = st[0] if dim > 0 else 0
+    stride_r = st[dim]
+    stride_i = st[dim + 1] if dim + 1 < ndim else 0
+
     with torch_device_fn.device(out.device):
-        log_softmax_backward_kernel[grid](
-            output,
-            grad_output,
-            out,
-            M,
-            N,
-            K,
-        )
+        if inner == 1:
+            # A whole row in one tile is worth several x on this backend and
+            # num_warps=1 is fastest for every tile; BLOCK_M=16 keeps the
+            # program count (and the per-program dispatch term) as low as
+            # possible.
+            BLOCK_M = 16
+            BLOCK_R = min(4096, max(256, triton.next_power_of_2(max(R, 1))))
+            grid = (triton.cdiv(outer, BLOCK_M),)
+            _log_softmax_backward_last_kernel[grid](
+                grad_output,
+                output,
+                out,
+                outer,
+                R,
+                stride_o,
+                BLOCK_M=BLOCK_M,
+                BLOCK_R=BLOCK_R,
+                ONE_PASS=R <= BLOCK_R,
+                num_warps=1,
+            )
+        else:
+            BLOCK_M = 8
+            BLOCK_R = 64
+            BLOCK_N = max(4, triton.next_power_of_2(inner))
+            grid = (triton.cdiv(outer, BLOCK_M), triton.cdiv(inner, BLOCK_N))
+            _log_softmax_backward_inner_kernel[grid](
+                grad_output,
+                output,
+                out,
+                outer,
+                R,
+                inner,
+                stride_o,
+                stride_r,
+                stride_i,
+                BLOCK_M=BLOCK_M,
+                BLOCK_R=BLOCK_R,
+                BLOCK_N=BLOCK_N,
+                ONE_PASS=R <= BLOCK_R,
+                num_warps=1,
+            )
     return out

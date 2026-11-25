@@ -91,126 +91,122 @@ def igammac_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask_offs = offsets < n_elements
+    num_programs = tl.num_programs(axis=0)
+    num_tiles = tl.cdiv(n_elements, BLOCK_SIZE)
 
-    a_f = tl.load(a_ptr + offsets, mask=mask_offs, other=1.0)
-    x_f = tl.load(x_ptr + offsets, mask=mask_offs, other=0.0)
+    for tile in range(pid, num_tiles, num_programs):
+        block_start = tile * BLOCK_SIZE
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        mask_offs = offsets < n_elements
 
-    # Detect inf and NaN
-    is_nan_x = x_f != x_f
-    is_nan_a = a_f != a_f
-    is_inf_or_nan_x = (x_f * 0.0) != 0.0
-    is_inf_or_nan_a = (a_f * 0.0) != 0.0
-    is_inf_x = is_inf_or_nan_x & ~is_nan_x
-    is_inf_a = is_inf_or_nan_a & ~is_nan_a
-    is_finite = ~is_inf_or_nan_x & ~is_inf_or_nan_a & ~is_nan_x & ~is_nan_a
-    in_domain = (a_f > 0.0) & (x_f >= 0.0)
+        a_f = tl.load(a_ptr + offsets, mask=mask_offs, other=1.0)
+        x_f = tl.load(x_ptr + offsets, mask=mask_offs, other=0.0)
 
-    # Pre-compute once - used by both series and CF paths
-    log_gamma_a = _lgamma(a_f)
-    log_x_term = a_f * tl.log(x_f) - x_f - log_gamma_a
+        # Detect inf and NaN
+        is_nan_x = x_f != x_f
+        is_nan_a = a_f != a_f
+        is_inf_or_nan_x = (x_f * 0.0) != 0.0
+        is_inf_or_nan_a = (a_f * 0.0) != 0.0
+        is_inf_x = is_inf_or_nan_x & ~is_nan_x
+        is_inf_a = is_inf_or_nan_a & ~is_nan_a
+        is_finite = ~is_inf_or_nan_x & ~is_inf_or_nan_a & ~is_nan_x & ~is_nan_a
+        in_domain = (a_f > 0.0) & (x_f >= 0.0)
 
-    # Path 1: power series for P(a, x) = e^{-x} x^a sum x^n / Gamma(a+n+1),
-    # then Q = 1 - P. Converges for x < a + 1.
-    term = 1.0 / a_f
-    series_sum = term
-    for i in range(1, SERIES_ITERS):
-        term = term * x_f / (a_f + tl.cast(i, tl.float32))
-        series_sum = series_sum + term
-    q_series = 1.0 - tl.exp(log_x_term) * series_sum
+        # Pre-compute once - used by both series and CF paths
+        log_gamma_a = _lgamma(a_f)
+        log_x_term = a_f * tl.log(x_f) - x_f - log_gamma_a
 
-    # Path 2: Lentz's continued fraction for Q(a, x) directly.
-    # Converges rapidly for x >= a + 1.
-    tiny = 1e-30
-    b0 = x_f + 1.0 - a_f
-    f_val = b0
-    C_val = b0
-    D_val = tl.zeros_like(x_f)
-    for i in range(1, CF_ITERS):
-        i_f = tl.cast(i, tl.float32)
-        an = i_f * (a_f - i_f)
-        bn = x_f + 2.0 * i_f + 1.0 - a_f
+        # Path 1: power series for P(a, x) = e^{-x} x^a sum x^n / Gamma(a+n+1),
+        # then Q = 1 - P. Converges for x < a + 1.
+        term = 1.0 / a_f
+        series_sum = term
+        for i in range(1, SERIES_ITERS):
+            term = term * x_f / (a_f + tl.cast(i, tl.float32))
+            series_sum = series_sum + term
+        q_series = 1.0 - tl.exp(log_x_term) * series_sum
 
-        D_val = bn + an * D_val
-        D_val = tl.where(tl.abs(D_val) < tiny, tiny, D_val)
-        C_val = bn + an / C_val
-        C_val = tl.where(tl.abs(C_val) < tiny, tiny, C_val)
+        # Path 2: Lentz's continued fraction for Q(a, x) directly.
+        # Converges rapidly for x >= a + 1.
+        tiny = 1e-30
+        b0 = x_f + 1.0 - a_f
+        f_val = b0
+        C_val = b0
+        D_val = tl.zeros_like(x_f)
+        for i in range(1, CF_ITERS):
+            i_f = tl.cast(i, tl.float32)
+            an = i_f * (a_f - i_f)
+            bn = x_f + 2.0 * i_f + 1.0 - a_f
 
-        D_val = 1.0 / D_val
-        delta = C_val * D_val
-        f_val = f_val * delta
+            D_val = bn + an * D_val
+            D_val = tl.where(tl.abs(D_val) < tiny, tiny, D_val)
+            C_val = bn + an / C_val
+            C_val = tl.where(tl.abs(C_val) < tiny, tiny, C_val)
 
-    q_cf = tl.exp(log_x_term - tl.log(f_val))
-    q_cf = tl.where(q_cf > 1.0, 1.0, tl.where(q_cf < 0.0, 0.0, q_cf))
+            D_val = 1.0 / D_val
+            delta = C_val * D_val
+            f_val = f_val * delta
 
-    # Path 3: DLMF 8.12.4 asymptotic expansion for large a with x ~ a:
-    #   Q(a,x) ~ 1/2 erfc(eta sqrt(a/2)) + e^{-a eta^2 / 2} / sqrt(2 pi a)
-    #            * sum_{k=0}^{ASYM_K-1} c_k(eta) / a^k,
-    # with sigma = (x-a)/a, eta = sgn(x-a) sqrt(-2(log(1+sigma)-sigma)).
-    # The ascend backend's log1p loses relative precision for tiny |sigma|
-    # (measured ~1e-3 rel at |sigma|~1e-3), which corrupts log(1+sigma)-sigma
-    # in the cancellation regime (large a with x ~ a).  Use the Taylor series
-    # log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n instead, which converges
-    # quickly for |s| < 0.3 (the asym activation region).
-    sigma = (x_f - a_f) / a_f
-    lam = x_f / a_f
-    sigma_pow = sigma * sigma
-    log1p_minus_sigma = sigma * 0.0
-    for n in range(2, 32):
-        if n % 2 == 0:
-            log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
-        else:
-            log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
-        sigma_pow = sigma_pow * sigma
-    eta2 = -2.0 * log1p_minus_sigma
-    eta = tl.where(
-        lam > 1.0,
-        tl.sqrt(eta2),
-        tl.where(lam < 1.0, -tl.sqrt(eta2), 0.0),
-    )
+        q_cf = tl.exp(log_x_term - tl.log(f_val))
+        q_cf = tl.where(q_cf > 1.0, 1.0, tl.where(q_cf < 0.0, 0.0, q_cf))
 
-    q_asym = 0.5 * (1.0 - tl.math.erf(eta * tl.sqrt(a_f * 0.5)))
-    poly_sum = 0.0
-    afac = 1.0
-    a_inv = 1.0 / a_f
-    for k in tl.static_range(ASYM_K):
-        ck = 0.0
-        eta_n = 1.0
-        for n in tl.static_range(ASYM_N):
-            ck = ck + eta_n * tl.load(d_ptr + k * 25 + n)
-            eta_n = eta_n * eta
-        poly_sum = poly_sum + ck * afac
-        afac = afac * a_inv
-    q_asym = q_asym + tl.exp(-0.5 * a_f * eta * eta) * poly_sum / tl.sqrt(
-        2.0 * 3.141592653589793 * a_f
-    )
-    q_asym = tl.where(q_asym > 1.0, 1.0, tl.where(q_asym < 0.0, 0.0, q_asym))
+        # Path 3: DLMF 8.12.4 asymptotic expansion for large a with x ~ a.
+        sigma = (x_f - a_f) / a_f
+        lam = x_f / a_f
+        sigma_pow = sigma * sigma
+        log1p_minus_sigma = sigma * 0.0
+        for n in range(2, 32):
+            if n % 2 == 0:
+                log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
+            else:
+                log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
+            sigma_pow = sigma_pow * sigma
+        eta2 = -2.0 * log1p_minus_sigma
+        eta = tl.where(
+            lam > 1.0,
+            tl.sqrt(eta2),
+            tl.where(lam < 1.0, -tl.sqrt(eta2), 0.0),
+        )
 
-    # Per-element path selection
-    use_series = x_f < (a_f + 1.0)
-    use_asym = (a_f > 20.0) & (tl.abs(x_f - a_f) / a_f < 0.3)
-    use_asym = use_asym | (
-        (a_f > 200.0) & (tl.abs(x_f - a_f) / a_f < 4.5 / tl.sqrt(a_f))
-    )
-    computed = tl.where(use_asym, q_asym, tl.where(use_series, q_series, q_cf))
+        q_asym = 0.5 * (1.0 - tl.math.erf(eta * tl.sqrt(a_f * 0.5)))
+        poly_sum = 0.0
+        afac = 1.0
+        a_inv = 1.0 / a_f
+        for k in tl.static_range(ASYM_K):
+            ck = 0.0
+            eta_n = 1.0
+            for n in tl.static_range(ASYM_N):
+                ck = ck + eta_n * tl.load(d_ptr + k * 25 + n)
+                eta_n = eta_n * eta
+            poly_sum = poly_sum + ck * afac
+            afac = afac * a_inv
+        q_asym = q_asym + tl.exp(-0.5 * a_f * eta * eta) * poly_sum / tl.sqrt(
+            2.0 * 3.141592653589793 * a_f
+        )
+        q_asym = tl.where(q_asym > 1.0, 1.0, tl.where(q_asym < 0.0, 0.0, q_asym))
 
-    # Boundary and infinity handling:
-    # Q(a, 0) = 1, Q(inf, x) = 1, Q(a, inf) = 0, Q(inf, inf) = NaN,
-    # out-of-domain (a <= 0 or x < 0) gives NaN.
-    inf_result = tl.where(
-        is_inf_x & is_inf_a,
-        float("nan"),
-        tl.where(is_inf_x, 0.0, tl.where(is_inf_a, 1.0, float("nan"))),
-    )
-    result = tl.where(
-        is_finite,
-        tl.where(in_domain, computed, float("nan")),
-        inf_result,
-    )
+        # Per-element path selection
+        use_series = x_f < (a_f + 1.0)
+        use_asym = (a_f > 20.0) & (tl.abs(x_f - a_f) / a_f < 0.3)
+        use_asym = use_asym | (
+            (a_f > 200.0) & (tl.abs(x_f - a_f) / a_f < 4.5 / tl.sqrt(a_f))
+        )
+        computed = tl.where(use_asym, q_asym, tl.where(use_series, q_series, q_cf))
 
-    tl.store(out_ptr + offsets, result, mask=mask_offs)
+        # Boundary and infinity handling:
+        # Q(a, 0) = 1, Q(inf, x) = 1, Q(a, inf) = 0, Q(inf, inf) = NaN,
+        # out-of-domain (a <= 0 or x < 0) gives NaN.
+        inf_result = tl.where(
+            is_inf_x & is_inf_a,
+            float("nan"),
+            tl.where(is_inf_x, 0.0, tl.where(is_inf_a, 1.0, float("nan"))),
+        )
+        result = tl.where(
+            is_finite,
+            tl.where(in_domain, computed, float("nan")),
+            inf_result,
+        )
+
+        tl.store(out_ptr + offsets, result, mask=mask_offs)
 
 
 def _build_d_coeffs():
@@ -910,6 +906,9 @@ def _get_d():
     return _D_COEFFS
 
 
+_MAX_GRID = 65535
+
+
 def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
     # a, x and out are already contiguous-or-not fp32 by the time we get here:
     # igammac() normalizes and validates every dtype before calling.
@@ -920,7 +919,9 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
     n_elements = out_contig.numel()
     if n_elements > 0:
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        grid = lambda meta: (
+            min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), _MAX_GRID),
+        )
         igammac_kernel[grid](
             a_contig,
             x_contig,

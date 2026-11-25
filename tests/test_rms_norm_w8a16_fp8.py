@@ -35,7 +35,7 @@ def _cuda_fp8_e4m3fn_available():
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
     # PPU and MetaX can store and cast e4m3fn even though they report sm_80.
-    if flag_gems.vendor_name in ("thead", "metax"):
+    if flag_gems.vendor_name in ("thead", "metax", "hygon"):
         return True
     major, _ = torch.cuda.get_device_capability()
     return major >= 9
@@ -59,14 +59,14 @@ def _quantize_fp8_weight(weight, group_size=GROUP_SIZE):
 
 @pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("n", [256, 2048, 4096])
 @pytest.mark.parametrize("capture", [False, True], ids=["eager", "graph"])
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
+    flag_gems.vendor_name not in ("thead", "mthreads", "metax", "hygon")
     or not _cuda_fp8_e4m3fn_available(),
     reason="Regression test for backend W8A16 weight dequantization",
 )
-def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
-    n = 4096
+def test_rms_norm_w8a16_fp8_weight_updates(dtype, n, capture):
     inp = torch.randn((512, n), device=flag_gems.device, dtype=dtype)
     weight_q = torch.ones(n, device=inp.device, dtype=dtype).to(FP8_DTYPE)
     weight_scale = torch.ones(n // GROUP_SIZE, device=inp.device, dtype=dtype)
@@ -118,47 +118,68 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
 @pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
-    "m,n,group_size",
-    [(2, 256, 128), (2, 384, 128), (2, 32768, 64), (2, 33024, 128), (513, 4096, 128)],
+    "shape,group_size,strided",
+    [
+        ((2, 256), 128, False),
+        ((2, 384), 128, True),
+        ((2, 32768), 64, False),
+        ((2, 33024), 128, False),
+        ((513, 4096), 128, False),
+        ((0, 256), 128, True),
+        ((17, 384), 128, True),
+        ((3, 1000), 64, True),
+        ((2, 3, 256), 128, True),
+    ],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
+    flag_gems.vendor_name not in ("thead", "mthreads", "metax", "hygon")
     or not _cuda_fp8_e4m3fn_available(),
     reason="Backend E4M3FN byte decoding across all kernel paths",
 )
-def test_rms_norm_w8a16_fp8_encodings(dtype, m, n, group_size):
+def test_rms_norm_w8a16_fp8_encodings(dtype, shape, group_size, strided):
     # Cover all 256 encodings, including signed zero, subnormals, and NaNs.
+    n = shape[-1]
     bits = (torch.arange(n, device=flag_gems.device) % 256).to(torch.uint8)
-    if n == 384:
+    if strided:
         bits = bits.repeat_interleave(2)[::2]
     weight_q = bits.view(FP8_DTYPE)
+    num_groups = (n + group_size - 1) // group_size
     scales = torch.linspace(
-        0.001, 0.01, n // group_size, device=flag_gems.device, dtype=dtype
+        0.001, 0.01, num_groups, device=flag_gems.device, dtype=dtype
     )
-    if n == 384:
+    if strided:
         # Strided input weights/scales were accepted by the unfused path.
         scales = scales.repeat_interleave(2)[::2]
-    inp = torch.ones((m, n), device=flag_gems.device, dtype=dtype)
+    inp = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     result = flag_gems.rms_norm_w8a16_fp8(
         inp, (n,), weight_q, scales, eps=0.0, group_size=group_size
     )
+    # Keep native FP8 conversion independent of the operator's strided loads.
     expected = (
-        (weight_q.float().reshape(-1, group_size) * scales.float()[:, None])
-        .flatten()
-        .to(dtype)
-    )
+        weight_q.contiguous().float() * scales.float().repeat_interleave(group_size)[:n]
+    ).to(dtype)
     # All-one inputs with eps=0 normalize to exactly one, so the public
     # operator exposes the decoded/scaled weights without normalization error.
-    torch.testing.assert_close(
-        result, expected.expand_as(inp), rtol=0, atol=0, equal_nan=True
+    utils.gems_assert_equal(
+        result, utils.to_reference(expected.expand_as(inp)), equal_nan=True
     )
+    result = result.reshape(-1, n)
     zero = expected == 0
-    assert torch.equal(
-        torch.signbit(result[:, zero]), torch.signbit(expected[zero]).expand(m, -1)
+    if flag_gems.vendor_name == "hygon" and dtype == torch.float16:
+        # Hygon's native FP16 conversion canonicalizes signed zero.
+        expected_sign = torch.zeros_like(result[:, zero], dtype=torch.bool)
+    else:
+        expected_sign = torch.signbit(expected[zero]).expand(result.shape[0], -1)
+    utils.gems_assert_equal(
+        torch.signbit(result[:, zero]), utils.to_reference(expected_sign)
     )
 
 
 W8A16_SHAPES = [
+    (1, 256),
+    (17, 256),
+    (1, 2048),
+    (17, 2048),
     (1, 4096),
     (128, 4096),
     (512, 4096),
