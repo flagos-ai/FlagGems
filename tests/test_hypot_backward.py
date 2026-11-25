@@ -85,7 +85,9 @@ def test_hypot_backward_special_values(dtype):
     )
     expected = torch.autograd.grad(torch.hypot(ref_a, ref_b), (ref_a, ref_b), grad)
     for output, reference in zip(actual, expected):
-        torch.testing.assert_close(output, reference, equal_nan=True)
+        utils.gems_assert_close(
+            output, utils.to_reference(reference), output.dtype, equal_nan=True
+        )
 
 
 @pytest.mark.hypot_backward
@@ -110,7 +112,9 @@ def test_hypot_backward_mixed_dtype(dtype_a, dtype_b):
     )
     expected = torch.autograd.grad(torch.hypot(ref_a, ref_b), (ref_a, ref_b), grad)
     for output, reference in zip(actual, expected):
-        torch.testing.assert_close(output, reference, equal_nan=True)
+        utils.gems_assert_close(
+            output, utils.to_reference(reference), output.dtype, equal_nan=True
+        )
 
 
 @pytest.mark.hypot_backward
@@ -135,4 +139,4 @@ def test_hypot_backward_single_input_grad():
     grad = torch.randn(2, 3, device=flag_gems.device)
     actual = torch.autograd.grad(flag_gems.hypot(a, b), a, grad)[0]
     expected = grad * a / torch.hypot(a, b)
-    torch.testing.assert_close(actual, expected)
+    utils.gems_assert_close(actual, utils.to_reference(expected), actual.dtype)
