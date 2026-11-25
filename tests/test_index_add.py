@@ -209,6 +209,8 @@ def test_index_add_backward(shape, dim, dtype):
     # The public backward primitive computes the source gradient directly.
     res_direct = flag_gems.index_add_backward(out_grad, dim, index, alpha)
     utils.gems_assert_close(res_direct, ref_dsrc, dtype)
+
+
 @pytest.mark.index_add
 @pytest.mark.index_add_
 @pytest.mark.parametrize("inplace", [False, True])
