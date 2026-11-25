@@ -133,7 +133,7 @@ def test__ctc_loss_out(dtype):
 
     res_out0 = torch.empty_like(ref_nll, device=flag_gems.device)
     res_out1 = torch.empty_like(ref_log_alpha, device=flag_gems.device)
-    got0, got1 = flag_gems.ops._ctc_loss_out(
+    got0, got1 = (flag_gems._ctc_loss_out)(
         *gems_args, 0, False, out0=res_out0, out1=res_out1
     )
 
@@ -155,7 +155,7 @@ def test__ctc_loss_out_resize(dtype):
 
     res_out0 = torch.empty(0, dtype=dtype, device=flag_gems.device)
     res_out1 = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    flag_gems.ops._ctc_loss_out(*gems_args, 0, False, out0=res_out0, out1=res_out1)
+    (flag_gems._ctc_loss_out)(*gems_args, 0, False, out0=res_out0, out1=res_out1)
 
     assert res_out0.shape == ref_nll.shape
     assert res_out1.shape == ref_log_alpha.shape

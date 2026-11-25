@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-_MAX_GRID_YZ = 255
+_MAX_GRID_YZ = 8
 
 
 @triton.jit

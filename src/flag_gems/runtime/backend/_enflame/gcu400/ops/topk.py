@@ -33,12 +33,22 @@ from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
+logger = logging.getLogger(__name__)
+
+try:
+    # HW MRADIX level-1 TopK (TLE-Struct + TLE-Raw). Importing it reads the
+    # .tops source, so a checkout/install without that file, or a toolchain
+    # without TLE-Raw, must degrade to the generic path instead of failing.
+    from . import topk_mradix as _mradix
+except Exception as err:  # noqa: BLE001
+    _mradix = None
+    logger.warning("MRADIX topk unavailable, falling back: %s", err)
+
 if HAS_TLE:
     import triton.experimental.tle.language as tle_gpu
 else:
     tle_gpu = None
 
-logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
 _MAX_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).max)
 _MIN_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).min)
@@ -541,7 +551,108 @@ if HAS_TLE:
         tl.store(yi_ptrs, y_indices, mask=mask_k)
 
 
+# ---------------------------------------------------------------------------
+# Small-K fast path (k <= 10)
+# ---------------------------------------------------------------------------
+# For a small k the MRADIX select is a poor fit: it pays all seven radix passes
+# over the row no matter how small k is, so its cost is almost independent of k.
+# A direct k-pass max over the row is much cheaper: it is O(k) instead of
+# O(32 bits), `tl.max` collapses the row to one scalar, the smallest matching
+# column reproduces torch's ascending-index tie break, and the selected lane is
+# masked out for the next pass.  `num_warps=1` keeps every reduction inside one
+# warp -- a multi-warp block needs shared memory and a barrier per reduction,
+# which is what makes the generic chunked path slow here.
+#
+# Measured on gcu400 (fp32, sorted=True, speedup vs torch.topk):
+#   (10000, 256)  k=5   MRADIX 0.24x -> 0.94x
+#   (4096, 4096)  k=5   MRADIX 0.25x -> 0.45x
+#   (4, 128)      k=5   MRADIX 0.90x -> 2.92x
+#   (8, 256)      k=5   MRADIX 1.07x -> 3.67x
+#   (64, 64)      k=5   MRADIX 0.56x -> 1.69x
+# Beyond ~4K columns a whole row no longer fits the register file (the row is
+# read into vector registers once), so wider rows stay on MRADIX, which wins
+# there anyway ((10000, 65536) k=5 is 0.78x fp32 / 1.56x fp16 on MRADIX).
+_SMALL_K_MAX = 10
+_SMALL_K_MAX_COLS = 4096
+_SMALL_K_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
+
+
+@libentry()
+@triton.jit
+def topk_small_k_kernel(
+    X,
+    Yv,
+    Yi,
+    stride_xm,
+    stride_ym,
+    n_cols,
+    K: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_N)
+    live = cols < n_cols
+    xv = tl.load(X + row * stride_xm + cols, mask=live, other=float("-inf"))
+    # Compare on the monotone signed-int key of the float bits rather than on
+    # the floats themselves. IEEE makes -0.0 == +0.0, but torch.topk orders
+    # +0.0 above -0.0 (it sorts bit patterns), so a plain float compare picks
+    # the wrong index whenever a -0.0 and a +0.0 compete for the last slot.
+    # The key is bijective, so the winner's bits -- and therefore its exact
+    # -0.0 / NaN payload -- are recovered by inverting it, with no gather.
+    bits = xv.to(tl.float32).to(tl.int32, bitcast=True)
+    key = tl.where(bits >= 0, bits, bits ^ 0x7FFFFFFF)
+    taken = tl.zeros([BLOCK_N], tl.int1)
+    for j in tl.static_range(K):
+        vk = tl.max(tl.where(taken, -2147483648, key), axis=0)
+        # Leftmost column among the maximum keys: torch's ascending-index tie
+        # break. (`tl.max(..., return_indices=True)` would fold this into one
+        # reduction, but on GCU it is ~2x slower in throughput at large N, so
+        # the two plain reductions win wherever the row set is big.)
+        i = tl.min(tl.where((key == vk) & live & (~taken), cols, BLOCK_N), axis=0)
+        vb = tl.where(vk >= 0, vk, vk ^ 0x7FFFFFFF)
+        tl.store(Yv + row * stride_ym + j, vb.to(tl.float32, bitcast=True))
+        tl.store(Yi + row * stride_ym + j, i)
+        taken = taken | (cols == i)
+
+
+def _topk_small_k(x_2d, k, out_shape):
+    n_rows, n_cols = x_2d.shape
+    y_vals = torch.empty((n_rows, k), device=x_2d.device, dtype=x_2d.dtype)
+    y_idx32 = torch.empty((n_rows, k), device=x_2d.device, dtype=torch.int32)
+    block_n = max(128, triton.next_power_of_2(n_cols))
+    with torch_device_fn.device(x_2d.device):
+        topk_small_k_kernel[(n_rows,)](
+            x_2d,
+            y_vals,
+            y_idx32,
+            x_2d.stride(0),
+            y_vals.stride(0),
+            n_cols,
+            K=k,
+            BLOCK_N=block_n,
+            num_warps=1,
+            num_stages=1,
+        )
+    return y_vals.reshape(out_shape), y_idx32.to(torch.int64).reshape(out_shape)
+
+
 def topk(x, k, dim=-1, largest=True, sorted=True):
+    # Small-K fast path first. It is the common small-k case (attention and
+    # sampling kernels) and its checks are cheap, so it must not sit behind the
+    # generic prologue (logging, shape product, the MRADIX envelope probe):
+    # every Python step costs ~1-2us and dominates these tiny launches.
+    if x.ndim >= 1 and (dim == -1 or dim == x.ndim - 1):
+        n_cols = x.shape[-1]
+        if (
+            largest
+            and 0 < k <= _SMALL_K_MAX
+            and k <= n_cols <= _SMALL_K_MAX_COLS
+            and x.dtype in _SMALL_K_DTYPES
+            and x.is_contiguous()
+        ):
+            n_rows = x.numel() // n_cols
+            return _topk_small_k(x.view(n_rows, n_cols), k, x.shape[:-1] + (k,))
+
     logger.debug("GEMS_ENFLAME TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
@@ -566,6 +677,18 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
     topk_elem_cnt = x.shape[dim]
     batch_size = math.prod(x.shape) // topk_elem_cnt
+
+    # HW MRADIX level-1 path: one hw thread per SIP walks a strided row set,
+    # stages each row into VDMEM (tle.gpu.copy) and radix-selects it on the
+    # MRADIX unit, so a row costs one HBM read plus a few VDMEM passes instead
+    # of k sequential max/argmax sweeps. Its envelope (dtype, dim, N, K) is
+    # checked inside; everything else falls through to the generic path.
+    if _mradix is not None and _mradix.topk_mradix_supported(
+        x, k, dim == x.ndim - 1, largest, sorted
+    ):
+        out_shape = x.shape[:-1] + (k,)
+        x_2d = x.reshape(batch_size, topk_elem_cnt)
+        return _mradix.topk_mradix(x_2d, k, out_shape, sorted)
 
     if (
         HAS_TLE

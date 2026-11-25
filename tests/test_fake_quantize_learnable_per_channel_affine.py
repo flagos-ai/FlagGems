@@ -47,6 +47,14 @@ QUANT_RANGES = [(0, 255), (-128, 127)]
 def test_fake_quantize_learnable_per_channel_affine(
     shape, axis, dtype, quant_min, quant_max
 ):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float16
+        and not utils.TO_CPU
+    ):
+        pytest.skip(
+            "Kunlunxin native learnable per-channel Half returns Float instead of Half"
+        )
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     channels = shape[axis]
     scale = (
@@ -93,3 +101,33 @@ def test_fake_quantize_learnable_per_channel_affine_grad_factor(shape, axis, dty
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("axis", [0, 1])
+def test_fake_quantize_learnable_per_channel_affine_transposed(axis):
+    inp = torch.randn((4, 8), device=flag_gems.device).t()
+    channels = inp.shape[axis]
+    scale = torch.linspace(0.1, 1.0, channels, device=flag_gems.device)
+    zero_point = torch.arange(channels, dtype=torch.float32, device=flag_gems.device)
+    reference = torch.ops.aten._fake_quantize_learnable_per_channel_affine(
+        utils.to_reference(inp),
+        utils.to_reference(scale),
+        utils.to_reference(zero_point),
+        axis,
+        -128,
+        127,
+        1.0,
+    )
+    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+        inp,
+        scale,
+        zero_point,
+        axis,
+        -128,
+        127,
+        1.0,
+    )
+    assert result.shape == inp.shape and result.dtype == inp.dtype
+    utils.gems_assert_close(result, reference, torch.float32)
