@@ -38,18 +38,6 @@ from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
 
-# Fallback redispatch, kept for builds without ``torch.library.get_kernel``.
-# The native ``_sparse_coo_tensor_unsafe`` composition funnels into
-# ``at::_sparse_coo_tensor_with_dims_and_tensors``, which is the operator
-# registered here, so a plain ``torch.ops.aten`` call recurses under full
-# registration.  CompositeExplicitAutograd alone is not enough for this
-# schema: it takes no tensor argument carrying a device, so there is no
-# fallback to land on and the sparse backend key has to be present as well.
-# That sparse key is also the key this module's override is registered on, so
-# this redispatch re-enters the override while the override is active.
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-) | torch._C.DispatchKeySet(torch._C.DispatchKey.SparseCUDA)
 _WITH_TENSORS = torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors.default
 _SPARSE_COO = torch.sparse_coo
 
@@ -65,8 +53,8 @@ try:
     _NATIVE_WITH_TENSORS = torch.library.get_kernel(_WITH_TENSORS, _SPARSE_DISPATCH_KEY)
 except (AttributeError, RuntimeError):
     # Backend without a native kernel on that sparse key (or an older torch
-    # without get_kernel): keep the redispatch path instead of failing the
-    # import for the whole backend.
+    # without get_kernel). Do not fall back to torch: fail clearly at call
+    # time instead of re-entering the override through the dispatcher.
     _NATIVE_WITH_TENSORS = None
     _SPARSE_KEY_SET = None
 
@@ -88,22 +76,13 @@ def _coo_with_tensors(
     # live. An unset dtype keeps the native default (the global default
     # dtype), which is why a mismatching payload is rejected.
     device = values.device if device is None else device
-    if _NATIVE_WITH_TENSORS is not None:
-        return _NATIVE_WITH_TENSORS.call_boxed(
-            _SPARSE_KEY_SET,
-            sparse_dim,
-            dense_dim,
-            list(size),
-            indices,
-            values,
-            dtype=dtype,
-            device=device,
-            layout=_SPARSE_COO,
-            pin_memory=pin_memory,
-            is_coalesced=is_coalesced,
+    if _NATIVE_WITH_TENSORS is None:
+        raise RuntimeError(
+            "native sparse COO constructor is unavailable on this build; "
+            "FlagGems does not fall back to torch"
         )
-    return _WITH_TENSORS.redispatch(
-        _FALLBACK_KEYSET,
+    return _NATIVE_WITH_TENSORS.call_boxed(
+        _SPARSE_KEY_SET,
         sparse_dim,
         dense_dim,
         list(size),
