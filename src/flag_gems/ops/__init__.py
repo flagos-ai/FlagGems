@@ -1020,7 +1020,12 @@ from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_fill import index_fill, index_fill_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
-from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
+from flag_gems.ops.index_reduce import (
+    index_reduce,
+    index_reduce_,
+    index_reduce_backward,
+    index_reduce_out,
+)
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.indices import indices
@@ -2752,6 +2757,7 @@ __all__ = [
     "index_put_",
     "index_reduce",
     "index_reduce_",
+    "index_reduce_backward",
     "index_reduce_out",
     "index_select",
     "index_select_backward",
