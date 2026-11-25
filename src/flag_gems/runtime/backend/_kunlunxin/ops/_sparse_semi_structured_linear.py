@@ -1,4 +1,4 @@
-"""Kunlunxin XPU3 override for ``_sparse_semi_structured_linear``.
+"""Kunlunxin override for ``_sparse_semi_structured_linear``.
 
 The generic kernel computes its 2:4 selection on a rank-3 tile and reduces it
 with ``tl.sum(selected, axis=2)`` inside a runtime ``for k in range(num_iters)``
