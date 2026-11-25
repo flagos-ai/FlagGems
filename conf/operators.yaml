@@ -9904,6 +9904,16 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: grouped_gemm_w8a8_fp8
+  description: Block-scaled FP8 grouped NT GEMM with unpadded expert segments and BF16 output.
+  for:
+  - deep_gemm.m_grouped_fp8_gemm_nt_contiguous
+  labels:
+  - fused
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: grouped_matmul
   description: 'Grouped matrix multiplication on Ascend NPUs, mirroring ``torch_npu.npu_grouped_matmul``.
 
