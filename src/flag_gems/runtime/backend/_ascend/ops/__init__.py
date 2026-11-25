@@ -16,6 +16,7 @@ from ._adaptive_avg_pool3d_backward import (
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from ._add_relu import _add_relu
 from ._conj_copy import _conj_copy, _conj_copy_out
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -394,6 +395,7 @@ from .special_expm1 import special_expm1
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
 from .special_xlogy import special_xlogy
+from .special_xlogy_ import special_xlogy_
 from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
@@ -435,6 +437,7 @@ from .upsample_nearest3d_backward_grad_input import (
 from .upsample_nearest_exact3d_backward_grad_input import (
     upsample_nearest_exact3d_backward_grad_input,
 )
+from .value_selecting_reduction_backward import value_selecting_reduction_backward
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .view_copy import view_copy
@@ -448,6 +451,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_adaptive_avg_pool3d_backward",
+    "_add_relu",
     "_conj_copy",
     "_conj_copy_out",
     "_dyn_quant_matmul_4bit",
@@ -888,6 +892,7 @@ __all__ = [
     "special_log1p_out",
     "special_logit_out",
     "special_xlogy",
+    "special_xlogy_",
     "square_",
     "squeeze_copy",
     "stack",
@@ -927,6 +932,7 @@ __all__ = [
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
     "upsample_nearest_exact3d_backward_grad_input",
+    "value_selecting_reduction_backward",
     "var_mean",
     "vector_norm",
     "view_copy",
