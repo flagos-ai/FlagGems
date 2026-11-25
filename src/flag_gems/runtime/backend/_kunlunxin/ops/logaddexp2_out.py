@@ -20,6 +20,34 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 
 # logaddexp2: out = log2(2**self + 2**other), elementwise with broadcasting.
+#
+# The KernelGen candidate's per-element math is used for the fp16/fp32/bf16
+# path: log2(1 + p), p = 2**(mn-m) in (0, 1], is evaluated with a degree-5
+# near-minimax polynomial p*Q(p) instead of tl.log, removing the per-element
+# logarithm.  Its measured max abs error on the log term is ~1.9e-5, inside
+# the master 1e-4 tolerance and below 0.03 fp16 ulp.  fp64 keeps the exact
+# tl.log path (the polynomial would not meet fp64 precision).
+
+
+@triton.jit
+def _lad2_math(a, b, IS_F64: tl.constexpr):
+    """out = log2(2**a + 2**b); fp32 polynomial, exact tl.log for fp64."""
+    m = tl.maximum(a, b)
+    mn = tl.minimum(a, b)
+    # 2**(mn-m) = e**((mn-m)*ln2).  The backend's tl.exp2 is the slow
+    # libdevice extern; tl.exp is the native fast path.
+    p = tl.exp((mn - m) * 0.6931471805599453094172321214581765680755001343602552)
+    if IS_F64:
+        return (
+            m + tl.log(1.0 + p) * 1.44269504088896340735992468100189213742664595415299
+        )
+    q = -0.03417475931302629
+    q = q * p + 0.14467970118120677
+    q = q * p - 0.3010427686667385
+    q = q * p + 0.4680256737715647
+    q = q * p - 0.7201755503365553
+    q = q * p + 1.4426688727177117
+    return m + p * q
 
 
 @triton.jit
@@ -39,6 +67,7 @@ def _lad2_flat(
     else:
         pid = tl.program_id(0)
         offs = pid * BLOCK + tl.arange(0, BLOCK)
+        offs = tl.max_contiguous(tl.multiple_of(offs, BLOCK), BLOCK)
     if EVEN:
         x = tl.load(x_ptr + offs)
         y = tl.load(y_ptr + offs)
@@ -52,15 +81,7 @@ def _lad2_flat(
     else:
         xv = x.to(tl.float32)
         yv = y.to(tl.float32)
-    m = tl.maximum(xv, yv)
-    mn = tl.minimum(xv, yv)
-    d = mn - m
-    # NOTE: on this backend tl.exp2 lowers to e**x and tl.log2 to ln(x);
-    # core tl.exp/tl.log use the native fast path, tl.exp2/tl.log2 the slow
-    # libdevice extern. 2**d = e**(d*ln2), log2(z) = ln(z)*log2(e).
-    # log2(2**a + 2**b) = m + ln(1 + e**(d*ln2)) / ln2
-    p = tl.exp(d * 0.6931471805599453094172321214581765680755001343602552)
-    r = m + tl.log(1.0 + p) * 1.44269504088896340735992468100189213742664595415299
+    r = _lad2_math(xv, yv, IS_F64)
     if EVEN:
         tl.store(o_ptr + offs, r)
     else:
@@ -108,13 +129,7 @@ def _lad2_bcast(
     else:
         xv = x.to(tl.float32)
         yv = y.to(tl.float32)
-    m = tl.maximum(xv, yv)
-    mn = tl.minimum(xv, yv)
-    d = mn - m
-    # Same base-2 reconstruction as the flat kernel, via the core fast-path
-    # tl.exp / tl.log (see _lad2_flat).
-    p = tl.exp(d * 0.6931471805599453094172321214581765680755001343602552)
-    r = m + tl.log(1.0 + p) * 1.44269504088896340735992468100189213742664595415299
+    r = _lad2_math(xv, yv, IS_F64)
     tl.store(o_ptr + ooff, r, mask=msk)
 
 

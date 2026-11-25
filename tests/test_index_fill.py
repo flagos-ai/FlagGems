@@ -184,10 +184,12 @@ def test_index_fill_large_row_fill(shape):
 def test_index_fill_grid_stride(monkeypatch):
     # Cap the flat launch below the number of tile blocks so the kernel's
     # grid-stride loop runs several iterations; this is what keeps oversized
-    # fills legal on backends with small grid limits.
-    index_fill_ops = importlib.import_module("flag_gems.ops.index_fill")
-
-    monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
+    # fills legal on backends with small grid limits. Vendor overrides (e.g.
+    # Ascend's `_ascend.ops.index_fill`) bound their own launches and have no
+    # `_MAX_GRID`; the correctness checks below still run for them.
+    index_fill_ops = importlib.import_module(flag_gems.index_fill_.__module__)
+    if hasattr(index_fill_ops, "_MAX_GRID"):
+        monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
 
     shape = (256, 16)
     inp = torch.arange(
