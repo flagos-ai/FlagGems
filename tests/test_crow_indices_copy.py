@@ -410,17 +410,21 @@ def test_accuracy_crow_indices_copy_dispatch_sentinel():
     # .crow_indices_copy(csr) calls native ATen and cannot observe the
     # FlagGems implementation. Registering the counting wrapper on the
     # SparseCsrCUDA key makes the dispatcher-routed path observable.
+    reference = torch.ops.aten.crow_indices_copy(utils.to_reference(csr))
     lib = torch.library.Library("aten", "IMPL")
     try:
-        lib.impl("crow_indices_copy", counting_impl, "SparseCsrCUDA")
+        key = (
+            "SparseCsrPrivateUse1"
+            if flag_gems.vendor_name == "mthreads"
+            else "SparseCsrCUDA"
+        )
+        lib.impl("crow_indices_copy", counting_impl, key)
         calls["count"] = 0
         via_dispatch = torch.ops.aten.crow_indices_copy(csr)
         assert (
             calls["count"] > 0
         ), "torch.ops.aten.crow_indices_copy did not reach the registered implementation"
-        utils.gems_assert_equal(
-            via_dispatch, torch.ops.aten.crow_indices_copy(utils.to_reference(csr))
-        )
+        utils.gems_assert_equal(via_dispatch, reference)
     finally:
         lib._destroy()
         del lib
