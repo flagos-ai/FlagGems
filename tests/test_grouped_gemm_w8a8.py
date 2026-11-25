@@ -23,14 +23,37 @@ import flag_gems
 from .accuracy_utils import gems_assert_close, gems_assert_equal
 
 
-def make_grouped_gemm_case(lengths, n, k, device, seed=20261019):
+def make_grouped_gemm_case(
+    lengths,
+    n,
+    k,
+    device,
+    seed=20261019,
+    *,
+    dtype=torch.int8,
+    block_scaled=False,
+    strided=False,
+    out=None,
+):
     torch.manual_seed(seed)
     m, e = sum(lengths), len(lengths)
-    A = torch.randint(-128, 128, (m, k), dtype=torch.int8, device=device)
-    B = torch.randint(-128, 128, (e, n, k), dtype=torch.int8, device=device)
-    As = 0.005 + 0.01 * torch.rand((m, 1), device=device)
-    Bs = 0.005 + 0.01 * torch.rand((e, n, 1), device=device)
-    C = torch.empty((m, n), dtype=torch.bfloat16, device=device)
+    if block_scaled:
+        A = torch.randn((m, k), device=device).to(dtype)
+        B = torch.randn((e, n, k), device=device).to(dtype)
+        As = 0.01 + 0.02 * torch.rand((m, k // 128), device=device)
+        Bs = 0.01 + 0.02 * torch.rand((e, (n + 127) // 128, k // 128), device=device)
+    else:
+        A = torch.randint(-128, 128, (m, k), dtype=torch.int8, device=device)
+        B = torch.randint(-128, 128, (e, n, k), dtype=torch.int8, device=device)
+        As = 0.005 + 0.01 * torch.rand((m, 1), device=device)
+        Bs = 0.005 + 0.01 * torch.rand((e, n, 1), device=device)
+        if dtype != torch.int8:
+            A = (A.cpu().float() / 64).to(dtype).to(device)
+            B = (B.cpu().float() / 64).to(dtype).to(device)
+    if strided:
+        As = As.T.contiguous().T
+        Bs = Bs.transpose(1, 2).contiguous().transpose(1, 2)
+    C = torch.empty((m, n), dtype=torch.bfloat16, device=device) if out is None else out
     rows = torch.tensor(lengths, dtype=torch.int32, device=device)
     indices = torch.repeat_interleave(
         torch.arange(e, dtype=torch.int32, device=device), rows, output_size=m
@@ -46,16 +69,328 @@ def deepgemm_grouped_gemm(A, As, B, Bs, C, m_indices, m_rows):
     )
 
 
-def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
+def grouped_gemm_cpu_reference(A, As, B, Bs, lengths, *, block_scaled=False):
     A, As, B, Bs = (t.cpu() for t in (A, As, B, Bs))
+    if block_scaled:
+        A, As, B, Bs = (t.double() for t in (A, As, B, Bs))
     output = torch.empty((A.shape[0], B.shape[1]), dtype=torch.bfloat16)
     start = 0
     for expert, count in enumerate(lengths):
         end = start + count
-        dot = A[start:end].double() @ B[expert].double().T
-        output[start:end] = (dot.float() * As[start:end] * Bs[expert, :, 0]).bfloat16()
+        if block_scaled:
+            acc = torch.zeros((count, B.shape[1]), dtype=torch.float64)
+            for block in range(A.shape[1] // 128):
+                section = slice(block * 128, (block + 1) * 128)
+                dot = A[start:end, section] @ B[expert, :, section].T
+                scale_b = Bs[expert, :, block].repeat_interleave(128)[: B.shape[1]]
+                acc += dot * As[start:end, block, None] * scale_b[None, :]
+            output[start:end] = acc.bfloat16()
+        else:
+            dot = A[start:end].double() @ B[expert].double().T
+            output[start:end] = (
+                dot.float() * As[start:end] * Bs[expert, :, 0]
+            ).bfloat16()
         start = end
     return output
+
+
+def assert_grouped_gemm_result(
+    args,
+    lengths,
+    *,
+    block_scaled=False,
+    storage=None,
+    scale_factor=1.0,
+    normalize=False,
+    relative=False,
+):
+    expected = grouped_gemm_cpu_reference(*args[:4], lengths, block_scaled=block_scaled)
+    actual = args[4].cpu()
+    if block_scaled:
+        if normalize:
+            # Preserve the scale-independent check for cancellation with order-one scales.
+            rms = expected.float().square().mean().sqrt()
+            torch.testing.assert_close(
+                actual.float() / rms, expected.float() / rms, rtol=0.016, atol=1e-3
+            )
+        else:
+            gems_assert_close(
+                actual,
+                expected,
+                torch.bfloat16,
+                reduce_dim=args[0].shape[1] if scale_factor > 1 else 1,
+            )
+        if relative and expected.numel():
+            error = (actual.float() - expected.float()).norm() / expected.float().norm()
+            assert error < 1e-3
+    elif args[0].dtype == torch.int8:
+        gems_assert_equal(actual, expected)
+    else:
+        # Keep the existing per-channel FP8 tolerance: one BF16 rounding step.
+        torch.testing.assert_close(
+            actual, expected, rtol=torch.finfo(torch.bfloat16).eps, atol=0
+        )
+    if storage is not None:
+        assert torch.all(storage[0] == 17) and torch.all(storage[-1] == 17)
+
+
+BLOCK_SCALED_FP8 = "grouped_gemm_w8a8_fp8" in vars(flag_gems)
+
+
+@pytest.fixture
+def grouped_gemm_operator():
+    if BLOCK_SCALED_FP8:
+        return flag_gems.grouped_gemm_w8a8_fp8
+    if "grouped_gemm_w8a8" in vars(flag_gems):
+        return flag_gems.grouped_gemm_w8a8
+    pytest.skip("requires a registered grouped GEMM implementation")
+
+
+@pytest.fixture
+def grouped_gemm_inputs():
+    def _make(
+        lengths, n, k, *, dtype=None, strided=False, unaligned="", scale_factor=1.0
+    ):
+        if dtype is None:
+            dtype = torch.float8_e4m3fn if BLOCK_SCALED_FP8 else torch.int8
+        m = sum(lengths)
+        storage, out = None, None
+        if BLOCK_SCALED_FP8:
+            unaligned_out = unaligned in ("out", "all")
+            shape = (m * n + 2,) if unaligned_out else (m + 2, n)
+            storage = torch.full(
+                shape, 17, device=flag_gems.device, dtype=torch.bfloat16
+            )
+            out = storage[1:-1].view(m, n)
+        args = list(
+            make_grouped_gemm_case(
+                lengths,
+                n,
+                k,
+                flag_gems.device,
+                seed=42 if BLOCK_SCALED_FP8 else 20261019,
+                dtype=dtype,
+                block_scaled=BLOCK_SCALED_FP8,
+                strided=strided,
+                out=out,
+            )
+        )
+        if BLOCK_SCALED_FP8:
+            args[1].mul_(scale_factor)
+            args[3].mul_(scale_factor)
+        for name, index in (("a", 0), ("b", 2)):
+            if unaligned in (name, "ab", "all"):
+                original = args[index]
+                backing = torch.empty(
+                    original.numel() + 1, dtype=original.dtype, device=original.device
+                )
+                args[index] = backing[1:].view(original.shape)
+                args[index].copy_(original)
+        args[4].fill_(float("nan"))
+        return args, storage
+
+    return _make
+
+
+@pytest.mark.grouped_gemm_w8a8
+@pytest.mark.parametrize("strided", [False, True] if BLOCK_SCALED_FP8 else [False])
+@pytest.mark.parametrize("scale_factor", [1.0, 100.0] if BLOCK_SCALED_FP8 else [1.0])
+@pytest.mark.parametrize(
+    "lengths,n,k",
+    (
+        [
+            ([0, 0, 0], 64, 128),
+            ([0, 1, 3, 0, 7], 192, 384),
+            ([1] + [0] * 255 + [13], 64, 6144),
+            ([1, 32, 0, 65], 128, 256),
+            ([0, 257, 3], 64, 128),
+            ([0, 257, 0, 511], 192, 384),
+            ([0, 566] + [0] * 61 + [18], 64, 6144),
+        ]
+        if BLOCK_SCALED_FP8
+        else (
+            [
+                ([0, 1, 3, 0, 7], 65, 129),
+                ([1, 32, 0, 65], 128, 256),
+                ([0, 257, 3], 64, 128),
+                ([1] + [0] * 255 + [13], 64, 6144),
+                ([0, 129, 0, 3968], 257, 2051),
+                ([0, 129] + [0] * 254 + [4000], 257, 2051),
+                ([0, 1, 0], 17, 1),
+                ([0, 0, 0], 64, 128),
+            ]
+            if flag_gems.vendor_name == "metax"
+            else [
+                ([0, 1, 3, 0, 7], 65, 129),
+                ([1, 32, 0, 65], 128, 256),
+                ([0, 257, 3], 64, 128),
+                ([0, 257, 3], 257, 128),
+                ([0, 129, 3], 65, 129),
+                ([0, 129, 3], 17, 0),
+                ([0, 129, 3], 0, 128),
+                ([1] + [0] * 255 + [13], 64, 6144),
+                ([0, 1, 0], 17, 1),
+                ([0, 0, 0], 64, 128),
+            ]
+        )
+    ),
+)
+def test_grouped_gemm_w8a8(
+    grouped_gemm_operator, grouped_gemm_inputs, lengths, n, k, strided, scale_factor
+):
+    args, storage = grouped_gemm_inputs(
+        lengths, n, k, strided=strided, scale_factor=scale_factor
+    )
+    pointer = args[4].data_ptr()
+    assert grouped_gemm_operator(*args) is None
+    assert args[4].data_ptr() == pointer
+    assert_grouped_gemm_result(
+        args,
+        lengths,
+        block_scaled=BLOCK_SCALED_FP8,
+        storage=storage,
+        scale_factor=scale_factor,
+        relative=BLOCK_SCALED_FP8,
+    )
+
+
+@pytest.mark.grouped_gemm_w8a8
+@pytest.mark.skipif(
+    not BLOCK_SCALED_FP8 and flag_gems.vendor_name != "metax",
+    reason="requires a registered FP8 grouped GEMM backend",
+)
+@pytest.mark.parametrize(
+    "dtype",
+    (
+        [torch.float8_e4m3fn]
+        if BLOCK_SCALED_FP8
+        else [torch.int8, torch.float8_e4m3fn, torch.float8_e4m3fnuz]
+    ),
+)
+@pytest.mark.parametrize(
+    "lengths,n,k,strided,unaligned,scale_factor,normalize",
+    (
+        (
+            [
+                (lengths, 192, 384, True, unaligned, 1.0, False)
+                for lengths in ([1, 33, 0, 29], [0, 257, 0, 511])
+                for unaligned in ("a", "b", "out", "all")
+            ]
+            + [
+                (lengths, 192, k, strided, "ab" if unaligned else "", 100.0, True)
+                for lengths in ([257, 1, 767, 0], [0, 1025, 0, 0], [511, 1, 1537, 0])
+                for k in (128, 384)
+                for strided in (False, True)
+                for unaligned in (False, True)
+            ]
+            + [([257, 1, 767, 0], 192, 128, True, "out", 1.0, False)]
+        )
+        if BLOCK_SCALED_FP8
+        else [
+            (*case, False, "", 1.0, False)
+            for case in [
+                ([0, 3, 1], 17, 0),
+                ([0, 3, 1], 0, 16),
+                ([0, 0], 16, 16),
+                ([0, 17, 65, 0, 131, 1], 65, 129),
+                ([0, 257, 3], 128, 256),
+                ([0, 513, 0], 256, 256),
+            ]
+        ]
+    ),
+)
+def test_grouped_gemm_w8a8_dtypes_tails(
+    grouped_gemm_operator,
+    grouped_gemm_inputs,
+    lengths,
+    n,
+    k,
+    dtype,
+    strided,
+    unaligned,
+    scale_factor,
+    normalize,
+):
+    args, storage = grouped_gemm_inputs(
+        lengths,
+        n,
+        k,
+        dtype=dtype,
+        strided=strided,
+        unaligned=unaligned,
+        scale_factor=scale_factor,
+    )
+    assert grouped_gemm_operator(*args) is None
+    assert_grouped_gemm_result(
+        args,
+        lengths,
+        block_scaled=BLOCK_SCALED_FP8,
+        storage=storage,
+        scale_factor=scale_factor,
+        normalize=normalize,
+        relative=normalize,
+    )
+
+
+@pytest.mark.grouped_gemm_w8a8
+@pytest.mark.skipif(
+    not BLOCK_SCALED_FP8 and flag_gems.vendor_name != "metax",
+    reason="requires a registered FP8 grouped GEMM backend",
+)
+@pytest.mark.parametrize(
+    "m,k",
+    (
+        [(m, k) for m in (16, 512, 2048) for k in (128, 384)]
+        if BLOCK_SCALED_FP8
+        else [(None, None)]
+    ),
+)
+def test_grouped_gemm_w8a8_changing_expert_rows(
+    grouped_gemm_operator, grouped_gemm_inputs, m, k
+):
+    storage = None
+    if BLOCK_SCALED_FP8:
+        lengths, n = [m // 4] * 4, 192
+        args, storage = grouped_gemm_inputs(lengths, n, k, strided=True)
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            grouped_gemm_operator(*args)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            grouped_gemm_operator(*args)
+        cases = [
+            (lengths, n, k)
+            for lengths in ([0, m - 1, 0, 1], [m // 2, 0, m // 2, 0], [0, 0, 0, m])
+        ]
+    else:
+        cases = [
+            ([0, 257, 0, 511], 64, 128),
+            ([256, 0, 512, 0], 128, 256),
+            ([256, 0, 512, 0], 64, 128),
+            ([0, 257, 0, 511], 128, 256),
+        ]
+    for lengths, n, k in cases:
+        if BLOCK_SCALED_FP8:
+            args[6].copy_(
+                torch.tensor(lengths, device=args[6].device, dtype=torch.int32)
+            )
+            args[5].copy_(
+                torch.repeat_interleave(
+                    torch.arange(4, device=args[5].device, dtype=torch.int32),
+                    args[6],
+                    output_size=m,
+                )
+            )
+            args[4].fill_(float("nan"))
+            graph.replay()
+        else:
+            args, storage = grouped_gemm_inputs(lengths, n, k)
+            grouped_gemm_operator(*args)
+        assert_grouped_gemm_result(
+            args, lengths, block_scaled=BLOCK_SCALED_FP8, storage=storage
+        )
 
 
 @pytest.mark.skipif(
@@ -63,27 +398,6 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
     reason="requires the registered thead grouped GEMM backend",
 )
 class TestPPUGroupedGEMM:
-    @pytest.mark.parametrize(
-        "lengths,n,k",
-        [
-            ([0, 1, 3, 0, 7], 65, 129),
-            ([1, 32, 0, 65], 128, 256),
-            ([0, 257, 3], 64, 128),
-            ([0, 257, 3], 257, 128),
-            ([0, 129, 3], 65, 129),
-            ([0, 129, 3], 17, 0),
-            ([0, 129, 3], 0, 128),
-            ([1] + [0] * 255 + [13], 64, 6144),
-            ([0, 1, 0], 17, 1),
-            ([0, 0, 0], 64, 128),
-        ],
-    )
-    @pytest.mark.grouped_gemm_w8a8
-    def test_grouped_gemm_w8a8(self, lengths, n, k):
-        args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
-        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-        flag_gems.grouped_gemm_w8a8(*args)
-        gems_assert_equal(args[4].cpu(), expected)
 
     @pytest.mark.parametrize("n,k", [(512, 6144), (6144, 256)])
     @pytest.mark.grouped_gemm_w8a8
@@ -249,27 +563,6 @@ class TestPPUGroupedGEMM:
     reason="requires the registered metax grouped GEMM backend",
 )
 class TestMetaXGroupedGEMM:
-    @pytest.mark.parametrize(
-        "lengths,n,k",
-        [
-            ([0, 1, 3, 0, 7], 65, 129),
-            ([1, 32, 0, 65], 128, 256),
-            ([0, 257, 3], 64, 128),
-            ([1] + [0] * 255 + [13], 64, 6144),
-            ([0, 129, 0, 3968], 257, 2051),
-            ([0, 129] + [0] * 254 + [4000], 257, 2051),
-            ([0, 1, 0], 17, 1),
-            ([0, 0, 0], 64, 128),
-        ],
-    )
-    @pytest.mark.grouped_gemm_w8a8
-    def test_grouped_gemm_w8a8(self, lengths, n, k):
-        args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
-        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-        pointer = args[4].data_ptr()
-        assert flag_gems.grouped_gemm_w8a8(*args) is None
-        assert args[4].data_ptr() == pointer
-        gems_assert_equal(args[4].cpu(), expected)
 
     @pytest.mark.grouped_gemm_w8a8
     def test_grouped_gemm_w8a8_int8_extremes(self):
@@ -282,53 +575,6 @@ class TestMetaXGroupedGEMM:
         assert flag_gems.grouped_gemm_w8a8(*args) is None
         assert args[4].data_ptr() == pointer
         gems_assert_equal(args[4].cpu(), expected)
-
-    @pytest.mark.grouped_gemm_w8a8
-    def test_grouped_gemm_w8a8_changing_expert_rows(self):
-        for lengths, n, k in (
-            ([0, 257, 0, 511], 64, 128),
-            ([256, 0, 512, 0], 128, 256),
-            ([256, 0, 512, 0], 64, 128),
-            ([0, 257, 0, 511], 128, 256),
-        ):
-            args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
-            expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-            flag_gems.grouped_gemm_w8a8(*args)
-            gems_assert_equal(args[4].cpu(), expected)
-
-    @pytest.mark.grouped_gemm_w8a8
-    @pytest.mark.parametrize(
-        "dtype", [torch.int8, torch.float8_e4m3fn, torch.float8_e4m3fnuz]
-    )
-    @pytest.mark.parametrize(
-        "lengths,n,k",
-        [
-            ([0, 3, 1], 17, 0),
-            ([0, 3, 1], 0, 16),
-            ([0, 0], 16, 16),
-            ([0, 17, 65, 0, 131, 1], 65, 129),
-            ([0, 257, 3], 128, 256),
-            ([0, 513, 0], 256, 256),
-        ],
-    )
-    def test_grouped_gemm_w8a8_dtypes_tails(self, lengths, n, k, dtype):
-        args = list(make_grouped_gemm_case(lengths, n, k, flag_gems.device))
-        if dtype != torch.int8:
-            for index in (0, 2):
-                args[index] = (
-                    (args[index].cpu().float() / 64).to(dtype).to(flag_gems.device)
-                )
-        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-        args[4].fill_(float("nan"))
-        assert flag_gems.grouped_gemm_w8a8(*args) is None
-        if dtype == torch.int8:
-            gems_assert_equal(args[4].cpu(), expected)
-        else:
-            # FP32 dot reduction order may change BF16 rounding near cancellation.
-            # Permit one BF16 relative rounding step, with no absolute tolerance.
-            torch.testing.assert_close(
-                args[4].cpu(), expected, rtol=torch.finfo(torch.bfloat16).eps, atol=0
-            )
 
     @pytest.mark.grouped_gemm_w8a8
     @pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e4m3fnuz])
@@ -384,205 +630,3 @@ class TestMetaXGroupedGEMM:
             args[4].fill_(float("nan"))
             assert flag_gems.grouped_gemm_w8a8(*args) is None
             gems_assert_equal(args[4].cpu(), expected)
-
-
-def make_grouped_gemm_fp8_case(lengths, n, k, strided=False):
-    torch.manual_seed(42)
-    m, e = sum(lengths), len(lengths)
-    device = flag_gems.device
-    a = torch.randn((m, k), device=device).to(torch.float8_e4m3fn)
-    b = torch.randn((e, n, k), device=device).to(torch.float8_e4m3fn)
-    sa = 0.01 + 0.02 * torch.rand((m, k // 128), device=device)
-    sb = 0.01 + 0.02 * torch.rand((e, (n + 127) // 128, k // 128), device=device)
-    if strided:
-        sa = sa.T.contiguous().T
-        sb = sb.transpose(1, 2).contiguous().transpose(1, 2)
-    counts = torch.tensor(lengths, dtype=torch.int32, device=device)
-    indices = torch.repeat_interleave(
-        torch.arange(e, dtype=torch.int32, device=device), counts, output_size=m
-    )
-    # Contiguous output view with guards on both sides.
-    storage = torch.full((m + 2, n), 17, device=device, dtype=torch.bfloat16)
-    out = storage[1:-1]
-    out.fill_(float("nan"))
-    return (a, sa, b, sb, out, indices, counts), storage
-
-
-def grouped_gemm_fp8_cpu_reference(args, lengths):
-    a, sa, b, sb = [x.cpu().double() for x in args[:4]]
-    m, k = a.shape
-    n = b.shape[1]
-    out = torch.empty((m, n), dtype=torch.bfloat16)
-    start = 0
-    for expert, count in enumerate(lengths):
-        end = start + count
-        acc = torch.zeros((count, n), dtype=torch.float64)
-        for block in range(k // 128):
-            section = slice(block * 128, (block + 1) * 128)
-            dot = a[start:end, section] @ b[expert, :, section].T
-            bs = sb[expert, :, block].repeat_interleave(128)[:n]
-            acc += dot * sa[start:end, block, None] * bs[None, :]
-        out[start:end] = acc.bfloat16()
-        start = end
-    return out
-
-
-@pytest.mark.skipif(
-    "grouped_gemm_w8a8_fp8" not in vars(flag_gems),
-    reason="requires a registered block-scaled FP8 grouped GEMM implementation",
-)
-class TestBlockScaledFP8GroupedGEMM:
-    @pytest.mark.grouped_gemm_w8a8
-    @pytest.mark.parametrize("strided", [False, True])
-    @pytest.mark.parametrize(
-        "lengths,n,k",
-        [
-            ([0, 0, 0], 64, 128),
-            ([0, 1, 3, 0, 7], 192, 384),
-            ([1] + [0] * 255 + [13], 64, 6144),
-            ([1, 32, 0, 65], 128, 256),
-            ([0, 257, 3], 64, 128),
-            ([0, 257, 0, 511], 192, 384),
-            ([0, 566] + [0] * 61 + [18], 64, 6144),
-        ],
-    )
-    @pytest.mark.parametrize("scale_factor", [1.0, 100.0])
-    def test_grouped_gemm_w8a8_fp8(self, lengths, n, k, strided, scale_factor):
-        args, storage = make_grouped_gemm_fp8_case(lengths, n, k, strided)
-        # Also exercise order-one scales, where absolute tolerance cannot hide errors.
-        args[1].mul_(scale_factor)
-        args[3].mul_(scale_factor)
-        expected = grouped_gemm_fp8_cpu_reference(args, lengths)
-        assert flag_gems.grouped_gemm_w8a8_fp8(*args) is None
-        # Keep the original strict check for captured small scales. Order-one
-        # scales use the repository's GEMM reduction tolerance (also used by bmm
-        # and mm_w8a8_fp8), plus a scale-independent relative-L2 error bound.
-        actual = args[4].cpu()
-        gems_assert_close(
-            actual, expected, torch.bfloat16, reduce_dim=k if scale_factor > 1 else 1
-        )
-        if expected.numel():
-            relative_error = (
-                actual.float() - expected.float()
-            ).norm() / expected.float().norm()
-            assert relative_error < 1e-3
-        assert torch.all(storage[0] == 17)
-        assert torch.all(storage[-1] == 17)
-
-    @pytest.mark.grouped_gemm_w8a8
-    @pytest.mark.parametrize("m", [16, 512, 2048])
-    @pytest.mark.parametrize("k", [128, 384])
-    def test_grouped_gemm_w8a8_fp8_graph_metadata(self, m, k):
-        """The same graph must consume changed metadata, including empty experts."""
-        lengths = [m // 4] * 4
-        args, storage = make_grouped_gemm_fp8_case(lengths, 192, k, True)
-        op = flag_gems.grouped_gemm_w8a8_fp8
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
-            op(*args)
-        torch.cuda.current_stream().wait_stream(stream)
-        graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph):
-            op(*args)
-        for lengths in ([0, m - 1, 0, 1], [m // 2, 0, m // 2, 0], [0, 0, 0, m]):
-            args[6].copy_(
-                torch.tensor(lengths, device=args[6].device, dtype=torch.int32)
-            )
-            args[5].copy_(
-                torch.repeat_interleave(
-                    torch.arange(4, device=args[5].device, dtype=torch.int32),
-                    args[6],
-                    output_size=m,
-                )
-            )
-            args[4].fill_(float("nan"))
-            expected = grouped_gemm_fp8_cpu_reference(args, lengths)
-            graph.replay()
-            gems_assert_close(args[4].cpu(), expected, torch.bfloat16)
-            assert torch.all(storage[0] == 17)
-            assert torch.all(storage[-1] == 17)
-
-    @pytest.mark.grouped_gemm_w8a8
-    @pytest.mark.parametrize("lengths", [[1, 33, 0, 29], [0, 257, 0, 511]])
-    @pytest.mark.parametrize("unaligned", ["a", "b", "out", "all"])
-    def test_grouped_gemm_w8a8_fp8_unaligned(self, lengths, unaligned):
-        """Contiguous tensors can have non-TMA-aligned storage offsets."""
-        args, _ = make_grouped_gemm_fp8_case(lengths, 192, 384, True)
-        args = list(args)
-        for name, index in (("a", 0), ("b", 2)):
-            if unaligned in (name, "all"):
-                original = args[index]
-                storage = torch.empty(
-                    original.numel() + 1, dtype=original.dtype, device=original.device
-                )
-                args[index] = storage[1:].view(original.shape)
-                args[index].copy_(original)
-        output_guard = None
-        if unaligned in ("out", "all"):
-            original = args[4]
-            output_guard = torch.full(
-                (original.numel() + 2,),
-                17,
-                dtype=original.dtype,
-                device=original.device,
-            )
-            args[4] = output_guard[1:-1].view(original.shape)
-        expected = grouped_gemm_fp8_cpu_reference(args, lengths)
-        flag_gems.grouped_gemm_w8a8_fp8(*args)
-        gems_assert_close(args[4].cpu(), expected, torch.bfloat16)
-        if output_guard is not None:
-            assert output_guard[0] == 17 and output_guard[-1] == 17
-
-    @pytest.mark.grouped_gemm_w8a8
-    @pytest.mark.parametrize(
-        "lengths", [[257, 1, 767, 0], [0, 1025, 0, 0], [511, 1, 1537, 0]]
-    )
-    @pytest.mark.parametrize("n,k", [(192, 128), (192, 384)])
-    @pytest.mark.parametrize("strided", [False, True])
-    @pytest.mark.parametrize("unaligned", [False, True])
-    def test_grouped_gemm_w8a8_fp8_large_groups(
-        self, lengths, n, k, strided, unaligned
-    ):
-        """Exercise large-group scheduling with tails, empty experts and order-one scales."""
-        args, storage = make_grouped_gemm_fp8_case(lengths, n, k, strided)
-        args = list(args)
-        if unaligned:
-            for index in (0, 2):
-                original = args[index]
-                backing = torch.empty(
-                    original.numel() + 1, dtype=original.dtype, device=original.device
-                )
-                args[index] = backing[1:].view(original.shape)
-                args[index].copy_(original)
-        args[1].mul_(100)
-        args[3].mul_(100)
-        expected = grouped_gemm_fp8_cpu_reference(args, lengths)
-        flag_gems.grouped_gemm_w8a8_fp8(*args)
-        actual = args[4].cpu()
-        # FP8 Tensor Core cancellation error scales with the operands. A fixed
-        # absolute near-zero tolerance rejects even native DeepGEMM for these
-        # order-one scales. Check normalized elements and relative L2 against FP64.
-        rms = expected.float().square().mean().sqrt()
-        torch.testing.assert_close(
-            actual.float() / rms, expected.float() / rms, rtol=0.016, atol=1e-3
-        )
-        relative_error = (
-            actual.float() - expected.float()
-        ).norm() / expected.float().norm()
-        assert relative_error < 1e-3
-        assert torch.all(storage[0] == 17) and torch.all(storage[-1] == 17)
-
-    @pytest.mark.grouped_gemm_w8a8
-    def test_grouped_gemm_w8a8_fp8_persistent_unaligned_output(self):
-        """Aligned TMA inputs must support a contiguous, unaligned output view."""
-        lengths = [257, 1, 767, 0]
-        args, _ = make_grouped_gemm_fp8_case(lengths, 192, 128, True)
-        args = list(args)
-        out = args[4]
-        storage = torch.full((out.numel() + 2,), 17, dtype=out.dtype, device=out.device)
-        args[4] = storage[1:-1].view(out.shape)
-        expected = grouped_gemm_fp8_cpu_reference(args, lengths)
-        flag_gems.grouped_gemm_w8a8_fp8(*args)
-        gems_assert_close(args[4].cpu(), expected, torch.bfloat16)
-        assert storage[0] == 17 and storage[-1] == 17

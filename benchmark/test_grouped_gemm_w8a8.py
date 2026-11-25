@@ -56,11 +56,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
-from tests.test_grouped_gemm_w8a8 import (
-    deepgemm_grouped_gemm,
-    make_grouped_gemm_case,
-    make_grouped_gemm_fp8_case,
-)
+from tests.test_grouped_gemm_w8a8 import deepgemm_grouped_gemm, make_grouped_gemm_case
 
 from . import base, consts
 from .base import Benchmark
@@ -622,9 +618,18 @@ class GroupedFp8Benchmark(base.Benchmark):
 
     def build_inputs(self, case):
         m, n, k, e = case.shape
-        args = make_grouped_gemm_fp8_case(
-            [m // e + (i < m % e) for i in range(e)], n, k
-        )[0]
+        storage = torch.full((m + 2, n), 17, device=self.device, dtype=torch.bfloat16)
+        args = make_grouped_gemm_case(
+            [m // e + (i < m % e) for i in range(e)],
+            n,
+            k,
+            self.device,
+            seed=42,
+            dtype=torch.float8_e4m3fn,
+            block_scaled=True,
+            out=storage[1:-1],
+        )
+        args[4].fill_(float("nan"))
         self.native = PrepackedDeepGemmBaseline(args)
         return args
 
