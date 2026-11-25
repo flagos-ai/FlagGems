@@ -84,5 +84,7 @@ def test_clamp_min_backward_nan_and_boundary(dtype):
     grad = torch.ones_like(inp)
 
     (dx,) = torch.autograd.grad(flag_gems.clamp_min(inp, -0.5), inp, grad)
-    (ref_dx,) = torch.autograd.grad(torch.clamp_min(ref_inp, -0.5), ref_inp, grad)
+    (ref_dx,) = torch.autograd.grad(
+        torch.clamp_min(ref_inp, -0.5), ref_inp, utils.to_reference(grad)
+    )
     utils.gems_assert_close(dx, ref_dx, dtype)
