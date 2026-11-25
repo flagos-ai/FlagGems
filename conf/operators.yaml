@@ -9432,8 +9432,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 - id: grouped_gemm_w8a8
   description: |
     Per-channel grouped NT GEMM with unpadded rows, FP32 row/column scales and
-    caller-owned BF16 output. Supports matching signed INT8 operands on PPU
-    and MetaX, plus E4M3FN/FNUZ operands on MetaX. Uses packed expert indices
+    caller-owned BF16 output. Supports matching signed INT8 operands on PPU,
+    MetaX and Hygon, plus E4M3FN/FNUZ operands on MetaX. Uses packed expert indices
     and row counts without padding.
   for:
   - grouped_gemm_nt_i8i8bf16_nopad
