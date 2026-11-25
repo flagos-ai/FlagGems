@@ -70,6 +70,7 @@ from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .nuclear_norm import nuclear_norm
@@ -184,6 +185,10 @@ __all__ = [
     "mul_",
     "mv",
     "mvlgamma",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "native_layer_norm",
     "nll_loss_backward",
     "nonzero_numpy",
