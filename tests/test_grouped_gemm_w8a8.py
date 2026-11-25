@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import importlib
+import os
+from pathlib import Path
 
 import pytest
 import torch
@@ -236,7 +238,14 @@ def grouped_gemm_inputs():
     ),
 )
 def test_grouped_gemm_w8a8(
-    grouped_gemm_operator, grouped_gemm_inputs, lengths, n, k, strided, scale_factor
+    grouped_gemm_operator,
+    grouped_gemm_inputs,
+    lengths,
+    n,
+    k,
+    strided,
+    scale_factor,
+    request,
 ):
     args, storage = grouped_gemm_inputs(
         lengths, n, k, strided=strided, scale_factor=scale_factor
@@ -244,14 +253,62 @@ def test_grouped_gemm_w8a8(
     pointer = args[4].data_ptr()
     assert grouped_gemm_operator(*args) is None
     assert args[4].data_ptr() == pointer
-    assert_grouped_gemm_result(
-        args,
-        lengths,
-        block_scaled=BLOCK_SCALED_FP8,
-        storage=storage,
-        scale_factor=scale_factor,
-        relative=BLOCK_SCALED_FP8,
-    )
+    try:
+        assert_grouped_gemm_result(
+            args,
+            lengths,
+            block_scaled=BLOCK_SCALED_FP8,
+            storage=storage,
+            scale_factor=scale_factor,
+            relative=BLOCK_SCALED_FP8,
+        )
+    except AssertionError as error:
+        capture_dir = os.environ.get("FLAGGEMS_GROUPED_FP8_REPRO_DIR")
+        if (
+            capture_dir
+            and BLOCK_SCALED_FP8
+            and flag_gems.vendor_name == "nvidia"
+            and lengths == [0, 257, 0, 511]
+            and (n, k, scale_factor, strided) == (192, 384, 100.0, False)
+        ):
+            # Preserve the actual CI tensors: a seed alone does not identify them.
+            destination = Path(capture_dir)
+            destination.mkdir(parents=True, exist_ok=True)
+            names = ("a", "sa", "b", "sb", "out", "m_indices", "m_rows")
+            torch.save(
+                {
+                    "inputs": {
+                        name: tensor.detach().cpu() for name, tensor in zip(names, args)
+                    },
+                    "reference": grouped_gemm_cpu_reference(
+                        *args[:4], lengths, block_scaled=True
+                    ),
+                    "metadata": {
+                        "test": request.node.nodeid,
+                        "shape": [sum(lengths), n, k, len(lengths)],
+                        "lengths": lengths,
+                        "seed": 42,
+                        "scale_factor": scale_factor,
+                        "strided": strided,
+                        "error": str(error),
+                        "atol": 1e-4 * k,
+                        "rtol": 0.016,
+                        "torch": str(torch.__version__),
+                        "cuda": torch.version.cuda,
+                        "triton": triton.__version__,
+                        "triton_file": triton.__file__,
+                        "gpu": torch.cuda.get_device_name(args[0].device),
+                        "sm_count": torch.cuda.get_device_properties(
+                            args[0].device
+                        ).multi_processor_count,
+                        "commit": os.environ.get("GITHUB_SHA"),
+                        "run_id": os.environ.get("GITHUB_RUN_ID"),
+                        "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+                    },
+                },
+                destination / "grouped_gemm_fp8.pt",
+            )
+        raise
 
 
 @pytest.mark.grouped_gemm_w8a8
