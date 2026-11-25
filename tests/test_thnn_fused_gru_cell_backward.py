@@ -79,6 +79,8 @@ def _manual_reference(grad_hy, workspace, has_bias):
 def _reference(grad_hy, workspace, has_bias):
     ref_grad_hy = utils.to_reference(grad_hy)
     ref_workspace = utils.to_reference(workspace)
+    if flag_gems.vendor_name == "kunlunxin":
+        return _manual_reference(ref_grad_hy.cpu(), ref_workspace.cpu(), has_bias)
     if ref_grad_hy.device.type == "cpu":
         return _manual_reference(ref_grad_hy, ref_workspace, has_bias)
     return torch.ops.aten._thnn_fused_gru_cell_backward(

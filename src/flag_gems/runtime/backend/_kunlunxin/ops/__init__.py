@@ -1006,6 +1006,10 @@ from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from .thnn_differentiable_lstm_cell_backward import (  # noqa: F401
     _thnn_differentiable_lstm_cell_backward,
 )
+from .thnn_fused_gru_cell_backward import (
+    _thnn_fused_gru_cell_backward,
+    _thnn_fused_gru_cell_backward_out,
+)
 from .threshold import threshold, threshold_, threshold_backward
 from .tile import tile
 from .to import to_copy
@@ -1253,6 +1257,8 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_slow_conv2d_forward",
     "_thnn_fused_gru_cell",
+    "_thnn_fused_gru_cell_backward",
+    "_thnn_fused_gru_cell_backward_out",
     "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
