@@ -658,6 +658,7 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    ("_sparse_coo_tensor_unsafe", sparse_coo_tensor_unsafe),
     (
         "_sparse_coo_tensor_with_dims",
         sparse_coo_tensor_with_dims,
@@ -999,13 +1000,28 @@ _FULL_CONFIG = (
         "_wrapped_quantized_linear_prepacked",
         _wrapped_quantized_linear_prepacked,
     ),
-    ("abs", abs),
+    (
+        "abs",
+        abs,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("abs_", abs_),
     ("absolute", absolute),
     ("absolute_", absolute_),
-    ("acos", acos),
+    (
+        "acos",
+        acos,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("acos_", acos_),
-    ("acosh", acosh),
+    (
+        "acosh",
+        acosh,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("acosh_", acosh_),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
     # adaptive_avg_pool3d is CompositeImplicitAutograd in ATen with no dedicated
@@ -1031,7 +1047,12 @@ _FULL_CONFIG = (
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
-    ("addbmm", addbmm),
+    (
+        "addbmm",
+        addbmm,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addbmm_", addbmm_),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
@@ -1061,7 +1082,12 @@ _FULL_CONFIG = (
     ("alpha_dropout", alpha_dropout),
     ("alpha_dropout_", alpha_dropout_),
     ("amax", amax),
-    ("amin", amin),
+    (
+        "amin",
+        amin,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("aminmax", aminmax),
     ("angle", angle),
     ("any", any),
@@ -1285,6 +1311,7 @@ _FULL_CONFIG = (
     ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
+    ("convolution_overrideable_backward", convolution_overrideable_backward),
     (
         "copy_",
         copy_,
@@ -1510,7 +1537,12 @@ _FULL_CONFIG = (
     ("floor_divide.Scalar", floor_divide),
     ("floor_divide_.Scalar", floor_divide_),
     ("floor_divide_.Tensor", floor_divide_),
-    ("fmax", fmax),
+    (
+        "fmax",
+        fmax,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("fmax.out", fmax_out),
     ("fmin", fmin),
     ("fmin.out", fmin_out),
@@ -1904,7 +1936,16 @@ _FULL_CONFIG = (
     ("msort.out", msort_out),
     ("mT", mT),
     ("mul.Scalar", mul),
-    ("mul.Tensor", mul),
+    (
+        "mul.Tensor",
+        mul,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("mul_.Scalar", mul_),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
@@ -1917,7 +1958,16 @@ _FULL_CONFIG = (
     ("multilabel_margin_loss", multilabel_margin_loss),
     ("multilabel_margin_loss.out", multilabel_margin_loss),
     ("multilabel_margin_loss_backward", multilabel_margin_loss_backward),
-    ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
+    (
+        "multilabel_margin_loss_forward",
+        multilabel_margin_loss_forward,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("multinomial", multinomial),
     ("multiply.Scalar", multiply),
     ("multiply.Tensor", multiply),
@@ -1940,7 +1990,7 @@ _FULL_CONFIG = (
     ("nanquantile.scalar_out", nanquantile_scalar_out),
     ("nansum", nansum),
     ("nansum.out", nansum_out),
-    ("narrow_copy", narrow_copy),
+    ("narrow_copy", narrow_copy, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("native_batch_norm", native_batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_channel_shuffle", native_channel_shuffle),
