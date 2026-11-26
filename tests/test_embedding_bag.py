@@ -55,6 +55,38 @@ FORWARD_OPS = [
 ASCEND_ABI = flag_gems.vendor_name == "ascend"
 _LEGACY_ASCEND = ASCEND_ABI and version.parse(triton.__version__) < version.parse("3.5")
 _ERROR_CHILD = "FLAGGEMS_EMBEDDING_BAG_ERROR_CHILD"
+
+
+def _gpu_is_exclusive_process():
+    """True when the current GPU refuses a second CUDA context.
+
+    The isolated error tests below start a fresh Python process whose first act
+    is to move a tensor to the device.  Under ``EXCLUSIVE_PROCESS`` the driver
+    rejects that second context with ``cudaErrorDevicesUnavailable``, so the
+    child dies before it can exercise anything; on a ``Default`` device the same
+    tests pass.  Detect the mode so those cases skip instead of failing.
+    """
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_mode", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "Exclusive_Process" in proc.stdout
+
+
+_ISOLATED_ERRORS_SKIP = (
+    flag_gems.vendor_name in ("nvidia", "hygon", "mthreads", "ascend")
+    and _gpu_is_exclusive_process()
+)
+_EXCLUSIVE_REASON = (
+    "GPU runs in EXCLUSIVE_PROCESS mode, so the isolated child process cannot "
+    "create a CUDA context; run this suite on a Default-mode device"
+)
+
 CASES = [
     pytest.param([1, 2, 0, 1, 4, 7, 2], [0, 0, 2, 2, 5], False, 0, id="ragged"),
     pytest.param([1, 2, 0, 1, 4, 7, 2], [0, 0, 2, 2, 5, 7], True, 0, id="terminal"),
@@ -541,6 +573,7 @@ def test_embedding_bag_empty_table(op, mode, dim, num_bags):
         )
 
 
+@pytest.mark.skipif(_ISOLATED_ERRORS_SKIP, reason=_EXCLUSIVE_REASON)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize(
     "values,starts,last",
@@ -590,6 +623,7 @@ def test_embedding_bag_invalid_values(op, values, starts, last):
         flag_gems.runtime.torch_device_fn.synchronize()
 
 
+@pytest.mark.skipif(_ISOLATED_ERRORS_SKIP, reason=_EXCLUSIVE_REASON)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("mode", [1, 2])
 def test_embedding_bag_invalid_after_warmup(op, mode):
