@@ -10034,7 +10034,6 @@ ops:
   for:
   - _grouped_mm
   labels:
-  - NoCPU
   - aten
   kind:
   - BLAS

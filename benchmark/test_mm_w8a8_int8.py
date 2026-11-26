@@ -178,7 +178,6 @@ class AscendMmW8A8Int8Benchmark(ParallelMmW8A8Int8Benchmark):
 
 
 @pytest.mark.mm_w8a8
-@pytest.mark.mm_w8a8_out
 @pytest.mark.parametrize(
     "baseline",
     ["bf16", "native_int8"] if flag_gems.vendor_name == "ascend" else ["bf16"],
