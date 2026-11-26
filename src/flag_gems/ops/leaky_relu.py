@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import struct
 
 import torch
 import triton
@@ -22,6 +23,13 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+
+def _slope_kernel_arg(negative_slope, dtype):
+    # Triton passes Python floats as FP32. Carry FP64 slopes as integer bits.
+    if dtype == torch.float64:
+        return struct.unpack("=q", struct.pack("=d", negative_slope))[0]
+    return negative_slope
 
 
 def _leaky_relu_autotune_configs():
@@ -82,6 +90,8 @@ def _leaky_relu_kernel(
     mask = offsets < n_elements
 
     x = tl.load(input_ptr + offsets, mask=mask)
+    if x.dtype == tl.float64:
+        negative_slope = negative_slope.to(tl.int64).to(tl.float64, bitcast=True)
     output = tl.where(x >= 0, x, x * negative_slope)
     tl.store(output_ptr + offsets, output, mask=mask)
 
@@ -96,7 +106,8 @@ def leaky_relu(A, negative_slope=0.01):
         return output
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, output, n_elements, negative_slope)
+        slope = _slope_kernel_arg(negative_slope, A.dtype)
+        _leaky_relu_kernel[grid](A, output, n_elements, slope)
     return output
 
 
@@ -119,6 +130,8 @@ def _leaky_relu_backward_kernel(
     x = tl.load(input_ptr + offsets, mask=mask)
     # aten leaky_relu_backward uses a strict `> 0` boundary: at x == 0 the
     # gradient is scaled by negative_slope (verified against torch.ops.aten).
+    if grad_output.dtype == tl.float64:
+        negative_slope = negative_slope.to(tl.int64).to(tl.float64, bitcast=True)
     grad_input = tl.where(x > 0, grad_output, grad_output * negative_slope)
     tl.store(grad_input_ptr + offsets, grad_input, mask=mask)
 
@@ -135,8 +148,9 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
         return grad_input
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(self.device.index):
+        slope = _slope_kernel_arg(negative_slope, grad_output.dtype)
         _leaky_relu_backward_kernel[grid](
-            grad_output, self, grad_input, n_elements, negative_slope
+            grad_output, self, grad_input, n_elements, slope
         )
     return grad_input
 
@@ -159,7 +173,8 @@ def leaky_relu_(A, negative_slope=0.01):
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(A.device.index):
         scratch = torch.empty_like(A)
-        _leaky_relu_kernel[grid](A, scratch, n_elements, negative_slope)
+        slope = _slope_kernel_arg(negative_slope, A.dtype)
+        _leaky_relu_kernel[grid](A, scratch, n_elements, slope)
         A.copy_(scratch)
     return A
 
@@ -175,5 +190,6 @@ def leaky_relu_out(A, negative_slope=0.01, *, out=None):
         return out
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, out, n_elements, negative_slope)
+        slope = _slope_kernel_arg(negative_slope, A.dtype)
+        _leaky_relu_kernel[grid](A, out, n_elements, slope)
     return out
