@@ -20,9 +20,8 @@ Grid: 7 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "fake_quantize_per_channel_affine_cachemask_backward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,37 +37,37 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4, 4]], ['T:torch.bool', [4, 4]]],
+        "args": [["T", [4, 4]], ["T:torch.bool", [4, 4]]],
         "kwargs": {},
         "key": [4, 4],
     },
     {
-        "args": [['T', [64, 64]], ['T:torch.bool', [64, 64]]],
+        "args": [["T", [64, 64]], ["T:torch.bool", [64, 64]]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [128, 256]], ['T:torch.bool', [128, 256]]],
+        "args": [["T", [128, 256]], ["T:torch.bool", [128, 256]]],
         "kwargs": {},
         "key": [128, 256],
     },
     {
-        "args": [['T', [512, 512]], ['T:torch.bool', [512, 512]]],
+        "args": [["T", [512, 512]], ["T:torch.bool", [512, 512]]],
         "kwargs": {},
         "key": [512, 512],
     },
     {
-        "args": [['T', [1024, 1024]], ['T:torch.bool', [1024, 1024]]],
+        "args": [["T", [1024, 1024]], ["T:torch.bool", [1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [2, 3, 128, 128]], ['T:torch.bool', [2, 3, 128, 128]]],
+        "args": [["T", [2, 3, 128, 128]], ["T:torch.bool", [2, 3, 128, 128]]],
         "kwargs": {},
         "key": [2, 3, 128, 128],
     },
     {
-        "args": [['T', [8, 16, 64, 64]], ['T:torch.bool', [8, 16, 64, 64]]],
+        "args": [["T", [8, 16, 64, 64]], ["T:torch.bool", [8, 16, 64, 64]]],
         "kwargs": {},
         "key": [8, 16, 64, 64],
     },

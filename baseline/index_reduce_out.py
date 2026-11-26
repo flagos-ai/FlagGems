@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses ((B), M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "index_reduce_out"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,33 +37,63 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1048576]], 0, ['T:torch.int64!index', [524288]], ['T', [524288]]],
-        "kwargs": {'reduce': 'prod', 'out': ['T', [1048576]]},
+        "args": [
+            ["T", [1048576]],
+            0,
+            ["T:torch.int64!index", [524288]],
+            ["T", [524288]],
+        ],
+        "kwargs": {"reduce": "prod", "out": ["T", [1048576]]},
         "key": [1048576],
     },
     {
-        "args": [['T', [1024, 1024]], 1, ['T:torch.int64!index', [512]], ['T', [1024, 512]]],
-        "kwargs": {'reduce': 'prod', 'out': ['T', [1024, 1024]]},
+        "args": [
+            ["T", [1024, 1024]],
+            1,
+            ["T:torch.int64!index", [512]],
+            ["T", [1024, 512]],
+        ],
+        "kwargs": {"reduce": "prod", "out": ["T", [1024, 1024]]},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]], 1, ['T:torch.int64!index', [2048]], ['T', [4096, 2048]]],
-        "kwargs": {'reduce': 'prod', 'out': ['T', [4096, 4096]]},
+        "args": [
+            ["T", [4096, 4096]],
+            1,
+            ["T:torch.int64!index", [2048]],
+            ["T", [4096, 2048]],
+        ],
+        "kwargs": {"reduce": "prod", "out": ["T", [4096, 4096]]},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [64, 512, 512]], 1, ['T:torch.int64!index', [256]], ['T', [64, 256, 512]]],
-        "kwargs": {'reduce': 'prod', 'out': ['T', [64, 512, 512]]},
+        "args": [
+            ["T", [64, 512, 512]],
+            1,
+            ["T:torch.int64!index", [256]],
+            ["T", [64, 256, 512]],
+        ],
+        "kwargs": {"reduce": "prod", "out": ["T", [64, 512, 512]]},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [2048, 2048]], 1, ['T:torch.int64!index', [1024]], ['T', [2048, 1024]]],
-        "kwargs": {'reduce': 'prod', 'out': ['T', [2048, 2048]]},
+        "args": [
+            ["T", [2048, 2048]],
+            1,
+            ["T:torch.int64!index", [1024]],
+            ["T", [2048, 1024]],
+        ],
+        "kwargs": {"reduce": "prod", "out": ["T", [2048, 2048]]},
         "key": [2048, 2048],
     },
     {
-        "args": [['T', [128, 1024, 512]], 1, ['T:torch.int64!index', [512]], ['T', [128, 512, 512]]],
-        "kwargs": {'reduce': 'prod', 'out': ['T', [128, 1024, 512]]},
+        "args": [
+            ["T", [128, 1024, 512]],
+            1,
+            ["T:torch.int64!index", [512]],
+            ["T", [128, 512, 512]],
+        ],
+        "kwargs": {"reduce": "prod", "out": ["T", [128, 1024, 512]]},
         "key": [128, 1024, 512],
     },
 ]

@@ -20,9 +20,8 @@ Grid: 3 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "scatter_reduce_two_"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,18 +37,33 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]], -1, ['T:torch.int64!index', [64, 64]], ['T', [64, 64]]],
-        "kwargs": {'reduce': 'sum'},
+        "args": [
+            ["T", [64, 64]],
+            -1,
+            ["T:torch.int64!index", [64, 64]],
+            ["T", [64, 64]],
+        ],
+        "kwargs": {"reduce": "sum"},
         "key": [64, 64],
     },
     {
-        "args": [['T', [256, 256]], -1, ['T:torch.int64!index', [256, 256]], ['T', [256, 256]]],
-        "kwargs": {'reduce': 'sum'},
+        "args": [
+            ["T", [256, 256]],
+            -1,
+            ["T:torch.int64!index", [256, 256]],
+            ["T", [256, 256]],
+        ],
+        "kwargs": {"reduce": "sum"},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 1024]], -1, ['T:torch.int64!index', [1024, 1024]], ['T', [1024, 1024]]],
-        "kwargs": {'reduce': 'sum'},
+        "args": [
+            ["T", [1024, 1024]],
+            -1,
+            ["T:torch.int64!index", [1024, 1024]],
+            ["T", [1024, 1024]],
+        ],
+        "kwargs": {"reduce": "sum"},
         "key": [1024, 1024],
     },
 ]

@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (input shape).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "linalg_inv_ex"
 DTYPES = [torch.float32, torch.float64]
@@ -38,32 +37,32 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4, 4]]],
+        "args": [["T", [4, 4]]],
         "kwargs": {},
         "key": [4, 4],
     },
     {
-        "args": [['T', [8, 8]]],
+        "args": [["T", [8, 8]]],
         "kwargs": {},
         "key": [8, 8],
     },
     {
-        "args": [['T', [16, 16]]],
+        "args": [["T", [16, 16]]],
         "kwargs": {},
         "key": [16, 16],
     },
     {
-        "args": [['T', [32, 32]]],
+        "args": [["T", [32, 32]]],
         "kwargs": {},
         "key": [32, 32],
     },
     {
-        "args": [['T', [4, 16, 16]]],
+        "args": [["T", [4, 16, 16]]],
         "kwargs": {},
         "key": [4, 16, 16],
     },
     {
-        "args": [['T', [16, 32, 32]]],
+        "args": [["T", [16, 32, 32]]],
         "kwargs": {},
         "key": [16, 32, 32],
     },

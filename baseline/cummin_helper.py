@@ -20,9 +20,8 @@ Grid: 8 collection point(s) over 5 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "cummin_helper"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16, torch.int16, torch.int32]
@@ -38,42 +37,82 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]], ['T', [64, 64]], ['T:torch.int64!index', [64, 64]], 1],
+        "args": [
+            ["T", [64, 64]],
+            ["T", [64, 64]],
+            ["T:torch.int64!index", [64, 64]],
+            1,
+        ],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [256, 256]], ['T', [256, 256]], ['T:torch.int64!index', [256, 256]], 1],
+        "args": [
+            ["T", [256, 256]],
+            ["T", [256, 256]],
+            ["T:torch.int64!index", [256, 256]],
+            1,
+        ],
         "kwargs": {},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 1024]], ['T', [1024, 1024]], ['T:torch.int64!index', [1024, 1024]], 1],
+        "args": [
+            ["T", [1024, 1024]],
+            ["T", [1024, 1024]],
+            ["T:torch.int64!index", [1024, 1024]],
+            1,
+        ],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]], ['T', [4096, 4096]], ['T:torch.int64!index', [4096, 4096]], 1],
+        "args": [
+            ["T", [4096, 4096]],
+            ["T", [4096, 4096]],
+            ["T:torch.int64!index", [4096, 4096]],
+            1,
+        ],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [1024, 65536]], ['T', [1024, 65536]], ['T:torch.int64!index', [1024, 65536]], 1],
+        "args": [
+            ["T", [1024, 65536]],
+            ["T", [1024, 65536]],
+            ["T:torch.int64!index", [1024, 65536]],
+            1,
+        ],
         "kwargs": {},
         "key": [1024, 65536],
     },
     {
-        "args": [['T', [10000, 1]], ['T', [10000, 1]], ['T:torch.int64!index', [10000, 1]], 1],
+        "args": [
+            ["T", [10000, 1]],
+            ["T", [10000, 1]],
+            ["T:torch.int64!index", [10000, 1]],
+            1,
+        ],
         "kwargs": {},
         "key": [10000, 1],
     },
     {
-        "args": [['T', [10000, 256]], ['T', [10000, 256]], ['T:torch.int64!index', [10000, 256]], 1],
+        "args": [
+            ["T", [10000, 256]],
+            ["T", [10000, 256]],
+            ["T:torch.int64!index", [10000, 256]],
+            1,
+        ],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 65536]], ['T', [10000, 65536]], ['T:torch.int64!index', [10000, 65536]], 1],
+        "args": [
+            ["T", [10000, 65536]],
+            ["T", [10000, 65536]],
+            ["T:torch.int64!index", [10000, 65536]],
+            1,
+        ],
         "kwargs": {},
         "key": [10000, 65536],
     },

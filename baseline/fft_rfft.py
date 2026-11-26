@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (operator configuration).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "fft_rfft"
 DTYPES = [torch.float16, torch.float32, torch.float64]
@@ -38,33 +37,33 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 16]]],
-        "kwargs": {'n': None, 'dim': -1, 'norm': None},
+        "args": [["T", [2, 16]]],
+        "kwargs": {"n": None, "dim": -1, "norm": None},
         "key": [2, 16],
     },
     {
-        "args": [['T', [1, 32]]],
-        "kwargs": {'n': 32, 'dim': -1, 'norm': 'ortho'},
+        "args": [["T", [1, 32]]],
+        "kwargs": {"n": 32, "dim": -1, "norm": "ortho"},
         "key": [1, 32],
     },
     {
-        "args": [['T', [2, 4, 8]]],
-        "kwargs": {'n': 8, 'dim': -1, 'norm': 'forward'},
+        "args": [["T", [2, 4, 8]]],
+        "kwargs": {"n": 8, "dim": -1, "norm": "forward"},
         "key": [2, 4, 8],
     },
     {
-        "args": [['T', [3, 64]]],
-        "kwargs": {'n': 32, 'dim': -1, 'norm': None},
+        "args": [["T", [3, 64]]],
+        "kwargs": {"n": 32, "dim": -1, "norm": None},
         "key": [3, 64],
     },
     {
-        "args": [['T', [2, 8, 16]]],
-        "kwargs": {'n': 8, 'dim': 1, 'norm': 'forward'},
+        "args": [["T", [2, 8, 16]]],
+        "kwargs": {"n": 8, "dim": 1, "norm": "forward"},
         "key": [2, 8, 16],
     },
     {
-        "args": [['T', [1, 2, 3, 32]]],
-        "kwargs": {'n': 32, 'dim': -1, 'norm': 'ortho'},
+        "args": [["T", [1, 2, 3, 32]]],
+        "kwargs": {"n": 32, "dim": -1, "norm": "ortho"},
         "key": [1, 2, 3, 32],
     },
 ]

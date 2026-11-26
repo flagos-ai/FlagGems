@@ -20,9 +20,8 @@ Grid: 7 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (input shape).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "cov"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,37 +37,37 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [32, 256]]],
+        "args": [["T", [32, 256]]],
         "kwargs": {},
         "key": [32, 256],
     },
     {
-        "args": [['T', [64, 1024]]],
+        "args": [["T", [64, 1024]]],
         "kwargs": {},
         "key": [64, 1024],
     },
     {
-        "args": [['T', [128, 1024]]],
+        "args": [["T", [128, 1024]]],
         "kwargs": {},
         "key": [128, 1024],
     },
     {
-        "args": [['T', [256, 1024]]],
+        "args": [["T", [256, 1024]]],
         "kwargs": {},
         "key": [256, 1024],
     },
     {
-        "args": [['T', [256, 4096]]],
+        "args": [["T", [256, 4096]]],
         "kwargs": {},
         "key": [256, 4096],
     },
     {
-        "args": [['T', [512, 2048]]],
+        "args": [["T", [512, 2048]]],
         "kwargs": {},
         "key": [512, 2048],
     },
     {
-        "args": [['T', [512, 4096]]],
+        "args": [["T", [512, 4096]]],
         "kwargs": {},
         "key": [512, 4096],
     },

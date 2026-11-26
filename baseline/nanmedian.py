@@ -20,12 +20,19 @@ Grid: 12 collection point(s) over 7 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (N or M, N).
 """
 
+import _common
 import torch
 
-import _common
-
 OP_NAME = "nanmedian"
-DTYPES = [torch.float16, torch.float32, torch.bfloat16, torch.int8, torch.int16, torch.int32, torch.uint8]
+DTYPES = [
+    torch.float16,
+    torch.float32,
+    torch.bfloat16,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.uint8,
+]
 IS_INPLACE = False
 ATEN_NAME = "nanmedian"
 
@@ -38,62 +45,62 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64]]],
+        "args": [["T", [64]]],
         "kwargs": {},
         "key": [64],
     },
     {
-        "args": [['T', [64, 64]]],
+        "args": [["T", [64, 64]]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [1024, 1024]]],
+        "args": [["T", [1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [256, 4096]]],
+        "args": [["T", [256, 4096]]],
         "kwargs": {},
         "key": [256, 4096],
     },
     {
-        "args": [['T', [16, 131072]]],
+        "args": [["T", [16, 131072]]],
         "kwargs": {},
         "key": [16, 131072],
     },
     {
-        "args": [['T', [268435456]]],
+        "args": [["T", [268435456]]],
         "kwargs": {},
         "key": [268435456],
     },
     {
-        "args": [['T', [10000, 1]]],
+        "args": [["T", [10000, 1]]],
         "kwargs": {},
         "key": [10000, 1],
     },
     {
-        "args": [['T', [10000, 256]]],
+        "args": [["T", [10000, 256]]],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 65536]]],
+        "args": [["T", [10000, 65536]]],
         "kwargs": {},
         "key": [10000, 65536],
     },
     {
-        "args": [['T', [100, 1, 100]]],
+        "args": [["T", [100, 1, 100]]],
         "kwargs": {},
         "key": [100, 1, 100],
     },
     {
-        "args": [['T', [100, 256, 100]]],
+        "args": [["T", [100, 256, 100]]],
         "kwargs": {},
         "key": [100, 256, 100],
     },
     {
-        "args": [['T', [100, 65536, 100]]],
+        "args": [["T", [100, 65536, 100]]],
         "kwargs": {},
         "key": [100, 65536, 100],
     },

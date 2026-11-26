@@ -20,9 +20,8 @@ Grid: 9 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "special_scaled_modified_bessel_k0"
 DTYPES = [torch.float32, torch.float64]
@@ -38,47 +37,47 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1024]]],
+        "args": [["T", [1024]]],
         "kwargs": {},
         "key": [1024],
     },
     {
-        "args": [['T', [65536]]],
+        "args": [["T", [65536]]],
         "kwargs": {},
         "key": [65536],
     },
     {
-        "args": [['T', [64, 512, 512]]],
+        "args": [["T", [64, 512, 512]]],
         "kwargs": {},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [1024, 1024]]],
+        "args": [["T", [1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]]],
+        "args": [["T", [4096, 4096]]],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [1024, 65536]]],
+        "args": [["T", [1024, 65536]]],
         "kwargs": {},
         "key": [1024, 65536],
     },
     {
-        "args": [['T', [20, 320, 15]]],
+        "args": [["T", [20, 320, 15]]],
         "kwargs": {},
         "key": [20, 320, 15],
     },
     {
-        "args": [['T', [16, 128, 64, 60]]],
+        "args": [["T", [16, 128, 64, 60]]],
         "kwargs": {},
         "key": [16, 128, 64, 60],
     },
     {
-        "args": [['T', [16, 7, 57, 32, 29]]],
+        "args": [["T", [16, 7, 57, 32, 29]]],
         "kwargs": {},
         "key": [16, 7, 57, 32, 29],
     },

@@ -20,9 +20,8 @@ Grid: 12 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "bitwise_and_scalar"
 DTYPES = [torch.int16, torch.int32, torch.bool]
@@ -38,62 +37,62 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1073741824]], 63],
+        "args": [["T", [1073741824]], 63],
         "kwargs": {},
         "key": [1073741824],
     },
     {
-        "args": [['T', [64, 64]], 63],
+        "args": [["T", [64, 64]], 63],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [4096, 4096]], 63],
+        "args": [["T", [4096, 4096]], 63],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [64, 512, 512]], 63],
+        "args": [["T", [64, 512, 512]], 63],
         "kwargs": {},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [1024, 1024, 1024]], 63],
+        "args": [["T", [1024, 1024, 1024]], 63],
         "kwargs": {},
         "key": [1024, 1024, 1024],
     },
     {
-        "args": [['T', [268435456]], 63],
+        "args": [["T", [268435456]], 63],
         "kwargs": {},
         "key": [268435456],
     },
     {
-        "args": [['T', [10000, 1]], 63],
+        "args": [["T", [10000, 1]], 63],
         "kwargs": {},
         "key": [10000, 1],
     },
     {
-        "args": [['T', [10000, 256]], 63],
+        "args": [["T", [10000, 256]], 63],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 65536]], 63],
+        "args": [["T", [10000, 65536]], 63],
         "kwargs": {},
         "key": [10000, 65536],
     },
     {
-        "args": [['T', [100, 1, 100]], 63],
+        "args": [["T", [100, 1, 100]], 63],
         "kwargs": {},
         "key": [100, 1, 100],
     },
     {
-        "args": [['T', [100, 256, 100]], 63],
+        "args": [["T", [100, 256, 100]], 63],
         "kwargs": {},
         "key": [100, 256, 100],
     },
     {
-        "args": [['T', [100, 65536, 100]], 63],
+        "args": [["T", [100, 65536, 100]], 63],
         "kwargs": {},
         "key": [100, 65536, 100],
     },

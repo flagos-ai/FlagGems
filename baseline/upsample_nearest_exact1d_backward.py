@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (['N', 'C', 'IW', 'OW']).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "upsample_nearest_exact1d_backward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,27 +37,27 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1, 1, 16]], [16], [1, 1, 8]],
+        "args": [["T", [1, 1, 16]], [16], [1, 1, 8]],
         "kwargs": {},
         "key": [1, 1, 16],
     },
     {
-        "args": [['T', [2, 3, 96]], [96], [2, 3, 64]],
+        "args": [["T", [2, 3, 96]], [96], [2, 3, 64]],
         "kwargs": {},
         "key": [2, 3, 96],
     },
     {
-        "args": [['T', [8, 16, 256]], [256], [8, 16, 512]],
+        "args": [["T", [8, 16, 256]], [256], [8, 16, 512]],
         "kwargs": {},
         "key": [8, 16, 256],
     },
     {
-        "args": [['T', [16, 64, 4096]], [4096], [16, 64, 2048]],
+        "args": [["T", [16, 64, 4096]], [4096], [16, 64, 2048]],
         "kwargs": {},
         "key": [16, 64, 4096],
     },
     {
-        "args": [['T', [8, 128, 12288]], [12288], [8, 128, 8192]],
+        "args": [["T", [8, 128, 12288]], [12288], [8, 128, 8192]],
         "kwargs": {},
         "key": [8, 128, 12288],
     },

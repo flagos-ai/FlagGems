@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (N, C, H, W).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "upsample_trilinear3d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,27 +37,27 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1, 3, 4, 128, 128]], [8, 256, 256], False, None, None, None],
+        "args": [["T", [1, 3, 4, 128, 128]], [8, 256, 256], False, None, None, None],
         "kwargs": {},
         "key": [1, 3, 4, 128, 128],
     },
     {
-        "args": [['T', [8, 16, 4, 32, 32]], [8, 64, 64], False, None, None, None],
+        "args": [["T", [8, 16, 4, 32, 32]], [8, 64, 64], False, None, None, None],
         "kwargs": {},
         "key": [8, 16, 4, 32, 32],
     },
     {
-        "args": [['T', [2, 3, 4, 256, 256]], [8, 512, 512], False, None, None, None],
+        "args": [["T", [2, 3, 4, 256, 256]], [8, 512, 512], False, None, None, None],
         "kwargs": {},
         "key": [2, 3, 4, 256, 256],
     },
     {
-        "args": [['T', [16, 16, 4, 128, 128]], [8, 256, 256], False, None, None, None],
+        "args": [["T", [16, 16, 4, 128, 128]], [8, 256, 256], False, None, None, None],
         "kwargs": {},
         "key": [16, 16, 4, 128, 128],
     },
     {
-        "args": [['T', [16, 16, 4, 256, 256]], [8, 512, 512], False, None, None, None],
+        "args": [["T", [16, 16, 4, 256, 256]], [8, 512, 512], False, None, None, None],
         "kwargs": {},
         "key": [16, 16, 4, 256, 256],
     },

@@ -20,9 +20,8 @@ Grid: 7 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "linalg_solve_triangular_out"
 DTYPES = [torch.float32, torch.float64]
@@ -38,38 +37,38 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [8, 8]], ['T', [8, 16]]],
-        "kwargs": {'upper': False, 'out': ['T', [8, 16]]},
+        "args": [["T", [8, 8]], ["T", [8, 16]]],
+        "kwargs": {"upper": False, "out": ["T", [8, 16]]},
         "key": [8, 8],
     },
     {
-        "args": [['T', [16, 16]], ['T', [16, 32]]],
-        "kwargs": {'upper': False, 'out': ['T', [16, 32]]},
+        "args": [["T", [16, 16]], ["T", [16, 32]]],
+        "kwargs": {"upper": False, "out": ["T", [16, 32]]},
         "key": [16, 16],
     },
     {
-        "args": [['T', [32, 32]], ['T', [32, 64]]],
-        "kwargs": {'upper': False, 'out': ['T', [32, 64]]},
+        "args": [["T", [32, 32]], ["T", [32, 64]]],
+        "kwargs": {"upper": False, "out": ["T", [32, 64]]},
         "key": [32, 32],
     },
     {
-        "args": [['T', [64, 64]], ['T', [64, 128]]],
-        "kwargs": {'upper': False, 'out': ['T', [64, 128]]},
+        "args": [["T", [64, 64]], ["T", [64, 128]]],
+        "kwargs": {"upper": False, "out": ["T", [64, 128]]},
         "key": [64, 64],
     },
     {
-        "args": [['T', [128, 128]], ['T', [128, 256]]],
-        "kwargs": {'upper': False, 'out': ['T', [128, 256]]},
+        "args": [["T", [128, 128]], ["T", [128, 256]]],
+        "kwargs": {"upper": False, "out": ["T", [128, 256]]},
         "key": [128, 128],
     },
     {
-        "args": [['T', [256, 256]], ['T', [256, 512]]],
-        "kwargs": {'upper': False, 'out': ['T', [256, 512]]},
+        "args": [["T", [256, 256]], ["T", [256, 512]]],
+        "kwargs": {"upper": False, "out": ["T", [256, 512]]},
         "key": [256, 256],
     },
     {
-        "args": [['T', [512, 512]], ['T', [512, 256]]],
-        "kwargs": {'upper': False, 'out': ['T', [512, 256]]},
+        "args": [["T", [512, 512]], ["T", [512, 256]]],
+        "kwargs": {"upper": False, "out": ["T", [512, 256]]},
         "key": [512, 512],
     },
 ]

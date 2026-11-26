@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "unfold_copy"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,27 +37,27 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4, 8]], 1, 3, 1],
+        "args": [["T", [4, 8]], 1, 3, 1],
         "kwargs": {},
         "key": [4, 8],
     },
     {
-        "args": [['T', [16, 32]], 1, 8, 2],
+        "args": [["T", [16, 32]], 1, 8, 2],
         "kwargs": {},
         "key": [16, 32],
     },
     {
-        "args": [['T', [8, 15]], 1, 4, 3],
+        "args": [["T", [8, 15]], 1, 4, 3],
         "kwargs": {},
         "key": [8, 15],
     },
     {
-        "args": [['T', [2, 6, 8]], 1, 3, 1],
+        "args": [["T", [2, 6, 8]], 1, 3, 1],
         "kwargs": {},
         "key": [2, 6, 8],
     },
     {
-        "args": [['T', [4, 8, 16]], 1, 4, 2],
+        "args": [["T", [4, 8, 16]], 1, 4, 2],
         "kwargs": {},
         "key": [4, 8, 16],
     },

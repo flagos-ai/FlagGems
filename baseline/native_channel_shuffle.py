@@ -20,9 +20,8 @@ Grid: 3 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "native_channel_shuffle"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,17 +37,17 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1, 4, 2, 2]], 2],
+        "args": [["T", [1, 4, 2, 2]], 2],
         "kwargs": {},
         "key": [1, 4, 2, 2],
     },
     {
-        "args": [['T', [2, 8, 4, 4]], 4],
+        "args": [["T", [2, 8, 4, 4]], 4],
         "kwargs": {},
         "key": [2, 8, 4, 4],
     },
     {
-        "args": [['T', [4, 16, 8, 8]], 4],
+        "args": [["T", [4, 16, 8, 8]], 4],
         "kwargs": {},
         "key": [4, 16, 8, 8],
     },

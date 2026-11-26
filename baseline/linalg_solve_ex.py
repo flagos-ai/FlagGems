@@ -20,9 +20,8 @@ Grid: 11 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "linalg_solve_ex"
 DTYPES = [torch.float32]
@@ -38,57 +37,57 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1, 4, 4]], ['T', [1, 4, 1]]],
+        "args": [["T", [1, 4, 4]], ["T", [1, 4, 1]]],
         "kwargs": {},
         "key": [1, 4, 4],
     },
     {
-        "args": [['T', [1, 8, 8]], ['T', [1, 8, 1]]],
+        "args": [["T", [1, 8, 8]], ["T", [1, 8, 1]]],
         "kwargs": {},
         "key": [1, 8, 8],
     },
     {
-        "args": [['T', [1, 16, 16]], ['T', [1, 16, 1]]],
+        "args": [["T", [1, 16, 16]], ["T", [1, 16, 1]]],
         "kwargs": {},
         "key": [1, 16, 16],
     },
     {
-        "args": [['T', [4, 4, 4]], ['T', [4, 4, 4]]],
+        "args": [["T", [4, 4, 4]], ["T", [4, 4, 4]]],
         "kwargs": {},
         "key": [4, 4, 4],
     },
     {
-        "args": [['T', [4, 8, 8]], ['T', [4, 8, 4]]],
+        "args": [["T", [4, 8, 8]], ["T", [4, 8, 4]]],
         "kwargs": {},
         "key": [4, 8, 8],
     },
     {
-        "args": [['T', [4, 16, 16]], ['T', [4, 16, 4]]],
+        "args": [["T", [4, 16, 16]], ["T", [4, 16, 4]]],
         "kwargs": {},
         "key": [4, 16, 16],
     },
     {
-        "args": [['T', [8, 8, 8]], ['T', [8, 8, 1]]],
+        "args": [["T", [8, 8, 8]], ["T", [8, 8, 1]]],
         "kwargs": {},
         "key": [8, 8, 8],
     },
     {
-        "args": [['T', [8, 16, 16]], ['T', [8, 16, 1]]],
+        "args": [["T", [8, 16, 16]], ["T", [8, 16, 1]]],
         "kwargs": {},
         "key": [8, 16, 16],
     },
     {
-        "args": [['T', [16, 8, 8]], ['T', [16, 8, 4]]],
+        "args": [["T", [16, 8, 8]], ["T", [16, 8, 4]]],
         "kwargs": {},
         "key": [16, 8, 8],
     },
     {
-        "args": [['T', [16, 16, 16]], ['T', [16, 16, 4]]],
+        "args": [["T", [16, 16, 16]], ["T", [16, 16, 4]]],
         "kwargs": {},
         "key": [16, 16, 16],
     },
     {
-        "args": [['T', [32, 8, 8]], ['T', [32, 8, 1]]],
+        "args": [["T", [32, 8, 8]], ["T", [32, 8, 1]]],
         "kwargs": {},
         "key": [32, 8, 8],
     },

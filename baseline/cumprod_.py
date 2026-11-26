@@ -20,12 +20,20 @@ Grid: 8 collection point(s) over 8 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
+import _common
 import torch
 
-import _common
-
 OP_NAME = "cumprod_"
-DTYPES = [torch.float16, torch.float32, torch.bfloat16, torch.int16, torch.int32, torch.int8, torch.uint8, torch.int64]
+DTYPES = [
+    torch.float16,
+    torch.float32,
+    torch.bfloat16,
+    torch.int16,
+    torch.int32,
+    torch.int8,
+    torch.uint8,
+    torch.int64,
+]
 IS_INPLACE = True
 ATEN_NAME = "cumprod_"
 
@@ -38,42 +46,42 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]], 1],
+        "args": [["T", [64, 64]], 1],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [256, 256]], 1],
+        "args": [["T", [256, 256]], 1],
         "kwargs": {},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 1024]], 1],
+        "args": [["T", [1024, 1024]], 1],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]], 1],
+        "args": [["T", [4096, 4096]], 1],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [1024, 65536]], 1],
+        "args": [["T", [1024, 65536]], 1],
         "kwargs": {},
         "key": [1024, 65536],
     },
     {
-        "args": [['T', [10000, 1]], 1],
+        "args": [["T", [10000, 1]], 1],
         "kwargs": {},
         "key": [10000, 1],
     },
     {
-        "args": [['T', [10000, 256]], 1],
+        "args": [["T", [10000, 256]], 1],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 65536]], 1],
+        "args": [["T", [10000, 65536]], 1],
         "kwargs": {},
         "key": [10000, 65536],
     },

@@ -20,9 +20,8 @@ Grid: 16 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "upsample_bilinear2d_aa_backward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,82 +37,152 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4, 16, 1, 1]], [1, 1], [4, 16, 4, 4], False, None, None],
+        "args": [["T", [4, 16, 1, 1]], [1, 1], [4, 16, 4, 4], False, None, None],
         "kwargs": {},
         "key": [4, 16, 1, 1],
     },
     {
-        "args": [['T', [4, 16, 16, 16]], [16, 16], [4, 16, 4, 4], False, None, None],
+        "args": [["T", [4, 16, 16, 16]], [16, 16], [4, 16, 4, 4], False, None, None],
         "kwargs": {},
         "key": [4, 16, 16, 16],
     },
     {
-        "args": [['T', [4, 16, 4, 4]], [4, 4], [4, 16, 16, 16], False, None, None],
+        "args": [["T", [4, 16, 4, 4]], [4, 4], [4, 16, 16, 16], False, None, None],
         "kwargs": {},
         "key": [4, 16, 4, 4],
     },
     {
-        "args": [['T', [4, 16, 64, 128]], [64, 128], [4, 16, 16, 32], False, None, None],
+        "args": [
+            ["T", [4, 16, 64, 128]],
+            [64, 128],
+            [4, 16, 16, 32],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [4, 16, 64, 128],
     },
     {
-        "args": [['T', [1, 1, 16, 16]], [16, 16], [1, 1, 64, 64], False, None, None],
+        "args": [["T", [1, 1, 16, 16]], [16, 16], [1, 1, 64, 64], False, None, None],
         "kwargs": {},
         "key": [1, 1, 16, 16],
     },
     {
-        "args": [['T', [1, 1, 32, 32]], [32, 32], [1, 1, 64, 64], False, None, None],
+        "args": [["T", [1, 1, 32, 32]], [32, 32], [1, 1, 64, 64], False, None, None],
         "kwargs": {},
         "key": [1, 1, 32, 32],
     },
     {
-        "args": [['T', [1, 1, 128, 128]], [128, 128], [1, 1, 64, 64], False, None, None],
+        "args": [
+            ["T", [1, 1, 128, 128]],
+            [128, 128],
+            [1, 1, 64, 64],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [1, 1, 128, 128],
     },
     {
-        "args": [['T', [4, 3, 128, 128]], [128, 128], [4, 3, 256, 256], False, None, None],
+        "args": [
+            ["T", [4, 3, 128, 128]],
+            [128, 128],
+            [4, 3, 256, 256],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [4, 3, 128, 128],
     },
     {
-        "args": [['T', [4, 3, 256, 256]], [256, 256], [4, 3, 128, 128], False, None, None],
+        "args": [
+            ["T", [4, 3, 256, 256]],
+            [256, 256],
+            [4, 3, 128, 128],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [4, 3, 256, 256],
     },
     {
-        "args": [['T', [4, 64, 32, 32]], [32, 32], [4, 64, 64, 64], False, None, None],
+        "args": [["T", [4, 64, 32, 32]], [32, 32], [4, 64, 64, 64], False, None, None],
         "kwargs": {},
         "key": [4, 64, 32, 32],
     },
     {
-        "args": [['T', [1, 64, 128, 128]], [128, 128], [1, 64, 512, 512], False, None, None],
+        "args": [
+            ["T", [1, 64, 128, 128]],
+            [128, 128],
+            [1, 64, 512, 512],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [1, 64, 128, 128],
     },
     {
-        "args": [['T', [1, 64, 1024, 1024]], [1024, 1024], [1, 64, 512, 512], False, None, None],
+        "args": [
+            ["T", [1, 64, 1024, 1024]],
+            [1024, 1024],
+            [1, 64, 512, 512],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [1, 64, 1024, 1024],
     },
     {
-        "args": [['T', [512, 1024, 8, 8]], [8, 8], [512, 1024, 32, 32], False, None, None],
+        "args": [
+            ["T", [512, 1024, 8, 8]],
+            [8, 8],
+            [512, 1024, 32, 32],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [512, 1024, 8, 8],
     },
     {
-        "args": [['T', [256, 512, 16, 16]], [16, 16], [256, 512, 64, 64], False, None, None],
+        "args": [
+            ["T", [256, 512, 16, 16]],
+            [16, 16],
+            [256, 512, 64, 64],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [256, 512, 16, 16],
     },
     {
-        "args": [['T', [256, 512, 32, 32]], [32, 32], [256, 512, 64, 64], False, None, None],
+        "args": [
+            ["T", [256, 512, 32, 32]],
+            [32, 32],
+            [256, 512, 64, 64],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [256, 512, 32, 32],
     },
     {
-        "args": [['T', [256, 512, 128, 128]], [128, 128], [256, 512, 64, 64], False, None, None],
+        "args": [
+            ["T", [256, 512, 128, 128]],
+            [128, 128],
+            [256, 512, 64, 64],
+            False,
+            None,
+            None,
+        ],
         "kwargs": {},
         "key": [256, 512, 128, 128],
     },

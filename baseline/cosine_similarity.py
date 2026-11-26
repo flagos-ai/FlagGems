@@ -20,9 +20,8 @@ Grid: 12 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "cosine_similarity"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,63 +37,63 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]], ['T', [64, 64]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [64, 64]], ["T", [64, 64]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [64, 64],
     },
     {
-        "args": [['T', [256, 256]], ['T', [256, 256]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [256, 256]], ["T", [256, 256]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 1024]], ['T', [1024, 1024]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [1024, 1024]], ["T", [1024, 1024]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]], ['T', [4096, 4096]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [4096, 4096]], ["T", [4096, 4096]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [1024, 65536]], ['T', [1024, 65536]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [1024, 65536]], ["T", [1024, 65536]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [1024, 65536],
     },
     {
-        "args": [['T', [10000, 1]], ['T', [10000, 1]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [10000, 1]], ["T", [10000, 1]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [10000, 1],
     },
     {
-        "args": [['T', [10000, 256]], ['T', [10000, 256]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [10000, 256]], ["T", [10000, 256]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 65536]], ['T', [10000, 65536]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [10000, 65536]], ["T", [10000, 65536]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [10000, 65536],
     },
     {
-        "args": [['T', [1, 65536]], ['T', [1, 65536]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [1, 65536]], ["T", [1, 65536]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [1, 65536],
     },
     {
-        "args": [['T', [8, 65536]], ['T', [8, 65536]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [8, 65536]], ["T", [8, 65536]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [8, 65536],
     },
     {
-        "args": [['T', [64, 65536]], ['T', [64, 65536]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [64, 65536]], ["T", [64, 65536]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [64, 65536],
     },
     {
-        "args": [['T', [1, 10000000]], ['T', [1, 10000000]]],
-        "kwargs": {'dim': 1, 'eps': 1e-08},
+        "args": [["T", [1, 10000000]], ["T", [1, 10000000]]],
+        "kwargs": {"dim": 1, "eps": 1e-08},
         "key": [1, 10000000],
     },
 ]

@@ -20,9 +20,8 @@ Grid: 8 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (data shape).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "segment_reduce"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,43 +37,67 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1048576]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [64]], 'axis': 0, 'unsafe': True},
+        "args": [["T", [1048576]], "sum"],
+        "kwargs": {"lengths": ["T:torch.int64!index", [64]], "axis": 0, "unsafe": True},
         "key": [1048576],
     },
     {
-        "args": [['T', [64, 64]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [64, 64]], 'axis': 1, 'unsafe': True},
+        "args": [["T", [64, 64]], "sum"],
+        "kwargs": {
+            "lengths": ["T:torch.int64!index", [64, 64]],
+            "axis": 1,
+            "unsafe": True,
+        },
         "key": [64, 64],
     },
     {
-        "args": [['T', [4096, 4096]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [4096, 64]], 'axis': 1, 'unsafe': True},
+        "args": [["T", [4096, 4096]], "sum"],
+        "kwargs": {
+            "lengths": ["T:torch.int64!index", [4096, 64]],
+            "axis": 1,
+            "unsafe": True,
+        },
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [64, 512, 512]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [64, 64]], 'axis': 1, 'unsafe': True},
+        "args": [["T", [64, 512, 512]], "sum"],
+        "kwargs": {
+            "lengths": ["T:torch.int64!index", [64, 64]],
+            "axis": 1,
+            "unsafe": True,
+        },
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [1024, 1024, 1024]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [1024, 64]], 'axis': 1, 'unsafe': True},
+        "args": [["T", [1024, 1024, 1024]], "sum"],
+        "kwargs": {
+            "lengths": ["T:torch.int64!index", [1024, 64]],
+            "axis": 1,
+            "unsafe": True,
+        },
         "key": [1024, 1024, 1024],
     },
     {
-        "args": [['T', [65536]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [64]], 'axis': 0, 'unsafe': True},
+        "args": [["T", [65536]], "sum"],
+        "kwargs": {"lengths": ["T:torch.int64!index", [64]], "axis": 0, "unsafe": True},
         "key": [65536],
     },
     {
-        "args": [['T', [2048, 256]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [2048, 64]], 'axis': 1, 'unsafe': True},
+        "args": [["T", [2048, 256]], "sum"],
+        "kwargs": {
+            "lengths": ["T:torch.int64!index", [2048, 64]],
+            "axis": 1,
+            "unsafe": True,
+        },
         "key": [2048, 256],
     },
     {
-        "args": [['T', [128, 256, 128]], 'sum'],
-        "kwargs": {'lengths': ['T:torch.int64!index', [128, 64]], 'axis': 1, 'unsafe': True},
+        "args": [["T", [128, 256, 128]], "sum"],
+        "kwargs": {
+            "lengths": ["T:torch.int64!index", [128, 64]],
+            "axis": 1,
+            "unsafe": True,
+        },
         "key": [128, 256, 128],
     },
 ]

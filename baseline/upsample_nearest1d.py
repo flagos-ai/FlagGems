@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (N, C, H, W).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "upsample_nearest1d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -39,27 +38,47 @@ NATIVE_UNAVAILABLE_REASON = None
 GRID = [
     {
         "args": [],
-        "kwargs": {'input': ['T', [1, 3, 262144]], 'output_size': [524288], 'scales': None},
+        "kwargs": {
+            "input": ["T", [1, 3, 262144]],
+            "output_size": [524288],
+            "scales": None,
+        },
         "key": [1, 3, 262144],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [8, 16, 16384]], 'output_size': [32768], 'scales': None},
+        "kwargs": {
+            "input": ["T", [8, 16, 16384]],
+            "output_size": [32768],
+            "scales": None,
+        },
         "key": [8, 16, 16384],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [2, 3, 1048576]], 'output_size': [2097152], 'scales': None},
+        "kwargs": {
+            "input": ["T", [2, 3, 1048576]],
+            "output_size": [2097152],
+            "scales": None,
+        },
         "key": [2, 3, 1048576],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [16, 16, 262144]], 'output_size': [524288], 'scales': None},
+        "kwargs": {
+            "input": ["T", [16, 16, 262144]],
+            "output_size": [524288],
+            "scales": None,
+        },
         "key": [16, 16, 262144],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [16, 16, 1048576]], 'output_size': [2097152], 'scales': None},
+        "kwargs": {
+            "input": ["T", [16, 16, 1048576]],
+            "output_size": [2097152],
+            "scales": None,
+        },
         "key": [16, 16, 1048576],
     },
 ]

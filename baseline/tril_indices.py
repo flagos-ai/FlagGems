@@ -20,9 +20,8 @@ Grid: 1 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (row, col).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "tril_indices"
 DTYPES = [torch.int32, torch.int64]
@@ -39,7 +38,13 @@ NATIVE_UNAVAILABLE_REASON = None
 GRID = [
     {
         "args": [],
-        "kwargs": {'row': 64, 'col': 64, 'offset': 0, 'dtype': {'dtype_arg': True}, 'device': {'device_arg': True}},
+        "kwargs": {
+            "row": 64,
+            "col": 64,
+            "offset": 0,
+            "dtype": {"dtype_arg": True},
+            "device": {"device_arg": True},
+        },
         "key": [],
     },
 ]

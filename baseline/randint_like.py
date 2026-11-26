@@ -20,9 +20,8 @@ Grid: 12 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "randint_like"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -39,62 +38,62 @@ NATIVE_UNAVAILABLE_REASON = None
 GRID = [
     {
         "args": [],
-        "kwargs": {'input': ['T', [1073741824]], 'high': 10},
+        "kwargs": {"input": ["T", [1073741824]], "high": 10},
         "key": [1073741824],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [64, 64]], 'high': 10},
+        "kwargs": {"input": ["T", [64, 64]], "high": 10},
         "key": [64, 64],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [4096, 4096]], 'high': 10},
+        "kwargs": {"input": ["T", [4096, 4096]], "high": 10},
         "key": [4096, 4096],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [64, 512, 512]], 'high': 10},
+        "kwargs": {"input": ["T", [64, 512, 512]], "high": 10},
         "key": [64, 512, 512],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [1024, 1024, 1024]], 'high': 10},
+        "kwargs": {"input": ["T", [1024, 1024, 1024]], "high": 10},
         "key": [1024, 1024, 1024],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [268435456]], 'high': 10},
+        "kwargs": {"input": ["T", [268435456]], "high": 10},
         "key": [268435456],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [10000, 1]], 'high': 10},
+        "kwargs": {"input": ["T", [10000, 1]], "high": 10},
         "key": [10000, 1],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [10000, 256]], 'high': 10},
+        "kwargs": {"input": ["T", [10000, 256]], "high": 10},
         "key": [10000, 256],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [10000, 65536]], 'high': 10},
+        "kwargs": {"input": ["T", [10000, 65536]], "high": 10},
         "key": [10000, 65536],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [100, 1, 100]], 'high': 10},
+        "kwargs": {"input": ["T", [100, 1, 100]], "high": 10},
         "key": [100, 1, 100],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [100, 256, 100]], 'high': 10},
+        "kwargs": {"input": ["T", [100, 256, 100]], "high": 10},
         "key": [100, 256, 100],
     },
     {
         "args": [],
-        "kwargs": {'input': ['T', [100, 65536, 100]], 'high': 10},
+        "kwargs": {"input": ["T", [100, 65536, 100]], "high": 10},
         "key": [100, 65536, 100],
     },
 ]

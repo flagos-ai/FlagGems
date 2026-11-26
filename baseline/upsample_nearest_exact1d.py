@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "upsample_nearest_exact1d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,22 +37,22 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 3, 16]], [32], None],
+        "args": [["T", [2, 3, 16]], [32], None],
         "kwargs": {},
         "key": [2, 3, 16],
     },
     {
-        "args": [['T', [4, 8, 64]], [128], None],
+        "args": [["T", [4, 8, 64]], [128], None],
         "kwargs": {},
         "key": [4, 8, 64],
     },
     {
-        "args": [['T', [8, 16, 256]], [512], None],
+        "args": [["T", [8, 16, 256]], [512], None],
         "kwargs": {},
         "key": [8, 16, 256],
     },
     {
-        "args": [['T', [16, 32, 512]], [1024], None],
+        "args": [["T", [16, 32, 512]], [1024], None],
         "kwargs": {},
         "key": [16, 32, 512],
     },

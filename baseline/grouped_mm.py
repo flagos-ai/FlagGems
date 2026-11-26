@@ -20,9 +20,8 @@ Grid: 3 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (Groups, N, K).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "grouped_mm"
 DTYPES = [torch.bfloat16]
@@ -38,17 +37,29 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [102647, 2048]], ['T', [16, 2048, 512]], ['T:torch.int32!index', [16]]],
+        "args": [
+            ["T", [102647, 2048]],
+            ["T", [16, 2048, 512]],
+            ["T:torch.int32!index", [16]],
+        ],
         "kwargs": {},
         "key": [102647, 2048],
     },
     {
-        "args": [['T', [125941, 2048]], ['T', [16, 2048, 2560]], ['T:torch.int32!index', [16]]],
+        "args": [
+            ["T", [125941, 2048]],
+            ["T", [16, 2048, 2560]],
+            ["T:torch.int32!index", [16]],
+        ],
         "kwargs": {},
         "key": [125941, 2048],
     },
     {
-        "args": [['T', [538225, 128]], ['T', [64, 128, 2048]], ['T:torch.int32!index', [64]]],
+        "args": [
+            ["T", [538225, 128]],
+            ["T", [64, 128, 2048]],
+            ["T:torch.int32!index", [64]],
+        ],
         "kwargs": {},
         "key": [538225, 128],
     },

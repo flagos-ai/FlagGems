@@ -146,7 +146,9 @@ def randn_like_dtype(shape, dtype, device):
 
 def index_tensor(shape, high, device):
     """An int64 index tensor with values in ``[0, high)``."""
-    return torch.randint(0, max(int(high), 1), tuple(shape), dtype=torch.int64, device=device)
+    return torch.randint(
+        0, max(int(high), 1), tuple(shape), dtype=torch.int64, device=device
+    )
 
 
 # Value constraints a description cannot carry. ``describe`` records a tensor's
@@ -255,7 +257,9 @@ def _describe_value(value):
         return [_describe_value(item) for item in value]
     if isinstance(value, dict):
         return {key: _describe_value(item) for key, item in value.items()}
-    if isinstance(value, (torch.dtype, torch.device, torch.layout, torch.memory_format)):
+    if isinstance(
+        value, (torch.dtype, torch.device, torch.layout, torch.memory_format)
+    ):
         return str(value)
     return value
 

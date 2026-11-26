@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "renorm_"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,32 +37,32 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [16, 256]], 2.0, 1, 1.0],
+        "args": [["T", [16, 256]], 2.0, 1, 1.0],
         "kwargs": {},
         "key": [16, 256],
     },
     {
-        "args": [['T', [32, 512]], 2.0, 1, 1.0],
+        "args": [["T", [32, 512]], 2.0, 1, 1.0],
         "kwargs": {},
         "key": [32, 512],
     },
     {
-        "args": [['T', [64, 1024]], 2.0, 1, 1.0],
+        "args": [["T", [64, 1024]], 2.0, 1, 1.0],
         "kwargs": {},
         "key": [64, 1024],
     },
     {
-        "args": [['T', [128, 2048]], 2.0, 1, 1.0],
+        "args": [["T", [128, 2048]], 2.0, 1, 1.0],
         "kwargs": {},
         "key": [128, 2048],
     },
     {
-        "args": [['T', [256, 4096]], 2.0, 1, 1.0],
+        "args": [["T", [256, 4096]], 2.0, 1, 1.0],
         "kwargs": {},
         "key": [256, 4096],
     },
     {
-        "args": [['T', [512, 8192]], 2.0, 1, 1.0],
+        "args": [["T", [512, 8192]], 2.0, 1, 1.0],
         "kwargs": {},
         "key": [512, 8192],
     },

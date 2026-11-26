@@ -20,9 +20,8 @@ Grid: 1 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "kaiser_window"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -40,11 +39,11 @@ GRID = [
     {
         "args": [],
         "kwargs": {
-            'window_length': 1073741824,
-            'periodic': True,
-            'beta': 12.0,
-            'dtype': {'dtype_arg': True},
-            'device': {'device_arg': True},
+            "window_length": 1073741824,
+            "periodic": True,
+            "beta": 12.0,
+            "dtype": {"dtype_arg": True},
+            "device": {"device_arg": True},
         },
         "key": [],
     },

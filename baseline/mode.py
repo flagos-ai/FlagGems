@@ -20,9 +20,8 @@ Grid: 11 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "mode"
 DTYPES = [torch.int16]
@@ -38,58 +37,58 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [64, 64]]],
+        "kwargs": {"dim": -1},
         "key": [64, 64],
     },
     {
-        "args": [['T', [256, 256]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [256, 256]]],
+        "kwargs": {"dim": -1},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 1024]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [1024, 1024]]],
+        "kwargs": {"dim": -1},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [4096, 4096]]],
+        "kwargs": {"dim": -1},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [1024, 65536]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [1024, 65536]]],
+        "kwargs": {"dim": -1},
         "key": [1024, 65536],
     },
     {
-        "args": [['T', [1024, 1]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [1024, 1]]],
+        "kwargs": {"dim": -1},
         "key": [1024, 1],
     },
     {
-        "args": [['T', [1024, 512]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [1024, 512]]],
+        "kwargs": {"dim": -1},
         "key": [1024, 512],
     },
     {
-        "args": [['T', [16, 131072]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [16, 131072]]],
+        "kwargs": {"dim": -1},
         "key": [16, 131072],
     },
     {
-        "args": [['T', [8, 262144]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [8, 262144]]],
+        "kwargs": {"dim": -1},
         "key": [8, 262144],
     },
     {
-        "args": [['T', [4097, 200]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [4097, 200]]],
+        "kwargs": {"dim": -1},
         "key": [4097, 200],
     },
     {
-        "args": [['T', [7680, 200]]],
-        "kwargs": {'dim': -1},
+        "args": [["T", [7680, 200]]],
+        "kwargs": {"dim": -1},
         "key": [7680, 200],
     },
 ]

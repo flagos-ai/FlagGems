@@ -20,9 +20,8 @@ Grid: 10 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "unsafe_masked_index"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,52 +37,102 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1024]], ['T:torch.bool', [1024]], [['T:torch.int64!index', [1024]]], 0.0],
+        "args": [
+            ["T", [1024]],
+            ["T:torch.bool", [1024]],
+            [["T:torch.int64!index", [1024]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [1024],
     },
     {
-        "args": [['T', [2048]], ['T:torch.bool', [2048]], [['T:torch.int64!index', [2048]]], 0.0],
+        "args": [
+            ["T", [2048]],
+            ["T:torch.bool", [2048]],
+            [["T:torch.int64!index", [2048]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [2048],
     },
     {
-        "args": [['T', [4096]], ['T:torch.bool', [4096]], [['T:torch.int64!index', [4096]]], 0.0],
+        "args": [
+            ["T", [4096]],
+            ["T:torch.bool", [4096]],
+            [["T:torch.int64!index", [4096]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [4096],
     },
     {
-        "args": [['T', [8192]], ['T:torch.bool', [8192]], [['T:torch.int64!index', [8192]]], 0.0],
+        "args": [
+            ["T", [8192]],
+            ["T:torch.bool", [8192]],
+            [["T:torch.int64!index", [8192]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [8192],
     },
     {
-        "args": [['T', [16384]], ['T:torch.bool', [16384]], [['T:torch.int64!index', [16384]]], 0.0],
+        "args": [
+            ["T", [16384]],
+            ["T:torch.bool", [16384]],
+            [["T:torch.int64!index", [16384]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [16384],
     },
     {
-        "args": [['T', [32768]], ['T:torch.bool', [32768]], [['T:torch.int64!index', [32768]]], 0.0],
+        "args": [
+            ["T", [32768]],
+            ["T:torch.bool", [32768]],
+            [["T:torch.int64!index", [32768]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [32768],
     },
     {
-        "args": [['T', [65536]], ['T:torch.bool', [65536]], [['T:torch.int64!index', [65536]]], 0.0],
+        "args": [
+            ["T", [65536]],
+            ["T:torch.bool", [65536]],
+            [["T:torch.int64!index", [65536]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [65536],
     },
     {
-        "args": [['T', [131072]], ['T:torch.bool', [131072]], [['T:torch.int64!index', [131072]]], 0.0],
+        "args": [
+            ["T", [131072]],
+            ["T:torch.bool", [131072]],
+            [["T:torch.int64!index", [131072]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [131072],
     },
     {
-        "args": [['T', [262144]], ['T:torch.bool', [262144]], [['T:torch.int64!index', [262144]]], 0.0],
+        "args": [
+            ["T", [262144]],
+            ["T:torch.bool", [262144]],
+            [["T:torch.int64!index", [262144]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [262144],
     },
     {
-        "args": [['T', [1048576]], ['T:torch.bool', [1048576]], [['T:torch.int64!index', [1048576]]], 0.0],
+        "args": [
+            ["T", [1048576]],
+            ["T:torch.bool", [1048576]],
+            [["T:torch.int64!index", [1048576]]],
+            0.0,
+        ],
         "kwargs": {},
         "key": [1048576],
     },

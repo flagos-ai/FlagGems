@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "max_pool1d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,28 +37,58 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4, 3, 224]]],
-        "kwargs": {'kernel_size': [3], 'stride': [2], 'padding': [1], 'dilation': [1], 'ceil_mode': False},
+        "args": [["T", [4, 3, 224]]],
+        "kwargs": {
+            "kernel_size": [3],
+            "stride": [2],
+            "padding": [1],
+            "dilation": [1],
+            "ceil_mode": False,
+        },
         "key": [4, 3, 224],
     },
     {
-        "args": [['T', [16, 64, 128]]],
-        "kwargs": {'kernel_size': [3], 'stride': [2], 'padding': [1], 'dilation': [1], 'ceil_mode': False},
+        "args": [["T", [16, 64, 128]]],
+        "kwargs": {
+            "kernel_size": [3],
+            "stride": [2],
+            "padding": [1],
+            "dilation": [1],
+            "ceil_mode": False,
+        },
         "key": [16, 64, 128],
     },
     {
-        "args": [['T', [32, 128, 64]]],
-        "kwargs": {'kernel_size': [3], 'stride': [2], 'padding': [1], 'dilation': [1], 'ceil_mode': False},
+        "args": [["T", [32, 128, 64]]],
+        "kwargs": {
+            "kernel_size": [3],
+            "stride": [2],
+            "padding": [1],
+            "dilation": [1],
+            "ceil_mode": False,
+        },
         "key": [32, 128, 64],
     },
     {
-        "args": [['T', [64, 256, 32]]],
-        "kwargs": {'kernel_size': [3], 'stride': [2], 'padding': [1], 'dilation': [1], 'ceil_mode': False},
+        "args": [["T", [64, 256, 32]]],
+        "kwargs": {
+            "kernel_size": [3],
+            "stride": [2],
+            "padding": [1],
+            "dilation": [1],
+            "ceil_mode": False,
+        },
         "key": [64, 256, 32],
     },
     {
-        "args": [['T', [128, 512, 16]]],
-        "kwargs": {'kernel_size': [3], 'stride': [2], 'padding': [1], 'dilation': [1], 'ceil_mode': False},
+        "args": [["T", [128, 512, 16]]],
+        "kwargs": {
+            "kernel_size": [3],
+            "stride": [2],
+            "padding": [1],
+            "dilation": [1],
+            "ceil_mode": False,
+        },
         "key": [128, 512, 16],
     },
 ]

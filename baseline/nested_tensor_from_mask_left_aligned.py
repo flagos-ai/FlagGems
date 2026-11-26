@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "nested_tensor_from_mask_left_aligned"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,22 +37,22 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [8, 128, 64]], ['T:torch.bool', [8, 128]]],
+        "args": [["T", [8, 128, 64]], ["T:torch.bool", [8, 128]]],
         "kwargs": {},
         "key": [8, 128, 64],
     },
     {
-        "args": [['T', [64, 256, 64]], ['T:torch.bool', [64, 256]]],
+        "args": [["T", [64, 256, 64]], ["T:torch.bool", [64, 256]]],
         "kwargs": {},
         "key": [64, 256, 64],
     },
     {
-        "args": [['T', [512, 512, 64]], ['T:torch.bool', [512, 512]]],
+        "args": [["T", [512, 512, 64]], ["T:torch.bool", [512, 512]]],
         "kwargs": {},
         "key": [512, 512, 64],
     },
     {
-        "args": [['T', [2048, 1024, 64]], ['T:torch.bool', [2048, 1024]]],
+        "args": [["T", [2048, 1024, 64]], ["T:torch.bool", [2048, 1024]]],
         "kwargs": {},
         "key": [2048, 1024, 64],
     },

@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "max_pool3d_with_indices_backward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -39,84 +38,84 @@ NATIVE_UNAVAILABLE_REASON = None
 GRID = [
     {
         "args": [
-            ['T', [4, 3, 8, 28, 28]],
-            ['T', [4, 3, 16, 56, 56]],
+            ["T", [4, 3, 8, 28, 28]],
+            ["T", [4, 3, 16, 56, 56]],
             3,
             2,
             1,
             1,
             False,
-            ['T:torch.int64!index', [4, 3, 8, 28, 28]],
+            ["T:torch.int64!index", [4, 3, 8, 28, 28]],
         ],
         "kwargs": {},
         "key": [4, 3, 8, 28, 28],
     },
     {
         "args": [
-            ['T', [4, 3, 15, 28, 28]],
-            ['T', [4, 3, 16, 56, 56]],
+            ["T", [4, 3, 15, 28, 28]],
+            ["T", [4, 3, 16, 56, 56]],
             [2, 3, 3],
             [1, 2, 2],
             [0, 1, 1],
             1,
             False,
-            ['T:torch.int64!index', [4, 3, 15, 28, 28]],
+            ["T:torch.int64!index", [4, 3, 15, 28, 28]],
         ],
         "kwargs": {},
         "key": [4, 3, 15, 28, 28],
     },
     {
         "args": [
-            ['T', [8, 64, 4, 14, 14]],
-            ['T', [8, 64, 8, 28, 28]],
+            ["T", [8, 64, 4, 14, 14]],
+            ["T", [8, 64, 8, 28, 28]],
             3,
             2,
             1,
             1,
             False,
-            ['T:torch.int64!index', [8, 64, 4, 14, 14]],
+            ["T:torch.int64!index", [8, 64, 4, 14, 14]],
         ],
         "kwargs": {},
         "key": [8, 64, 4, 14, 14],
     },
     {
         "args": [
-            ['T', [8, 64, 7, 14, 14]],
-            ['T', [8, 64, 8, 28, 28]],
+            ["T", [8, 64, 7, 14, 14]],
+            ["T", [8, 64, 8, 28, 28]],
             [2, 3, 3],
             [1, 2, 2],
             [0, 1, 1],
             1,
             False,
-            ['T:torch.int64!index', [8, 64, 7, 14, 14]],
+            ["T:torch.int64!index", [8, 64, 7, 14, 14]],
         ],
         "kwargs": {},
         "key": [8, 64, 7, 14, 14],
     },
     {
         "args": [
-            ['T', [16, 128, 2, 7, 7]],
-            ['T', [16, 128, 4, 14, 14]],
+            ["T", [16, 128, 2, 7, 7]],
+            ["T", [16, 128, 4, 14, 14]],
             3,
             2,
             1,
             1,
             False,
-            ['T:torch.int64!index', [16, 128, 2, 7, 7]],
+            ["T:torch.int64!index", [16, 128, 2, 7, 7]],
         ],
         "kwargs": {},
         "key": [16, 128, 2, 7, 7],
     },
     {
         "args": [
-            ['T', [32, 256, 1, 4, 4]],
-            ['T', [32, 256, 2, 7, 7]],
+            ["T", [32, 256, 1, 4, 4]],
+            ["T", [32, 256, 2, 7, 7]],
             3,
             2,
             1,
             1,
             False,
-            ['T:torch.int64!index', [32, 256, 1, 4, 4]],
+            ["T:torch.int64!index", [32, 256, 1, 4, 4]],
         ],
         "kwargs": {},
         "key": [32, 256, 1, 4, 4],

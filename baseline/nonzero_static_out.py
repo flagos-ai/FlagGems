@@ -20,9 +20,8 @@ Grid: 9 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (shape, nnz_ratio, size, fill_value).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "nonzero_static_out"
 DTYPES = [torch.float16, torch.bfloat16]
@@ -38,48 +37,84 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1024]]],
-        "kwargs": {'size': 128, 'fill_value': -1, 'out': ['T:torch.int64!index', [128, 1]]},
+        "args": [["T", [1024]]],
+        "kwargs": {
+            "size": 128,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [128, 1]],
+        },
         "key": [1024],
     },
     {
-        "args": [['T', [16384]]],
-        "kwargs": {'size': 128, 'fill_value': -1, 'out': ['T:torch.int64!index', [128, 1]]},
+        "args": [["T", [16384]]],
+        "kwargs": {
+            "size": 128,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [128, 1]],
+        },
         "key": [16384],
     },
     {
-        "args": [['T', [262144]]],
-        "kwargs": {'size': 1024, 'fill_value': -1, 'out': ['T:torch.int64!index', [1024, 1]]},
+        "args": [["T", [262144]]],
+        "kwargs": {
+            "size": 1024,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [1024, 1]],
+        },
         "key": [262144],
     },
     {
-        "args": [['T', [1048576]]],
-        "kwargs": {'size': 1024, 'fill_value': -1, 'out': ['T:torch.int64!index', [1024, 1]]},
+        "args": [["T", [1048576]]],
+        "kwargs": {
+            "size": 1024,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [1024, 1]],
+        },
         "key": [1048576],
     },
     {
-        "args": [['T', [32, 1024]]],
-        "kwargs": {'size': 1024, 'fill_value': -1, 'out': ['T:torch.int64!index', [1024, 2]]},
+        "args": [["T", [32, 1024]]],
+        "kwargs": {
+            "size": 1024,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [1024, 2]],
+        },
         "key": [32, 1024],
     },
     {
-        "args": [['T', [128, 4096]]],
-        "kwargs": {'size': 4096, 'fill_value': -1, 'out': ['T:torch.int64!index', [4096, 2]]},
+        "args": [["T", [128, 4096]]],
+        "kwargs": {
+            "size": 4096,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [4096, 2]],
+        },
         "key": [128, 4096],
     },
     {
-        "args": [['T', [1024, 4096]]],
-        "kwargs": {'size': 1024, 'fill_value': -1, 'out': ['T:torch.int64!index', [1024, 2]]},
+        "args": [["T", [1024, 4096]]],
+        "kwargs": {
+            "size": 1024,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [1024, 2]],
+        },
         "key": [1024, 4096],
     },
     {
-        "args": [['T', [16, 64, 64]]],
-        "kwargs": {'size': 1024, 'fill_value': -1, 'out': ['T:torch.int64!index', [1024, 3]]},
+        "args": [["T", [16, 64, 64]]],
+        "kwargs": {
+            "size": 1024,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [1024, 3]],
+        },
         "key": [16, 64, 64],
     },
     {
-        "args": [['T', [32, 128, 128]]],
-        "kwargs": {'size': 4096, 'fill_value': -1, 'out': ['T:torch.int64!index', [4096, 3]]},
+        "args": [["T", [32, 128, 128]]],
+        "kwargs": {
+            "size": 4096,
+            "fill_value": -1,
+            "out": ["T:torch.int64!index", [4096, 3]],
+        },
         "key": [32, 128, 128],
     },
 ]

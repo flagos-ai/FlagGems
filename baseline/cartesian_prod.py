@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (input vector lengths).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "cartesian_prod"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,32 +37,32 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4096]]],
+        "args": [["T", [4096]]],
         "kwargs": {},
         "key": [4096],
     },
     {
-        "args": [['T', [1024]], ['T', [1024]]],
+        "args": [["T", [1024]], ["T", [1024]]],
         "kwargs": {},
         "key": [1024],
     },
     {
-        "args": [['T', [64]], ['T', [64]], ['T', [64]]],
+        "args": [["T", [64]], ["T", [64]], ["T", [64]]],
         "kwargs": {},
         "key": [64],
     },
     {
-        "args": [['T', [32]], ['T', [256]], ['T', [32]]],
+        "args": [["T", [32]], ["T", [256]], ["T", [32]]],
         "kwargs": {},
         "key": [32],
     },
     {
-        "args": [['T', [16]], ['T', [128]], ['T', [64]], ['T', [16]]],
+        "args": [["T", [16]], ["T", [128]], ["T", [64]], ["T", [16]]],
         "kwargs": {},
         "key": [16],
     },
     {
-        "args": [['T', [4]], ['T', [512]], ['T', [8]], ['T', [256]]],
+        "args": [["T", [4]], ["T", [512]], ["T", [8]], ["T", [256]]],
         "kwargs": {},
         "key": [4],
     },

@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "reflection_pad3d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,22 +37,22 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 4, 8, 16, 16]], [1, 1, 1, 1, 1, 1]],
+        "args": [["T", [2, 4, 8, 16, 16]], [1, 1, 1, 1, 1, 1]],
         "kwargs": {},
         "key": [2, 4, 8, 16, 16],
     },
     {
-        "args": [['T', [1, 3, 16, 32, 32]], [2, 3, 2, 3, 1, 1]],
+        "args": [["T", [1, 3, 16, 32, 32]], [2, 3, 2, 3, 1, 1]],
         "kwargs": {},
         "key": [1, 3, 16, 32, 32],
     },
     {
-        "args": [['T', [2, 4, 16, 32, 64]], [1, 1, 2, 2, 2, 2]],
+        "args": [["T", [2, 4, 16, 32, 64]], [1, 1, 2, 2, 2, 2]],
         "kwargs": {},
         "key": [2, 4, 16, 32, 64],
     },
     {
-        "args": [['T', [1, 1, 32, 64, 128]], [0, 4, 0, 4, 0, 4]],
+        "args": [["T", [1, 1, 32, 64, 128]], [0, 4, 0, 4, 0, 4]],
         "kwargs": {},
         "key": [1, 1, 32, 64, 128],
     },

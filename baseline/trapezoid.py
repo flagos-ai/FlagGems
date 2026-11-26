@@ -20,9 +20,8 @@ Grid: 10 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "trapezoid"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,52 +37,52 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]], ['T', [64]]],
+        "args": [["T", [64, 64]], ["T", [64]]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [4096, 4096]], ['T', [4096]]],
+        "args": [["T", [4096, 4096]], ["T", [4096]]],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [64, 512, 512]], ['T', [512]]],
+        "args": [["T", [64, 512, 512]], ["T", [512]]],
         "kwargs": {},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [4194304]], ['T', [4194304]]],
+        "args": [["T", [4194304]], ["T", [4194304]]],
         "kwargs": {},
         "key": [4194304],
     },
     {
-        "args": [['T', [10000, 1]], ['T', [1]]],
+        "args": [["T", [10000, 1]], ["T", [1]]],
         "kwargs": {},
         "key": [10000, 1],
     },
     {
-        "args": [['T', [10000, 256]], ['T', [256]]],
+        "args": [["T", [10000, 256]], ["T", [256]]],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 4096]], ['T', [4096]]],
+        "args": [["T", [10000, 4096]], ["T", [4096]]],
         "kwargs": {},
         "key": [10000, 4096],
     },
     {
-        "args": [['T', [100, 1, 100]], ['T', [100]]],
+        "args": [["T", [100, 1, 100]], ["T", [100]]],
         "kwargs": {},
         "key": [100, 1, 100],
     },
     {
-        "args": [['T', [100, 256, 100]], ['T', [100]]],
+        "args": [["T", [100, 256, 100]], ["T", [100]]],
         "kwargs": {},
         "key": [100, 256, 100],
     },
     {
-        "args": [['T', [100, 4096, 100]], ['T', [100]]],
+        "args": [["T", [100, 4096, 100]], ["T", [100]]],
         "kwargs": {},
         "key": [100, 4096, 100],
     },

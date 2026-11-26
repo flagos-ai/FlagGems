@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "nll_loss2d_forward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,22 +37,22 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64, 4, 8]], ['T:torch.int64!index', [64, 4, 8]]],
+        "args": [["T", [64, 64, 4, 8]], ["T:torch.int64!index", [64, 4, 8]]],
         "kwargs": {},
         "key": [64, 64, 4, 8],
     },
     {
-        "args": [['T', [256, 256, 4, 8]], ['T:torch.int64!index', [256, 4, 8]]],
+        "args": [["T", [256, 256, 4, 8]], ["T:torch.int64!index", [256, 4, 8]]],
         "kwargs": {},
         "key": [256, 256, 4, 8],
     },
     {
-        "args": [['T', [1024, 1024, 4, 8]], ['T:torch.int64!index', [1024, 4, 8]]],
+        "args": [["T", [1024, 1024, 4, 8]], ["T:torch.int64!index", [1024, 4, 8]]],
         "kwargs": {},
         "key": [1024, 1024, 4, 8],
     },
     {
-        "args": [['T', [4096, 4096, 4, 8]], ['T:torch.int64!index', [4096, 4, 8]]],
+        "args": [["T", [4096, 4096, 4, 8]], ["T:torch.int64!index", [4096, 4, 8]]],
         "kwargs": {},
         "key": [4096, 4096, 4, 8],
     },

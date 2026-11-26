@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "safe_softmax"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,27 +37,27 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1073741824]], -1, None],
+        "args": [["T", [1073741824]], -1, None],
         "kwargs": {},
         "key": [1073741824],
     },
     {
-        "args": [['T', [64, 64]], -1, None],
+        "args": [["T", [64, 64]], -1, None],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [4096, 4096]], -1, None],
+        "args": [["T", [4096, 4096]], -1, None],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [64, 512, 512]], -1, None],
+        "args": [["T", [64, 512, 512]], -1, None],
         "kwargs": {},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [1024, 1024, 1024]], -1, None],
+        "args": [["T", [1024, 1024, 1024]], -1, None],
         "kwargs": {},
         "key": [1024, 1024, 1024],
     },

@@ -20,9 +20,8 @@ Grid: 3 collection point(s) over 5 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (SHAPE).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "rshift_tensor"
 DTYPES = [torch.int16, torch.int32, torch.int8, torch.uint8, torch.int64]
@@ -38,17 +37,17 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1024]], ['T', [1024]]],
+        "args": [["T", [1024]], ["T", [1024]]],
         "kwargs": {},
         "key": [1024],
     },
     {
-        "args": [['T', [1024, 1024]], ['T', [1024, 1024]]],
+        "args": [["T", [1024, 1024]], ["T", [1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [16, 512, 256]], ['T', [16, 512, 256]]],
+        "args": [["T", [16, 512, 256]], ["T", [16, 512, 256]]],
         "kwargs": {},
         "key": [16, 512, 256],
     },

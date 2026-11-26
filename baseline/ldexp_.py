@@ -20,9 +20,8 @@ Grid: 7 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "ldexp_"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,37 +37,37 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1]], ['T:torch.int32!index', [1]]],
+        "args": [["T", [1]], ["T:torch.int32!index", [1]]],
         "kwargs": {},
         "key": [1],
     },
     {
-        "args": [['T', [1024]], ['T:torch.int32!index', [1024]]],
+        "args": [["T", [1024]], ["T:torch.int32!index", [1024]]],
         "kwargs": {},
         "key": [1024],
     },
     {
-        "args": [['T', [1024, 1024]], ['T:torch.int32!index', [1024, 1024]]],
+        "args": [["T", [1024, 1024]], ["T:torch.int32!index", [1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]], ['T:torch.int32!index', [4096, 4096]]],
+        "args": [["T", [4096, 4096]], ["T:torch.int32!index", [4096, 4096]]],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [16, 128, 64, 64]], ['T:torch.int32!index', [16, 128, 64, 64]]],
+        "args": [["T", [16, 128, 64, 64]], ["T:torch.int32!index", [16, 128, 64, 64]]],
         "kwargs": {},
         "key": [16, 128, 64, 64],
     },
     {
-        "args": [['T', [16777216]], ['T:torch.int32!index', [16777216]]],
+        "args": [["T", [16777216]], ["T:torch.int32!index", [16777216]]],
         "kwargs": {},
         "key": [16777216],
     },
     {
-        "args": [['T', [8192, 4096]], ['T:torch.int32!index', [8192, 4096]]],
+        "args": [["T", [8192, 4096]], ["T:torch.int32!index", [8192, 4096]]],
         "kwargs": {},
         "key": [8192, 4096],
     },

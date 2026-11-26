@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "vander"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,23 +37,23 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64]]],
-        "kwargs": {'N': None, 'increasing': False},
+        "args": [["T", [64]]],
+        "kwargs": {"N": None, "increasing": False},
         "key": [64],
     },
     {
-        "args": [['T', [128]]],
-        "kwargs": {'N': None, 'increasing': False},
+        "args": [["T", [128]]],
+        "kwargs": {"N": None, "increasing": False},
         "key": [128],
     },
     {
-        "args": [['T', [256]]],
-        "kwargs": {'N': None, 'increasing': False},
+        "args": [["T", [256]]],
+        "kwargs": {"N": None, "increasing": False},
         "key": [256],
     },
     {
-        "args": [['T', [512]]],
-        "kwargs": {'N': None, 'increasing': False},
+        "args": [["T", [512]]],
+        "kwargs": {"N": None, "increasing": False},
         "key": [512],
     },
 ]

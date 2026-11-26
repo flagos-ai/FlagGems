@@ -20,9 +20,8 @@ Grid: 12 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "bernoulli"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,62 +37,62 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T!unit_interval', [1073741824]]],
+        "args": [["T!unit_interval", [1073741824]]],
         "kwargs": {},
         "key": [1073741824],
     },
     {
-        "args": [['T!unit_interval', [64, 64]]],
+        "args": [["T!unit_interval", [64, 64]]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T!unit_interval', [4096, 4096]]],
+        "args": [["T!unit_interval", [4096, 4096]]],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T!unit_interval', [64, 512, 512]]],
+        "args": [["T!unit_interval", [64, 512, 512]]],
         "kwargs": {},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T!unit_interval', [1024, 1024, 1024]]],
+        "args": [["T!unit_interval", [1024, 1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024, 1024],
     },
     {
-        "args": [['T!unit_interval', [268435456]]],
+        "args": [["T!unit_interval", [268435456]]],
         "kwargs": {},
         "key": [268435456],
     },
     {
-        "args": [['T!unit_interval', [10000, 1]]],
+        "args": [["T!unit_interval", [10000, 1]]],
         "kwargs": {},
         "key": [10000, 1],
     },
     {
-        "args": [['T!unit_interval', [10000, 256]]],
+        "args": [["T!unit_interval", [10000, 256]]],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T!unit_interval', [10000, 65536]]],
+        "args": [["T!unit_interval", [10000, 65536]]],
         "kwargs": {},
         "key": [10000, 65536],
     },
     {
-        "args": [['T!unit_interval', [100, 1, 100]]],
+        "args": [["T!unit_interval", [100, 1, 100]]],
         "kwargs": {},
         "key": [100, 1, 100],
     },
     {
-        "args": [['T!unit_interval', [100, 256, 100]]],
+        "args": [["T!unit_interval", [100, 256, 100]]],
         "kwargs": {},
         "key": [100, 256, 100],
     },
     {
-        "args": [['T!unit_interval', [100, 65536, 100]]],
+        "args": [["T!unit_interval", [100, 65536, 100]]],
         "kwargs": {},
         "key": [100, 65536, 100],
     },

@@ -20,9 +20,8 @@ Grid: 13 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses ([input_shape, output_size]).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "adaptive_max_pool3d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,68 +37,68 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 256, 2, 14, 14]], [2, 14, 14]],
-        "kwargs": {'return_indices': True},
+        "args": [["T", [2, 256, 2, 14, 14]], [2, 14, 14]],
+        "kwargs": {"return_indices": True},
         "key": [2, 256, 2, 14, 14],
     },
     {
-        "args": [['T', [1, 256, 1, 64, 64]], [1, 1, 1]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 256, 1, 64, 64]], [1, 1, 1]],
+        "kwargs": {"return_indices": False},
         "key": [1, 256, 1, 64, 64],
     },
     {
-        "args": [['T', [1, 4, 8, 24, 32]], [1, 1, 1]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 4, 8, 24, 32]], [1, 1, 1]],
+        "kwargs": {"return_indices": False},
         "key": [1, 4, 8, 24, 32],
     },
     {
-        "args": [['T', [1, 8, 64, 256, 256]], [1, 7, 7]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 8, 64, 256, 256]], [1, 7, 7]],
+        "kwargs": {"return_indices": False},
         "key": [1, 8, 64, 256, 256],
     },
     {
-        "args": [['T', [8, 64, 16, 112, 112]], [1, 7, 7]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [8, 64, 16, 112, 112]], [1, 7, 7]],
+        "kwargs": {"return_indices": False},
         "key": [8, 64, 16, 112, 112],
     },
     {
-        "args": [['T', [1, 256, 64, 112, 112]], [1, 112, 112]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 256, 64, 112, 112]], [1, 112, 112]],
+        "kwargs": {"return_indices": False},
         "key": [1, 256, 64, 112, 112],
     },
     {
-        "args": [['T', [4, 128, 32, 64, 64]], [8, 64, 64]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [4, 128, 32, 64, 64]], [8, 64, 64]],
+        "kwargs": {"return_indices": False},
         "key": [4, 128, 32, 64, 64],
     },
     {
-        "args": [['T', [2, 128, 4, 28, 28]], [4, 14, 14]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [2, 128, 4, 28, 28]], [4, 14, 14]],
+        "kwargs": {"return_indices": False},
         "key": [2, 128, 4, 28, 28],
     },
     {
-        "args": [['T', [2, 640, 64, 42, 72]], [16, 14, 14]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [2, 640, 64, 42, 72]], [16, 14, 14]],
+        "kwargs": {"return_indices": False},
         "key": [2, 640, 64, 42, 72],
     },
     {
-        "args": [['T', [32, 512, 8, 8, 8]], [4, 4, 4]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [32, 512, 8, 8, 8]], [4, 4, 4]],
+        "kwargs": {"return_indices": False},
         "key": [32, 512, 8, 8, 8],
     },
     {
-        "args": [['T', [1, 768, 160, 32, 32]], [8, 32, 32]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 768, 160, 32, 32]], [8, 32, 32]],
+        "kwargs": {"return_indices": False},
         "key": [1, 768, 160, 32, 32],
     },
     {
-        "args": [['T', [1, 1280, 48, 36, 50]], [8, 8, 8]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 1280, 48, 36, 50]], [8, 8, 8]],
+        "kwargs": {"return_indices": False},
         "key": [1, 1280, 48, 36, 50],
     },
     {
-        "args": [['T', [1, 3, 16, 224, 224]], [8, 7, 7]],
-        "kwargs": {'return_indices': False},
+        "args": [["T", [1, 3, 16, 224, 224]], [8, 7, 7]],
+        "kwargs": {"return_indices": False},
         "key": [1, 3, 16, 224, 224],
     },
 ]

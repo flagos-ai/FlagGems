@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (N, C, H, W).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "grid_sampler_2d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,22 +37,22 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1, 3, 112, 112]], ['T', [1, 112, 112, 2]], 0, 0, False],
+        "args": [["T", [1, 3, 112, 112]], ["T", [1, 112, 112, 2]], 0, 0, False],
         "kwargs": {},
         "key": [1, 3, 112, 112],
     },
     {
-        "args": [['T', [2, 64, 32, 32]], ['T', [2, 32, 32, 2]], 0, 0, False],
+        "args": [["T", [2, 64, 32, 32]], ["T", [2, 32, 32, 2]], 0, 0, False],
         "kwargs": {},
         "key": [2, 64, 32, 32],
     },
     {
-        "args": [['T', [4, 256, 16, 16]], ['T', [4, 16, 16, 2]], 0, 0, False],
+        "args": [["T", [4, 256, 16, 16]], ["T", [4, 16, 16, 2]], 0, 0, False],
         "kwargs": {},
         "key": [4, 256, 16, 16],
     },
     {
-        "args": [['T', [8, 3, 64, 64]], ['T', [8, 64, 64, 2]], 0, 0, False],
+        "args": [["T", [8, 3, 64, 64]], ["T", [8, 64, 64, 2]], 0, 0, False],
         "kwargs": {},
         "key": [8, 3, 64, 64],
     },

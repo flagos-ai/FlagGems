@@ -20,9 +20,8 @@ Grid: 4 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (T, N, C, S).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "_ctc_loss_out"
 DTYPES = [torch.float32, torch.float64]
@@ -38,24 +37,46 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 4, 32]], ['T:torch.int64!index', [4, 16]], [64, 64, 64, 64], [16, 16, 16, 16]],
-        "kwargs": {'blank': 0, 'out0': ['T', [4]], 'out1': ['T', [4, 64, 33]]},
+        "args": [
+            ["T", [64, 4, 32]],
+            ["T:torch.int64!index", [4, 16]],
+            [64, 64, 64, 64],
+            [16, 16, 16, 16],
+        ],
+        "kwargs": {"blank": 0, "out0": ["T", [4]], "out1": ["T", [4, 64, 33]]},
         "key": [64, 4, 32],
     },
     {
         "args": [
-            ['T', [256, 16, 64]],
-            ['T:torch.int64!index', [16, 48]],
-            [256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256],
+            ["T", [256, 16, 64]],
+            ["T:torch.int64!index", [16, 48]],
+            [
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+                256,
+            ],
             [48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48],
         ],
-        "kwargs": {'blank': 0, 'out0': ['T', [16]], 'out1': ['T', [16, 256, 97]]},
+        "kwargs": {"blank": 0, "out0": ["T", [16]], "out1": ["T", [16, 256, 97]]},
         "key": [256, 16, 64],
     },
     {
         "args": [
-            ['T', [512, 32, 64]],
-            ['T:torch.int64!index', [32, 48]],
+            ["T", [512, 32, 64]],
+            ["T:torch.int64!index", [32, 48]],
             [
                 512,
                 512,
@@ -125,13 +146,13 @@ GRID = [
                 48,
             ],
         ],
-        "kwargs": {'blank': 0, 'out0': ['T', [32]], 'out1': ['T', [32, 512, 97]]},
+        "kwargs": {"blank": 0, "out0": ["T", [32]], "out1": ["T", [32, 512, 97]]},
         "key": [512, 32, 64],
     },
     {
         "args": [
-            ['T', [1024, 32, 128]],
-            ['T:torch.int64!index', [32, 96]],
+            ["T", [1024, 32, 128]],
+            ["T:torch.int64!index", [32, 96]],
             [
                 1024,
                 1024,
@@ -201,7 +222,7 @@ GRID = [
                 96,
             ],
         ],
-        "kwargs": {'blank': 0, 'out0': ['T', [32]], 'out1': ['T', [32, 1024, 193]]},
+        "kwargs": {"blank": 0, "out0": ["T", [32]], "out1": ["T", [32, 1024, 193]]},
         "key": [1024, 32, 128],
     },
 ]

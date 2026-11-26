@@ -20,9 +20,8 @@ Grid: 10 collection point(s) over 2 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "inverse"
 DTYPES = [torch.float32, torch.float64]
@@ -38,52 +37,52 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [16, 16]]],
+        "args": [["T", [16, 16]]],
         "kwargs": {},
         "key": [16, 16],
     },
     {
-        "args": [['T', [32, 32]]],
+        "args": [["T", [32, 32]]],
         "kwargs": {},
         "key": [32, 32],
     },
     {
-        "args": [['T', [64, 64]]],
+        "args": [["T", [64, 64]]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [128, 128]]],
+        "args": [["T", [128, 128]]],
         "kwargs": {},
         "key": [128, 128],
     },
     {
-        "args": [['T', [256, 256]]],
+        "args": [["T", [256, 256]]],
         "kwargs": {},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 8, 8]]],
+        "args": [["T", [1024, 8, 8]]],
         "kwargs": {},
         "key": [1024, 8, 8],
     },
     {
-        "args": [['T', [512, 16, 16]]],
+        "args": [["T", [512, 16, 16]]],
         "kwargs": {},
         "key": [512, 16, 16],
     },
     {
-        "args": [['T', [128, 32, 32]]],
+        "args": [["T", [128, 32, 32]]],
         "kwargs": {},
         "key": [128, 32, 32],
     },
     {
-        "args": [['T', [32, 64, 64]]],
+        "args": [["T", [32, 64, 64]]],
         "kwargs": {},
         "key": [32, 64, 64],
     },
     {
-        "args": [['T', [8, 128, 128]]],
+        "args": [["T", [8, 128, 128]]],
         "kwargs": {},
         "key": [8, 128, 128],
     },

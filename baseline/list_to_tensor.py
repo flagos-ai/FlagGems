@@ -20,9 +20,8 @@ Grid: 1 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "list_to_tensor"
 DTYPES = [torch.int32]

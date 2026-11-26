@@ -20,9 +20,8 @@ Grid: 12 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "masked_scatter_backward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,62 +37,66 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [64, 64]], ['T:torch.bool', [64, 64]], [64, 64]],
+        "args": [["T", [64, 64]], ["T:torch.bool", [64, 64]], [64, 64]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [256, 256]], ['T:torch.bool', [256, 256]], [256, 256]],
+        "args": [["T", [256, 256]], ["T:torch.bool", [256, 256]], [256, 256]],
         "kwargs": {},
         "key": [256, 256],
     },
     {
-        "args": [['T', [1024, 1024]], ['T:torch.bool', [1024, 1024]], [1024, 1024]],
+        "args": [["T", [1024, 1024]], ["T:torch.bool", [1024, 1024]], [1024, 1024]],
         "kwargs": {},
         "key": [1024, 1024],
     },
     {
-        "args": [['T', [4096, 4096]], ['T:torch.bool', [4096, 4096]], [4096, 4096]],
+        "args": [["T", [4096, 4096]], ["T:torch.bool", [4096, 4096]], [4096, 4096]],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [1024, 65536]], ['T:torch.bool', [1024, 65536]], [1024, 65536]],
+        "args": [["T", [1024, 65536]], ["T:torch.bool", [1024, 65536]], [1024, 65536]],
         "kwargs": {},
         "key": [1024, 65536],
     },
     {
-        "args": [['T', [10000, 256]], ['T:torch.bool', [10000, 256]], [10000, 256]],
+        "args": [["T", [10000, 256]], ["T:torch.bool", [10000, 256]], [10000, 256]],
         "kwargs": {},
         "key": [10000, 256],
     },
     {
-        "args": [['T', [10000, 65536]], ['T:torch.bool', [10000, 65536]], [10000, 65536]],
+        "args": [
+            ["T", [10000, 65536]],
+            ["T:torch.bool", [10000, 65536]],
+            [10000, 65536],
+        ],
         "kwargs": {},
         "key": [10000, 65536],
     },
     {
-        "args": [['T', [17, 17]], ['T:torch.bool', [17, 17]], [17, 17]],
+        "args": [["T", [17, 17]], ["T:torch.bool", [17, 17]], [17, 17]],
         "kwargs": {},
         "key": [17, 17],
     },
     {
-        "args": [['T', [32, 128]], ['T:torch.bool', [32, 128]], [32, 128]],
+        "args": [["T", [32, 128]], ["T:torch.bool", [32, 128]], [32, 128]],
         "kwargs": {},
         "key": [32, 128],
     },
     {
-        "args": [['T', [128, 64]], ['T:torch.bool', [128, 64]], [128, 64]],
+        "args": [["T", [128, 64]], ["T:torch.bool", [128, 64]], [128, 64]],
         "kwargs": {},
         "key": [128, 64],
     },
     {
-        "args": [['T', [256, 64]], ['T:torch.bool', [256, 64]], [256, 64]],
+        "args": [["T", [256, 64]], ["T:torch.bool", [256, 64]], [256, 64]],
         "kwargs": {},
         "key": [256, 64],
     },
     {
-        "args": [['T', [1024, 2048]], ['T:torch.bool', [1024, 2048]], [1024, 2048]],
+        "args": [["T", [1024, 2048]], ["T:torch.bool", [1024, 2048]], [1024, 2048]],
         "kwargs": {},
         "key": [1024, 2048],
     },

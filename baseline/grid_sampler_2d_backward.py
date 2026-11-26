@@ -20,9 +20,8 @@ Grid: 2 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "grid_sampler_2d_backward"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,12 +37,28 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 3, 4, 4]], ['T', [2, 3, 8, 8]], ['T', [2, 4, 4, 2]], 0, 0, False, [True, True]],
+        "args": [
+            ["T", [2, 3, 4, 4]],
+            ["T", [2, 3, 8, 8]],
+            ["T", [2, 4, 4, 2]],
+            0,
+            0,
+            False,
+            [True, True],
+        ],
         "kwargs": {},
         "key": [2, 3, 4, 4],
     },
     {
-        "args": [['T', [4, 16, 16, 16]], ['T', [4, 16, 32, 32]], ['T', [4, 16, 16, 2]], 0, 0, False, [True, True]],
+        "args": [
+            ["T", [4, 16, 16, 16]],
+            ["T", [4, 16, 32, 32]],
+            ["T", [4, 16, 16, 2]],
+            0,
+            0,
+            False,
+            [True, True],
+        ],
         "kwargs": {},
         "key": [4, 16, 16, 16],
     },

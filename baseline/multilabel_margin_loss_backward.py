@@ -20,9 +20,8 @@ Grid: 6 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (N, C).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "multilabel_margin_loss_backward"
 DTYPES = [torch.float32]
@@ -38,32 +37,68 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', []], ['T', [8, 128]], ['T:torch.int64!index', [8, 128]], 1, ['T', [8, 128]]],
+        "args": [
+            ["T", []],
+            ["T", [8, 128]],
+            ["T:torch.int64!index", [8, 128]],
+            1,
+            ["T", [8, 128]],
+        ],
         "kwargs": {},
         "key": [],
     },
     {
-        "args": [['T', [8]], ['T', [8, 128]], ['T:torch.int64!index', [8, 128]], 0, ['T', [8, 128]]],
+        "args": [
+            ["T", [8]],
+            ["T", [8, 128]],
+            ["T:torch.int64!index", [8, 128]],
+            0,
+            ["T", [8, 128]],
+        ],
         "kwargs": {},
         "key": [8],
     },
     {
-        "args": [['T', [32]], ['T', [32, 256]], ['T:torch.int64!index', [32, 256]], 0, ['T', [32, 256]]],
+        "args": [
+            ["T", [32]],
+            ["T", [32, 256]],
+            ["T:torch.int64!index", [32, 256]],
+            0,
+            ["T", [32, 256]],
+        ],
         "kwargs": {},
         "key": [32],
     },
     {
-        "args": [['T', [16]], ['T', [16, 512]], ['T:torch.int64!index', [16, 512]], 0, ['T', [16, 512]]],
+        "args": [
+            ["T", [16]],
+            ["T", [16, 512]],
+            ["T:torch.int64!index", [16, 512]],
+            0,
+            ["T", [16, 512]],
+        ],
         "kwargs": {},
         "key": [16],
     },
     {
-        "args": [['T', [2]], ['T', [2, 2048]], ['T:torch.int64!index', [2, 2048]], 0, ['T', [2, 2048]]],
+        "args": [
+            ["T", [2]],
+            ["T", [2, 2048]],
+            ["T:torch.int64!index", [2, 2048]],
+            0,
+            ["T", [2, 2048]],
+        ],
         "kwargs": {},
         "key": [2],
     },
     {
-        "args": [['T', [1]], ['T', [1, 4096]], ['T:torch.int64!index', [1, 4096]], 0, ['T', [1, 4096]]],
+        "args": [
+            ["T", [1]],
+            ["T", [1, 4096]],
+            ["T:torch.int64!index", [1, 4096]],
+            0,
+            ["T", [1, 4096]],
+        ],
         "kwargs": {},
         "key": [1],
     },

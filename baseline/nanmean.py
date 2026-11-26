@@ -20,9 +20,8 @@ Grid: 10 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "nanmean"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,52 +37,52 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1048576]]],
+        "args": [["T", [1048576]]],
         "kwargs": {},
         "key": [1048576],
     },
     {
-        "args": [['T', [64, 64]]],
+        "args": [["T", [64, 64]]],
         "kwargs": {},
         "key": [64, 64],
     },
     {
-        "args": [['T', [4096, 4096]]],
+        "args": [["T", [4096, 4096]]],
         "kwargs": {},
         "key": [4096, 4096],
     },
     {
-        "args": [['T', [64, 512, 512]]],
+        "args": [["T", [64, 512, 512]]],
         "kwargs": {},
         "key": [64, 512, 512],
     },
     {
-        "args": [['T', [1024, 1024, 1024]]],
+        "args": [["T", [1024, 1024, 1024]]],
         "kwargs": {},
         "key": [1024, 1024, 1024],
     },
     {
-        "args": [['T', [1049600]]],
+        "args": [["T", [1049600]]],
         "kwargs": {},
         "key": [1049600],
     },
     {
-        "args": [['T', [1073741824]]],
+        "args": [["T", [1073741824]]],
         "kwargs": {},
         "key": [1073741824],
     },
     {
-        "args": [['T', [1024, 1]]],
+        "args": [["T", [1024, 1]]],
         "kwargs": {},
         "key": [1024, 1],
     },
     {
-        "args": [['T', [1024, 16]]],
+        "args": [["T", [1024, 16]]],
         "kwargs": {},
         "key": [1024, 16],
     },
     {
-        "args": [['T', [1024, 256]]],
+        "args": [["T", [1024, 256]]],
         "kwargs": {},
         "key": [1024, 256],
     },

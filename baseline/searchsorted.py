@@ -21,9 +21,8 @@ this operator's benchmark uses (sorted_sequence shape, values shape, sorter,
 right, out_int32).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "searchsorted"
 DTYPES = [torch.float16]
@@ -39,18 +38,18 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [1024]], ['T', [4096]]],
-        "kwargs": {'out_int32': False, 'right': False},
+        "args": [["T", [1024]], ["T", [4096]]],
+        "kwargs": {"out_int32": False, "right": False},
         "key": [1024],
     },
     {
-        "args": [['T', [64, 256]], ['T', [64, 256]]],
-        "kwargs": {'out_int32': False, 'right': True},
+        "args": [["T", [64, 256]], ["T", [64, 256]]],
+        "kwargs": {"out_int32": False, "right": True},
         "key": [64, 256],
     },
     {
-        "args": [['T', [256, 1024]], ['T', [256, 512]]],
-        "kwargs": {'out_int32': True, 'right': False},
+        "args": [["T", [256, 1024]], ["T", [256, 512]]],
+        "kwargs": {"out_int32": True, "right": False},
         "key": [256, 1024],
     },
 ]

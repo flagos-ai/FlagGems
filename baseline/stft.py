@@ -20,9 +20,8 @@ Grid: 1 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (batch, signal length).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "stft"
 DTYPES = [torch.float32]
@@ -38,15 +37,15 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 4096]], 256],
+        "args": [["T", [2, 4096]], 256],
         "kwargs": {
-            'hop_length': 64,
-            'win_length': 256,
-            'window': None,
-            'normalized': False,
-            'onesided': True,
-            'return_complex': True,
-            'align_to_window': None,
+            "hop_length": 64,
+            "win_length": 256,
+            "window": None,
+            "normalized": False,
+            "onesided": True,
+            "return_complex": True,
+            "align_to_window": None,
         },
         "key": [2, 4096],
     },

@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "adaptive_avg_pool3d"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,27 +37,27 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [2, 3, 8, 8, 8]], [7, 7, 7]],
+        "args": [["T", [2, 3, 8, 8, 8]], [7, 7, 7]],
         "kwargs": {},
         "key": [2, 3, 8, 8, 8],
     },
     {
-        "args": [['T', [4, 16, 16, 16, 16]], [7, 7, 7]],
+        "args": [["T", [4, 16, 16, 16, 16]], [7, 7, 7]],
         "kwargs": {},
         "key": [4, 16, 16, 16, 16],
     },
     {
-        "args": [['T', [2, 64, 32, 32, 32]], [7, 7, 7]],
+        "args": [["T", [2, 64, 32, 32, 32]], [7, 7, 7]],
         "kwargs": {},
         "key": [2, 64, 32, 32, 32],
     },
     {
-        "args": [['T', [1, 3, 64, 64, 64]], [7, 7, 7]],
+        "args": [["T", [1, 3, 64, 64, 64]], [7, 7, 7]],
         "kwargs": {},
         "key": [1, 3, 64, 64, 64],
     },
     {
-        "args": [['T', [4, 128, 16, 16, 16]], [7, 7, 7]],
+        "args": [["T", [4, 128, 16, 16, 16]], [7, 7, 7]],
         "kwargs": {},
         "key": [4, 128, 16, 16, 16],
     },

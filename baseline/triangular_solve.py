@@ -21,9 +21,8 @@ this operator's benchmark uses (A batch, B batch, n, nrhs, upper, transpose,
 unitriangular).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "triangular_solve"
 DTYPES = [torch.float32]
@@ -39,17 +38,17 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [8, 1]], ['T', [8, 8]], False, False, False],
+        "args": [["T", [8, 1]], ["T", [8, 8]], False, False, False],
         "kwargs": {},
         "key": [8, 1],
     },
     {
-        "args": [['T', [8, 8]], ['T', [8, 8]], False, False, False],
+        "args": [["T", [8, 8]], ["T", [8, 8]], False, False, False],
         "kwargs": {},
         "key": [8, 8],
     },
     {
-        "args": [['T', [32, 1]], ['T', [32, 32]], False, False, False],
+        "args": [["T", [32, 1]], ["T", [32, 32]], False, False, False],
         "kwargs": {},
         "key": [32, 1],
     },

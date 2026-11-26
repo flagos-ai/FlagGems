@@ -20,9 +20,8 @@ Grid: 7 collection point(s) over 3 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "unsafe_index"
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -38,47 +37,60 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [268435456]], [['T:torch.int64!index', [65536]]]],
+        "args": [["T", [268435456]], [["T:torch.int64!index", [65536]]]],
         "kwargs": {},
         "key": [268435456],
     },
     {
-        "args": [['T', [32, 32]], [['T:torch.int64!index', [8]], ['T:torch.int64!index', [8]]]],
+        "args": [
+            ["T", [32, 32]],
+            [["T:torch.int64!index", [8]], ["T:torch.int64!index", [8]]],
+        ],
         "kwargs": {},
         "key": [32, 32],
     },
     {
         "args": [
-            ['T', [512, 512, 512]],
-            [['T:torch.int64!index', [2, 128]], ['T:torch.int64!index', [2, 128]], ['T:torch.int64!index', [2, 128]]],
+            ["T", [512, 512, 512]],
+            [
+                ["T:torch.int64!index", [2, 128]],
+                ["T:torch.int64!index", [2, 128]],
+                ["T:torch.int64!index", [2, 128]],
+            ],
         ],
         "kwargs": {},
         "key": [512, 512, 512],
     },
     {
-        "args": [['T', [64, 64, 64]], [['T:torch.int64!index', [2, 8]], ['T:torch.int64!index', [2, 8]]]],
+        "args": [
+            ["T", [64, 64, 64]],
+            [["T:torch.int64!index", [2, 8]], ["T:torch.int64!index", [2, 8]]],
+        ],
         "kwargs": {},
         "key": [64, 64, 64],
     },
     {
-        "args": [['T', [50257, 4096]], [['T:torch.int64!index', [2048]]]],
+        "args": [["T", [50257, 4096]], [["T:torch.int64!index", [2048]]]],
         "kwargs": {},
         "key": [50257, 4096],
     },
     {
-        "args": [['T', [64, 64]], [['T:torch.int64!index', [2, 3, 4]], ['T:torch.int64!index', [2, 3, 4]]]],
+        "args": [
+            ["T", [64, 64]],
+            [["T:torch.int64!index", [2, 3, 4]], ["T:torch.int64!index", [2, 3, 4]]],
+        ],
         "kwargs": {},
         "key": [64, 64],
     },
     {
         "args": [
-            ['T', [4, 5, 6, 7, 8]],
+            ["T", [4, 5, 6, 7, 8]],
             [
-                ['T:torch.int64!index', [2]],
-                ['T:torch.int64!index', [2]],
-                ['T:torch.int64!index', [2]],
-                ['T:torch.int64!index', [2]],
-                ['T:torch.int64!index', [2]],
+                ["T:torch.int64!index", [2]],
+                ["T:torch.int64!index", [2]],
+                ["T:torch.int64!index", [2]],
+                ["T:torch.int64!index", [2]],
+                ["T:torch.int64!index", [2]],
             ],
         ],
         "kwargs": {},

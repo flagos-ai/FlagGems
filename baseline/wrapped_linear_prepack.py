@@ -20,9 +20,8 @@ Grid: 5 collection point(s) over 1 dtype(s), taken from the shapes and inputs
 this operator's benchmark uses (M, N).
 """
 
-import torch
-
 import _common
+import torch
 
 OP_NAME = "wrapped_linear_prepack"
 DTYPES = [torch.float32]
@@ -38,27 +37,42 @@ NATIVE_UNAVAILABLE_REASON = None
 # matches the case `--base-data` compares it against.
 GRID = [
     {
-        "args": [['T', [4, 8]], ['T', []], ['T:torch.int64!index', []], ['T', [4]]],
+        "args": [["T", [4, 8]], ["T", []], ["T:torch.int64!index", []], ["T", [4]]],
         "kwargs": {},
         "key": [4, 8],
     },
     {
-        "args": [['T', [64, 128]], ['T', []], ['T:torch.int64!index', []], ['T', [64]]],
+        "args": [["T", [64, 128]], ["T", []], ["T:torch.int64!index", []], ["T", [64]]],
         "kwargs": {},
         "key": [64, 128],
     },
     {
-        "args": [['T', [256, 256]], ['T', []], ['T:torch.int64!index', []], ['T', [256]]],
+        "args": [
+            ["T", [256, 256]],
+            ["T", []],
+            ["T:torch.int64!index", []],
+            ["T", [256]],
+        ],
         "kwargs": {},
         "key": [256, 256],
     },
     {
-        "args": [['T', [512, 1024]], ['T', []], ['T:torch.int64!index', []], ['T', [512]]],
+        "args": [
+            ["T", [512, 1024]],
+            ["T", []],
+            ["T:torch.int64!index", []],
+            ["T", [512]],
+        ],
         "kwargs": {},
         "key": [512, 1024],
     },
     {
-        "args": [['T', [2048, 1024]], ['T', []], ['T:torch.int64!index', []], ['T', [2048]]],
+        "args": [
+            ["T", [2048, 1024]],
+            ["T", []],
+            ["T:torch.int64!index", []],
+            ["T", [2048]],
+        ],
         "kwargs": {},
         "key": [2048, 1024],
     },
