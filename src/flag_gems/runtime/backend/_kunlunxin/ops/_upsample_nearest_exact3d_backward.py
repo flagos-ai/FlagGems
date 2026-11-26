@@ -1,3 +1,18 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
 import math
 
 import torch
@@ -7,7 +22,7 @@ import triton.language as tl
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
-logger = __import__("logging").getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 _BLOCK = 1024
 
@@ -32,6 +47,7 @@ def _upsample_nearest_exact3d_backward_kernel(
     cand_h: tl.constexpr,
     cand_w: tl.constexpr,
     IS_FP64: tl.constexpr,
+    IS_BYTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # Gather backward over the *spatial* slice (N is folded into the runtime
@@ -50,22 +66,32 @@ def _upsample_nearest_exact3d_backward_kernel(
 
     base = tl.where(mask, n * C + c, 0) * (OD * OH * OW)
 
-    # exact interval: [ceil(i*scale - 0.5), ceil((i+1)*scale - 0.5))
-    d_lo = tl.ceil(id_.to(tl.float32) * scale_d - 0.5).to(tl.int32)
-    h_lo = tl.ceil(ih.to(tl.float32) * scale_h - 0.5).to(tl.int32)
-    w_lo = tl.ceil(iw.to(tl.float32) * scale_w - 0.5).to(tl.int32)
-    d_hi = tl.where(
-        id_ == ID - 1, OD, tl.ceil((id_ + 1).to(tl.float32) * scale_d - 0.5)
+    # exact interval: [ceil(i*scale - 0.5), ceil((i+1)*scale - 0.5)), with both
+    # ends clamped to the output size (ATen min(ceil(...), O)); an explicit
+    # scale larger than the O/I ratio must not read past the output slab.
+    d_lo = tl.minimum(
+        tl.ceil(id_.to(tl.float32) * scale_d - 0.5), OD.to(tl.float32)
     ).to(tl.int32)
-    h_hi = tl.where(
-        ih == IH - 1, OH, tl.ceil((ih + 1).to(tl.float32) * scale_h - 0.5)
+    h_lo = tl.minimum(tl.ceil(ih.to(tl.float32) * scale_h - 0.5), OH.to(tl.float32)).to(
+        tl.int32
+    )
+    w_lo = tl.minimum(tl.ceil(iw.to(tl.float32) * scale_w - 0.5), OW.to(tl.float32)).to(
+        tl.int32
+    )
+    d_hi = tl.minimum(
+        tl.ceil((id_ + 1).to(tl.float32) * scale_d - 0.5), OD.to(tl.float32)
     ).to(tl.int32)
-    w_hi = tl.where(
-        iw == IW - 1, OW, tl.ceil((iw + 1).to(tl.float32) * scale_w - 0.5)
+    h_hi = tl.minimum(
+        tl.ceil((ih + 1).to(tl.float32) * scale_h - 0.5), OH.to(tl.float32)
+    ).to(tl.int32)
+    w_hi = tl.minimum(
+        tl.ceil((iw + 1).to(tl.float32) * scale_w - 0.5), OW.to(tl.float32)
     ).to(tl.int32)
 
     if IS_FP64:
         acc = tl.zeros((BLOCK,), dtype=tl.float64)
+    elif IS_BYTE:
+        acc = tl.zeros((BLOCK,), dtype=tl.int32)
     else:
         acc = tl.zeros((BLOCK,), dtype=tl.float32)
     for dd in tl.static_range(cand_d):
@@ -88,6 +114,8 @@ def _upsample_nearest_exact3d_backward_kernel(
                 )
                 if IS_FP64:
                     acc += tl.where(ok, value, 0.0)
+                elif IS_BYTE:
+                    acc += tl.where(ok, value.to(tl.int32), 0)
                 else:
                     acc += tl.where(ok, value.to(tl.float32), 0.0)
 
@@ -100,7 +128,6 @@ def _upsample_nearest_exact3d_backward_exact2x_kernel(
     grad_output,
     grad_input,
     total,
-    C,
     OD,
     OH,
     OW,
@@ -108,6 +135,7 @@ def _upsample_nearest_exact3d_backward_exact2x_kernel(
     IH,
     IW,
     IS_FP64: tl.constexpr,
+    IS_BYTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # exact 2x: src == dst // 2, so each input voxel gathers the fixed 2x2x2
@@ -120,20 +148,22 @@ def _upsample_nearest_exact3d_backward_exact2x_kernel(
     ih = tmp % IH
     tmp2 = tmp // IH
     id_ = tmp2 % ID
-    c = tmp2 // ID
+    nc = tmp2 // ID
 
-    c = tl.where(mask, c, 0)
+    nc = tl.where(mask, nc, 0)
     id_ = tl.where(mask, id_, 0)
     ih = tl.where(mask, ih, 0)
     iw = tl.where(mask, iw, 0)
 
-    base = c * (OD * OH * OW)
+    base = nc * (OD * OH * OW)
     od0 = id_ * 2
     oh0 = ih * 2
     ow0 = iw * 2
 
     if IS_FP64:
         acc = tl.zeros((BLOCK,), dtype=tl.float64)
+    elif IS_BYTE:
+        acc = tl.zeros((BLOCK,), dtype=tl.int32)
     else:
         acc = tl.zeros((BLOCK,), dtype=tl.float32)
     for dd in tl.static_range(2):
@@ -141,7 +171,10 @@ def _upsample_nearest_exact3d_backward_exact2x_kernel(
             for ww in tl.static_range(2):
                 off = base + (od0 + dd) * (OH * OW) + (oh0 + hh) * OW + (ow0 + ww)
                 value = tl.load(grad_output + off, mask=mask, other=0.0)
-                acc += value
+                if IS_BYTE:
+                    acc += tl.where(mask, value.to(tl.int32), 0)
+                else:
+                    acc += value
 
     tl.store(grad_input + offsets, acc, mask=mask)
 
@@ -176,6 +209,7 @@ def _upsample_nearest_exact3d_backward_strided_kernel(
     cand_h: tl.constexpr,
     cand_w: tl.constexpr,
     IS_FP64: tl.constexpr,
+    IS_BYTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -190,20 +224,37 @@ def _upsample_nearest_exact3d_backward_strided_kernel(
     c = rest % C
     n = rest // C
 
-    d_lo = tl.ceil(id_.to(tl.float32) * scale_d - 0.5).to(tl.int32)
-    h_lo = tl.ceil(ih.to(tl.float32) * scale_h - 0.5).to(tl.int32)
-    w_lo = tl.ceil(iw.to(tl.float32) * scale_w - 0.5).to(tl.int32)
-    d_hi = tl.where(
-        id_ == ID - 1, OD, tl.ceil((id_ + 1).to(tl.float32) * scale_d - 0.5)
+    # Idle lanes decode n/c from garbage; clamp them so the unmasked base
+    # address below can never point past grad_output (masked loads are not
+    # honoured on this backend when a block contains idle lanes).
+    n = tl.where(mask, n, 0)
+    c = tl.where(mask, c, 0)
+
+    d_lo = tl.minimum(
+        tl.ceil(id_.to(tl.float32) * scale_d - 0.5), OD.to(tl.float32)
     ).to(tl.int32)
-    h_hi = tl.where(
-        ih == IH - 1, OH, tl.ceil((ih + 1).to(tl.float32) * scale_h - 0.5)
+    h_lo = tl.minimum(tl.ceil(ih.to(tl.float32) * scale_h - 0.5), OH.to(tl.float32)).to(
+        tl.int32
+    )
+    w_lo = tl.minimum(tl.ceil(iw.to(tl.float32) * scale_w - 0.5), OW.to(tl.float32)).to(
+        tl.int32
+    )
+    d_hi = tl.minimum(
+        tl.ceil((id_ + 1).to(tl.float32) * scale_d - 0.5), OD.to(tl.float32)
     ).to(tl.int32)
-    w_hi = tl.where(
-        iw == IW - 1, OW, tl.ceil((iw + 1).to(tl.float32) * scale_w - 0.5)
+    h_hi = tl.minimum(
+        tl.ceil((ih + 1).to(tl.float32) * scale_h - 0.5), OH.to(tl.float32)
+    ).to(tl.int32)
+    w_hi = tl.minimum(
+        tl.ceil((iw + 1).to(tl.float32) * scale_w - 0.5), OW.to(tl.float32)
     ).to(tl.int32)
 
-    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    if IS_FP64:
+        acc = tl.zeros((BLOCK,), dtype=tl.float64)
+    elif IS_BYTE:
+        acc = tl.zeros((BLOCK,), dtype=tl.int32)
+    else:
+        acc = tl.zeros((BLOCK,), dtype=tl.float32)
     for dd in tl.static_range(cand_d):
         od = d_lo + dd
         ok_d = mask & (od < d_hi)
@@ -223,6 +274,8 @@ def _upsample_nearest_exact3d_backward_strided_kernel(
                 value = tl.load(grad_output + go_offset, mask=ok, other=0.0)
                 if IS_FP64:
                     acc += tl.where(ok, value, 0.0)
+                elif IS_BYTE:
+                    acc += tl.where(ok, value.to(tl.int32), 0)
                 else:
                     acc += tl.where(ok, value.to(tl.float32), 0.0)
 
@@ -261,20 +314,25 @@ def _impl(
     if tuple(grad_output.shape) != (n, c, od, oh, ow):
         raise RuntimeError("grad_output shape mismatch")
 
-    grad_output = grad_output.contiguous()
-
     if grad_input is None:
         grad_input = torch.empty(
             (n, c, id_, ih, iw), dtype=grad_output.dtype, device=grad_output.device
         )
     else:
+        if grad_input.device != grad_output.device:
+            raise RuntimeError("grad_input and grad_output must be on the same device")
+        if grad_input.dtype != grad_output.dtype:
+            raise RuntimeError(
+                f"Expected out tensor to have dtype {grad_output.dtype}, "
+                f"but got {grad_input.dtype} instead"
+            )
         if tuple(grad_input.shape) != (n, c, id_, ih, iw):
             grad_input.resize_((n, c, id_, ih, iw))
 
-    total = n * c * id_ * ih * iw
-    if total == 0:
+    if grad_output.numel() == 0:
         return grad_input
 
+    total = grad_input.numel()
     scale_d = _scale_value(scales_d, od, id_)
     scale_h = _scale_value(scales_h, oh, ih)
     scale_w = _scale_value(scales_w, ow, iw)
@@ -291,14 +349,13 @@ def _impl(
         and ow == 2 * iw
     )
     with torch_device_fn.device(grad_output.device):
-        if grad_input.is_contiguous():
+        if grad_output.is_contiguous() and grad_input.is_contiguous():
             grid = (triton.cdiv(total, _BLOCK),)
             if exact_2x:
                 _upsample_nearest_exact3d_backward_exact2x_kernel[grid](
                     grad_output,
                     grad_input,
                     total,
-                    c,
                     od,
                     oh,
                     ow,
@@ -306,6 +363,7 @@ def _impl(
                     ih,
                     iw,
                     IS_FP64=grad_output.dtype == torch.float64,
+                    IS_BYTE=grad_output.dtype == torch.uint8,
                     BLOCK=_BLOCK,
                     num_warps=1,
                     buffer_size_limit=2048,
@@ -329,6 +387,7 @@ def _impl(
                     cand_h=cand_h,
                     cand_w=cand_w,
                     IS_FP64=grad_output.dtype == torch.float64,
+                    IS_BYTE=grad_output.dtype == torch.uint8,
                     BLOCK=_BLOCK,
                     num_warps=1,
                     buffer_size_limit=2048,
@@ -355,6 +414,7 @@ def _impl(
                 cand_h=cand_h,
                 cand_w=cand_w,
                 IS_FP64=grad_output.dtype == torch.float64,
+                IS_BYTE=grad_output.dtype == torch.uint8,
                 BLOCK=_BLOCK,
                 num_warps=1,
                 buffer_size_limit=2048,
@@ -372,6 +432,7 @@ def _upsample_nearest_exact3d_backward_grad_input(
     *,
     grad_input=None,
 ):
+    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_BACKWARD_GRAD_INPUT")
     return _impl(
         grad_output, output_size, input_size, scales_d, scales_h, scales_w, grad_input
     )

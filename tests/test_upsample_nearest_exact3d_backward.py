@@ -148,3 +148,42 @@ def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
         torch.testing.assert_close(result.cpu(), ref)
     else:
         utils.gems_assert_close(result, ref, torch.float32)
+
+
+@pytest.mark.upsample_nearest_exact3d_backward_grad_input
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="uint8 grad_input accumulation is a Kunlunxin-only override",
+)
+def test_upsample_nearest_exact3d_backward_grad_input_uint8():
+    input_size = (1, 2, 3, 4, 5)
+    output_size = (7, 6, 9)
+    grad_output = torch.randint(
+        0,
+        256,
+        (*input_size[:2], *output_size),
+        dtype=torch.uint8,
+        device=flag_gems.device,
+    )
+    grad_input = torch.empty(0, dtype=torch.uint8, device=flag_gems.device)
+    # ATen does not implement the uint8 backward; accumulate in int32 (the
+    # kernel semantics) and wrap around mod 256 for the reference.
+    ref_grad_output = utils.to_reference(grad_output).to(torch.float32)
+    ref = torch.ops.aten._upsample_nearest_exact3d_backward.grad_input(
+        ref_grad_output,
+        output_size,
+        input_size,
+        grad_input=torch.empty(0, dtype=torch.float32, device=ref_grad_output.device),
+    )
+    ref = (ref.long() % 256).to(torch.uint8)
+    result = flag_gems._upsample_nearest_exact3d_backward_grad_input(
+        grad_output,
+        output_size,
+        input_size,
+        None,
+        None,
+        None,
+        grad_input=grad_input,
+    )
+    assert result is grad_input
+    assert torch.equal(result, ref)

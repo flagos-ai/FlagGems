@@ -42,12 +42,12 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+from triton.runtime import driver
 
 try:
     from triton import knobs
-except ImportError:
+except ImportError:  # older triton / flagtree builds without knobs
     knobs = None
-from triton.runtime import driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import (
@@ -706,123 +706,6 @@ def _labels(dtype: torch.dtype) -> str:
     return str(dtype).replace("torch.", "").capitalize()
 
 
-@triton.jit
-def _foreach16_kernel_pow(
-    a0,
-    a1,
-    a2,
-    a3,
-    a4,
-    a5,
-    a6,
-    a7,
-    a8,
-    a9,
-    a10,
-    a11,
-    a12,
-    a13,
-    a14,
-    a15,
-    o0,
-    o1,
-    o2,
-    o3,
-    o4,
-    o5,
-    o6,
-    o7,
-    o8,
-    o9,
-    o10,
-    o11,
-    o12,
-    o13,
-    o14,
-    o15,
-    s0,
-    s1,
-    s2,
-    s3,
-    s4,
-    s5,
-    s6,
-    s7,
-    s8,
-    s9,
-    s10,
-    s11,
-    s12,
-    s13,
-    s14,
-    s15,
-    n,
-    fn: tl.constexpr,
-    NT: tl.constexpr,
-    OT: tl.constexpr,
-    BLOCK: tl.constexpr,
-    EVEN: tl.constexpr,
-):
-    """pow entry: reuses the shared ``_f16_body`` (same as ``_foreach16_kernel``),
-    kept as a separate entry so the pow launcher keeps its own num_warps."""
-    _f16_body(
-        a0,
-        a1,
-        a2,
-        a3,
-        a4,
-        a5,
-        a6,
-        a7,
-        a8,
-        a9,
-        a10,
-        a11,
-        a12,
-        a13,
-        a14,
-        a15,
-        o0,
-        o1,
-        o2,
-        o3,
-        o4,
-        o5,
-        o6,
-        o7,
-        o8,
-        o9,
-        o10,
-        o11,
-        o12,
-        o13,
-        o14,
-        o15,
-        s0,
-        s1,
-        s2,
-        s3,
-        s4,
-        s5,
-        s6,
-        s7,
-        s8,
-        s9,
-        s10,
-        s11,
-        s12,
-        s13,
-        s14,
-        s15,
-        n,
-        fn,
-        NT,
-        OT,
-        BLOCK,
-        EVEN,
-    )
-
-
 _SCRATCH: dict = {}
 
 
@@ -869,6 +752,8 @@ _RAW_CACHE: dict = {}
 
 def _raw_launch(jit_fn, grid, const_key, tensors, args, num_warps) -> bool:
     """Launch ``jit_fn`` bypassing the binder; False if the caller must not."""
+    # Without ``triton.knobs`` we cannot prove no hook is installed, so this
+    # Triton build must take the normal dispatch path.
     if knobs is None:
         return False
     # The knob holds a ``HookChain``, never ``None``, and the chain defines no
@@ -928,30 +813,20 @@ def _launch16(
     o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
     svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
     grid = (triton.cdiv(n, block),)
-    live = svals[:nt16]
     ot = tl_dtype(dsts[0].dtype)
-    if live and live.count(live[0]) == nt16:
-        # One scalar for every slot: 35 kernel arguments instead of 50.
-        args = (*a, *o, live[0], n, fn, nt16, ot, block, even)
-        if even and n % 16 == 0 and n != 1:
-            if _raw_launch(
-                _foreach16s_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
-            ):
-                return
-        _foreach16s_kernel[grid](*args, num_warps=8)
-        return
-    _foreach16_kernel[grid](
-        *a,
-        *o,
-        *svals,
-        n,
-        fn,
-        nt16,
-        ot,
-        block,
-        even,
-        num_warps=8,
-    )
+    # Always take the per-slot kernel.  The shared-scalar entry (_foreach16s_kernel)
+    # passes one scalar 16 times, so the body converts the *same* SSA value to
+    # OT 16 times; TritonXPUUnrollControl CSEs those 16 converts and then
+    # misplaces the single result, failing with "operand #0 does not dominate
+    # this use" (fp16 block=1024 for sub/mul/minimum, and every shape for pow).
+    # Distinct per-slot scalar arguments stay distinct SSA values and compile.
+    args = (*a, *o, *svals, n, fn, nt16, ot, block, even)
+    if even and n % 16 == 0 and n != 1:
+        if _raw_launch(
+            _foreach16_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
+        ):
+            return
+    _foreach16_kernel[grid](*args, num_warps=8)
 
 
 def _launch1(
@@ -1004,29 +879,6 @@ def _torch_to_tl(dtype: torch.dtype):
     return tl_dtype(dtype)
 
 
-def _launch16_pow(srcs, dsts, vals, fn, n):
-    from flag_gems.utils.foreach import tl_dtype as _torch_to_tl
-
-    block, even = _pick_block(n)
-    nt = len(srcs)
-    nt16 = min(nt, _K16_SLOTS)
-    a = list(srcs[:nt16]) + [srcs[0]] * (_K16_SLOTS - nt16)
-    o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
-    svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
-    _foreach16_kernel_pow[(triton.cdiv(n, block),)](
-        *a,
-        *o,
-        *svals,
-        n,
-        fn,
-        nt16,
-        _torch_to_tl(dsts[0].dtype),
-        block,
-        even,
-        num_warps=8,
-    )
-
-
 def _launch(
     srcs: List[torch.Tensor],
     dsts: List[torch.Tensor],
@@ -1036,24 +888,6 @@ def _launch(
     numels = [s.numel() for s in srcs]
     n = max(numels)
     if n == 0:
-        return
-    # pow's extern body (exp2/log2) trips a TritonXPUUnrollControl dominance bug
-    # on the new _f16_body constexpr ladder; route it through the pre-#8028
-    # direct-pointer kernel to keep both pow perf and the clamp_max_scalar win.
-    if fn is _fpow and len(srcs) > 1:
-        # pow's extern body must route through the direct-pointer kernel, but it
-        # still needs the same uniform-size / slot-count guards as _launch16: the
-        # EVEN path is unmasked and would read/write out of bounds on mixed
-        # numels, and tensors past _K16_SLOTS would be silently dropped.
-        if (
-            len(srcs) <= _K16_SLOTS
-            and all(x == n for x in numels)
-            and n <= _K16_MAX_NUMEL
-        ):
-            _launch16_pow(srcs, dsts, vals, fn, n)
-        else:
-            for s, d, v in zip(srcs, dsts, vals):
-                _launch1(s, d, v, fn)
         return
     if len(srcs) <= _K16_SLOTS and all(x == n for x in numels) and n <= _K16_MAX_NUMEL:
         _launch16(srcs, dsts, vals, fn, n)
