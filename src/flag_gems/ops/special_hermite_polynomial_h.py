@@ -45,16 +45,9 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-_BLOCK = 1024
-_BLOCK_BIG = 16384  # bigger tiles (more elements per thread) for large launches
-_BIG_TOTAL = 1 << 20
-_NUM_WARPS = 1  # nw>1 measured 1.8x slower on this backend for this kernel
+_BLOCK = 1024  # one tile per program; 8 elements per lane at four warps
+_NUM_WARPS = 4
 _MAX_GRID = 65535
-# Program count is the dominant cost on this backend (0.46us/program), while a
-# single program handles a whole BLOCK tile cheaply; cap the grid and let the
-# grid-stride loop walk the rest.
-_GRID_CAP_FROM = 1 << 22
-_GRID_CAP = 1024
 _MAX_DEG = 9  # the reference only supports degrees 0..9
 _SPOOL_MAX = 1024  # per-program violation spool only for grids this small
 
@@ -414,7 +407,7 @@ def special_hermite_polynomial_h(x, n):
     total = out.numel()
     if total == 0:
         return out
-    blkc = _BLOCK_BIG if total >= _BIG_TOTAL else _BLOCK
+    blkc = _BLOCK
 
     xarg = x
     oarg = out
@@ -456,8 +449,6 @@ def special_hermite_polynomial_h(x, n):
             ns = [v + 1 for v in ns] + [1] * pad
             sizes = sizes + [1] * pad
         grid_n = min(triton.cdiv(total, blkc), _MAX_GRID)
-        if total >= _GRID_CAP_FROM:
-            grid_n = min(grid_n, _GRID_CAP)
         grid = (grid_n,)
         # A per-program violation spool needs no zero-initialisation launch but
         # costs a host-side scan, so it is only used for small grids.
@@ -530,8 +521,6 @@ def special_hermite_polynomial_h(x, n):
         xs = [v + 1 for v in xs] + [1] * pad
         sizes = sizes + [1] * pad
     grid_n = min(triton.cdiv(total, blkc), _MAX_GRID)
-    if total >= _GRID_CAP_FROM:
-        grid_n = min(grid_n, _GRID_CAP)
     grid = (grid_n,)
     _hermite_scalar_kernel[grid](
         xarg,
