@@ -73,7 +73,11 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     A = _make_invertible_matrix(shape, dtype, DEVICE)
     ref_A = utils.to_reference(A)
 
-    if flag_gems.vendor_name == "mthreads" and ref_A.device.type == "cpu":
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and ref_A.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
         # These inputs are invertible. MUSA's PyTorch has no CPU LAPACK.
         ref_inverse = torch.from_numpy(np.linalg.inv(ref_A.numpy()))
     else:
