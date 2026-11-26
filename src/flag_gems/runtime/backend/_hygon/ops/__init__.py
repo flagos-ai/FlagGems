@@ -322,7 +322,9 @@ from .special_bessel_j0 import special_bessel_j0
 from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
 from .special_chebyshev_polynomial_t_out import special_chebyshev_polynomial_t_out
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
-from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
+from .special_chebyshev_polynomial_v import (
+    special_chebyshev_polynomial_v as special_chebyshev_polynomial_v,
+)
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
