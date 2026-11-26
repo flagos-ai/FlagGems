@@ -68,6 +68,16 @@ def clamp_max_backward(grad_output, self, max_value):
     n = out.numel()
     if n == 0:
         return out
+    # Round the bound to the element dtype before comparing, mirroring the
+    # forward: torch converts the Scalar to ``self.dtype`` when it computes
+    # ``min(self, max)``, so the VJP predicate is evaluated against the
+    # rounded value. Comparing the full-precision scalar against an f16/bf16
+    # element instead drops the gradient wherever the element rounded *up*
+    # past the bound (f16 self=0.300048828125, max=0.3 keeps its gradient).
+    # Host-side so it is one scalar conversion per launch, not per element,
+    # and it keeps integer bounds working (they promote through the same
+    # tensor conversion as float ones).
+    bound = torch.tensor(max_value, dtype=x.dtype).item()
     # 1024 elements per program keeps four 128-bit vector loads in flight per warp,
     # which saturates HBM on H20 for this read-heavy elementwise pass.
     BLOCK = 1024
@@ -78,7 +88,7 @@ def clamp_max_backward(grad_output, self, max_value):
             x,
             out,
             n,
-            max_value,
+            bound,
             BLOCK_SIZE=BLOCK,
             num_warps=4,
         )

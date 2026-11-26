@@ -88,3 +88,42 @@ def test_clamp_max_backward_nan_and_boundary(dtype):
         torch.clamp_max(ref_inp, 0.5), ref_inp, utils.to_reference(grad)
     )
     utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.clamp_max_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("max_value", [0.3, 0.7, 1 / 3])
+def test_clamp_max_backward_bound_rounds_to_dtype(dtype, max_value):
+    """The bound is rounded to the input dtype before the predicate is applied.
+
+    The forward converts the Scalar to ``self.dtype``, so an element that
+    rounds *up* past the bound still compares as equal and keeps its
+    gradient. Comparing the full-precision scalar against the truncated
+    element drops it instead.
+    """
+    bound = torch.tensor([max_value], dtype=dtype)
+    eps = torch.nextafter(bound, torch.tensor([-1e9], dtype=dtype, device=bound.device))
+    inp = torch.cat([bound, eps, -bound]).to(flag_gems.device).requires_grad_()
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    grad = torch.ones_like(inp)
+
+    (dx,) = torch.autograd.grad(flag_gems.clamp_max(inp, max_value), inp, grad)
+    (ref_dx,) = torch.autograd.grad(
+        torch.clamp_max(ref_inp, max_value), ref_inp, utils.to_reference(grad)
+    )
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.clamp_max_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clamp_max_backward_empty(dtype):
+    """A zero-element input returns an empty gradient instead of launching."""
+    inp = torch.empty((0,), dtype=dtype, device=flag_gems.device).requires_grad_()
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    grad = torch.empty_like(inp)
+
+    (dx,) = torch.autograd.grad(flag_gems.clamp_max(inp, 0.5), inp, grad)
+    (ref_dx,) = torch.autograd.grad(
+        torch.clamp_max(ref_inp, 0.5), ref_inp, utils.to_reference(grad)
+    )
+    utils.gems_assert_close(dx, ref_dx, dtype)

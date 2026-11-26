@@ -56,6 +56,16 @@ def _convert_scalar(max_value, dtype):
 
 
 class ClampMaxFunction(torch.autograd.Function):
+    """Autograd wrapper for ``clamp_max``.
+
+    This is the only way to reach the backward kernel. ATen has no
+    ``aten::clamp_max_backward`` schema, so there is nothing for the dispatcher
+    to override: without an autograd.Function the forward runs our Triton
+    forward but the gradient is computed by ATen's own VJP. Wrapping the
+    forward makes the wrapper own the whole differentiable path, and its
+    ``backward`` runs ``flag_gems.ops.clamp_max_backward``.
+    """
+
     @staticmethod
     def forward(ctx, A, max_value):
         ctx.save_for_backward(A)
@@ -75,6 +85,8 @@ class ClampMaxFunction(torch.autograd.Function):
 
 def clamp_max(A, max_value):
     logger.debug("GEMS CLAMP_MAX")
+    # Only differentiable inputs need the wrapper; a forward-only call keeps
+    # the plain kernel path so inference does not pay for autograd bookkeeping.
     if torch.is_grad_enabled() and A.requires_grad:
         return ClampMaxFunction.apply(A, max_value)
     return clamp_max_func(A, _convert_scalar(max_value, A.dtype))
