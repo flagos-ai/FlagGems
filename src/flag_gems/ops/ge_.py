@@ -379,20 +379,25 @@ def _launch(self, other):
 class _GeInplace(torch.autograd.Function):
     """Autograd bookkeeping for the in-place comparison.
 
-    The comparison itself is non-differentiable, so the gradient with respect
-    to the receiver is zero, matching the native ``ge_`` backward.
+    The comparison has zero gradients for both the receiver and a Tensor
+    operand, matching the native ``ge_`` backward.
     """
 
     @staticmethod
     def forward(ctx, x, y):
-        _launch(x, y)
+        if x.numel():
+            _launch(x, y)
         ctx.mark_dirty(x)
+        if isinstance(y, torch.Tensor) and ctx.needs_input_grad[1]:
+            ctx.other = y.detach()
         return x
 
     @staticmethod
     def backward(ctx, grad_output):
-        del ctx
-        return torch.zeros_like(grad_output), None
+        return (
+            torch.zeros_like(grad_output) if ctx.needs_input_grad[0] else None,
+            torch.zeros_like(ctx.other) if ctx.needs_input_grad[1] else None,
+        )
 
 
 def ge_tensor_(self, other):
@@ -404,14 +409,13 @@ def ge_tensor_(self, other):
     if not isinstance(other, torch.Tensor):
         raise TypeError("ge_tensor_() received a non-Tensor operand")
 
-    if self.numel() == 0:
-        return self
-
     if self.requires_grad or other.requires_grad:
         if torch.is_grad_enabled() and self.dtype.is_floating_point:
             return _GeInplace.apply(self, other)
 
-    _launch(self, other)
+    if self.numel():
+        _launch(self, other)
+    torch.autograd.graph.increment_version(self)
     return self
 
 
@@ -424,12 +428,11 @@ def ge_scalar_(self, other):
     if isinstance(other, torch.Tensor) or not isinstance(other, (bool, int, float)):
         raise TypeError("ge_scalar_() received a non-scalar operand")
 
-    if self.numel() == 0:
-        return self
-
     if self.requires_grad:
         if torch.is_grad_enabled() and self.dtype.is_floating_point:
             return _GeInplace.apply(self, other)
 
-    _launch(self, other)
+    if self.numel():
+        _launch(self, other)
+    torch.autograd.graph.increment_version(self)
     return self
