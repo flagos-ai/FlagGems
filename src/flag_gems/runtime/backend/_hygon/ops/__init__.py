@@ -27,6 +27,7 @@ from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
 )
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_abs import _foreach_abs as _foreach_abs
+from ._foreach_acos_ import _foreach_acos_ as _foreach_acos_
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
 from ._foreach_add__ScalarList import _foreach_add__ScalarList
@@ -325,6 +326,7 @@ __all__ = [
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_abs",
+    "_foreach_acos_",
     "_foreach_add__List",
     "_foreach_add__Scalar",
     "_foreach_add__ScalarList",
