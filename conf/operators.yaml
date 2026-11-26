@@ -23467,6 +23467,17 @@ ops:
   - Tensor
   stages:
   - beta: '5.5'
+- id: unsafe_index_put_backward
+  description: First-order backward of unsafe_index_put, using saved forward state.
+  for:
+  - _unsafe_index_put
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: unsafe_masked_index
   description: Gathers elements from self at given indices where mask is True, filling
     unmasked positions with a scalar value.

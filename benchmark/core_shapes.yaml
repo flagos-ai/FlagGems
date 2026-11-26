@@ -928,6 +928,18 @@ GenericBenchmark4DOnly:
     - [4096, 4096,4,8]
     - [1024, 65536,4,8]
 
+unsafe_index_put_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 IndexReduceBenchmark:
   shapes:
     - [1048576]
