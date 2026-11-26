@@ -69,6 +69,7 @@ from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .isreal import isreal
 from .kthvalue import kthvalue
+from .less_equal import less_equal
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
@@ -215,6 +216,7 @@ __all__ = [
     "isreal",
     "kthvalue",
     "ldl_factor_ex",
+    "less_equal",
     "lift_fresh",
     "lift_out",
     "linalg_cholesky",
