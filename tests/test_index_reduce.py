@@ -180,7 +180,7 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
     assert res_out.shape == inp.shape
     assert res_out.dtype == dtype
     utils.gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=source_shape[dim])
-    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
+    utils.gems_assert_equal(inp, snapshot)
 
 
 @pytest.mark.index_reduce
@@ -209,7 +209,7 @@ def test_index_reduce_noncontiguous_out_of_place(reduce):
     assert result.shape == inp.shape
     assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype=dtype, reduce_dim=source.size(1))
-    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
+    utils.gems_assert_equal(inp, snapshot)
 
 
 @pytest.mark.index_reduce_out
