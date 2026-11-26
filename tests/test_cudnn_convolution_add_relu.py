@@ -189,6 +189,8 @@ def test_cudnn_convolution_add_relu_reference():
     # reference itself is exercised on device by the accuracy tests below).
     if utils.TO_CPU:
         pytest.skip("aten::cudnn_convolution_add_relu has no CPU kernel")
+    if flag_gems.vendor_name == "mthreads":
+        pytest.skip("The native fused operator requires cuDNN")
     dtype = torch.float32
     for case in _BASE_CASES_2D + _BASE_CASES_3D:
         groups, stride, padding, dilation = case[2], case[3], case[4], case[5]

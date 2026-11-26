@@ -58,7 +58,13 @@ def _assert_matches_torch(inp, index, out=None):
     ref_idx = utils.to_reference(index)
     if out is None:
         ref_out = torch.take(ref_inp, ref_idx)
+        expected_device, expected_dtype = inp.device, inp.dtype
+        expected_shape = tuple(index.shape)
         result = flag_gems.take(inp, index)
+        assert isinstance(result, torch.Tensor)
+        assert result.device == expected_device
+        assert result.dtype == expected_dtype
+        assert tuple(result.shape) == expected_shape
     else:
         ref_out = torch.empty(index.shape, dtype=inp.dtype, device=ref_inp.device)
         torch.take(ref_inp, ref_idx, out=ref_out)
