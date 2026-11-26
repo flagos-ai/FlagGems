@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -30,6 +31,15 @@ def exp2_func(x):
 
 def exp2(A):
     logger.debug("GEMS EXP")
+    if (
+        isinstance(A, torch.Tensor)
+        and A.requires_grad
+        and torch.is_grad_enabled()
+        and not A.is_complex()
+    ):
+        from flag_gems.ops.exp2_backward import Exp2Function
+
+        return Exp2Function.apply(A)
     return exp2_func(A)
 
 

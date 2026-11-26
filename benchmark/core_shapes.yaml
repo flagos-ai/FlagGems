@@ -192,6 +192,14 @@ gelu_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+exp2_backward:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [256, 1024, 1024] # capped at 2^28 elements to avoid CI OOM
+
 cosh:
   shapes:
     - [4096, 4096]
