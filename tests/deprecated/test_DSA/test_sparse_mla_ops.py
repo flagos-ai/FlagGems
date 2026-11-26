@@ -33,15 +33,11 @@ except ImportError:
         actual, expected, dtype, equal_nan=False, atol=None, rtol=None
     ):
         # For bfloat16 and float16, use more relaxed tolerance
+        default_tol = 1e-2 if dtype in [torch.bfloat16, torch.float16] else 1e-4
         if atol is None:
-            if dtype in [torch.bfloat16, torch.float16]:
-                atol = 1e-2
-                rtol = 1e-2
-            else:
-                atol = 1e-4
-                rtol = 1e-4
+            atol = default_tol
         if rtol is None:
-            rtol = atol
+            rtol = default_tol
 
         print(f"Actual shape: {actual.shape}, Expected shape: {expected.shape}")
         print(f"Actual dtype: {actual.dtype}, Expected dtype: {expected.dtype}")
