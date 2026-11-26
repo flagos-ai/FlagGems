@@ -133,7 +133,7 @@ def amax_kernel(
         for off in range(0, N, BLOCK_N):
             cols = off + tl.arange(0, BLOCK_N)[None, :]
             col_mask = cols < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
 
             a = tl.load(new_inp + cols, mask, other=-float("inf"))
             _all = tl.maximum(a, _all)

@@ -31,9 +31,7 @@ def test_cdist(shapes, dtype):
     ref_x2 = utils.to_reference(x2)
 
     ref_out = torch.cdist(ref_x1, ref_x2, p=2.0)
-
-    with flag_gems.use_gems():
-        res_out = torch.cdist(x1, x2, p=2.0)
+    res_out = flag_gems.cdist(x1, x2, p=2.0)
 
     # cdist L2 computation accumulates error over feature dimension (M up to 128);
     # atol=0.01 is sufficient for float32 comparison

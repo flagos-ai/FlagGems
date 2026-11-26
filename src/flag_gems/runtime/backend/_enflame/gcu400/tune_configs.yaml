@@ -13,28 +13,31 @@
 # limitations under the License.
 
 attention:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-      PRE_LOAD_V: pre_load_v
-    num_warps: warps
-    num_stages: stages
-  block_m:
-  - 64
-  - 128
-  block_n:
-  - 64
-  - 128
-  pre_load_v:
-  - true
-  - false
-  warps:
-  - 2
-  - 4
-  stages:
-  - 3
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        PRE_LOAD_V: pre_load_v
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+      - 128
+    pre_load_v:
+      - true
+      - false
+    warps:
+      - 4
+    stages:
+      - 2
+      - 3
+      - 4
 addmm:
 - META:
     BLOCK_SIZE_M: 32
@@ -176,6 +179,13 @@ baddbmm:
     GROUP_M: 2
   num_stages: 2
   num_warps: 4
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 64
+    GROUP_M: 2
+  num_stages: 2
+  num_warps: 4
 argmax:
 - META:
     BLOCK_M: 8
@@ -237,6 +247,13 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 128
     SPLIT_K: 1
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+    SPLIT_K: 2
   num_stages: 2
   num_warps: 4
 softmax_non_inner:
@@ -849,11 +866,11 @@ var_mean:
 
 conv2d_forward:
 - META:
-    BLOCK_NI_HO_WO: 64
+    BLOCK_NI_HO_WO: 128
     BLOCK_CO: 64
     BLOCK_CI: 32
-  num_stages: 1
-  num_warps: 1
+  num_stages: 2
+  num_warps: 4
 
 conv2d_backward_weight:
 - META:
@@ -1011,31 +1028,71 @@ log_softmax:
 linear:
   - META:
       BLOCK_SIZE_M: 128
-      BLOCK_SIZE_N: 1024
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 128
+    num_stages: 3
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 128
+    num_stages: 2
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
       BLOCK_SIZE_K: 64
     num_stages: 3
-    num_warps: 4
+    num_warps: 2
   - META:
       BLOCK_SIZE_M: 64
-      BLOCK_SIZE_N: 1024
-      BLOCK_SIZE_K: 32
-    num_stages: 4
-    num_warps: 4
-  - META:
-      BLOCK_SIZE_M: 128
-      BLOCK_SIZE_N: 128
-      BLOCK_SIZE_K: 32
-    num_stages: 4
-    num_warps: 4
-  - META:
-      BLOCK_SIZE_M: 128
       BLOCK_SIZE_N: 64
-      BLOCK_SIZE_K: 32
-    num_stages: 4
-    num_warps: 4
+      BLOCK_SIZE_K: 128
+    num_stages: 2
+    num_warps: 1
   - META:
-      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_M: 128
       BLOCK_SIZE_N: 128
-      BLOCK_SIZE_K: 32
-    num_stages: 4
+      BLOCK_SIZE_K: 64
+    num_stages: 3
+    num_warps: 2
+
+adaptive_max_pool3d:
+  # gcu400 tuned (2026-11-09, direct-scan kernel, 2x640x64x42x72->16x14x14):
+  # OPB=1024/w16/s3 = 35.2 ms, OPB=2048/w8/s3 = 43.6 ms, OPB=256/w8/s3 = 61.2 ms.
+  # Small-OPB entries kept for tiny outputs where large blocks waste threads.
+  - META:
+      OUT_PER_BLOCK: 1024
+      CHAN_PER_BLOCK: 1
+    num_warps: 16
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 1024
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 2048
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 2
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 128
+      CHAN_PER_BLOCK: 1
     num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 1
+    num_warps: 2
+    num_stages: 5

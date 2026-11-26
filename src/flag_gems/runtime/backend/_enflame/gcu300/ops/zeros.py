@@ -30,6 +30,7 @@ def zeros_kernel(
     output_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    ENABLE_I64: tl.constexpr = True,
 ):
     pid = tl.program_id(axis=0)  # We use a 1D launch grid so axis is 0.
     num_jobs = tl.num_programs(axis=0)
@@ -53,7 +54,9 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     N = volume(size)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 128, num_warps=1)
+        zeros_kernel[grid_fn](
+            out, N, BLOCK_SIZE=1024 * 128, num_warps=1, ENABLE_I64=True
+        )
     return out
 
 
@@ -62,5 +65,5 @@ def zero_(x: torch.Tensor) -> torch.Tensor:
     N = x.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(x.device):
-        zeros_kernel[grid_fn](x, N, BLOCK_SIZE=1024 * 128, num_warps=1)
+        zeros_kernel[grid_fn](x, N, BLOCK_SIZE=1024 * 128, num_warps=1, ENABLE_I64=True)
     return x

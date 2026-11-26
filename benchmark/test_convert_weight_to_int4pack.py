@@ -1,4 +1,5 @@
 import gc
+from dataclasses import asdict
 
 import pytest
 import torch
@@ -80,6 +81,38 @@ class ConvertWeightBenchmark(base.Benchmark):
             pytest.fail(str(e))
         return metric
 
+    def _run_kernel_check_paired(self):
+        """Record whether the native baseline launches a device kernel.
+
+        Mirrors ``Benchmark._run_kernel_check_legacy`` but consumes this
+        benchmark's paired inputs and profiles only the torch baseline with
+        its native input format, which is what --kernel-check validates.
+        """
+        executed = []
+        for shape in self.shapes:
+            for base_input, _gems_input in _convert_weight_input_fn(shape, self.device):
+                n, k_half = shape
+                inner_k_tiles = base_input[1]
+                case_id = f"{self.op_name}-kernel-check-{n}x{k_half}x{inner_k_tiles}"
+                record = {
+                    "operator": self.op_name,
+                    "nodeid": Config.current_nodeid,
+                    "case_id": case_id,
+                    "invoked_kernel": False,
+                    "status": "failed",
+                }
+                Config.kernel_check_records.append(record)
+                try:
+                    fn, _ = self._benchmark_callable(self.torch_op, *base_input)
+                    record["invoked_kernel"] = self._profile_invokes_kernel(fn)
+                except Exception as exc:
+                    record["error"] = str(exc)
+                    raise
+                record["status"] = "passed"
+                Config.executed_case_ids.add(case_id)
+                executed.append(case_id)
+        return executed
+
     def run(self):
         if Config.query:
             self.init_default_config()
@@ -93,6 +126,14 @@ class ConvertWeightBenchmark(base.Benchmark):
             return
 
         self.init_user_config()
+
+        # The timed loop below cannot serve --kernel-check: Benchmark.run()
+        # dispatches to _run_kernel_check_cases()/_run_kernel_check_legacy(),
+        # which feed one argument tuple to both operators, while this benchmark
+        # pairs a native uint8 input with a FlagGems int32 input.
+        if getattr(Config, "kernel_check", False):
+            return self._run_kernel_check_paired()
+
         for dtype in self.to_bench_dtypes:
             metrics = []
             input_iter = self.get_input_iter(dtype)
@@ -121,7 +162,7 @@ class ConvertWeightBenchmark(base.Benchmark):
                 result=metrics,
             )
             print(result)
-            update_result(self.op_name, result.to_json())
+            update_result(self.op_name, asdict(result))
             emit_record_logger(result.to_json())
 
 

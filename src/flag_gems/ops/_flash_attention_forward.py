@@ -20,6 +20,15 @@ from flag_gems.ops.attention import flash_attention_forward
 logger = logging.getLogger(__name__)
 
 
+def _materialize_bshd_view(t):
+    """Return ``t`` (B, S, H, D) as a transpose view of a (B, H, S, D)-contiguous
+    buffer, the layout the kernel is validated against (see #5896)."""
+    bhsd = t.transpose(1, 2)
+    if bhsd.is_contiguous():
+        return t
+    return bhsd.contiguous().transpose(1, 2)
+
+
 def _flash_attention_forward(
     query,
     key,
@@ -42,6 +51,9 @@ def _flash_attention_forward(
     FlashAttention implementation.
     """
     logger.debug("GEMS _FLASH_ATTENTION_FORWARD")
+    query = _materialize_bshd_view(query)
+    key = _materialize_bshd_view(key)
+    value = _materialize_bshd_view(value)
     return flash_attention_forward(
         query,
         key,

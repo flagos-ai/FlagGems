@@ -27,9 +27,16 @@ except ImportError:
     SM90_AVAILABLE = False
 
 import flag_gems
-from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
 
+from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close, to_reference
+
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
 
 device = flag_gems.device
 
@@ -93,15 +100,14 @@ def test_fp8_fp4_mqa_logits(M, N, clean_logits):
     )
     ref_out = to_reference(ref_out)
 
-    with flag_gems.use_gems():
-        res_out = fp8_fp4_mqa_logits(
-            q=(q_fp8, None),
-            kv=(k_fp8, k_scale),
-            weights=weights,
-            cu_seqlen_ks=ks,
-            cu_seqlen_ke=ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_fp4_mqa_logits(
+        q=(q_fp8, None),
+        kv=(k_fp8, k_scale),
+        weights=weights,
+        cu_seqlen_ks=ks,
+        cu_seqlen_ke=ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1

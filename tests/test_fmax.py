@@ -30,8 +30,7 @@ def test_fmax(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.fmax(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmax(inp1, inp2)
+    res_out = flag_gems.fmax(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -51,8 +50,7 @@ def test_fmax_with_nan(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.fmax(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmax(inp1, inp2)
+    res_out = flag_gems.fmax(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
@@ -68,8 +66,7 @@ def test_fmax_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp1)
     torch.fmax(ref_inp1, ref_inp2, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp1)
-        torch.fmax(inp1, inp2, out=res_out)
+    res_out = torch.empty_like(inp1)
+    flag_gems.fmax_out(inp1, inp2, out=res_out)
 
     utils.gems_assert_equal(res_out, ref_out)

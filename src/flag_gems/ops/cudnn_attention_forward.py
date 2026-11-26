@@ -17,6 +17,7 @@ import logging
 import math
 
 import torch
+from packaging import version
 
 from flag_gems.ops.attention import scaled_dot_product_attention_forward
 
@@ -86,8 +87,12 @@ def cudnn_attention_forward(
             dtype=torch.float32,
         )
 
-    # cuDNN convention: logsumexp shape is [B, H, S_q, 1]
-    lse = lse.unsqueeze(-1)
+    # Match PyTorch aten::_cudnn_attention_forward behavior.
+    # PyTorch < 2.9 returns [B, H, S_q], while PyTorch >= 2.9
+    # returns [B, H, S_q, 1].
+    torch_version = version.parse(torch.__version__.split("+")[0])
+    if torch_version.release[:2] >= (2, 9):
+        lse = lse.unsqueeze(-1)
 
     # Philox seed / offset: the Triton kernel does not produce these
     # (dropout is not supported), so return scalar zero tensors.

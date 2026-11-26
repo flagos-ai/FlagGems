@@ -87,6 +87,7 @@ class CodeGenConfig:
 
     prefer_block_pointer: bool
     prefer_1d_tile: bool
+    balance_grid: bool = False
     # gen_configs: -> configs
     # prune_config: (as jit function, ) cofigs -> configs
 
@@ -135,12 +136,26 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=True,
     ),
-    vendors.ASCEND: CodeGenConfig(
-        512,
-        tuple([48, 1, 1]),
-        32,
-        False,
-        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    # triton-ascend does not queue programs beyond the number of vector cores
+    # the device has: it pads the launch up to the next multiple of that count
+    # and every padding CTA reports program_id == 0. Program 0 therefore runs
+    # many times over, so an in-place kernel (log_, ...) applies its update
+    # repeatedly and corrupts the first tile. 48 is neither <= the core count
+    # nor a multiple of it, which is what made exponential_ -- a composite of
+    # uniform_ and log_ -- return NaNs in the first tile for large tensors
+    # (#6446). Capping the grid at the real core count keeps
+    # `num_ctas = min(max_grid_size[0], num_tiles)` inside the range
+    # triton-ascend launches as a single, duplicate-free wave.
+    vendors.ASCEND: (
+        CodeGenConfig(
+            512,
+            tuple([_state.vendor_module.CORE_NUM, 1, 1]),
+            32,
+            False,
+            prefer_1d_tile=int(triton.__version__[0]) < 3,
+        )
+        if _state.vendor_module.vendor_info.vendor_name == "ascend"
+        else None
     ),
     vendors.HYGON: CodeGenConfig(
         2048,
@@ -197,7 +212,18 @@ def get_codegen_config():
     return CODEGEN_COFIGS.get(device.vendor)
 
 
-def get_heuristics_for_num_warps(tile_size):
+def get_heuristics_for_num_warps_fn():
+    """Resolve the active backend's immutable pointwise warp policy.
+
+    Pointwise PT2 plans call this once while materializing outside Dynamo, then
+    retain the returned function as structural launch policy.  Runtime tile
+    buckets may remain symbolic without re-running backend dispatch in a graph.
+    """
+
     if device.vendor not in HEURISTICS_CONFIG:
-        return HEURISTICS_CONFIG.get(vendors.NVIDIA)(tile_size)
-    return HEURISTICS_CONFIG.get(device.vendor)(tile_size)
+        return HEURISTICS_CONFIG.get(vendors.NVIDIA)
+    return HEURISTICS_CONFIG.get(device.vendor)
+
+
+def get_heuristics_for_num_warps(tile_size):
+    return get_heuristics_for_num_warps_fn()(tile_size)

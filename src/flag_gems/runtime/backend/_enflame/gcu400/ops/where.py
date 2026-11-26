@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.pointwise_dynamic import CodeGenConfig, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(
     is_tensor=[True, True, True],
     promotion_methods=[(1, 2, "NO_OPMATH")],
+    config=CodeGenConfig(8192, (48, 1, 1), 4, True, prefer_1d_tile=True),
 )
 @triton.jit
 def where_inner(condition, self, other):
@@ -75,6 +76,19 @@ def where_self_out(condition, self, other, out=None):
     if out is None:
         out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
         out = torch.empty(out_shape, dtype=result_type, device=device)
+
+    # Workaround for a triton_gcu / GCU400 LLVM backend bug:
+    # for single-element pointwise kernels, the compiler emits
+    # `extract_vector_elt (v16i32 = bitcast v512i1)` for the boundary-check
+    # mask, which the backend cannot select ("LLVM ERROR: Cannot select").
+    # Avoid launching the triton kernel altogether: compute the single value
+    # on host and write it back through the aten cross-device copy path.
+    if out.numel() == 1:
+        c_val = bool(c.reshape(()).item())
+        a_val = a.reshape(()).item()
+        b_val = b.reshape(()).item()
+        out.copy_(torch.tensor(a_val if c_val else b_val, dtype=out.dtype))
+        return out
 
     ndim = max(c.ndim, a.ndim, b.ndim)
     where_inner.instantiate(ndim)

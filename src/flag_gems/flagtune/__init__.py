@@ -1,7 +1,20 @@
-"""Offline FlagTune collection, training, and reporting for FlagGems.
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-This package is intentionally separate from :mod:`flag_gems.utils`: it owns a
-complete offline workflow rather than a reusable low-level helper.  Import the
-library API from :mod:`flag_gems.flagtune.collection`; invoke user-facing
-commands through the three ``flaggems-flagtune-*`` console scripts.
+"""FlagTune integration split into online inference and offline tooling.
+
+The :mod:`flag_gems.flagtune.inference` package is the small runtime dependency
+used by Cost Model prediction.  Expanded collection, training, packaging, and
+comparison live under :mod:`flag_gems.flagtune.offline`.
 """

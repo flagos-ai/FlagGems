@@ -38,7 +38,7 @@ else:
 
 @pytest.mark.bitwise_right_shift_
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.ALL_INT_DTYPES)
 def test_bitwise_right_shift_(shapes, dtype):
     shape_a, shape_b = shapes
     res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
@@ -49,7 +49,6 @@ def test_bitwise_right_shift_(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.bitwise_right_shift_(ref_b)
-    with flag_gems.use_gems():
-        res_a.bitwise_right_shift_(res_b)
+    flag_gems.bitwise_right_shift_(res_a, res_b)
 
     utils.gems_assert_close(res_a, ref_a, dtype)

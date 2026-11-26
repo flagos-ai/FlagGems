@@ -18,9 +18,9 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry, libtuner
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 if runtime.device.vendor_name == "iluvatar":
     from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
@@ -132,7 +132,7 @@ def baddbmm_kernel(
 
     bias_ptrs = bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
 
-    if DIVISIBLE_M and DIVISIBLE_N:
+    if DIVISIBLE_M & DIVISIBLE_N:
         mask_c = None
     else:
         mask_c = True
@@ -234,7 +234,14 @@ def compute_A_grad(d_output, B, alpha):
 
 
 def compute_B_grad(A, d_output, alpha):
-    A_T = A.transpose(1, 2)
+    # GCU300: when grad_B's trailing dim is 1 the bmm tile strides degenerate
+    # to (1, 1) and the kernel miscompiles its stores. Compute the transposed
+    # product (d_output^T @ A)^T instead, whose bmm output ends in K.
+    transposed = d_output.shape[2] == 1
+    if transposed:
+        A_T, d_output = d_output.transpose(1, 2), A
+    else:
+        A_T = A.transpose(1, 2)
     if A.dtype == torch.float16:
         Acopy = A_T.to(torch.float32)
         dcopye = d_output.to(torch.float32)
@@ -244,6 +251,8 @@ def compute_B_grad(A, d_output, alpha):
     else:
         mul2 = bmm(A_T, d_output)
         grad_B = mul(mul2, alpha)
+    if transposed:
+        grad_B = grad_B.transpose(1, 2).contiguous()
     return grad_B
 
 

@@ -51,7 +51,7 @@ def test_margin_ranking_loss(shape, dtype, margin, reduction):
         )
     else:
         target = (
-            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2
+            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int32) * 2
             - 1
         ).to(dtype)
 
@@ -61,10 +61,9 @@ def test_margin_ranking_loss(shape, dtype, margin, reduction):
     ref_out = torch.ops.aten.margin_ranking_loss(
         ref_input1, ref_input2, ref_target, margin, reduction
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.margin_ranking_loss(
-            input1, input2, target, margin, reduction
-        )
+    res_out = flag_gems.margin_ranking_loss(
+        input1, input2, target, margin, REDUCTION_MAP[reduction]
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -73,6 +72,7 @@ REDUCTION_MAP = {0: "none", 1: "mean", 2: "sum"}
 
 
 @pytest.mark.margin_ranking_loss
+@pytest.mark.margin_ranking_loss_backward
 @pytest.mark.parametrize("shape", MARGIN_RANKING_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("margin", MARGIN_RANKING_MARGINS)
@@ -103,7 +103,7 @@ def test_margin_ranking_loss_backward(shape, dtype, margin, reduction):
         )
 
         target = (
-            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2
+            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int32) * 2
             - 1
         ).to(dtype)
 
@@ -129,14 +129,13 @@ def test_margin_ranking_loss_backward(shape, dtype, margin, reduction):
         reduction=REDUCTION_MAP[reduction],
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.margin_ranking_loss(
-            input1,
-            input2,
-            target,
-            margin=margin,
-            reduction=REDUCTION_MAP[reduction],
-        )
+    res_out = flag_gems.margin_ranking_loss(
+        input1,
+        input2,
+        target,
+        margin=margin,
+        reduction=REDUCTION_MAP[reduction],
+    )
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad)

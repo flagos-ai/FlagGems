@@ -40,7 +40,7 @@ def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
 
 
 def addcmul(inp, tensor1, tensor2, *, value=1.0):
-    logger.debug("GEMS_CAMBRICON ADDCMUL FORWARD")
+    logger.debug("GEMS_CAMBRICON ADDCMUL_FORWARD")
     broadcast_shape = torch.broadcast_shapes(inp.shape, tensor1.shape, tensor2.shape)
     dtype = torch.promote_types(
         inp.dtype, torch.promote_types(tensor1.dtype, tensor2.dtype)

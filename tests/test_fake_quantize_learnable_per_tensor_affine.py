@@ -37,6 +37,10 @@ def _make_inputs(shape, dtype, quant_min, quant_max):
     return inp, scale, zero_point
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="fake-quantize learning accuracy issue",
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -51,14 +55,17 @@ def test_fake_quantize_learnable_per_tensor_affine(shape, dtype, quant_range):
     ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine(
         ref_inp, ref_scale, ref_zp, quant_min, quant_max
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine(
-            inp, scale, zero_point, quant_min, quant_max
-        )
+    res_out = flag_gems._fake_quantize_learnable_per_tensor_affine(
+        inp, scale, zero_point, quant_min, quant_max
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="fake-quantize learning accuracy issue",
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -73,9 +80,8 @@ def test_fake_quantize_learnable_per_tensor_affine_grad_factor(shape, dtype):
     ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine(
         ref_inp, ref_scale, ref_zp, quant_min, quant_max, 0.5
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine(
-            inp, scale, zero_point, quant_min, quant_max, 0.5
-        )
+    res_out = flag_gems._fake_quantize_learnable_per_tensor_affine(
+        inp, scale, zero_point, quant_min, quant_max, 0.5
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

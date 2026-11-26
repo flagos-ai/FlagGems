@@ -43,7 +43,7 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
       - the alias aliases ``x``'s storage so ``resolve_conj`` produces the
         conjugated value on demand.
     """
-    logger.debug("GEMS CONJ")
+    logger.debug("GEMS_THEAD CONJ")
 
     # Real tensors: conjugate is the identity. torch._conj returns the tensor
     # itself (a view); mirror that with a zero-copy alias.

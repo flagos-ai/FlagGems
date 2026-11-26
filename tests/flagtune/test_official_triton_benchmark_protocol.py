@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 import triton.testing as triton_testing
 
-from flag_gems.flagtune.runtime import _benchmark_protocol as benchmark_module
+from flag_gems.flagtune.offline.runtime import benchmark_protocol as benchmark_module
 
 
 class _FakeDriver:
@@ -81,6 +81,55 @@ def test_official_triton_replay_uses_fixed_retry_count(monkeypatch):
         100,
         10,
         10.0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("module_name", "implementation"),
+    [
+        ("triton.backends.metax.driver", "triton_metax_graph_replay_v1"),
+        ("triton.backends.ppu.driver", "triton_ppu_graph_replay_v1"),
+        ("triton.backends.hcu.driver", "triton_hcu_graph_replay_v1"),
+    ],
+)
+def test_official_triton_vendor_backend_uses_graph_replay(
+    monkeypatch, module_name, implementation
+):
+    active = _driver_for(module_name)
+    monkeypatch.setattr(benchmark_module, "driver", SimpleNamespace(active=active))
+    observed = {}
+
+    def vendor_do_bench_cudagraph(kernel_call, rep, quantiles, n_retries):
+        observed.update(rep=rep, quantiles=quantiles, n_retries=n_retries)
+        kernel_call()
+        return [1.0, 0.8, 1.2]
+
+    monkeypatch.setattr(
+        triton_testing,
+        "do_bench_cudagraph",
+        vendor_do_bench_cudagraph,
+    )
+
+    resolved = benchmark_module.resolve_benchmarker(
+        "replay",
+        warmup_ms=25,
+        measurement_ms=100,
+        n_retries=5,
+    )
+    result = resolved.benchmark(lambda: None, (0.5, 0.2, 0.8))
+
+    assert result == [1.0, 0.8, 1.2]
+    assert observed == {
+        "rep": 20.0,
+        "quantiles": (0.5, 0.2, 0.8),
+        "n_retries": 5,
+    }
+    assert resolved.protocol.cache_key() == (
+        implementation,
+        25,
+        100,
+        5,
+        20.0,
     )
 
 

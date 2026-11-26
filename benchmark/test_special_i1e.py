@@ -21,11 +21,32 @@ from . import base, consts
 
 
 @pytest.mark.special_i1e
+@pytest.mark.skip_native(
+    vendors=["metax"],
+    reason="Native i1e lacks low-precision kernels; use the ops-baseline H800 data",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_special_i1e():
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_i1e", torch_op=torch.special.i1e, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
+
+
+@pytest.mark.special_i1e_out
+@pytest.mark.skip_native(
+    vendors=["metax"],
+    reason="Native i1e lacks low-precision kernels; use the ops-baseline H800 data",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_special_i1e_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="special_i1e_out",
+        torch_op=torch.special.i1e,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

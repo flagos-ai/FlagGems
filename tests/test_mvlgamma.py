@@ -55,8 +55,7 @@ def test_mvlgamma(shape, dtype, p):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.mvlgamma(ref_inp, p)
-    with flag_gems.use_gems():
-        res_out = torch.mvlgamma(inp, p)
+    res_out = flag_gems.mvlgamma(inp, p)
 
     # Use relaxed tolerance for float16 due to lgamma precision limitations
     atol = 1e-2 if dtype == torch.float16 else 1e-4

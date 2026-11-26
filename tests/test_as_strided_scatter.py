@@ -45,10 +45,7 @@ def test_as_strided_scatter(dtype, size, stride, storage_offset, self_len):
         storage_offset,
     )
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.as_strided_scatter(
-            inp, src, size, stride, storage_offset
-        )
+    actual = flag_gems.as_strided_scatter(inp, src, size, stride, storage_offset)
 
     utils.gems_assert_close(actual, expected, dtype)
 
@@ -62,8 +59,7 @@ def test_as_strided_scatter_preserves_storage_geometry():
     # when moving inp (a slice view with offset=3) to CPU.
     expected = torch.ops.aten.as_strided_scatter(inp, src, (3,), (2,), None)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.as_strided_scatter(inp, src, (3,), (2,), None)
+    actual = flag_gems.as_strided_scatter(inp, src, (3,), (2,), None)
 
     assert actual.stride() == expected.stride()
     assert actual.storage_offset() == expected.storage_offset()
@@ -82,8 +78,7 @@ def test_as_strided_scatter_noncontiguous_self():
     # Don't use to_reference() here because it would lose the non-contiguous
     # stride pattern when moving inp to CPU.
     expected = torch.ops.aten.as_strided_scatter(inp, src, (2, 2), (1, 5), None)
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.as_strided_scatter(inp, src, (2, 2), (1, 5), None)
+    actual = flag_gems.as_strided_scatter(inp, src, (2, 2), (1, 5), None)
     assert actual.stride() == expected.stride()
     # Manual device conversion to preserve stride pattern
     if utils.TO_CPU:

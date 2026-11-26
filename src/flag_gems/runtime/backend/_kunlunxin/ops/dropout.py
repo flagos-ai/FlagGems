@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -39,6 +25,8 @@ def dropout_forward_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
+    ROUNDS: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     UNROLL: tl.constexpr = 8
     philox_seed = philox_seed.to(tl.int64)
@@ -46,21 +34,19 @@ def dropout_forward_kernel(
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
-    # First set of 4 random numbers
     i4_0 = tl.program_id(0) * BLOCK * 2 + tl.arange(0, BLOCK)
     c0_0 = c0 + i4_0
     _O = c0_0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0_0, c1, _O, _O)
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0_0, c1, _O, _O, n_rounds=ROUNDS)
     r0 = uint_to_uniform_float(r0)
     r1 = uint_to_uniform_float(r1)
     r2 = uint_to_uniform_float(r2)
     r3 = uint_to_uniform_float(r3)
 
-    # Second set of 4 random numbers
     i4_1 = tl.program_id(0) * BLOCK * 2 + BLOCK + tl.arange(0, BLOCK)
     c0_1 = c0 + i4_1
     _O1 = c0_1 * 0
-    r4, r5, r6, r7 = tl.philox(philox_seed, c0_1, c1, _O1, _O1)
+    r4, r5, r6, r7 = tl.philox(philox_seed, c0_1, c1, _O1, _O1, n_rounds=ROUNDS)
     r4 = uint_to_uniform_float(r4)
     r5 = uint_to_uniform_float(r5)
     r6 = uint_to_uniform_float(r6)
@@ -85,40 +71,68 @@ def dropout_forward_kernel(
     off_6 = off_5 + BLOCK
     off_7 = off_6 + BLOCK
 
-    x0 = tl.load(X + off_0, mask=off_0 < N, other=0.0)
-    x1 = tl.load(X + off_1, mask=off_1 < N, other=0.0)
-    x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0)
-    x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0)
-    x4 = tl.load(X + off_4, mask=off_4 < N, other=0.0)
-    x5 = tl.load(X + off_5, mask=off_5 < N, other=0.0)
-    x6 = tl.load(X + off_6, mask=off_6 < N, other=0.0)
-    x7 = tl.load(X + off_7, mask=off_7 < N, other=0.0)
+    if NEED_MASK:
+        x0 = tl.load(X + off_0, mask=off_0 < N, other=0.0)
+        x1 = tl.load(X + off_1, mask=off_1 < N, other=0.0)
+        x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0)
+        x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0)
+        x4 = tl.load(X + off_4, mask=off_4 < N, other=0.0)
+        x5 = tl.load(X + off_5, mask=off_5 < N, other=0.0)
+        x6 = tl.load(X + off_6, mask=off_6 < N, other=0.0)
+        x7 = tl.load(X + off_7, mask=off_7 < N, other=0.0)
+    else:
+        x0 = tl.load(X + off_0)
+        x1 = tl.load(X + off_1)
+        x2 = tl.load(X + off_2)
+        x3 = tl.load(X + off_3)
+        x4 = tl.load(X + off_4)
+        x5 = tl.load(X + off_5)
+        x6 = tl.load(X + off_6)
+        x7 = tl.load(X + off_7)
 
-    y0 = tl.where(mask0, x0 * scale, 0.0)
-    y1 = tl.where(mask1, x1 * scale, 0.0)
-    y2 = tl.where(mask2, x2 * scale, 0.0)
-    y3 = tl.where(mask3, x3 * scale, 0.0)
-    y4 = tl.where(mask4, x4 * scale, 0.0)
-    y5 = tl.where(mask5, x5 * scale, 0.0)
-    y6 = tl.where(mask6, x6 * scale, 0.0)
-    y7 = tl.where(mask7, x7 * scale, 0.0)
+    y0 = x0 * scale * mask0
+    y1 = x1 * scale * mask1
+    y2 = x2 * scale * mask2
+    y3 = x3 * scale * mask3
+    y4 = x4 * scale * mask4
+    y5 = x5 * scale * mask5
+    y6 = x6 * scale * mask6
+    y7 = x7 * scale * mask7
 
-    tl.store(Y + off_0, y0, mask=off_0 < N)
-    tl.store(Y + off_1, y1, mask=off_1 < N)
-    tl.store(Y + off_2, y2, mask=off_2 < N)
-    tl.store(Y + off_3, y3, mask=off_3 < N)
-    tl.store(Y + off_4, y4, mask=off_4 < N)
-    tl.store(Y + off_5, y5, mask=off_5 < N)
-    tl.store(Y + off_6, y6, mask=off_6 < N)
-    tl.store(Y + off_7, y7, mask=off_7 < N)
-    tl.store(dropout_mask + off_0, mask0, mask=off_0 < N)
-    tl.store(dropout_mask + off_1, mask1, mask=off_1 < N)
-    tl.store(dropout_mask + off_2, mask2, mask=off_2 < N)
-    tl.store(dropout_mask + off_3, mask3, mask=off_3 < N)
-    tl.store(dropout_mask + off_4, mask4, mask=off_4 < N)
-    tl.store(dropout_mask + off_5, mask5, mask=off_5 < N)
-    tl.store(dropout_mask + off_6, mask6, mask=off_6 < N)
-    tl.store(dropout_mask + off_7, mask7, mask=off_7 < N)
+    if NEED_MASK:
+        tl.store(Y + off_0, y0, mask=off_0 < N)
+        tl.store(Y + off_1, y1, mask=off_1 < N)
+        tl.store(Y + off_2, y2, mask=off_2 < N)
+        tl.store(Y + off_3, y3, mask=off_3 < N)
+        tl.store(Y + off_4, y4, mask=off_4 < N)
+        tl.store(Y + off_5, y5, mask=off_5 < N)
+        tl.store(Y + off_6, y6, mask=off_6 < N)
+        tl.store(Y + off_7, y7, mask=off_7 < N)
+        tl.store(dropout_mask + off_0, mask0, mask=off_0 < N)
+        tl.store(dropout_mask + off_1, mask1, mask=off_1 < N)
+        tl.store(dropout_mask + off_2, mask2, mask=off_2 < N)
+        tl.store(dropout_mask + off_3, mask3, mask=off_3 < N)
+        tl.store(dropout_mask + off_4, mask4, mask=off_4 < N)
+        tl.store(dropout_mask + off_5, mask5, mask=off_5 < N)
+        tl.store(dropout_mask + off_6, mask6, mask=off_6 < N)
+        tl.store(dropout_mask + off_7, mask7, mask=off_7 < N)
+    else:
+        tl.store(Y + off_0, y0)
+        tl.store(Y + off_1, y1)
+        tl.store(Y + off_2, y2)
+        tl.store(Y + off_3, y3)
+        tl.store(Y + off_4, y4)
+        tl.store(Y + off_5, y5)
+        tl.store(Y + off_6, y6)
+        tl.store(Y + off_7, y7)
+        tl.store(dropout_mask + off_0, mask0)
+        tl.store(dropout_mask + off_1, mask1)
+        tl.store(dropout_mask + off_2, mask2)
+        tl.store(dropout_mask + off_3, mask3)
+        tl.store(dropout_mask + off_4, mask4)
+        tl.store(dropout_mask + off_5, mask5)
+        tl.store(dropout_mask + off_6, mask6)
+        tl.store(dropout_mask + off_7, mask7)
 
 
 @libentry()
@@ -130,29 +144,45 @@ def dropout_backward_kernel(
     N,
     scale,
     BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offset < N
-    m = tl.load(dropout_mask + offset, mask=mask, other=0)
-    dy = tl.load(DY + offset, mask=mask, other=0)
-    dx = dy * m * scale
-    tl.store(DX + offset, dx, mask=mask)
+    if NEED_MASK:
+        mask = offset < N
+        m = tl.load(dropout_mask + offset, mask=mask, other=0)
+        dy = tl.load(DY + offset, mask=mask, other=0)
+        dx = dy * (m.to(tl.int32) & 1).to(dy.dtype) * scale
+        tl.store(DX + offset, dx, mask=mask)
+    else:
+        m = tl.load(dropout_mask + offset)
+        dy = tl.load(DY + offset)
+        dx = dy * (m.to(tl.int32) & 1).to(dy.dtype) * scale
+        tl.store(DX + offset, dx)
 
 
 UNROLL = 8
+ROUNDS = 4
 
 
 def _dropout_launch_config(N):
-    # Compute BLOCK / num_warps in Python and pass them EXPLICITLY. On XPU triton
-    # letting @triton.heuristics supply num_warps/BLOCK at launch triggers a
-    # per-launch recompile pathology (the same class as bernoulli_/std) that blows
-    # the IR up (8M+ lines) and makes do_bench measure 500-2000ms for some shapes.
     if N <= 512:
         return 512, 4
     elif N <= 1024:
         return 1024, 8
-    else:
+    elif N <= 65536:
         return 1024, 16
+    else:
+        return 4096, 32
+
+
+def _dropout_backward_launch_config(N, dtype):
+    if N <= 65536:
+        return 1024, 16
+    if N <= 4 * 1024 * 1024:
+        if dtype == torch.float32:
+            return 8192, 16
+        return 32768, 16
+    return 131072, 32
 
 
 def dropout(input, p, train=True):
@@ -185,6 +215,8 @@ def dropout(input, p, train=True):
             philox_seed,
             philox_offset,
             BLOCK=BLOCK,
+            ROUNDS=ROUNDS,
+            NEED_MASK=N % (BLOCK * UNROLL) != 0,
             num_warps=num_warps,
         )
     return out, mask
@@ -195,16 +227,17 @@ def dropout_backward(grad_output, mask, scale):
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()
-    BLOCK, num_warps = _dropout_launch_config(N)
+    BLOCK, num_warps = _dropout_backward_launch_config(N, grad_output.dtype)
     grid = (triton.cdiv(N, BLOCK),)
     with torch_device_fn.device(grad_output.device):
         dropout_backward_kernel[grid](
             grad_output,
             grad_input,
-            mask,
+            mask.contiguous().view(torch.int8),
             N,
             scale,
             BLOCK=BLOCK,
+            NEED_MASK=N % BLOCK != 0,
             num_warps=num_warps,
         )
     return grad_input

@@ -5,6 +5,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+VENDOR = flag_gems.vendor_name
+
+if utils.TO_CPU and VENDOR == "hygon":
+    TEST_DTYPES = [torch.float32, torch.bfloat16]
+else:
+    TEST_DTYPES = utils.FLOAT_DTYPES
+
 REPLICATION_PAD2D_SHAPES = [
     (2, 3, 8, 8),
     (2, 4, 8, 16),
@@ -38,7 +45,7 @@ def _normalize_padding(padding):
 
 @pytest.mark.replication_pad2d_backward
 @pytest.mark.parametrize("shape", REPLICATION_PAD2D_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("padding", REPLICATION_PAD2D_PADDINGS)
 def test_replication_pad2d_backward(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -60,15 +67,14 @@ def test_replication_pad2d_backward(shape, dtype, padding):
     )
     ref_out = torch.ops.aten.replication_pad2d_backward(ref_grad, ref_x, ref_padding)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.replication_pad2d_backward(grad_output, x, padding)
+    res_out = flag_gems.replication_pad2d_backward(grad_output, x, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.replication_pad2d_backward_grad_input
 @pytest.mark.parametrize("shape", REPLICATION_PAD2D_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("padding", REPLICATION_PAD2D_PADDINGS)
 def test_replication_pad2d_backward_grad_input(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -96,9 +102,8 @@ def test_replication_pad2d_backward_grad_input(shape, dtype, padding):
     )
 
     res_out = torch.empty(input_shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten.replication_pad2d_backward.grad_input(
-            grad_output, x, padding, grad_input=res_out
-        )
+    flag_gems.replication_pad2d_backward_grad_input(
+        grad_output, x, padding, grad_input=res_out
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

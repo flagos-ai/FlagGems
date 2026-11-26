@@ -18,9 +18,15 @@ LDL_SOLVE_SHAPES = [
 
 
 # CUDA ldl_factor_ex used to build LD supports float32/float64/complex64/complex128 here.
-LDL_SOLVE_DTYPES = [torch.float32, torch.float64, torch.complex64]
+# Only collect the dtypes the current device can actually run: complex128 needs
+# both complex and fp64 support.
+LDL_SOLVE_DTYPES = [torch.float32]
 if utils.fp64_is_supported:
-    LDL_SOLVE_DTYPES.append(torch.complex128)
+    LDL_SOLVE_DTYPES.append(torch.float64)
+if utils.complex_is_supported:
+    LDL_SOLVE_DTYPES.append(torch.complex64)
+    if utils.fp64_is_supported:
+        LDL_SOLVE_DTYPES.append(torch.complex128)
 
 
 def _make_ldl_inputs(batch_shape, n, k, dtype, device):
@@ -55,8 +61,7 @@ def test_linalg_ldl_solve(shape, dtype):
     assert ref_info.eq(0).all()
 
     ref_out = torch.linalg.ldl_solve(ref_LD, ref_pivots, ref_B)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.ldl_solve(LD, pivots, B)
+    res_out = flag_gems.linalg_ldl_solve(LD, pivots, B)
 
     _assert_ldl_close(res_out, ref_out, dtype)
 
@@ -79,7 +84,6 @@ def test_linalg_ldl_solve_batched(shape, dtype):
     assert ref_info.eq(0).all()
 
     ref_out = torch.linalg.ldl_solve(ref_LD, ref_pivots, ref_B)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.ldl_solve(LD, pivots, B)
+    res_out = flag_gems.linalg_ldl_solve(LD, pivots, B)
 
     _assert_ldl_close(res_out, ref_out, dtype)

@@ -18,7 +18,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.pointwise_dynamic import ComplexMode
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ def true_divide(A, B):
 
 
 def true_divide_out(A, B, out):
-    logger.debug("GEMS_HYGON TRUE_DIVIDE OUT")
+    logger.debug("GEMS_HYGON TRUE_DIVIDE_OUT")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=out)
     elif isinstance(A, torch.Tensor):
@@ -270,6 +271,9 @@ def floor_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
             return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
+        elif x.type.scalar.is_uint8():
+            # Wrapped integer scalars follow the tensor's uint8 dtype.
+            return _int_floordiv(x.to(tl.int32), y.to(tl.uint8).to(tl.int32))
         elif x.type.scalar.is_uint16():
             return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
@@ -292,11 +296,190 @@ def floor_div_func_scalar_tensor(x, y):
         return _float_floordiv(x, y)
 
 
+# Scalar integer division preserves the tensor dtype when the divisor is
+# representable in it. Keep other promotions on the pointwise_dynamic path.
+_INT_DIVIDE_BOUNDS = {
+    torch.int8: (-(1 << 7), (1 << 7) - 1),
+    torch.uint8: (0, (1 << 8) - 1),
+    torch.int16: (-(1 << 15), (1 << 15) - 1),
+    torch.int32: (-(1 << 31), (1 << 31) - 1),
+    torch.int64: (-(1 << 63), (1 << 63) - 1),
+}
+
+
+@libentry()
+@triton.jit
+def _floor_divide_int_scalar_kernel(
+    A,
+    O,
+    N: tl.constexpr,
+    DIVISOR: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if N > 2147483647:
+        offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    else:
+        offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    if N % BLOCK == 0:
+        x = tl.load(A + offsets)
+    else:
+        x = tl.load(A + offsets, offsets < N, other=0)
+    if x.dtype.primitive_bitwidth < 32:
+        x = x.to(tl.int32)
+    # A constexpr divisor lets LLVM replace integer division and remainder
+    # with exact multiply/shift operations. Retain the signed floor correction.
+    result = _int_floordiv(x, DIVISOR)
+    if N % BLOCK == 0:
+        tl.store(O + offsets, result)
+    else:
+        tl.store(O + offsets, result, offsets < N)
+
+
+@triton.jit
+def _tensor_float_floordiv(x, y, valid):
+    quotient = tl.div_rn(x, y)
+    finite_normal = (
+        ((tl.abs(x) >= 1.1754943508222875e-38) | (x == 0.0))
+        & (tl.abs(y) >= 1.1754943508222875e-38)
+        & (tl.abs(x) < float("inf"))
+        & (tl.abs(y) < float("inf"))
+        & (tl.abs(quotient) < 8388608.0)
+    )
+    if tl.sum((valid & ~finite_normal).to(tl.int32), 0) == 0:
+        result = tl.floor(quotient)
+        # Below 2**23, rounding can move the floor up by at most one.
+        # FMA recovers the residual sign without rounding the product first.
+        residual = tl.fma(-result, y, x)
+        adjust = (residual != 0.0) & ((residual < 0.0) != (y < 0.0))
+        result = result - adjust.to(tl.float32)
+    else:
+        # Keep fmod for large quotients, subnormal operands and special values.
+        result = _float_floordiv(x, y)
+    sign = (x.to(tl.int32, bitcast=True) ^ y.to(tl.int32, bitcast=True)) & -2147483648
+    return tl.where(result == 0.0, sign.to(tl.float32, bitcast=True), result)
+
+
+@triton.jit
+def _tensor_int_floordiv(x, y):
+    is_short: tl.constexpr = x.dtype.is_int16()
+    x = x.to(tl.int32)
+    y = y.to(tl.int32)
+    is_zero = y == 0
+    safe_y = tl.where(is_zero, 1, y)
+    if is_short:
+        # fp32 represents every int16 operand exactly. The RN quotient error
+        # is smaller than the distance to an integer, unless division is exact.
+        result = tl.floor(tl.div_rn(x.to(tl.float32), safe_y.to(tl.float32))).to(
+            tl.int32
+        )
+    else:
+        quotient = x // safe_y
+        # Derive the remainder from the same quotient.
+        remainder = x - quotient * safe_y
+        different_sign = (x ^ safe_y) < 0
+        result = quotient - ((remainder != 0) & different_sign).to(tl.int32)
+    # Preserve the existing Hygon integer-zero-divisor behavior.
+    zero_result = tl.where(x < 0, x - 2, tl.where(x == 0, 2, x + 1))
+    return tl.where(is_zero, zero_result, result)
+
+
+@libentry()
+@triton.jit
+def _floor_divide_tensor_contiguous_kernel(
+    input_ptr,
+    other_ptr,
+    out_ptr,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+    STREAMING: tl.constexpr,
+):
+    load_cache: tl.constexpr = ".cg" if STREAMING else ""
+    store_cache: tl.constexpr = ".cs" if STREAMING else ""
+    pid = tl.program_id(0)
+    if N > 2147483647:
+        offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    else:
+        offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    valid = offsets < N
+    if N % BLOCK == 0:
+        x = tl.load(input_ptr + offsets, cache_modifier=load_cache)
+        y = tl.load(other_ptr + offsets, cache_modifier=load_cache)
+    else:
+        x = tl.load(input_ptr + offsets, valid, other=0, cache_modifier=load_cache)
+        y = tl.load(other_ptr + offsets, valid, other=1, cache_modifier=load_cache)
+    if x.dtype.is_floating():
+        result = _tensor_float_floordiv(x, y, valid)
+    else:
+        result = _tensor_int_floordiv(x, y)
+    if N % BLOCK == 0:
+        tl.store(out_ptr + offsets, result, cache_modifier=store_cache)
+    else:
+        tl.store(out_ptr + offsets, result, valid, cache_modifier=store_cache)
+
+
 def floor_divide(A, B):
     logger.debug("GEMS_HYGON FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if (
+            A.dtype == B.dtype
+            and A.dtype in (torch.float32, torch.int16, torch.int32)
+            and A.shape == B.shape
+            and A.is_contiguous()
+            and B.is_contiguous()
+        ):
+            out = torch.empty_like(A)
+            count = A.numel()
+            if count:
+                large = count >= 1 << 28
+                streaming = large and A.dtype != torch.int16
+                if count <= 8192:
+                    block, warps = 256, 4
+                elif A.dtype == torch.float32:
+                    block, warps = 2048, 8
+                elif A.dtype == torch.int16:
+                    block, warps = (4096, 8) if large else (1024, 2)
+                else:
+                    block, warps = (2048, 8) if large else (512, 4)
+                with torch_device_fn.device(A.device):
+                    _floor_divide_tensor_contiguous_kernel[
+                        (triton.cdiv(count, block),)
+                    ](
+                        A,
+                        B,
+                        out,
+                        count,
+                        BLOCK=block,
+                        STREAMING=streaming,
+                        num_warps=warps,
+                    )
+            return out
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
+        bounds = _INT_DIVIDE_BOUNDS.get(A.dtype)
+        if (
+            type(B) is int
+            and bounds is not None
+            and B != 0
+            and bounds[0] <= B <= bounds[1]
+            and A.is_contiguous()
+        ):
+            out = torch.empty_like(A)
+            count = A.numel()
+            if count:
+                # Keep 16 bytes per lane for vectorized memory accesses.
+                if count <= 8192:
+                    block, warps = 256, 4
+                else:
+                    block, warps = 4096 // A.element_size(), 4
+                    if count >= 1 << 28:
+                        block *= 2
+                        warps = 8
+                with torch_device_fn.device(A.device):
+                    _floor_divide_int_scalar_kernel[(triton.cdiv(count, block),)](
+                        A, out, count, DIVISOR=B, BLOCK=block, num_warps=warps
+                    )
+            return out
         return floor_div_func_tensor_scalar(A, B)
     elif isinstance(B, torch.Tensor):
         return floor_div_func_scalar_tensor(A, B)

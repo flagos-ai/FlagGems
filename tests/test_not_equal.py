@@ -20,32 +20,42 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _make_input(shape, dtype):
+    if dtype in utils.BYTE_INT_DTYPES + utils.FP8_DTYPES:
+        return torch.randint(0, 10, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    return torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
+
+
 @pytest.mark.not_equal
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+)
 def test_accuracy_not_equal(shape, dtype):
-    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
+    inp1 = _make_input(shape, dtype)
+    inp2 = _make_input(shape, dtype)
     ref_inp1 = utils.to_reference(inp1)
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.not_equal(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.not_equal(inp1, inp2)
+    res_out = flag_gems.not_equal(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.not_equal_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+)
 def test_accuracy_not_equal_scalar(shape, dtype):
-    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
+    inp1 = _make_input(shape, dtype)
     inp2 = 0
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.not_equal(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.not_equal(inp1, inp2)
+    res_out = flag_gems.not_equal_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import random
 import time
 
@@ -64,8 +65,7 @@ def test_index_add(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
+    res_out = flag_gems.index_add(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
 
@@ -83,8 +83,7 @@ def test_index_add_contiguous_suffix(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
+    res_out = flag_gems.index_add(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -108,8 +107,7 @@ def test_index_add_(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        inp.index_add_(dim, index, src, alpha=alpha)
+    flag_gems.index_add_(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
 
@@ -127,8 +125,7 @@ def test_index_add_inplace_contiguous_suffix(shape, dim, dtype):
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
-    with flag_gems.use_gems():
-        inp.index_add_(dim, index, src, alpha=alpha)
+    flag_gems.index_add_(inp, dim, index, src, alpha=alpha)
 
     utils.gems_assert_equal(inp, ref_inp)
 
@@ -144,13 +141,161 @@ def test_index_add_invalid_index(inplace):
     index = torch.tensor([0, shape[dim]], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"),
-    ):
+    with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
         if inplace:
-            inp.index_add_(dim, index, src)
+            flag_gems.index_add_(inp, dim, index, src)
         else:
-            torch.index_add(inp, dim, index, src)
+            flag_gems.index_add(inp, dim, index, src)
 
     utils.gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.float32, torch.int32, torch.int64]
+)
+def test_index_add_empty_index(inplace, dtype):
+    """An empty index is a no-op, not a division by zero (issue #6657)."""
+    inp = torch.ones((2, 4, 8), dtype=dtype, device=flag_gems.device)
+    index = torch.empty(0, dtype=torch.int64, device=flag_gems.device)
+    src = torch.empty((2, 0, 8), dtype=dtype, device=flag_gems.device)
+    # Snapshot through to_reference so the baseline follows the reference
+    # device (CPU in quick-cpu mode) that gems_assert_equal expects.
+    expected = utils.to_reference(inp.clone())
+
+    if inplace:
+        flag_gems.index_add_(inp, 1, index, src)
+        utils.gems_assert_equal(inp, expected)
+    else:
+        res = flag_gems.index_add(inp, 1, index, src)
+        utils.gems_assert_equal(res, expected)
+        # The out-of-place form must leave the input untouched.
+        utils.gems_assert_equal(inp, expected)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32]
+)
+@pytest.mark.parametrize(
+    "shape,dim,tokens",
+    [
+        ((8,), 0, 1),
+        ((8,), 0, 2),
+        ((3, 8), 1, 2),
+        ((2, 8, 7), 1, 3),
+        ((2, 8, 17), 1, 3),
+        ((8, 33), 0, 10),
+    ],
+)
+def test_index_add_repeated_indices(shape, dim, tokens, dtype, inplace):
+    base = (torch.arange(math.prod(shape)) % 8).reshape(shape).to(dtype)
+    source_shape = list(shape)
+    source_shape[dim] = tokens
+    source = (
+        (torch.arange(math.prod(source_shape)) % 7 - 3).reshape(source_shape).to(dtype)
+    )
+    indices = torch.arange(tokens) % 2 + 2
+    expected = base.index_add(dim, indices, source, alpha=2)
+    inp = base.to(flag_gems.device)
+    index = indices.to(inp.device)
+    src = source.to(inp.device)
+    actual = (
+        flag_gems.index_add_(inp, dim, index, src, alpha=2)
+        if inplace
+        else flag_gems.index_add(inp, dim, index, src, alpha=2)
+    )
+    assert torch._C._is_alias_of(actual, inp) == inplace
+    utils.gems_assert_equal(actual.cpu(), expected)
+    if not inplace:
+        utils.gems_assert_equal(inp.cpu(), base)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Requires Ascend NPUGraph capture and replay",
+)
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.int32])
+@pytest.mark.parametrize("shape,tokens", [((16,), 2), ((16, 8), 2), ((16, 17), 3)])
+def test_index_add_graph_replay(shape, tokens, dtype, inplace):
+    base = (torch.arange(math.prod(shape)) % 8).reshape(shape).to(dtype)
+    source = torch.ones((tokens, *shape[1:]), dtype=dtype)
+    inp = base.to(flag_gems.device)
+    base_device = inp.clone()
+    src = source.to(inp.device)
+    index = torch.arange(tokens, device=inp.device, dtype=torch.int64)
+
+    def invoke():
+        inp.copy_(base_device)
+        if inplace:
+            return flag_gems.index_add_(inp, 0, index, src)
+        return flag_gems.index_add(inp, 0, index, src)
+
+    invoke()
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = invoke()
+    assert torch._C._is_alias_of(actual, inp) == inplace
+    for positions in (
+        torch.full((tokens,), 15),
+        torch.zeros(tokens, dtype=torch.int64),
+    ):
+        index.copy_(positions)
+        src.copy_(source * 2)
+        if not inplace:
+            actual.fill_(-123)
+        graph.replay()
+        torch.npu.synchronize()
+        utils.gems_assert_equal(actual.cpu(), base.index_add(0, positions, source * 2))
+        if not inplace:
+            utils.gems_assert_equal(inp.cpu(), base)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("bad_index", [-1, 8])
+def test_index_add_short_invalid_preserves_input(inplace, bad_index):
+    inp = torch.arange(8, dtype=torch.float32, device=flag_gems.device)
+    expected = utils.to_reference(inp.clone())
+    index = torch.tensor([0, bad_index], device=inp.device)
+    src = torch.ones(2, device=inp.device)
+    with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
+        if inplace:
+            flag_gems.index_add_(inp, 0, index, src)
+        else:
+            flag_gems.index_add(inp, 0, index, src)
+    utils.gems_assert_equal(inp, expected)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("count", [1025, 4097, 16385])
+@pytest.mark.parametrize("boundary", ["valid", "negative", "upper"])
+def test_index_add_multiblock_bounds(inplace, index_dtype, count, boundary):
+    cpu_input = torch.zeros((64, 4))
+    cpu_index = (torch.arange(count) % 64).to(index_dtype)
+    if boundary != "valid":
+        cpu_index[-1] = -1 if boundary == "negative" else 64
+    cpu_source = torch.ones((count, 4))
+    inp = cpu_input.to(flag_gems.device)
+    index = cpu_index.to(inp.device)
+    src = cpu_source.to(inp.device)
+    fn = flag_gems.index_add_ if inplace else flag_gems.index_add
+    if boundary != "valid":
+        with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
+            fn(inp, 0, index, src)
+        utils.gems_assert_equal(inp.cpu(), cpu_input)
+    else:
+        actual = fn(inp, 0, index, src)
+        expected = cpu_input.index_add(0, cpu_index, cpu_source)
+        utils.gems_assert_equal(actual.cpu(), expected)

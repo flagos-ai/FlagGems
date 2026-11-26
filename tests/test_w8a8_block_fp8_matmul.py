@@ -20,6 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="the device does not support FP8 (no FP8 hardware)",
+)
+
 if QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
@@ -99,9 +106,8 @@ def test_w8a8_block_fp8_matmul(M, N, K):
 
     ref_out = torch.matmul(A_scaled, B_scaled.T)
     ref_out = utils.to_reference(ref_out, True)
-    with flag_gems.use_gems():
-        res_out = flag_gems.w8a8_block_fp8_matmul(
-            A, B, As, Bs, block_size, output_dtype=torch.float16
-        )
+    res_out = flag_gems.w8a8_block_fp8_matmul(
+        A, B, As, Bs, block_size, output_dtype=torch.float16
+    )
     ref_out_fp16 = ref_out.to(torch.float16)
     utils.gems_assert_close(res_out, ref_out_fp16, dtype=torch.float16, reduce_dim=K)

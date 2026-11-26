@@ -64,7 +64,7 @@ def log_softmax_kernel(
         for start_n in range(0, N, BLOCK_N):
             n_offset = start_n + tl.arange(0, BLOCK_N)
             offset = m_offset[:, None] * N * K + n_offset[None, :] * K + tile_k_id
-            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
             input_ptrs = input_ptr + offset
             inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
             m_new = tl.maximum(inp, m)
@@ -79,7 +79,7 @@ def log_softmax_kernel(
         for start_n in range(0, N, BLOCK_N):
             n_offset = start_n + tl.arange(0, BLOCK_N)
             offset = m_offset[:, None] * N * K + n_offset[None, :] * K + tile_k_id
-            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
             input_ptrs = input_ptr + offset
             inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
             o = inp - mid
@@ -87,7 +87,6 @@ def log_softmax_kernel(
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("log_softmax"), key=["M", "N"])
 @triton.jit
 def log_softmax_backward_kernel(
     out_ptr,
@@ -103,27 +102,96 @@ def log_softmax_backward_kernel(
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    scale = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    # Keep only one scalar accumulator per row, avoiding a whole BLOCK_M x BLOCK_N resident register block.
+    scale = tl.zeros((BLOCK_M,), dtype=tl.float32)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-        scale += out_grad
-    scale = tl.sum(scale, 1)
+        # Masked regions must be filled with 0, or undefined values pollute the whole row through the row sum.
+        out_grad = tl.load(out_grad_ptrs, mask=mask, other=0.0).to(tl.float32)
+        scale += tl.sum(out_grad, 1)
 
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         out_ptrs = out_ptr + offsets
-        out = tl.load(out_ptrs, mask=mask).to(tl.float32)
+        out = tl.load(out_ptrs, mask=mask, other=0.0).to(tl.float32)
         out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
+        out_grad = tl.load(out_grad_ptrs, mask=mask, other=0.0).to(tl.float32)
         in_grad = out_grad - tl.exp(out) * scale[:, None]
         in_grad_ptrs = in_grad_ptr + offsets
         tl.store(in_grad_ptrs, in_grad, mask=mask)
+
+
+@libentry()
+@triton.jit
+def log_softmax_backward_fused_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Single-pass backward for rows that fit in one tile.
+
+    The generic kernel reads grad_output twice (once for the row sum, once for
+    the output).  When N <= BLOCK_N the whole row can be kept in registers, so
+    one pass is enough: 3 global accesses per element instead of 4.
+    """
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_offset = tl.arange(0, BLOCK_N)
+    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
+    out_grad = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    out = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    scale = tl.sum(out_grad, 1)
+    in_grad = out_grad - tl.exp(out) * scale[:, None]
+    tl.store(in_grad_ptr + offsets, in_grad, mask=mask)
+
+
+def log_softmax_out(self, dim, half_to_float=False, *, out):
+    """K=1 reuses the gcu400 online-softmax kernel writing directly to out; K>1 keeps the common non_inner.
+
+    The common pointwise 2D tiled kernel is 2.3~4.5x slower than the gcu400 kernel at K=1
+    (4096^2 598.8us vs 173.3us); but for K>1 (non-inner dim reduction) the common non-inner
+    kernel is instead 7.6~14x faster, so dispatch by K rather than using one path everywhere.
+    """
+    logger.debug("GEMS_ENFLAME LOG_SOFTMAX_OUT")
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]
+    inp = self.contiguous()
+    dtype = torch.float32 if half_to_float else self.dtype
+    if tuple(out.shape) != tuple(inp.shape):
+        out.resize_(inp.shape)
+    if out.dtype != dtype:
+        raise RuntimeError(
+            f"_log_softmax.out: expected out dtype {dtype}, got {out.dtype}"
+        )
+    if N == 1:
+        out.zero_()
+        return out
+    K = inp.numel() // M // N
+    if K > 1:
+        from flag_gems.ops.log_softmax import log_softmax_out as _public_out
+
+        return _public_out(self, dim, half_to_float, out=out)
+
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), min(48, K))
+    with torch_device_fn.device(inp.device):
+        log_softmax_kernel[grid](out, inp, M, N, K)
+    return out
 
 
 def log_softmax(self, dim, half_to_float=False):
@@ -144,8 +212,15 @@ def log_softmax(self, dim, half_to_float=False):
     if N == 1:
         return torch.zeros_like(inp, dtype=dtype)
 
-    out = torch.empty_like(inp, dtype=dtype)
     K = inp.numel() // M // N
+    if K > 1:
+        # The tuned kernel reduces one k-plane per program; for K > 1 the
+        # public non-inner kernel is both faster and accurate in 16-bit
+        # (the tuned path lost ~7% of the row sum in fp16/bf16 at N=40999).
+        from flag_gems.ops.log_softmax import log_softmax as _public
+
+        return _public(self, dim, half_to_float)
+    out = torch.empty_like(inp, dtype=dtype)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
@@ -162,9 +237,34 @@ def log_softmax(self, dim, half_to_float=False):
     return out
 
 
-def log_softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_ENFLAME LOG_SOFTMAX_VJP")
+# === LAUNCH_CONFIG_BEGIN ===
+def select_fused_launch(N):
+    """Choose rows per program, warp count and column tile for the single-pass kernel by reduction width."""
+    if N <= 256:
+        return 32, 2, triton.next_power_of_2(N)
+    if N <= 1024:
+        return 64, 4, triton.next_power_of_2(N)
+    return 8, 4, triton.next_power_of_2(N)
 
+
+def select_twopass_launch(N, dtype):
+    """Choose row/column tile and warp count for the two-pass kernel by reduction width and dtype."""
+    block_m = 8 if dtype == torch.float32 else 16
+    return block_m, min(triton.next_power_of_2(N), 8192), 4
+
+
+# === LAUNCH_CONFIG_END ===
+
+
+def _copy_back_if_needed(out, kernel_out):
+    """Copy the result from a contiguous temporary tensor back into a possibly non-contiguous out view."""
+    if kernel_out is not out:
+        out.copy_(kernel_out)
+    return out
+
+
+def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
+    logger.debug("GEMS_ENFLAME LOG_SOFTMAX_BACKWARD_OUT")
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
     M = 1
@@ -172,21 +272,67 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
     for i in range(dim):
         M *= output.shape[i]
 
+    if tuple(out.shape) != tuple(output.shape):
+        out.resize_(output.shape)
+    if out.dtype != input_dtype:
+        raise RuntimeError(
+            f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
+        )
+    # Empty tensors have no reduction elements; return directly to avoid division by zero in K = numel // M // N.
+    if output.numel() == 0:
+        return out
+
+    # The kernel computes offsets by contiguous layout: non-contiguous inputs become contiguous copies,
+    # non-contiguous out is written via a contiguous temporary then copied back; Triton remains the only compute path.
     grad_output = grad_output.contiguous()
-    in_grad = torch.empty_like(output, dtype=input_dtype)
+    output = output.contiguous()
+    kernel_out = (
+        out if out.is_contiguous() else torch.empty_like(output, dtype=input_dtype)
+    )
     K = output.numel() // M // N
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
-    with torch_device_fn.device(in_grad.device):
+    # Single-pass fused path for rows that fit one tile (N <= 4096).
+    # Saves one full grad_output read: 4 global accesses -> 3.
+    # Tile size is chosen per N: small rows want more rows per program and
+    # fewer warps, wide rows want fewer rows to keep the tile in registers.
+    if K == 1 and N <= 4096:
+        block_m, num_warps, block_n = select_fused_launch(N)
+        grid = (triton.cdiv(M, block_m), K)
+        with torch_device_fn.device(out.device):
+            log_softmax_backward_fused_kernel[grid](
+                output,
+                grad_output,
+                kernel_out,
+                M,
+                N,
+                K,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_warps=num_warps,
+            )
+        return _copy_back_if_needed(out, kernel_out)
+
+    # Two-pass path for wide rows (or K > 1).  Autotuning was unstable here:
+    # the first two benchmark rounds picked a 530us config while later rounds
+    # picked 383us.  A fixed tile is both deterministic and faster to compile.
+    block_m, block_n, num_warps = select_twopass_launch(N, output.dtype)
+    grid = (triton.cdiv(M, block_m), K)
+    with torch_device_fn.device(out.device):
         log_softmax_backward_kernel[grid](
             output,
             grad_output,
-            in_grad,
+            kernel_out,
             M,
             N,
             K,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
         )
-    return in_grad
+    return _copy_back_if_needed(out, kernel_out)
+
+
+def log_softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_ENFLAME LOG_SOFTMAX_VJP")
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)

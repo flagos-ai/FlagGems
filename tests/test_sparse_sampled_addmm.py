@@ -193,8 +193,7 @@ def test_sparse_sampled_addmm(
             ref_input, ref_mat1, ref_mat2, alpha=alpha, beta=beta
         ).to_dense()
 
-    with flag_gems.use_gems():
-        res_out = torch.sparse.sampled_addmm(input, mat1, mat2, alpha=alpha, beta=beta)
+    res_out = flag_gems.sparse_sampled_addmm(input, mat1, mat2, alpha=alpha, beta=beta)
 
     _assert_close_dense(
         _csr_to_cpu(res_out).to_dense(),
@@ -223,8 +222,7 @@ def test_sparse_sampled_addmm_large(M, N, K, dtype):
         ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
         ref_dense = torch.sparse.sampled_addmm(ref_input, ref_mat1, ref_mat2).to_dense()
 
-    with flag_gems.use_gems():
-        res_out = torch.sparse.sampled_addmm(input, mat1, mat2)
+    res_out = flag_gems.sparse_sampled_addmm(input, mat1, mat2)
 
     _assert_close_dense(
         _csr_to_cpu(res_out).to_dense(),

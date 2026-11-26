@@ -74,7 +74,67 @@ def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.diag_embed(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diag_embed(inp, offset, dim1, dim2)
+    res_out = flag_gems.diag_embed(inp, offset, dim1, dim2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.diag_embed_backward
+@pytest.mark.parametrize("shape, dim1, dim2", get_diag_embed_shape_and_dims())
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_diag_embed_backward(shape, dtype, offset, dim1, dim2):
+    """Gradient of ``diag_embed``: the diagonal of the upstream gradient.
+
+    ATen's ``DiagEmbedBackward0`` returns a ``torch.diagonal`` view of the
+    upstream gradient at (``offset``, ``dim1``, ``dim2``); the FlagGems kernel
+    gathers the same elements into a contiguous tensor and is bit-exact.
+    """
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out_shape = torch.diag_embed(torch.empty_like(inp), offset, dim1, dim2).shape
+    grad_out = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp.clone(), True).requires_grad_(True)
+    ref_grad = utils.to_reference(grad_out, True)
+    ref_out = torch.diag_embed(ref_inp, offset, dim1, dim2)
+    (ref_grad_in,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    ref_grad_in = ref_grad_in.to(dtype)
+
+    res_grad = flag_gems.diag_embed_backward(grad_out, inp, offset, dim1, dim2)
+
+    utils.gems_assert_equal(res_grad, ref_grad_in)
+
+
+@pytest.mark.diag_embed_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_diag_embed_backward_default_dims(dtype):
+    """The default (offset, -2, -1) fast path through the Triton kernel."""
+    inp = torch.randn((32, 48), dtype=dtype, device=flag_gems.device)
+    grad_out = torch.randn((32, 48, 48), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp.clone(), True).requires_grad_(True)
+    ref_grad = utils.to_reference(grad_out, True)
+    (ref_grad_in,) = torch.autograd.grad(torch.diag_embed(ref_inp), ref_inp, ref_grad)
+    ref_grad_in = ref_grad_in.to(dtype)
+
+    res_grad = flag_gems.diag_embed_backward(grad_out, inp)
+
+    utils.gems_assert_equal(res_grad, ref_grad_in)
+
+
+@pytest.mark.diag_embed_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_diag_embed_backward_non_contiguous(dtype):
+    """A transposed upstream gradient (non-contiguous grad_output)."""
+    base = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)
+    grad_out = base.t()
+
+    inp = torch.randn((64,), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True).requires_grad_(True)
+    ref_grad = utils.to_reference(grad_out, True)
+    (ref_grad_in,) = torch.autograd.grad(torch.diag_embed(ref_inp), ref_inp, ref_grad)
+    ref_grad_in = ref_grad_in.to(dtype)
+
+    res_grad = flag_gems.diag_embed_backward(grad_out, inp)
+
+    utils.gems_assert_equal(res_grad, ref_grad_in)

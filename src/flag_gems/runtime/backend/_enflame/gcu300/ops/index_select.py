@@ -48,7 +48,7 @@ def index_select_kernel(
             rows_mask = rows_offsets < M
             cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
 
-            out_mask = rows_mask and (cols_offsets < index_len)
+            out_mask = rows_mask & (cols_offsets < index_len)
 
             indices = tl.load(
                 index + cols_offsets, mask=(cols_offsets < index_len), other=0
@@ -62,9 +62,9 @@ def index_select_kernel(
 
 
 def make_contiguous_with_correct_stride(tensor):
-    """确保 contiguous 后的 tensor 具有正确的 stride"""
+    """Ensure the tensor has the correct stride after calling contiguous."""
     if tensor.numel() == 0:
-        # 对于空 tensor，手动创建具有正确 stride 的版本
+        # For empty tensors, manually build a version with the correct stride
         new_tensor = tensor.flatten().view(tensor.shape)
         return new_tensor.contiguous()
     return tensor.contiguous()

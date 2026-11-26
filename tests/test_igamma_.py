@@ -4,19 +4,23 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 @pytest.mark.igamma_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_igamma_(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
     other = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
     ref_inp = utils.to_reference(inp.clone())
     ref_other = utils.to_reference(other)
 
     ref_out = ref_inp.igamma_(ref_other)
-    with flag_gems.use_gems():
-        res_out = inp.igamma_(other)
+    res_out = flag_gems.igamma_(inp, other)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)

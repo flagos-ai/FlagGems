@@ -135,8 +135,7 @@ def test_fused_rms_norm_aten_dispatch():
     ref_out = ref_weight * (upcast_x * inv_rms).to(ref_inp.dtype)
     ref_inv_rms = inv_rms.squeeze(-1)
 
-    with flag_gems.use_gems():
-        res_out, res_inv_rms = torch.ops.aten._fused_rms_norm(inp, [N], weight, eps)
+    res_out, res_inv_rms = flag_gems._fused_rms_norm(inp, [N], weight, eps)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
     utils.gems_assert_close(res_inv_rms, ref_inv_rms, torch.float32)
@@ -200,11 +199,15 @@ def test_fused_rms_norm_backward(shape, dtype, output_mask):
         output_mask,
     )
 
-    with flag_gems.use_gems():
-        res_dx, res_dw = torch.ops.aten._fused_rms_norm_backward(
-            grad, inp, normalized_shape, rstd, weight, list(output_mask)
-        )
+    res_dx, res_dw = flag_gems._fused_rms_norm_backward(
+        grad, inp, normalized_shape, rstd, weight, list(output_mask)
+    )
 
+    for actual, expected in zip((res_dx, res_dw), (ref_dx, ref_dw)):
+        if expected is not None:
+            assert actual.device == inp.device
+            assert actual.dtype == dtype
+            assert actual.shape == expected.shape
     if output_mask[0]:
         utils.gems_assert_close(res_dx, ref_dx, dtype)
     else:
@@ -241,10 +244,12 @@ def test_fused_rms_norm_backward_no_weight(shape, dtype):
         (True, False),
     )
 
-    with flag_gems.use_gems():
-        res_dx, res_dw = torch.ops.aten._fused_rms_norm_backward(
-            grad, inp, normalized_shape, rstd, None, [True, False]
-        )
+    res_dx, res_dw = flag_gems._fused_rms_norm_backward(
+        grad, inp, normalized_shape, rstd, None, [True, False]
+    )
 
     assert res_dw is None
+    assert res_dx.device == inp.device
+    assert res_dx.dtype == dtype
+    assert res_dx.shape == inp.shape
     utils.gems_assert_close(res_dx, ref_dx, dtype)

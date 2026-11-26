@@ -505,7 +505,7 @@ def pad_1d_constant_kernel(
     out_elements = pad_left + inp_elements + pad_right
     for off in range(start, out_elements, step):
         inp_offset = off + tl.arange(0, BLOCK_SIZE) - pad_left
-        inp_mask = inp_offset >= 0 and inp_offset < inp_elements
+        inp_mask = (inp_offset >= 0) & (inp_offset < inp_elements)
         inp = tl.load(inp_ptr + inp_offset, mask=inp_mask, other=pad_value)
         out_offset = off + tl.arange(0, BLOCK_SIZE)
         out_mask = out_offset < out_elements
@@ -544,15 +544,18 @@ def pad_2d_constant_kernel(
         offset_h = tl.arange(0, BLOCK_H) + batch_idx - pad_top
         offset_w = tl.arange(0, out_W) - pad_left
         offsets = offset_h[:, None] * W + offset_w[None, :]
-        mask = (offset_h[:, None] >= 0 and offset_h[:, None] < H) and (
-            offset_w[None, :] >= 0 and offset_w[None, :] < W
+        mask = (
+            (offset_h[:, None] >= 0)
+            & (offset_h[:, None] < H)
+            & (offset_w[None, :] >= 0)
+            & (offset_w[None, :] < W)
         )
         inp = tl.load(inp_ptr + offsets, mask=mask, other=pad_value)
 
         out_offset_c = tl.arange(0, out_W)
         out_offset_n = tl.arange(0, BLOCK_H) + batch_idx
         out_offsets = out_offset_n[:, None] * out_W + out_offset_c[None, :]
-        out_mask = out_offset_n[:, None] < out_H and out_offset_c[None, :] < out_W
+        out_mask = (out_offset_n[:, None] < out_H) & (out_offset_c[None, :] < out_W)
         tl.store(out_ptr + out_offsets, inp, mask=out_mask)
 
 

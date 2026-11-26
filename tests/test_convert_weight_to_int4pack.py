@@ -24,6 +24,7 @@ def _reference_int4pack(inp, innerKTiles):
 
 
 @pytest.mark.convert_weight_to_int4pack
+@pytest.mark.underscore_convert_weight_to_int4pack
 @pytest.mark.parametrize("shape", [(16, 64), (16, 128), (32, 128)])
 @pytest.mark.parametrize("innerKTiles", [2, 4, 8])
 def test_convert_weight_to_int4pack(shape, innerKTiles):
@@ -41,8 +42,7 @@ def test_convert_weight_to_int4pack(shape, innerKTiles):
     ref_inp = utils.to_reference(inp, False)
 
     # Call the gems implementation directly
-    with flag_gems.use_gems():
-        res_out = flag_gems._convert_weight_to_int4pack(inp, innerKTiles)
+    res_out = flag_gems._convert_weight_to_int4pack(inp, innerKTiles)
 
     # Validate against a hand-written Python reference implementing the same
     # packing: int32 input -> byte-pair-packed uint8 of shape (M, N//2).

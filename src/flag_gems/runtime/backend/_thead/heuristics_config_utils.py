@@ -262,6 +262,11 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def upsample_nearest2d_USE_INT32_IDX(args):
+    """Use INT32 indexing when the total element count fits in INT32"""
+    return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)
+
+
 def mm_heur_even_k(args):
     """Check if K dimension is even for mm operation"""
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
@@ -318,6 +323,14 @@ HEURISTICS_CONFIGS = {
     "layer_norm_persistent": {
         "BLOCK_ROW_SIZE": layer_norm_heur_block_row_size,
     },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": lambda _args: 1024 * 1024,
+        "MAX_RESIDENT_N": lambda _args: 512,
+        "TILE_ELEMENTS": lambda _args: 4096,
+        "MAX_BLOCK_M": lambda _args: 256,
+        "PROGRAM_WAVES": lambda _args: 1,
+        "DIRECT_LOWP_ATOMIC": lambda _args: False,
+    },
     "batch_norm": {
         "BLOCK_M": batch_norm_heur_block_m,
         "BLOCK_N": batch_norm_heur_block_n,
@@ -344,6 +357,7 @@ HEURISTICS_CONFIGS = {
     "upsample_nearest2d": {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,

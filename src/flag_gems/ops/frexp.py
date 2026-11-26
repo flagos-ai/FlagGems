@@ -62,30 +62,45 @@ def _frexp_func(x):
     is_zero = x_fp32 == 0.0
     is_special = is_nan | is_inf | is_zero
 
-    # Avoid evaluating log2 on zero, infinity, or NaN.
-    # The selected value is irrelevant for special inputs because their
-    # outputs are overwritten below.
-    safe_abs_x = tl.where(is_special, 1.0, abs_x)
+    # For a finite nonzero value, decompose via the IEEE-754 bit layout
+    # instead of log2/exp2 arithmetic.  log2 rounds to its own precision, so
+    # for values one ULP below a power of two (e.g. 0x3d7fffff ≈ 1/16) it
+    # returns the exact integer exponent, and floor(log2(x)) + 1 lands one
+    # octave too high, yielding a mantissa of 0.5 instead of ~1.0.  The bit
+    # extraction below is exact for every finite value.
+    #
+    # Normal numbers: reuse the biased exponent field and splice the payload
+    # bits into a value in [0.5, 1.0):
+    #     exponent = exp_bits - 126
+    #     mantissa_bits = (bits & ~(0xFF << 23)) | (126 << 23)
+    bits = abs_x.to(tl.int32, bitcast=True)
+    exp_bits = (bits >> 23) & 0xFF
+    is_subnormal = exp_bits == 0
 
-    # For a finite nonzero value:
-    #
-    # exponent = floor(log2(abs(x))) + 1
-    # mantissa = x / 2 ** exponent
-    #
-    # This places the mantissa in [0.5, 1.0) for positive inputs and
-    # (-1.0, -0.5] for negative inputs.
-    exponent_fp32 = tl.floor(tl.log2(safe_abs_x)) + 1.0
-    mantissa = x_fp32 / tl.exp2(exponent_fp32)
+    # Subnormals (and zero) have no implicit leading 1.  Scale by 2^126 to
+    # normalize, then subtract the scale from the exponent afterwards.  The
+    # scaled value is a normal number, so the normal path decomposes it
+    # exactly.
+    scaled = tl.where(
+        is_special, abs_x, abs_x * 85070591730234615865843651857942052864.0
+    )
+    scaled_bits = scaled.to(tl.int32, bitcast=True)
+    scaled_exp_bits = (scaled_bits >> 23) & 0xFF
+    scaled_mantissa_bits = (scaled_bits & ~(0xFF << 23)) | (126 << 23)
+
+    mantissa_bits = tl.where(
+        is_subnormal, scaled_mantissa_bits, (bits & ~(0xFF << 23)) | (126 << 23)
+    )
+    exponent = tl.where(is_subnormal, scaled_exp_bits - 126 - 126, exp_bits - 126)
+    abs_mantissa = mantissa_bits.to(tl.float32, bitcast=True)
+    mantissa = tl.where(x_fp32 < 0.0, -abs_mantissa, abs_mantissa)
 
     # Preserve the original value for signed zero, infinity, and NaN.
     # In particular, this preserves the sign bit of negative zero.
     mantissa = tl.where(is_special, x_fp32, mantissa)
 
     # Special values must have an exponent of zero.
-    # Replace special exponents before converting to int32 to avoid
-    # converting NaN or infinity to an integer.
-    exponent_fp32 = tl.where(is_special, 0.0, exponent_fp32)
-    exponent = exponent_fp32.to(tl.int32)
+    exponent = tl.where(is_special, 0, exponent)
 
     # The mantissa uses the same dtype as the input, while the exponent
     # is always represented as int32.

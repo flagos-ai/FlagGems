@@ -68,8 +68,7 @@ def test_allclose(shape, dtype, equal_nan, gen_nan):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    with flag_gems.use_gems():
-        res_out = torch.allclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
+    res_out = flag_gems.allclose(inp1, inp2, rtol=rtol, atol=atol, equal_nan=equal_nan)
 
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
