@@ -140,7 +140,8 @@ for item in $CHANGED_FILES; do
     tests/test_convolution_overrideable.py | \
     tests/test_convolution_overrideable_backward.py | \
     tests/test_atanh_backward.py | \
-    tests/test_cudnn_rnn_flatten_weight.py)
+    tests/test_cudnn_rnn_flatten_weight.py | \
+    tests/test_amp_update_scale_.py)
       if [[ "$FULL_RUN" == "true" && "${BACKEND:-}" == *ascend* ]]; then
         # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
         # TODO: unblock each test once the underlying issue is resolved

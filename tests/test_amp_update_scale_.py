@@ -7,11 +7,6 @@ from . import accuracy_utils as utils
 
 BACKOFF_FACTOR = 0.5
 
-_skip_ascend = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="aclnnAmpUpdateScale error 561002 on CANN 9.1.1 scalar tensors",
-)
-
 
 # ``_amp_update_scale_`` is a scalar (0-d) operation driven by the AMP loss
 # scaler. PyTorch requires ``self`` (the current scale) and ``found_inf`` to be
@@ -57,7 +52,6 @@ def _make_inputs(scale_val, tracker_val, found_inf_val):
 @pytest.mark.parametrize(
     "scale_val,tracker_val,found_inf_val", SCALE_TRACKER_FOUNDINF_CASES
 )
-@_skip_ascend
 def test_amp_update_scale_(scale_val, tracker_val, found_inf_val):
     """Compare the GEMS implementation against PyTorch for the AMP scale update."""
     # Reference
@@ -103,7 +97,6 @@ def test_amp_update_scale_(scale_val, tracker_val, found_inf_val):
 
 
 @pytest.mark.amp_update_scale_
-@_skip_ascend
 def test_amp_update_scale__growth_walk():
     """Walk the growth tracker over a full interval and confirm the scale grows."""
     interval = 3
@@ -148,7 +141,6 @@ def test_amp_update_scale__growth_walk():
 
 
 @pytest.mark.amp_update_scale_
-@_skip_ascend
 def test_amp_update_scale__backoff_then_recover():
     """Backoff on an inf, then grow back over an interval."""
     interval = 2
@@ -216,7 +208,6 @@ def test_amp_update_scale__backoff_then_recover():
 
 @pytest.mark.amp_update_scale_
 @pytest.mark.parametrize("interval", [1, 2, 5, 10])
-@_skip_ascend
 def test_amp_update_scale__intervals(interval):
     """The scale grows exactly when the tracker is one below the interval."""
     # Tracker just below the interval -> grow.
