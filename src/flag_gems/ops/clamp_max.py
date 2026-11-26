@@ -58,12 +58,14 @@ def _convert_scalar(max_value, dtype):
 class ClampMaxFunction(torch.autograd.Function):
     """Autograd wrapper for ``clamp_max``.
 
-    This is the only way to reach the backward kernel. ATen has no
-    ``aten::clamp_max_backward`` schema, so there is nothing for the dispatcher
-    to override: without an autograd.Function the forward runs our Triton
-    forward but the gradient is computed by ATen's own VJP. Wrapping the
-    forward makes the wrapper own the whole differentiable path, and its
-    ``backward`` runs ``flag_gems.ops.clamp_max_backward``.
+    ``_FULL_CONFIG`` registers ``clamp_max`` with an Autograd-key fallthrough,
+    which drops ATen's own autograd formula, while the device key points at
+    this module's ``clamp_max`` -- a plain Python function that launches the
+    Triton forward but builds no graph. Without an autograd.Function here,
+    ``torch.clamp_max(...)`` under ``use_gems()`` returns a tensor with
+    ``requires_grad=False``. Wrapping the forward puts it back on a
+    differentiable path, and the ``backward`` below runs
+    ``flag_gems.ops.clamp_max_backward``.
     """
 
     @staticmethod
