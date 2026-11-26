@@ -73,15 +73,9 @@ def test_cdist_batched_mm(shapes, compute_mode):
     ref_x1 = utils.to_reference(x1)
     ref_x2 = utils.to_reference(x2)
 
-    ref_out = torch.cdist(
-        ref_x1, ref_x2, p=2.0, compute_mode=compute_mode
-    )
+    ref_out = torch.cdist(ref_x1, ref_x2, p=2.0, compute_mode=compute_mode)
 
     with flag_gems.use_gems():
-        res_out = torch.cdist(
-            x1, x2, p=2.0, compute_mode=compute_mode
-        )
+        res_out = torch.cdist(x1, x2, p=2.0, compute_mode=compute_mode)
 
-    torch.testing.assert_close(
-        res_out.cpu(), ref_out.cpu(), rtol=1e-3, atol=1e-2
-    )
+    torch.testing.assert_close(res_out.cpu(), ref_out.cpu(), rtol=1e-3, atol=1e-2)

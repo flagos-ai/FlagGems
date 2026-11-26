@@ -99,28 +99,18 @@ def _euclidean_dist(x1, x2):
 
     assert x1.ndim >= 2, "x1 must be at least a 2D tensor"
     assert x2.ndim >= 2, "x2 must be at least a 2D tensor"
-    assert x1.shape[-1] == x2.shape[-1], (
-        "x1 and x2 must have the same number of columns"
-    )
+    assert (
+        x1.shape[-1] == x2.shape[-1]
+    ), "x1 and x2 must have the same number of columns"
 
     N, D = x1.shape[-2:]
     M = x2.shape[-2]
 
-    batch_shape = torch.broadcast_shapes(
-        x1.shape[:-2], x2.shape[:-2]
-    )
+    batch_shape = torch.broadcast_shapes(x1.shape[:-2], x2.shape[:-2])
     batch_size = prod(batch_shape)
 
-    x1 = (
-        x1.expand(*batch_shape, N, D)
-        .contiguous()
-        .reshape(batch_size * N, D)
-    )
-    x2 = (
-        x2.expand(*batch_shape, M, D)
-        .contiguous()
-        .reshape(batch_size * M, D)
-    )
+    x1 = x1.expand(*batch_shape, N, D).contiguous().reshape(batch_size * N, D)
+    x2 = x2.expand(*batch_shape, M, D).contiguous().reshape(batch_size * M, D)
 
     output = torch.empty(
         (*batch_shape, N, M),
