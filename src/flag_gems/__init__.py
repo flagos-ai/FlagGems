@@ -1163,7 +1163,12 @@ _FULL_CONFIG = (
     ("binary_cross_entropy", binary_cross_entropy),
     ("binary_cross_entropy.out", binary_cross_entropy_out),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
-    ("binary_cross_entropy_with_logits", binary_cross_entropy_with_logits),
+    (
+        "binary_cross_entropy_with_logits",
+        binary_cross_entropy_with_logits,
+        None,
+        (f"Autograd{backend_info.dispatch_key}",),
+    ),
     ("bincount", bincount),
     ("binomial", binomial),
     ("binomial.out", binomial_out),
