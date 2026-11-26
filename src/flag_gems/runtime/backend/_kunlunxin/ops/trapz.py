@@ -47,9 +47,9 @@ def _trapz_epilogue_kernel(
     # Masked memory access is unreliable on this backend at small M (the tail
     # lanes of a single under-full program trip an on-device kernel
     # exception, status 719/714), observed on both the masked load and the
-    # masked store. Every address is therefore clamped into bounds; the
-    # out-of-range tail lanes redundantly rewrite the same (last) element,
-    # which is harmless since the value is value-identical.
+    # masked store. Every address is therefore clamped into bounds. The caller
+    # sizes BLOCK to M, so a tail only exists when M is not a power of two and
+    # at most BLOCK - M lanes alias the last element.
     raw_idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     idx = tl.minimum(raw_idx, M - 1)
     t = tl.load(tmp_ptr + idx)
@@ -129,8 +129,15 @@ class _TrapzFn(torch.autograd.Function):
 
         tmp = _vendor_sum_dim(y2, [1], dtype=torch.float32)
         out = torch.empty((M,), dtype=y.dtype, device=y.device)
+        # Size the program to M instead of always launching 1024 lanes. With a
+        # fixed 1024-wide launch every M < 1024 folds all the tail lanes onto
+        # the last row, so hundreds of lanes redundantly write the same output
+        # element; that write conflict trips an on-device kernel exception
+        # (status 719/714) on some cards. One lane per row keeps the store
+        # conflict-free and shrinks the launch for small M.
+        block = min(_BLOCK, triton.next_power_of_2(M))
         with torch_device_fn.device(y.device):
-            _trapz_epilogue_kernel[(triton.cdiv(M, _BLOCK),)](
+            _trapz_epilogue_kernel[(triton.cdiv(M, block),)](
                 tmp,
                 y2,
                 out,
@@ -138,7 +145,7 @@ class _TrapzFn(torch.autograd.Function):
                 N,
                 dx,
                 OUT_DTYPE=_TL_DTYPE[y.dtype],
-                BLOCK=_BLOCK,
+                BLOCK=block,
                 buffer_size_limit=2048,
             )
         return out.reshape(out_shape)
