@@ -111,6 +111,70 @@ def test_cat_empty_tensor(shape, dim, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.cat
+@pytest.mark.parametrize("with_empty", [False, True])
+@pytest.mark.parametrize("noncontiguous", [False, True])
+@pytest.mark.skipif(
+    flag_gems.cat.__module__ != "flag_gems.ops.cat",
+    reason="Generic cat implementation only",
+)
+def test_cat_single_input_does_not_alias(with_empty, noncontiguous):
+    inp = torch.arange(12, device=flag_gems.device, dtype=torch.float32).reshape(3, 4)
+    if noncontiguous:
+        inp = inp.t()
+    inputs = [inp.new_empty(0), inp] if with_empty else [inp]
+    expected = torch.cat([utils.to_reference(tensor) for tensor in inputs])
+
+    with flag_gems.use_gems(include=["cat"]):
+        result = torch.cat(inputs)
+
+    utils.gems_assert_equal(result, expected)
+    result.add_(1)
+    utils.gems_assert_equal(inp, expected)
+
+
+@pytest.mark.cat
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or not hasattr(torch, "float8_e8m0fnu"),
+    reason="Requires NVIDIA float8_e8m0fnu",
+)
+def test_cat_single_float8_input_does_not_alias():
+    data = torch.arange(1, 13, device=flag_gems.device, dtype=torch.uint8)
+    expected = utils.to_reference(data).clone()
+    inp = data.view(torch.float8_e8m0fnu)
+
+    with flag_gems.use_gems(include=["cat"]):
+        result = torch.cat([inp])
+
+    assert result.dtype == inp.dtype
+    utils.gems_assert_equal(result.view(torch.uint8), expected)
+    result.view(torch.uint8).zero_()
+    utils.gems_assert_equal(data, expected)
+
+
+@pytest.mark.cat
+@pytest.mark.parametrize("metadata", ["negative", "zero"])
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="Requires NVIDIA tensor metadata support",
+)
+def test_cat_single_input_with_metadata_does_not_alias(metadata):
+    if metadata == "negative":
+        inp = torch._neg_view(
+            torch.arange(1, 5, device=flag_gems.device, dtype=torch.float32)
+        )
+    else:
+        inp = torch._efficientzerotensor(
+            (4,), device=flag_gems.device, dtype=torch.float32
+        )
+    expected = torch.cat([utils.to_reference(inp)])
+
+    result = flag_gems.cat([inp])
+
+    utils.gems_assert_equal(result, expected)
+    assert not torch._C._is_alias_of(result, inp)
+
+
 @pytest.mark.cat_out
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(

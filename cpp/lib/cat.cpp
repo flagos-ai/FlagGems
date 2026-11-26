@@ -46,7 +46,7 @@ namespace {
 at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
   TORCH_CHECK(tensors.size() > 0, "torch.cat(): expected a non-empty list of Tensors");
   if (tensors.size() == 1) {
-    return tensors[0];
+    return tensors[0].clone();
   }
 
   const at::Tensor* ref_tensor = nullptr;
@@ -67,7 +67,7 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
   }
 
   if (non_empty_count == 1) {
-    return *single_non_empty;
+    return single_non_empty->clone();
   }
 
   int64_t ndim = ref_tensor->dim();
