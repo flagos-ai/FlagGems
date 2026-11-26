@@ -2671,6 +2671,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: binary_cross_entropy_with_logits_backward
+  description: First-order autograd rule for binary_cross_entropy_with_logits implemented
+    with Triton kernels or zero-copy gradient views.
+  for:
+  - binary_cross_entropy_with_logits
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: bincount
   description: Count the frequency of each value in an array of non-negative integers.
   for:
@@ -14288,6 +14300,19 @@ ops:
   - Math
   stages:
   - stable: '2.1'
+- id: maximum_backward
+  description: The backward computation of `maximum()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - maximum
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.5.0'
 - id: mean
   description: Returns the mean value of all elements in the `input` tensor. Input
     must be floating point or complex.
