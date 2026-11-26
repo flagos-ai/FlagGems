@@ -266,6 +266,19 @@ def _validate_args(
     return batch, channels, input_w, output_w
 
 
+def _block_for(numel: int, dtype: torch.dtype) -> int:
+    """Lanes per program.
+
+    A tile of exactly 1024 bf16 lanes returns wrong values on this backend, while
+    512 and 2048 are exact, so bf16 steps around that size.  Nothing narrower than
+    _MIN_BLOCK is used: short tails run masked instead.
+    """
+    block = min(_BLOCK_SIZE, max(_MIN_BLOCK, triton.next_power_of_2(numel)))
+    if dtype == torch.bfloat16 and block == 1024:
+        block = 512
+    return block
+
+
 def _as_float32(value: float) -> float:
     return struct.unpack("f", struct.pack("f", value))[0]
 
@@ -309,9 +322,7 @@ def _upsample_nearest1d_backward_impl(
     # [0, output_w] clamp can only shrink that difference.
     max_contributors = min(output_w, max(1, math.ceil(backward_scale)))
     numel = grad_input.numel()
-    # A tile narrower than the core group is slow and unreliable on this backend,
-    # so the block never drops below _MIN_BLOCK; short tails run masked instead.
-    block_size = min(_BLOCK_SIZE, max(_MIN_BLOCK, triton.next_power_of_2(numel)))
+    block_size = _block_for(numel, grad_output.dtype)
     with torch_device_fn.device(grad_output.device):
         if (
             grad_output.is_contiguous()
@@ -364,9 +375,7 @@ def _upsample_nearest1d_backward_impl(
                     )
                 if fast < lanes:
                     tail = lanes - fast
-                    tail_block = min(
-                        _BLOCK_SIZE, max(_MIN_BLOCK, triton.next_power_of_2(tail))
-                    )
+                    tail_block = _block_for(tail, grad_output.dtype)
                     kernel[(triton.cdiv(tail, tail_block),)](
                         source.view(-1)[(fast * step_num) // step_den :],
                         target.view(-1)[fast:],
