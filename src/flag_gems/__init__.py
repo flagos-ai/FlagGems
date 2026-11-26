@@ -2797,7 +2797,12 @@ class use_gems:
         del self.exclude
         del self.include
         del self.registrar
-        del current_work_registrar
+        # Reset to None instead of `del`: the module-level name must keep
+        # existing, otherwise `flag_gems.current_work_registrar` raises
+        # AttributeError after the first use_gems() exit. Callers and backends
+        # only check `is not None`, and tests save/restore this attribute
+        # around only_enable(), which requires it to stay readable.
+        current_work_registrar = None
         if self.record:
             teardown_flaggems_logging()
 
