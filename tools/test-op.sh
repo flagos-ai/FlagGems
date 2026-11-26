@@ -107,8 +107,10 @@ for item in $CHANGED_FILES; do
     tests/test_quant.py)
       # skip because it always fail
       ;;
-    # Ascend-specific blacklist: tests that fail due to CANN 9.1.1 limitations
-    # or Triton/BiShengHIR compiler issues that require deeper fixes.
+    # Ascend daily-CI blacklist: tests that fail due to CANN 9.1.1 limitations
+    # or Triton/BiShengHIR compiler issues requiring deeper fixes.
+    # Only applied during full-range (daily) runs on the Ascend backend;
+    # PR CI runs (CHANGED_FILES != '__ALL__') are not affected.
     tests/test_validate_sparse_compressed_tensor_args.py | \
     tests/test_validate_sparse_bsc_tensor_args.py | \
     tests/test_validate_sparse_coo_tensor_args.py | \
@@ -139,8 +141,8 @@ for item in $CHANGED_FILES; do
     tests/test_convolution_overrideable_backward.py | \
     tests/test_atanh_backward.py | \
     tests/test_cudnn_rnn_flatten_weight.py)
-      if [[ "${BACKEND:-}" == *ascend* ]]; then
-        # skip on Ascend: CANN 9.1.1 / BiShengHIR compiler limitation
+      if [[ "$FULL_RUN" == "true" && "${BACKEND:-}" == *ascend* ]]; then
+        # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
         # TODO: unblock each test once the underlying issue is resolved
         :
       else
