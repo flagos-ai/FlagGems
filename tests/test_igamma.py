@@ -56,7 +56,7 @@ def _readonly_snapshot(inp):
 
 
 def _assert_readonly_value(inp, snapshot):
-    assert torch.equal(_readonly_snapshot(inp), snapshot)
+    utils.gems_assert_equal(_readonly_snapshot(inp), snapshot)
 
 
 def _comparison_result(result):
