@@ -108,6 +108,7 @@ from ._foreach_reciprocal import _foreach_reciprocal as _foreach_reciprocal
 from ._foreach_reciprocal_ import _foreach_reciprocal_ as _foreach_reciprocal_
 from ._foreach_round_ import _foreach_round_
 from ._foreach_rsqrt import _foreach_rsqrt as _foreach_rsqrt
+from ._foreach_sigmoid import _foreach_sigmoid as _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 
@@ -434,6 +435,7 @@ __all__ = [
     "_foreach_reciprocal_",
     "_foreach_round_",
     "_foreach_rsqrt",
+    "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_masked_scale",
