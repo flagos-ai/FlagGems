@@ -352,12 +352,8 @@ def batch_norm(
         )
 
     if running_mean is None:
-        running_mean = torch.zeros(
-            feat_dim, dtype=input.dtype, device=input.device
-        )
-        running_var = torch.ones(
-            feat_dim, dtype=input.dtype, device=input.device
-        )
+        running_mean = torch.zeros(feat_dim, dtype=input.dtype, device=input.device)
+        running_var = torch.ones(feat_dim, dtype=input.dtype, device=input.device)
 
     # Launches 1D grid where each program operates over one feature.
     with torch_device_fn.device(input.device):

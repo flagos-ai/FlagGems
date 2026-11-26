@@ -255,17 +255,16 @@ def test_native_batch_norm_no_running_stats(shape, dtype, affine):
         1e-5,
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.native_batch_norm.default(
-            inp,
-            weight,
-            bias,
-            None,
-            None,
-            True,
-            0.1,
-            1e-5,
-        )
+    result = flag_gems.native_batch_norm(
+        inp,
+        weight,
+        bias,
+        None,
+        None,
+        True,
+        0.1,
+        1e-5,
+    )
 
     for actual, expected in zip(result, ref_result):
         utils.gems_assert_close(actual, expected, dtype)
@@ -295,18 +294,17 @@ def test_native_batch_norm_mismatched_running_stats(missing):
     else:
         running_var = None
 
-    with flag_gems.use_gems():
-        with pytest.raises(
-            ValueError,
-            match="running_mean and running_var must either both be None or neither be None",
-        ):
-            torch.ops.aten.native_batch_norm.default(
-                inp,
-                None,
-                None,
-                running_mean,
-                running_var,
-                True,
-                0.1,
-                1e-5,
-            )
+    with pytest.raises(
+        ValueError,
+        match="running_mean and running_var must either both be None or neither be None",
+    ):
+        flag_gems.native_batch_norm(
+            inp,
+            None,
+            None,
+            running_mean,
+            running_var,
+            True,
+            0.1,
+            1e-5,
+        )
