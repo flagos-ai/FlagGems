@@ -989,6 +989,7 @@ from flag_gems.ops.grid_sampler_2d_backward import grid_sampler_2d_backward
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
 from flag_gems.ops.grid_sampler_3d_backward import grid_sampler_3d_backward
 from flag_gems.ops.group_gemm import group_mm
+from flag_gems.ops.grouped_mm_backward import grouped_mm_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gru import gru, gru_data
 from flag_gems.ops.gru_cell import gru_cell
@@ -2749,6 +2750,7 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "grouped_mm_backward",
     "gru",
     "gru_cell",
     "gru_data",
