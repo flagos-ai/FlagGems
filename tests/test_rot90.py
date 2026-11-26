@@ -42,3 +42,17 @@ def test_rot90(shape, dtype, k):
     res_out = flag_gems.rot90(inp, k, [0, 1])
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.rot90
+@pytest.mark.parametrize("dims", [(1, 0), (0, 2), (-1, -3)])
+@pytest.mark.parametrize("k", [0, 1, 2, 3])
+def test_rot90_arbitrary_axes(dims, k):
+    inp = torch.arange(24, dtype=torch.float32, device=flag_gems.device).reshape(
+        2, 3, 4
+    )
+    inp = inp.transpose(0, 2)
+    ref_out = torch.rot90(utils.to_reference(inp), k, dims)
+    res_out = flag_gems.rot90(inp, k, dims)
+
+    utils.gems_assert_equal(res_out, ref_out)
