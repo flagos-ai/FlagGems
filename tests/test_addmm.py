@@ -27,6 +27,19 @@ from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
+
+@pytest.mark.addmm
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon FP64 kernel")
+def test_hygon_addmm_fp64_operand_precision():
+    bias = torch.linspace(-0.3, 0.4, 12, dtype=torch.float64).reshape(4, 3)
+    mat1 = torch.linspace(-0.7, 0.9, 24, dtype=torch.float64).reshape(4, 6)
+    mat2 = torch.linspace(0.2, 1.1, 18, dtype=torch.float64).reshape(6, 3)
+    expected = torch.addmm(bias, mat1, mat2)
+    operands = tuple(tensor.to(flag_gems.device) for tensor in (bias, mat1, mat2))
+    actual = flag_gems.addmm(*operands)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-12, atol=1e-12)
+
+
 MNK_SHAPES = accuracy_shapes("addmm", QUICK_MODE)
 VECTOR_BIAS_MNK_SHAPES = (
     [(64, 256, 184)]
