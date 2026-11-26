@@ -1031,6 +1031,11 @@ from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fas
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
+from .upsample_lanczos2d_aa import (  # noqa: F401
+    _upsample_lanczos2d_aa,
+    _upsample_lanczos2d_aa_out,
+    _upsample_lanczos2d_aa_vec,
+)
 from .upsample_linear1d import upsample_linear1d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
@@ -1077,6 +1082,36 @@ from .xor import xor, xor_scalar
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+
+_upsample_lanczos2d_aa_ops_patched = False
+
+
+def _patch_upsample_lanczos2d_aa_ops_module():
+    """Route ``flag_gems.ops.upsample_lanczos2d_aa`` to the vendor kernels.
+
+    ``SpecOpRegistrar`` only swaps the top-level ``flag_gems.<name>``, but the
+    KernelGen-generated ``tests/test_upsample_lanczos2d_aa.py`` and
+    ``benchmark/test_upsample_lanczos2d_aa.py`` import the ops submodule
+    directly (``from flag_gems.ops.upsample_lanczos2d_aa import ...``), so
+    without this explicit patch the vendor kernels would never be exercised
+    (the generic kernels do not compile on XPU).  Same rationale as
+    ``_patch_sobol_engine_ff_ops_module``; the ``setattr`` is process-global and
+    idempotent, and ``flag_gems.ops`` is fully imported before the vendor
+    registrar runs.
+    """
+    global _upsample_lanczos2d_aa_ops_patched
+    if _upsample_lanczos2d_aa_ops_patched:
+        return
+    _upsample_lanczos2d_aa_ops_patched = True
+
+    from flag_gems.ops import upsample_lanczos2d_aa as _generic_lanczos
+
+    _generic_lanczos._upsample_lanczos2d_aa = _upsample_lanczos2d_aa
+    _generic_lanczos._upsample_lanczos2d_aa_out = _upsample_lanczos2d_aa_out
+    _generic_lanczos._upsample_lanczos2d_aa_vec = _upsample_lanczos2d_aa_vec
+
+
+_patch_upsample_lanczos2d_aa_ops_module()
 
 # Importing from the submodule above rebinds this name to the module; rebind
 # the function so the vendor override is registered.
@@ -1262,6 +1297,9 @@ __all__ = [
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
+    "_upsample_lanczos2d_aa",
+    "_upsample_lanczos2d_aa_out",
+    "_upsample_lanczos2d_aa_vec",
     "_upsample_nearest_exact2d",
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact2d_out",
