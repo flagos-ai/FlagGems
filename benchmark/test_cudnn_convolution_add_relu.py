@@ -141,6 +141,10 @@ def _input_fn(case, dtype, device) -> Generator:
 
 
 @pytest.mark.cudnn_convolution_add_relu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The native fused operator requires cuDNN",
+)
 def test_cudnn_convolution_add_relu():
     torch.backends.cudnn.allow_tf32 = False
     bench = CudnnConvAddReluBenchmark(
@@ -154,6 +158,10 @@ def test_cudnn_convolution_add_relu():
 
 
 @pytest.mark.cudnn_convolution_add_relu_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The native fused operator requires cuDNN",
+)
 def test_cudnn_convolution_add_relu_out():
     torch.backends.cudnn.allow_tf32 = False
     bench = CudnnConvAddReluBenchmark(
