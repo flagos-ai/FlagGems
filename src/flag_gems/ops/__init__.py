@@ -1042,7 +1042,7 @@ from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
-from flag_gems.ops.index_fill import index_fill, index_fill_
+from flag_gems.ops.index_fill import index_fill, index_fill_, index_fill_backward
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
@@ -1091,7 +1091,13 @@ from flag_gems.ops.leaky_relu import (
     leaky_relu_backward,
     leaky_relu_out,
 )
-from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from flag_gems.ops.lerp import (
+    lerp_backward,
+    lerp_scalar,
+    lerp_scalar_,
+    lerp_tensor,
+    lerp_tensor_,
+)
 from flag_gems.ops.less_ import less_, less_scalar_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
@@ -1234,7 +1240,7 @@ from flag_gems.ops.max_pool3d_with_indices_backward import (
 )
 from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.max_unpool3d import max_unpool3d
-from flag_gems.ops.maximum import maximum
+from flag_gems.ops.maximum import maximum, maximum_backward
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.mH import mH
@@ -2794,6 +2800,7 @@ __all__ = [
     "index_copy_",
     "index_fill",
     "index_fill_",
+    "index_fill_backward",
     "index_put",
     "index_put_",
     "index_reduce",
@@ -2848,6 +2855,7 @@ __all__ = [
     "leaky_relu_",
     "leaky_relu_backward",
     "leaky_relu_out",
+    "lerp_backward",
     "lerp_scalar",
     "lerp_scalar_",
     "lerp_tensor",
@@ -3008,6 +3016,7 @@ __all__ = [
     "max_unpool2d",
     "max_unpool3d",
     "maximum",
+    "maximum_backward",
     "mean",
     "mean_dim",
     "median",
