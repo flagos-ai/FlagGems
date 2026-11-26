@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.deprecated.DSA.indexer_k_tiled import (
     triton_lighting_indexer_k_tiled_interface,
 )
@@ -165,6 +166,10 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
 @pytest.mark.parametrize("num_heads", [16, 32, 64])
 @pytest.mark.parametrize("qk_dim", [32, 64, 128])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Not support cuda",
+)
 def test_lighting_indexer_forward(
     seq_len_q: int, seq_len_kv: int, num_heads: int, qk_dim: int, dtype: torch.dtype
 ):

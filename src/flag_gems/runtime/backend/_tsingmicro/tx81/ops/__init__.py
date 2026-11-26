@@ -23,6 +23,7 @@ from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_, addcmul_out
 from .all import all, all_dim, all_dims
 from .angle import angle
+from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .arccos import arccos, arccos_
 from .arcsin import arcsin, arcsin_, arcsin_out
@@ -157,6 +158,7 @@ from .mean import mean, mean_dim
 from .minimum import minimum
 from .mish import mish, mish_
 from .mm import mm, mm_out
+from .mode import mode
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .nan_to_num import nan_to_num
@@ -196,6 +198,7 @@ from .rrelu_with_noise_functional import rrelu_with_noise_functional
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_scalar, rsub_tensor
 from .select_scatter import select_scatter
+from .sgn import sgn, sgn_out
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
@@ -205,6 +208,7 @@ from .sinh import sinh, sinh_
 from .slice_backward import slice_backward
 from .softmax import softmax, softmax_out
 from .softplus import softplus, softplus_backward
+from .sort import sort, sort_stable
 from .special_airy_ai import special_airy_ai, special_airy_ai_out
 from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
@@ -232,6 +236,7 @@ from .upsample_bicubic2d import upsample_bicubic2d
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .vdot import vdot
+from .vector_norm import vector_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy import (
@@ -271,6 +276,9 @@ __all__ = [
     "all_dims",
     "allclose",
     "angle",
+    "any",
+    "any_dim",
+    "any_dims",
     "arange",
     "arange_start",
     "arccos",
@@ -475,6 +483,7 @@ __all__ = [
     "mish_",
     "mm",
     "mm_out",
+    "mode",
     "mse_loss",
     "mul",
     "mul_",
@@ -525,6 +534,8 @@ __all__ = [
     "scaled_dot_product_attention_forward",
     "ScaleDotProductAttention",
     "select_scatter",
+    "sgn",
+    "sgn_out",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
@@ -544,6 +555,8 @@ __all__ = [
     "softmax_out",
     "softplus",
     "softplus_backward",
+    "sort",
+    "sort_stable",
     "special_airy_ai",
     "special_airy_ai_out",
     "special_chebyshev_polynomial_v",
@@ -577,6 +590,7 @@ __all__ = [
     "trunc_",
     "upsample_bicubic2d",
     "vdot",
+    "vector_norm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",

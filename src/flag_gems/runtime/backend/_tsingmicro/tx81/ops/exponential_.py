@@ -23,6 +23,11 @@ from .randn import _philox_to_dsa_seed_scalars
 
 logger = logging.getLogger(__name__)
 
+# TSM_FORCE_CUDAGRAPH: when set, exponential_ skips both CPU fallbacks (f64
+# flows through the on-device f32 scratch), so the op graph can be captured
+# by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
+
 # Below this numel, CPU fill + H2D beats on-device DSA. Measured on txda:
 # DSA is already faster at 4096 elements, so the fallback floor is 4096.
 # Override with FLAGGEMS_EXPONENTIAL_CPU_FALLBACK_MAX. (Independent of the
@@ -108,19 +113,23 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
         max(N, 1), generator=generator
     )
 
-    # float64: DSA rand is float32-only; keep CPU for correctness.
-    if dtype is torch.float64:
-        logger.debug("GEMS_TSINGMICRO EXPONENTIAL_ f64 → CPU")
-        return _native_cpu_exponential_(x, lambd)
+    # TSM_FORCE_CUDAGRAPH: skip both CPU fallbacks below (f64 already flows
+    # through the on-device f32 scratch, so the op graph can be captured by
+    # CUDA Graph).
+    if not _FORCE_CUDAGRAPH:
+        # float64: DSA rand is float32-only; keep CPU for correctness.
+        if dtype is torch.float64:
+            logger.debug("GEMS_TSINGMICRO EXPONENTIAL_ f64 → CPU")
+            return _native_cpu_exponential_(x, lambd)
 
-    # Small tensors: launch floor loses to CPU fill + H2D into ``x``.
-    if N <= _CPU_FALLBACK_MAX and device.type != "cpu":
-        logger.debug(
-            "GEMS_TSINGMICRO EXPONENTIAL_ cpu fallback N=%s (max=%s)",
-            N,
-            _CPU_FALLBACK_MAX,
-        )
-        return _native_cpu_exponential_(x, lambd)
+        # Small tensors: launch floor loses to CPU fill + H2D into ``x``.
+        if N <= _CPU_FALLBACK_MAX and device.type != "cpu":
+            logger.debug(
+                "GEMS_TSINGMICRO EXPONENTIAL_ cpu fallback N=%s (max=%s)",
+                N,
+                _CPU_FALLBACK_MAX,
+            )
+            return _native_cpu_exponential_(x, lambd)
 
     inv_lambd = 1.0 / float(lambd)
     seed0, seed1 = _philox_to_dsa_seed_scalars(philox_seed, philox_offset)

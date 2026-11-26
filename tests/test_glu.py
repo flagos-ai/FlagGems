@@ -24,10 +24,11 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_glu(shape, dtype):
-    if flag_gems.vendor_name == "tsingmicro":
-        res_inp = torch.randn(shape, dtype=dtype, device="cpu")
-    else:
-        res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # if flag_gems.vendor_name == "tsingmicro":
+    #     res_inp = torch.randn(shape, dtype=dtype, device="cpu")
+    # else:
+    #     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, True)
 
     for dim in range(len(shape)):

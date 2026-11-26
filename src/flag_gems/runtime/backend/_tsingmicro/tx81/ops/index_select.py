@@ -12,7 +12,14 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+from .copy import contiguous_on_device
+
 logger = logging.getLogger(__name__)
+
+# TSM_FORCE_CUDAGRAPH: when set, index_select never falls back to CPU
+# (non-dense layouts / dim != 0 are handled on device), so the op graph
+# can be captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
 
 TOTAL_CORE_NUM = tl.constexpr(16)
 _ROW_BLOCK = 256
@@ -194,9 +201,82 @@ def _fallback_cpu(inp, dim, index):
     return out.to(device=device, non_blocking=False)
 
 
+def _cudagraph_index_select(inp, dim, index):
+    """On-device-only index_select path (TSM_FORCE_CUDAGRAPH).
+
+    Every case is handled on device: dim != 0 gathers through a permute that
+    reuses the dim-0 kernel, and layouts the kernels cannot address directly
+    are materialized dense via contiguous_on_device instead of a CPU
+    round-trip. Note: a non-empty index on an empty gathered dim does not
+    raise PyTorch's IndexError here (error paths cannot be graph-captured).
+    """
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    assert index.ndim <= 1, "Index should have dimension 1 or 0"
+
+    dim = dim % inp.ndim
+    if index.ndim == 0:
+        index = index.unsqueeze(0)
+    index = contiguous_on_device(index)
+
+    if dim != 0:
+        # Gather along the front axis: move `dim` to axis 0, reuse the dim-0
+        # kernel, then restore the original axis order — all on device.
+        perm = [dim] + [d for d in range(inp.ndim) if d != dim]
+        inv = [perm.index(d) for d in range(inp.ndim)]
+        gathered = index_select(contiguous_on_device(inp.permute(perm)), 0, index)
+        return contiguous_on_device(gathered.permute(inv))
+
+    use_dense_rows = _use_fast_dim0(inp, dim)
+    # Qwen PLE exposes physical [rows, width, hidden] storage as a logical
+    # [rows, hidden, width] transpose. Its inner dimensions are not dense, but
+    # each source element remains addressable from the tensor's three strides.
+    use_strided_3d = dim == 0 and inp.ndim == 3 and not use_dense_rows
+    if not use_dense_rows and not use_strided_3d:
+        # Non-dense layout the kernels cannot address directly: materialize a
+        # dense copy on device instead of falling back to CPU.
+        inp = contiguous_on_device(inp)
+        use_dense_rows = True
+
+    index_len = index.numel()
+    tail_numel = inp.numel() // inp.shape[0]
+    out = torch.empty((index_len, *inp.shape[1:]), dtype=inp.dtype, device=inp.device)
+
+    with torch_device_fn.device(inp.device):
+        if use_dense_rows:
+            index_select_dim0_kernel[(TOTAL_CORE_NUM,)](
+                out,
+                index,
+                inp,
+                index_len,
+                tail_numel,
+                inp.stride(0),
+                BLOCK=_ROW_BLOCK,
+                num_warps=1,
+                num_stages=1,
+            )
+        else:
+            index_select_dim0_strided_3d_kernel[(TOTAL_CORE_NUM,)](
+                out,
+                index,
+                inp,
+                index_len,
+                inp.shape[1],
+                inp.shape[2],
+                inp.stride(0),
+                inp.stride(1),
+                inp.stride(2),
+                BLOCK=_ROW_BLOCK,
+                num_warps=1,
+                num_stages=1,
+            )
+    return out
+
+
 @log_args
 def index_select(inp, dim, index):
     logger.debug("GEMS_TSINGMICRO INDEX_SELECT")
+    if _FORCE_CUDAGRAPH:
+        return _cudagraph_index_select(inp, dim, index)
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
 

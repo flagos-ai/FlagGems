@@ -13,14 +13,21 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
 import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from .copy import copy_
 
 logger = logging.getLogger(__name__)
+
+# TSM_FORCE_CUDAGRAPH: when set, where materializes scalar/CPU operands fully
+# on device (broadcast + cast through the FlagGems copy kernel, fill_ instead
+# of a CPU full + H2D copy), so the op graph can be captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
 
 
 @pointwise_dynamic(
@@ -32,7 +39,29 @@ def where_inner(condition, self, other):
     return tl.where(condition, self, other)
 
 
+def _cudagraph_materialize_full(t, out_shape, device, dtype=None):
+    # Bring scalar/CPU inputs onto the device first (an H2D of the source
+    # itself, never a CPU-side expansion of device data).
+    t = t.to(device=device)
+
+    target_dtype = dtype if dtype is not None else t.dtype
+    if (
+        tuple(t.shape) == tuple(out_shape)
+        and t.dtype == target_dtype
+        and t.is_contiguous()
+    ):
+        return t
+
+    # Broadcast (+ cast) on device through the FlagGems copy kernel: it
+    # expands the source in-kernel and rounds casts correctly.
+    out_t = torch.empty(out_shape, dtype=target_dtype, device=device)
+    copy_(out_t, t)
+    return out_t
+
+
 def _materialize_full(t, out_shape, device, dtype=None):
+    if _FORCE_CUDAGRAPH:
+        return _cudagraph_materialize_full(t, out_shape, device, dtype)
     if dtype is not None and t.dtype != dtype:
         if t.device.type == "cpu" or t.numel() <= 1:
             t = t.cpu().to(dtype)
@@ -97,7 +126,15 @@ def where_self(condition, self, other):
     return where_self_out(condition, self, other)
 
 
+def _cudagraph_scalar_to_full_tensor(scalar, like):
+    out = torch.empty(like.shape, dtype=like.dtype, device=like.device)
+    out.fill_(scalar)
+    return out
+
+
 def _scalar_to_full_tensor(scalar, like):
+    if _FORCE_CUDAGRAPH:
+        return _cudagraph_scalar_to_full_tensor(scalar, like)
     cpu = torch.full(like.shape, scalar, dtype=like.dtype, device="cpu")
     out = torch.empty(like.shape, dtype=like.dtype, device=like.device)
     out.copy_(cpu)

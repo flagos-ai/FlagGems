@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import logging
+import numbers
+import os
 
 import torch
 import triton
@@ -24,6 +26,11 @@ from ..utils.codegen_config_utils import get_pointwise_nd_codegen_config
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# TSM_FORCE_CUDAGRAPH: when set, integer floor_divide never falls back to
+# CPU (the on-device kernel handles int64 natively), so the op graph can be
+# captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
 
 _DIV_TENSOR_CONFIG = get_pointwise_nd_codegen_config()
 
@@ -38,12 +45,20 @@ def true_div_func(x, y):
     return x / y
 
 
+# The scalar operand must stay in fp32: narrowing it to the tensor dtype
+# (``y = y.to(x.dtype)``) makes the tx backend emit ``arith.truncf`` for the
+# f32->f16/bf16 conversion, which is lowered as round-toward-zero.  That adds
+# 0..1 ULP of *biased* error to the divisor, so the quotient drifts by up to
+# 2 ULP versus ATen (whose half-precision divide keeps the scalar in fp32) and
+# fp16 ``rtol=1e-3`` (~= 1 ULP) comparisons fail.  For integer tensors the
+# narrow is worse still: ``2.5`` becomes ``2`` and ``0.5`` becomes ``0``
+# (``x / 0`` -> inf/nan).  Leaving ``y`` at fp32 lets Triton promote the tile
+# to fp32 for the divide and round once on the way back into the output.
 @pointwise_dynamic(
     is_tensor=[True, False, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
 )
 @triton.jit
 def true_div_func_tensor_scalar(x, y, inplace):
-    y = y.to(x.dtype)
     return x / y
 
 
@@ -52,7 +67,6 @@ def true_div_func_tensor_scalar(x, y, inplace):
 )
 @triton.jit
 def true_div_func_scalar_tensor(x, y, inplace):
-    x = x.to(y.dtype)
     return x / y
 
 
@@ -267,8 +281,27 @@ def trunc_divide(A, B):
     elif isinstance(B, torch.Tensor):
         return trunc_div_func_scalar_tensor(A, B, False)
     else:
-        # Both scalar
-        return torch.tensor(A / B)
+        return _trunc_divide_scalars(A, B)
+
+
+def _trunc_divide_scalars(A, B):
+    """Both operands are Python/NumPy scalars: mirror aten's wrapped-number
+    semantics for ``div(..., rounding_mode="trunc")``.
+    Keep in sync with ``flag_gems/ops/div.py::_trunc_divide_scalars``.
+    """
+    if isinstance(A, bool) or isinstance(B, bool):
+        raise NotImplementedError("\"div_trunc_cpu\" not implemented for 'Bool'")
+    if isinstance(A, numbers.Integral) and isinstance(B, numbers.Integral):
+        if B == 0:
+            raise RuntimeError("ZeroDivisionError")
+        # int() before abs() so huge NumPy ints cannot overflow the negation
+        quot = abs(int(A)) // abs(int(B))
+        return torch.tensor(-quot if (A < 0) != (B < 0) else quot)
+    # At least one float operand: compute in the default float dtype so inf/nan
+    # and the sign of zero come out exactly as torch produces them.
+    a = torch.tensor(float(A), dtype=torch.get_default_dtype())
+    b = torch.tensor(float(B), dtype=torch.get_default_dtype())
+    return torch.trunc(a / b)
 
 
 def trunc_divide_(A, B):
@@ -289,22 +322,28 @@ def trunc_divide_(A, B):
 def _int_floordiv_corrected(x, y):
     # TXDA int32 division uses an approximate fp32 quotient. Its error is small,
     # so recover the exact truncating quotient by dividing the integer residual.
-    x_i32 = x.to(tl.int32)
-    y_i32 = y.to(tl.int32)
-    is_zero = y_i32 == 0
-    safe_y = tl.where(is_zero, 1, y_i32)
+    # Narrow ints are widened to int32 (avoids overflow in the residual fixups);
+    # int64 stays in int64.
+    if x.dtype == tl.int64:
+        x_i = x
+        y_i = y
+    else:
+        x_i = x.to(tl.int32)
+        y_i = y.to(tl.int32)
+    is_zero = y_i == 0
+    safe_y = tl.where(is_zero, 1, y_i)
 
-    quotient = x_i32 // safe_y
+    quotient = x_i // safe_y
     for _ in tl.static_range(0, 2):
-        residual = x_i32 - quotient * safe_y
+        residual = x_i - quotient * safe_y
         quotient = quotient + residual // safe_y
 
-    remainder = x_i32 - quotient * safe_y
-    different_sign = (x_i32 < 0) ^ (y_i32 < 0)
+    remainder = x_i - quotient * safe_y
+    different_sign = (x_i < 0) ^ (y_i < 0)
     q = quotient - ((remainder != 0) & different_sign)
 
     # Match PyTorch's device integer divide-by-zero result.
-    zero_result = tl.where(x_i32 < 0, -2, -1)
+    zero_result = tl.where(x_i < 0, -2, -1)
     return tl.where(is_zero, zero_result, q)
 
 
@@ -431,7 +470,12 @@ def _integer_floordiv_cpu(A, B, out=None):
 def floor_divide(A, B):
     logger.debug("GEMS_TSINGMICRO FLOOR_DIVIDE")
     if _is_integral_value(A) and _is_integral_value(B):
-        return _integer_floordiv_cpu(A, B)
+        if not isinstance(A, torch.Tensor) and not isinstance(B, torch.Tensor):
+            # Both are Python scalars: no tensor to derive device from.
+            # Matches the both-scalar fallback below and the generic impl.
+            return torch.tensor(A // B)
+        if not _FORCE_CUDAGRAPH:
+            return _integer_floordiv_cpu(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
@@ -446,7 +490,8 @@ def floor_divide(A, B):
 def floor_divide_(A, B):
     logger.debug("GEMS_TSINGMICRO FLOOR_DIVIDE_")
     if _is_integral_value(A) and _is_integral_value(B):
-        return _integer_floordiv_cpu(A, B, out=A)
+        if not _FORCE_CUDAGRAPH:
+            return _integer_floordiv_cpu(A, B, out=A)
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, True, out0=A)
     else:

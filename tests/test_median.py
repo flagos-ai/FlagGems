@@ -369,12 +369,7 @@ def test_median_direct_non_contiguous_dim0(dtype, keepdim):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "cambricon"
-    and (
-        not all(
-            hasattr(torch.Tensor, api) for api in ("refine_names", "rename", "names")
-        )
-    ),
+    not all(hasattr(torch.Tensor, api) for api in ("refine_names", "rename", "names")),
     reason="Not supported",
 )
 @pytest.mark.median
@@ -1301,12 +1296,7 @@ def test_median_strided_nonlast_large_reduction_out(keepdim):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "cambricon"
-    and (
-        not all(
-            hasattr(torch.Tensor, api) for api in ("refine_names", "rename", "names")
-        )
-    ),
+    not all(hasattr(torch.Tensor, api) for api in ("refine_names", "rename", "names")),
     reason="Not supported",
 )
 @pytest.mark.median

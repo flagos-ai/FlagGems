@@ -15,6 +15,7 @@
 import copy
 import itertools
 import logging
+import os
 from typing import List, Tuple, Union
 
 import torch
@@ -32,6 +33,10 @@ from .copy import _int64_large_strided_unsafe
 from .copy import copy_ as copy_tensor
 
 logger = logging.getLogger(__name__)
+
+# TSM_FORCE_CUDAGRAPH: when set, cat never falls back to the ATen copy path
+# for int64 large-strided inputs, so the op graph can be captured by CUDA Graph.
+_FORCE_CUDAGRAPH = os.environ.get("TSM_FORCE_CUDAGRAPH") is not None
 
 # f32 can only represent integers up to 2**24 exactly; under precision-mode 0/1
 # i32 strides are demoted to f32 arithmetic, so larger address intermediates
@@ -138,12 +143,13 @@ def cat(
     precision_token = set_precision_mode("2") if needs_i64 else None
     try:
         for a, out0_dim_offset in zip(A, out0_dim_offsets):
-            out_tensor_view = out0.narrow(dim, out0_dim_offset, a.shape[dim])
-            if _int64_large_strided_unsafe(out_tensor_view, a):
-                # TX Triton cannot lower some int64 pointwise copies with a large
-                # non-contiguous stride. Reuse copy_'s ATen redispatch fallback.
-                copy_tensor(out_tensor_view, a)
-                continue
+            if not _FORCE_CUDAGRAPH:
+                out_tensor_view = out0.narrow(dim, out0_dim_offset, a.shape[dim])
+                if _int64_large_strided_unsafe(out_tensor_view, a):
+                    # TX Triton cannot lower some int64 pointwise copies with a large
+                    # non-contiguous stride. Reuse copy_'s ATen redispatch fallback.
+                    copy_tensor(out_tensor_view, a)
+                    continue
             per_dim_offsets = [0] * len(a.shape)
             # negative: store computes addr = base + (logical - offset) * stride,
             # so a negative offset shifts the write region forward along `dim`

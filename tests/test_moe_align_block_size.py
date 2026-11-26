@@ -192,7 +192,7 @@ def _verify_expert_level_sorting(
 def _synchronize():
     if flag_gems.vendor_name == "ascend":
         torch.npu.synchronize()
-    elif flag_gems.vendor_name == "sunrise":
+    elif flag_gems.vendor_name in ("sunrise", "tsingmicro"):
         from flag_gems.runtime import torch_device_fn
 
         torch_device_fn.synchronize()
