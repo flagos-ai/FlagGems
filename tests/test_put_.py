@@ -419,8 +419,8 @@ def test_put__index_out_of_range(bad):
     # than `tl.device_assert` (which is compiled out unless TRITON_DEBUG=1).
     # A tripped device assert poisons the CUDA context for the whole process, so
     # the failure is exercised in an isolated subprocess.
-    if flag_gems.vendor_name == "mthreads":
-        pytest.skip("MUSA native put has no target-device trap for invalid indices")
+    if flag_gems.vendor_name in {"mthreads", "metax", "iluvatar"}:
+        pytest.skip("native put_ does not enforce device-side index bounds")
     code = textwrap.dedent(f"""
         import torch
         import flag_gems
