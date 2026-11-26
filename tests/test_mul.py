@@ -596,3 +596,169 @@ def test_mul_hopper_broadcast_survives_monkeypatched_next_power_of_2(
     # Guard against the fix silently losing the helper (e.g. helper removed but
     # call sites reverted): the module must own its constexpr-safe version.
     assert hasattr(hopper_mul, "_next_power_of_2")
+
+
+_MUL_BACKWARD_NVIDIA_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or flag_gems.device != "cuda",
+    reason="mul_backward is an NVIDIA general-operator implementation",
+)
+
+
+def _run_mul_backward_case(input, other):
+    res_input = input.detach().requires_grad_()
+    res_other = other.detach().requires_grad_()
+    ref_input = utils.to_reference(input.detach()).requires_grad_()
+    ref_other = utils.to_reference(other.detach()).requires_grad_()
+    res_output = flag_gems.mul(res_input, res_other)
+    ref_output = torch.mul(ref_input, ref_other)
+    grad = torch.randn_like(res_output)
+    res_grads = torch.autograd.grad(res_output, (res_input, res_other), grad)
+    ref_grads = torch.autograd.grad(
+        ref_output, (ref_input, ref_other), utils.to_reference(grad)
+    )
+    return res_input, res_other, grad, res_grads, ref_grads
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize("shape", [(64,), (8, 16), (2, 3, 4)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mul_backward_basic(shape, dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    _, _, grad, res_grads, ref_grads = _run_mul_backward_case(input, other)
+    for result, reference in zip(res_grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype, reduce_dim=2)
+
+    direct = flag_gems.mul_backward(grad, input, other)
+    for result, reference in zip(direct, ref_grads):
+        utils.gems_assert_close(result, reference, dtype, reduce_dim=2)
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "input_shape,other_shape",
+    [
+        ((8, 7, 5), (5,)),
+        ((8, 7, 5), (1, 7, 1)),
+        ((1, 7, 5), (8, 1, 5)),
+        ((), (8, 7)),
+        ((8, 7), ()),
+    ],
+)
+def test_mul_backward_broadcast(input_shape, other_shape, dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    input = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(other_shape, dtype=dtype, device=flag_gems.device)
+    _, _, _, res_grads, ref_grads = _run_mul_backward_case(input, other)
+    for result, reference in zip(res_grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype, reduce_dim=8)
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mul_backward_noncontiguous_and_selective(dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    input = torch.randn((8, 16), dtype=dtype, device=flag_gems.device).T
+    other = torch.randn((8, 16), dtype=dtype, device=flag_gems.device).T
+    res_input, res_other, grad, res_grads, ref_grads = _run_mul_backward_case(
+        input, other
+    )
+    for result, reference in zip(res_grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype, reduce_dim=2)
+
+    direct = flag_gems.mul_backward(grad, res_input, res_other, (True, False))
+    assert direct[1] is None
+    utils.gems_assert_close(direct[0], ref_grads[0], dtype, reduce_dim=2)
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize(
+    "input_dtype,other_dtype",
+    [(torch.float16, torch.float32), (torch.float32, torch.float16)],
+)
+def test_mul_backward_mixed_dtype(input_dtype, other_dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    input = torch.randn((64, 64), dtype=input_dtype, device=flag_gems.device)
+    other = torch.randn((64, 64), dtype=other_dtype, device=flag_gems.device)
+    _, _, _, res_grads, ref_grads = _run_mul_backward_case(input, other)
+    utils.gems_assert_close(res_grads[0], ref_grads[0], input_dtype, reduce_dim=2)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], other_dtype, reduce_dim=2)
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize(
+    "input_shape,other_shape", [((32, 32), (32, 32)), ((8, 1), (1, 7))]
+)
+def test_mul_backward_complex(input_shape, other_shape):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    input = torch.randn(input_shape, dtype=torch.complex64, device=flag_gems.device)
+    other = torch.randn(other_shape, dtype=torch.complex64, device=flag_gems.device)
+    _, _, _, res_grads, ref_grads = _run_mul_backward_case(input, other)
+    for result, reference in zip(res_grads, ref_grads):
+        utils.gems_assert_close(result, reference, torch.complex64, reduce_dim=2)
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mul_backward_registered_dispatch(dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    input = torch.randn(
+        (32, 32), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    other = torch.randn_like(input, requires_grad=True)
+    grad = torch.randn_like(input)
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["mul"])
+        output = torch.mul(input, other)
+        assert "MulFunction" in type(output.grad_fn).__name__
+        grads = torch.autograd.grad(output, (input, other), grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    utils.gems_assert_close(grads[0], grad * other, dtype, reduce_dim=2)
+    utils.gems_assert_close(grads[1], grad * input, dtype, reduce_dim=2)
+
+
+@pytest.mark.mul_backward
+@_MUL_BACKWARD_NVIDIA_ONLY
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_mul_backward_fused_kernel_count(dtype):
+    if utils.TO_CPU:
+        pytest.skip("Triton backward suite; skipped under --ref=cpu")
+    from torch.profiler import ProfilerActivity, profile
+
+    input = torch.randn(
+        (4096,), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    other = torch.randn_like(input, requires_grad=True)
+    output = flag_gems.mul(input, other)
+    grad = torch.randn_like(output)
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(output, (input, other), grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "mul_backward" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
