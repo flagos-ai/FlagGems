@@ -287,3 +287,5 @@ underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
 
 _embedding_bag: test_embedding_bag
 underscore_embedding_bag: test_embedding_bag
+fft_fft: fft_1d
+fft_irfft: fft_1d
