@@ -933,6 +933,7 @@ from flag_gems.ops.fmax import fmax, fmax_out
 from flag_gems.ops.fmin import fmin, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fmod_ import fmod_
+from flag_gems.ops.foreach_norm_backward import foreach_norm_backward
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
@@ -2686,6 +2687,7 @@ __all__ = [
     "fmod_scalar_",
     "fmod_tensor",
     "fmod_tensor_",
+    "foreach_norm_backward",
     "fp8_matmul",
     "fp8_mqa_logits",
     "fp8_paged_mqa_logits",
