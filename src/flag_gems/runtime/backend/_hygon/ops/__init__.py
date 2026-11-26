@@ -157,6 +157,7 @@ from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .layernorm import layer_norm, layer_norm_backward, native_layer_norm
 from .lcm import lcm, lcm_
+from .ldexp import ldexp
 from .ldexp_ import ldexp_
 from .ldl_factor_ex import ldl_factor_ex
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -437,6 +438,7 @@ __all__ = [
     "layer_norm_backward",
     "lcm",
     "lcm_",
+    "ldexp",
     "ldexp_",
     "ldl_factor",
     "ldl_factor_ex",
