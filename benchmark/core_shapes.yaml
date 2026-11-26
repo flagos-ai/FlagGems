@@ -373,6 +373,26 @@ nanmedian_dim_values:
     - [16, 131072]
   shape_desc: "M, N"
 
+native_batch_norm_backward:
+  shapes:
+  - - 2
+    - 8
+    - 4
+    - 4
+  - - 8
+    - 32
+    - 16
+    - 16
+  - - 16
+    - 64
+    - 32
+    - 32
+  - - 32
+    - 128
+    - 32
+    - 32
+  shape_desc: Frozen backward30 native_norm input shape
+
 median:
   shapes:
     - [2]
@@ -1672,22 +1692,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-native_batch_norm_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 2
-    - 8
-    - 4
-    - 4
-  - - 8
-    - 32
-    - 16
-    - 16
-  - - 16
+  - - 257
+  - - 64
     - 64
-    - 32
-    - 32
-  - - 32
-    - 128
-    - 32
-    - 32
-  shape_desc: Frozen backward30 native_norm input shape
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
