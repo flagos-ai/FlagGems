@@ -14300,6 +14300,19 @@ ops:
   - Math
   stages:
   - stable: '2.1'
+- id: maximum_backward
+  description: The backward computation of `maximum()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - maximum
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.5.0'
 - id: mean
   description: Returns the mean value of all elements in the `input` tensor. Input
     must be floating point or complex.
