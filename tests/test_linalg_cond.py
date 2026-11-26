@@ -20,30 +20,64 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .test_linalg_svd import (
-    _for_comparison,
-    _from_numpy,
-    _missing_cpu_lapack,
-    _reference_input,
-)
+
+
+def _missing_cpu_lapack(inp):
+    """MUSA CPU builds can lack LAPACK, so linear-algebra references fall back
+    to NumPy. This mirrors the MUSA reference pattern used on master
+    (tests/test_inverse.py, test_linalg_lu_solve.py, test_det.py)."""
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    )
+
+
+def _reference_input(inp, upcast=False):
+    # On MUSA the reference is taken on CPU; other vendors keep the existing
+    # device/--ref cpu behaviour.
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _assert_target_abi(actual, reference, inp):
+    if isinstance(actual, (tuple, list)):
+        assert isinstance(reference, (tuple, list)) and len(actual) == len(reference)
+        for value, expected in zip(actual, reference):
+            _assert_target_abi(value, expected, inp)
+        return
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == reference.shape
+    assert actual.untyped_storage()._cdata != inp.untyped_storage()._cdata
+
+
+def _for_comparison(actual, reference, inp):
+    # Inspect the requested target ABI before CPU observation/value comparison.
+    _assert_target_abi(actual, reference, inp)
+    return actual.cpu() if flag_gems.vendor_name == "mthreads" else actual
 
 
 def _reference_cond(inp, p=None):
-    try:
-        return torch.linalg.cond(inp, p=p)
-    except RuntimeError as error:
-        if not _missing_cpu_lapack(inp, error):
-            raise
-    import numpy as np
+    if _missing_cpu_lapack(inp):
+        import numpy as np
 
-    array = inp.detach().numpy()
-    if p == "nuc":
-        value = np.linalg.norm(array, ord="nuc", axis=(-2, -1)) * np.linalg.norm(
-            np.linalg.inv(array), ord="nuc", axis=(-2, -1)
-        )
-    else:
-        value = np.linalg.cond(array, p=p)
-    return _from_numpy(value)
+        array = inp.detach().numpy()
+        if p == "nuc":
+            value = np.linalg.norm(array, ord="nuc", axis=(-2, -1)) * np.linalg.norm(
+                np.linalg.inv(array), ord="nuc", axis=(-2, -1)
+            )
+        else:
+            value = np.linalg.cond(array, p=p)
+        return _from_numpy(value)
+    return torch.linalg.cond(inp, p=p)
 
 
 # Matrix shapes for linalg_cond tests
