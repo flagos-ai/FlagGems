@@ -60,8 +60,18 @@ def test_foreach_pow_backward_list(shape, dtype):
     res_gs, res_ge = foreach_pow_backward(
         grad_list, self_list, exp_list, [ref_out[0].detach().to(flag_gems.device)]
     )
-    utils.gems_assert_close(res_gs[0], ref_gs[0], dtype, equal_nan=True)
-    utils.gems_assert_close(res_ge[0], ref_ge[0], dtype, equal_nan=True)
+    # The pow backward inherits the libm-vs-CUDA powf 1-ulp tail (documented
+    # in the PR body): when the reference runs on CPU (--ref cpu) its autograd
+    # chain evaluates libm pow, which differs from the CUDA powf asm on ~1e-5
+    # of elements by 1-4 storage ulps.  Keep the bitwise tolerance on the
+    # device reference and widen slightly under --ref cpu.
+    cpu_ref = utils.TO_CPU
+    if cpu_ref:
+        utils.gems_assert_close(res_gs[0], ref_gs[0], dtype, equal_nan=True, atol=2e-3)
+        utils.gems_assert_close(res_ge[0], ref_ge[0], dtype, equal_nan=True, atol=2e-3)
+    else:
+        utils.gems_assert_close(res_gs[0], ref_gs[0], dtype, equal_nan=True)
+        utils.gems_assert_close(res_ge[0], ref_ge[0], dtype, equal_nan=True)
     assert res_gs[0].shape == ref_out[0].shape
     assert res_ge[0].shape == ref_out[0].shape
 

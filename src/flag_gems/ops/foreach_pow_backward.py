@@ -348,12 +348,22 @@ def foreach_pow_backward_kernel(
 
         if MODE == 1:
             # grad_self = 0 if e == 0 else grad * (e * s.pow(e - 1)); e is fp64.
+            # The ATen chain materialises at every op boundary in the storage
+            # dtype (pow -> fp16, scalar-mul -> fp16, grad-mul -> fp16), so
+            # the kernel rounds each step instead of keeping an fp64 chain
+            # (which differs in the last ulp on ~1% of fp16 elements).
             if SCALAR_BY_VALUE:
                 ev = exp_value
             else:
                 ev = tl.load(exp_ptr + t)
-            p = _pow(s.to(tl.float64), ev - 1.0)
-            gs = grad.to(tl.float64) * (ev * p)
+            if IS64:
+                p = _pow(s, ev - 1.0)
+                gs = grad.to(tl.float64) * (ev * p)
+            else:
+                em1 = (ev - 1.0).to(DT)
+                p = _pow_aten(s.to(tl.float32), em1.to(tl.float32), IS64=IS64).to(DT)
+                ep = (ev * p.to(tl.float64)).to(DT)
+                gs = grad * ep
             gs = tl.where(ev == 0.0, 0.0, gs)
             tl.store(out_ptr + idx, gs.to(DT), mask=mask)
         else:
