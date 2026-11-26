@@ -762,7 +762,6 @@ from ._linalg_det import _linalg_det
 from ._linalg_eigh import _linalg_eigh
 from ._linalg_solve_ex import _linalg_solve_ex
 from ._linalg_svd import _linalg_svd
-from ._make_dep_token import _make_dep_token
 from ._native_batch_norm_legit import (
     _native_batch_norm_legit,
     _native_batch_norm_legit_no_stats,
@@ -776,7 +775,6 @@ from ._pack_padded_sequence import _pack_padded_sequence
 from ._pad_circular import _pad_circular
 from ._pin_memory import _pin_memory
 from ._prelu_kernel_backward import _prelu_kernel_backward
-from ._reshape_alias import _reshape_alias
 from ._sample_dirichlet import _sample_dirichlet
 from ._scaled_dot_product_cudnn_attention import _scaled_dot_product_cudnn_attention
 from ._scaled_dot_product_efficient_attention import (
@@ -800,7 +798,6 @@ from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_backward
 from ._unsafe_masked_index import _unsafe_masked_index
-from ._unsafe_view import _unsafe_view
 from ._upsample_lanczos2d_aa_backward import (
     upsample_lanczos2d_aa_backward,
     upsample_lanczos2d_aa_backward_grad_input,
@@ -828,7 +825,6 @@ from .adaptive_max_pool2d import adaptive_max_pool2d
 from .addcmul__common import addcmul_
 from .addmv_ import addmv_
 from .affine_grid_generator_backward import affine_grid_generator_backward
-from .alias import alias
 from .and_scalar import and_scalar
 from .arccos import arccos_
 from .arctan2 import arctan2, arctan2_
@@ -899,7 +895,6 @@ from .embedding_dense_backward import embedding_dense_backward
 from .embedding_sparse_backward import embedding_sparse_backward
 from .empty_affine_quantized import _empty_affine_quantized, _empty_affine_quantized_out
 from .empty_per_channel_affine_quantized import _empty_per_channel_affine_quantized
-from .expand_as import expand_as
 from .expand_copy import expand_copy
 from .fake_quantize_per_tensor_affine_cachemask import (
     fake_quantize_per_tensor_affine_cachemask,
@@ -1104,7 +1099,6 @@ from .std_mean import (
     std_mean_names_dim,
 )
 from .stft import stft, stft_center
-from .t_ import t_
 from .take_along_dim import take_along_dim, take_along_dim_out
 from .tensordot import tensordot, tensordot_out
 from .thnn_fused_gru_cell_backward__common import _thnn_fused_gru_cell_backward
@@ -1118,7 +1112,6 @@ from .triplet_margin_loss import triplet_margin_loss
 from .true_divide import true_divide_tensor
 from .true_divide_ import true_divide_tensor_
 from .underscore_sobol_engine_draw import underscore_sobol_engine_draw
-from .unflatten import unflatten
 from .uniform__common import uniform
 from .upsample_bicubic2d_backward import (
     upsample_bicubic2d_backward,
@@ -1162,12 +1155,10 @@ from .binomial import binomial, binomial_out
 from .cartesian_prod import run as cartesian_prod
 from .dim import dim
 from .eq_ import eq_, eq_scalar_
-from .expand import expand, expand_
 from .fake_quantize_per_channel_affine_cachemask_backward import (
     fake_quantize_per_channel_affine_cachemask_backward,
 )
 from .grid_sampler_2d import grid_sampler_2d
-from .hsplit import hsplit
 from .hspmm import hspmm
 from .igamma_ import igamma_
 from .igammac import igammac, igammac_out
@@ -1356,10 +1347,8 @@ from .fft_irfftn import fft_irfftn
 from .fill_diagonal_ import fill_diagonal_
 from .fix import fix
 from .fix_ import fix_
-from .flatten import flatten
 from .fractional_max_pool3d import fractional_max_pool3d
 from .frexp import frexp
-from .functional_assert_async import _functional_assert_async
 from .gcd_ import gcd_
 from .ge_ import ge_scalar_, ge_tensor_
 from .geometric import geometric, geometric_
@@ -1472,7 +1461,6 @@ from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rnn_tanh_cell import rnn_tanh_cell
 from .roll import roll
 from .rot90 import rot90
-from .row_indices import row_indices
 from .rrelu import rrelu
 from .rrelu_with_noise_functional import rrelu_with_noise_functional
 from .scalar_tensor import scalar_tensor
@@ -1552,10 +1540,8 @@ from .thnn_differentiable_lstm_cell_backward import (
 )
 from .to_sparse_semi_structured import to_sparse_semi_structured
 from .trace_backward import trace_backward
-from .transpose import transpose
 from .triangular_indices import tril_indices, triu_indices
 from .triu import triu, triu_
-from .unbind import unbind
 from .unfold import unfold
 from .unfold_backward import unfold_backward
 from .unfold_copy import unfold_copy
@@ -1564,8 +1550,6 @@ from .unique_dim import unique_dim
 from .unique_dim_consecutive import unique_dim_consecutive
 from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
-from .unsafe_split_with_sizes import unsafe_split_with_sizes
-from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d_backward import (
@@ -1579,7 +1563,6 @@ from .upsample_nearest3d_backward import (
 )
 from .upsample_trilinear3d import upsample_trilinear3d
 from .value_selecting_reduction_backward import value_selecting_reduction_backward
-from .view_as_complex import view_as_complex
 from .weight_int4pack_mm import weight_int4pack_mm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .bmm_w8a8_fp8 import bmm_w8a8_fp8
@@ -1819,7 +1802,6 @@ __all__ = [
     "_foreach_trunc_",
     "_foreach_zero",
     "_foreach_zero_",
-    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
@@ -1859,7 +1841,6 @@ __all__ = [
     "_logcumsumexp",
     "_logcumsumexp_out",
     "_lu_with_info",
-    "_make_dep_token",
     "_make_dual_copy",
     "_make_dual_copy_out",
     "_make_per_channel_quantized_tensor",
@@ -1901,7 +1882,6 @@ __all__ = [
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_remove_batch_dim",
-    "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",
     "_resize_output",
@@ -1947,7 +1927,6 @@ __all__ = [
     "_unpack_dual",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
-    "_unsafe_view",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
@@ -2018,7 +1997,6 @@ __all__ = [
     "adjoint",
     "affine_grid_generator",
     "affine_grid_generator_backward",
-    "alias",
     "alias_copy",
     "alias_copy_out",
     "all",
@@ -2310,9 +2288,6 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
-    "expand",
-    "expand_",
-    "expand_as",
     "expand_copy",
     "expm1",
     "expm1_",
@@ -2348,7 +2323,6 @@ __all__ = [
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
-    "flatten",
     "flatten_dense_tensors",
     "flip",
     "fliplr",
@@ -2474,7 +2448,6 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
-    "hsplit",
     "hspmm",
     "hstack",
     "huber_loss",
@@ -2933,7 +2906,6 @@ __all__ = [
     "round_up_headdim",
     "round_up_headdimv",
     "router_gemm",
-    "row_indices",
     "row_indices_copy",
     "row_indices_copy_out",
     "row_stack",
@@ -3171,7 +3143,6 @@ __all__ = [
     "swapdims",
     "swapdims_",
     "sym_size_int",
-    "t_",
     "t_copy",
     "t_copy_out",
     "take",
@@ -3201,7 +3172,6 @@ __all__ = [
     "topk_w8a16_fp8",
     "trace",
     "trace_backward",
-    "transpose",
     "transpose_copy",
     "trapezoid_x",
     "trapz",
@@ -3224,10 +3194,8 @@ __all__ = [
     "trunc_",
     "trunc_divide",
     "trunc_divide_",
-    "unbind",
     "unbind_copy",
     "underscore_sobol_engine_draw",
-    "unflatten",
     "unfold",
     "unfold_backward",
     "unfold_copy",
@@ -3238,9 +3206,6 @@ __all__ = [
     "unique_dim_consecutive",
     "unsafe_index",
     "unsafe_index_put",
-    "unsafe_split_with_sizes",
-    "unsqueeze",
-    "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_bicubic2d_backward",
     "upsample_bicubic2d_backward_grad_input",
@@ -3275,7 +3240,6 @@ __all__ = [
     "vdot",
     "vector_norm",
     "version",
-    "view_as_complex",
     "view_as_complex_copy",
     "view_as_real_copy",
     "view_copy",
