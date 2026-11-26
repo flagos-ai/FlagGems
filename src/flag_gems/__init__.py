@@ -931,7 +931,12 @@ _FULL_CONFIG = (
     ("_unpack_dual", _unpack_dual, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_unsafe_index.Tensor", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),
-    ("_unsafe_masked_index", _unsafe_masked_index),
+    (
+        "_unsafe_masked_index",
+        _unsafe_masked_index,
+        None,
+        (f"Autograd{backend_info.dispatch_key}",),
+    ),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),

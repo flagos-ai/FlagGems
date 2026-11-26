@@ -23479,6 +23479,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: unsafe_masked_index_backward
+  description: First-order backward of unsafe_masked_index, using saved forward state.
+  for:
+  - _unsafe_masked_index
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: unsafe_masked_index_put_accumulate
   description: 'Reads values and indices tensors, performs masked scatter accumulation
     on
