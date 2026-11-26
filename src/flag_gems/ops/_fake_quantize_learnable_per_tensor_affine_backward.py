@@ -19,7 +19,18 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.utils import tl_extra_shim
+
 logger = logging.getLogger(__name__)
+
+# The generic path below already lowers its clamp as tl.minimum/tl.maximum and
+# reduces per-program partials, so it no longer needs a clamp workaround. The
+# XPU path is still kept: a 256-lane tile is what the backend can lower within
+# its buffer/tuning limits, and the dedicated XPU kernel is written to avoid
+# tt.clampf and float atomics entirely.
+_NEEDS_CLAMP_WORKAROUND = runtime.device.vendor_name == "kunlunxin"
+_XPU_BLOCK_SIZE = 256
 
 
 @triton.jit
@@ -127,12 +138,89 @@ def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
 
 @triton.jit
 def _reduce_kernel(pds_ptr, pdz_ptr, out_s_ptr, out_z_ptr, g, gf, BLOCK: tl.constexpr):
-    offs = tl.arange(0, BLOCK)
-    mask = offs < g
-    ds = tl.load(pds_ptr + offs, mask=mask, other=0.0)
-    dz = tl.load(pdz_ptr + offs, mask=mask, other=0.0)
-    tl.store(out_s_ptr, tl.sum(ds, axis=0) * gf)
-    tl.store(out_z_ptr, tl.sum(dz, axis=0) * gf)
+    # Reduce g per-program partials. For the generic path g <= BLOCK, so this
+    # is a single masked load; XPU can produce more partials than BLOCK, hence
+    # the strided loop.
+    acc_ds = 0.0
+    acc_dz = 0.0
+    for start in range(0, g, BLOCK):
+        offs = start + tl.arange(0, BLOCK)
+        mask = offs < g
+        ds = tl.load(pds_ptr + offs, mask=mask, other=0.0)
+        dz = tl.load(pdz_ptr + offs, mask=mask, other=0.0)
+        acc_ds += tl.sum(ds, axis=0)
+        acc_dz += tl.sum(dz, axis=0)
+    tl.store(out_s_ptr, acc_ds * gf)
+    tl.store(out_z_ptr, acc_dz * gf)
+
+
+@triton.jit
+def _fake_quantize_learnable_per_tensor_affine_backward_xpu_kernel(
+    grad_ptr,
+    self_ptr,
+    scale_ptr,
+    zero_point_ptr,
+    grad_self_ptr,
+    grad_scale_ptr,
+    grad_zero_point_ptr,
+    n_elements,
+    quant_min,
+    quant_max,
+    grad_factor,
+    PARTIAL_REDUCE: tl.constexpr,
+    MINMAX_CLAMP: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    # Inputs are loaded in their original dtype and promoted to float32 for
+    # computation, matching the behavior of the ATen reference implementation
+    # (which requires float32 internally for the rounding/clamping math).
+    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    x = tl.load(self_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    scale = tl.load(scale_ptr).to(tl.float32)
+    zero_point = tl.load(zero_point_ptr).to(tl.float32)
+
+    # Forward: y = (clamp(round(x / scale + zero_point), qmin, qmax) - zero_point) * scale
+    # The quantized integer value before rescaling.
+    q = tl_extra_shim.nearbyint(x / scale + zero_point)
+    # Straight-through estimator mask: gradient flows where the rounded
+    # quantized value lies inside [quant_min, quant_max] (i.e. clamping did not
+    # change the rounded value). Comparing the *rounded* value rather than the
+    # raw pre-quantization value matches the ATen reference, which allows a
+    # small neighborhood beyond the range that rounds back into range.
+    in_range = (q >= quant_min) & (q <= quant_max)
+    if MINMAX_CLAMP:
+        q = tl.minimum(tl.maximum(q, quant_min), quant_max)
+    else:
+        q = tl.clamp(q, quant_min, quant_max)
+    in_range_f = in_range.to(tl.float32)
+
+    # grad w.r.t self: grad * mask (STE gradient, gradient is zeroed for clamped elements)
+    grad_self = grad * in_range_f
+    tl.store(grad_self_ptr + offsets, grad_self, mask=mask)
+
+    # grad w.r.t scale: sum over elements of grad * ((q - zero_point) - (x / scale) * mask) * grad_factor
+    grad_scale_contrib = (
+        grad * ((q - zero_point) - (x / scale) * in_range_f) * grad_factor
+    )
+    # grad w.r.t zero_point: sum over elements of grad * scale * (mask - 1) * grad_factor
+    grad_zero_point_contrib = grad * scale * (in_range_f - 1.0) * grad_factor
+
+    block_sum_scale = tl.sum(grad_scale_contrib, axis=0)
+    block_sum_zp = tl.sum(grad_zero_point_contrib, axis=0)
+
+    if PARTIAL_REDUCE:
+        # XPU's float atomics silently drop updates from some programs, so each
+        # program writes its own partial sum and the host combines them.
+        tl.store(grad_scale_ptr + pid, block_sum_scale)
+        tl.store(grad_zero_point_ptr + pid, block_sum_zp)
+    else:
+        tl.atomic_add(grad_scale_ptr, block_sum_scale)
+        tl.atomic_add(grad_zero_point_ptr, block_sum_zp)
 
 
 _G = 256
@@ -179,6 +267,53 @@ def _fake_quantize_learnable_per_tensor_affine_backward(
     gf = float(grad_factor)
     qmin = int(quant_min)
     qmax = int(quant_max)
+
+    # On XPU use the dedicated kernel: tt.clampf is not legalized on this
+    # backend and float atomics silently drop updates, so each program writes
+    # a partial sum that _reduce_kernel combines.
+    if _NEEDS_CLAMP_WORKAROUND:
+        if n == 0:
+            # The PR returned zero gradients before launching on XPU; keep the
+            # generic tiny kernel (master's rewrite) off the XPU compile path.
+            return (
+                grad_self,
+                torch.zeros_like(scale, dtype=torch.float32),
+                torch.zeros_like(zero_point, dtype=torch.float32),
+            )
+        BLOCK_SIZE = _XPU_BLOCK_SIZE
+        grid = (triton.cdiv(n, BLOCK_SIZE),)
+        partial_scale = torch.zeros(grid[0], dtype=torch.float32, device=self.device)
+        partial_zp = torch.zeros(grid[0], dtype=torch.float32, device=self.device)
+
+        _fake_quantize_learnable_per_tensor_affine_backward_xpu_kernel[grid](
+            grad,
+            self,
+            scale,
+            zero_point,
+            grad_self,
+            partial_scale,
+            partial_zp,
+            n,
+            qmin,
+            qmax,
+            gf,
+            PARTIAL_REDUCE=True,
+            MINMAX_CLAMP=True,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+        # The XPU kernel already folds grad_factor into its partials, so the
+        # reduction must not scale them again.
+        _reduce_kernel[(1,)](
+            partial_scale,
+            partial_zp,
+            grad_scale,
+            grad_zero_point,
+            grid[0],
+            1.0,
+            BLOCK=_G,
+            num_warps=4,
+        )
+        return grad_self, grad_scale, grad_zero_point
 
     if n <= _TINY_LIMIT:
         _fq_tiny_kernel[(1,)](

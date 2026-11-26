@@ -18,7 +18,6 @@ from __future__ import annotations
 import math
 from functools import lru_cache
 from itertools import accumulate, product
-from types import MappingProxyType
 from typing import NamedTuple
 
 import pytest
@@ -824,7 +823,7 @@ def _case_route(case):
 
 
 def _plan_references(op):
-    """Build immutable routes from the same parametrization pytest collects."""
+    """Enumerate the parametrization pytest collects, without any device work."""
 
     def decorate(fn):
         backend_skipped = any(
@@ -842,7 +841,7 @@ def _plan_references(op):
                     values = (param,) if not hasattr(param, "values") else values
                 axis.append(dict(zip(names, values)))
             axes.append(axis)
-        plans = {}
+        cases = set()
         for row in () if backend_skipped else product(*axes):
             params = {k: v for axis in row for k, v in axis.items()}
             if (
@@ -857,30 +856,38 @@ def _plan_references(op):
                 and params["q_seq_len"] != params["kv_seq_len"]
             ):
                 continue
-            case = _case(op, params)
-            if case.dropout:
-                # Vendor dropout forward advances the generator, even on a
-                # failed probe. Restore the caller's state after collection.
-                with torch.random.fork_rng(
-                    devices=[torch_device_fn.current_device()],
-                    device_type=torch.device(flag_gems.device).type,
-                ):
-                    route = _case_route(case)
-            else:
-                route = _case_route(case)
-            plans[case] = route
-        fn.attention_plans = MappingProxyType(plans)
+            cases.add(_case(op, params))
+        fn.attention_cases = frozenset(cases)
         fn.attention_op = op
         return fn
 
     return decorate
 
 
+@lru_cache(None)
+def _planned_route(case):
+    """Probe a planned case on first use, at most once per process.
+
+    Importing this module happens for every ``pytest tests/`` invocation, even
+    one whose marker deselects every test here, because pytest imports a module
+    before it applies ``-m``. Probing while building the plans therefore charged
+    each per-operator run several hundred native attention launches, so the
+    probe is deferred to the fixture that consumes the route.
+    """
+    # Vendor dropout forward advances the generator, even on a failed probe.
+    # Restore the caller's state so a test's own inputs stay reproducible.
+    with torch.random.fork_rng(
+        devices=[torch_device_fn.current_device()],
+        device_type=torch.device(flag_gems.device).type,
+    ):
+        return _case_route(case)
+
+
 @pytest.fixture
 def attention_reference(request, record_property):
     case = _case(request.function.attention_op, request.node.callspec.params)
     # Invalid flag combinations are skipped by the test before using its route.
-    route = request.function.attention_plans.get(case)
+    route = _planned_route(case) if case in request.function.attention_cases else None
     if route is not None:
         fallback = "unavailable" if case.dropout else "cpu_fp64"
         record_property("forward_reference", "native" if route.forward else fallback)

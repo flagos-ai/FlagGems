@@ -18,11 +18,10 @@ Ported from the THead / PPU implementation. Input is grouped FP8 E5M2 plus
 per-group scale (group_size=128). The kernel dequantizes on the fly and
 returns BF16 values and int64 indices along the last dimension.
 
-Only the portable THead kernels are kept here. The THead shared-memory
-radix fast path (triton.experimental.tle) is unavailable on MetaX: the
-Triton build lacks the swizzled shared-memory encoding attributes, so
-``gpu.alloc`` fails to compile. The single-stage and running-merge kernels
-below cover every shape instead.
+Portable Triton kernels cover the small and generic cases. Parallel radix
+selection and sampled candidate filtering handle the wide rows common in
+indexer workloads. Candidate filtering falls back to exact radix selection
+on any row whose candidates are insufficient or exceed scratch capacity.
 """
 
 import logging
@@ -775,6 +774,663 @@ def _launch_radix_topk(
     return y_vals_2d, y_idx_2d
 
 
+@triton.jit
+def _topk_needs_radix(state, row, K: tl.constexpr, CAP: tl.constexpr):
+    if CAP == 0:
+        needs_radix = tl.full((), True, tl.int1)
+    else:
+        greater = tl.load(state + row * 3 + 1)
+        equal = tl.load(state + row * 3 + 2)
+        needs_radix = (greater > CAP) | (greater + equal < K)
+    return needs_radix
+
+
+@libentry()
+@triton.jit
+def _clear_failed_row_histograms(
+    histogram,
+    counters,
+    state,
+    K: tl.constexpr,
+    FILTER_CAP: tl.constexpr,
+    ROWS: tl.constexpr,
+    SHARDS: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if _topk_needs_radix(state, row, K, FILTER_CAP):
+        bins = tl.arange(0, SHARDS * 256)
+        address = histogram + row * SHARDS * 256 + bins
+        tl.store(address, 0)
+        tl.store(address + ROWS * SHARDS * 256, 0)
+        tl.store(counters + row * 2 + tl.arange(0, 2), 0)
+
+
+@libentry()
+@triton.jit
+def _partitioned_radix_histogram(
+    hist_ptr,
+    prefix_ptr,
+    x_ptr,
+    scale_ptr,
+    N: tl.constexpr,
+    ROW_STRIDE: tl.constexpr,
+    SCALE_STRIDE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    SHARDS: tl.constexpr,
+    LOW_BYTE: tl.constexpr,
+    ASCENDING: tl.constexpr,
+    K: tl.constexpr,
+    filter_state,
+    FILTER_CAP: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if _topk_needs_radix(filter_state, row, K, FILTER_CAP):
+        tile = tl.program_id(1)
+        cols = tile * BLOCK + tl.arange(0, BLOCK)
+        valid = cols < N
+        key = _partitioned_radix_key(
+            x_ptr,
+            scale_ptr,
+            row,
+            cols,
+            valid,
+            ROW_STRIDE,
+            SCALE_STRIDE,
+            GROUP_SIZE,
+            ASCENDING,
+        )
+        if LOW_BYTE:
+            prefix = tl.load(prefix_ptr + row * 2)
+            valid &= (key >> 8) == prefix
+            digit = key & 255
+        else:
+            digit = key >> 8
+        counts = tl.histogram(tl.where(valid, digit, 256).to(tl.int32), 256)
+        bins = tl.arange(0, 256)
+        shard = tile % SHARDS
+        tl.atomic_add(
+            hist_ptr + (row * SHARDS + shard) * 256 + bins,
+            counts,
+            mask=counts != 0,
+            sem="relaxed",
+        )
+
+
+@triton.jit
+def _partitioned_radix_key(
+    x_ptr,
+    scale_ptr,
+    row,
+    cols,
+    valid,
+    ROW_STRIDE: tl.constexpr,
+    SCALE_STRIDE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    ASCENDING: tl.constexpr,
+):
+    bits = tl.load(x_ptr + row * ROW_STRIDE + cols, valid, 0)
+    scale = tl.load(scale_ptr + row * SCALE_STRIDE + cols // GROUP_SIZE, valid, 0)
+    value = (_fp8_e5_to_f32(bits) * scale.to(tl.float32)).to(tl.bfloat16)
+    value_bits = value.to(tl.uint16, bitcast=True)
+    flip = tl.where((value_bits & 0x8000) != 0, 0xFFFF, 0x8000).to(tl.uint16)
+    key = tl.where(value != value, 0xFFFF, value_bits ^ flip).to(tl.uint16)
+    if ASCENDING:
+        key = ~key
+    return key.to(tl.int32)
+
+
+@libentry()
+@triton.jit
+def _partitioned_radix_threshold(
+    prefix_ptr,
+    hist_ptr,
+    K: tl.constexpr,
+    SHARDS: tl.constexpr,
+    LOW_BYTE: tl.constexpr,
+    filter_state,
+    FILTER_CAP: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if _topk_needs_radix(filter_state, row, K, FILTER_CAP):
+        shards = tl.arange(0, SHARDS)
+        bins = tl.arange(0, 256)
+        counts = tl.load(
+            hist_ptr + (row * SHARDS + shards[:, None]) * 256 + bins[None, :]
+        )
+        counts = tl.sum(counts, axis=0)
+        suffix = tl.cumsum(counts, 0, reverse=True)
+        if LOW_BYTE:
+            rank = tl.load(prefix_ptr + row * 2 + 1)
+        else:
+            rank = K
+        bucket = tl.max(tl.where(suffix >= rank, bins, 0), 0)
+        if LOW_BYTE:
+            high = tl.load(prefix_ptr + row * 2)
+            tl.store(prefix_ptr + row * 2, (high << 8) | bucket)
+        else:
+            greater = tl.sum(tl.where(bins > bucket, counts, 0), 0)
+            tl.store(prefix_ptr + row * 2, bucket)
+            tl.store(prefix_ptr + row * 2 + 1, K - greater)
+
+
+@libentry()
+@triton.jit
+def _partitioned_radix_collect(
+    candidates,
+    counters,
+    prefix_ptr,
+    x_ptr,
+    scale_ptr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    ROW_STRIDE: tl.constexpr,
+    SCALE_STRIDE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ASCENDING: tl.constexpr,
+    filter_state,
+    FILTER_CAP: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if _topk_needs_radix(filter_state, row, K, FILTER_CAP):
+        tile = tl.program_id(1)
+        cols = tile * BLOCK + tl.arange(0, BLOCK)
+        valid = cols < N
+        cutoff = tl.load(prefix_ptr + row * 2)
+        key = _partitioned_radix_key(
+            x_ptr,
+            scale_ptr,
+            row,
+            cols,
+            valid,
+            ROW_STRIDE,
+            SCALE_STRIDE,
+            GROUP_SIZE,
+            ASCENDING,
+        )
+        # Separate counters allow GT and EQ to compact concurrently. The final
+        # sort keeps all GT entries, then fills the remaining ranks with ties.
+        for bucket in tl.static_range(2):
+            take = valid & (key > cutoff if bucket == 0 else key == cutoff)
+            count = tl.sum(take.to(tl.int32), 0)
+            if count > 0:
+                base = tl.atomic_add(counters + row * 2 + bucket, count, sem="relaxed")
+                ranks = base + tl.cumsum(take.to(tl.int32), 0) - 1
+                tl.store(
+                    candidates + (row * 2 + bucket) * K + ranks,
+                    cols,
+                    take & (ranks < K),
+                )
+
+
+@libentry()
+@triton.jit
+def _partitioned_radix_finish(
+    y_ptr,
+    index_ptr,
+    candidates,
+    counters,
+    x_ptr,
+    scale_ptr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    ROW_STRIDE: tl.constexpr,
+    SCALE_STRIDE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    WIDTH: tl.constexpr,
+    ASCENDING: tl.constexpr,
+    filter_state,
+    FILTER_CAP: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if _topk_needs_radix(filter_state, row, K, FILTER_CAP):
+        offsets = tl.arange(0, WIDTH)
+        bucket = offsets // K
+        rank = offsets % K
+        count = tl.load(counters + row * 2 + bucket, bucket < 2, 0)
+        valid = (bucket < 2) & (rank < count)
+        indices = tl.load(candidates + row * 2 * K + offsets, valid, 0)
+        key = _partitioned_radix_key(
+            x_ptr,
+            scale_ptr,
+            row,
+            indices,
+            valid,
+            ROW_STRIDE,
+            SCALE_STRIDE,
+            GROUP_SIZE,
+            ASCENDING,
+        )
+        if N <= 65535:
+            packed = (key.to(tl.uint32) << 16) | (65535 - indices).to(tl.uint32)
+            best = tl.sort(tl.where(valid, packed, 0), descending=True)
+            index = (65535 - (best & 65535)).to(tl.int32)
+        else:
+            packed = (key.to(tl.uint64) << 32) | (
+                0xFFFFFFFF - indices.to(tl.uint32)
+            ).to(tl.uint64)
+            best = tl.sort(tl.where(valid, packed, 0), descending=True)
+            index = (0xFFFFFFFF - best.to(tl.uint32)).to(tl.int32)
+        keep = offsets < K
+        raw = tl.load(x_ptr + row * ROW_STRIDE + index, keep, 0)
+        scale = tl.load(scale_ptr + row * SCALE_STRIDE + index // GROUP_SIZE, keep, 0)
+        tl.store(
+            y_ptr + row * K + offsets, _fp8_e5_to_f32(raw) * scale.to(tl.float32), keep
+        )
+        tl.store(index_ptr + row * K + offsets, index.to(tl.int64), keep)
+
+
+@libentry()
+@triton.jit
+def _single_cta_topk(
+    y_ptr,
+    index_ptr,
+    x_ptr,
+    scale_ptr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    ROW_STRIDE: tl.constexpr,
+    SCALE_STRIDE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    K_PAD: tl.constexpr,
+    ASCENDING: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK)
+    valid = cols < N
+    key = _partitioned_radix_key(
+        x_ptr,
+        scale_ptr,
+        row,
+        cols,
+        valid,
+        ROW_STRIDE,
+        SCALE_STRIDE,
+        GROUP_SIZE,
+        ASCENDING,
+    )
+    packed = (key.to(tl.uint32) << 16) | (65535 - cols).to(tl.uint32)
+    selected = tl.topk(tl.where(valid, packed, 0), K_PAD, dim=0)
+    index = (65535 - (selected & 65535)).to(tl.int32)
+    rank = tl.arange(0, K_PAD)
+    keep = rank < K
+    raw = tl.load(x_ptr + row * ROW_STRIDE + index, keep, 0)
+    scale = tl.load(scale_ptr + row * SCALE_STRIDE + index // GROUP_SIZE, keep, 0)
+    tl.store(y_ptr + row * K + rank, _fp8_e5_to_f32(raw) * scale.to(tl.float32), keep)
+    tl.store(index_ptr + row * K + rank, index.to(tl.int64), keep)
+
+
+@libentry()
+@triton.jit
+def _sample_topk_cutoff(
+    state,
+    x,
+    scale,
+    N: tl.constexpr,
+    RS: tl.constexpr,
+    SS: tl.constexpr,
+    G: tl.constexpr,
+    SAMPLES: tl.constexpr,
+    SAMPLE_K: tl.constexpr,
+    RUN: tl.constexpr,
+    ASC: tl.constexpr,
+):
+    row = tl.program_id(0)
+    lanes = tl.arange(0, SAMPLES)
+    cols = (lanes // RUN) * (N * RUN // SAMPLES) + lanes % RUN
+    keys = _partitioned_radix_key(x, scale, row, cols, cols < N, RS, SS, G, ASC)
+    best = tl.topk(keys, SAMPLE_K, dim=0)
+    tl.store(state + row * 3, tl.min(best, 0))
+    tl.store(state + row * 3 + 1, 0)
+    tl.store(state + row * 3 + 2, 0)
+
+
+@libentry()
+@triton.jit
+def _collect_sampled_topk(
+    greater_ptr,
+    equal_ptr,
+    state,
+    x,
+    scale,
+    N: tl.constexpr,
+    RS: tl.constexpr,
+    SS: tl.constexpr,
+    G: tl.constexpr,
+    K: tl.constexpr,
+    CAP: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ASC: tl.constexpr,
+):
+    row = tl.program_id(0)
+    tile = tl.program_id(1)
+    idx = tile * BLOCK + tl.arange(0, BLOCK)
+    valid = idx < N
+    cutoff = tl.load(state + row * 3)
+    key = _partitioned_radix_key(x, scale, row, idx, valid, RS, SS, G, ASC)
+    gt = valid & (key > cutoff)
+    eq = valid & (key == cutoff)
+    votes = gt.to(tl.int32) + (eq.to(tl.int32) << 16)
+    # Each tile has fewer than 2**16 elements, so the two counts cannot carry.
+    counts = tl.sum(votes, 0)
+    gt_count = counts & 65535
+    eq_count = counts >> 16
+    if counts > 0:
+        prefix = tl.cumsum(votes, 0)
+        if gt_count > 0:
+            base = tl.atomic_add(state + row * 3 + 1, gt_count, sem="relaxed")
+            offset = base + (prefix & 65535) - 1
+            packed = (key.to(tl.uint64) << 32) | (0xFFFFFFFF - idx.to(tl.uint32)).to(
+                tl.uint64
+            )
+            tl.store(greater_ptr + row * CAP + offset, packed, gt & (offset < CAP))
+        if eq_count > 0:
+            base = tl.atomic_add(state + row * 3 + 2, eq_count, sem="relaxed")
+            offset = base + (prefix >> 16) - 1
+            tl.store(equal_ptr + row * K + offset, idx, eq & (offset < K))
+
+
+@libentry()
+@triton.jit
+def _finish_sampled_topk(
+    values,
+    indices,
+    greater_ptr,
+    equal_ptr,
+    state,
+    x,
+    scale,
+    N: tl.constexpr,
+    RS: tl.constexpr,
+    SS: tl.constexpr,
+    G: tl.constexpr,
+    K: tl.constexpr,
+    CAP: tl.constexpr,
+    K_PAD: tl.constexpr,
+):
+    row = tl.program_id(0)
+    gt_count = tl.load(state + row * 3 + 1)
+    if not _topk_needs_radix(state, row, K, CAP):
+        r = tl.arange(0, CAP)
+        packed = tl.load(greater_ptr + row * CAP + r, r < gt_count, 0)
+        best = tl.topk(packed, K_PAD, dim=0)
+        rank = tl.arange(0, K_PAD)
+        idx = (0xFFFFFFFF - best.to(tl.uint32)).to(tl.int32)
+        tail = tl.load(
+            equal_ptr + row * K + rank - gt_count, (rank >= gt_count) & (rank < K), 0
+        )
+        idx = tl.where(rank < gt_count, idx, tail)
+        q = tl.load(x + row * RS + idx, rank < K, 0)
+        s = tl.load(scale + row * SS + idx // G, rank < K, 0)
+        tl.store(
+            values + row * K + rank, _fp8_e5_to_f32(q) * s.to(tl.float32), rank < K
+        )
+        tl.store(indices + row * K + rank, idx.to(tl.int64), rank < K)
+
+
+def _launch_partitioned_radix(
+    values, indices, x, scale, k, group_size, ascending, filter_state=None, filter_cap=0
+):
+    rows, n = x.shape
+    if n <= 65534:
+        block, max_shards = 4096, 8
+    elif rows <= 16:
+        block, max_shards = 1024, 16
+    else:
+        block, max_shards = 2048, 8
+    tiles = triton.cdiv(n, block)
+    shards = min(max_shards, triton.next_power_of_2(tiles))
+    hist_shape = (2, rows, shards, 256)
+    if filter_cap:
+        histogram = torch.empty(hist_shape, device=x.device, dtype=torch.int32)
+        counters = torch.empty((rows, 2), device=x.device, dtype=torch.int32)
+    else:
+        histogram = torch.zeros(hist_shape, device=x.device, dtype=torch.int32)
+        counters = torch.zeros((rows, 2), device=x.device, dtype=torch.int32)
+    prefix = torch.empty((rows, 2), device=x.device, dtype=torch.int32)
+    candidates = torch.empty((rows, 2 * k), device=x.device, dtype=torch.int32)
+    stride, scale_stride = x.stride(0), scale.stride(0)
+    with torch_device_fn.device(x.device):
+        if filter_cap:
+            _clear_failed_row_histograms[(rows,)](
+                histogram,
+                counters,
+                filter_state,
+                k,
+                filter_cap,
+                rows,
+                shards,
+                num_warps=4,
+            )
+        for low in (False, True):
+            hist = histogram[int(low)]
+            _partitioned_radix_histogram[(rows, tiles)](
+                hist,
+                prefix,
+                x,
+                scale,
+                n,
+                stride,
+                scale_stride,
+                group_size,
+                block,
+                shards,
+                low,
+                ascending,
+                k,
+                filter_state,
+                filter_cap,
+                num_warps=4,
+            )
+            _partitioned_radix_threshold[(rows,)](
+                prefix,
+                hist,
+                k,
+                shards,
+                low,
+                filter_state,
+                filter_cap,
+                num_warps=4,
+            )
+        _partitioned_radix_collect[(rows, tiles)](
+            candidates,
+            counters,
+            prefix,
+            x,
+            scale,
+            n,
+            k,
+            stride,
+            scale_stride,
+            group_size,
+            block,
+            ascending,
+            filter_state,
+            filter_cap,
+            num_warps=4,
+        )
+        _partitioned_radix_finish[(rows,)](
+            values,
+            indices,
+            candidates,
+            counters,
+            x,
+            scale,
+            n,
+            k,
+            stride,
+            scale_stride,
+            group_size,
+            triton.next_power_of_2(2 * k),
+            ascending,
+            filter_state,
+            filter_cap,
+            num_warps=4,
+        )
+
+
+def _launch_sampled_topk(values, indices, x, scale, k, group_size, ascending):
+    rows, n = x.shape
+    # The sample only predicts a cutoff. The full scan counts every value
+    # above/equal to it before committing output or handing off to radix.
+    sample_size, sample_k = 8192, 32
+    capacity = 2048
+    block = 4096
+    greater = torch.empty((rows, capacity), device=x.device, dtype=torch.uint64)
+    equal = torch.empty((rows, k), device=x.device, dtype=torch.int32)
+    state = torch.empty((rows, 3), device=x.device, dtype=torch.int32)
+    shared = (n, x.stride(0), scale.stride(0), group_size)
+    with torch_device_fn.device(x.device):
+        _sample_topk_cutoff[(rows,)](
+            state, x, scale, *shared, sample_size, sample_k, 32, ascending, num_warps=4
+        )
+        _collect_sampled_topk[(rows, triton.cdiv(n, block))](
+            greater,
+            equal,
+            state,
+            x,
+            scale,
+            *shared,
+            k,
+            capacity,
+            block,
+            ascending,
+            num_warps=4,
+        )
+        _finish_sampled_topk[(rows,)](
+            values,
+            indices,
+            greater,
+            equal,
+            state,
+            x,
+            scale,
+            *shared,
+            k,
+            capacity,
+            triton.next_power_of_2(k),
+            num_warps=4,
+        )
+    _launch_partitioned_radix(
+        values, indices, x, scale, k, group_size, ascending, state, capacity
+    )
+
+
+@triton.jit
+def _row_radix_cutoff(key, valid, rank):
+    bins = tl.arange(0, 256)
+    cutoff = tl.full((), 0, tl.int32)
+    for shift in tl.static_range(8, -1, -8):
+        matching = valid & ((key >> (shift + 8)) == cutoff)
+        digit = (key >> shift) & 255
+        counts = tl.histogram(tl.where(matching, digit, 256), 256)
+        suffix = tl.cumsum(counts, 0, reverse=True)
+        bucket = tl.max(tl.where(suffix >= rank, bins, 0), 0)
+        rank -= tl.sum(tl.where(bins > bucket, counts, 0), 0)
+        cutoff = (cutoff << 8) | bucket
+    return cutoff
+
+
+@libentry()
+@triton.jit
+def _compact_row_radix_keys(
+    scratch,
+    x,
+    scale,
+    N: tl.constexpr,
+    RS,
+    SS,
+    G: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ASC: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK)
+    valid = cols < N
+    key = _partitioned_radix_key(x, scale, row, cols, valid, RS, SS, G, ASC)
+    cutoff = _row_radix_cutoff(key, valid, K)
+    greater = valid & (key > cutoff)
+    equal = valid & (key == cutoff)
+    gt_total = tl.sum(greater.to(tl.int32), 0)
+    # The high half counts ties. With at most 16384 elements both counts fit.
+    votes = greater.to(tl.int32) + (equal.to(tl.int32) << 16)
+    ranks = tl.cumsum(votes, 0)
+    offset = tl.where(greater, ranks & 0xFFFF, gt_total + (ranks >> 16)) - 1
+    selected = (greater | equal) & (offset < K)
+    packed = (key.to(tl.uint32) << 16) | (65535 - cols).to(tl.uint32)
+    tl.store(scratch + row * K + offset, packed, selected)
+
+
+@libentry()
+@triton.jit
+def _sort_row_radix_keys(
+    output,
+    indices,
+    scratch,
+    K: tl.constexpr,
+    KP: tl.constexpr,
+    ASC: tl.constexpr,
+):
+    row = tl.program_id(0)
+    rank = tl.arange(0, KP)
+    packed = tl.load(scratch + row * K + rank, rank < K, 0)
+    best = tl.sort(packed, descending=True)
+    col = (65535 - (best & 65535)).to(tl.int32)
+    key = (best >> 16).to(tl.uint16)
+    if ASC:
+        key = ~key
+    flip = tl.where((key & 0x8000) != 0, 0x8000, 0xFFFF).to(tl.uint16)
+    value = (key ^ flip).to(tl.bfloat16, bitcast=True)
+    tl.store(output + row * K + rank, value, rank < K)
+    tl.store(indices + row * K + rank, col.to(tl.int64), rank < K)
+
+
+def _launch_row_radix_topk(values, indices, x, scale, k, group_size, ascending):
+    rows, n = x.shape
+    candidates = torch.empty((rows, k), device=x.device, dtype=torch.uint32)
+    with torch_device_fn.device(x.device):
+        _compact_row_radix_keys[(rows,)](
+            candidates,
+            x,
+            scale,
+            n,
+            x.stride(0),
+            scale.stride(0),
+            group_size,
+            k,
+            triton.next_power_of_2(n),
+            ascending,
+            num_warps=4,
+        )
+        _sort_row_radix_keys[(rows,)](
+            values,
+            indices,
+            candidates,
+            k,
+            triton.next_power_of_2(k),
+            ascending,
+            num_warps=4,
+        )
+
+
+def _parallel_topk_route(rows, n, k):
+    if n == 262144 and k == 512 and rows >= 20:
+        return "sampled"
+    if rows >= 4096 and 2048 < n <= 16384 and k == 512:
+        return "row_radix"
+    if 65534 < n <= 262144 and 64 <= k <= 1024:
+        return "radix"
+    if 256 <= k <= 512:
+        if rows >= 1024 and 1024 < n <= 2048:
+            return "single"
+        if (rows >= 128 and 8192 < n <= 65534) or (rows >= 1024 and 4096 < n <= 8192):
+            return "radix"
+    return None
+
+
 def topk_w8a16_fp8(
     x_fp8,
     x_scale,
@@ -822,6 +1478,42 @@ def topk_w8a16_fp8(
     y_idx = torch.empty(out_shape, device=x_fp8.device, dtype=torch.int64)
     y_vals_2d = y_vals.reshape(batch_size, k)
     y_idx_2d = y_idx.reshape(batch_size, k)
+
+    if out_dtype == torch.bfloat16 and x_2d.stride(1) == scale_2d.stride(1) == 1:
+        route = _parallel_topk_route(batch_size, topk_elem_cnt, k)
+        if route == "sampled":
+            _launch_sampled_topk(
+                y_vals_2d, y_idx_2d, x_2d, scale_2d, k, group_size, not descending
+            )
+            return y_vals, y_idx
+        if route == "row_radix":
+            _launch_row_radix_topk(
+                y_vals_2d, y_idx_2d, x_2d, scale_2d, k, group_size, not descending
+            )
+            return y_vals, y_idx
+        if route == "radix":
+            _launch_partitioned_radix(
+                y_vals_2d, y_idx_2d, x_2d, scale_2d, k, group_size, not descending
+            )
+            return y_vals, y_idx
+        if route == "single":
+            with torch_device_fn.device(x_fp8.device):
+                _single_cta_topk[(batch_size,)](
+                    y_vals_2d,
+                    y_idx_2d,
+                    x_2d,
+                    scale_2d,
+                    topk_elem_cnt,
+                    k,
+                    x_2d.stride(0),
+                    scale_2d.stride(0),
+                    group_size,
+                    triton.next_power_of_2(topk_elem_cnt),
+                    triton.next_power_of_2(k),
+                    not descending,
+                    num_warps=4,
+                )
+            return y_vals, y_idx
 
     # A single non-negative quantization scale preserves the raw FP8 order.
     # Sort packed 8-bit keys and only dequantize the selected values.
