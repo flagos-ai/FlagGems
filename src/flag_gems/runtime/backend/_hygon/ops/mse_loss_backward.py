@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -29,6 +33,7 @@ def _mse_bwd_kernel(
 
 
 def run(grad_output, self, target, reduction=1):
+    logger.debug("GEMS_HYGON MSE_LOSS_BACKWARD")
     numel = self.numel()
     out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
     if numel == 0:

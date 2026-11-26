@@ -52,7 +52,7 @@ def test_mse_loss_backward(shape, dtype, reduction):
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("shape", [(4,), (2, 3), (1025,)])
-@pytest.mark.parametrize("implementation", ["generic", "dispatch"])
+@pytest.mark.parametrize("implementation", ["generic", "public"])
 def test_mse_loss_backward_scalar_grad(shape, dtype, reduction, implementation):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn_like(inp)
@@ -69,8 +69,5 @@ def test_mse_loss_backward_scalar_grad(shape, dtype, reduction, implementation):
     if implementation == "generic":
         res_out = generic_backward(grad_output, inp, target, reduction)
     else:
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.mse_loss_backward(
-                grad_output, inp, target, reduction
-            )
+        res_out = flag_gems.mse_loss_backward(grad_output, inp, target, reduction)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
