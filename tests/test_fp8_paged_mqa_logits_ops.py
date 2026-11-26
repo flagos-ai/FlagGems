@@ -46,6 +46,11 @@ TORCH_REFERENCE_VENDORS = ("enflame",)
 USE_DEEPGEMM_REFERENCE = (
     VLLM_AVAILABLE and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS
 )
+_IS_ENFLAME = flag_gems.vendor_name in TORCH_REFERENCE_VENDORS
+_SKIP_VLLM = not _IS_ENFLAME and not VLLM_AVAILABLE
+_SKIP_CUDA = not _IS_ENFLAME and not torch.cuda.is_available()
+_SKIP_DEEPGEMM = not _IS_ENFLAME and not DEEPGEMM_AVAILABLE
+_SKIP_SM90 = not _IS_ENFLAME and not SM90_AVAILABLE
 # Shape configs for QUICK_MODE
 if cfg.QUICK_MODE:
     BATCH_NEXTN_SHAPES = [(4, 1)]
@@ -164,22 +169,10 @@ def torch_reference_fp8_paged_mqa_logits(
 
 
 @pytest.mark.fp8_paged_mqa_logits
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not VLLM_AVAILABLE,
-    reason="vllm is not installed",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not torch.cuda.is_available(),
-    reason="CUDA only",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not DEEPGEMM_AVAILABLE,
-    reason="DeepGEMM not available",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not SM90_AVAILABLE,
-    reason="SM90 and SM100 only",
-)
+@pytest.mark.skipif(_SKIP_VLLM, reason="vllm is not installed")
+@pytest.mark.skipif(_SKIP_CUDA, reason="CUDA only")
+@pytest.mark.skipif(_SKIP_DEEPGEMM, reason="DeepGEMM not available")
+@pytest.mark.skipif(_SKIP_SM90, reason="SM90 and SM100 only")
 @pytest.mark.parametrize("clean_logits", [True, False])
 def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
     torch.manual_seed(0)
@@ -280,22 +273,10 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
 
 
 @pytest.mark.fp8_paged_mqa_logits
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not VLLM_AVAILABLE,
-    reason="vllm is not installed",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not torch.cuda.is_available(),
-    reason="CUDA only",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not DEEPGEMM_AVAILABLE,
-    reason="DeepGEMM not available",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "enflame" and not SM90_AVAILABLE,
-    reason="SM90 and SM100 only",
-)
+@pytest.mark.skipif(_SKIP_VLLM, reason="vllm is not installed")
+@pytest.mark.skipif(_SKIP_CUDA, reason="CUDA only")
+@pytest.mark.skipif(_SKIP_DEEPGEMM, reason="DeepGEMM not available")
+@pytest.mark.skipif(_SKIP_SM90, reason="SM90 and SM100 only")
 @pytest.mark.parametrize("batch_size, next_n", BATCH_NEXTN_SHAPES)
 @pytest.mark.parametrize("heads, index_dim", HEADS_INDEXDIM_SHAPES)
 def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_dim):

@@ -314,22 +314,6 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
         return output
 
 
-class GroupedGemmInt8Benchmark(Benchmark):
-    DEFAULT_SHAPES = [(45, 512, 6144, 257), (45, 6144, 256, 257)]
-    DEFAULT_SHAPE_DESC = "M,N,K,E"
-
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            m, n, k, e = shape[:4]
-            if len(shape) == 5:
-                lengths = shape[4]
-            else:
-                lengths = [m // e + (expert < m % e) for expert in range(e)]
-            if len(lengths) != e or sum(lengths) != m:
-                raise ValueError("expert row lengths must match M and E")
-            yield make_grouped_gemm_case(lengths, n, k, self.device)
-
-
 class GroupedGemmBenchmark(Benchmark):
     DEFAULT_SHAPES = [(45, 512, 6144, 257), (45, 6144, 256, 257)]
     DEFAULT_SHAPE_DESC = "M,N,K,E"
@@ -423,7 +407,6 @@ def aten_int8_grouped_gemm_baseline(A, As, B, Bs, C, m_indices, m_rows):
             torch.bfloat16
         )
 
-
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     not (
@@ -444,7 +427,7 @@ def test_grouped_gemm_w8a8():
         )
         bench.torch_op = bench.mctlass_reference
     elif flag_gems.vendor_name == "enflame":
-        bench = GroupedGemmInt8Benchmark(
+        bench = GroupedGEMMW8A8Benchmark(
             op_name="grouped_gemm_w8a8",
             torch_op=aten_int8_grouped_gemm_baseline,
             gems_op=flag_gems.grouped_gemm_w8a8,

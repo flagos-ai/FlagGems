@@ -24,14 +24,6 @@ RNN_HIDDEN_SIZES = [8, 16]
 
 pytestmark = pytest.mark.rnn_relu
 
-# The Triton kernels only need a CUDA-like device: enflame exposes it as
-# "gcu" with Triton available, so it must not be skipped by the CUDA-name
-# guard.  Every other vendor keeps the original behaviour.
-_CUDA_ONLY_DEVICE = cfg.TO_CPU or (
-    flag_gems.vendor_name != "enflame"
-    and (flag_gems.device != "cuda" or not torch.cuda.is_available())
-)
-
 
 @pytest.fixture(autouse=True)
 def _metax_full_precision():
@@ -50,8 +42,13 @@ def _metax_full_precision():
 
 
 @pytest.mark.skipif(
-    _CUDA_ONLY_DEVICE,
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -103,8 +100,13 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
 
 
 @pytest.mark.skipif(
-    _CUDA_ONLY_DEVICE,
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -158,8 +160,13 @@ def test_rnn_relu_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    _CUDA_ONLY_DEVICE,
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 def test_rnn_relu_direct_backward():
@@ -214,8 +221,13 @@ def test_rnn_relu_direct_backward():
 
 
 @pytest.mark.skipif(
-    _CUDA_ONLY_DEVICE,
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("hidden_size", [128, 256, 512])
