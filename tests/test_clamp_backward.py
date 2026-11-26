@@ -108,4 +108,6 @@ def test_clamp_backward_nan_and_boundary(dtype):
     (ref_dx,) = torch.autograd.grad(
         torch.clamp(ref_inp, -0.5, 0.5), ref_inp, utils.to_reference(grad)
     )
-    utils.gems_assert_close(dx, ref_dx, dtype)
+    # The gradient itself is finite here (a NaN input fails both comparisons and
+    # takes a zero), but compare NaN-tolerantly since the input carries NaNs.
+    utils.gems_assert_close(dx, ref_dx, dtype, equal_nan=True)
