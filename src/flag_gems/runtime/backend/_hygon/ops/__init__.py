@@ -170,7 +170,6 @@ from .div import (
     remainder,
     remainder_,
     true_divide,
-    true_divide_,
     true_divide_out,
     trunc_divide,
     trunc_divide_,
@@ -345,6 +344,8 @@ from .thnn_fused_gru_cell_backward import (
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .true_divide_ import true_divide_ as true_divide_
+from .true_divide_ import true_divide_tensor_ as true_divide_tensor_
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .upsample_lanczos2d_aa_backward import upsample_lanczos2d_aa_backward
@@ -682,6 +683,7 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "true_divide_tensor_",
     "trunc_divide",
     "trunc_divide_",
     "unique_dim",
