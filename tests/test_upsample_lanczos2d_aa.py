@@ -33,21 +33,11 @@ if QUICK_MODE:
 else:
     SHAPES = [(1, 1, 3, 5), (2, 3, 17, 19), (4, 8, 32, 48)]
     SCALES = [(2.0, 2.0), (0.5, 0.75)]
-    # enflame GCU has no fp64 ALU: every tl.float64 kernel fails to compile, so
-    # fp64 coverage only runs on enflame when the device reports fp64 support.
-    # The condition is enflame-only, other vendors keep their original DTYPES.
-    DTYPES = [
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-        pytest.param(
-            torch.float64,
-            marks=pytest.mark.skipif(
-                IS_ENFLAME and not utils.fp64_is_supported,
-                reason="enflame GCU has no fp64 ALU, float64 kernels cannot compile",
-            ),
-        ),
-    ]
+    # Kunlunxin XPU downgrades fp64 tensors to fp32 (support_fp64=False), so
+    # fp64 cases would be checked against an fp32 result under fp64 tolerances.
+    DTYPES = [torch.float16, torch.bfloat16, torch.float32] + (
+        [torch.float64] if flag_gems.vendor_name not in ("kunlunxin", "enflame") else []
+    )
 
 
 def _scale(input_size, output_size, align_corners, explicit_scale):
