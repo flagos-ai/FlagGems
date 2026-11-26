@@ -43,9 +43,8 @@ _DENSE_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _DENSE_INT_ARGS = ("numel", "input_w", "output_w")
 
 # An integer backward scale s maps every grad_input[i] onto the fixed window
-# grad_output[i*s .. i*s + s), an affine lane index, so the loads vectorize and
-# the kernel runs at the bulk-copy rate.  Any other scale needs the per-output
-# window search below, whose strided loads run an order of magnitude slower.
+# grad_output[i*s .. i*s + s), an affine lane index, so the loads stay contiguous.
+# Any other scale needs the per-output window search below.
 _INT_SCALE_DEFAULT_MAX = 16
 _RECIP_SCALE_MAX = 4
 _HALF_SCALE_MIN = 1 << 14
@@ -87,8 +86,7 @@ def upsample_nearest1d_backward_int_scale_kernel(
 # A scale of 1/r (integer r) is the downsampling mirror image: grad_input[f] is
 # grad_output[f//r] when f is a multiple of r and 0 otherwise.  Indexing by the
 # output keeps the store contiguous and the load a fixed-shift broadcast, which
-# is what makes it fast here: a strided store, or a strided load that has to be
-# masked or clamped, runs at ~10 GB/s instead of the copy rate.
+# is what keeps both accesses vectorizable.
 @triton.jit(do_not_specialize=["numel"])
 def upsample_nearest1d_backward_recip_scale_kernel(
     grad_output,
@@ -269,8 +267,8 @@ def _validate_args(
 def _block_for(numel: int, dtype: torch.dtype) -> int:
     """Lanes per program.
 
-    A tile of exactly 1024 bf16 lanes returns wrong values on this backend, while
-    512 and 2048 are exact, so bf16 steps around that size.  Nothing narrower than
+    A tile of exactly 1024 lanes returns unrelated values for bf16, while 512 and
+    2048 are exact, so bf16 steps around that size.  Nothing narrower than
     _MIN_BLOCK is used: short tails run masked instead.
     """
     block = min(_BLOCK_SIZE, max(_MIN_BLOCK, triton.next_power_of_2(numel)))
