@@ -598,3 +598,45 @@ def test_sum_partial_precision_review(
     torch.npu.synchronize()
     assert launches
     torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.sum
+@pytest.mark.sum_dim
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_sum_dim_bool_counts_true(dim, keepdim):
+    """A bool reduction must count True entries, not collapse into a logical OR.
+
+    ``tl.sum`` over an i1 mask degenerates into ``any``, so the Ascend sum must
+    cast bool inputs before reducing (Issue #6704).
+    """
+    inp_cpu = torch.tensor(
+        [[True, True, False], [False, True, True], [True, False, True]]
+    )
+    expected = torch.sum(inp_cpu, dim=dim, keepdim=keepdim)
+    inp = inp_cpu.to(flag_gems.device)
+
+    result = flag_gems.sum_dim(inp, dim=dim, keepdim=keepdim)
+
+    assert result.dtype == torch.int64
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.sum
+@pytest.mark.sum_dim
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize("dim", [0, 1])
+def test_sum_dim_narrow_int_accumulates_in_int64(dim):
+    """int8/int16 summations must accumulate in int64 instead of overflowing."""
+    inp_cpu = torch.full((2, 300), 300, dtype=torch.int16)
+    expected = torch.sum(inp_cpu, dim=dim)
+    inp = inp_cpu.to(flag_gems.device)
+
+    result = flag_gems.sum_dim(inp, dim=dim)
+    full = flag_gems.sum(inp)
+
+    assert result.dtype == torch.int64
+    assert full.dtype == torch.int64
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+    torch.testing.assert_close(full.cpu(), torch.sum(inp_cpu), rtol=0, atol=0)

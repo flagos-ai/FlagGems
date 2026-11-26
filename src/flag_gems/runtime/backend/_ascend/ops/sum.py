@@ -108,6 +108,21 @@ def _sum_dtype(inp, dtype, out=None):
     return inp.dtype
 
 
+def _cast_accum_dtype(inp, dtype):
+    """Cast the input so the reduction accumulates in ``dtype``.
+
+    PyTorch accumulates integral reductions in int64: int8/int16 sums overflow
+    in their own width, and ``tl.sum`` over an i1 (bool) mask degenerates into
+    a logical OR instead of counting the ``True`` entries (Issue #6704).
+    """
+    if inp.dtype == dtype:
+        return inp
+    if not inp.dtype.is_floating_point and not inp.dtype.is_complex:
+        # pure dtype cast, no arithmetic fallback
+        return inp.to(dtype)
+    return inp
+
+
 def sum(inp, *, dtype=None):
     logger.debug("GEMS_ASCEND SUM")
     dtype = _sum_dtype(inp, dtype)
@@ -118,14 +133,13 @@ def sum(inp, *, dtype=None):
 def sum_out(inp, *, dtype=None, out):
     logger.debug("GEMS_ASCEND SUM_OUT")
     dtype = _sum_dtype(inp, dtype, out)
+    inp = _cast_accum_dtype(inp, dtype)
     inp = inp.contiguous()
     M = inp.numel()
     out.resize_([])
     if M == 0:
         zero_(out)
         return out
-    if inp.dtype is torch.bool:
-        inp = inp.to(torch.int64)
     block_size = _reduction_block_size(M)
     mid_size = triton.cdiv(M, block_size)
     block_mid = _reduction_mid_block_size(mid_size)
@@ -265,6 +279,7 @@ def sum_dim_kernel(
 
 def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     dtype = _sum_dtype(inp, dtype, out)
+    inp = _cast_accum_dtype(inp, dtype)
     if dim is None or dim == [] or dim == ():
         if out is not None:
             sum_out(inp, dtype=dtype, out=out)
