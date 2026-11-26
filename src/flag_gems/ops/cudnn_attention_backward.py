@@ -687,6 +687,13 @@ def _flash_attn_backward_bhsd(
             attn_bias if has_bias else None
         )
 
+        s5000 = (
+            Q.device.type == "musa"
+            and Head_Dim in (64, 128)
+            and Q.dtype in (torch.float16, torch.bfloat16)
+            and "S5000" in torch.musa.get_device_name(Q.device)
+        )
+
         grid_dq = lambda META: (
             triton.cdiv(SeqLen_q, META["BLOCK_M"]),
             Batch,
@@ -748,6 +755,7 @@ def _flash_attn_backward_bhsd(
             HAS_ALIBI=has_alibi,
             HAS_BIAS=has_bias,
             DO_BIAS_GRAD=do_bias_grad,
+            S5000=s5000,
         )
 
         grid_dkv = lambda META: (
@@ -807,6 +815,8 @@ def _flash_attn_backward_bhsd(
             HAS_WINDOW=has_window,
             HAS_ALIBI=has_alibi,
             HAS_BIAS=has_bias,
+            S5000=s5000,
+            DV_PRECISION="input",
         )
 
     return dQ, dK, dV, dBias
