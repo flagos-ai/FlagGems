@@ -280,6 +280,27 @@ def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
     torch.testing.assert_close(out_triton.cpu(), out_ref, rtol=1e-4, atol=1e-4)
 
 
+@pytest.mark.mhc_bwd
+def test_mhc_bwd_unconverged():
+    """Test mhc_bwd against float64 autograd through the 20-step Sinkhorn forward.
+
+    After 20 iterations only the rows of R sum to 1, so the CG system must use the
+    row and column sums of R. The error left is the difference between the implicit
+    gradient and the gradient of the 20-step map (max 0.29 here); with identity
+    diagonal blocks the max is 43.
+    """
+    torch.manual_seed(0)
+    M = torch.randn(16384, 4, 4, dtype=torch.float64, device=flag_gems.device) * 2
+    M.requires_grad_(True)
+    R, _P = sinkhorn_forward(M, iters=20)
+    dR = torch.randn_like(R)
+    (R * dR).sum().backward()
+
+    out = mhc_bwd(R.detach().float(), dR.float()).double()
+    err = (out - M.grad).flatten(1).norm(dim=-1) / M.grad.flatten(1).norm(dim=-1)
+    assert err.max().item() < 1.0, err.max().item()
+
+
 if cfg.QUICK_MODE:
     MHC_HC_HEAD_FUSED_CONFIGS = [
         (1, 1280, 4),

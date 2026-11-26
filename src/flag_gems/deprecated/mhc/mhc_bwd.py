@@ -192,6 +192,18 @@ def _mhc_bwd_kernel_n4(
     b2_2 = RdR_02 + RdR_12 + RdR_22 + RdR_32
     b2_3 = RdR_03 + RdR_13 + RdR_23 + RdR_33
 
+    # Diagonal blocks of the CG system: diag(R 1) and diag(R^T 1). They are the
+    # identity only when R is doubly stochastic; after a finite number of Sinkhorn
+    # iterations only the rows sum to 1.
+    rs_0 = R_00 + R_01 + R_02 + R_03
+    rs_1 = R_10 + R_11 + R_12 + R_13
+    rs_2 = R_20 + R_21 + R_22 + R_23
+    rs_3 = R_30 + R_31 + R_32 + R_33
+    cs_0 = R_00 + R_10 + R_20 + R_30
+    cs_1 = R_01 + R_11 + R_21 + R_31
+    cs_2 = R_02 + R_12 + R_22 + R_32
+    cs_3 = R_03 + R_13 + R_23 + R_33
+
     # Initialize CG: x = 0, r = b - A*x = b, p = r
     x1_0 = tl.zeros_like(b1_0)
     x1_1 = tl.zeros_like(b1_1)
@@ -236,17 +248,17 @@ def _mhc_bwd_kernel_n4(
 
     # CG iterations (2 * n_stream = 8 iterations for n_stream=4)
     for _ in range(cg_iters):
-        # y1 = R @ p2 + p1
-        Ap1_0 = (R_00 * p2_0 + R_01 * p2_1 + R_02 * p2_2 + R_03 * p2_3) + p1_0
-        Ap1_1 = (R_10 * p2_0 + R_11 * p2_1 + R_12 * p2_2 + R_13 * p2_3) + p1_1
-        Ap1_2 = (R_20 * p2_0 + R_21 * p2_1 + R_22 * p2_2 + R_23 * p2_3) + p1_2
-        Ap1_3 = (R_30 * p2_0 + R_31 * p2_1 + R_32 * p2_2 + R_33 * p2_3) + p1_3
+        # y1 = R @ p2 + rowsum(R) * p1
+        Ap1_0 = (R_00 * p2_0 + R_01 * p2_1 + R_02 * p2_2 + R_03 * p2_3) + rs_0 * p1_0
+        Ap1_1 = (R_10 * p2_0 + R_11 * p2_1 + R_12 * p2_2 + R_13 * p2_3) + rs_1 * p1_1
+        Ap1_2 = (R_20 * p2_0 + R_21 * p2_1 + R_22 * p2_2 + R_23 * p2_3) + rs_2 * p1_2
+        Ap1_3 = (R_30 * p2_0 + R_31 * p2_1 + R_32 * p2_2 + R_33 * p2_3) + rs_3 * p1_3
 
-        # y2 = R.T @ p1 + p2
-        Ap2_0 = (R_00 * p1_0 + R_10 * p1_1 + R_20 * p1_2 + R_30 * p1_3) + p2_0
-        Ap2_1 = (R_01 * p1_0 + R_11 * p1_1 + R_21 * p1_2 + R_31 * p1_3) + p2_1
-        Ap2_2 = (R_02 * p1_0 + R_12 * p1_1 + R_22 * p1_2 + R_32 * p1_3) + p2_2
-        Ap2_3 = (R_03 * p1_0 + R_13 * p1_1 + R_23 * p1_2 + R_33 * p1_3) + p2_3
+        # y2 = R.T @ p1 + colsum(R) * p2
+        Ap2_0 = (R_00 * p1_0 + R_10 * p1_1 + R_20 * p1_2 + R_30 * p1_3) + cs_0 * p2_0
+        Ap2_1 = (R_01 * p1_0 + R_11 * p1_1 + R_21 * p1_2 + R_31 * p1_3) + cs_1 * p2_1
+        Ap2_2 = (R_02 * p1_0 + R_12 * p1_1 + R_22 * p1_2 + R_32 * p1_3) + cs_2 * p2_2
+        Ap2_3 = (R_03 * p1_0 + R_13 * p1_1 + R_23 * p1_2 + R_33 * p1_3) + cs_3 * p2_3
 
         # pAp = dot(p, Ap)
         pAp = (
@@ -429,11 +441,16 @@ def mhc_bwd_ref(
     x1 = torch.zeros_like(b1)
     x2 = torch.zeros_like(b2)
 
+    # Diagonal blocks: row and column sums of R (the identity only when R is
+    # doubly stochastic).
+    row_sum = R.sum(dim=-1)
+    col_sum = R.sum(dim=-2)
+
     def matvec(r, x1_in, x2_in):
-        # y1[i] = sum_j(R[i,j] * x2[j]) + x1[i]
-        y1 = (r * x2_in.unsqueeze(-2)).sum(dim=-1) + x1_in
-        # y2[j] = sum_i(R[i,j] * x1[i]) + x2[j]
-        y2 = (r * x1_in.unsqueeze(-1)).sum(dim=-2) + x2_in
+        # y1[i] = sum_j(R[i,j] * x2[j]) + rowsum(R)[i] * x1[i]
+        y1 = (r * x2_in.unsqueeze(-2)).sum(dim=-1) + row_sum * x1_in
+        # y2[j] = sum_i(R[i,j] * x1[i]) + colsum(R)[j] * x2[j]
+        y2 = (r * x1_in.unsqueeze(-1)).sum(dim=-2) + col_sum * x2_in
         return y1, y2
 
     # r = b - A*x (with x=0, r = b)
