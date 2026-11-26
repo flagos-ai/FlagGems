@@ -31,11 +31,18 @@ def acosh_func(x):
     # acosh(x) = log(x + sqrt(x*x - 1))
     # Domain: [1, inf), returns NaN for x < 1 (except x=1 returns 0)
     x_f32 = x.to(tl.float32)
-    # For x < 1, the result should be NaN
-    # We need to handle x >= 1 case
-    # Using the formula: acosh(x) = log(x + sqrt(x*x - 1))
-    sqrt_term = tl.sqrt(x_f32 * x_f32 - 1.0)
-    return tl.log(x_f32 + sqrt_term)
+    # Two overflow guards vs the naive log(x + sqrt(x*x - 1)):
+    # 1. Domain guard: for x <= -1e4 the naive form loses ATen's NaN contract
+    #    (x*x - 1 rounds to x*x, so log(x + |x|) = log(0) = -inf instead of NaN);
+    #    every x < 1 must yield NaN, matching ATen bit-for-bit.
+    # 2. Overflow guard: for x near fp32 max, x*x = inf so sqrt(inf) = inf and
+    #    log(inf) = inf instead of the correct ~89. Rewrite as the factored
+    #    identity log(x + sqrt(x*x-1)) = log(x) + log(1 + sqrt(1 - 1/x*x)),
+    #    which has no overflow window inside the domain.
+    inv_sq = 1.0 / (x_f32 * x_f32)
+    sqrt_term = tl.sqrt(1.0 - inv_sq)
+    in_domain = tl.log(x_f32) + tl.log(1.0 + sqrt_term)
+    return tl.where(x_f32 >= 1.0, in_domain, float("nan"))
 
 
 @libentry()
