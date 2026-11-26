@@ -26,6 +26,8 @@ from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
     _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_abs import _foreach_abs as _foreach_abs
+from ._foreach_acos_ import _foreach_acos_ as _foreach_acos_
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
 from ._foreach_add__ScalarList import _foreach_add__ScalarList
@@ -38,15 +40,27 @@ from ._foreach_addcdiv__ScalarList import (
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
+from ._foreach_clamp_max__List import (
+    _foreach_clamp_max__List as _foreach_clamp_max__List,
+)
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
 from ._foreach_clamp_max_List import _foreach_clamp_max_List as _foreach_clamp_max_List
+from ._foreach_clamp_max_Scalar import (
+    _foreach_clamp_max_Scalar as _foreach_clamp_max_Scalar,
+)
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_div__ScalarList import (
+    _foreach_div__ScalarList as _foreach_div__ScalarList,
+)
 from ._foreach_div_Scalar import _foreach_div_Scalar as _foreach_div_Scalar
+from ._foreach_div_ScalarList import _foreach_div_ScalarList as _foreach_div_ScalarList
 from ._foreach_erf import _foreach_erf as _foreach_erf
+from ._foreach_erfc_ import _foreach_erfc_ as _foreach_erfc_
 from ._foreach_floor import _foreach_floor as _foreach_floor
+from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
@@ -319,6 +333,8 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
+    "_foreach_abs",
+    "_foreach_acos_",
     "_foreach_add__List",
     "_foreach_add__Scalar",
     "_foreach_add__ScalarList",
@@ -329,15 +345,21 @@ __all__ = [
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
     "_foreach_ceil",
+    "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
     "_foreach_clamp_max_List",
+    "_foreach_clamp_max_Scalar",
     "_foreach_clamp_min__Scalar",
     "_foreach_copy_",
     "_foreach_div__List",
     "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
     "_foreach_div_Scalar",
+    "_foreach_div_ScalarList",
     "_foreach_erf",
+    "_foreach_erfc_",
     "_foreach_floor",
+    "_foreach_log10_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_minimum__Scalar",
