@@ -20,28 +20,69 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .test_linalg_svd import (
-    _for_comparison,
-    _from_numpy,
-    _missing_cpu_lapack,
-    _reference_input,
-    _reference_qr,
-)
+
+
+def _missing_cpu_lapack(inp):
+    """MUSA CPU builds can lack LAPACK, so linear-algebra references fall back
+    to NumPy. This mirrors the MUSA reference pattern used on master
+    (tests/test_inverse.py, test_linalg_lu_solve.py, test_det.py)."""
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    )
+
+
+def _reference_input(inp, upcast=False):
+    # On MUSA the reference is taken on CPU; other vendors keep the existing
+    # device/--ref cpu behaviour.
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _assert_target_abi(actual, reference, inp):
+    if isinstance(actual, (tuple, list)):
+        assert isinstance(reference, (tuple, list)) and len(actual) == len(reference)
+        for value, expected in zip(actual, reference):
+            _assert_target_abi(value, expected, inp)
+        return
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == reference.shape
+    assert actual.untyped_storage()._cdata != inp.untyped_storage()._cdata
+
+
+def _for_comparison(actual, reference, inp):
+    # Inspect the requested target ABI before CPU observation/value comparison.
+    _assert_target_abi(actual, reference, inp)
+    return actual.cpu() if flag_gems.vendor_name == "mthreads" else actual
+
+
+def _reference_qr(inp):
+    if _missing_cpu_lapack(inp):
+        import numpy as np
+
+        return tuple(_from_numpy(x) for x in np.linalg.qr(inp.detach().numpy()))
+    return torch.linalg.qr(inp)
 
 
 def _reference_pinv(inp):
-    try:
-        return torch.linalg.pinv(inp)
-    except RuntimeError as error:
-        if not _missing_cpu_lapack(inp, error):
-            raise
-    import numpy as np
+    if _missing_cpu_lapack(inp):
+        import numpy as np
 
-    array = inp.detach().numpy()
-    # torch.linalg.pinv's original default cutoff is dtype/geometry dependent;
-    # it differs from torch.pinverse's explicit rcond=1e-15 contract.
-    rtol = max(array.shape[-2:]) * np.finfo(array.dtype).eps
-    return _from_numpy(np.linalg.pinv(array, rcond=rtol))
+        array = inp.detach().numpy()
+        # torch.linalg.pinv's original default cutoff is dtype/geometry
+        # dependent; keep the test-repair rtol semantics.
+        rtol = max(array.shape[-2:]) * np.finfo(array.dtype).eps
+        return _from_numpy(np.linalg.pinv(array, rcond=rtol))
+    return torch.linalg.pinv(inp)
 
 
 @pytest.fixture(autouse=True)
