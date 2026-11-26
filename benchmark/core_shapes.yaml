@@ -936,6 +936,18 @@ IndexReduceBenchmark:
     - [64, 512, 512]
   shape_desc: "(B), M, N"
 
+unsafe_masked_index_put_accumulate_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 UnaryReductionBenchmark:
   shapes:
     - [1048576] # 1024 * 1024

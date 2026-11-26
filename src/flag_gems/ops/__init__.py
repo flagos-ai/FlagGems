@@ -466,6 +466,7 @@ from flag_gems.ops._unpack_dual import _unpack_dual
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
+    unsafe_masked_index_put_accumulate_backward,
 )
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_bilinear2d_aa_backward import (
@@ -3585,6 +3586,7 @@ __all__ = [
     "unique_dim_consecutive",
     "unsafe_index",
     "unsafe_index_put",
+    "unsafe_masked_index_put_accumulate_backward",
     "unsafe_split_with_sizes",
     "unsqueeze",
     "unsqueeze_",
