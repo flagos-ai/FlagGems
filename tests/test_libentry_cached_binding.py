@@ -59,7 +59,6 @@ def entry(monkeypatch, request):
         inspect._empty,
     )
     e._cache_miss_fallback = None
-    e._launch_option_exclusions = frozenset(e.arg_names) | {"grid", "stream", "warmup"}
     e.signature = inspect.Signature(
         [
             inspect.Parameter(n, inspect.Parameter.POSITIONAL_OR_KEYWORD)
@@ -76,6 +75,7 @@ def entry(monkeypatch, request):
     )
     e.specialize_indices = [0, 1]
     e.do_not_specialize_indices = [2]
+    e._kernel_params = frozenset(p.name for p in e.jit_function.params)
     e.divisibility = 16
     e._tensor_spec_fn = None
     e._has_flagtune_tuner = True

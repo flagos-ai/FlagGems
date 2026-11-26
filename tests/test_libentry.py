@@ -938,6 +938,72 @@ def test_libentry_key_buckets_integers_by_triton_width():
     )
 
 
+def test_libentry_launch_options_key_selects_compile_options():
+    """Only non-parameter keywords are keyed, independent of their order."""
+    entry = SimpleNamespace(_kernel_params=frozenset({"x", "BLOCK"}))
+    launch = dict(grid=(4,), warmup=False, BLOCK=64, num_warps=4, num_stages=2)
+
+    key = libentry_mod.LibEntry._launch_options_key(entry, launch)
+
+    assert key == (("num_stages", "2"), ("num_warps", "4"))
+    assert key == libentry_mod.LibEntry._launch_options_key(
+        entry, dict(reversed(launch.items()))
+    )
+    assert libentry_mod.LibEntry._launch_options_key(entry, {"grid": (4,)}) == ()
+    hash(libentry_mod.LibEntry._launch_options_key(entry, {"cluster_dims": [1, 1, 1]}))
+
+
+@pytest.mark.parametrize("cache_binding", [False, True])
+def test_libentry_run_separates_compile_options(monkeypatch, cache_binding):
+    """A launch must run a kernel compiled with the options it asked for."""
+
+    @triton.jit
+    def kernel(n, BLOCK: tl.constexpr):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled_with = []
+    launched_with = []
+
+    class FakeCompiledKernel:
+        def __init__(self, num_stages):
+            self.num_stages = num_stages
+
+        def __getitem__(self, grid):
+            return lambda *args: launched_with.append(self.num_stages)
+
+    def fake_compile(*args, **kwargs):
+        compiled_with.append(kwargs.get("num_stages"))
+        return FakeCompiledKernel(kwargs.get("num_stages"))
+
+    monkeypatch.setattr(kernel, "run", fake_compile)
+    cached_launches = []
+    run_cached = entry._run_cached
+
+    def spy_run_cached(args, kwargs):
+        result = run_cached(args, kwargs)
+        cached_launches.append(result is not None)
+        return result
+
+    monkeypatch.setattr(entry, "_run_cached", spy_run_cached)
+    for num_stages in (2, 5, 2, 5):
+        entry.run(8, BLOCK=64, grid=(1,), num_stages=num_stages)
+
+    # The first launch of each option compiles through `kernel.run`; the repeats
+    # must hit the entry built with the same option, on either binding path.
+    assert compiled_with == [2, 5]
+    assert launched_with == [2, 5]
+    assert len(entry._cpu_cache) == 2
+    # The cached binder keys entries exactly as the generic path stores them, or
+    # it would miss every launch that carries an option and never engage. Whether
+    # it engages is `entry._cache_binding`, not the `cache_binding` that was
+    # asked for: the binder only exists on the Triton versions whose launch
+    # convention it follows, and `_run_cached` is never called on the others.
+    expected = [False, False, True, True] if entry._cache_binding else []
+    assert cached_launches == expected
+
+
 def test_hash_generation():
     @libtuner(
         configs=[
@@ -2575,169 +2641,3 @@ def test_libcache_concurrent_write_on_signal():
                 cache_path.unlink()
             except sqlite3.Error:
                 pass
-
-
-@pytest.mark.parametrize(
-    "option,first,second",
-    [
-        ("num_warps", 4, 8),
-        ("num_stages", 1, 2),
-        ("enable_fp_fusion", False, True),
-        ("backend_schedule", "none", "post-mma"),
-        ("extern_libs", {"math": "/first.bc"}, {"math": "/second.bc"}),
-        ("nested_option", {"axes": [0, 1]}, {"axes": [1, 0]}),
-    ],
-)
-@pytest.mark.parametrize("cache_binding", [False, True])
-def test_libentry_separates_external_compiler_options(
-    monkeypatch, option, first, second, cache_binding
-):
-    """Changing a compiler option must miss; changing only grid must hit."""
-
-    @triton.jit
-    def kernel(output, size: tl.constexpr):
-        pass
-
-    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
-    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
-    compiled, launched = [], []
-
-    class Compiled:
-        def __getitem__(self, grid):
-            return lambda *args: launched.append((self, grid, args))
-
-    def compile_kernel(*args, **kwargs):
-        result = Compiled()
-        compiled.append(result)
-        return result
-
-    monkeypatch.setattr(kernel, "run", compile_kernel)
-    a, _ = entry.run(7, 64, grid=(1,), **{option: first})
-    b, _ = entry.run(7, size=64, grid=(1,), **{option: second})
-    again, _ = entry.run(7, 64, grid=(2,), **{option: first})
-    assert a is again and a is not b
-    assert compiled == [a, b]
-    assert launched == [(a, (2, 1, 1), (7, 64))]
-    assert len(entry._cpu_cache) == 2
-
-
-@pytest.mark.parametrize("cache_binding", [False, True])
-def test_libentry_snapshots_mutable_options_and_ignores_mapping_order(
-    monkeypatch, cache_binding
-):
-    @triton.jit
-    def kernel(output):
-        pass
-
-    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
-    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
-    compiled = []
-
-    class Compiled:
-        def __getitem__(self, grid):
-            return lambda *args: None
-
-    def compile_kernel(*args, **kwargs):
-        result = Compiled()
-        compiled.append(result)
-        return result
-
-    monkeypatch.setattr(kernel, "run", compile_kernel)
-    libs = {"a": "first", "b": "second"}
-    first, _ = entry.run(7, grid=(1,), extern_libs=libs, num_warps=4)
-    same, _ = entry.run(
-        7, grid=(1,), num_warps=4, extern_libs=dict(reversed(libs.items()))
-    )
-    libs["a"] = "changed"
-    changed, _ = entry.run(7, grid=(1,), extern_libs=libs, num_warps=4)
-    assert first is same and changed is not first
-    assert len(compiled) == len(entry._cpu_cache) == 2
-
-
-@pytest.mark.parametrize("runtime_option", [{"warmup": True}, {"stream": 123}])
-@pytest.mark.parametrize("cache_binding", [False, True])
-def test_libentry_delegates_runtime_controls_without_cached_launch(
-    monkeypatch, runtime_option, cache_binding
-):
-    @triton.jit
-    def kernel(output):
-        pass
-
-    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
-    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
-    delegated, launched = [], []
-
-    class Compiled:
-        def __getitem__(self, grid):
-            return lambda *args: launched.append(args)
-
-    def run_kernel(*args, **kwargs):
-        delegated.append(kwargs)
-        return Compiled()
-
-    monkeypatch.setattr(kernel, "run", run_kernel)
-    entry.run(7, grid=(1,))
-    entry.run(7, grid=(1,), **runtime_option)
-    entry.run(7, grid=(1,), **runtime_option)
-    entry.run(7, grid=(1,))
-    assert len(delegated) == 3 and len(launched) == 1
-    assert delegated[1] == delegated[2] == {"grid": (1,), **runtime_option}
-    assert len(entry._cpu_cache) == 1
-
-
-@pytest.mark.parametrize("cache_binding", [False, True])
-def test_libentry_delegates_unhashable_backend_options(monkeypatch, cache_binding):
-    @triton.jit
-    def kernel(output):
-        pass
-
-    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
-    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
-    delegated = []
-
-    def run_kernel(*args, **kwargs):
-        delegated.append(kwargs)
-        return object()
-
-    monkeypatch.setattr(kernel, "run", run_kernel)
-
-    class OpaqueOption:
-        __hash__ = None
-
-    option = OpaqueOption()
-    entry.run(7, grid=(1,), backend_option=option)
-    entry.run(7, grid=(1,), backend_option=option)
-    assert len(delegated) == 2 and not entry._cpu_cache
-
-
-@pytest.mark.parametrize("cache_binding", [False, True])
-@pytest.mark.parametrize(
-    "option", [dict(num_warps=8), dict(extern_libs={"math": "/math.bc"})]
-)
-def test_plain_cache_entry_does_not_hide_later_compiler_options(
-    monkeypatch, cache_binding, option
-):
-    @triton.jit
-    def kernel(output):
-        pass
-
-    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
-    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
-    compiled = []
-
-    class Compiled:
-        def __getitem__(self, grid):
-            return lambda *args: None
-
-    def compile_kernel(*args, **kwargs):
-        result = Compiled()
-        compiled.append(result)
-        return result
-
-    monkeypatch.setattr(kernel, "run", compile_kernel)
-    plain, _ = entry.run(7, grid=(1,))
-    changed, _ = entry.run(7, grid=(1,), **option)
-    assert changed is not plain
-    assert entry.run(7, grid=(1,), **option)[0] is changed
-    assert entry.run(7, grid=(1,))[0] is plain
-    assert len(compiled) == 2

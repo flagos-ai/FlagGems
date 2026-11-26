@@ -1530,21 +1530,6 @@ def libtuner(
     return decorator
 
 
-def _freeze_launch_option(value):
-    """Snapshot nested compiler options without relying on their repr."""
-    if isinstance(value, dict):
-        return (
-            dict,
-            frozenset((k, _freeze_launch_option(v)) for k, v in value.items()),
-        )
-    if isinstance(value, (list, tuple)):
-        return (type(value), tuple(_freeze_launch_option(v) for v in value))
-    if isinstance(value, (set, frozenset)):
-        return (type(value), frozenset(_freeze_launch_option(v) for v in value))
-    hash(value)
-    return (type(value), value)
-
-
 class LibEntry(triton.KernelInterface):
     def __init__(
         self,
@@ -1584,12 +1569,8 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
-        self._launch_option_exclusions = frozenset(self.signature.parameters) | {
-            "grid",
-            "stream",
-            "warmup",
-        }
         self._tensor_spec_fn = self._resolve_tensor_spec_fn()
+        self._kernel_params = frozenset(p.name for p in self.jit_function.params)
         # The cached binder follows the Triton 3.3-3.9 launch argument convention.
         self._cache_binding = cache_binding and (
             (3, 3) <= (major_version, minor_version) <= (3, 9)
@@ -1729,7 +1710,7 @@ class LibEntry(triton.KernelInterface):
 
         def dns_arg(arg):
             if isinstance(arg, triton.language.constexpr):
-                return (type(arg), _freeze_launch_option(arg.value))
+                return (type(arg), type(arg.value), arg.value)
             if hasattr(arg, "data_ptr"):
                 return arg.dtype
             if not isinstance(arg, int):
@@ -1745,6 +1726,28 @@ class LibEntry(triton.KernelInterface):
         # const args passed by position
         const_key = [_descriptor_cache_key(arg) for arg in const_args]
         return tuple(spec_key + dns_key + const_key)
+
+    def _launch_options_key(self, kwargs):
+        """Key the launch keywords that are compile options.
+
+        A hit below returns the cached kernel without reaching `JITFunction`,
+        whose own cache keys on these options. Leaving them out of the entry key
+        hands a launch asking for one `num_stages` a kernel built with another.
+        Results stay correct, but the requested option silently stops applying.
+
+        Anything that is not a kernel parameter is an option. `grid` and
+        `warmup` steer the launch rather than the build, as in `JITFunction.run`.
+        Values are keyed by `repr`, the way `JITFunction` stringifies its
+        options, which also keeps list-valued options hashable.
+        """
+        kernel_params = self._kernel_params
+        options = [
+            (name, repr(value))
+            for name, value in kwargs.items()
+            if name not in kernel_params and name != "grid" and name != "warmup"
+        ]
+        options.sort()
+        return tuple(options)
 
     def _first_run(self, *args, **kwargs):
         try:
@@ -1843,13 +1846,11 @@ class LibEntry(triton.KernelInterface):
                 ("flagtune_dtypes",) + tuple(str(value) for value in flagtune_dtypes)
             )
 
-        entry_key = self.key(spec_args, dns_args, const_args)
-        # Kernel parameters are already specialized above. External options
-        # (including backend-specific ones) also affect the compiled program.
-        # Keep runtime grid/stream/warmup out of this compiler identity.
-        options_key, bypass_cache = self._launch_options_key(kwargs)
-        if options_key:
-            entry_key += (("launch_options", options_key),)
+        # The options are appended here, not inside `key`, which callers may
+        # use to rebuild the option-free part of an entry key.
+        entry_key = self.key(
+            spec_args, dns_args, const_args
+        ) + self._launch_options_key(kwargs)
         # CPU has one device per process and `current_device()` returns the
         # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
         # This branch is CPU-generic — any future x86 / RISC-V CPU backend
@@ -1858,13 +1859,13 @@ class LibEntry(triton.KernelInterface):
             cache = self._cpu_cache
         else:
             cache = self.kernel_cache[device]
-        while bypass_cache or entry_key not in cache:
+        while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
             # because Triton runtime is currently not threadsafe.
             with self.lock:
-                if not bypass_cache and entry_key in cache:
+                if entry_key in cache:
                     break
-                if not bypass_cache and self._cache_miss_fallback is not None:
+                if self._cache_miss_fallback is not None:
                     result = self._cache_miss_fallback(self, args, kwargs)
                     if result is not None:
                         return result
@@ -1907,14 +1908,13 @@ class LibEntry(triton.KernelInterface):
                         and (p.default is not inspect._empty)
                     ):
                         constexprs[p.name] = p.default
-                if not bypass_cache:
-                    cache[entry_key] = (
-                        kernel,
-                        constexprs,
-                        tune_constexprs,
-                        heur_constexprs,
-                        tuple(launch_pre_hooks),
-                    )
+                cache[entry_key] = (
+                    kernel,
+                    constexprs,
+                    tune_constexprs,
+                    heur_constexprs,
+                    tuple(launch_pre_hooks),
+                )
             return kernel, constexprs
 
         (
@@ -1963,31 +1963,6 @@ class LibEntry(triton.KernelInterface):
             kernel[grid[0:3]](*k_args.values())
         return kernel, constexprs
 
-    def _launch_options_key(self, kwargs):
-        bypass_cache = bool(kwargs.get("warmup", False)) or "stream" in kwargs
-        try:
-            # Common scalar options need no recursive Python traversal. The
-            # frozenset makes keyword order irrelevant and preserves types.
-            options_key = frozenset(
-                (name, type(value), value)
-                for name, value in kwargs.items()
-                if name not in self._launch_option_exclusions
-            )
-        except TypeError:
-            options = {
-                name: value
-                for name, value in kwargs.items()
-                if name not in self._launch_option_exclusions
-            }
-            try:
-                options_key = _freeze_launch_option(options)
-            except (TypeError, RecursionError):
-                # Let Triton handle an opaque option; never risk reusing a
-                # kernel whose compiler identity we cannot snapshot safely.
-                options_key = ()
-                bypass_cache = True
-        return options_key, bypass_cache
-
     def _init_cached_binding(self):
         import torch
 
@@ -2012,9 +1987,6 @@ class LibEntry(triton.KernelInterface):
         defaults and FlagTune dtype identity. Plans store constants only; each
         launch supplies its current tensors and unspecialized scalar values.
         """
-        options_key, bypass_cache = self._launch_options_key(kwargs)
-        if bypass_cache:
-            return None
         count = len(args)
         if count > len(self._binding_param_names):
             return None
@@ -2063,10 +2035,11 @@ class LibEntry(triton.KernelInterface):
                 dtype_names.append(name)
         if self._has_flagtune_tuner:
             keys[0].append(("flagtune_dtypes",) + tuple(dtype_names))
-        # Generic order is specialized, unspecialized, then constexpr values.
-        entry_key = self.key(keys[1], keys[2], keys[0])
-        if options_key:
-            entry_key += (("launch_options", options_key),)
+        # Generic order is specialized, unspecialized, then constexpr values,
+        # followed by the compile options exactly as the generic path keys them.
+        entry_key = self.key(keys[1], keys[2], keys[0]) + self._launch_options_key(
+            kwargs
+        )
         device_index = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
             self._apply_flagtune(device_index, args, kwargs)
