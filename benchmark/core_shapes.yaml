@@ -184,6 +184,18 @@ segment_reduce_backward:
 segment_reduce_backward_out:
   <<: *segment_reduce_shapes
 
+cat_backward:
+  shapes:
+  - - 1
+    - 64
+  - - 64
+    - 64
+  - - 1024
+    - 64
+  - - 8192
+    - 64
+  shape_desc: backward input shape
+
 gelu_backward:
   shapes:
     - [1048576] # 1024 * 1024
@@ -1672,14 +1684,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-cat_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 1
-    - 64
+  - - 257
   - - 64
     - 64
   - - 1024
-    - 64
-  - - 8192
-    - 64
+    - 1024
+  - - 4096
+    - 4096
   shape_desc: backward input shape
