@@ -1114,6 +1114,18 @@ glu:
     - [4, 8, 3072, 128]
     - [4, 8, 4096, 128]
 
+select_scatter_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 index:
   shapes:
     - [[268435456], [[65536]]]
@@ -1672,14 +1684,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-select_scatter_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 4
-    - 16
-  - - 16
-    - 32
+  - - 257
   - - 64
     - 64
-  - - 128
-    - 128
-  shape_desc: Fixed accepted backward input shape
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
