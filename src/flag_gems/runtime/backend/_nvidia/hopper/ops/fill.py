@@ -19,7 +19,10 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.fill import _FillScalar as _GenericFillScalar
+from flag_gems.ops.fill import _FillScalarInplace as _GenericFillScalarInplace
 from flag_gems.ops.fill import _FillTensor as _GenericFillTensor
+from flag_gems.ops.fill import _FillTensorInplace as _GenericFillTensorInplace
+from flag_gems.ops.fill import fill_scalar_func, fill_tensor_func
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -157,9 +160,9 @@ def fill_tensor(input, value):
     return fill_tensor_raw(input, value)
 
 
-def fill_tensor_(self, value):
+def _fill_tensor_(self, value):
     if not value.is_cuda:
-        return fill_scalar_(self, value.item())
+        return _fill_scalar_(self, value.item())
     logger.debug("GEMS_NVIDIA FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
@@ -171,16 +174,12 @@ def fill_tensor_(self, value):
         with torch_device_fn.device(self.device):
             fill_tensor_kernel[grid](self, value, n_elements, BLOCK_SIZE=1024)
     else:
-        tmp = self.contiguous()
-        n_elements = tmp.numel()
-        grid = (triton.cdiv(n_elements, 1024),)
         with torch_device_fn.device(self.device):
-            fill_tensor_kernel[grid](tmp, value, n_elements, BLOCK_SIZE=1024)
-        self.copy_(tmp)
+            fill_tensor_func(self, value, out0=self)
     return self
 
 
-def fill_scalar_(self, value):
+def _fill_scalar_(self, value):
     logger.debug("GEMS_NVIDIA FILL_SCALAR_")
     if self.is_contiguous():
         n_elements = self.numel()
@@ -188,10 +187,39 @@ def fill_scalar_(self, value):
         with torch_device_fn.device(self.device):
             fill_scalar_kernel[grid](self, value, n_elements, BLOCK_SIZE=1024)
     else:
-        tmp = self.contiguous()
-        n_elements = tmp.numel()
-        grid = (triton.cdiv(n_elements, 1024),)
         with torch_device_fn.device(self.device):
-            fill_scalar_kernel[grid](tmp, value, n_elements, BLOCK_SIZE=1024)
-        self.copy_(tmp)
+            fill_scalar_func(self, value, out0=self)
+    return self
+
+
+class _FillScalarInplace(_GenericFillScalarInplace):
+    @staticmethod
+    def forward(ctx, input, value):
+        ctx.mark_dirty(input)
+        return _fill_scalar_(input, value)
+
+
+class _FillTensorInplace(_GenericFillTensorInplace):
+    @staticmethod
+    def forward(ctx, input, value):
+        ctx.value_device = value.device
+        ctx.mark_dirty(input)
+        return _fill_tensor_(input, value)
+
+
+def fill_scalar_(self, value):
+    if torch.is_grad_enabled() and self.requires_grad:
+        return _FillScalarInplace.apply(self, value)
+    _fill_scalar_(self, value)
+    torch.autograd.graph.increment_version(self)
+    return self
+
+
+def fill_tensor_(self, value):
+    if value.ndim != 0:
+        raise RuntimeError("fill_ only supports 0-dimension value tensor")
+    if torch.is_grad_enabled() and (self.requires_grad or value.requires_grad):
+        return _FillTensorInplace.apply(self, value)
+    _fill_tensor_(self, value)
+    torch.autograd.graph.increment_version(self)
     return self
