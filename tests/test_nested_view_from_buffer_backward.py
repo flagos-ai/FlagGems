@@ -16,9 +16,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._nested_view_from_buffer_backward import (
-    NestedViewFromBufferBackwardFunction,
-)
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -187,23 +184,51 @@ def test_nested_view_from_buffer_backward_autograd_chain(dtype):
 
 
 @pytest.mark.nested_view_from_buffer_backward
-# float32 only: the bridge smoke covers autograd Function plumbing, not dtype
-# coverage, which the parametrized direct tests above already provide.
+# float32 only: the autograd-bridge comparison exercises metadata mechanics, not
+# dtype coverage, which the parametrized direct tests above already provide.
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_nested_view_from_buffer_backward_bridge(dtype):
-    """The autograd.Function bridge drives the Triton restore under autograd."""
-    grad_output, buffer, sizes, strides, offsets = _make_case(
-        NESTED_VIEW_BACKWARD_CASES[0], dtype
-    )
-    # requires_grad=True so autograd records the Function node (the restore
-    # output itself is a gradient tensor flowing through autograd).
-    grad_output = grad_output.detach().requires_grad_(True)
+    """The wrapper drives the Triton restore against the native autograd formula.
 
-    res_out = NestedViewFromBufferBackwardFunction.apply(
+    ``aten::_nested_view_from_buffer_backward`` is not a real ATen schema in
+    this build (the native backward is the codegen node
+    ``NestedViewFromBufferBackward0``, with no standalone operator to
+    override), so the wrapper is exercised directly, like the package-level
+    ``diag_embed_backward`` helper. The reference is the native autograd
+    buffer gradient on an exactly packed layout, where the native node
+    produces a bit-exact packed view; the restore must match it.
+    """
+    grad_output, buffer, sizes, strides, offsets = _make_case(
+        NESTED_VIEW_BACKWARD_CASES[1], dtype
+    )
+
+    # Native autograd chain on the same layout: buffer -> nested view ->
+    # components -> backward gives the reference buffer gradient. The packed
+    # component gradients of the same chain are the upstream input of the
+    # restore; the restore must reproduce the native buffer gradient. The
+    # buffer gradient is taken last so the graph is freed only once.
+    ref_buffer = buffer.detach().requires_grad_(True)
+    ref_nt = torch.ops.aten._nested_view_from_buffer.default(
+        ref_buffer, sizes, strides, offsets
+    )
+    ref_c0, ref_c1 = ref_nt.unbind()
+    ref_out = ref_c0.pow(2).sum() + ref_c1.sum()
+    ref_c0_grad = torch.autograd.grad(
+        ref_out, ref_c0, torch.ones_like(ref_out), retain_graph=True
+    )[0]
+    ref_c1_grad = torch.autograd.grad(
+        ref_out, ref_c1, torch.ones_like(ref_out), retain_graph=True
+    )[0]
+    ref_buffer_grad = torch.autograd.grad(
+        ref_out, ref_buffer, torch.ones_like(ref_out)
+    )[0]
+    grad_output = torch.cat(
+        [ref_c0_grad.contiguous().reshape(-1), ref_c1_grad.contiguous().reshape(-1)]
+    )
+
+    res_out = flag_gems._nested_view_from_buffer_backward(
         grad_output, buffer, sizes, strides, offsets
     )
-    assert res_out.grad_fn is not None
-    assert "NestedViewFromBufferBackward" in type(res_out.grad_fn).__name__
-
-    ref_out = _eager_reference(grad_output, buffer, sizes, strides, offsets)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out.shape == buffer.shape
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_buffer_grad, dtype)

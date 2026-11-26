@@ -15532,7 +15532,10 @@ ops:
     scattered into a zero buffer at its (offset, strides) view; positions not covered
     by any component stay zero. ATen's own NestedViewFromBufferBackward0 returns a
     zero-copy view of the upstream gradient storage, so this operator materializes
-    the buffer-shaped gradient instead.
+    the buffer-shaped gradient instead. Shipped as a package-level helper
+    (`flag_gems._nested_view_from_buffer_backward`): `aten::_nested_view_from_buffer_backward`
+    is not a real ATen schema, so no dispatch-key override is registered; callers
+    invoke the helper directly, as in the autograd-chain test.
   for:
   - _nested_view_from_buffer_backward
   labels:

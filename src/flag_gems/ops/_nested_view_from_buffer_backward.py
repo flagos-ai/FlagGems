@@ -341,24 +341,13 @@ def _nested_view_from_buffer_backward(
     return out
 
 
-class NestedViewFromBufferBackwardFunction(torch.autograd.Function):
-    """Autograd bridge driving the buffer-gradient restore through autograd.
-
-    ``forward`` restores the buffer-shaped gradient from the packed component
-    gradients with the Triton scatter kernel; the metadata inputs are
-    non-differentiable and the restore output is treated as first-order (the
-    inverse gather is provided by the native view chain, not by this node).
-    """
-
-    @staticmethod
-    def forward(ctx, grad_output, self_, nested_size, nested_strides, offsets):
-        return _nested_view_from_buffer_backward(
-            grad_output, self_, nested_size, nested_strides, offsets
-        )
-
-    @staticmethod
-    def backward(ctx, grad_grad_self):
-        return None, None, None, None, None
+# This module ships as a package-level helper (``flag_gems._nested_view_from_buffer_backward``)
+# rather than a dispatch-key override: ``aten::_nested_view_from_buffer_backward`` is
+# not a real ATen schema in this build (the native autograd node
+# ``NestedViewFromBufferBackward0`` is codegen'd from derivatives.yaml, with no
+# standalone operator to override), so an ATen-library registration would be inert.
+# Callers drive the restore directly, as in the autograd-chain test, which compares
+# it against the native autograd buffer gradient.
 
 
 __all__ = ["_nested_view_from_buffer_backward"]
