@@ -52,8 +52,10 @@ at::Tensor embedding(const at::Tensor &weight,
       in_ptr,  # pointer to the input
       weight_ptr,  # pointer to the weights
       N: tl.constexpr,  # number of columns in X
+      num_embeddings,  # vocabulary size (bounds check)
       BLOCK_SIZE: tl.constexpr,
   ):*/
+  int64_t num_embeddings = contiguous_weight.size(0);
   f1(raw_stream,
      M,
      1,
@@ -64,6 +66,7 @@ at::Tensor embedding(const at::Tensor &weight,
      contiguous_indices,
      contiguous_weight,
      N,
+     num_embeddings,
      BLOCK_SIZE);
 
   return output;
@@ -129,6 +132,7 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
       padding_idx,  # padding_idx
       HAS_PADDING_IDX: tl.constexpr,
       N: tl.constexpr,  # number of columns in X
+      num_weights,  # vocabulary size (bounds check)
       BLOCK_SIZE: tl.constexpr,
   ):*/
   f3(raw_stream,
@@ -143,6 +147,7 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
      padding_idx,
      HAS_PADDING_IDX,
      N,
+     num_weights,
      BLOCK_SIZE);
   if (scale_grad_by_freq) {
     const TritonJITFunction &f4 =

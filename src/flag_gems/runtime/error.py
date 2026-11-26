@@ -27,7 +27,7 @@ def device_not_found():
 def register_error(e):
     import logging
 
-    logging.warning(f"Skipped registering operator: {e}")
+    logging.warning(f"Skipped registering operator: {str(e)}")
 
 
 def customized_op_replace_error(e):

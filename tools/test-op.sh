@@ -79,11 +79,18 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
   "tests/test_quant.py"
+  "tests/test_rms_norm_w8a16_fp8.py"
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
   "tests/test_conv_depthwise2d.py"
   "tests/test_conv_depthwise3d.py"
   "tests/test_cudnn_convolution_transpose.py"
+)
+
+# Benchmark test cases that should not run on generic NVIDIA/CPU environments
+# (vendor-specific or hardware-specific tests)
+NO_KERNEL_CHECK_TESTS=(
+  "benchmark/test_rms_norm_w8a16_fp8.py"
 )
 
 # Extract test cases from CHANGED_FILES
@@ -253,10 +260,19 @@ if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   fi
 else
   # Per-PR run: a handful of changed files, run individually for precise
-  # failure attribution and -x fail-fast.
+  # failure attribution and -x fail-fast. Guard each file with the same shell
+  # timeout as the batched daily runs, and print node ids, so a hung test fails
+  # with rc=124 and leaves the last started test in the log instead of blocking
+  # the job until the workflow timeout.
   for item in "${TEST_CASES[@]}"; do
     echo "Running unit tests for ${item}"
-    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+    PYTHONUNBUFFERED=1 timeout "${TEST_BATCH_TIMEOUT:-3600}" \
+      coverage run -m pytest -s -v ${EXTRA_OPTS} ${item}
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+      if [[ $rc -eq 124 ]]; then
+        echo "::error::${item} timed out after ${TEST_BATCH_TIMEOUT:-3600}s"
+      fi
       if $FAIL_FAST; then exit 1; fi
       FAILURES+=("${item}")
     fi
@@ -358,6 +374,20 @@ for marker in "${OPS_MARKERS[@]}"; do
 done
 
 for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
+  # Skip vendor-specific/hardware-specific benchmark tests
+  skip_kernel_check=0
+  for skip_test in "${NO_KERNEL_CHECK_TESTS[@]}"; do
+    if [[ "$item" == "$skip_test" ]]; then
+      skip_kernel_check=1
+      break
+    fi
+  done
+
+  if [[ $skip_kernel_check -eq 1 ]]; then
+    echo "Skipping kernel-check for ${item} (vendor-specific test)"
+    continue
+  fi
+
   echo "Running kernel-check for ${item} (derived from changed operator)"
   if ! pytest -s ${item} --kernel-check; then
     if $FAIL_FAST; then exit 1; fi
