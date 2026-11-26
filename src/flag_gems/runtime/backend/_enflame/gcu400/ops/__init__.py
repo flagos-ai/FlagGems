@@ -1131,7 +1131,6 @@ from .empty_affine_quantized import _empty_affine_quantized, _empty_affine_quant
 from .empty_per_channel_affine_quantized import _empty_per_channel_affine_quantized
 from .empty_permuted import empty_permuted
 from .eq_ import eq_, eq_scalar_
-from .expand import expand, expand_
 from .expand_copy import expand_copy
 from .fake_quantize_per_channel_affine import fake_quantize_per_channel_affine
 from .fake_quantize_per_channel_affine_cachemask import (
@@ -1163,7 +1162,6 @@ from .flash_attention_backward import (
     scaled_dot_product_cudnn_attention_backward,
     scaled_dot_product_flash_attention_backward,
 )
-from .flatten import flatten
 from .flatten_dense_tensors import flatten_dense_tensors
 from .fliplr import fliplr
 from .flipud import flipud
@@ -1180,7 +1178,6 @@ from .float_power_ import (
 from .fractional_max_pool3d import fractional_max_pool3d
 from .frexp import frexp
 from .frobenius_norm import frobenius_norm
-from .functional_assert_async import _functional_assert_async
 from .fused_moving_avg_obs_fake_quant import fused_moving_avg_obs_fake_quant
 from .fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from .gcd_ import gcd_
@@ -1220,7 +1217,6 @@ from .heaviside_ import heaviside_
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histogram import histogram_bin_ct, histogram_bins_tensor
 from .histogramdd import histogramdd
-from .hsplit import hsplit
 from .hspmm import hspmm
 from .huber_loss import huber_loss, huber_loss_out
 from .hypot_ import hypot_
@@ -1446,7 +1442,6 @@ from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rnn_tanh_cell import rnn_tanh_cell
 from .roll import roll
 from .rot90 import rot90
-from .row_indices import row_indices
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .row_stack import row_stack, row_stack_out
 from .rrelu import rrelu, rrelu_
@@ -1620,7 +1615,6 @@ from .to_dense_backward import to_dense_backward
 from .to_sparse_semi_structured import to_sparse_semi_structured
 from .trace import trace
 from .trace_backward import trace_backward
-from .transpose import transpose
 from .transpose_ import transpose_
 from .transpose_copy import transpose_copy
 from .trapezoid import trapezoid_x
@@ -1631,7 +1625,6 @@ from .triplet_margin_loss import triplet_margin_loss
 from .triu import triu, triu_
 from .true_divide import true_divide_tensor
 from .true_divide_ import true_divide_tensor_
-from .unbind import unbind
 from .unbind_copy import unbind_copy
 from .underscore_sobol_engine_draw import underscore_sobol_engine_draw
 from .unflatten_dense_tensors import unflatten_dense_tensors
@@ -1644,8 +1637,6 @@ from .unique_dim import unique_dim
 from .unique_dim_consecutive import unique_dim_consecutive
 from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
-from .unsafe_split_with_sizes import unsafe_split_with_sizes
-from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bicubic2d_backward import (
     upsample_bicubic2d_backward,
@@ -1679,7 +1670,6 @@ from .values_copy import values_copy, values_copy_out
 from .vander import vander
 from .vdot import vdot
 from .version import version
-from .view_as_complex import view_as_complex
 from .view_as_complex_copy import view_as_complex_copy
 from .view_as_real_copy import view_as_real_copy
 from .weight_int4pack_mm import weight_int4pack_mm
@@ -1917,7 +1907,6 @@ __all__ = [
     "_foreach_trunc_",
     "_foreach_zero",
     "_foreach_zero_",
-    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
@@ -2468,8 +2457,6 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
-    "expand",
-    "expand_",
     "expand_copy",
     "expm1",
     "expm1_",
@@ -2506,7 +2493,6 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
-    "flatten",
     "flatten_dense_tensors",
     "flip",
     "fliplr",
@@ -2637,7 +2623,6 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
-    "hsplit",
     "hspmm",
     "hstack",
     "huber_loss",
@@ -3110,7 +3095,6 @@ __all__ = [
     "round_up_headdim",
     "round_up_headdimv",
     "router_gemm",
-    "row_indices",
     "row_indices_copy",
     "row_indices_copy_out",
     "row_stack",
@@ -3399,8 +3383,6 @@ __all__ = [
     "topk_w8a16_fp8",
     "trace",
     "trace_backward",
-    "transpose",
-    "transpose_",
     "transpose_copy",
     "trapezoid_x",
     "trapz",
@@ -3423,7 +3405,6 @@ __all__ = [
     "trunc_",
     "trunc_divide",
     "trunc_divide_",
-    "unbind",
     "unbind_copy",
     "underscore_sobol_engine_draw",
     "unflatten_dense_tensors",
@@ -3437,9 +3418,6 @@ __all__ = [
     "unique_dim_consecutive",
     "unsafe_index",
     "unsafe_index_put",
-    "unsafe_split_with_sizes",
-    "unsqueeze",
-    "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_bicubic2d_backward",
     "upsample_bicubic2d_backward_grad_input",
@@ -3474,7 +3452,6 @@ __all__ = [
     "vdot",
     "vector_norm",
     "version",
-    "view_as_complex",
     "view_as_complex_copy",
     "view_as_real_copy",
     "view_copy",
@@ -3689,7 +3666,7 @@ from .signbit__opt import signbit_out  # noqa: E402, F811
 from .squeeze_ import squeeze_, squeeze__dim, squeeze__dims  # noqa: E402, F811
 from .swapaxes import swapaxes  # noqa: E402, F811
 from .to_dense_backward import to_dense_backward  # noqa: E402, F811
-from .transpose_ import transpose_  # noqa: E402, F811
+from .transpose_ import transpose_  # noqa: E402, F401, F811
 
 # The unpack_seq cases in tests/ and benchmark/ directly call the package
 # attribute via `from flag_gems.deprecated import unpack_seq_triton`; without
