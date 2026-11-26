@@ -97,6 +97,7 @@ from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .cross import cross
+from .cross_out import cross_out
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
@@ -535,6 +536,7 @@ __all__ = [
     "cosine_embedding_loss",
     "count_nonzero",
     "cross",
+    "cross_out",
     "cudnn_convolution",
     "cummax",
     "cummin",
