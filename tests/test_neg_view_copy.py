@@ -123,6 +123,26 @@ def _make_input(dtype, shape, value_range):
     )
 
 
+def _reference_copy(inp):
+    """Native reference for the functional overload.
+
+    The Kunlunxin device implementation returns the input without negating it,
+    so that backend is checked against the CPU implementation.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        return torch.ops.aten._neg_view_copy(inp.cpu())
+    return torch.ops.aten._neg_view_copy(inp)
+
+
+def _reference_copy_out(inp, shape, dtype):
+    """Native reference for the ``.out`` overload, host-built on Kunlunxin."""
+    device = "cpu" if flag_gems.vendor_name == "kunlunxin" else inp.device
+    host = inp.cpu() if device == "cpu" else inp
+    out = torch.full(shape, 7, dtype=dtype, device=device)
+    torch.ops.aten._neg_view_copy.out(host, out=out)
+    return out
+
+
 def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
     assert res_out.is_contiguous()
     assert not res_out.is_neg()
@@ -130,6 +150,13 @@ def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
     # no-alias check is only meaningful for non-empty inputs.
     if inp.numel() > 0:
         assert res_out.data_ptr() != inp.data_ptr()
+    if res_out.device != ref_out.device:
+        # Host oracle: check the ABI first, then compare the values on the host.
+        assert res_out.dtype == ref_out.dtype
+        assert res_out.shape == ref_out.shape
+        utils.gems_assert_equal(inp.cpu(), ref_inp.cpu())
+        utils.gems_assert_equal(res_out.cpu(), ref_out)
+        return
     utils.gems_assert_equal(inp, ref_inp)
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -144,7 +171,7 @@ def test_neg_view_copy(shape, dtype):
     # to_reference creates an independent snapshot for the input mutation check.
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten._neg_view_copy(ref_inp)
+    ref_out = _reference_copy(ref_inp)
     res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
@@ -157,7 +184,7 @@ def test_neg_view_copy_value_ranges(shape, dtype, value_range):
     inp = _make_input(dtype, shape, value_range)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten._neg_view_copy(ref_inp)
+    ref_out = _reference_copy(ref_inp)
     res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
@@ -172,10 +199,8 @@ def test_neg_view_copy_out(shape, dtype):
     )
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.full(shape, 7, dtype=ref_inp.dtype, device=ref_inp.device)
+    ref_out = _reference_copy_out(ref_inp, shape, ref_inp.dtype)
     out = torch.full(shape, 7, dtype=dtype, device=flag_gems.device)
-
-    torch.ops.aten._neg_view_copy.out(ref_inp, out=ref_out)
     res_ret = flag_gems._neg_view_copy(inp, out=out)
 
     # The .out variant must write into and return the caller's buffer itself.
@@ -190,10 +215,8 @@ def test_neg_view_copy_out_value_ranges(shape, dtype, value_range):
     inp = _make_input(dtype, shape, value_range)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.full(shape, 7, dtype=ref_inp.dtype, device=ref_inp.device)
+    ref_out = _reference_copy_out(ref_inp, shape, ref_inp.dtype)
     out = torch.full(shape, 7, dtype=dtype, device=flag_gems.device)
-
-    torch.ops.aten._neg_view_copy.out(ref_inp, out=ref_out)
     res_ret = flag_gems._neg_view_copy(inp, out=out)
 
     assert res_ret is out
@@ -228,14 +251,16 @@ def test_neg_view_copy_special_values(dtype, scenario):
     ).to(dtype)
     ref_inp = utils.to_reference(values)
 
-    ref_out = torch.ops.aten._neg_view_copy(ref_inp)
+    ref_out = _reference_copy(ref_inp)
     res_out = flag_gems._neg_view_copy(values)
 
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    # Exactness checks are device-independent; observe both outputs on the host.
+    utils.gems_assert_equal(res_out.cpu(), ref_out.cpu(), equal_nan=True)
     # Exact numerical equality does not distinguish the signs of zero.
-    zeros = values == 0
+    zeros = values.cpu() == 0
     utils.gems_assert_equal(
-        torch.signbit(res_out[zeros]), torch.signbit(ref_out[ref_inp == 0])
+        torch.signbit(res_out.cpu()[zeros]),
+        torch.signbit(ref_out.cpu()[ref_inp.cpu() == 0]),
     )
 
 
@@ -251,7 +276,7 @@ def test_neg_view_copy_non_contiguous(shape, dtype):
     ref_inp = ref_base.transpose(-1, -2)
     assert not inp.is_contiguous()
 
-    ref_out = torch.ops.aten._neg_view_copy(ref_inp)
+    ref_out = _reference_copy(ref_inp)
     res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
@@ -266,7 +291,7 @@ def test_neg_view_copy_empty(shape, dtype):
     )
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten._neg_view_copy(ref_inp)
+    ref_out = _reference_copy(ref_inp)
     res_out = flag_gems._neg_view_copy(inp)
 
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
@@ -280,8 +305,12 @@ def test_neg_view_copy_backward(shape, dtype):
     grad = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = utils.to_reference(inp)
     ref_grad = utils.to_reference(grad)
+    if flag_gems.vendor_name == "kunlunxin":
+        # The CPU oracle needs its own leaf tensor to differentiate through.
+        ref_inp = ref_inp.detach().cpu().requires_grad_(True)
+        ref_grad = ref_grad.cpu()
 
-    ref_out = torch.ops.aten._neg_view_copy(ref_inp)
+    ref_out = _reference_copy(ref_inp)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
     res_out = flag_gems._neg_view_copy(inp)
@@ -295,9 +324,10 @@ def test_neg_view_copy_backward(shape, dtype):
 @pytest.mark.neg_view_copy
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="native _neg_view_copy returns a lazy neg view on this device, so the "
-    "unsupported-dtype error is deferred instead of raised at the call site",
+    flag_gems.vendor_name in ("enflame", "kunlunxin"),
+    reason="native _neg_view_copy does not raise for these dtypes on this "
+    "device (lazy view or plain copy), so the unsupported-dtype contract "
+    "cannot be observed against a native call",
 )
 def test_neg_view_copy_rejects_unsupported_dtypes(dtype):
     inp = torch.zeros(4, dtype=dtype, device=flag_gems.device)
