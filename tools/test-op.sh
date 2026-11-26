@@ -137,7 +137,8 @@ for item in $CHANGED_FILES; do
     tests/test_sparse_coo_tensor_with_dims.py | \
     tests/test_convolution_overrideable.py | \
     tests/test_convolution_overrideable_backward.py | \
-    tests/test_atanh_backward.py)
+    tests/test_atanh_backward.py | \
+    tests/test_cudnn_rnn_flatten_weight.py)
       if [[ "${BACKEND:-}" == *ascend* ]]; then
         # skip on Ascend: CANN 9.1.1 / BiShengHIR compiler limitation
         # TODO: unblock each test once the underlying issue is resolved
