@@ -37,3 +37,16 @@ def test_acosh_():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.acosh_backward
+def test_acosh_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="acosh",
+        torch_op=torch.acosh,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # The Autograd fallthrough routes the default use_gems() path through
+    # AcoshFunction, so this measures the fused registered backward kernel.
+    bench.run()

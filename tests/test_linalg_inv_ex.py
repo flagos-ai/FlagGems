@@ -72,7 +72,16 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     A = _make_invertible_matrix(shape, dtype, DEVICE)
     ref_A = utils.to_reference(A)
 
-    ref_result = torch.linalg.inv_ex(ref_A, check_errors=check_errors)
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and ref_A.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        ref_inverse = torch.from_numpy(np.linalg.inv(ref_A.numpy()))
+    else:
+        ref_inverse = torch.linalg.inv_ex(ref_A, check_errors=check_errors).inverse
     res_result = flag_gems.linalg_inv_ex(A, check_errors=check_errors)
 
     n = shape[-1]
@@ -86,9 +95,7 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     assert torch.all(res_result.info == 0)
 
     # Compare inverse directly (LU + solve accumulates O(n^2) error)
-    utils.gems_assert_close(
-        res_result.inverse, ref_result.inverse, dtype, reduce_dim=n * n
-    )
+    utils.gems_assert_close(res_result.inverse, ref_inverse, dtype, reduce_dim=n * n)
 
 
 @pytest.mark.linalg_inv_ex

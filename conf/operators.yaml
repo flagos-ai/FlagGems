@@ -617,6 +617,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: abs_backward
+  description: Computes the gradient of abs in one fused Triton kernel.
+  for:
+  - abs
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: absolute
   description: 'This is an alias for `abs()` with the low-level operations implemented
 
@@ -986,6 +998,17 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: addbmm_backward
+  description: Computes the three addbmm input gradients in one fused Triton launch.
+  for:
+  - addbmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: addcdiv
   description: 'Performs the element-wise division of `tensor1` by `tensor2`, multiplies
     the result
@@ -1476,6 +1499,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: amin_backward
+  description: Computes tie-aware input gradients for amin in one Triton launch.
+  for:
+  - amin
+  labels:
+  - aten
+  - KernelGen
+  - reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: aminmax
   description: 'Computes the minimum and maximum values of the `input` tensor.
 
@@ -2636,6 +2671,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: binary_cross_entropy_with_logits_backward
+  description: First-order autograd rule for binary_cross_entropy_with_logits implemented
+    with Triton kernels or zero-copy gradient views.
+  for:
+  - binary_cross_entropy_with_logits
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: bincount
   description: Count the frequency of each value in an array of non-negative integers.
   for:
@@ -4263,6 +4310,18 @@ ops:
   - Convolution
   stages:
   - alpha: '5.4'
+- id: convolution_overrideable_backward
+  description: |
+    Triton kernel implementation for convolution_overrideable_backward.
+  for:
+    - convolution_overrideable_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: convolution_overrideable_out
   description: 'A variant of convolution_overrideable() that writes the result into
     the out tensor.
@@ -4461,6 +4520,19 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: cosh_backward
+  description: The backward computation of `cosh()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - cosh
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: cosh_out
   description: This is an variant of `cosh()` that assigns the output to the provided
     `out`.
@@ -6728,6 +6800,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: fill_backward_
+  description: Backward of in-place fill for scalar and tensor values through autograd.
+  for:
+  - fill_.Scalar
+  - fill_.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -7193,6 +7277,17 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fmax_backward
+  description: Backward of fmax through autograd, including NaN and tie handling.
+  for:
+  - fmax
+  labels:
+  - aten
+  - pointwise
   kind:
   - Math
   stages:
@@ -9476,6 +9571,18 @@ ops:
   - Math
   stages:
   - stable: '2.0'
+- id: ge_backward_
+  description: Autograd backward for the in-place tensor and scalar `ge_()` comparisons.
+  for:
+  - ge_.Tensor
+  - ge_.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: ge_scalar
   description: The scalar version of `ge()`.
   for:
@@ -9912,19 +10019,15 @@ ops:
   stages:
   - stable: '3.0'
 - id: grouped_gemm_w8a8
-  description: 'Per-channel grouped NT GEMM with unpadded rows, FP32 row/column scales
-    and
-
-    caller-owned BF16 output. Supports matching signed INT8 operands on PPU
-
-    and MetaX, plus E4M3FN/FNUZ operands on MetaX. Uses packed expert indices
-
-    and row counts without padding.
-
-    '
+  description: 'Grouped NT GEMM with unpadded expert rows, FP32 scales and caller-owned
+    BF16 output. Supports per-row/per-channel INT8 scales on PPU and MetaX,
+    E4M3FN/FNUZ per-row/per-channel scales on MetaX, and E4M3FN block scales
+    on NVIDIA Hopper through grouped_gemm_w8a8_fp8.'
   for:
   - grouped_gemm_nt_i8i8bf16_nopad
   - grouped_gemm_w8a8
+  - grouped_gemm_w8a8_fp8
+  - deep_gemm.m_grouped_fp8_gemm_nt_contiguous
   labels:
   - fused
   - non-aten
@@ -13456,11 +13559,41 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: lshift_scalar_out
+  description: 'A variant of `lshift()` that assigns the output to the given `out`
+    parameter, with a scalar shift value.
+
+    '
+  for:
+  - __lshift__.Scalar_out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: lshift_tensor
   description: Applies a bitwise left shift to an integer tensor with a tensor shift
     value.
   for:
   - __lshift__.Tensor
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: lshift_tensor_out
+  description: 'A variant of `lshift()` that assigns the output to the given `out`
+    parameter, with a tensor shift value.
+
+    '
+  for:
+  - __lshift__.Tensor_out
   labels:
   - aten
   - pointwise
@@ -14193,6 +14326,19 @@ ops:
   - Math
   stages:
   - stable: '2.1'
+- id: maximum_backward
+  description: The backward computation of `maximum()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - maximum
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.5.0'
 - id: mean
   description: Returns the mean value of all elements in the `input` tensor. Input
     must be floating point or complex.
@@ -14689,6 +14835,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: mul_backward
+  description: Computes both tensor-input gradients of `mul` in one fused Triton kernel.
+  for:
+  - mul.Tensor
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: multi_margin_loss
   description: Computes the multi-class margin loss with optional class weights.
   for:
@@ -14770,6 +14928,19 @@ ops:
   - multilabel_margin_loss_forward
   labels:
   - aten
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: multilabel_margin_loss_forward_backward
+  description: Computes the input gradient of multilabel_margin_loss_forward with
+    a fused Triton kernel.
+  for:
+  - multilabel_margin_loss_forward
+  labels:
+  - aten
+  - KernelGen
   - Loss
   kind:
   - NeuralNetwork
@@ -15076,6 +15247,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: narrow_copy_backward
+  description: Extended narrow_copy gradient, validated against narrow followed by clone.
+  for:
+  - narrow_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: native_batch_norm
   description: Apply native batch normalization using the existing implementation.
   for:
@@ -20045,6 +20227,21 @@ ops:
   for:
   - sparse_coo_tensor.indices
   - sparse_coo_tensor.indices_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_coo_tensor_unsafe
+  description: 'Assembles a torch.sparse_coo tensor from already-materialised indices
+    and values without validating the index/size consistency; indices may be unsorted,
+    duplicated or out of range, and the payload dtype wins over the dtype argument.
+
+    '
+  for:
+  - _sparse_coo_tensor_unsafe
   labels:
   - aten
   - KernelGen
