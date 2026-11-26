@@ -607,7 +607,7 @@ if _HAS_WS:
                 worker_num_regs=[128, 128, 128, 24],
             )
 
-    _short_ws_kernel = libentry()(ws_multi_kernel.fn.fn)
+    short_ws_kernel = libentry()(ws_multi_kernel.fn.fn)
 
 
 _WS_LAUNCH_CACHE = OrderedDict()
@@ -1105,7 +1105,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             rows, cols = m, n
             aa = TensorDescriptor(a, [m, k], list(a.stride()), [bm, bk])
             bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [bn, bk])
-        _short_ws_kernel[(triton.cdiv(rows, bm) * triton.cdiv(cols, bn),)](
+        short_ws_kernel[(triton.cdiv(rows, bm) * triton.cdiv(cols, bn),)](
             aa,
             bb,
             out,
