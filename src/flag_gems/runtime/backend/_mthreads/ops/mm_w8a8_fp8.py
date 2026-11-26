@@ -613,28 +613,37 @@ if _HAS_WS:
 _WS_LAUNCH_CACHE = OrderedDict()
 
 
-def _launch_ws_tuned(kernel, grid, args):
+def _launch_ws_tuned(kernel, grid, args, *, fixed_config=None):
     """Cache compiled launch metadata, while keeping tuning and tensor data live."""
     a, b = args[0], args[1]
-    out, sa, sb, m, n, k = args[-6:]
+    out, sa, sb, m, n, k = args[2:8]
     options = {"enable_backend_opt": True}
     if _HAS_WS_SCHEDULER_CONTROL and min(m, n) >= 3072 and k >= 2048:
         # Wider tiles benefit from SQMMA scheduling without max-ILP expansion.
         # Older wheels retain their supported compiler options unchanged.
         options["disable_max_ilp_scheduler"] = True
-    tuner = kernel.fn
-    if getattr(tuner._run_mode, "value", "normal") != "normal":
-        _WS_LAUNCH_CACHE.clear()
-        return kernel[grid](*args, **options)
-    kernel._apply_flagtune()
-    # The caller validates aligned E4M3 descriptors, scalar FP32 scales and a
-    # contiguous BF16 output. Only runtime layout and pointer specialization vary.
+    if fixed_config is None:
+        tuner = kernel.fn
+        if getattr(tuner._run_mode, "value", "normal") != "normal":
+            _WS_LAUNCH_CACHE.clear()
+            return kernel[grid](*args, **options)
+        kernel._apply_flagtune()
+        configuration = (
+            tuner._flagtune_selection_token,
+            id(tuner.configs),
+            tuner.configs_hash,
+            tuner._benchmark_protocol,
+        )
+    else:
+        # Fixed short-grid launches have no tuner. Reuse the same bounded
+        # metadata cache without rebinding all kernel arguments on every call.
+        options.update(fixed_config)
+        configuration = tuple(args[8:])
+    # Both callers validate aligned E4M3 descriptors, scalar FP32 scales and a
+    # contiguous BF16 output. Runtime pointers remain live on cache hits.
     key = (
         kernel,
-        tuner._flagtune_selection_token,
-        id(tuner.configs),
-        tuner.configs_hash,
-        tuner._benchmark_protocol,
+        configuration,
         tuple(options.items()),
         a.base.device,
         m,
@@ -652,7 +661,7 @@ def _launch_ws_tuned(kernel, grid, args):
         tail = tuple(
             meta[name] for name in tuple(kernel.signature.parameters)[len(args) :]
         )
-        launch_grid = (tuple(grid(meta)) + (1, 1))[:3]
+        launch_grid = (tuple(grid(meta) if callable(grid) else grid) + (1, 1))[:3]
         cached = (meta, tail, compiled[launch_grid])
         _WS_LAUNCH_CACHE[key] = cached
         if len(_WS_LAUNCH_CACHE) > 128:
@@ -660,8 +669,9 @@ def _launch_ws_tuned(kernel, grid, args):
     else:
         _WS_LAUNCH_CACHE.move_to_end(key)
         meta, tail, launch = cached
-        args[0].block_shape = [meta["BM"], meta["BK"]]
-        args[1].block_shape = [meta["BN"], meta["BK"]]
+        if fixed_config is None:
+            args[0].block_shape = [meta["BM"], meta["BK"]]
+            args[1].block_shape = [meta["BN"], meta["BK"]]
         launch(*args, *tail)
 
 
@@ -1125,26 +1135,11 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             rows, cols = m, n
             aa = TensorDescriptor(a, [m, k], list(a.stride()), [bm, bk])
             bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [bn, bk])
-        short_ws_kernel[(triton.cdiv(rows, bm) * triton.cdiv(cols, bn),)](
-            aa,
-            bb,
-            out,
-            sa,
-            sb,
-            rows,
-            cols,
-            k,
-            bm,
-            bn,
-            bk,
-            1,
-            4,
-            4,
-            2,
-            1,
-            num_warps=4,
-            num_stages=1,
-            enable_backend_opt=True,
+        _launch_ws_tuned(
+            short_ws_kernel,
+            (triton.cdiv(rows, bm) * triton.cdiv(cols, bn),),
+            (aa, bb, out, sa, sb, rows, cols, k, bm, bn, bk, 1, 4, 4, 2, 1),
+            fixed_config={"num_warps": 4, "num_stages": 1},
         )
         return out
     tme_config = _SKINNY_TME_CONFIGS.get((m, n, k))
