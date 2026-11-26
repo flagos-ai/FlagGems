@@ -832,6 +832,14 @@ tril_out_sliced:
     - [512, 32, 32]
   shape_desc: "(B), M, N"
 
+sinc_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 GenericBenchmarkExcluse3D:
   shapes:
     - [1048576] # 1024 * 1024
@@ -1672,10 +1680,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-sinc_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
   - - 4096
-  - - 1048576
-  - - 16777216
-  shape_desc: Fixed accepted backward input shape
+    - 4096
+  shape_desc: backward input shape
