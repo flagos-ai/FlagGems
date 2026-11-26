@@ -71,6 +71,7 @@ def _kg_sdpea_fwd_v1(
     K,
     V,
     O,
+    MASK,
     sm_scale,
     H: tl.constexpr,
     S: tl.constexpr,
@@ -91,11 +92,17 @@ def _kg_sdpea_fwd_v1(
 
     # QK^T uses the backend default (tf32), matching the reference arithmetic.
     qk = tl.dot(q_t, tl.trans(k_t)) * sm_scale
+    if CAUSAL:
+        # Additive causal mask (0.0 on/under the diagonal, -1e30 above) loaded
+        # from a small host-built S x S buffer.  An in-kernel ``tl.where``
+        # select here makes the flagtree 0.7.1a1 XPU build abort inside
+        # ``TritonSDNNLegalize`` (LLVM ArrayRef assert) for the fp16 8x8 tile;
+        # a plain load+add lowers cleanly and is the same construction the
+        # general two-pass path already uses for its cmask.
+        qk = qk + tl.load(MASK + offs_m[:, None] * S + offs_m[None, :])
 
     m = tl.max(qk, 1)
     p = tl.exp(qk - m[:, None])
-    if CAUSAL:
-        p = tl.where(offs_m[None, :] <= offs_m[:, None], p, 0.0)
 
     l_i = tl.maximum(tl.sum(p, 1), 1.0e-30)
 
@@ -522,6 +529,18 @@ def _sdpa_forward_fast(query, key, value, is_causal, scale, compute_log_sumexp):
         log_sum_exp = empty_i64.view(torch.float32)
 
     grid = (batch * head_num,)
+    # Small additive causal mask shared by every (batch, head) program.  Built
+    # with a broadcast comparison (0.0 on/under the diagonal, -1e30 above) so
+    # the kernel only needs a load+add; see the kernel comment for why the
+    # in-kernel select is avoided.  The same allowed construction is used by
+    # the general two-pass path (torch.where is rejected by the fallback
+    # checker and boolean index assignment hangs on XPU).
+    if is_causal:
+        rows = torch.arange(seq_len, device=q.device)[:, None]
+        cols = torch.arange(seq_len, device=q.device)[None, :]
+        causal_mask = ((cols > rows).to(torch.float32) * -1.0e30).contiguous()
+    else:
+        causal_mask = output
     common = dict(
         H=head_num,
         S=seq_len,
@@ -530,7 +549,7 @@ def _sdpa_forward_fast(query, key, value, is_causal, scale, compute_log_sumexp):
         num_stages=1,
     )
     with torch_device_fn.device(q.device):
-        _kg_sdpea_fwd_v1[grid](q, k, v, output, softmax_scale, **common)
+        _kg_sdpea_fwd_v1[grid](q, k, v, output, causal_mask, softmax_scale, **common)
         if compute_log_sumexp:
             _kg_sdpea_lse_v1[grid](q, k, log_sum_exp, softmax_scale, **common)
     return output, log_sum_exp
