@@ -331,6 +331,17 @@ diag:
     - [256, 1024]
     - [1024, 1024]
 
+nansum_backward:
+  shapes:
+  - - 257
+  - - 32
+    - 128
+  - - 256
+    - 1024
+  - - 1024
+    - 4096
+  shape_desc: Frozen backward30 reduction input shape
+
 quantile:
   shapes:
     - [1048576] # 1024 * 1024
@@ -1672,13 +1683,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-nansum_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
-  - - 32
-    - 128
-  - - 256
-    - 1024
+  - - 64
+    - 64
   - - 1024
+    - 1024
+  - - 4096
     - 4096
-  shape_desc: Frozen backward30 reduction input shape
+  shape_desc: backward input shape

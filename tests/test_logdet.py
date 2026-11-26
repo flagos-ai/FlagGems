@@ -212,6 +212,10 @@ def test_logdet_empty(dtype):
 
 @pytest.mark.logdet
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct the complex eye input for this rejection test",
+)
 def test_logdet_rejects_complex(dtype):
     input_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
     real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
