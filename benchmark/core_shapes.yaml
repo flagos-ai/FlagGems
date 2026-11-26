@@ -465,6 +465,17 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+neg_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 pointwise input shape
+
 addbmm_backward:
   # Representative backward cases cover skinny, rectangular and non-aligned
   # GEMMs without the multi-gigabyte gradients of the shared forward BLAS set.
@@ -1672,7 +1683,7 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-neg_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
   - - 64
@@ -1681,4 +1692,4 @@ neg_backward:
     - 1024
   - - 4096
     - 4096
-  shape_desc: Frozen backward30 pointwise input shape
+  shape_desc: backward input shape
