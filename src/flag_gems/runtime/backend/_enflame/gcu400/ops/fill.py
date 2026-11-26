@@ -587,9 +587,7 @@ class _FillTensor(torch.autograd.Function):
             # that builds its gradient would only cost a launch (~100us from
             # the engine thread on gcu400).
             return _zero_grad(grad_output), None
-        return _zero_grad(grad_output), _value_gradient(
-            grad_output, ctx.value_device
-        )
+        return _zero_grad(grad_output), _value_gradient(grad_output, ctx.value_device)
 
 
 def fill_scalar(input, value):
