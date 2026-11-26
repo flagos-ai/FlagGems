@@ -46,6 +46,7 @@ from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
 from .cudnn_convolution import cudnn_convolution
+from .det import det
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
@@ -190,6 +191,7 @@ __all__ = [
     "conv_transpose2d",
     "conv_transpose3d",
     "cudnn_convolution",
+    "det",
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
