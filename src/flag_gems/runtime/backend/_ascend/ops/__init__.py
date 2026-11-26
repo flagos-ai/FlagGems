@@ -234,6 +234,7 @@ from .hamming_window import (
 from .hardshrink import hardshrink
 from .hardshrink_out import hardshrink_out
 from .hardsigmoid_backward import hardsigmoid_backward
+from .hardswish_out import hardswish_out
 from .hardtanh_backward import hardtanh_backward
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
@@ -677,6 +678,7 @@ __all__ = [
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid_backward",
+    "hardswish_out",
     "hardtanh_backward",
     "hinge_embedding_loss",
     "histc",
