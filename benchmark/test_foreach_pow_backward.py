@@ -71,8 +71,11 @@ class ForeachPowBackwardBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+        # The ATen baseline rebuilds the autograd graph per call (four tensors
+        # plus the forward result), so large shapes OOM the CI GPU: cap at
+        # 2**24 elements (~192 MiB per bf16 tensor, x4 tensors x2 sides).
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 15, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + shapes_3d
 
     def get_input_iter(self, dtype):
