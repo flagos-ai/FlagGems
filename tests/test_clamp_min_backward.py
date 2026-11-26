@@ -88,3 +88,31 @@ def test_clamp_min_backward_nan_and_boundary(dtype):
         torch.clamp_min(ref_inp, -0.5), ref_inp, utils.to_reference(grad)
     )
     utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.clamp_min_backward
+@pytest.mark.parametrize("bound", [0.1, -0.1, 1 / 3])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_clamp_min_backward_rounded_bound(dtype, bound):
+    """The bound is compared in the element dtype, as ATen does.
+
+    ``bound`` rarely round-trips through fp16/bf16, so the element that equals
+    the rounded bound must keep its gradient instead of being zeroed by a
+    comparison against the wider fp32 scalar.
+    """
+    rounded = torch.tensor(bound, dtype=dtype)
+    # The two representable neighbours of the rounded bound, so the case sits
+    # exactly on the inclusive edge of ATen's ``self >= min_value``.
+    below = float(torch.nextafter(rounded, torch.tensor(float("-inf"), dtype=dtype)))
+    above = float(torch.nextafter(rounded, torch.tensor(float("inf"), dtype=dtype)))
+    values = [below, rounded.item(), above]
+
+    inp = torch.tensor(values, dtype=dtype, device=flag_gems.device).requires_grad_()
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    grad = torch.ones_like(inp)
+
+    (dx,) = torch.autograd.grad(flag_gems.clamp_min(inp, bound), inp, grad)
+    (ref_dx,) = torch.autograd.grad(
+        torch.clamp_min(ref_inp, bound), ref_inp, utils.to_reference(grad)
+    )
+    utils.gems_assert_close(dx, ref_dx, dtype)

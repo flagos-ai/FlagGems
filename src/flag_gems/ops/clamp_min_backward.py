@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("_clamp_min_backward"), key=["n"])
+@triton.autotune(
+    configs=runtime.get_tuned_config("_clamp_min_backward"), key=["bucket"]
+)
 @triton.jit
 def _clamp_min_backward_kernel(
     grad_ptr,
@@ -43,6 +45,7 @@ def _clamp_min_backward_kernel(
     out_ptr,
     n_elements,
     min_value,
+    bucket,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0).to(tl.int64)
@@ -51,9 +54,25 @@ def _clamp_min_backward_kernel(
     g = tl.load(grad_ptr + offs, mask=mask, other=0.0)
     x = tl.load(self_ptr + offs, mask=mask, other=0.0)
     # PyTorch's clamp_min VJP keeps the gradient at the boundary (inclusive)
-    # and drops it for NaN, which fails the comparison.
-    out = tl.where(x >= min_value, g, 0.0)
+    # and drops it for NaN, which fails the comparison. The bound is compared
+    # in the element dtype, as ATen does: comparing against the fp32 scalar
+    # would zero the gradient of an element that equals the rounded bound.
+    out = tl.where(x >= min_value.to(x.dtype), g, 0.0)
     tl.store(out_ptr + offs, out, mask=mask)
+
+
+def _bucket(n):
+    # Size buckets let autotune keep one configuration per magnitude class
+    # instead of re-tuning for every distinct numel.
+    if n <= 1 << 13:
+        return 0
+    if n <= 1 << 17:
+        return 1
+    if n <= 1 << 21:
+        return 2
+    if n <= 1 << 25:
+        return 3
+    return 4
 
 
 def clamp_min_backward(grad_output, self, min_value):
@@ -72,7 +91,8 @@ def clamp_min_backward(grad_output, self, min_value):
     n = out.numel()
     if n == 0:
         return out
+    bucket = _bucket(n)
     grid = lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
     with torch_device_fn.device(x.device):
-        _clamp_min_backward_kernel[grid](g, x, out, n, min_value)
+        _clamp_min_backward_kernel[grid](g, x, out, n, min_value, bucket)
     return out
