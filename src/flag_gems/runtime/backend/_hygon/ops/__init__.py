@@ -105,6 +105,9 @@ from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_neg import _foreach_neg as _foreach_neg
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_pow_ScalarAndTensor import (
+    _foreach_pow_ScalarAndTensor as _foreach_pow_ScalarAndTensor,
+)
 from ._foreach_reciprocal import _foreach_reciprocal as _foreach_reciprocal
 from ._foreach_reciprocal_ import _foreach_reciprocal_ as _foreach_reciprocal_
 from ._foreach_round_ import _foreach_round_
@@ -439,6 +442,7 @@ __all__ = [
     "_foreach_neg",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
+    "_foreach_pow_ScalarAndTensor",
     "_foreach_reciprocal",
     "_foreach_reciprocal_",
     "_foreach_round_",
