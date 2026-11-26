@@ -861,6 +861,7 @@ from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.expand import expand, expand_
+from flag_gems.ops.expand_backward import expand_backward
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential import exponential
@@ -2628,6 +2629,7 @@ __all__ = [
     "exp_out",
     "expand",
     "expand_",
+    "expand_backward",
     "expand_copy",
     "expm1",
     "expm1_",

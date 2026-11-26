@@ -6363,6 +6363,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: expand_backward
+  description: |
+    Computes the gradient of `expand()` with respect to `input` by summing
+    `grad_output` over every broadcast dimension back to the input shape
+    (`grad_output.sum_to_size(input.shape)`).
+  for:
+    - expand_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: expand_copy
   description: Returns a copy of the input tensor expanded by broadcasting singleton
     dimensions.
