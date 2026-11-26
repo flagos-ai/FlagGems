@@ -307,6 +307,12 @@ def _native_dot(
     TN: tl.constexpr,
     TK: tl.constexpr,
     STAGES: tl.constexpr,
+    Bias=None,
+    CB: tl.constexpr = 0,
+    CM: tl.constexpr = 0,
+    CN: tl.constexpr = 0,
+    ALPHA: tl.constexpr = 1,
+    BETA: tl.constexpr = 0,
 ):
     # Complete native body: dtype/layout scheduling is left to the compiler.
     pid = tl.program_id(0)
@@ -334,10 +340,23 @@ def _native_dot(
             other=0.0,
         )
         acc = tl.dot(av, bv, acc, input_precision="ieee")
+    mask = (rm[:, None] < M) & (rn[None, :] < N)
+    if ALPHA != 1:
+        acc *= ALPHA
+    if BETA != 0:
+        bias = tl.load(
+            Bias
+            + batch * CB
+            + rm[:, None].to(tl.int64) * CM
+            + rn[None, :].to(tl.int64) * CN,
+            mask,
+            other=0.0,
+        ).to(tl.float32)
+        acc += bias * BETA
     tl.store(
         C + batch * M * N + rm[:, None].to(tl.int64) * N + rn[None, :],
         acc,
-        (rm[:, None] < M) & (rn[None, :] < N),
+        mask,
     )
 
 

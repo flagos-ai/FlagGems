@@ -68,7 +68,16 @@ def ref_inverse(a):
     # the reference is computed wide on CPU there.  Other backends keep the
     # to_reference() upcast behaviour (device, or CPU under --ref cpu).
     if flag_gems.vendor_name != "kunlunxin":
-        return torch.inverse(utils.to_reference(a, upcast=True)).to(a.dtype)
+        ref_A = utils.to_reference(a, upcast=True)
+        if (
+            flag_gems.vendor_name == "mthreads"
+            and ref_A.device.type == "cpu"
+            and not torch._C.has_lapack
+        ):
+            import numpy as np
+
+            return torch.from_numpy(np.linalg.inv(ref_A.numpy())).to(a.dtype)
+        return torch.inverse(ref_A).to(a.dtype)
     a_cpu = (
         a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
     )
