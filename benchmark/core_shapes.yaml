@@ -771,6 +771,14 @@ _weight_norm:
     - [512, 512]
     - [1024, 1024]
 
+sin_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 # MetaX C550: reduced shapes to avoid 32-bit pointer limitation in MacaLauncher
 group_norm:
   shapes:
@@ -1672,10 +1680,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-sin_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
   - - 4096
-  - - 1048576
-  - - 16777216
-  shape_desc: Fixed accepted backward input shape
+    - 4096
+  shape_desc: backward input shape
