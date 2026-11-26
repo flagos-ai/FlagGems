@@ -119,6 +119,9 @@ from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
+from ._fused_rms_norm_backward import (
+    _fused_rms_norm_backward as _fused_rms_norm_backward,
+)
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
@@ -457,6 +460,7 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_foreach_sub__ScalarList",
+    "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
     "_scaled_dot_product_attention_math_for_mps",
