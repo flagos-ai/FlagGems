@@ -25,7 +25,11 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def reciprocal_func(x):
-    return 1.0 / x.to(tl.float32)
+    if x.dtype == tl.float64:
+        result = 1.0 / x
+    else:
+        result = 1.0 / x.to(tl.float32)
+    return result
 
 
 def reciprocal(A):
