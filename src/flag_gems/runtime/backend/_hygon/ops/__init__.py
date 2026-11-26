@@ -23,6 +23,7 @@ from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_abs_ import _foreach_abs_ as _foreach_abs_
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
 from ._foreach_add__ScalarList import _foreach_add__ScalarList
@@ -304,6 +305,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_foreach_abs_",
     "_foreach_add__List",
     "_foreach_add__Scalar",
     "_foreach_add__ScalarList",
