@@ -89,7 +89,11 @@ def _make_positive_definite(shape, dtype, device):
 
 
 def _reference_cholesky_inverse(factor, upper):
-    if flag_gems.vendor_name == "mthreads" and factor.device.type == "cpu":
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and factor.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
         # PyTorch's CPU cholesky_inverse requires LAPACK in the MUSA build.
         import numpy as np
 
