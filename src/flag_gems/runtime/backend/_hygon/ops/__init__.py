@@ -37,6 +37,7 @@ from ._foreach_ceil import _foreach_ceil as _foreach_ceil
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_copy_ import _foreach_copy_
+from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
@@ -321,6 +322,7 @@ __all__ = [
     "_foreach_clamp_max__Scalar",
     "_foreach_clamp_min__Scalar",
     "_foreach_copy_",
+    "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
