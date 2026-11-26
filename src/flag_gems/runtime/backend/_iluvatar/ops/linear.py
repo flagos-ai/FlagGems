@@ -136,6 +136,15 @@ def linear(input, weight, bias=None):
     weight = weight.contiguous()
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
 
+    if bias is None:
+        from flag_gems.runtime.backend._iluvatar.ops.projection import eligible, project
+
+        if eligible(input_flat, weight.t(), output):
+            with torch_device_fn.device(input.device):
+                project(input_flat, weight.t(), output)
+            result = output.view(*batch_dims, N)
+            return result.squeeze(0) if single_1d else result
+
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META.get("SPLIT_K", 1),

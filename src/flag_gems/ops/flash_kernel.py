@@ -1258,6 +1258,34 @@ def load_from_kvcache(
     return bK, bV
 
 
+@triton.jit
+def load_prefill_full_tile(
+    n_block,
+    page_table,
+    k_ptr,
+    v_ptr,
+    PAGE: tl.constexpr,
+    row_stride,
+    page_stride,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    # Only the interior loop calls this helper. The masked rightmost tile
+    # remains on the generic path, including partial pages.
+    pages_per_tile: tl.constexpr = BN // PAGE
+    pages = tl.load(
+        page_table + n_block * pages_per_tile + tl.arange(0, pages_per_tile)
+    )
+    offset = (
+        pages[:, None].to(tl.int64) * page_stride
+        + tl.arange(0, PAGE)[None, :] * row_stride
+    ).reshape(BN)
+    lanes = tl.arange(0, BK)
+    k = tl.load(k_ptr + lanes[:, None] + offset[None, :])
+    v = tl.load(v_ptr + lanes[None, :] + offset[:, None])
+    return k, v
+
+
 @libentry()
 @triton.jit(
     do_not_specialize=[
@@ -1346,10 +1374,39 @@ def flash_varlen_fwd_kernel(
     BLOCK_K: tl.constexpr,
     num_warps: tl.constexpr,
     num_stages: tl.constexpr,
+    # Phase split: 0 = serve every sequence, 1 = only prefill/chunk rows
+    # (query length > 1), 2 = only single-token decode rows.
+    SPLIT_MODE: tl.constexpr = 0,
+    DIRECT_GQA: tl.constexpr = False,
+    PREFILL_GQA_GROUP: tl.constexpr = 1,
+    PREFILL_BATCH_WIDTH: tl.constexpr = 0,
+    WRITE_LSE: tl.constexpr = True,
+    EXCLUDE_SELECTED: tl.constexpr = False,
+    selected_meta=None,
 ):
-    m_block = tl.program_id(0)
-    bid = tl.program_id(1)
-    hid = tl.program_id(2)
+    Q_TILE: tl.constexpr = BLOCK_M // PREFILL_GQA_GROUP
+    if PREFILL_BATCH_WIDTH:
+        hid = tl.program_id(0)
+        tile = tl.program_id(1)
+        seq = tl.arange(0, PREFILL_BATCH_WIDTH)
+        starts = tl.load(cu_seqlens_q_ptr + seq, mask=seq < b, other=0)
+        ends = tl.load(cu_seqlens_q_ptr + seq + 1, mask=seq < b, other=0)
+        lengths = ends - starts
+        counts = tl.where(lengths > 1, tl.cdiv(lengths, Q_TILE), 0)
+        if EXCLUDE_SELECTED:
+            excluded = (seq == tl.load(selected_meta)) | (
+                seq == tl.load(selected_meta + 4)
+            )
+            counts = tl.where(excluded, 0, counts)
+        tile_ends = tl.cumsum(counts, 0)
+        if tile >= tl.max(tile_ends, 0):
+            return
+        bid = tl.sum((tile_ends <= tile).to(tl.int32), 0)
+        m_block = tile - tl.sum(tl.where(seq == bid, tile_ends - counts, 0), 0)
+    else:
+        m_block = tl.program_id(0)
+        bid = tl.program_id(1)
+        hid = tl.program_id(2)
     # num_m_blocks = tl.cdiv(seqlen_q, BLOCK_M)
 
     if is_cu_seqlens_q:
@@ -1380,8 +1437,24 @@ def flash_varlen_fwd_kernel(
     else:
         k_len = k_len_cache
 
+    # Skip the rows that belong to the other phase.  A scheduler step mixes long
+    # prefill chunks with single-token decodes; running both with one tile size
+    # wastes most of the lanes on the decode rows, so the caller launches this
+    # kernel twice with a per-phase tile and lets the unmatched rows bail out here.
+    if SPLIT_MODE == 1 and q_len <= 1:
+        return
+    if SPLIT_MODE == 2 and q_len > 1:
+        return
+
+    # Direct decode: tile rows are query heads, not token positions. Read
+    # original metadata on device, including padded/empty and interleaved rows.
+    if DIRECT_GQA:
+        if q_len != 1:
+            return
+        q_len = h_hk_ratio
+
     # Noop CTA
-    if m_block * BLOCK_M > q_len:
+    if m_block * Q_TILE >= q_len:
         return
 
     # is_even_mn = (q_len % BLOCK_M == 0) and (k_len % BLOCK_N == 0)
@@ -1399,7 +1472,7 @@ def flash_varlen_fwd_kernel(
         n_block_max = min(
             n_block_max,
             tl.cdiv(
-                (m_block + 1) * BLOCK_M + k_len - q_len + window_size_right, BLOCK_N
+                (m_block + 1) * Q_TILE + k_len - q_len + window_size_right, BLOCK_N
             ),
         )
 
@@ -1413,20 +1486,38 @@ def flash_varlen_fwd_kernel(
     # Calculate the starting offset of q for the current head
     q_row_offset = hid * q_head_stride
     # Calculate the starting offset of k and v for the current head
-    k_row_offset = (hid // h_hk_ratio) * k_head_stride
+    if DIRECT_GQA:
+        q_row_offset = hid * h_hk_ratio * q_head_stride
+        k_row_offset = hid * k_head_stride
+        q_tile_stride = q_head_stride
+    elif PREFILL_GQA_GROUP > 1:
+        k_row_offset = (hid // (h_hk_ratio // PREFILL_GQA_GROUP)) * k_head_stride
+    else:
+        k_row_offset = (hid // h_hk_ratio) * k_head_stride
+        q_tile_stride = q_row_stride
     # Shift the k, v pointers to align with the current head
     k_ptr_base = k_ptr + k_row_offset
     v_ptr_base = v_ptr + k_row_offset
 
-    gQ = tl.make_block_ptr(
-        base=q_ptr + q_offset + q_row_offset,
-        shape=(q_len, d),
-        strides=(q_row_stride, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_M, BLOCK_K),
-        order=(1, 0),
-    )
-    bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
+    if PREFILL_GQA_GROUP > 1:
+        lanes = tl.arange(0, BLOCK_M)
+        q_pos = m_block * Q_TILE + lanes % Q_TILE
+        q_head = hid * PREFILL_GQA_GROUP + lanes // Q_TILE
+        dims = tl.arange(0, BLOCK_K)
+        q_addr = q_offset + q_pos * q_row_stride + q_head * q_head_stride
+        bQ = tl.load(
+            q_ptr + q_addr[:, None] + dims[None, :], q_pos[:, None] < q_len, other=0.0
+        )
+    else:
+        gQ = tl.make_block_ptr(
+            base=q_ptr + q_offset + q_row_offset,
+            shape=(q_len, d),
+            strides=(q_tile_stride, 1),
+            offsets=(0, 0),
+            block_shape=(BLOCK_M, BLOCK_K),
+            order=(1, 0),
+        )
+        bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
 
     acc_ = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
@@ -1442,13 +1533,16 @@ def flash_varlen_fwd_kernel(
     if not is_causal and not is_local:
         n_masking_steps = 1
     elif is_even_mn:
-        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N)
+        n_masking_steps = tl.cdiv(Q_TILE, BLOCK_N)
     else:
-        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
+        n_masking_steps = tl.cdiv(Q_TILE, BLOCK_N) + 1
 
     n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
 
-    row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    if PREFILL_GQA_GROUP > 1:
+        row_idx = q_pos
+    else:
+        row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
     n_block = n_block_max - 1
     for step in tl.range(0, n_masking_steps):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -1549,7 +1643,19 @@ def flash_varlen_fwd_kernel(
         n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
     ):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        if is_paged:
+        if PREFILL_GQA_GROUP > 1:
+            bK, bV = load_prefill_full_tile(
+                n_block,
+                page_table_ptr,
+                k_ptr_base,
+                v_ptr_base,
+                block_size,
+                k_row_stride,
+                k_page_stride,
+                BLOCK_N,
+                BLOCK_K,
+            )
+        elif is_paged:
             bK, bV = load_from_kvcache(
                 col_idx,
                 k_len,
@@ -1639,37 +1745,59 @@ def flash_varlen_fwd_kernel(
             )
         acc_ = tl.dot(P, bV, acc_)
 
-    # LSE
-    lse = tl.where(
-        rowsum_ == 0 | (rowsum_ != rowsum_),
-        float("inf"),
-        rowmax_ * scale_softmax + tl.log(rowsum_),
-    )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
-
     acc_ *= inv_sum[:, None]
-
     out = acc_.to(o_ptr.type.element_ty)  # noqa
 
+    if WRITE_LSE:
+        lse = tl.where(
+            rowsum_ == 0 | (rowsum_ != rowsum_),
+            float("inf"),
+            rowmax_ * scale_softmax + tl.log(rowsum_),
+        )
+
+    if PREFILL_GQA_GROUP > 1:
+        o_addr = o_offset + q_pos * o_row_stride + q_head * o_head_stride
+        tl.store(o_ptr + o_addr[:, None] + dims[None, :], out, q_pos[:, None] < q_len)
+        if WRITE_LSE:
+            tl.store(
+                softmax_lse_ptr + q_head * total_q + lse_offset + q_pos,
+                lse,
+                q_pos < q_len,
+            )
+        return
+
     # Write back output
-    o_row_offset = hid * o_head_stride
+    if DIRECT_GQA:
+        o_row_offset = hid * h_hk_ratio * o_head_stride
+        o_tile_stride = o_head_stride
+    else:
+        o_row_offset = hid * o_head_stride
+        o_tile_stride = o_row_stride
 
     gO = tl.make_block_ptr(
         base=o_ptr + o_offset + o_row_offset,
         shape=(q_len, d),
-        strides=(o_row_stride, 1),
+        strides=(o_tile_stride, 1),
         offsets=(0, 0),
         block_shape=(BLOCK_M, BLOCK_K),
         order=(1, 0),
     )
     tl.store(gO.advance([m_block * BLOCK_M, 0]), out, boundary_check=(0, 1))
 
-    # Write back lse
-    # lse shape: [h, total_q]
-    softmax_lse_ptr += hid * total_q
-    lse_row_offset = lse_offset + m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    tl.store(
-        softmax_lse_ptr + lse_row_offset,
-        lse,
-        mask=lse_row_offset < (lse_offset + q_len),
-    )
+    if WRITE_LSE:
+        if DIRECT_GQA:
+            group = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+            tl.store(
+                softmax_lse_ptr + (hid * h_hk_ratio + group) * total_q + q_bos,
+                lse,
+                mask=group < h_hk_ratio,
+            )
+        else:
+            softmax_lse_ptr += hid * total_q
+            lse_row_offset = lse_offset + m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+            tl.store(
+                softmax_lse_ptr + lse_row_offset,
+                lse,
+                mask=lse_row_offset < (lse_offset + q_len),
+            )

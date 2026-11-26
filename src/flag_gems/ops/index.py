@@ -266,6 +266,10 @@ def generate_index_kernel(
         code.newline()
         for i in range(indices_len):
             code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int64)")
+            if runtime.device.vendor_name == "iluvatar":
+                code.writeline(
+                    f"cur_index{i} = tl.where(cur_index{i} < 0, cur_index{i} + input_shape{i}, cur_index{i})"
+                )
         code.newline()
         index_mask = [
             f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
@@ -708,6 +712,16 @@ def _run_linearized_adjacent_index(inp, indices):
     tensor_index_dims = _tensor_index_dims(indices)
     start_dim = tensor_index_dims[0]
     tensor_indices = [indices[dim] for dim in tensor_index_dims]
+    if (
+        runtime.device.vendor_name == "iluvatar"
+        and start_dim == 0
+        and len(tensor_indices) == 1
+    ):
+        from flag_gems.runtime.backend._iluvatar.ops.row_gather import index_first_dim
+
+        result = index_first_dim(inp, tensor_indices[0])
+        if result is not None:
+            return result
     # Preserve PyTorch advanced-indexing output order without moving indexed
     # dimensions to the front, e.g. x[:, idx, :] and x[:, idx0, idx1, :].
     out_shape = (
