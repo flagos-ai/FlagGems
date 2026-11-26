@@ -191,7 +191,6 @@ def _upsample_nearest1d_backward_kernel(
     grad_input_stride_w,
     backward_scale,
     BATCH: tl.constexpr,
-    BATCH_LOOP: tl.constexpr,
     IS_FP64: tl.constexpr,
     IS_UINT8: tl.constexpr,
     MAX_CONTRIBUTORS: tl.constexpr,
@@ -203,12 +202,9 @@ def _upsample_nearest1d_backward_kernel(
     acc_dtype: tl.constexpr = (
         tl.int32 if IS_UINT8 else (tl.float64 if IS_FP64 else tl.float32)
     )
-    if BATCH_LOOP:
-        channel = tl.minimum(offsets // input_w, channels - 1)
-    else:
-        nc = tl.minimum(offsets // input_w, BATCH * channels - 1)
-        channel = nc % channels
-        batch = nc // channels
+    nc = tl.minimum(offsets // input_w, BATCH * channels - 1)
+    channel = nc % channels
+    batch = nc // channels
 
     # Match nearest_neighbor_bw_compute_source_index from PyTorch:
     # ceil(input_index * scale), clamped to output_w.
@@ -218,44 +214,23 @@ def _upsample_nearest1d_backward_kernel(
     start = tl.minimum(tl.maximum(start, 0), output_w)
     end = tl.minimum(tl.maximum(end, 0), output_w)
 
-    if BATCH_LOOP:
-        for batch_index in tl.static_range(BATCH):
-            accumulator = tl.zeros((BLOCK_SIZE,), dtype=acc_dtype)
-            output_base = (
-                batch_index * grad_output_stride_n + channel * grad_output_stride_c
-            )
-            for contributor in tl.static_range(MAX_CONTRIBUTORS):
-                output_x = start + contributor
-                contributor_mask = mask & (output_x < end)
-                # Clamped address: a masked-off lane still performs its access.
-                output_x_c = tl.minimum(output_x, output_w - 1)
-                value = tl.load(
-                    grad_output + output_base + output_x_c * grad_output_stride_w,
-                )
-                accumulator += value.to(acc_dtype) * contributor_mask.to(acc_dtype)
-            input_offset = (
-                batch_index * grad_input_stride_n
-                + channel * grad_input_stride_c
-                + input_x * grad_input_stride_w
-            )
-            tl.store(grad_input + input_offset, accumulator, mask=mask)
-    else:
-        accumulator = tl.zeros((BLOCK_SIZE,), dtype=acc_dtype)
-        output_base = batch * grad_output_stride_n + channel * grad_output_stride_c
-        for contributor in tl.static_range(MAX_CONTRIBUTORS):
-            output_x = start + contributor
-            contributor_mask = mask & (output_x < end)
-            output_x_c = tl.minimum(output_x, output_w - 1)
-            value = tl.load(
-                grad_output + output_base + output_x_c * grad_output_stride_w,
-            )
-            accumulator += value.to(acc_dtype) * contributor_mask.to(acc_dtype)
-        input_offset = (
-            batch * grad_input_stride_n
-            + channel * grad_input_stride_c
-            + input_x * grad_input_stride_w
+    accumulator = tl.zeros((BLOCK_SIZE,), dtype=acc_dtype)
+    output_base = batch * grad_output_stride_n + channel * grad_output_stride_c
+    for contributor in tl.static_range(MAX_CONTRIBUTORS):
+        output_x = start + contributor
+        contributor_mask = mask & (output_x < end)
+        # Clamped address: a masked-off lane still performs its access.
+        output_x_c = tl.minimum(output_x, output_w - 1)
+        value = tl.load(
+            grad_output + output_base + output_x_c * grad_output_stride_w,
         )
-        tl.store(grad_input + input_offset, accumulator, mask=mask)
+        accumulator += value.to(acc_dtype) * contributor_mask.to(acc_dtype)
+    input_offset = (
+        batch * grad_input_stride_n
+        + channel * grad_input_stride_c
+        + input_x * grad_input_stride_w
+    )
+    tl.store(grad_input + input_offset, accumulator, mask=mask)
 
 
 def _validate_args(
@@ -443,10 +418,8 @@ def _upsample_nearest1d_backward_impl(
                 BLOCK_SIZE=block_size,
             )
             return grad_input
-        # One lane per (batch, channel, input) element.  The per-batch device
-        # loop is only used when the batch count divides the lane tile exactly,
-        # which keeps every launch aligned with a whole (batch, channel) plane.
-        batch_loop = batch > 1 and channels * input_w >= block_size
+        # One lane per (batch, channel, input) element, addressed through the
+        # strides so any layout works.
         _upsample_nearest1d_backward_kernel[(triton.cdiv(numel, block_size),)](
             grad_output,
             grad_input,
@@ -458,7 +431,6 @@ def _upsample_nearest1d_backward_impl(
             *grad_input.stride(),
             backward_scale,
             BATCH=batch,
-            BATCH_LOOP=batch_loop,
             IS_FP64=grad_output.dtype == torch.float64,
             IS_UINT8=grad_output.dtype == torch.uint8,
             MAX_CONTRIBUTORS=max_contributors,
