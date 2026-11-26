@@ -86,8 +86,12 @@ ascend-cann850 = [
 
 ascend-cann900 = [
     "cann-shmem==1.6.0",
+    "flagcx==0.14.1+cann9.0.0",
+    "numpy==1.26.4",
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
+    "torchaudio==2.10.0+cpu",
+    "torchvision==0.25.0+cpu",
     "decorator==5.2.1",
     "attrs==25.3.0",
     "psutil==7.0.0",
