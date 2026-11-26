@@ -192,7 +192,7 @@ from .embedding_bag_dense_backward import embedding_bag_dense_backward
 from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
-from .feature_dropout import feature_dropout
+from .feature_dropout import feature_dropout as feature_dropout
 from .fill import (
     fill_scalar,
     fill_scalar_,
