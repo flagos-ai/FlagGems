@@ -331,6 +331,7 @@ from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
+from .native_group_norm import native_group_norm
 from .ne_ import ne_
 from .negative import negative
 from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
@@ -379,6 +380,7 @@ from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_o
 from .select_backward import select_backward
 from .select_copy import select_copy
 from .select_scatter import select_scatter
+from .selu_ import selu_
 from .silu import silu, silu_
 from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
@@ -811,6 +813,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "narrow_copy",
+    "native_group_norm",
     "native_layer_norm",
     "ne_",
     "negative",
@@ -872,6 +875,7 @@ __all__ = [
     "select_backward",
     "select_copy",
     "select_scatter",
+    "selu_",
     "silu",
     "silu_",
     "silu_backward",
