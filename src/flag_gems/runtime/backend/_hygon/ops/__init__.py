@@ -40,6 +40,9 @@ from ._foreach_addcdiv__ScalarList import (
 )
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__Tensor import (
+    _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
+)
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
 from ._foreach_clamp_max__List import (
     _foreach_clamp_max__List as _foreach_clamp_max__List,
@@ -350,6 +353,7 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__Tensor",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
