@@ -21,6 +21,33 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
 
 
+# next_power_of_2 that is valid on both plain ints (host) and ``tl.constexpr``
+# (inside @triton.jit). Deliberately self-contained instead of delegating to
+# ``triton.next_power_of_2``: that module global is a monkey-patch target, so a
+# downstream package can swap in an int-only version and break compile-time
+# evaluation of constexpr shapes. The bit tricks below only use operators that
+# ``tl.constexpr`` overloads (``-``/``|``/``>>``), so they evaluate correctly on
+# a constexpr argument.
+#
+# triton 3.5+ makes this work inside a @triton.jit kernel only when the helper is
+# wrapped in ``constexpr_function`` (otherwise the JIT treats it as an
+# unsupported host function). triton 3.4 has no ``constexpr_function`` but also
+# needs no wrapper for plain bit ops, so the wrap is applied only when available.
+def _next_power_of_2(n):
+    n = n - 1
+    n = n | (n >> 1)
+    n = n | (n >> 2)
+    n = n | (n >> 4)
+    n = n | (n >> 8)
+    n = n | (n >> 16)
+    n = n | (n >> 32)
+    return n + 1
+
+
+if hasattr(triton, "constexpr_function"):
+    _next_power_of_2 = triton.constexpr_function(_next_power_of_2)
+
+
 def _prune_contiguous_configs(configs, named_args, **kwargs):
     args = {**named_args, **kwargs}
     defaults = {str(config) for config in _contiguous_configs()}
@@ -191,7 +218,7 @@ def _launch_2d_broadcast(
             b_stride[0] == 0 and cols & (cols - 1) and n_elements <= 1048576
         ):
             return (triton.cdiv(n_elements, block),)
-        block_n = min(block, triton.next_power_of_2(cols))
+        block_n = min(block, _next_power_of_2(cols))
         block_m = max(1, block // block_n)
         return (triton.cdiv(rows, block_m) * triton.cdiv(cols, block_n),)
 
@@ -416,7 +443,7 @@ def mul_broadcast_2d_kernel(
             b = tl.load(b_ptr + offsets % n_cols, mask, other=0).to(tl.float32)
             tl.store(out_ptr + offsets, a * b, mask)
         else:
-            block_n: tl.constexpr = min(BLOCK_SIZE, triton.next_power_of_2(n_cols))
+            block_n: tl.constexpr = min(BLOCK_SIZE, _next_power_of_2(n_cols))
             block_m: tl.constexpr = max(1, BLOCK_SIZE // block_n)
             col_tiles: tl.constexpr = tl.cdiv(n_cols, block_n)
             pid = tl.program_id(0)

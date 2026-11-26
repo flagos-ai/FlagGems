@@ -16,7 +16,6 @@
 # These operators are retained here for compatibility but may be removed in future versions
 
 from flag_gems.deprecated.apply_repetition_penalties import apply_repetition_penalties
-from flag_gems.deprecated.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.deprecated.cp_gather_indexer_k_quant_cache import (
     cp_gather_indexer_k_quant_cache,
 )
@@ -35,10 +34,6 @@ from flag_gems.deprecated.deepseek_v4_attention_fused_q_kv_rmsnorm import (
 )
 from flag_gems.deprecated.DSA.bin_topk import bucket_sort_topk
 from flag_gems.deprecated.DSA.sparse_mla import triton_sparse_mla_fwd_interface
-from flag_gems.deprecated.FLA import (
-    chunk_gated_delta_rule_fwd,
-    fused_recurrent_gated_delta_rule_fwd,
-)
 from flag_gems.deprecated.flash_mla import flash_mla
 from flag_gems.deprecated.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.deprecated.flashmla_sparse import flash_mla_sparse_fwd
@@ -65,6 +60,7 @@ from flag_gems.deprecated.indexer_k_quant_and_cache import indexer_k_quant_and_c
 from flag_gems.deprecated.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
+    hc_split_sinkhorn,
     mhc_bwd,
     mhc_bwd_ref,
     mhc_post,
@@ -97,8 +93,6 @@ __all__ = [
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bucket_sort_topk",
-    "chunk_gated_delta_rule",
-    "chunk_gated_delta_rule_fwd",
     "combine_topk_swa_indices",
     "compute_global_topk_indices_and_lens",
     "cp_gather_indexer_k_quant_cache",
@@ -117,10 +111,10 @@ __all__ = [
     "fused_indexer_q_rope_quant",
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
-    "fused_recurrent_gated_delta_rule_fwd",
     "grouped_topk",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
+    "hc_split_sinkhorn",
     "indexer_k_quant_and_cache",
     "inplace_fused_experts",
     "invoke_fused_moe_triton_kernel",
@@ -149,3 +143,36 @@ __all__ = [
     "triton_sparse_mla_fwd_interface",
     "unpack_seq_triton",
 ]
+
+
+# The FLA-based operators pull in a large Triton kernel tree (about 70% of this
+# package's import time), so they are resolved on first access instead of at
+# import. They are deliberately left out of ``__all__`` so that
+# ``from flag_gems.deprecated import *`` does not trigger the import.
+#
+# name -> (submodule, attribute). ``chunk_gated_delta_rule`` is both a submodule
+# and a function name, so the attribute is always looked up on the imported
+# submodule rather than on this package, whose attribute may be the submodule.
+_LAZY_EXPORTS = {
+    "chunk_gated_delta_rule": ("chunk_gated_delta_rule", "chunk_gated_delta_rule"),
+    "chunk_gated_delta_rule_fwd": ("FLA", "chunk_gated_delta_rule_fwd"),
+    "fused_recurrent_gated_delta_rule_fwd": (
+        "FLA",
+        "fused_recurrent_gated_delta_rule_fwd",
+    ),
+}
+
+
+def _resolve_lazy(name):
+    import importlib
+
+    submodule, attr = _LAZY_EXPORTS[name]
+    value = getattr(importlib.import_module(f"{__name__}.{submodule}"), attr)
+    globals()[name] = value
+    return value
+
+
+def __getattr__(name):
+    if name in _LAZY_EXPORTS:
+        return _resolve_lazy(name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

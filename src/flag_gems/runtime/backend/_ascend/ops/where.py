@@ -18,8 +18,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic
+from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
+from flag_gems.utils.shape_utils import broadcast_shapes
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,131 @@ config_ = CodeGenConfig(
 @triton.jit
 def where_inner(condition, self, other):
     return tl.where(condition, self, other)
+
+
+@triton.jit
+def _where_broadcast_offset(linear, SHAPE: tl.constexpr, STRIDES: tl.constexpr):
+    offset = tl.full(linear.shape, 0, tl.int64)
+    remaining = linear
+    for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
+        if axis == 0:
+            coordinate = remaining
+        else:
+            coordinate = remaining % SHAPE[axis]
+            remaining = remaining // SHAPE[axis]
+        offset += coordinate * STRIDES[axis]
+    return offset
+
+
+@libentry()
+@triton.jit
+def _where_uniform_condition_kernel(
+    condition,
+    self,
+    other,
+    out,
+    numel,
+    SHAPE: tl.constexpr,
+    SELF_STRIDES: tl.constexpr,
+    OTHER_STRIDES: tl.constexpr,
+    OUT_STRIDES: tl.constexpr,
+    SCALAR_SELF: tl.constexpr,
+    SCALAR_OTHER: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # A masked vector load from a broadcast bool pointer fails Ascend lowering.
+    # Read the live device condition once, so graph replays can change its value.
+    predicate = tl.load(condition) != 0
+    for start in range(tle.program_id(0) * BLOCK, numel, tl.num_programs(0) * BLOCK):
+        linear = start + tl.arange(0, BLOCK)
+        mask = linear < numel
+        if SCALAR_SELF:
+            left = tl.load(self)
+        else:
+            self_offset = _where_broadcast_offset(linear, SHAPE, SELF_STRIDES)
+            left = tl.load(self + self_offset, mask=mask, other=0)
+        if SCALAR_OTHER:
+            right = tl.load(other)
+        else:
+            other_offset = _where_broadcast_offset(linear, SHAPE, OTHER_STRIDES)
+            right = tl.load(other + other_offset, mask=mask, other=0)
+        out_offset = _where_broadcast_offset(linear, SHAPE, OUT_STRIDES)
+        tl.store(out + out_offset, tl.where(predicate, left, right), mask=mask)
+
+
+def _has_uniform_storage(tensor):
+    return tensor.numel() > 0 and all(
+        size == 1 or stride == 0 for size, stride in zip(tensor.shape, tensor.stride())
+    )
+
+
+def _where_linear_stride(shape, strides):
+    step = None
+    span = 1
+    for size, stride in zip(reversed(shape), reversed(strides)):
+        if size <= 1:
+            continue
+        if step is None:
+            step = stride
+        elif stride != step * span:
+            return None
+        span *= size
+    return 0 if step is None else step
+
+
+def _where_uniform_condition(condition, self, other, out):
+    if out.numel() == 0:
+        return out
+    if any(size > 1 and stride == 0 for size, stride in zip(out.shape, out.stride())):
+        raise RuntimeError(
+            "Pointwise Input arguments should not have internal overlapping."
+        )
+    shape = tuple(out.shape)
+
+    def broadcast_strides(tensor):
+        strides = tuple(
+            0 if size == 1 else stride
+            for size, stride in zip(tensor.shape, tensor.stride())
+        )
+        return (0,) * (len(shape) - tensor.ndim) + strides
+
+    self_strides = broadcast_strides(self)
+    other_strides = broadcast_strides(other)
+    out_strides = tuple(out.stride())
+    strides = (self_strides, other_strides, out_strides)
+    steps = tuple(_where_linear_stride(shape, stride) for stride in strides)
+    max_offset = max(
+        sum((size - 1) * step for size, step in zip(shape, stride))
+        for stride in strides
+    )
+    # Flatten only when every operand advances with one constant stride and
+    # all resulting offsets fit the original kernel's bounded index range.
+    if (
+        all(step is not None for step in steps)
+        and out.numel() <= 2**31 - 256
+        and max_offset < 2**31
+    ):
+        shape = (out.numel(),)
+        self_strides, other_strides, out_strides = ((step,) for step in steps)
+
+    block = min(256, triton.next_power_of_2(out.numel()))
+    grid = (min(config_.max_grid_size[0], triton.cdiv(out.numel(), block)),)
+    with torch_device_fn.device(out.device):
+        _where_uniform_condition_kernel[grid](
+            condition,
+            self,
+            other,
+            out,
+            out.numel(),
+            SHAPE=shape,
+            SELF_STRIDES=self_strides,
+            OTHER_STRIDES=other_strides,
+            OUT_STRIDES=out_strides,
+            SCALAR_SELF=_has_uniform_storage(self),
+            SCALAR_OTHER=_has_uniform_storage(other),
+            BLOCK=block,
+        )
+    return out
 
 
 def where_self_out(condition, self, other, out=None):
@@ -83,9 +211,17 @@ def where_self_out(condition, self, other, out=None):
         c.dtype == torch.bool
     ), f"where expected condition to be a boolean tensor, but got a tensor with dtype {condition.dtype}"
 
+    try:
+        out_shape = broadcast_shapes([c.shape, a.shape, b.shape])
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+
     if out is None:
-        out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
         out = torch.empty(out_shape, dtype=result_type, device=device)
+
+    if _has_uniform_storage(c) and not out.is_complex():
+        if tuple(out.shape) == tuple(out_shape):
+            return _where_uniform_condition(c, a, b, out)
 
     ndim = max(c.ndim, a.ndim, b.ndim)
     where_inner.instantiate(ndim)
