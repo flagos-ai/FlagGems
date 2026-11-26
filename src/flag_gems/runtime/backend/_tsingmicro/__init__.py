@@ -107,8 +107,6 @@ CUSTOMIZED_UNUSED_OPS = (
     "clone",
     "sort",
     "sort_stable",
-    "expand",
-    "expand_",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",

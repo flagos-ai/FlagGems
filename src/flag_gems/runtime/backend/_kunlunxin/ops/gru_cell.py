@@ -16,25 +16,31 @@
 
 """Kunlunxin/XPU override for ``aten::gru_cell``.
 
-The generic ``ops/gru_cell.py`` runs the gate chain in a ``16 x 32``-tiled
-kernel.  That tile is sized for the ``tl.dot`` projection kernels (the comment
-in ``_block`` caps ``BLOCK_H`` at 32 so each GEMM keeps three accumulator
-tiles live), but the combine kernel is not a GEMM: it is a pure elementwise
-gate chain over ``(batch, hidden)``.  At ``BLOCK_H == 32`` each row segment is
-only 128 bytes, which the XPU DMA engine cannot transfer efficiently, so the
-combine kernel collapses to a scalarized gather and dominates the whole cell
-(profiling: ~577us of ~610us for a 64x256 cell, ~95%).
+The generic ``ops/gru_cell.py`` splits the cell into three kernels: the input
+projection GEMM, the hidden projection GEMM, and a separate elementwise gate
+chain.  On XPU each Triton launch costs a fixed ~8-10us of kernel time by
+itself, so the three-kernel split caps this cell at ~0.28x against the native
+composite even though the math is trivial.
 
-This override reuses the two projection kernels unchanged and rewrites only the
-combine kernel as one-program-per-row with ``BLOCK_H = next_pow2(hidden)``
-capped at 512 (i.e. a full, 2 KiB contiguous row per program).  ``hidden`` is
-baked in as a compile-time constant so the ``offs < hidden`` mask is elided for
-the power-of-two benchmark shapes and only the tail is masked for odd shapes.
-That turns the gather into contiguous DMA blocks: measured 358us -> 32.6us
-(64x256) and 1045us -> 22.8us (128x512) for the combine kernel alone.
+This override keeps the exact arithmetic and rounding boundaries of the generic
+implementation but materializes the projections in registers: one kernel
+computes both GEMMs (six ``(BLOCK_B, BLOCK_H)`` accumulators) and immediately
+runs the gate chain.  That removes two kernel launches, the two intermediate
+``(batch, 3*hidden)`` torch buffers and their global round-trips.
 
-The gate chain math is unchanged (fast ``tl.exp`` sigmoid / tanh), so accuracy
-is preserved.
+Two compiler constraints had to be worked around:
+
+* A kernel holding both GEMM loops plus the gate chain previously exceeded the
+  backend pipeline-event budget.  With the accumulator tiles kept at
+  ``BLOCK_B <= 32`` / ``BLOCK_H <= 64`` the event count stays under the limit.
+* ``BLOCK_K == 16`` (a 16-wide ``tl.dot``) crashes the ``Inliner`` pass
+  (``DialectInlinerInterface`` promised by dialect 'func' but never
+  implemented) on this toolchain, so ``BLOCK_K`` is clamped to at least 32.
+  The masked tail lanes read ``other=0.0`` so the clamp is numerically
+  transparent.
+
+The gate chain math and the rounding order are unchanged, so accuracy is
+preserved (verified against the same CPU reference as the generic path).
 """
 
 import logging
@@ -51,15 +57,18 @@ from flag_gems.ops.gru_cell import (
     _check_cell_args,
     _gru_cell_hh_kernel,
     _gru_cell_ih_kernel,
+    _tanh,
 )
-from flag_gems.utils import libentry
+from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
-# Combine kernel's contiguous run length.  512 floats = 2 KiB is comfortably in
-# one DMA transfer; anything wider buys no extra bandwidth and only costs
-# registers / occupancy on the smaller rows.
-_MAX_COMBINE_BLOCK_H = 512
+# 16-wide tl.dot tiles crash the XPU Inliner pass; clamp BLOCK_K to 32.
+_MIN_BLOCK_K = 32
+
+# Shapes for which the fused kernel failed to compile/launch (poison cache, so
+# the fallback path is chosen without recompiling a broken kernel per call).
+_fused_failed = set()
 
 
 @triton.jit
@@ -73,6 +82,294 @@ def _tanh_fast(x):
     # tanh(x) = 1 - 2 / (exp(2x) + 1); saturates correctly for |x| -> inf.
     e = tl.exp(2.0 * x)
     return 1.0 - 2.0 / (e + 1.0)
+
+
+@triton.jit
+def _gru_cell_round(value, ROUND_DTYPE: tl.constexpr, ACC_DTYPE: tl.constexpr):
+    """Round an accumulator through the input dtype, as an eager op would."""
+    if ROUND_DTYPE == ACC_DTYPE:
+        return value
+    else:
+        return value.to(ROUND_DTYPE).to(ACC_DTYPE)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "I", "H"])
+def _gru_cell_fused_kernel(
+    x_ptr,
+    h_ptr,
+    w_ih_ptr,
+    w_hh_ptr,
+    b_ih_ptr,
+    b_hh_ptr,
+    out_ptr,
+    B,
+    I,
+    H,
+    s_xb,
+    s_xk,
+    s_hb,
+    s_hk,
+    s_wi_n,
+    s_wi_k,
+    s_wh_n,
+    s_wh_k,
+    s_ob,
+    s_on,
+    HAS_IH: tl.constexpr,
+    HAS_BIH: tl.constexpr,
+    HAS_BHH: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    ROUND_DTYPE: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """One program computes ``(BLOCK_B, BLOCK_H)`` of the output.
+
+    It holds all six projection accumulators in registers, runs both reduction
+    loops, then applies the biases and the gate chain in the same tile; the
+    only global round-trip left is the output store.
+    """
+    offs_b = tl.program_id(0) * BLOCK_B + tl.arange(0, BLOCK_B)
+    offs_n = tl.program_id(1) * BLOCK_H + tl.arange(0, BLOCK_H)
+    b_mask = offs_b < B
+    n_mask = offs_n < H
+
+    # Gate order in the packed weight / bias layout is reset, update, new.
+    row_r = offs_n
+    row_z = offs_n + H
+    row_n = offs_n + 2 * H
+
+    gi_r = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gi_z = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gi_n = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gh_r = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gh_z = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gh_n = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+
+    if HAS_IH:
+        # ---- linear(input, w_ih) ------------------------------------------
+        for k0 in range(0, I, BLOCK_K):
+            offs_k = k0 + tl.arange(0, BLOCK_K)
+            k_mask = offs_k < I
+            x = tl.load(
+                x_ptr + offs_b[:, None] * s_xb + offs_k[None, :] * s_xk,
+                mask=b_mask[:, None] & k_mask[None, :],
+                other=0.0,
+            )
+            w_off = offs_k[:, None] * s_wi_k
+            w_mask = k_mask[:, None] & n_mask[None, :]
+            wr = tl.load(
+                w_ih_ptr + row_r[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0
+            )
+            wz = tl.load(
+                w_ih_ptr + row_z[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0
+            )
+            wn = tl.load(
+                w_ih_ptr + row_n[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0
+            )
+            gi_r = tl.dot(x, wr, gi_r, input_precision="ieee", out_dtype=ACC_DTYPE)
+            gi_z = tl.dot(x, wz, gi_z, input_precision="ieee", out_dtype=ACC_DTYPE)
+            gi_n = tl.dot(x, wn, gi_n, input_precision="ieee", out_dtype=ACC_DTYPE)
+
+    # ---- linear(hx, w_hh) -------------------------------------------------
+    for k0 in range(0, H, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        k_mask = offs_k < H
+        hx = tl.load(
+            h_ptr + offs_b[:, None] * s_hb + offs_k[None, :] * s_hk,
+            mask=b_mask[:, None] & k_mask[None, :],
+            other=0.0,
+        )
+        w_off = offs_k[:, None] * s_wh_k
+        w_mask = k_mask[:, None] & n_mask[None, :]
+        wr = tl.load(w_hh_ptr + row_r[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
+        wz = tl.load(w_hh_ptr + row_z[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
+        wn = tl.load(w_hh_ptr + row_n[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
+        gh_r = tl.dot(hx, wr, gh_r, input_precision="ieee", out_dtype=ACC_DTYPE)
+        gh_z = tl.dot(hx, wz, gh_z, input_precision="ieee", out_dtype=ACC_DTYPE)
+        gh_n = tl.dot(hx, wn, gh_n, input_precision="ieee", out_dtype=ACC_DTYPE)
+
+    gi_r = _gru_cell_round(gi_r, ROUND_DTYPE, ACC_DTYPE)
+    gi_z = _gru_cell_round(gi_z, ROUND_DTYPE, ACC_DTYPE)
+    gi_n = _gru_cell_round(gi_n, ROUND_DTYPE, ACC_DTYPE)
+    gh_r = _gru_cell_round(gh_r, ROUND_DTYPE, ACC_DTYPE)
+    gh_z = _gru_cell_round(gh_z, ROUND_DTYPE, ACC_DTYPE)
+    gh_n = _gru_cell_round(gh_n, ROUND_DTYPE, ACC_DTYPE)
+
+    if HAS_BIH:
+        gi_r += tl.load(b_ih_ptr + row_r, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gi_z += tl.load(b_ih_ptr + row_z, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gi_n += tl.load(b_ih_ptr + row_n, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+    if HAS_BHH:
+        gh_r += tl.load(b_hh_ptr + row_r, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gh_z += tl.load(b_hh_ptr + row_z, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gh_n += tl.load(b_hh_ptr + row_n, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+
+    # The exp-based fast sigmoid/tanh miscompile on the 2-D tile of this
+    # kernel (values differ from the 1-D combine kernel by ~1.0 on XPU), so
+    # use the libdevice-backed sigmoid/tanh here, as the generic combine does.
+    reset = tl.sigmoid(gi_r + gh_r)
+    update = tl.sigmoid(gi_z + gh_z)
+    new = _tanh(gi_n + reset * gh_n)
+
+    hx_tile = tl.load(
+        h_ptr + offs_b[:, None] * s_hb + offs_n[None, :] * s_hk,
+        mask=b_mask[:, None] & n_mask[None, :],
+        other=0.0,
+    ).to(ACC_DTYPE)
+    hy = (hx_tile - new) * update + new
+
+    out_mask = b_mask[:, None] & n_mask[None, :]
+    tl.store(
+        out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
+        hy.to(out_ptr.dtype.element_ty),
+        mask=out_mask,
+    )
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "I", "H"])
+def _gru_cell_fused_half_kernel(
+    x_ptr,
+    h_ptr,
+    w_ih_ptr,
+    w_hh_ptr,
+    b_ih_ptr,
+    b_hh_ptr,
+    out_ptr,
+    B,
+    I,
+    H,
+    s_xb,
+    s_xk,
+    s_hb,
+    s_hk,
+    s_wi_n,
+    s_wi_k,
+    s_wh_n,
+    s_wh_k,
+    s_ob,
+    s_on,
+    HAS_IH: tl.constexpr,
+    HAS_BIH: tl.constexpr,
+    HAS_BHH: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    ROUND_DTYPE: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """bf16 variant of the fused kernel: operands are upcast to fp32 before
+    ``tl.dot``.
+
+    The fp16/bf16 2-byte ``tl.dot`` operands cannot be kept inside this
+    kernel form on the XPU toolchain (the six-accumulator shape miscompiles
+    for fp16 and the three-accumulator shape triggers a device kernel
+    exception).  Upcasting keeps the dot in the 32-bit domain, which is what
+    makes the bf16 form numerically correct and exception-free; the fp16 form
+    is still wrong with 2-byte accumulators, so fp16 keeps using the split
+    path.
+    """
+    offs_b = tl.program_id(0) * BLOCK_B + tl.arange(0, BLOCK_B)
+    offs_n = tl.program_id(1) * BLOCK_H + tl.arange(0, BLOCK_H)
+    b_mask = offs_b < B
+    n_mask = offs_n < H
+
+    row_r = offs_n
+    row_z = offs_n + H
+    row_n = offs_n + 2 * H
+
+    gi_r = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gi_z = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gi_n = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gh_r = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gh_z = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+    gh_n = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
+
+    if HAS_IH:
+        # ---- linear(input, w_ih) ------------------------------------------
+        for k0 in range(0, I, BLOCK_K):
+            offs_k = k0 + tl.arange(0, BLOCK_K)
+            k_mask = offs_k < I
+            x = tl.load(
+                x_ptr + offs_b[:, None] * s_xb + offs_k[None, :] * s_xk,
+                mask=b_mask[:, None] & k_mask[None, :],
+                other=0.0,
+            ).to(ACC_DTYPE)
+            w_off = offs_k[:, None] * s_wi_k
+            w_mask = k_mask[:, None] & n_mask[None, :]
+            wr = tl.load(
+                w_ih_ptr + row_r[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0
+            ).to(ACC_DTYPE)
+            wz = tl.load(
+                w_ih_ptr + row_z[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0
+            ).to(ACC_DTYPE)
+            wn = tl.load(
+                w_ih_ptr + row_n[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0
+            ).to(ACC_DTYPE)
+            gi_r = tl.dot(x, wr, gi_r, input_precision="ieee", out_dtype=ACC_DTYPE)
+            gi_z = tl.dot(x, wz, gi_z, input_precision="ieee", out_dtype=ACC_DTYPE)
+            gi_n = tl.dot(x, wn, gi_n, input_precision="ieee", out_dtype=ACC_DTYPE)
+
+    # ---- linear(hx, w_hh) -------------------------------------------------
+    for k0 in range(0, H, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        k_mask = offs_k < H
+        hx = tl.load(
+            h_ptr + offs_b[:, None] * s_hb + offs_k[None, :] * s_hk,
+            mask=b_mask[:, None] & k_mask[None, :],
+            other=0.0,
+        ).to(ACC_DTYPE)
+        w_off = offs_k[:, None] * s_wh_k
+        w_mask = k_mask[:, None] & n_mask[None, :]
+        wr = tl.load(
+            w_hh_ptr + row_r[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0
+        ).to(ACC_DTYPE)
+        wz = tl.load(
+            w_hh_ptr + row_z[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0
+        ).to(ACC_DTYPE)
+        wn = tl.load(
+            w_hh_ptr + row_n[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0
+        ).to(ACC_DTYPE)
+        gh_r = tl.dot(hx, wr, gh_r, input_precision="ieee", out_dtype=ACC_DTYPE)
+        gh_z = tl.dot(hx, wz, gh_z, input_precision="ieee", out_dtype=ACC_DTYPE)
+        gh_n = tl.dot(hx, wn, gh_n, input_precision="ieee", out_dtype=ACC_DTYPE)
+
+    gi_r = gi_r.to(ROUND_DTYPE).to(ACC_DTYPE)
+    gi_z = gi_z.to(ROUND_DTYPE).to(ACC_DTYPE)
+    gi_n = gi_n.to(ROUND_DTYPE).to(ACC_DTYPE)
+    gh_r = gh_r.to(ROUND_DTYPE).to(ACC_DTYPE)
+    gh_z = gh_z.to(ROUND_DTYPE).to(ACC_DTYPE)
+    gh_n = gh_n.to(ROUND_DTYPE).to(ACC_DTYPE)
+
+    if HAS_BIH:
+        gi_r += tl.load(b_ih_ptr + row_r, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gi_z += tl.load(b_ih_ptr + row_z, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gi_n += tl.load(b_ih_ptr + row_n, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+    if HAS_BHH:
+        gh_r += tl.load(b_hh_ptr + row_r, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gh_z += tl.load(b_hh_ptr + row_z, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+        gh_n += tl.load(b_hh_ptr + row_n, mask=n_mask, other=0.0).to(ACC_DTYPE)[None, :]
+
+    reset = tl.sigmoid(gi_r + gh_r)
+    update = tl.sigmoid(gi_z + gh_z)
+    new = _tanh(gi_n + reset * gh_n)
+
+    hx_tile = tl.load(
+        h_ptr + offs_b[:, None] * s_hb + offs_n[None, :] * s_hk,
+        mask=b_mask[:, None] & n_mask[None, :],
+        other=0.0,
+    ).to(ACC_DTYPE)
+    hy = (hx_tile - new) * update + new
+
+    out_mask = b_mask[:, None] & n_mask[None, :]
+    tl.store(
+        out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
+        hy.to(out_ptr.dtype.element_ty),
+        mask=out_mask,
+    )
 
 
 @libentry()
@@ -96,6 +393,11 @@ def _gru_cell_combine_kernel(
     ACC_DTYPE: tl.constexpr,
     BLOCK_H: tl.constexpr,
 ):
+    """Legacy fallback: one program per (batch row, hidden chunk).
+
+    Only reached when the fused kernel cannot be compiled for a shape; it
+    consumes the two rounded projection buffers written by the split kernels.
+    """
     # One program per (batch row, hidden chunk); the chunk is a full contiguous
     # row when BLOCK_H == H, so every load here is a contiguous DMA block.
     b = tl.program_id(0)
@@ -137,24 +439,30 @@ def _gru_cell_combine_kernel(
     )
 
 
-def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
-    """Single GRU cell step (Kunlunxin/XPU specialization)."""
-    logger.debug("GEMS_KUNLUNXIN GRU_CELL")
-    _check_cell_args("gru_cell", input, hx, w_ih, w_hh, b_ih, b_hh, 3)
+# Combine kernel's contiguous run length.  512 floats = 2 KiB is comfortably in
+# one DMA transfer; anything wider buys no extra bandwidth and only costs
+# registers / occupancy on the smaller rows.
+_MAX_COMBINE_BLOCK_H = 512
 
-    batch, input_size = input.shape
-    hidden_size = w_hh.shape[1]
-    out = torch.empty((batch, hidden_size), dtype=input.dtype, device=input.device)
-    if batch == 0 or hidden_size == 0:
-        return out
 
+def _launch_legacy(
+    input,
+    hx,
+    w_ih,
+    w_hh,
+    b_ih,
+    b_hh,
+    out,
+    batch,
+    input_size,
+    hidden_size,
+):
+    """Split-kernel fallback identical to the pre-fusion implementation."""
     block_b = _block(batch, 32)
     block_h = _block(hidden_size, 64)
     block_k = _block(max(input_size, hidden_size), 128)
     grid = (triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))
 
-    # Rounded ``linear(input, w_ih)`` and ``linear(hx, w_hh)`` tiles, in
-    # accumulator precision, consumed by the combine kernel.
     gi = torch.empty(
         (batch, 3 * hidden_size),
         dtype=_ACC_TORCH_DTYPE[input.dtype],
@@ -163,9 +471,6 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     gh = torch.empty_like(gi)
 
     if input_size == 0:
-        # An empty reduction contributes nothing (the bias is added by the
-        # combine kernel), and a zero-trip loop is miscompiled on XPU, so write
-        # the zeros directly instead of launching the projection kernel.
         gi.zero_()
     else:
         _gru_cell_ih_kernel[grid](
@@ -231,5 +536,101 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         BLOCK_H=block_hc,
         num_warps=4,
         num_stages=3,
+    )
+
+
+def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
+    """Single GRU cell step (Kunlunxin/XPU specialization)."""
+    logger.debug("GEMS_KUNLUNXIN GRU_CELL")
+    _check_cell_args("gru_cell", input, hx, w_ih, w_hh, b_ih, b_hh, 3)
+
+    batch, input_size = input.shape
+    hidden_size = w_hh.shape[1]
+    out = torch.empty((batch, hidden_size), dtype=input.dtype, device=input.device)
+    if batch == 0 or hidden_size == 0:
+        return out
+
+    block_b = _block(batch, 32)
+    block_h = _block(hidden_size, 64)
+    block_k = max(_MIN_BLOCK_K, _block(max(input_size, hidden_size), 128))
+    grid = (triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))
+
+    # fp16 keeps the proven three-kernel split: every fused form of this cell
+    # is either numerically wrong (six and three accumulator variants) or
+    # triggers a device kernel exception on this toolchain.  bf16 runs the
+    # fused form only through the upcast variant (fp32 dots), which is
+    # numerically correct and exception-free for it.
+    if input.dtype == torch.float16:
+        _launch_legacy(
+            input,
+            hx,
+            w_ih,
+            w_hh,
+            b_ih,
+            b_hh,
+            out,
+            batch,
+            input_size,
+            hidden_size,
+        )
+        return out
+
+    fused_kernel = (
+        _gru_cell_fused_half_kernel
+        if input.dtype == torch.bfloat16
+        else _gru_cell_fused_kernel
+    )
+    fallback_key = (input.dtype, batch, input_size, hidden_size)
+    if fallback_key not in _fused_failed:
+        try:
+            fused_kernel[grid](
+                input,
+                hx,
+                w_ih,
+                w_hh,
+                b_ih if b_ih is not None else input,
+                b_hh if b_hh is not None else input,
+                out,
+                batch,
+                input_size,
+                hidden_size,
+                input.stride(0),
+                input.stride(1),
+                hx.stride(0),
+                hx.stride(1),
+                w_ih.stride(0),
+                w_ih.stride(1),
+                w_hh.stride(0),
+                w_hh.stride(1),
+                out.stride(0),
+                out.stride(1),
+                HAS_IH=input_size > 0,
+                HAS_BIH=b_ih is not None,
+                HAS_BHH=b_hh is not None,
+                ACC_DTYPE=_ACC_DTYPE[input.dtype],
+                ROUND_DTYPE=_ROUND_DTYPE[input.dtype],
+                BLOCK_B=block_b,
+                BLOCK_H=block_h,
+                BLOCK_K=block_k,
+                num_warps=4,
+                num_stages=3,
+            )
+            return out
+        except Exception:
+            # The toolchain rejects some extreme shapes at compile time; fall
+            # back to the proven split kernels for exactly those shapes.
+            _fused_failed.add(fallback_key)
+
+    _launch_legacy(
+        input,
+        hx,
+        w_ih,
+        w_hh,
+        b_ih,
+        b_hh,
+        out,
+        batch,
+        input_size,
+        hidden_size,
     )
     return out

@@ -94,6 +94,10 @@ def test_matrix_power_out(batch_shape, dim, n, dtype):
     ref_out = _matrix_power_golden(ref_inp, n)
 
     res_out = torch.empty_like(res_inp)
-    flag_gems.matrix_power_out(res_inp, n, out=res_out)
+    out_pointer = res_out.data_ptr()
+    result = flag_gems.matrix_power_out(res_inp, n, out=res_out)
+    assert result is res_out
+    assert result.device == res_inp.device
+    assert result.data_ptr() == out_pointer
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=dim * max(n, 1))

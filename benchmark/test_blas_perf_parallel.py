@@ -544,6 +544,7 @@ def _parallel_visible_devices_env():
     env_name_map = {
         "cuda": "CUDA_VISIBLE_DEVICES",
         "musa": "MUSA_VISIBLE_DEVICES",
+        "npu": "ASCEND_RT_VISIBLE_DEVICES",
     }
     return env_name_map.get(flag_gems.device)
 

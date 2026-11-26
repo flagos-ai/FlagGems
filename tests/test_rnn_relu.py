@@ -25,9 +25,30 @@ RNN_HIDDEN_SIZES = [8, 16]
 pytestmark = pytest.mark.rnn_relu
 
 
+@pytest.fixture(autouse=True)
+def _metax_full_precision():
+    if flag_gems.vendor_name != "metax":
+        yield
+        return
+    cudnn_tf32 = torch.backends.cudnn.allow_tf32
+    matmul_tf32 = torch.backends.cuda.matmul.allow_tf32
+    try:
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        yield
+    finally:
+        torch.backends.cudnn.allow_tf32 = cudnn_tf32
+        torch.backends.cuda.matmul.allow_tf32 = matmul_tf32
+
+
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name != "mthreads"
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -72,14 +93,20 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
 
     # Compare outputs against the double-precision reference, with a per-dtype
     # tolerance sized for the low-precision rounding of the kernel.
+    assert all(result.device == input_tensor.device for result in res_out)
     atol = {torch.float32: 1e-4, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
     utils.gems_assert_close(res_out[0], ref_out[0], dtype, atol=atol)
     utils.gems_assert_close(res_out[1], ref_out[1], dtype, atol=atol)
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name != "mthreads"
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -133,8 +160,13 @@ def test_rnn_relu_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name != "mthreads"
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 def test_rnn_relu_direct_backward():
@@ -164,9 +196,11 @@ def test_rnn_relu_direct_backward():
     (out_g.sum() + hid_g.sum()).backward()
 
     # Side 2: Native PyTorch recompute (same as backward internals)
-    inp_r = inp_data.detach().clone().requires_grad_(True)
-    hx_r = hx_data.detach().clone().requires_grad_(True)
-    params_r = tuple(p.detach().clone().requires_grad_(True) for p in params_data)
+    inp_r = utils.to_reference(inp_data).detach().clone().requires_grad_(True)
+    hx_r = utils.to_reference(hx_data).detach().clone().requires_grad_(True)
+    params_r = tuple(
+        utils.to_reference(p).detach().clone().requires_grad_(True) for p in params_data
+    )
     weight_ih, weight_hh, bias_ih, bias_hh = _params_unpack(params_r, True)
     h = hx_r[0].clone()
     outputs = []
@@ -187,8 +221,13 @@ def test_rnn_relu_direct_backward():
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name != "mthreads"
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("hidden_size", [128, 256, 512])
@@ -206,9 +245,20 @@ def test_rnn_relu_large_hidden(hidden_size):
     )
     params = tuple(p.detach() for p in rnn._flat_weights)
 
-    ref = torch.rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
+    ref = torch.rnn_relu(
+        utils.to_reference(inp),
+        utils.to_reference(hx),
+        tuple(utils.to_reference(p) for p in params),
+        True,
+        1,
+        0.0,
+        False,
+        False,
+        False,
+    )
     out_gems = gems_rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
 
     atol = 2e-3
+    assert all(result.device == inp.device for result in out_gems)
     utils.gems_assert_close(out_gems[0], ref[0], dtype, atol=atol)
     utils.gems_assert_close(out_gems[1], ref[1], dtype, atol=atol)
