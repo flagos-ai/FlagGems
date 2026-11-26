@@ -4,12 +4,69 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .test_linalg_svd import (
-    _for_comparison,
-    _reference_input,
-    _reference_svd,
-    _reference_svdvals,
-)
+
+
+def _missing_cpu_lapack(inp):
+    """MUSA CPU builds can lack LAPACK, so linear-algebra references fall back
+    to NumPy. This mirrors the MUSA reference pattern used on master
+    (tests/test_inverse.py, test_linalg_lu_solve.py, test_det.py)."""
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    )
+
+
+def _reference_input(inp, upcast=False):
+    # On MUSA the reference is taken on CPU; other vendors keep the existing
+    # device/--ref cpu behaviour.
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _assert_target_abi(actual, reference, inp):
+    if isinstance(actual, (tuple, list)):
+        assert isinstance(reference, (tuple, list)) and len(actual) == len(reference)
+        for value, expected in zip(actual, reference):
+            _assert_target_abi(value, expected, inp)
+        return
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == reference.shape
+    assert actual.untyped_storage()._cdata != inp.untyped_storage()._cdata
+
+
+def _for_comparison(actual, reference, inp):
+    # Inspect the requested target ABI before CPU observation/value comparison.
+    _assert_target_abi(actual, reference, inp)
+    return actual.cpu() if flag_gems.vendor_name == "mthreads" else actual
+
+
+def _reference_svd(inp, full_matrices=True):
+    if _missing_cpu_lapack(inp):
+        import numpy as np
+
+        return tuple(
+            _from_numpy(x)
+            for x in np.linalg.svd(inp.detach().numpy(), full_matrices=full_matrices)
+        )
+    return torch.linalg.svd(inp, full_matrices=full_matrices)
+
+
+def _reference_svdvals(inp):
+    if _missing_cpu_lapack(inp):
+        import numpy as np
+
+        return _from_numpy(np.linalg.svd(inp.detach().numpy(), compute_uv=False))
+    return torch.linalg.svdvals(inp)
+
 
 # Small shapes for linalg_svdvals tests to avoid SVD kernel compilation timeouts
 SVD_SHAPES = [
