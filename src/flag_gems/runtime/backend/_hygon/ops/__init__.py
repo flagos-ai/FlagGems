@@ -32,6 +32,9 @@ from ._foreach_add__ScalarList import _foreach_add__ScalarList
 from ._foreach_add_Scalar import _foreach_add_Scalar as _foreach_add_Scalar
 from ._foreach_add_ScalarList import _foreach_add_ScalarList as _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
+from ._foreach_addcdiv__ScalarList import (
+    _foreach_addcdiv__ScalarList as _foreach_addcdiv__ScalarList,
+)
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
@@ -320,6 +323,7 @@ __all__ = [
     "_foreach_add_Scalar",
     "_foreach_add_ScalarList",
     "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
     "_foreach_ceil",
