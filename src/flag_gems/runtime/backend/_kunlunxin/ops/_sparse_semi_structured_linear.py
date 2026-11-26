@@ -1,3 +1,17 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kunlunxin override for ``_sparse_semi_structured_linear``.
 
 The generic kernel computes its 2:4 selection on a rank-3 tile and reduces it
@@ -326,6 +340,12 @@ def _word_gate_mask(weight, meta, N, K, itemsize, device):
     while blk > 32 and n_words % blk:
         blk //= 2
     if n_words % blk != 0 or n_words < blk:
+        logger.debug(
+            "GEMS_KUNLUNXIN SPARSE_SEMI_STRUCTURED_LINEAR: word gate declined "
+            "(n_words=%d, blk=%d); falling back to the strided gate",
+            n_words,
+            blk,
+        )
         return None, None
     masked = torch.empty((N, K), device=device, dtype=weight.dtype)
     with torch_device_fn.device(device):
@@ -398,6 +418,10 @@ def _sparse_semi_structured_linear(
         torch.bfloat16,
         torch.float32,
     ), f"Unsupported dtype: {input.dtype}"
+    assert weight.dtype == input.dtype, (
+        f"weight dtype {weight.dtype} must match input dtype {input.dtype}: "
+        "the 32-bit-word gate sizes its grid from input.dtype.itemsize"
+    )
 
     output_dtype = out_dtype if out_dtype is not None else input.dtype
 
