@@ -237,23 +237,32 @@ def test_chunk_forward_is_a_view(dtype):
     [((12,), 0), ((6, 4), 0), ((6, 9), 1), ((3, 4, 5), -1)],
 )
 def test_chunk_through_dispatch(dtype, shape, dim):
-    """``torch.chunk`` itself must keep working under ``use_gems``.
+    """``torch.chunk`` itself must keep working once FlagGems owns the op.
 
     The Autograd registration is what makes this pass: a fallthrough there
     hands the call back to ATen's own chunk formula, which rebuilds the pieces
     as views of the *differentiable* input and trips PyTorch's "Attempted to
     make a tensor into a differentiable view" check.
+
+    Registration goes through ``only_enable`` on a private ``Library`` rather
+    than ``use_gems`` so the process-wide dispatcher is left untouched (test
+    files must not call ``use_gems``; see
+    ``tools/ci_checks/check_kernelgen_tests.py``).
     """
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     grad = [torch.randn_like(c) for c in torch.chunk(inp, 3, dim)]
-    res_inp = inp.clone().requires_grad_(True)
-
-    with flag_gems.use_gems():
-        res_chunks = torch.chunk(res_inp, 3, dim)
-    (dx,) = torch.autograd.grad(res_chunks, res_inp, grad)
-
     ref_inp = utils.to_reference(inp.detach()).requires_grad_(True)
     (ref_dx,) = torch.autograd.grad(
         torch.chunk(ref_inp, 3, dim), ref_inp, [utils.to_reference(g) for g in grad]
     )
+
+    res_inp = inp.clone().requires_grad_(True)
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(include=["chunk"], lib=lib)
+        res_chunks = torch.chunk(res_inp, 3, dim)
+        (dx,) = torch.autograd.grad(res_chunks, res_inp, grad)
+    finally:
+        lib._destroy()
+
     utils.gems_assert_close(dx, ref_dx, dtype)
