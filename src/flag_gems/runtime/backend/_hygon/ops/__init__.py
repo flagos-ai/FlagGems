@@ -98,6 +98,7 @@ from ._foreach_log10 import _foreach_log10 as _foreach_log10
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_maximum_List import _foreach_maximum_List as _foreach_maximum_List
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar as _foreach_minimum_Scalar
 from ._foreach_mul__List import _foreach_mul__List
@@ -443,6 +444,7 @@ __all__ = [
     "_foreach_log10_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
+    "_foreach_maximum_List",
     "_foreach_minimum__Scalar",
     "_foreach_minimum_Scalar",
     "_foreach_mul__List",
