@@ -62,16 +62,25 @@ def _to_tl_type(ty):
 @triton.heuristics(
     {
         "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0,
-        "UPGRADE": lambda args: math.ceil(
-            (args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])
-        ).bit_length()
-        > 31,
-        "UPGRADE_A_OFFS": lambda args: math.ceil(args["M"] * args["K"]).bit_length()
-        > 31,
-        "UPGRADE_B_OFFS": lambda args: math.ceil(args["K"] * args["N"]).bit_length()
-        > 31,
-        "UPGRADE_C_OFFS": lambda args: math.ceil(args["M"] * args["N"]).bit_length()
-        > 31,
+        # BF16 async staging produced unstable tiles in compiled mm.out calls.
+        "num_stages": lambda args: (
+            1 if args["A"].dtype == torch.bfloat16 else args["num_stages"]
+        ),
+        "UPGRADE": lambda args: (
+            math.ceil(
+                (args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])
+            ).bit_length()
+            > 31
+        ),
+        "UPGRADE_A_OFFS": lambda args: (
+            math.ceil(args["M"] * args["K"]).bit_length() > 31
+        ),
+        "UPGRADE_B_OFFS": lambda args: (
+            math.ceil(args["K"] * args["N"]).bit_length() > 31
+        ),
+        "UPGRADE_C_OFFS": lambda args: (
+            math.ceil(args["M"] * args["N"]).bit_length() > 31
+        ),
     }
 )
 @triton.jit

@@ -94,6 +94,11 @@ def linear_heur_even_k(args):
     return mm_heur_even_k(args)
 
 
+def linear_heur_num_stages(args):
+    # BF16 async staging produced unstable results; retain synchronous loads.
+    return 1 if args["input_ptr"].dtype == torch.bfloat16 else args["num_stages"]
+
+
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -267,6 +272,7 @@ HEURISTICS_CONFIGS = {
     },
     "linear": {
         "EVEN_K": linear_heur_even_k,
+        "num_stages": linear_heur_num_stages,
     },
     "rand": {
         "BLOCK": rand_heur_block,

@@ -52,11 +52,13 @@ def mul_broadcast_get_configs():
     ]
 
 
+# Restore outputs during tuning: mul_ and out= can alias the inputs.
 @libentry()
 @libtuner(
     configs=mul_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["output_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -85,6 +87,7 @@ def mul_kernel(
     configs=mul_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["output_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -112,6 +115,7 @@ def mul_scalar_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "n_cols", "dtype"],
     strategy=["align32", "default", "default"],
+    restore_value=["out_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -149,6 +153,7 @@ def mul_broadcast_2d_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -194,6 +199,7 @@ def mul_generic_nd_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -240,6 +246,7 @@ def mul_generic_nd_runtime_meta_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_r_ptr", "out_i_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -301,6 +308,7 @@ def mul_complex_generic_nd_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_r_ptr", "out_i_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",

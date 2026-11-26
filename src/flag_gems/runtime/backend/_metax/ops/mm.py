@@ -28,9 +28,99 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_l2_cache_size, get_sm_count
 
 logger = logging.getLogger(__name__)
+_MM_TUNING_BUCKETS = False
+_MM_LARGE_TILES_ENABLED = False
+_MM_NT_BASE_CONFIGS = None
+_MM_LARGE_TILE_CONFIGS = (
+    triton.Config(
+        {
+            "BLOCK_M": 128,
+            "BLOCK_N": 128,
+            "BLOCK_K": 64,
+            "pipeline": "basic",
+            "scenario": "",
+        },
+        num_warps=8,
+        num_stages=2,
+    ),
+    triton.Config(
+        {
+            "BLOCK_M": 256,
+            "BLOCK_N": 128,
+            "BLOCK_K": 32,
+            "pipeline": "basic",
+            "scenario": "",
+        },
+        num_warps=8,
+        num_stages=2,
+    ),
+)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_metax_expand.yaml")
 )
+
+
+def set_mm_tuning_buckets(enabled):
+    global _MM_TUNING_BUCKETS
+    _MM_TUNING_BUCKETS = bool(enabled)
+
+
+def _mm_large_tile_signature(config):
+    kwargs = config.kwargs
+    return (
+        kwargs.get("BLOCK_M"),
+        kwargs.get("BLOCK_N"),
+        kwargs.get("BLOCK_K"),
+        kwargs.get("pipeline"),
+        config.num_warps,
+        config.num_stages,
+    )
+
+
+_MM_LARGE_TILE_SIGNATURES = frozenset(
+    _mm_large_tile_signature(config) for config in _MM_LARGE_TILE_CONFIGS
+)
+
+
+def set_mm_large_tiles(enabled):
+    """Set large-M NT candidates during worker startup, before model loading."""
+    global _MM_LARGE_TILES_ENABLED, _MM_NT_BASE_CONFIGS
+
+    tuner = mm_kernel_nt.fn
+    visited = set()
+    while not (hasattr(tuner, "keys") and hasattr(tuner, "cache")):
+        if tuner is None or id(tuner) in visited:
+            raise TypeError("mm_kernel_nt.fn chain has no config tuner")
+        visited.add(id(tuner))
+        tuner = getattr(tuner, "fn", None)
+    if _MM_NT_BASE_CONFIGS is None:
+        _MM_NT_BASE_CONFIGS = tuple(tuner.configs)
+
+    configs = list(_MM_NT_BASE_CONFIGS)
+    if enabled:
+        existing = {_mm_large_tile_signature(config) for config in configs}
+        configs.extend(
+            config
+            for config in _MM_LARGE_TILE_CONFIGS
+            if _mm_large_tile_signature(config) not in existing
+        )
+    tuner._set_configs_and_strategy(configs, tuner.strategy)
+    _MM_LARGE_TILES_ENABLED = bool(enabled)
+
+    # LibEntry caches the selected wrapper per device. A changed tuner config
+    # hash must not reuse a wrapper created before this startup-only switch.
+    for cache in mm_kernel_nt.kernel_cache:
+        cache.clear()
+
+
+def _mm_tuning_m_key(m):
+    """Reuse power-of-two tuning buckets, with M=512..1023 sharing one key."""
+    m = int(m)
+    if not _MM_TUNING_BUCKETS or m < 128:
+        return m
+    if m < 1024:
+        m = min(m, 512)
+    return 1 << (m - 1).bit_length()
 
 
 def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
@@ -38,9 +128,24 @@ def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
     M = named_args["M"]
     N = named_args["N"]
     K = named_args["K"]
+    large_tiles_allowed = (
+        _MM_LARGE_TILES_ENABLED
+        and transposed_b
+        and M >= 1024
+        and N >= 128
+        and getattr(named_args.get("A"), "dtype", None) == torch.bfloat16
+        and getattr(named_args.get("B"), "dtype", None) == torch.bfloat16
+        and getattr(named_args.get("C"), "dtype", None) == torch.bfloat16
+    )
+    eligible_configs = [
+        config
+        for config in configs
+        if large_tiles_allowed
+        or _mm_large_tile_signature(config) not in _MM_LARGE_TILE_SIGNATURES
+    ]
     pruned_configs = []
 
-    for config in configs:
+    for config in eligible_configs:
         block_m = config.kwargs["BLOCK_M"]
         block_n = config.kwargs["BLOCK_N"]
         block_k = config.kwargs["BLOCK_K"]
@@ -82,7 +187,7 @@ def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
 
         pruned_configs.append(config)
 
-    return pruned_configs or configs
+    return pruned_configs or eligible_configs
 
 
 _prune_mm_dense_configs_nt = functools.partial(
@@ -330,6 +435,7 @@ def mm_kernel_nn(
 @libtuner(
     configs=runtime.get_tuned_config("mm_nt"),
     key=["M", "N", "K"],
+    strategy=[_mm_tuning_m_key, "default", "default"],
     prune_configs_by={"early_config_prune": _prune_mm_dense_configs_nt},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_nt",

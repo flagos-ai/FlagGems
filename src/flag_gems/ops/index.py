@@ -196,6 +196,19 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     return code
 
 
+def _index_config_pool_key(configs):
+    """Include emitted tile configurations in the generated-kernel cache key."""
+    return "_".join(
+        f"m{config.kwargs['BLOCK_SIZE0']}n{config.kwargs['BLOCK_SIZE1']}"
+        f"w{config.num_warps}s{config.num_stages}"
+        for config in configs
+    )
+
+
+def _uses_runtime_row_count(inp, start_dim, indices_len):
+    return inp.ndim == 2 and start_dim == 0 and indices_len == 1
+
+
 def generate_index_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
@@ -416,6 +429,7 @@ def generate_index_linearized_kernel(
     configs,
     kernel_name: str,
     code: IndentedBuffer,
+    runtime_row_count=False,
 ):
     """Generate a kernel for contiguous input with adjacent tensor indices."""
 
@@ -425,6 +439,12 @@ def generate_index_linearized_kernel(
         _volume(indexed_dims[pos + 1 :]) for pos in range(len(indexed_dims))
     ]
     suffix_size = _volume(inp_shape[start_dim + indices_len :])
+    if runtime_row_count:
+        # The optimized x[idx, :] path should reuse one kernel across changing
+        # batch/token row counts. Preserve the exact bounds/negative-index
+        # semantics while keeping the row count out of generated source.
+        indexed_dims[0] = "row_count"
+        indexed_volume = "row_count"
 
     code.writeline("@libentry()")
     code.writeline("@libtuner(")
@@ -435,7 +455,10 @@ def generate_index_linearized_kernel(
         code.writeline("warmup=5,")
         code.writeline("rep=10,")
     code.writeline(")")
-    code.writeline("@triton.jit")
+    if runtime_row_count:
+        code.writeline('@triton.jit(do_not_specialize=["row_count"])')
+    else:
+        code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
         args = ["input_ptr,"]
@@ -444,6 +467,10 @@ def generate_index_linearized_kernel(
             "out_ptr,",
             "M,",
             "N,",
+        ]
+        if runtime_row_count:
+            args += ["row_count,"]
+        args += [
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
         ]
@@ -513,6 +540,7 @@ def generate_index_linearized_wrapper(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    runtime_row_count=False,
 ):
     prefix_size = _volume(inp_shape[:start_dim])
     suffix_size = _volume(inp_shape[start_dim + indices_len :])
@@ -522,6 +550,8 @@ def generate_index_linearized_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"P = {prefix_size}")
         code.writeline(f"N = {suffix_size}")
+        if runtime_row_count:
+            code.writeline("row_count = input.shape[0]")
         code.newline()
         # Match the kernel axes: prefix, flattened index elements, suffix.
         code.writeline("grid = lambda meta: (")
@@ -536,6 +566,8 @@ def generate_index_linearized_wrapper(
             args = ["input,"]
             args += [f"indices[{i}]," for i in range(indices_len)]
             args += ["out,", "M,", "N,"]
+            if runtime_row_count:
+                args += ["row_count,"]
             code.writelines(args)
         code.writeline(")")
         code.writeline("return input")
@@ -549,6 +581,7 @@ def generate_linearized_code(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    configs=None,
 ):
     inp = inputs[0]
     start_dim = int(inputs[1])
@@ -556,7 +589,9 @@ def generate_linearized_code(
     indices_len = len(tensor_indices)
     if indices_len == 0:
         raise ValueError("At least one non-None index tensor is required")
-    configs = _index_candidate_configs(inp, start_dim, indices_len, tensor_indices)
+    if configs is None:
+        configs = _index_candidate_configs(inp, start_dim, indices_len, tensor_indices)
+    runtime_row_count = _uses_runtime_row_count(inp, start_dim, indices_len)
     code = generate_imports(code)
     generate_index_linearized_kernel(
         tuple(inp.shape),
@@ -565,6 +600,7 @@ def generate_linearized_code(
         configs,
         kernel_name,
         code,
+        runtime_row_count=runtime_row_count,
     )
     generate_index_linearized_wrapper(
         tuple(inp.shape),
@@ -573,6 +609,7 @@ def generate_linearized_code(
         wrapper_name,
         kernel_name,
         code,
+        runtime_row_count=runtime_row_count,
     )
     return code
 
@@ -584,11 +621,10 @@ class LinearizedAdjacentIndexFunction:
         self.pid = os.getpid()
         self.overloads: Mapping[str, Callable] = {}
 
-    def __call__(self, *args, **kwargs):
-        inp, start_dim, tensor_indices, out = args
+    def __call__(self, inp, start_dim, tensor_indices, out, configs=None, **kwargs):
         full_args = (inp, start_dim, tensor_indices)
 
-        key = self.arg_key(*full_args)
+        key = self.arg_key(*full_args, configs=configs)
         if key in self.overloads:
             overload = self.overloads[key]
         else:
@@ -598,6 +634,7 @@ class LinearizedAdjacentIndexFunction:
                 "_index_linearized_wrapper",
                 "_index_linearized_jit_function",
                 code,
+                configs=configs,
             )
 
             file_name = f"index_linearized_{key}.py"
@@ -614,15 +651,28 @@ class LinearizedAdjacentIndexFunction:
             overload = getattr(m, "_index_linearized_wrapper")
             self.overloads[key] = overload
 
-        return overload(*args)
+        return overload(inp, start_dim, tensor_indices, out)
 
-    def arg_key(self, *args, **kwargs):
+    def arg_key(self, *args, configs=None, **kwargs):
         inp, start_dim, tensor_indices = args[0], int(args[1]), args[2]
-        inp_shape = "_".join(str(int(dim)) for dim in inp.shape)
         indices_len = len(tensor_indices)
         index_len = int(tensor_indices[0].numel()) if tensor_indices else 0
         suffix_size = _volume(inp.shape[start_dim + indices_len :])
         index_bucket, suffix_bucket = _shape_bucket(index_len, suffix_size)
+        if _uses_runtime_row_count(inp, start_dim, indices_len):
+            if configs is None:
+                configs = _index_candidate_configs(
+                    inp, start_dim, indices_len, tensor_indices
+                )
+            config_pool_key = _index_config_pool_key(configs)
+            return (
+                f"inp_rows_runtime_cols_{int(inp.shape[1])}_start_dim_{start_dim}_"
+                f"indices_len_{indices_len}_"
+                f"dtype_{str(inp.dtype).replace('.', '_')}_"
+                f"m_{index_bucket}_n_{suffix_bucket}_configs_{config_pool_key}"
+            )
+
+        inp_shape = "_".join(str(int(dim)) for dim in inp.shape)
         return (
             f"inp_shape_{inp_shape}_start_dim_{start_dim}_"
             f"indices_len_{indices_len}_"
@@ -666,7 +716,7 @@ def _linearized_adjacent_index_configs(inp, indices):
     return _index_candidate_configs(inp, start_dim, len(tensor_indices), tensor_indices)
 
 
-def _run_linearized_adjacent_index(inp, indices):
+def _run_linearized_adjacent_index(inp, indices, configs):
     tensor_index_dims = _tensor_index_dims(indices)
     start_dim = tensor_index_dims[0]
     tensor_indices = [indices[dim] for dim in tensor_index_dims]
@@ -683,7 +733,7 @@ def _run_linearized_adjacent_index(inp, indices):
 
     # The generated kernel assumes contiguous index tensors and contiguous input.
     tensor_indices = [idx.contiguous() for idx in tensor_indices]
-    _linearized_adjacent_index_func(inp, start_dim, tensor_indices, out)
+    _linearized_adjacent_index_func(inp, start_dim, tensor_indices, out, configs)
     return out.contiguous()
 
 
@@ -793,7 +843,7 @@ def index(inp, indices):
         else []
     )
     if adjacent_index_configs:
-        return _run_linearized_adjacent_index(inp, indices)
+        return _run_linearized_adjacent_index(inp, indices, adjacent_index_configs)
 
     # Transpose if not contiguous OR starts with None (and has tensor indices)
     need_post_process = False

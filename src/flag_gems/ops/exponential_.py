@@ -111,19 +111,26 @@ def fused_exponential_kernel_f32_unroll8(
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-
     pid = tl.program_id(0)
-    block_start = pid * BLOCK
-    offsets = block_start + tl.arange(0, BLOCK)
+    lanes = tl.arange(0, BLOCK).to(tl.int64)
+    # Each Philox counter supplies four outputs. The two BLOCK-sized groups
+    # use adjacent ranges across CTAs. Keep arithmetic wide until after adding
+    # the offset so carry crosses from c0 into c1.
+    full_counter = philox_offset + pid.to(tl.int64) * (BLOCK * 2) + lanes
+    second_counter = full_counter + BLOCK
+    c0_first = (full_counter & 0xFFFFFFFF).to(tl.uint32)
+    c1_first = (full_counter >> 32).to(tl.uint32)
+    c0_second = (second_counter & 0xFFFFFFFF).to(tl.uint32)
+    c1_second = (second_counter >> 32).to(tl.uint32)
+    z_first = c0_first * 0
+    z_second = c0_second * 0
 
-    c0_first = c0 + offsets * 4
-    c0_second = c0_first + BLOCK * 4
-    z = c0_first * 0
-
-    r0_0, r1_0, r2_0, r3_0 = tl.philox(philox_seed, c0_first, c1, z, z)
-    r0_1, r1_1, r2_1, r3_1 = tl.philox(philox_seed, c0_second, c1, z, z)
+    r0_0, r1_0, r2_0, r3_0 = tl.philox(
+        philox_seed, c0_first, c1_first, z_first, z_first
+    )
+    r0_1, r1_1, r2_1, r3_1 = tl.philox(
+        philox_seed, c0_second, c1_second, z_second, z_second
+    )
 
     y0_0 = transform_exponential_f32(uint_to_uniform_float(r0_0), inv_lambd, eps_minus)
     y1_0 = transform_exponential_f32(uint_to_uniform_float(r1_0), inv_lambd, eps_minus)
@@ -327,7 +334,9 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     else:
         UNROLL = 8
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        increment = triton.cdiv(N, UNROLL)
+        # Reserve the full output length in counter space; the unroll8 kernel
+        # uses a non-overlapping 64-bit counter range across CTAs.
+        increment = N
         philox_seed, philox_offset = philox_backend_seed_offset(
             increment, generator=generator
         )

@@ -143,6 +143,21 @@ def test_index_nonleading_adjacent_tensor_indices(input_shape, indices_shape, dt
     utils.gems_assert_close(out, ref_out, dtype)
 
 
+@pytest.mark.index
+def test_index_leading_2d_dynamic_rows_preserve_negative_boundaries():
+    for rows in (31, 32, 33):
+        inp = torch.arange(
+            rows * 8, dtype=torch.float32, device=flag_gems.device
+        ).reshape(rows, 8)
+        indices = torch.tensor(
+            [-rows, -1, 0, rows - 1], dtype=torch.long, device=flag_gems.device
+        )
+        index_list = [indices, None]
+        expected = torch.ops.aten.index(inp, index_list)
+        actual = flag_gems.index(inp, index_list)
+        torch.testing.assert_close(actual, expected)
+
+
 # Additional test cases to improve coverage for index operator
 @pytest.mark.index
 @pytest.mark.parametrize(

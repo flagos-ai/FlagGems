@@ -24,6 +24,18 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_USE_HISTOGRAM_INTRINSIC = False
+
+
+def set_histogram_intrinsic(enabled: bool) -> None:
+    """Set the default histogram implementation used by :func:`radix_sort`.
+
+    The default deliberately remains disabled. Device-specific callers should
+    enable it only after checking exact sort results and full-sort latency.
+    """
+    global _USE_HISTOGRAM_INTRINSIC
+    _USE_HISTOGRAM_INTRINSIC = bool(enabled)
+
 
 def unwrap_if_constexpr(o):
     return o.value if isinstance(o, tl.constexpr) else o
@@ -156,6 +168,57 @@ def compute_global_hist_kernel(
 
 
 @triton.jit
+def _radix_histogram_intrinsic(
+    arr_ptr,
+    out_ptr,
+    num_passes,
+    m,
+    n,
+    tiles_n_per_cta,
+    TILE_N: tl.constexpr,
+    num_bits_per_pass: tl.constexpr,
+    descending: tl.constexpr,
+):
+    """Count one radix pass per CTA using Triton's local histogram primitive.
+
+    Out-of-range lanes map to bin ``r``. The intrinsic has ``2 * r`` bins so
+    the sentinel is valid on Triton versions that do not support a histogram
+    mask argument; only the real ``r`` bins are atomically accumulated.
+    """
+    pid = tl.program_id(0)
+    pid_n = pid // m
+    pid_m = pid % m
+    pass_id = tl.program_id(1)
+
+    r: tl.constexpr = 1 << num_bits_per_pass
+    bfe_mask: tl.constexpr = r - 1
+    histogram_bins: tl.constexpr = 2 * r
+    cta_tile_n: tl.constexpr = TILE_N * tiles_n_per_cta
+    cta_n_start = cta_tile_n * pid_n
+    cta_n_end = tl.minimum(cta_n_start + cta_tile_n, n)
+    bit_offset = pass_id * num_bits_per_pass
+
+    acc = tl.zeros((histogram_bins,), dtype=tl.int32)
+    for n_start in range(cta_n_start, cta_n_end, TILE_N):
+        n_offsets = n_start + tl.arange(0, TILE_N)
+        mask = n_offsets < cta_n_end
+        arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask, other=0)
+        arr = convert_to_uint_preverse_order(arr, descending)
+        key = ((arr >> bit_offset) & bfe_mask).to(tl.int32)
+        key = tl.where(mask, key, r)
+        acc += tl.histogram(key, histogram_bins).to(tl.int32)
+
+    bin_indices = tl.arange(0, histogram_bins)
+    out_offset = pid_m * num_passes * r + pass_id * r + bin_indices
+    tl.atomic_add(
+        out_ptr + out_offset,
+        acc,
+        mask=bin_indices < r,
+        sem="relaxed",
+    )
+
+
+@triton.jit
 def sweep(
     arr_ptr,
     associate_arr_ptr,  # inputs: (key & value)
@@ -255,7 +318,7 @@ def sweep(
             tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
 
-def radix_sort(arr, k_bits=8, descending=False):
+def radix_sort(arr, k_bits=8, descending=False, *, use_histogram_intrinsic=None):
     n = arr.shape[-1]
     m = arr.numel() // n
     assert n < (1 << 30), "we have not implemented 2**30 per launch"
@@ -272,23 +335,48 @@ def radix_sort(arr, k_bits=8, descending=False):
 
     grid_n = triton.cdiv(n, CTA_TILE_N)
     grid_for_global_hist = (m * grid_n, 1, 1)
+    use_histogram_intrinsic = (
+        _USE_HISTOGRAM_INTRINSIC
+        if use_histogram_intrinsic is None
+        else bool(use_histogram_intrinsic)
+    )
+    # The optimized path is initially contracted only for the FP32, four-bit
+    # large-vocabulary sampler case. All other callers keep the old kernel.
+    use_histogram_intrinsic = (
+        use_histogram_intrinsic and dtype == torch.float32 and k_bits == 4 and n >= 1024
+    )
 
     with torch_device_fn.device(arr.device):
         global_hist = torch.zeros(
             (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
-        compute_global_hist_kernel[grid_for_global_hist](
-            arr,
-            global_hist,
-            n_passes,
-            m,
-            n,
-            tiles_n_per_cta,
-            TILE_N,
-            TILE_R,
-            k_bits,
-            descending,
-        )
+        if use_histogram_intrinsic:
+            _radix_histogram_intrinsic[(m * grid_n, n_passes)](
+                arr,
+                global_hist,
+                n_passes,
+                m,
+                n,
+                tiles_n_per_cta,
+                TILE_N,
+                k_bits,
+                descending,
+                num_warps=4,
+                num_stages=1,
+            )
+        else:
+            compute_global_hist_kernel[grid_for_global_hist](
+                arr,
+                global_hist,
+                n_passes,
+                m,
+                n,
+                tiles_n_per_cta,
+                TILE_N,
+                TILE_R,
+                k_bits,
+                descending,
+            )
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
         ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
