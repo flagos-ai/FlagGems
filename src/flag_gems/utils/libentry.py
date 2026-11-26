@@ -218,6 +218,8 @@ class ConfigCache(Cache):
         self, table_name: str, model: PersistantModel, *args, **kwargs
     ) -> ConfigCache:
         super().__init__(table_name, model, *args, **kwargs)
+        self._local_cache: Dict[Tuple[Union[int, float, str], ...], Any] = {}
+        self._local_missing = object()
 
     def __contains__(self, key: Tuple[Union[int, float, str], ...]) -> bool:
         return self.get(key) is not None
@@ -234,12 +236,20 @@ class ConfigCache(Cache):
         self.set(key, config)
 
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
-        return self.model.get_config(self.table_name, key)
+        if os.environ.get("FLAGGEMS_CONFIG_CACHE_LOCAL", "1") == "0":
+            return self.model.get_config(self.table_name, key)
+        if key not in self._local_cache:
+            result = self.model.get_config(self.table_name, key)
+            self._local_cache[key] = self._local_missing if result is None else result
+        result = self._local_cache[key]
+        return None if result is self._local_missing else result
 
     def set(
         self, key: Tuple[Union[int, float, str], ...], config: triton.Config
     ) -> None:
-        return self.model.put_config(self.table_name, key, config)
+        result = self.model.put_config(self.table_name, key, config)
+        self._local_cache[key] = config
+        return result
 
 
 class BenchmarkCache(Cache):

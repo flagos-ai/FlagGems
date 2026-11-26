@@ -28,6 +28,16 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 
+def _flagtune_strategy(op_name, default):
+    try:
+        cfg = runtime.get_expand_config(op_name)
+        if isinstance(cfg, dict) and "strategy" in cfg:
+            return cfg["strategy"]
+    except Exception:
+        pass
+    return default
+
+
 @libentry()
 @libtuner(
     configs=(
@@ -37,7 +47,7 @@ logger = logging.getLogger(__name__)
     ),
     key=["M", "N", "K"],
     strategy=(
-        runtime.get_expand_config("addmm")["strategy"]
+        _flagtune_strategy("addmm", ["align32", "align32", "align32"])
         if os.environ.get("USE_FLAGTUNE") == "1"
         else ["align32", "align32", "align32"]
     ),

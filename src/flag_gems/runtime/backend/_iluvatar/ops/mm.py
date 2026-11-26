@@ -237,6 +237,73 @@ def _launch_mm(a, b, c, M, N, K):
     return c
 
 
+# Pinned configs for MiniCPM5-2B serve shapes on BI-V150, from a full offline
+# sweep of the config space (libtuner's runtime autotune falls back to noisy
+# event timing on this stack and mis-picks, e.g. 303us vs the 265us optimum
+# for the qkv prefill shape).  (K, N) -> (BLOCK_M, BLOCK_N, BLOCK_K, SPLIT_K,
+# num_warps, num_stages).
+_PINNED_DECODE = {  # M <= 128 (cudagraph decode batches)
+    (2048, 2560): (64, 128, 64, 4, 8, 1),
+    (2048, 2048): (64, 128, 64, 2, 8, 2),
+    (2048, 12288): (64, 256, 64, 1, 8, 1),
+    (6144, 2048): (64, 64, 32, 4, 4, 2),
+}
+_PINNED_PREFILL = {  # M >= 1024 (2048-token chunks, plus decode rows)
+    (2048, 2560): (128, 128, 32, 1, 8, 2),
+    (2048, 2048): (256, 256, 32, 1, 16, 2),
+    (2048, 12288): (256, 256, 32, 1, 8, 2),
+    (6144, 2048): (256, 256, 32, 1, 16, 2),
+}
+
+# LibEntry -> LibTuner -> Heuristics: launching at this level keeps the
+# EVEN_K/UPGRADE* heuristics while accepting explicit BLOCK_*/SPLIT_K.
+_raw_mm_kernel = mm_kernel.fn.fn
+
+
+def _pinned_cfg(M, K, N):
+    if M <= 128:
+        return _PINNED_DECODE.get((K, N))
+    if M >= 1024:
+        return _PINNED_PREFILL.get((K, N))
+    return None
+
+
+def _launch_pinned(a, b, c, M, N, K, cfg):
+    BM, BN, BK, SK, warps, stages = cfg
+    if SK > 1:
+        # SPLIT_K accumulates into C via tl.atomic_add
+        c.zero_()
+    ab_dtype = get_higher_dtype(a.dtype, b.dtype)
+    grid = (triton.cdiv(M, BM) * triton.cdiv(N, BN), SK)
+    with torch_device_fn.device(a.device):
+        _raw_mm_kernel[grid](
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            acc_dtype=tl.float32,
+            input_precision=None,
+            fp8_fast_accum=True,
+            GROUP_M=8,
+            AB_DTYPE=_to_tl_type(ab_dtype),
+            BLOCK_M=BM,
+            BLOCK_N=BN,
+            BLOCK_K=BK,
+            SPLIT_K=SK,
+            num_warps=warps,
+            num_stages=stages,
+        )
+    return c
+
+
 def mm(a, b):
     logger.debug("GEMS_ILUVATAR MM")
     device = a.device
@@ -249,6 +316,9 @@ def mm(a, b):
     _, N = b.shape
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
+    cfg = _pinned_cfg(M, K, N)
+    if cfg is not None:
+        return _launch_pinned(a, b, c, M, N, K, cfg)
     return _launch_mm(a, b, c, M, N, K)
 
 

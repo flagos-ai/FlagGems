@@ -69,6 +69,7 @@ from flag_gems.fused.fused_moe import (
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
+from flag_gems.fused.gumbel_max_sample import gumbel_max_sample
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.matmul_bias_activation import matmul_bias_activation
@@ -110,6 +111,8 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
 )
 from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
+from flag_gems.fused.top_k_top_p import apply_top_k_top_p
+from flag_gems.fused.paged_decode_attention import paged_decode_attention
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
@@ -157,6 +160,7 @@ __all__ = [
     "geglu",
     "gelu_and_mul",
     "grouped_topk",
+    "gumbel_max_sample",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
     "indexer_k_quant_and_cache",
@@ -194,6 +198,8 @@ __all__ = [
     "swiglu",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",
+    "apply_top_k_top_p",
+    "paged_decode_attention",
     "topk_softmax",
     "topk_softplus_sqrt",
     "triton_sparse_mla_fwd_interface",

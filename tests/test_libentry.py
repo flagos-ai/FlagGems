@@ -2481,3 +2481,67 @@ def test_libcache_concurrent_write_on_signal():
                 cache_path.unlink()
             except sqlite3.Error:
                 pass
+
+
+class _ConfigModel:
+    def __init__(self):
+        self.values = {}
+        self.calls = 0
+
+    def get_config(self, name, key):
+        self.calls += 1
+        return self.values.get((name, key))
+
+    def put_config(self, name, key, config):
+        self.values[(name, key)] = config
+
+
+def test_config_cache_local_hits_missing_and_set(monkeypatch):
+    monkeypatch.delenv("FLAGGEMS_CONFIG_CACHE_LOCAL", raising=False)
+    model = _ConfigModel()
+    cache = libentry_mod.ConfigCache("ops", model)
+    key = (64, 2048)
+    config = triton.Config({}, num_warps=1)
+    model.put_config("ops", key, config)
+
+    assert cache.get(key) is config
+    assert cache.get(key) is config
+    assert model.calls == 1
+
+    missing = (128, 2048)
+    assert cache.get(missing) is None
+    assert cache.get(missing) is None
+    assert model.calls == 2
+
+    updated = triton.Config({}, num_warps=2)
+    cache[key] = updated
+    assert cache.get(key) is updated
+    assert model.calls == 2
+
+    monkeypatch.setenv("FLAGGEMS_CONFIG_CACHE_LOCAL", "0")
+    assert cache.get(key) is updated
+    assert model.calls == 3
+
+
+def test_sql_model_loads_requested_table(tmp_path):
+    import sqlalchemy
+    from flag_gems.utils.models.sql import SQLPersistantModel
+
+    engine = sqlalchemy.create_engine(f"sqlite:///{tmp_path / 'configs.db'}")
+    with engine.begin() as conn:
+        conn.execute(sqlalchemy.text(
+            "CREATE TABLE wanted (key_0 INTEGER PRIMARY KEY, num_warps INTEGER)"
+        ))
+        conn.execute(sqlalchemy.text(
+            "INSERT INTO wanted (key_0, num_warps) VALUES (64, 4)"
+        ))
+        conn.execute(sqlalchemy.text(
+            "CREATE TABLE unrelated (key_0 INTEGER PRIMARY KEY)"
+        ))
+
+    model = SQLPersistantModel.build_sql_model_by_db("wanted", engine)
+    assert model is not None
+    assert model.__table__.name == "wanted"
+    with sqlalchemy.orm.Session(engine) as session:
+        assert session.get(model, {"key_0": 64}).num_warps == 4
+    assert SQLPersistantModel.build_sql_model_by_db("missing", engine) is None
