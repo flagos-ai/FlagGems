@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import Callable, Tuple
 
 import pytest
@@ -70,6 +71,14 @@ class ForeachPowBackwardBenchmark(base.Benchmark):
 
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
+    def init_user_config(self):
+        super().init_user_config()
+        # The ATen baseline rebuilds the autograd graph per call (four tensors
+        # plus the forward result), and the shared DEFAULT_SHAPES carry
+        # 2**30-element entries -- trim to the 2**24 tier before COMPREHENSIVE
+        # merges set_more_shapes.
+        self.shapes = [s for s in self.shapes if math.prod(s) <= 2**24]
+
     def set_more_shapes(self):
         # The ATen baseline rebuilds the autograd graph per call (four tensors
         # plus the forward result), so large shapes OOM the CI GPU: cap at
@@ -100,8 +109,16 @@ class ForeachPowScalarBackwardBenchmark(base.Benchmark):
 
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
+    def init_user_config(self):
+        super().init_user_config()
+        # The ATen baseline rebuilds the autograd graph per call, and the
+        # shared DEFAULT_SHAPES carry 2**30-element entries (2 GiB per fp16
+        # tensor before the graph's saved activations).  Trim to the
+        # 2**24-element tier -- the same budget as the .List benchmark.
+        self.shapes = [s for s in self.shapes if math.prod(s) <= 2**24]
+
     def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d
 
     def get_input_iter(self, dtype):
