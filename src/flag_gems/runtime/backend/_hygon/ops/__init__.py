@@ -52,6 +52,9 @@ from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_div__ScalarList import (
+    _foreach_div__ScalarList as _foreach_div__ScalarList,
+)
 from ._foreach_div_Scalar import _foreach_div_Scalar as _foreach_div_Scalar
 from ._foreach_div_ScalarList import _foreach_div_ScalarList as _foreach_div_ScalarList
 from ._foreach_erf import _foreach_erf as _foreach_erf
@@ -349,6 +352,7 @@ __all__ = [
     "_foreach_copy_",
     "_foreach_div__List",
     "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
     "_foreach_div_Scalar",
     "_foreach_div_ScalarList",
     "_foreach_erf",
