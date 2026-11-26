@@ -95,6 +95,7 @@ from .matmul_int8 import matmul_int8
 from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .median import median
+from .median_dim_values import median_dim_values
 from .mm import mm, mm_out
 from .mvlgamma import run as mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -241,6 +242,7 @@ __all__ = [
     "max_pool2d_with_indices_backward",
     "max_pool3d_with_indices_backward",
     "median",
+    "median_dim_values",
     "mm",
     "mm_out",
     "mvlgamma",
