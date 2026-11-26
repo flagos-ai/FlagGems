@@ -328,6 +328,7 @@ from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
 from .ne_ import ne_
 from .negative import negative
+from .negative_ import negative_
 from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
 from .new_ones import new_ones
 from .nonzero import nonzero
@@ -800,6 +801,7 @@ __all__ = [
     "native_layer_norm",
     "ne_",
     "negative",
+    "negative_",
     "nested_view_from_jagged_copy",
     "new_ones",
     "nonzero",
