@@ -101,6 +101,18 @@ exponential:
     - [1073741824]
   shape_desc: "input shape"
 
+cholesky_inverse_backward:
+  shapes:
+  - - 1
+    - 4
+  - - 2
+    - 16
+  - - 4
+    - 32
+  - - 2
+    - 64
+  shape_desc: backward input shape
+
 svd:
   shapes:
     - [4096, 2, 2]
@@ -1672,14 +1684,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-cholesky_inverse_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 1
-    - 4
-  - - 2
-    - 16
-  - - 4
-    - 32
-  - - 2
+  - - 257
+  - - 64
     - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
   shape_desc: backward input shape
