@@ -31,6 +31,7 @@ from ._foreach_acos_ import _foreach_acos_ as _foreach_acos_
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
 from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_add_List import _foreach_add_List as _foreach_add_List
 from ._foreach_add_Scalar import _foreach_add_Scalar as _foreach_add_Scalar
 from ._foreach_add_ScalarList import _foreach_add_ScalarList as _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
@@ -39,6 +40,11 @@ from ._foreach_addcdiv__ScalarList import (
 )
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__Tensor import (
+    _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
+)
+from ._foreach_atan import _foreach_atan as _foreach_atan
+from ._foreach_atan_ import _foreach_atan_ as _foreach_atan_
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
 from ._foreach_clamp_max__List import (
     _foreach_clamp_max__List as _foreach_clamp_max__List,
@@ -48,24 +54,46 @@ from ._foreach_clamp_max_List import _foreach_clamp_max_List as _foreach_clamp_m
 from ._foreach_clamp_max_Scalar import (
     _foreach_clamp_max_Scalar as _foreach_clamp_max_Scalar,
 )
+from ._foreach_clamp_max_ScalarList import (
+    _foreach_clamp_max_ScalarList as _foreach_clamp_max_ScalarList,
+)
+from ._foreach_clamp_min__List import (
+    _foreach_clamp_min__List as _foreach_clamp_min__List,
+)
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_clamp_min_List import _foreach_clamp_min_List as _foreach_clamp_min_List
+from ._foreach_clamp_min_Scalar import (
+    _foreach_clamp_min_Scalar as _foreach_clamp_min_Scalar,
+)
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_div__ScalarList import (
+    _foreach_div__ScalarList as _foreach_div__ScalarList,
+)
+from ._foreach_div__Tensor import _foreach_div__Tensor as _foreach_div__Tensor
 from ._foreach_div_Scalar import _foreach_div_Scalar as _foreach_div_Scalar
 from ._foreach_div_ScalarList import _foreach_div_ScalarList as _foreach_div_ScalarList
+from ._foreach_div_Tensor import _foreach_div_Tensor as _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf as _foreach_erf
 from ._foreach_erfc_ import _foreach_erfc_ as _foreach_erfc_
+from ._foreach_exp import _foreach_exp as _foreach_exp
+from ._foreach_exp_ import _foreach_exp_ as _foreach_exp_
+from ._foreach_floor import _foreach_floor as _foreach_floor
+from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_minimum_Scalar import _foreach_minimum_Scalar as _foreach_minimum_Scalar
 from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__Scalar import _foreach_mul__Scalar
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_reciprocal_ import _foreach_reciprocal_ as _foreach_reciprocal_
 from ._foreach_round_ import _foreach_round_
+from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 
 # Hygon internal implementation for attention
@@ -334,35 +362,53 @@ __all__ = [
     "_foreach_add__List",
     "_foreach_add__Scalar",
     "_foreach_add__ScalarList",
+    "_foreach_add_List",
     "_foreach_add_Scalar",
     "_foreach_add_ScalarList",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__Tensor",
+    "_foreach_atan",
+    "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
+    "_foreach_clamp_max_ScalarList",
+    "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
+    "_foreach_clamp_min_List",
+    "_foreach_clamp_min_Scalar",
     "_foreach_copy_",
     "_foreach_div__List",
     "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
+    "_foreach_div__Tensor",
     "_foreach_div_Scalar",
     "_foreach_div_ScalarList",
+    "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erfc_",
+    "_foreach_exp",
+    "_foreach_exp_",
+    "_foreach_floor",
+    "_foreach_floor_",
     "_foreach_log10_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_minimum__Scalar",
+    "_foreach_minimum_Scalar",
     "_foreach_mul__List",
     "_foreach_mul__Scalar",
     "_foreach_mul__ScalarList",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
+    "_foreach_reciprocal_",
     "_foreach_round_",
+    "_foreach_sigmoid_",
     "_foreach_sign_",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",

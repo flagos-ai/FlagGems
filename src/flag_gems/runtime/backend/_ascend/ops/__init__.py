@@ -223,6 +223,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
@@ -680,6 +681,7 @@ __all__ = [
     "greater_equal_",
     "group_norm",
     "group_norm_backward",
+    "grouped_gemm_w8a8",
     "grouped_matmul",
     "gru",
     "gru_data",
