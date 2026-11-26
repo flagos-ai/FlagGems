@@ -3140,7 +3140,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: cast_Half
-  description: Casts a tensor to float16, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to float16, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Half
   labels:
@@ -4310,17 +4311,18 @@ ops:
   stages:
   - alpha: '5.4'
 - id: convolution_overrideable_backward
-  description: |
-    Triton kernel implementation for convolution_overrideable_backward.
+  description: 'Triton kernel implementation for convolution_overrideable_backward.
+
+    '
   for:
-    - convolution_overrideable_backward
+  - convolution_overrideable_backward
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: convolution_overrideable_out
   description: 'A variant of convolution_overrideable() that writes the result into
     the out tensor.
@@ -4520,8 +4522,8 @@ ops:
   stages:
   - stable: '5.3'
 - id: cosh_backward
-  description: The backward computation of `cosh()`, exercised through the
-    autograd of the forward operator.
+  description: The backward computation of `cosh()`, exercised through the autograd
+    of the forward operator.
   for:
   - cosh
   labels:
@@ -5194,14 +5196,24 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cumsum_backward
-  description: |
-    Backward pass for `cumsum`: the gradient with respect to the input is the reverse
+  description: 'Backward pass for `cumsum`: the gradient with respect to the input
+    is the reverse
+
     cumulative sum of the upstream gradient along the cumulative dimension, i.e.
+
     `grad_input[i] = sum_{j >= i} grad_output[j]`. Implemented as a single-pass Triton
-    kernel that walks the reduce axis in reversed index order inside `tl.cumsum`, so no
-    flip kernels or extra full-tensor copies are needed. Accumulation is performed in
+
+    kernel that walks the reduce axis in reversed index order inside `tl.cumsum`,
+    so no
+
+    flip kernels or extra full-tensor copies are needed. Accumulation is performed
+    in
+
     float32 for numerical stability. Exposed through `torch.autograd.Function` because
+
     `aten::cumsum` has no dedicated backward operator.
+
+    '
   for:
   - cumsum_backward
   labels:
@@ -5211,7 +5223,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.6.0'
+  - alpha: 5.6.0
 - id: cumsum_out
   description: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
@@ -5262,13 +5274,20 @@ ops:
   stages:
   - alpha: '5.4'
 - id: deg2rad_backward
-  description: |
-    Backward pass for `deg2rad`: the gradient with respect to the input is the
+  description: 'Backward pass for `deg2rad`: the gradient with respect to the input
+    is the
+
     elementwise product of the upstream gradient with pi/180. The multiply is
+
     performed in float32 opmath for fp16/bf16 and the result is cast back to the
-    input dtype, matching ATen's Deg2RadBackward0. Exposed through a
+
+    input dtype, matching ATen''s Deg2RadBackward0. Exposed through a
+
     `torch.autograd.Function` bridge because this Torch build has no standalone
+
     `aten::deg2rad_backward` schema.
+
+    '
   for:
   - deg2rad_backward
   labels:
@@ -5277,7 +5296,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.6.0'
+  - alpha: 5.6.0
 - id: deg2rad_out
   description: Out-of-place variant of deg2rad with pre-allocated output tensor.
   for:
@@ -5392,12 +5411,18 @@ ops:
   stages:
   - stable: '2.2'
 - id: diag_embed_backward
-  description: |
-    Backward pass for `diag_embed`: the gradient with respect to the input is the
+  description: 'Backward pass for `diag_embed`: the gradient with respect to the input
+    is the
+
     diagonal of the upstream gradient at (offset, dim1, dim2), viewed with the
-    input's shape. The default plane dims (-2, -1) gather through a single
+
+    input''s shape. The default plane dims (-2, -1) gather through a single
+
     Triton kernel; other plane placements return the exact ATen formula
+
     (`torch.diagonal`) as a zero-copy view.
+
+    '
   for:
   - diag_embed_backward
   labels:
@@ -5406,7 +5431,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.6.0'
+  - alpha: 5.6.0
 - id: diagflat
   description: 'Creates a 2-D tensor whose diagonal, selected by `offset`, holds the
     flattened `input` and whose remaining elements are zero.
@@ -5466,12 +5491,18 @@ ops:
   stages:
   - alpha: '5.4'
 - id: diagonal_scatter_backward
-  description: |
-    Backward pass for `diagonal_scatter`: the input gradient keeps the upstream
+  description: 'Backward pass for `diagonal_scatter`: the input gradient keeps the
+    upstream
+
     gradient off the overwritten diagonal and is zero on it, while the `src`
+
     gradient is the contiguous diagonal of the upstream gradient. A flat copy
+
     kernel produces the input gradient and two small kernels zero and gather the
+
     diagonal entries.
+
+    '
   for:
   - diagonal_scatter_backward
   labels:
@@ -5480,7 +5511,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.6.0'
+  - alpha: 5.6.0
 - id: diff
   description: 'Computes the n-th forward difference along the given dimension.
 
@@ -6372,8 +6403,8 @@ ops:
   stages:
   - beta: '5.3'
 - id: expm1_backward
-  description: The backward computation of `expm1()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `expm1()`, exercised through the autograd
+    of the forward operator.
   for:
   - expm1
   labels:
@@ -7898,6 +7929,23 @@ ops:
   - PointWise
   stages:
   - alpha: '5.4'
+- id: foreach_div_backward
+  description: 'First-order gradients of the `_foreach_div.List` overload: given the
+    upstream gradients and the forward operands, produce the paired lists `grad_self[i]
+    = grads[i] / other[i]` and `grad_other[i] = -grads[i] * ((self[i] / other[i])
+    / other[i])`. ATen derives these through the `ForeachDivBackward0` autograd node
+    recorded on the forward operator; this Torch build has no standalone `aten::_foreach_div_backward`
+    schema, so the Triton kernel is exposed as an explicit entry point (same pattern
+    as `div_backward` / `deg2rad_backward`).'
+  for:
+  - foreach_div_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.6.0
 - id: foreach_div_list
   description: element-wise division for each tensor in a list, paired with a second
     tensor list.
@@ -12577,9 +12625,9 @@ ops:
   - beta: '5.4'
 - id: linalg_pinv
   description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
-    The registered atol_rtol overloads support real floating-point inputs only;
-    complex inputs raise RuntimeError instead of falling back to the native
-    kernel (ATen itself supports complex).
+    The registered atol_rtol overloads support real floating-point inputs only; complex
+    inputs raise RuntimeError instead of falling back to the native kernel (ATen itself
+    supports complex).
   for:
   - linalg_pinv
   - linalg_pinv.atol_rtol_float
@@ -12964,8 +13012,8 @@ ops:
   - beta: '5.0'
   - stable: '5.3'
 - id: log1p_backward
-  description: The backward computation of `log1p()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `log1p()`, exercised through the autograd
+    of the forward operator.
   for:
   - log1p
   labels:
@@ -13001,8 +13049,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: log2_backward
-  description: The backward computation of `log2()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `log2()`, exercised through the autograd
+    of the forward operator.
   for:
   - log2
   labels:
@@ -13218,8 +13266,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: logcumsumexp_backward
-  description: The backward computation of `logcumsumexp()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `logcumsumexp()`, exercised through the
+    autograd of the forward operator.
   for:
   - logcumsumexp
   labels:
@@ -13438,8 +13486,8 @@ ops:
   stages:
   - alpha: '5.3'
 - id: logsumexp_backward
-  description: The backward computation of `logsumexp()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `logsumexp()`, exercised through the autograd
+    of the forward operator.
   for:
   - logsumexp
   labels:
@@ -13614,8 +13662,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: lu_unpack_backward
-  description: The backward computation of `lu_unpack()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `lu_unpack()`, exercised through the autograd
+    of the forward operator.
   for:
   - lu_unpack
   labels:
@@ -13994,7 +14042,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: matrix_power
   description: Triton kernel implementation for matrix_power.
   for:
@@ -14031,8 +14079,8 @@ ops:
   - stable: '2.0'
   cpp: '4.0'
 - id: max_backward
-  description: The backward computation of `max()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `max()`, exercised through the autograd
+    of the forward operator.
   for:
   - max
   - max.dim
@@ -14184,8 +14232,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: max_unpool2d_backward
-  description: The backward computation of `max_unpool2d()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `max_unpool2d()`, exercised through the
+    autograd of the forward operator.
   for:
   - max_unpool2d
   labels:
@@ -14207,8 +14255,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: max_unpool3d_backward
-  description: The backward computation of `max_unpool3d()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `max_unpool3d()`, exercised through the
+    autograd of the forward operator.
   for:
   - max_unpool3d
   labels:
@@ -14282,8 +14330,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: median_backward
-  description: The backward computation of `median()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `median()`, exercised through the autograd
+    of the forward operator.
   for:
   - median
   - median.dim
@@ -14362,8 +14410,8 @@ ops:
   stages:
   - stable: '2.0'
 - id: min_backward
-  description: The backward computation of `min()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `min()`, exercised through the autograd
+    of the forward operator.
   for:
   - min
   - min.dim
@@ -15137,7 +15185,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: narrow_copy_backward
-  description: Extended narrow_copy gradient, validated against narrow followed by clone.
+  description: Extended narrow_copy gradient, validated against narrow followed by
+    clone.
   for:
   - narrow_copy
   labels:
@@ -19953,10 +20002,14 @@ ops:
   stages:
   - stable: '3.0'
 - id: sparse_addmm
-  description: |
-    Computes beta * self + alpha * (mat1 @ mat2), where mat1 is a sparse 2-D
+  description: 'Computes beta * self + alpha * (mat1 @ mat2), where mat1 is a sparse
+    2-D
+
     tensor (CSR/CSC/COO) and self and mat2 are dense. The result is a dense
+
     (M, N) tensor; self follows the standard addmm bias broadcasting rules.
+
+    '
   for:
   - _sparse_addmm
   labels:
@@ -19965,11 +20018,14 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: sparse_addmm_out
-  description: |
-    A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)
+  description: 'A variant of _sparse_addmm that writes beta * self + alpha * (mat1
+    @ mat2)
+
     into the provided dense out tensor.
+
+    '
   for:
   - _sparse_addmm.out
   labels:
@@ -19978,7 +20034,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: sparse_broadcast_to
   description: 'Broadcasts a sparse COO tensor to the target shape, replicating stored
     entries across newly prepended sparse dimensions and broadcast (size-1) dimensions.
@@ -20240,9 +20296,9 @@ ops:
   - alpha: '5.5'
 - id: sparse_csr_tensor_unsafe
   description: 'Assembles a torch.sparse_csr layout tensor from already-materialised
-    crow/col indices and values without validating the compressed indices; the
-    payload dtype conversion requested via the dtype argument runs in a Triton
-    kernel before the native assembly.
+    crow/col indices and values without validating the compressed indices; the payload
+    dtype conversion requested via the dtype argument runs in a Triton kernel before
+    the native assembly.
 
     '
   for:
@@ -20376,14 +20432,21 @@ ops:
   stages:
   - alpha: '5.5'
 - id: sparse_mm_reduce_impl_backward
-  description: |
-    Backward of aten::_sparse_mm_reduce_impl: computes the (grad_self,
+  description: 'Backward of aten::_sparse_mm_reduce_impl: computes the (grad_self,
+
     grad_other) pair for the SpMM reduce forward over a 2-D CSR tensor (M, K),
+
     a dense grad_out (M, N) and weight (K, N) with sum / mean / amax / amin
-    reductions. grad_self keeps the input's CSR structure (mean divides by the
-    row's stored nnz; amax/amin route the gradient through the forward's
+
+    reductions. grad_self keeps the input''s CSR structure (mean divides by the
+
+    row''s stored nnz; amax/amin route the gradient through the forward''s
+
     arg_out indices); grad_other scatters val * grad_out[row] back onto the
+
     weight rows. output_mask gates the two returns.
+
+    '
   for:
   - _sparse_mm_reduce_impl_backward
   labels:
@@ -20392,7 +20455,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: sparse_resize_
   description: 'Resizes a sparse COO tensor in place to the requested sizes and
 
@@ -20594,12 +20657,18 @@ ops:
   stages:
   - alpha: 5.5.0
 - id: sparse_sum
-  description: |
-    Sparse COO sum (``aten::_sparse_sum``): sums a sparse COO tensor. The default
+  description: 'Sparse COO sum (``aten::_sparse_sum``): sums a sparse COO tensor.
+    The default
+
     and ``.dtype`` overloads reduce every stored value into a 0-D dense scalar;
+
     the ``.dim`` / ``.dim_dtype`` / ``.dim_out`` overloads sum along the given
+
     sparse or dense dimensions, producing a coalesced sparse tensor when at
+
     least one sparse dim is kept.
+
+    '
   for:
   - _sparse_sum
   - _sparse_sum.dim
@@ -20612,7 +20681,7 @@ ops:
   kind:
   - Reduction
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: sparse_sum_backward
   description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
     back onto the sorted-unique coordinate support of the input sparse tensor, keeping
@@ -23843,8 +23912,10 @@ ops:
   stages:
   - alpha: 5.5.0
 - id: validate_sparse_bsc_tensor_args
-  description: |
-    Validate sparse tensor arguments and index invariants without modifying inputs.
+  description: 'Validate sparse tensor arguments and index invariants without modifying
+    inputs.
+
+    '
   for:
   - _validate_sparse_bsc_tensor_args
   labels:
@@ -23868,8 +23939,10 @@ ops:
   stages:
   - alpha: 5.5.0
 - id: validate_sparse_compressed_tensor_args
-  description: |
-    Validate sparse tensor arguments and index invariants without modifying inputs.
+  description: 'Validate sparse tensor arguments and index invariants without modifying
+    inputs.
+
+    '
   for:
   - _validate_sparse_compressed_tensor_args
   labels:

@@ -1557,6 +1557,7 @@ _FULL_CONFIG = (
     ("fmod.Tensor", fmod_tensor),
     ("fmod_.Scalar", fmod_scalar_),
     ("fmod_.Tensor", fmod_tensor_),
+    ("foreach_div_backward", foreach_div_backward),
     ("frac", frac),
     ("frac_", frac_),
     ("fractional_max_pool2d", fractional_max_pool2d),
