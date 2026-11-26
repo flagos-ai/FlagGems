@@ -29,6 +29,7 @@ from ._foreach_add__ScalarList import _foreach_add__ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_atan import _foreach_atan as _foreach_atan
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_copy_ import _foreach_copy_
@@ -310,6 +311,7 @@ __all__ = [
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
+    "_foreach_atan",
     "_foreach_clamp_max__Scalar",
     "_foreach_clamp_min__Scalar",
     "_foreach_copy_",
