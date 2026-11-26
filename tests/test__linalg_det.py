@@ -20,11 +20,7 @@ from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .accuracy_utils import (
-    _SKIP_FP64,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import _SKIP_FP64, gems_assert_close, to_reference
 
 # ``underscore_linalg_det`` contains the leading-underscore aten name; register
 # it on the MarkGenerator so ``@pytest.mark.underscore_linalg_det`` works. The
