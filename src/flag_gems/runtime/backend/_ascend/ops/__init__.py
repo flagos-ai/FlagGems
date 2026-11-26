@@ -286,6 +286,7 @@ from .linear import linear
 from .linspace import linspace
 from .log1p import log1p
 from .log2 import log2
+from .log2_ import log2_
 from .log_ import log_
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
@@ -740,6 +741,7 @@ __all__ = [
     "linspace",
     "log1p",
     "log2",
+    "log2_",
     "log_",
     "log_normal",
     "log_sigmoid_backward",
