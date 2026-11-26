@@ -357,7 +357,9 @@ class TestGridSampleValidation:
         """Test: invalid input dimensions should raise error."""
 
         dtype = torch.float32
-        x = torch.randn(1, 3, 32, dtype=dtype, device=flag_gems.device)  # 3D tensor - invalid
+        x = torch.randn(
+            1, 3, 32, dtype=dtype, device=flag_gems.device
+        )  # 3D tensor - invalid
         grid = torch.randn(1, 32, 32, 2, dtype=dtype, device=flag_gems.device)
 
         with pytest.raises(ValueError, match="Input must be 4D or 5D"):

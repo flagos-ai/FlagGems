@@ -19,7 +19,6 @@ import pytest
 import torch
 
 import flag_gems
-
 from flag_gems.deprecated.DSA.indexer_k_tiled import (
     triton_lighting_indexer_k_tiled_interface,
 )

@@ -98,8 +98,7 @@ def test_sparse_csr_tensor_unsafe_hybrid(nnz, dtype):
 @pytest.mark.parametrize("nnz", [1, 4])
 @pytest.mark.parametrize("dtype", CSR_UNSAFE_DTYPES)
 @pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="fp64 dtype conversion requires fp64 support"
+    not utils.fp64_is_supported, reason="fp64 dtype conversion requires fp64 support"
 )
 def test_sparse_csr_tensor_unsafe_dtype(nnz, dtype):
     """The dtype argument converts the payload through the Triton kernel."""
