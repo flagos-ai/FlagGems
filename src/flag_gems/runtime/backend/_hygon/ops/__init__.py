@@ -277,7 +277,6 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
-from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_lanczos2d_aa_backward import upsample_lanczos2d_aa_backward
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
@@ -568,8 +567,6 @@ __all__ = [
     "trunc_divide",
     "trunc_divide_",
     "unique_dim",
-    "unsqueeze",
-    "unsqueeze_",
     "upsample_lanczos2d_aa_backward",
     "upsample_linear1d",
     "upsample_nearest2d",
