@@ -84,8 +84,16 @@ def _im2col_forward_kernel(
     i1 = o1 * S1 - P1 + kb * DL1
     i2 = o2 * S2 - P2 + kc * DL2
     valid = (i0 >= 0) & (i0 < IN0) & (i1 >= 0) & (i1 < IN1) & (i2 >= 0) & (i2 < IN2)
-    aoff = bidx * x_ns + ci * x_cs + i0 * x_0s + i1 * x_1s + i2 * x_2s
-    val = tl.load(x_ptr + aoff, mask=valid, other=0.0)
+    # XPU masked loads still dereference in-bounds addresses even when the
+    # mask is false, so an out-of-padding index (e.g. i0 = -2) combined with a
+    # non-zero ci*stride can point into another channel and leak its value.
+    # Clamp to a valid address, load unmasked, then zero the padded lanes.
+    i0c = tl.maximum(tl.minimum(i0, IN0 - 1), 0)
+    i1c = tl.maximum(tl.minimum(i1, IN1 - 1), 0)
+    i2c = tl.maximum(tl.minimum(i2, IN2 - 1), 0)
+    aoff = bidx * x_ns + ci * x_cs + i0c * x_0s + i1c * x_1s + i2c * x_2s
+    val = tl.load(x_ptr + aoff)
+    val = tl.where(valid, val, 0.0)
     tl.store(col_ptr + off, val)
 
 
@@ -153,8 +161,12 @@ def _im2col_transposed_kernel(
         & (i2 >= 0)
         & (i2 < IN2)
     )
-    aoff = bidx * x_ns + ci * x_cs + i0 * x_0s + i1 * x_1s + i2 * x_2s
-    val = tl.load(x_ptr + aoff, mask=valid, other=0.0)
+    i0c = tl.maximum(tl.minimum(i0, IN0 - 1), 0)
+    i1c = tl.maximum(tl.minimum(i1, IN1 - 1), 0)
+    i2c = tl.maximum(tl.minimum(i2, IN2 - 1), 0)
+    aoff = bidx * x_ns + ci * x_cs + i0c * x_0s + i1c * x_1s + i2c * x_2s
+    val = tl.load(x_ptr + aoff)
+    val = tl.where(valid, val, 0.0)
     tl.store(col_ptr + off, val)
 
 
