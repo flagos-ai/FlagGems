@@ -113,8 +113,8 @@ def test_accuracy_linalg_det(shape, dtype):
     )
 
     # Check output shapes are correct
-    gems_assert_equal(res_LU.shape, ref_LU.shape)
-    gems_assert_equal(res_pivots.shape, ref_pivots.shape)
+    assert res_LU.shape == ref_LU.shape
+    assert res_pivots.shape == ref_pivots.shape
 
     # Verify pivots are not all zeros (bug fix verification)
     assert not torch.all(res_pivots == 0), "Pivots should not be all zeros"

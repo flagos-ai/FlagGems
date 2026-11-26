@@ -161,16 +161,24 @@ class ConvertWeightBenchmark(base.Benchmark):
                 metrics.append(metric)
                 gc.collect()
 
-            result = BenchmarkResult(
-                level=Config.bench_level.value,
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode=Config.mode.value,
-                result=metrics,
-            )
-            print(result)
-            update_result(self.op_name, asdict(result))
-            emit_record_logger(result.to_json())
+            if _ENFLAME:
+                # On enflame the native leg is skipped by the skip_native
+                # marker, so the record must carry that reason. The framework
+                # helper emits the dict payload and attaches the reason; the
+                # manual payload below leaves it unset and the report parser
+                # then dies on a null speedup.
+                self._emit_result(dtype, metrics)
+            else:
+                result = BenchmarkResult(
+                    level=Config.bench_level.value,
+                    op_name=self.op_name,
+                    dtype=str(dtype),
+                    mode=Config.mode.value,
+                    result=metrics,
+                )
+                print(result)
+                update_result(self.op_name, asdict(result))
+                emit_record_logger(result.to_json())
 
 
 @pytest.mark.skip_native(
