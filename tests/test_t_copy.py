@@ -26,7 +26,7 @@ else:
     T_COPY_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
-T_COPY_DTYPES = utils.FLOAT_DTYPES + utils.SMALL_INT_DTYPES + utils.FP8_DTYPES
+T_COPY_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.FP8_DTYPES
 
 
 def _make_t_copy_input(shape, dtype):

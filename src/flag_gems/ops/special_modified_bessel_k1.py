@@ -102,6 +102,15 @@ def special_modified_bessel_k1_out(A, out):
     logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_K1_OUT")
     if out.device != A.device:
         raise TypeError("out device must match input device")
+    # The kernel promotes integral inputs to float32, so a floating-point out
+    # buffer is silently converted -- but an integral out buffer would
+    # truncate the result, matching native "result type Float can't be cast
+    # to the desired output type Int".
+    if not out.dtype.is_floating_point:
+        raise RuntimeError(
+            f"result type Float can't be cast to the desired output type "
+            f"{out.dtype}"
+        )
     result = special_modified_bessel_k1_func(A)
     out.copy_(result)
     return out

@@ -130,10 +130,10 @@ def sub(A, B, *, alpha=1):
 
 def sub_(A, B, *, alpha=1):
     logger.debug("GEMS SUB_")
+    _check_alpha(
+        alpha, A.dtype.is_floating_point is False and A.dtype.is_complex is False
+    )
     if isinstance(B, torch.Tensor):
-        _check_alpha(
-            alpha, A.dtype.is_floating_point is False and A.dtype.is_complex is False
-        )
         return sub_func(A, B, alpha, out0=A)
     else:
         return sub_func_tensor_scalar(A, B, alpha, out0=A)

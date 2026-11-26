@@ -24,7 +24,7 @@ def test_special_xlog1py(shape, dtype):
 
 @pytest.mark.special_xlog1py
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
 def test_special_xlog1py_small_int(shape, dtype):
     inp1 = torch.randint(-10, 10, shape, dtype=torch.int32, device=flag_gems.device).to(
         dtype

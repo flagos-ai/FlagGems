@@ -24,12 +24,12 @@ from .accuracy_utils import SCALARS
 @pytest.mark.subtract
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.SMALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
 def test_subtract(shape, alpha, dtype):
     # randn has no int8 kernel: build in fp32 and cast down.
     inp1 = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(dtype)
     inp2 = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(dtype)
-    if dtype in utils.SMALL_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         alpha = int(alpha)  # ATen rejects float alpha for integral inputs.
     ref_inp1 = utils.to_reference(inp1, True)
     ref_inp2 = utils.to_reference(inp2, True)
@@ -41,7 +41,7 @@ def test_subtract(shape, alpha, dtype):
 
 
 @pytest.mark.subtract
-@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
 def test_subtract_float_alpha_rejected(dtype):
     """ATen rejects a fractional alpha for integral inputs; FlagGems must too."""
     inp1 = torch.randint(-50, 50, (4,), dtype=torch.int32, device=flag_gems.device).to(
@@ -58,13 +58,27 @@ def test_subtract_float_alpha_rejected(dtype):
 
 
 @pytest.mark.subtract_
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_subtract__float_alpha_rejected(dtype):
+    """The in-place variant with a scalar other must reject fractional alpha too."""
+    inp1 = torch.randint(-50, 50, (4,), dtype=torch.int32, device=flag_gems.device).to(
+        dtype
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="argument alpha must not be a floating point number",
+    ):
+        flag_gems.subtract_(inp1, 2, alpha=0.5)
+
+
+@pytest.mark.subtract_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.SMALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_DTYPES)
 def test_subtract_(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(dtype)
     inp2 = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(dtype)
-    if dtype in utils.SMALL_INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES:
         alpha = int(alpha)  # ATen rejects float alpha for integral inputs.
     ref_inp1 = utils.to_reference(inp1.clone(), True)
     ref_inp2 = utils.to_reference(inp2, True)
