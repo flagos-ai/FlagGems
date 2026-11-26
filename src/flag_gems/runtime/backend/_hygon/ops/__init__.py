@@ -74,6 +74,7 @@ from ._foreach_clamp_min_ScalarList import (
 )
 from ._foreach_copy import _foreach_copy as _foreach_copy
 from ._foreach_copy_ import _foreach_copy_
+from ._foreach_cos import _foreach_cos as _foreach_cos
 from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import (
@@ -417,6 +418,7 @@ __all__ = [
     "_foreach_clamp_min_ScalarList",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_cos",
     "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
