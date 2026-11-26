@@ -85,6 +85,7 @@ from ._foreach_exp_ import _foreach_exp_ as _foreach_exp_
 from ._foreach_expm1 import _foreach_expm1 as _foreach_expm1
 from ._foreach_floor import _foreach_floor as _foreach_floor
 from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
+from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
@@ -403,6 +404,7 @@ __all__ = [
     "_foreach_expm1",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_frac_",
     "_foreach_log10_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
