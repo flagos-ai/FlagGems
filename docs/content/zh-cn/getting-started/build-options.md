@@ -43,7 +43,7 @@ flaggems-setup --list
 | :--- | :--- | :--- | :--- | :--- |
 | `nvidia-cuda128` | NVIDIA GPU (CUDA 12.8) | 3.12 | `CUDA` | FlagTree / Triton |
 | `nvidia-cuda133` | NVIDIA GPU (CUDA 13.3) | 3.12 | `CUDA` | FlagTree / Triton |
-| `ascend-cann900` | 华为昇腾 NPU (CANN 9.0.0) | 3.11 | `NPU` | FlagTree / Triton |
+| `ascend-cann900` | 华为昇腾 NPU (CANN 9.0.0) | 3.12 | `NPU` | FlagTree / Triton |
 | `ascend-cann850` | 华为昇腾 NPU (CANN 8.5.0) | 3.11 | `NPU` | FlagTree / Triton |
 | `hygon-dtk2604` | 海光 DCU (DTK) | 3.10 | 纯 Python / 扩展适配中 | Triton |
 | `metax-maca3810` | 沐曦 GPU (MACA 3.8.1) | 3.12 | 纯 Python | Triton |
