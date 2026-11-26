@@ -18,7 +18,7 @@ import torch
 import flag_gems
 import flag_gems.deprecated as deprecated
 
-from . import base, utils
+from .. import base, utils
 
 vendor_name = flag_gems.vendor_name
 

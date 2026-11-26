@@ -21,8 +21,8 @@ from packaging.version import InvalidVersion, Version
 import flag_gems
 from flag_gems import indexer_k_quant_and_cache
 
-from . import accuracy_utils as utils
-from . import conftest as cfg
+from .. import accuracy_utils as utils
+from .. import conftest as cfg
 
 _TARGET_VLLM_VERSION = Version("0.20.2")
 _NEXT_VLLM_VERSION = Version("0.21.0")

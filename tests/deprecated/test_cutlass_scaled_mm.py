@@ -22,7 +22,7 @@ import torch
 
 import flag_gems
 
-from .conftest import QUICK_MODE
+from ..conftest import QUICK_MODE
 
 random.seed(42)
 

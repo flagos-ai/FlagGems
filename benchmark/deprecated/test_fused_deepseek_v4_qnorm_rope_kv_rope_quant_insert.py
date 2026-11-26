@@ -21,7 +21,7 @@ import torch
 import flag_gems
 from flag_gems.utils.device_info import get_device_capability
 
-from . import base
+from .. import base
 
 
 def is_support_fp8e4nv():

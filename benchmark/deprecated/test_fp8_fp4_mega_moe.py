@@ -30,7 +30,7 @@ except ImportError:
 
 from flag_gems.deprecated.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
 
-from . import base
+from .. import base
 
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 

@@ -20,7 +20,7 @@ import triton.language as tl
 
 import flag_gems
 
-from . import base
+from .. import base
 
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (

@@ -56,7 +56,7 @@ from flag_gems.deprecated.fused_marlin_moe import (
     fused_marlin_moe as gems_fused_marlin_moe,
 )
 
-from . import base
+from .. import base
 
 
 def is_cuda_available():

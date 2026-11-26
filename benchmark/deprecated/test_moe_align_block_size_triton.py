@@ -22,7 +22,7 @@ from flag_gems.deprecated.moe_align_block_size import (
     moe_align_block_size_small_grouped,
 )
 
-from . import base
+from .. import base
 
 try:
     import os

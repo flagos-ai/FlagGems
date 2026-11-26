@@ -22,7 +22,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from .. import base
 
 try:
     from vllm.third_party.flashmla.flash_mla_interface import (

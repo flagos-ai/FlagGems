@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from .. import base
 
 
 def is_cuda_available():

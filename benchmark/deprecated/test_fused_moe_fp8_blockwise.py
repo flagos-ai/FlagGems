@@ -19,7 +19,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from .. import base
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",

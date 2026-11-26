@@ -34,7 +34,7 @@ import flag_gems
 from flag_gems import top_k_per_row_prefill
 from flag_gems.deprecated.top_k_per_row_prefill import _use_radix_final_for_prefill
 
-from . import conftest as cfg
+from .. import conftest as cfg
 
 device = flag_gems.device
 
