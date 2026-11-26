@@ -56,6 +56,8 @@ else:
 
 
 def _maybe_move_to_cpu(res, ref):
+    if not isinstance(res, torch.Tensor) or not isinstance(ref, torch.Tensor):
+        return res, ref
     if res.device.type == "cpu" or ref.device.type == "cpu":
         return res, ref
 

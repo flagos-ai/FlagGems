@@ -20,7 +20,12 @@ from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .accuracy_utils import _SKIP_FP64, gems_assert_close, to_reference
+from .accuracy_utils import (
+    _SKIP_FP64,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 
 # ``underscore_linalg_det`` contains the leading-underscore aten name; register
 # it on the MarkGenerator so ``@pytest.mark.underscore_linalg_det`` works. The
@@ -94,8 +99,8 @@ def test_accuracy_linalg_det(shape, dtype):
     )
 
     # Check output shapes are correct
-    assert res_LU.shape == ref_LU.shape
-    assert res_pivots.shape == ref_pivots.shape
+    gems_assert_equal(res_LU.shape, ref_LU.shape)
+    gems_assert_equal(res_pivots.shape, ref_pivots.shape)
 
     # Verify pivots are not all zeros (bug fix verification)
     assert not torch.all(res_pivots == 0), "Pivots should not be all zeros"
