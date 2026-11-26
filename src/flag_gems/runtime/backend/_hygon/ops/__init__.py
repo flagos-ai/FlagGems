@@ -50,6 +50,7 @@ from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div_Scalar import _foreach_div_Scalar as _foreach_div_Scalar
 from ._foreach_erf import _foreach_erf as _foreach_erf
+from ._foreach_erfc_ import _foreach_erfc_ as _foreach_erfc_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
@@ -342,6 +343,7 @@ __all__ = [
     "_foreach_div__Scalar",
     "_foreach_div_Scalar",
     "_foreach_erf",
+    "_foreach_erfc_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_minimum__Scalar",
