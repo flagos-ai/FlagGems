@@ -1072,13 +1072,16 @@ def _finish_split_k(partial, out, bias, sr, split, epilogue):
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
-    is_transposed_ws = (m, n, k) == (1, 4096, 1024)
+    is_transposed_ws = m == 1 and (n, k) in ((4096, 1024), (8192, 1024), (1536, 4096))
+    is_narrow_ws = 64 <= n <= 512 and (
+        (128 <= m <= 1024 and k in (2048, 4096)) or (16 <= m <= 1024 and k == 7168)
+    )
     is_short_ws = (16 <= m < 128 and n >= 64 and 2048 <= k <= 4096) or (
         m <= 2 and n == 1536 and k == 4096
     )
     if (
         _HAS_WS
-        and (is_transposed_ws or is_short_ws)
+        and (is_transposed_ws or is_short_ws or is_narrow_ws)
         and _supports_tme_layout(a, b)
         and sa_stride == sb_stride == 0
         and bias is None
@@ -1088,12 +1091,28 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     ):
         # A single pipelined launch avoids split-K's inter-kernel dispatch gap.
         if is_transposed_ws:
-            bm, bn, bk = 64, 32, 256
+            if k == 4096:
+                bm, bn, bk = 16, 64, 512
+            elif n == 8192:
+                bm, bn, bk = 32, 32, 256
+            else:
+                bm, bn, bk = 64, 32, 256
             rows, cols = n, m
             aa = TensorDescriptor(b, [n, k], [b.stride(1), 1], [bm, bk])
             bb = TensorDescriptor(a, [m, k], list(a.stride()), [bn, bk])
         else:
-            if k == 4096:
+            if is_narrow_ws:
+                # Small-N grids need more independent tiles than the dense
+                # autotune space provides, including the M=128 split-K boundary.
+                if k == 2048:
+                    bm, bn, bk = 64, 64, 512
+                elif m >= 512 or (k == 4096 and m >= 256):
+                    bm, bn, bk = 128, 64, 512
+                elif n < 512 or m >= 256:
+                    bm, bn, bk = 64, 64, 512
+                else:
+                    bm, bn, bk = 32, 64, 256
+            elif k == 4096:
                 if m >= 96 and n >= 1024:
                     bm, bn, bk = 64, 64, 512
                 elif n < 512:
