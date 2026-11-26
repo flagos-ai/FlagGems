@@ -410,10 +410,19 @@ def _launch_list_group(
     out_selves_run: List[int] = []
     out_exps_run: List[int] = []
     results_run: List[int] = []
+    # The staged views below must outlive the kernel launch: a
+    # ``.contiguous()`` copy whose only reference dies before the launch
+    # returns its buffer to the caching allocator, and the kernel then reads
+    # whatever the next allocation put there (flaky garbage in the
+    # exponent-gradient outputs -- only visible when the forward output
+    # arrives non-contiguous, i.e. every other call).
+    staged = []
     for pos, i in enumerate(indices):
         a = self_list[i].contiguous()
         b = exponent_list[i].contiguous()
         g = grad_list[i].contiguous()
+        rs = result_list[i].contiguous()
+        staged.extend((a, b, g, rs))
         # The kernel writes through flat pointers, so the outputs must be
         # contiguous; ``empty_like`` would preserve non-contiguous strides.
         gs = torch.empty(a.shape, dtype=a.dtype, device=a.device)
@@ -425,7 +434,7 @@ def _launch_list_group(
         exps_run.append(b.data_ptr())
         out_selves_run.append(gs.data_ptr())
         out_exps_run.append(ge.data_ptr())
-        results_run.append(result_list[i].contiguous().data_ptr())
+        results_run.append(rs.data_ptr())
     if max_numel == 0:
         return grad_self_out, grad_exp_out
 
@@ -483,10 +492,14 @@ def _launch_scalar_group(
     bases_run: List[int] = []
     results_run: List[int] = []
     outs_run: List[int] = []
+    staged = (
+        []
+    )  # keep .contiguous() copies alive past the launch (see _launch_list_group)
     for pos, i in enumerate(indices):
         a = self_list[i].contiguous()
         g = grad_list[i].contiguous()
         r = result_list[i].contiguous()
+        staged.extend((a, g, r))
         o = torch.empty(a.shape, dtype=a.dtype, device=a.device)
         grad_out[pos] = o
         grads_run.append(g.data_ptr())
