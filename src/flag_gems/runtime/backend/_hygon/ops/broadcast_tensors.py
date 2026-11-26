@@ -14,26 +14,22 @@
 
 import logging
 
+# This vendor wrapper only exists to avoid the data-copy kernel the general
+# layer launches; shape resolution is not vendor-specific. Reuse the general
+# layer's implementation instead of keeping a forked copy -- the one previously
+# inlined here was taken from the pre-#6024 version and still used ``max()``,
+# so it resolved (0, 8) + (1, 8) to (1, 8) and ``expand`` raised on the
+# zero-size dim.
+from flag_gems.ops.broadcast_tensors import (
+    _compute_broadcast_shape as _general_compute_broadcast_shape,
+)
+
 logger = logging.getLogger(__name__)
 
 
 def _compute_broadcast_shape(tensors):
-    """Compute the broadcast shape from a list of tensors."""
-    max_ndim = max(t.ndim for t in tensors)
-
-    padded_shapes = []
-    for t in tensors:
-        shape = [1] * (max_ndim - t.ndim) + list(t.shape)
-        padded_shapes.append(shape)
-
-    broadcast_shape = []
-    for i in range(max_ndim):
-        dim_size = 1
-        for shape in padded_shapes:
-            dim_size = max(dim_size, shape[i])
-        broadcast_shape.append(dim_size)
-
-    return tuple(broadcast_shape)
+    """Compute the broadcast shape (delegates to the general layer)."""
+    return _general_compute_broadcast_shape(tensors)
 
 
 def broadcast_tensors(*tensors):
