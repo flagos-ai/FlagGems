@@ -948,6 +948,7 @@ from flag_gems.ops.frobenius_norm import frobenius_norm
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.functional_assert_async import _functional_assert_async
+from flag_gems.ops.fused_dropout_backward import fused_dropout_backward
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
@@ -2705,6 +2706,7 @@ __all__ = [
     "frobenius_norm",
     "full",
     "full_like",
+    "fused_dropout_backward",
     "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",

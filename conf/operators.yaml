@@ -9328,6 +9328,24 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: fused_dropout_backward
+  description: |
+    Backward pass for the legacy fused dropout `_fused_dropout`: the input
+    gradient is the upstream gradient masked by the uint8 keep mask and scaled
+    by the reciprocal of the keep probability (`grad * mask / p`). The fp32
+    reciprocal multiply reproduces ATen's `_fused_dropout_backward` rounding
+    bit-exactly for every float dtype. Exposed through an explicit entry point
+    and a `torch.autograd.Function` bridge because this Torch build registers
+    no standalone `aten::_fused_dropout_backward` schema.
+  for:
+  - fused_dropout_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.6.0'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
