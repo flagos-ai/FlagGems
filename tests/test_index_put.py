@@ -67,6 +67,67 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
 random.seed(time.time() // 100)
 
 
+@pytest.mark.index_put
+@pytest.mark.index_put_impl_
+@pytest.mark.parametrize("op", [flag_gems.index_put_, flag_gems._index_put_impl_])
+def test_index_put_large_grid_stride(op):
+    generator = torch.Generator().manual_seed(7205)
+    indices = torch.randperm(1 << 19, generator=generator)[:300_000]
+    values = torch.randn((300_000, 8), generator=generator)
+    inp = torch.zeros((1 << 19, 8), dtype=values.dtype)
+    expected = inp.clone().index_put_((indices,), values)
+    actual = inp.to(flag_gems.device)
+    op(actual, [indices.to(flag_gems.device)], values.to(flag_gems.device))
+    torch.testing.assert_close(actual.cpu(), expected, atol=0, rtol=0)
+
+
+@pytest.mark.index_put
+@pytest.mark.index_put_impl_
+@pytest.mark.parametrize("op", [flag_gems.index_put_, flag_gems._index_put_impl_])
+def test_index_put_empty_mask_and_negative_indices(op):
+    inp = torch.arange(32, dtype=torch.float32).reshape(4, 8).t()
+    actual = inp.to(flag_gems.device)
+    mask = torch.zeros(inp.shape, dtype=torch.bool, device=flag_gems.device)
+    scalar = torch.tensor(7.0, device=flag_gems.device)
+    op(actual, [mask], scalar)
+    torch.testing.assert_close(actual.cpu(), inp, atol=0, rtol=0)
+    indices = torch.tensor([-8, -1, 2])
+    values = torch.arange(12, dtype=inp.dtype).reshape(3, 4)
+    expected = inp.clone().index_put_((indices,), values)
+    op(actual, [indices.to(flag_gems.device)], values.to(flag_gems.device))
+    torch.testing.assert_close(actual.cpu(), expected, atol=0, rtol=0)
+
+
+@pytest.mark.index_put
+@pytest.mark.index_put_impl_
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon ordered scatter")
+@pytest.mark.parametrize("op", [flag_gems.index_put_, flag_gems._index_put_impl_])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_index_put_ordered_accumulation(op, dtype):
+    generator = torch.Generator().manual_seed(7205)
+    inp = torch.randn((32, 16), generator=generator).t().to(dtype)
+    indices = torch.randint(-16, 16, (389,), generator=generator)
+    values = torch.randn((32, 389), generator=generator).t().to(dtype)
+    expected = inp.double().index_add_(0, indices % 16, values.double())
+    device_indices = indices.to(flag_gems.device)
+    device_values = values.to(flag_gems.device)
+    previous = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        torch.use_deterministic_algorithms(dtype == torch.float32)
+        results = []
+        for _ in range(4):
+            target = inp.to(flag_gems.device)
+            op(target, [device_indices], device_values, True)
+            results.append(target.cpu())
+    finally:
+        torch.use_deterministic_algorithms(previous, warn_only=warn_only)
+    for result in results[1:]:
+        torch.testing.assert_close(result, results[0], atol=0, rtol=0)
+    relative_error = (results[0].double() - expected).abs().max() / expected.abs().max()
+    assert relative_error <= max(1e-6, torch.finfo(dtype).eps)
+
+
 def gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool):
     """
     Generate indices for torch.index_put.
