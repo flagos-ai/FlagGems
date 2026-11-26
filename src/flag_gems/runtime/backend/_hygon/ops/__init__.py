@@ -329,7 +329,9 @@ from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
 )
-from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_hermite_polynomial_h import (
+    special_hermite_polynomial_h as special_hermite_polynomial_h,
+)
 from .special_i1e import special_i1e
 from .special_i1e_out import special_i1e_out
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
