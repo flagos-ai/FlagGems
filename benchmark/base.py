@@ -1052,31 +1052,16 @@ class Benchmark:
 
             self._apply_external_baseline(metric, dtype, baseline_context)
 
-            # Apply speedup_source preference: pick which speedup to use as the
-            # primary value based on --speedup-source and availability.
-            if Config.speedup_source == "nv_baseline":
-                # Prefer compared_speedup from --base-data; fallback to native speedup
-                if metric.compared_speedup is not None:
-                    # Store original native speedup before overwriting (if needed)
-                    native_speedup = metric.speedup
-                    metric.speedup = metric.compared_speedup
-                    metric.speedup_source = "nv_baseline"
-                    # Keep native speedup accessible for reference
-                    if native_speedup is not None and native_speedup != metric.speedup:
-                        metric.native_speedup_fallback = native_speedup
-                elif metric.speedup is not None:
-                    metric.speedup_source = "origin"
-                else:
-                    metric.speedup_source = None
-            else:  # Config.speedup_source == "origin" (default)
-                # Prefer native speedup; fallback to compared_speedup only when native is unavailable
-                if metric.speedup is not None:
-                    metric.speedup_source = "origin"
-                elif metric.compared_speedup is not None:
-                    metric.speedup = metric.compared_speedup
-                    metric.speedup_source = "nv_baseline"
-                else:
-                    metric.speedup_source = None
+            # `speedup` is the native on-machine gems-vs-torch ratio and stays
+            # None when no reference ran here; `compared_speedup` is the
+            # vs-baseline ratio. The two are never substituted for each other:
+            # choosing between them is the consumer's job (optest's
+            # _case_record), which needs an unambiguous native value to label
+            # provenance correctly. This only records which field is populated.
+            if metric.speedup is not None:
+                metric.speedup_source = "origin"
+            else:
+                metric.speedup_source = None
 
             if "gbps" in self.to_bench_metrics:
                 if metric.latency_base is not None:
