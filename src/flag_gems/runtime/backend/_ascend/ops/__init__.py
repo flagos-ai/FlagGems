@@ -223,6 +223,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
@@ -252,6 +253,7 @@ from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .inverse import inverse
+from .isfinite import isfinite
 from .isin import isin
 from .isposinf import isposinf
 from .isreal import isreal
@@ -679,6 +681,7 @@ __all__ = [
     "greater_equal_",
     "group_norm",
     "group_norm_backward",
+    "grouped_gemm_w8a8",
     "grouped_matmul",
     "gru",
     "gru_data",
@@ -712,6 +715,7 @@ __all__ = [
     "index_select_backward",
     "inner",
     "inverse",
+    "isfinite",
     "isin",
     "isposinf",
     "isreal",
