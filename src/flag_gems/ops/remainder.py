@@ -35,7 +35,12 @@ def _remainder(x, y):
         r = tl.where(r == 0, x * 0.0, r)
     c1 = r != 0
     c2 = (x < 0) ^ (y < 0)
-    return tl.where(c1 & c2, r + y, r)
+    result = tl.where(c1 & c2, r + y, r)
+    if x.dtype.is_floating() or y.dtype.is_floating():
+        # Some low-precision modulo lowerings return infinity for invalid inputs.
+        invalid = (x != x) | (y != y) | (tl.abs(x) == float("inf")) | (y == 0)
+        result = tl.where(invalid, float("nan"), result)
+    return result
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
