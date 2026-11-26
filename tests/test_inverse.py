@@ -79,6 +79,31 @@ def _make_well_conditioned(shape, dtype, device):
     return eye + 0.05 * torch.randn(shape, dtype=dtype, device=device)
 
 
+def ref_inverse(a):
+    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
+    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
+    # the reference is computed wide on CPU there.  Other backends keep the
+    # to_reference() upcast behaviour (device, or CPU under --ref cpu).
+    if flag_gems.vendor_name != "kunlunxin":
+        ref_A = utils.to_reference(a, upcast=True)
+        if (
+            flag_gems.vendor_name == "mthreads"
+            and ref_A.device.type == "cpu"
+            and not torch._C.has_lapack
+        ):
+            import numpy as np
+
+            return torch.from_numpy(np.linalg.inv(ref_A.numpy())).to(a.dtype)
+        return torch.inverse(ref_A).to(a.dtype)
+    a_cpu = (
+        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
+    )
+    ref = torch.inverse(a_cpu)
+    if not TO_CPU:
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 @pytest.mark.inverse
 @pytest.mark.parametrize("shape", INVERSE_SHAPES)
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
