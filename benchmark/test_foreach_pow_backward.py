@@ -26,14 +26,16 @@ from flag_gems.ops.foreach_pow_backward import (
 from . import base, consts
 
 
-def _aten_pow_list_backward(grad_list, self_list, exponent_list):
+def _aten_pow_list_backward(grad_list, self_list, exponent_list, result_list):
     """The ATen baseline with the same ``(grad, self, exponent, result)`` shape.
 
     ATen has no standalone ``_foreach_pow_backward`` schema; the autograd
     engine derives these gradients through the ``ForeachPowBackward0`` node,
     so the reference drives the same chain ``torch.autograd.grad`` records for
     the forward op.  The graph is rebuilt per call (the closure runs under the
-    repeat loop), matching what the FlagGems entry point does.
+    repeat loop), matching what the FlagGems entry point does.  ``result`` is
+    accepted for signature parity with the FlagGems entry point (the autograd
+    engine saves the forward output itself).
     """
     self_in = [t.detach().requires_grad_(True) for t in self_list]
     exp_in = [t.detach().requires_grad_(True) for t in exponent_list]
