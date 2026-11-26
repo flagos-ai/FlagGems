@@ -73,3 +73,37 @@ def test_broadcast_tensors_three_inputs(shape, dtype):
     assert len(res_out) == len(ref_out)
     for res, ref in zip(res_out, ref_out):
         utils.gems_assert_equal(res, ref)
+
+
+# Zero-size dims: a size of 1 broadcasts into 0 (torch.broadcast_shapes((0, 8),
+# (1, 8)) == (0, 8)), while two distinct non-1 sizes at the same dim are
+# incompatible. The Hygon vendor layer used to resolve this with ``max()`` and
+# raised on the 0-size dim; see flagos-ai/FlagGems#6024 for the general-layer fix.
+@pytest.mark.broadcast_tensors
+@pytest.mark.parametrize("shape_a,shape_b", [((0, 8), (1, 8)), ((2, 0, 8), (1, 1, 8))])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_broadcast_tensors_zero_size_dim(shape_a, shape_b, dtype):
+    inp1 = torch.randn(*shape_a, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(*shape_b, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.broadcast_tensors(
+        utils.to_reference(inp1), utils.to_reference(inp2)
+    )
+    with flag_gems.use_gems():
+        res_out = torch.broadcast_tensors(inp1, inp2)
+
+    assert len(res_out) == len(ref_out)
+    for res, ref in zip(res_out, ref_out):
+        assert tuple(res.shape) == tuple(ref.shape)
+        utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.broadcast_tensors
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_broadcast_tensors_zero_size_mismatch_raises(dtype):
+    inp1 = torch.randn(0, 8, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(2, 8, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        with pytest.raises(RuntimeError):
+            torch.broadcast_tensors(inp1, inp2)
