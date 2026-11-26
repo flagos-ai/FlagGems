@@ -24,7 +24,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
-_cudnn_rnn_impl = importlib.import_module("flag_gems.ops.cudnn_rnn")
+_cudnn_rnn_impl = importlib.import_module(flag_gems.cudnn_rnn.__module__)
 
 
 def _cudnn_rnn_layer_dropout(x, p, train):
@@ -236,6 +236,7 @@ def test_cudnn_rnn_accuracy(
     dtype,
 ):
     """Compare flag_gems.cudnn_rnn output against torch.ops.aten._cudnn_rnn."""
+    utils.init_seed(0)
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only, cannot run in quick-cpu mode")
 
@@ -335,6 +336,7 @@ def test_cudnn_rnn_accuracy_no_bias(
     unidirectional, hidden_size <= 8 config; bidirectional / multi-layer / larger
     bf16 LSTM configs are skipped (RNN/GRU bf16 run on all configs).
     """
+    utils.init_seed(0)
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only, cannot run in quick-cpu mode")
 
@@ -451,6 +453,7 @@ def test_cudnn_rnn_projection(
     dtype,
 ):
     """Test LSTM with projection (proj_size > 0)."""
+    utils.init_seed(0)
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only")
 
