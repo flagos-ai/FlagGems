@@ -213,6 +213,17 @@ cosh_out:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+ceil_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 linalg_matrix_norm:
   shapes:
     - [256, 512]
@@ -1672,7 +1683,7 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-ceil_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
   - - 64
