@@ -286,17 +286,19 @@ def test_mhc_bwd_unconverged():
 
     After 20 iterations only the rows of R sum to 1, so the CG system must use the
     row and column sums of R. The error left is the difference between the implicit
-    gradient and the gradient of the 20-step map (max 0.29 here); with identity
-    diagonal blocks the max is 43.
+    gradient and the gradient of the 20-step map (max 0.47 here); with identity
+    diagonal blocks the max is 96. The float64 reference runs on CPU, so the test
+    also holds on devices without FP64.
     """
     torch.manual_seed(0)
-    M = torch.randn(16384, 4, 4, dtype=torch.float64, device=flag_gems.device) * 2
+    M = torch.randn(16384, 4, 4, dtype=torch.float64) * 2
     M.requires_grad_(True)
     R, _P = sinkhorn_forward(M, iters=20)
     dR = torch.randn_like(R)
     (R * dR).sum().backward()
 
-    out = mhc_bwd(R.detach().float(), dR.float()).double()
+    R32 = R.detach().float().to(flag_gems.device)
+    out = mhc_bwd(R32, dR.float().to(flag_gems.device)).cpu().double()
     err = (out - M.grad).flatten(1).norm(dim=-1) / M.grad.flatten(1).norm(dim=-1)
     assert err.max().item() < 1.0, err.max().item()
 
