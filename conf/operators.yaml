@@ -19428,7 +19428,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: slow_conv_dilated2d
   description: Applies a 2D dilated convolution over an input signal composed of several
     input planes, using the slow (non-cuDNN) reference path. The operator takes `kernel_size`,
