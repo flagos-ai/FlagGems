@@ -24,14 +24,17 @@ from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
-from ..bmm.bmm import check_out_autograd, copy_tensor
+from ..bmm.bmm import check_out_autograd, copy_tensor, supports_isa
 from ..bmm.splitk import launch_small_splitk
-from .kernels import _TUNERS, _bias_kernel, _pack_b
+from .kernels import _TUNERS, _bias_kernel, _fp32_kernel, _pack_b
 
 logger = logging.getLogger(__name__)
 
 
-def _algorithm(batch, m, n, k, device=None, dtype=None):
+def _algorithm(a, b, out):
+    batch, m, k = a.shape
+    n = b.shape[2]
+    dtype = a.dtype
     if (
         dtype in (torch.float16, torch.bfloat16)
         and batch == 1
@@ -40,22 +43,26 @@ def _algorithm(batch, m, n, k, device=None, dtype=None):
         and k >= 1024
     ):
         return "packed"
-    if (
+    if not (
         HAS_TLE
-        and dtype == torch.bfloat16
-        and batch > 1
         and min(m, n) >= 1024
         and k >= 512
+        and all(t.is_contiguous() for t in (a, b, out))
+        and supports_isa(a)
+    ):
+        return "matmul"
+    if dtype == torch.float32 and m % 64 == n % 128 == k % 16 == 0:
+        return "fp32"
+    if (
+        dtype in (torch.float16, torch.bfloat16)
+        and batch > 1
         and k % 64 == 0
         and n % 8 == 0
         and batch * triton.cdiv(m, 256) * triton.cdiv(n, 256) >= 24
         and 2 * m * n >= triton.cdiv(m, 256) * triton.cdiv(n, 256) * 256**2
         and max(batch * m * k, batch * k * n, batch * m * n) * 2 < 2**31
         and triton.cdiv(m, 256) * 256 * n * 2 < 2**31
-        and getattr(torch.cuda.get_device_properties(device), "gcnArchName", "").split(
-            ":", 1
-        )[0]
-        == "gfx936"
+        and all(t.data_ptr() % 16 == 0 for t in (a, b, out))
     ):
         return "ring"
     return "matmul"
@@ -105,22 +112,40 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
                 bias, out, m, n, *bias_strides, *out.stride(), beta, 256
             )
             return out
-        if launch_small_splitk(a, b, out, bias.broadcast_to(out.shape), alpha, beta):
+        if launch_small_splitk(a, b, out, bias, alpha, beta, bias_strides=bias_strides):
             return out
-        algorithm = _algorithm(batch, m, n, k, a.device, a.dtype)
+        algorithm = _algorithm(a, b, out)
         if algorithm == "ring":
-            if all(t.is_contiguous() and t.data_ptr() % 16 == 0 for t in (a, b, out)):
-                _TUNERS["ring"][(triton.cdiv(m, 256) * triton.cdiv(n, 256), batch)](
-                    a, b, bias, out, m, n, k, *bias_strides, alpha, beta, BATCH=batch
-                )
-                return out
-            algorithm = "matmul"
-        if algorithm == "packed":
-            packed = torch.empty((batch, n, k), device=b.device, dtype=b.dtype)
-            _pack_b[(triton.cdiv(k, 64), triton.cdiv(n, 64), batch)](
-                b, packed, n, k, *b.stride(), num_warps=4
+            _TUNERS["ring"][(triton.cdiv(m, 256) * triton.cdiv(n, 256), batch)](
+                a, b, bias, out, m, n, k, *bias_strides, alpha, beta, BATCH=batch
             )
-            b = packed.transpose(1, 2)
+            return out
+        if algorithm == "fp32":
+            _fp32_kernel[(m // 64 * (n // 128), batch)](
+                a,
+                b,
+                bias,
+                out,
+                m,
+                n,
+                k,
+                *bias_strides,
+                alpha,
+                beta,
+                num_warps=4,
+                num_stages=1,
+            )
+            return out
+        b_strides = b.stride()
+        if algorithm == "packed":
+            packed_strides = (n * k, 1, k)
+            if b_strides != packed_strides or b.data_ptr() % 16 != 0:
+                packed = torch.empty((batch, n, k), device=b.device, dtype=b.dtype)
+                _pack_b[(triton.cdiv(k, 64), triton.cdiv(n, 64), batch)](
+                    b, packed, n, k, *b_strides, num_warps=4
+                )
+                b = packed
+            b_strides = packed_strides
         _TUNERS[algorithm][
             lambda meta: (
                 triton.cdiv(m, meta["BLOCK_M"]) * triton.cdiv(n, meta["BLOCK_N"]),
@@ -135,7 +160,7 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
             n,
             k,
             *a.stride(),
-            *b.stride(),
+            *b_strides,
             *bias_strides,
             *out.stride(),
             alpha,
@@ -202,7 +227,7 @@ class _Baddbmm(torch.autograd.Function):
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
-    logger.debug("GEMS BADDBMM")
+    logger.debug("GEMS_HYGON BADDBMM")
     metadata = _validate(bias, A, B)
     if torch.is_grad_enabled() and (
         bias.requires_grad or A.requires_grad or B.requires_grad
@@ -212,7 +237,7 @@ def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
 
 
 def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
-    logger.debug("GEMS BADDBMM_OUT")
+    logger.debug("GEMS_HYGON BADDBMM_OUT")
     shape, bias_strides = _validate(bias, A, B)
     check_out_autograd("baddbmm", bias, A, B, out)
     if out.shape != shape or out.dtype != A.dtype or out.device != A.device:
