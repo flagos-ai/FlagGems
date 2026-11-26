@@ -174,7 +174,62 @@ def test_cudnn_ctc_loss_varying_lengths(input_lengths, target_lengths):
 
 
 @pytest.mark.cudnn_ctc_loss
-def test_cudnn_ctc_loss_empty_target():
+@pytest.mark.parametrize("deterministic", [True, False])
+@pytest.mark.parametrize(
+    "input_lengths,target_lengths",
+    [
+        # `input_len < T` is the case that matters: the ordered accumulation runs
+        # one iteration per time step, and the trailing `T - input_len` of them
+        # are inactive. They clamp to row 0, so an unmasked store there overwrites
+        # the real `t = 0` contribution and every such row keeps its
+        # `exp(log_probs)` seed (row sums of 1.0 instead of 0.0).
+        ([16, 15, 14, 12], [5, 3, 1, 4]),
+        # Short sequences, where the alignment covers only a few rows.
+        ([3, 4, 2, 5], [1, 1, 1, 1]),
+        # The padding-free case, which both paths already handled.
+        ([16, 16, 16, 16], [5, 5, 5, 5]),
+    ],
+)
+def test_cudnn_ctc_loss_padded_steps(input_lengths, target_lengths, deterministic):
+    """Padded time steps must not contribute to the gradient.
+
+    The varying-length test above only exercises `deterministic=False`. The
+    ordered path accumulates with a read-modify-write instead of an atomic, so an
+    inactive step that clamps to row 0 reads a row this kernel wrote earlier and
+    drops it. Comparing against the reference rather than a self-consistent
+    formula is the point: the two paths agreed with each other while both were
+    wrong at `t = 0`, and only the reference exposes it.
+    """
+    device = flag_gems.device
+    torch.manual_seed(0)
+    # Fixed (T, N, C, S) host shape; only the per-batch lengths vary.
+    shape = (16, 4, 16, 5)
+    log_probs, targets, _, _ = _make_inputs(
+        shape, device, input_lengths, target_lengths
+    )
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_targets = utils.to_reference(targets)
+
+    ref_loss, ref_grad, _ = _reference(
+        ref_log_probs, ref_targets, input_lengths, target_lengths
+    )
+
+    res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, deterministic, False
+    )
+
+    utils.gems_assert_close(res_loss, ref_loss, torch.float32)
+    _assert_valid_region_close(res_grad, ref_grad, input_lengths)
+    # Every visited row of a feasible alignment must be a gradient of the loss,
+    # so its entries sum to zero. A row left at the `exp(log_probs)` seed sums to
+    # one, which the per-element comparison above can miss at loose tolerances.
+    for batch_index, valid in enumerate(input_lengths):
+        row_sums = res_grad[:valid, batch_index].sum(-1)
+        assert row_sums.abs().max().item() < 1e-3, (
+            f"batch {batch_index} has a row whose gradient was not corrected "
+            f"(max |row sum| = {row_sums.abs().max().item():.3e})"
+        )
+
     """An empty label sequence matches cuDNN on loss and on the non-blank gradient.
 
     cuDNN reports a zero loss for the empty label sequence and seeds the
@@ -363,6 +418,59 @@ def test_cudnn_ctc_loss_tensor_lengths():
 
     utils.gems_assert_close(res_loss, ref_loss, torch.float32)
     _assert_valid_region_close(res_grad, ref_grad, input_lengths)
+
+
+@pytest.mark.cudnn_ctc_loss
+@pytest.mark.parametrize("targets_on_device", [True, False], ids=["cuda", "cpu"])
+@pytest.mark.parametrize(
+    "targets,input_lengths,target_lengths,message",
+    [
+        ([1, 2, 3, 16], [16, 14], [2, 2], "range"),
+        ([1, 2, 3, -1], [16, 14], [2, 2], "range"),
+        ([1, 2, 3], [16, 14], [2, 2], r"sum\(target_lengths\)"),
+        ([1, 2, 3, 4, 5], [16, 14], [2, 2], r"sum\(target_lengths\)"),
+        ([1, 2, 3, 4], [16, 14], [2, -1], r"sum\(target_lengths\)"),
+        ([1, 2, 3, 4], [17, 14], [2, 2], r"input_lengths must be in"),
+    ],
+)
+def test_cudnn_ctc_loss_validation_on_both_paths(
+    targets, input_lengths, target_lengths, message, targets_on_device
+):
+    """The precondition checks must hold whichever side the inputs arrive on.
+
+    Device-resident inputs take a different route to the same numbers -- a stats
+    kernel rather than a pass over host memory -- and the checks are what keep
+    the kernels from reading and writing out of bounds, so both routes have to
+    reject the same inputs. `cpu` here pairs CUDA targets with tensor lengths,
+    which is still the device path; the fully host case is covered by
+    `test_cudnn_ctc_loss_invalid_targets`.
+    """
+    device = flag_gems.device
+    torch.manual_seed(0)
+    log_probs = torch.log_softmax(
+        torch.randn(16, 2, 16, dtype=torch.float32, device=device), dim=-1
+    )
+    target_tensor = torch.tensor(targets, dtype=torch.int32)
+    if targets_on_device:
+        target_tensor = target_tensor.to(device)
+    length_tensors = tuple(
+        torch.tensor(values, dtype=torch.int64, device=device)
+        for values in (input_lengths, target_lengths)
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        flag_gems.cudnn_ctc_loss(
+            log_probs,
+            target_tensor,
+            length_tensors[0],
+            length_tensors[1],
+            0,
+            True,
+            False,
+        )
+
+    # No kernel ran past the check, so the device is still usable.
+    assert torch.zeros(4, device=device).sum().item() == 0
 
 
 @pytest.mark.cudnn_ctc_loss
