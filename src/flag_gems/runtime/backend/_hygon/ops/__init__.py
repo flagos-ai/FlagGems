@@ -43,6 +43,9 @@ from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
 from ._foreach_round_ import _foreach_round_
 from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sub__ScalarList import (
+    _foreach_sub__ScalarList as _foreach_sub__ScalarList,
+)
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
@@ -324,6 +327,7 @@ __all__ = [
     "_foreach_pow__ScalarList",
     "_foreach_round_",
     "_foreach_sign_",
+    "_foreach_sub__ScalarList",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
     "_scaled_dot_product_attention_math_for_mps",
