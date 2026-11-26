@@ -76,6 +76,8 @@ if _HAS_WS:
             # Avoid fine-grained long-K grids after MP31 repeated-launch failures.
             if k >= 2048 and bm * bn < 16384:
                 continue
+            if k >= 2048 and m >= 128 and bm < 128:
+                continue
             # Large-M multi-consumer tiles hit read/write barrier errors at long K.
             if k >= 4096 and bm >= 512 and p["NC"] > 1:
                 continue
@@ -248,6 +250,7 @@ if _HAS_WS:
         BK: tl.constexpr,
         DM: tl.constexpr,
         ST: tl.constexpr,
+        PW: tl.constexpr,
     ):
         aa = tle.gpu.alloc(
             (ST, DM, BK),
@@ -288,7 +291,7 @@ if _HAS_WS:
                 ),
                 (_produce_skinny, (pipe.writer(), A, B, M, K, AM, BV, BK, DM)),
             ],
-            worker_num_warps=[4],
+            worker_num_warps=[PW],
             worker_num_regs=[64],
         )
 
@@ -604,162 +607,6 @@ if _HAS_WS:
                 worker_num_regs=[128, 128, 128, 24],
             )
 
-    @triton.jit
-    def _produce_fragmented(
-        writer,
-        A,
-        B,
-        Bsmall,
-        M: tl.constexpr,
-        N: tl.constexpr,
-        K: tl.constexpr,
-        BM: tl.constexpr,
-        BN: tl.constexpr,
-        BK: tl.constexpr,
-        GM: tl.constexpr,
-    ):
-        TN: tl.constexpr = BN + BN // 4
-        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
-        for block in range(tl.cdiv(K, BK)):
-            slot = writer.acquire(block)
-            tle.gpu.copy(A, slot.a, (BM, BK), (pm * BM, block * BK))
-            tle.gpu.copy(B, slot.b0, (BN, BK), (pn * TN, block * BK))
-            tle.gpu.copy(Bsmall, slot.b1, (BN // 4, BK), (pn * TN + BN, block * BK))
-            writer.commit(block)
-
-    _BASE_WS_JIT = ws_multi_kernel.fn.fn
-
-    def _set_fragmented_blocks(args):
-        _set_blocks(args)
-        args["Bsmall"].block_shape = [max(32, args["BN"] // 4), args["BK"]]
-
-    def _prune_fragmented_configs(configs, named_args, **kwargs):
-        args = {**named_args, **kwargs}
-        m, n, k = args["M"], args["N"], args["K"]
-        result = []
-        for config in configs:
-            p = config.kwargs
-            if p["FRAGMENTED"]:
-                if p["BM"] > m or p["BN"] + p["BN"] // 4 > n:
-                    continue
-                if p["STAGES"] > triton.cdiv(k, p["BK"]) + 1:
-                    continue
-                result.append(deepcopy(config))
-            else:
-                result.extend(_prune_ws_configs([config], args))
-        return result
-
-    @libentry()
-    @libtuner(
-        configs=runtime.ops_get_configs(
-            "mm_w8a8_fp8_musa_ws_fragmented_default",
-            yaml_path=_CONFIG_YAML,
-            pre_hook=_set_fragmented_blocks,
-        ),
-        key=["M", "N", "K"],
-        strategy=["default"] * 3,
-        warmup=5,
-        rep=10,
-        prune_configs_by={"early_config_prune": _prune_fragmented_configs},
-        flagtune_op_name="mm_w8a8_fp8",
-        flagtune_expand_op_name="mm_w8a8_fp8_musa_ws_fragmented",
-        flagtune_yaml_path=_CONFIG_YAML,
-        flagtune_pre_hook=_set_fragmented_blocks,
-    )
-    @triton.jit
-    def fragmented_kernel(
-        A,
-        B,
-        Bsmall,
-        C,
-        SA,
-        SB,
-        M: tl.constexpr,
-        N: tl.constexpr,
-        K: tl.constexpr,
-        BM: tl.constexpr,
-        BN: tl.constexpr,
-        BK: tl.constexpr,
-        NC: tl.constexpr,
-        CW: tl.constexpr,
-        PW: tl.constexpr,
-        STAGES: tl.constexpr,
-        GM: tl.constexpr,
-        FRAGMENTED: tl.constexpr,
-    ):
-        if not FRAGMENTED:
-            _BASE_WS_JIT(A, B, C, SA, SB, M, N, K, BM, BN, BK, NC, CW, PW, STAGES, GM)
-        else:
-            aa = tle.gpu.alloc(
-                (STAGES, BM, BK), A.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
-            )
-            b0 = tle.gpu.alloc(
-                (STAGES, BN, BK), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
-            )
-            b1 = tle.gpu.alloc(
-                (STAGES, BN // 4, BK),
-                B.dtype,
-                scope=tle.gpu.smem,
-                nv_mma_shared_layout=True,
-            )
-            pipe = tle.pipe(
-                capacity=STAGES,
-                scope="cta",
-                name="ab",
-                readers=("r0", "r1"),
-                a=aa,
-                b0=b0,
-                b1=b1,
-            )
-            tle.gpu.warp_specialize(
-                [
-                    (
-                        _consume,
-                        (
-                            pipe.reader("r0", fields=("a", "b0")),
-                            C,
-                            SA,
-                            SB,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            2,
-                            GM,
-                            0,
-                            True,
-                        ),
-                    ),
-                    (
-                        _consume,
-                        (
-                            pipe.reader("r1", fields=("a", "b1")),
-                            C,
-                            SA,
-                            SB,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            2,
-                            GM,
-                            1,
-                            True,
-                        ),
-                    ),
-                    (
-                        _produce_fragmented,
-                        (pipe.writer(), A, B, Bsmall, M, N, K, BM, BN, BK, GM),
-                    ),
-                ],
-                worker_num_warps=[CW, PW],
-                worker_num_regs=[128, 24],
-            )
-
 
 _WS_LAUNCH_CACHE = OrderedDict()
 
@@ -813,8 +660,6 @@ def _launch_ws_tuned(kernel, grid, args):
         meta, tail, launch = cached
         args[0].block_shape = [meta["BM"], meta["BK"]]
         args[1].block_shape = [meta["BN"], meta["BK"]]
-        if "FRAGMENTED" in meta:
-            args[2].block_shape = [max(32, meta["BN"] // 4), meta["BK"]]
         launch(*args, *tail)
 
 
@@ -831,6 +676,9 @@ def _prune_configs(configs, named_args, **kwargs):
     for config in configs:
         meta = config.kwargs
         bm, bn, bk = (meta[x] for x in ("BLOCK_M", "BLOCK_N", "BLOCK_K"))
+        # MP31 descriptor loops corrupt shared tiles with automatic pipelining.
+        if args["DESCRIPTOR"] and args["SPLIT_K"] == 1 and config.num_stages != 1:
+            continue
         if bm > max(16, triton.next_power_of_2(m)) or bn > max(
             64, triton.next_power_of_2(n)
         ):
@@ -1130,6 +978,8 @@ def _reduce_split_k(
 
 
 def _select_split_k(m, n, k, descriptor):
+    if descriptor and 64 <= m < 128 and k == 4096:
+        return 1
     if descriptor and m in (496, 512) and n == 256 and k == 2048:
         # Two descriptor partitions beat the WS setup even with FP32 reduction.
         return 2
@@ -1178,8 +1028,9 @@ _SKINNY_CONFIGS = {
 
 
 # Block V, block K, physical dot M, pipe stages, consumer warps.
+# The 16-row mixed-load pipeline can deadlock after repeated launches on MP31.
+# Keep those shapes on the masked FP8 kernel until its barrier lowering is fixed.
 _SKINNY_TME_CONFIGS = {
-    (4, 62080, 2048): (64, 128, 16, 3, 4),
     (8, 20480, 7168): (64, 256, 32, 2, 8),
 }
 
@@ -1246,6 +1097,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             bk,
             dm,
             stages,
+            warps,
             num_warps=warps,
             num_stages=1,
             enable_backend_opt=True,
@@ -1352,7 +1204,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         and descriptor
         and split == 1
         and min(m, n, k) >= 64
-        and (k < 2048 or (m >= 128 and n >= 256))
+        and (k < 2048 or (n >= 256 and (m >= 128 or (m >= 64 and k == 4096))))
         and sa_stride == sb_stride == 0
         and bias is None
         and sr is None
@@ -1361,26 +1213,6 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     ):
         aa = TensorDescriptor(a, [m, k], list(a.stride()), [64, 64])
         bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [64, 64])
-
-        # Medium dense tiles can avoid a third CTA wave with an N=128+32 split.
-        # FlagTune compares this geometry with the original equal-width layout.
-        if 1536 <= min(m, n) and max(m, n) <= 3072 and 1024 <= k <= 2048:
-            bsmall = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [32, 64])
-
-            def fragmented_grid(meta):
-                tn = (
-                    meta["BN"] + meta["BN"] // 4
-                    if meta["FRAGMENTED"]
-                    else meta["BN"] * meta["NC"]
-                )
-                return (triton.cdiv(m, meta["BM"]) * triton.cdiv(n, tn),)
-
-            _launch_ws_tuned(
-                fragmented_kernel,
-                fragmented_grid,
-                (aa, bb, bsmall, out, sa, sb, m, n, k),
-            )
-            return out
 
         def ws_grid(meta):
             return (

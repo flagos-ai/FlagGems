@@ -101,6 +101,37 @@ def test_mm_w8a8_fp8(M, N, K):
 @pytest.mark.parametrize(
     "M,N,K",
     [
+        (24, 3072, 1536),
+        (24, 2048, 1024),
+        (64, 2560, 4096),
+        (64, 512, 4096),
+        (100, 1536, 4096),
+        (16384, 16, 4096),
+        (4, 62080, 2048),
+        (8, 20480, 7168),
+        (2048, 1536, 1536),
+        (2048, 3072, 2048),
+    ],
+)
+def test_mm_w8a8_fp8_mthreads_repeated_outputs(M, N, K):
+    torch.manual_seed(42)
+    output = torch.empty((M, N), device=flag_gems.device, dtype=torch.bfloat16)
+    for _ in range(3):
+        lhs = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+        rhs = torch.randn((N, K), device=lhs.device).to(lhs.dtype).T
+        lhs_scale, rhs_scale = _external_scales(lhs, rhs)
+        reference = utils.to_reference(
+            _scaled_fp8_reference(lhs, rhs, lhs_scale, rhs_scale), True
+        )
+        actual = flag_gems.mm_w8a8_fp8_out(lhs, rhs, lhs_scale, rhs_scale, out=output)
+        utils.gems_assert_close(actual, reference, output.dtype, reduce_dim=K)
+
+
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(not mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize(
+    "M,N,K",
+    [
         (1, 1, 1),
         (7, 33, 15),
         (16, 128, 64),

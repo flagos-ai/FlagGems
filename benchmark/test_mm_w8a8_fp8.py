@@ -20,7 +20,8 @@ import yaml
 
 import flag_gems
 
-from . import base, consts
+from . import consts
+from .test_blas_perf_parallel import ParallelBlasBenchmark
 
 _MM_W8A8_FP8_OUT_CACHE = {}
 _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = 8
@@ -64,7 +65,14 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     yield a.to(cur_dtype), weight.to(cur_dtype), scale_a, scale_b
 
 
-class MmW8A8Fp8Benchmark(base.BlasBenchmark):
+class MmW8A8Fp8Benchmark(ParallelBlasBenchmark):
+    RECORD_PARALLEL_RESULTS = True
+    SHAPE_CONFIG_KEYS = ("mm",)
+    SHAPE_COST_OP_NAME = "mm"
+
+    def get_parallel_metric_group_size(self, shape):
+        return 1
+
     def get_input_iter(self, dtype):
         # Keep row-major A and column-major B for both benchmark paths.
         for b, m, n, k in self.shapes:
@@ -94,11 +102,13 @@ def test_mm_w8a8_fp8(monkeypatch):
         pytest.skip("mm_w8a8_fp8 benchmark requires a supported FP8 backend")
 
     # Scope expanded tuning to this benchmark; preserve explicit user settings.
-    if (
-        flag_gems.vendor_name in ("nvidia", "mthreads")
-        and "USE_FLAGTUNE" not in os.environ
-    ):
-        monkeypatch.setenv("USE_FLAGTUNE", "1")
+    if "USE_FLAGTUNE" not in os.environ:
+        if flag_gems.vendor_name == "mthreads":
+            # Parallel workers import the package again. Avoid enabling unrelated
+            # operators through their inherited environment during that import.
+            flag_gems.flagtune(include=["mm_w8a8_fp8"])
+        elif flag_gems.vendor_name == "nvidia":
+            monkeypatch.setenv("USE_FLAGTUNE", "1")
 
     def torch_fp8_mm(a, b, scale_a, scale_b):
         return torch._scaled_mm(
