@@ -607,6 +607,8 @@ if _HAS_WS:
                 worker_num_regs=[128, 128, 128, 24],
             )
 
+    _short_ws_kernel = libentry()(ws_multi_kernel.fn.fn)
+
 
 _WS_LAUNCH_CACHE = OrderedDict()
 
@@ -1015,10 +1017,11 @@ def _select_split_k(m, n, k, descriptor):
 
 # Native dot, block V, block K, warps, physical dot M, split K.
 _SKINNY_CONFIGS = {
-    (1, 64, 4096): (False, 1, 4096, 8, 16, 1),
+    (1, 64, 4096): (False, 1, 4096, 16, 16, 1),
     (1, 4096, 1024): (True, 64, 256, 8, 32, 1),
-    (2, 64, 4096): (False, 1, 4096, 8, 16, 1),
-    (2, 512, 4096): (True, 32, 256, 4, 32, 8),
+    (2, 64, 4096): (False, 1, 4096, 16, 16, 1),
+    (2, 512, 4096): (False, 2, 4096, 4, 16, 1),
+    (2, 4096, 1024): (True, 64, 256, 8, 32, 1),
     (2, 1536, 4096): (True, 64, 256, 8, 32, 4),
     (4, 16160, 7168): (True, 64, 256, 4, 16, 1),
     (4, 248320, 2048): (True, 128, 256, 8, 16, 1),
@@ -1069,6 +1072,61 @@ def _finish_split_k(partial, out, bias, sr, split, epilogue):
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
+    is_transposed_ws = (m, n, k) == (1, 4096, 1024)
+    is_short_ws = (16 <= m < 128 and n >= 64 and 2048 <= k <= 4096) or (
+        m <= 2 and n == 1536 and k == 4096
+    )
+    if (
+        _HAS_WS
+        and (is_transposed_ws or is_short_ws)
+        and _supports_tme_layout(a, b)
+        and sa_stride == sb_stride == 0
+        and bias is None
+        and sr is None
+        and out.dtype == torch.bfloat16
+        and out.is_contiguous()
+    ):
+        # A single pipelined launch avoids split-K's inter-kernel dispatch gap.
+        if is_transposed_ws:
+            bm, bn, bk = 64, 32, 256
+            rows, cols = n, m
+            aa = TensorDescriptor(b, [n, k], [b.stride(1), 1], [bm, bk])
+            bb = TensorDescriptor(a, [m, k], list(a.stride()), [bn, bk])
+        else:
+            if k == 4096:
+                if m >= 96 and n >= 1024:
+                    bm, bn, bk = 64, 64, 512
+                elif n < 512:
+                    bm, bn, bk = 16, 64, 512
+                else:
+                    bm, bn, bk = 32, 32, 512
+            else:
+                bm, bn, bk = 32, 64, 256
+            rows, cols = m, n
+            aa = TensorDescriptor(a, [m, k], list(a.stride()), [bm, bk])
+            bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [bn, bk])
+        _short_ws_kernel[(triton.cdiv(rows, bm) * triton.cdiv(cols, bn),)](
+            aa,
+            bb,
+            out,
+            sa,
+            sb,
+            rows,
+            cols,
+            k,
+            bm,
+            bn,
+            bk,
+            1,
+            4,
+            4,
+            2,
+            1,
+            num_warps=4,
+            num_stages=1,
+            enable_backend_opt=True,
+        )
+        return out
     tme_config = _SKINNY_TME_CONFIGS.get((m, n, k))
     if (
         tme_config is not None
