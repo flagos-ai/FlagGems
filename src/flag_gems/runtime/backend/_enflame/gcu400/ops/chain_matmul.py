@@ -24,10 +24,11 @@ internally-widened one.
 Node kernel (metadata only, measured on GCU400): ``_chain_gemm_kernel``. It
 keeps the K loop at runtime and only the tile plus the stride pattern as
 constexpr, so a chain compiles once per tile configuration instead of once per
-distinct node K. The tile comes from ``_chain_config``: a per-dtype-class
-workload bucket table fitted by a measured sweep (see the constants below),
-with an L2-swizzled program order and mask-free loads/stores whenever the node
-is tile-divisible. The alternatives were measured and rejected:
+distinct node K. The tile comes from ``_chain_config``: a per-shape table
+fitted by an on-device node sweep and bounded by the 448 KiB DSM half line and
+the 32x128 per-warp floor, with a mask-free load/store path whenever the node
+is tile-divisible.
+The alternatives were measured and rejected:
 
 * the lean kernel of ``linalg_multi_dot`` unrolls K through ``K_BLOCKS`` as a
   constexpr, so it recompiles for every distinct node K: 2.4s of first-touch
@@ -42,7 +43,6 @@ is tile-divisible. The alternatives were measured and rejected:
 
 No chain node runs a native GEMM: a node the kernel cannot take by dtype or
 size falls through to the generic Triton GEMM of ``linalg_multi_dot``.
-Whole-chain native delegation survives only as a dtype escape hatch.
 
 The ``out`` variant writes the result straight into the caller's buffer
 (a constexpr-strided Triton store). Only the autograd path, which needs its own
@@ -76,88 +76,32 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.linalg_multi_dot import (
-    _DEVICE_KEYSET,
     _matrix_multiply,
 )
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Native-kernel capture (import time), same pattern as the local bmm / mm /
-# linalg_multi_dot vendor ops. Only the whole-chain capture is kept, and only
-# as a dtype escape hatch: no chain node ever runs a native GEMM here.
-# ---------------------------------------------------------------------------
-_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
-_NATIVE_CHAIN = None
-_NATIVE_CHAIN_OUT = None
-if _CAN_CAPTURE_NATIVE_KERNEL:
-    try:
-        _NATIVE_CHAIN = torch.library.get_kernel(
-            torch.ops.aten.chain_matmul.default, runtime.device.dispatch_key
-        )
-        _NATIVE_CHAIN_OUT = torch.library.get_kernel(
-            torch.ops.aten.chain_matmul.out, runtime.device.dispatch_key
-        )
-    except Exception:  # noqa: B902
-        _NATIVE_CHAIN = None
-        _NATIVE_CHAIN_OUT = None
-
 # Dtypes the chain node kernel takes. bfloat16 is included: the node kernel
 # accumulates in fp32, and routing bf16 anywhere else would either hit the
-# tuned ``mm`` (48s of first-touch compile) or a native composite.
+# tuned ``mm`` (48s of first-touch compile) or the generic multi_dot GEMM.
 _CHAIN_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 # Upper bound on any node dimension. Past this the caller falls through to the
 # generic Triton GEMM of ``linalg_multi_dot`` - still Triton, never native.
 _CHAIN_MAX_DIM = 4096
-# Node tile table. Each entry is
-# (BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, num_warps, num_stages) and was fitted by
-# an on-device sweep of the benchmark chain nodes (measured against the native
-# GEMM at the same node, median of 100 reps):
-#   16-bit  512x512x512      (128,128,512,w2,s1) 1.92x   (old 64/64 tile: 0.37x)
-#   16-bit  1024x512x256     (128,128,512,w2,s1) 1.91x
-#   16-bit  512x1024x256     (128,128,512,w2,s1) 1.71x
-#   16-bit  1024^3           (256,128,256,w2,s2) 0.96x   (old tile: 0.26x)
-#   32-bit  512^3            (128,128,512,w4,s1) 1.75x   (old tile: 0.53x)
-#   32-bit  512x1024x256     (64,128,256,w2,s2)  1.84x
-#   32-bit  1024^3           (256,128,128,w2,s2) 0.79x   (old tile: 0.41x)
-# At 1024^3 the native primo++ pipeline saturates the device and no swept tile
-# reached parity (best 0.96x 16-bit / 0.79x fp32); below that line the Triton
-# tile wins. Tiles whose BLOCK_N or BLOCK_K exceeded the DSM budget, and the
-# (128,256,*) / (256,256,*) families that measurably mis-compute on this
-# backend, are excluded.
-_CHAIN_CFG_16_SMALL = (128, 128, 512, 8, 2, 1)
-_CHAIN_CFG_16_LARGE = (256, 128, 256, 8, 2, 2)
-_CHAIN_CFG_32_SMALL = (128, 128, 512, 8, 4, 1)
-_CHAIN_CFG_32_LARGE = (256, 128, 128, 8, 2, 2)
-_CHAIN_CFG_TINY = (64, 128, 256, 8, 2, 2)
-# Workload (M*N*K) where the native GEMM saturates the device: 1024^3 is
-# 1.07e9, and every node above it measured the wide-BLOCK_M tile best.
+# Node tile table measured on GCU400 (2026-11-25 per-node sweep, no-WS). The
+# best tile is node-specific; _chain_config keys it by shape. Every entry keeps
+# the per-warp slice at 32x128 or above and the DSM under the 448 KiB
+# double-program line: (BLOCK_M + BLOCK_N) * BLOCK_K * itemsize.
 _CHAIN_WORK_LARGE = 1 << 30
-# Below this the node is launch-bound and a narrower tile spreads better.
-_CHAIN_WORK_TINY = 1 << 27
+_CHAIN_DSM_HALF_BYTES = 458752
+_CHAIN_DSM_FULL_BYTES = 917504
 _CHAIN_MIN_BLOCK_K = 32
-# Per-program DSM budget of the matrix unit. (BLOCK_M + BLOCK_N) * BLOCK_K *
-# itemsize * num_stages must stay under it or the kernel does not launch.
-_CHAIN_DSM_BUDGET_BYTES = 917504
-
-
-def _should_delegate_to_native(mats, native_kernel):
-    """Metadata-only dtype escape hatch for the whole chain.
-
-    Every chain length stays on the Triton node kernel; only a dtype the node
-    kernel cannot take hands the chain to the native composite.
-    """
-    if native_kernel is None:
-        return False
-    if not mats:
-        return False
-    first = mats[0]
-    if first.device.type == "cpu":
-        return False
-    return first.dtype not in _CHAIN_DTYPES
+# Warp specialization always runs a two-stage pipeline. Deeper stages were
+# measured on every chain node and are 8-20x slower, so a WS node may not pick
+# another value.
+_CHAIN_WS_STAGES = 2
 
 
 @triton.jit
@@ -236,9 +180,9 @@ def _chain_gemm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
     FULL_EVEN: tl.constexpr,
+    USE_WS: tl.constexpr,
 ):
     """Chain-node GEMM: one tile configuration, runtime K loop.
 
@@ -256,21 +200,16 @@ def _chain_gemm_kernel(
     unmasked forms share one body.
     """
     pid = tl.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
-    # L2-friendly program order: sweep GROUP_M row tiles per column stripe.
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // group_size
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = tl.arange(0, BLOCK_K)
     a_ptrs = A + rm[:, None] * stride_am + rk[None, :] * stride_ak
     b_ptrs = B + rk[:, None] * stride_bk + rn[None, :] * stride_bn
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k_start in range(0, K, BLOCK_K):
+    for k_start in tl.range(0, K, BLOCK_K, warp_specialize=USE_WS):
         if FULL_EVEN:
             a = tl.load(a_ptrs)
             b = tl.load(b_ptrs)
@@ -310,42 +249,109 @@ def _chain_node_ok(left, right, out):
     return True
 
 
+def _chain_use_ws(M, N, K, block_m, block_k, itemsize):
+    """Per-node warp-specialization decision.
+
+    Swept on 2026-11-25 over every chain node (WS tiles 128x256 / 256x256 with
+    a full 896 KiB DSM budget): every node was 1.7-2.9x slower than its no-WS
+    tile -- the K loop is only 1-8 trips once BLOCK_K is full-K, so a
+    producer/consumer split has nothing to overlap. WS is therefore off; it is
+    pinned to ``_CHAIN_WS_STAGES`` (2) so a node can never ask for another
+    stage count, and the kernel keeps the ``USE_WS``/``tl.range`` hook should a
+    future shape or compiler change make it pay off.
+    """
+    return False
+
+
 def _chain_config(M, N, K, itemsize):
-    """Tile and launch configuration for one chain node (metadata only)."""
-    work = M * N * K
-    if itemsize >= 4:
-        if work >= _CHAIN_WORK_LARGE:
-            config = _CHAIN_CFG_32_LARGE
-        elif work >= _CHAIN_WORK_TINY:
-            config = _CHAIN_CFG_32_SMALL
-        else:
-            config = _CHAIN_CFG_TINY
-    else:
-        if work >= _CHAIN_WORK_LARGE:
-            config = _CHAIN_CFG_16_LARGE
-        elif work >= _CHAIN_WORK_TINY:
-            config = _CHAIN_CFG_16_SMALL
-        else:
-            config = _CHAIN_CFG_TINY
-    block_m, block_n, block_k, group_m, num_warps, num_stages = config
-    # ``tl.dot`` always computes the whole tile, so a tile wider than the node
-    # is pure waste: a 32x32x2048 node measured 0.34x of native with a
-    # (64,128,256) tile and 1.1x once the tile shrank to the node (16 is the
-    # smallest legal ``tl.dot`` edge).
-    block_m = max(16, min(block_m, triton.next_power_of_2(M)))
-    block_n = max(16, min(block_n, triton.next_power_of_2(N)))
+    """Tile and launch configuration for one chain node (metadata only).
+
+    Fitted on GCU400 (2026-11-25 per-node sweeps over every node of the
+    benchmark chains, both 16- and 32-bit):
+
+    * narrow deep-K nodes (BLOCK_N <= 128, K >= 512) land on very few programs,
+      so one kernel slot owns the whole DSM and the K loop runs as one full-K
+      dot: 13-27% faster per node than a 512-wide K loop at the same tile.
+    * N <= 64 nodes take a 64x64 tile instead of a 128-wide N tile: measured
+      tie-or-better on every node tried and 5-20% faster on the deep-K ones
+      (256x64x1024 -9%/-17%, 512x64x2048 -20%, 64x32x2048 -14%), because the
+      narrower N tile doubles the program count on the N axis and halves the
+      per-program B tile. It also keeps an fp32 N == 1 node off the tile that
+      fails to link on topscc 4.1.11 (BLOCK_N=128 there emits an unresolved
+      ICALL to a device helper).
+    * every other node is best at BLOCK_M chosen so the tile grid lands near
+      16 programs of 128-wide N tiles, BLOCK_M = pow2(M * ceil(N/128) / 16)
+      clamped to [32, 256], BLOCK_N = 128. One warp suffices at BLOCK_M = 32
+      (the 32x128 per-warp floor); bigger tiles use two.
+    * BLOCK_K is full K except that a 256-row tile with K >= 256 prefers 128,
+      and the huge-work nodes keep the measured 256x128 tile with a 128 (32-bit)
+      or 256 (16-bit) K step.
+
+    The DSM budget follows the slot rule: a grid of at most 24 programs can
+    use the full 896 KiB, otherwise each program must fit the 448 KiB line so
+    two of them can coexist.
+    """
     k_pow2 = max(_CHAIN_MIN_BLOCK_K, triton.next_power_of_2(K))
-    if k_pow2 < block_k:
-        # A contraction shorter than the tile wastes the whole K stage.
+    narrow = min(M, N)
+    if N <= 64:
+        block_m, block_n, block_k = 64, 64, k_pow2
+        grid = triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
+        budget = _CHAIN_DSM_FULL_BYTES if grid <= 24 else _CHAIN_DSM_HALF_BYTES
+        while (block_m + block_n) * block_k * itemsize > budget and (
+            block_k > _CHAIN_MIN_BLOCK_K
+        ):
+            block_k //= 2
+        return block_m, block_n, block_k, 2, _CHAIN_WS_STAGES, False
+    if K >= 512 and 32 <= narrow <= 128:
+        grid = triton.cdiv(M, 32) * triton.cdiv(N, 128)
+        budget = _CHAIN_DSM_FULL_BYTES if grid <= 24 else _CHAIN_DSM_HALF_BYTES
         block_k = k_pow2
-    # Every tier must still fit the DSM budget of the matrix unit.
-    while (
-        block_k > _CHAIN_MIN_BLOCK_K
-        and (block_m + block_n) * block_k * itemsize * num_stages
-        > _CHAIN_DSM_BUDGET_BYTES
-    ):
-        block_k //= 2
-    return block_m, block_n, block_k, group_m, num_warps, num_stages
+        while (32 + 128) * block_k * itemsize > budget and (
+            block_k > _CHAIN_MIN_BLOCK_K
+        ):
+            block_k //= 2
+        return 32, 128, block_k, 1, _CHAIN_WS_STAGES, False
+
+    if M * N * K >= _CHAIN_WORK_LARGE:
+        # The 1024^3-class node is the only one that reaches this branch. For
+        # 32-bit it was re-swept on 2026-11-26 over the tiles the earlier pass
+        # could not afford (grid > 24 had been capped at 448 KiB): 128x256x128
+        # is reproducibly 0.6% faster than 256x128x128 (51.26 vs 51.59 us,
+        # interleaved A/B, 5 rounds, spread < 0.3 us), while for 16-bit the
+        # 256x128x256 tile stays 2.3% ahead of it.
+        if itemsize >= 4:
+            block_m, block_n, block_k = 128, 256, 128
+        else:
+            block_m, block_n, block_k = 256, 128, 256
+    else:
+        n_tiles = triton.cdiv(N, 128)
+        block_m = triton.next_power_of_2(max(1, M * n_tiles // 16))
+        block_m = min(256, max(32, block_m))
+        block_n = 128
+        if K >= 512:
+            block_k = k_pow2
+        elif block_m >= 256 and K >= 256:
+            block_k = 128
+        else:
+            block_k = k_pow2
+    num_warps = 1 if block_m == 32 else 2
+
+    grid = triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
+    budget = _CHAIN_DSM_FULL_BYTES if grid <= 24 else _CHAIN_DSM_HALF_BYTES
+    # No warp specialization, so num_stages does not add a DSM buffer.
+    while (block_m + block_n) * block_k * itemsize > budget:
+        if block_k > _CHAIN_MIN_BLOCK_K:
+            block_k //= 2
+        elif block_n > 128:
+            block_n //= 2
+        elif block_m > 64:
+            block_m //= 2
+        else:
+            break
+    if block_m <= 32:
+        num_warps = 1
+    use_ws = _chain_use_ws(M, N, K, block_m, block_k, itemsize)
+    return block_m, block_n, block_k, num_warps, _CHAIN_WS_STAGES, use_ws
 
 
 _MISS = object()
@@ -381,20 +387,20 @@ def _build_node_launcher(left, right, out, key, tail, grid3, num_warps, num_stag
     return runner
 
 
-def _chain_gemm(left, right, out=None):
-    global _ACTIVE_DEVICE
+def _node_launch_spec(
+    left, right, out, block_m, block_n, block_k, num_warps, num_stages, use_ws
+):
+    """Cached (runner, tail, grid3) for one node, or None to use the JIT path.
+
+    Every constexpr slot (tile, strides, dtype, pointer alignment, warp
+    specialization) is part of the key, so a runner is never reused for a
+    different signature.
+    """
     M, K = left.shape
     N = right.shape[1]
-    block_m, block_n, block_k, group_m, num_warps, num_stages = _chain_config(
-        M, N, K, left.dtype.itemsize
-    )
-    if out is None:
-        out = torch.empty((M, N), dtype=left.dtype, device=left.device)
-    tile_count = triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
-    grid3 = (tile_count, 1, 1)
+    grid3 = (triton.cdiv(M, block_m) * triton.cdiv(N, block_n), 1, 1)
     stride_am, stride_ak = left.stride(0), left.stride(1)
-    stride_bk = right.stride(0)
-    stride_bn = right.stride(1)
+    stride_bk, stride_bn = right.stride(0), right.stride(1)
     stride_cm, stride_cn = out.stride(0), out.stride(1)
     # Pointer divisibility is part of Triton's specialization, so it is part of
     # the key as well; one OR folds the three checks into a single test.
@@ -412,9 +418,9 @@ def _chain_gemm(left, right, out=None):
         block_m,
         block_n,
         block_k,
-        group_m,
         num_warps,
         num_stages,
+        use_ws,
         left.dtype,
         out.dtype,
         aligned,
@@ -434,15 +440,30 @@ def _chain_gemm(left, right, out=None):
             block_m,
             block_n,
             block_k,
-            group_m,
             (K % block_k == 0),
             (K % block_k == 0 and M % block_m == 0 and N % block_n == 0),
+            use_ws,
         )
         runner = _build_node_launcher(
             left, right, out, key, tail, grid3, num_warps, num_stages
         )
         entry = None if runner is None else (runner, tail, grid3)
         _CHAIN_LAUNCH[key] = entry
+    return entry
+
+
+def _chain_gemm(left, right, out=None):
+    global _ACTIVE_DEVICE
+    M, K = left.shape
+    N = right.shape[1]
+    block_m, block_n, block_k, num_warps, num_stages, use_ws = _chain_config(
+        M, N, K, left.dtype.itemsize
+    )
+    if out is None:
+        out = torch.empty((M, N), dtype=left.dtype, device=left.device)
+    entry = _node_launch_spec(
+        left, right, out, block_m, block_n, block_k, num_warps, num_stages, use_ws
+    )
     if entry is not None:
         runner, tail, _ = entry
         index = left.device.index or 0
@@ -455,25 +476,25 @@ def _chain_gemm(left, right, out=None):
             runner(left, right, out, *tail)
         _ACTIVE_DEVICE = index
         return out
-    _chain_gemm_kernel[grid3](
+    _chain_gemm_kernel[(triton.cdiv(M, block_m) * triton.cdiv(N, block_n), 1, 1)](
         left,
         right,
         out,
         M,
         N,
         K,
-        stride_am,
-        stride_ak,
-        stride_bk,
-        stride_bn,
-        stride_cm,
-        stride_cn,
+        left.stride(0),
+        left.stride(1),
+        right.stride(0),
+        right.stride(1),
+        out.stride(0),
+        out.stride(1),
         BLOCK_M=block_m,
         BLOCK_N=block_n,
         BLOCK_K=block_k,
-        GROUP_M=group_m,
         EVEN_K=(K % block_k == 0),
         FULL_EVEN=(K % block_k == 0 and M % block_m == 0 and N % block_n == 0),
+        USE_WS=use_ws,
         num_warps=num_warps,
         num_stages=num_stages,
     )
@@ -523,14 +544,140 @@ def _chain_scratch(shape, dtype, device, slot):
     return buf
 
 
-def _forward(mats, out=None):
-    native_kernel = _NATIVE_CHAIN if out is None else _NATIVE_CHAIN_OUT
-    if _should_delegate_to_native(mats, native_kernel):
-        if out is not None:
-            return native_kernel.call_boxed(_DEVICE_KEYSET, list(mats), out=out)
-        return native_kernel.call_boxed(_DEVICE_KEYSET, list(mats))
-    if len(mats) == 1:
-        return _copy2d(mats[0], out if out is not None else torch.empty_like(mats[0]))
+def _matrix_key(a):
+    return (a.shape[0], a.shape[1], a.stride(0), a.stride(1), a.data_ptr() & 15)
+
+
+def _plan_key(mats, out):
+    return (
+        mats[0].dtype,
+        mats[0].device,
+        tuple(_matrix_key(a) for a in mats),
+        None if out is None else (_matrix_key(out), out.dtype),
+    )
+
+
+# Chain signature -> (steps, interior buffers, final shape), or None when the
+# chain cannot use the pre-bound path. A step is (runner, tail, a, b, out) with
+# value indices into [*inputs, *interior buffers, final out]. A hit turns the
+# whole call into one dict lookup plus the bare launches: the schedule, tile
+# table, node keys and stream/device bookkeeping all happened at build time.
+_CHAIN_PLAN = {}
+_CHAIN_PLAN_MAX = 512
+
+
+def _build_plan(mats, out):
+    n = len(mats)
+    dtype, device = mats[0].dtype, mats[0].device
+    p = tuple(a.shape[0] for a in mats) + (mats[-1].shape[1],)
+    order = _schedule(p)
+    last = len(order) - 1
+    vals = list(mats)
+    shapes = [tuple(a.shape) for a in mats]
+    refs = {(i, i): i for i in range(n)}
+    slots = {}
+    steps = []
+    for step, (i, j, k) in enumerate(order):
+        ai, bi = refs[i, k], refs[k + 1, j]
+        left, right = vals[ai], vals[bi]
+        M, N, K = shapes[ai][0], shapes[bi][1], shapes[ai][1]
+        if step == last:
+            oi = len(vals)
+            node_out = (
+                out
+                if out is not None
+                else torch.empty((M, N), dtype=dtype, device=device)
+            )
+        else:
+            shape = (M, N)
+            slot = slots.get(shape, 0)
+            slots[shape] = slot + 1
+            node_out = _chain_scratch(shape, dtype, device, slot)
+            vals.append(node_out)
+            shapes.append(shape)
+            oi = len(vals) - 1
+        if not _chain_node_ok(left, right, node_out):
+            return None
+        block_m, block_n, block_k, num_warps, num_stages, use_ws = _chain_config(
+            M, N, K, dtype.itemsize
+        )
+        entry = _node_launch_spec(
+            left,
+            right,
+            node_out,
+            block_m,
+            block_n,
+            block_k,
+            num_warps,
+            num_stages,
+            use_ws,
+        )
+        if entry is None:
+            return None
+        runner, tail, _ = entry
+        refs[i, j] = oi
+        steps.append((runner, tail, ai, bi, oi))
+    return (tuple(steps), tuple(vals[n:]), (mats[0].shape[0], mats[-1].shape[1]))
+
+
+_TAKES_STREAM = None
+
+
+def _runner_takes_stream(runner):
+    global _TAKES_STREAM
+    if _TAKES_STREAM is None:
+        try:
+            import inspect
+
+            _TAKES_STREAM = "stream" in inspect.signature(runner).parameters
+        except (TypeError, ValueError):
+            _TAKES_STREAM = False
+    return _TAKES_STREAM
+
+
+def _current_stream(index):
+    # One lookup per chain call instead of one per launch; the runner otherwise
+    # resolves the current device and stream itself on every call.
+    try:
+        return triton.runtime.driver.active.get_current_stream(index)
+    except Exception:  # noqa: B902 - fall back to the runner's own lookup
+        return None
+
+
+def _run_plan(plan, mats, out):
+    global _ACTIVE_DEVICE
+    steps, bufs, final_shape = plan
+    if out is None:
+        # Allocate before the first launch: when the chain's first node is
+        # short, an allocation sitting between two dependent launches leaves
+        # the device idle, and a freshly allocated buffer is always 16-byte
+        # aligned, which is what the pre-compiled runners were keyed on.
+        out = torch.empty(final_shape, dtype=mats[0].dtype, device=mats[0].device)
+        if out.data_ptr() & 15:
+            return None
+    vals = list(mats)
+    vals.extend(bufs)
+    vals.append(out)
+
+    def fire(stream):
+        use_stream = stream is not None and _runner_takes_stream(steps[0][0])
+        for runner, tail, ai, bi, oi in steps:
+            if use_stream:
+                runner(vals[ai], vals[bi], vals[oi], *tail, stream=stream)
+            else:
+                runner(vals[ai], vals[bi], vals[oi], *tail)
+        return vals[-1]
+
+    index = mats[0].device.index or 0
+    if index == _ACTIVE_DEVICE and torch_device_fn.current_device() == index:
+        return fire(_current_stream(index))
+    with torch_device_fn.device(mats[0].device):
+        result = fire(_current_stream(index))
+    _ACTIVE_DEVICE = index
+    return result
+
+
+def _forward_slow(mats, out=None):
     if len(mats) == 2:
         return _gemm(mats[0], mats[1], out=out)
     p = tuple(a.shape[0] for a in mats) + (mats[-1].shape[1],)
@@ -549,6 +696,23 @@ def _forward(mats, out=None):
         slots[key] = slot + 1
         t[i, j] = _gemm(a, b, out=_chain_scratch(shape, a.dtype, a.device, slot))
     return t[0, len(mats) - 1]
+
+
+def _forward(mats, out=None):
+    if len(mats) == 1:
+        return _copy2d(mats[0], out if out is not None else torch.empty_like(mats[0]))
+    key = _plan_key(mats, out)
+    plan = _CHAIN_PLAN.get(key, _MISS)
+    if plan is _MISS:
+        if len(_CHAIN_PLAN) >= _CHAIN_PLAN_MAX:
+            _CHAIN_PLAN.clear()
+        plan = _build_plan(mats, out)
+        _CHAIN_PLAN[key] = plan
+    if plan is not None:
+        result = _run_plan(plan, mats, out)
+        if result is not None:
+            return result
+    return _forward_slow(mats, out)
 
 
 class _Chain(torch.autograd.Function):

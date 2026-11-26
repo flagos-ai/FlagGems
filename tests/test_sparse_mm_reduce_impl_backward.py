@@ -78,6 +78,50 @@ else:
 DTYPES = utils.FLOAT_DTYPES
 _LOW_PREC_DTYPES = (torch.float16, torch.bfloat16)
 
+# The amin reference folds a (M, slots, N) fp64 product matrix with argmin on
+# the device.  The GCU stack has no argmin kernel (topsaten argmin aborts the
+# process with "data type not support" for every rank and dtype tried), so the
+# amin ``arg_out`` cannot be built there; argmax works, hence only amin is
+# gated and sum/mean/amax keep their full coverage.
+_NO_DEVICE_ARGMIN = flag_gems.vendor_name == "enflame"
+_AMIN_SKIP_REASON = (
+    "enflame GCU: topsaten argmin is unavailable, so the amin arg_out cannot "
+    "be folded on the device (sum/mean/amax still covered)"
+)
+
+
+# The backward kernels launch one program per stored non-zero
+# (grid.x = nnz, see ``_sparse_mm_reduce_impl_bwd_val_kernel``), and the GCU
+# grid.x cap is 65535, so nnz-heavy cases cannot be launched on the device.
+# The gate is data driven: only the parameter sets whose nnz actually exceeds
+# the cap are skipped, the rest of the sweep keeps running.
+_NNZ_GRID_LIMIT = 65535 if flag_gems.vendor_name == "enflame" else None
+
+
+def _tested_reduces():
+    """The reduces whose reference can be folded on this device.
+
+    Only ``amin`` needs an argmin fold, so it is the single variant dropped
+    where the vendor stack has no argmin kernel; the remaining reduces keep
+    their full parameter sweep instead of skipping whole cases.
+    """
+    if _NO_DEVICE_ARGMIN:
+        return [reduce for reduce in REDUCES if reduce != "amin"]
+    return list(REDUCES)
+
+
+def _reduce_params():
+    """REDUCES as pytest params, skipping amin where argmin is unavailable."""
+    return [
+        pytest.param(
+            reduce,
+            marks=pytest.mark.skipif(
+                _NO_DEVICE_ARGMIN and reduce == "amin", reason=_AMIN_SKIP_REASON
+            ),
+        )
+        for reduce in REDUCES
+    ]
+
 
 def _make_sparse(M, K, dtype, device, sparsity, layout):
     """Build the masked dense values and the sparse tensor in ``layout``."""
@@ -118,6 +162,8 @@ def _make_arg_out(csr, weight, reduce):
     order inside a row and argmax/argmin report the first extremal slot, which
     is exactly the strict first-index rule.
     """
+    if reduce == "amin" and _NO_DEVICE_ARGMIN:
+        pytest.skip(_AMIN_SKIP_REASON)
     crow, col, vals = csr
     M = crow.numel() - 1
     N = weight.shape[1]
@@ -236,8 +282,13 @@ def test_sparse_mm_reduce_impl_backward(M, N, K, layout, sparsity, dtype):
     weight = torch.randn((K, N), dtype=dtype, device=device)
     grad_out = torch.randn((M, N), dtype=dtype, device=device)
     csr = _csr_of(sparse)
+    if _NNZ_GRID_LIMIT is not None and sparse._nnz() > _NNZ_GRID_LIMIT:
+        pytest.skip(
+            "enflame GCU: one program per stored non-zero needs grid.x = "
+            f"nnz = {sparse._nnz()} > the 65535 grid cap"
+        )
 
-    for reduce in REDUCES:
+    for reduce in _tested_reduces():
         arg_out = None
         if reduce in ("amax", "amin"):
             arg_out = _make_arg_out(csr, weight, reduce)
@@ -270,7 +321,7 @@ def test_sparse_mm_reduce_impl_backward(M, N, K, layout, sparsity, dtype):
 
 @pytest.mark.sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("M, N, K", [(16, 8, 12), (32, 32, 32)])
-@pytest.mark.parametrize("reduce", REDUCES)
+@pytest.mark.parametrize("reduce", _reduce_params())
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_sparse_mm_reduce_impl_backward_output_mask(M, N, K, reduce, dtype):
     device = flag_gems.device
@@ -347,13 +398,19 @@ def test_sparse_mm_reduce_impl_backward_large_n():
     # N beyond one BLOCK_N cap (1024): the n-block split must cover the whole
     # row for every reduce. fp64 keeps the accumulation noise around 1e-9, so
     # the reference comparison stays tolerance-independent.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: the fp64 accumulation this case relies on has no "
+            "kernel support (the fp64 multiply fails to legalize and the "
+            "device only carries fp32)"
+        )
     device = flag_gems.device
     M, N, K = 8, 2000, 512
     _, sparse = _make_sparse(M, K, torch.float64, device, 0.5, "csr")
     weight = torch.randn((K, N), dtype=torch.float64, device=device)
     grad_out = torch.randn((M, N), dtype=torch.float64, device=device)
     csr = _csr_of(sparse)
-    for reduce in REDUCES:
+    for reduce in _tested_reduces():
         arg_out = None
         if reduce in ("amax", "amin"):
             arg_out = _make_arg_out(csr, weight, reduce)
@@ -408,7 +465,7 @@ def test_sparse_mm_reduce_impl_backward_rejects_prod():
 
 
 @pytest.mark.sparse_mm_reduce_impl_backward
-@pytest.mark.parametrize("reduce", REDUCES)
+@pytest.mark.parametrize("reduce", _reduce_params())
 def test_sparse_mm_reduce_impl_backward_strided_inputs(reduce):
     # The kernels must honour the caller's strides: ``weight`` can be a
     # transposed (column-major) view and ``grad_out`` a non-contiguous slice.

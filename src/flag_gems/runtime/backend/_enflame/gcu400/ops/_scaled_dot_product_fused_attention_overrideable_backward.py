@@ -60,6 +60,40 @@ _GCU400_DKV_EXTRA_CONFIGS = [
 ]
 
 
+# dq tiles wider than 64 keys compile for every variant except the attention
+# bias gradient one: with DO_BIAS_GRAD set the GCU400 pipeline rejects the
+# f32 -> f32 `arith.extf` left over from the ds_lo residual cast of the dq
+# kernel body ("operand type ... and result type ... are cast incompatible"),
+# so the whole launch fails. BLOCK_N=64 tiles compile and run for that variant
+# (measured on GCU400, seqlen 128 / head_dim 64), and the wide tiles only exist
+# in this file's extension pool, so pruning them for the bias-gradient variant
+# leaves every previously working path untouched. The dkv kernel is unaffected
+# and keeps its full pool.
+_DQ_WIDE_TILE_MIN_BLOCK_N = 128
+
+
+def _prune_wide_dq_tiles_for_bias_grad(configs, named_args, **kwargs):
+    do_bias_grad = kwargs.get("DO_BIAS_GRAD")
+    if do_bias_grad is None:
+        do_bias_grad = named_args.get("DO_BIAS_GRAD", False)
+    if not do_bias_grad:
+        return configs
+    return [
+        config
+        for config in configs
+        if config.kwargs.get("BLOCK_N", 0) < _DQ_WIDE_TILE_MIN_BLOCK_N
+    ]
+
+
+def _compose_dq_prune(previous_prune):
+    def pruned(configs, named_args, **kwargs):
+        if previous_prune is not None:
+            configs = previous_prune(configs, named_args, **kwargs)
+        return _prune_wide_dq_tiles_for_bias_grad(configs, named_args, **kwargs)
+
+    return pruned
+
+
 def _extend_gcu400_autotune_configs():
     for autotuner, extras in (
         (_flash_attn_bwd_dq_fused, _GCU400_DQ_EXTRA_CONFIGS),
@@ -88,6 +122,10 @@ def _extend_gcu400_autotune_configs():
         keys = getattr(autotuner, "keys", None)
         if keys is not None and "IS_CAUSAL" not in keys:
             keys.append("IS_CAUSAL")
+    if not getattr(_flash_attn_bwd_dq_fused, "_gcu400_bias_grad_prune", False):
+        previous_prune = getattr(_flash_attn_bwd_dq_fused, "early_config_prune", None)
+        _flash_attn_bwd_dq_fused.early_config_prune = _compose_dq_prune(previous_prune)
+        _flash_attn_bwd_dq_fused._gcu400_bias_grad_prune = True
 
 
 _extend_gcu400_autotune_configs()
@@ -111,7 +149,7 @@ def _launch_kernel_with_retry(launch, op_desc):
             if attempt == _LAUNCH_RETRIES:
                 raise
             logger.warning(
-                "%s launch failed (attempt %d/%d): %s; retrying",
+                "GEMS_ENFLAME %s launch failed (attempt %d/%d): %s; retrying",
                 op_desc,
                 attempt,
                 _LAUNCH_RETRIES,
@@ -171,6 +209,11 @@ def _dense_bhsd_direct_backward(
     group_size = H_q // H_k
     scale = softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Head_Dim))
     wl = wr = SeqLen_q + SeqLen_k + 1
+    # The overrideable fused entry is an SDPA backend, so its causal corner is
+    # torch's top-left convention (align_bottom_right=0), matching the
+    # flash-attention API entries only through flash_attn_backward's default.
+    align_bottom_right = 0
+    head_dim_pad = triton.next_power_of_2(Head_Dim)
 
     L = logsumexp
     D = torch.empty_like(L)
@@ -179,7 +222,11 @@ def _dense_bhsd_direct_backward(
     dV = torch.empty_like(value)
     dBias: Optional[torch.Tensor] = None
     if bias_req_grad:
-        dBias = torch.empty_like(attn_bias)
+        # The dq kernel only visits key blocks inside the causal/window band, so
+        # the masked entries of the bias gradient are never stored. Zero-filled
+        # storage keeps them at the exact gradient value (0) instead of leaving
+        # uninitialised memory in the round-tripped bias gradient.
+        dBias = torch.zeros_like(attn_bias)
 
     bias_ptr = attn_bias if has_bias else query
     dbias_ptr = dBias if bias_req_grad else query
@@ -236,9 +283,11 @@ def _dense_bhsd_direct_backward(
         sb_n,
         SeqLen_q,
         SeqLen_k,
+        align_bottom_right,
     )
     dq_kwargs = {
         "HEAD_DIM": Head_Dim,
+        "HEAD_DIM_PAD": head_dim_pad,
         "IS_CAUSAL": is_causal,
         "IS_DROPOUT": False,
         "HAS_WINDOW": False,
@@ -293,9 +342,11 @@ def _dense_bhsd_direct_backward(
         sb_n,
         SeqLen_q,
         SeqLen_k,
+        align_bottom_right,
     )
     dkv_kwargs = {
         "HEAD_DIM": Head_Dim,
+        "HEAD_DIM_PAD": head_dim_pad,
         "IS_CAUSAL": is_causal,
         "IS_DROPOUT": False,
         "HAS_WINDOW": False,
@@ -378,6 +429,10 @@ def scaled_dot_product_fused_attention_overrideable_backward(
             softmax_scale=scale,
             attn_bias=attn_bias,
             bias_requires_grad=bias_req_grad,
+            # The overrideable fused entry is an SDPA backend, so its causal
+            # corner is torch's top-left convention for varlen and dropout as
+            # well; flash_attn_backward defaults to the bottom-right one.
+            top_left_causal=True,
         )
         if not need_dq:
             dQ = torch.zeros_like(query)
@@ -431,6 +486,8 @@ def scaled_dot_product_fused_attention_overrideable_backward(
             softmax_scale=scale,
             attn_bias=attn_bias,
             bias_requires_grad=bias_req_grad,
+            # Same top-left causal corner as the direct BHSD launch above.
+            top_left_causal=True,
         )
 
         dQ = dQ_bshd.permute(0, 2, 1, 3).contiguous()
@@ -475,4 +532,4 @@ def _patch_gems_ops_entry():
 try:
     _patch_gems_ops_entry()
 except Exception as error:  # pragma: no cover - import-order edge cases
-    logger.warning("gems ops entry rebind skipped: %s", error)
+    logger.warning("GEMS_ENFLAME gems ops entry rebind skipped: %s", error)

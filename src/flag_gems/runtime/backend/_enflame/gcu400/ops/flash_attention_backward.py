@@ -123,6 +123,64 @@ _AUTOTUNE_CACHE_KWARGS = (
 )
 
 
+# Cold-start compile budget. The autotune pools above are shared with the other
+# GCU400 backward entry points and reach 8-9 candidates per kernel, and Triton
+# compiles every candidate it benchmarks. A single (head_dim, dtype, causal,
+# dropout, bias) specialization therefore cost up to 17 device builds (~2 min)
+# on a cold cache, and the accuracy suite visits dozens of them. The tables
+# below pin, per (kernel, causal, head_dim_pad) bucket, the tile that measured
+# fastest (S=1024, fp16/bf16), and the launches hand that single tile to the JIT
+# function: exactly one build per specialization and no per-key re-benchmarking.
+# Numerics do not depend on the tile decomposition, and the autotuner objects
+# stay untouched so the entry points that still tune them keep their own pools.
+#
+# HEAD_DIM_PAD >= 256 is the exception: any tile wider than 32x64 overflows the
+# 917504-byte DSM budget (measured on D160/192/224/256), so those signatures use
+# the smallest tile, which is also what the autotuner converged to there.
+_PINNED_DQ_TILES = {
+    # (IS_CAUSAL, head_dim_pad bucket): (BLOCK_M, BLOCK_N, num_warps, num_stages)
+    (False, 64): (64, 128, 2, 3),
+    (False, 128): (64, 128, 2, 3),
+    (False, 256): (32, 64, 1, 2),
+    (True, 64): (128, 128, 2, 2),
+    (True, 128): (128, 128, 2, 2),
+    (True, 256): (32, 64, 1, 2),
+}
+
+_PINNED_DKV_TILES = {
+    (False, 64): (64, 128, 2, 2),
+    (False, 128): (128, 128, 2, 2),
+    (False, 256): (32, 64, 1, 2),
+    (True, 64): (64, 128, 2, 2),
+    (True, 128): (64, 64, 1, 2),
+    (True, 256): (32, 64, 1, 2),
+}
+
+
+def _pinned_tile(table, is_causal, head_dim_pad):
+    """Pinned (BLOCK_M, BLOCK_N, num_warps, num_stages) for one launch."""
+    bucket = 64 if head_dim_pad <= 64 else min(head_dim_pad, 256)
+    return table[(bool(is_causal), bucket)]
+
+
+def _launch_pinned(autotuner, grid, tile, *args, **meta):
+    """Launch one pinned tile through the raw JIT function.
+
+    Going through ``autotuner.fn`` bypasses the candidate sweep, so the launch
+    compiles (and caches) a single kernel while the shared autotuner object and
+    its pool remain available to the entry points that still autotune.
+    """
+    block_m, block_n, num_warps, num_stages = tile
+    return autotuner.fn[grid](
+        *args,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=num_warps,
+        num_stages=num_stages,
+        **meta,
+    )
+
+
 @triton.autotune(
     configs=_DQ_CONFIGS,
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
@@ -1255,7 +1313,10 @@ def flash_attn_backward(
         sb_m, sb_h, sb_n = _get_bias_strides_varlen(attn_bias if has_bias else None)
 
         grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
-        _flash_attn_bwd_varlen_dq_fused[grid_dq](
+        _launch_pinned(
+            _flash_attn_bwd_varlen_dq_fused,
+            grid_dq,
+            _pinned_tile(_PINNED_DQ_TILES, is_causal, head_dim_pad),
             Q,
             K,
             V,
@@ -1308,7 +1369,10 @@ def flash_attn_backward(
         )
 
         grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
-        _flash_attn_bwd_varlen_dkv[grid_dkv](
+        _launch_pinned(
+            _flash_attn_bwd_varlen_dkv,
+            grid_dkv,
+            _pinned_tile(_PINNED_DKV_TILES, is_causal, head_dim_pad),
             Q,
             K,
             V,
@@ -1372,7 +1436,10 @@ def flash_attn_backward(
 
         with _disable_aabs_for_small_seqlen(SeqLen_q, SeqLen_k):
             grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
-            _flash_attn_bwd_dq_fused[grid_dq](
+            _launch_pinned(
+                _flash_attn_bwd_dq_fused,
+                grid_dq,
+                _pinned_tile(_PINNED_DQ_TILES, is_causal, head_dim_pad),
                 Q,
                 K,
                 V,
@@ -1421,7 +1488,10 @@ def flash_attn_backward(
             )
 
             grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
-            _flash_attn_bwd_dkv[grid_dkv](
+            _launch_pinned(
+                _flash_attn_bwd_dkv,
+                grid_dkv,
+                _pinned_tile(_PINNED_DKV_TILES, is_causal, head_dim_pad),
                 Q,
                 K,
                 V,
