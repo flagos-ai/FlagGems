@@ -52,7 +52,11 @@ def _inputs(case):
 
 
 def _reference_inv(inp):
-    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
         # The MUSA PyTorch distribution builds CPU ATen without LAPACK.
         import numpy as np
 
