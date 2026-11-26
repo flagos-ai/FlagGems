@@ -252,6 +252,7 @@ from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .inverse import inverse
+from .isfinite import isfinite
 from .isin import isin
 from .isposinf import isposinf
 from .isreal import isreal
@@ -712,6 +713,7 @@ __all__ = [
     "index_select_backward",
     "inner",
     "inverse",
+    "isfinite",
     "isin",
     "isposinf",
     "isreal",
