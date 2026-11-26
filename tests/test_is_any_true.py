@@ -65,8 +65,7 @@ def test_is_any_true_arbitrary_rank(rank):
         ref_inp = utils.to_reference(inp)
     reference = torch.ops.aten._is_any_true.default(ref_inp)
     result = flag_gems._is_any_true(inp)
-    if use_cpu_reference:
-        assert result.device == inp.device
+    assert result.device == inp.device
     utils.gems_assert_equal(result, reference)
 
 
@@ -77,8 +76,10 @@ def test_is_any_true_scalar_and_expand():
         torch.tensor(False, device=flag_gems.device),
         torch.tensor(True, device=flag_gems.device).expand(17, 19),
     ):
+        result = flag_gems._is_any_true(inp)
+        assert result.device == inp.device
         utils.gems_assert_equal(
-            flag_gems._is_any_true(inp),
+            result,
             torch.ops.aten._is_any_true.default(utils.to_reference(inp)),
         )
 

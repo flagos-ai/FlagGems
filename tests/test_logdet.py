@@ -39,7 +39,11 @@ def _positive_definite(shape, dtype):
 
 
 def _reference_logdet(inp):
-    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
         # The MUSA PyTorch CPU build has no LAPACK. slogdet preserves tiny
         # determinants and distinguishes negative from singular matrices.
         import numpy as np
