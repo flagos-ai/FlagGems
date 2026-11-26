@@ -1018,6 +1018,7 @@ def _select_split_k(m, n, k, descriptor):
 # Native dot, block V, block K, warps, physical dot M, split K.
 _SKINNY_CONFIGS = {
     (1, 64, 4096): (False, 1, 4096, 16, 16, 1),
+    (1, 512, 4096): (False, 2, 4096, 8, 16, 1),
     (1, 4096, 1024): (True, 64, 256, 8, 32, 1),
     (2, 64, 4096): (False, 1, 4096, 16, 16, 1),
     (2, 512, 4096): (False, 2, 4096, 4, 16, 1),
