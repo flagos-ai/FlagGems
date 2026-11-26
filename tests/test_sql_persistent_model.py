@@ -4,15 +4,18 @@ These tests are device independent (sqlite backed); they run in the
 sqlalchemy-compat CI workflow against both supported SQLAlchemy majors.
 """
 
-import importlib
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from threading import Barrier
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import triton
 
+import flag_gems.utils.models.sql as sql_module
 from flag_gems.utils.models.sql import SQLPersistantModel
 
 
@@ -107,68 +110,107 @@ def test_parallel_connections_initialize_wal(tmp_path):
 
 
 @pytest.fixture
-def sqlite_connect_hook(tmp_path, monkeypatch):
-    module = importlib.import_module("flag_gems.utils.models.sql")
-    hooks = []
+def locked_sqlite_db(tmp_path):
+    path = tmp_path / "locked.db"
+    with closing(sqlite3.connect(path)) as reader:
+        reader.execute("CREATE TABLE sample (id INTEGER)")
+        reader.execute("BEGIN")
+        reader.execute("SELECT * FROM sample").fetchall()
+        with closing(sqlite3.connect(path, timeout=0.05)) as connection:
+            yield reader, connection
 
-    def listens_for(engine, event):
-        assert event == "connect"
 
-        def register(callback):
-            hooks.append(callback)
-            return callback
+def test_connection_retries_transient_lock(locked_sqlite_db, monkeypatch):
+    reader, connection = locked_sqlite_db
+    sleeps = []
 
-        return register
+    def release_lock(delay):
+        sleeps.append(delay)
+        assert connection.execute("PRAGMA busy_timeout").fetchone() == (0,)
+        reader.rollback()
 
-    monkeypatch.setattr(module.sqlalchemy.event, "listens_for", listens_for)
-    monkeypatch.setattr(time, "sleep", lambda _: None)
-    model = SQLPersistantModel(f"sqlite:///{tmp_path}/hook.db")
-    assert len(hooks) == 1
+    monkeypatch.setattr(
+        sql_module,
+        "time",
+        SimpleNamespace(monotonic=time.monotonic, sleep=release_lock),
+    )
+    sql_module._configure_sqlite_connection(connection, None)
+    assert len(sleeps) == 1
+    assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
+    assert connection.execute("PRAGMA synchronous").fetchone() == (1,)
+    assert connection.execute("PRAGMA busy_timeout").fetchone() == (50,)
+
+
+def test_connection_stops_retrying_at_deadline(locked_sqlite_db, monkeypatch):
+    _, connection = locked_sqlite_db
+    now = 0.0
+
+    def advance_clock(delay):
+        nonlocal now
+        assert connection.execute("PRAGMA busy_timeout").fetchone() == (0,)
+        now += delay
+
+    monkeypatch.setattr(
+        sql_module, "time", SimpleNamespace(monotonic=lambda: now, sleep=advance_clock)
+    )
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        sql_module._configure_sqlite_connection(connection, None)
+    assert now == pytest.approx(2.0)
+    assert connection.execute("PRAGMA busy_timeout").fetchone() == (50,)
+
+
+@pytest.fixture
+def stubbed_journal_mode_change():
+    responses = {
+        "PRAGMA busy_timeout": (30000,),
+        "PRAGMA journal_mode": ("delete",),
+        "PRAGMA database_list": (0, "main", "cache.db"),
+    }
+
+    def execute(statement):
+        result = responses.get(statement)
+        if isinstance(result, Exception):
+            raise result
+        return SimpleNamespace(fetchone=lambda: result)
+
+    cursor = Mock()
+    cursor.execute.side_effect = execute
+    return cursor, responses
+
+
+def test_connection_preserves_non_lock_error(stubbed_journal_mode_change):
+    cursor, responses = stubbed_journal_mode_change
+    error = sqlite3.OperationalError("disk I/O error")
+    responses["PRAGMA journal_mode=WAL"] = error
+    with pytest.raises(sqlite3.OperationalError) as caught:
+        sql_module._configure_sqlite_connection(
+            SimpleNamespace(cursor=lambda: cursor), None
+        )
+    assert caught.value is error
+    cursor.close.assert_called_once()
+
+
+def test_connection_rejects_file_database_without_wal(stubbed_journal_mode_change):
+    cursor, responses = stubbed_journal_mode_change
+    responses["PRAGMA journal_mode=WAL"] = ("delete",)
+    with pytest.raises(sqlite3.OperationalError, match=r"journal_mode=delete"):
+        sql_module._configure_sqlite_connection(
+            SimpleNamespace(cursor=lambda: cursor), None
+        )
+    cursor.execute.assert_called_with("PRAGMA busy_timeout=30000")
+    cursor.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "db_url", ["sqlite:///:memory:", "sqlite:///file:cache?mode=memory&uri=true"]
+)
+def test_connection_preserves_memory_journal_mode(db_url):
+    model = SQLPersistantModel(db_url)
     try:
-        yield hooks[0]
+        with model.engine.connect() as connection:
+            assert (
+                connection.exec_driver_sql("PRAGMA journal_mode").scalar() == "memory"
+            )
+            assert connection.exec_driver_sql("PRAGMA synchronous").scalar() == 1
     finally:
         model.engine.dispose()
-
-
-class _PragmaCursor:
-    def __init__(self, failure):
-        self.failure = failure
-        self.mode = "delete"
-        self.closed = False
-        self.synchronous = None
-
-    def cursor(self):
-        return self
-
-    def execute(self, statement):
-        if self.failure is not None:
-            failure, self.failure = self.failure, None
-            raise failure
-        if statement == "PRAGMA journal_mode=WAL":
-            self.mode = "wal"
-        elif statement == "PRAGMA synchronous=NORMAL":
-            self.synchronous = "normal"
-        return self
-
-    def fetchone(self):
-        return (self.mode,)
-
-    def close(self):
-        self.closed = True
-
-
-def test_connection_retries_transient_lock(sqlite_connect_hook):
-    cursor = _PragmaCursor(sqlite3.OperationalError("database is locked"))
-    sqlite_connect_hook(cursor, None)
-    assert cursor.mode == "wal"
-    assert cursor.synchronous == "normal"
-    assert cursor.closed
-
-
-def test_connection_preserves_non_lock_error(sqlite_connect_hook):
-    error = sqlite3.OperationalError("disk I/O error")
-    cursor = _PragmaCursor(error)
-    with pytest.raises(sqlite3.OperationalError) as caught:
-        sqlite_connect_hook(cursor, None)
-    assert caught.value is error
-    assert cursor.closed
