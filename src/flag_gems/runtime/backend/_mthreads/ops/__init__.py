@@ -68,6 +68,7 @@ from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._foreach_div__Tensor import _foreach_div__Tensor
 from ._foreach_div_List import _foreach_div_List
+from ._foreach_div_Scalar import _foreach_div_Scalar
 from ._foreach_div_ScalarList import _foreach_div_ScalarList
 from ._foreach_div_Tensor import _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf
@@ -356,6 +357,7 @@ __all__ = [
     "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
     "_foreach_div_List",
+    "_foreach_div_Scalar",
     "_foreach_div_ScalarList",
     "_foreach_div_Tensor",
     "_foreach_erf",
