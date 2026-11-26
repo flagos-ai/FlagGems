@@ -502,24 +502,66 @@ def fill_scalar_(self, value=0):
 # its graph and the backward tests (plain, mixed-dtype value gradient and the
 # double backward) would fail.  The gradient w.r.t. the input is exactly zero
 # and the gradient w.r.t. the value is the sum of the upstream gradient, which
-# is what the native formula produces.  The zero gradient is allocated natively
-# exactly as the common bridge does, and the value gradient reuses the common
-# ``_value_gradient`` / ``_GradSum`` helpers so the double-backward path stays
-# in Triton.
-from flag_gems.ops.fill import _value_gradient  # noqa: E402
+# is what the native formula produces.  Both halves are produced by this
+# backend: the zero gradient by the tuned flat write kernel below, and the
+# value gradient by the backend ``sum`` kernel instead of the shared one.
+from flag_gems.runtime.backend._enflame.gcu400.ops.sum import (  # noqa: E402
+    sum as _backend_sum,
+)
 
 
 def _zero_grad(input):
-    """Constant (zero) gradient, allocated natively like the common bridge.
+    """Constant (zero) gradient, written by the tuned flat write kernel.
 
-    This is the zero element of the gradient, not the operator's math: the
-    common ``_FillScalar``/``_FillTensor`` backward returns
-    ``torch.zeros_like(grad_output)`` and the fill kernels stay Triton.  A
-    Triton launch from the autograd engine thread costs ~100us on gcu400, so
-    running the trivial zero fill through a kernel there only slows the
-    backward down.
+    This is the zero element of the gradient, not the operator's math, but
+    ``torch.zeros_like`` under gems dispatch runs the shared ``zeros_like``
+    kernel, which caps the grid at 24 programs and launches a single warp
+    (~1733 GB/s measured on a 16 Mi-element fp16 gradient, 19.4us against
+    15.1us for the flat write).  The flat write kernel in this file is already
+    tuned against the DRAM write wall (``_flat_block`` / ``_FLAT_MAX_GRID``), so
+    reusing it keeps this half of the backward a pure bandwidth stream.  64-bit
+    / complex element stores are unreliable on this backend, so those dtypes
+    keep the native allocation.
     """
+    out = torch.empty_like(input)
+    if _fill_scalar_flat_eligible_fresh(input, out):
+        _fill_scalar_flat(out, 0.0)
+        return out
     return torch.zeros_like(input)
+
+
+class _ValueGradSum(torch.autograd.Function):
+    """Full reduction of the upstream gradient, kept differentiable.
+
+    The shared bridge reduces with ``flag_gems.ops.sum``: 275.8us / 122 GB/s on
+    a 16 Mi-element fp16 gradient, i.e. the whole fill backward, against 25.0us
+    / 1340 GB/s for the backend ``sum`` kernel that also serves ``aten::sum``.
+    The autograd wrapper is preserved so the double-backward path still goes
+    through ``_FillTensor``.
+    """
+
+    @staticmethod
+    def forward(ctx, input):
+        ctx.shape = input.shape
+        ctx.dtype = input.dtype
+        ctx.device = input.device
+        return _backend_sum(input)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        empty = torch.empty(ctx.shape, dtype=ctx.dtype, device=ctx.device)
+        return _FillTensor.apply(empty, grad_output)
+
+
+def _value_gradient(grad_output, value_device):
+    grad_value = (
+        _ValueGradSum.apply(grad_output)
+        if torch.is_grad_enabled()
+        else _backend_sum(grad_output)
+    )
+    if grad_value.device != value_device:
+        grad_value = grad_value.to(value_device)
+    return grad_value
 
 
 class _FillScalar(torch.autograd.Function):
@@ -545,7 +587,9 @@ class _FillTensor(torch.autograd.Function):
             # that builds its gradient would only cost a launch (~100us from
             # the engine thread on gcu400).
             return _zero_grad(grad_output), None
-        return _zero_grad(grad_output), _value_gradient(grad_output, ctx.value_device)
+        return _zero_grad(grad_output), _value_gradient(
+            grad_output, ctx.value_device
+        )
 
 
 def fill_scalar(input, value):

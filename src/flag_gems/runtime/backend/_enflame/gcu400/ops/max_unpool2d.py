@@ -209,6 +209,8 @@ def max_unpool2d_backward_kernel(
     grad_input_ptr,
     out_plane,
     pooled_plane,
+    LOW_WORD: tl.constexpr,
+    EVEN: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """Gather the incoming gradient with the forward max-pool indices.
@@ -217,18 +219,34 @@ def max_unpool2d_backward_kernel(
     ``grad_input[n, c, i] = grad_output[n, c].flatten()[indices[n, c, i]]``,
     i.e. a pure gather over the flattened spatial plane. Duplicate indices
     therefore read the same source element instead of accumulating.
+
+    ``LOW_WORD`` means the index buffer is an int32 view of the int64 indices:
+    the plane offsets fit int32, so the low word of every int64 element is the
+    index itself.  Reading that word in the kernel removes the separate
+    host-side int64 -> int32 cast kernel that used to double the launch count
+    of this one-launch gather.
     """
     plane = tl.program_id(0)
     offs = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < pooled_plane
 
+    words = 2 if LOW_WORD else 1
     in_base = plane * pooled_plane
     out_base = plane * out_plane
+    idx_offs = in_base * words + offs * words
 
-    flat_idx = tl.load(indices_ptr + in_base + offs, mask=mask, other=-1)
-    valid = mask & (flat_idx >= 0) & (flat_idx < out_plane)
-    vals = tl.load(grad_output_ptr + out_base + flat_idx, mask=valid, other=0.0)
-    tl.store(grad_input_ptr + in_base + offs, vals, mask=mask)
+    if EVEN:
+        # Every lane maps to a real pooled element, so only the gather itself
+        # stays predicated (an out-of-range saved index must not fault).
+        flat_idx = tl.load(indices_ptr + idx_offs)
+        valid = (flat_idx >= 0) & (flat_idx < out_plane)
+        vals = tl.load(grad_output_ptr + out_base + flat_idx, mask=valid, other=0.0)
+        tl.store(grad_input_ptr + in_base + offs, vals)
+    else:
+        mask = offs < pooled_plane
+        flat_idx = tl.load(indices_ptr + idx_offs, mask=mask, other=-1)
+        valid = mask & (flat_idx >= 0) & (flat_idx < out_plane)
+        vals = tl.load(grad_output_ptr + out_base + flat_idx, mask=valid, other=0.0)
+        tl.store(grad_input_ptr + in_base + offs, vals, mask=mask)
 
 
 def _max_unpool2d_backward_impl(grad_output, indices, pooled_shape):
@@ -247,15 +265,24 @@ def _max_unpool2d_backward_impl(grad_output, indices, pooled_shape):
     if pooled_plane != 0:
         # int64 gather indices are unsafe on this stack (see the int64 notes in
         # the GCU400 bincount kernel): the plane offset fits int32 for every
-        # realistic unpooled size, so downcast once on the host.
-        indices32 = indices4d.to(torch.int32)
+        # realistic unpooled size.  A bit view instead of `.to(torch.int32)`
+        # keeps the values (little-endian low word) without launching a
+        # separate cast kernel on every call.
+        if indices4d.dtype == torch.int64:
+            indices_idx = indices4d.view(torch.int32)
+            low_word = True
+        else:
+            indices_idx = indices4d
+            low_word = False
         grid = (n * c, triton.cdiv(pooled_plane, _BACKWARD_BLOCK))
         max_unpool2d_backward_kernel[grid](
             grad4d,
-            indices32,
+            indices_idx,
             grad_input4d,
             out_plane,
             pooled_plane,
+            LOW_WORD=low_word,
+            EVEN=(pooled_plane % _BACKWARD_BLOCK == 0),
             BLOCK=_BACKWARD_BLOCK,
             num_warps=_BACKWARD_WARPS,
         )

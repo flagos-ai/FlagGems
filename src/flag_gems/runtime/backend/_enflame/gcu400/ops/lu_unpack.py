@@ -401,10 +401,14 @@ def lu_unpack_grad_kernel(
     HAS_U: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    FOLD_M: tl.constexpr,
 ):
     """Repack ``grad_L`` / ``grad_U`` into the packed ``grad_LU`` layout.
 
-    Grid: ``(batch, cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))``. The three tensors are
+    Grid: ``(batch, cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))``, or
+    ``(batch * cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))`` when ``FOLD_M`` is set —
+    the launcher caps grid.y at 255 and a tall matrix (4096 rows at
+    BLOCK_M=8) needs 512 row blocks.  The three tensors are
     contiguous, so offsets follow from ``m``, ``n`` and ``k = min(m, n)`` alone.
 
     ``L``'s strict lower triangle and ``U``'s closed upper triangle have
@@ -421,9 +425,16 @@ def lu_unpack_grad_kernel(
     Each position is therefore at most one real value plus an exact ``0.0``, so
     the repack is bit-exact for every supported dtype.
     """
-    batch_id = tl.program_id(0)
-    pid_m = tl.program_id(1)
-    pid_n = tl.program_id(2)
+    if FOLD_M:
+        num_m = tl.cdiv(m, BLOCK_M)
+        pid = tl.program_id(0)
+        batch_id = pid // num_m
+        pid_m = pid % num_m
+        pid_n = tl.program_id(1)
+    else:
+        batch_id = tl.program_id(0)
+        pid_m = tl.program_id(1)
+        pid_n = tl.program_id(2)
 
     k = tl.minimum(m, n)
     rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -557,14 +568,17 @@ def lu_unpack_backward(grad_L, grad_U, m, n):
     plan = _LAUNCH_PLAN_CACHE.get(plan_key)
     if plan is None:
         block_m, block_n, num_warps = _launch_plan(m, n, numel, source.element_size())
-        plan = (
-            (numel // (m * n), triton.cdiv(m, block_m), triton.cdiv(n, block_n)),
-            block_m,
-            block_n,
-            num_warps,
-        )
+        num_m = triton.cdiv(m, block_m)
+        num_n = triton.cdiv(n, block_n)
+        batch = numel // (m * n)
+        # grid.y is capped at 255 on this backend: once a tall matrix needs
+        # more row blocks than that (4096 rows at BLOCK_M=8 -> 512), fold the
+        # row-block axis into grid.x and decode it inside the kernel.
+        fold_m = num_m > 255
+        grid = (batch * num_m, num_n) if fold_m else (batch, num_m, num_n)
+        plan = (grid, block_m, block_n, num_warps, fold_m)
         _LAUNCH_PLAN_CACHE[plan_key] = plan
-    grid, block_m, block_n, num_warps = plan
+    grid, block_m, block_n, num_warps, fold_m = plan
 
     with torch_device_fn.device(source.device):
         lu_unpack_grad_kernel[grid](
@@ -577,6 +591,7 @@ def lu_unpack_backward(grad_L, grad_U, m, n):
             HAS_U=has_u,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
+            FOLD_M=fold_m,
             num_warps=num_warps,
         )
     return grad_lu

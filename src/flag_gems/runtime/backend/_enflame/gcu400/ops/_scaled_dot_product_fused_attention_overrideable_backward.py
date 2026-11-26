@@ -20,115 +20,54 @@ import torch
 import triton
 
 from .flash_attention_backward import (
+    _PINNED_DKV_TILES,
+    _PINNED_DQ_TILES,
     _disable_aabs_for_small_seqlen,
     _flash_attn_bwd_dkv,
     _flash_attn_bwd_dq_fused,
     _get_bias_strides_dense,
+    _launch_pinned,
     _parse_philox,
+    _pinned_tile,
     flash_attn_backward,
 )
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# GCU400 (L600/Libra) tuning extension for the dense backward kernels.
+# GCU400 (L600/Libra) launch strategy for the dense backward kernels.
 #
-# The upstream autotune pools only carry num_warps>=4 tiles; on GCU400 the
-# [64,128]-class dot tiles are markedly faster at 1-2 warps (measured
-# 2026-11-10: dq 64x128/nw2 -38% on large shapes, dkv 128x64/nw1 -15%), and
-# causal/non-causal optima differ (S2048/D128 dkv two-state gap 1.6x), so
-# IS_CAUSAL must be part of the autotune cache key. Both changes are applied
-# idempotently to the vendor autotuner objects at import time; kernel logic
-# and numerics are config-invariant (gradient values do not depend on the
-# tile decomposition).
+# The shared autotune pools hold 8-9 candidates per kernel and Triton compiles
+# every candidate it benchmarks, so the first specialization of this operator
+# paid 19 device builds (~127 s measured on GCU400) and every further
+# (head_dim, dtype, causal, bias) variant paid the sweep again -- the accuracy
+# matrix visits dozens of variants, which is what made the cold start dominate
+# the whole run.
+#
+# The launches below therefore hand one pinned tile per (kernel, causal,
+# head_dim bucket) directly to the JIT function, the same mechanism the
+# ``flash_attn_backward`` entry point in this backend uses: exactly one build
+# per specialization and no per-key re-benchmarking. The pinned tables already
+# carry the GCU400 winners (1-2 warp [64,128]-class dot tiles); numerics are
+# config-invariant, so the gradient values do not depend on the tile
+# decomposition.
 # ---------------------------------------------------------------------------
-_GCU400_DQ_EXTRA_CONFIGS = [
-    (64, 128, 2, 2),
-    (64, 128, 1, 2),
-    (64, 128, 2, 3),
-    (64, 64, 2, 2),
-    (128, 128, 2, 2),
-]
-
-_GCU400_DKV_EXTRA_CONFIGS = [
-    (128, 64, 1, 2),
-    (128, 64, 2, 2),
-    (128, 128, 2, 2),
-    (64, 128, 1, 2),
-    (64, 128, 2, 2),
-    (64, 64, 1, 2),
-]
-
-
-# dq tiles wider than 64 keys compile for every variant except the attention
-# bias gradient one: with DO_BIAS_GRAD set the GCU400 pipeline rejects the
-# f32 -> f32 `arith.extf` left over from the ds_lo residual cast of the dq
-# kernel body ("operand type ... and result type ... are cast incompatible"),
-# so the whole launch fails. BLOCK_N=64 tiles compile and run for that variant
-# (measured on GCU400, seqlen 128 / head_dim 64), and the wide tiles only exist
-# in this file's extension pool, so pruning them for the bias-gradient variant
-# leaves every previously working path untouched. The dkv kernel is unaffected
-# and keeps its full pool.
-_DQ_WIDE_TILE_MIN_BLOCK_N = 128
-
-
-def _prune_wide_dq_tiles_for_bias_grad(configs, named_args, **kwargs):
-    do_bias_grad = kwargs.get("DO_BIAS_GRAD")
-    if do_bias_grad is None:
-        do_bias_grad = named_args.get("DO_BIAS_GRAD", False)
-    if not do_bias_grad:
-        return configs
-    return [
-        config
-        for config in configs
-        if config.kwargs.get("BLOCK_N", 0) < _DQ_WIDE_TILE_MIN_BLOCK_N
-    ]
-
-
-def _compose_dq_prune(previous_prune):
-    def pruned(configs, named_args, **kwargs):
-        if previous_prune is not None:
-            configs = previous_prune(configs, named_args, **kwargs)
-        return _prune_wide_dq_tiles_for_bias_grad(configs, named_args, **kwargs)
-
-    return pruned
-
-
-def _extend_gcu400_autotune_configs():
-    for autotuner, extras in (
-        (_flash_attn_bwd_dq_fused, _GCU400_DQ_EXTRA_CONFIGS),
-        (_flash_attn_bwd_dkv, _GCU400_DKV_EXTRA_CONFIGS),
-    ):
-        existing = {
-            (
-                config.kwargs.get("BLOCK_M"),
-                config.kwargs.get("BLOCK_N"),
-                config.num_warps,
-                config.num_stages,
-            )
-            for config in autotuner.configs
-        }
-        for block_m, block_n, num_warps, num_stages in extras:
-            if (block_m, block_n, num_warps, num_stages) in existing:
-                continue
-            autotuner.configs.append(
-                triton.Config(
-                    {"BLOCK_M": block_m, "BLOCK_N": block_n},
-                    num_warps=num_warps,
-                    num_stages=num_stages,
-                )
-            )
-            existing.add((block_m, block_n, num_warps, num_stages))
-        keys = getattr(autotuner, "keys", None)
-        if keys is not None and "IS_CAUSAL" not in keys:
-            keys.append("IS_CAUSAL")
-    if not getattr(_flash_attn_bwd_dq_fused, "_gcu400_bias_grad_prune", False):
-        previous_prune = getattr(_flash_attn_bwd_dq_fused, "early_config_prune", None)
-        _flash_attn_bwd_dq_fused.early_config_prune = _compose_dq_prune(previous_prune)
-        _flash_attn_bwd_dq_fused._gcu400_bias_grad_prune = True
-
-
-_extend_gcu400_autotune_configs()
+# ``DO_BIAS_GRAD`` narrows what the dq kernel can compile: with the flag set,
+# the GCU400 pipeline rejects the f32 -> f32 ``arith.extf`` left over from the
+# ds_lo residual cast of the dq kernel body ("operand type ... and result type
+# ... are cast incompatible") for every BLOCK_N >= 128 tile, so the whole
+# launch fails. BLOCK_N=64 tiles compile and run for that variant (measured on
+# GCU400, seqlen 128 / head_dim 64); the dkv kernel is unaffected and keeps
+# the wide pinned tiles.
+_DQ_BIAS_GRAD_TILES = {
+    # (IS_CAUSAL, head_dim_pad bucket): (BLOCK_M, BLOCK_N, num_warps, num_stages)
+    (False, 64): (64, 64, 2, 2),
+    (False, 128): (64, 64, 2, 2),
+    (False, 256): (32, 64, 1, 2),
+    (True, 64): (64, 64, 2, 2),
+    (True, 128): (64, 64, 2, 2),
+    (True, 256): (32, 64, 1, 2),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -187,10 +126,17 @@ def _dense_bhsd_direct_backward(
         query.is_contiguous()
         and key.is_contiguous()
         and value.is_contiguous()
-        and out.is_contiguous()
         and grad_out.is_contiguous()
     ):
         return None
+    if not out.is_contiguous():
+        # ATen's fused forward hands back `out` as a BHSD view of a BSHD
+        # buffer, while the kernels address Out and dOut through a single
+        # stride set. Materialise the BHSD layout of `out` alone instead of
+        # dropping to the fallback, which permutes and copies every operand.
+        if out.stride(3) != 1:
+            return None
+        out = out.contiguous()
     if grad_out.shape != out.shape:
         return None
     if logsumexp.dim() != 3 or logsumexp.dtype != torch.float32:
@@ -354,15 +300,23 @@ def _dense_bhsd_direct_backward(
         "HAS_BIAS": has_bias,
     }
 
+    dq_tile_table = _DQ_BIAS_GRAD_TILES if bias_req_grad else _PINNED_DQ_TILES
+    dq_tile = _pinned_tile(dq_tile_table, is_causal, head_dim_pad)
+    dkv_tile = _pinned_tile(_PINNED_DKV_TILES, is_causal, head_dim_pad)
+
     with _disable_aabs_for_small_seqlen(SeqLen_q, SeqLen_k):
         grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
         _launch_kernel_with_retry(
-            lambda: _flash_attn_bwd_dq_fused[grid_dq](*dq_args, **dq_kwargs),
+            lambda: _launch_pinned(
+                _flash_attn_bwd_dq_fused, grid_dq, dq_tile, *dq_args, **dq_kwargs
+            ),
             "flash_attn_bwd_dq_fused",
         )
         grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
         _launch_kernel_with_retry(
-            lambda: _flash_attn_bwd_dkv[grid_dkv](*dkv_args, **dkv_kwargs),
+            lambda: _launch_pinned(
+                _flash_attn_bwd_dkv, grid_dkv, dkv_tile, *dkv_args, **dkv_kwargs
+            ),
             "flash_attn_bwd_dkv",
         )
 
