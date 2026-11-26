@@ -55,8 +55,9 @@ def topk_gating_softmax_kernel(
     k_valid = k_ar < K
 
     if renormalize:
-        # softmax 的全局分母在 renorm 中约掉：直接在 logits 上做 top-k，
-        # 只对选中的 K 个 logit 做 exp + 归一化。
+        # The global softmax denominator cancels in renormalization: select
+        # top-k directly in the logits domain and only exp/normalize the K
+        # selected logits.
         weights = tl.full([BLOCK_ROWS, KB], -float("inf"), dtype=tl.float32)
         work = logits
         for ki in tl.static_range(K):
@@ -82,7 +83,8 @@ def topk_gating_softmax_kernel(
         out_mask = row_mask[:, None] & k_valid[None, :]
         tl.store(output_ptr + out_offs, weights, mask=out_mask)
     else:
-        # 输出是 softmax 概率本身，需要完整的分母。
+        # The output is the softmax probability itself, so the full softmax
+        # denominator is required.
         row_max = tl.max(logits, axis=1)
         exp_vals = tl.exp(logits - row_max[:, None])
         denom = tl.sum(exp_vals, axis=1) + 1e-8
