@@ -26,6 +26,7 @@ from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
 from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_add_ScalarList import _foreach_add_ScalarList as _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
@@ -307,6 +308,7 @@ __all__ = [
     "_foreach_add__List",
     "_foreach_add__Scalar",
     "_foreach_add__ScalarList",
+    "_foreach_add_ScalarList",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
