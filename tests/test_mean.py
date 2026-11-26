@@ -204,3 +204,22 @@ def test_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
     res_out = flag_gems.mean_dim(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mean_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="only the Ascend mean_dim accepts dim=None; the generic mean_dim"
+    " requires an int, an iterable of ints or []",
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_mean_dim_none_keepdim(keepdim):
+    """dim=None must honour keepdim: scalar when False, [1] * ndim when True."""
+    inp = torch.randn((2, 3, 4), device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp, dim=None, keepdim=keepdim)
+    res_out = flag_gems.mean_dim(inp, None, keepdim)
+
+    assert res_out.shape == ref_out.shape
+    utils.gems_assert_close(res_out, ref_out, inp.dtype)
