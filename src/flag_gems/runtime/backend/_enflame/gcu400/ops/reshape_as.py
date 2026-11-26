@@ -502,8 +502,11 @@ def reshape_as(self: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
     This is equivalent to ``self.reshape(other.size())``: a stride-expressible
     target returns a view of ``self``, anything else a materialized copy.
     """
-    # The dispatch test greps this exact string; keep the shared wording.
-    logger.debug("GEMS_ENFLAMERESHAPE_AS")
+    # tests/test_reshape_as.py counts the historical "GEMS RESHAPE_AS" token to
+    # prove the dispatch really reached this kernel, while the Enflame backend
+    # convention requires the "GEMS_ENFLAME" prefix. One message carries both so
+    # the shared test needs no edit.
+    logger.debug("GEMS_ENFLAME GEMS RESHAPE_AS")
     if not isinstance(self, torch.Tensor):
         raise TypeError("reshape_as expects a torch.Tensor input for 'self'")
     if not isinstance(other, torch.Tensor):

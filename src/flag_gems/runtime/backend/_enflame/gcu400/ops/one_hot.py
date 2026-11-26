@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 # cheaper; above it the two-stage "fill zeroes + scatter ones" path saturates the
 # int64 write bandwidth.
 _FLAT_MAX_ELEMENTS = 1 << 19
+# Fused min/max validation kernel: one program scans the whole index tensor, so
+# only use it while that is still cheaper than two parallel aten reductions.
+_MINMAX_ONESHOT_MAX = 1 << 18
+_MINMAX_BLOCK = 4096
 _FLAT_BLOCK = 4096
 _FILL_BLOCK = 32768
 _SCATTER_BLOCK = 1024
@@ -70,6 +74,32 @@ def one_hot_flat_kernel(
 
 
 @triton.jit
+def one_hot_minmax_kernel(index_ptr, out_ptr, numel, BLOCK: tl.constexpr):
+    """Compute min and max of the class indices in a single launch.
+
+    ``aten::one_hot`` needs both bounds (non-negative and below ``num_classes``).
+    Calling ``tensor.max().item()`` and ``tensor.min().item()`` costs two
+    launches *and* two device synchronisations per call; one launch that stores
+    both scalars lets the host read them with a single sync.
+    """
+    offsets = tl.arange(0, BLOCK)
+    running_min = tl.full((), 9223372036854775807, tl.int64)
+    running_max = tl.full((), -9223372036854775808, tl.int64)
+    for start in range(0, numel, BLOCK):
+        idx = start + offsets
+        mask = idx < numel
+        vals = tl.load(index_ptr + idx, mask=mask, other=0)
+        running_min = tl.minimum(
+            running_min, tl.min(tl.where(mask, vals, 9223372036854775807))
+        )
+        running_max = tl.maximum(
+            running_max, tl.max(tl.where(mask, vals, -9223372036854775808))
+        )
+    tl.store(out_ptr, running_min)
+    tl.store(out_ptr + 1, running_max)
+
+
+@triton.jit
 def one_hot_fill_kernel(out_ptr, total, BLOCK: tl.constexpr):
     """Fill the whole output buffer with 0 (pure int64 fill, no computation)."""
     block_id = tle.program_id(0) + tle.program_id(1) * tle.num_programs(0)
@@ -101,6 +131,21 @@ def one_hot_scatter_kernel(
     )
 
 
+def _index_bounds(tensor: torch.Tensor):
+    """Return (min, max) of the class indices as Python ints.
+
+    Small tensors take the fused single-launch min/max kernel (one device
+    synchronisation instead of two); larger ones keep the aten reductions so the
+    whole tensor is still scanned by a parallel grid.
+    """
+    if tensor.numel() <= _MINMAX_ONESHOT_MAX:
+        bounds = torch.empty(2, device=tensor.device, dtype=torch.int64)
+        one_hot_minmax_kernel[(1,)](tensor, bounds, tensor.numel(), BLOCK=_MINMAX_BLOCK)
+        min_index, max_index = bounds.tolist()
+        return int(min_index), int(max_index)
+    return int(tensor.min().item()), int(tensor.max().item())
+
+
 def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     logger.debug("GEMS_ENFLAME ONE_HOT")
     numel = tensor.numel()
@@ -109,36 +154,33 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     # must stay below `num_classes`. Without these checks out-of-range indices
     # silently write past the row (or produce an empty output), which is what the
     # `pytest.raises(RuntimeError)` contract of the accuracy test checks.
-    if num_classes == -1:
+    if numel == 0:
         # On this backend the max reduction on a tensor with no elements aborts
         # the process instead of raising, so mirror torch.nn.functional.one_hot's
         # Python-level error here.
-        if numel == 0:
+        if num_classes == -1:
             raise RuntimeError(
                 "cannot perform reduction function max on tensor with no elements "
                 "because the operation does not have an identity"
             )
-        max_index = int(tensor.max().item())
-        num_classes = max_index + 1
-    elif numel > 0:
-        max_index = int(tensor.max().item())
-    else:
-        max_index = None
-
-    if max_index is not None:
-        if int(tensor.min().item()) < 0:
-            raise RuntimeError("Class values must be non-negative.")
-        if max_index >= num_classes:
-            raise RuntimeError("Class values must be smaller than num_classes.")
+        return torch.empty(
+            (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
+        )
 
     if not tensor.is_contiguous():
         tensor = tensor.contiguous()
 
+    min_index, max_index = _index_bounds(tensor)
+    if min_index < 0:
+        raise RuntimeError("Class values must be non-negative.")
+    if num_classes == -1:
+        num_classes = max_index + 1
+    elif max_index >= num_classes:
+        raise RuntimeError("Class values must be smaller than num_classes.")
+
     out = torch.empty(
         (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
     )
-    if numel == 0:
-        return out
 
     total = numel * num_classes
     # Power-of-two class counts replace the per-element div/mod with shift + mask.

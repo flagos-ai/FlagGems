@@ -116,9 +116,17 @@ def test_nanmean_edge():
 
     # all NaN in a row -> result is NaN
     x = torch.full((5, 5), float("nan"), device=device)
-    ref_out = torch.nanmean(x, dim=1)
+    # torch_gcu segfaults inside aten::nanmean as soon as a reduction window is
+    # entirely NaN, so the reference for that check is evaluated on the host for
+    # enflame and stays on the device for every other vendor.
     res = flag_gems.nanmean(x, dim=1)
-    torch.testing.assert_close(res, ref_out, equal_nan=True)
+    if flag_gems.vendor_name == "enflame":
+        torch.testing.assert_close(
+            res.cpu(), torch.nanmean(x.cpu(), dim=1), equal_nan=True
+        )
+    else:
+        ref_out = torch.nanmean(x, dim=1)
+        torch.testing.assert_close(res, ref_out, equal_nan=True)
 
     # no NaN present -> equals mean
     x = torch.randn((4, 8), device=device)
@@ -164,6 +172,15 @@ def test_nanmean_zero_sized_free_dimensions(shape, dim, keepdim):
 @pytest.mark.nanmean
 @pytest.mark.parametrize(
     "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten defect: torch_gcu has no complex nanmean datapath and aborts the "
+        "process, while the CPU fallback raises 'nansum_cpu not implemented for "
+        "ComplexFloat', so no aten reference exists for a real-to-complex "
+        "nanmean"
+    ),
 )
 def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:

@@ -37,24 +37,41 @@ _STEP_BLOCK = 1024
 
 # ---------------------------------------------------------------------------
 # Real-number fast path (GCU400 has no tt.scan, and custom associative_scan / 2D cumsum /
-# scalar branches inside loops are all measured pathologies). Structure: each program claims several rows, and advances
-# serially
-# within a row in chunks of width _SCAN_V; the in-chunk prefix is computed in one triangular-matrix dot,
-# and cross-chunk folding uses an ATen-semantics _logaddexp scalar chain. The dot's 0*inf pollution is
-# avoided with magnitude encoding (NaN->1e35, +inf->1e30; restore when the prefix sum exceeds 1e34/1e29).
-# Dynamic-range underflow within a chunk (prefix sum is 0) is marked by a per-row float flag and handed to a
-# separate repair kernel for exact recomputation—the branch must stay out of the hot kernel (measurements show that
-# placing
-# a branch inside the loop incurs a 2.9-3.7× compile-time tax even if it never triggers).
+# scalar branches inside loops are all measured pathologies).
+#
+# Structure: each program claims several rows and advances serially along a row in chunks of
+# width V. The in-chunk prefix comes from one [R,V]x[V,V] triangular dot, and the cross-chunk
+# carry is accumulated in the exp domain (acc = sum of exp over all earlier chunks), so a chunk
+# costs exactly two cross-lane ops: the dot and one sum reduce. That count is what sets the
+# speed -- every cross-lane op pushes the whole tile through dsm at roughly 8 B/element
+# (~100 GB/s measured), so ~0.16-0.55 us per op depending on tile size, and the kernel time
+# tracks ops * elements rather than arithmetic.
+#
+# The whole row therefore shares a single shift: the max of its first chunk, paid once per row
+# (PER_CHUNK_SHIFT keeps the exact per-chunk max for single-chunk rows, where it is free).
+# Rows that the shift cannot cover -- an exponent underflowing to 0, or an accumulator large
+# enough to hit the magnitude encoding -- set a per-row flag and are recomputed exactly by the
+# repair kernel. That branch must stay out of the hot kernel (a branch inside the loop measured
+# a 2.9-3.7x compile-time tax even when never taken).
+#
+# The dot's 0*inf pollution is avoided with magnitude encoding (NaN->1e35, +inf->1e30; restated
+# as NaN/+inf when the prefix sum exceeds 1e34/1e29).
 # ---------------------------------------------------------------------------
-_SCAN_CAP = 255
-# Shapes with fewer rows (short rows, many rows) use 256-wide row segments + small R; with more rows, switch to 128-wide
-# + large R
-# to amortize per-row overhead. R/V combinations are constrained by the compiler: a 4096-lane tile (R32/V128, R16/V256)
-# triggers an ld.lld R_DTU_ADDR16_*_ICALL relocation crash and must be avoided.
-_SCAN_SMALL_ROWS = 512
-_SCAN_SMALL = (256, 8)
-_SCAN_LARGE = (128, 64)
+_SCAN_CAP = 512
+# Chunk width: 128 keeps the triangular operand small enough (a 256-wide tri needs >1 MB of dsm
+# and caps R at 8), and narrower chunks measured worse (V64/R32: 32.1 ms against 11.0 ms for
+# V128/R32 on (1024,65536)).
+_SCAN_V = 128
+# Tile size: 4096 lanes (V128/R32) beat both 2048- (R16: 9.87 ms) and 8192-lane (R64: 7.15 ms)
+# tiles on (1024,65536) at 5.53 ms, which is why the lane budget stops there.
+_SCAN_LANES = 4096
+_SCAN_R_MAX = 32
+# The block count is kept at >= _SCAN_MIN_BLOCKS so short rows still spread over the machine,
+# and never below _SCAN_R_MIN (a 1-row dot came back all-NaN).
+_SCAN_R_MIN = 8
+_SCAN_MIN_BLOCKS = 16
+# dsm is what bounds R at a given V: a 256-wide tri already needs >1 MB at R=16.
+_SCAN_R_CAP = {256: 8, 128: 32}
 
 
 @triton.jit
@@ -262,16 +279,33 @@ def _logcumsumexp_scan_kernel(
     num_chunks,
     R: tl.constexpr,
     V: tl.constexpr,
+    MASKED: tl.constexpr,
+    PER_CHUNK_SHIFT: tl.constexpr,
 ):
     """Single pass of the real fast path: intra-chunk prefixes via a triangular dot, chunks folded
 
-    with _logaddexp. Each program claims several [R, V] row blocks with stride rb; per chunk:
-    (1) take the chunk candidate max (excluding +inf/NaN, clamped to 0 when all empty so the
-    -inf shift does not produce NaN); (2) after exp, encode magnitude (NaN->1e35, +inf->1e30) so
-    the dot's 0*inf does not produce NaN; (3) s = e @ tri gives the intra-chunk prefix sum (fp32
-    ieee dot) and restores NaN/+inf at the 1e34/1e29 thresholds -- a finite prefix sum never
-    exceeds V*1, far below them; (4) _logaddexp with the cross-chunk carry (ATen pairwise
-    semantics, bit-identical on +-inf/NaN); (5) flag rows whose prefix sum is 0 (range underflow).
+    in the exp domain. Each program claims several [R, V] row blocks with stride rb; the whole
+    row shares one shift (PER_CHUNK_SHIFT=False: the max of its first chunk), so a chunk costs
+    one dot plus one reduce:
+
+    (1) e = exp(x - shift); encode magnitude (NaN->1e35, +inf->1e30) so the dot's 0*inf does not
+    produce NaN; (2) s = e @ tri gives the intra-chunk prefix sum (fp32 ieee dot); (3) the running
+    row prefix acc is kept as a sum of exp, so the tail is just acc + s, restored to NaN/+inf at
+    the 1e34/1e29 thresholds (finite values never reach them) and logged back with the shift;
+    (4) the same reduce that accumulates the chunk into acc also reports rows whose exponent hit
+    zero -- any zero prefix means the whole chunk prefix was lost to the shift, so the row is
+    flagged and recomputed exactly by the repair launch.
+
+    A per-chunk max would be as expensive as the dot itself (a tile reduce moves the whole tile
+    through dsm, ~8 B/element, which is what bounds this kernel), so it is paid once per row
+    instead: exp(x - shift) stays in range because the shift is the row max of its first chunk,
+    and any row where it is not ends up flagged. PER_CHUNK_SHIFT=True keeps the old behaviour for
+    single-chunk rows, where the shift is free anyway.
+
+    MASKED selects between the general form and the aligned form (rows % R == 0 and N % V == 0),
+    where the row/column predicates disappear entirely. The masked form costs ~7% on every
+    iteration and, on a large tile, is what pushes dsm past its limit, so aligned shapes take
+    the maskless branch.
     """
     pid = tle.program_id(0)
     nprog = tl.num_programs(0)
@@ -284,45 +318,81 @@ def _logcumsumexp_scan_kernel(
         r = rb * R + tl.arange(0, R)
         rv = r < rows
         base = (r // K) * N * K + (r % K)
-        carry = tl.full([R], float("-inf"), dtype=tl.float32)
+        acc = tl.zeros([R], dtype=tl.float32)
         uf = tl.zeros([R], dtype=tl.float32)
+        if PER_CHUNK_SHIFT:
+            shift = tl.zeros([R], dtype=tl.float32)
+        else:
+            # Row anchor: the first chunk's max. It is an upper bound for the chunk it comes
+            # from and, for any realistic row, close enough to the rest of the row that
+            # exp(x - shift) neither overflows nor loses the sign of the prefix.
+            if MASKED:
+                lv0 = lanes < N
+                x0 = tl.load(
+                    src + base[:, None] + lanes[None, :] * K,
+                    mask=rv[:, None] & lv0[None, :],
+                    other=float("-inf"),
+                ).to(tl.float32)
+            else:
+                x0 = tl.load(src + base[:, None] + lanes[None, :] * K).to(tl.float32)
+            m0 = tl.max(
+                tl.where((x0 != x0) | (x0 == float("inf")), float("-inf"), x0), axis=1
+            )
+            shift = tl.where(m0 == float("-inf"), 0.0, m0)
         for c in tl.range(0, num_chunks):
             offs = c * V + lanes
-            lv = offs < N
-            x = tl.load(
-                src + base[:, None] + offs[None, :] * K,
-                mask=rv[:, None] & lv[None, :],
-                other=float("-inf"),
-            ).to(tl.float32)
-            cand = tl.where((x != x) | (x == float("inf")), float("-inf"), x)
-            m_c = tl.max(cand, axis=1)
-            m_use = tl.where(m_c == float("-inf"), 0.0, m_c)
-            e = tl.exp(x - m_use[:, None])
+            if MASKED:
+                lv = offs < N
+                x = tl.load(
+                    src + base[:, None] + offs[None, :] * K,
+                    mask=rv[:, None] & lv[None, :],
+                    other=float("-inf"),
+                ).to(tl.float32)
+            else:
+                x = tl.load(src + base[:, None] + offs[None, :] * K).to(tl.float32)
+            if PER_CHUNK_SHIFT:
+                cand = tl.where((x != x) | (x == float("inf")), float("-inf"), x)
+                m_c = tl.max(cand, axis=1)
+                sh = tl.where(m_c == float("-inf"), 0.0, m_c)
+            else:
+                sh = shift
+            e = tl.exp(x - sh[:, None])
             e = tl.where(x != x, 1.0e35, tl.where(x == float("inf"), 1.0e30, e))
             s = tl.dot(e, tri, input_precision="ieee")
-            local = tl.where(
-                s >= 1.0e34,
+            t = acc[:, None] + s
+            res = tl.where(
+                t >= 1.0e34,
                 float("nan"),
-                tl.where(s >= 1.0e29, float("inf"), m_use[:, None] + tl.log(s)),
+                tl.where(t >= 1.0e29, float("inf"), sh[:, None] + tl.log(t)),
             )
-            stot = tl.sum(tl.where(lv[None, :], e, 0.0), axis=1)
-            total = tl.where(
-                stot >= 1.0e34,
-                float("nan"),
-                tl.where(stot >= 1.0e29, float("inf"), m_use + tl.log(stot)),
-            )
-            res = _logaddexp(carry[:, None], local)
-            carry = _logaddexp(carry, total)
-            ufs = tl.max(
-                tl.where((rv[:, None] & lv[None, :]) & (s == 0.0), 1.0, 0.0), axis=1
-            )
-            tl.store(
-                dst + base[:, None] + offs[None, :] * K,
-                res.to(dst.dtype.element_ty),
-                mask=rv[:, None] & lv[None, :],
-            )
-            uf = tl.maximum(uf, ufs)
-        tl.store(flags + r, uf, mask=rv)
+            # Encoded sum: a zero exponent becomes 1e30, so the accumulator still reports a
+            # fully underflowed prefix through the same reduce that updates acc.
+            if MASKED:
+                stot = tl.sum(
+                    tl.where(lv[None, :], tl.where(e == 0.0, 1.0e30, e), 0.0), axis=1
+                )
+            else:
+                stot = tl.sum(tl.where(e == 0.0, 1.0e30, e), axis=1)
+            acc = acc + stot
+            # The accumulator reaching 1e29 means some later output could be squashed onto the
+            # +inf sentinel above (the decoded magnitude no longer fits), so repair those rows
+            # too. It also catches the 1e30/1e35 sentinels themselves, i.e. non-finite inputs.
+            uf = tl.maximum(uf, tl.where(acc >= 1.0e29, 1.0, 0.0))
+            if MASKED:
+                tl.store(
+                    dst + base[:, None] + offs[None, :] * K,
+                    res.to(dst.dtype.element_ty),
+                    mask=rv[:, None] & lv[None, :],
+                )
+            else:
+                tl.store(
+                    dst + base[:, None] + offs[None, :] * K,
+                    res.to(dst.dtype.element_ty),
+                )
+        if MASKED:
+            tl.store(flags + r, uf, mask=rv)
+        else:
+            tl.store(flags + r, uf)
 
 
 @libentry()
@@ -374,6 +444,32 @@ def _normalize_dim(inp, dim):
             f"{ndim - 1}], but got {dim})"
         )
     return dim % ndim
+
+
+def _scan_tile(rows, N):
+    """Pick the (V, R) scan tile.
+
+    V is the chunk width: rows up to 256 wide are scanned in a single chunk, wider rows
+    use the 128-wide chunk that keeps the triangular operand small enough for a wide R.
+    R then eats the rest of the 4096-lane tile budget, shrunk for short row counts so the
+    launch still produces at least _SCAN_MIN_BLOCKS blocks.
+    """
+    if N <= 256:
+        scan_v = max(16, triton.next_power_of_2(N))
+    else:
+        scan_v = _SCAN_V
+    # tl.arange needs a power of two, so round the target row count down to one.
+    blocks_target = max(1, rows // _SCAN_MIN_BLOCKS)
+    blocks_target = 1 << (blocks_target.bit_length() - 1)
+    scan_r = min(
+        _SCAN_R_MAX,
+        blocks_target,
+        _SCAN_LANES // scan_v,
+        _SCAN_R_CAP.get(scan_v, _SCAN_R_MAX),
+    )
+    # A 1-row dot is degenerate and came back all-NaN, so never go below _SCAN_R_MIN;
+    # the row mask covers the extra rows.
+    return scan_v, max(_SCAN_R_MIN, scan_r)
 
 
 def _resolve_dtype(inp, dtype):
@@ -468,10 +564,12 @@ def _logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
         elif not is_complex and not acc_is_fp64:
             # Real-number fast path: one scan + underflow repair, 2 launches in total
             # (compared with ceil(log2(N)) full-tensor launches for Hillis-Steele).
-            scan_v, scan_r = _SCAN_SMALL if rows <= _SCAN_SMALL_ROWS else _SCAN_LARGE
+            scan_v, scan_r = _scan_tile(rows, N)
             scan_blocks = triton.cdiv(rows, scan_r)
             scan_grid = (min(scan_blocks, _SCAN_CAP),)
             flags = torch.empty(rows, dtype=torch.float32, device=inp.device)
+            num_chunks = triton.cdiv(N, scan_v)
+            masked = rows % scan_r != 0 or N % scan_v != 0
             _logcumsumexp_scan_kernel[scan_grid](
                 src_view,
                 dst_view,
@@ -480,11 +578,16 @@ def _logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
                 K,
                 rows,
                 scan_blocks,
-                triton.cdiv(N, scan_v),
+                num_chunks,
                 R=scan_r,
                 V=scan_v,
+                MASKED=masked,
+                PER_CHUNK_SHIFT=num_chunks == 1,
                 num_warps=4,
             )
+            # The repair pass stays unconditional: even a single-chunk row can
+            # underflow inside the chunk (chunk-wide max loses terms below
+            # exp(-87)), which large_dynamic_range cases exercise.
             _logcumsumexp_repair_kernel[scan_grid](
                 src_view,
                 dst_view,

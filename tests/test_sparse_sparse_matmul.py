@@ -16,7 +16,6 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -24,33 +23,12 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 # The implementation file is ``ops/_sparse_sparse_matmul.py``, whose file stem
-# derives the pytest marker ``underscore_sparse_sparse_matmul`` (the leading
-# underscore cannot be expressed with attribute access, hence the explicit
-# registration). Tag the main test with it as well so a marker-only selection
-# for the changed ops file is not empty; the public ``sparse_sparse_matmul``
-# id keeps its own marker.
-# The private ``_ispytest=True`` keyword is rejected by the pytest shipped in
-# this environment, which makes the whole module uncollectable and turns the
-# run's exit code into 1. Skip the module on the enflame backend with the real
-# cause instead of failing collection for every operator of the run.
-try:
-    setattr(
-        pytest.mark,
-        "underscore_sparse_sparse_matmul",
-        MarkDecorator(
-            Mark("underscore_sparse_sparse_matmul", (), {}, _ispytest=True),
-            _ispytest=True,
-        ),
-    )
-except TypeError as mark_api_error:
-    if flag_gems.vendor_name == "enflame":
-        pytest.skip(
-            "enflame GCU: pytest rejects Mark(..., _ispytest=True) in this "
-            f"environment ({mark_api_error}); collection-only pytest API "
-            "mismatch, not a GCU operator limitation",
-            allow_module_level=True,
-        )
-    raise
+# derives the pytest marker ``underscore_sparse_sparse_matmul``. The prefixed
+# form is a plain attribute access, so the mark needs no manual registration:
+# ``pytest.ini`` already ignores unknown-mark warnings and no strict-marker mode
+# is enabled. Tag the main test with it as well so a marker-only selection for
+# the changed ops file is not empty; the public ``sparse_sparse_matmul`` id
+# keeps its own marker.
 
 # Shapes exercise square/rectangular cases, tiny launch-bound sizes, a
 # non-power-of-two pair and the zero-dimension boundaries (the op supports
@@ -198,12 +176,6 @@ def test_sparse_sparse_matmul_structure_and_zeros(dtype):
 @pytest.mark.sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_sparse_sparse_matmul_out(dtype):
-    if flag_gems.vendor_name == "enflame":
-        pytest.skip(
-            "torch_gcu defect: torch.empty(shape, layout=torch.sparse_coo, device='gcu:0') "
-            "returns a tensor that actually lives on the CPU (measured device=cpu), so the out "
-            "buffer disagrees with the reference device; all 3 cases of this function fail"
-        )
     device = flag_gems.device
     a = _make_sparse(16, 12, dtype, device, 0.5, seed=33)
     b = _make_sparse(12, 8, dtype, device, 0.5, seed=44)

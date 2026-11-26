@@ -1722,6 +1722,13 @@ def efficient_attention_backward(
         softmax_scale=scale,
         attn_bias=bias,
         bias_requires_grad=bias_requires_grad,
+        # The memory-efficient family shares the SDPA causal convention: the
+        # forward that produced out/logsumexp (`_efficient_attention_forward` ->
+        # `_scaled_dot_product_efficient_attention`) masks with
+        # `offs_m >= offs_n`, i.e. the diagonal sits at the top-left corner.
+        # The backward has to mask the same way or the recomputed probabilities
+        # disagree with the saved logsumexp as soon as seqlen_q != seqlen_k.
+        top_left_causal=True,
     )
 
 

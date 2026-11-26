@@ -38,7 +38,6 @@ from flag_gems.ops.multi_margin_loss import (
     _MAX_BLOCK_C,
     _MAX_GRID_SIZE,
     _REDUCE_BLOCK_SIZE,
-    _USE_DEVICE_ASSERT,
     _check_grad_output,
     _check_inputs,
     _empty_forward,
@@ -49,6 +48,7 @@ from flag_gems.ops.multi_margin_loss import (
     _normalize_p,
     _normalize_reduction,
     _output_shape,
+    _validate_target_range,
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -70,6 +70,23 @@ TILE_ELEMENTS = 4096
 # and a 2D row-block tile degenerating to BLOCK_N=1 is actually slower), consistent with the pre-fix path.
 ROWS_KERNEL_MIN_ELEMENTS = 2048
 # --- TUNING PARAMS END ---
+
+# A `tl.device_assert` failure on GCU raises a SIP abort that leaves the host
+# process waiting on the poisoned device context instead of exiting, so an
+# out-of-range target would hang the caller until an external timeout. Validate
+# the target range on the host before launching and raise a normal RuntimeError;
+# the kernels therefore drop the in-kernel assertion.
+_USE_DEVICE_ASSERT = False
+
+
+def _check_inputs_gcu400(input, target, weight):
+    """Check the arguments and reject out-of-range targets before the launch."""
+    input, target, weight, N, C, is_batched = _check_inputs(input, target, weight)
+    if N > 0:
+        # The contiguous target is used for both arguments: in-place updates
+        # advance its version counter, which forces the validation cache to miss.
+        _validate_target_range(target, target, N, C)
+    return input, target, weight, N, C, is_batched
 
 
 @libentry()
@@ -248,9 +265,6 @@ def _compute_forward_gcu400(
             )
     return output
 
-    logger.debug("GEMS_ENFLAME MULTI_MARGIN_LOSS")
-    logger.debug("GEMS_ENFLAME MULTI_MARGIN_LOSS_OUT")
-
 
 def _compute_backward_gcu400(
     grad_output,
@@ -317,13 +331,16 @@ def multi_margin_loss(
     weight=None,
     reduction=1,
 ) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME MULTI_MARGIN_LOSS")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:
         margin = float(margin)
     except (TypeError, ValueError) as error:
         raise RuntimeError("multi_margin_loss: margin must be a real scalar") from error
-    input, target, weight, N, C, is_batched = _check_inputs(input, target, weight)
+    input, target, weight, N, C, is_batched = _check_inputs_gcu400(
+        input, target, weight
+    )
     return _compute_forward_gcu400(
         input,
         target,
@@ -355,7 +372,9 @@ def multi_margin_loss_backward(
         margin = float(margin)
     except (TypeError, ValueError) as error:
         raise RuntimeError("multi_margin_loss: margin must be a real scalar") from error
-    input, target, weight, N, C, is_batched = _check_inputs(input, target, weight)
+    input, target, weight, N, C, is_batched = _check_inputs_gcu400(
+        input, target, weight
+    )
     grad_output = _check_grad_output(grad_output, input, N, is_batched, reduction)
     return _compute_backward_gcu400(
         grad_output,
@@ -388,7 +407,9 @@ def multi_margin_loss_backward_out(
         margin = float(margin)
     except (TypeError, ValueError) as error:
         raise RuntimeError("multi_margin_loss: margin must be a real scalar") from error
-    input, target, weight, N, C, is_batched = _check_inputs(input, target, weight)
+    input, target, weight, N, C, is_batched = _check_inputs_gcu400(
+        input, target, weight
+    )
     grad_output = _check_grad_output(grad_output, input, N, is_batched, reduction)
     if grad_input.device != input.device:
         raise RuntimeError(

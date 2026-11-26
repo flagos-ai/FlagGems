@@ -196,7 +196,9 @@ def _geq_pair_config(n, itemsize, inplace=False):
         # The bool-out 16384/nw1 arm collapses on the 12B/elem dtype-out
         # stream (6160 vs 4223us paired probe, 2026-11-16): a single warp
         # cannot keep the 2x fp32 load + fp32 store footprint in flight.
-        return 32768, 2, 1
+        # In-session sweep on gcu400 (1 Gi fp32 in-place): 65536/nw4 4.80 ms,
+        # 65536/nw2 4.86 ms, 32768/nw4 4.94 ms, 32768/nw2 4.98 ms.
+        return 65536, 4, 1
     return 16384, 1, 1
 
 
@@ -316,6 +318,18 @@ def greater_equal_(A, B):
         if _geq_pair_run(A, B, A, inplace=True):
             return A
     return ge_func(A, B, out0=A)
+
+
+def greater_equal_tensor_(A, B):
+    """``aten::greater_equal_.Tensor`` entry point.
+
+    ``flag_gems`` binds this overload to the public ``greater_equal_tensor_``,
+    which always routes through the generic ``ge_func`` pointwise kernel and
+    therefore never reaches the flat GCU400 kernel above (measured 13.4 ms vs
+    4.6 ms for the 1 Gi fp32 in-place case).  Exposing the name here makes the
+    vendor registrar bind the Tensor overload to the tuned implementation.
+    """
+    return greater_equal_(A, B)
 
 
 def greater_equal_scalar_(A, B):

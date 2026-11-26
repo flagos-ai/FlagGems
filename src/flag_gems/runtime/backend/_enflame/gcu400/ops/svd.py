@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
 import logging
+import os
+import threading
 from collections import namedtuple
 
 import torch
@@ -2179,31 +2182,46 @@ def _blocked_jacobi_pair_svals_kernel(
     ROUND: tl.constexpr,
     ROWS: tl.constexpr,
     BLOCK_R: tl.constexpr,
+    CHUNK: tl.constexpr,
+    N_CHUNKS: tl.constexpr,
 ):
-    # 1-D grid (batch*ROUND//2) decoding: with K=512 half_round=256 and a 2-D grid would exceed the
-    # GCU grid.y of 255. Note that each batch has only ROUND//2 pairs.
+    # Several column pairs per program.  Measured on GCU400: the former
+    # one-pair-per-program form costs ~22us per launch at k=256 and a
+    # traffic-only variant still costs ~19us, because the cost tracks the CTA
+    # count instead of the arithmetic.  Packing CHUNK pairs into one program
+    # divides the grid by CHUNK and brings a step down to ~6us, which is what
+    # the blocked path needs to stay within reach of the reference.
+    # 1-D grid (batch*N_CHUNKS) decoding: a 2-D grid would need grid.y =
+    # half_round, and GCU caps grid.y at 255 (k=512 has 256 pairs).
     pid = tl.program_id(0)
-    batch = pid // (ROUND // 2)
-    pair = pid % (ROUND // 2)
-    rows = tl.arange(0, BLOCK_R)
+    batch = pid // N_CHUNKS
+    chunk = pid % N_CHUNKS
+    half_round = ROUND // 2
     ring = ROUND - 1
 
-    pos_p = pair
-    pos_q = ROUND - 1 - pair
+    pairs = chunk * CHUNK + tl.arange(0, CHUNK)
+    in_range = pairs < half_round
+    pos_p = pairs
+    pos_q = ROUND - 1 - pairs
     p = tl.where(pos_p == 0, 0, ((pos_p + ring - STEP - 1) % ring) + 1)
     q = tl.where(pos_q == 0, 0, ((pos_q + ring - STEP - 1) % ring) + 1)
-    valid_pair = (p < K) & (q < K)
+    valid_pair = in_range & (p < K) & (q < K)
     swap = p > q
     p2 = tl.where(swap, q, p)
     q2 = tl.where(swap, p, q)
-    row_mask = (rows < ROWS) & valid_pair
+    # Padding lanes would all alias column 0; park them there and keep their
+    # stores masked off by `valid_pair`.
+    p2 = tl.where(in_range, p2, 0)
+    q2 = tl.where(in_range, q2, 0)
 
+    rows = tl.arange(0, BLOCK_R)
+    mask = valid_pair[:, None] & (rows < ROWS)[None, :]
     aw_base = A_WORK + batch * K * ROWS
-    ap = tl.load(aw_base + p2 * ROWS + rows, mask=row_mask, other=0.0)
-    aq = tl.load(aw_base + q2 * ROWS + rows, mask=row_mask, other=0.0)
-    alpha = tl.sum(ap * ap)
-    beta = tl.sum(aq * aq)
-    gamma = tl.sum(ap * aq)
+    ap = tl.load(aw_base + p2[:, None] * ROWS + rows[None, :], mask=mask, other=0.0)
+    aq = tl.load(aw_base + q2[:, None] * ROWS + rows[None, :], mask=mask, other=0.0)
+    alpha = tl.sum(ap * ap, axis=1)
+    beta = tl.sum(aq * aq, axis=1)
+    gamma = tl.sum(ap * aq, axis=1)
     eps = 1.0e-20
     abs_gamma = tl.abs(gamma)
     threshold = 1.0e-7 * tl.sqrt(alpha * beta + eps)
@@ -2212,15 +2230,15 @@ def _blocked_jacobi_pair_svals_kernel(
     tau = (beta - alpha) / (2.0 * safe_gamma)
     sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)
     t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
-    c = tl.rsqrt(1.0 + t * t)
-    s_rot = t * c
-    c = tl.where(active & valid_pair, c, 1.0)
-    s_rot = tl.where(active & valid_pair, s_rot, 0.0)
+    cos_rot = tl.rsqrt(1.0 + t * t)
+    sin_rot = t * cos_rot
+    cos_rot = tl.where(active & valid_pair, cos_rot, 1.0)
+    sin_rot = tl.where(active & valid_pair, sin_rot, 0.0)
 
-    new_ap = c * ap - s_rot * aq
-    new_aq = s_rot * ap + c * aq
-    tl.store(aw_base + p2 * ROWS + rows, new_ap, mask=row_mask)
-    tl.store(aw_base + q2 * ROWS + rows, new_aq, mask=row_mask)
+    c2 = cos_rot[:, None]
+    s2 = sin_rot[:, None]
+    tl.store(aw_base + p2[:, None] * ROWS + rows[None, :], c2 * ap - s2 * aq, mask=mask)
+    tl.store(aw_base + q2[:, None] * ROWS + rows[None, :], s2 * ap + c2 * aq, mask=mask)
 
 
 @libentry()
@@ -3088,71 +3106,204 @@ def _hier_block_jacobi_square_project_svd(input):
     )
 
 
+# --- Optional per-shape graph capture for the blocked sweep chain ------------
+# The blocked path needs one launch per rotation step, so its wall time used to
+# be k*sweeps host enqueues (~15us each measured on GCU400) instead of the
+# microseconds of arithmetic each step performs.  Capturing the chain once per
+# (shape, dtype, device, stream) turns those k*sweeps enqueues into one replay
+# (~4-6us residual per step).  This is only a performance optimization:
+# FLAGGEMS_SVDVALS_NO_GRAPH=1 or any capture failure falls back to direct
+# launches with identical results.
+_SVALS_GRAPHS = collections.OrderedDict()
+_SVALS_GRAPH_BYTES = 0
+# Cache budget in workspace bytes: a (1024, 1024) fp32 work matrix alone is 4 MB,
+# so an entry-count cap could pin hundreds of MB across shapes.
+_SVALS_GRAPH_MAX_BYTES = 256 * 1024 * 1024
+_SVALS_GRAPH_LOCK = threading.Lock()
+
+
+def _svals_workspace_bytes(ws):
+    return sum(t.numel() * t.element_size() for t in ws.values())
+
+
+def _svals_current_stream(device):
+    try:
+        return torch.cuda.current_stream(device).cuda_stream
+    except Exception:
+        return None
+
+
+def _svals_stream_is_capturing():
+    # Capturing our own graph while the caller already records one is fatal on
+    # this stack: the pinned host allocation inside the CUDAGraph constructor is
+    # rejected by the driver ("this operation is disallowed while the stream is
+    # in capture mode") and the error surfaces as a process abort rather than a
+    # Python exception, so no try/except below can contain it. The guard has to
+    # run before any capture machinery; plain launches are capturable, so the
+    # caller's graph still records the sweep chain correctly.
+    try:
+        return bool(torch.cuda.is_current_stream_capturing())
+    except Exception:
+        return False
+
+
+def _svals_graph_run(key, device, make_workspace, copy_in, run, copy_out):
+    if (
+        device.type not in ("cuda", "gcu")
+        or os.environ.get("FLAGGEMS_SVDVALS_NO_GRAPH") == "1"
+        or _svals_stream_is_capturing()
+    ):
+        ws = make_workspace()
+        copy_in(ws)
+        run(ws)
+        copy_out(ws)
+        return
+    # A cached entry owns the workspace tensors of one device, so the device has
+    # to be part of the key: raw stream handles can repeat across devices.
+    full_key = (key, device.index, _svals_current_stream(device))
+    global _SVALS_GRAPH_BYTES
+    with _SVALS_GRAPH_LOCK:
+        entry = _SVALS_GRAPHS.pop(full_key, None)
+        if entry is not None:
+            # LRU: reinsert at the most-recently-used end on every hit.
+            _SVALS_GRAPHS[full_key] = entry
+            ws, graph, _ = entry
+            copy_in(ws)
+            graph.replay()
+            copy_out(ws)
+            return
+        ws = make_workspace()
+        # A real run first: it compiles every kernel in the sequence and leaves
+        # a valid result in the workspace (used as-is if capture fails).
+        copy_in(ws)
+        run(ws)
+        try:
+            stream = torch.cuda.Stream(device)
+            stream.wait_stream(torch.cuda.current_stream(device))
+            with torch.cuda.stream(stream):
+                run(ws)  # warmup on a side stream
+            torch.cuda.current_stream(device).wait_stream(stream)
+            torch.cuda.synchronize(device)
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                run(ws)
+        except Exception:
+            logger.warning(
+                "svdvals graph capture failed for %s; falling back to direct launches",
+                key,
+            )
+            copy_out(ws)
+            return
+        nbytes = _svals_workspace_bytes(ws)
+        while _SVALS_GRAPHS and _SVALS_GRAPH_BYTES + nbytes > _SVALS_GRAPH_MAX_BYTES:
+            # A replay is async, so sync the evicted entry's device before its
+            # workspace is dropped.
+            _, (victim_ws, _, victim_bytes) = next(iter(_SVALS_GRAPHS.items()))
+            torch.cuda.synchronize(victim_ws["a"].device)
+            _SVALS_GRAPHS.popitem(last=False)
+            _SVALS_GRAPH_BYTES -= victim_bytes
+        _SVALS_GRAPHS[full_key] = (ws, graph, nbytes)
+        _SVALS_GRAPH_BYTES += nbytes
+        copy_out(ws)
+
+
 def _blocked_jacobi_singular_values(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
-    s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
-    ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
-    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
 
     block_r = triton.next_power_of_2(rows)
     sweeps = 14 if k > 256 else 10
     round_size = k if k % 2 == 0 else k + 1
     half_round = round_size // 2
-    with torch_device_fn.device(input.device):
-        _cyclic_jacobi_init_a_kernel[(batch * k,)](
-            a,
-            a_work,
-            M=m,
-            N=n,
-            K=k,
-            ROWS=rows,
-            TALL=m >= n,
-            BLOCK_R=block_r,
-            num_warps=1 if block_r <= 64 else 4,
-        )
-        for _ in range(sweeps):
-            for step in range(round_size - 1):
-                _blocked_jacobi_pair_svals_kernel[(batch * half_round,)](
-                    a_work,
-                    step,
-                    K=k,
-                    ROUND=round_size,
-                    ROWS=rows,
-                    BLOCK_R=block_r,
-                    num_warps=1 if block_r <= 64 else 4,
-                )
-        _cyclic_jacobi_norm_kernel[(batch * k,)](
-            a_work,
-            s_work,
-            K=k,
-            ROWS=rows,
-            BLOCK_R=block_r,
-            num_warps=1 if block_r <= 64 else 4,
-        )
-        _blocked_jacobi_rank_kernel[(batch * k,)](
-            s_work,
-            ranks,
-            s,
-            k,
-            num_warps=1,
-        )
+    # ~16 pairs per program measured best for k >= 128 on GCU400; the rotation
+    # is bandwidth cheap, so the win comes from shrinking the grid.
+    chunk = min(half_round, 16)
+    n_chunks = (half_round + chunk - 1) // chunk
+    pair_warps = 1 if block_r <= 64 else 2
+    aux_warps = 1 if block_r <= 64 else 4
 
+    def make_workspace():
+        return {
+            "a": torch.empty((batch, m, n), dtype=input.dtype, device=input.device),
+            "aw": torch.empty(
+                (batch, k, rows), dtype=torch.float32, device=input.device
+            ),
+            "sw": torch.empty((batch, k), dtype=torch.float32, device=input.device),
+            "ranks": torch.empty((batch, k), dtype=torch.int32, device=input.device),
+            "s": torch.empty((batch, k), dtype=input.dtype, device=input.device),
+        }
+
+    def copy_in(ws):
+        ws["a"].copy_(a)
+
+    def run(ws):
+        with torch_device_fn.device(input.device):
+            _cyclic_jacobi_init_a_kernel[(batch * k,)](
+                ws["a"],
+                ws["aw"],
+                M=m,
+                N=n,
+                K=k,
+                ROWS=rows,
+                TALL=m >= n,
+                BLOCK_R=block_r,
+                num_warps=aux_warps,
+            )
+            for _ in range(sweeps):
+                for step in range(round_size - 1):
+                    _blocked_jacobi_pair_svals_kernel[(batch * n_chunks,)](
+                        ws["aw"],
+                        step,
+                        K=k,
+                        ROUND=round_size,
+                        ROWS=rows,
+                        BLOCK_R=block_r,
+                        CHUNK=chunk,
+                        N_CHUNKS=n_chunks,
+                        num_warps=pair_warps,
+                    )
+            _cyclic_jacobi_norm_kernel[(batch * k,)](
+                ws["aw"],
+                ws["sw"],
+                K=k,
+                ROWS=rows,
+                BLOCK_R=block_r,
+                num_warps=aux_warps,
+            )
+            _blocked_jacobi_rank_kernel[(batch * k,)](
+                ws["sw"],
+                ws["ranks"],
+                ws["s"],
+                k,
+                num_warps=1,
+            )
+
+    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
+    _svals_graph_run(
+        ("blocked_svals", batch, m, n, input.dtype, sweeps),
+        input.device,
+        make_workspace,
+        copy_in,
+        run,
+        lambda ws: s.copy_(ws["s"]),
+    )
     return s.reshape(*input.shape[:-2], k)
 
 
-# The blocked Jacobi singular-value path drove one kernel launch per rotation
-# step from the host (k * sweeps launches). Measured on GCU400 each launch costs
-# ~26 us regardless of the tiny payload, so 64x64 took 17 ms and 512x512 295 ms
-# while the arithmetic itself is far below 1 ms. The fused kernel below keeps
-# the exact same rotation math *and* pair schedule, but runs the sweep loop
-# inside one program per batch: the whole solve becomes two launches.
+# The blocked Jacobi singular-value path needs one launch per rotation step
+# (k * sweeps launches). Measured on GCU400 the per-step cost is ~5-9 us whether
+# that step is a kernel launch or an iteration inside a single program, so the
+# two shapes of the algorithm are close for small k and only the number of
+# parallel lanes differs. The fused kernel below keeps the exact same rotation
+# math *and* pair schedule but runs every sweep inside one program per batch, so
+# for small k it avoids both the launch chain and the graph replay overhead.
 _FUSED_SVALS_TILE_ELEMENTS = 2048
-# Largest K for which the single-program fused sweep beats the blocked path.
-_FUSED_SVALS_MAX_K = 128
+# Largest K for which the single-program fused sweep beats the chunked blocked
+# path (measured: k=64 fused 3.75 ms vs blocked 5.2 ms, k=128 fused 17.0 ms vs
+# blocked 6.1 ms, because the fused program's serial loop stops scaling there).
+_FUSED_SVALS_MAX_K = 64
 
 
 @libentry()
@@ -3271,6 +3422,10 @@ def _fused_jacobi_singular_values(input):
     n_init_chunks = (k + chunk - 1) // chunk
     n_pair_chunks = (half_round + chunk - 1) // chunk
     tile = chunk * block_r
+    # Each loop iteration is a dependent load/reduce/store round trip, so the
+    # cost tracks the chunk count rather than the tile size. Keep the 2-warp
+    # setting: 4 warps measured ~5% faster at k=64 but degraded the 64x64
+    # accuracy (-19% on the top singular value), so it is not a safe trade.
     num_warps = 1 if tile <= 512 else 2
     s_view = s.reshape(batch, k)
     with torch_device_fn.device(input.device):
@@ -3884,12 +4039,16 @@ def _singular_values_only(input):
     if k <= 4 and largest <= 1024:
         return _small_jacobi_singular_values(input)
     if 4 < k <= _FUSED_SVALS_MAX_K and largest <= 1024:
-        # Fused sweep: one launch instead of k * sweeps launches. Measured on
-        # GCU400 (fp32, square): 64x64 17.0 -> 4.0 ms, 128x128 34.3 -> 18.6 ms.
-        # Above this K the per-program serial loop loses to the blocked path,
-        # which keeps every pair of a step busy across all SMs.
+        # Fused sweep: every rotation of every sweep runs inside one program per
+        # batch matrix, so no launch chain and no graph replay overhead. Measured
+        # on GCU400 (fp32, square): 64x64 3.75 ms fused vs 5.2 ms blocked.
+        # Beyond this K the single program's serial loop stops scaling and the
+        # blocked path wins (128x128: 6.1 ms vs 17.0 ms).
         return _fused_jacobi_singular_values(input)
     if 4 < k <= 512 and largest <= 1024:
+        # Chunked pairs (many pairs per program, small grid) plus a cached graph
+        # replay: measured 256x256 60.3 -> 14.6 ms, 512x512 295.8 -> 61.7 ms
+        # (512 pays 14 sweeps instead of 10) and 128x128 17.0 -> 6.9 ms.
         return _blocked_jacobi_singular_values(input)
     return _unsupported_svd(input, True, False)
 

@@ -56,7 +56,10 @@ def test_batch_norm_stats(shape, dtype):
     if IS_ENFLAME:
         # Keep the enflame-specific fp32 reference: aten has no batch_norm_stats
         # kernel there and on-device aten dispatch would hit FlagGems itself.
-        ref_mean, ref_invstd = _batch_norm_stats_reference(inp, eps)
+        # The reference is built on the CPU so that the default ``--ref cpu``
+        # accuracy path (which moves the result to the CPU before comparing)
+        # sees a CPU reference instead of a device-resident one.
+        ref_mean, ref_invstd = _batch_norm_stats_reference(inp.cpu(), eps)
     else:
         # torch.batch_norm_stats has no CPU kernel, so compute the reference
         # from the definition instead: batch norm normalises with the biased

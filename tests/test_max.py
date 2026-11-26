@@ -295,6 +295,16 @@ def test_max_backward_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_max_backward_dim_ties(keepdim, dtype):
     """Tied maxima along a dim follow the single argmax index the forward saved."""
+    if flag_gems.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
+        # The tie construction below reads the native max.dim result, whose int64
+        # index output topsaten only supports for int64/fp32/int32 data. For the
+        # 16-bit dtypes the native call fails its CheckArgs and aborts the whole
+        # process ("int64 idx requires gcu400+ with int64/fp32/int32 data type"),
+        # so only the fp32 tie case is reachable on this backend.
+        pytest.skip(
+            "enflame GCU: topsaten max.dim has no int64-index path for "
+            f"{dtype}; the native tie construction aborts the process"
+        )
     inp = torch.randn((37, 64), dtype=dtype, device=flag_gems.device)
     row_max = inp.max(dim=1).values
     inp[:, 5] = row_max

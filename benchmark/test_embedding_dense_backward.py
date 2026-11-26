@@ -47,13 +47,23 @@ def _input_fn(shape, dtype, device):
         yield grad_output, cur_indices, num_weights, padding_idx, scale_grad_by_freq
 
 
+_CUDA_ONLY_BENCHMARK_VENDORS = ("enflame",)
+
+_is_supported_backend = (
+    torch.cuda.is_available() and flag_gems.device == "cuda"
+) or flag_gems.vendor_name in _CUDA_ONLY_BENCHMARK_VENDORS
+
+
 @pytest.mark.skipif(
-    (not torch.cuda.is_available()) or (flag_gems.device != "cuda"),
+    not _is_supported_backend,
     reason="CUDA backend is not available for this benchmark.",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten 不支持",
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::embedding_dense_backward, "
+        "so there is no native baseline"
+    ),
 )
 @pytest.mark.embedding_dense_backward
 def test_embedding_dense_backward():

@@ -503,6 +503,12 @@ from flag_gems.utils import libentry  # noqa: E402
 
 _GCU400_BWD_BLOCK = 512
 _GCU400_BWD_WARPS = 4
+# Above this output element count the full-write backward kernel loses to the
+# plain ``zeros_like`` memset plus sparse scatter, so fall back to that form.
+# Measured on gcu400 (fp16/fp32/bf16, mean reduction): the single fused launch
+# wins by ~35% up to ~1M output elements (2 MB of stores at ~55 GB/s Triton
+# store bandwidth vs one removed launch) and loses badly from 16M elements on.
+_GCU400_BWD_FULL_WRITE_MAX_ELEMS = 1 << 21
 
 
 @libentry()
@@ -571,6 +577,63 @@ def _nll_loss_backward_gcu400_kernel(
     tl.store(inp_grad_ptr + offsets_n * C + tgt, val, mask=hit)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["ignore_index"])
+def _nll_loss_backward_full_gcu400_kernel(
+    out_grad_ptr,
+    tgt_ptr,
+    wgt_ptr,
+    inp_grad_ptr,
+    ignore_index,
+    total_weight,
+    N,
+    C,
+    REDUCTION: tl.constexpr,
+    HAS_WEIGHT: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    NUM_C_BLOCKS: tl.constexpr,
+):
+    """Write the whole grad_input in one launch: zeros everywhere except the
+    column selected by target.
+
+    Keeping this a single kernel avoids the separate ``grad_input`` memset and
+    the sparse scatter launch.  The grid stays 1-D (gcu400 rejects grid.x above
+    65535), with the row/column split recovered from ``NUM_C_BLOCKS``.
+    """
+    pid = tl.program_id(0)
+    pid_n = pid // NUM_C_BLOCKS
+    pid_c = pid % NUM_C_BLOCKS
+    rows = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask_n = rows < N
+    tgt = tl.load(tgt_ptr + rows, mask=mask_n, other=ignore_index)
+    hit = (tgt != ignore_index) & mask_n
+    if REDUCTION == 0:
+        grad = tl.load(out_grad_ptr + rows, mask=mask_n, other=0.0).to(tl.float32)
+    else:
+        grad = tl.load(out_grad_ptr).to(tl.float32)
+    if REDUCTION == 1:
+        total_w = tl.load(total_weight).to(tl.float32)
+    else:
+        total_w = 1.0
+    tgt_col = tl.where(hit, tgt, 0).to(tl.int32)
+    cols = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+    mask_c = cols < C
+    if HAS_WEIGHT:
+        wgt = tl.load(wgt_ptr + cols, mask=mask_c, other=0.0).to(tl.float32)
+    else:
+        wgt = tl.full((BLOCK_C,), 1.0, tl.float32)
+    value = -grad[:, None] * wgt[None, :] / total_w
+    selected = (cols[None, :] == tgt_col[:, None]) & hit[:, None]
+    result = tl.where(selected, value, 0.0)
+    ptrs = inp_grad_ptr + rows[:, None] * C + cols[None, :]
+    tl.store(
+        ptrs,
+        result.to(inp_grad_ptr.dtype.element_ty),
+        mask=mask_n[:, None] & mask_c[None, :],
+    )
+
+
 def nll_loss_backward(
     grad_output,
     self,
@@ -585,12 +648,51 @@ def nll_loss_backward(
     C = self.shape[-1]
     reduction = _as_int(reduction)
     ignore_index = _as_int(ignore_index)
-    grad_output = grad_output.contiguous()
-    target = target.contiguous()
-    weight = None if weight is None else weight.contiguous()
+    # Every aten call made here is re-dispatched through the FlagGems python
+    # kernel while FlagGems is enabled, so a no-op contiguous() is far from
+    # free; only copy when the layout really differs.
+    grad_output = _contiguous_if_needed(grad_output)
+    target = _contiguous_if_needed(target)
+    weight = None if weight is None else _contiguous_if_needed(weight)
 
-    grad_input = torch.zeros_like(self)
-    grid = (triton.cdiv(N, _GCU400_BWD_BLOCK),)
+    grad_input = torch.empty_like(self)
+    out_elems = N * C
+    with torch_device_fn.device(self.device):
+        if out_elems <= _GCU400_BWD_FULL_WRITE_MAX_ELEMS:
+            block_n = 16
+            block_c = 256 if C >= 256 else max(16, triton.next_power_of_2(C))
+            n_blocks = triton.cdiv(N, block_n)
+            c_blocks = triton.cdiv(C, block_c)
+            # gcu400 caps the launch at 65535 programs in a single dimension.
+            while n_blocks * c_blocks > 65535:
+                block_c *= 2
+                c_blocks = triton.cdiv(C, block_c)
+            _nll_loss_backward_full_gcu400_kernel[(n_blocks * c_blocks,)](
+                grad_output,
+                target,
+                weight if weight is not None else self,
+                grad_input,
+                ignore_index,
+                total_weight if total_weight is not None else self,
+                N,
+                C,
+                reduction,
+                weight is not None,
+                block_n,
+                block_c,
+                c_blocks,
+                num_warps=4,
+            )
+            return grad_input
+
+    # One program per 512 rows wastes almost all lanes when N is small; size the
+    # tile (and the warp count) from N so a launch still has enough programs.
+    block_n = _GCU400_BWD_BLOCK
+    num_warps = _GCU400_BWD_WARPS
+    if N < _GCU400_BWD_BLOCK:
+        block_n = max(32, triton.next_power_of_2(N))
+        num_warps = 1 if block_n <= 64 else 2
+    grid = (triton.cdiv(N, block_n),)
     with torch_device_fn.device(self.device):
         _nll_loss_backward_gcu400_kernel[grid](
             grad_output,
@@ -603,8 +705,8 @@ def nll_loss_backward(
             C,
             reduction,
             weight is not None,
-            _GCU400_BWD_BLOCK,
-            num_warps=_GCU400_BWD_WARPS,
+            block_n,
+            num_warps=num_warps,
         )
     return grad_input
 

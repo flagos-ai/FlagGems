@@ -70,7 +70,12 @@ _NUM_WARPS = 8
 # Block sweep on the metadata path (16KB -> 64KB per program):
 #   fp16 2x4096^2 0.952 -> 0.816ms, fp32 2x4096^2 1.823 -> 1.447ms,
 #   fp16 3x1024^2 0.165 -> 0.145ms, fp32 3x1024^2 0.247 -> 0.210ms.
-_BLOCK_WORDS = 8192
+# A second sweep above 64KB keeps that ordering for one more step and then
+# flattens: 8192 -> 16384 -> 32768 words measures 0.7653 -> 0.7545 -> 0.7469ms
+# (fp16 2x4096^2), 1.4484 -> 1.4275 -> 1.4137ms (fp32 2x4096^2) and
+# 0.4230 -> 0.4181 -> 0.4140ms (fp32 2x(4, 1024, 1024)), with the small lists
+# unchanged (they take the 2-D path), so the grid-stride block sits at 256KB.
+_BLOCK_WORDS = 32768
 _NUM_WARPS_WORDS = 8
 # 2D fast path (no per-call metadata transfer): 1024 words = 8KB per program is
 # the measured sweet spot for 16-bit lists (64KB blocks lose on small totals).

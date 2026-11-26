@@ -218,7 +218,11 @@ def _diag_embed_backward_impl(
     diag_stride = strides[dim1] + strides[dim2]
     diag_base = row_off * strides[dim1] + col_off * strides[dim2]
     largest_offset = (n_view_total - 1) * max(srcs) + diag_len * diag_stride + diag_base
-    wide = largest_offset >= 2**31 or n_total >= 2**31
+    # The 32-bit path is only safe while the *byte* offset stays inside int32;
+    # an element-offset check misses buffers above 2 GiB (e.g. 1025x1025x1024
+    # fp16), whose byte addressing overflows and faults with a device Sip error.
+    element_size = grad_output.element_size()
+    wide = largest_offset * element_size >= 2**31 or n_total >= 2**31
 
     grad_input = torch.empty(
         view_sizes + [diag_len], dtype=grad_output.dtype, device=grad_output.device

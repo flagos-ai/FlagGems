@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -570,9 +571,7 @@ def _aminmax_strided(inp, min_out, max_out, R, inner, outer):
     return True
 
 
-def aminmax(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("GEMS_ENFLAME AMINMAX")
-
+def _aminmax_impl(inp, dim, keepdim, out):
     if dim is None:
         return _aminmax_flat(inp, keepdim, out)
 
@@ -635,3 +634,22 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         min_out = min_out.squeeze(dim=dim)
         max_out = max_out.squeeze(dim=dim)
     return min_out, max_out
+
+
+def aminmax(inp, dim=None, keepdim=False, *, out=None):
+    logger.debug("GEMS_ENFLAME AMINMAX")
+
+    if inp.dtype is torch.float64 and not runtime_device.support_fp64:
+        # GCU400 cannot lower fp64 Triton kernels, and aten's own fp64 path also
+        # computes in fp32 on this device. Reduce an fp32 view and widen the two
+        # results back to fp64 (same approach as the _aminmax backend variant).
+        min32, max32 = _aminmax_impl(inp.to(torch.float32), dim, keepdim, None)
+        if out is not None:
+            min_out = out[0] if isinstance(out, tuple) else out
+            max_out = out[1] if isinstance(out, tuple) else out
+            min_out.copy_(min32)
+            max_out.copy_(max32)
+            return min_out, max_out
+        return min32.to(torch.float64), max32.to(torch.float64)
+
+    return _aminmax_impl(inp, dim, keepdim, out)

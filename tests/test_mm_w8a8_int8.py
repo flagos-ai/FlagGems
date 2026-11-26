@@ -187,12 +187,19 @@ def test_mm_w8a8_int8_reject_float():
 def _assert_reference(a, b, sa, sb, out, bias=None):
     # Check all entries of small cases and a deterministic subset of large
     # cases against an independent CPU INT64 product, not a floating GEMM.
+    #
+    # Every gather happens after the host transfer on purpose: the GCU
+    # aten::index lowering returns wrong elements for these row/column index
+    # lists (measured 1406 of 16384 wrong values on a 16x128 gather and 4083 of
+    # 524288 wrong rows on a 256-row gather), which used to make the reference
+    # itself disagree with the kernel. Gathering on CPU keeps the arithmetic
+    # identical for every vendor and removes the dependence on that lowering.
     m, k = a.shape
     n = b.shape[1]
     rows = list(range(m)) if m * n * k <= 1000000 else sorted({0, m // 2, m - 1})
     cols = list(range(n)) if m * n * k <= 1000000 else sorted({0, n // 2, n - 1})
-    aa = a[rows].cpu().to(torch.int64)
-    bb = b[:, cols].cpu().to(torch.int64)
+    aa = a.cpu()[rows].to(torch.int64)
+    bb = b.cpu()[:, cols].to(torch.int64)
     sa = sa.cpu().reshape(-1)
     sb = sb.cpu().reshape(-1)
     sa = sa.expand(m) if sa.numel() == 1 else sa
@@ -201,7 +208,7 @@ def _assert_reference(a, b, sa, sb, out, bias=None):
     if bias is not None:
         ref += bias.cpu()[cols].float()[None, :]
     torch.testing.assert_close(
-        out[rows][:, cols].cpu(),
+        out.cpu()[rows][:, cols],
         ref.to(out.dtype),
         rtol=1e-5 if out.dtype == torch.float32 else 1e-2,
         atol=1e-4,

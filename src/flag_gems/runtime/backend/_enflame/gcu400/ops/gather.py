@@ -21,7 +21,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
@@ -35,39 +34,29 @@ NUM_SIPS = 24
 # ---------------------------------------------------------------------------
 # gather_backward on gcu400.
 #
-# The Triton formulation (zeros + scatter_add(reduce="add")) lowers to one
-# tl.atomic_add per element and measured 0.06-0.32x of the native path on
-# gcu400: 12.0ms vs 0.75ms at 1024x1024, 6976ms vs 497ms at 10000x65536. A
-# tile sweep over BM/BN = 1..4 x 512..4096 stayed flat at ~12ms, so the cost
-# is the atomic datapath itself, not the tile shape (perf_playbook veto).
-#
-# The kernels are captured at import time - before use_gems() replaces the
-# PrivateUse1 entry - and invoked through call_boxed (mm.py precedent). The
-# primary delegation is aten::gather_backward, which is exactly the kernel the
-# torch autograd reference runs (measured 1.000x on all 14 probe cases, 0.017ms
-# on 64x64 through 492ms on 10000x65536). zeros + aten::scatter_add_ stays as
-# the fallback: it is bit-identical too but pays an extra zero-fill pass and
-# measured 0.06x for tiny shapes.
+# The accumulation is order-dependent, so every Triton formulation needs one
+# tl.atomic_add per index element; on gcu400 that datapath costs ~5ns/element
+# (measured 4.5ms at 1024x1024 and 309ms at 1024x65536 for the final config,
+# i.e. 12x slower than the vendor scatter_add kernel, and the atomic pipeline
+# not the tile shape sets that floor: BM/BN 1..4 x 256..8192 and sem="relaxed"
+# were all measured, the 1024-wide vector with the default semantics won).
+# The implementation therefore keeps exactly one atomic per element and strips
+# everything around it:
+# - the two 2D layouts that own every core benchmark shape (scatter along the
+#   last dim and along dim 0) use row-parallel kernels that walk the rows
+#   grid-strided and derive the atomic address with a single multiply from the
+#   loaded index, so no rank-N offset vectors and no per-element stride
+#   arithmetic are built;
+# - any other rank keeps the generic scatter(reduce="add") formulation.
+# Everything stays in Triton: no aten/native kernel is delegated to.
 # ---------------------------------------------------------------------------
-_NATIVE_GATHER_BACKWARD = None
-_NATIVE_SCATTER_ADD = None
-if hasattr(torch.library, "get_kernel"):
-    try:
-        _NATIVE_GATHER_BACKWARD = torch.library.get_kernel(
-            torch.ops.aten.gather_backward.default, runtime.device.dispatch_key
-        )
-    except Exception:  # noqa: B902
-        _NATIVE_GATHER_BACKWARD = None
-    try:
-        _NATIVE_SCATTER_ADD = torch.library.get_kernel(
-            torch.ops.aten.scatter_add_.default, runtime.device.dispatch_key
-        )
-    except Exception:  # noqa: B902
-        _NATIVE_SCATTER_ADD = None
-
-_DEVICE_KEYSET = torch._C.DispatchKeySet(
-    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
-)
+# Tunable knobs (one-variable-at-a-time sweeps, see the round log):
+# - GB_BLOCK_N_CAP bounds one row's index vector per atomic step,
+# - GB_GRID_PER_SIP sets the row-loop width (rows are walked grid-strided),
+# - GB_WARPS is the CTA width for the row-parallel kernels.
+GB_BLOCK_N_CAP = 1024
+GB_GRID_PER_SIP = 2
+GB_WARPS = 8
 
 
 @libentry()
@@ -339,20 +328,95 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     return out
 
 
+@libentry()
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "n_idx",
+        "grad_stride0",
+        "grad_stride1",
+        "idx_stride0",
+        "idx_stride1",
+        "out_stride0",
+        "out_stride1",
+    ]
+)
+def gather_backward_2d_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    n_idx,
+    grad_stride0,
+    grad_stride1,
+    idx_stride0,
+    idx_stride1,
+    out_stride0,
+    out_stride1,
+    SCATTER_LAST_DIM: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    GRID_DIM: tl.constexpr,
+):
+    """Row-parallel scatter-add for 2D gather_backward.
+
+    SCATTER_LAST_DIM selects the layout: True scatters the last dim (out row is
+    indexed by the loaded index), False scatters dim 0 (the atomic address is
+    index * out_stride0 while the column stays linear, i.e. lanes still write
+    consecutive addresses and only cross-row collisions contend).
+    """
+    pid = tl.program_id(0)
+    for row in tl.range(pid, rows, GRID_DIM):
+        grad_row = grad_ptr + row * grad_stride0
+        idx_row = index_ptr + row * idx_stride0
+        out_row = out_ptr + row * out_stride0
+        for col_start in tl.range(0, n_idx, BLOCK_N):
+            cols = col_start + tl.arange(0, BLOCK_N)
+            mask = cols < n_idx
+            idx = tl.load(idx_row + cols * idx_stride1, mask=mask, other=0)
+            val = tl.load(grad_row + cols * grad_stride1, mask=mask, other=0.0)
+            if SCATTER_LAST_DIM:
+                tl.atomic_add(out_row + idx * out_stride1, val, mask=mask)
+            else:
+                tl.atomic_add(
+                    out_ptr + idx * out_stride0 + cols * out_stride1, val, mask=mask
+                )
+
+
+def _gather_backward_2d(grad, index, out, dim):
+    """Dispatch the row-parallel scatter kernel for a 2D index/grad pair."""
+    rows = index.shape[0]
+    n_idx = index.shape[1]
+    block_n = min(triton.next_power_of_2(n_idx), GB_BLOCK_N_CAP)
+    grid_dim = min(rows, NUM_SIPS * GB_GRID_PER_SIP)
+    with torch_device_fn.device(grad.device):
+        gather_backward_2d_kernel[(grid_dim,)](
+            grad,
+            index,
+            out,
+            rows,
+            n_idx,
+            grad.stride(0),
+            grad.stride(1),
+            index.stride(0),
+            index.stride(1),
+            out.stride(0),
+            out.stride(1),
+            SCATTER_LAST_DIM=(dim == 1),
+            BLOCK_N=block_n,
+            GRID_DIM=grid_dim,
+            num_warps=GB_WARPS,
+        )
+
+
 def gather_backward(grad, self, dim, index, sparse_grad):
     logger.debug("GEMS_ENFLAME GATHER_BACKWARD")
-    # Both native kernels only accept int64 indices; int32 keeps the Triton path.
-    if index.dtype == torch.int64:
-        if _NATIVE_GATHER_BACKWARD is not None:
-            return _NATIVE_GATHER_BACKWARD.call_boxed(
-                _DEVICE_KEYSET, grad, self, dim, index, sparse_grad
-            )
-        if _NATIVE_SCATTER_ADD is not None:
-            result = grad.new_zeros(self.shape)
-            _NATIVE_SCATTER_ADD.call_boxed(_DEVICE_KEYSET, result, dim, index, grad)
+    result = grad.new_zeros(self.shape)
+    if index.ndim == 2:
+        ndim_dim = dim if dim >= 0 else dim + 2
+        if ndim_dim in (0, 1):
+            _gather_backward_2d(grad, index, result, ndim_dim)
             return result
 
     from .scatter import scatter_
 
-    result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

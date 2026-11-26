@@ -45,6 +45,19 @@ def _skip_without_aten_reference():
         pytest.skip(ATEN_REFERENCE_SKIP_REASON)
 
 
+def _skip_device_only_case_in_cpu_mode():
+    """Skip a device-only case that is gated on the ``--ref cpu`` mode.
+
+    These cases never build an ATen reference: their inputs and assertions stay
+    on the device. enflame runs them in the CPU-reference mode as well, so the
+    gate only applies to vendors that do use the CPU reference there.
+    """
+    if TO_CPU and not ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
+
+
 # (input_size, hidden_size, num_layers, bidirectional, bias)
 RECURRENT_CONFIGS = [
     (4, 3, 1, False, True),
@@ -161,10 +174,7 @@ def _reference(weights, args, dtype):
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_without_aten_reference()
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
@@ -186,10 +196,7 @@ def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
     """The production caller path: rebinding must actually take effect."""
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_device_only_case_in_cpu_mode()
     module = _make_module(dtype, cfg, mode_info)
     # `Module.__init__` already calls `flatten_parameters()`, so seed the module
     # with one separately-allocated copy per parameter to reproduce the state a
@@ -229,10 +236,7 @@ def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_device_only_case_in_cpu_mode()
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
@@ -264,10 +268,7 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
 @pytest.mark.cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", [torch.float64, torch.int64])
 def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_without_aten_reference()
     """The buffer is a bitwise copy, so any fixed-width dtype must work."""
     cfg = (4, 3, 2, True, True)
     mode_info = (torch.nn.LSTM, 2, 0, None)
@@ -297,10 +298,7 @@ def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
 
 @pytest.mark.cudnn_rnn_flatten_weight
 def test_cudnn_rnn_flatten_weight_errors():
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_device_only_case_in_cpu_mode()
     weights, stride0 = _make_weights(
         torch.float32, (4, 3, 1, False, True), (torch.nn.LSTM, 2, 0, None)
     )

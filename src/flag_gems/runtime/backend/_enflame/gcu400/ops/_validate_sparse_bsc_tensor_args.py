@@ -25,10 +25,11 @@ fixed persistent grid, so
   the host instead of a device assertion, because a GCU400 SIP assertion aborts
   the whole process and hangs when ``RLIMIT_CORE`` is zero.
 
-The logger name and debug message are pinned by
-``tests/test_validate_sparse_bsc_tensor_args.py::test_..._dispatch``, which
-requires the portable spelling; keep them unchanged so the dispatch probe still
-observes the registered implementation.
+The logger name is pinned by
+``tests/test_validate_sparse_bsc_tensor_args.py::test_..._dispatch``, which also
+requires a record whose message is exactly the portable wording. The backend
+convention additionally requires the ``GEMS_ENFLAME`` token on every message, so
+both records are emitted (see the wrapper below).
 """
 
 import logging
@@ -43,7 +44,13 @@ logger = logging.getLogger("flag_gems.ops._validate_sparse_bsc_tensor_args")
 def _validate_sparse_bsc_tensor_args(
     ccol_indices, row_indices, values, size, check_pinning=None
 ):
+    # The Enflame backend convention requires the "GEMS_ENFLAME" token, while
+    # tests/test_validate_sparse_bsc_tensor_args.py::test_..._dispatch verifies
+    # the ATen dispatch by matching the portable wording with an equality check.
+    # A single message cannot satisfy both, and the shared test must not be
+    # edited, so emit the backend-tagged record plus the portable token.
     logger.debug("GEMS_ENFLAME_VALIDATE_SPARSE_BSC_TENSOR_ARGS")
+    logger.debug("GEMS _VALIDATE_SPARSE_BSC_TENSOR_ARGS")
     return _validate_metadata(
         ccol_indices, row_indices, values, size, torch.sparse_bsc, check_pinning
     )

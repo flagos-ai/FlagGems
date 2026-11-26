@@ -945,14 +945,16 @@ def _install_gcu_quantized_platform():
 # ---------------------------------------------------------------------------
 # Launcher.
 #
-# The kernels are resolved through the *generic* module's namespace at call
-# time. Two reasons: the accuracy suite monkeypatches
-# ``flag_gems.ops.quantize_per_tensor.quantize_per_tensor_kernel`` (it cannot
-# see this backend copy) to count Triton launches, and it also calls the
-# generic ``_quantize_per_tensor_impl`` directly. Injecting the GCU-safe
-# kernels and this launcher into that namespace makes both introspection
-# points observe the kernels that actually run, without touching the generic
-# file (on non-enflame hosts this module is never loaded).
+# The same kernel is bound in two namespaces: this backend module and the
+# *generic* module (``flag_gems.ops.quantize_per_tensor``). Resolution is
+# deferred to call time and any monkeypatched binding wins, because the
+# accuracy suite counts Triton launches by replacing the kernel bound in
+# ``flag_gems.<op>.__module__`` (which is this module on enflame), while tests
+# that import the generic module patch that copy instead. Injecting the
+# GCU-safe kernels and this launcher into the generic namespace additionally
+# keeps the generic ``_quantize_per_tensor_impl`` on the GCU-safe kernels,
+# without touching the generic file (on non-enflame hosts this module is never
+# loaded).
 #
 # ``importlib.import_module`` is required to reach the module object itself:
 # ``import flag_gems.ops.quantize_per_tensor as x`` binds ``x`` to the
@@ -962,6 +964,21 @@ def _install_gcu_quantized_platform():
 import importlib as _importlib  # noqa: E402
 
 _generic_impl = _importlib.import_module("flag_gems.ops.quantize_per_tensor")
+
+# Bindings as created at import time; anything else means a launch-counting
+# guard replaced the kernel and the replacement has to be launched.
+_CANONICAL_KERNELS = {
+    "quantize_per_tensor_kernel": quantize_per_tensor_kernel,
+    "quantize_per_tensor_strided_kernel": quantize_per_tensor_strided_kernel,
+}
+
+
+def _resolve_kernel(name):
+    """Return the kernel object to launch, honouring monkeypatched bindings."""
+    own = globals()[name]
+    if own is not _CANONICAL_KERNELS[name]:
+        return own
+    return getattr(_generic_impl, name, own)
 
 
 def _linear_launch_config(n_elements):
@@ -1014,7 +1031,7 @@ def _launch_quantize_kernel(a, out_int, scale, zero_point, qmin, qmax):
     programs = min(triton.cdiv(n_elements, BLOCK_SIZE), _GRID_X_CAP)
     grid = (programs,)
     if linear:
-        _generic_impl.quantize_per_tensor_kernel[grid](
+        _resolve_kernel("quantize_per_tensor_kernel")[grid](
             a,
             out_int,
             inv_scale,
@@ -1036,7 +1053,7 @@ def _launch_quantize_kernel(a, out_int, scale, zero_point, qmin, qmax):
                 f"quantize_per_tensor: inputs with more than {MAX_NDIM} dimensions "
                 f"are not supported, got {ndim}"
             )
-        _generic_impl.quantize_per_tensor_strided_kernel[grid](
+        _resolve_kernel("quantize_per_tensor_strided_kernel")[grid](
             a,
             out_int,
             inv_scale,

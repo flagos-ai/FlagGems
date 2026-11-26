@@ -21,7 +21,14 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from .bmm import _SAFE_FALLBACK_CONFIG, _clamp_tile, _select_gemm_config, bmm
+from .bmm import (
+    _16BIT_TILE_LADDER,
+    _DSM_HARD_LIMIT_BYTES,
+    _SAFE_FALLBACK_CONFIG,
+    _clamp_tile,
+    _select_gemm_config,
+    bmm,
+)
 from .mul import mul
 
 logger = logging.getLogger(__name__)
@@ -33,6 +40,38 @@ logger = logging.getLogger(__name__)
 # core), and large problems rely on that table's software pipeline.
 # ---------------------------------------------------------------------------
 
+# baddbmm's bias epilogue costs one extra accumulator-sized local buffer on top
+# of the fp32 accumulator, so this kernel needs roughly twice the local budget
+# the bmm.py tile table was sized for.  Measured on (16,4096,4096,4096) fp16
+# with the shared wide tile (512,256,64): the compiler reports
+# "required total:1146880" (= 2 * 512*256*4 + one 96KiB staged A/B tile)
+# against the 917504 B pool, i.e. exactly the doubled accumulator plus one
+# stage.  Every launch then fell back to the 64x64 retry tile, and at
+# (B=16, M=N=4096) that retry needs 16 * 64 * 64 = 65536 programs -- one over
+# the hardware grid.x limit -- so the operator failed instead of just running
+# slower.
+_ACC_BYTES = 4
+
+
+def _tile_fits(block_m, block_n, block_k):
+    """Does a tile fit the DSM pool next to baddbmm's two accumulator-sized
+    local buffers (the fp32 accumulator and the bias tile)?"""
+    return (
+        2 * block_m * block_n * _ACC_BYTES + (block_m * block_k + block_k * block_n) * 2
+        <= _DSM_HARD_LIMIT_BYTES
+    )
+
+
+def _baddbmm_stages(block_m, block_n, block_k, max_stages=4):
+    """Largest pipeline depth whose staged A/B tiles still fit next to those two
+    accumulator-sized buffers."""
+    acc = block_m * block_n * _ACC_BYTES
+    for stages in range(max_stages, 0, -1):
+        staged = (block_m * block_k + block_k * block_n) * 2 * stages
+        if 2 * acc + staged <= _DSM_HARD_LIMIT_BYTES:
+            return stages
+    return 1
+
 
 def _select_baddbmm_config(Batch, M, N, K, dtype):
     # baddbmm shares the batched GEMM core with bmm and only adds a stride-based
@@ -40,7 +79,25 @@ def _select_baddbmm_config(Batch, M, N, K, dtype):
     # That table also clamps every tile to the problem dimensions and fits the
     # software pipeline into the DSM budget, which is what used to make the
     # N == 1 accuracy cases fail to compile.
-    return _select_gemm_config(Batch, M, N, K, dtype)
+    config = _select_gemm_config(Batch, M, N, K, dtype)
+    block_m, block_n, block_k, num_warps, num_stages, even = config
+    if dtype not in (torch.float16, torch.bfloat16) or _tile_fits(
+        block_m, block_n, block_k
+    ):
+        return config
+    # The wide 16-bit tile does not fit this kernel's local budget: walk the
+    # shared ladder down to the first tile that does.  The bias tile shrinks
+    # with the output tile, so (256,256,*) fits where (512,256,*) does not.
+    for cand_m, cand_n, cand_k, cand_warps in _16BIT_TILE_LADDER:
+        cand_m = _clamp_tile(M, cand_m)
+        cand_n = _clamp_tile(N, cand_n)
+        cand_k = _clamp_tile(K, cand_k, floor=16)
+        if not _tile_fits(cand_m, cand_n, cand_k):
+            continue
+        num_stages = _baddbmm_stages(cand_m, cand_n, cand_k)
+        even = M % cand_m == 0 and N % cand_n == 0 and K % cand_k == 0
+        return cand_m, cand_n, cand_k, cand_warps, num_stages, even
+    return config
 
 
 @libentry()
@@ -214,12 +271,22 @@ def _launch_baddbmm(A, B, bias, out, Batch, M, N, K, alpha, beta):
         try:
             _issue(block_m, block_n, block_k, num_warps, num_stages, even)
         except triton.runtime.errors.OutOfResources:
-            # Tiles exceed the hardware DSM budget for this shape: retry once
-            # with the conservative tile instead of failing the operator.
+            # Tiles exceed the hardware budget for this shape: retry once with
+            # the conservative tile instead of failing the operator.  The safe
+            # tile must still keep the program count inside the grid.x limit:
+            # 64x64 already needs 65536 programs at (B=16, M=N=4096), one over
+            # the limit, so grow the retry tile until the grid is legal.
             block_m, block_n, block_k, num_warps, num_stages = _SAFE_FALLBACK_CONFIG
             block_m = _clamp_tile(M, block_m)
             block_n = _clamp_tile(N, block_n)
             block_k = _clamp_tile(K, block_k, floor=16)
+            while (
+                Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n) > 65535
+                and block_m < 512
+                and block_n < 512
+            ):
+                block_m *= 2
+                block_n *= 2
             even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
             _issue(block_m, block_n, block_k, num_warps, num_stages, even)
 

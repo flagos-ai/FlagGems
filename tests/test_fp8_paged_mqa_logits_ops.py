@@ -46,7 +46,6 @@ TORCH_REFERENCE_VENDORS = ("enflame",)
 USE_DEEPGEMM_REFERENCE = (
     VLLM_AVAILABLE and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS
 )
-
 # Shape configs for QUICK_MODE
 if cfg.QUICK_MODE:
     BATCH_NEXTN_SHAPES = [(4, 1)]
@@ -115,11 +114,72 @@ def _build_mask(context_lens, batch_size, next_n, max_model_len, device):
     )
 
 
+def torch_reference_fp8_paged_mqa_logits(
+    q_fp8, kv_cache, weights, context_lens, block_tables, max_model_len
+):
+    """Dequantized torch reference for the paged MQA logits kernel.
+
+    Runs on the device the inputs live on; the callers on vendors without the
+    CUDA-only DeepGEMM kernel pass CPU tensors.  Every KV entry carries its own
+    fp32 scale in the four bytes trailing the fp8 payload, so the logits are
+    rebuilt as ``sum_h w * relu(scale * k . q)`` over the causal window.
+    """
+    batch_size, next_n, heads, dim = q_fp8.shape
+    block_size = kv_cache.shape[1]
+    device = q_fp8.device
+    q_float = q_fp8.to(torch.float32)
+    logits = torch.full(
+        (batch_size * next_n, max_model_len),
+        float("-inf"),
+        device=device,
+        dtype=torch.float32,
+    )
+    for batch_idx in range(batch_size):
+        context_len = int(context_lens[batch_idx])
+        for next_n_idx in range(next_n):
+            query_pos = context_len - next_n + next_n_idx
+            keep = min(context_len, query_pos + 1)
+            if keep <= 0:
+                continue
+            positions = torch.arange(keep, device=device)
+            phys_blocks = block_tables[batch_idx, positions // block_size].long()
+            intra_positions = positions % block_size
+            kv_rows = kv_cache[phys_blocks, intra_positions, 0]
+            kv_values = (
+                kv_rows[:, :dim]
+                .contiguous()
+                .view(torch.float8_e4m3fn)
+                .to(torch.float32)
+            )
+            kv_scales = (
+                kv_rows[:, dim : dim + 4].contiguous().view(torch.float32).squeeze(-1)
+            )
+            dots = (kv_values @ q_float[batch_idx, next_n_idx].T) * kv_scales.unsqueeze(
+                1
+            )
+            dots = torch.clamp(dots, min=0.0)
+            row_idx = batch_idx * next_n + next_n_idx
+            logits[row_idx, :keep] = (dots * weights[row_idx].unsqueeze(0)).sum(-1)
+    return logits
+
+
 @pytest.mark.fp8_paged_mqa_logits
-@pytest.mark.skipif(not VLLM_AVAILABLE, reason="vllm is not installed")
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
-@pytest.mark.skipif(not DEEPGEMM_AVAILABLE, reason="DeepGEMM not available")
-@pytest.mark.skipif(not SM90_AVAILABLE, reason="SM90 and SM100 only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not VLLM_AVAILABLE,
+    reason="vllm is not installed",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not torch.cuda.is_available(),
+    reason="CUDA only",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not DEEPGEMM_AVAILABLE,
+    reason="DeepGEMM not available",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not SM90_AVAILABLE,
+    reason="SM90 and SM100 only",
+)
 @pytest.mark.parametrize("clean_logits", [True, False])
 def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
     torch.manual_seed(0)
@@ -164,23 +224,33 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
 
     q_fp8 = q.to(torch.float8_e4m3fn)
 
-    kv_cache_fp8_deepgemm = kv_cache_cast_to_fp8(kv_cache)
     kv_cache_fp8_triton = kv_cache_cast_to_fp8_triton(kv_cache)
 
-    schedule_metadata = get_paged_mqa_logits_metadata(
-        context_lens, blocksize, get_num_sms()
-    )
-    ref_out = fp8_paged_mqa_logits_deepgemm(
-        q_fp8,
-        kv_cache_fp8_deepgemm,
-        weights,
-        context_lens,
-        block_tables,
-        schedule_metadata,
-        max_model_len,
-        clean_logits=clean_logits,
-    )
-    ref_out = to_reference(ref_out)
+    if USE_DEEPGEMM_REFERENCE:
+        kv_cache_fp8_deepgemm = kv_cache_cast_to_fp8(kv_cache)
+        schedule_metadata = get_paged_mqa_logits_metadata(
+            context_lens, blocksize, get_num_sms()
+        )
+        ref_out = fp8_paged_mqa_logits_deepgemm(
+            q_fp8,
+            kv_cache_fp8_deepgemm,
+            weights,
+            context_lens,
+            block_tables,
+            schedule_metadata,
+            max_model_len,
+            clean_logits=clean_logits,
+        )
+        ref_out = to_reference(ref_out)
+    else:
+        ref_out = torch_reference_fp8_paged_mqa_logits(
+            q_fp8.cpu(),
+            kv_cache_fp8_triton.cpu(),
+            weights.cpu(),
+            context_lens.cpu(),
+            block_tables.cpu(),
+            max_model_len,
+        )
 
     res_out = flag_gems.fp8_paged_mqa_logits(
         q_fp8,
@@ -195,7 +265,9 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
         context_lens, batch_size, next_n, max_model_len, flag_gems.device
     )
     res_out_masked = torch.nan_to_num(res_out.masked_fill(~mask, 0), 0.0)
-    ref_out_masked = torch.nan_to_num(ref_out.masked_fill(~mask, 0), 0.0)
+    ref_out_masked = torch.nan_to_num(
+        ref_out.masked_fill(~mask.to(ref_out.device), 0), 0.0
+    )
 
     gems_assert_close(
         res_out_masked,
@@ -203,16 +275,27 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
         res_out_masked.dtype,
         equal_nan=True,
         atol=5e-2,
-        rtol=1e-3,
         reduce_dim=1,
     )
 
 
 @pytest.mark.fp8_paged_mqa_logits
-@pytest.mark.skipif(not VLLM_AVAILABLE, reason="vllm is not installed")
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
-@pytest.mark.skipif(not DEEPGEMM_AVAILABLE, reason="DeepGEMM not available")
-@pytest.mark.skipif(not SM90_AVAILABLE, reason="SM90 and SM100 only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not VLLM_AVAILABLE,
+    reason="vllm is not installed",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not torch.cuda.is_available(),
+    reason="CUDA only",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not DEEPGEMM_AVAILABLE,
+    reason="DeepGEMM not available",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "enflame" and not SM90_AVAILABLE,
+    reason="SM90 and SM100 only",
+)
 @pytest.mark.parametrize("batch_size, next_n", BATCH_NEXTN_SHAPES)
 @pytest.mark.parametrize("heads, index_dim", HEADS_INDEXDIM_SHAPES)
 def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_dim):
@@ -256,23 +339,33 @@ def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_di
 
     q_fp8 = q.to(torch.float8_e4m3fn)
 
-    kv_cache_fp8_deepgemm = kv_cache_cast_to_fp8(kv_cache)
     kv_cache_fp8_triton = kv_cache_cast_to_fp8_triton(kv_cache)
 
-    schedule_metadata = get_paged_mqa_logits_metadata(
-        context_lens, blocksize, get_num_sms()
-    )
-    ref_out = fp8_paged_mqa_logits_deepgemm(
-        q_fp8,
-        kv_cache_fp8_deepgemm,
-        weights,
-        context_lens,
-        block_tables,
-        schedule_metadata,
-        max_model_len,
-        clean_logits=True,
-    )
-    ref_out = to_reference(ref_out)
+    if USE_DEEPGEMM_REFERENCE:
+        kv_cache_fp8_deepgemm = kv_cache_cast_to_fp8(kv_cache)
+        schedule_metadata = get_paged_mqa_logits_metadata(
+            context_lens, blocksize, get_num_sms()
+        )
+        ref_out = fp8_paged_mqa_logits_deepgemm(
+            q_fp8,
+            kv_cache_fp8_deepgemm,
+            weights,
+            context_lens,
+            block_tables,
+            schedule_metadata,
+            max_model_len,
+            clean_logits=True,
+        )
+        ref_out = to_reference(ref_out)
+    else:
+        ref_out = torch_reference_fp8_paged_mqa_logits(
+            q_fp8.cpu(),
+            kv_cache_fp8_triton.cpu(),
+            weights.cpu(),
+            context_lens.cpu(),
+            block_tables.cpu(),
+            max_model_len,
+        )
 
     res_out = flag_gems.fp8_paged_mqa_logits(
         q_fp8,
@@ -287,7 +380,9 @@ def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_di
         context_lens, batch_size, next_n, max_model_len, flag_gems.device
     )
     res_out_masked = torch.nan_to_num(res_out.masked_fill(~mask, 0), 0.0)
-    ref_out_masked = torch.nan_to_num(ref_out.masked_fill(~mask, 0), 0.0)
+    ref_out_masked = torch.nan_to_num(
+        ref_out.masked_fill(~mask.to(ref_out.device), 0), 0.0
+    )
 
     gems_assert_close(
         res_out_masked,
@@ -295,6 +390,5 @@ def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_di
         res_out_masked.dtype,
         equal_nan=True,
         atol=5e-2,
-        rtol=1e-3,
         reduce_dim=1,
     )

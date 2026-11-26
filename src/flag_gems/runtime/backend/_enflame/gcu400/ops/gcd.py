@@ -23,6 +23,8 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 NUM_SIPS = 24
+SMALL_NUMEL = 65536
+SMALL_BLOCK = 1024
 
 # Semantics (bit-for-bit aligned with ATen's integer gcd; cross-checked on the host with a sim script across all dtypes
 # at 8/16/32/64 bits):
@@ -71,6 +73,59 @@ def gcd_kernel_i32(
                 r = a % tl.where(active, b, 1)
                 a = tl.where(active, b, a)
                 b = tl.where(active, r, b)
+                active = active & (b != 0)
+
+        tl.store(out_ptr + offsets, a.to(out_ptr.type.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
+def gcd_kernel_narrow(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    DTYPE_MIN: tl.constexpr,
+    BLOCK: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
+    """8/16-bit path: every operand magnitude is at most 2^15.
+
+    The C remainder a % b equals sign(a) * (|a| mod |b|), and both magnitudes
+    are below 2^24, so the modulo is produced with a float32 divide instead of
+    the software int32 division sequence.  The quotient estimate comes from a
+    truncated float divide, so it can be one off when the exact quotient sits
+    on an integer (the last step of every Euclid chain does): one branchless
+    add/subtract of |b| repairs that and keeps the result bit-exact with ATen.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    for block_id in tl.range(pid, (n_elements + BLOCK - 1) // BLOCK, num_pids):
+        offsets = block_id * BLOCK + arange
+        mask = offsets < n_elements
+
+        x = tl.load(x_ptr + offsets, mask=mask, other=0).to(tl.int32)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0).to(tl.int32)
+        a = tl.where(x == DTYPE_MIN, x, tl.abs(x))
+        b = tl.where(y == DTYPE_MIN, y, tl.abs(y))
+
+        active = mask & (b != 0)
+        while tl.sum(active.to(tl.int32), axis=0) > 0:
+            for _ in tl.static_range(CHUNK):
+                magnitude_a = tl.abs(a)
+                magnitude_b = tl.where(active, tl.abs(b), 1)
+                quotient = (magnitude_a.to(tl.float32) / magnitude_b.to(tl.float32)).to(
+                    tl.int32
+                )
+                remainder = magnitude_a - quotient * magnitude_b
+                remainder = tl.where(remainder < 0, remainder + magnitude_b, remainder)
+                remainder = tl.where(
+                    remainder >= magnitude_b, remainder - magnitude_b, remainder
+                )
+                remainder = tl.where(a < 0, -remainder, remainder)
+                a = tl.where(active, b, a)
+                b = tl.where(active, remainder, b)
                 active = active & (b != 0)
 
         tl.store(out_ptr + offsets, a.to(out_ptr.type.element_ty), mask=mask)
@@ -128,7 +183,7 @@ def _kernel_meta(dtype):
     if dtype == torch.int32:
         return gcd_kernel_i32, 4096, 4, 32
     if dtype in (torch.int8, torch.int16):
-        return gcd_kernel_i32, 4096, 4, 16
+        return gcd_kernel_narrow, 4096, 8, 8
     raise TypeError(f"unsupported dtype for gcd: {dtype}")
 
 
@@ -152,6 +207,11 @@ def _launch_gcd(lhs, rhs, out):
         return out
 
     kernel, block, num_warps, chunk = _kernel_meta(out.dtype)
+    # Small tensors never fill the grid-stride loop: a narrower tile cuts the
+    # per-block tail wait (the block finishes when its slowest lane does) and
+    # keeps the latency-bound cases closer to the launch overhead.
+    if numel <= SMALL_NUMEL and block > SMALL_BLOCK:
+        block = SMALL_BLOCK
     grid = min((numel + block - 1) // block, NUM_SIPS * 2)
     with torch_device_fn.device(out.device):
         kernel[(grid,)](
@@ -170,6 +230,12 @@ def _launch_gcd(lhs, rhs, out):
 def gcd(self, other, *, out=None):
     logger.debug("GEMS_ENFLAME GCD")
     lhs, rhs, promoted_dtype = _materialize_inputs(self, other)
+    # The kernel is the only producer of the values, so a contiguous `out` of
+    # the promoted dtype can be written in place: no staging buffer and no
+    # extra device copy for the out= variant.
+    if out is not None and out.is_contiguous() and out.dtype == promoted_dtype:
+        _launch_gcd(lhs.reshape(-1), rhs.reshape(-1), out.reshape(-1))
+        return out
     result = torch.empty_like(lhs, dtype=promoted_dtype)
     _launch_gcd(lhs.reshape(-1), rhs.reshape(-1), result.reshape(-1))
     result = result.view(lhs.shape)

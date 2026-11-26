@@ -300,6 +300,7 @@ from .greater_equal import (
     greater_equal,
     greater_equal_,
     greater_equal_scalar,
+    greater_equal_tensor_,
 )
 from .greater_scalar__opt import greater_scalar
 from .greater_scalar_out__opt import greater_scalar_out
@@ -2575,6 +2576,7 @@ __all__ = [
     "greater_equal",
     "greater_equal_",
     "greater_equal_scalar",
+    "greater_equal_tensor_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -3730,3 +3732,18 @@ import flag_gems.ops.cumsum_backward as _flag_gems_cumsum_backward_module  # noq
 
 _flag_gems_cumsum_backward_module.cumsum_backward = cumsum_backward
 del _flag_gems_cumsum_backward_module
+
+# `tests/test_multi_margin_loss.py` calls `flag_gems.ops.multi_margin_loss*`,
+# which keeps the common function after the backend re-binds the top-level
+# `flag_gems.<name>`. The common kernels report an out-of-range target through
+# `tl.device_assert`, and on GCU that SIP abort leaves the host process waiting
+# on the poisoned context instead of exiting, so the caller only sees an
+# external timeout. Binding the gcu400 implementations (which validate the
+# target on the host and raise a RuntimeError) makes the test and the aten
+# dispatch path run the same code; the common source stays untouched.
+import flag_gems.ops as _flag_gems_ops_module  # noqa: E402
+
+_flag_gems_ops_module.multi_margin_loss = multi_margin_loss
+_flag_gems_ops_module.multi_margin_loss_backward = multi_margin_loss_backward
+_flag_gems_ops_module.multi_margin_loss_backward_out = multi_margin_loss_backward_out
+del _flag_gems_ops_module

@@ -9,6 +9,20 @@ LU_UNPACK_DTYPES = [torch.float32]
 if flag_gems.runtime.device.support_fp64:
     LU_UNPACK_DTYPES.append(torch.float64)
 
+# Both cases below build their packed input with torch.linalg.lu_factor.  The
+# GCU factorization aborts the whole process for wide matrices, so the shapes
+# whose factorization aborts are not fed to this benchmark on enflame.  The
+# abort is independent of the row count and was measured on GCU400 as:
+# 1024x16384 and 1024x32768 factorize, 1024x49152, 64x65536 and 1024x65536
+# abort.  Other vendors keep every shape.
+_ENFLAME_LU_FACTOR_MAX_DIM = 32768
+
+
+def _lu_factor_supported(m, n):
+    if flag_gems.vendor_name != "enflame":
+        return True
+    return max(m, n) <= _ENFLAME_LU_FACTOR_MAX_DIM
+
 
 @pytest.mark.lu_unpack
 @pytest.mark.skip_native(
@@ -25,6 +39,8 @@ def test_lu_unpack():
         if len(shape) != 2:
             return
         m, n = shape
+        if not _lu_factor_supported(m, n):
+            return
         # Generate a random matrix and compute LU factorization
         # We precompute LU and pivots to focus on the lu_unpack performance
         A = torch.randn(m, n, dtype=dtype, device=device)
@@ -70,6 +86,8 @@ def test_lu_unpack_backward():
         if len(shape) != 2:
             return
         m, n = shape
+        if not _lu_factor_supported(m, n):
+            return
         A = torch.randn(m, n, dtype=dtype, device=device)
         LU, pivots = torch.linalg.lu_factor(A)
         yield LU, pivots

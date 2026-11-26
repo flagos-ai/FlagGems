@@ -28,20 +28,22 @@ logger = logging.getLogger(__name__)
 # - GRID_LIMIT keeps the grid-stride walk inside one <=48-CTA wave (larger
 #   grids measured monotonically worse: waves serialize, no CTA interleaving).
 # - BLOCK_CAP bounds each spatial block; plane batching (P) fills the tile.
-# - Forward tiles are dispatched by output-plane size: big planes amortize the
-#   per-tile-op overhead best with the full 16K-element tile at 1 warp, while
-#   tiny output planes (e.g. 4x4) keep the 4K tile (a 16K tile there drags in
-#   dead row lanes and measured ~1.8x worse). The backward candidate walk
-#   (<= cdiv(K-1,S)+1)^2 loads per input element) prefers the 16K tile at
-#   1 warp on every core shape.
+# - Forward tiles use the same 8K-element / 1-warp configuration for every
+#   output-plane size. A per-shape sweep over the five benchmark core shapes
+#   measured the size-dispatched 16K/1-warp (big planes) and 4K/2-warp (small
+#   planes) pair at 0.327x mean speedup of the ATen leg, while a single 8K tile
+#   at 1 warp reached 0.49x: the 16K tile halves the CTA count on the 28x28 and
+#   14x14 plane cases and the 2-warp small tile loses the 4x4-plane tail. The
+#   backward candidate walk ((<= cdiv(K-1,S)+1)^2 loads per input element)
+#   still prefers the 16K tile at 1 warp on every core shape.
 POOL_GRID_LIMIT = 48
 POOL_BLOCK_CAP = 64
 POOL_TILE_FLOOR = 1024
 POOL_FWD_BIG_PLANE_OUT = 128
-POOL_FWD_TILE_BIG = 16384
+POOL_FWD_TILE_BIG = 8192
 POOL_FWD_WARPS_BIG = 1
-POOL_FWD_TILE_SMALL = 4096
-POOL_FWD_WARPS_SMALL = 2
+POOL_FWD_TILE_SMALL = 8192
+POOL_FWD_WARPS_SMALL = 1
 POOL_BWD_TILE_LIMIT = 16384
 POOL_BWD_WARPS = 1
 

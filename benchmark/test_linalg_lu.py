@@ -235,8 +235,14 @@ class LinalgLuOutBenchmark(base.Benchmark):
         for inp_shape in self.shapes:
             inp_shape = tuple(inp_shape)
             for pivot in _PIVOT_VALUES:
-                if pivot and VENDOR != "ascend":
-                    # out variant for pivot=True already covered by main benchmark
+                # The out variant for pivot=True is covered by the main
+                # benchmark.  enflame GCU has no pivot=False kernel, so its
+                # _PIVOT_VALUES is [True] only and skipping that pivot leaves an
+                # empty case list, which makes the result table raise IndexError
+                # before any case is measured.  Keep the single pivot for
+                # enflame; every other vendor keeps the original skip so its
+                # case list is unchanged.
+                if pivot and VENDOR not in ("ascend", "enflame"):
                     continue
                 m, n = inp_shape[-2], inp_shape[-1]
                 k = min(m, n)
@@ -263,6 +269,10 @@ def test_linalg_lu_out():
         torch_op=_torch_lu,
         dtypes=_TEST_DTYPES,
     )
-    if VENDOR == "ascend":
+    # The candidate implementation must be given explicitly: the base class
+    # otherwise measures torch_op, and this vendor's aten::linalg_lu has no
+    # PrivateUse1 kernel, so the measurement would fall back to the CPU instead
+    # of the Triton implementation.
+    if VENDOR in ("ascend", "enflame"):
         bench.gems_op = flag_gems.linalg_lu_out
     bench.run()

@@ -31,12 +31,16 @@ APPLY_CASES = [
     (128, 64),
 ]
 
+# Every case in this module compares against the native aten operator, and
+# `aten::_sparse_semi_structured_apply` has no CPU and no PrivateUse1 kernel in
+# this build (measured on GCU: `_dispatch_has_kernel_for_dispatch_key` is False
+# for both), so no reference value can be computed. The FlagGems kernel itself
+# compiles and runs on GCU; only the reference-dependent cases are skipped.
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason=(
-        "GCU cannot compile the _sparse_semi_structured_apply kernel "
-        "(RuntimeError: Pipeline run failed: PassManager execution failed) and the "
-        "aten reference has no CPU kernel in this build"
+        "aten::_sparse_semi_structured_apply has no CPU/PrivateUse1 kernel in this "
+        "build, so the reference value cannot be computed"
     ),
 )
 

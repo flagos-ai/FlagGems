@@ -160,6 +160,11 @@ def test_embedding_dense_backward(
     num_weights = embeddingsize
     ref_grad_output = utils.to_reference(grad_output)
     ref_indices = utils.to_reference(indices)
+    if flag_gems.vendor_name == "enflame":
+        # torch_gcu routes this op to topsaten, whose kernel contract requires
+        # int32 indices and aborts the process on int64. The result is
+        # index-dtype independent, so only the reference input is downcast.
+        ref_indices = ref_indices.to(torch.int32)
     ref_out = torch.ops.aten.embedding_dense_backward(
         ref_grad_output,
         ref_indices,

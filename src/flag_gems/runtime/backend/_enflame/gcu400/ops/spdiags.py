@@ -39,12 +39,19 @@ _MIN_OFF_PAD = 32
 # reused across calls (bounded by the fast-path diagonal count).
 _PINNED_STAGE = None
 _SYNC_EVENT = None
+# GCU has no 64-bit and no complex floating point support. Feeding such a
+# pointer to the Triton backend does not raise: it aborts inside the MLIR
+# lowering with a ``cast<mlir::VectorType>`` assertion and kills the whole
+# interpreter, so these dtypes are rejected on the host instead.
+_UNSUPPORTED_DTYPES = (torch.float64, torch.complex64, torch.complex128)
 
 
 def _get_pinned_stage():
     global _PINNED_STAGE, _SYNC_EVENT
     if _PINNED_STAGE is None:
-        _PINNED_STAGE = torch.empty(_MAX_GRID_Y, dtype=torch.int64, pin_memory=True)
+        # int32 to match the narrowed offsets the kernel consumes; the read back
+        # is then an exact word-for-word copy.
+        _PINNED_STAGE = torch.empty(_MAX_GRID_Y, dtype=torch.int32, pin_memory=True)
         _SYNC_EVENT = torch.cuda.Event()
     return _PINNED_STAGE, _SYNC_EVENT
 
@@ -85,11 +92,21 @@ def spdiags_kernel(
     ``(2, nnz)`` index buffer. That decouples the launch from the host-side
     offsets read, so the kernel can be enqueued before the blocking read
     completes and the host only pays for the read, not for the launch.
+
+    ``indices_ptr`` must point to int32 storage and ``offsets_ptr`` must be
+    int32: GCU's Triton backend has no 64-bit support (an int64 pointer is
+    stepped by four bytes per element and int64 stores land only their low
+    word), so rows/columns are produced as int32 and widened by the host when
+    the COO tensor is built, and the caller narrows the offsets before the
+    launch.
     """
     diag_local = tl.program_id(1)
     diag_idx = diag_base + diag_local
 
     # All offsets of this chunk, per-diagonal valid ranges and counts.
+    # ``offsets_ptr`` is int32: GCU's Triton backend has no real 64-bit support
+    # (an int64 pointer is stepped by four bytes per element and int64 stores
+    # land only their low word), so every offset/position below stays int32.
     d_idx = tl.arange(0, OFF_PAD)
     d_mask = d_idx < num_chunk
     offs_all = tl.load(offsets_ptr + diag_base + d_idx, mask=d_mask, other=0)
@@ -97,7 +114,7 @@ def spdiags_kernel(
     hi_all = tl.minimum(diag_len, tl.minimum(ncols, nrows + offs_all))
     cnt_all = tl.where(d_mask, tl.maximum(hi_all - lo_all, 0), 0)
     if INLINE_NNZ:
-        col_block = tl.sum(cnt_all.to(tl.int32), axis=0).to(tl.int64)
+        col_block = tl.sum(cnt_all.to(tl.int32), axis=0)
 
     offset = tl.load(offsets_ptr + diag_idx)
 
@@ -117,11 +134,11 @@ def spdiags_kernel(
     cnt_early = tl.where(d_mask & (d_idx < diag_local), cnt_all, 0).to(tl.int32)
     base = chunk_base + tl.sum(cnt_early, axis=0)
 
-    j = lo + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    j = lo + tl.arange(0, BLOCK_SIZE)
     mask = j < hi
 
-    out_pos = base.to(tl.int64) + (j - j_lo)
-    diag_addr = diag_idx.to(tl.int64) * diag_len
+    out_pos = base + (j - j_lo)
+    diag_addr = diag_idx * diag_len
 
     row = j - offset
     vals = tl.load(diagonals_ptr + diag_addr + j, mask=mask)
@@ -219,6 +236,12 @@ def spdiags(diagonals, offsets, shape, layout=None):
             f"Offset Tensor must have dtype Long but got {offsets_1d.dtype}"
         )
 
+    if diagonals_2d.dtype in _UNSUPPORTED_DTYPES:
+        raise RuntimeError(
+            f"spdiags with {diagonals_2d.dtype} diagonals is not supported on "
+            "the enflame backend: GCU has no 64-bit or complex floating point"
+        )
+
     num_diags = diagonals_2d.shape[0]
     diag_len = diagonals_2d.shape[1]
     nrows, ncols = shape
@@ -236,6 +259,20 @@ def spdiags(diagonals, offsets, shape, layout=None):
     diagonals_contig = diagonals_2d.contiguous()
     offsets_contig = offsets_1d.contiguous()
     numel_max = num_diags * diag_len
+    if numel_max > 0x7FFFFFFF:
+        raise RuntimeError(
+            f"spdiags input has {numel_max} elements, exceeding the supported 2^31 - 1"
+        )
+
+    # GCU's Triton backend steps an int64 pointer by four bytes per element, so
+    # an int64 offsets load reads the wrong half of every entry: the kernel has
+    # to consume int32 offsets. The narrow is lossless because torch_gcu already
+    # replaces Long with Int (``torch.tensor([2**40 + 5], dtype=int64,
+    # device="gcu")`` reads back as 5), so int64 device tensors hold nothing
+    # beyond the low word anyway. ``view(torch.int32)`` would avoid this extra
+    # op but is unusable: torch_gcu does not reinterpret bytes there, it casts
+    # and leaves the tail uninitialized.
+    offsets_i32 = offsets_contig.to(torch.int32)
 
     # The generic path compacts with a nonzero + index_select chain whose
     # int64 cumsum scan aborts the GCU runtime. Here the kernel writes the
@@ -252,11 +289,13 @@ def spdiags(diagonals, offsets, shape, layout=None):
         except Exception:
             stage = None
         if stage is not None:
-            stage[:num_diags].copy_(offsets_contig, non_blocking=True)
+            stage[:num_diags].copy_(offsets_i32, non_blocking=True)
             sync_event.record()
             n_blocks, block_size = _launch_grid(diag_len)
+            # int32 staging: GCU cannot address or store int64, so the kernel
+            # writes int32 rows/columns and the host widens them once.
             indices_flat = torch.empty(
-                (2 * numel_max,), dtype=torch.int64, device=diagonals.device
+                (2 * numel_max,), dtype=torch.int32, device=diagonals.device
             )
             values_buf = torch.empty(
                 (numel_max,), dtype=diagonals.dtype, device=diagonals.device
@@ -264,7 +303,7 @@ def spdiags(diagonals, offsets, shape, layout=None):
             with torch_device_fn.device(diagonals.device):
                 spdiags_kernel[(n_blocks, num_diags)](
                     diagonals_contig,
-                    offsets_contig,
+                    offsets_i32,
                     indices_flat,
                     values_buf,
                     0,
@@ -298,7 +337,7 @@ def spdiags(diagonals, offsets, shape, layout=None):
                 raise RuntimeError(
                     f"spdiags result has {nnz} nonzeros, exceeding the supported 2^31 - 1"
                 )
-            indices = indices_flat[: 2 * nnz].view(2, nnz)
+            indices = indices_flat[: 2 * nnz].to(torch.int64).view(2, nnz)
             values = values_buf[:nnz]
             # The kernel guarantees in-bounds indices by construction, so the
             # unsafe (check-free) constructor is exact here and saves the
@@ -323,7 +362,8 @@ def spdiags(diagonals, offsets, shape, layout=None):
         )
 
     n_blocks, block_size = _launch_grid(diag_len)
-    indices = torch.empty((2, nnz), dtype=torch.int64, device=diagonals.device)
+    # int32 staging, widened on the host after the launch (see the kernel note).
+    indices_i32 = torch.empty((2, nnz), dtype=torch.int32, device=diagonals.device)
     values = torch.empty((nnz,), dtype=diagonals.dtype, device=diagonals.device)
 
     with torch_device_fn.device(diagonals.device):
@@ -333,8 +373,8 @@ def spdiags(diagonals, offsets, shape, layout=None):
             num_chunk = min(_MAX_GRID_Y, num_diags - chunk_start)
             spdiags_kernel[(n_blocks, num_chunk)](
                 diagonals_contig,
-                offsets_contig,
-                indices,
+                offsets_i32,
+                indices_i32,
                 values,
                 nnz,
                 chunk_base,
@@ -352,6 +392,10 @@ def spdiags(diagonals, offsets, shape, layout=None):
             diag_base += num_chunk
 
     result = torch.sparse_coo_tensor(
-        indices, values, size=shape, dtype=diagonals.dtype, device=diagonals.device
+        indices_i32.to(torch.int64),
+        values,
+        size=shape,
+        dtype=diagonals.dtype,
+        device=diagonals.device,
     )
     return _to_layout(result, layout)

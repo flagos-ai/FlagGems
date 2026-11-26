@@ -734,6 +734,17 @@ def _ord2_norm(A, ord_val, dim, keepdim, dtype, out=None):
         and (d0, d1) in ((ndim - 2, ndim - 1), (ndim - 1, ndim - 2))
         and (out is None or (out.is_contiguous() and out.numel() >= 1))
     )
+    # ord=-2 needs the *smallest* singular value.  The Gram matrix squares it,
+    # so in the fp32-only arithmetic of this backend it becomes a difference of
+    # O(||A||^2) entries and loses its relative accuracy (measured on GCU400 vs
+    # CPU fp64: 5.9 % error at 256x256, 17.5 % at 512x512, while ord=2 stays at
+    # 1e-7).  Route the fp32 minimum through the backend's Jacobi SVD kernels,
+    # which keep every singular value relatively accurate (measured 3e-5 / 9e-5
+    # / 3e-5 on the same shapes).  Other dtypes keep the in-file path (the
+    # svdvals kernels are float32-only).
+    if ord_val < 0 and A.dtype == torch.float32:
+        fast = False
+
     if fast:
         batch = 1
         for i in range(ndim - 2):
@@ -772,7 +783,17 @@ def _ord2_norm(A, ord_val, dim, keepdim, dtype, out=None):
     if dtype is not None:
         A_perm = A_perm.to(dtype)
 
-    s = _svdvals_for_norm(A_perm)  # descending singular values, shape (..., K)
+    if ord_val < 0 and A_perm.dtype == torch.float32:
+        # Accurate smallest singular value: the Jacobi SVD works on A directly
+        # instead of the fp32 Gram matrix (see the note above).  The gcu400
+        # svdvals override also folds its grid to 1-D for the grid.y <= 255
+        # limit, so it runs for every k this path reaches; composing a FlagGems
+        # op keeps the computation in device kernels.
+        from .linalg_svdvals import linalg_svdvals as _device_svdvals
+
+        s = _device_svdvals(A_perm.contiguous())
+    else:
+        s = _svdvals_for_norm(A_perm)  # descending singular values, (..., K)
     # Every svdvals path returns descending order (gram-tridiag Sturm, rank-2,
     # k==1), so spectral norm is just the first/last entry -- no reduction
     # kernel launch required (amax/-amin each cost ~0.1-0.25ms of launch

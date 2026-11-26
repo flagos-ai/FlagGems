@@ -310,6 +310,13 @@ def test_slice_copy_complex(dtype):
         torch.complex128,
     ):
         pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+    if flag_gems.vendor_name == "enflame" and dtype.is_complex:
+        # The comparison below uses aten::eq on complex tensors; topsaten eq only
+        # implements ADD/SUB/RSUB/MUL for complex and aborts the process.
+        pytest.skip(
+            "enflame (torch_gcu): aten::eq has no complex kernel, so the "
+            "complex64 equality checks cannot run"
+        )
     inp = _make_input((4, 6, 5), dtype)
 
     cases = [
@@ -336,6 +343,13 @@ def test_slice_copy_lazy_conj_neg(dtype):
         torch.complex128,
     ):
         pytest.skip("enflame does not support complex32/complex128")
+    if flag_gems.vendor_name == "enflame" and dtype.is_complex:
+        # The comparison below uses aten::eq on complex tensors; topsaten eq only
+        # implements ADD/SUB/RSUB/MUL for complex and aborts the process.
+        pytest.skip(
+            "enflame (torch_gcu): aten::eq has no complex kernel, so the "
+            "complex64 equality checks cannot run"
+        )
     inp = _make_input((4, 6), dtype)
     lazy = inp.conj() if dtype.is_complex else torch.ops.aten._neg_view(inp)
     ref_out = _aten_slice_copy(lazy, 1, 1, 5, 2)

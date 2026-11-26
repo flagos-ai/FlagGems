@@ -23,11 +23,13 @@ from .conftest import TO_CPU
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 # The torch build behind the enflame GCU backend is CPU-only, and
-# aten::batch_norm_gather_stats is a CUDA-only composite op upstream, so no
-# kernel exists for it on any backend in that build; neither the device
-# reference nor the CPU reference can produce a value, and the benchmark side
-# has no baseline either. Skip only for enflame, other vendors are unaffected.
+# aten::batch_norm_gather_stats is a CUDA-only composite op upstream, so the
+# bare aten operator cannot produce a reference value there. The mean / invstd
+# pair is a closed form over the gathered per-segment statistics, so those
+# cases use `_combined_stats` instead of skipping. Other vendors are unaffected
+# and keep the aten reference.
 IS_ENFLAME = flag_gems.vendor_name == "enflame"
+NEEDS_CLOSED_FORM_REF = IS_KUNLUNXIN or IS_ENFLAME
 
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].
@@ -49,18 +51,13 @@ def _combined_stats(mean, invstd, eps):
 
 
 @pytest.mark.batch_norm_gather_stats
-@pytest.mark.skipif(
-    IS_ENFLAME,
-    reason="aten::batch_norm_gather_stats has no kernel in the CPU-only torch "
-    "build behind the enflame GCU backend (CPU, CUDA and PrivateUse1 dispatch "
-    "keys are all absent), so the reference value cannot be produced",
-)
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("num_segments", [2, 4])
 def test_batch_norm_gather_stats(shape, dtype, num_segments):
-    # batch_norm_gather_stats has no CPU backend in PyTorch, skip under --ref=cpu
-    if TO_CPU:
+    # batch_norm_gather_stats has no CPU backend in PyTorch: the aten reference
+    # cannot run on the host, so only the closed-form cases survive --ref=cpu.
+    if TO_CPU and not NEEDS_CLOSED_FORM_REF:
         pytest.skip("batch_norm_gather_stats has no CPU backend; skip under --ref=cpu")
 
     C = shape[1]
@@ -78,18 +75,8 @@ def test_batch_norm_gather_stats(shape, dtype, num_segments):
     running_mean = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
     running_var = torch.rand(C, dtype=torch.float32, device=flag_gems.device) + 0.1
 
-    if IS_KUNLUNXIN:
+    if NEEDS_CLOSED_FORM_REF:
         ref_out = _combined_stats(mean, invstd, 1e-5)
-        res_out = flag_gems.batch_norm_gather_stats(
-            input_t,
-            mean,
-            invstd,
-            running_mean.clone(),
-            running_var.clone(),
-            0.1,
-            1e-5,
-            count,
-        )
     else:
         ref_out = torch.batch_norm_gather_stats(
             input_t,
@@ -102,16 +89,16 @@ def test_batch_norm_gather_stats(shape, dtype, num_segments):
             count,
         )
 
-        res_out = torch.batch_norm_gather_stats(
-            input_t,
-            mean,
-            invstd,
-            running_mean.clone(),
-            running_var.clone(),
-            0.1,
-            1e-5,
-            count,
-        )
+    res_out = flag_gems.batch_norm_gather_stats(
+        input_t,
+        mean,
+        invstd,
+        running_mean.clone(),
+        running_var.clone(),
+        0.1,
+        1e-5,
+        count,
+    )
 
     for ref_val, res_val in zip(ref_out, res_out):
         # Output is always float32 regardless of input dtype

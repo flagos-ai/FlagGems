@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 # inside the 448 KiB per-program budget that preserves dual-program/SP
 # scheduling.
 _GRID_CAP = 48
+_GRID_CAP_SMALL = 96
+_GRID_CAP_LARGE = 48
 _TILE_BYTES = 131072
 _BC_MAX = 32768
 _NUM_WARPS = 4
@@ -782,7 +784,11 @@ def _pad_enum(self, pad, mode, value=None):
         work = p1_row_tiles * triton.cdiv(w_in, bc)
         if w_out > 0:
             work += 2 * e2_row_tiles
-        grid = (min(work, _GRID_CAP),)
+        # Small tile sets leave most of the 48-program wave idle, so they are
+        # allowed to spread over two waves; large sets keep one wave because a
+        # short grid-stride loop per program measurably beats a longer wave.
+        grid_len = work if work <= _GRID_CAP_SMALL else _GRID_CAP_LARGE
+        grid = (grid_len,)
         _pad_enum_kernel[grid](
             inp,
             out,

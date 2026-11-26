@@ -20,15 +20,6 @@ import flag_gems
 
 from . import base, consts
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason=(
-        "torch_gcu has no NestedTensor GCU backend; aten reference "
-        "nested_to_padded_tensor / to_padded_tensor / unbind.int "
-        "are unavailable on the NestedTensorgcu dispatch key"
-    ),
-)
-
 # Nested to padded tensor benchmark shapes: (batch_size, max_rows, trailing_dim)
 # trailing_dim kept moderate (32/64) so one row fits in a single kernel block.
 NESTED_TO_PADDED_SHAPES = [

@@ -17,10 +17,14 @@ import logging
 
 import torch
 
-from flag_gems.ops.max_pool3d_with_indices import max_pool3d_with_indices
 from flag_gems.ops.max_pool3d_with_indices_backward import (
     max_pool3d_with_indices_backward,
 )
+
+# Use this backend's flat, fixed-grid pooling kernel instead of the shared one:
+# the shared kernel launches one CTA per (n*c, depth*height*width block), which
+# reaches 8192 CTAs on the core shapes and dominates their runtime here.
+from .max_pool3d_with_indices import max_pool3d_with_indices
 
 logger = logging.getLogger(__name__)
 

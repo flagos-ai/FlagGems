@@ -34,6 +34,11 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _SUPPORTED_INDEX_DTYPES = (torch.int32, torch.int64)
 
+# Bag positions handled per program in the table-gradient kernel. Each program
+# keeps one ``grad_output`` row in registers, so the chunk also bounds the
+# reuse window; larger chunks trade atomic concurrency for that reuse.
+_POSITION_CHUNK = 8
+
 
 def _validate_embedding_spmdm_grad_inputs(
     embedding_table: torch.Tensor,
@@ -104,16 +109,26 @@ def embedding_spmdm_grad_table_kernel(
     BAG_SIZE: tl.constexpr,
     BLOCK_D: tl.constexpr,
     EVEN_D: tl.constexpr,
+    POSITION_CHUNK: tl.constexpr,
 ):
     """Accumulate the embedding-table gradient via ``tl.atomic_add``.
 
-    Each program handles one ``(bag, d_block)`` pair: for every position
-    ``s`` in the bag it loads ``grad_output[bag, d_block]``, optionally
-    multiplies it by the per-sample weight, and adds the result into
+    Each program handles one ``(bag, d_block, position chunk)`` triple: for
+    every position ``s`` inside its chunk of the bag it loads
+    ``grad_output[bag, d_block]`` once, optionally multiplies it by the
+    per-sample weight, and adds the result into
     ``grad_embedding_table[indices[bag, s], d_block]``.
+
+    The bag positions used to be a serial loop inside one program, which left
+    the (latency-bound) atomic instructions of a whole bag on a single
+    scheduler slot: measured 12.2 ms against 0.47 ms for the aten reference on
+    (32768, 256) with 512 bags of 64 samples.  Splitting the bag over the
+    third grid axis keeps the per-program ``grad_output`` reuse while exposing
+    bag_size / POSITION_CHUNK times more concurrent atomic streams.
     """
     bag = tl.program_id(0)
     block_d = tl.program_id(1)
+    position_start = tl.program_id(2) * POSITION_CHUNK
 
     offsets_d = block_d * BLOCK_D + tl.arange(0, BLOCK_D)
     mask_d = offsets_d < embedding_dim
@@ -124,33 +139,35 @@ def embedding_spmdm_grad_table_kernel(
         other=0.0,
     ).to(tl.float32)
 
-    for position in tl.range(0, BAG_SIZE):
-        index = tl.load(
-            indices + bag * stride_indices_batch + position * stride_indices_bag
-        ).to(tl.int32)
-        valid_index = (index >= 0) & (index < num_embeddings)
-        contribution = values
-        if HAS_WEIGHTS:
-            scale = tl.load(
-                per_sample_weights
-                + bag * stride_weights_batch
-                + position * stride_weights_bag
-            ).to(tl.float32)
-            contribution = values * scale
+    for offset in tl.static_range(POSITION_CHUNK):
+        position = position_start + offset
+        if position < BAG_SIZE:
+            index = tl.load(
+                indices + bag * stride_indices_batch + position * stride_indices_bag
+            ).to(tl.int32)
+            valid_index = (index >= 0) & (index < num_embeddings)
+            contribution = values
+            if HAS_WEIGHTS:
+                scale = tl.load(
+                    per_sample_weights
+                    + bag * stride_weights_batch
+                    + position * stride_weights_bag
+                ).to(tl.float32)
+                contribution = values * scale
 
-        table_dst = (
-            grad_embedding_table
-            + index * stride_grad_table_row
-            + offsets_d * stride_grad_table_dim
-        )
-        if EVEN_D:
-            # GCU400 atomic cost is per instruction, not per lane: dropping the
-            # per-lane mask (the range check becomes a uniform branch) measures
-            # ~5% faster on the table gradient.
-            if valid_index:
-                tl.atomic_add(table_dst, contribution)
-        else:
-            tl.atomic_add(table_dst, contribution, mask=mask_d & valid_index)
+            table_dst = (
+                grad_embedding_table
+                + index * stride_grad_table_row
+                + offsets_d * stride_grad_table_dim
+            )
+            if EVEN_D:
+                # GCU400 atomic cost is per instruction, not per lane: dropping
+                # the per-lane mask (the range check becomes a uniform branch)
+                # measures ~5% faster on the table gradient.
+                if valid_index:
+                    tl.atomic_add(table_dst, contribution)
+            else:
+                tl.atomic_add(table_dst, contribution, mask=mask_d & valid_index)
 
 
 @libentry()
@@ -301,9 +318,13 @@ def embedding_spmdm_grad(
     )
     num_samples = batch_size * bag_size
     table_block_d = min(256, triton.next_power_of_2(embedding_dim))
+    # One program per (bag, d_block); the bag is widened into a grid axis so the
+    # atomic stream of a single bag is not serialized on one program.
+    position_chunk = min(bag_size, _POSITION_CHUNK)
     table_grid = (
         batch_size,
         triton.cdiv(embedding_dim, table_block_d),
+        triton.cdiv(bag_size, position_chunk),
     )
     weights_arg = (
         per_sample_weights if per_sample_weights is not None else embedding_table
@@ -328,6 +349,7 @@ def embedding_spmdm_grad(
             BAG_SIZE=bag_size,
             BLOCK_D=table_block_d,
             EVEN_D=embedding_dim % table_block_d == 0,
+            POSITION_CHUNK=position_chunk,
         )
 
     grad_embedding_table = (

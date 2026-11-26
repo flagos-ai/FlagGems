@@ -130,8 +130,8 @@ def _choose_block(n_total, is_fp32):
     return 131072, 4
 
 
-def cosh(A):
-    logger.debug("GEMS_ENFLAME COSH")
+def _cosh_forward(A):
+    """Plain (no autograd) cosh: the flat grid-stride kernel or the common codegen path."""
     # Non-floating-point / very large tensors use the common codegen path to preserve promotion and stride semantics
     if A.dtype not in _FLAT_DTYPES or A.numel() >= _INT32_SAFE_LIMIT:
         return _common_cosh_func(A)
@@ -169,8 +169,39 @@ def cosh(A):
             if attempt == 2:
                 raise
             logger.warning(
-                "cosh flat kernel launch failed (attempt %d): %s", attempt + 1, exc
+                "GEMS_ENFLAME cosh flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
             )
+
+
+class CoshFunction(torch.autograd.Function):
+    """Autograd entry for cosh.
+
+    The flat kernel path above returns a plain tensor, so without this wrapper
+    the graph is cut and `aten::cosh` autograd (i.e. `cosh_backward`) can never
+    run. The backward keeps the saved input and calls the backend Triton
+    `cosh_backward` kernel (grad * sinh(x)).
+    """
+
+    @staticmethod
+    def forward(ctx, A):
+        ctx.save_for_backward(A)
+        return _cosh_forward(A)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (A,) = ctx.saved_tensors
+        from .cosh_backward import cosh_backward
+
+        return cosh_backward(grad_output, A)
+
+
+def cosh(A):
+    logger.debug("GEMS_ENFLAME COSH")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return CoshFunction.apply(A)
+    return _cosh_forward(A)
 
 
 __all__ = ["cosh"]

@@ -22,6 +22,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
 
+from .sort import radix_sort
+
 logger = logging.getLogger(__name__)
 
 # Tile / CTA config of the three unique paths; module constants ease shape tiering and
@@ -37,6 +39,15 @@ _UNIQUE_INV_CTA_LIMIT = 32768
 _UNIQUE_INV_CTA_FALLBACK = 8192
 _UNIQUE_NUM_WARPS = 4
 _UNIQUE_SIMPLE_MAX_NUMEL = 8192
+# unique2 always sorts a flat 1-D row, so the radix pass size can be tuned for
+# that shape class instead of reusing sort's generic choice.
+#  - numel <= 2048: radix_sort's fused single-block kernel (all passes in one
+#    launch) is the cheapest option, hence route through torch.sort there.
+#  - numel  > 2048: the multi-block path is used and the pass count dominates
+#    at these row widths; 4 bits/pass measured 1.49x faster than sort's default
+#    2 bits/pass (int16 n=16384: 1.242ms -> 0.834ms).
+_UNIQUE_FUSED_SORT_MAX_NUMEL = 2048
+_UNIQUE_RADIX_BITS = 4
 
 
 # Temporary sweep switch: 0 keeps the default cap, >0 overrides the tile cap of
@@ -737,6 +748,14 @@ def simple_unique_flat(
     return data_out[:out_size], inverse_indices, counts
 
 
+def _sorted_flat(inp: torch.Tensor):
+    """Return (sorted_values, sorted_indices) for a flat 1-D input."""
+    flat = inp.ravel()
+    if flat.numel() <= _UNIQUE_FUSED_SORT_MAX_NUMEL:
+        return torch.sort(flat)
+    return radix_sort(flat, _UNIQUE_RADIX_BITS, False)
+
+
 def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
@@ -761,7 +780,7 @@ def _unique2(
     # aten::_unique2 keeps one unique slot per NaN occurrence (NaN != NaN) and
     # folds -0.0/+0.0 into a single value, i.e. nan_as_unique=True.
     if in0.numel() <= _UNIQUE_SIMPLE_MAX_NUMEL:
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
+        sorted_data, sorted_indices = _sorted_flat(in0)
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data,
             sorted_indices,
@@ -770,12 +789,12 @@ def _unique2(
             nan_as_unique=True,
         )
     elif return_inverse:
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
+        sorted_data, sorted_indices = _sorted_flat(in0)
         data_out, inverse_indices, counts = sorted_indices_unique_flat(
             sorted_data, sorted_indices, return_counts, nan_as_unique=True
         )
     else:
-        sorted_data, _ = torch.sort(in0.ravel())
+        sorted_data, _ = _sorted_flat(in0)
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts, nan_as_unique=True
         )

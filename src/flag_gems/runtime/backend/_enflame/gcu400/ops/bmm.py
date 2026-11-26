@@ -103,16 +103,23 @@ def _fit_num_stages_with_acc(
 
 
 # Candidate 16-bit tiles for the band above the tiny tier, ordered by
-# descending output area. Throughput of the GCU400 GEMM core scales with the
-# tile area (measured on (2,4096^2): 64x64 -> 5.6, 128x128 -> 11.7,
-# 256x128/128x256 -> 15.5, 256x256 -> 22.7, 512x256 -> 30.0 TFLOPS), so the
-# largest tile that still keeps the grid busy wins.
+# descending output area. The GCU400 GEMM core is fed by a deep K block: on
+# board A056D50610028 (2026-11-26, do_bench kernel mode, real torch.bmm
+# baseline) the winning 16-bit tiles at every saturated shape are
+#   128x256x512/w2/ns2  0.694x (2,4096^3)  0.639x (16,1024^3)
+#                       0.640x (16,2048^3) 0.648x (16,4096^3)
+#   128x256x256/w2/ns3  0.648x / 0.602x / 0.611x / 0.608x
+#   128x256x512/w4/ns2  0.599x / 0.559x / 0.559x / 0.570x
+# while the previous wide 512x256x64 leader only reaches 0.26-0.29x here and,
+# worse, is *numerically wrong* on this board (max abs error 0.125 at K=4096
+# versus 0 for the 128x256 tiles), so the deep-K tile replaces it. The 512-deep
+# K block keeps the reduction loop at 2-8 masked iterations and still fits two
+# pipeline stages in the DSM pool (384KiB per stage for 128x256x512 + the 128KiB
+# fp32 accumulator = 896KiB of the 917504B budget).
 _16BIT_TILE_LADDER = (
-    (512, 256, 64, 2),
-    (256, 256, 64, 4),
-    (256, 128, 128, 4),
-    (128, 256, 64, 4),
-    (128, 128, 64, 4),
+    (128, 256, 512, 2),
+    (128, 256, 256, 2),
+    (128, 128, 128, 2),
     (64, 64, 32, 4),
 )
 
@@ -169,6 +176,10 @@ def _select_gemm_config(Batch, M, N, K, dtype):
     #     tile area up to (512,256,64), which is ~2x the old wide tile at every
     #     saturated shape, so the two former 16-bit branches collapse into
     #     _select_16bit_tiles below.
+    #   * re-swept again on 2026-11-26 on board A056D50610028: the (512,256,64)
+    #     tile is not portable: it lands at 0.26-0.29x here and computes
+    #     wrong values, while a deep-K (128,256,512) tile with 2 warps reaches
+    #     0.64-0.69x. See _16BIT_TILE_LADDER for the numbers.
     num_stages = 3
     if K < 128:
         block_m, block_n, block_k, num_warps, num_stages = 64, 64, 32, 4, 2
@@ -176,15 +187,18 @@ def _select_gemm_config(Batch, M, N, K, dtype):
         if dtype == torch.float32:
             block_m, block_n, block_k, num_warps, num_stages = 256, 128, 128, 4, 2
         else:
-            block_m, block_n, block_k, num_warps, num_stages = 256, 256, 128, 4, 2
+            # (2,384^3) fp16/bf16: 64x128x128/w2/ns2 9.0us (1.35x) versus the
+            # previous 256x256x128 15.2us (0.78x) and 128x128x128/w2 9.2us
+            # (1.30x); the 64-wide M tile also gives twice the output tiles, so
+            # it keeps the clusters fed on small batches.
+            block_m, block_n, block_k, num_warps, num_stages = 64, 128, 128, 2, 2
     elif dtype == torch.float32:
         block_m, block_n, block_k, num_warps = 128, 256, 128, 2
     else:
-        # 16-bit band above the tiny tier. The wide 512x256 output tile is the
-        # largest one the DSM pool can hold together with its fp32 accumulator
-        # and it is worth ~2x over the previous (128,256,*) tile at every
-        # saturated shape, so it replaces both former 16-bit tiers (the
-        # "saturated" branch and the generic branch).
+        # 16-bit band above the tiny tier. The deep-K ladder below is the
+        # fastest measured configuration on this board at every saturated
+        # shape, so it replaces both former 16-bit tiers (the "saturated"
+        # branch and the generic branch).
         block_m, block_n, block_k, num_warps = _select_16bit_tiles(Batch, M, N, K)
         elem_bytes = 2
         num_stages = _fit_num_stages_with_acc(
@@ -318,6 +332,28 @@ def bmm_kernel(
 
 def _launch_bmm(A, B, out, Batch, M, N, K):
     # Centralize config dispatch and kernel launch, shared by bmm / bmm_out.
+    if out.numel() == 0:
+        # An empty output (batch, M or N == 0) has no tile to compute or store.
+        return
+    if K == 0:
+        # Empty reduction: every element of the result is exactly zero.  The K
+        # loop below would be zero-trip, which miscompiles on this backend —
+        # the epilogue store is dropped and the output keeps whatever memory
+        # held (see ``test_bmm{, _out}_empty_dimensions``) — so fill the
+        # output here instead of launching the kernel.
+        #
+        # The fill stays inside Triton (the FlagGems scalar-fill kernel) rather
+        # than ``Tensor.zero_()``: the native zero-fill runs off the Triton
+        # launch path, and reading back the tiny (60 byte) result right after it
+        # was observed to return one stale output row when the whole accuracy
+        # suite ran in one process.
+        # Imported lazily on purpose: a module-level import of the fill module
+        # is resolved while the vendor ops package is still initialising, which
+        # leaves its shared ``pointwise_dynamic`` wrapper half-built.
+        from flag_gems.runtime.backend._enflame.gcu400.ops.fill import fill_scalar_
+
+        fill_scalar_(out, 0)
+        return
     block_m, block_n, block_k, num_warps, num_stages, even = _select_bmm_config(
         Batch, M, N, K, A.dtype
     )

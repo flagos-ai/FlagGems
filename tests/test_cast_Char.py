@@ -173,6 +173,15 @@ def test_cast_Char_requires_grad(requires_grad):
 @pytest.mark.parametrize(
     "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten defect: aten::_cast_Char on ComplexFloat has no GCU kernel; the "
+        "native composite falls through to topsatenCopy which returns "
+        "TOPSATEN_STATUS_NOT_SUPPORT and the csrc check aborts the process, so "
+        "the reference leg has no result"
+    ),
+)
 def test_cast_Char_complex(dtype):
     x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()
     expected = torch.ops.aten._cast_Char(x)

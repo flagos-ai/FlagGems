@@ -336,13 +336,14 @@ def test__sparse_semi_structured_apply_dense_offset_views(
     tu.assert_result_equal(res_out, ref_out)
 
 
-# The negative families below assert the rejections of the operator's CUDA
-# implementation, which the compile guard (USE_ROCM / _MSC_VER / CUDA_VERSION <
-# 11.8) excludes from other builds and which native_functions.yaml registers under
-# the CUDA dispatch key only. They are scoped to the measured vendor by the static
-# tables below.
-_NEGATIVE_CHECKS_VENDOR = "nvidia"
-_NEGATIVE_CHECKS_ACTIVE = flag_gems.vendor_name == _NEGATIVE_CHECKS_VENDOR
+# The negative families below assert the argument-contract rejections, which the
+# compile guard (USE_ROCM / _MSC_VER / CUDA_VERSION < 11.8) excludes from some
+# builds and which native_functions.yaml registers under the CUDA dispatch key
+# only. They are scoped to the measured vendors by the static tables below:
+# enflame validates the same contract ahead of any kernel launch, so the tables
+# are shared with nvidia. These cases need no aten reference.
+_NEGATIVE_CHECKS_VENDORS = ("nvidia", "enflame")
+_NEGATIVE_CHECKS_ACTIVE = flag_gems.vendor_name in _NEGATIVE_CHECKS_VENDORS
 
 # The scalar-type check runs before any data access, so these inputs are all
 # zeros: a random generator would already fail for the integer, bool and float8

@@ -13,16 +13,20 @@
 # limitations under the License.
 
 import logging
+import threading
 
 import torch
 
 import flag_gems
 from flag_gems.runtime.backend._enflame.gcu400.ops.embedding import (
-    _NATIVE_BACKWARD_STATE,
     _embedding_backward_atomic,
 )
 
 logger = logging.getLogger(__name__)
+
+# Whether this thread is already forwarding to aten, used to detect reentry in
+# the enable scenario.
+_NATIVE_BACKWARD_STATE = threading.local()
 
 
 def embedding_dense_backward(

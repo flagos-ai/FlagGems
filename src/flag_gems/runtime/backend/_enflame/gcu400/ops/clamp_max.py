@@ -146,8 +146,45 @@ def _launch_flat(args, grid, block, n_total, num_warps, body):
             raise
 
 
+_INT_C_NAMES = {
+    torch.uint8: "uint8_t",
+    torch.int8: "int8_t",
+    torch.int16: "int16_t",
+    torch.int32: "int32_t",
+    torch.int64: "int64_t",
+}
+
+
+def _convert_integral_max(A, max_value):
+    """ATen scalar-conversion rule for integral dtypes.
+
+    ``torch.clamp_max`` converts an integral Python scalar to the input dtype
+    *before* clamping: for uint8 a negative scalar wraps modulo 256
+    (``clamp_max(uint8, -100)`` clamps to 156) and anything outside
+    [-255, 255] is rejected; signed dtypes accept only their own iinfo range
+    and raise otherwise.  The generic pointwise path would otherwise hand the
+    raw Python int to the kernel and negative uint8 scalars silently clamped
+    to 0.
+    """
+    if isinstance(max_value, bool) or not isinstance(max_value, int):
+        return max_value
+    if A.dtype not in _INT_C_NAMES:
+        return max_value
+    if A.dtype == torch.uint8:
+        if -255 <= max_value <= 255:
+            return max_value % 256
+    else:
+        info = torch.iinfo(A.dtype)
+        if info.min <= max_value <= info.max:
+            return max_value
+    raise RuntimeError(
+        "value cannot be converted to type " f"{_INT_C_NAMES[A.dtype]} without overflow"
+    )
+
+
 def clamp_max(A, max_value):
     logger.debug("GEMS_ENFLAME CLAMP_MAX")
+    max_value = _convert_integral_max(A, max_value)
     if (
         not A.is_contiguous()
         or not A.dtype.is_floating_point
@@ -169,6 +206,7 @@ def clamp_max(A, max_value):
 
 def clamp_max_(A, max_value):
     logger.debug("GEMS_ENFLAME CLAMP_MAX_")
+    max_value = _convert_integral_max(A, max_value)
     if (
         not A.is_contiguous()
         or not A.dtype.is_floating_point

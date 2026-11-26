@@ -78,11 +78,20 @@ def _paged_mqa_logits_metadata_kernel(
         seg_starts = sm_idx * q + tl.minimum(sm_idx, r)
 
         # 5. prefix_sum is monotonically non-decreasing: the last position <= seg_starts is q_idx - 1
-        packed = tl.where(
-            prefix_padded <= seg_starts,
-            (offsets << PREFIX_BITS_C) | prefix_sum,
-            -1,
-        )
+        if BLOCK_SIZE <= 2048:
+            # Fast path: entry index fits in the high int32 bits (index < 2^11).
+            packed = tl.where(
+                prefix_padded <= seg_starts,
+                (offsets << PREFIX_BITS_C) | prefix_sum,
+                -1,
+            )
+        else:
+            # Large batch: index << PREFIX_BITS_C overflows int32, pack in int64.
+            packed = tl.where(
+                prefix_padded <= seg_starts,
+                (offsets.to(tl.int64) << PREFIX_BITS_C) | prefix_sum,
+                -1,
+            )
         best = tl.max(packed)
         last_hit = best >> PREFIX_BITS_C
         q_idx = tl.where(best >= 0, last_hit + 1, 0)
@@ -91,15 +100,18 @@ def _paged_mqa_logits_metadata_kernel(
         kv_split_idx = seg_starts - prev_prefix
 
         out_idx = sm_idx * 2
-        tl.store(schedule_metadata_ptr + out_idx, q_idx)
-        tl.store(schedule_metadata_ptr + out_idx + 1, kv_split_idx)
+        tl.store(schedule_metadata_ptr + out_idx, q_idx.to(tl.int32))
+        tl.store(schedule_metadata_ptr + out_idx + 1, kv_split_idx.to(tl.int32))
 
 
 def get_paged_mqa_logits_metadata(
     context_lens: torch.Tensor, block_size: int, num_sms: int
 ) -> torch.Tensor:
     logger.debug("GEMS_ENFLAME GET_PAGED_MQA_LOGITS_METADATA")
-    SPLIT_KV = 256
+    # DeepGEMM cuts each sequence into KV blocks of `block_size` (its `block_kv`).
+    # The caller passes the paged-cache block size, so a hardcoded 256 produces a
+    # different partitioning from the reference whenever the caller does not use 256.
+    split_kv = block_size
     device = context_lens.device
 
     # 1. Handle 1D / 2D input
@@ -129,7 +141,7 @@ def get_paged_mqa_logits_metadata(
         effective_context_lens.stride(0),
         schedule_metadata,
         batch_size,
-        SPLIT_KV,
+        split_kv,
         num_sms,
         BLOCK_SIZE=BLOCK_SIZE,
         GRID_DIM_X=grid_dim_x,

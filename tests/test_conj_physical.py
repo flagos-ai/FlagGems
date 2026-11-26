@@ -223,6 +223,10 @@ _ATEN_REAL_ABORTS = pytest.mark.skipif(
     ),
 )
 
+# Same condition as a plain flag, for the tests that can keep running with the
+# on-device ATen probe removed instead of skipping the whole case.
+ATEN_REAL_ABORTS_ON_DEVICE = flag_gems.vendor_name == "enflame"
+
 _UNDERSCORE_DTYPES = ([torch.complex64] if utils.complex_is_supported else []) + [
     pytest.param(torch.float32, marks=_ATEN_REAL_ABORTS),
     pytest.param(torch.int32, marks=_ATEN_REAL_ABORTS),
@@ -275,12 +279,18 @@ def test__conj_physical_real_does_not_alias(dtype):
         inp = torch.randint(-9, 9, (3, 4), dtype=dtype, device=flag_gems.device)
 
     # Aliasing is a same-device property, so compare against ATen on-device.
-    aten_out = torch.ops.aten._conj_physical(inp)
+    # enflame: the native kernel aborts the process for real dtypes (see
+    # `_ATEN_REAL_ABORTS`), so only that probe is dropped there; every
+    # FlagGems contract below still runs for those dtypes.
+    aten_out = None
+    if not ATEN_REAL_ABORTS_ON_DEVICE:
+        aten_out = torch.ops.aten._conj_physical(inp)
     res_out = flag_gems.ops._conj_physical(inp)
 
     # ATen itself must not alias here; assert that first so the test documents
     # the contract it is pinning rather than just gems' behaviour.
-    assert aten_out.data_ptr() != inp.data_ptr()
+    if aten_out is not None:
+        assert aten_out.data_ptr() != inp.data_ptr()
     assert res_out.data_ptr() != inp.data_ptr(), "result aliases its input"
     assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
 

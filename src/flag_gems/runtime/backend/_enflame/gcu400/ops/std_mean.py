@@ -2179,7 +2179,13 @@ def _gcu_tensor_update_names(self, names, inplace):
 
 # Like the public std_mean binding above, the vendor module can execute twice
 # under two module names; the class-level flag keeps torch.Tensor patched once.
-if not getattr(torch.Tensor, "_flaggems_gcu_update_names_bridge", False):
-    _ORIG_TENSOR_UPDATE_NAMES = torch.Tensor._update_names
+# Some torch builds expose no ``_update_names`` binding at all, and importing
+# this module must never fail on those builds, so the bridge is installed only
+# when the original binding actually exists.
+_ORIG_TENSOR_UPDATE_NAMES = getattr(torch.Tensor, "_update_names", None)
+
+if _ORIG_TENSOR_UPDATE_NAMES is not None and not getattr(
+    torch.Tensor, "_flaggems_gcu_update_names_bridge", False
+):
     torch.Tensor._update_names = _gcu_tensor_update_names
     torch.Tensor._flaggems_gcu_update_names_bridge = True

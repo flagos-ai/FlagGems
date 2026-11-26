@@ -23,8 +23,12 @@ from .conftest import QUICK_MODE
 
 # The GCU native kernel's float32 (1:2) metadata nibble order differs from the
 # CUTLASS 2:4 layout this implementation reproduces, so only the float32
-# metadata comparison is unavailable. The skip therefore stays case-level
-# (float32 parametrizations only) instead of covering the whole module.
+# metadata comparison is unavailable. Two inputs with complementary retained
+# slots per row come back with byte-identical float32 metadata, and decoding
+# that metadata reproduces the retained slot of 1034/4096 pairs while 2082
+# nibble fields are not a valid slot-index pair at all, so the reference value
+# carries no mask information. The skip therefore stays case-level (float32
+# parametrizations only) instead of covering the whole module.
 _FP32_META_UNAVAILABLE = pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason=(
@@ -118,14 +122,14 @@ def _assert_sss(dense, equal_nan=False):
 
 
 @pytest.mark.to_sparse_semi_structured
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", _dtype_params(DTYPES))
 @pytest.mark.parametrize("shape", SHAPES)
 def test_to_sparse_semi_structured(shape, dtype):
     _assert_sss(_valid_dense(shape, dtype))
 
 
 @pytest.mark.to_sparse_semi_structured
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", _dtype_params(DTYPES))
 def test_to_sparse_semi_structured_strided(dtype):
     # The mask buffer follows the tensor's own iteration order. For contiguous
     # inputs the fast kernel emits packed directly; a transposed view has dim0

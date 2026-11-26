@@ -67,18 +67,19 @@ class SparseValidationBenchmark(base.Benchmark):
         layouts = (torch.sparse_bsc,)
         for layout in layouts:
             for shape in self.shapes:
+                if flag_gems.vendor_name == "enflame" and shape[0] == 0:
+                    # The zero-compressed-axis descriptor builds its plain
+                    # indices with aten::flip, which topsaten reports as
+                    # TOPSATEN_STATUS_NOT_SUPPORT on GCU and aborts the process
+                    # before either leg can be timed. Every other shape keeps
+                    # its baseline, so only this case is skipped.
+                    continue
                 comp, plain, values, size = _make_inputs(
                     layout, shape, torch.int64, dtype, self.device
                 )
                 yield comp, plain, values, size
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame GCU aborts inside the aten _validate_sparse_bsc_tensor_args "
-    "baseline (the BSC argument check is not lowered on this backend), so no "
-    "baseline latency can be measured",
-)
 @pytest.mark.validate_sparse_bsc_tensor_args
 @pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test_validate_sparse_bsc_tensor_args():

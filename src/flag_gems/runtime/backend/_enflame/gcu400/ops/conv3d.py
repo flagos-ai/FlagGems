@@ -19,8 +19,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-from flag_gems import runtime
 from flag_gems.ops.conv2d import conv2d_output_size
 from flag_gems.utils import libentry
 
@@ -53,44 +51,38 @@ def conv3d_output_size(
     return conv2d_output_size(in_size, kernel_size, stride, padding, dilation)
 
 
-# Tile sizes that cannot be decided by ``triton.autotune`` without paying the
-# autotuning cost on the largest 3D shapes (a single trial on the biggest core
-# shape already runs for minutes), so BLOCK_CI is picked host-side, see
-# ``_select_block_ci``.
-_AUTOTUNE_BLOCK_NI_DO_HO_WO = 64
+# Tile sizes cannot be decided by ``triton.autotune`` without paying the tuning
+# cost on the largest 3D shapes, so they are picked host-side, see
+# ``_select_block_volume`` / ``_select_block_co``.
+#
+# The kernel is a direct (im2col-free) convolution that keeps the accumulators in
+# registers as ``[BLOCK_CO, BLOCK_VOLUME]``. The output-position axis is the
+# innermost (contiguous) axis of the tile, which makes the global stores wide and
+# lets the weight element of a tap be broadcast over the whole position axis.
+_AUTOTUNE_BLOCK_VOLUME = 1024
 _AUTOTUNE_BLOCK_CO = 32
-_MIN_DOT_K = 16
-_MAX_BLOCK_CI = 64
+_MAX_BLOCK_CO = 32
 
 
-def _select_block_ci(weight_c: int) -> int:
-    """Pick the tl.dot K tile for the im2col matmul along the input channels.
+def _select_block_clo(weight_c: int) -> int:
+    """Pick the tile along the output-channel axis.
 
-    The kernel is bound by the im2col gather (one gather per (tap, channel tile,
-    position)), not by the dots, so the tile wants to cover as many channels per
-    iteration as the hardware allows while never loading masked-out lanes:
-    BLOCK_CI = next_power_of_2(weight_c) capped at 64. Measured on a
-    (8, 64, 24x24x24) x 32x3x3x3 fp16 proxy: BLOCK_CI 16 -> 756.9ms,
-    32 -> 739.5ms, 64 -> 566.8ms (1.34x); widening the row tile to 128 rows on
-    top of BLOCK_CI=64 only added 3% (549ms), so the row tile stays at the
-    autotuned 64.
+    Every output position is accumulated for BLOCK_CO channels at once, so the
+    tile is the padding-free next power of two of the per-group channel count,
+    capped at 32 (wider tiles spill the accumulator on the measured shapes).
     """
-    if weight_c <= _MIN_DOT_K:
-        return _MIN_DOT_K
-    return min(_MAX_BLOCK_CI, triton.next_power_of_2(weight_c))
+    return min(_MAX_BLOCK_CO, triton.next_power_of_2(max(1, weight_c)))
 
 
 @libentry()
 @triton.autotune(
-    # A single tile keeps the benchmark run time bounded: wider dot tiles
-    # (128x64x64) were measured ~2.3x faster for large channel counts but
-    # ~3.7x slower when the group split leaves few channels per program, and the
-    # autotuning pass itself exceeds the per-stage timeout on the largest shape.
+    # A single tile keeps the benchmark run time bounded: a wider position tile
+    # (2048) was measured slower on the largest core shape, and the autotuning
+    # pass itself exceeds the per-stage timeout there.
     configs=[
         triton.Config(
             {
-                "BLOCK_NI_DO_HO_WO": _AUTOTUNE_BLOCK_NI_DO_HO_WO,
-                "BLOCK_CO": _AUTOTUNE_BLOCK_CO,
+                "BLOCK_VOLUME": _AUTOTUNE_BLOCK_VOLUME,
             },
             num_warps=8,
             num_stages=2,
@@ -118,7 +110,13 @@ def _select_block_ci(weight_c: int) -> int:
         "groups",
     ],
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "out_depth",
+        "out_height",
+        "out_width",
+    ]
+)
 def conv3d_forward_kernel(
     input_pointer,
     weight_pointer,
@@ -161,118 +159,124 @@ def conv3d_forward_kernel(
     dilation_height: tl.constexpr,
     dilation_width: tl.constexpr,
     groups: tl.constexpr,
-    BLOCK_NI_DO_HO_WO: tl.constexpr,
-    BLOCK_CI: tl.constexpr,
+    has_bias: tl.constexpr,
+    BLOCK_VOLUME: tl.constexpr,
     BLOCK_CO: tl.constexpr,
 ):
     # The volume axis (N * Do * Ho * Wo) can exceed the 65535 hardware limit of
     # grid.x for large 3D convolutions, so it is folded over grid.x/grid.y while
     # the output-channel tiles and the groups share grid.z.
-    pid_ni_do_ho_wo = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
+    pid_volume = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
     pid_co = tl.program_id(2) // groups
     pid_group = tl.program_id(2) % groups
 
-    # caculate in_n out_depth out_height out_weight value in kernel
-    ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(
-        0, BLOCK_NI_DO_HO_WO
-    )
-    ni_do_ho_offset = ni_do_ho_wo_offset // out_width
-    ni_do_offset = ni_do_ho_offset // out_height
-    in_n_point_value = ni_do_offset // out_depth
-    output_depth_point_value = ni_do_offset % out_depth
-    output_height_point_value = ni_do_ho_offset % out_height
-    output_width_point_value = ni_do_ho_wo_offset % out_width
+    # Decode the flat output-volume index into (n, od, oh, ow). Every position of
+    # a tile is one column of the accumulators.
+    volume_offset = pid_volume * BLOCK_VOLUME + tl.arange(0, BLOCK_VOLUME)
+    n_do_ho_offset = volume_offset // out_width
+    n_do_offset = n_do_ho_offset // out_height
+    in_n_point_value = n_do_offset // out_depth
+    output_depth_point_value = n_do_offset % out_depth
+    output_height_point_value = n_do_ho_offset % out_height
+    output_width_point_value = volume_offset % out_width
 
-    # Load the input and weight pointers. input and weight are of shape
-    # [in_n, groups, in_c, input_height, input_width] and [groups, out_c, in_c, weight_height, weight_width]
+    # Lanes that fall into the tail of the last tile are dropped here; the depth
+    # and height indices are always in range because they are taken modulo the
+    # output extents.
+    volume_mask = in_n_point_value < in_n
+
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
-    input_pointer += (
-        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
-    )[:, None]
-    weight_pointer += (
-        weight_n_stride * output_c_offset
-        + weight_n_stride * pid_group * out_per_group_c
-    )[None, :]
+    c_mask = output_c_offset < out_per_group_c
 
-    accum = tl.zeros((BLOCK_NI_DO_HO_WO, BLOCK_CO), dtype=tl.float32)
-    BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
-    for dhwc in range(weight_depth * weight_height * weight_width * BLOCK_CI_COUNT):
-        c = (dhwc % BLOCK_CI_COUNT) * BLOCK_CI
-        dhw = dhwc // BLOCK_CI_COUNT
-        dh = dhw // weight_width
-        d = dh // weight_height
-        h = dh % weight_height
+    # Input address of the top-left-front corner of every output position; only
+    # the tap offsets are added inside the loop.
+    input_offset = (
+        input_pointer
+        + input_n_stride * in_n_point_value
+        + input_c_stride * pid_group * weight_c
+        + input_depth_stride * (stride_depth * output_depth_point_value - padding_depth)
+        + input_height_stride
+        * (stride_height * output_height_point_value - padding_height)
+        + input_width_stride * (stride_width * output_width_point_value - padding_width)
+    )
+    # With zero padding the depth/height/width coordinates of every tap are in
+    # range by construction of the output size, so the bounds checks are only
+    # materialised for a padded convolution.
+    needs_bounds: tl.constexpr = True
+
+    accum = tl.zeros((BLOCK_CO, BLOCK_VOLUME), dtype=tl.float32)
+    for dhw in range(weight_depth * weight_height * weight_width):
+        d = dhw // (weight_height * weight_width)
+        h = (dhw // weight_width) % weight_height
         w = dhw % weight_width
+        input_offset_dhw = (
+            input_offset
+            + input_depth_stride * (d * dilation_depth)
+            + input_height_stride * (h * dilation_height)
+            + input_width_stride * (w * dilation_width)
+        )
+        if needs_bounds:
+            depth_coord = (
+                stride_depth * output_depth_point_value
+                + d * dilation_depth
+                - padding_depth
+            )
+            height_coord = (
+                stride_height * output_height_point_value
+                + h * dilation_height
+                - padding_height
+            )
+            width_coord = (
+                stride_width * output_width_point_value
+                + w * dilation_width
+                - padding_width
+            )
+            input_mask = (
+                volume_mask
+                & (0 <= depth_coord)
+                & (depth_coord < input_depth)
+                & (0 <= height_coord)
+                & (height_coord < input_height)
+                & (0 <= width_coord)
+                & (width_coord < input_width)
+            )
+        else:
+            input_mask = volume_mask
+        for c in range(weight_c):
+            input_block = tl.load(
+                input_offset_dhw + input_c_stride * c, mask=input_mask, other=0.0
+            )
+            weight_block = tl.load(
+                weight_pointer
+                + weight_n_stride * (pid_group * out_per_group_c + output_c_offset)
+                + weight_c_stride * c
+                + weight_depth_stride * d
+                + weight_height_stride * h
+                + weight_width_stride * w,
+                mask=c_mask,
+                other=0.0,
+            )
+            accum += (
+                weight_block.to(tl.float32)[:, None]
+                * input_block.to(tl.float32)[None, :]
+            )
 
-        input_c_offset = c + tl.arange(0, BLOCK_CI)
-        input_depth_offset = (
-            d * dilation_depth - padding_depth + stride_depth * output_depth_point_value
-        )
-        input_height_offset = (
-            h * dilation_height
-            - padding_height
-            + stride_height * output_height_point_value
-        )
-        input_width_offset = (
-            w * dilation_width - padding_width + stride_width * output_width_point_value
-        )
+    if has_bias:
+        accum += tl.load(
+            bias_pointer + pid_group * out_per_group_c + output_c_offset, mask=c_mask
+        ).to(tl.float32)[:, None]
 
-        curr_input_pointer = (
-            input_pointer
-            + (input_c_stride * input_c_offset)[None, :]
-            + (input_depth_stride * input_depth_offset)[:, None]
-            + (input_height_stride * input_height_offset)[:, None]
-            + (input_width_stride * input_width_offset)[:, None]
-        )
-        curr_weight_pointer = (
-            weight_pointer
-            + (weight_c_stride * input_c_offset)[:, None]
-            + (weight_depth_stride * d)
-            + (weight_height_stride * h)
-            + (weight_width_stride * w)
-        )
-
-        input_mask = (
-            (in_n_point_value < in_n)[:, None]
-            & (input_c_offset < weight_c)[None, :]
-            & (0 <= input_depth_offset)[:, None]
-            & (input_depth_offset < input_depth)[:, None]
-            & (0 <= input_height_offset)[:, None]
-            & (input_height_offset < input_height)[:, None]
-            & (0 <= input_width_offset)[:, None]
-            & (input_width_offset < input_width)[:, None]
-        )
-        weight_mask = (input_c_offset < weight_c)[:, None] & (
-            output_c_offset < out_per_group_c
-        )[None, :]
-
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
-
-        accum += tl.dot(input_block, weight_block, allow_tf32=False)
-    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
-        None, :
-    ]
-    mask_bias = (output_c_offset < out_per_group_c)[None, :]
-    bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
-    accum += bias
     output_pointer += (
-        (output_n_stride * in_n_point_value)[:, None]
-        + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[None, :]
-        + (output_depth_stride * output_depth_point_value)[:, None]
-        + (output_height_stride * output_height_point_value)[:, None]
-        + (output_width_stride * output_width_point_value)[:, None]
+        output_c_stride * (pid_group * out_per_group_c + output_c_offset)[:, None]
+        + (
+            output_n_stride * in_n_point_value
+            + output_depth_stride * output_depth_point_value
+            + output_height_stride * output_height_point_value
+            + output_width_stride * output_width_point_value
+        )[None, :]
     )
-    output_mask = (
-        (in_n_point_value < in_n)[:, None]
-        & (output_c_offset < out_per_group_c)[None, :]
-        & (output_depth_point_value < out_depth)[:, None]
-        & (output_height_point_value < out_height)[:, None]
-        & (output_width_point_value < out_width)[:, None]
-    )
-
-    tl.store(output_pointer, accum, mask=output_mask)
+    tl.store(output_pointer, accum, mask=c_mask[:, None] & volume_mask[None, :])
 
 
 # class Conv3d(torch.autograd.Function):
@@ -373,27 +377,6 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
 
-    # Triton tl.dot requires K >= 16. The K dimension in conv3d im2col matmul
-    # is BLOCK_CI which tiles over weight_c. When weight_c < 16, AABS
-    # (Auto-Adjusted Block Size) shrinks BLOCK_CI to next_power_of_2(weight_c)
-    # which violates the K >= 16 constraint. Pad input/weight channels to 16.
-    _MIN_DOT_K = 16
-    if weight_c < _MIN_DOT_K and runtime.device.vendor_name != "iluvatar":
-        pad_c = _MIN_DOT_K - weight_c
-        if groups == 1:
-            # Simple case: pad channel dim at the end (dim=1 for 5D input)
-            input = flag_gems.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
-        else:
-            # For grouped conv, must pad each group's channels independently.
-            # Reshape to (N, groups, weight_c, D, H, W), pad weight_c dim, reshape back.
-            N, C, D, H, W = input.shape
-            input = input.reshape(N, groups, weight_c, D, H, W)
-            input = flag_gems.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
-            input = input.reshape(N, groups * (weight_c + pad_c), D, H, W)
-        # Pad weight: (out_c, weight_c, kD, kH, kW) -> (out_c, weight_c+pad_c, kD, kH, kW)
-        weight = flag_gems.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_c))
-        weight_c = weight_c + pad_c
-
     out_depth = conv3d_output_size(
         input_depth, weight_depth, stride_depth, padding_depth, dilation_depth
     )
@@ -401,34 +384,35 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     out_height = conv3d_output_size(
         input_height, weight_height, stride_height, padding_height, dilation_height
     )
+
     out_width = conv3d_output_size(
         input_width, weight_width, stride_width, padding_width, dilation_width
     )
 
-    output_dtype = input.dtype
     output = torch.empty(
         (in_n, out_c, out_depth, out_height, out_width),
         device=input.device,
-        dtype=output_dtype,
+        dtype=input.dtype,
     )
 
-    # BLOCK_NI_HO_WO along the in_n, out_depth, out_height and out_width
+    # BLOCK_VOLUME along the in_n, out_depth, out_height and out_width
     # dimensions, BLOCK_CO along the out_c, one group per cat.
     # grid.x is capped at the 65535 hardware limit: the volume axis is folded
     # over grid.x/grid.y, and the channel tiles plus the groups share grid.z.
     volume_elements = in_n * out_depth * out_height * out_width
-    block_ci = _select_block_ci(weight_c)
+    out_per_group_c = out_c // groups
+    block_co = _select_block_clo(out_per_group_c)
 
-    volume_tiles = triton.cdiv(volume_elements, _AUTOTUNE_BLOCK_NI_DO_HO_WO)
+    volume_tiles = triton.cdiv(volume_elements, _AUTOTUNE_BLOCK_VOLUME)
     grid_x = min(volume_tiles, _MAX_GRID_DIM)
     grid = (
         grid_x,
         triton.cdiv(volume_tiles, grid_x),
-        groups * triton.cdiv(out_c // groups, _AUTOTUNE_BLOCK_CO),
+        groups * triton.cdiv(out_per_group_c, block_co),
     )
 
     if bias is None:
-        bias_pointer = torch.zeros(out_c, device=input.device, dtype=output_dtype)
+        bias_pointer = output
     else:
         bias_pointer = bias
 
@@ -462,7 +446,8 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dilation_height,
         dilation_width,
         groups=groups,
-        BLOCK_CI=block_ci,
+        has_bias=bias is not None,
+        BLOCK_CO=block_co,
     )
 
     if padding == "same":

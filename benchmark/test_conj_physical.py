@@ -73,10 +73,6 @@ class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
         return None
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
-)
 @pytest.mark.conj_physical
 def test_conj_physical():
     if "npu" in flag_gems.device or "ascend" in flag_gems.device.lower():
@@ -105,10 +101,6 @@ def test_conj_physical():
     bench.run()
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
-)
 @pytest.mark.underscore_conj_physical
 def test__conj_physical():
     # The private op only differs from the public one for real dtypes (where it
@@ -129,10 +121,6 @@ def _out_input_fn(shape, dtype, device):
         yield args[0], {"out": torch.empty_like(args[0])}
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
-)
 @pytest.mark.underscore_conj_physical_out
 def test__conj_physical_out():
     bench = Conj_physicalBenchmark(

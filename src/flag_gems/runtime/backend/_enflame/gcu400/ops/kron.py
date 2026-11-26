@@ -570,6 +570,10 @@ _KRON_OUTER_MIN_OPERAND = 8  # keeps the expansion below 25% of C's bytes
 # Below this row length the expansion launch cost is not amortised (measured
 # 64x64: row kernel 0.146 ms vs this path 0.180 ms; from 96x96 on it wins).
 _KRON_OUTER_MIN_N = 8192
+# Re-measured 2026-11-25 on GCU400 / Triton GCU 3.6.0: for 2-byte outputs the
+# row kernel now costs 0.338 ms on (64,64) while this path costs 0.173 ms, so
+# the 2-byte floor drops to 4K. 4-byte outputs keep the 8K floor.
+_KRON_OUTER_MIN_N_TWO_BYTE = 4096
 _KRON_OUTER_MAX_BLOCK = 16384
 _KRON_OUTER_GRID = 48
 _KRON_EXPAND_GRID = 48
@@ -686,12 +690,12 @@ def kron_outer_kernel(
             tl.store(c_ptr + row * N + col0 + lanes, a_val * b_val)
 
 
-def _kron_outer_fits(M1, M2, M, N, single_batch):
+def _kron_outer_fits(M1, M2, M, N, single_batch, min_n=None):
     if not single_batch:
         return False
     if M1 < _KRON_OUTER_MIN_OPERAND or M2 < _KRON_OUTER_MIN_OPERAND:
         return False
-    if N < _KRON_OUTER_MIN_N:
+    if N < (_KRON_OUTER_MIN_N if min_n is None else min_n):
         return False
     # kernel offsets are int32
     return M * N < 2**31
@@ -827,7 +831,18 @@ def kron(A, B):
         # Outer-product path: cheapest layout for wide krons (see the comment
         # block above the kernels).  Only for single-batch operands that are
         # large enough for the expansion to stay negligible.
-        use_outer = _kron_outer_fits(M1, M2, M, N, single_batch)
+        two_byte = elem_bytes <= 2
+        use_outer = _kron_outer_fits(
+            M1,
+            M2,
+            M,
+            N,
+            single_batch,
+            # 2-byte outputs already win from N=4K on (see below), 4-byte ones
+            # keep the original 8K floor so nothing outside the measured set
+            # switches away from the v4 fallback.
+            min_n=_KRON_OUTER_MIN_N_TWO_BYTE if two_byte else None,
+        )
         use_row = (
             single_batch
             and (N1 & (N1 - 1)) == 0
@@ -835,6 +850,18 @@ def kron(A, B):
             and N1 * N2 * elem_bytes <= _KRON_ROW_TILE_BYTES
             and M * N < 2**31
         )
+        # The row kernel streams C with only the two original (tiny) operands
+        # in cache, while the outer kernel re-reads its expanded operands (M1 x
+        # N and M2 x N elements) once per C row. For 4-byte outputs that extra
+        # traffic no longer stays resident, so the row kernel wins there and the
+        # outer path is skipped whenever the row layout applies. Measured
+        # (2026-11-25, GCU400 / Triton GCU 3.6.0):
+        #   (128,128) fp32  row 1.43 ms vs outer 2.59 ms
+        #   (64,64)   fp32  row 0.386 ms vs outer 0.467 ms
+        #   (128,128) bf16  outer 0.94 ms vs row 1.99 ms
+        #   (64,64)   bf16  outer 0.173 ms vs row 0.338 ms
+        if use_outer and not two_byte and use_row:
+            use_outer = False
         use_v3 = False
         if not use_row:
             use_v3 = M2 * N2 >= _KRON_V3_MIN_B

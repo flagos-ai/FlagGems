@@ -196,6 +196,15 @@ def _cudnn_attn_fwd_gems(
         "cannot serve the benchmark, so there is no native baseline"
     ),
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame: with the native leg skipped there is no baseline to compare against, and the "
+        "gems-only leg still has to compile the whole attention autotune space for every "
+        "(KV_CTX, HEAD_DIM, dtype) key, which costs minutes of cold Triton compile to produce a "
+        "latency number without any reference"
+    ),
+)
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.cudnn_attention_forward
 def test_perf_cudnn_attention_forward():

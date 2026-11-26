@@ -965,9 +965,13 @@ def _cudnn_attn_bwd_gems(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for "
+        "aten::_scaled_dot_product_cudnn_attention_backward, so only the Triton "
+        "candidate is benchmarked"
+    ),
 )
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
 def test_perf_scaled_dot_product_cudnn_attention_backward():

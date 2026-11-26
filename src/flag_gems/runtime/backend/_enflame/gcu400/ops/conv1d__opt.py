@@ -452,6 +452,45 @@ class _Conv2dBackwardShim:
         return getattr(self._ctx, name)
 
 
+def _select_conv1d_path(
+    out_len, out_channels_pg, in_channels_pg, kernel_width, is_f32, stride_width
+):
+    """Choose the execution path that measured fastest for this shape family.
+
+    The 4-D conv2d delegation runs a full matrix-engine implicit GEMM over
+    (out positions x out channels) and wins on almost every benchmarked shape:
+    measured 3.3x faster on average (geomean) than the dedicated 1-D forms,
+    which spend their time streaming strided A tiles for a (K = in_channels *
+    kernel_width) contraction. Two narrow shape families still prefer a
+    dedicated kernel, both fp32-only:
+
+    * in_channels_pg <= 8: conv2d pads the channel axis up to the matrix tile
+      and wastes half of the contraction, so the 1-D implicit GEMM wins
+      (measured 1.35x on (8, 8, 8192, 16, 11)).  A 12-channel group keeps
+      conv2d (measured 1.40x the other way on (16, 24, 2048, 96, 7, groups=2)),
+      so the cut is at 8 rather than at the 16-wide matrix tile.
+    * kernel_width * in_channels_pg <= 128 with out_channels_pg <= 32: the
+      contraction is short and narrow, so the position-tiled direct form
+      amortises better than conv2d's channel padding (measured 1.47x on
+      (16, 16, 1024, 32, 7)).
+
+    fp16 shapes of the second family keep conv2d: there the 16-bit matrix path
+    is already wide enough that the direct form loses (measured 0.88x).
+    """
+    if is_f32 and in_channels_pg <= 8:
+        return "gemm"
+    if (
+        is_f32
+        and stride_width == 1
+        and out_channels_pg <= 32
+        and in_channels_pg >= 16
+        and kernel_width * in_channels_pg <= 128
+        and 32 <= out_len <= 2048
+    ):
+        return "direct"
+    return "conv2d"
+
+
 class Conv1d(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -460,13 +499,39 @@ class Conv1d(torch.autograd.Function):
         logger.debug("GEMS_ENFLAME CONV1D")
         output = None
         if _fast_path_eligible(input, weight, bias, groups):
-            output = _launch_conv1d_direct_dte(
-                input, weight, bias, stride_width, padding_width, dilation_width, groups
+            _, _, in_len = input.shape
+            out_channels, in_channels_pg, kernel_width = weight.shape
+            out_len = (
+                in_len + 2 * padding_width - dilation_width * (kernel_width - 1) - 1
+            ) // stride_width + 1
+            path = _select_conv1d_path(
+                out_len,
+                out_channels // groups,
+                in_channels_pg,
+                kernel_width,
+                input.dtype == torch.float32,
+                stride_width,
             )
-        if output is None:
-            output = _launch_conv1d_implicit_gemm(
-                input, weight, bias, stride_width, padding_width, dilation_width, groups
-            )
+            if path == "direct":
+                output = _launch_conv1d_direct_dte(
+                    input,
+                    weight,
+                    bias,
+                    stride_width,
+                    padding_width,
+                    dilation_width,
+                    groups,
+                )
+            elif path == "gemm":
+                output = _launch_conv1d_implicit_gemm(
+                    input,
+                    weight,
+                    bias,
+                    stride_width,
+                    padding_width,
+                    dilation_width,
+                    groups,
+                )
         if output is None:
             output = conv2d(
                 input.unsqueeze(-1),

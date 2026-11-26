@@ -27,6 +27,18 @@ vdot:
 randperm:
   <<: *single_dim_shapes
 
+# aten::_unique2 flattens and sorts the input, so the shape sweep must stay
+# below sort's 2**30 per-launch limit; without this entry the Benchmark
+# catch-all below would benchmark it on the 2**30 generic shape and abort.
+unique2:
+  shapes:
+    - [1024]
+    - [4096]
+    - [16384]
+    - [65536]
+    - [262144]
+  shape_desc: "N"
+
 gelu_backward:
   shapes:
     - [1048576] # 1024 * 1024
@@ -106,6 +118,15 @@ grouped_mm:
     - [16, 2560, 2048]
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"
+
+grouped_gemm_w8a8:
+  # Cases from GroupedGemmInt8Benchmark.DEFAULT_SHAPES; without this key the
+  # generic Benchmark shapes are picked and the 4-tuple unpack in
+  # get_input_iter fails on the single-element [1073741824] case.
+  shapes:
+    - [45, 512, 6144, 257]
+    - [45, 6144, 256, 257]
+  shape_desc: "M, N, K, E"
 
 _ctc_loss:
   shapes:
@@ -771,3 +792,10 @@ moe_load_balance_loss: &moe_load_balance_loss_shapes
 
 moe_load_balance_loss_mask:
   <<: *moe_load_balance_loss_shapes
+
+IntMMBenchmark:
+  shapes:
+    - [32, 256, 256]
+    - [64, 1024, 1024]
+    - [256, 2048, 2048]
+  shape_desc: "M, N, K"

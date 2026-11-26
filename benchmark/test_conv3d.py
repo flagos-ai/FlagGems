@@ -47,7 +47,11 @@ class Conv3DPaddingBenchmark(base.GenericBenchmark):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten not working ")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: the flag_gems conv3d kernel needs minutes per call on the "
+    "3D benchmark shapes, so neither stage can finish in a practical budget",
+)
 def test_conv3d():
     def conv3d_input_fn(shape, dtype, device):
         (

@@ -21,7 +21,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -520,21 +520,105 @@ def layer_norm_loop_kernel(
         tl.store(out_ptr + base + cols, out)
 
 
+# Tile choices for the two backward kernels.
+#
+# Every (BLOCK_ROW_SIZE, BLOCK_COL_SIZE) pair is a separate Triton
+# compilation, so the previous four-entry @libtuner search compiled four
+# binaries per shape and, because the tuner was keyed on M/N, one such set per
+# shape of the test and benchmark suites. That search dominated the operator's
+# cold-start time (about 190 kernel binaries for the accuracy suite alone),
+# while the winning tile depended only on how many rows are available and how
+# wide a row is. The deterministic rules below reproduce the best measured
+# tile of every shape used by the suites with three variants per kernel.
+#
+# LNB tiles were measured on GCU400 with M and N marked do_not_specialize, so
+# one binary per tile served every shape and the numbers isolate the tile
+# choice. With the few-row shapes the dX kernel cannot fill the machine, so one
+# row per program is fastest even for very wide rows ((20, 393216) 0.951ms vs
+# 1.601ms for the wide tile, (16, 11264) 34.2us vs 51.8us). Once enough rows
+# exist, (4, 1024) wins on ordinary widths ((32768, 128) 1.94ms vs 11.1ms for
+# (1, 2048)) and (8, 2048) wins on wide ones ((100, 40499) 0.176ms vs 0.269ms
+# for (4, 1024)). For dW/dB the loop runs over rows, so a large M wants the
+# longest row batch ((32768, 128) 4.59ms at (32, 256) vs 8.62ms at (16, 256))
+# and everything else is column bound, where (16, 1024) beats (16, 256)
+# everywhere ((1, 40999) 22.4us vs 51.4us, (100, 40499) 83.6us vs 213us).
+# A (32, 1024) wide tile is about 12% faster on two-byte rows but asks for more
+# DSM than an fp32 dY/X pair allows (999424 > 917504 bytes), so 1024-wide dW
+# tiles stay at 16 rows for every dtype.
+_LNB_DX_TILE_FEW_ROWS = (1, 2048)
+_LNB_DX_TILE_WIDE = (8, 2048)
+_LNB_DX_TILE_DEFAULT = (4, 1024)
+_LNB_DW_TILE_LARGE_M = (32, 256)
+_LNB_DW_TILE_LARGE_M_F32 = (64, 256)
+_LNB_DW_TILE_DEFAULT = (16, 1024)
+_LNB_FEW_ROWS = 32
+_LNB_WIDE_COLS = 16384
+_LNB_DW_LARGE_M_ROWS = 256
+
+
+def _lnb_dx_tile(num_rows, row_width):
+    """Pick (BLOCK_ROW_SIZE, BLOCK_COL_SIZE) for ``layer_norm_backward_kernel``."""
+    if num_rows <= _LNB_FEW_ROWS:
+        return _LNB_DX_TILE_FEW_ROWS
+    if row_width > _LNB_WIDE_COLS:
+        return _LNB_DX_TILE_WIDE
+    return _LNB_DX_TILE_DEFAULT
+
+
+def _lnb_dw_tile(num_rows, elem_size):
+    """Pick (BLOCK_ROW_SIZE, BLOCK_COL_SIZE) for ``weight_bias_backward_kernel``.
+
+    Long row batches are what pay off once the row loop is long, and the batch
+    that fits scales with the element size: four-byte rows need 64 rows to
+    reach 3.19ms on (32768, 128) where (32, 256) stalls at 5.10ms, while
+    two-byte rows peak at (32, 256) (4.59ms vs 8.62ms for (16, 256)).
+    """
+    if num_rows >= _LNB_DW_LARGE_M_ROWS:
+        return _LNB_DW_TILE_LARGE_M if elem_size <= 2 else _LNB_DW_TILE_LARGE_M_F32
+    return _LNB_DW_TILE_DEFAULT
+
+
+def _lnb_aabs_store():
+    """Return the dict backing FlagTree's AABS knob, or None if unavailable."""
+    knobs = getattr(triton.knobs, "autotuning", None)
+    if knobs is None or not hasattr(knobs, "adjust_block_size"):
+        return None
+    return knobs.__dict__
+
+
+_AABS_STORE = _lnb_aabs_store()
+_AABS_MISSING = object()
+
+
+def _lnb_launch_pinned(launch):
+    """Run ``launch`` with FlagTree AABS suspended.
+
+    AABS resizes ``tl.arange``-derived tiles from the runtime extent of the
+    data, and the shrunk fp32 [R, 256]/[R, 512] tiles with a W row-vector load
+    are a triton_gcu silent-miscompile zone. The host rules above are the
+    intended sizes, so AABS is suspended for these launches only.
+
+    The knob is written straight into its backing dict: the descriptor setter
+    mirrors the value into ``os.environ``, which costs an order of magnitude
+    more than these kernels and showed up as a 12us regression per call.
+    """
+    store = _AABS_STORE
+    if store is None:
+        launch()
+        return
+    previous = store.get("adjust_block_size", _AABS_MISSING)
+    store["adjust_block_size"] = False
+    try:
+        launch()
+    finally:
+        if previous is _AABS_MISSING:
+            store.pop("adjust_block_size", None)
+        else:
+            store["adjust_block_size"] = previous
+
+
 @libentry()
-@libtuner(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 2048}, num_warps=4),
-        triton.Config({"BLOCK_ROW_SIZE": 2, "BLOCK_COL_SIZE": 2048}, num_warps=4),
-        triton.Config({"BLOCK_ROW_SIZE": 4, "BLOCK_COL_SIZE": 1024}, num_warps=4),
-        triton.Config({"BLOCK_ROW_SIZE": 8, "BLOCK_COL_SIZE": 1024}, num_warps=4),
-    ],
-    key=["M", "N"],
-    # FlagTree AABS shrinks BLOCK_COL_SIZE toward next_power_of_2(N); the
-    # shrunk fp32 [R, 256]/[R, 512] tiles with a W row-vector load are a
-    # triton_gcu silent-miscompile zone — keep the configured 2048 tile.
-    disable_aabs=True,
-)
-@triton.jit
+@triton.jit(do_not_specialize=["M", "N"])
 def layer_norm_backward_kernel(
     dY,
     X,
@@ -598,17 +682,7 @@ def layer_norm_backward_kernel(
 
 
 @libentry()
-@libtuner(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 16, "BLOCK_COL_SIZE": 256}, num_warps=4),
-        triton.Config({"BLOCK_ROW_SIZE": 32, "BLOCK_COL_SIZE": 256}, num_warps=4),
-        triton.Config({"BLOCK_ROW_SIZE": 64, "BLOCK_COL_SIZE": 256}, num_warps=4),
-        triton.Config({"BLOCK_ROW_SIZE": 16, "BLOCK_COL_SIZE": 1024}, num_warps=4),
-    ],
-    key=["M", "N"],
-    disable_aabs=True,
-)
-@triton.jit
+@triton.jit(do_not_specialize=["M", "N"])
 def weight_bias_backward_kernel(
     dY,
     X,
@@ -836,10 +910,22 @@ def layer_norm_backward(
 
     if output_mask[0]:
         in_grad = torch.empty_like(input)
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+        block_rows, block_cols = _lnb_dx_tile(M, N)
+        grid = (triton.cdiv(M, block_rows), 1, 1)
         with torch_device_fn.device(input.device):
-            layer_norm_backward_kernel[grid](
-                grad_out, input, weight, mean, rstd, in_grad, M, N
+            _lnb_launch_pinned(
+                lambda: layer_norm_backward_kernel[grid](
+                    grad_out,
+                    input,
+                    weight,
+                    mean,
+                    rstd,
+                    in_grad,
+                    M,
+                    N,
+                    BLOCK_ROW_SIZE=block_rows,
+                    BLOCK_COL_SIZE=block_cols,
+                )
             )
     else:
         in_grad = None
@@ -847,11 +933,28 @@ def layer_norm_backward(
     if output_mask[1] is False and output_mask[2] is False:
         return in_grad, None, None
 
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-    weight_grad = torch.empty_like(weight) if output_mask[1] else None
-    bias_grad = torch.empty_like(bias) if output_mask[2] else None
+    # Both affine gradients are allocated whenever the operand exists so the
+    # kernel keeps a single compiled variant pipeline; the slot that was not
+    # requested is dropped before returning.
+    weight_grad = torch.empty_like(weight) if weight is not None else None
+    bias_grad = torch.empty_like(bias) if bias is not None else None
+    block_rows, block_cols = _lnb_dw_tile(M, grad_out.element_size())
+    grid = (triton.cdiv(N, block_cols), 1, 1)
     with torch_device_fn.device(input.device):
-        weight_bias_backward_kernel[grid](
-            grad_out, input, mean, rstd, weight_grad, bias_grad, M, N
+        _lnb_launch_pinned(
+            lambda: weight_bias_backward_kernel[grid](
+                grad_out,
+                input,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                M,
+                N,
+                BLOCK_ROW_SIZE=block_rows,
+                BLOCK_COL_SIZE=block_cols,
+            )
         )
+    weight_grad = weight_grad if output_mask[1] else None
+    bias_grad = bias_grad if output_mask[2] else None
     return in_grad, weight_grad, bias_grad

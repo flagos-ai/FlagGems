@@ -19,8 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten error")
-
 
 def native_per_token_group_quant_fp8(
     x, group_size, eps=1e-10, dtype=None, scale_ue8m0=False
@@ -62,6 +60,12 @@ def test_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed, scale
 
     x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
+    if flag_gems.vendor_name == "enflame" and ref_x.device.type != "cpu":
+        # The pure-torch reference reduces through aten max(dim=-1), which
+        # aborts on the GCU backend, so the reference runs on the CPU.  The
+        # reference formula itself is unchanged and stays independent of the
+        # kernel under test.
+        ref_x = ref_x.cpu()
 
     ref_out, ref_scale = native_per_token_group_quant_fp8(
         ref_x, group_size, scale_ue8m0=scale_ue8m0

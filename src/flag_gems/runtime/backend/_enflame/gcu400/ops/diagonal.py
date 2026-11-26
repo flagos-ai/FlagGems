@@ -96,12 +96,17 @@ def _diag_scatter_tiled_kernel(
     cols = (pid % num_col_tiles) * BLOCK_C + tl.arange(0, BLOCK_C)
     mask = (rows[:, None] < num_rows) & (cols[None, :] < num_cols)
     src_offsets = rows[:, None] * SRC_ROW + cols[None, :] * SRC_COL
-    dst_offsets = base_offset + rows[:, None] * DST_ROW + cols[None, :] * DST_COL
     if WIDE:
         src_offsets = src_offsets.to(tl.int64)
-        dst_offsets = dst_offsets.to(tl.int64)
     values = tl.load(src_ptr + src_offsets, mask=mask)
-    tl.store(dst_ptr + dst_offsets, values, mask=mask)
+    # Store transposed: this backend drops lanes of a masked rank-2 store
+    # whose innermost axis is not unit-stride (the tiled path only handles
+    # layouts whose destination-contiguous axis is the *outer* one), so walk
+    # the destination-contiguous axis as the innermost one instead.
+    dst_offsets_t = base_offset + cols[:, None] * DST_COL + rows[None, :] * DST_ROW
+    if WIDE:
+        dst_offsets_t = dst_offsets_t.to(tl.int64)
+    tl.store(dst_ptr + dst_offsets_t, tl.trans(values), mask=tl.trans(mask))
 
 
 @triton.jit

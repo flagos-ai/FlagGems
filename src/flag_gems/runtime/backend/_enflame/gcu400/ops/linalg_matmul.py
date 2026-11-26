@@ -31,6 +31,7 @@ the large core cases at 0.51-0.84x of torch (see ``bmm.py`` for the sweep).
 """
 
 import logging
+from functools import lru_cache
 
 import torch
 import triton
@@ -248,6 +249,7 @@ def _block_ptr_ok(tensor, inner_dim):
     return True
 
 
+@lru_cache(maxsize=128)
 def _select_persistent_tiles(batch, M, N, K, elem_bytes):
     """Pick the tile for the persistent kernel.
 
@@ -267,10 +269,31 @@ def _select_persistent_tiles(batch, M, N, K, elem_bytes):
     honors).
     """
     if M >= 1024 and N >= 1024 and M % 256 == 0 and N % 128 == 0:
-        deep_k = 512 if elem_bytes <= 2 else 128
-        if K % deep_k == 0:
+        # Deepest K block that still keeps two pipeline stages in the DSM
+        # budget. A 512-deep block only fits a single stage in fp16 and
+        # measured 2x slower than the 256-deep two-stage tile on the batch-16
+        # 1024/2048 shapes (515/3954 us against 260/1955 us), so the depth is
+        # taken from the deepest two-stage candidate. Beyond 2048 the 128-deep
+        # block wins again (21293 us against 19551 us on batch-16 4096).
+        #
+        # A batch of one or two is the exception: there the 512-deep single
+        # stage still wins on the 4096 tier (1.84 ms against 2.52 ms for the
+        # 128-deep tile, both from the persistent kernel), because the deeper
+        # block amortizes the K loop instead of adding pipeline pressure.
+        if batch <= 2:
+            deep_depths = (512, 256, 128) if elem_bytes <= 2 else (256, 128, 64)
+            min_stages = 1
+        else:
+            deep_depths = (256, 128) if max(M, N) <= 2048 else (128, 256)
+            if elem_bytes > 2:
+                deep_depths = (128, 64)
+            min_stages = 2
+        for deep_k in deep_depths:
+            if K % deep_k != 0:
+                continue
             num_stages = _fit_stages(256, 128, deep_k, elem_bytes, 3)
-            return 256, 128, deep_k, True, num_stages
+            if num_stages >= min_stages:
+                return 256, 128, deep_k, True, num_stages
 
     wide_tiles = batch * triton.cdiv(M, 128) * triton.cdiv(N, 256)
     block_m, block_n = (128, 256) if wide_tiles >= _PERSISTENT_GRID else (128, 128)

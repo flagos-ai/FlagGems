@@ -139,6 +139,8 @@ def test_cudnn_affine_grid_generator_out(shape, dtype):
         pytest.skip(
             "cudnn_affine_grid_generator is CUDA-only, cannot run in quick-cpu mode"
         )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
 
     N, H, W, C = shape
     theta = torch.randn((N, 2, 3), dtype=dtype, device=flag_gems.device)
@@ -210,6 +212,8 @@ def test_cudnn_affine_grid_generator_out_resizes(dtype):
         pytest.skip(
             "cudnn_affine_grid_generator is CUDA-only, cannot run in quick-cpu mode"
         )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
 
     N, C, H, W = 2, 3, 16, 16
     theta = torch.randn((N, 2, 3), dtype=dtype, device=flag_gems.device)
@@ -238,6 +242,8 @@ def test_cudnn_affine_grid_generator_out_non_contiguous(dtype):
         pytest.skip(
             "cudnn_affine_grid_generator is CUDA-only, cannot run in quick-cpu mode"
         )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
 
     N, C, H, W = 2, 3, 16, 16
     theta = torch.randn((N, 2, 3), dtype=dtype, device=flag_gems.device)
@@ -273,7 +279,9 @@ def test_cudnn_affine_grid_generator_out_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", CUDNN_AFFINE_GRID_FLOAT_DTYPES)
 def test_cudnn_affine_grid_generator_out_rejects(dtype):
     """out must match theta's dtype and device, like ATen."""
-    if TO_CPU:
+    # This case only exercises the out= contract of the FlagGems kernel, so it
+    # needs no aten reference and runs on enflame even in quick-cpu mode.
+    if TO_CPU and not ATEN_REFERENCE_UNSUPPORTED:
         pytest.skip(
             "cudnn_affine_grid_generator is CUDA-only, cannot run in quick-cpu mode"
         )

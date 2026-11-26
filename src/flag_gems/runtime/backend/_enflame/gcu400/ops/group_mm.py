@@ -273,50 +273,64 @@ def _select_gemm_config(N, K):
     """Pick the kernel and its tile/warp config from the problem shape.
 
     Returns (kernel, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, use_ws) where
-    `kernel` is "rowtile" or "persistent". The rowtile kernel is not selected
-    until its warp-specialized path is fixed (see the K <= 256 branch).
+    `kernel` is "rowtile" or "persistent".
 
-    Measured on GCU400 (2026-11-19, per-group M=8192, M_total=131072):
+    Re-measured on GCU400 / Triton GCU 3.6.0 (2026-11-25, unbalanced per-group
+    M as in the benchmark: 16 groups with M_g ~ U[1, 16384], M_total ~1.4e5):
 
-      rowtile, BM=512/BN=128/nw=4 + WS:   N=2048 K=128  1.24 ms (221 TFLOPS)
-      persistent + WS, BM=256/BN=256/BK=256/nw=4:
-        N=512  K=2048  0.98 ms (279 TFLOPS)
-        N=2560 K=2048  4.77 ms (288 TFLOPS)
-      persistent without WS, BM=128/BN=256/BK=256/nw=2:
-        N=512  K=2048  1.37 ms (200 TFLOPS)
-        N=2560 K=2048  7.09 ms (194 TFLOPS)
+      rowtile, BM=512/BN=128/nw=4 + WS:   N=2048 K=128   5.27 ms (54 TFLOPS)
+      persistent, BM=128/BN=128/BK=512/nw=2 + WS:
+        N=512  K=2048  4.54 ms (67 TFLOPS)
+        N=2560 K=2048  23.51 ms (64 TFLOPS)
+      persistent, BM=256/BN=256/BK=256/nw=4 + WS (previous default):
+        N=512  K=2048  6.35 ms (48 TFLOPS)
+        N=2560 K=2048  31.35 ms (48 TFLOPS)
+        N=2048 K=128   10.08 ms (28 TFLOPS)
 
-    WS wins on the deep-K shapes because it splits the load pipeline (producer)
-    from the MMA (consumer) instead of interleaving both in one warp group, and
-    the 256-wide BM keeps the A tile resident across the whole N loop. On the
-    short-K rowtile kernel WS only pays off with BM=512 (dot 512x128 is big
-    enough to hide the channel round-trip); at BM=256 it loses ~11%.
-
-    num_warps is capped at 4 because the WS pass only supports num_warps <= 4.
+    A plain bf16 ``mm`` with the same FLOP budget measures 68 TFLOPS on this
+    device, which is what the deep-K tile above now matches; the old tile left
+    the MMA under-fed at 48 TFLOPS. The short-K rowtile layout keeps the A row
+    block resident for the whole N loop, which is where its 1.9x over the
+    persistent tile on N=2048/K=128 comes from.
     """
     block_n = _select_block_n(N)
+    # A 128-wide N tile wins even when N is much wider: the accumulator stays
+    # 128x128 and the MMA keeps its operands fed. Measured on unbalanced
+    # per-group M (16 groups, M_total ~1.4e5, 2026-11-25): N=2560 K=2048
+    # 23.51 ms with BN=128 vs 32.09 ms with BN=256; N=512 K=2048 4.54 ms vs
+    # 6.21 ms.
+    if N % 128 == 0:
+        block_n = 128
     if K <= 256:
-        # Short K: rowtile is the shape match, but its warp specialization is
-        # not usable yet. The WS barrier arrive is a call inside the n-tile
-        # loop, and the backend spills the whole live OACC accumulator across
-        # it (128 groups, 64 KiB, to the L3 stack): 5.02 ms vs 1.24 ms with the
-        # barrier inlined on (64, 2048, 128). The persistent WS tile below
-        # measures 1.24 ms on the same shape.
-        #
-        # Switch back to rowtile once the llvm fix (inline the barrier so the
-        # accumulator is not live across a call) is in:
-        #   return ("rowtile", 512, 128 if N % 128 == 0 else block_n,
-        #           max(16, triton.next_power_of_2(K)), 4, True)
-        return ("persistent", 256, block_n, _select_block_k(K), 4, True)
+        # Short K: the rowtile kernel is the shape match - one work item covers
+        # all N tiles of an M row block, so the A row block is loaded once and
+        # stays resident. The old note here said the WS barrier spilled the live
+        # accumulator; re-measured on Triton GCU 3.6.0 the spill is gone and the
+        # rowtile tile is 1.9x faster than the persistent one on
+        # G=64/N=2048/K=128: 5.27 ms (54 TFLOPS) vs 10.08 ms (28 TFLOPS).
+        return (
+            "rowtile",
+            512,
+            128 if N % 128 == 0 else block_n,
+            max(16, triton.next_power_of_2(K)),
+            4,
+            True,
+        )
     if K >= 1024:
-        return ("persistent", 256, block_n, _select_block_k(K), 4, True)
+        # Deep K: 128x128x512 with 2 warps reaches plain-mm throughput on GCU400
+        # (68 TFLOPS measured for the same FLOP budget): 4.54 ms vs 6.35 ms on
+        # N=512 K=2048 and 23.51 ms vs 31.35 ms on N=2560 K=2048. The previous
+        # 256x256x256/nw4 tile left the MMA under-fed at 48 TFLOPS.
+        return ("persistent", 128, block_n, _select_block_k(K), 2, True)
     # 256 < K < 1024: the K loop is too short for WS to pay for the partition.
     return ("persistent", 128, block_n, _select_block_k(K), 2, False)
 
 
 def _select_block_k(K):
-    # if K >= 512 and K % 512 == 0:
-    #     return 512
+    # A 512-wide K step with the 128x128 tile is what reaches plain-mm
+    # throughput on the deep-K shapes (see _select_gemm_config).
+    if K >= 1024 and K % 512 == 0:
+        return 512
     if K >= 256 and K % 256 == 0:
         return 256
     if K >= 128:

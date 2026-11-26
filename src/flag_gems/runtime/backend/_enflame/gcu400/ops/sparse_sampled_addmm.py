@@ -69,6 +69,31 @@ def _broadcast_sparse_csr(input, shape):
     )
 
 
+def _broadcast_values(input, shape):
+    """Values of ``_broadcast_sparse_csr(input, shape)`` without building a CSR.
+
+    The out variant only has to seed ``out.values()`` with the structural values of
+    ``input`` (they carry the ``beta * input`` term of the epilogue); its indices are
+    already given by ``out``.  Rebuilding the whole sparse tensor there is not just
+    redundant work: constructing ``torch.sparse_csr_tensor`` from freshly allocated
+    index/value tensors leaks device memory in the torch_gcu front end, about
+    ``nnz * 8`` bytes per call, which exhausts the device after a few hundred
+    benchmark iterations on the large shapes.
+    """
+    if input.shape == shape:
+        return input.values()
+    nnz = input._nnz()
+    batch_shape = shape[:-2]
+    num_batches = math.prod(batch_shape)
+    # Same expansion as the sparse broadcast: one shared pattern over the batch.
+    return (
+        input.values()
+        .unsqueeze(0)
+        .expand(num_batches, nnz)
+        .reshape(batch_shape + (nnz,))
+    )
+
+
 # GCU limits one grid dimension to 65535 programs.  The dense product kernel is
 # launched as a flat (batch, tile) grid over that ceiling, so the tile extent is
 # escalated until the launch fits instead of letting a single program iterate over
@@ -406,6 +431,21 @@ def _select_kernel_config(B, M, N, K, dtype):
         else:
             block_n //= 2
     even = even and M % block_m == 0 and N % block_n == 0
+    # The shared table keeps a 64-deep K block for 16-bit operands (``bmm`` can
+    # live with it because the accumulation stays narrow).  Here the accumulator
+    # is always fp32, and on the mid-size batched shapes the 64-deep block leaves
+    # the MMA pipeline short: widening K to 128 with two stages measured 1.843 ->
+    # 1.753 ms on (16,1024,1024)x(16,1024,1024) and 6.093 -> 5.258 ms on
+    # (16,2048,2048)x(16,2048,2048) at 10% density, both fp16.
+    if (
+        dtype in (torch.float16, torch.bfloat16)
+        and block_k == 64
+        and K > 64
+        and block_m * block_n <= _MAX_ACC_ELEMS
+    ):
+        block_k = 128
+        num_stages = 2
+        even = even and K % block_k == 0
     tiles = triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
     if tiles > _MAX_GRID_1D:
         # Fall back to wide tiles when a single batch would overflow grid.x.
@@ -499,7 +539,12 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
                 f"got {out._nnz()}"
             )
         if out is not input:
-            out.copy_(_broadcast_sparse_csr(input, out_shape))
+            # Copy the values only: ``out`` already carries the structure, and going
+            # through ``_broadcast_sparse_csr`` here would build (and leak) a second
+            # sparse tensor on every call.  See ``_broadcast_values``.
+            out.values().copy_(
+                _broadcast_values(input, out_shape).reshape(out.values().shape)
+            )
 
     if mat1.numel() == 0 or mat2.numel() == 0 or nnz == 0 or alpha == 0.0 or K == 0:
         out.values().mul_(beta)

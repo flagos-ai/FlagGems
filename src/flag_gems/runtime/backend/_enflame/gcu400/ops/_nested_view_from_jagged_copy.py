@@ -45,6 +45,14 @@ Retune (2026-11-22, do_bench(median) channel sweep, bytes moved / latency):
   64 MiB fp32 against 2409 / 2681 GB/s for torch.clone, i.e. the remaining
   headroom on this operator is the view plumbing, not the transfer.
 
+Retune (2026-11-26, fp32 wide channel dropped):
+
+* The int64 wide channel no longer pays: on the kernel alone the element lane is level or
+  ahead (64 MiB fp32 0.04853 vs 0.04966 ms, 8 MiB 0.01126 vs 0.01056), and the two
+  ``view()`` calls it needs to reinterpret the buffers are pure Python cost on a path where
+  the whole operator measures 0.09 ms against 0.0716 ms for the native copy. Removing it
+  takes two branches out of the hot path as well.
+
 Zero elements skip the launch; non-contiguous inputs are made ``contiguous()`` first (matching
 common semantics); launches keep the three-attempt retry that absorbs the external converter's
 occasional cold-compile failure.
@@ -65,15 +73,11 @@ _TINY_N = 1024
 _TINY_WARPS = 4
 _SMALL_TILE_BYTES = 32 * 1024
 _MEDIUM_TILE_BYTES = 128 * 1024
-_WIDE_TILE_BYTES = 128 * 1024
 _GRID_CAP = 48
 _MEDIUM_WARPS = 4
-_WIDE_WARPS = 4
-_WIDE_MIN_BYTES = 4 * 1024 * 1024
 # --- TUNING PARAMS END ---
 
 _FLAT_I32_MAX_ELEMENTS = (1 << 31) - (1 << 15)
-_I32_SAFE_BYTES = (1 << 31) - 1
 _TOOLCHAIN_COMPILE_RETRIES = 3
 
 
@@ -144,7 +148,7 @@ def _launch_copy(src, dst, n_lanes, tile_bytes, num_warps):
 
 
 def _launch_values_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
-    """Flat bulk copy: size-driven tile choice, wide channel only above 4 MB.
+    """Flat bulk copy: size-driven tile choice, one element lane for every dtype.
 
     The 262144-element shape (0.5 MB) regressed by 33% when it was routed to the
     256 KiB medium tile: that left only two CTAs busy. The tile is therefore
@@ -159,23 +163,6 @@ def _launch_values_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
         # Launch-bound: a single exactly-sized block, no stranded lanes.
         lanes = max(triton.next_power_of_2(n_elements), 64)
         _launch_copy(src, dst, n_elements, lanes * itemsize, _TINY_WARPS)
-        return
-    if (
-        itemsize == 4
-        and total_bytes >= _WIDE_MIN_BYTES
-        and total_bytes % 8 == 0
-        and total_bytes <= _I32_SAFE_BYTES
-        and src.data_ptr() % 8 == 0
-        and dst.data_ptr() % 8 == 0
-    ):
-        # Wide channel: 8-byte lanes halve the address arithmetic and requests.
-        _launch_copy(
-            src.view(-1).view(torch.int64),
-            dst.view(-1).view(torch.int64),
-            total_bytes // 8,
-            _WIDE_TILE_BYTES,
-            _WIDE_WARPS,
-        )
         return
     target = max(_SMALL_TILE_BYTES, min(_MEDIUM_TILE_BYTES, total_bytes // 32))
     tile_bytes = 1 << (target.bit_length() - 1)

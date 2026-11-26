@@ -33,6 +33,11 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+# Hoisted callables: the whole operator is dispatcher-bound, so the two module
+# attribute lookups per call are part of the measured cost.
+_sparse_coo_tensor = torch.sparse_coo_tensor
+_is_grad_enabled = torch.is_grad_enabled
+
 
 def sparse_resize_and_clear_(
     self: torch.Tensor, size, sparse_dim: int, dense_dim: int
@@ -45,7 +50,7 @@ def sparse_resize_and_clear_(
         )
     # The dispatcher rejects in-place ops on a leaf requiring grad before any
     # backend kernel runs; keep that contract for direct (undispatched) calls.
-    if torch.is_grad_enabled() and self.is_leaf and self.requires_grad:
+    if _is_grad_enabled() and self.is_leaf and self.requires_grad:
         raise RuntimeError(
             "a leaf Variable that requires grad is being used in an in-place operation"
         )
@@ -63,18 +68,17 @@ def sparse_resize_and_clear_(
         self.sparse_resize_(size, sparse_dim, dense_dim)
         return self
 
-    # Non-empty: install fresh empty buffers of the exact reference shapes -
-    # indices (sparse_dim, 0) in int64, values (0, *dense size) in self.dtype,
-    # same device - while preserving this tensor object.
-    empty_indices = self._indices().new_empty((sparse_dim, 0))
-    empty_values = self._values().new_empty((0, *size[sparse_dim:]))
-    # check_invariants=False skips the sortedness/range validation (the buffers
-    # are empty by construction) and no device/dtype kwargs are passed so the
-    # constructor infers both from the two buffers instead of resolving and
-    # comparing them against a Python-side device object.
-    self.data = torch.sparse_coo_tensor(
-        empty_indices, empty_values, size, check_invariants=False
-    )
+    # Non-empty: install the reference end state - indices (sparse_dim, 0) in
+    # int64, zero-element values in self.dtype, same device - while preserving
+    # this tensor object.  The size-only constructor allocates both empty
+    # buffers inside a single dispatcher call, which is measurably cheaper than
+    # building the two zero-length buffers from Python first.
+    self.data = _sparse_coo_tensor(size=size, dtype=self.dtype, device=self.device)
+    if dense_dim:
+        # The size-only constructor always splits size into sparse_dim == len
+        # and dense_dim == 0, so a hybrid layout needs the split restored.  The
+        # tensor is empty at this point, so this only rewrites metadata.
+        self.sparse_resize_(size, sparse_dim, dense_dim)
     # No explicit version-counter bump: the dispatcher's ADInplaceOrView key
     # already bumps it once for the aten call, exactly like the native kernel.
     return self

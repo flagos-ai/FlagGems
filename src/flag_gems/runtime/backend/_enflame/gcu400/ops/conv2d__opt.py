@@ -549,8 +549,16 @@ def _next_pow2(v, lo, hi):
 # latency, so the tiling cannot be the bottleneck and is left alone.
 _COMPUTE_BOUND_MACS = 1 << 20
 
+# Wide A-tile policy (see _select_tiles): a 512-row tile is worth it from 4K
+# output rows up, and only while the K strip stays at most 64 wide.
+_WIDE_BLOCK_M = 512
+# Tile used when the B side is 64 wide and the K strip is at most 32.
+_MID_BLOCK_M = 256
+_WIDE_BLOCK_M_MIN_M = 4096
+_WIDE_BLOCK_K_MAX = 64
 
-def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32):
+
+def _select_tiles(M, C_out_pg, C_in_pg, KDIM, is_ieee_fp32):
     """Pick implicit-GEMM tiles for a 2-D (M, C_out_pg, KDIM) problem.
 
     Measured on the conv2d bench core shapes, Triton GCU 4.1.6 (do_bench
@@ -569,14 +577,41 @@ def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32):
         convolution op and takes BN=32 as well (25541us vs 26811us at
         (32,64,128,128); 153459us vs 157764us at (32,64,210,210)x5x5;
         359.6us vs 366.2us and 1870us vs 1905us on the small/mid shapes).
+
+    Re-measured on Triton GCU 3.6.0, a 512-row A tile is 1.5-2.2x faster as
+    soon as the tap loop is long enough to amortise it, but only while both
+    the B tile and the K strip stay narrow:
+      * 2.16x at (32,64,128,128)x3x3 bf16/fp16 (10.46ms -> 4.85ms),
+        1.56x at (32,64,210,210)x5x5 (17.89ms -> 11.44ms),
+        2.04x at (16,32,24,24)x3x3 g2 (0.281ms -> 0.138ms),
+        4.16x at (32,64,128,128)x3x3 fp32-ieee (20.19ms -> 4.85ms).
+      * it loses once the problem shrinks below ~4K rows
+        (0.0517ms -> 0.0865ms at (16,32,12,12)x3x3 g2, only 5 M blocks) or
+        once BLOCK_K grows to 128 ((8,128,64,64)x3x3: 0.954ms -> 2.61ms):
+        the wide A tile then quadruples the A-side DSM footprint.
+      * a 64-wide B tile with a narrow K strip wants 256 rows, not 512:
+        (64,32,210,210)x5x5 s2 31.47ms (BM=128) -> 20.91ms (BM=256), while
+        BM=512 gives only 25.01ms.
     """
     if M * C_out_pg * KDIM < _COMPUTE_BOUND_MACS:
         return 32, 16, 32, 1
+    block_k = _next_pow2(C_in_pg, 8, 128)
+    wide_tile = M >= _WIDE_BLOCK_M_MIN_M and block_k <= _WIDE_BLOCK_K_MAX
     if is_ieee_fp32:
         if KDIM <= 64:
             return 128, 64, 32, 1
+        if wide_tile:
+            return _WIDE_BLOCK_M, 32, 32, 1
         return 64, 32, 32, 1
-    return 128, _next_pow2(C_out_pg, 32, 128), 32, 1
+    block_n = _next_pow2(C_out_pg, 32, 128)
+    if wide_tile and block_n <= 32:
+        return _WIDE_BLOCK_M, block_n, 32, 1
+    # A 64-wide B tile halves the MMA width, so the A tile has to shrink as
+    # well: 256 rows is the measured optimum there ((64,32,210,210)x5x5 s2:
+    # 20.91 ms vs 31.47 ms at BM=128 and 25.01 ms at BM=512).
+    if M >= _WIDE_BLOCK_M_MIN_M and block_n <= 64 and block_k <= 32:
+        return _MID_BLOCK_M, block_n, 32, 1
+    return 128, block_n, 32, 1
 
 
 def _launch_conv2d_implicit_gemm(
@@ -600,7 +635,7 @@ def _launch_conv2d_implicit_gemm(
     b_ptr = bias if has_bias else x
 
     block_m, block_n, block_k, num_warps = _select_tiles(
-        m, c_out_pg, kdim, x.dtype == torch.float32
+        m, c_out_pg, c_in_pg, kdim, x.dtype == torch.float32
     )
     # (kh, kw, oc, ic) layout so that both GEMM operands are contiguous along
     # their innermost tile axis. Repack cost is C_out*C_in*KVOL elements, i.e.

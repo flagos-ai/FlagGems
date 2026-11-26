@@ -1028,15 +1028,10 @@ _FLASH_BWD_ORACLE_CASES = [
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason=(
-        "aten unsupported: torch_gcu registers no kernel for "
-        "aten::_flash_attention_backward on any backend (PrivateUse1, CPU and "
-        "CompositeExplicitAutograd all miss), so the reference dQ/dK/dV cannot "
-        "be produced; the forward reference returns rng_state=None as well"
-    ),
-)
+# enflame (torch_gcu) registers no kernel for aten::_flash_attention_backward on
+# any backend, so the route planner resolves the reference dQ/dK/dV through the
+# CPU fp64 oracle (and keeps the native forward when it is available). The
+# family is therefore exercised there instead of being skipped as a whole.
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     _FLASH_BWD_ORIGINAL_SHAPES,

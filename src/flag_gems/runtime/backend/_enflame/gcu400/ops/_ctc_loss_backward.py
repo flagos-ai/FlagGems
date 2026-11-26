@@ -21,6 +21,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.ctc_loss import (
+    _NUM_SIPS,
     _REDUCTION_NONE,
     _compute_dtype,
     _ctc_loss_init_grad_kernel,
@@ -708,7 +709,11 @@ def _ctc_loss_backward(
                 dtype=torch.float32,
                 device=log_probs.device,
             )
-            _ctc_loss_init_grad_kernel[(triton.cdiv(total, block),)](
+            # The init kernel is a persistent-grid kernel: every CTA strides over the
+            # flat range with a GRID * BLOCK step, so the GRID constexpr must be passed
+            # explicitly and match the launch grid.
+            init_grid = min(triton.cdiv(total, block), _NUM_SIPS * 2)
+            _ctc_loss_init_grad_kernel[(init_grid,)](
                 work_log_probs,
                 work_input_lengths,
                 work_target_lengths,
@@ -722,6 +727,7 @@ def _ctc_loss_backward(
                 _REDUCTION_NONE,
                 zero_infinity,
                 block,
+                init_grid,
                 num_warps=_INIT_GRAD_WARPS,
             )
 

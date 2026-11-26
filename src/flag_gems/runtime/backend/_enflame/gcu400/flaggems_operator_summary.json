@@ -494,16 +494,8 @@
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'",
     "pytest_config": "--ref=cpu"
   },
-  "conv3d": {
-    "pytest_config": "--ref=cpu",
-    "skip": "yes",
-    "skip_reason": "not supported on enflame"
-  },
-  "conv3d_padding": {
-    "pytest_config": "--ref=cpu",
-    "skip": "yes",
-    "skip_reason": "skip_all"
-  },
+  "conv3d": {},
+  "conv3d_padding": {},
   "conv_depthwise2d": {
     "skip": "yes"
   },
@@ -731,10 +723,7 @@
     "skip_reason": "gcu dose not support work"
   },
   "dyn_quant_pack_4bit_weight": {},
-  "efficient_attention_backward": {
-    "skip": "yes",
-    "skip_reason": "ref_cuda"
-  },
+  "efficient_attention_backward": {},
   "einsum": {},
   "elu": {},
   "elu_": {},
@@ -1316,7 +1305,30 @@
   "greater": {},
   "greater_": {},
   "greater_equal": {},
-  "greater_equal_": {},
+  "greater_equal_": {
+    "op_name": "greater_equal_",
+    "op_category": "Pointwise comparison, in-place (aten::greater_equal_.Tensor / .Scalar)",
+    "function": "Write, for every element pair, A >= B into A in place; the scalar overload compares against a Python number",
+    "inputs": "A and B are float16 / bfloat16 / float32 tensors of identical shape on gcu, contiguous; the scalar form takes a Python number",
+    "outputs": "The input A, overwritten with the 0/1 comparison result in the original dtype",
+    "implementation": "Triton GCU400 backend: the file already carried tuned flat kernels, but aten::greater_equal_.Tensor was bound to the public greater_equal_tensor_ wrapper, which routed every call through the generic pointwise kernel and never reached them. A vendor greater_equal_tensor_ now delegates to the tuned in-place entry. In-place fp32 tiles above 2^27 elements also moved from 32768 lanes / 2 warps to 65536 lanes / 4 warps",
+    "special_cases": "Yes: broadcast pair and scalar forms, int64 path gated by TORCH_GCU_ENABLE_INT64_AND_UINT64, tail masks, and a 48-CTA grid cap ceiling shared by every arm",
+    "test_cases": "tests/test_greater_equal.py::test_greater_equal_ (all 102 nodes pass with --ref=cpu); benchmark/test_greater_equal.py::test_greater_equal_ at --level core",
+    "results": "Accuracy 102/102 passed. Benchmark average speedup 1.075x over the 15 core cases (was 0.52x). The 1 Gi float16 case moved 0.34x -> 0.98x, float32 0.73x -> 1.00x, bfloat16 0.34x -> 0.90x; the remaining sub-1.0 cells are the 1 Gi pointwise streams that already run at the memory roofline",
+    "pytest_config": "--ref=cpu",
+    "env_config": "TORCH_GCU_ENABLE_INT64_AND_UINT64=1",
+    "speedup": 1.075,
+    "performance": {
+      "core_avg_speedup": 1.075,
+      "per_dtype": {
+        "torch.float16": 1.094,
+        "torch.float32": 1.053,
+        "torch.bfloat16": 1.077
+      }
+    },
+    "date": "2026-11-25",
+    "env": "Enflame GCU400, torch_gcu 2.13.0+4.1.20261120, Triton 3.6.0 (flagtree 0.7.0+enflame)"
+  },
   "greater_equal_scalar": {},
   "greater_out": {},
   "greater_scalar": {},
@@ -1920,10 +1932,7 @@
   "mul_": {
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
   },
-  "multi_margin_loss": {
-    "skip": "yes",
-    "skip_reason": "need analysis"
-  },
+  "multi_margin_loss": {},
   "multi_margin_loss_backward": {
     "skip": "yes",
     "skip_reason": "need analysis"
@@ -2203,9 +2212,7 @@
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
   },
   "put_": {
-    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'",
-    "skip": "yes",
-    "skip_reason": "topsAten"
+    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
   },
   "put_out": {
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
@@ -2609,10 +2616,52 @@
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
   },
   "sparse_sampled_addmm": {
-    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
+    "op_name": "sparse_sampled_addmm",
+    "op_category": "Sparse sampled matrix multiply (CSR input, sampled_addmm)",
+    "function": "out.values() = alpha * (mat1 @ mat2)[sampled positions of the CSR structure] + beta * input.values(), batched over the leading dimensions",
+    "inputs": "input: sparse_csr float16/bfloat16/float32 (batch, M, N) with int32 or int64 indices; mat1 (batch, M, K) and mat2 (batch, K, N) in the same dtype on gcu; alpha/beta scalars",
+    "outputs": "A CSR tensor with the same structure and dtype as input (or the provided out tensor)",
+    "implementation": "Triton GCU400 backend, three-stage pipeline: build the slot map or the dense scratch, run the dense product with tl.dot, then fold the tile onto the value slots (dense scratch + gather, or direct scatter). This round widened the K block of 16-bit dots from 64 to 128 with two stages, which removes the MMA pipeline stall the shared bmm table leaves behind",
+    "special_cases": "Yes: 0/1 sparsity, empty groups, alpha=0 and K=0 early exit, batch broadcasting of a 2-D CSR input, non-contiguous mat1/mat2, int32 and int64 indices, grid.x ceiling of 65535, DSM and slot-map budgets",
+    "test_cases": "tests/test_sparse_sampled_addmm.py (all nodes, standard protocol, no CPU-fallback env), benchmark/test_sparse_sampled_addmm.py at --level core",
+    "results": "Standard run without ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops passes: accuracy 1440/1440 nodes, benchmark average speedup 0.815x over the 15 core cases (0.703x before this round's K-block change). 16-bit cells improved 5-20% in absolute latency, e.g. (16,2048,2048) 6.096 -> 5.260 ms and (16,4096,4096) 32.464 -> 26.466 ms",
+    "pytest_config": "",
+    "env_config": "TORCH_GCU_ENABLE_INT64_AND_UINT64=1",
+    "speedup": 0.815,
+    "performance": {
+      "core_avg_speedup": 0.815,
+      "per_dtype": {
+        "torch.float16": 0.735,
+        "torch.float32": 1.046,
+        "torch.bfloat16": 0.664
+      }
+    },
+    "date": "2026-11-26",
+    "env": "Enflame GCU400, torch_gcu 2.13.0+4.1.20261120, Triton 3.6.0 (flagtree 0.7.0+enflame)"
   },
   "sparse_sampled_addmm_out": {
-    "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"
+    "op_name": "sparse_sampled_addmm_out",
+    "op_category": "Sparse sampled matrix multiply (CSR input, sampled_addmm)",
+    "function": "out.values() = alpha * (mat1 @ mat2)[sampled positions of the CSR structure] + beta * input.values(), batched over the leading dimensions",
+    "inputs": "input: sparse_csr float16/bfloat16/float32 (batch, M, N) with int32 or int64 indices; mat1 (batch, M, K) and mat2 (batch, K, N) in the same dtype on gcu; alpha/beta scalars",
+    "outputs": "A CSR tensor with the same structure and dtype as input (or the provided out tensor)",
+    "implementation": "Triton GCU400 backend, three-stage pipeline: build the slot map or the dense scratch, run the dense product with tl.dot, then fold the tile onto the value slots (dense scratch + gather, or direct scatter). This round widened the K block of 16-bit dots from 64 to 128 with two stages, which removes the MMA pipeline stall the shared bmm table leaves behind",
+    "special_cases": "Yes: 0/1 sparsity, empty groups, alpha=0 and K=0 early exit, batch broadcasting of a 2-D CSR input, non-contiguous mat1/mat2, int32 and int64 indices, grid.x ceiling of 65535, DSM and slot-map budgets",
+    "test_cases": "tests/test_sparse_sampled_addmm.py (all nodes, standard protocol, no CPU-fallback env), benchmark/test_sparse_sampled_addmm.py at --level core",
+    "results": "Standard run without ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops passes: accuracy 90/90 nodes, benchmark 15/15 core cases OK with average speedup 0.684x (fp16 0.617x, fp32 0.756x, bf16 0.678x). The previous record could not be reproduced on the board: the benchmark loop aborted with a 140.53 GiB / 144.00 GiB GCU OOM and reported performance NOTFOUND, because the out variant rebuilt a whole sparse tensor per call and the torch_gcu front end leaks about nnz*8 bytes of device memory whenever torch.sparse_csr_tensor is built from freshly allocated index/value tensors. The out variant now seeds out.values() in place (0.0 MiB growth over 40 calls on 4x4096x4096x128 fp32), and no kernel or dispatch behaviour is changed",
+    "pytest_config": "",
+    "env_config": "TORCH_GCU_ENABLE_INT64_AND_UINT64=1",
+    "speedup": 0.684,
+    "performance": {
+      "core_avg_speedup": 0.684,
+      "per_dtype": {
+        "torch.float16": 0.617,
+        "torch.float32": 0.756,
+        "torch.bfloat16": 0.678
+      }
+    },
+    "date": "2026-11-26",
+    "env": "Enflame GCU400, torch_gcu 2.13.0+4.1.20261120, Triton 3.6.0 (flagtree 0.7.0+enflame)"
   },
   "sparse_semi_structured_addmm": {
     "env_config": "ENFLAME_PT_OP_DEBUG_CONFIG='fallback_cpu=all_ops'"

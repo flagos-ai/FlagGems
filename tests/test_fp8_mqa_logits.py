@@ -61,6 +61,13 @@ def is_hopper_available() -> bool:
 
 HOPPER_AVAILABLE = is_hopper_available()
 
+# The Hopper gate only guards the vLLM/DeepGEMM reference path. Vendors that fall
+# back to the pure-torch reference (see TORCH_REFERENCE_VENDORS) run the suite on
+# their own device instead of being skipped as a whole file.
+RUN_DEVICE_SUITE = (flag_gems.vendor_name in TORCH_REFERENCE_VENDORS) or (
+    torch.cuda.is_available() and HOPPER_AVAILABLE
+)
+
 
 def has_deep_gemm() -> bool:
     """Check if vLLM's DeepGEMM is available."""
@@ -111,7 +118,7 @@ else:
 
 @pytest.mark.fp8_mqa_logits
 @pytest.mark.skipif(
-    not (torch.cuda.is_available() and HOPPER_AVAILABLE),
+    not RUN_DEVICE_SUITE,
     reason="requires CUDA with Hopper architecture (SM90+)",
 )
 @pytest.mark.parametrize("clean_logits", [True, False])
@@ -173,7 +180,7 @@ def test_fp8_mqa_logits(clean_logits: bool):
 
 @pytest.mark.fp8_mqa_logits
 @pytest.mark.skipif(
-    not (torch.cuda.is_available() and HOPPER_AVAILABLE),
+    not RUN_DEVICE_SUITE,
     reason="requires CUDA with Hopper architecture (SM90+)",
 )
 @pytest.mark.parametrize("M, N", MN_SHAPES)
