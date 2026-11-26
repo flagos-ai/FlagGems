@@ -18,13 +18,27 @@ from torch.quasirandom import SobolEngine
 
 import flag_gems
 
+from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
+
 
 @pytest.mark.underscore_sobol_engine_draw
 @pytest.mark.sobol_engine_draw
 @pytest.mark.parametrize("n", [10, 100, 1000])
 @pytest.mark.parametrize("dimension", [2, 5, 10, 20])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float64
+        and not utils.fp64_is_supported
+    ):
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # torch.empty(..., dtype=torch.float64) reports float32 and the
+        # output-dtype contract of this op can never hold there.
+        pytest.skip("float64 is not supported by this device")
     # Initialize SobolEngine to get valid state
     eng = SobolEngine(dimension=dimension, scramble=False)
 
@@ -32,8 +46,8 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
     quasi_cpu = eng.quasi.clone()
     sobolstate_cpu = eng.sobolstate.clone()
 
-    quasi_cuda = quasi_cpu.cuda()
-    sobolstate_cuda = sobolstate_cpu.cuda()
+    quasi_device = quasi_cpu.to(flag_gems.device)
+    sobolstate_device = sobolstate_cpu.to(flag_gems.device)
 
     # Generate reference on CPU
     result_ref, quasi_ref = torch._sobol_engine_draw(
@@ -42,7 +56,7 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
 
     # Generate with FlagGems
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda, n, sobolstate_cuda, dimension, 0, dtype=dtype
+        quasi_device, n, sobolstate_device, dimension, 0, dtype=dtype
     )
 
     # Check results
@@ -78,8 +92,8 @@ def test_accuracy_underscore_sobol_engine_draw_with_offset(num_generated):
     quasi_cpu = eng.quasi.clone()
     sobolstate_cpu = eng.sobolstate.clone()
 
-    quasi_cuda = quasi_cpu.cuda()
-    sobolstate_cuda = sobolstate_cpu.cuda()
+    quasi_device = quasi_cpu.to(flag_gems.device)
+    sobolstate_device = sobolstate_cpu.to(flag_gems.device)
 
     # Generate reference on CPU (note: num_generated - 1 in the call, as per SobolEngine.draw)
     result_ref, quasi_ref = torch._sobol_engine_draw(
@@ -93,9 +107,9 @@ def test_accuracy_underscore_sobol_engine_draw_with_offset(num_generated):
 
     # Generate with FlagGems
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda,
+        quasi_device,
         n,
-        sobolstate_cuda,
+        sobolstate_device,
         dimension,
         num_generated - 1 if num_generated > 0 else 0,
         dtype=dtype,
@@ -115,15 +129,15 @@ def test_accuracy_underscore_sobol_engine_draw_edge_cases():
     dtype = torch.float32
 
     eng = SobolEngine(dimension=dimension, scramble=False)
-    quasi_cuda = eng.quasi.cuda()
-    sobolstate_cuda = eng.sobolstate.cuda()
+    quasi_device = eng.quasi.to(flag_gems.device)
+    sobolstate_device = eng.sobolstate.to(flag_gems.device)
 
     result_ref, quasi_ref = torch._sobol_engine_draw(
         eng.quasi, n, eng.sobolstate, dimension, 0, dtype=dtype
     )
 
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda, n, sobolstate_cuda, dimension, 0, dtype=dtype
+        quasi_device, n, sobolstate_device, dimension, 0, dtype=dtype
     )
 
     torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)
@@ -139,15 +153,15 @@ def test_accuracy_underscore_sobol_engine_draw_large():
     dtype = torch.float32
 
     eng = SobolEngine(dimension=dimension, scramble=False)
-    quasi_cuda = eng.quasi.cuda()
-    sobolstate_cuda = eng.sobolstate.cuda()
+    quasi_device = eng.quasi.to(flag_gems.device)
+    sobolstate_device = eng.sobolstate.to(flag_gems.device)
 
     result_ref, quasi_ref = torch._sobol_engine_draw(
         eng.quasi, n, eng.sobolstate, dimension, 0, dtype=dtype
     )
 
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda, n, sobolstate_cuda, dimension, 0, dtype=dtype
+        quasi_device, n, sobolstate_device, dimension, 0, dtype=dtype
     )
 
     torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)

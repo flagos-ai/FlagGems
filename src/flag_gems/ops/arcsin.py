@@ -35,12 +35,25 @@ def arcsin(x, *, out=None):
     logger.debug("GEMS ARCSIN_FORWARD")
     if out is None:
         return arcsin_kernel(x)
+    # ATen rejects an integer or bool out buffer (the float result cannot be
+    # cast into it); mirror that instead of silently truncating.
+    if not out.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{out.dtype}"
+        )
     arcsin_kernel(x, out0=out)
     return out
 
 
 def arcsin_(x):
     logger.debug("GEMS ARCSIN_INPLACE")
+    # ATen rejects in-place arcsin on integer and bool inputs (the float result
+    # cannot be cast back into the output buffer); mirror that instead of
+    # silently truncating.
+    if not x.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{x.dtype}"
+        )
     arcsin_kernel(x, out0=x)
     return x
 

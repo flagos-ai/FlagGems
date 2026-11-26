@@ -158,7 +158,7 @@ def _override_fused_add_rms_norm_with_arm():
 def _override_rope_with_arm():
     # Generic fused/rotary_embedding.py uses @libentry() → DEVICE_COUNT crash on CPU.
     import flag_gems as _fg
-    import flag_gems.fused as _fg_fused
+    import flag_gems.deprecated as _fg_fused
 
     from .rope import arm_apply_rotary_pos_emb as _arm_rope
 
@@ -172,7 +172,7 @@ def _override_rope_with_arm():
 def _override_silu_and_mul_with_arm():
     # Generic fused/silu_and_mul.py uses @pointwise_dynamic → @libentry() → crash.
     import flag_gems as _fg
-    import flag_gems.fused as _fg_fused
+    import flag_gems.deprecated as _fg_fused
 
     from .silu_and_mul import arm_silu_and_mul as _arm_sam
     from .silu_and_mul import arm_silu_and_mul_out as _arm_sam_out

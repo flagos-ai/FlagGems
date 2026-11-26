@@ -117,6 +117,68 @@ def _foreach_add_list_kernel(
     tl.store(o + idx, (x + e).to(DT))
 
 
+@triton.jit
+def _foreach_add_list_flat_kernel(
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    a8,
+    a9,
+    a10,
+    a11,
+    a12,
+    a13,
+    a14,
+    a15,
+    b0,
+    b1,
+    b2,
+    b3,
+    b4,
+    b5,
+    b6,
+    b7,
+    b8,
+    b9,
+    b10,
+    b11,
+    b12,
+    b13,
+    b14,
+    b15,
+    o_base,
+    N,
+    ALPHA: tl.constexpr,
+    DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    t = tl.program_id(0)
+    a = _select_ptr(
+        t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
+    )
+    b = _select_ptr(
+        t, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15
+    )
+    a = a.to(tl.pointer_type(DT))
+    b = b.to(tl.pointer_type(DT))
+    chunk = tl.program_id(1)
+    idx = chunk * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(a + idx)
+    e = tl.load(b + idx)
+    if ALPHA != 1:
+        e = (e * ALPHA).to(DT)
+    tl.store(o_base + t * N + idx, (x + e).to(DT))
+
+
+_FLAT_BYTES_LIMIT = 64 * 1024 * 1024
+_FLAT_MIN_TENSORS = 4
+
+
 def _try_fast(tensors, others, alpha):
     if not tensors or len(tensors) > _MAX_DIRECT:
         return None
@@ -141,15 +203,44 @@ def _try_fast(tensors, others, alpha):
     if n_elements % block != 0:
         return None
     nt = len(tensors)
-    out = [torch.empty_like(a) for a in tensors]
+    shape = tuple(first.shape)
+    flat = None
+    # One allocation and one unbind beat ``nt`` allocator calls once the list is
+    # long enough; below that the per-pointer form measured equal or faster.
+    if nt >= _FLAT_MIN_TENSORS and all(tuple(t.shape) == shape for t in tensors):
+        if nt * n_elements * first.element_size() <= _FLAT_BYTES_LIMIT:
+            try:
+                flat = torch.empty((nt,) + shape, dtype=dtype, device=device)
+            except Exception:
+                flat = None
+    out = (
+        list(flat.unbind(0))
+        if flat is not None
+        else [torch.empty_like(a) for a in tensors]
+    )
     a_ptrs = [t.data_ptr() for t in tensors] + [tensors[0].data_ptr()] * (
         _MAX_DIRECT - nt
     )
     b_ptrs = [t.data_ptr() for t in others] + [others[0].data_ptr()] * (
         _MAX_DIRECT - nt
     )
-    o_ptrs = [t.data_ptr() for t in out] + [out[0].data_ptr()] * (_MAX_DIRECT - nt)
     grid = (nt, n_elements // block)
+    if flat is not None:
+        _foreach_add_list_flat_kernel[grid](
+            *a_ptrs,
+            *b_ptrs,
+            flat,
+            n_elements,
+            alpha,
+            tl_dtype(dtype),
+            block,
+            num_warps=num_warps,
+            unroll_num=16,
+            buffer_size_limit=8192,
+            isCloseMemoryAsync=False,
+        )
+        return out
+    o_ptrs = [t.data_ptr() for t in out] + [out[0].data_ptr()] * (_MAX_DIRECT - nt)
     _foreach_add_list_kernel[grid](
         *a_ptrs,
         *b_ptrs,

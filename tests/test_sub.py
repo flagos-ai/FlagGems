@@ -105,9 +105,8 @@ def test_sub_inplace_rejects_unsafe_cast(other_kind):
     with pytest.raises(RuntimeError, match="can't be cast"):
         ref_inp.sub_(ref_other)
 
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError, match="can't be cast"):
-            inp.sub_(other)
+    with pytest.raises(RuntimeError, match="can't be cast"):
+        flag_gems.sub_(inp, other)
 
     assert torch.equal(inp, before)
     assert inp.dtype == torch.int64

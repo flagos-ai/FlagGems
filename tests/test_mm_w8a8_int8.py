@@ -54,6 +54,7 @@ SHAPES = [
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
 @pytest.mark.mm_w8a8
+@pytest.mark.mm_w8a8_out
 def test_mm_w8a8_int8(shape, dtype):
     m, n, k = shape
     a = torch.randint(-128, 128, (m, k), device=flag_gems.device, dtype=torch.int8)

@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.ops.copy import copy_
 from flag_gems.ops.neg import neg
 from flag_gems.ops.sum import sum as gems_sum
@@ -28,6 +29,10 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+# The reduced path's block size is tuned for the XPU target; other targets keep
+# the previous 4096-wide blocks.
+_IS_KUNLUNXIN = runtime.device.vendor_name == "kunlunxin"
 
 
 @triton.jit
@@ -62,15 +67,13 @@ def _loss_value(
         inp = inp.to(tl.float32)
         target = target.to(tl.float32)
     if LOG_INPUT:
-        loss = tl_extra_shim.exp(inp) - target * inp
+        loss = tl.exp(inp) - target * inp
     else:
-        loss = inp - target * tl_extra_shim.log(inp + eps)
+        loss = inp - target * tl.log(inp + eps)
 
     if FULL:
         stirling = (
-            target * tl_extra_shim.log(target)
-            - target
-            + 0.5 * tl_extra_shim.log((2.0 * math.pi) * target)
+            target * tl.log(target) - target + 0.5 * tl.log((2.0 * math.pi) * target)
         )
         loss += tl.where(target > 1.0, stirling, 0.0)
     return loss
@@ -87,6 +90,7 @@ def _poisson_nll_loss_none_kernel(
     OUT_SHAPE: tl.constexpr,
     INPUT_STRIDES: tl.constexpr,
     TARGET_STRIDES: tl.constexpr,
+    LINEAR: tl.constexpr,
     LOG_INPUT: tl.constexpr,
     FULL: tl.constexpr,
     IS_FP16: tl.constexpr,
@@ -96,8 +100,12 @@ def _poisson_nll_loss_none_kernel(
 ):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
-    target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
+    if LINEAR:
+        input_offsets = offsets
+        target_offsets = offsets
+    else:
+        input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
+        target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
     inp = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
     target = tl.load(target_ptr + target_offsets, mask=mask, other=0.0)
     loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
@@ -111,10 +119,14 @@ def _poisson_nll_loss_reduce_kernel(
     target_ptr,
     output_ptr,
     n_elements,
+    input_last,
+    target_last,
     eps,
     OUT_SHAPE: tl.constexpr,
     INPUT_STRIDES: tl.constexpr,
     TARGET_STRIDES: tl.constexpr,
+    LINEAR: tl.constexpr,
+    EVEN_N: tl.constexpr,
     reduction: tl.constexpr,
     LOG_INPUT: tl.constexpr,
     FULL: tl.constexpr,
@@ -124,13 +136,29 @@ def _poisson_nll_loss_reduce_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
-    target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
-    inp = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
-    target = tl.load(target_ptr + target_offsets, mask=mask, other=0.0)
-    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
-    total = tl.sum(tl.where(mask, loss, 0.0), axis=0)
+    if LINEAR:
+        input_offsets = offsets
+        target_offsets = offsets
+    else:
+        input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
+        target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
+    if EVEN_N:
+        inp = tl.load(input_ptr + input_offsets)
+        target = tl.load(target_ptr + target_offsets)
+        loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
+        total = tl.sum(loss, axis=0)
+    else:
+        # Clamped, unmasked loads: a masked load at the tail of a sparse block
+        # returns garbage on this backend instead of `other`, which silently
+        # corrupts the sum. Reading a valid element and dropping it from the
+        # reduction gives the same result without relying on the mask.
+        mask = offsets < n_elements
+        inp = tl.load(input_ptr + tl.minimum(tl.maximum(input_offsets, 0), input_last))
+        target = tl.load(
+            target_ptr + tl.minimum(tl.maximum(target_offsets, 0), target_last)
+        )
+        loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
+        total = tl.sum(tl.where(mask, loss, 0.0), axis=0)
     if reduction == 1:
         total /= n_elements
     tl.store(output_ptr, total)
@@ -143,10 +171,14 @@ def _poisson_nll_loss_partial_kernel(
     target_ptr,
     partial_ptr,
     n_elements,
+    input_last,
+    target_last,
     eps,
     OUT_SHAPE: tl.constexpr,
     INPUT_STRIDES: tl.constexpr,
     TARGET_STRIDES: tl.constexpr,
+    LINEAR: tl.constexpr,
+    EVEN_N: tl.constexpr,
     LOG_INPUT: tl.constexpr,
     FULL: tl.constexpr,
     IS_FP16: tl.constexpr,
@@ -155,13 +187,27 @@ def _poisson_nll_loss_partial_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
-    target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
-    inp = tl.load(input_ptr + input_offsets, mask=mask, other=0.0)
-    target = tl.load(target_ptr + target_offsets, mask=mask, other=0.0)
-    loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
-    tl.store(partial_ptr + tl.program_id(0), tl.sum(tl.where(mask, loss, 0.0)))
+    if LINEAR:
+        input_offsets = offsets
+        target_offsets = offsets
+    else:
+        input_offsets = _broadcast_offset(offsets, OUT_SHAPE, INPUT_STRIDES)
+        target_offsets = _broadcast_offset(offsets, OUT_SHAPE, TARGET_STRIDES)
+    if EVEN_N:
+        # Every lane is in range, so the masks only cost compares and, worse,
+        # they stop the loads from being widened into full vector loads.
+        inp = tl.load(input_ptr + input_offsets)
+        target = tl.load(target_ptr + target_offsets)
+        loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
+        tl.store(partial_ptr + tl.program_id(0), tl.sum(loss))
+    else:
+        mask = offsets < n_elements
+        inp = tl.load(input_ptr + tl.minimum(tl.maximum(input_offsets, 0), input_last))
+        target = tl.load(
+            target_ptr + tl.minimum(tl.maximum(target_offsets, 0), target_last)
+        )
+        loss = _loss_value(inp, target, eps, LOG_INPUT, FULL, IS_FP16, IS_BF16, IS_FP64)
+        tl.store(partial_ptr + tl.program_id(0), tl.sum(tl.where(mask, loss, 0.0)))
 
 
 @libentry()
@@ -315,8 +361,26 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
     if full and target.is_complex():
         raise RuntimeError("Comparisons with a complex target are not supported")
     dtype = _result_dtype(input, target)
+    # The elementwise kernels only handle floating point, and this backend
+    # cannot convert a loaded i1/i64 value to fp32, so promote integer/bool
+    # operands up front. This is the promotion eager applies inside the op, so
+    # the arithmetic is unchanged.
+    if not input.dtype.is_floating_point:
+        input = input.to(dtype)
+    if not target.dtype.is_floating_point:
+        target = target.to(dtype)
     output_shape, input_strides, target_strides = _broadcast_metadata(input, target)
     n_elements = math.prod(output_shape)
+    # When both operands already match the output layout element for element,
+    # the per-element index decomposition in `_broadcast_offset` is dead work
+    # (a div+mod per axis, per element) and it also hides the contiguity from
+    # the vectorizer, so skip it.
+    linear = (
+        tuple(input.shape) == output_shape
+        and tuple(target.shape) == output_shape
+        and input.is_contiguous()
+        and target.is_contiguous()
+    )
 
     if n_elements == 0:
         if reduction not in (1, 2):
@@ -336,6 +400,9 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
     is_bf16 = dtype == torch.bfloat16
     is_fp64 = dtype == torch.float64
     eps = float(torch.tensor(eps, dtype=dtype).item())
+    # Safe upper bound for the flat offsets of each operand.
+    input_last = max(input.numel() - 1, 0)
+    target_last = max(target.numel() - 1, 0)
 
     with torch_device_fn.device(input.device):
         if reduction not in (1, 2):
@@ -348,6 +415,7 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 OUT_SHAPE=output_shape,
                 INPUT_STRIDES=input_strides,
                 TARGET_STRIDES=target_strides,
+                LINEAR=linear,
                 LOG_INPUT=bool(log_input),
                 FULL=bool(full),
                 IS_FP16=is_fp16,
@@ -362,10 +430,14 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 target,
                 output,
                 n_elements,
+                input_last,
+                target_last,
                 eps,
                 OUT_SHAPE=output_shape,
                 INPUT_STRIDES=input_strides,
                 TARGET_STRIDES=target_strides,
+                LINEAR=linear,
+                EVEN_N=n_elements == block_size,
                 reduction=reduction,
                 LOG_INPUT=bool(log_input),
                 FULL=bool(full),
@@ -375,7 +447,17 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 BLOCK_SIZE=block_size,
             )
         else:
-            block_size = 4096
+            if _IS_KUNLUNXIN:
+                # A 16K-wide block per program is what saturates this target:
+                # with smaller blocks the per-program setup dominates and the
+                # streaming bandwidth collapses (measured 4.6ms -> 1.6ms going
+                # 4K -> 16K). Shrink it only when that would leave the grid too
+                # small to fill the device.
+                block_size = 16384
+                while block_size > 4096 and n_elements // block_size < 256:
+                    block_size //= 2
+            else:
+                block_size = 4096
             partial_size = triton.cdiv(n_elements, block_size)
             partial_dtype = (
                 torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
@@ -388,10 +470,14 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
                 target,
                 partial,
                 n_elements,
+                input_last,
+                target_last,
                 eps,
                 OUT_SHAPE=output_shape,
                 INPUT_STRIDES=input_strides,
                 TARGET_STRIDES=target_strides,
+                LINEAR=linear,
+                EVEN_N=n_elements % block_size == 0,
                 LOG_INPUT=bool(log_input),
                 FULL=bool(full),
                 IS_FP16=is_fp16,

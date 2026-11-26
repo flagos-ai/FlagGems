@@ -39,6 +39,8 @@ else:
 
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
+from . import accuracy_utils as utils
+
 MAX_GRID_SIZES = (65535, 65535, 65535)
 MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]
 
@@ -380,15 +382,9 @@ def test_dynamic_function_with_predefined_out_rejects_unsafe_cast(
         return x + y
 
     SIZE = 10
-    x = torch.ones(
-        [SIZE, SIZE], dtype=torch.int64, device=flag_gems.device
-    )
-    y = torch.ones(
-        [SIZE, SIZE], dtype=torch.float32, device=flag_gems.device
-    )
-    out = torch.full(
-        [SIZE, SIZE], 7, dtype=torch.int64, device=flag_gems.device
-    )
+    x = torch.ones([SIZE, SIZE], dtype=torch.int64, device=flag_gems.device)
+    y = torch.ones([SIZE, SIZE], dtype=torch.float32, device=flag_gems.device)
+    out = torch.full([SIZE, SIZE], 7, dtype=torch.int64, device=flag_gems.device)
     before = out.clone()
 
     with pytest.raises(RuntimeError, match="can't be cast"):
@@ -1040,7 +1036,10 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
 
 # Complex number tests
 
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [
+    torch.complex64,
+    pytest.param(torch.complex128, marks=utils._SKIP_FP64),
+]
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)

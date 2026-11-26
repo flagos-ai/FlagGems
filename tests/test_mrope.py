@@ -220,7 +220,7 @@ def test_mrope_vs_torch(config):
         is_neox_style,
         ref_axis_map,
     )
-    from flag_gems.fused.mrope import mrope as gems_mrope
+    from flag_gems import mrope as gems_mrope
 
     res_q, res_k = gems_mrope(
         query,

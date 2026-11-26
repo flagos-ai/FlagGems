@@ -21,6 +21,7 @@ from typing import Any
 
 from ..common import backend_module, platform
 from .hopper import select_mm_route as _select_hopper_mm_route
+from .metax import dynamic_inputs as _metax_dynamic_inputs
 from .metax import select_mm_route as _select_metax_mm_route
 
 ADAPTED_VARIANTS = {
@@ -35,20 +36,26 @@ ADAPTED_VARIANTS = {
     ),
     "metax": frozenset(
         {
-            "metax_gemv_k_parallel",
-            "metax_gemv",
-            "metax_splitk_two_step",
-            "metax_splitk",
-            "metax_nn",
-            "metax_nt",
-            "metax_general",
+            "metax_gemm",
+            "metax_gemm_partial",
+            "metax_dense",
+            "metax_nt_rows",
+            "metax_wide",
+            "metax_wide_partial",
+            "metax_simt_row",
+            "metax_simt_row_partial",
+            "metax_simt_column",
+            "metax_simt_column_partial",
+            "metax_syrk",
         }
     ),
 }
 
 ROUTE_TO_STAGE = {
-    "metax_gemv_k_parallel": ("metax_gemv_k_parallel_partial", "partial"),
-    "metax_splitk_two_step": ("metax_splitk_two_step_partial", "partial"),
+    "metax_gemm_partial": ("metax_gemm_partial", "partial"),
+    "metax_wide_partial": ("metax_wide_partial", "partial"),
+    "metax_simt_row_partial": ("metax_simt_row_partial", "partial"),
+    "metax_simt_column_partial": ("metax_simt_column_partial", "partial"),
     "splitk_two_step": ("splitk_two_step_partial", "partial"),
 }
 
@@ -137,10 +144,10 @@ def _dynamic_inputs(module: Any, physical: str, a: Any, b: Any) -> dict[str, Any
         return result
     m, k = (int(a.shape[0]), int(a.shape[1]))
     n = int(b.shape[1])
+    if physical in ADAPTED_VARIANTS["metax"]:
+        return _metax_dynamic_inputs(a, b, module)
     try:
-        if physical == "metax_gemv_k_parallel":
-            result["SPLIT_K"] = int(module._gemv_k_parallel_split_k(m, k))
-        elif physical == "splitk_two_step":
+        if physical == "splitk_two_step":
             result["SPLIT_K"] = int(module._splitk_two_step_split_k(a, m, n, k))
         elif physical == "general_tma":
             result["USE_TMA"] = True
