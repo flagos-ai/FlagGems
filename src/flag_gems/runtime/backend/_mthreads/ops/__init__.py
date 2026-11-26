@@ -50,17 +50,21 @@ from ._foreach_atan_ import _foreach_atan_
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max__List import _foreach_clamp_max__List
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max__ScalarList import _foreach_clamp_max__ScalarList
 from ._foreach_clamp_max_List import _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
 from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
 from ._foreach_clamp_min__List import _foreach_clamp_min__List
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_clamp_min_List import _foreach_clamp_min_List
 from ._foreach_cos import _foreach_cos
 from ._foreach_cosh_ import _foreach_cosh_
+from ._foreach_div__List import _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._foreach_div__Tensor import _foreach_div__Tensor
+from ._foreach_div_List import _foreach_div_List
 from ._foreach_div_Tensor import _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf
 from ._foreach_erf_ import _foreach_erf_
@@ -330,17 +334,21 @@ __all__ = [
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max__ScalarList",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
     "_foreach_clamp_max_ScalarList",
     "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
     "_foreach_clamp_min__ScalarList",
+    "_foreach_clamp_min_List",
     "_foreach_cos",
     "_foreach_cosh_",
+    "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
+    "_foreach_div_List",
     "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
