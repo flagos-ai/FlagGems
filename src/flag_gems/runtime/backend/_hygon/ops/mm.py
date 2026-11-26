@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -182,19 +183,22 @@ def get_higher_dtype(a, b):
 
 def mm(a, b):
     logger.debug("GEMS_HYGON MM")
-    device = a.device
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    M, K = a.shape
+    _, N = b.shape
+    c_dtype = get_higher_dtype(a.dtype, b.dtype)
+    c = torch.empty((M, N), device=a.device, dtype=c_dtype)
+    if M == 0 or N == 0:
+        return c
+    if K == 0:
+        # The peeled K tile would start at -BLOCK_K for empty inputs.
+        return zero_(c)
+
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    # allocates output
-    c_dtype = get_higher_dtype(a.dtype, b.dtype)
-    c = torch.empty((M, N), device=device, dtype=c_dtype)
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -227,17 +231,20 @@ def mm(a, b):
 
 def mm_out(a, b, *, out):
     logger.debug("GEMS_HYGON MM_OUT")
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    M, K = a.shape
+    _, N = b.shape
+    c = out
+    if M == 0 or N == 0:
+        return c
+    if K == 0:
+        return zero_(c)
+
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    # allocates output
-    c = out
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
