@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import struct
 
 import torch
 import triton
@@ -30,8 +31,44 @@ def masked_fill_kernel(inp, expand_mask, value):
     return inp
 
 
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, "NO_OPMATH")])
+@triton.jit
+def _masked_fill_complex_part(inp, mask, value):
+    if inp.dtype == tl.float64:
+        value = value.to(tl.int64).to(tl.float64, bitcast=True)
+    return tl.where(mask, value, inp)
+
+
+def _masked_fill_complex(inp, mask, value, *, inplace):
+    if torch.is_tensor(value):
+        if value.ndim != 0:
+            raise RuntimeError("masked_fill only supports a 0-dimensional value tensor")
+        value = value.item()
+    if mask.dtype != torch.bool:
+        raise RuntimeError("masked_fill only supports boolean masks")
+    mask = mask.expand(inp.shape)
+    scalar = complex(value)
+    source = inp
+    if inplace:
+        if inp.is_conj():
+            source = torch.conj(inp)
+            scalar = scalar.conjugate()
+    else:
+        source = inp.resolve_conj()
+    parts = torch.view_as_real(source)
+    output = parts if inplace else torch.empty_like(parts)
+    for lane, value in enumerate((scalar.real, scalar.imag)):
+        # Triton scalar arguments otherwise narrow Python floats to fp32.
+        if parts.dtype == torch.float64:
+            value = struct.unpack("=q", struct.pack("=d", value))[0]
+        _masked_fill_complex_part(parts[..., lane], mask, value, out0=output[..., lane])
+    return inp if inplace else torch.view_as_complex(output)
+
+
 def masked_fill(inp, mask, value):
     logger.debug("GEMS MASKED_FILL")
+    if inp.is_complex():
+        return _masked_fill_complex(inp, mask, value, inplace=False)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -58,6 +95,8 @@ def masked_fill(inp, mask, value):
 
 def masked_fill_(inp, mask, value):
     logger.debug("GEMS MASKED_FILL")
+    if inp.is_complex():
+        return _masked_fill_complex(inp, mask, value, inplace=True)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

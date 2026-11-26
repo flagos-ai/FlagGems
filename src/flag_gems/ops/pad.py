@@ -15,6 +15,7 @@
 import importlib
 import logging
 import os
+import struct
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
@@ -226,6 +227,7 @@ def generate_destination_passing_padding_wrapper(
                     code.writeline("in0.numel(), ")
                     code.writeline("out0.numel(), ")
                     code.writeline("value, ")
+                    code.writeline("in0.dtype == torch.float64, ")
                     code.writeline("IS_CONSTANT, ")
                     code.writeline("IS_REFLECT, ")
                     code.writeline("IS_REPLICATE, ")
@@ -286,6 +288,7 @@ def generate_pad_kernel(
             code.writeline("in_elem_cnt: tl.constexpr, ")
             code.writeline("out_elem_cnt: tl.constexpr, ")
             code.writeline("value, # padding value")
+            code.writeline("VALUE_IS_DOUBLE_BITS: tl.constexpr, ")
             code.writeline("IS_CONSTANT: tl.constexpr, ")
             code.writeline("IS_REFLECT: tl.constexpr, ")
             code.writeline("IS_REPLICATE: tl.constexpr, ")
@@ -386,6 +389,11 @@ def generate_pad_kernel(
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
             # use explicit comparison and bitwise-and for non-scalar masks
+            code.writeline("if VALUE_IS_DOUBLE_BITS:")
+            with code.indent():
+                code.writeline(
+                    "value = value.to(tl.int64).to(tl.float64, bitcast=True)"
+                )
             code.writeline(
                 "x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)"
             )
@@ -501,8 +509,22 @@ def pad(self, pad, mode="constant", value=None):
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
 
-    out = _pad_func(self, pad, mode, float(value))
-    return out
+    if self.is_complex():
+        from flag_gems.ops.stack import stack
+
+        parts = torch.view_as_real(self.resolve_conj())
+        scalar = complex(value)
+        real = _pad_real(parts[..., 0], pad, mode, scalar.real)
+        imag = _pad_real(parts[..., 1], pad, mode, scalar.imag)
+        return torch.view_as_complex(stack([real, imag], dim=-1))
+    return _pad_real(self, pad, mode, value)
+
+
+def _pad_real(self, pad, mode, value):
+    value = float(value)
+    if self.dtype == torch.float64:
+        value = struct.unpack("=q", struct.pack("=d", value))[0]
+    return _pad_func(self, pad, mode, value)
 
 
 def constant_pad_nd(self, pad_list, value=0):
