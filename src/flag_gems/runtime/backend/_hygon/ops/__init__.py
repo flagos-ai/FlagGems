@@ -212,7 +212,8 @@ from .pow import (
 from .randperm import randperm
 from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad3d_backward import reflection_pad3d_backward
-from .renorm import renorm, renorm_
+from .renorm import renorm
+from .renorm_ import renorm_ as renorm_
 from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
