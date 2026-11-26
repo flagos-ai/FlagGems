@@ -15,7 +15,6 @@
 """Ascend specialization for replay-safe scatter reductions."""
 
 import logging
-import math
 
 import torch
 import triton
@@ -46,84 +45,89 @@ _USE_REPLAY_ATOMICS = _TRITON_VERSION >= _REPLAY_ATOMICS_MIN_TRITON
 # selected implementation below and do not compare versions on the hot path.
 
 _MAX_SEGMENT_PROGRAMS = 1 << 15
-# The sorted-segment kernel bounds its launch grid and lets each program scan
-# multiple candidate boundaries. Each segment writes one complete output
-# contribution, so a runtime replay repeats an idempotent assignment.
+_SEGMENT_BLOCK = 256
+
+
+@triton.jit
+def _segment_sum(left_key, left, right_key, right):
+    return right_key, tl.where(left_key == right_key, left + right, right)
+
+
+@triton.jit
+def _segment_prod(left_key, left, right_key, right):
+    return right_key, tl.where(left_key == right_key, left * right, right)
 
 
 @libentry()
-@triton.jit(do_not_specialize=["num_segments"])
+@triton.jit
 def _scatter_reduce_segment_kernel(
-    sorted_src_ptr,
-    sorted_key_ptr,
+    key_ptr,
+    value_ptr,
+    input_count_ptr,
     contribution_ptr,
     present_ptr,
     count_ptr,
+    next_key_ptr,
+    next_value_ptr,
+    next_count_ptr,
     num_values,
+    num_tiles,
     IS_PRODUCT: tl.constexpr,
     WRITE_COUNT: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    """Identify and reduce sorted segments with idempotent output stores.
-
-    This path is selected for Triton 3.2, where the source-driven replay claim
-    and product lock used by newer Ascend runtimes cannot be lowered safely.
-    """
-    position = tl.program_id(axis=0).to(tl.int64)
-    position_stride = tl.num_programs(axis=0).to(tl.int64)
-
-    while position < num_values:
-        output_offset = tl.load(sorted_key_ptr + position).to(tl.int64)
-        previous_key = tl.load(
-            sorted_key_ptr + position - 1,
-            mask=position > 0,
-            other=-1,
-        ).to(tl.int64)
-        is_segment_start = (position == 0) | (output_offset != previous_key)
-        cursor = position
-        segment_active = is_segment_start
-        length = position * 0
+    lane = tl.arange(0, BLOCK)
+    for tile in range(tl.program_id(0), num_tiles, tl.num_programs(0)):
+        base = tile.to(tl.int64) * BLOCK
+        size = tl.minimum(num_values - base, BLOCK).to(tl.int32)
+        pos = base + tl.minimum(lane, size - 1)
+        keys = tl.load(key_ptr + pos)
+        values = tl.load(value_ptr + pos)
         if IS_PRODUCT:
-            accumulator = 1.0
+            _, reduced = tl.associative_scan((keys, values), 0, _segment_prod)
         else:
-            accumulator = 0.0
-
-        while segment_active:
-            value = tl.load(sorted_src_ptr + cursor).to(tl.float32)
-            if IS_PRODUCT:
-                accumulator *= value
-            else:
-                accumulator += value
-            length += 1
-            cursor += 1
-            next_key = tl.load(
-                sorted_key_ptr + cursor,
-                mask=cursor < num_values,
-                other=-1,
-            ).to(tl.int64)
-            segment_active = (cursor < num_values) & (next_key == output_offset)
-
-        tl.store(
-            contribution_ptr + output_offset,
-            accumulator,
-            mask=is_segment_start,
-        )
-        tl.store(present_ptr + output_offset, 1, mask=is_segment_start)
+            _, reduced = tl.associative_scan((keys, values), 0, _segment_sum)
         if WRITE_COUNT:
+            if input_count_ptr is None:
+                counts = tl.full((BLOCK,), 1, tl.int64)
+            else:
+                counts = tl.load(input_count_ptr + pos)
+            _, lengths = tl.associative_scan((keys, counts), 0, _segment_sum)
+
+        next_key = tl.load(key_ptr + base + tl.minimum(lane + 1, size - 1))
+        end = (lane < size) & ((keys != next_key) | (lane == size - 1))
+        if next_key_ptr is not None:
+            # Interior runs are complete. Only the two edge runs can continue
+            # in an adjacent tile, so reduce their partials in the next launch.
+            first = tl.load(key_ptr + base)
+            last = tl.load(key_ptr + base + size - 1)
+            first_end = tl.sum(((lane < size) & (keys == first)).to(tl.int32), 0) - 1
+            edge = tl.arange(0, 2)
+            edge_lane = tl.where(edge == 0, first_end, size - 1)
+            edge_key = tl.where(edge == 0, first, last)
+            edge_value = tl.gather(reduced, edge_lane, 0)
+            duplicate = (edge == 1) & (first == last)
+            partial = tile.to(tl.int64) * 2 + edge
+            tl.store(next_key_ptr + partial, edge_key)
             tl.store(
-                count_ptr + output_offset,
-                length.to(tl.float32),
-                mask=is_segment_start,
+                next_value_ptr + partial,
+                tl.where(duplicate, 1.0 if IS_PRODUCT else 0.0, edge_value),
             )
-        position += position_stride
+            if WRITE_COUNT:
+                first_count = tl.sum(tl.where(lane == first_end, lengths, 0), 0)
+                last_count = tl.sum(tl.where(lane == size - 1, lengths, 0), 0)
+                edge_count = tl.where(edge == 0, first_count, last_count)
+                tl.store(next_count_ptr + partial, tl.where(duplicate, 0, edge_count))
+            end = end & (keys != first) & (keys != last)
+
+        tl.store(contribution_ptr + keys, reduced, mask=end)
+        tl.store(present_ptr + keys, 1, mask=end)
+        if WRITE_COUNT:
+            tl.store(count_ptr + keys, lengths.to(tl.float32), mask=end)
 
 
 def _scatter_reduce_sorted_segments(inp, dim, index, src, reduce, include_self):
-    """Run a large legacy-runtime reduction through sorted segments.
-
-    Triton 3.2 cannot compile the newer replay-claim and lock paths. Sorting
-    destination offsets groups each output's sources, and the kernel assigns a
-    complete contribution once, without atomics or CPU fallback.
-    """
+    """Reduce equal destinations on device, including segments spanning tiles."""
     if dim < -inp.ndim or dim >= inp.ndim:
         raise IndexError(
             "Dimension out of range (expected to be in range of "
@@ -139,29 +143,20 @@ def _scatter_reduce_sorted_segments(inp, dim, index, src, reduce, include_self):
         if axis != dim:
             active_inp = active_inp.narrow(axis, 0, index_size)
 
-    outer = math.prod(index_shape[:dim])
-    inner = math.prod(index_shape[dim + 1 :])
-    active_shape = tuple(active_inp.shape)
-    inp_3d = active_inp.contiguous().reshape(outer, inp.size(dim), inner)
-    index_3d = index.contiguous().reshape(outer, index_shape[dim], inner)
-    src_3d = active_src.contiguous().reshape(outer, index_shape[dim], inner)
-
-    source_positions = torch.arange(
-        index_3d.numel(),
-        dtype=torch.int64,
-        device=index.device,
-    )
-    outer_offsets = source_positions // (index_shape[dim] * inner)
-    inner_offsets = source_positions % inner
-    destination_keys = (
-        outer_offsets * (inp.size(dim) * inner)
-        + index_3d.reshape(-1) * inner
-        + inner_offsets
-    )
+    # Destinations from different lines cannot collide. Sort each line along
+    # the scatter dimension, then number its destinations in a disjoint range.
+    line_size = inp.size(dim)
+    line_layout = active_inp.movedim(dim, -1)
+    destination_keys = index.movedim(dim, -1).reshape(-1, index.size(dim))
+    src_rows = active_src.movedim(dim, -1).reshape_as(destination_keys)
     sorted_keys, order = torch.sort(destination_keys)
-    sorted_src = src_3d.to(torch.float32).reshape(-1)[order]
+    rows = torch.arange(
+        destination_keys.size(0), dtype=torch.int64, device=index.device
+    )
+    sorted_keys = (sorted_keys + rows[:, None] * line_size).reshape(-1)
+    sorted_src = src_rows[rows[:, None], order].to(torch.float32).reshape(-1)
 
-    inp_f32 = inp_3d.to(torch.float32)
+    inp_f32 = line_layout.contiguous().to(torch.float32)
     if reduce == "prod":
         contribution = torch.ones_like(inp_f32).reshape(-1)
     else:
@@ -177,19 +172,36 @@ def _scatter_reduce_sorted_segments(inp, dim, index, src, reduce, include_self):
         else torch.empty(1, dtype=torch.float32, device=inp.device)
     )
 
-    num_values = sorted_keys.numel()
-    grid = (min(num_values, _MAX_SEGMENT_PROGRAMS),)
+    input_counts = None
     with torch_device_fn.device(inp.device):
-        _scatter_reduce_segment_kernel[grid](
-            sorted_src,
-            sorted_keys,
-            contribution,
-            present,
-            count,
-            num_values,
-            reduce == "prod",
-            reduce == "mean",
-        )
+        while True:
+            num_values = sorted_keys.numel()
+            tiles = triton.cdiv(num_values, _SEGMENT_BLOCK)
+            next_keys = next_values = next_counts = None
+            if tiles > 1:
+                next_keys = sorted_keys.new_empty((2 * tiles,))
+                next_values = sorted_src.new_empty((2 * tiles,))
+                if reduce == "mean":
+                    next_counts = sorted_keys.new_empty((2 * tiles,))
+            _scatter_reduce_segment_kernel[(min(tiles, _MAX_SEGMENT_PROGRAMS),)](
+                sorted_keys,
+                sorted_src,
+                input_counts,
+                contribution,
+                present,
+                count,
+                next_keys,
+                next_values,
+                next_counts,
+                num_values,
+                tiles,
+                IS_PRODUCT=reduce == "prod",
+                WRITE_COUNT=reduce == "mean",
+                BLOCK=_SEGMENT_BLOCK,
+            )
+            if tiles == 1:
+                break
+            sorted_keys, sorted_src, input_counts = next_keys, next_values, next_counts
 
     inp_flat = inp_f32.reshape(-1)
     has_contribution = present != 0
@@ -214,7 +226,12 @@ def _scatter_reduce_sorted_segments(inp, dim, index, src, reduce, include_self):
                 contribution / torch.clamp(count, min=1.0),
                 inp_flat,
             )
-    active_result = active_result.to(inp.dtype).reshape(active_shape)
+    active_result = (
+        active_result.to(inp.dtype)
+        .reshape(line_layout.shape)
+        .movedim(-1, dim)
+        .contiguous()
+    )
 
     active_domain_is_full = all(
         axis == dim or index_size == inp.size(axis)

@@ -33,7 +33,7 @@ from flag_gems.utils.shape_utils import (
     restride_dim,
 )
 
-from .scatter_reduce import _scatter_reduce_with_segments, scatter_reduce
+from .scatter_reduce import _scatter_reduce_with_segments
 
 logger = logging.getLogger(__name__)
 
@@ -718,10 +718,9 @@ _SCATTER_REDUCE_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.bo
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ASCEND SCATTER")
     if reduce in LEGACY_REDUCTIONS and inp.dtype in _SCATTER_REDUCE_DTYPES:
-        # Legacy add can time out on 910B1 during a batch of profiled atomic
-        # sums. The segmented sum writes each destination without atomics.
-        op = _scatter_reduce_with_segments if reduce == "add" else scatter_reduce
-        return op(inp, dim, index, src, LEGACY_REDUCTIONS[reduce], include_self=True)
+        return _scatter_reduce_with_segments(
+            inp, dim, index, src, LEGACY_REDUCTIONS[reduce], include_self=True
+        )
     if reduce is not None and inp.dtype == torch.bfloat16:
         return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=False)
 
