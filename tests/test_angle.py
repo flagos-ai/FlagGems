@@ -31,6 +31,9 @@ from . import conftest as cfg
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_angle(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.complex32:
+        pytest.skip("enflame does not support ComplexHalf")
+
     if cfg.TO_CPU and dtype == torch.complex32:
         # Complex32 on CPU is not supported
         return
@@ -55,8 +58,7 @@ def test_angle(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.angle(ref_inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.angle(inp)
+    res_out = flag_gems.angle(inp)
 
     dtype_out = res_out.dtype
     utils.gems_assert_close(res_out, ref_out, dtype_out)

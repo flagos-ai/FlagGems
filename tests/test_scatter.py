@@ -67,8 +67,7 @@ def test_scatter_src(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.scatter(inp, dim, index, src)
+    res_out = flag_gems.scatter(inp, dim, index, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -77,7 +76,7 @@ def test_scatter_src(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     utils.init_seed(0)
 
@@ -107,8 +106,7 @@ def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
-    with flag_gems.use_gems():
-        res_out = torch.scatter(inp, dim, index, src, reduce="add")
+    res_out = flag_gems.scatter(inp, dim, index, src, reduce="add")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -147,8 +145,166 @@ def test_scatter_add_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = ref_inp.scatter_add_(dim, ref_index, ref_src)
+    res_out = flag_gems.scatter_add_(inp, dim, index, src)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.scatter_add_
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "broadcast_index",
+        "index_row_slice",
+        "index_col_slice",
+        "index_transpose",
+        "src_row_slice",
+        "src_col_slice",
+        "out_row_slice",
+        "out_col_slice",
+    ],
+)
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_scatter_add_2d_noncontiguous(layout, dim, dtype):
+    rows, cols, nodes = 64, 24, 32
+    index_shape = (rows, cols)
+    inp_shape = (nodes, cols) if dim == 0 else (rows, nodes)
+
+    index = torch.arange(rows * cols, device=flag_gems.device).reshape(index_shape)
+    index = index % nodes
+    src = torch.ones(index_shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.zeros(inp_shape, dtype=dtype, device=flag_gems.device)
+    untouched = None
+
+    if layout == "broadcast_index":
+        if dim == 0:
+            index = (torch.arange(rows, device=flag_gems.device) % nodes).view(rows, 1)
+        else:
+            index = (torch.arange(cols, device=flag_gems.device) % nodes).view(1, cols)
+        index = index.expand(index_shape)
+    elif layout == "index_row_slice":
+        index = torch.arange(rows * 2 * cols, device=flag_gems.device)
+        index = (index.reshape(rows * 2, cols) % nodes)[::2, :]
+    elif layout == "index_col_slice":
+        index = torch.arange(rows * cols * 2, device=flag_gems.device)
+        index = (index.reshape(rows, cols * 2) % nodes)[:, ::2]
+    elif layout == "index_transpose":
+        index = torch.arange(cols * rows, device=flag_gems.device)
+        index = (index.reshape(cols, rows) % nodes).transpose(0, 1)
+    elif layout == "src_row_slice":
+        src = torch.ones((rows * 2, cols), dtype=dtype, device=flag_gems.device)[::2, :]
+    elif layout == "src_col_slice":
+        src = torch.ones((rows, cols * 2), dtype=dtype, device=flag_gems.device)[:, ::2]
+    elif layout == "out_row_slice":
+        inp_base = torch.zeros(
+            (inp_shape[0] * 2, inp_shape[1]), dtype=dtype, device=flag_gems.device
+        )
+        inp = inp_base[::2, :]
+        untouched = inp_base[1::2, :]
+    elif layout == "out_col_slice":
+        inp_base = torch.zeros(
+            (inp_shape[0], inp_shape[1] * 2), dtype=dtype, device=flag_gems.device
+        )
+        inp = inp_base[:, ::2]
+        untouched = inp_base[:, 1::2]
+    else:
+        raise AssertionError(layout)
+
+    ref_inp = utils.to_reference(inp, upcast=True)
+    ref_index = utils.to_reference(index)
+    ref_src = utils.to_reference(src, upcast=True)
+    ref_out = ref_inp.scatter_add_(dim, ref_index, ref_src)
+    data_ptr = inp.data_ptr()
+    stride = inp.stride()
+
     with flag_gems.use_gems():
         res_out = inp.scatter_add_(dim, index, src)
+
+    assert res_out is inp
+    assert res_out.data_ptr() == data_ptr
+    assert res_out.stride() == stride
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    if untouched is not None:
+        untouched_ref = utils.to_reference(torch.zeros_like(untouched))
+        utils.gems_assert_equal(untouched, untouched_ref)
+
+
+@pytest.mark.scatter_add
+@pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
+@pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_scatter_add(src_shape, inp_shape, dim, dtype):
+    utils.init_seed(0)
+
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+    size_dim = min(src_shape[dim], inp_shape[dim])
+
+    index_shape = [
+        random.randint(1, min(src_shape[0], inp_shape[0])),
+        random.randint(1, min(src_shape[1], inp_shape[1])),
+        random.randint(1, min(src_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    ref_inp = utils.to_reference(inp, upcast=True)
+    ref_index = utils.to_reference(index)
+    ref_src = utils.to_reference(src, upcast=True)
+    ref_out = torch.scatter_add(ref_inp, dim, ref_index, ref_src)
+    res_out = flag_gems.scatter_add(inp, dim, index, src)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# 2D shapes to exercise the specialized 2D fast path in scatter_add.
+# Small shapes (index.numel() <= 131072) hit the 2D kernel; the larger
+# [1024, 512] case falls through to the N-dim generated kernel.
+SCATTER_ADD_2D_SHAPES = [(64, 64), (256, 256), (1024, 512)]
+
+
+@pytest.mark.scatter_add
+@pytest.mark.parametrize("inp_shape", SCATTER_ADD_2D_SHAPES)
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_scatter_add_2d(inp_shape, dim, dtype):
+    utils.init_seed(0)
+
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+
+    m, n = inp_shape
+    index_shape = [random.randint(1, m), random.randint(1, n)]
+    # src is larger than index in every dim (matches the benchmark layout)
+    src_shape = [index_shape[0] + 16, index_shape[1] + 16]
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+    size_dim = inp_shape[dim]
+    index_size_dim = index_shape[dim]
+    # make unique indices along the scatter dim
+    for i in range(1 if dim == 0 else index_shape[0]):
+        for j in range(1 if dim == 1 else index_shape[1]):
+            ii = [i, j]
+            ii[dim] = slice(0, index.size(dim) + 1)
+            index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    ref_inp = utils.to_reference(inp, upcast=True)
+    ref_index = utils.to_reference(index)
+    ref_src = utils.to_reference(src, upcast=True)
+    ref_out = torch.scatter_add(ref_inp, dim, ref_index, ref_src)
+    res_out = flag_gems.scatter_add(inp, dim, index, src)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -157,7 +313,7 @@ def test_scatter_add_(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -185,8 +341,7 @@ def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="multiply")
-    with flag_gems.use_gems():
-        res_out = torch.scatter(inp, dim, index, src, reduce="multiply")
+    res_out = flag_gems.scatter(inp, dim, index, src, reduce="multiply")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -223,8 +378,7 @@ def test_scatter_src_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_(dim, index, src)
+    res_out = flag_gems.scatter_(inp.clone(), dim, index, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -233,7 +387,7 @@ def test_scatter_src_(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     utils.init_seed(0)
 
@@ -264,8 +418,7 @@ def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="add")
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_(dim, index, src, reduce="add")
+    res_out = flag_gems.scatter_(inp.clone(), dim, index, src, reduce="add")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -274,7 +427,7 @@ def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_scatter_reduce_multiply_(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -302,7 +455,6 @@ def test_scatter_reduce_multiply_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="multiply")
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_(dim, index, src, reduce="multiply")
+    res_out = flag_gems.scatter_(inp.clone(), dim, index, src, reduce="multiply")
 
     utils.gems_assert_close(res_out, ref_out, dtype)

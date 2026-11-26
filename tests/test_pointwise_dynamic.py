@@ -21,13 +21,25 @@ import triton
 
 import flag_gems
 from flag_gems.utils import get_device_properties
-from flag_gems.utils.pointwise_dynamic import (
-    CodeGenConfig,
-    ComplexMode,
-    FunctionSchema,
-    pointwise_dynamic,
-)
+
+if flag_gems.vendor_name == "cambricon":
+    from flag_gems.runtime.backend._cambricon.utils.pointwise_dynamic import (
+        CodeGenConfig,
+        ComplexMode,
+        FunctionSchema,
+        pointwise_dynamic,
+    )
+else:
+    from flag_gems.utils.pointwise_dynamic import (
+        CodeGenConfig,
+        ComplexMode,
+        FunctionSchema,
+        pointwise_dynamic,
+    )
+
 from flag_gems.utils.tensor_wrapper import StridedBuffer
+
+from .accuracy_utils import _SKIP_FP64
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]
@@ -987,7 +999,7 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
 
 # Complex number tests
 
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
@@ -996,6 +1008,9 @@ COMPLEX_DTYPES = [torch.complex64, torch.complex128]
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_elementwise_tensor_tensor(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
     )
@@ -1021,6 +1036,9 @@ def test_complex_elementwise_tensor_tensor(dtype):
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_elementwise_tensor_scalar(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
     )
@@ -1056,6 +1074,9 @@ def test_complex_elementwise_tensor_scalar(dtype):
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_elementwise_broadcast(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
     )
@@ -1078,6 +1099,9 @@ def test_complex_elementwise_broadcast(dtype):
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_elementwise_mixed_real_complex(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
     )
@@ -1102,6 +1126,9 @@ def test_complex_elementwise_mixed_real_complex(dtype):
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_cross_tensor_tensor(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, True, True],
         num_outputs=2,
@@ -1135,6 +1162,9 @@ def test_complex_cross_tensor_tensor(dtype):
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_cross_tensor_scalar(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, True, True],
         num_outputs=2,
@@ -1176,6 +1206,9 @@ def test_complex_cross_tensor_scalar(dtype):
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 def test_complex_cross_broadcast(dtype):
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
+
     @pointwise_dynamic(
         is_tensor=[True, True, True, True],
         num_outputs=2,
@@ -1207,6 +1240,8 @@ def test_complex_cross_broadcast(dtype):
 )
 def test_complex_real_inputs_bypass(dtype):
     """When all inputs are real, complex-registered kernel should still work."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.complex128:
+        pytest.skip("Issue #5253: Not supported")
 
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]

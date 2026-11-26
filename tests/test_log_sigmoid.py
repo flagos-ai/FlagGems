@@ -35,7 +35,6 @@ def test_log_sigmoid(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.logsigmoid(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.logsigmoid(inp)
+    res_out = flag_gems.log_sigmoid(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -39,7 +39,7 @@ def test_mm():
         op_name="mm",
         input_fn=mm_input_fn,
         torch_op=torch.Tensor.mm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -67,7 +67,7 @@ def torch_mm_self_transpose(inp):
     return torch.mm(inp, inp.t())
 
 
-@pytest.mark.mm
+@pytest.mark.mm_self_transpose
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -76,7 +76,7 @@ def test_mm_self_transpose_benchmark():
         op_name="mm_self_transpose",
         input_fn=_input_fn,
         torch_op=torch_mm_self_transpose,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -103,7 +103,7 @@ def test_mm_out():
         op_name="mm_out",
         input_fn=mm_out_input_fn,
         torch_op=torch.mm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()

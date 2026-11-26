@@ -36,6 +36,12 @@
 # "triton:" — vendor-specific Triton packages for this backend
 # "flagtree:" — FlagTree package for this backend (preferred)
 #
+# "extra_index:" — additional PyPI index URL searched (after pypi_base and
+#   mirror) when installing this backend's deps and compiler package.
+#   TEMPORARY escape hatch only: all packages should normally be published
+#   to pypi_base (FlagOS). Use this only while a vendor's packages are not
+#   yet available there, and remove it once FlagOS catches up.
+#
 # "env:" — environment variables to export (key: value pairs).
 #   Written into .venv/bin/activate by setup.sh so that
 #   `source .venv/bin/activate` sets up the full environment.
@@ -51,7 +57,7 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0
+    flagtree: flagtree==0.6.1
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -64,14 +70,17 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0
+    flagtree: flagtree==0.7.0
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
+      USE_FLAGCX: "OFF"
     deps:
-      - torch==2.11.0+cu130
+      - flagcx==0.14.1+cuda13.3
+      - numpy==1.26.4
+      - torch==2.13.0+cu130
       - torchaudio==2.11.0+cu130
-      - torchvision==0.26.0+cu130
+      - torchvision==0.28.0+cu130
 
   ascend-cann850:
     python: "3.11"
@@ -83,24 +92,46 @@ backends:
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
+      - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
 
   ascend-cann900:
     python: "3.11"
     cmake_backend: NPU
     triton: triton==3.5.0
-    flagtree: flagtree==0.6.0+ascend3.5
-    env_source:
-      - /usr/local/Ascend/cann/set_env.sh
     triton_post_install:
       - triton_ascend==3.2.1
+    flagtree: flagtree==0.7.1a1+ascend3.5
+    env_source:
+      - /usr/local/Ascend/cann/set_env.sh
     deps:
+      - cann-shmem==1.6.0
+      - flagcx==0.14.1+cann9.0.0
+      - numpy==1.26.4
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
+      - torchaudio==2.10.0+cpu
+      - torchvision==0.25.0+cpu
+      - decorator==5.2.1
+      - attrs==25.3.0
+      - psutil==7.0.0
 
-  cambricon:
+  biren-br2xx:
     python: "3.10"
+    triton: triton==3.4.0+br2xx
+    env_source:
+      - /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh
+    deps:
+      - torch==2.12.0+cpu
+      - torch-supa==1.0.0.21200+br2xx
+
+  cambricon-neuware443:
+    python: "3.10"
+    cmake_backend: MLU
     triton: triton==3.2.0+mlu1.7.2
     env:
+      NEUWARE_HOME: /usr/local/neuware
       PATH: /usr/local/neuware/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/neuware/lib64:$LD_LIBRARY_PATH
     deps:
@@ -108,49 +139,107 @@ backends:
       - torch==2.7.1+cpu
       - torch-mlu==1.29.2+torch2.7.1
       - torch-mlu-ops==1.8.0+torch2.7.1
+      - numpy==2.2.6
 
-  enflame:
+  cambricon-neuware472:
+    python: "3.12"
+    cmake_backend: MLU
+    triton: triton==3.4.0+mlu2.1.1
+    env:
+      NEUWARE_HOME: /usr/local/neuware
+      PATH: /usr/local/neuware/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/neuware/lib64:$LD_LIBRARY_PATH
+    deps:
+      - "numpy==2.2.6"
+      - "pandas==3.0.5"
+      - "torch==2.11.0+cpu"
+      - "torch-mlu==1.33.1+torch2.11.0"
+      - "torch-mlu-ops==1.12.1+torch2.11.0"
+
+  enflame-tops1910:
     python: "3.12"
     cmake_backend: GCU
-    triton: triton-gcu==3.6.0+1.0.20260521.cc.1.9.10
+    triton: triton==3.6.0
     flagtree: flagtree==0.6.0+enflame3.6
+    triton_post_install:
+      - triton-gcu==3.6.0+1.0.20260521.cc.1.9.10
     env:
       LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
+      TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
+      ENABLE_I64_CHECK: "0"
     deps:
       - pyefml==1.9.10
       - torch==2.10.0+cpu
       - torchaudio==2.10.0+cpu
       - torchvision==0.25.0+cpu
       - torch-gcu==2.10.0+3.7.20260408
-      - flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323
+      - flash-attn==2.7.2+torch.2.10.0.gcu.3.4.20260506
 
-  hygon:
+  enflame-tops1106:
+    python: "3.12"
+    cmake_backend: GCU
+    triton: triton==3.6.0
+    flagtree: flagtree==0.7.0+enflame3.6
+    triton_post_install:
+      - triton-gcu==3.6.0+1.0.20260722
+    # This version of flagtree doesn't work yet
+    # flagtree: flagtree==0.6.0+enflame.git657f543d
+    env:
+      LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
+      TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
+      ENABLE_I64_CHECK: "0"
+      TORCHGCU_INDUCTOR_ENABLE: "1"
+    deps:
+      - enflame-modelopt==3.6.20260615+torch.2.11.0
+      - numpy==2.3.5
+      - pyefml==1.10.6
+      - torch==2.11.0+cpu
+      - torchaudio==2.11.0+cpu
+      - torchvision==0.26.0+cpu
+      - torch-gcu==2.11.0+3.8.20260713
+      - torchcodec==3.8.20260624+torch.2.11.0
+      - flash-attn==2.7.2+torch.2.11.0.gcu.3.8.20260706
+      - tops-extension==3.6.20260529+torch.2.11.0
+      - topstx==1.10.6
+
+  hygon-dtk2604:
     python: "3.10"
-    triton: triton==3.3.0+das.opt1.dtk2604.torch290
-    flagtree: flagtree==0.5.1+hcu3.1
+    triton: triton==3.5.1+das.opt1.dtk2604.torch290
+    # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+hcu3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+hcu3.6
     env_source:
       - /opt/dtk-26.04/env.sh
+    env:
+      TRITON_HIP_CLANG_PATH: /opt/dtk-26.04/aillvm/bin/clang-18
     deps:
       - torch==2.9.0+das.opt1.dtk2604
+      - flash_attn==2.8.3+das.opt1.dtk2604.torch290
 
-  iluvatar:
-    python: "3.10"
+  iluvatar-corex450:
+    python: "3.12"
     cmake_backend: IX
-    triton: triton==3.1.0+corex.4.4.0
-    # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
+    triton: triton==3.2.0+corex.4.5.0.20260804
+    # Match the flagos-runtime-iluvatar-corex4.5.0:2.2.0 image, which preinstalls
+    # flagtree 0.7.0+iluvatar3.6; the reconcile step then skips it instead of
+    # reinstalling the older 0.6.1 over the network.
+    flagtree: flagtree==0.7.0+iluvatar3.6
     env:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
       LD_LIBRARY_PATH: $COREX_ROOT/lib:$LD_LIBRARY_PATH
+      CPATH: /usr/local/cuda-10.2/include
     deps:
-      - torch==2.7.1+corex.4.4.0
-      - torchaudio==2.7.1+corex.4.4.0
-      - torchvision==0.22.1+corex.4.4.0
+      - torch==2.10.0+corex.4.5.0.20260804
+      - torchaudio==2.10.0+corex.4.5.0.20260804
+      - torchvision==0.25.0+corex.4.5.0.20260804
+      - numpy<2
 
-  kunlunxin:
+  kunlunxin-xre5371:
     python: "3.10"
-    triton: triton==3.0.0+a48aedef
-    flagtree: flagtree==0.5.1+xpu3.0
+    triton: triton==3.6.0+gitcd2d6c1b
+    flagtree: flagtree==0.7.1a1+xpu3.6
     env:
       PATH: /usr/local/xpu/bin:$PATH
       XPU_EVENT_KL3_ENABLE: "1"
@@ -172,18 +261,40 @@ backends:
       - xformers==0.0.29+1e7a8ec.d20260114
       - xmlir==1.0.0.1
 
-  metax:
+  metax-maca3810:
+    python: "3.12"
+    triton: triton==3.6.0+metax3.8.1.0
+    flagtree: flagtree==0.7.0+metax3.6
+    env:
+      MACA_PATH: /opt/maca
+      PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
+      LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+    deps:
+      - apex==0.1+metax3.8.1.0
+      - flash_attn==2.6.3+metax3.8.1.0torch2.10
+      - flashinfer==0.2.6+metax3.8.1.0torch2.10
+      - flash_linear_attention==0.5.0+metax3.8.1.0torch2.10
+      - flash_mla==1.0.1+metax3.8.1.0torch2.10
+      - numpy==2.3.5
+      - torch==2.10.0+metax3.8.1.0
+      - torchcodec==0.6.0+metax3.8.1.0
+      - torchaudio==2.4.1+metax3.8.1.0
+      - torchvision==0.25.0+metax3.8.1.0
+
+  metax-maca3720:
     python: "3.12"
     triton: triton==3.0.0+metax3.7.2.0
     flagtree: flagtree==3.1.0+metax3.7.2.0
     env:
       MACA_PATH: /opt/maca
-      LD_LIBRARY_PATH: $MACA_PATH/lib:$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+      PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
+      LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:$LD_LIBRARY_PATH
     deps:
       - torch==2.8.0+metax3.7.2.0
       - torchaudio==2.4.1+metax3.7.2.0
       - torchvision==0.15.1+metax3.7.2.0
       - flash_attn==2.6.3+metax3.7.2.0torch2.8
+      - numpy==2.3.5
 
   mthreads-musa436:
     python: "3.10"
@@ -203,7 +314,7 @@ backends:
     python: "3.10"
     cmake_backend: MUSA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+mthreads3.6
+    flagtree: flagtree==0.7.0+mthreads3.6
     env:
       MUSA_HOME: /usr/local/musa
       PATH: $MUSA_HOME/bin:$PATH
@@ -212,17 +323,18 @@ backends:
       - torch==2.9.1+musa5.2.0
       - torch_musa==2.9.1
       - mkl==2024.0.0
+      - torchada==0.1.54
 
-  spacemit:
+  spacemit-xxx:
     python: "3.12"
     triton: triton==3.6.0+spacemit.a5
     deps:
       - torch==2.8.0+spacemit.0
 
-  sunrise:
+  sunrise-tangrt120:
     python: "3.10"
-    triton: triton==3.4.0.6+gite4f6d6e4
-    # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
+    triton: triton==3.6.0.1+git0a5cfb35
+    # flagtree==0.6.0+sunrise3.6 — requires GLIBC_2.39, unavailable on current runner
     env:
       LD_LIBRARY_PATH: /usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     deps:
@@ -231,18 +343,19 @@ backends:
       - torchvision==0.26.0+cpu
       - torch-ptpu==0.2.3+torch2.11
 
-  thead:
+  thead-ppu210:
     python: "3.12"
-    triton: triton==3.5.0+ppu2.0.0.oe
+    triton: triton==3.6.0+v0.2.0.ppu2.1.1
+    flagtree: flagtree==0.7.0+ppu3.6
     env_source:
       - /usr/local/PPU_SDK/envsetup.sh
     deps:
-      - torch==2.9.0+ppu2.0.0.oe
+      - torch==2.10.0+v0.1.0.ppu2.1.1
 
-  tsingmicro:
+  tsingmicro-tsm260610:
     python: "3.10"
-    triton: triton==3.3.0+gitfe2a28fa
-    flagtree: flagtree==0.5.0.post20260612+git705a4064
+    triton: triton==3.6.0.post2026072919+git8f5b0609
+    flagtree: flagtree==0.7.0+tsingmicro3.6
     env:
       KUIPER_PATH: /usr/local/kuiper
       TX8_DEPS_ROOT: /usr/local/tx8_deps
@@ -255,8 +368,10 @@ backends:
       TORCH_COMPILE_DISABLE: "1"
 
     deps:
-      - torch==2.7.0+cpu
-      - torchvision==0.22.0+cpu
-      - torchaudio==2.7.0+cpu
-      - torch_txda==0.1.0+20260615.37ba6bbd
-      - txops==0.1.0+20260508.60287151
+      - flagcx==0.14.0+tsm260610
+      - numpy==1.26.4
+      - torch==2.11.0+cpu
+      - torchvision==0.26.0+cpu
+      - torchaudio==2.11.0+cpu
+      - torch_txda==0.1.0+20260728.f6fbdb71
+      - txops==0.1.0+20260716.e94d9509

@@ -788,6 +788,184 @@ var_mean:
   warps:
   - 4
 
+conv1d:
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 2048
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 2048
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 512
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 1024
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 2048
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 512
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 1024
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 2048
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 2
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 1024
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 1024
+    BLOCK_K: 64
+  num_stages: 4
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 1024
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 1024
+    BLOCK_K: 64
+  num_stages: 4
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 1024
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 2
+
+conv2d:
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 256
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 256
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 256
+    BLOCK_K: 64
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_stages: 3
+  num_warps: 4
+
 conv2d_forward:
 - META:
     BLOCK_NI_HO_WO: 64

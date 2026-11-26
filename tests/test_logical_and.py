@@ -52,8 +52,7 @@ def test_logical_and(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.logical_and(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.logical_and(inp1, inp2)
+    res_out = flag_gems.logical_and(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -91,7 +90,6 @@ def test_logical_and_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.logical_and_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.logical_and_(inp2)
+    res_out = flag_gems.logical_and_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

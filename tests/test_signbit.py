@@ -24,18 +24,28 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
 def test_signbit(shape, dtype):
-    inp = (
-        torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        if dtype not in utils.INT_DTYPES
-        else torch.randint(
-            low=-100, high=100, size=shape, dtype=dtype, device=flag_gems.device
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp = (
+            torch.randn(shape, dtype=dtype, device=flag_gems.device)
+            if dtype not in utils.INT_DTYPES
+            else torch.randint(
+                low=-100, high=100, size=shape, dtype=dtype, device="cpu"
+            ).to(flag_gems.device)
         )
-    )
+    else:
+        inp = (
+            torch.randn(shape, dtype=dtype, device=flag_gems.device)
+            if dtype not in utils.INT_DTYPES
+            else torch.randint(
+                low=-100, high=100, size=shape, dtype=dtype, device=flag_gems.device
+            )
+        )
+
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.signbit(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.signbit(inp)
+    res_out = flag_gems.signbit(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -44,19 +54,29 @@ def test_signbit(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
 def test_signbit_out(shape, dtype):
-    inp = (
-        torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        if dtype not in utils.INT_DTYPES
-        else torch.randint(
-            low=-100, high=100, size=shape, dtype=dtype, device=flag_gems.device
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp = (
+            torch.randn(shape, dtype=dtype, device=flag_gems.device)
+            if dtype not in utils.INT_DTYPES
+            else torch.randint(
+                low=-100, high=100, size=shape, dtype=dtype, device="cpu"
+            ).to(flag_gems.device)
         )
-    )
+    else:
+        inp = (
+            torch.randn(shape, dtype=dtype, device=flag_gems.device)
+            if dtype not in utils.INT_DTYPES
+            else torch.randint(
+                low=-100, high=100, size=shape, dtype=dtype, device=flag_gems.device
+            )
+        )
+
     ref_inp = utils.to_reference(inp)
     out = torch.empty_like(inp, dtype=torch.bool)
     ref_out = torch.empty_like(ref_inp, dtype=torch.bool)
 
     torch.signbit(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.signbit(inp, out=out)
+    flag_gems.signbit_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)

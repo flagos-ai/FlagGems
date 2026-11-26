@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import re
 
 import pytest
@@ -27,6 +28,29 @@ pytestmark = pytest.mark.skipif(
 
 def ops_list_to_str(ops_list):
     return "_".join(ops_list).replace(".", "_").replace("-", "_")
+
+
+def _vendor_log_root(fn):
+    """Return the top-level logger name used by *fn*'s module, or None if
+    already under the flag_gems hierarchy."""
+    root = fn.__module__.split(".")[0]
+    return None if root == "flag_gems" else root
+
+
+def _op_log_fragment(fn):
+    """Return the logger-name prefix (name.funcName) used by *fn*."""
+    return f"{fn.__module__}.{fn.__name__}"
+
+
+def _extra_log_text(caplog, vendor_root):
+    """Format caplog records from *vendor_root* as '[DEBUG] name.funcName: msg' lines."""
+    if vendor_root is None:
+        return ""
+    return "\n".join(
+        f"[DEBUG] {r.name}.{r.funcName}: {r.getMessage()}"
+        for r in caplog.records
+        if r.name.startswith(vendor_root)
+    )
 
 
 def run_ops_and_logs(tmp_path, filename, include=None, exclude=None):
@@ -48,21 +72,29 @@ def run_ops_and_logs(tmp_path, filename, include=None, exclude=None):
     return log_content
 
 
-def test_enable(tmp_path):
+def test_enable(tmp_path, caplog):
+    # Ops that must appear in the log. We use the actual functions so the logger
+    # name and funcName are derived from the real implementation regardless of
+    # which vendor backend has overridden them.
+    _probe_ops = [
+        flag_gems.add,
+        flag_gems.mul,
+        flag_gems.sum,
+        flag_gems.gt_scalar,
+        flag_gems.bitwise_not,
+        flag_gems.masked_fill,
+    ]
+    vendor_root = _vendor_log_root(_probe_ops[0])
+    if vendor_root is not None:
+        caplog.set_level(logging.DEBUG, logger=vendor_root)
     log_content = run_ops_and_logs(tmp_path, "gems_enable.log")
+    log_content += _extra_log_text(caplog, vendor_root)
     log_prefixes = {
         line.split(":", 1)[0].strip()
         for line in log_content.splitlines()
         if line.strip() and ":" in line
     }
-    expected_fragments = [
-        "flag_gems.ops.add",
-        "flag_gems.ops.mul",
-        "flag_gems.ops.sum",
-        "flag_gems.ops.gt.gt_scalar",
-        "flag_gems.ops.bitwise_not",
-        "flag_gems.ops.masked_fill",
-    ]
+    expected_fragments = [_op_log_fragment(fn) for fn in _probe_ops]
     missing = [
         frag
         for frag in expected_fragments
@@ -95,14 +127,17 @@ def test_enable_with_exclude(exclude_op, tmp_path):
 @pytest.mark.parametrize(
     "include_op", [["sum"], ["mul", "sum"], ["bitwise_not", "masked_fill"]]
 )
-def test_only_enable(include_op, tmp_path):
+def test_only_enable(include_op, tmp_path, caplog):
+    vendor_root = _vendor_log_root(flag_gems.add)
+    if vendor_root is not None:
+        caplog.set_level(logging.DEBUG, logger=vendor_root)
     log_content = run_ops_and_logs(
         tmp_path,
         f"gems_only_enable_{ops_list_to_str(include_op)}.log",
         include=include_op,
     )
-
-    pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    log_content += _extra_log_text(caplog, vendor_root)
+    pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     for op in found_ops:
         assert (
@@ -110,18 +145,22 @@ def test_only_enable(include_op, tmp_path):
         ), f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
 
 
-def test_only_enable_with_yaml(tmp_path):
+def test_only_enable_with_yaml(tmp_path, caplog):
     include_ops = ["sum", "mul"]
     yaml_path = tmp_path / "only_enable.yaml"
     yaml_path.write_text("include:\n  - sum\n  - mul\n")
 
+    vendor_root = _vendor_log_root(flag_gems.add)
+    if vendor_root is not None:
+        caplog.set_level(logging.DEBUG, logger=vendor_root)
     log_content = run_ops_and_logs(
         tmp_path,
         "gems_only_enable_yaml.log",
         include=str(yaml_path),
     )
-
-    pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    log_content += _extra_log_text(caplog, vendor_root)
+    # Match funcName (last segment after the last dot before the colon)
+    pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
 
     assert found_ops, "No ops were logged; expected YAML include to be applied"
@@ -131,7 +170,7 @@ def test_only_enable_with_yaml(tmp_path):
     assert not unexpected, f"Found unexpected ops via YAML include: {unexpected}"
 
 
-def test_only_enable_default(tmp_path, monkeypatch):
+def test_only_enable_default(tmp_path, monkeypatch, caplog):
     # Create a mock YAML file with known include ops
     include_ops = ["sum", "mul", "add"]
     yaml_content = "include:\n" + "\n".join(f"  - {op}" for op in include_ops)
@@ -154,6 +193,10 @@ def test_only_enable_default(tmp_path, monkeypatch):
         "add": lambda a, b: a + b,
     }
 
+    vendor_root = _vendor_log_root(flag_gems.add)
+    if vendor_root is not None:
+        caplog.clear()
+        caplog.set_level(logging.DEBUG, logger=vendor_root)
     with flag_gems.use_gems(include="default", record=True, path=path_file):
         a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
         b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
@@ -167,8 +210,9 @@ def test_only_enable_default(tmp_path, monkeypatch):
 
     assert path_file.exists(), f"Log file {path_file} not found"
     log_content = path_file.read_text()
+    log_content += _extra_log_text(caplog, vendor_root)
 
-    pattern = r"flag_gems\.ops\.[^\.]+\.(\w+):"
+    pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     assert found_ops, "No ops were logged for default include"
     assert found_ops.issubset(

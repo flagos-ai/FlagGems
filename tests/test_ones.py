@@ -22,6 +22,10 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
+# Shapes with a zero dimension: numel() == 0, which is not covered by
+# POINTWISE_SHAPES (its "()" entry is a 0-dim tensor with one element).
+EMPTY_SHAPES = [(0,), (3, 0), (2, 0, 4)]
+
 
 @pytest.mark.ones
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -30,16 +34,28 @@ device = flag_gems.device
 )
 def test_ones(shape, dtype):
     # without dtype
-    with flag_gems.use_gems():
-        res_out = torch.ones(shape, device=flag_gems.device)
+    res_out = flag_gems.ones(shape, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.ones(shape, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.ones(shape, dtype=dtype, device=flag_gems.device)
+
+    utils.gems_assert_equal(
+        res_out, torch.ones(shape, dtype=dtype, device="cpu" if cfg.TO_CPU else device)
+    )
+
+
+@pytest.mark.ones
+@pytest.mark.parametrize("shape", EMPTY_SHAPES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_ones_empty(shape, dtype):
+    # Regression test: with numel() == 0 the Ascend backend derived a block
+    # size of 0 and the kernel failed to compile ("arange's end argument must
+    # be greater than the start argument").
+    res_out = flag_gems.ones(shape, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.ones(shape, dtype=dtype, device="cpu" if cfg.TO_CPU else device)

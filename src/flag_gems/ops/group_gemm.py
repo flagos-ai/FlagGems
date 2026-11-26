@@ -503,6 +503,7 @@ def grouped_mm_kernel(
 
 
 def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
+    logger.debug("GEMS GROUP_GEMM")
     A_addrs = []
     B_addrs = []
     C_addrs = []
@@ -576,6 +577,7 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
 
 
 def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS GROUP_MM")
     assert A.dim() == 2
     assert B.dim() == 3
     M, K = A.shape

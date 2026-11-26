@@ -41,6 +41,13 @@ def test_cumsum(shape, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
+    if flag_gems.vendor_name == "enflame" and dtype in utils.INT_DTYPES:
+        # The GCU cumsum requires the output dtype to match the input dtype,
+        # while the integer reference call below promotes int16/int32 to int64:
+        # topsatenCumsum aborts instead of raising. The enflame override itself
+        # is still covered by the float and empty-tensor cases.
+        pytest.skip("enflame does not support int16/int32 cumsum on GCU")
+
     dim = 1 if shape == utils.REDUCTION_SHAPES[-1] else -1
     if dtype in utils.INT_DTYPES:
         inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
@@ -56,18 +63,46 @@ def test_cumsum(shape, dtype):
 
         res_out = kl_ops.cumsum(inp, dim=dim)
     else:
-        with flag_gems.use_gems():
-            res_out = torch.cumsum(inp, dim=dim)
+        res_out = flag_gems.cumsum(inp, dim=dim)
 
-    # we should use ref's output type, since cumsum of int dtype results in int64
-    if flag_gems.vendor_name in ["cambricon", "enflame", "tsingmicro"]:
-        check_dtype = dtype
-    elif dtype in utils.INT_DTYPES:
-        check_dtype = ref_out.dtype
-    else:
-        check_dtype = dtype
+    # Derive the check dtype transparently from the operator's own output
+    # instead of special-casing vendor backends by name (issue #2807). On the
+    # NVIDIA backend integer/boolean inputs are promoted to int64 (matching
+    # torch.cumsum), which is still asserted through res_out.dtype; vendors
+    # whose cumsum keeps the input dtype are compared in that dtype.
+    check_dtype = res_out.dtype
 
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumsum
+@pytest.mark.parametrize(
+    "shape, dim",
+    [((0,), 0), ((0, 5), 1), ((3, 0, 4), 2), ((3, 0, 4), 0), ((2, 0), 0)],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+def test_cumsum_empty(shape, dim, dtype):
+    # Issue 4543: cumsum on an empty tensor must not raise (div-by-zero when a
+    # scanned/leading dim is 0). Output should match torch.cumsum in shape/dtype.
+    if flag_gems.vendor_name == "enflame" and dtype in utils.INT_DTYPES:
+        pytest.skip("enflame does not support int16/int32 cumsum on GCU")
+    if dtype in utils.INT_DTYPES:
+        inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.cumsum(ref_inp, dim=dim)
+    res_out = flag_gems.cumsum(inp, dim=dim)
+
+    assert res_out.shape == ref_out.shape
+    assert res_out.numel() == 0
+    if flag_gems.vendor_name in ["aipu", "cambricon", "enflame", "tsingmicro"]:
+        # These vendors keep the input dtype for integer inputs (no int64
+        # promotion), consistent with the check_dtype override in test_cumsum.
+        assert res_out.dtype == dtype
+    else:
+        assert res_out.dtype == ref_out.dtype
 
 
 @pytest.mark.cumsum_out
@@ -81,7 +116,6 @@ def test_cumsum_out(shape, dtype):
     ref_out_buf = torch.empty_like(ref_inp)
 
     torch.cumsum(ref_inp, dim=dim, out=ref_out_buf)
-    with flag_gems.use_gems():
-        torch.cumsum(inp, dim=dim, out=out)
+    flag_gems.cumsum_out(inp, dim=dim, out=out)
 
     utils.gems_assert_close(out, ref_out_buf, dtype, reduce_dim=shape[dim])

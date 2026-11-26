@@ -74,6 +74,16 @@ namespace backend {
   using RawStreamType = hipStream_t;
 }  // namespace backend
 }  // namespace flag_gems
+#elif defined(FLAGGEMS_USE_MLU)
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+#include "framework/core/device.h"
+namespace flag_gems {
+namespace backend {
+  using StreamType = torch_mlu::MLUStream;
+  using RawStreamType = cnrtQueue_t;
+}  // namespace backend
+}  // namespace flag_gems
 #endif
 
 namespace flag_gems {
@@ -92,9 +102,11 @@ namespace backend {
     return nullptr;
 #elif defined(FLAGGEMS_USE_HCU)
     return c10::hip::getCurrentHIPStream(device.index());
+#elif defined(FLAGGEMS_USE_MLU)
+    return torch_mlu::getCurrentMLUStream(device.index());
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA, FLAGGEMS_USE_MLU"
 #endif
   }
 
@@ -110,6 +122,8 @@ namespace backend {
     return nullptr;
 #elif defined(FLAGGEMS_USE_HCU)
     return c10::hip::getCurrentHIPStream();
+#elif defined(FLAGGEMS_USE_MLU)
+    return torch_mlu::getCurrentMLUStream();
 #else
 #error "No backend defined"
 #endif
@@ -138,6 +152,8 @@ namespace backend {
     TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on GCU device, but got ", tensor.device());
 #elif defined(FLAGGEMS_USE_HCU)
     TORCH_CHECK(tensor.is_cuda(), tensor_name, " must be on HCU device, but got ", tensor.device());
+#elif defined(FLAGGEMS_USE_MLU)
+    TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on MLU device, but got ", tensor.device());
 #else
 #error "No backend defined"
 #endif
@@ -155,6 +171,8 @@ namespace backend {
     return tensor.is_privateuseone();
 #elif defined(FLAGGEMS_USE_HCU)
     return tensor.is_cuda();
+#elif defined(FLAGGEMS_USE_MLU)
+    return tensor.is_privateuseone();
 #else
 #error "No backend defined"
 #endif
@@ -176,6 +194,8 @@ namespace backend {
     return "GCU";
 #elif defined(FLAGGEMS_USE_HCU)
     return "HCU";
+#elif defined(FLAGGEMS_USE_MLU)
+    return "MLU";
 #else
 #error "No backend defined"
 #endif
@@ -186,7 +206,8 @@ namespace backend {
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU) || \
     defined(FLAGGEMS_USE_MACA)
     return at::kCUDA;
-#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU) || \
+    defined(FLAGGEMS_USE_MLU)
     return at::kPrivateUse1;
 #else
 #error "No backend defined"
@@ -205,6 +226,8 @@ namespace backend {
     return 0;
 #elif defined(FLAGGEMS_USE_HCU)
     return at::cuda::current_device();
+#elif defined(FLAGGEMS_USE_MLU)
+    return torch_mlu::current_device();
 #else
     return 0;
 #endif
@@ -232,6 +255,8 @@ namespace backend {
     return true;
 #elif defined(FLAGGEMS_USE_HCU)
     return torch::cuda::is_available();
+#elif defined(FLAGGEMS_USE_MLU)
+    return torch_mlu::device_count() > 0;
 #else
     return false;
 #endif
@@ -249,6 +274,8 @@ namespace backend {
     topsDeviceSynchronize();
 #elif defined(FLAGGEMS_USE_HCU)
     hipDeviceSynchronize();
+#elif defined(FLAGGEMS_USE_MLU)
+    torch_mlu::synchronize();
 #endif
   }
 

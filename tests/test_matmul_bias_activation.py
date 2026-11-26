@@ -59,9 +59,6 @@ def test_matmul_bias_activation(M, N, K, dtype):
     ref_bias = utils.to_reference(bias, True)
 
     ref_out = torch.relu(torch.mm(ref_input, ref_weight) + ref_bias)
-    with flag_gems.use_gems():
-        from flag_gems.fused.matmul_bias_activation import matmul_bias_activation
-
-        res_out = matmul_bias_activation(input_tensor, weight, bias)
+    res_out = flag_gems.matmul_bias_activation(input_tensor, weight, bias)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)

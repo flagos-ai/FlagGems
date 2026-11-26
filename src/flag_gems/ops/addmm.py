@@ -26,11 +26,24 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _accumulate_dot(
+    accumulator,
+    a,
+    b,
+    IS_FP64: tl.constexpr,
+):
+    if IS_FP64:
+        a = a.to(tl.float32)
+        b = b.to(tl.float32)
+    return accumulator + tl.dot(a, b, allow_tf32=False)
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
     flagtune_op_name="addmm",
@@ -57,52 +70,68 @@ def addmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr,
+    BIAS_IS_SCALAR: tl.constexpr,
+    HAS_K: tl.constexpr,
     IS_FP64: tl.constexpr = False,
 ):
     pid_m = ext.program_id(0)
     pid_n = ext.program_id(1)
 
-    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
 
     if IS_FP64:
         accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float64)
     else:
         accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-            other=0.0,
-        )
-        b = tl.load(
-            b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
-            other=0.0,
-        )
-        if IS_FP64:
-            a = a.to(tl.float32)
-            b = b.to(tl.float32)
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
+    if HAS_K:
+        for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+            a = tl.load(
+                a_ptrs,
+                mask=(offs_m[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+                other=0.0,
+            )
+            b = tl.load(
+                b_ptrs,
+                mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_n[None, :] < N),
+                other=0.0,
+            )
+            accumulator = _accumulate_dot(
+                accumulator,
+                a,
+                b,
+                IS_FP64,
+            )
+            a_ptrs += BLOCK_SIZE_K * stride_ak
+            b_ptrs += BLOCK_SIZE_K * stride_bk
 
-    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+    mask = (offs_m < M)[:, None] & (offs_n < N)[None, :]
+    # PyTorch ignores bias, including NaN and Inf values, when beta is zero.
+    if beta == 0:
+        result = accumulator * alpha
+    else:
+        if BIAS_IS_VECTOR:
+            bias = tl.load(
+                i_ptr + offs_n * stride_in,
+                mask=offs_n < N,
+                other=0.0,
+            )[None, :]
+        elif BIAS_IS_SCALAR:
+            bias = tl.load(i_ptr)
+        else:
+            i_ptrs = i_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
+            bias = tl.load(i_ptrs, mask=mask, other=0.0)
+        result = accumulator * alpha + bias.to(accumulator.dtype) * beta
 
-    accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
-    tl.store(c_ptrs, c, mask=c_mask)
+    c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    tl.store(c_ptrs, result.to(c_ptr.dtype.element_ty), mask=mask)
 
 
-def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
+def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -110,73 +139,29 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     _, N = mat2.shape
 
-    logger.debug(
-        "GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
-        M,
-        N,
-        K,
-        mat1.stride(0) == 1,
-        mat2.stride(0) == 1,
-        bias.stride(0) == 1,
-    )
-    mat1 = mat1.contiguous()
-    # mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape)
-
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    with torch_device_fn.device(mat1.device):
-        addmm_kernel[grid](
-            mat1,
-            mat2,
-            bias,
-            out,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
-            out.stride(0),
-            out.stride(1),
-            IS_FP64=mat1.dtype == torch.float64,
-        )
-    return out
-
-
-def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
-    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible input shape"
-    M, K = mat1.shape
-    _, N = mat2.shape
+    # Preserve row- and column-contiguous matrices; materialize general views.
+    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
+        mat1 = mat1.contiguous()
+    if mat2.stride(0) > 1 and mat2.stride(1) > 1:
+        mat2 = mat2.contiguous()
     if out is None:
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
-    logger.debug(
-        "GEMS ADDMM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
-        M,
-        N,
-        K,
-        mat1.stride(0) == 1,
-        mat2.stride(0) == 1,
-        bias.stride(0) == 1,
-    )
-    mat1 = mat1.contiguous()
-    bias = bias.broadcast_to(out.shape)
 
+    # Keep vector/scalar bias compact; broadcast strides cover other valid shapes.
+    bias_is_vector = bias.ndim == 1 and bias.shape[0] == N
+    bias_is_scalar = not bias_is_vector and bias.numel() == 1
+    if bias_is_vector:
+        bias_stride_m = 0
+        bias_stride_n = bias.stride(0)
+    elif bias_is_scalar:
+        bias_stride_m = 0
+        bias_stride_n = 0
+    else:
+        bias = bias.broadcast_to(out.shape)
+        bias_stride_m = bias.stride(0)
+        bias_stride_n = bias.stride(1)
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
@@ -196,13 +181,44 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
             mat1.stride(1),
             mat2.stride(0),
             mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
+            bias_stride_m,
+            bias_stride_n,
             out.stride(0),
             out.stride(1),
+            BIAS_IS_VECTOR=bias_is_vector,
+            BIAS_IS_SCALAR=bias_is_scalar,
+            HAS_K=K > 0,
             IS_FP64=mat1.dtype == torch.float64,
         )
     return out
+
+
+def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
+    logger.debug(
+        "GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        mat1.shape[0],
+        mat2.shape[1],
+        mat1.shape[1],
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.ndim > 0 and bias.stride(0) == 1,
+    )
+    return _addmm_impl(bias, mat1, mat2, None, beta, alpha)
+
+
+def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
+    logger.debug(
+        "GEMS ADDMM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        mat1.shape[0],
+        mat2.shape[1],
+        mat1.shape[1],
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.ndim > 0 and bias.stride(0) == 1,
+    )
+    return _addmm_impl(bias, mat1, mat2, out, beta, alpha)
 
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
@@ -237,5 +253,6 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
         raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
 
-    bias_c = bias.to(out_dtype)
+    # beta=0 must not read bias; otherwise cast it directly to the output dtype.
+    bias_c = bias if beta == 0 else bias.to(out_dtype)
     return addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)

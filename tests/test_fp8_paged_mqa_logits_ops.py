@@ -174,15 +174,14 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
     )
     ref_out = to_reference(ref_out)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.fp8_paged_mqa_logits(
-            q_fp8,
-            kv_cache_fp8_triton,
-            weights,
-            context_lens,
-            block_tables,
-            max_model_len,
-        )
+    res_out = flag_gems.fp8_paged_mqa_logits(
+        q_fp8,
+        kv_cache_fp8_triton,
+        weights,
+        context_lens,
+        block_tables,
+        max_model_len,
+    )
 
     mask = _build_mask(
         context_lens, batch_size, next_n, max_model_len, flag_gems.device
@@ -267,15 +266,14 @@ def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_di
     )
     ref_out = to_reference(ref_out)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.fp8_paged_mqa_logits(
-            q_fp8,
-            kv_cache_fp8_triton,
-            weights,
-            context_lens,
-            block_tables,
-            max_model_len,
-        )
+    res_out = flag_gems.fp8_paged_mqa_logits(
+        q_fp8,
+        kv_cache_fp8_triton,
+        weights,
+        context_lens,
+        block_tables,
+        max_model_len,
+    )
 
     mask = _build_mask(
         context_lens, batch_size, next_n, max_model_len, flag_gems.device

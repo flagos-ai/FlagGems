@@ -40,7 +40,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _sum += a * a
@@ -88,7 +88,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _max = tl.maximum(tl.abs(a), _max)
@@ -136,7 +136,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=float("inf")).to(tl.float32)
         _min = tl.minimum(tl.abs(a), _min)
@@ -184,7 +184,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0).to(tl.float32)
         _sum += tl.where(a != 0, 1, 0)
@@ -232,10 +232,12 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += pow(tl.abs(a), ord)
+        # Masked lanes load as 0.0; for negative orders pow(0, ord) is +inf and
+        # would corrupt the reduction (issue #4600), so exclude them.
+        _sum += tl.where(mask, pow(tl.abs(a), ord), 0.0)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
@@ -251,7 +253,8 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(pow(tl.abs(x), ord))
+    # Same as `v_norm_kernel`: masked lanes must not contribute pow(0, ord).
+    mid = tl.sum(tl.where(mask, pow(tl.abs(x), ord), 0.0))
     tl.store(Mid, mid)
 
 

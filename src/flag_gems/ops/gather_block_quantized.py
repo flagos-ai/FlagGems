@@ -122,7 +122,7 @@ def gather_block_quantized(quantized_data, scales, indices=None, block_size=128)
     Returns:
     - Dequantized float tensor
     """
-    logger.debug("GEMS GATHER BLOCK QUANTIZED")
+    logger.debug("GEMS GATHER_BLOCK_QUANTIZED")
 
     if quantized_data.dtype != torch.int8:
         raise TypeError("gather_block_quantized expects int8 quantized_data")

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-import math
+import os
 
 import torch
 import triton
@@ -21,7 +21,9 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
+from .cat import copy_func
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
 logger = logging.getLogger(__name__)
@@ -112,189 +114,64 @@ def convert_to_uint_preverse_order(x: tl.tensor, descending: tl.constexpr = Fals
 
 
 @triton.jit
-def compute_global_hist_kernel(
-    arr_ptr,
-    out_ptr,
-    num_passes,
-    m,
-    n,
-    tiles_n_per_cta,
-    TILE_N: tl.constexpr,
-    TILE_R: tl.constexpr,
-    num_bits_per_pass: tl.constexpr,
-    descending: tl.constexpr,
-):
-    # arr_ptr: (m, n)
-    # out_ptr: (m, n_passes, r), where r = 2 ** k_bits is the number of bins
-    pid = tl.program_id(0)
-    pid_n = pid // m
-    pid_m = pid % m
-
-    r: tl.constexpr = 2**num_bits_per_pass
-    bfe_mask: tl.constexpr = (1 << num_bits_per_pass) - 1  # a.k.a. 2 ** k_bits - 1
-    CTA_TILE_N: tl.constexpr = TILE_N * tiles_n_per_cta
-    cta_n_start = CTA_TILE_N * pid_n
-    cta_n_end = tl.minimum(cta_n_start + CTA_TILE_N, n)
-
-    for p in range(0, num_passes):  # parallel
-        bit_offset = p * num_bits_per_pass
-        for r_start in range(0, r, TILE_R):  # parallel
-            bin_indices = r_start + tl.arange(0, TILE_R)
-            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int64)
-            for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
-                n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
-                mask = n_offsets < cta_n_end
-                arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
-                arr = convert_to_uint_preverse_order(arr, descending)
-                key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
-                matches = tl.where(
-                    mask, (bin_indices[:, None] == key), False
-                )  # (TILE_R, TILE_N)
-                acc += matches
-            local_sum = tl.sum(acc, axis=1)
-            tl.atomic_add(
-                out_ptr + pid_m * num_passes * r + p * r + bin_indices,
-                local_sum,
-                sem="relaxed",
-            )
-
-
-@triton.jit
-def sweep(
-    arr_ptr,
-    associate_arr_ptr,  # inputs: (key & value)
-    out_ptr,
-    associate_out_ptr,  # outputs: (key & value)
-    excumsum_bins_ptr,
-    status_ptr,  # aux input and status
-    n_passes,
-    pass_id,
-    bit_offset,
-    m,
-    N,
-    OUT_N,
-    TILE_N: tl.constexpr,
-    TILE_R: tl.constexpr,
-    k_bits: tl.constexpr,
-    descending: tl.constexpr,
-):
-    # r: num_bins = 2 ** k_bits
-    # OUT_N: grid_n = cdiv(N, )
-
-    # arr_ptr: (m, N)
-    # out_ptr: (m, N)
-    # excumsum_bins_ptr: (m, n_passes, r)
-    # flag_ptr: (m, r, OUT_N)
-
-    # grid: (m, grid_r, grid_n)
-
-    # load data
-    pid = tl.program_id(0)
-    pid_m = pid % m
-    pid_n = pid // m
-    pid_r = tl.program_id(1)
-
-    # bit masks
-    aggregate_mask: tl.constexpr = 1 << 30
-    inclusive_prefix_mask: tl.constexpr = 1 << 31
-    v_mask: tl.constexpr = (1 << 30) - 1
-    bfe_mask: tl.constexpr = (1 << k_bits) - 1  # a.k.a. 2 ** k_bits - 1
-
-    # initialize flag to zero-local sum is not ready
-    r: tl.constexpr = 2**k_bits
-    cta_r_start = pid_r * TILE_R
-    cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
-
-    # cumsum for a bin_index
-    n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)  # (TILE_N, )
-    mask = n_offsets < N
-    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
-    arr_u = convert_to_uint_preverse_order(arr, descending)
-    key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
-
-    # since triton can only use scalar as condition, loop by bin_index
-    # status must be pre zero-initialized, or else we have to initialize it
-    for bin_index in range(cta_r_start, cta_r_end):
-        matches = tl.where(mask, key == bin_index, False)  # (TILE_N, ) bool
-        # cta level cumsum per bin
-        # CAUTION: tl.sum in triton 3.2 does not promote type
-        local_sum = tl.sum(matches.to(tl.uint32), axis=0)
-        pack0 = aggregate_mask | local_sum
-        status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
-        tl.store(status_ptr + status_offset, pack0, cache_modifier=".cg")
-
-        # decoupled lookback
-        exclusive_prefix = tl.zeros((), dtype=tl.uint32)
-        i_lookback = pid_n - 1
-        while i_lookback >= 0:
-            flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
-            pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
-            while pack1 == 0:
-                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
-            exclusive_prefix += pack1 & v_mask
-            if (pack1 & aggregate_mask) == aggregate_mask:
-                i_lookback -= 1
-            else:
-                i_lookback = -1
-        pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
-        tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
-
-        local_ex_cumsum = (
-            tl.cumsum(matches.to(tl.uint32), axis=0) - matches
-        )  # (TILE_N, )
-        ex_cumsum_in_bin = (
-            exclusive_prefix + local_ex_cumsum
-        )  # global ex_cumsum_in_bin (TILE_N, )
-
-        # ex_cumsum_bins (m, n_passes, r)
-        ex_cumsum_bins = tl.load(
-            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
-        )  # scalar
-        pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
-
-        # scatter
-        tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
-        if associate_arr_ptr is not None:
-            associate_arr = tl.load(
-                associate_arr_ptr + pid_m * N + n_offsets, mask=mask
-            )
-            tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
-
-
-@triton.jit
 def count_kernel(
     x_ptr,
-    counts_ptr,  # Output: [M, grid_n, num_bins]
+    counts_ptr,  # Output: [M, R_PAD] int32, bin-major: bin * GRID_N + block
     M,
     N,
     bit_offset,
     num_bins: tl.constexpr,
     BLOCK_N: tl.constexpr,
     descending: tl.constexpr,
+    GRID_N: tl.constexpr,
+    R_PAD: tl.constexpr,
 ):
+
     pid = tl.program_id(0)
 
-    num_blocks_per_row = tl.cdiv(N, BLOCK_N)
-    row_idx = pid // num_blocks_per_row
-    block_idx = pid % num_blocks_per_row
+    row_idx = pid // GRID_N
+    block_idx = pid % GRID_N
 
     row_start = row_idx * N
     n_offset = block_idx * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = n_offset < N
 
-    val = tl.load(x_ptr + row_start + n_offset, mask=mask, other=0)
+    # Masked loads on XPU can still issue the tail address.  Clamp inactive
+    # lanes to the last real element and use the mask only for the histogram
+    # predicate.
+    n_offset_safe = tl.minimum(n_offset, N - 1)
+    val = tl.load(x_ptr + row_start + n_offset_safe)
     val_u = convert_to_uint_preverse_order(val, descending)
 
     bfe_mask = num_bins - 1
     key = (val_u >> bit_offset) & bfe_mask
 
+    counts_row = counts_ptr + row_idx * R_PAD + block_idx
     for i in range(num_bins):
         bin_mask = (key == i) & mask
         count = tl.sum(bin_mask.to(tl.int32))
-        out_offset = (
-            (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
-        )
-        tl.store(counts_ptr + out_offset, count)
+        tl.store(counts_row + i * GRID_N, count)
+
+
+@libentry()
+@triton.jit
+def bin_prefix_kernel(
+    counts_ptr,  # [M, R_PAD] int32 (bin-major histogram)
+    offsets_ptr,  # [M, R_PAD] int32 (exclusive prefix sums)
+    R: tl.constexpr,  # num_bins * GRID_N valid entries per row
+    R_PAD: tl.constexpr,  # padded row pitch, multiple of TILE
+    TILE: tl.constexpr,
+):
+    row = tl.program_id(0)
+    base = row * R_PAD
+    carry = tl.zeros([TILE], tl.int32)
+    for start in range(0, R_PAD, TILE):
+        offs = start + tl.arange(0, TILE)
+        v = tl.load(counts_ptr + base + offs)
+        v = tl.where(offs < R, v, 0)
+        inclusive = tl.cumsum(v, axis=0)
+        tl.store(offsets_ptr + base + offs, inclusive - v + carry)
+        carry += tl.sum(v, axis=0)
 
 
 @triton.jit
@@ -310,53 +187,97 @@ def scatter_kernel(
     num_bins: tl.constexpr,
     BLOCK_N: tl.constexpr,
     descending: tl.constexpr,
+    GRID_N: tl.constexpr,
+    R_PAD: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    num_blocks_per_row = tl.cdiv(N, BLOCK_N)
-    row_idx = pid // num_blocks_per_row
-    block_idx = pid % num_blocks_per_row
+    row_idx = pid // GRID_N
+    block_idx = pid % GRID_N
 
     row_start = row_idx * N
     n_offset = block_idx * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = n_offset < N
 
-    val = tl.load(x_ptr + row_start + n_offset, mask=mask, other=0)
+    n_offset_safe = tl.minimum(n_offset, N - 1)
+    val = tl.load(x_ptr + row_start + n_offset_safe)
     val_u = convert_to_uint_preverse_order(val, descending)
 
-    idx = tl.load(idx_in_ptr + row_start + n_offset, mask=mask, other=0)
+    idx = tl.load(idx_in_ptr + row_start + n_offset_safe)
 
     bfe_mask = num_bins - 1
     key = (val_u >> bit_offset) & bfe_mask
 
+    lane = tl.arange(0, BLOCK_N)
+    dest_idx = (lane - BLOCK_N).to(tl.int64)
+
+    offsets_row = global_offsets_ptr + row_idx * R_PAD + block_idx
     for i in range(num_bins):
         bin_mask = (key == i) & mask
-        local_rank = tl.cumsum(bin_mask.to(tl.int32), axis=0) - 1
+        local_rank = tl.cumsum(tl.where(bin_mask, 1, 0), axis=0) - 1
 
-        offset_idx = (
-            (row_idx * num_blocks_per_row * num_bins) + (block_idx * num_bins) + i
+        global_start = tl.load(offsets_row + i * GRID_N)
+
+        dest_idx = tl.where(
+            bin_mask,
+            (row_start + global_start + local_rank).to(tl.int64),
+            dest_idx,
         )
-        global_start = tl.load(global_offsets_ptr + offset_idx)
 
-        dest_idx = row_start + global_start + local_rank
+    tl.store(x_out_ptr + dest_idx, val)
+    tl.store(idx_out_ptr + dest_idx, idx)
 
-        tl.store(x_out_ptr + dest_idx, val, mask=bin_mask)
-        tl.store(idx_out_ptr + dest_idx, idx, mask=bin_mask)
+
+@libentry()
+@triton.jit
+def init_indices_kernel(indices, total, N, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(indices + offsets, offsets % N, mask=offsets < total)
+
+
+@libentry()
+@triton.jit
+def init_sort_buffers_kernel(
+    source, values, indices, total, N, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total
+    tl.store(values + offsets, tl.load(source + offsets, mask=mask), mask=mask)
+    tl.store(indices + offsets, offsets % N, mask=mask)
 
 
 def radix_sort_low_mem(arr, k_bits=4, descending=False):
-    if arr.ndim == 1:
-        arr = arr.unsqueeze(0)
-    M, N = arr.shape
-    arr_in = arr
-    arr_out = torch.empty_like(arr_in)
+    original_shape = arr.shape
+    N = arr.shape[-1]
+    arr = arr.reshape(-1, N)
+    M = arr.shape[0]
 
-    indices = (
-        torch.arange(N, device=arr.device, dtype=torch.int64)
-        .broadcast_to(arr.shape)
-        .clone()
-    )
-    idx_in = indices
-    idx_out = torch.empty_like(idx_in)
+    _env_block_n = os.environ.get("GEMS_XPU_RADIX_BLOCK_N")
+    if _env_block_n:
+        BLOCK_N = int(_env_block_n)
+    else:
+        BLOCK_N = min(4096, max(64, triton.next_power_of_2(N)))
+    grid_n = triton.cdiv(N, BLOCK_N)
+    grid = (M * grid_n,)
+
+    _HEAD_PAD = BLOCK_N
+    _TAIL_PAD = 256
+    _keepalive = []
+
+    def _padded(dtype):
+        buf = torch.empty(_HEAD_PAD + M * N + _TAIL_PAD, device=arr.device, dtype=dtype)
+        _keepalive.append(buf)
+        return buf[_HEAD_PAD : _HEAD_PAD + M * N].view(M, N)
+
+    arr_in = _padded(arr.dtype)
+    arr_out = _padded(arr.dtype)
+    idx_in = _padded(torch.int64)
+    idx_out = _padded(torch.int64)
+
+    index_block = 256
+    with torch_device_fn.device(arr.device):
+        init_sort_buffers_kernel[(triton.cdiv(M * N, index_block),)](
+            arr, arr_in, idx_in, M * N, N, BLOCK_SIZE=index_block
+        )
 
     dtype = arr.dtype
     num_bits = 1
@@ -369,14 +290,13 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
     num_passes = (num_bits + k_bits - 1) // k_bits
     num_bins = 2**k_bits
 
-    BLOCK_N = 512
-    grid_n = triton.cdiv(N, BLOCK_N)
-    grid = (M * grid_n,)
+    r = num_bins * grid_n
+    tile_r = max(64, min(4096, triton.next_power_of_2(r)))
+    r_pad = triton.cdiv(r, tile_r) * tile_r
 
     with torch_device_fn.device(arr.device):
-        counts = torch.empty(
-            (M, grid_n, num_bins), device=arr.device, dtype=torch.int32
-        )
+        counts = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
+        global_offsets = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
 
         for p in range(num_passes):
             bit_offset = p * k_bits
@@ -389,19 +309,16 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 num_bins,
                 BLOCK_N,
                 descending,
-                is_use_mask_zero=True,
+                GRID_N=grid_n,
+                R_PAD=r_pad,
             )
 
-            total_counts_per_bin = counts.sum(dim=1)
-            bin_global_starts = (
-                torch.cumsum(total_counts_per_bin, dim=1) - total_counts_per_bin
-            )
-            block_prefix_sum = torch.cumsum(counts, dim=1) - counts
-            global_offsets = (
-                bin_global_starts.unsqueeze(1)
-                .broadcast_to(block_prefix_sum.shape)
-                .clone()
-                + block_prefix_sum
+            bin_prefix_kernel[(M,)](
+                counts,
+                global_offsets,
+                R=r,
+                R_PAD=r_pad,
+                TILE=tile_r,
             )
 
             scatter_kernel[grid](
@@ -416,98 +333,53 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 num_bins,
                 BLOCK_N,
                 descending,
-                is_use_mask_zero=True,
+                GRID_N=grid_n,
+                R_PAD=r_pad,
             )
 
             arr_in, arr_out = arr_out, arr_in
             idx_in, idx_out = idx_out, idx_in
 
-    return arr_in, idx_in
+    return arr_in.reshape(original_shape), idx_in.reshape(original_shape)
 
 
-def radix_sort(arr, k_bits=8, descending=False):
-    n = arr.shape[-1]
-    m = arr.numel() // n
-    assert n < (1 << 30), "we have not implemented 2**30 per launch"
-    dtype = arr.dtype
-    num_bits = 1 if dtype == torch.bool else (arr.element_size() * 8)
+def _copy_bitview(t):
+    # NOTE(kunlunxin): the tuned copy codegen hits an illegal memory access for
+    # int32 on the strided-read path at some shapes (deterministic repro:
+    # permute-read of a (65536, 4) / (32768, 8) int32 tensor, i.e.
+    # M * N = 256 Ki; smaller shapes are clean).  int32 and float32 share
+    # itemsize, so bit-cast both sides and reuse the proven fp32 copy path;
+    # the copy is bit-exact.  Same workaround as the cat family.
+    if t.dtype == torch.int32:
+        return t.view(torch.float32)
+    return t
 
-    TILE_N = 1024
-    tiles_n_per_cta = 8
-    CTA_TILE_N = tiles_n_per_cta * TILE_N
 
-    num_bins = 2**k_bits
-    n_passes = triton.cdiv(num_bits, k_bits)
-    TILE_R = 16
+def _permute_copy_to_last(inp, dim):
+    """Materialize a dim-last view without routing a strided copy through copy_."""
+    order = [i for i in range(inp.ndim) if i != dim] + [dim]
+    shape = tuple(inp.shape[i] for i in order)
+    strides = tuple(inp.stride()[i] for i in order)
+    out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+    src = _copy_bitview(inp)
+    dst = _copy_bitview(out)
+    in_view = StridedBuffer(src, shape, strides)
+    out_view = StridedBuffer(dst, shape, dst.stride())
+    copy_func.instantiate(inp.ndim)(in_view, out0=out_view)
+    return out, order
 
-    grid_n = triton.cdiv(n, CTA_TILE_N)
-    grid_for_global_hist = (m * grid_n, 1, 1)
 
-    with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
-        )
-        compute_global_hist_kernel[grid_for_global_hist](
-            arr,
-            global_hist,
-            n_passes,
-            m,
-            n,
-            tiles_n_per_cta,
-            TILE_N,
-            TILE_R,
-            k_bits,
-            descending,
-        )
-        ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
-        ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
-
-        # sort
-        arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
-        )
-        arr_out = torch.empty_like(arr)
-        indices_out = torch.empty_like(indices_in)
-
-        TILE_R = 8
-        grid_r = triton.cdiv(num_bins, TILE_R)
-        TILE_N = 2048
-        grid_n = triton.cdiv(n, TILE_N)
-        grid_for_sweep = (m * grid_n, grid_r)
-
-        status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
-        )
-
-        for i in range(0, n_passes):
-            bit_offset = i * k_bits
-            status.zero_()
-            sweep[grid_for_sweep](
-                arr_in,
-                indices_in,
-                arr_out,
-                indices_out,
-                ex_cumsum_bins,
-                status,
-                n_passes,
-                i,
-                bit_offset,
-                m,
-                n,
-                grid_n,
-                TILE_N,
-                TILE_R,
-                k_bits,
-                descending,
-            )
-            # print(f"< sorted last {bit_offset + k_bits:>2d} bits: {arr_out}")
-            arr_in, arr_out = arr_out, arr_in
-            indices_in, indices_out = indices_out, indices_in
-
-    return arr_in, indices_in
+def _permute_copy_from_last(inp, out_shape, order):
+    """Copy a dim-last result into the original contiguous dimension order."""
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+    shape = tuple(out_shape[i] for i in order)
+    strides = tuple(out.stride()[i] for i in order)
+    src = _copy_bitview(inp)
+    dst = _copy_bitview(out)
+    in_view = StridedBuffer(src, shape, src.stride())
+    out_view = StridedBuffer(dst, shape, strides)
+    copy_func.instantiate(len(order))(in_view, out0=out_view)
+    return out
 
 
 @libentry()
@@ -546,62 +418,53 @@ def sort_kernel(
 
 def sort(inp, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT")
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
     sort_elem_cnt = inp.shape[dim]
+    if sort_elem_cnt == 0 or inp.numel() == 0:
+        return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
-    elif sort_elem_cnt > 512:  # TODO: Optimize implementation for large cases.
-        return torch.sort(inp, stable=False, dim=dim, descending=descending)
-    block_size = triton.next_power_of_2(sort_elem_cnt)
+        indices = torch.empty_like(inp, dtype=torch.int64)
+        with torch_device_fn.device(inp.device):
+            init_indices_kernel[(triton.cdiv(inp.numel(), 256),)](
+                indices, inp.numel(), 1, BLOCK_SIZE=256
+            )
+        return inp, indices
 
-    if dim < 0:
-        dim = dim + inp.ndim
-    if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
-    else:
-        inp = inp.contiguous()
-    batch_size = math.prod(inp.shape) // sort_elem_cnt
-
-    out = torch.empty_like(inp)
-    out_index = torch.empty_like(inp, dtype=torch.int64)
-
-    with torch_device_fn.device(inp.device):
-        sort_kernel[batch_size,](
-            inp,
-            out,
-            out_index,
-            N=sort_elem_cnt,
-            BLOCK_SIZE=block_size,
-            DESCENDING=descending,
-            IS_FLOAT=inp.is_floating_point(),
-            num_warps=4,
-        )
-
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+    return sort_stable(inp, stable=True, dim=dim, descending=descending)
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT_STABLE")
     # We only implement stable radix sort here
     _ = stable
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
     sort_elem_cnt = inp.shape[dim]
+    if sort_elem_cnt == 0 or inp.numel() == 0:
+        return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
+        indices = torch.empty_like(inp, dtype=torch.int64)
+        with torch_device_fn.device(inp.device):
+            init_indices_kernel[(triton.cdiv(inp.numel(), 256),)](
+                indices, inp.numel(), 1, BLOCK_SIZE=256
+            )
+        return inp, indices
 
     if dim < 0:
         dim = dim + inp.ndim
+    original_shape = inp.shape
     if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
+        inp, order = _permute_copy_to_last(inp, dim)
     else:
+        order = list(range(inp.ndim))
         inp = inp.contiguous()
 
     dtype = inp.dtype
     num_bits_per_pass = 1 if dtype == torch.bool else 4
     out, out_index = radix_sort_low_mem(inp, num_bits_per_pass, descending)
 
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
+    if dim != len(order) - 1:
+        out = _permute_copy_from_last(out, original_shape, order)
+        out_index = _permute_copy_from_last(out_index, original_shape, order)
     return out, out_index

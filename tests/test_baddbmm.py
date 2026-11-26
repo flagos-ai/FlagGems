@@ -17,22 +17,13 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
 from .accuracy_utils import SCALARS, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
-if QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    FLOAT_DTYPES = [torch.float32]
-else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    FLOAT_DTYPES = ORIG_FLOAT_DTYPES
+BMNK_SHAPES = accuracy_shapes("baddbmm", QUICK_MODE)
+MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
+BACKWARD_SHAPES = [(2, 16, 4096), (32, 64, 2048)]
 
 GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 
@@ -47,16 +38,17 @@ FP8_MNK_SHAPES = [
 
 
 @pytest.mark.baddbmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #3794: not working")
-
-    batch = 4
+@pytest.mark.parametrize(
+    "dtype, scalar, batch, M, N, K, b_column_major",
+    accuracy_dtype_cases("baddbmm", QUICK_MODE, scalars=SCALARS),
+)
+def test_baddbmm(batch, M, N, K, scalar, dtype, b_column_major):
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    mat2 = (
+        torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device).transpose(1, 2)
+        if b_column_major
+        else torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    )
     bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
@@ -73,7 +65,7 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
 @pytest.mark.baddbmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_baddbmm_out(M, N, K, scalar, dtype):
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
@@ -88,20 +80,16 @@ def test_baddbmm_out(M, N, K, scalar, dtype):
     alpha = beta = scalar
 
     torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
-    with flag_gems.use_gems():
-        torch.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
+    flag_gems.baddbmm_out(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
 
     gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.baddbmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("M, N, K", BACKWARD_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_baddbmm_backward(M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #3794: not working")
-
     batch = 2
     mat1 = torch.randn(
         (batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -120,16 +108,46 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
     res_out = flag_gems.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
+    _assert_baddbmm_gradients(
+        res_out,
+        ref_out,
+        (bias, mat1, mat2),
+        (ref_bias, ref_mat1, ref_mat2),
+        bias_reduce_dim=K,
+    )
+
+
+@pytest.mark.baddbmm
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+def test_baddbmm_backward_broadcast(dtype):
+    batch, M, N, K = 2, 4, 16, 128
+    alpha, beta = 0.25, 0.5
+    inputs = tuple(
+        torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+        for shape in ((N,), (batch, M, K), (batch, K, N))
+    )
+    ref_inputs = tuple(to_reference(x, True) for x in inputs)
+    ref_out = torch.baddbmm(*ref_inputs, alpha=alpha, beta=beta)
+    res_out = flag_gems.baddbmm(*inputs, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    _assert_baddbmm_gradients(
+        res_out, ref_out, inputs, ref_inputs, bias_reduce_dim=batch * M
+    )
+
+
+def _assert_baddbmm_gradients(res_out, ref_out, inputs, ref_inputs, bias_reduce_dim):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
-
+    _, M, N = res_out.shape
     ref_in_bias, ref_in_grad1, ref_in_grad2 = torch.autograd.grad(
-        ref_out, (ref_bias, ref_mat1, ref_mat2), ref_grad
+        ref_out, ref_inputs, ref_grad
     )
     res_in_bias, res_in_grad1, res_in_grad2 = torch.autograd.grad(
-        res_out, (bias, mat1, mat2), out_grad
+        res_out, inputs, out_grad
     )
 
-    gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=K)
+    dtype = res_out.dtype
+    gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=bias_reduce_dim)
     gems_assert_close(res_in_grad1, ref_in_grad1, dtype, reduce_dim=N)
     gems_assert_close(res_in_grad2, ref_in_grad2, dtype, reduce_dim=M)

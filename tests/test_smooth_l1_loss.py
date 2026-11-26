@@ -52,8 +52,7 @@ def test_smooth_l1_loss(shape, dtype, reduction, beta):
         dtype
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss(inp, target, reduction, beta)
+    res_out = flag_gems.smooth_l1_loss(inp, target, reduction, beta)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
 
@@ -103,10 +102,9 @@ def test_smooth_l1_loss_backward(shape, target_shape, dtype, reduction, beta):
         ref_grad_output, ref_inp, ref_target, reduction, beta
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss_backward(
-            grad_output, inp, target, reduction, beta
-        )
+    res_out = flag_gems.smooth_l1_loss_backward(
+        grad_output, inp, target, reduction, beta
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
 
@@ -126,10 +124,7 @@ def test_smooth_l1_loss_backward_scalar_grad_output():
     ref_out = torch.ops.aten.smooth_l1_loss_backward(
         ref_grad_output, ref_inp, ref_target, 0, 0.0
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss_backward(
-            grad_output, inp, target, 0, 0.0
-        )
+    res_out = flag_gems.smooth_l1_loss_backward(grad_output, inp, target, 0, 0.0)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
@@ -147,10 +142,7 @@ def test_smooth_l1_loss_backward_beta_zero_equal_inputs_cuda_behavior():
     grad_output = torch.ones_like(inp)
     ref_out = torch.ops.aten.smooth_l1_loss_backward(grad_output, inp, target, 0, 0.0)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss_backward(
-            grad_output, inp, target, 0, 0.0
-        )
+    res_out = flag_gems.smooth_l1_loss_backward(grad_output, inp, target, 0, 0.0)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
 
@@ -171,8 +163,7 @@ def test_smooth_l1_loss_broadcast(dtype, reduction):
         dtype
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss(inp, target, reduction, 1.0)
+    res_out = flag_gems.smooth_l1_loss(inp, target, reduction, 1.0)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
 
@@ -200,8 +191,7 @@ def test_smooth_l1_loss_special_values(dtype):
         0,
         1.0,
     ).to(dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss(inp, target, 0, 1.0)
+    res_out = flag_gems.smooth_l1_loss(inp, target, 0, 1.0)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
 
@@ -219,8 +209,7 @@ def test_smooth_l1_loss_out():
     ref_out = torch.empty_like(ref_inp)
 
     torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 0, 0.5, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss.out(inp, target, 0, 0.5, out=out)
+    res_out = flag_gems.smooth_l1_loss_out(inp, target, 0, 0.5, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, torch.float32)
@@ -239,8 +228,7 @@ def test_smooth_l1_loss_out_reduced():
     ref_out = torch.empty_like(ref_inp)
 
     torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 1, 1.0, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss.out(inp, target, 1, 1.0, out=out)
+    res_out = flag_gems.smooth_l1_loss_out(inp, target, 1, 1.0, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, torch.float32)
@@ -259,10 +247,7 @@ def test_smooth_l1_loss_functional():
     ref_out = torch.nn.functional.smooth_l1_loss(
         ref_inp, ref_target, reduction="mean", beta=0.5
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.smooth_l1_loss(
-            inp, target, reduction="mean", beta=0.5
-        )
+    res_out = flag_gems.smooth_l1_loss(inp, target, reduction="mean", beta=0.5)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
@@ -275,8 +260,8 @@ def test_smooth_l1_loss_negative_beta():
     inp = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
     target = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="negative"):
-        torch.ops.aten.smooth_l1_loss(inp, target, 1, -1.0)
+    with pytest.raises(RuntimeError, match="negative"):
+        flag_gems.smooth_l1_loss(inp, target, 1, -1.0)
 
 
 @pytest.mark.smooth_l1_loss_backward
@@ -288,5 +273,5 @@ def test_smooth_l1_loss_backward_negative_beta():
     inp = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
     target = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="negative"):
-        torch.ops.aten.smooth_l1_loss_backward(grad_output, inp, target, 1, -1.0)
+    with pytest.raises(RuntimeError, match="negative"):
+        flag_gems.smooth_l1_loss_backward(grad_output, inp, target, 1, -1.0)

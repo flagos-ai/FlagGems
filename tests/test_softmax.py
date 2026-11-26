@@ -37,6 +37,32 @@ else:
 random.seed(time.time() // 100)
 
 
+# Regression test for issue #6109: `softmax_heur_tile_n_inner` used to return
+# next_power_of_2(N) for every N up to 32768, so rows of 16385..32768 widened to
+# a 32768-element tile.  The ONE_TILE_PER_CTA branch of `softmax_kernel_inner`
+# keeps that row plus its fp32 exp() result live, which does not fit Ascend's
+# 192 KiB unified buffer, and the compiler fails with
+# "ub overflow ... while 1572864 bits available".  32769 is the control: it
+# already used TILE_N == 4096 and kept working.
+_WIDE_INNER_ROWS = [16385] if cfg.QUICK_MODE else [16385, 20000, 32768, 32769]
+
+
+@pytest.mark.softmax
+@pytest.mark.parametrize("n", _WIDE_INNER_ROWS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("neg_inf", [True, False])
+def test_softmax_wide_inner_row(n, dtype, neg_inf):
+    inp = torch.randn((2, n), dtype=dtype, device=flag_gems.device)
+    if neg_inf:
+        inp = torch.where(inp < 0.0, float("-inf"), inp)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.nn.functional.softmax(ref_inp, dim=-1)
+    res_out = flag_gems.softmax(inp, -1)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 # Issue 2852: This fails at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape", SHAPES)
@@ -50,8 +76,7 @@ def test_softmax(shape, dtype, dim, neg_inf):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.softmax(inp, dim=dim)
+    res_out = flag_gems.softmax(inp, dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -78,8 +103,7 @@ def test_softmax_out(shape, dtype, dim, neg_inf):
     torch.ops.aten._softmax.out(ref_inp, dim, False, out=ref_out)
 
     res_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._softmax.out(inp, dim, False, out=res_out)
+    flag_gems.softmax_out(inp, dim, False, out=res_out)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -111,28 +135,21 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
     )
 
     res_in_grad = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._softmax_backward_data.out(
-            res_grad, res_out, dim, dtype, grad_input=res_in_grad
-        )
+    flag_gems.softmax_backward_out(
+        res_grad, res_out, dim, dtype, grad_input=res_in_grad
+    )
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True
     )
 
 
 @pytest.mark.softmax_backward
+@pytest.mark.softmax_backward_data
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
 def test_softmax_backward(shape, dtype, dim, neg_inf):
-    if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
-        pytest.skip(
-            "Issue #2851: XPU _softmax_backward_data short-circuits to zero when reduction dim "
-            "is 1, while the Triton kernel computes normally with synthetic inputs, "
-            "causing a mismatch that does not reflect a real correctness issue."
-        )
-
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
@@ -144,10 +161,7 @@ def test_softmax_backward(shape, dtype, dim, neg_inf):
     ref_in_grad = torch.ops.aten._softmax_backward_data(
         ref_grad, ref_out, dim, ref_grad.dtype
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten._softmax_backward_data(
-            res_grad, res_out, dim, dtype
-        )
+    res_in_grad = flag_gems.softmax_backward(res_grad, res_out, dim, dtype)
 
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True

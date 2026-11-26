@@ -88,7 +88,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS COUNT NONZERO")
+    logger.debug("GEMS COUNT_NONZERO")
 
     if x.is_sparse:
         x = x.to_dense()

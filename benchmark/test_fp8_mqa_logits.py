@@ -22,6 +22,15 @@ import flag_gems
 
 from . import base
 
+fp8_is_supported = flag_gems.runtime.device.support_fp8
+
+FP8_DTYPES = [torch.float8_e4m3fn] if fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
+
 random.seed(42)
 
 
@@ -161,7 +170,7 @@ def _vllm_wrapper(q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke, q
 
 
 def _gems_wrapper(q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke, q_dtype):
-    from flag_gems.ops import fp8_mqa_logits
+    from flag_gems import fp8_mqa_logits
 
     return fp8_mqa_logits(
         q_fp8,

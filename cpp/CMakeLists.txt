@@ -54,20 +54,21 @@ endif()
 # ==============================================================================
 # Backend Selection
 # ==============================================================================
-set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU, GCU, HCU, MACA")
-set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU" "GCU" "HCU" "MACA")
+set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU, GCU, HCU, MACA, MLU")
+set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU" "GCU" "HCU" "MACA" "MLU")
 
-if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU|GCU|HCU|MACA)$")
+if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU|GCU|HCU|MACA|MLU)$")
     message(FATAL_ERROR "Invalid FLAGGEMS_BACKEND: ${FLAGGEMS_BACKEND}")
 endif()
 message(STATUS "Building FlagGems with backend: ${FLAGGEMS_BACKEND}")
 
-# NPU, MUSA, GCU and MACA do not need CUDA language
+# NPU, MUSA, GCU, MACA and MLU do not need CUDA language
 if(FLAGGEMS_BACKEND STREQUAL "NPU"
    OR FLAGGEMS_BACKEND STREQUAL "MUSA"
    OR FLAGGEMS_BACKEND STREQUAL "GCU"
    OR FLAGGEMS_BACKEND STREQUAL "HCU"
-   OR FLAGGEMS_BACKEND STREQUAL "MACA")
+   OR FLAGGEMS_BACKEND STREQUAL "MACA"
+   OR FLAGGEMS_BACKEND STREQUAL "MLU")
     project(FlagGems LANGUAGES CXX VERSION 0.1.0)
 else()
     project(FlagGems LANGUAGES CUDA CXX VERSION 0.1.0)
@@ -88,6 +89,8 @@ elseif(FLAGGEMS_BACKEND STREQUAL "HCU")
     add_compile_definitions(FLAGGEMS_USE_HCU)
 elseif(FLAGGEMS_BACKEND STREQUAL "MACA")
     add_compile_definitions(FLAGGEMS_USE_MACA)
+elseif(FLAGGEMS_BACKEND STREQUAL "MLU")
+    add_compile_definitions(FLAGGEMS_USE_MLU)
 endif()
 
 message(STATUS "Building flag gems with C extensions")
@@ -109,6 +112,8 @@ elseif(FLAGGEMS_BACKEND STREQUAL "HCU")
     include(BackendHCU)
 elseif(FLAGGEMS_BACKEND STREQUAL "MACA")
     include(BackendMACA)
+elseif(FLAGGEMS_BACKEND STREQUAL "MLU")
+    include(BackendMLU)
 endif()
 
 # torch
@@ -142,13 +147,24 @@ else()
 endif()
 
 if(FLAGGEMS_BUILD_CTESTS)
-  set(INSTALL_GTEST OFF) # we do not install tests
-  FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.16.0
-  )
-  FetchContent_MakeAvailable(googletest)
+  # Prefer a pre-installed GTest when available so that the build does not
+  # depend on network access at all. This follows the first option suggested
+  # in issue #2380: install a binary package if available.
+  find_package(GTest 1.16 QUIET)
+  if(NOT GTest_FOUND)
+    set(INSTALL_GTEST OFF) # we do not install tests
+    FetchContent_Declare(
+      googletest
+      # Downloading from github.com is not always reliable on self-hosted
+      # runners (issue #2380), so try the flagos resource mirror first and
+      # fall back to the canonical GitHub archive. The archive is pinned by
+      # SHA256 (v1.16.0 release tarball).
+      URL https://resource.flagos.net/repository/flagos-filestore/googletest/googletest-v1.16.0.tar.gz
+          https://github.com/google/googletest/archive/refs/tags/v1.16.0.tar.gz
+      URL_HASH SHA256=78c676fc63881529bf97bf9d45948d905a66833fbfa5318ea2cd7478cb98f399
+    )
+    FetchContent_MakeAvailable(googletest)
+  endif()
 endif()
 
 execute_process(

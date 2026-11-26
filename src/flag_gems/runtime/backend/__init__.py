@@ -88,7 +88,7 @@ class TritonVersionEvent(BackendEventBase):
         dir_name = f"triton_{self.version}"
         backend_path = Path(path or _state.vendor_module.__path__[0])
         backend_path = backend_path.parent if backend_path.is_file() else backend_path
-        excluded = ("ops", "fused")
+        excluded = ("ops", "deprecated")
         return {
             p.name: str(p)
             for p in backend_path.iterdir()
@@ -168,28 +168,53 @@ class BackendArchEvent(BackendEventBase):
         if not hasattr(_state.vendor_module, "ARCH_MAP"):
             return
         arch_map = _state.vendor_module.ARCH_MAP
+        # A vendor whose devices cannot be told apart by the generic rules
+        # below may own the lookup by exposing ``get_arch_key``: it returns the
+        # ``ARCH_MAP`` key for the current device, or None when the device is
+        # not one it specializes.
+        arch_detector = getattr(_state.vendor_module, "get_arch_key", None)
+        if arch_detector is not None:
+            arch_key = arch_detector(_state.torch_device_object, device)
+            if arch_key in arch_map:
+                self.has_arch = True
+                return arch_map[arch_key]
+            return
         arch_string = os.environ.get("ARCH", "")
-        arch_string_num = arch_string.split("_")[-1][0] if arch_string else arch_string
-        if not arch_string_num:
+        # Candidate keys ordered from the most to the least specific. The last
+        # one is the major version alone, so a map that lists whole families
+        # keeps matching the same devices it did before.
+        keys = []
+        if arch_string:
+            keys.append(arch_string.split("_")[-1][0])
+        else:
             try:
                 if not _state.torch_device_object.is_available():
                     return False
                 props = _state.torch_device_object.get_device_properties(device)
-                arch_string_num = str(props.major)
+                # AMD reports the exact target here, sometimes with feature
+                # suffixes such as "gfx942:sramecc+:xnack-". Other vendors do
+                # not expose this attribute at all.
+                gcn_arch = (getattr(props, "gcnArchName", "") or "").strip()
+                if gcn_arch:
+                    keys.append(gcn_arch.split(":")[0])
+                keys.append(f"{props.major}.{props.minor}")
+                keys.append(str(props.major))
             except Exception:
                 self.has_arch = False
-        if arch_string_num not in arch_map:
-            print(
-                f"[INFO] : FlagGems Unsupported GPU arch {arch_string} specialization"
-            )
-        else:
-            self.has_arch = True
-            return arch_map[arch_string_num]
+
+        for key in keys:
+            if key in arch_map:
+                self.has_arch = True
+                return arch_map[key]
+        print(
+            "[INFO] : FlagGems Unsupported GPU arch "
+            f"{arch_string or (keys[0] if keys else 'unknown')} specialization"
+        )
 
     def _get_supported_archs(self, path=None):
         path = Path(path or _state.vendor_module.__path__[0])
         path = path.parent if path.is_file() else path
-        excluded = ("ops", "fused")
+        excluded = ("ops", "deprecated")
         return {
             p.name: str(p)
             for p in path.iterdir()
@@ -271,7 +296,7 @@ def import_vendor_extra_lib(vendor_name=None):
         f"_{vendor_name}.ops", vendor_name, "common"
     )
     _state.fused_module = _import_module_safe(
-        f"_{vendor_name}.fused", vendor_name, "fused"
+        f"_{vendor_name}.deprecated", vendor_name, "deprecated"
     )
     _state.vendor_extra_lib_imported = True
 
@@ -311,7 +336,16 @@ def get_tl_extra_backend_module():
 def set_torch_backend_device_fn(vendor_name=None):
     _state.device_name = _state.device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{_state.device_name}"
-    if _state.device_name in ("musa", "aipu", "npu", "txda", "ptpu", "gcu"):
+    if _state.device_name in (
+        "musa",
+        "aipu",
+        "npu",
+        "txda",
+        "raisa",
+        "ptpu",
+        "gcu",
+        "ifwa",
+    ):
         _state.torch_device_fn_device = None
     else:
         _state.torch_device_fn_device = importlib.import_module(module_str)

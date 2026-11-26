@@ -87,10 +87,10 @@ def _make_inputs(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)

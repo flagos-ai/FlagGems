@@ -256,28 +256,28 @@ def generate_repeat_kernel(
         # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
-            stride_args = ", ".join(f"in0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in0_stride{j}: tl.int64" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            stride_args = ", ".join(f"out0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"out0_stride{j}: tl.int64" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+            task_space_args = ", ".join(f"s{i}: tl.int64" for i in range(rank))
             code.writeline(f"{task_space_args}, # task_space")
 
-            task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
+            task_space_args2 = ", ".join(f"in_s{i}: tl.int64" for i in range(rank))
             code.writeline(
                 f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
             )
 
             # number of tasks, used to compute mask
-            code.writeline("num_tasks: int,")
+            code.writeline("num_tasks: tl.int64,")
 
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
-            code.writeline("tiles_per_cta,")
+            code.writeline("tiles_per_cta: tl.int64,")
 
             code.writeline("tile_size: tl.constexpr,")
 
@@ -340,7 +340,6 @@ def generate_repeat_kernel(
             store_stmt: str = f"tl.store({ptrs_expr}, out0, mask=mask)"
             code.writeline(store_stmt)
 
-        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
         code.writeline("else: # grid-stride-loop style kernel")
         with code.indent():
             code.writeline("for j in range(0, tiles_per_cta):")
@@ -460,7 +459,6 @@ class RepeatFunction:
 _repeat_func = RepeatFunction()
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": 2**n}, num_stages=s, num_warps=w)
@@ -470,11 +468,12 @@ _repeat_func = RepeatFunction()
     ],
     key=["C"],
 )
+@libentry()
 @triton.jit
 def repeat_2d_kernel(
     inp_ptr,
     out_ptr,
-    N,
+    N: tl.int64,
     C: tl.constexpr,
     repeat_N: tl.constexpr,
     repeat_C: tl.constexpr,

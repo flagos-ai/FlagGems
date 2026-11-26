@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -52,28 +53,75 @@ def lerp_scalar_kernel_tail(input, end, weight):
     return end - (end - input) * (1 - weight)
 
 
+def lerp_backward(grad_output, input, end, weight):
+    """Backward of ``lerp``.
+
+    ``d/input = grad * (1 - weight)``, ``d/end = grad * weight`` and, for a
+    tensor weight, ``d/weight = grad * (end - input)``. A scalar weight has no
+    gradient.
+    """
+    logger.debug("GEMS LERP_BACKWARD")
+    grad_input = grad_output * (1 - weight)
+    grad_end = grad_output * weight
+    if torch.is_tensor(weight):
+        grad_weight = grad_output * (end - input)
+        return grad_input, grad_end, grad_weight
+    return grad_input, grad_end, None
+
+
+class LerpTensorOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, end, weight):
+        ctx.save_for_backward(input, end, weight)
+        return _lerp_tensor_forward(input, end, weight)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, end, weight = ctx.saved_tensors
+        return lerp_backward(grad_output, input, end, weight)
+
+
+class LerpScalarOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, end, weight):
+        ctx.weight = weight
+        ctx.save_for_backward(input, end)
+        return _lerp_scalar_forward(input, end, weight)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, end = ctx.saved_tensors
+        grad_input, grad_end, _ = lerp_backward(grad_output, input, end, ctx.weight)
+        return grad_input, grad_end, None
+
+
 def lerp_tensor(input, end, weight):
-    logger.debug("GEMS LERP TENSOR")
-    out = lerp_tensor_kernel(input, end, weight)
-    return out
+    logger.debug("GEMS LERP_TENSOR")
+    return LerpTensorOpFunction.apply(input, end, weight)
 
 
 def lerp_tensor_(input, end, weight):
-    logger.debug("GEMS LERP INPLACE TENSOR")
+    logger.debug("GEMS LERP_INPLACE_TENSOR")
     return lerp_tensor_kernel(input, end, weight, out0=input)
 
 
 def lerp_scalar(input, end, weight):
-    logger.debug("GEMS LERP TENSOR")
+    logger.debug("GEMS LERP_TENSOR")
+    return LerpScalarOpFunction.apply(input, end, weight)
+
+
+def _lerp_tensor_forward(input, end, weight):
+    return lerp_tensor_kernel(input, end, weight)
+
+
+def _lerp_scalar_forward(input, end, weight):
     if weight < 0.5:
-        out = lerp_scalar_kernel_head(input, end, weight)
-    else:
-        out = lerp_scalar_kernel_tail(input, end, weight)
-    return out
+        return lerp_scalar_kernel_head(input, end, weight)
+    return lerp_scalar_kernel_tail(input, end, weight)
 
 
 def lerp_scalar_(input, end, weight):
-    logger.debug("GEMS LERP INPLACE TENSOR")
+    logger.debug("GEMS LERP_INPLACE_TENSOR")
     if weight < 0.5:
         return lerp_scalar_kernel_head(input, end, weight, out0=input)
     else:

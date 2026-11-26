@@ -28,8 +28,7 @@ def test_reciprocal(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.reciprocal(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.reciprocal(inp)
+    res_out = flag_gems.reciprocal(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -42,7 +41,6 @@ def test_reciprocal_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.reciprocal_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.reciprocal_(inp)
+    res_out = flag_gems.reciprocal_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

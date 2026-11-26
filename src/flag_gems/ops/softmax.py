@@ -50,11 +50,13 @@ def softmax_kernel_non_inner(
         offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
         mask = (n_offsets[:, None] < N) & (k_offsets < K)
         input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+        # Reduce in fp32: some triton backends (e.g. Cambricon MLU) reject
+        # fp16/bf16 in tl.exp, and fp32 accumulation is more accurate anyway.
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, 0)
         e = tl.exp(inp - m[None, :])
         z = tl.sum(e, 0)
-        out = e / z
+        out = (e / z).to(output_ptr.dtype.element_ty)
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:
@@ -116,13 +118,13 @@ def softmax_kernel_inner(
         offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            output_ptr.dtype.element_ty
-        )
+        # Reduce in fp32: some triton backends (e.g. Cambricon MLU) reject
+        # fp16/bf16 in tl.exp, and fp32 accumulation is more accurate anyway.
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, 0)
         e = tl.exp(inp - m)
         z = tl.sum(e, 0)
-        out = e / z
+        out = (e / z).to(output_ptr.dtype.element_ty)
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:
