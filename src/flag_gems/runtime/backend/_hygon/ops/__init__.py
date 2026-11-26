@@ -22,10 +22,14 @@ from ._conv_depthwise2d import _conv_depthwise2d
 from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
+)
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
 from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_add_Scalar import _foreach_add_Scalar as _foreach_add_Scalar
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
@@ -154,6 +158,7 @@ from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .layernorm import layer_norm, layer_norm_backward, native_layer_norm
 from .lcm import lcm, lcm_
+from .ldexp import ldexp
 from .ldexp_ import ldexp_
 from .ldl_factor_ex import ldl_factor_ex
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -277,7 +282,6 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
-from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_lanczos2d_aa_backward import upsample_lanczos2d_aa_backward
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
@@ -303,10 +307,12 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
+    "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_add__List",
     "_foreach_add__Scalar",
     "_foreach_add__ScalarList",
+    "_foreach_add_Scalar",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
@@ -434,6 +440,7 @@ __all__ = [
     "layer_norm_backward",
     "lcm",
     "lcm_",
+    "ldexp",
     "ldexp_",
     "ldl_factor",
     "ldl_factor_ex",
@@ -569,8 +576,6 @@ __all__ = [
     "trunc_divide",
     "trunc_divide_",
     "unique_dim",
-    "unsqueeze",
-    "unsqueeze_",
     "upsample_lanczos2d_aa_backward",
     "upsample_linear1d",
     "upsample_nearest2d",
