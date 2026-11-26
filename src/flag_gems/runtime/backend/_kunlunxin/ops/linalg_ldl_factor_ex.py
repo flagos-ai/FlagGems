@@ -69,34 +69,42 @@ def _ldl_fused_kernel(W, LD, P, INFO, N: tl.constexpr, B: tl.constexpr):
     LD += batch * B * B
     P += batch * N
     INFO += batch
+    if N == 1:
+        # The scalar matrix has no pivot search or trailing update.
+        diag = tl.load(W)
+        tl.store(LD, diag)
+        tl.store(P, 1)
+        tl.store(INFO, ((diag == 0) | (diag != diag)).to(tl.int32))
+        return
     e = tl.arange(0, B * B)
     row = e // B
     col = e % B
-    rr = tl.arange(0, B)
     src = W
     dst = U
     nextk = 0
     info = 0
     for k in range(N):
         if k >= nextk:
-            ck = tl.load(src + rr * B + k, volatile=True)
-            diag = tl.sum(tl.where(rr == k, ck, 0.0), 0)
-            v = tl.where((rr > k) & (rr < N), tl.abs(ck), 0.0)
-            cm = tl.max(v, 0)
+            # Scan the active column once, keeping the first maximum. A
+            # scalar pivot search avoids nested vector reductions on XPU.
+            diag = tl.load(src + k * B + k, volatile=True)
+            cm = 0.0
+            im = k
+            for i in range(k + 1, N):
+                value = tl.abs(tl.load(src + i * B + k, volatile=True))
+                im = tl.where(value > cm, i, im)
+                cm = tl.maximum(cm, value)
             skip = ((diag == 0) & (cm == 0)) | (diag != diag)
             kp = k
             step = 1
             if not skip:
                 if tl.abs(diag) < 0.6403882032022076 * cm:
-                    im = tl.min(tl.where((rr > k) & (rr < N) & (v == cm), rr, B - 1), 0)
-                    rowim = tl.load(
-                        src + tl.maximum(im, rr) * B + tl.minimum(im, rr), volatile=True
-                    )
-                    rm = tl.max(
-                        tl.where((rr >= k) & (rr < N) & (rr != im), tl.abs(rowim), 0.0),
-                        0,
-                    )
-                    di = tl.sum(tl.where(rr == im, rowim, 0.0), 0)
+                    rm = 0.0
+                    for j in range(k, N):
+                        off = tl.maximum(im, j) * B + tl.minimum(im, j)
+                        value = tl.abs(tl.load(src + off, volatile=True))
+                        rm = tl.maximum(rm, tl.where(j != im, value, 0.0))
+                    di = tl.load(src + im * B + im, volatile=True)
                     if tl.abs(diag) < 0.6403882032022076 * cm * (cm / rm):
                         kp = im
                         if tl.abs(di) < 0.6403882032022076 * rm:
@@ -222,6 +230,8 @@ def ldl_factor_ex(A, hermitian=False, check_errors=False):
             b,
             num_warps=1,
             enable_fp_fusion=False,
+            # The XPU unroller cannot lower the 4096-lane update tile.
+            isCloseUnrollControl=b > 32,
         )
     if check_errors:
         for code in info.reshape(-1).tolist():
