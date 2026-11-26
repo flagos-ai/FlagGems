@@ -275,6 +275,26 @@ trunc_:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+bmm_backward:
+  shapes:
+  - - 2
+    - 16
+    - 32
+    - 24
+  - - 4
+    - 64
+    - 64
+    - 64
+  - - 4
+    - 128
+    - 256
+    - 128
+  - - 8
+    - 256
+    - 256
+    - 256
+  shape_desc: backward input shape
+
 gcd:
   shapes:
     - [65536]
@@ -1672,22 +1692,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-bmm_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 2
-    - 16
-    - 32
-    - 24
-  - - 4
+  - - 257
+  - - 64
     - 64
-    - 64
-    - 64
-  - - 4
-    - 128
-    - 256
-    - 128
-  - - 8
-    - 256
-    - 256
-    - 256
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
   shape_desc: backward input shape

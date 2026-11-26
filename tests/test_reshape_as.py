@@ -277,7 +277,10 @@ def test_reshape_as_complex_copy(shape, layout, target, dtype):
     # real-valued copy; both must land in the output, matching native.
     if dtype == torch.complex32 and "neg" in layout:
         pytest.skip("complex32 neg_conj is not implemented in native ATen")
-    base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Ascend cannot run the complex normal_ kernel behind torch.randn.
+    base = torch.testing.make_tensor(
+        shape, dtype=dtype, device=flag_gems.device, low=-1, high=1
+    )
     inp = _apply_layout(base, layout)
     ref_inp = utils.to_reference(inp)
     other = torch.empty(target, dtype=dtype, device=flag_gems.device)
