@@ -19596,7 +19596,7 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: softmax_backward_data
   description: Alias entry named after the aten symbol `_softmax_backward_data`; the
     backward version of `softmax()` (same semantics as the `softmax_backward` entry).
