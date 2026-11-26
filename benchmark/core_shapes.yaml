@@ -840,6 +840,22 @@ GenericBenchmarkExcluse3D:
     - [1024, 1024]
     - [4096, 4096]
 
+softplus_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
+softplus_backward_out:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 # default 2d-only shapes
 GenericBenchmark2DOnly:
   shapes:
@@ -1672,18 +1688,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-softplus_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
   - - 4096
-  - - 1048576
-  - - 16777216
-  shape_desc: Fixed accepted backward input shape
-
-softplus_backward_out:
-  shapes:
-  - - 257
-  - - 4096
-  - - 1048576
-  - - 16777216
-  shape_desc: Fixed accepted backward input shape
+    - 4096
+  shape_desc: backward input shape
