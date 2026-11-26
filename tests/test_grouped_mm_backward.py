@@ -59,8 +59,8 @@ def _reference(grad, mat1, mat2, offs):
 
 @pytest.mark.grouped_mm_backward
 @pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.8"),
-    reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+    utils.SkipVersion("torch", "<2.8") or utils.TO_CPU,
+    reason="torch._grouped_mm requires PyTorch >= 2.8.0 and a CUDA backend.",
 )
 @pytest.mark.parametrize("m, k, n, groups", MKG_SHAPES)
 def test_grouped_mm_backward_functional(m, k, n, groups):
@@ -76,8 +76,8 @@ def test_grouped_mm_backward_functional(m, k, n, groups):
 
 @pytest.mark.grouped_mm_backward
 @pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.8"),
-    reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+    utils.SkipVersion("torch", "<2.8") or utils.TO_CPU,
+    reason="torch._grouped_mm requires PyTorch >= 2.8.0 and a CUDA backend.",
 )
 @pytest.mark.parametrize("groups, n, k", GNK_SHAPES)
 def test_grouped_mm_backward_autograd(groups, n, k):
@@ -108,11 +108,17 @@ def test_grouped_mm_backward_autograd(groups, n, k):
 
 @pytest.mark.grouped_mm_backward
 @pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.8"),
-    reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+    utils.SkipVersion("torch", "<2.8") or utils.TO_CPU,
+    reason="torch._grouped_mm requires PyTorch >= 2.8.0 and a CUDA backend.",
 )
 def test_grouped_mm_backward_matches_autograd_grad():
-    """grad from native autograd equals the two formulas bit-exact."""
+    """grad from native autograd matches the two formulas.
+
+    The native autograd node and the two ``_grouped_mm`` helper formulas use
+    different GEMM implementations whose fp32 accumulation orders can differ
+    in the last bf16 ulp on rare elements, so compare with the dtype
+    resolution tolerance rather than bit-exact equality.
+    """
     m, k, n, groups = 64, 128, 64, 2
     grad, mat1, mat2, offs = _make_inputs(m, k, n, groups, flag_gems.device)
     if utils.TO_CPU:
@@ -124,14 +130,14 @@ def test_grouped_mm_backward_matches_autograd_grad():
     ga, gb = torch.autograd.grad(out, [mat1_rg, mat2_rg], grad)
 
     res_ga, res_gb = flag_gems.grouped_mm_backward(grad, mat1, mat2, offs)
-    utils.gems_assert_equal(res_ga, ga)
-    utils.gems_assert_equal(res_gb, gb)
+    utils.gems_assert_close(res_ga, ga, torch.bfloat16)
+    utils.gems_assert_close(res_gb, gb, torch.bfloat16)
 
 
 @pytest.mark.grouped_mm_backward
 @pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.8"),
-    reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+    utils.SkipVersion("torch", "<2.8") or utils.TO_CPU,
+    reason="torch._grouped_mm requires PyTorch >= 2.8.0 and a CUDA backend.",
 )
 def test_grouped_mm_backward_non_contiguous():
     """Non-contiguous mat1/grad inputs still produce the right gradients."""
@@ -151,8 +157,8 @@ def test_grouped_mm_backward_non_contiguous():
 
 @pytest.mark.grouped_mm_backward
 @pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.8"),
-    reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+    utils.SkipVersion("torch", "<2.8") or utils.TO_CPU,
+    reason="torch._grouped_mm requires PyTorch >= 2.8.0 and a CUDA backend.",
 )
 def test_grouped_mm_backward_3d_uniform():
     """3-D mat1 without offs: uniform groups."""
