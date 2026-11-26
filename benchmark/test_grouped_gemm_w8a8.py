@@ -407,6 +407,7 @@ def aten_int8_grouped_gemm_baseline(A, As, B, Bs, C, m_indices, m_rows):
             torch.bfloat16
         )
 
+
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     not (
