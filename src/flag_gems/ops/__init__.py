@@ -1774,6 +1774,7 @@ from flag_gems.ops.unique_dim_consecutive import unique_dim_consecutive
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
 from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
+from flag_gems.ops.unsafe_view import unsafe_view, unsafe_view_backward
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -3586,6 +3587,8 @@ __all__ = [
     "unsafe_index",
     "unsafe_index_put",
     "unsafe_split_with_sizes",
+    "unsafe_view",
+    "unsafe_view_backward",
     "unsqueeze",
     "unsqueeze_",
     "upsample_bicubic2d",

@@ -1012,6 +1012,18 @@ ConvDepthwise2DBenchmark:
     - [2, 512, 14, 14, 3, 3, 1, 1, 1]
   shape_desc: "N, C, H, W, K_h, K_w, stride, padding, dilation"
 
+unsafe_view_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 AttentionBenchmark:
   shapes:
     - [4, 32, 1024, 64]
