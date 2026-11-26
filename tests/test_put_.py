@@ -241,12 +241,15 @@ def test_put__accumulate_duplicates(dtype):
 # ---------------------------------------------------------------------------
 # `accumulate=True` has no Triton atomic for int8/uint8/int16/bool, so those
 # dtypes take a staged int32 path; the parametrisation below covers both sides.
+PUT_COMPLEX_DTYPES = [torch.complex64] + (
+    [torch.complex128] if utils.fp64_is_supported else []
+)
 _PUT_ALL_DTYPES = (
     utils.ALL_FLOAT_DTYPES
     + utils.ALL_INT_DTYPES
     + [torch.int8, torch.uint8]
     + utils.BOOL_TYPES
-    + [torch.complex64, torch.complex128]
+    + PUT_COMPLEX_DTYPES
 )
 
 
@@ -255,9 +258,12 @@ def _gen_typed(shape, dtype, device):
     if dtype is torch.bool:
         return torch.randint(0, 2, shape, dtype=torch.bool, device=device)
     if dtype.is_complex:
-        real = torch.randn(shape, device=device)
-        imag = torch.randn(shape, device=device)
-        return (real + 1j * imag).to(dtype)
+        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+            pytest.skip("Kunlunxin target storage does not retain complex128 dtype")
+        factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" else device
+        real = torch.randn(shape, device=factory_device)
+        imag = torch.randn(shape, device=factory_device)
+        return (real + 1j * imag).to(dtype).to(device)
     if dtype.is_floating_point:
         return torch.randn(shape, dtype=dtype, device=device)
     info = torch.iinfo(dtype)
@@ -352,6 +358,8 @@ def test_put__bool_accumulate_is_logical_or():
 @pytest.mark.parametrize("rank", [1, 2, 5, 6, 7, 8, 9])
 @pytest.mark.parametrize("contiguous", [True, False])
 def test_put__high_rank(rank, contiguous):
+    if flag_gems.vendor_name == "enflame" and rank == 9:
+        pytest.skip("enflame not support rank 9 yet")
     utils.init_seed(0)
     shape = tuple(range(2, 2 + rank))
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
@@ -414,6 +422,8 @@ def test_put__index_out_of_range(bad):
     # than `tl.device_assert` (which is compiled out unless TRITON_DEBUG=1).
     # A tripped device assert poisons the CUDA context for the whole process, so
     # the failure is exercised in an isolated subprocess.
+    if flag_gems.vendor_name in {"mthreads", "metax", "iluvatar"}:
+        pytest.skip("native put_ does not enforce device-side index bounds")
     code = textwrap.dedent(f"""
         import torch
         import flag_gems
@@ -429,6 +439,11 @@ def test_put__index_out_of_range(bad):
         print("NO_ERROR")
         """)
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    # The GCU driver dumps a ~500 MB device coredump when the SIP assert this test
+    # deliberately trips fires; disable it so the crash subprocess doesn't litter
+    # the working tree. A no-op on CUDA/ROCm.
+    if flag_gems.vendor_name == "enflame":
+        env["EFRT_ENABLE_GCU_COREDUMP"] = "false"
     proc = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, env=env
     )
@@ -485,12 +500,15 @@ def test_put__index_dtype_and_numel_raise():
             torch.tensor([0], dtype=torch.int32, device=flag_gems.device),
             source,
         )
-    with pytest.raises(RuntimeError, match="same dtype"):
-        flag_gems.put_(
-            inp,
-            torch.tensor([0], dtype=torch.int64, device=flag_gems.device),
-            torch.ones(1, dtype=torch.float64, device=flag_gems.device),
-        )
+    # source must share self's dtype; fp64 is only a usable "different dtype"
+    # on devices that actually support it.
+    if utils.fp64_is_supported:
+        with pytest.raises(RuntimeError, match="same dtype"):
+            flag_gems.put_(
+                inp,
+                torch.tensor([0], dtype=torch.int64, device=flag_gems.device),
+                torch.ones(1, dtype=torch.float64, device=flag_gems.device),
+            )
     with pytest.raises(IndexError, match="same number of elements"):
         flag_gems.put_(
             inp,
@@ -680,9 +698,14 @@ def test_put__view_of_larger_storage(make_view, base_numel, index_vals):
 def test_put__complex32_rejected():
     # Native CUDA `put_` has no ComplexHalf kernel; `complex32` used to fall
     # through to the FP16 real-view path, silently succeeding where ATen raises.
-    inp = torch.zeros(4, dtype=torch.complex32, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" else flag_gems.device
+    inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(
+        flag_gems.device
+    )
     index = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
-    source = torch.ones(1, dtype=torch.complex32, device=flag_gems.device)
+    source = torch.ones(1, dtype=torch.complex32, device=factory_device).to(
+        flag_gems.device
+    )
 
     with pytest.raises(NotImplementedError) as ref_err:
         inp.clone().put_(index, source)

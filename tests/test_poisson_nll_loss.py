@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 SHAPES = [(2, 3)] if cfg.QUICK_MODE else [(2, 3), (128, 256), (512, 512)]
 
@@ -115,6 +116,11 @@ def test_accuracy_poisson_nll_loss_boundary(dtype):
 def test_poisson_nll_loss_mixed_dtype_promotion(
     input_dtype, target_dtype, expected_dtype
 ):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (input_dtype, target_dtype, expected_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     input = torch.ones((2, 3), dtype=input_dtype, device=flag_gems.device)
     target = torch.ones((1, 3), dtype=target_dtype, device=flag_gems.device)
     ref = torch.ops.aten.poisson_nll_loss(
@@ -150,6 +156,8 @@ def test_poisson_nll_loss_mixed_dtype_exceptions():
 @pytest.mark.parametrize("full", [False, True])
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend Poisson NLL reference accepts non-logarithmic bool input")
     inp = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
     target = torch.ones((1, 3), device=flag_gems.device)
     with pytest.raises(RuntimeError):
@@ -166,7 +174,9 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 
 
 @pytest.mark.poisson_nll_loss
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 @pytest.mark.parametrize("log_input", [False, True])
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize(
@@ -175,6 +185,7 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
+    use_cpu_reference = flag_gems.vendor_name == "mthreads" and case != "empty"
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -187,14 +198,16 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         target = target.real.abs() + 0.5
     full = case == "real_target"
     reference = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(inp),
-        utils.to_reference(target),
+        inp.cpu() if use_cpu_reference else utils.to_reference(inp),
+        target.cpu() if use_cpu_reference else utils.to_reference(target),
         log_input,
         full,
         1e-8,
         reduction,
     )
     result = flag_gems.poisson_nll_loss(inp, target, log_input, full, 1e-8, reduction)
+    if use_cpu_reference:
+        assert result.device == inp.device
     assert result.dtype == reference.dtype
     utils.gems_assert_close(
         result,

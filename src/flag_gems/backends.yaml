@@ -76,10 +76,11 @@ backends:
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
       USE_FLAGCX: "OFF"
     deps:
-      - flagcx==0.14.0rc2.post2+cuda13.3
-      - torch==2.11.0+cu130
+      - flagcx==0.14.1+cuda13.3
+      - numpy==1.26.4
+      - torch==2.13.0+cu130
       - torchaudio==2.11.0+cu130
-      - torchvision==0.26.0+cu130
+      - torchvision==0.28.0+cu130
 
   ascend-cann850:
     python: "3.11"
@@ -106,8 +107,12 @@ backends:
       - /usr/local/Ascend/cann/set_env.sh
     deps:
       - cann-shmem==1.6.0
+      - flagcx==0.14.1+cann9.0.0
+      - numpy==1.26.4
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
+      - torchaudio==2.10.0+cpu
+      - torchvision==0.25.0+cpu
       - decorator==5.2.1
       - attrs==25.3.0
       - psutil==7.0.0
@@ -234,10 +239,7 @@ backends:
   kunlunxin-xre5371:
     python: "3.10"
     triton: triton==3.6.0+gitcd2d6c1b
-    # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image, which preinstalls
-    # flagtree 0.7.0+xpu3.6. The old 0.6.1+xpu3.6 wheel is a broken zip
-    # ("Failed to read from zip file") and must not be reinstalled.
-    flagtree: flagtree==0.7.0+xpu3.6
+    flagtree: flagtree==0.7.1a1+xpu3.6
     env:
       PATH: /usr/local/xpu/bin:$PATH
       XPU_EVENT_KL3_ENABLE: "1"

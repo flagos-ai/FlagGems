@@ -21,6 +21,8 @@ import triton
 import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,7 @@ def _fused_kernel(
     FQ: tl.constexpr,
     SYM: tl.constexpr,
     FLOOR: tl.constexpr,
+    IEEE_DIV: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # One program per quantization group.  Per-tensor mode launches a single
@@ -103,11 +106,20 @@ def _fused_kernel(
         # asymmetric branch. The divisions must be IEEE round-to-nearest:
         # zero_point can land exactly on a .5 tie (running_min/max = -0.5/0.5
         # with qmin/qmax = 0/255 gives 127.5), and plain '/' lowers to the
-        # approximate div.full.f32 on NVIDIA.
-        sc_a = tl.math.div_rn(mx - mn, qmxv - qmnv)
+        # approximate div.full.f32 on NVIDIA. libdevice.div_rn is reported
+        # miscompiled on the Enflame GCU backend, so that backend keeps the
+        # exact previous expression; the gate preserves its path by
+        # construction and has not been runtime-retested on Enflame here.
+        if IEEE_DIV:
+            sc_a = libdevice.div_rn(mx - mn, qmxv - qmnv)
+        else:
+            sc_a = (mx - mn) / (qmxv - qmnv)
         deg = sc_a == 0.0
         sc_a = tl.where(deg, 0.1 + zf, sc_a)
-        z_a = _rint(qmnv - tl.math.div_rn(mn, sc_a))
+        if IEEE_DIV:
+            z_a = _rint(qmnv - libdevice.div_rn(mn, sc_a))
+        else:
+            z_a = _rint(qmnv - (mn / sc_a))
         z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
         z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
         sc_v = sc_a
@@ -153,16 +165,12 @@ def _fused_kernel(
             tl.store(mask_ptr + base + idx, tl.full((BLOCK,), 1, tl.uint8), mask=m)
 
 
-_BLOCK = 16384  # per-lane DMA width for the group/element kernels:
-# measured on the per-channel cases (2048x16384 / 4096x16384), 1024/4warps
-# = 256 per lane -> 29.5/58.8 ms, 4096 -> 15.8/31.2, 8192 -> 7.6/14.9,
-# 16384 -> 7.4/14.5, 32768 -> 13.1/25.9 (local-memory pressure).
+_BLOCK = 2048  # elements per program tile, 16 per lane at 4 warps
 _SCALE_FLOOR = 6.1e-5
-# Elementwise passes in the large per-tensor path: BLOCK/num_warps is the
-# per-lane DMA width on this backend (threads-per-warp == 1), so 65536/1 is the
-# bandwidth sweet spot (measured 385-420 GB/s vs ~40 GB/s at 2048/4).
-_LARGE_BLOCK = 65536
-_RED_BLOCK = 16384  # partial min/max keeps 4 accumulators, so a smaller tile
+# Elementwise passes in the large per-tensor path use the same tile: larger
+# tiles with a single warp leave hundreds of elements per lane and spill.
+_LARGE_BLOCK = 2048
+_RED_BLOCK = 2048  # partial min/max keeps 4 accumulators, so a smaller tile
 _SINGLE_MAX = 1 << 16
 _PARTIAL_G = 256
 _ELEM_G = 1024
@@ -205,6 +213,7 @@ def _finalize_pt(
     FQ: tl.constexpr,
     SYM: tl.constexpr,
     FLOOR: tl.constexpr,
+    IEEE_DIV: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # Single-program finalize: combine partials, update running stats in place
@@ -238,12 +247,19 @@ def _finalize_pt(
         qmxv = qmxf + zf
         mn = tl.minimum(rmin, zf)
         mx = tl.maximum(rmax, zf)
-        # IEEE round-to-nearest division (see _fused_kernel: zero_point can
-        # hit an exact .5 tie that plain '/' rounds the wrong way on NVIDIA).
-        sc_a = tl.math.div_rn(mx - mn, qmxv - qmnv)
+        # IEEE round-to-nearest division where supported (see _fused_kernel:
+        # zero_point can hit an exact .5 tie that plain '/' rounds the wrong
+        # way on NVIDIA; Enflame keeps the original expression).
+        if IEEE_DIV:
+            sc_a = libdevice.div_rn(mx - mn, qmxv - qmnv)
+        else:
+            sc_a = (mx - mn) / (qmxv - qmnv)
         deg = sc_a == 0.0
         sc_a = tl.where(deg, 0.1 + zf, sc_a)
-        z_a = _rint(qmnv - tl.math.div_rn(mn, sc_a))
+        if IEEE_DIV:
+            z_a = _rint(qmnv - libdevice.div_rn(mn, sc_a))
+        else:
+            z_a = _rint(qmnv - (mn / sc_a))
         z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
         z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
         sc_v = sc_a
@@ -397,6 +413,9 @@ def _fused_moving_avg_obs_fq_helper(
     dneg_h = float((qmax - qmin + 1) // 2)
     dpos_h = float((qmax - qmin) // 2)
     zsym_h = float(round((qmin + qmax) * 0.5))
+    # Enflame reports libdevice.div_rn miscompilation; keep its original '/'
+    # while NVIDIA uses the correctly-rounded intrinsic.
+    ieee_div = flag_gems.vendor_name != "enflame"
     if (not per_channel) and N > _SINGLE_MAX:
         # Large per-tensor: parallel multi-block reduction + elementwise pass
         # so the work is spread over the whole device instead of one program.
@@ -413,7 +432,7 @@ def _fused_moving_avg_obs_fq_helper(
                 N,
                 chunk,
                 BLOCK=_RED_BLOCK,
-                num_warps=1,
+                num_warps=4,
             )
         else:
             G = 0
@@ -436,6 +455,7 @@ def _fused_moving_avg_obs_fq_helper(
                 FQ=fq,
                 SYM=sym,
                 FLOOR=_SCALE_FLOOR,
+                IEEE_DIV=ieee_div,
                 BLOCK=_BLOCK,
                 num_warps=4,
             )
@@ -454,7 +474,7 @@ def _fused_moving_avg_obs_fq_helper(
                 qmin,
                 qmax,
                 BLOCK=_LARGE_BLOCK,
-                num_warps=1,
+                num_warps=4,
             )
         else:
             _copy_elem[grid](
@@ -464,7 +484,7 @@ def _fused_moving_avg_obs_fq_helper(
                 N,
                 echunk,
                 BLOCK=_LARGE_BLOCK,
-                num_warps=1,
+                num_warps=4,
             )
         return out.view(shape), mask.view(shape)
 
@@ -487,8 +507,9 @@ def _fused_moving_avg_obs_fq_helper(
         FQ=fq,
         SYM=sym,
         FLOOR=_SCALE_FLOOR,
+        IEEE_DIV=ieee_div,
         BLOCK=_BLOCK,
-        num_warps=1,
+        num_warps=4,
     )
 
     return out.view(shape), mask.view(shape)

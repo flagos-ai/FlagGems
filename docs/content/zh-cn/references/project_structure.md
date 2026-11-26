@@ -30,7 +30,7 @@ FlagGems
 ├── src/flag_gems         // Python 核心算子库源码
 │   ├── utils             // 动态代码生成、调优与公共工具
 │   ├── ops               // 基础逐点与常规算子实现
-│   ├── fused             // 融合算子实现（FlashAttention、MoE 等）
+│   ├── deprecated        // 融合算子实现（FlashAttention、MoE 等）
 │   ├── modules           // PyTorch nn.Module 级神经网络高阶组件
 │   ├── runtime           // 跨芯片后端适配与分发运行时
 │   └── testing           // 内部精度与测试辅助工具

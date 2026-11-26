@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
@@ -89,7 +90,7 @@ def test_trapezoid_x_dim(dim, dtype):
 
 
 @pytest.mark.trapezoid
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_trapezoid_x_fp64(dtype):
     # Test FP64 precision is preserved for trapezoid_x
     if not utils.fp64_is_supported:
@@ -243,7 +244,9 @@ def test_trapezoid_x_mixed_dtype():
 
 
 @pytest.mark.trapezoid
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_trapezoid_x_complex(dtype):
     # Complex inputs follow ATen's contract: same-rank broadcastable shapes,
     # forward in the complex dtype, and Wirtinger-convention backward
