@@ -166,6 +166,42 @@ def _call_index_add(inp, dim, index, src, inplace, alpha=1):
 
 
 @_contract_test
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize(
+    "upper_bound, values, valid",
+    [
+        (2**31, [0, 2**31 - 1], True),
+        (2**31, [-1], False),
+        (2**31 - 1, [2**31 - 1], False),
+    ],
+)
+def test_index_add_int32_wide_bound(upper_bound, values, valid):
+    from flag_gems.ops.index_add import _assert_index_in_bounds
+
+    # Exercise the validator without allocating a multi-GiB output.
+    index = torch.tensor(values, dtype=torch.int32, device=flag_gems.device)
+    if valid:
+        _assert_index_in_bounds(index, upper_bound)
+    else:
+        with pytest.raises(AssertionError, match="0 <= index"):
+            _assert_index_in_bounds(index, upper_bound)
+
+
+@_contract_test
+@pytest.mark.index_add_
+@pytest.mark.parametrize("count", [0, 1])
+def test_index_add_inplace_rejects_expanded_destination(count):
+    base = torch.tensor([3.0], device=flag_gems.device)
+    inp = base.expand(4)
+    src = torch.ones(count, device=flag_gems.device)
+    index = torch.zeros(count, dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="single memory location"):
+        flag_gems.index_add_(inp, 0, index, src)
+    torch.testing.assert_close(base.cpu(), torch.tensor([3.0]))
+
+
+@_contract_test
 @pytest.mark.skipif(not utils.bf16_is_supported, reason="BF16 is not supported")
 @pytest.mark.index_add
 @pytest.mark.index_add_

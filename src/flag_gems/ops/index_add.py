@@ -25,6 +25,7 @@ import torch
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
 logger = logging.getLogger(__name__)
 _SCALAR_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd)
@@ -328,7 +329,14 @@ def _normalize_index_add_alpha(inp, alpha):
 
 
 def _assert_index_in_bounds(index, upper_bound):
-    if index.numel() and not bool(((index >= 0) & (index < upper_bound)).all().item()):
+    if not index.numel():
+        return
+    valid = index >= 0
+    # Above the largest int32 value, all nonnegative int32 indices fit.
+    # Comparing against that Python integer would narrow it to int32.
+    if index.dtype != torch.int32 or upper_bound <= torch.iinfo(torch.int32).max:
+        valid = valid & (index < upper_bound)
+    if not bool(valid.all().item()):
         raise AssertionError("0 <= index < self.size(dim)")
 
 
@@ -400,6 +408,12 @@ def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX_ADD_")
     dim = _validate_index_add_args(inp, dim, index, src)
     alpha = _normalize_index_add_alpha(inp, alpha)
+    if has_internal_overlapping(inp) == MemOverlap.Yes:
+        raise RuntimeError(
+            "unsupported operation: more than one element of the written-to tensor "
+            "refers to a single memory location. Please clone() the tensor before "
+            "performing the operation."
+        )
     _assert_no_overlap(inp, src)
     _assert_no_overlap(inp, index)
     if src.numel() == 0:
