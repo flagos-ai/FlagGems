@@ -140,8 +140,6 @@ if arch_version == 300:
         "empty",
         "erfinv",
         "erfinv_",
-        "expand",
-        "expand_",
         "frac",
         "frac_",
         "greater_equal_Scalar",
