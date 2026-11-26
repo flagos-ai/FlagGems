@@ -12,6 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+asinh_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: input shape
+
+asinh_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 single_dim_shapes: &single_dim_shapes
   shapes:
     - [64]
@@ -1672,18 +1694,7 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-asinh_backward:
-  shapes:
-  - - 257
-  - - 64
-    - 64
-  - - 1024
-    - 1024
-  - - 4096
-    - 4096
-  shape_desc: input shape
-
-asinh_backward_:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
   - - 64
