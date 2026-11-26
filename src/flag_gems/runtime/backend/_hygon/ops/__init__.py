@@ -41,6 +41,7 @@ from ._foreach_mul__Scalar import _foreach_mul__Scalar
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_pow_ScalarList import _foreach_pow_ScalarList as _foreach_pow_ScalarList
 from ._foreach_round_ import _foreach_round_
 from ._foreach_sign_ import _foreach_sign_
 
@@ -322,6 +323,7 @@ __all__ = [
     "_foreach_mul__ScalarList",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
+    "_foreach_pow_ScalarList",
     "_foreach_round_",
     "_foreach_sign_",
     "_masked_scale",
