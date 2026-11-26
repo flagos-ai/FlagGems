@@ -884,6 +884,18 @@ frobenius_norm:
     - [65536, 64]
   shape_desc: "M, N"
 
+unsafe_index_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
 multilabel_margin_loss_backward:
@@ -1672,14 +1684,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-unsafe_index_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 4
-    - 16
-  - - 16
-    - 32
+  - - 257
   - - 64
     - 64
-  - - 128
-    - 128
-  shape_desc: Fixed accepted backward input shape
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
