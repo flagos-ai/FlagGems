@@ -176,7 +176,6 @@ from .div import (
     floor_divide_,
     remainder,
     remainder_,
-    true_divide_,
     true_divide_out,
     trunc_divide,
     trunc_divide_,
