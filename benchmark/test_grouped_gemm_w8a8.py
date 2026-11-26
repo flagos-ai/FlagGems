@@ -24,6 +24,10 @@ deterministically, not captured model values. INT8 uses ContinuousGroupedGEMM.
 Prepared external INT8/FP8 diagnostic JSON files are also accepted; their
 classification must identify synthetic routing.
 
+Without --shape_file, use the existing core_shapes.yaml geometries with
+synthetic balanced expert routing and unit weights. These default cases are
+not captured model calls and do not establish invocation-weighted performance.
+
 Both routes receive A, As, B, Bs, preallocated BF16 C, m_indices and m_rows.
 The mctlass adapter builds segment offsets and identity weight indices on the
 GPU every invocation, selects the native block size, computes the native INT8
@@ -33,6 +37,10 @@ No dynamic routing metadata is cached or copied to the CPU. Initial input/output
 allocation, JIT and object construction are outside event timing. The candidate's
 own expert-prefix construction is inside timing. Accuracy tests belong to
 tests/test_grouped_gemm_w8a8.py. Historical reference=deep_gemm remains explicit.
+
+NVIDIA uses the same shape/input loop with block-scaled FP8 operands. Its
+DeepGEMM baseline receives prepacked, aligned inputs; padding and scale layout
+preparation stay outside timing. The candidate includes its task preparation.
 """
 
 import json
@@ -64,16 +72,48 @@ def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constex
 
 
 class GroupedGEMMW8A8Benchmark(base.Benchmark):
+    @staticmethod
+    def _default_dataset(shapes):
+        rows = []
+        for index, (m, n, k, g) in enumerate(shapes, 1):
+            lengths = [m // g + (expert < m % g) for expert in range(g)]
+            offsets, total = [], 0
+            for length in lengths:
+                total += length
+                offsets.append(total)
+            rows.append(
+                {
+                    "index": index,
+                    "source_index": index,
+                    "G": g,
+                    "M": m,
+                    "N": n,
+                    "K": k,
+                    "lengths": lengths,
+                    "offs": offsets,
+                    "stage": "gate_up" if n < k else "down",
+                    "source_shape": [m, n, k, g],
+                    "source_count": 1,
+                    "source_sources": ["benchmark/core_shapes.yaml"],
+                    "routing_seed": None,
+                    "scenario": "synthetic_core",
+                }
+            )
+        return {
+            "classification": "Synthetic balanced routing; unit weights, not model call counts",
+            "routing_origin": "synthetic_balanced",
+            "source_sha256": None,
+            "shapes": rows,
+        }
+
     def set_shapes(self, shape_file_path=None):
         path = Path(shape_file_path or base.Config.shape_file)
         default = Path(__file__).with_name("core_shapes.yaml")
         if path.resolve() == default.resolve():
-            pytest.skip(
-                "External grouped_gemm_w8a8 dataset required: pass --shape_file "
-                "PATH to a prepared benchmark JSON. See this module docstring "
-                "for the real-shape source."
-            )
-        self.dataset = json.loads(path.read_text())
+            super().set_shapes(str(path))
+            self.dataset = self._default_dataset(self.shapes)
+        else:
+            self.dataset = json.loads(path.read_text())
         self.shapes = self.dataset["shapes"]
         self.use_deepgemm = self.dataset.get("reference") == "deep_gemm"
         if self.use_deepgemm or self.dataset.get("input_dtype") == "int8":
@@ -277,7 +317,7 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
         return output
 
 
-class GroupedGemmInt8Benchmark(Benchmark):
+class GroupedGemmBenchmark(Benchmark):
     DEFAULT_SHAPES = [(45, 512, 6144, 257), (45, 6144, 256, 257)]
     DEFAULT_SHAPE_DESC = "M,N,K,E"
 
@@ -290,14 +330,61 @@ class GroupedGemmInt8Benchmark(Benchmark):
                 lengths = [m // e + (expert < m % e) for expert in range(e)]
             if len(lengths) != e or sum(lengths) != m:
                 raise ValueError("expert row lengths must match M and E")
-            yield make_grouped_gemm_case(lengths, n, k, self.device)
+            if cur_dtype != torch.float8_e4m3fn:
+                yield make_grouped_gemm_case(lengths, n, k, self.device)
+                continue
+
+            import deep_gemm
+
+            args = make_grouped_gemm_case(
+                lengths, n, k, self.device, seed=42, dtype=cur_dtype, block_scaled=True
+            )
+            # DeepGEMM requires aligned expert segments and column-major A scales.
+            # Prepack once outside timing; only the native FP8 GEMM is measured.
+            alignment = deep_gemm.get_mk_alignment_for_contiguous_layout()
+            padded_lengths = [
+                triton.cdiv(length, alignment) * alignment for length in lengths
+            ]
+            padded_m = sum(padded_lengths)
+            a = torch.zeros((padded_m, k), dtype=cur_dtype, device=self.device)
+            sa = torch.zeros(
+                (k // 128, padded_m), dtype=torch.float32, device=self.device
+            ).T
+            layout = torch.full((padded_m,), -1, dtype=torch.int32, device=self.device)
+            start = padded_start = 0
+            for expert, (length, padded_length) in enumerate(
+                zip(lengths, padded_lengths)
+            ):
+                rows = slice(padded_start, padded_start + length)
+                a[rows].copy_(args[0][start : start + length])
+                sa[rows].copy_(args[1][start : start + length])
+                layout[rows] = expert
+                start += length
+                padded_start += padded_length
+            output = torch.empty(
+                (padded_m, n), dtype=torch.bfloat16, device=self.device
+            )
+            self.native_inputs = (a, sa), (args[2], args[3]), output, layout
+            yield args
+
+    def fp8_reference(self, *args):
+        import deep_gemm
+
+        deep_gemm.m_grouped_fp8_gemm_nt_contiguous(
+            *self.native_inputs, recipe=(1, 128, 128), disable_ue8m0_cast=True
+        )
+        return self.native_inputs[2]
 
 
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("ascend", "metax", "thead")
-    or "grouped_gemm_w8a8" not in vars(flag_gems),
-    reason="requires a registered Ascend, MetaX, or PPU grouped GEMM implementation",
+    not (
+        flag_gems.vendor_name in ("ascend", "metax", "thead")
+        and "grouped_gemm_w8a8" in vars(flag_gems)
+        or flag_gems.vendor_name == "nvidia"
+        and "grouped_gemm_w8a8_fp8" in vars(flag_gems)
+    ),
+    reason="requires a registered grouped GEMM implementation",
 )
 def test_grouped_gemm_w8a8():
     if flag_gems.vendor_name == "metax":
@@ -309,10 +396,22 @@ def test_grouped_gemm_w8a8():
         )
         bench.torch_op = bench.mctlass_reference
     else:
-        bench = GroupedGemmInt8Benchmark(
+        block_scaled = flag_gems.vendor_name == "nvidia"
+        if block_scaled:
+            pytest.importorskip("deep_gemm")
+            torch_op = None
+        else:
+            torch_op = get_grouped_gemm_int8_reference()
+        bench = GroupedGemmBenchmark(
             op_name="grouped_gemm_w8a8",
-            torch_op=get_grouped_gemm_int8_reference(),
-            gems_op=flag_gems.grouped_gemm_w8a8,
-            dtypes=[torch.bfloat16],
+            torch_op=torch_op,
+            gems_op=(
+                flag_gems.grouped_gemm_w8a8_fp8
+                if block_scaled
+                else flag_gems.grouped_gemm_w8a8
+            ),
+            dtypes=[torch.float8_e4m3fn if block_scaled else torch.bfloat16],
         )
+        if block_scaled:
+            bench.torch_op = bench.fp8_reference
     bench.run()

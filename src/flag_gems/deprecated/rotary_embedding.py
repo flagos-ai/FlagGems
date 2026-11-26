@@ -152,43 +152,81 @@ def apply_rotary_pos_emb_inplace_kernel(
     # note: set TRITON_DEBUG=1 to enable this check
     tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
 
-    ordered_block = tl.arange(0, PADDED_HEAD_DIM)
-    mask = ordered_block < HEAD_DIM
-    if ROTARY_INTERLEAVED:
-        odd_mask = ordered_block % 2 == 0
-        rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
-        sin_cos_block = ordered_block // 2
-        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(odd_mask, -sin, sin)
-    else:
-        rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
-        sin_cos_block = ordered_block % (HEAD_DIM // 2)
-        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+    # Each lane owns both values of a rotary pair. Process several heads at
+    # once so the shorter pair dimension still provides enough parallel work.
+    # Bound the tile size for wide heads to avoid excessive register pressure.
+    max_block_heads: tl.constexpr = min(8, max(1, 1024 // PADDED_HEAD_DIM))
+    block_q_heads: tl.constexpr = min(
+        triton.next_power_of_2(NUM_Q_HEADS), max_block_heads
+    )
+    block_k_heads: tl.constexpr = min(
+        triton.next_power_of_2(NUM_K_HEADS), max_block_heads
+    )
+    pair = tl.arange(0, PADDED_HEAD_DIM // 2)
+    pair_mask = pair < HEAD_DIM // 2
+    cos = tl.load(cos_ptr + pair, mask=pair_mask, other=0.0).to(tl.float32)
+    sin = tl.load(sin_ptr + pair, mask=pair_mask, other=0.0).to(tl.float32)
 
     q_ptr += s_id * q_stride_s
-
-    for off_h in range(0, NUM_Q_HEADS):
-        ordered_cols = off_h * q_stride_h + (ordered_block * q_stride_d)
-        rotated_cols = off_h * q_stride_h + (rotated_block * q_stride_d)
-
-        q = tl.load(q_ptr + ordered_cols, mask=mask, other=0.0)
-        rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
-        y = q * cos + rotated_q * sin
-        tl.store(q_ptr + ordered_cols, y, mask=mask)  # In-place update
+    for off_h in range(0, NUM_Q_HEADS, block_q_heads):
+        heads = off_h + tl.arange(0, block_q_heads)
+        head_offsets = heads[:, None] * q_stride_h
+        if ROTARY_INTERLEAVED and max(NUM_Q_HEADS, NUM_K_HEADS) > 1:
+            # Read and write adjacent pairs together to keep accesses contiguous.
+            cols = tl.arange(0, PADDED_HEAD_DIM)
+            offsets = head_offsets + cols[None, :] * q_stride_d
+            mask = (heads[:, None] < NUM_Q_HEADS) & (cols[None, :] < HEAD_DIM)
+            values = tl.load(q_ptr + offsets, mask=mask, other=0.0)
+            q0, q1 = tl.split(values.reshape((block_q_heads, PADDED_HEAD_DIM // 2, 2)))
+            y0 = q0 * cos[None, :] - q1 * sin[None, :]
+            y1 = q1 * cos[None, :] + q0 * sin[None, :]
+            output = tl.interleave(y0, y1)
+            tl.store(q_ptr + offsets, output, mask=mask)
+        else:
+            if ROTARY_INTERLEAVED:
+                ordered = 2 * pair
+                pair_delta = q_stride_d
+            else:
+                ordered = pair
+                pair_delta = (HEAD_DIM // 2) * q_stride_d
+            offsets = head_offsets + ordered[None, :] * q_stride_d
+            mask = (heads[:, None] < NUM_Q_HEADS) & pair_mask[None, :]
+            q0 = tl.load(q_ptr + offsets, mask=mask, other=0.0)
+            q1 = tl.load(q_ptr + offsets + pair_delta, mask=mask, other=0.0)
+            y0 = q0 * cos[None, :] - q1 * sin[None, :]
+            y1 = q1 * cos[None, :] + q0 * sin[None, :]
+            tl.store(q_ptr + offsets, y0, mask=mask)
+            tl.store(q_ptr + offsets + pair_delta, y1, mask=mask)
 
     k_ptr += s_id * k_stride_s
-
-    for off_h in range(0, NUM_K_HEADS):
-        ordered_cols = off_h * k_stride_h + (ordered_block * k_stride_d)
-        rotated_cols = off_h * k_stride_h + (rotated_block * k_stride_d)
-
-        k = tl.load(k_ptr + ordered_cols, mask=mask, other=0.0)
-        rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
-        y = k * cos + rotated_k * sin
-        tl.store(k_ptr + ordered_cols, y, mask=mask)  # In-place update
+    for off_h in range(0, NUM_K_HEADS, block_k_heads):
+        heads = off_h + tl.arange(0, block_k_heads)
+        head_offsets = heads[:, None] * k_stride_h
+        if ROTARY_INTERLEAVED and max(NUM_Q_HEADS, NUM_K_HEADS) > 1:
+            cols = tl.arange(0, PADDED_HEAD_DIM)
+            offsets = head_offsets + cols[None, :] * k_stride_d
+            mask = (heads[:, None] < NUM_K_HEADS) & (cols[None, :] < HEAD_DIM)
+            values = tl.load(k_ptr + offsets, mask=mask, other=0.0)
+            k0, k1 = tl.split(values.reshape((block_k_heads, PADDED_HEAD_DIM // 2, 2)))
+            y0 = k0 * cos[None, :] - k1 * sin[None, :]
+            y1 = k1 * cos[None, :] + k0 * sin[None, :]
+            output = tl.interleave(y0, y1)
+            tl.store(k_ptr + offsets, output, mask=mask)
+        else:
+            if ROTARY_INTERLEAVED:
+                ordered = 2 * pair
+                pair_delta = k_stride_d
+            else:
+                ordered = pair
+                pair_delta = (HEAD_DIM // 2) * k_stride_d
+            offsets = head_offsets + ordered[None, :] * k_stride_d
+            mask = (heads[:, None] < NUM_K_HEADS) & pair_mask[None, :]
+            k0 = tl.load(k_ptr + offsets, mask=mask, other=0.0)
+            k1 = tl.load(k_ptr + offsets + pair_delta, mask=mask, other=0.0)
+            y0 = k0 * cos[None, :] - k1 * sin[None, :]
+            y1 = k1 * cos[None, :] + k0 * sin[None, :]
+            tl.store(k_ptr + offsets, y0, mask=mask)
+            tl.store(k_ptr + offsets + pair_delta, y1, mask=mask)
 
 
 def apply_rotary_pos_emb(

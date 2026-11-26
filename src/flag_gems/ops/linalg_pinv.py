@@ -23,12 +23,14 @@
 #     register pressure stays bounded.
 import linecache
 import logging
+import warnings
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.can_cast import can_cast
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -537,6 +539,12 @@ def linalg_pinv(
     """
     logger.debug("GEMS LINALG_PINV")
 
+    if A.is_complex():
+        raise RuntimeError(
+            "torch.linalg.pinv: input tensor of complex type is not supported. "
+            f"Got {A.dtype}"
+        )
+
     assert A.dtype in (
         torch.float32,
         torch.float64,
@@ -641,3 +649,41 @@ def linalg_pinv(
     # Reshape to original batch shape + (n, m)
     out_shape = list(orig_shape[:-2]) + [n, m]
     return out.reshape(out_shape)
+
+
+def linalg_pinv_out(
+    A: torch.Tensor,
+    *,
+    atol: torch.Tensor = None,
+    rtol: torch.Tensor = None,
+    hermitian: bool = False,
+    out: torch.Tensor = None,
+) -> torch.Tensor:
+    """Compute the Moore-Penrose pseudoinverse into the provided output tensor."""
+    logger.debug("GEMS LINALG_PINV_OUT")
+
+    result = linalg_pinv(A, atol=atol, rtol=rtol, hermitian=hermitian)
+    if out is None:
+        raise TypeError("torch.linalg.pinv: out must be a Tensor")
+    if out.device != A.device:
+        raise RuntimeError(
+            "torch.linalg.pinv: Expected result and input tensors to be on "
+            f"the same device, but got result on {out.device} and input on "
+            f"{A.device}"
+        )
+    if not can_cast(result.dtype, out.dtype):
+        raise RuntimeError(
+            "torch.linalg.pinv: Expected result to be safely castable from "
+            f"{result.dtype} to {out.dtype}"
+        )
+    if out.numel() != 0 and out.shape != result.shape:
+        warnings.warn(
+            "An output with one or more elements was resized because it had shape "
+            f"{tuple(out.shape)}, which does not match the required output shape "
+            f"{tuple(result.shape)}.",
+            UserWarning,
+            stacklevel=3,
+        )
+    out.resize_(result.shape)
+    out.copy_(result)
+    return out
