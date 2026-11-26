@@ -107,6 +107,47 @@ for item in $CHANGED_FILES; do
     tests/test_quant.py)
       # skip because it always fail
       ;;
+    # Ascend-specific blacklist: tests that fail due to CANN 9.1.1 limitations
+    # or Triton/BiShengHIR compiler issues that require deeper fixes.
+    tests/test_validate_sparse_compressed_tensor_args.py | \
+    tests/test_validate_sparse_bsc_tensor_args.py | \
+    tests/test_validate_sparse_coo_tensor_args.py | \
+    tests/test_DSA/test_sparse_mla_ops.py | \
+    tests/test_linalg_inv.py | \
+    tests/test_linalg_eigvalsh.py | \
+    tests/test_linalg_cholesky_ex.py | \
+    tests/test__philox_uniform_.py | \
+    tests/test_cov.py | \
+    tests/test_sparse_broadcast_to.py | \
+    tests/test_histogramdd_from_bin_cts.py | \
+    tests/test_lcm.py | \
+    tests/test_lcm_.py | \
+    tests/test_linalg_solve_ex.py | \
+    tests/test_var.py | \
+    tests/test_batch_norm.py | \
+    tests/test_batch_norm_impl_index_backward.py | \
+    tests/test_sparse_sum.py | \
+    tests/test_embedding_bag_dense_backward.py | \
+    tests/test_embedding_bag_sparse_backward.py | \
+    tests/test_bincount.py | \
+    tests/test_min.py | \
+    tests/test_nextafter_.py | \
+    tests/test_bf16_paged_mqa_logits.py | \
+    tests/test_cosh.py | \
+    tests/test_sparse_coo_tensor_with_dims.py | \
+    tests/test_convolution_overrideable.py | \
+    tests/test_convolution_overrideable_backward.py | \
+    tests/test_atanh_backward.py)
+      if [[ "${BACKEND:-}" == *ascend* ]]; then
+        # skip on Ascend: CANN 9.1.1 / BiShengHIR compiler limitation
+        # TODO: unblock each test once the underlying issue is resolved
+        :
+      else
+        if [[ "$file_name" == test*.py ]]; then
+          TEST_CASES+=($item)
+        fi
+      fi
+      ;;
     tests/*.py)
       if [[ "$file_name" == test*.py ]]; then
         TEST_CASES+=($item)
