@@ -156,6 +156,8 @@ def test_poisson_nll_loss_mixed_dtype_exceptions():
 @pytest.mark.parametrize("full", [False, True])
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend Poisson NLL reference accepts non-logarithmic bool input")
     inp = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
     target = torch.ones((1, 3), device=flag_gems.device)
     with pytest.raises(RuntimeError):

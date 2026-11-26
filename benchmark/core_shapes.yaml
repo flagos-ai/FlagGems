@@ -780,6 +780,22 @@ group_norm:
     - [16, 16, 128]
   shape_desc: "N, C, *"
 
+silu_backward_out:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
+silu_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 argmin:
   shapes:
     - [65536]
@@ -1672,18 +1688,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-silu_backward_out:
+binary_cross_entropy_with_logits_backward:
   shapes:
   - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
   - - 4096
-  - - 1048576
-  - - 16777216
-  shape_desc: Fixed accepted backward input shape
-
-silu_backward:
-  shapes:
-  - - 257
-  - - 4096
-  - - 1048576
-  - - 16777216
-  shape_desc: Fixed accepted backward input shape
+    - 4096
+  shape_desc: backward input shape
