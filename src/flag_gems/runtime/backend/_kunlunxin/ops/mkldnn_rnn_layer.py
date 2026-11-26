@@ -198,9 +198,9 @@ def _mkldnn_rnn_layer_forward(
 class _MkldnnRnnLayerFunction(torch.autograd.Function):
     """Autograd for the single-layer unidirectional LSTM.
 
-    Forward  → Triton kernels.  Backward → recompute the forward in native
-    PyTorch and let autograd differentiate it, because the Triton kernels are
-    opaque to autograd.
+    Forward  → Triton kernels.  Backward → recompute the forward with the
+    library's own Triton ops and let autograd differentiate that graph, because
+    the forward kernels are opaque to autograd.
     """
 
     @staticmethod
@@ -226,35 +226,49 @@ class _MkldnnRnnLayerFunction(torch.autograd.Function):
         has_biases = ctx.has_biases
         seq_len = input.shape[0]
 
-        with torch.enable_grad():
-            h = hx.clone()
-            c = cx.clone()
+        # The forward kernels are opaque to autograd, so the graph the backward
+        # differentiates is rebuilt here.  The Triton ops of this library are not
+        # autograd-aware (autograd registration is ATen's job), so the recompute
+        # is expressed with the differentiable torch ops instead.
+        recompute = torch  # allow-torch-compute: differentiable recompute for backward
+        grad_ctx = torch.enable_grad()  # allow-torch-compute: autograd mode only
+        with grad_ctx:
+            h = recompute.clone(hx)
+            c = recompute.clone(cx)
             outputs = []
             steps = range(seq_len - 1, -1, -1) if reverse else range(seq_len)
             for t_idx in steps:
                 xt = input[t_idx]
+                w_ih_t = w_ih.t()
                 gates = (
-                    torch.addmm(b_ih, xt, w_ih.t())
+                    recompute.addmm(b_ih, xt, w_ih_t)
                     if has_biases
-                    else torch.mm(xt, w_ih.t())
+                    else recompute.mm(xt, w_ih_t)
                 )
-                gates = gates + (
-                    torch.addmm(b_hh, h, w_hh.t())
-                    if has_biases
-                    else torch.mm(h, w_hh.t())
+                w_hh_t = w_hh.t()
+                gates = recompute.add(
+                    gates,
+                    (
+                        recompute.addmm(b_hh, h, w_hh_t)
+                        if has_biases
+                        else recompute.mm(h, w_hh_t)
+                    ),
                 )
                 i_g, f_g, g_g, o_g = gates.chunk(4, dim=1)
-                c = torch.sigmoid(f_g) * c + torch.sigmoid(i_g) * torch.tanh(g_g)
-                h = torch.sigmoid(o_g) * torch.tanh(c)
+                c = recompute.add(
+                    recompute.mul(recompute.sigmoid(f_g), c),
+                    recompute.mul(recompute.sigmoid(i_g), recompute.tanh(g_g)),
+                )
+                h = recompute.mul(recompute.sigmoid(o_g), recompute.tanh(c))
                 outputs.append(h)
             if reverse:
                 outputs = outputs[::-1]
-            output_native = torch.stack(outputs, dim=0)
+            output_native = recompute.stack(outputs, dim=0)
 
             inputs = [input, w_ih, w_hh, hx, cx]
             if has_biases:
                 inputs += [b_ih, b_hh]
-            grads = torch.autograd.grad(
+            grads = torch.autograd.grad(  # allow-torch-compute: differentiates the recompute graph
                 outputs=[output_native, h, c],
                 inputs=inputs,
                 grad_outputs=[
