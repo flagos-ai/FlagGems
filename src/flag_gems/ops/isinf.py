@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isinf_func(x):
+    if x.dtype == tl.float64:
+        return tl.abs(x) == float("inf")
     return _isinf(x.to(tl.float32))
 
 
