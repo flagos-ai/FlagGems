@@ -22,6 +22,9 @@ from ._conv_depthwise2d import _conv_depthwise2d
 from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
+)
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_add__List import _foreach_add__List
 from ._foreach_add__Scalar import _foreach_add__Scalar
@@ -302,6 +305,7 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
+    "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_add__List",
     "_foreach_add__Scalar",
