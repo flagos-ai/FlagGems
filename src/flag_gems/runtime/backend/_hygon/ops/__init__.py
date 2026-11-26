@@ -39,6 +39,7 @@ from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__Scalar import _foreach_mul__Scalar
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_mul_Tensor import _foreach_mul_Tensor as _foreach_mul_Tensor
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
 from ._foreach_round_ import _foreach_round_
@@ -320,6 +321,7 @@ __all__ = [
     "_foreach_mul__List",
     "_foreach_mul__Scalar",
     "_foreach_mul__ScalarList",
+    "_foreach_mul_Tensor",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
     "_foreach_round_",
