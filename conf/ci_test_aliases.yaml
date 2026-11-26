@@ -234,6 +234,8 @@ special_zeta_tensor_scalar: test_special_zeta
 # Operators tested in combined files or with different naming
 lshift_scalar: test_lshift
 lshift_tensor: test_lshift
+lshift_scalar_out: test_lshift
+lshift_tensor_out: test_lshift
 rshift_scalar: test_rshift
 rshift_tensor: test_rshift
 rshift_scalar_out: test_rshift
