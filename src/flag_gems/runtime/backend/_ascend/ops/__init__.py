@@ -27,6 +27,7 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._upsample_nearest_exact3d_backward import _upsample_nearest_exact3d_backward
 from .absolute_ import absolute_
 from .acos_ import acos_
@@ -77,8 +78,8 @@ from .bitwise_xor import (
     bitwise_xor_scalar_,
     bitwise_xor_scalar_tensor,
     bitwise_xor_tensor,
-    bitwise_xor_tensor_,
 )
+from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
@@ -468,6 +469,7 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_transform_bias_rescale_qkv",
     "_trilinear",
     "_trilinear_out",
     "_unique2",
