@@ -902,3 +902,34 @@ def test_scatter_reduce_amin_nan_layout(variant, layout, dtype, include_self):
     utils.gems_assert_close(result, expected, inp.dtype, equal_nan=True)
     if variant != "inplace":
         torch.testing.assert_close(inp, original, rtol=0, atol=0, equal_nan=True)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is unsupported")
+@pytest.mark.parametrize("reduce", ["amax", "amin", "sum"])
+@pytest.mark.parametrize("include_self", [False, True])
+@pytest.mark.parametrize("two_dimensional", [False, True])
+def test_scatter_reduce_fp64_precision(reduce, include_self, two_dimensional):
+    inp = torch.linspace(0.1, 3.1, 31, dtype=torch.float64)
+    src = torch.linspace(0.1, 3.1, 257, dtype=torch.float64)
+    index = torch.arange(257) % 30
+    # Exercise large finite values and NaNs of both signs, leaving a bucket untouched.
+    src[:4] = torch.tensor(
+        [1e40, -1e40, float("nan"), -float("nan")], dtype=src.dtype
+    )
+    if two_dimensional:
+        inp = inp.repeat(2, 1).t()
+        src = src.repeat(2, 1).t()
+        index = index.repeat(2, 1).t()
+
+    expected = torch.scatter_reduce(inp, 0, index, src, reduce, include_self=include_self)
+    actual = flag_gems.scatter_reduce(
+        inp.to(flag_gems.device),
+        0,
+        index.to(flag_gems.device),
+        src.to(flag_gems.device),
+        reduce,
+        include_self=include_self,
+    )
+
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-12, atol=1e-12, equal_nan=True)
