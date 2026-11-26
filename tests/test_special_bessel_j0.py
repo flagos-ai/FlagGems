@@ -35,4 +35,7 @@ def test_special_bessel_j0(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.special.bessel_j0(ref_inp)
     res_out = flag_gems.special_bessel_j0(inp)
+    assert res_out.device == inp.device
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == inp.shape
     utils.gems_assert_close(res_out, ref_out, dtype)

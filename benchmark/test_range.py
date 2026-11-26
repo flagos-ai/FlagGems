@@ -31,12 +31,10 @@ class RangeBenchmark(base.Benchmark):
         # input, so without an explicit device both legs would run on CPU and
         # the speedup would compare host code against the GCU kernel.
         for end in self.shapes:
-            yield {
-                "start": 0,
-                "end": end,
-                "dtype": cur_dtype,
-                "device": self.device,
-            },
+            # Keep the native baseline on the benchmark device. Without
+            # ``device`` torch.range allocates on CPU, so --kernel-check can
+            # never observe a device kernel and the baseline is not comparable.
+            yield {"start": 0, "end": end, "dtype": cur_dtype, "device": self.device},
 
 
 @pytest.mark.range
