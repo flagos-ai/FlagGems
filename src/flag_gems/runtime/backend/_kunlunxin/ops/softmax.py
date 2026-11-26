@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.copy import copy_ as _gems_strided_copy_
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -1060,8 +1061,54 @@ def softmax_backward_kernel_inner(
 
 
 _SB_MR_MAX_N = 4096
-_SB_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 2)]
+# Exact (unmasked) kernel: ~16K elements per program amortizes the per-CTA
+# reduce cost. The clamped-index `_pad` kernel is very sensitive to its tile
+# (8K elements already collapses), so it keeps the original small schedule.
+_SB_N_TILE_M = [
+    (16, 64),
+    (64, 32),
+    (256, 16),
+    (512, 32),
+    (1024, 16),
+    (2048, 8),
+    (4096, 4),
+]
+_SB_N_TILE_M_PAD = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 2)]
 _SB_WIDE = 8192
+_SB_N1_BLOCK = 8192
+
+
+@triton.jit
+def softmax_backward_kernel_n1(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    n_elem,
+    BLOCK: tl.constexpr,
+):
+    # Reduction dim == 1: the row sum is `o * g` itself, so the whole tensor is
+    # a flat elementwise `o * (g - o * g)` - no reshape copies, no reduction.
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elem
+    o = tl.load(out_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+    g = tl.load(out_grad_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+    tl.store(in_grad_ptr + offs, o * (g - o * g), mask=mask)
+
+
+def _softmax_backward_n1_flat(output, out_grad, in_grad):
+    n_elem = in_grad.numel()
+    if n_elem == 0:
+        return
+    grid = (triton.cdiv(n_elem, _SB_N1_BLOCK),)
+    softmax_backward_kernel_n1[grid](
+        output,
+        out_grad,
+        in_grad,
+        n_elem,
+        BLOCK=_SB_N1_BLOCK,
+        num_warps=8,
+    )
 
 
 @triton.jit
@@ -1201,15 +1248,100 @@ def softmax_backward_kernel_tail_pass(
     tl.store(in_grad_ptr + pid * N + PREV + tno, o * (g - scale), mask=tmask)
 
 
+@triton.jit
+def softmax_backward_kernel_split_sum(
+    out_ptr,
+    out_grad_ptr,
+    partial_ptr,
+    TILES: tl.constexpr,
+    W: tl.constexpr,
+):
+    # One program per chunk of the single reduction row: partial sum of o*g.
+    pid = tl.program_id(0)
+    base = pid * TILES * W
+    acc = tl.zeros([W], dtype=tl.float32)
+    for i in range(TILES):
+        offs = base + i * W + tl.arange(0, W)
+        o = tl.load(out_ptr + offs).to(tl.float32)
+        g = tl.load(out_grad_ptr + offs).to(tl.float32)
+        acc += o * g
+    tl.store(partial_ptr + pid, tl.sum(acc, 0))
+
+
+@triton.jit
+def softmax_backward_kernel_split_out(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    partial_ptr,
+    TILES: tl.constexpr,
+    W: tl.constexpr,
+    NC: tl.constexpr,
+):
+    # Each chunk re-reads the (small) partial vector to get the row total, so
+    # the sum never round-trips through the host.
+    pid = tl.program_id(0)
+    partial = tl.load(partial_ptr + tl.arange(0, NC))
+    scale = tl.sum(partial, 0)
+    base = pid * TILES * W
+    for i in range(TILES):
+        offs = base + i * W + tl.arange(0, W)
+        o = tl.load(out_ptr + offs).to(tl.float32)
+        g = tl.load(out_grad_ptr + offs).to(tl.float32)
+        tl.store(in_grad_ptr + offs, o * (g - scale))
+
+
+def _softmax_backward_split_1row(output, grad_output, in_grad, N):
+    """Chunk-parallel two-pass path for a single very long reduction row.
+
+    The per-row kernels run grid=(M,), so M == 1 leaves one program doing the
+    whole row serially. Here several programs cover the row and only the
+    per-chunk sums round-trip through a tiny scratch vector.
+    """
+    units = N // _SB_WIDE
+    chunks = 1
+    while chunks * 2 <= min(units, 1024) and units % (chunks * 2) == 0:
+        chunks *= 2
+    if chunks < 8:
+        return False
+    tiles = units // chunks
+    partial = torch.empty((chunks,), dtype=torch.float32, device=in_grad.device)
+    softmax_backward_kernel_split_sum[(chunks,)](
+        output,
+        grad_output,
+        partial,
+        TILES=tiles,
+        W=_SB_WIDE,
+        num_warps=4,
+    )
+    softmax_backward_kernel_split_out[(chunks,)](
+        output,
+        grad_output,
+        in_grad,
+        partial,
+        TILES=tiles,
+        W=_SB_WIDE,
+        NC=chunks,
+        num_warps=4,
+    )
+    return True
+
+
 def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype):
     if N <= _SB_MR_MAX_N:
+        is_pow2 = N == triton.next_power_of_2(N)
         TILE_M = 4
-        for n_hi, tm in _SB_N_TILE_M:
+        for n_hi, tm in _SB_N_TILE_M if is_pow2 else _SB_N_TILE_M_PAD:
             if N <= n_hi:
                 TILE_M = tm
                 break
+        # Shrink (by halving) until it divides M: the clamped-index `_pad`
+        # kernel loses the affine address pattern and is far slower than the
+        # exact kernel, so taking a smaller exact tile always wins.
+        while TILE_M > 1 and M % TILE_M != 0:
+            TILE_M >>= 1
         grid = (triton.cdiv(M, TILE_M),)
-        if N == triton.next_power_of_2(N) and M % TILE_M == 0:
+        if is_pow2 and M % TILE_M == 0:
             softmax_backward_kernel_multirow[grid](
                 output,
                 grad_output,
@@ -1231,6 +1363,9 @@ def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype)
                 num_warps=8,
             )
     else:
+        if M == 1 and N >= 65536 and N % _SB_WIDE == 0 and in_grad.is_contiguous():
+            if _softmax_backward_split_1row(output, grad_output, in_grad, N):
+                return
         if N % _SB_WIDE == 0:
             grid = (M,)
             softmax_backward_kernel_perrow_p2[grid](
@@ -1461,6 +1596,14 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
         in_grad = torch.empty_like(output, dtype=input_dtype)
 
     with torch_device_fn.device(in_grad.device):
+        if N == 1 and in_grad.is_contiguous():
+            # The reduction is a single element, so the result is plain
+            # elementwise `o * (g - o * g)`; no transpose/reshape or per-row
+            # reduction is needed (the 1-wide reduction tile is per-CTA bound).
+            if grad_input is not None:
+                in_grad = grad_input
+            _softmax_backward_n1_flat(output, grad_output, in_grad)
+            return in_grad
         if K > 1:
             out_grad_view = grad_output.view(M, N, K).transpose(1, 2)
             out_view = output.view(M, N, K).transpose(1, 2)
@@ -1470,10 +1613,10 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
             out_reshaped = torch.empty(
                 (M * K, N), dtype=output.dtype, device=output.device
             )
-            if not tle_copy(out_grad_view, out_grad_reshaped):
-                torch.ops.aten._copy_from(out_grad_view, out_grad_reshaped, False)
-            if not tle_copy(out_view, out_reshaped):
-                torch.ops.aten._copy_from(out_view, out_reshaped, False)
+            if not tle_copy(out_grad_view, out_grad_reshaped.view(M, K, N)):
+                _gems_strided_copy_(out_grad_reshaped.view(M, K, N), out_grad_view)
+            if not tle_copy(out_view, out_reshaped.view(M, K, N)):
+                _gems_strided_copy_(out_reshaped.view(M, K, N), out_view)
             in_grad_reshaped = torch.empty(
                 (M * K, N), dtype=in_grad.dtype, device=in_grad.device
             )

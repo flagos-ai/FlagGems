@@ -85,5 +85,5 @@ def test_perf__ctc_loss_out():
         torch_op=torch.ops.aten._ctc_loss.out,
         dtypes=CTC_DTYPES,
     )
-    bench.set_gems(flag_gems.ops._ctc_loss_out)
+    bench.set_gems(flag_gems._ctc_loss_out)
     bench.run()

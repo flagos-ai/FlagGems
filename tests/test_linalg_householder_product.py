@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # (m, n) shapes where m >= n (required by householder_product)
 HOUSEHOLDER_SHAPES = [
@@ -22,13 +23,15 @@ HOUSEHOLDER_BATCH_SHAPES = [
 
 # PyTorch supports float32 and float64 for linalg.householder_product
 # float16/bfloat16 are not supported on CUDA
-HOUSEHOLDER_DTYPES = [torch.float32, torch.float64]
+HOUSEHOLDER_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 @pytest.mark.linalg_householder_product
 @pytest.mark.parametrize("m, n", HOUSEHOLDER_SHAPES)
 @pytest.mark.parametrize("dtype", HOUSEHOLDER_DTYPES)
 def test_linalg_householder_product(m, n, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     # Create input matrix A with Householder vectors in lower triangular part
     # We use geqrf to get a valid (A, tau) pair
     A_gen = torch.randn(m, n, dtype=torch.float32, device=flag_gems.device)
@@ -51,6 +54,8 @@ def test_linalg_householder_product(m, n, dtype):
 @pytest.mark.parametrize("shape", HOUSEHOLDER_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", HOUSEHOLDER_DTYPES)
 def test_linalg_householder_product_batched(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     # Batched case: shape is (batch, m, n)
     batch, m, n = shape
     A_gen = torch.randn(batch, m, n, dtype=torch.float32, device=flag_gems.device)

@@ -138,10 +138,6 @@ def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test_neg_view_copy(shape, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input(
         dtype, shape, ["0", "max"] if dtype == torch.uint8 else ["-1", "1"]
     )
@@ -158,10 +154,6 @@ def test_neg_view_copy(shape, dtype):
 @pytest.mark.parametrize("shape", [(256,), (1024, 1024)])
 @pytest.mark.parametrize(("dtype", "value_range"), _RANGE_CASES)
 def test_neg_view_copy_value_ranges(shape, dtype, value_range):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input(dtype, shape, value_range)
     ref_inp = utils.to_reference(inp)
 
@@ -175,10 +167,6 @@ def test_neg_view_copy_value_ranges(shape, dtype, value_range):
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test_neg_view_copy_out(shape, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input(
         dtype, shape, ["0", "max"] if dtype == torch.uint8 else ["-1", "1"]
     )
@@ -199,10 +187,6 @@ def test_neg_view_copy_out(shape, dtype):
 @pytest.mark.parametrize("shape", [(256,), (1024, 1024)])
 @pytest.mark.parametrize(("dtype", "value_range"), _RANGE_CASES)
 def test_neg_view_copy_out_value_ranges(shape, dtype, value_range):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input(dtype, shape, value_range)
     ref_inp = utils.to_reference(inp)
 
@@ -239,10 +223,6 @@ def _special_value_cases(dtypes):
     "dtype, scenario", _special_value_cases(utils.ALL_FLOAT_DTYPES)
 )
 def test_neg_view_copy_special_values(dtype, scenario):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     values = torch.tensor(
         _SPECIAL_PAYLOADS[scenario], device=flag_gems.device, dtype=torch.float32
     ).to(dtype)
@@ -263,10 +243,6 @@ def test_neg_view_copy_special_values(dtype, scenario):
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test_neg_view_copy_non_contiguous(shape, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     base = _make_input(
         dtype, shape, ["0", "max"] if dtype == torch.uint8 else ["-1", "1"]
     )
@@ -285,10 +261,6 @@ def test_neg_view_copy_non_contiguous(shape, dtype):
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _NEG_VIEW_COPY_DTYPES)
 def test_neg_view_copy_empty(shape, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input(
         dtype, shape, ["0", "max"] if dtype == torch.uint8 else ["-1", "1"]
     )
@@ -304,10 +276,6 @@ def test_neg_view_copy_empty(shape, dtype):
 @pytest.mark.parametrize("shape", _NEG_VIEW_COPY_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_neg_view_copy_backward(shape, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_()
     grad = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = utils.to_reference(inp)
@@ -326,24 +294,23 @@ def test_neg_view_copy_backward(shape, dtype):
 
 @pytest.mark.neg_view_copy
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="native _neg_view_copy returns a lazy neg view on this device, so the "
+    "unsupported-dtype error is deferred instead of raised at the call site",
+)
 def test_neg_view_copy_rejects_unsupported_dtypes(dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = torch.zeros(4, dtype=dtype, device=flag_gems.device)
+    # The native rejection is checked on the reference device (CPU under
+    # --ref cpu); the Gems rejection stays on the device input.
     with pytest.raises(RuntimeError):
-        torch.ops.aten._neg_view_copy(inp)
+        torch.ops.aten._neg_view_copy(utils.to_reference(inp))
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._neg_view_copy(inp)
 
 
 @pytest.mark.neg_view_copy
 def test_neg_view_copy_rejects_non_tensor():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     with pytest.raises(RuntimeError):
         torch.ops.aten._neg_view_copy(3.14)
     with pytest.raises((TypeError, ValueError, RuntimeError)):

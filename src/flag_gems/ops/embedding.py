@@ -32,6 +32,7 @@ def embedding_kernel(
     in_ptr,  # pointer to the input
     weight_ptr,  # pointer to the weights
     N: tl.constexpr,  # number of columns in X
+    num_embeddings,  # vocabulary size (bounds check)
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
@@ -42,8 +43,10 @@ def embedding_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
 
     row_idx = tl.load(in_ptr)
+    # Suppress out-of-bound indices to prevent OOB reads.
+    valid = (row_idx >= 0) & (row_idx < num_embeddings)
     weight_ptr += row_idx * N
-    embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
+    embedding_weight = tl.load(weight_ptr + cols, mask & valid, other=0.0)
     tl.store(out_ptr + cols, embedding_weight, mask)
 
 
@@ -74,6 +77,7 @@ def embedding_backward_kernel(
     padding_idx,  # padding_idx
     HAS_PADDING_IDX: tl.constexpr,
     N: tl.constexpr,  # number of columns in X
+    num_weights,  # vocabulary size (bounds check)
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
@@ -84,14 +88,17 @@ def embedding_backward_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
 
     row_idx = tl.load(indices).to(tl.int32)
+    # Suppress out-of-bound indices to prevent OOB writes.
+    valid = (row_idx >= 0) & (row_idx < num_weights)
     if not HAS_PADDING_IDX:
-        grad_in += row_idx * N
-        embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-        if tl.constexpr(embedding_grad.dtype.is_bf16()):
-            embedding_grad = embedding_grad.to(tl.float32)
-        tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
+        if valid:
+            grad_in += row_idx * N
+            embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
+            if tl.constexpr(embedding_grad.dtype.is_bf16()):
+                embedding_grad = embedding_grad.to(tl.float32)
+            tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
     else:
-        if row_idx != padding_idx:
+        if row_idx != padding_idx and valid:
             grad_in += row_idx * N
             embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
             if tl.constexpr(embedding_grad.dtype.is_bf16()):
@@ -138,7 +145,7 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
 
     with torch_device_fn.device(weight.device):
-        embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+        embedding_kernel[M,](output, indices, weight, N, weight.shape[0], BLOCK_SIZE)
 
     return output
 
@@ -194,6 +201,7 @@ def embedding_backward(
             padding_idx,
             HAS_PADDING_IDX,
             N,
+            num_weights,
             BLOCK_SIZE,
         )
 

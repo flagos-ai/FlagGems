@@ -30,6 +30,7 @@ from flag_gems.ops.flash_attention_backward import (
     _get_bias_strides_varlen,
     _parse_philox,
 )
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ _CUDNN_DKV_CONFIGS = [
 ]
 
 
+@libentry()
 @triton.autotune(
     configs=_CUDNN_DQ_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM_QK", "HEAD_DIM_V"],
@@ -228,6 +230,7 @@ def _cudnn_attn_bwd_dq_dual_dim(
     )
 
 
+@libentry()
 @triton.autotune(
     configs=_CUDNN_DKV_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM_QK", "HEAD_DIM_V"],
@@ -684,6 +687,13 @@ def _flash_attn_backward_bhsd(
             attn_bias if has_bias else None
         )
 
+        s5000 = (
+            Q.device.type == "musa"
+            and Head_Dim in (64, 128)
+            and Q.dtype in (torch.float16, torch.bfloat16)
+            and "S5000" in torch.musa.get_device_name(Q.device)
+        )
+
         grid_dq = lambda META: (
             triton.cdiv(SeqLen_q, META["BLOCK_M"]),
             Batch,
@@ -745,6 +755,7 @@ def _flash_attn_backward_bhsd(
             HAS_ALIBI=has_alibi,
             HAS_BIAS=has_bias,
             DO_BIAS_GRAD=do_bias_grad,
+            S5000=s5000,
         )
 
         grid_dkv = lambda META: (
@@ -804,6 +815,8 @@ def _flash_attn_backward_bhsd(
             HAS_WINDOW=has_window,
             HAS_ALIBI=has_alibi,
             HAS_BIAS=has_bias,
+            S5000=s5000,
+            DV_PRECISION="input",
         )
 
     return dQ, dK, dV, dBias

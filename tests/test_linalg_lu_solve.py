@@ -24,7 +24,9 @@ from . import accuracy_utils as utils
 # Test shapes: (n, k) pairs. Sizes through 32 take the register-resident
 # kernel; larger ones take the blocked kernel, including n values that are not
 # a multiple of its diagonal block (48, 100) and RHS widths narrower than or
-# straddling the blocked tile width.
+# straddling the blocked tile width.  n = 256 crosses the Kunlunxin
+# register-resident limit (_REGISTER_MAX_N = 128) with k > 1, so several solve
+# programs run concurrently on the wider path.
 LU_SOLVE_SHAPES = [
     (4, 4),
     (8, 8),
@@ -35,6 +37,7 @@ LU_SOLVE_SHAPES = [
     (64, 64),
     (100, 40),
     (128, 128),
+    (256, 64),
     (32, 7),
     (16, 1),
     (64, 1),
@@ -44,6 +47,26 @@ LU_SOLVE_SHAPES = [
 LU_SOLVE_DTYPES = [torch.float32]
 if utils.fp64_is_supported:
     LU_SOLVE_DTYPES.append(torch.float64)
+
+
+def _reference_lu_solve(lu, pivots, rhs):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and lu.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        lower = torch.tril(lu, diagonal=-1) + torch.eye(lu.shape[-1], dtype=lu.dtype)
+        matrix = lower @ torch.triu(lu)
+        # Undo LAPACK's sequential row swaps to recover the factored matrix.
+        flat = matrix.reshape(-1, matrix.shape[-2], matrix.shape[-1])
+        for batch, swaps in zip(flat, pivots.reshape(-1, pivots.shape[-1])):
+            for i in reversed(range(swaps.numel())):
+                j = int(swaps[i]) - 1
+                batch[[i, j]] = batch[[j, i]]
+        return torch.from_numpy(np.linalg.solve(matrix.numpy(), rhs.numpy()))
+    return torch.linalg.lu_solve(lu, pivots, rhs)
 
 
 def _make_lu_inputs(batch_shape, n, k, dtype, device):
@@ -66,7 +89,7 @@ def test_linalg_lu_solve(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
     ref_B = utils.to_reference(B)
-    ref_out = torch.linalg.lu_solve(ref_LU, ref_pivots, ref_B)
+    ref_out = _reference_lu_solve(ref_LU, ref_pivots, ref_B)
 
     res_out = flag_gems.linalg_lu_solve(LU, pivots, B)
 
@@ -84,7 +107,7 @@ def test_linalg_lu_solve_batched(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
     ref_B = utils.to_reference(B)
-    ref_out = torch.linalg.lu_solve(ref_LU, ref_pivots, ref_B)
+    ref_out = _reference_lu_solve(ref_LU, ref_pivots, ref_B)
 
     res_out = flag_gems.linalg_lu_solve(LU, pivots, B)
 

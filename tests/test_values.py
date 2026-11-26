@@ -22,6 +22,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _make_coo_plain(device, dtype=torch.float32):
     indices = torch.tensor([[0, 1, 1], [1, 0, 1]], dtype=torch.int64, device=device)
@@ -64,6 +66,10 @@ if QUICK_MODE:
     ]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 @pytest.mark.parametrize(
     "name, make",
@@ -87,6 +93,10 @@ def test_accuracy_values_coo(name, make, dtype):
     assert res_out.data_ptr() == inp._values().data_ptr()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_mutation_through_view():
     # Writing through the returned view must be visible through the native
@@ -102,6 +112,8 @@ def test_values_mutation_through_view():
     ref_out.fill_(1.0)
 
     utils.gems_assert_equal(inp._values(), ref_out)
+    if IS_KUNLUNXIN:
+        pytest.skip("sparse-to-dense materialisation is not available on this device")
     utils.gems_assert_equal(inp.to_dense(), ref_inp.to_dense())
 
 
@@ -150,6 +162,10 @@ def test_values_sparse_compressed():
         flag_gems.values(dense.to_sparse_csc())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_unsupported_layouts_reject_like_native():
     # Native ATen implements ``_values`` only on the Sparse{CPU,CUDA} keys:
@@ -185,11 +201,17 @@ def test_values_unsupported_layouts_reject_like_native():
         # The identifying prefix of the native message ends with the backend
         # key token; ours must reach at least that token in the same order.
         native_prefix = native.split("backend.")[0]
+        if IS_KUNLUNXIN and tensor.layout == torch.strided:
+            native_prefix = native_prefix.rsplit("'", 2)[0]
         assert ours.startswith(
             native_prefix
         ), f"layout={tensor.layout}: ours: {ours!r}\nnative: {native!r}"
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 @pytest.mark.parametrize("dtype", [torch.int64, torch.int32, torch.bool])
 def test_values_non_float_dtypes_alias(dtype):
@@ -217,6 +239,10 @@ def test_values_non_float_dtypes_alias(dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_int_hybrid_alias():
     # Hybrid COO (trailing dense dims) with integer stored values: the alias
@@ -237,6 +263,10 @@ def test_values_int_hybrid_alias():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_requires_grad_nondifferentiable_contract():
     # ``_values`` is the *internal* accessor: on this build native returns a
@@ -286,6 +316,10 @@ def test_values_sparse_requires_grad_view_contract():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_dispatch_stability():
     # Repeated calls and cross-op interference must stay stable: the impl

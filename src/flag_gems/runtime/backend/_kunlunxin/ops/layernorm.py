@@ -827,9 +827,19 @@ def layer_norm_backward_dx_row_kernel(
 
 # small-M dx routing threshold: grid == M, keep it to a few waves.
 _DX_ROW_M_MAX = 64
-# only apply the small-M dx_row / wide-C wb tuning for moderate N; large N keeps
-# the original (proven-stable) paths.
+# only apply the small-M SIMD / wide-C wb tuning for moderate N; large N keeps
+# the original (proven-stable) paths. dx_row is NOT capped by this anymore: for
+# small M the 2D-tile grid == M/br collapses to a single program (no parallelism,
+# order-of-magnitude slower), so _ln_dx_triton always uses one program per row.
 _LN_BWD_N_MAX = 16384
+
+# dx_row mask-free tile cap. Measured on KL3 for small-M/large-N dx: 8192 cols
+# per program beats 1024/2048/4096 (fewer outer iterations, same per-row work).
+_DX_ROW_TILE_MAX = 8192
+# masked dx_row tile for N whose largest power-of-2 factor is too small for a
+# fast mask-free tile (e.g. 40999, 65568): 4096 is the sweet spot -- 8192 loses
+# on 40999 (extra masked lanes), 2048/1024 pay too many outer iterations.
+_DX_ROW_MASK_TILE = 4096
 
 # SIMD dx pays off only past a per-dtype N crossover (below it, the triton dx_row
 # is already fast and the SIMD launch + cross-core sync overhead loses). Measured
@@ -979,10 +989,16 @@ def _ln_dx_triton(
     # power-of-2 tile that DIVIDES N (mask-free). Masked 1D stores in this single-
     # program path proved unreliable on KL3 (device-state contamination), so odd /
     # non-pow2-friendly N fall back to the original 2D-tile kernel.
-    dtype_cap = 4096 if input.dtype == torch.float32 else 1024
+    # One program per row (grid == M) for every small-M shape: the 2D-tile
+    # kernel's grid is M/br, which collapses to a single program when M is small
+    # -- no parallelism, order-of-magnitude slower (e.g. M=16, N=131072: 1
+    # program vs 16). Mask-free when the tile divides N; otherwise a fixed masked
+    # tile (the old KL3 masked-1D-store concern applies to the masked 2D-tile
+    # fallback for odd N; the dx_row masked branch masks load+store consistently
+    # and is validated by the full tests/ matrix).
     pow2_div = N & (-N)  # largest power of 2 dividing N
-    tile_n = builtins.min(dtype_cap, pow2_div)
-    use_dx_row = (M <= _DX_ROW_M_MAX) and (tile_n >= 256) and (N <= _LN_BWD_N_MAX)
+    tile_n = builtins.min(_DX_ROW_TILE_MAX, pow2_div)
+    use_dx_row = (M <= _DX_ROW_M_MAX) and (tile_n >= 256)
     if use_dx_row:
         has_w = weight is not None
         grid = (M, 1, 1)
@@ -1018,6 +1034,48 @@ def _ln_dx_triton(
                 )
             else:
                 _dx_compile()
+    elif M <= _DX_ROW_M_MAX:
+        # Small M but N has no large power-of-2 factor (e.g. 40999, 65568): the
+        # mask-free tile would be < 256 cols. Use one program per row with a
+        # fixed masked tile (grid == M); measured 4096 as the sweet spot.
+        has_w = weight is not None
+        grid = (M, 1, 1)
+
+        def _dxrow_mask_compile():
+            return layer_norm_backward_dx_row_kernel[grid](
+                grad_out,
+                input,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                N,
+                TILE_N=_DX_ROW_MASK_TILE,
+                HAS_W=has_w,
+                NEED_MASK=True,
+                isCloseUnrollControl=True,
+            )
+
+        with torch_device_fn.device(input.device):
+            if has_w:
+                key = (input.dtype, N, _DX_ROW_MASK_TILE, grid[0])
+                operands = (
+                    grad_out.data_ptr(),
+                    input.data_ptr(),
+                    weight.data_ptr(),
+                    mean.data_ptr(),
+                    rstd.data_ptr(),
+                    in_grad.data_ptr(),
+                )
+                _flat_call(
+                    layer_norm_backward_dx_row_kernel,
+                    grid,
+                    key,
+                    _dxrow_mask_compile,
+                    operands,
+                )
+            else:
+                _dxrow_mask_compile()
     else:
         # The masked 2D kernel is non-deterministic on KL3 (rare dx spikes from
         # unreliable masked load/store on partially-OOB row/col blocks). When M

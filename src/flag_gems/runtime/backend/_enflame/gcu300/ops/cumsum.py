@@ -433,6 +433,12 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
         inp = inp.to(torch.int32)
     if dtype == torch.int64:
         dtype = torch.int32
+    # Empty tensor: return early to avoid zero-size divisions in the
+    # dim paths below (issue #4602), matching torch.cumsum semantics.
+    if inp.numel() == 0:
+        if out is None:
+            out = torch.empty_like(inp, dtype=dtype)
+        return out
     # print("cumsum_wrapper dim:", dim)
     shape = inp.shape
     dim = dim % inp.ndim

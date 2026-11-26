@@ -38,6 +38,8 @@ if HAS_VLLM_FUSED_MOE:
 else:
     VLLM_SUPPORTS_INPLACE = False
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _dispatch_fused_moe_kernel_config():
     return {
@@ -241,8 +243,38 @@ class FusedMoEBenchmark(base.Benchmark):
         yield (hidden_states, w1, w2, topk_weights, topk_ids)
 
 
+def _unfused_moe_experts_device_baseline(hidden_states, w1, w2, topk_weights, topk_ids):
+    num_experts = w1.shape[0]
+    top_k = topk_ids.shape[1]
+    out = torch.zeros_like(hidden_states)
+    flat_expert = topk_ids.reshape(-1)
+    counts = torch.bincount(flat_expert, minlength=num_experts)
+    bounds = (torch.cumsum(counts, 0) - counts).tolist()
+    ends = torch.cumsum(counts, 0).tolist()
+    order = torch.argsort(flat_expert, stable=True)
+    for ei in range(num_experts):
+        lo, hi = bounds[ei], ends[ei]
+        if hi <= lo:
+            continue
+        sel = order[lo:hi]
+        tok = torch.div(sel, top_k, rounding_mode="floor")
+        kth = sel - tok * top_k
+        x = hidden_states.index_select(0, tok)
+        a = x @ w1[ei].t()
+        inter = a.shape[-1] // 2
+        act = torch.nn.functional.silu(a[:, :inter]) * a[:, inter:]
+        y = act @ w2[ei].t()
+        w = topk_weights[tok, kth].to(hidden_states.dtype).unsqueeze(1)
+        out.index_add_(0, tok, y * w)
+    return out
+
+
 def _vllm_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     """Wrapper to call vllm fused_experts_impl."""
+    if IS_KUNLUNXIN:
+        return _unfused_moe_experts_device_baseline(
+            hidden_states, w1, w2, topk_weights, topk_ids
+        )
     if not VLLM_SUPPORTS_INPLACE:
         pytest.skip("installed vLLM fused_experts_impl does not accept inplace")
     return vllm_fused_experts_impl(

@@ -38,8 +38,7 @@ def test_round(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.round(inp)
+    res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -52,8 +51,7 @@ def test_round_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.round_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = inp.round_()
+    res_out = flag_gems.round_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -68,8 +66,7 @@ def test_round_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
 
     torch.round(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.round(inp, out=out)
+    flag_gems.round_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)
 
@@ -81,17 +78,29 @@ def test_round_out(shape, dtype):
 def test_round_decimals(shape, dtype, decimals):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device) * 100
 
-    # When demical≠0 and input is float16/bfloat16,
-    # compute result is difference between CUDA and CPU in Pytorch itself because of precision error
-    # so compare the result between FlagGems version and Pytorch CUDA version
+    # When decimals≠0 the two implementations can disagree by one quantisation
+    # step (10^-decimals). FlagGems rounds the exact quotient; ATen scales the
+    # input by a power of ten in the input dtype first, so a value sitting just
+    # below a .5 boundary (e.g. -249.014999 at decimals=2) can round the other
+    # way. Low-precision dtypes add an ULP of the result magnitude on top.
+    # Compare against PyTorch's CUDA result and allow both effects.
     ref_out = torch.round(inp, decimals=decimals)
     ref_out = ref_out.to("cpu")
 
-    with flag_gems.use_gems():
-        res_out = torch.round(inp, decimals=decimals)
-        res_out = res_out.to("cpu")
+    if decimals != 0:
+        ulp = float(torch.finfo(dtype).eps * inp.abs().max().float().clamp(min=1.0))
+        atol = max(10.0 ** (-decimals), ulp)
+    else:
+        atol = 0
 
-    utils.gems_assert_equal(res_out, ref_out)
+    res_out = flag_gems.round(inp, decimals=decimals).to("cpu")
+
+    if atol:
+        utils.gems_assert_close(
+            res_out.float(), ref_out.float(), torch.float32, atol=atol
+        )
+    else:
+        utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.round
@@ -107,7 +116,6 @@ def test_round_half_to_even(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.round(inp)
+    res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

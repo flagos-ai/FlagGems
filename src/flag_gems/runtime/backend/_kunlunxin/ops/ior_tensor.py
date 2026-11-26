@@ -16,10 +16,7 @@ import logging
 
 from .bitwise_or import bitwise_or_tensor_
 
-# Use the generic op's logger name: the functional test asserts the record under
-# ``gems_log_logger(flag_gems.ior_tensor)`` == "flag_gems.ops.ior_tensor" and
-# the vendor prefix "GEMS_KUNLUNXIN IOR_TENSOR".
-logger = logging.getLogger("flag_gems.ops.ior_tensor")
+logger = logging.getLogger(__name__)
 
 
 def ior_tensor(self, other):

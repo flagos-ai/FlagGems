@@ -52,8 +52,8 @@ def test_silu_and_mul(shape, dtype):
 def test_silu_and_mul_out(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
 

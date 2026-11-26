@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
