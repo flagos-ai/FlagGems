@@ -43,16 +43,16 @@ class NnzBenchmark(base.Benchmark):
         # and iterating a bare Tensor would pass its scalars.
         for shape in self.shapes:
             nnz = shape[0]
-            indices = torch.stack(
-                [
-                    torch.randint(0, shape[0], (nnz,)),
-                    torch.randint(0, shape[1], (nnz,)),
-                ]
-            ).to(self.device)
+            # Unique linear indices (nnz <= shape[0] * shape[1] for every size
+            # in NNZ_SIZES) build a coalesced COO tensor without calling
+            # .coalesce(), which the Kunlunxin backend does not implement for
+            # int16/int32/bool values.
+            lin = torch.randperm(shape[0] * shape[1])[:nnz].to(self.device)
+            indices = torch.stack([lin // shape[1], lin % shape[1]])
             # Values are never read by the metadata query; empty keeps the
             # dtype sweep (including int16/bool) free of randn restrictions.
             values = torch.empty(nnz, dtype=cur_dtype, device=self.device)
-            inp = torch.sparse_coo_tensor(indices, values, shape).coalesce()
+            inp = torch.sparse_coo_tensor(indices, values, shape)
             yield (inp,)
 
 

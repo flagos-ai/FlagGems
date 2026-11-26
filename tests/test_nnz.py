@@ -186,9 +186,20 @@ def test_nnz_uncoalesced(dtype):
     # Three stored entries share coordinate (0, 1), but each is counted.
     assert res_out == 5
     # Coalescing merges duplicates: the count shrinks to unique coordinates
-    # ((0, 1), (1, 2), (2, 3)).
-    coalesced = inp.coalesce()
-    _assert_int_and_equal(flag_gems._nnz(coalesced), ref_inp.coalesce()._nnz(), "coal")
+    # ((0, 1), (1, 2), (2, 3)). Build the coalesced result directly rather than
+    # calling .coalesce(), which the Kunlunxin backend does not implement for
+    # int16/int32/bool values (coalesce is a separate op, not the one under
+    # test here).
+    coal_indices = torch.tensor(
+        [[0, 1, 2], [1, 2, 3]], dtype=torch.long, device=flag_gems.device
+    )
+    coal_values = torch.empty(3, dtype=dtype, device=flag_gems.device)
+    coalesced = torch.sparse_coo_tensor(
+        coal_indices, coal_values, (3, 4), device=flag_gems.device
+    )
+    # The native reference coalesces on CPU, which supports every dtype.
+    ref_coal_nnz = ref_inp.cpu().coalesce()._nnz()
+    _assert_int_and_equal(flag_gems._nnz(coalesced), ref_coal_nnz, "coal")
     assert flag_gems._nnz(coalesced) == 3
 
 
