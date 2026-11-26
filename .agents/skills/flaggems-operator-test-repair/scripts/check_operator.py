@@ -10,6 +10,11 @@ directory outside the checkout, for example:
         --test-file tests/test_linalg_lu_solve.py \
         --bench-file benchmark/test_linalg_lu_solve.py --output /tmp/lu-solve-check
 
+Each invocation checks the correctness file passed to --test-file. If an
+operator's marker appears in multiple correctness files, run the script once
+for each file with the same operator and benchmark arguments and a fresh output
+directory. Require all those runs to pass for operator-wide dummy coverage.
+
 Use --baseline with an earlier run directory on the same backend to compare
 core metadata and accuracy node IDs. For proven skips, pass --allowed-skips with a JSON object
 mapping dummy-default, dummy-cpu or dummy-core to lists of exact skipped IDs.
