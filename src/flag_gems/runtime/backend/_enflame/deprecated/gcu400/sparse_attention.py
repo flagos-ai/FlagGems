@@ -155,14 +155,16 @@ def fused_attn_headblock_kernel(
     HP: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """按 (batch, m) 组织、一次算完 HP 个 head 的版本。
+    """Version organized by (batch, m) that computes all HP heads in one pass.
 
-    旧 kernel 以 (m, bh) 为 program 粒度，同一段 KV 行会被 H 个 head 各加载一次；
-    实测耗时正比于「加载的 KV 行数」（把全部计算去掉也不变快），因此这里把
-    head 维拍平成矩阵乘的 M 维：
-      scores = Q[HP, D] @ KV^T[D, BLOCK]   (矩阵单元)
+    The old kernel used (m, bh) as the program granularity, so the same KV rows were loaded
+    once per head; measured time was proportional to "the number of KV rows loaded" (removing
+    all computation did not speed it up), so here the head dimension is flattened into the M
+    dimension of the matrix multiply:
+      scores = Q[HP, D] @ KV^T[D, BLOCK]   (matrix unit)
       acc   += P[HP, BLOCK] @ KV[BLOCK, D]
-    KV tile 每个 program 只加载一次，行加载量降为 1/H，实测 5~10x 提速。
+    Each program loads the KV tile only once, reducing row loads to 1/H, for a measured 5-10x
+    speedup.
     """
     pid = tl.program_id(0)
     pid_b = pid // M

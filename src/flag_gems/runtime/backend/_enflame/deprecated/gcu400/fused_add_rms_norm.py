@@ -28,11 +28,13 @@ _GRID_SIZE = 48  # Fix the program count, with tiers chosen after sweeping over 
 
 
 def _num_warps(M, N):
-    """按 (M, N) 选择 num_warps。
+    """Select num_warps based on (M, N).
 
-    该算子 in-place（x / residual 都被写回），不能用 autotune 试算配置，
-    只能走 host 侧启发式；num_warps 会以 NW_TAG 的形式进入 LibEntry 的
-    dispatch key（dispatch key 本身不含 num_warps），保证不同配置不会串味。
+    This operator is in-place (both x and residual are written back), so
+    autotune cannot try out configurations and a host-side heuristic is used
+    instead. num_warps enters the LibEntry dispatch key as NW_TAG (the dispatch
+    key itself does not include num_warps), ensuring different configurations
+    do not cross-contaminate each other.
     """
     # Measured conclusions (GCU400, shape ∈ {3,4,5,22,2048} × {4096} ∪ {(2048,2048)}):
     # - For small M (grid=min(48,M) CTAs), a single sub-thread must scan the whole row serially, so instruction issue is

@@ -42,12 +42,14 @@ def geglu_kernel(
     ROWS: tl.constexpr,
     BLOCK_H: tl.constexpr,
 ):
-    """按行分块的 GEGLU：每个 program 处理 ROWS 行、行内按 BLOCK_H 分块顺序访问。
+    """Row-tiled GEGLU: each program handles ROWS rows, accessing elements within a row in
+    BLOCK_H chunks in order.
 
-    GCU400 上每行的 gate/up 两半都是连续内存（行内前 H 个元素是 gate、后 H 个
-    是 up），因此按行切块后每个 program 发出的都是大段连续访存，比原先
-    BLOCK_M x BLOCK_H 的 2-D 步进小块快约 7 倍（实测 4096x2048 fp16: 0.91ms -> 0.115ms）。
-    BLOCK_H 取 H 的 2 次幂（上限 2048），H 非 2 次幂时由 h 方向 mask 兜底。
+    On GCU400 both halves (gate/up) of each row are contiguous in memory (the first H elements
+    are gate, the last H are up), so row-wise tiling makes every program issue large contiguous
+    accesses, about 7x faster than the previous BLOCK_M x BLOCK_H 2-D strided small tiles
+    (measured 4096x2048 fp16: 0.91ms -> 0.115ms). BLOCK_H is the power of two of H (capped at
+    2048); when H is not a power of two, the h-direction mask covers the tail.
     """
     pid = tl.program_id(0)
     first_row = pid * ROWS

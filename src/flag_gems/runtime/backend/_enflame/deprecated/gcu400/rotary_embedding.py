@@ -12,29 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专用 RoPE 实现（persistent launch + 按规模选择访存形态）。
+"""GCU400-specific RoPE implementation (persistent launch + access pattern chosen by scale).
 
-与原通用实现的三处差异：
+Three differences from the generic implementation:
 
-1. launch 形态：grid 固定为 `min(n_tokens, 2 * NUM_SIPS)` 个 program，每个 program
-   在核内用 `tl.range` 轮转处理多个 token。原实现「一个 token 一个 program」，
-   batch=4/seq=512 时有 2048 个 program，仅调度开销就约 126us；persistent 化后
-   同一 case 从 219us 降到 155us。
+1. Launch shape: the grid is fixed at `min(n_tokens, 2 * NUM_SIPS)` programs, each program
+   processing multiple tokens in a `tl.range` loop inside the kernel. The original used
+   "one token per program", which produced 2048 programs for batch=4/seq=512 with about
+   126us of scheduling overhead alone; the persistent version cuts the same case from 219us
+   to 155us.
 
-2. 访存形态（`apply_rotary_pos_emb_kernel`）：把 q/k 的 `[num_heads, head_dim]`
-   摊平成一维 lane 空间 `[BLOCK_Q]`，一次 load 覆盖全部 head。seq=512 时 load/store
-   次数从 18/9 降到 4/2，同一 case 的 kernel 时间 153us -> 67us。`BLOCK_Q`/`BLOCK_K`
-   取 `next_power_of_2(num_heads * padded_head_dim)`（`tl.arange` 要求 2 的幂），
-   多出来的 lane 由 `dim_index < HEAD_DIM` 与 `head_index < num_heads` 一起 mask 掉。
+2. Access pattern (`apply_rotary_pos_emb_kernel`): flatten q/k's `[num_heads, head_dim]`
+   into a one-dimensional lane space `[BLOCK_Q]`, so one load covers all heads. For seq=512
+   the load/store counts drop from 18/9 to 4/2, and kernel time for the same case drops from
+   153us to 67us. `BLOCK_Q`/`BLOCK_K` are `next_power_of_2(num_heads * padded_head_dim)`
+   (`tl.arange` requires a power of two); extra lanes are masked out by both
+   `dim_index < HEAD_DIM` and `head_index < num_heads`.
 
-3. 双路径切换（`FUSE_HEADS_TOKEN_THRESHOLD`）：head 合并把每个 program 的索引
-   预计算从 head_dim 条 lane 放大到 `BLOCK_Q` 条 lane。n_tokens 较小（每 program
-   轮到的 token 少，摊不薄这份固定成本）时端到端反而慢约 7us（实测 seq=128 时
-   110us -> 117us）；n_tokens 大时则大幅领先（seq=512 时 152us -> 117us）。因此
-   小规模走 `apply_rotary_pos_emb_perhead_kernel`（逐 head），大规模走合并版本。
-   另外合并宽度受 `FUSE_HEADS_MAX_BLOCK` 限制：head_dim=256 且 8 个 head 时 BLOCK 会到
-   2048 lane，寄存器溢出后反而更慢，这类形状同样回退到逐 head。两条路径各是一个
-   独立 kernel：写进同一个 kernel 的 constexpr 分支会让编译时间整体变长。
+3. Dual-path switch (`FUSE_HEADS_TOKEN_THRESHOLD`): head fusion expands the per-program index
+   precomputation from head_dim lanes to `BLOCK_Q` lanes. With small n_tokens (few tokens per
+   program, so this fixed cost cannot be amortized) end-to-end latency is about 7us worse
+   (measured 110us -> 117us at seq=128); with large n_tokens it wins by a wide margin
+   (152us -> 117us at seq=512). Therefore small scales use
+   `apply_rotary_pos_emb_perhead_kernel` (per-head) and large scales use the fused version.
+   Fusion width is also capped by `FUSE_HEADS_MAX_BLOCK`: with head_dim=256 and 8 heads the
+   block reaches 2048 lanes, and register spilling makes it slower again, so such shapes also
+   fall back to the per-head path. Each path is a separate kernel: putting both in one kernel
+   behind a constexpr branch increases overall compile time.
 """
 
 import logging
@@ -225,7 +229,8 @@ def apply_rotary_pos_emb_perhead_kernel(
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
-    """逐 head 路径：每次只覆盖一个 head 的 head_dim 条 lane，寄存器脚印更小。"""
+    """Per-head path: covers only head_dim lanes of one head at a time, with a smaller
+    register footprint."""
 
     pid = tl.program_id(0)
 

@@ -205,12 +205,13 @@ def _gelu_mul_grad_flat(
 
 
 def _pick_tile(n):
-    """按元素数选 (tile 宽度, CTA 数)。
+    """Select (tile width, CTA count) based on the element count.
 
-    与同族 gcu400 elementwise 结论一致：小 shape（≤32K 元素）用 next_pow2(n) 的
-    精确 tile 单 CTA 一次做完；更大的 shape 把 tile 取成 ceil(n/48) 的 2 次幂并
-    封顶 32K，让 CTA 数尽量铺满。改前对 64K 元素仍用 32K tile → 只有 2 个 CTA
-    （fp32 1M 之外的 mid-size 段实测 1.16x，改成 2048 tile/32 CTA 后明显改善）。
+    Consistent with other gcu400 elementwise kernels: small shapes (<=32K elements) use an
+    exact tile of next_pow2(n) and finish in a single CTA; larger shapes use a tile of the
+    power of two of ceil(n/48), capped at 32K, so the CTAs stay as full as possible. Previously
+    64K elements still used a 32K tile -> only 2 CTAs (1.16x on the mid-size range beyond fp32
+    1M; switching to a 2048 tile / 32 CTAs improved it noticeably).
     """
     if n <= _SMALL_N:
         return max(64, triton.next_power_of_2(n)), 1

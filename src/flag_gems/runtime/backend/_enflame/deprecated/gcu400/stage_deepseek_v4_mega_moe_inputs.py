@@ -182,12 +182,14 @@ def _stage_bulk_kernel(
     GRID_M: tl.constexpr,
     IDX_TY: tl.constexpr,
 ) -> None:
-    """token 维做 tile 的常驻版本：每个 program 沿 token 方向 stride 循环。
+    """Persistent version tiled along the token dimension: each program loops with a stride
+    along tokens.
 
-    量化分组的 int32 打包把 BLOCK_K 钉死在 128（4 组 × 8 bit），单 program 若只处理
-    一个 (token, 128) 就只搬 256B，program 数随 token 数线性增长（8192 token = 13 万
-    个 program，24.7ms）。这里改成 [BLOCK_M, 128] 的大 tile、grid 固定为
-    (hidden/128, GRID_M)，实测 8192×2048 由 24.7ms 降到 0.13ms。
+    The int32 packing of quantization groups pins BLOCK_K at 128 (4 groups x 8 bits), so a
+    program handling only one (token, 128) block moves just 256B, and the program count grows
+    linearly with the token count (8192 tokens = 130k programs, 24.7ms). This version uses a
+    large [BLOCK_M, 128] tile with the grid fixed at (hidden/128, GRID_M); measured 8192x2048
+    drops from 24.7ms to 0.13ms.
     """
     pid_k = tl.program_id(0)
     pid_m = tl.program_id(1)

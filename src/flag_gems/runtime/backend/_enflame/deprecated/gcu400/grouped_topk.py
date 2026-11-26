@@ -272,11 +272,12 @@ def grouped_topk_fused_kernel(
     SCORING_FUNC: tl.constexpr,
     renormalize: tl.constexpr,
 ):
-    """单 program 完成一个 token 的「组打分 → 选组 → 选专家 → 归一化」。
+    """One program handles the full "group scoring -> group selection -> expert selection ->
+    normalization" pipeline for a single token.
 
-    相比 group_scores 与 group_idx 两个 kernel 的版本：省掉一次 launch、group_scores
-    的全局读写，以及 scoring_func=1 时的全量 scores 中间张量；grid 也从
-    num_tokens * n_group 收缩到 num_tokens。
+    Compared with the two-kernel version (group_scores + group_idx): saves one launch, the
+    global reads/writes of group_scores, and the full scores intermediate tensor for
+    scoring_func=1; the grid also shrinks from num_tokens * n_group to num_tokens.
     """
     pid = tl.program_id(1) * grid_x + tl.program_id(0)
     if pid >= num_tokens:

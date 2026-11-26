@@ -1123,10 +1123,12 @@ BISECT_BLOCK_SIZE = 2048
 
 @triton.jit
 def _to_order_key(x):
-    """float32 → 单调 uint32 序键：值越大键越大（含负数与 ±0）。
+    """float32 -> monotone uint32 order key: larger values yield larger keys (including
+    negatives and +/-0).
 
-    key = bits ^ 0x80000000（非负） / ~bits（负），这样整数比较等价于浮点值比较，
-    后续二分只需整数 count(key >= mid)。
+    key = bits ^ 0x80000000 (non-negative) / ~bits (negative), so integer comparison is
+    equivalent to floating-point comparison and the subsequent bisection only needs an
+    integer count(key >= mid).
     """
     bits = x.to(tl.uint32, bitcast=True)
     negative = (bits >> 31) == 1
@@ -1142,12 +1144,14 @@ def _bisect_row_into(
     TOPK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """把「32 轮计数二分求第 topk 大 key + 两遍落位输出」作用在单行上。
+    """Apply "32 rounds of counting bisection to find the topk-th largest key + two passes
+    to write the output" to a single row.
 
-    抽成 device 函数是为了让候选集版 kernel 在候选数异常（收集不足或溢出）时
-    就地回退到这条确定正确的慢路径，无需额外 kernel 启动或 host 侧同步。
+    Factored into a device function so the candidate-set kernel can fall back to this
+    definitely-correct slow path in place when the candidate count is abnormal (too few
+    collected or overflow), without an extra kernel launch or host-side synchronization.
 
-    代价：每行 34 遍扫描，只在该行的候选集不可用时才走。
+    Cost: 34 scans per row, taken only when that row's candidate set is unavailable.
     """
     lane = tl.arange(0, BLOCK_SIZE)
     k = tl.minimum(row_len, TOPK)
@@ -1227,18 +1231,22 @@ def _gcu_rowwise_top_k_per_row(
     TILE: tl.constexpr,
     PAD_TILE: tl.constexpr,
 ):
-    """每个 program 处理一行：整行 logits 一次性载入寄存器，32 轮二分与落位全部在
-    寄存器内完成，只有 1 遍读 + 1 遍写（输出索引）。
+    """Each program handles one row: the whole row of logits is loaded into registers at
+    once, and the 32 bisection rounds and output placement all happen in registers, with
+    only 1 read + 1 write (of output indices).
 
-    比 ``_bisect_row_into`` 快得多：后者每轮都要重扫整行（34 遍访存）。
+    Much faster than ``_bisect_row_into``, which rescans the whole row on every round
+    (34 passes).
 
-    GCU 实测要点（决定了这里的写法）：
-      * ``tl.histogram`` / 全局 ``tl.atomic_add`` 只有 1.4 / 1.7 GB/s，直方图类算法
-        在本设备上不可行；
-      * 每轮做一次 ``tl.sum`` 归约的成本约 50ns，扩展开的 ``static_range`` 会让寄存器
-        压力爆炸（32 轮实测 58ms vs 动态 ``range`` 的 25ms），所以用 ``tl.range``；
-      * 跨 warp 归约的同步开销占大头，因此按「每线程不超过 128 个 lane」选最小 warp 数
-        （1 warp 时退化为 warp 内 shuffle，实测比 8 warp 快 2 倍）。
+    GCU measurements that determined this implementation:
+      * ``tl.histogram`` / global ``tl.atomic_add`` reach only 1.4 / 1.7 GB/s, so
+        histogram-based algorithms are impractical on this device;
+      * each ``tl.sum`` reduction costs about 50ns, and unrolled ``static_range`` blows up
+        register pressure (58ms for 32 rounds vs 25ms with dynamic ``range``), so
+        ``tl.range`` is used;
+      * cross-warp reduction synchronization dominates, so the minimum number of warps is
+        chosen with "no more than 128 lanes per thread" (1 warp degrades to intra-warp
+        shuffle and is measured 2x faster than 8 warps).
     """
     row_id = tl.program_id(0)
     row_start = tl.load(row_starts + row_id)
@@ -1325,7 +1333,8 @@ def _gcu_candidate_top_k_per_row(
     CHUNKS: tl.constexpr,
     SAMPLE_ROUNDS: tl.constexpr,
 ):
-    """每个 program 处理一行：抽样定下界 → 一次全扫收集候选 → 候选集上精确二分落位。"""
+    """Each program handles one row: sample to set a lower bound, one full scan to collect
+    candidates, then exact bisection and placement on the candidate set."""
     row_id = tl.program_id(0)
     row_start = tl.load(row_starts + row_id)
     row_end = tl.load(row_ends + row_id)

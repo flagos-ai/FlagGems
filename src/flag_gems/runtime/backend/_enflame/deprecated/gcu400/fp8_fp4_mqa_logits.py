@@ -49,20 +49,11 @@ def _fp8_fp4_mqa_logits_kernel(
     HEAD_GROUP: tl.constexpr,
     PAD_M: tl.constexpr,
 ):
-    """GCU400 fused FP8 MQA logits。
+    """GCU400 fused FP8 MQA logits.
 
-    logits[m, n] = sum_h( ReLU(dot(q[m,h,:], k[n,:]) * k_scale[n]) * w[m,h] )，
-    CLEAN_LOGITS 为真时在同一 kernel 内把 [cu_seqlen_ks, cu_seqlen_ke) 之外的
-    位置写成 -inf，省掉一次独立 launch。
-
-    与通用实现的差异（均为 GCU400 实测结论）：
-      * `tl.dot` 的 M 维必须是 16 的倍数，否则静默算错；所以行索引全部走
-        PAD_M（>=16）补齐，真实行数由 BLOCK_M 掩码控制，M=1 的 decode 也正确。
-      * 行数少（decode，M<=16）时只能切出 cdiv(N, BLOCK_N) 个 program，MMA
-        行维严重空转。HEAD_GROUP 把相邻 HEAD_GROUP 个 head 叠到 dot 的行轴上
-        （行号 = head*PAD_M + row），算完 reshape 回 [HEAD_GROUP, PAD_M, BLOCK_N]
-        沿 head 归约；M=1、N=4096 实测 0.19ms -> 0.080ms。
-      * HEAD_GROUP=1 时跳过 reshape，等价逐 head 循环（prefill 大 M 更优）。
+    logits[m, n] = sum_h( ReLU(dot(q[m,h,:], k[n,:]) * k_scale[n]) * w[m,h] );
+    when CLEAN_LOGITS is true, positions outside [cu_seqlen_ks, cu_seqlen_ke)
+    are written as -inf within the same kernel, saving a separate launch.
     """
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
@@ -194,11 +185,12 @@ def fp8_fp4_mqa_logits(
 
 
 def _select_tile(m: int) -> tuple:
-    """按行数选 tile（GCU400 实测最优，见 kernel docstring）。
+    """Select the tile based on the row count (optimal as measured on GCU400; see the kernel docstring).
 
-    decode（行少）用 8 个 head 叠行 + 128 列 tile，让 MMA 行维不空转；
-    prefill（行多）退回逐 head 循环，用 64x256 大 tile 提高复用。
-    返回 (BLOCK_M, BLOCK_N, HEAD_GROUP, PAD_M)。
+    Decode (few rows) stacks 8 heads on the row axis with a 128-column tile to
+    keep the MMA row dimension busy; prefill (many rows) falls back to a
+    per-head loop with a 64x256 tile for better reuse.
+    Returns (BLOCK_M, BLOCK_N, HEAD_GROUP, PAD_M).
     """
     if m <= 16:
         return 16, 128, 8, 16
