@@ -51,7 +51,7 @@ def test_cov(shape, dtype):
 
     before = inp.clone()
     res_out = flag_gems.cov(inp)
-    assert torch.equal(inp, before)
+    utils.gems_assert_equal(inp, before)
 
     # The covariance matrix is NxN; use a reduce_dim tolerance sized to the
     # observation count, since the matrix product accumulates over n_cols.
