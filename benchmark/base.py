@@ -1004,7 +1004,23 @@ class Benchmark:
             metric.case_metadata = input_metadata(self.op_name, args)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
-                metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
+                # A failing native baseline must not discard the candidate
+                # measurement: leave latency_base unset so speedup falls back
+                # to the external baseline comparison below. Queued accelerator
+                # work is drained first, because a device-side failure would
+                # otherwise be attributed to the candidate timing that follows.
+                try:
+                    metric.latency_base = self.get_latency(
+                        self.torch_op, *args, **kwargs
+                    )
+                except pytest.skip.Exception:
+                    raise
+                except Exception as e:
+                    torch_device_fn.synchronize()
+                    print(
+                        f"\033[33mBASELINE FAILED\033[0m: Operator={self.op_name} "
+                        f"dtype={dtype} err=<<<{e}>>>"
+                    )
             if "latency" in self.to_bench_metrics:
                 op, dispatch, overridden = self._candidate_call()
                 registry = Config.override_registry
@@ -1029,12 +1045,7 @@ class Benchmark:
                         )
                     metric.candidate_source = "override"
             if "speedup" in self.to_bench_metrics:
-                if Config.skip_native:
-                    if metric.latency_base is not None and metric.latency is not None:
-                        metric.speedup = (metric.latency_base + self.EPS) / (
-                            metric.latency + self.EPS
-                        )
-                else:
+                if metric.latency_base is not None and metric.latency is not None:
                     metric.speedup = (metric.latency_base + self.EPS) / (
                         metric.latency + self.EPS
                     )
@@ -1068,18 +1079,12 @@ class Benchmark:
                     metric.speedup_source = None
 
             if "gbps" in self.to_bench_metrics:
-                if Config.skip_native:
-                    if metric.latency_base is not None:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
-                    if metric.latency is not None:
-                        metric.gbps = self.get_gbps(args, latency=metric.latency)
-                else:
+                if metric.latency_base is not None:
                     metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
+                if metric.latency is not None:
                     metric.gbps = self.get_gbps(args, latency=metric.latency)
 
-            if "tflops" in self.to_bench_metrics:
+            if "tflops" in self.to_bench_metrics and metric.latency is not None:
                 metric.tflops = (
                     self.get_tflops(self.torch_op, *args, **kwargs)
                     / metric.latency
