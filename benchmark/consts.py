@@ -137,6 +137,11 @@ class BenchmarkMetrics:
     base_latency_ms: Optional[float] = None
     base_scaling_factor: Optional[float] = None
     base_miss_reason: Optional[str] = None
+    # Which speedup source was actually used for this shape: "origin" (native
+    # gems-vs-torch), "nv_baseline" (compared_speedup from --base-data), or None
+    # when no speedup is available. Set by the benchmark logic based on
+    # --speedup-source preference and availability.
+    speedup_source: Optional[str] = None
     # GPU time share from model profiling YAML (--model-profile).
     # Format: {"prefill": {"pct": 2.60, "calls": 4696}, "decode": {...}}
     # None when --model-profile is not provided.
@@ -158,6 +163,7 @@ ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "base_latency_ms",
     "base_scaling_factor",
     "base_miss_reason",
+    "speedup_source",
     "time_share",
 }
 
@@ -264,6 +270,8 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        if not self.result:
+            return header_title + "No benchmark results were collected.\n"
         native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
         if native_baseline_skip_reason:
             header_title += f"Native baseline: N/A ({native_baseline_skip_reason})\n"

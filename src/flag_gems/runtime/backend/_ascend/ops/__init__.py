@@ -16,6 +16,7 @@ from ._adaptive_avg_pool3d_backward import (
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from ._add_relu import _add_relu
 from ._conj_copy import _conj_copy, _conj_copy_out
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -26,6 +27,8 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._pad_enum import _pad_enum
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
+from ._upsample_nearest_exact3d_backward import _upsample_nearest_exact3d_backward
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -75,8 +78,8 @@ from .bitwise_xor import (
     bitwise_xor_scalar_,
     bitwise_xor_scalar_tensor,
     bitwise_xor_tensor,
-    bitwise_xor_tensor_,
 )
+from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
@@ -220,6 +223,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
@@ -249,6 +253,7 @@ from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .inverse import inverse
+from .isfinite import isfinite
 from .isin import isin
 from .isposinf import isposinf
 from .isreal import isreal
@@ -328,6 +333,7 @@ from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
+from .native_group_norm import native_group_norm
 from .ne_ import ne_
 from .negative import negative
 from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
@@ -376,6 +382,7 @@ from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_o
 from .select_backward import select_backward
 from .select_copy import select_copy
 from .select_scatter import select_scatter
+from .selu_ import selu_
 from .silu import silu, silu_
 from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
@@ -393,6 +400,7 @@ from .special_expm1 import special_expm1
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
 from .special_xlogy import special_xlogy
+from .special_xlogy_ import special_xlogy_
 from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
@@ -424,6 +432,7 @@ from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put
 from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d_backward import upsample_nearest3d_backward
@@ -433,6 +442,7 @@ from .upsample_nearest3d_backward_grad_input import (
 from .upsample_nearest_exact3d_backward_grad_input import (
     upsample_nearest_exact3d_backward_grad_input,
 )
+from .value_selecting_reduction_backward import value_selecting_reduction_backward
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .view_copy import view_copy
@@ -446,6 +456,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_adaptive_avg_pool3d_backward",
+    "_add_relu",
     "_conj_copy",
     "_conj_copy_out",
     "_dyn_quant_matmul_4bit",
@@ -461,10 +472,12 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_transform_bias_rescale_qkv",
     "_trilinear",
     "_trilinear_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_nearest_exact3d_backward",
     "absolute_",
     "acos_",
     "acosh",
@@ -668,6 +681,7 @@ __all__ = [
     "greater_equal_",
     "group_norm",
     "group_norm_backward",
+    "grouped_gemm_w8a8",
     "grouped_matmul",
     "gru",
     "gru_data",
@@ -701,6 +715,7 @@ __all__ = [
     "index_select_backward",
     "inner",
     "inverse",
+    "isfinite",
     "isin",
     "isposinf",
     "isreal",
@@ -802,6 +817,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "narrow_copy",
+    "native_group_norm",
     "native_layer_norm",
     "ne_",
     "negative",
@@ -863,6 +879,7 @@ __all__ = [
     "select_backward",
     "select_copy",
     "select_scatter",
+    "selu_",
     "silu",
     "silu_",
     "silu_backward",
@@ -885,6 +902,7 @@ __all__ = [
     "special_log1p_out",
     "special_logit_out",
     "special_xlogy",
+    "special_xlogy_",
     "square_",
     "squeeze_copy",
     "stack",
@@ -918,11 +936,13 @@ __all__ = [
     "unsafe_index",
     "unsafe_index_put",
     "unsafe_masked_index",
+    "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
     "upsample_nearest_exact3d_backward_grad_input",
+    "value_selecting_reduction_backward",
     "var_mean",
     "vector_norm",
     "view_copy",
