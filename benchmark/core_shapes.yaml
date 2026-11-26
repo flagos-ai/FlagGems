@@ -519,6 +519,26 @@ addmm_out_vector_bias:
     - [1, 1024, 512, 1536]
   shape_desc: "B, M, N, K"
 
+nll_loss2d_backward:
+  shapes:
+  - - 2
+    - 7
+    - 3
+    - 5
+  - - 4
+    - 16
+    - 16
+    - 16
+  - - 8
+    - 64
+    - 32
+    - 32
+  - - 8
+    - 128
+    - 64
+    - 64
+  shape_desc: Frozen backward30 nll2d input shape
+
 grouped_mm:
   shapes:
     - [16, 512, 2048]
@@ -1672,22 +1692,13 @@ narrow_copy_backward:
     - 4096
   shape_desc: Frozen backward30 narrow input shape
 
-nll_loss2d_backward:
+binary_cross_entropy_with_logits_backward:
   shapes:
-  - - 2
-    - 7
-    - 3
-    - 5
-  - - 4
-    - 16
-    - 16
-    - 16
-  - - 8
+  - - 257
+  - - 64
     - 64
-    - 32
-    - 32
-  - - 8
-    - 128
-    - 64
-    - 64
-  shape_desc: Frozen backward30 nll2d input shape
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
