@@ -331,6 +331,7 @@ from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
+from .native_group_norm import native_group_norm
 from .ne_ import ne_
 from .negative import negative
 from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
@@ -811,6 +812,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "narrow_copy",
+    "native_group_norm",
     "native_layer_norm",
     "ne_",
     "negative",
