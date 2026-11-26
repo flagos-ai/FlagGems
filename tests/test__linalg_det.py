@@ -23,7 +23,6 @@ import flag_gems
 from .accuracy_utils import (
     _SKIP_FP64,
     gems_assert_close,
-    gems_assert_equal,
     to_reference,
 )
 

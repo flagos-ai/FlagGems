@@ -161,7 +161,7 @@ class ConvertWeightBenchmark(base.Benchmark):
                 metrics.append(metric)
                 gc.collect()
 
-            if _ENFLAME:
+            if flag_gems.vendor_name == "enflame":
                 # On enflame the native leg is skipped by the skip_native
                 # marker, so the record must carry that reason. The framework
                 # helper emits the dict payload and attaches the reason; the
