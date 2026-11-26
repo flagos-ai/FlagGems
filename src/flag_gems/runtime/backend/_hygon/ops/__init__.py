@@ -61,6 +61,9 @@ from ._foreach_clamp_min__List import (
     _foreach_clamp_min__List as _foreach_clamp_min__List,
 )
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_clamp_min__ScalarList import (
+    _foreach_clamp_min__ScalarList as _foreach_clamp_min__ScalarList,
+)
 from ._foreach_clamp_min_List import _foreach_clamp_min_List as _foreach_clamp_min_List
 from ._foreach_clamp_min_Scalar import (
     _foreach_clamp_min_Scalar as _foreach_clamp_min_Scalar,
@@ -83,9 +86,11 @@ from ._foreach_erfc_ import _foreach_erfc_ as _foreach_erfc_
 from ._foreach_exp import _foreach_exp as _foreach_exp
 from ._foreach_exp_ import _foreach_exp_ as _foreach_exp_
 from ._foreach_expm1 import _foreach_expm1 as _foreach_expm1
+from ._foreach_expm1_ import _foreach_expm1_ as _foreach_expm1_
 from ._foreach_floor import _foreach_floor as _foreach_floor
 from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
 from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
+from ._foreach_log import _foreach_log as _foreach_log
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
@@ -97,8 +102,10 @@ from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_neg import _foreach_neg as _foreach_neg
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_reciprocal import _foreach_reciprocal as _foreach_reciprocal
 from ._foreach_reciprocal_ import _foreach_reciprocal_ as _foreach_reciprocal_
 from ._foreach_round_ import _foreach_round_
+from ._foreach_rsqrt import _foreach_rsqrt as _foreach_rsqrt
 from ._foreach_sigmoid import _foreach_sigmoid as _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
@@ -387,6 +394,7 @@ __all__ = [
     "_foreach_clamp_max_ScalarList",
     "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
+    "_foreach_clamp_min__ScalarList",
     "_foreach_clamp_min_List",
     "_foreach_clamp_min_Scalar",
     "_foreach_clamp_min_ScalarList",
@@ -403,9 +411,11 @@ __all__ = [
     "_foreach_exp",
     "_foreach_exp_",
     "_foreach_expm1",
+    "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_frac_",
+    "_foreach_log",
     "_foreach_log10_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
@@ -417,8 +427,10 @@ __all__ = [
     "_foreach_neg",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
+    "_foreach_reciprocal",
     "_foreach_reciprocal_",
     "_foreach_round_",
+    "_foreach_rsqrt",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign_",
