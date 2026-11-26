@@ -804,7 +804,10 @@ def scaled_dot_product_attention_forward(
             (batch * q_head_num, q_len, k_pad), -1e30, dtype=torch.float32
         )
 
-    use_cmask = attn_mask is not None or is_causal
+    # Mask the partial key tile through the existing CMASK kernel. A select
+    # inside the QK reduction loop is miscompiled on XPU, and zero-filled
+    # invalid keys would otherwise dominate an all-negative row maximum.
+    use_cmask = attn_mask is not None or is_causal or k_pad != kv_len
     if use_cmask:
         cmask = query.new_full(
             (batch * q_head_num, q_len, k_pad), 1e30, dtype=torch.float32
@@ -1886,7 +1889,9 @@ def _fa_cmask_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     q_mask = offs_m < Q_CTX
     kv_mask = offs_n < KV_CTX
-    cm = tl.full([BLOCK_M, BLOCK_N], 1e30, dtype=tl.float32)
+    # Valid columns have no bias when this kernel only masks the tail tile.
+    # Padding columns retain the caller's 1e30 prefill because stores skip them.
+    cm = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     if USE_MASK:
         m_ptrs = (
             MASK
@@ -2045,7 +2050,7 @@ def _fa_qk_m_kernel(
     BLOCK_N: tl.constexpr,
     USE_CMASK: tl.constexpr,
 ):
-    """Pass 1: ``qk' = (Q @ K^T) * scale - cmask`` and ``m = max(rowmax(qk'), 0)``.
+    """Pass 1: ``qk' = (Q @ K^T) * scale - cmask`` and ``m = rowmax(qk')``.
 
     When ``USE_CMASK``, the mask is folded into the stored qk here
     (``qk' = qk - cm``) from a dense ``(B*H, Q_CTX, K_PAD)`` f32 ``CMASK``:
@@ -2090,16 +2095,6 @@ def _fa_qk_m_kernel(
         # exponential overflows for positive arguments, so kernel B relies on
         # the invariant (qk' - m) <= 0.  A positive additive mask
         # (attn_mask > 0) makes qk' > rowmax(raw qk), which would overflow.
-        if not USE_CMASK:
-            # The tail block loads zero-filled K for n >= KV_CTX, so those
-            # cells hold qk = 0 and would dominate the row max of an
-            # all-negative row.  Push them to the mask sentinel before
-            # reducing; the store below drops them anyway (QK keeps its -1e30
-            # prefill there).  With a CMASK the sentinel is already baked in
-            # (CMASK is 1e30 outside the valid region), and this select must
-            # stay out of that loop body: next to the in-loop CMASK load it
-            # hangs the XPU backend.
-            qk = tl.where(offs_n[None, :] < KV_CTX, qk, -1e30)
         m_i = tl.maximum(m_i, tl.max(qk, 1))
         qk_ptrs = qk_base + offs_m[:, None] * K_PAD + offs_n[None, :]
         # separable (1D-broadcast) store mask; n >= KV_CTX stays -1e30.
@@ -2319,6 +2314,7 @@ def flash_attention_forward(
     # sentinel must stay far below any real logit so that kernel A can tell a
     # fully masked row from a row of merely very negative logits.
     cmask = None
+    use_cmask = is_causal or has_window or v_padded
     if is_causal or has_window:
         cmask2d = torch.full((q_len, k_pad), 1e30, dtype=torch.float32, device=device)
         rows = torch.arange(q_len, device=device)[:, None]
@@ -2342,6 +2338,33 @@ def flash_attention_forward(
         cmask = (
             cmask2d.unsqueeze(0).expand(batch * q_head_num, q_len, k_pad).contiguous()
         )
+    elif v_padded:
+        cmask = value.new_full(
+            (batch * q_head_num, q_len, k_pad), 1e30, dtype=torch.float32
+        )
+        with torch_device_fn.device(device):
+            _fa_cmask_kernel[
+                (triton.cdiv(q_len, 64), batch * q_head_num, triton.cdiv(k_pad, 64))
+            ](
+                cmask,
+                query,
+                0,
+                0,
+                0,
+                0,
+                q_len,
+                k_len,
+                k_pad,
+                q_head_num,
+                USE_MASK=False,
+                MASK_IS_BOOL=False,
+                IS_CAUSAL=False,
+                CAUSAL_OFFSET=0,
+                BLOCK_M=64,
+                BLOCK_N=64,
+                num_warps=4,
+                num_stages=1,
+            )
 
     # qk scratch prefilled with -1e30: exp2(-1e30) underflows to exactly 0.0
     # (the backend miscompiles exp2(-inf) to nan/inf).
@@ -2363,7 +2386,7 @@ def flash_attention_forward(
             k_in,
             qk_buf,
             m_buf,
-            cmask if (is_causal or has_window) else qk_buf,
+            cmask if use_cmask else qk_buf,
             softmax_scale,
             q_in.stride(0),
             q_in.stride(1),
@@ -2377,7 +2400,7 @@ def flash_attention_forward(
             k_len,
             k_pad,
             q_head_num,
-            USE_CMASK=(is_causal or has_window),
+            USE_CMASK=use_cmask,
             num_warps=8,
             num_stages=1,
             **common,
