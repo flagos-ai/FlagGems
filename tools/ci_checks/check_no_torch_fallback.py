@@ -59,6 +59,65 @@ ALLOWED_TORCH_CALLS = {
     "promote_types",
     "is_grad_enabled",
     "set_grad_enabled",
+    # view ops: return aliases of the input storage, no kernel launch
+    "adjoint",
+    "broadcast_to",
+    "chunk",
+    "detach",
+    "diagonal",
+    "dsplit",
+    "hsplit",
+    "vsplit",
+    "imag",
+    "real",
+    "moveaxis",
+    "movedim",
+    "narrow",
+    "permute",
+    "select",
+    "split",
+    "split_with_sizes",
+    "squeeze",
+    "swapaxes",
+    "swapdims",
+    "t",
+    "tensor_split",
+    "transpose",
+    "unbind",
+    "unflatten",
+    "unsqueeze",
+    "view_as_complex",
+    "view_as_real",
+    # may return a view or, for non-contiguous input, a copy (launching a copy
+    # kernel). Allowed on purpose: the copy is layout-only, not tensor compute.
+    "reshape",
+    "flatten",
+    "ravel",
+    "conj",
+    # memory management / allocation, no compute
+    "empty_permuted",
+    "empty_quantized",
+    "as_tensor",
+    "asarray",
+    "scalar_tensor",
+    "manual_seed",
+    "get_rng_state",
+    "set_rng_state",
+    "Generator",
+    # metadata / type queries, no kernel
+    "numel",
+    "is_complex",
+    "is_conj",
+    "is_inference",
+    "is_signed",
+    "is_same_size",
+    "is_storage",
+    "can_cast",
+    "broadcast_shapes",
+    "get_default_device",
+    "set_default_dtype",
+    "set_default_device",
+    "typename",
 }
 # torch sub-namespaces that are runtime/infra rather than tensor compute.
 ALLOWED_TORCH_NAMESPACES = {
@@ -82,8 +141,8 @@ ALLOWED_TORCH_NAMESPACES = {
     "ixuca",
 }
 PRAGMA = "allow-torch-compute"
-CORE_DIRS = ("ops", "fused", "experimental_ops")
-VENDOR_SUBDIRS = ("ops", "fused", "fla")
+CORE_DIRS = ("ops", "deprecated", "experimental_ops")
+VENDOR_SUBDIRS = ("ops", "deprecated", "fla")
 
 # Per-file exemptions for torch compute calls that dispatch to a vendor-native
 # kernel rather than falling back to CPU/CUDA.  Key: path suffix (posix);
@@ -127,6 +186,10 @@ def classify(name: str, aliases: set[str]) -> bool:
         return True
     if name.startswith("torch.ops.aten."):
         return True
+    # Bumps the autograd version counter after a direct device-kernel mutation;
+    # it does not perform tensor computation.
+    if name == "torch.autograd.graph.increment_version":
+        return False
     if parts[1] in ALLOWED_TORCH_NAMESPACES or parts[1] in ALLOWED_TORCH_CALLS:
         return False
     # torch.ops.<custom> and torch.nn.* modules are not compute calls we can judge.
