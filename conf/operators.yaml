@@ -9358,6 +9358,29 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: fused_moving_avg_obs_fq_helper_backward
+  description: |
+    Backward pass of `_fused_moving_avg_obs_fq_helper`: the input gradient is
+    `grad * mask`, where the mask marks elements whose
+    `round(x/scale)+zero_point` landed inside the `[quant_min, quant_max]`
+    range (range-masked straight-through estimator; clamped out-of-range
+    elements receive zero gradient). The mask is recomputed in the kernel from
+    the final quantization parameters, matching the historical ATen backward;
+    per-channel broadcast follows the ch_axis=0 layout of the FlagGems
+    forward. This Torch build has no standalone
+    `aten::_fused_moving_avg_obs_fq_helper_backward` schema, so the kernel is
+    exposed as an explicit entry point; the native gradient flows through the
+    FusedMovingAvgObsFqHelperBackward0 autograd node.
+  for:
+  - fused_moving_avg_obs_fq_helper_backward
+  labels:
+  - aten
+  - quantization
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6'
 - id: fused_rms_norm
   description: Fused RMS normalization returning the normalized output and inverse
     RMS.
