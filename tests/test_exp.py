@@ -76,9 +76,7 @@ def test_exp_float64_precision():
         actual = torch.exp(inp)
 
     assert actual.dtype == torch.float64
-    torch.testing.assert_close(
-        actual.cpu(), expected, rtol=1e-12, atol=1e-12
-    )
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-12, atol=1e-12)
 
 
 @pytest.mark.exp
