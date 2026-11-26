@@ -1972,7 +1972,9 @@ def _launch_column_major_gemv(
             num_warps=4,
         )
         if split > 1:
-            gemv_split_k_reduce_kernel_ppu[(triton.cdiv(rows, 32),)](
+            # Pack split groups into the warp when there are at most eight rows.
+            reduce_block_m = 8 if rows <= 8 else 32
+            gemv_split_k_reduce_kernel_ppu[(triton.cdiv(rows, reduce_block_m),)](
                 partial,
                 out,
                 bias,
@@ -1982,7 +1984,7 @@ def _launch_column_major_gemv(
                 stride_out,
                 stride_bias,
                 SPLIT_K=split,
-                BLOCK_M=32,
+                BLOCK_M=reduce_block_m,
                 FUSE_ADDMM=fuse_bias,
                 READ_BIAS=read_bias,
                 num_warps=1,

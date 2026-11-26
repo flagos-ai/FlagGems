@@ -46,7 +46,7 @@ def test_mv(N, K, dtype, column_major):
 @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="THead column-major MV")
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
-    "rows, k, padding", [(7, 33, 0), (37, 3073, 5), (1537, 257, 0)]
+    "rows, k, padding", [(7, 33, 0), (7, 16387, 5), (37, 3073, 5), (1537, 257, 0)]
 )
 def test_thead_mv_column_major(rows, k, padding, dtype):
     storage = torch.randn((k, rows + padding), dtype=dtype, device=flag_gems.device)
