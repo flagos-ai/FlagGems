@@ -19,6 +19,11 @@ from _enflame.gcu300.utils.codegen_config_utils import get_heuristics_for_num_wa
 
 ENFLAME_GCU300_4SIPS = int(os.getenv("ENFLAME_GCU300_4SIPS", "0"))
 MMU_LIMIT = 512 * 1024 * 1024
+# When the MMU constraint forces a single-row tile, the tuned 2048/4096-wide
+# inner tile makes the GCU300 register allocator fail on the scatter/gather
+# lowering ("ran out of registers during register allocation"). A single row
+# does not need a wide tile to amortise anything, so cap it.
+MMU_ROW_BLOCK1_LIMIT = 256
 
 
 def heuristics_for_num_warps(tile_size):
@@ -98,6 +103,7 @@ def mmu_safe_index_put_block_sizes(
     scatter_span = index_stride * max(1, index_dim - 1) * element_size
     if scatter_span >= MMU_LIMIT:
         block_size0 = 1
+        block_size1 = min(block_size1, MMU_ROW_BLOCK1_LIMIT)
 
     # block_ptr-style tile footprint: stride * (BLOCK - 1) along each tiled axis.
     mmu_size = (
@@ -105,6 +111,26 @@ def mmu_safe_index_put_block_sizes(
     ) * element_size
     if mmu_size >= MMU_LIMIT:
         block_size0 = 1
-        block_size1 = max(1, MMU_LIMIT // element_size)
+        block_size1 = min(max(1, MMU_LIMIT // element_size), MMU_ROW_BLOCK1_LIMIT)
 
     return block_size0, block_size1
+
+
+def mmu_requires_single_row(input_stride, input_shape, element_size: int) -> bool:
+    """Whether index_put has to walk one indexed row per tile.
+
+    Mirrors the ``scatter_span`` guard below. Callers use it to select the
+    dedicated single-row kernel, because the tiled kernel with
+    ``BLOCK_SIZE0 == 1`` trips the GCU300 register allocator when it keeps the
+    row loop (FlagGems #8532/#8533).
+    """
+    index_stride = input_stride[0]
+    index_dim = input_shape[0]
+
+    scatter_span = index_stride * max(1, index_dim - 1) * element_size
+    if scatter_span >= MMU_LIMIT:
+        return True
+
+    # Worst-case tile footprint of the tiled kernel (4 rows, 4096 inner tile):
+    # clamping it still forces BLOCK_SIZE0 to 1.
+    return (index_stride * 3 + 4095) * element_size >= MMU_LIMIT
