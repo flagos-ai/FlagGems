@@ -413,9 +413,11 @@ from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumprod_backward import cumprod_backward
+from .ctc_loss import ctc_loss
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
+from .det import det
 from .dequantize import dequantize
 from .detach_copy import detach_copy
 from .diag import diag
@@ -1473,6 +1475,7 @@ __all__ = [
     "cos_",
     "count_nonzero",
     "cov",
+    "ctc_loss",
     "cummax",
     "cummaxmin_backward",
     "cummin",
@@ -1483,6 +1486,7 @@ __all__ = [
     "cumsum_",
     "cumsum_out",
     "deg2rad",
+    "det",
     "deg2rad_",
     "deg2rad_out",
     "dequantize",
