@@ -24,7 +24,11 @@ from . import accuracy_utils as utils
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
-CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
+CUDA_DEVICES = (
+    [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
+    if torch.cuda.is_available()
+    else [flag_gems.device]
+)
 
 
 def _create_mla_cache(

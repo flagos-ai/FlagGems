@@ -21,6 +21,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+# _cudnn_rnn_flatten_weight is CUDA-only: skip the entire module on NPU/non-CUDA backends.
+_requires_cuda = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason="_cudnn_rnn_flatten_weight is CUDA-only",
+)
+
 # (input_size, hidden_size, num_layers, bidirectional, bias)
 RECURRENT_CONFIGS = [
     (4, 3, 1, False, True),
@@ -136,6 +142,7 @@ def _reference(weights, args, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
     if TO_CPU:
         pytest.skip(
@@ -160,6 +167,7 @@ def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
     """The production caller path: rebinding must actually take effect."""
     if TO_CPU:
@@ -204,6 +212,7 @@ def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
     if TO_CPU:
         pytest.skip(
@@ -231,6 +240,7 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
 
 @pytest.mark.cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", [torch.float64, torch.int64])
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
     if TO_CPU:
         pytest.skip(
@@ -264,6 +274,7 @@ def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
 
 
 @pytest.mark.cudnn_rnn_flatten_weight
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight_errors():
     if TO_CPU:
         pytest.skip(
@@ -288,6 +299,7 @@ def test_cudnn_rnn_flatten_weight_errors():
 
 
 @pytest.mark.cudnn_rnn_flatten_weight
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight_non_current_device():
     """Weights on a GPU that is not the current one must still flatten.
 
@@ -300,6 +312,8 @@ def test_cudnn_rnn_flatten_weight_non_current_device():
         pytest.skip(
             "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
         )
+    if not torch.cuda.is_available():
+        pytest.skip("_cudnn_rnn_flatten_weight is CUDA-only")
     if torch.cuda.device_count() < 2:
         pytest.skip("needs at least two GPUs")
     args = (4, 8, 2, 6, 0, 1, True, False)
@@ -318,6 +332,7 @@ def test_cudnn_rnn_flatten_weight_non_current_device():
 
 @pytest.mark.cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@_requires_cuda
 def test_cudnn_rnn_flatten_weight_dispatch(dtype):
     """The registered operator must be reachable through its real schema.
 
