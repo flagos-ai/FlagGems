@@ -95,4 +95,5 @@ def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
 
 
 def assert_equal(res, ref, equal_nan=False):
+    res, ref = _maybe_move_to_cpu(res, ref)
     torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
