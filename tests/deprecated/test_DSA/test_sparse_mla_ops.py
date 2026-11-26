@@ -40,6 +40,8 @@ except ImportError:
             else:
                 atol = 1e-4
                 rtol = 1e-4
+        if rtol is None:
+            rtol = atol
 
         print(f"Actual shape: {actual.shape}, Expected shape: {expected.shape}")
         print(f"Actual dtype: {actual.dtype}, Expected dtype: {expected.dtype}")
