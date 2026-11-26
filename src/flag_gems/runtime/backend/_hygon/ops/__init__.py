@@ -312,7 +312,7 @@ from .searchsorted import (
     searchsorted_scalar_out,
 )
 from .silu import silu, silu_, silu_backward
-from .softplus_backward import softplus_backward
+from .softplus_backward import softplus_backward as softplus_backward
 from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
