@@ -474,6 +474,36 @@ def test_cudnn_ctc_loss_validation_on_both_paths(
 
 
 @pytest.mark.cudnn_ctc_loss
+@pytest.mark.parametrize("on_device", [True, False], ids=["cuda", "cpu"])
+@pytest.mark.parametrize(
+    "targets,message",
+    [
+        (torch.tensor([1, 2], dtype=torch.int64), "scalar type Int"),
+        (torch.tensor([1.0, 2.0]), "scalar type Int"),
+        (torch.tensor([[1], [2]], dtype=torch.int32), "1-dimensional tensor"),
+    ],
+    ids=["int64", "float", "2d"],
+)
+def test_cudnn_ctc_loss_invalid_target_layout(targets, message, on_device):
+    """`targets` dtype/layout checks apply on both staging paths.
+
+    These are metadata-only properties, so validating them only on the staged
+    copy would silently accept an int64 or float label buffer on the host path
+    and have the kernels reinterpret its bytes as int32. cuDNN rejects both.
+    """
+    device = flag_gems.device
+    torch.manual_seed(0)
+    log_probs = torch.log_softmax(
+        torch.randn(8, 2, 6, dtype=torch.float32, device=device), dim=-1
+    )
+    if on_device:
+        targets = targets.to(device)
+
+    with pytest.raises(RuntimeError, match=message):
+        flag_gems.cudnn_ctc_loss(log_probs, targets, [8, 8], [1, 1], 0, True, False)
+
+
+@pytest.mark.cudnn_ctc_loss
 def test_cudnn_ctc_loss_invalid_blank():
     """`blank` must be 0, matching the cuDNN restriction."""
     device = flag_gems.device

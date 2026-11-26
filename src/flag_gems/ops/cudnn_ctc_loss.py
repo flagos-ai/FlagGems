@@ -857,14 +857,24 @@ def _check_log_probs(log_probs, blank):
         raise RuntimeError("Expected log_probs to have a positive batch dimension")
 
 
-def _validate_device_inputs(targets, input_lengths, target_lengths, batch_size):
-    """Shape/dtype checks that only need metadata, run before any staging."""
+def _validate_length_vectors(input_lengths, target_lengths, batch_size):
+    """Both length arguments must be one entry per batch item."""
     for name, values in (
         ("input_lengths", input_lengths),
         ("target_lengths", target_lengths),
     ):
         if values.numel() != batch_size:
             raise RuntimeError(f"{name} needs to have size to match batch_size")
+
+
+def _validate_targets_tensor(targets):
+    """The `targets` shape/dtype checks cuDNN itself applies, from metadata only.
+
+    Runs on both staging paths: these are cheap tensor properties, so there is no
+    reason to route them through the device, and skipping them on the host path
+    would quietly accept an int64 or float label buffer that the kernels then
+    reinterpret as int32.
+    """
     if targets.ndim != 1:
         raise RuntimeError(
             "Expected 1-dimensional tensor, but got "
@@ -896,6 +906,7 @@ def _prepare_inputs(targets, input_lengths, target_lengths, device, batch_size):
       no-host-compute convention on top.
     """
     batch_size = int(batch_size)
+    _validate_targets_tensor(targets)
     host_path = (
         targets.device.type == "cpu"
         and not torch.is_tensor(input_lengths)
@@ -924,9 +935,7 @@ def _prepare_inputs(targets, input_lengths, target_lengths, device, batch_size):
         work_targets = targets.to(device=device, dtype=torch.int32).contiguous()
         work_input_lengths = _lengths_to_tensor(input_lengths, device)
         work_target_lengths = _lengths_to_tensor(target_lengths, device)
-        _validate_device_inputs(
-            work_targets, work_input_lengths, work_target_lengths, batch_size
-        )
+        _validate_length_vectors(work_input_lengths, work_target_lengths, batch_size)
         target_offsets = torch.empty(
             batch_size, dtype=torch.long, device=work_targets.device
         )
