@@ -228,6 +228,8 @@ def main():
         parser.error(str(exc))
 
     env = {**os.environ, "KGS_FLAGGEMS_ROOT": str(root), "PYTHONDONTWRITEBYTECODE": "1"}
+    # Caller pytest options can silently deselect correctness cases or change --ref.
+    env.pop("PYTEST_ADDOPTS", None)
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(root / "src"), str(root), env.get("PYTHONPATH")) if part
     )
@@ -255,6 +257,8 @@ def main():
                 args.timeout,
             )
             stage["exit_code"] = code
+            if code == 5 and command[1:3] == ["-m", "pytest"]:
+                raise ValueError("No pytest cases collected; check the file and marker")
             require(code in accepted, f"Command exited with {code}")
             result = validate()
             stage.update(status="PASSED", **result)
