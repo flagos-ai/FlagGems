@@ -12147,7 +12147,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: linalg_eigvals
   description: Computes the eigenvalues of a square matrix.
   for:
