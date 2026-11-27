@@ -608,6 +608,26 @@ sparse_sampled_addmm_out:
     - [2, 1024, 1000, 384]
   shape_desc: "B, M, N, K"
 
+native_group_norm_backward:
+  shapes:
+  - - 2
+    - 8
+    - 4
+    - 4
+  - - 8
+    - 32
+    - 16
+    - 16
+  - - 16
+    - 64
+    - 32
+    - 32
+  - - 32
+    - 128
+    - 32
+    - 32
+  shape_desc: Frozen backward30 native_norm input shape
+
 MvAndOuterBenchmark:
   shapes:
     - [384, 384]
