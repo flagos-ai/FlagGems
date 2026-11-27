@@ -69,12 +69,10 @@ if arch_version == 300:
         "fused_recurrent_gated_delta_rule_fwd",
     ]
 elif arch_version == 400 or arch_version == 410:
-    from .gcu400.act_quant import act_quant_triton
-    from .gcu400.beam_search_score import beam_search_score, beam_search_score_
     from .gcu400.bin_topk import bucket_sort_topk
     from .gcu400.bincount import bincount
     from .gcu400.chunk_gated_delta_rule import chunk_gated_delta_rule
-    from .gcu400.concat_and_cache_mla import concat_and_cache_mla
+    from .gcu400.cp_gather_indexer_k_quant_cache import cp_gather_indexer_k_quant_cache
     from .gcu400.cross_entropy_loss import cross_entropy_loss
     from .gcu400.cutlass_scaled_mm import (
         cutlass_scaled_mm,
@@ -97,9 +95,6 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
     from .gcu400.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
     from .gcu400.fused_add_rms_norm import fused_add_rms_norm
-    from .gcu400.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (  # noqa: F401
-        fused_deepseek_v4_qnorm_rope_kv_rope_insert,
-    )
     from .gcu400.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
         fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
     )
@@ -120,18 +115,18 @@ elif arch_version == 400 or arch_version == 410:
         topk_with_k2_triton,
     )
     from .gcu400.indexer_k_quant_and_cache import indexer_k_quant_and_cache
+    from .gcu400.indexer_k_tiled import triton_lighting_indexer_k_tiled_interface
     from .gcu400.matmuladd import matmuladd
     from .gcu400.moe_align_block_size import (  # noqa: F401
         moe_align_block_size,
         moe_align_block_size_triton,
     )
+    from .gcu400.moe_load_balance_loss import moe_load_balance_loss
     from .gcu400.moe_sum import moe_sum  # noqa: F401
     from .gcu400.mrope import mrope  # noqa: F401
     from .gcu400.outer import outer
     from .gcu400.post_layer_norm_residual import post_layer_norm_residual
-    from .gcu400.reglu import dreglu, reglu
     from .gcu400.reshape_and_cache import reshape_and_cache
-    from .gcu400.reshape_and_cache_flash import reshape_and_cache_flash
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
     from .gcu400.silu_and_mul import silu_and_mul, silu_and_mul_out
     from .gcu400.silu_and_mul_with_clamp import (
@@ -160,8 +155,6 @@ elif arch_version == 400 or arch_version == 410:
         "outplace_fused_experts",
         "moe_align_block_size",
         "moe_align_block_size_triton",
-        "beam_search_score",
-        "beam_search_score_",
         "apply_rotary_pos_emb",
         "gelu_and_mul",
         "silu_and_mul",
@@ -169,23 +162,21 @@ elif arch_version == 400 or arch_version == 410:
         "silu_and_mul_with_clamp",
         "silu_and_mul_with_clamp_out",
         "cross_entropy_loss",
-        "concat_and_cache_mla",
+        "cp_gather_indexer_k_quant_cache",
         "flash_mla",
+        "moe_load_balance_loss",
         "moe_sum",
         "mrope",
         "outer",
         "fused_add_rms_norm",
-        "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
         "fused_recurrent_gated_delta_rule_fwd",
         "skip_layer_norm",
-        "rwkv_ka_fusion",
         "bincount",
         "sparse_attn_triton",
         "triton_sparse_mla_fwd_interface",
         "topk_softmax",
         "bucket_sort_topk",
         "flash_mla_sparse_fwd",
-        "act_quant_triton",
         "get_sm_version_num",
         "get_block_wise_smm_configs",
         "grouped_launch",
@@ -211,10 +202,9 @@ elif arch_version == 400 or arch_version == 410:
         "group_idx_and_topk_triton",
         "grouped_topk",
         "indexer_k_quant_and_cache",
+        "triton_lighting_indexer_k_tiled_interface",
         "matmuladd",
         "post_layer_norm_residual",
-        "reglu",
-        "dreglu",
         "stage_deepseek_v4_mega_moe_inputs",
         "swiglu",
         "dswiglu",
@@ -223,7 +213,6 @@ elif arch_version == 400 or arch_version == 410:
         "top_k_per_row_prefill",
         "chunk_gated_delta_rule",
         "reshape_and_cache",
-        "reshape_and_cache_flash",
     ]
 
     # DSA bin_topk is imported directly in tests
@@ -239,3 +228,16 @@ elif arch_version == 400 or arch_version == 410:
             gmod.bucket_sort_topk = bucket_sort_topk
 
     _install_gcu400_bin_topk()
+
+    # Same situation for the DSA lightning indexer: its test imports the
+    # interface straight from ``flag_gems.deprecated.DSA.indexer_k_tiled``, so the
+    # public module is imported here and its attribute redirected to the
+    # GCU400 kernel (tile-selected for the DSM budget of this arch).
+    def _install_gcu400_indexer_k_tiled():
+        from flag_gems.deprecated.DSA import indexer_k_tiled as _dsa_indexer
+
+        _dsa_indexer.triton_lighting_indexer_k_tiled_interface = (
+            triton_lighting_indexer_k_tiled_interface
+        )
+
+    _install_gcu400_indexer_k_tiled()

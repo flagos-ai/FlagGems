@@ -378,7 +378,7 @@ def binary_cross_entropy(
     weight: torch.Tensor = None,
     reduction: str = "mean",
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BINARY_CROSS_ENTROPY")
+    logger.debug("GEMS_ENFLAME BINARY_CROSS_ENTROPY")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
@@ -396,7 +396,7 @@ def binary_cross_entropy_out(
     reduction: str = "mean",
     out: torch.Tensor = None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BINARY_CROSS_ENTROPY_OUT")
+    logger.debug("GEMS_ENFLAME BINARY_CROSS_ENTROPY_OUT")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()

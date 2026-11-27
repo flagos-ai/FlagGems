@@ -304,7 +304,7 @@ def _prepare_out_tensor(in_t, out_dhw, scale_dhw, dtype=None, device=None):
 
 
 def _upsample_nearest_exact3d(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT3D")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT3D")
     in_t, _, out_dhw, scale_dhw = _extract_io_and_params(args, kwargs, expect_out=False)
     out_t = _prepare_out_tensor(in_t, out_dhw, scale_dhw)
     if out_t.numel() == 0:
@@ -315,7 +315,7 @@ def _upsample_nearest_exact3d(*args, **kwargs):
 
 
 def _upsample_nearest_exact3d_out(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT3D_OUT")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT3D_OUT")
     in_t, out_t, out_dhw, scale_dhw = _extract_io_and_params(
         args, kwargs, expect_out=True
     )
@@ -340,7 +340,7 @@ def _upsample_nearest_exact3d_out(*args, **kwargs):
 
 
 def _upsample_nearest_exact3d_vec(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT3D_VEC")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT3D_VEC")
     # Treat vec the same as base variant, allowing list-like output_size/scales
     in_t, _, out_dhw, scale_dhw = _extract_io_and_params(args, kwargs, expect_out=False)
     out_t = _prepare_out_tensor(in_t, out_dhw, scale_dhw)

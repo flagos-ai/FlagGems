@@ -58,6 +58,10 @@ class ResizeAsSparseBenchmark(base.Benchmark):
             yield inp._indices(), inp._values(), self_shape, template
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.resize_as_sparse_
 def test_resize_as_sparse_(monkeypatch):
     # COO resize is host metadata work; use the framework's end-to-end timing

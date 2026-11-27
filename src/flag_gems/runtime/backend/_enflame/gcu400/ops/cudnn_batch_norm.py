@@ -608,7 +608,7 @@ def cudnn_batch_norm(
     exponential_average_factor,
     epsilon,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_BATCH_NORM")
+    logger.debug("GEMS_ENFLAME CUDNN_BATCH_NORM")
     return _cudnn_batch_norm_impl(
         input,
         weight,
@@ -710,7 +710,7 @@ def cudnn_batch_norm_out(
     out2,
     out3,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_BATCH_NORM_OUT")
+    logger.debug("GEMS_ENFLAME CUDNN_BATCH_NORM_OUT")
     return _cudnn_batch_norm_out_impl(
         input,
         weight,

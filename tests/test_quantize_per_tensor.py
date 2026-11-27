@@ -597,6 +597,16 @@ def test_quantize_per_tensor_out_uses_triton_not_native_copy(monkeypatch):
 
 
 @pytest.mark.quantize_per_tensor_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame backend has no aten::as_strided kernel for quantized tensors; "
+        "expand() on a quantized gcu tensor silently falls back to a CPU "
+        "tensor, so the stride-0 out fixture cannot be built on device and "
+        "native aten also raises a device mismatch instead of the overlap "
+        "error"
+    ),
+)
 def test_quantize_per_tensor_out_rejects_internally_overlapping_out():
     """A stride-0 (broadcast) ``out`` raises native's overlap message.
 

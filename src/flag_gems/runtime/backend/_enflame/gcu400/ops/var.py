@@ -25,6 +25,10 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
+# Split-N trigger threshold: only worth the extra launch + temporary buffer when the number of N-direction slices
+# reaches this value.
+SPLIT_MIN_N_TILES = 16
+
 
 @libentry()
 @triton.jit(do_not_specialize=["correction"])
@@ -118,6 +122,78 @@ def var_global_kernel_2(
     tl.store(Var, var)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["M", "N", "NUM_N_TILES"])
+def var_split_kernel_1(
+    X,
+    Partial_sum,
+    Partial_sum2,
+    M,
+    N,
+    NUM_N_TILES,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # Split-N stage 1: split along N into NUM_N_TILES slices and compute partial sums in parallel.
+    # The original var_kernel, with "a single M tile + very large N", ran the entire N loop serially in one program
+    # (measured only ~4.8GB/s at 24.6M elements); here it is replaced with N slices across programs,
+    # reducing the accumulation-chain length from N/BLOCK_N to the BLOCK_T level, with accuracy improving as well.
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    m_offset = tl.arange(0, BLOCK_M)
+    row_mask = m_offset < M
+
+    for tile_id in tl.range(pid, NUM_N_TILES, step):
+        n_offset = tile_id * BLOCK_N + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N + n_offset[None, :]
+        mask = row_mask[:, None] & (n_offset[None, :] < N)
+        x = tl.load(X + offset, mask, other=0.0).to(tl.float32)
+        # Partial-sum layout [BLOCK_M, NUM_N_TILES]: stage 2 reads contiguously along N.
+        tl.store(
+            Partial_sum + m_offset * NUM_N_TILES + tile_id,
+            tl.sum(x, axis=1),
+            row_mask,
+        )
+        tl.store(
+            Partial_sum2 + m_offset * NUM_N_TILES + tile_id,
+            tl.sum(x * x, axis=1),
+            row_mask,
+        )
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "NUM_N_TILES", "correction"])
+def var_split_kernel_2(
+    Partial_sum,
+    Partial_sum2,
+    Var,
+    M,
+    N,
+    NUM_N_TILES,
+    correction,
+    BLOCK_M: tl.constexpr,
+    BLOCK_T: tl.constexpr,
+):
+    # Split-N stage 2: fold the partial sums from all slices into the final variance.
+    m_offset = tl.arange(0, BLOCK_M)
+    row_mask = m_offset < M
+    acc = tl.zeros([BLOCK_M, BLOCK_T], dtype=tl.float32)
+    acc2 = tl.zeros([BLOCK_M, BLOCK_T], dtype=tl.float32)
+
+    for start in tl.range(0, NUM_N_TILES, BLOCK_T):
+        t_offset = start + tl.arange(0, BLOCK_T)
+        off = m_offset[:, None] * NUM_N_TILES + t_offset[None, :]
+        mask = row_mask[:, None] & (t_offset[None, :] < NUM_N_TILES)
+        acc += tl.load(Partial_sum + off, mask, other=0.0)
+        acc2 += tl.load(Partial_sum2 + off, mask, other=0.0)
+
+    total_sum = tl.sum(acc, axis=1)
+    total_sum2 = tl.sum(acc2, axis=1)
+    var = (total_sum2 - total_sum * total_sum / N) / (N - correction)
+    var = tl.maximum(var, 0.0)
+    tl.store(Var + m_offset, var, row_mask)
+
+
 def var(x, dim=None, *, correction=None, keepdim=False):
     logger.debug("GEMS_ENFLAME VAR")
     if correction is None:
@@ -184,20 +260,61 @@ def var(x, dim=None, *, correction=None, keepdim=False):
 
         num_stages = 1
 
-        grid_m = min(triton.cdiv(M, BLOCK_M), MAX_GRID_DIM)
+        num_m_tiles = triton.cdiv(M, BLOCK_M)
+        num_n_tiles = triton.cdiv(N, BLOCK_N)
+        grid_m = min(num_m_tiles, MAX_GRID_DIM)
+
+        # With a single M tile and enough N-direction slices, the original implementation's entire N loop lands in just
+        # one
+        # program (grid_m == 1 when M <= BLOCK_M), giving extremely low bandwidth utilization;
+        # in that case, switch to two-stage split-N: compute partial sums over N slices in parallel, then fold them.
+        use_split = num_m_tiles == 1 and num_n_tiles >= SPLIT_MIN_N_TILES
 
         with torch_device_fn.device(x.device):
-            var_kernel[(grid_m,)](
-                x,
-                var,
-                M,
-                N,
-                correction,
-                BLOCK_M=BLOCK_M,
-                BLOCK_N=BLOCK_N,
-                num_stages=num_stages,
-                num_warps=1,
-            )
+            if use_split:
+                partial_sum = torch.empty(
+                    [BLOCK_M, num_n_tiles], dtype=torch.float32, device=x.device
+                )
+                partial_sum2 = torch.empty(
+                    [BLOCK_M, num_n_tiles], dtype=torch.float32, device=x.device
+                )
+                var_split_kernel_1[(min(num_n_tiles, MAX_GRID_DIM),)](
+                    x,
+                    partial_sum,
+                    partial_sum2,
+                    M,
+                    N,
+                    num_n_tiles,
+                    BLOCK_M=BLOCK_M,
+                    BLOCK_N=BLOCK_N,
+                    num_stages=1,
+                    num_warps=1,
+                )
+                block_t = min(triton.next_power_of_2(num_n_tiles), 256)
+                var_split_kernel_2[(1,)](
+                    partial_sum,
+                    partial_sum2,
+                    var,
+                    M,
+                    N,
+                    num_n_tiles,
+                    correction,
+                    BLOCK_M=BLOCK_M,
+                    BLOCK_T=block_t,
+                    num_warps=1,
+                )
+            else:
+                var_kernel[(grid_m,)](
+                    x,
+                    var,
+                    M,
+                    N,
+                    correction,
+                    BLOCK_M=BLOCK_M,
+                    BLOCK_N=BLOCK_N,
+                    num_stages=num_stages,
+                    num_warps=1,
+                )
 
     if not keepdim:
         var = var.squeeze(dim=dim)

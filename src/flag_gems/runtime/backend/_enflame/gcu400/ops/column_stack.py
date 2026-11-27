@@ -34,6 +34,14 @@ _SPANLOOP_INFLIGHT_BYTES = 131072
 # Single-launch arm is only worth it while the op is launch-bound.
 _ROWS_MAX = 192
 _SPAN_SMALL_MAX = 32768
+# Fixed grid width of the GCU400 device (SP count); the loop arms below keep
+# every program inside one wave.
+_NUM_SPC = 48
+# Per-program DSM window (bytes) shared by the live tiles of one program.
+_DSM_WINDOW = 448 * 1024
+# Conservative tile budget for the small row-loop arm (matches the historic
+# multi-pointer arm so equal shapes cannot regress past a known-good bound).
+_ROWS_ARM_TILE_BUDGET = 256 * 1024
 
 
 @triton.jit
@@ -136,7 +144,7 @@ def _column_stack_spanloop_kernel(
             r7 = r0 + 7 * NPROG
             r7s = tl.minimum(r7, n_rows - 1)
             ok7 = r7 < n_rows
-        for j in tl.static_range(NCHUNKS):
+        for j in tl.range(NCHUNKS):
             offs = j * TILE + tl.arange(0, TILE)
             m0 = (offs < span) & ok0
             d0 = tl.load(in_ptr + r0s * span + offs, mask=m0)
@@ -218,6 +226,176 @@ def _column_stack_rows_kernel(
         tl.store(out_ptr + row * row_stride + off2 + o2, d2, mask=m2)
     if NT > 3:
         tl.store(out_ptr + row * row_stride + off3 + o3, d3, mask=m3)
+
+
+@triton.jit
+def _column_stack_rowloop_kernel(
+    out_ptr,
+    p0,
+    p1,
+    p2,
+    p3,
+    n_rows,
+    span,
+    o0,
+    o1,
+    o2,
+    o3,
+    row_stride,
+    NPROG: tl.constexpr,
+    NT: tl.constexpr,
+    B: tl.constexpr,
+):
+    # Equal-span single-launch arm for small row counts: `NPROG` programs
+    # (one wave) walk the rows with a stride loop, issuing every tensor's
+    # load before the first store of that row. Spans are powers of two so
+    # the loads and stores stay unmasked and purely affine.
+    pid = tl.program_id(0)
+    offs = tl.arange(0, B)
+    for row in tl.range(pid, n_rows, NPROG):
+        base_in = row * span
+        base_out = row * row_stride
+        d0 = tl.load(p0 + base_in + offs)
+        if NT > 1:
+            d1 = tl.load(p1 + base_in + offs)
+        if NT > 2:
+            d2 = tl.load(p2 + base_in + offs)
+        if NT > 3:
+            d3 = tl.load(p3 + base_in + offs)
+        tl.store(out_ptr + base_out + o0 + offs, d0)
+        if NT > 1:
+            tl.store(out_ptr + base_out + o1 + offs, d1)
+        if NT > 2:
+            tl.store(out_ptr + base_out + o2 + offs, d2)
+        if NT > 3:
+            tl.store(out_ptr + base_out + o3 + offs, d3)
+
+
+@triton.jit
+def _column_stack_pair_kernel(
+    out_ptr,
+    p0,
+    p1,
+    p2,
+    p3,
+    n_rows,
+    span,
+    row_stride,
+    o0,
+    o1,
+    o2,
+    o3,
+    NPROG: tl.constexpr,
+    NT: tl.constexpr,
+    TILE: tl.constexpr,
+):
+    # Many-rows medium-span arm: each program copies two consecutive output
+    # rows per iteration (all parts loaded first so the independent DMA
+    # segments overlap), then a masked strided tail loop drains the rows the
+    # full groups did not cover.
+    pid = tl.program_id(0)
+    offs = tl.arange(0, TILE)
+    n_full = n_rows // (NPROG * 2)
+    for it in tl.range(0, n_full):
+        r0 = it * NPROG * 2 + pid * 2
+        r1 = r0 + 1
+        in0 = r0 * span
+        in1 = r1 * span
+        out0 = r0 * row_stride
+        out1 = r1 * row_stride
+        a0 = tl.load(p0 + in0 + offs)
+        if NT > 1:
+            b0 = tl.load(p1 + in0 + offs)
+        if NT > 2:
+            c0 = tl.load(p2 + in0 + offs)
+        if NT > 3:
+            d0 = tl.load(p3 + in0 + offs)
+        a1 = tl.load(p0 + in1 + offs)
+        if NT > 1:
+            b1 = tl.load(p1 + in1 + offs)
+        if NT > 2:
+            c1 = tl.load(p2 + in1 + offs)
+        if NT > 3:
+            d1 = tl.load(p3 + in1 + offs)
+        tl.store(out_ptr + out0 + o0 + offs, a0)
+        if NT > 1:
+            tl.store(out_ptr + out0 + o1 + offs, b0)
+        if NT > 2:
+            tl.store(out_ptr + out0 + o2 + offs, c0)
+        if NT > 3:
+            tl.store(out_ptr + out0 + o3 + offs, d0)
+        tl.store(out_ptr + out1 + o0 + offs, a1)
+        if NT > 1:
+            tl.store(out_ptr + out1 + o1 + offs, b1)
+        if NT > 2:
+            tl.store(out_ptr + out1 + o2 + offs, c1)
+        if NT > 3:
+            tl.store(out_ptr + out1 + o3 + offs, d1)
+    base = n_full * NPROG * 2
+    for row in tl.range(pid + base, n_rows, NPROG):
+        base_in = row * span
+        base_out = row * row_stride
+        a = tl.load(p0 + base_in + offs)
+        if NT > 1:
+            b = tl.load(p1 + base_in + offs)
+        if NT > 2:
+            c = tl.load(p2 + base_in + offs)
+        if NT > 3:
+            d = tl.load(p3 + base_in + offs)
+        tl.store(out_ptr + base_out + o0 + offs, a)
+        if NT > 1:
+            tl.store(out_ptr + base_out + o1 + offs, b)
+        if NT > 2:
+            tl.store(out_ptr + base_out + o2 + offs, c)
+        if NT > 3:
+            tl.store(out_ptr + base_out + o3 + offs, d)
+
+
+@triton.jit
+def _column_stack_gs_affine_kernel(
+    out_ptr,
+    p0,
+    p1,
+    p2,
+    p3,
+    span,
+    row_stride,
+    o0,
+    o1,
+    o2,
+    o3,
+    n_work,
+    LOGK: tl.constexpr,
+    NPROG: tl.constexpr,
+    NT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Large-span arm for power-of-two spans: a fixed grid of programs walks
+    # the (row, block) work items with a stride loop; the work id decodes
+    # into (row, block) with shifts, and every part's block is loaded before
+    # the first store so the parts overlap in flight.
+    pid = tl.program_id(0)
+    offs = tl.arange(0, BLOCK)
+    k = 1 << LOGK
+    for w in tl.range(pid, n_work, NPROG):
+        row = w >> LOGK
+        col0 = (w & (k - 1)) * BLOCK
+        base_in = row * span
+        base_out = row * row_stride
+        d0 = tl.load(p0 + base_in + col0 + offs)
+        if NT > 1:
+            d1 = tl.load(p1 + base_in + col0 + offs)
+        if NT > 2:
+            d2 = tl.load(p2 + base_in + col0 + offs)
+        if NT > 3:
+            d3 = tl.load(p3 + base_in + col0 + offs)
+        tl.store(out_ptr + base_out + o0 + col0 + offs, d0)
+        if NT > 1:
+            tl.store(out_ptr + base_out + o1 + col0 + offs, d1)
+        if NT > 2:
+            tl.store(out_ptr + base_out + o2 + col0 + offs, d2)
+        if NT > 3:
+            tl.store(out_ptr + base_out + o3 + col0 + offs, d3)
 
 
 def _reshape_input(t: torch.Tensor) -> torch.Tensor:
@@ -313,12 +491,152 @@ def _launch_spanloop(
     )
 
 
+def _launch_rowloop(
+    out: torch.Tensor,
+    parts: List,
+    rows: int,
+    span: int,
+    row_stride: int,
+    itemsize: int,
+) -> None:
+    nt = len(parts)
+    pointers = [p[0] for p in parts] + [out] * (4 - nt)
+    offs = [p[2] for p in parts] + [0] * (4 - nt)
+    nprog = min(_NUM_SPC, rows)
+    num_warps = max(1, min(4, span >> 8))
+    _column_stack_rowloop_kernel[(nprog,)](
+        out,
+        pointers[0],
+        pointers[1],
+        pointers[2],
+        pointers[3],
+        rows,
+        span,
+        offs[0],
+        offs[1],
+        offs[2],
+        offs[3],
+        row_stride,
+        NPROG=nprog,
+        NT=nt,
+        B=span,
+        num_warps=num_warps,
+    )
+
+
+def _launch_pair(
+    out: torch.Tensor,
+    parts: List,
+    rows: int,
+    span: int,
+    row_stride: int,
+) -> None:
+    nt = len(parts)
+    pointers = [p[0] for p in parts] + [out] * (4 - nt)
+    offs = [p[2] for p in parts] + [0] * (4 - nt)
+    _column_stack_pair_kernel[(_NUM_SPC,)](
+        out,
+        pointers[0],
+        pointers[1],
+        pointers[2],
+        pointers[3],
+        rows,
+        span,
+        row_stride,
+        offs[0],
+        offs[1],
+        offs[2],
+        offs[3],
+        NPROG=_NUM_SPC,
+        NT=nt,
+        TILE=span,
+        num_warps=max(1, min(4, span >> 8)),
+    )
+
+
+def _launch_gs_affine(
+    out: torch.Tensor,
+    parts: List,
+    rows: int,
+    span: int,
+    row_stride: int,
+    itemsize: int,
+) -> None:
+    nt = len(parts)
+    pointers = [p[0] for p in parts] + [out] * (4 - nt)
+    offs = [p[2] for p in parts] + [0] * (4 - nt)
+    block = 32768 if itemsize <= 4 else 16384
+    while nt * block * itemsize > _DSM_WINDOW and block > 4096:
+        block //= 2
+    k = span // block
+    n_work = rows * k
+    nprog = min(_NUM_SPC, n_work)
+    _column_stack_gs_affine_kernel[(nprog,)](
+        out,
+        pointers[0],
+        pointers[1],
+        pointers[2],
+        pointers[3],
+        span,
+        row_stride,
+        offs[0],
+        offs[1],
+        offs[2],
+        offs[3],
+        n_work,
+        LOGK=k.bit_length() - 1,
+        NPROG=nprog,
+        NT=nt,
+        BLOCK=block,
+        num_warps=2,
+    )
+
+
+def _try_launch_equal_span_arms(
+    out: torch.Tensor,
+    parts: List,
+    rows: int,
+    row_stride: int,
+    itemsize: int,
+) -> bool:
+    # Fast paths for the common equal-span layouts: a single launch covers
+    # every part with unmasked affine addressing. Returns True when one of
+    # the fast arms handled the copy.
+    nt = len(parts)
+    if nt > 4:
+        return False
+    spans = {span for _, span, _ in parts}
+    if len(spans) != 1:
+        return False
+    span = parts[0][1]
+    if span & (span - 1):
+        return False
+    if rows * row_stride >= 2**31:
+        return False
+    if rows <= _ROWS_MAX and span < _SPAN_SMALL_MAX:
+        if nt * span * itemsize <= _ROWS_ARM_TILE_BUDGET:
+            _launch_rowloop(out, parts, rows, span, row_stride, itemsize)
+            return True
+        return False
+    if span >= _SPAN_SMALL_MAX:
+        _launch_gs_affine(out, parts, rows, span, row_stride, itemsize)
+        return True
+    if (
+        rows > _ROWS_MAX
+        and 4 <= span <= _SPANLOOP_TILE_MAX
+        and 2 * nt * span * itemsize <= _DSM_WINDOW
+    ):
+        _launch_pair(out, parts, rows, span, row_stride)
+        return True
+    return False
+
+
 def column_stack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
     *,
     out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 COLUMN_STACK")
+    logger.debug("GEMS_ENFLAME COLUMN_STACK")
 
     if len(tensors) == 0:
         raise RuntimeError("column_stack expected a non-empty TensorList")
@@ -355,7 +673,7 @@ def column_stack(
 
     if out is None:
         out = torch.empty(out_shape, dtype=dtype, device=device)
-    else:
+    elif tuple(out.shape) != tuple(out_shape):
         out = out.view(out_shape)
 
     dim_prod_post = 1
@@ -382,6 +700,11 @@ def column_stack(
     itemsize = out.element_size()
     out_numel = out.numel()
     fast_global = out.is_contiguous() and out_numel < 2**31
+
+    if fast_global and _try_launch_equal_span_arms(
+        out, parts, rows, row_stride, itemsize
+    ):
+        return out
 
     if (
         fast_global
@@ -453,5 +776,5 @@ def column_stack_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 COLUMN_STACK_OUT")
+    logger.debug("GEMS_ENFLAME COLUMN_STACK_OUT")
     return column_stack(tensors, out=out)

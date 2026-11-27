@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -25,6 +27,10 @@ def xlogy_input_fn(shape, dtype, device):
     yield inp1, inp2
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy
 def test_xlogy():
     bench = base.GenericBenchmark(
@@ -43,6 +49,10 @@ def xlogy_out_input_fn(shape, dtype, device):
     yield inp1, inp2, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_out
 def test_xlogy_out():
     bench = base.GenericBenchmark(
@@ -59,6 +69,10 @@ def xlogy_tensor_scalar_input_fn(shape, dtype, device):
     yield inp, 3.5
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_tensor_scalar
 def test_xlogy_tensor_scalar():
     bench = base.GenericBenchmark(
@@ -76,6 +90,10 @@ def xlogy_tensor_scalar_out_input_fn(shape, dtype, device):
     yield inp, 3.5, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_tensor_scalar_out
 def test_xlogy_tensor_scalar_out():
     bench = base.GenericBenchmark(
@@ -93,6 +111,10 @@ def xlogy_scalar_tensor_input_fn(shape, dtype, device):
     yield 2.0, inp
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_scalar_tensor
 def test_xlogy_scalar_tensor():
     bench = base.GenericBenchmark(
@@ -110,6 +132,10 @@ def xlogy_scalar_tensor_out_input_fn(shape, dtype, device):
     yield 2.0, inp, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.xlogy_scalar_tensor_out
 def test_xlogy_scalar_tensor_out():
     bench = base.GenericBenchmark(

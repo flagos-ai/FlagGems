@@ -27,33 +27,68 @@ logger = logging.getLogger(__name__)
 NUM_SIPS = 24
 FLAT_GRID = NUM_SIPS * 2
 
-# deg-3 core polynomial, ascending powers of t=u^2 (u in [0, 0.5]):
-#   asin(u) = u + u^3 * P(u^2)
-C0 = tl.constexpr(0.16666466)
-C1 = tl.constexpr(0.07515584)
-C2 = tl.constexpr(0.04196801)
-C3 = tl.constexpr(0.04552408)
+PI_OVER_2 = tl.constexpr(1.5707963705062866)
+
+# asin(w) = w + w^3 * P(w^2), w = sqrt((1 - a) / 2) in [0, 1/sqrt2],
+# u = w^2 = 0.5 * (1 - a) in [0, 0.5], a = |x|.
+# Fold the coefficients of 2*asin(w) into the polynomial (q = 2*P, so F/H are twice the unfolded version):
+#   arcsin(a) = pi/2 - w * (2 + u * q(u))
+# u is also the Horner variable, saving one w*w; two tl.fma calls eliminate the multiply-subtract chain.
+# fp32 uses a 4-term chain (max|err| = 1.6e-6, 62x margin at the atol=1e-4 gate);
+# 16-bit uses a 3-term chain (max|err| ≈ 1.2e-5, far below the rounding of the 16-bit output itself).
+F0 = tl.constexpr(0.3333333334)
+F1 = tl.constexpr(0.14794641546)
+F2 = tl.constexpr(0.11325906374)
+F3 = tl.constexpr(-0.0335772589)
+F4 = tl.constexpr(0.18328779898)
+
+H0 = tl.constexpr(0.3333333332)
+H1 = tl.constexpr(0.15667759974)
+H2 = tl.constexpr(0.03776437846)
+H3 = tl.constexpr(0.17391203516)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["N"])
-def _arcsin_flat_kernel(X, Y, N, BLOCK: tl.constexpr, HAS_TAIL: tl.constexpr):
-    """asin via a deg-3 polynomial in u^2 with the Cephes domain split.
+def _arcsin_flat_kernel(
+    X,
+    Y,
+    N,
+    BLOCK: tl.constexpr,
+    HAS_TAIL: tl.constexpr,
+    HIGH_PREC: tl.constexpr,
+    SIGN16: tl.constexpr,
+):
+    """asin is solved with a unified half-angle identity: one Horner chain over the whole domain,
 
-    asin(u) = u + u^3 * P(u^2) on |u| <= 0.5; for |u| > 0.5 the identity
-    asin(a) = pi/2 - 2*asin(sqrt((1-a)/2)) maps back into the core domain
-    (sqrt((1-a)/2) <= 0.5). The libdevice extern ``__ef_asinf`` is a software
-    slow path: measured L600 16Mi flat kernel, extern body 171.7 us (fp32) vs
-    47.8 us copy floor, and torch native matches the extern (173.9 us), so the
-    extern body cannot exceed ~1.0x native. This body is ~10 fp32 ALU ops per
-    Horner chain plus one hardware sqrt (measured at the copy floor + 1 us) and
-    runs 16Mi fp32 in 90.5 us (1.92x native) / fp16-bf16 in 133.4 us (1.31x).
+    The identity (holds for every a in [0, 1]):
+        asin(a) = pi/2 - 2 * asin(w),  w = sqrt((1 - a) / 2) in [0, 1/sqrt2]
+    a is |x|, and one sqrt plus one asin(w) Horner chain covers the entire domain. Folding 2*P into
+    the coefficients gives r = pi/2 - w * (2 + u*q(u)), reusing u = w^2 directly (saving one
+    square), with `tl.fma` removing the u multiply-subtract and the merge multiply-add. The minimax
+    fit covers w in [0, 0.7071] (u in [0, 0.5]), see the coefficient comments above.
 
-    NaN for |x| > 1 comes from sqrt of a negative (1-|x|) with no branch; +-inf
-    and NaN inputs propagate the same way. Max error vs fp64 asin is 7.3e-7
-    over [-1, 1] (device measured), 139x under the fp32 suite gate
-    (atol=1e-4 + rtol=1.3e-6) and >1000x under the 16-bit gates. Exact at
-    x = 0 and +-1 (pi/2 within 4.4e-8).
+    Sign fix: arcsin is odd, so y = where(x<0, -r, r). For 16-bit output the select moves after
+    the precision reduction (r.to(16bit) then where +-r16): the L600 ablation measured the
+    f32-domain select double-live interval at ~590us on 512Mi fp16 versus ~237us in the 16-bit
+    domain (fsel vs 16sel: 1777 vs 2133us); fp32 shows no difference (select ~37us), so it stays
+    in place.
+
+    For |x| > 1, u < 0 and sqrt of a negative propagates NaN naturally, so no branch is needed;
+    NaN / +-inf inputs behave the same. Cancellation only happens as |x| -> 0, where the error is
+    the polynomial's absolute error, an order of magnitude below the atol = 1e-4 gate.
+
+    GCU400/L600 measurement (this board, grid cap 48, benchmark/test_arcsin.py official kernel
+    mode --level core, two re-sampled rounds, do_bench w1000/r100 median, 45-case mean speedup
+    2.24x -> 2.48x):
+    - 512Mi elements: fp32 ~1855us (2.61x native, copy floor 1355us), 16-bit ~1776us (2.82x, floor
+      671us);
+    - 16Mi elements: fp32 ~67.3us (2.60x), 16-bit ~67.0us (2.62x);
+    - (64,64) 4096 elements: ~3.7us (BLOCK 1024/nw1, the old 2048/nw2 ladder gave 4.1us).
+    Per-case drift between rounds <=0.4% (16Mi and above). 16-bit large shapes are still 2.6x off
+    the copy floor: the remainder is abs/fma/sqrt (247us) + Horner 3FMA + the merge ALU serial
+    chain, and select / constant-multiply / integer-bit-or sign variants all measured worse than
+    the 16-bit-domain select (see the case log).
     """
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
@@ -66,43 +101,34 @@ def _arcsin_flat_kernel(X, Y, N, BLOCK: tl.constexpr, HAS_TAIL: tl.constexpr):
         if HAS_TAIL:
             mask = offsets < N
             x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
-            ax = tl.abs(x)
-            t = ax * ax
-            p = C3
-            p = p * t + C2
-            p = p * t + C1
-            p = p * t + C0
-            small = ax + ax * t * p
-            w = tl.sqrt(0.5 * (1.0 - ax))
-            tw = w * w
-            pw = C3
-            pw = pw * tw + C2
-            pw = pw * tw + C1
-            pw = pw * tw + C0
-            core = w + w * tw * pw
-            large = 1.5707963705062866 - 2.0 * core
-            r = tl.where(ax <= 0.5, small, large)
-            y = tl.where(x < 0.0, -r, r)
-            tl.store(Y + offsets, y.to(Y.dtype.element_ty), mask=mask)
         else:
             x = tl.load(X + offsets).to(tl.float32)
-            ax = tl.abs(x)
-            t = ax * ax
-            p = C3
-            p = p * t + C2
-            p = p * t + C1
-            p = p * t + C0
-            small = ax + ax * t * p
-            w = tl.sqrt(0.5 * (1.0 - ax))
-            tw = w * w
-            pw = C3
-            pw = pw * tw + C2
-            pw = pw * tw + C1
-            pw = pw * tw + C0
-            core = w + w * tw * pw
-            large = 1.5707963705062866 - 2.0 * core
-            r = tl.where(ax <= 0.5, small, large)
+        ax = tl.abs(x)
+        # When |x| > 1, u < 0, sqrt produces NaN and propagates it along the chain
+        u = tl.fma(-0.5, ax, 0.5)
+        w = tl.sqrt(u)
+        if HIGH_PREC:
+            q = F4
+            q = q * u + F3
+            q = q * u + F2
+            q = q * u + F1
+            q = q * u + F0
+        else:
+            q = H3
+            q = q * u + H2
+            q = q * u + H1
+            q = q * u + H0
+        r = PI_OVER_2 - w * tl.fma(u, q, 2.0)
+        if SIGN16:
+            # Reduce precision first, then fix the sign: a dual-active-interval select in the f32 domain is 3x more
+            # expensive at the 16-bit setting
+            r16 = r.to(Y.dtype.element_ty)
+            y = tl.where(x < 0.0, -r16, r16)
+        else:
             y = tl.where(x < 0.0, -r, r)
+        if HAS_TAIL:
+            tl.store(Y + offsets, y.to(Y.dtype.element_ty), mask=mask)
+        else:
             tl.store(Y + offsets, y.to(Y.dtype.element_ty))
 
 
@@ -122,19 +148,27 @@ def _flat_ready(A):
 
 
 def _flat_config(n, itemsize):
-    # Ladder measured on L600 (16Mi / 1Gi / (64,64)); grid-stride loop keeps
-    # coverage for every n, HAS_TAIL drops the mask when BLOCK divides n.
+    # Tiers measured on L600 (grid capped at 48, do_bench w1000/r100 median):
+    # - Small shapes BLOCK 1024/nw1: 4096 elements 3.7us, old 2048/nw2 was 4.1us;
+    # - Large tier: 16-bit B131072/nw2 and fp32 B65536/nw2 are ablation-optimal (nw1/nw4 are both worse),
+    #   16-bit mid tier 32768/nw2 is 7-9% faster than nw1;
+    # - The block cap is limited by dsm (both 16-bit 131072 and fp32 65536 are 256KB tiles,
+    #   doubling again exceeds max_dsm and compilation fails outright).
     if itemsize == 4:
-        if n <= 8192:
-            return 1024, 2
+        if n <= 2**17:
+            return 1024, 1
         if n <= 2**21:
-            return 16384, 2
+            return 4096, 2
         if n <= 2**25:
             return 32768, 2
         return 65536, 2
-    if n <= 8192:
-        return 1024, 2
-    return 8192, 4
+    if n <= 2**13:
+        return 1024, 1
+    if n <= 2**21:
+        return 4096, 2
+    if n <= 2**25:
+        return 32768, 2
+    return 131072, 2
 
 
 def _flat_launch(A, out):
@@ -148,12 +182,20 @@ def _flat_launch(A, out):
             n,
             BLOCK=block,
             HAS_TAIL=(n % block) != 0,
+            HIGH_PREC=(A.dtype == torch.float32),
+            SIGN16=(A.dtype != torch.float32),
             num_warps=num_warps,
         )
 
 
 def arcsin(x, *, out=None):
     logger.debug("GEMS_ENFLAME ARCSIN_FORWARD")
+    # ATen rejects an integer or bool out buffer (the float result cannot be
+    # cast into it); mirror that instead of silently truncating.
+    if out is not None and not out.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{out.dtype}"
+        )
     if out is None:
         if _flat_ready(x):
             out = torch.empty_like(x)

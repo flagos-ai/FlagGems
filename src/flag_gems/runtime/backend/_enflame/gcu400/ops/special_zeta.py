@@ -510,7 +510,7 @@ def _prepare_out(out, shape, device, inputs):
 
 
 def special_zeta(x, q):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ZETA")
+    logger.debug("GEMS_ENFLAME SPECIAL_ZETA")
     _validate_tensor_devices(x, q)
     dtype = _promoted_dtype(x, q)
     x_compute = _cast_tensor(x, dtype)
@@ -528,7 +528,7 @@ def special_zeta(x, q):
 
 
 def special_zeta_out(x, q, out):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ZETA_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_ZETA_OUT")
     device = _validate_tensor_devices(x, q)
     dtype = _promoted_dtype(x, q)
     shape = torch.broadcast_shapes(x.shape, q.shape)
@@ -557,7 +557,7 @@ def special_zeta_out(x, q, out):
 
 
 def special_zeta_tensor_scalar(x, q):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ZETA_TENSOR_SCALAR")
+    logger.debug("GEMS_ENFLAME SPECIAL_ZETA_TENSOR_SCALAR")
     dtype = _promoted_dtype(x, q)
     x_compute = _cast_tensor(x, dtype)
     return _compute_result(
@@ -572,7 +572,7 @@ def special_zeta_tensor_scalar(x, q):
 
 
 def special_zeta_tensor_scalar_out(x, q, out):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ZETA_TENSOR_SCALAR_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_ZETA_TENSOR_SCALAR_OUT")
     dtype = _promoted_dtype(x, q)
     copy_back = _prepare_out(out, x.shape, x.device, (x,))
     x_compute = _cast_tensor(x, dtype)
@@ -598,7 +598,7 @@ def special_zeta_tensor_scalar_out(x, q, out):
 
 
 def special_zeta_scalar_tensor(x, q):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ZETA_SCALAR_TENSOR")
+    logger.debug("GEMS_ENFLAME SPECIAL_ZETA_SCALAR_TENSOR")
     dtype = _promoted_dtype(x, q)
     q_compute = _cast_tensor(q, dtype)
     return _compute_result(
@@ -613,7 +613,7 @@ def special_zeta_scalar_tensor(x, q):
 
 
 def special_zeta_scalar_tensor_out(x, q, out):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ZETA_SCALAR_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_ZETA_SCALAR_TENSOR_OUT")
     dtype = _promoted_dtype(x, q)
     copy_back = _prepare_out(out, q.shape, q.device, (q,))
     q_compute = _cast_tensor(q, dtype)

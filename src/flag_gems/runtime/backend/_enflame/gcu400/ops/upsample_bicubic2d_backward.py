@@ -1082,7 +1082,7 @@ def upsample_bicubic2d_backward(
     scales_h=None,
     scales_w=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BICUBIC2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_BICUBIC2D_BACKWARD")
     return _upsample_bicubic2d_backward_impl(
         grad_output,
         output_size,
@@ -1104,7 +1104,7 @@ def upsample_bicubic2d_backward_grad_input(
     *,
     grad_input,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BICUBIC2D_BACKWARD.GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_BICUBIC2D_BACKWARD.GRAD_INPUT")
     return _upsample_bicubic2d_backward_impl(
         grad_output,
         output_size,

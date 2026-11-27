@@ -21,6 +21,8 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
+from ._quantized_tensor_gcu import set_per_tensor_qparams
+
 logger = logging.getLogger(__name__)
 
 _QUANT_TO_INT_DTYPE = {
@@ -604,10 +606,13 @@ def _int_view_of(qtensor):
 def _resize_out(out, out_shape):
     """Resize ``out`` in place the way aten's out= wrapper does.
 
-    ``Tensor.resize_`` has no QuantizedCUDA kernel, so the resize is done with
-    ``set_``: sizes become ``out_shape``, strides become contiguous, and the
-    storage offset is preserved (growing the storage only when the new extent
-    no longer fits).
+    ``Tensor.resize_`` and ``Tensor.set_(storage, ...)`` both lower to
+    ``_copy_from_and_resize`` on GCU, which refuses to resize a quantized device
+    tensor (``device side quantized resize_ is not implemented``). The storage
+    itself can still grow, and ``as_strided_`` is a pure metadata rewrite that
+    stays registered for quantized tensors: sizes become ``out_shape``, strides
+    become contiguous, and the storage offset is preserved (growing the storage
+    only when the new extent no longer fits).
     """
     if tuple(out.shape) == tuple(out_shape):
         return
@@ -618,26 +623,25 @@ def _resize_out(out, out_shape):
     storage = out.untyped_storage()
     needed = (offset + numel) * out.element_size()
     if storage.nbytes() < needed:
-        storage = torch.empty(
-            needed, dtype=torch.uint8, device=out.device
-        ).untyped_storage()
-    # ``Tensor.set_`` on a quantized tensor consults the CPU kernel table once
-    # the storage has been swapped and can trip the stale DispatchStub assert
-    # on GCU; ``_set_q_storage`` tolerates it and verifies the final state.
-    _set_q_storage(
-        out, storage, offset, tuple(out_shape), _contiguous_strides(tuple(out_shape))
-    )
+        storage.resize_(needed)
+    out.as_strided_(tuple(out_shape), _contiguous_strides(tuple(out_shape)), offset)
 
 
 def _sync_out_quantizer(out, scale, zero_point):
     """Give ``out`` the result's quantization parameters, as aten's out= does.
 
     A quantized tensor's scale/zero-point live in its quantizer, which cannot be
-    reassigned from Python. Copying from a same-storage, same-layout alias that
-    carries the target quantizer moves the parameters over without disturbing
-    the bytes (or the neighbours of a view).
+    reassigned from Python. GCU quantized tensors additionally refuse the
+    ``set_``-built alias used below (it lowers to ``_copy_from_and_resize``,
+    which will not resize a quantized device tensor), so the carrier path
+    relabels ``out``'s own bytes with the target quantizer and swaps the
+    implementations: the parameters move over without disturbing the bytes (or
+    the neighbours of a view) and the caller's ``out`` object survives.
     """
     if out.q_scale() == scale and out.q_zero_point() == zero_point:
+        return
+    if _is_gcu_quantized(out):
+        set_per_tensor_qparams(out, scale, zero_point)
         return
     alias = torch._empty_affine_quantized(
         (0,), scale=scale, zero_point=zero_point, dtype=out.dtype, device=out.device
@@ -649,14 +653,7 @@ def _sync_out_quantizer(out, scale, zero_point):
         tuple(out.shape),
         out.stride(),
     )
-    if _is_gcu_quantized(out):
-        # Carrier path: the quantized copy_ kernel has no Quantizedgcu
-        # implementation. The alias already shares out's bytes and layout, so
-        # swapping the implementations adopts its quantizer in place and the
-        # Python object identity (which out= promises to preserve) survives.
-        torch.utils.swap_tensors(out, alias)
-    else:
-        out.copy_(alias)
+    out.copy_(alias)
 
 
 def _may_overlap(input, out):
@@ -703,14 +700,22 @@ def quantized_max_pool1d(
     dilation=[1],
     ceil_mode=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL1D")
+    logger.debug("GEMS_ENFLAME QUANTIZED_MAX_POOL1D")
 
     out_shape, kernel_size, stride, padding, dilation = _plan(
         input, kernel_size, stride, padding, dilation, ceil_mode
     )
 
     int_dtype = _int_dtype_for(input.dtype)
-    int_repr = input.int_repr().contiguous()
+    # Zero-copy fast path: when input is contiguous, directly use an int8 view of the same storage as the kernel input.
+    # In this backend ``int_repr()`` requires a CPU round-trip plus another copy, measured to add a fixed
+    # 25~50us per call (small shapes like (4,1024) account for over 95% of total time). The result tensor here is newly
+    # allocated
+    # and has no aliasing issue with input, so only contiguity needs checking.
+    if input.is_contiguous():
+        int_repr = _int_view(input)
+    else:
+        int_repr = input.int_repr().contiguous()
     out_int_repr = torch.empty(out_shape, dtype=int_dtype, device=int_repr.device)
 
     if out_int_repr.numel() > 0:
@@ -731,7 +736,7 @@ def quantized_max_pool1d_out(
     *,
     out=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL1D_OUT")
+    logger.debug("GEMS_ENFLAME QUANTIZED_MAX_POOL1D_OUT")
 
     if out is None:
         return quantized_max_pool1d(
@@ -755,7 +760,14 @@ def quantized_max_pool1d_out(
     # it grows. ``int_repr()`` returns a fresh contiguous copy, so this snapshot
     # is unaffected by the resize and by the kernel's own output, which may
     # alias the input.
-    int_repr = input.int_repr().contiguous()
+    # Zero-copy fast path: when input is contiguous and does not overlap with out, directly use an int8
+    # view of the same storage as the kernel input. In this backend ``int_repr()`` requires a CPU round-trip plus
+    # another copy, measured to add a fixed
+    # 25~50us per call (small shapes like (4,1024) account for over 95% of total time).
+    if not _may_overlap(input, out) and input.is_contiguous():
+        int_repr = _int_view(input)
+    else:
+        int_repr = input.int_repr().contiguous()
 
     _resize_out(out, out_shape)
     _sync_out_quantizer(out, scale, zero_point)

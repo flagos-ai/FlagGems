@@ -350,45 +350,6 @@ _SPARSE_ACCESSOR_OPS = (
 _AUTOGRAD_KEY = "Autograd" + _runtime_device.dispatch_key
 
 
-def _install_sparse_csr_kernels(values_copy_fn, values_copy_out_fn):
-    """Register the accessors and this op on the GCU sparse keys.
-
-    Idempotent across every module name this file is imported under: the
-    library handle lives on the shared ``torch``-attached state, so exactly
-    one instance performs the registration.
-    """
-    if _STATE.sparse_library is not None:
-        return
-    _STATE.sparse_library = torch.library.Library("aten", "IMPL")
-    registrations = _SPARSE_ACCESSOR_OPS + (
-        ("values_copy", values_copy_fn),
-        ("values_copy.out", values_copy_out_fn),
-    )
-    for op_name, kernel in registrations:
-        try:
-            _STATE.sparse_library.impl(op_name, kernel, _SPARSE_CSR_KEY)
-        except RuntimeError as error:
-            logger.warning(
-                "values_copy: sparse key registration %s@%s skipped: %s",
-                op_name,
-                _SPARSE_CSR_KEY,
-                error,
-            )
-    for op_name, kernel in (
-        ("values_copy", values_copy_fn),
-        ("values_copy.out", values_copy_out_fn),
-    ):
-        try:
-            _STATE.sparse_library.impl(op_name, kernel, _AUTOGRAD_KEY)
-        except RuntimeError as error:
-            logger.warning(
-                "values_copy: autograd key registration %s@%s skipped: %s",
-                op_name,
-                _AUTOGRAD_KEY,
-                error,
-            )
-
-
 # ============================================================================
 # Copy kernels (generic semantics)
 # ============================================================================
@@ -596,6 +557,8 @@ def _launch_strided(vals, dst):
     """Byte-granular copy for strided and/or offset stored values."""
     itemsize = vals.element_size()
     shape = vals.shape
+    # Byte view of the operands: trailing axis is the byte lane inside one
+    # element (byte stride 1), the leading axes are the tensor axes.
     src_strides = [s * itemsize for s in vals.stride()] + [1]
     dst_strides = [s * dst.element_size() for s in dst.stride()] + [1]
     byte_shape = tuple(shape) + (itemsize,)
@@ -603,9 +566,19 @@ def _launch_strided(vals, dst):
     alias = _alias_strided(dst, byte_shape, dst_strides)
     n = vals.numel() * itemsize
     rank = len(byte_shape)
-    s = src_strides + [0] * (6 - rank)
-    d = dst_strides + [0] * (6 - rank)
-    e = list(shape) + [1] * (5 - len(shape))
+    if rank > 6:
+        raise NotImplementedError(
+            "values_copy: stored values with rank > 5 are not supported"
+        )
+    # The flat byte index must be decoded innermost-first (byte lane, then the
+    # tensor axes from the last to the first).  Decoding outermost-first maps
+    # every lane to the wrong offset and silently writes a permuted copy.
+    rev_e = list(reversed(byte_shape))
+    rev_s = list(reversed(src_strides))
+    rev_d = list(reversed(dst_strides))
+    e = (rev_e + [1] * 5)[:5]
+    s = (rev_s + [0] * 6)[:6]
+    d = (rev_d + [0] * 6)[:6]
     grid = ((n + _ND_BLOCK - 1) // _ND_BLOCK,)
     with torch_device_fn.device(src.device):
         _copy_nd_kernel[grid](
@@ -718,15 +691,15 @@ def values_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Tensor
     the caller buffer and that object is returned.
     """
     if out is None:
-        logger.debug("GEMS_ENFLAME_GCU400 VALUES_COPY")
+        logger.debug("GEMS_ENFLAME VALUES_COPY")
         return _values_copy_impl(self, None)
-    logger.debug("GEMS_ENFLAME_GCU400 VALUES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME VALUES_COPY_OUT")
     return _values_copy_impl(self, out)
 
 
 def values_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::values_copy.out``: write the values copy into ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 VALUES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME VALUES_COPY_OUT")
     return _values_copy_impl(self, out)
 
 
@@ -736,4 +709,3 @@ def values_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
 
 _install_factory_patches()
 _install_coo_values_override()
-_install_sparse_csr_kernels(values_copy, values_copy_out)
