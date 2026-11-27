@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
 # cov treats rows as variables and columns as observations, so the input is a
 # 2D (variables x observations) matrix. These shapes cover a single-variable
 # degenerate case, square matrices, and tall/wide matrices.
@@ -41,9 +47,11 @@ def test_cov(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, upcast=True)
 
-    res_out = flag_gems.cov(inp)
-
     ref_out = torch.cov(ref_inp).to(dtype)
+
+    before = inp.clone()
+    res_out = flag_gems.cov(inp)
+    utils.gems_assert_equal(inp, before)
 
     # The covariance matrix is NxN; use a reduce_dim tolerance sized to the
     # observation count, since the matrix product accumulates over n_cols.
@@ -57,9 +65,9 @@ def test_cov_1d(dtype):
     # torch.cov returns a 0D scalar (the variance).
     inp = torch.randn(64, dtype=dtype, device=flag_gems.device)
 
-    res_out = flag_gems.cov(inp)
-
     ref_out = torch.cov(utils.to_reference(inp, upcast=True)).to(dtype)
+
+    res_out = flag_gems.cov(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=64)
 
@@ -73,9 +81,9 @@ def test_cov_correction(correction, dtype):
     inp = torch.randn((8, 64), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, upcast=True)
 
-    res_out = flag_gems.cov(inp, correction=correction)
-
     ref_out = torch.cov(ref_inp, correction=correction).to(dtype)
+
+    res_out = flag_gems.cov(inp, correction=correction)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=64)
 
@@ -91,9 +99,9 @@ def test_cov_fweights(dtype):
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_fweights = utils.to_reference(fweights)
 
-    res_out = flag_gems.cov(inp, fweights=fweights)
-
     ref_out = torch.cov(ref_inp, fweights=ref_fweights).to(dtype)
+
+    res_out = flag_gems.cov(inp, fweights=fweights)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n_cols)
 
@@ -106,14 +114,15 @@ def test_cov_aweights(dtype):
     n_cols = 128
     inp = torch.randn((8, n_cols), dtype=dtype, device=flag_gems.device)
     aweights = torch.rand((n_cols,), device=flag_gems.device) + 0.1
+    result_dtype = torch.promote_types(dtype, aweights.dtype)
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_aweights = utils.to_reference(aweights)
 
+    ref_out = torch.cov(ref_inp, aweights=ref_aweights).to(result_dtype)
+
     res_out = flag_gems.cov(inp, aweights=aweights)
 
-    ref_out = torch.cov(ref_inp, aweights=ref_aweights).to(dtype)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n_cols)
+    utils.gems_assert_close(res_out, ref_out, result_dtype, reduce_dim=n_cols)
 
 
 @pytest.mark.cov
@@ -124,15 +133,18 @@ def test_cov_fweights_aweights(dtype):
     inp = torch.randn((8, n_cols), dtype=dtype, device=flag_gems.device)
     fweights = torch.randint(1, 4, (n_cols,), device=flag_gems.device)
     aweights = torch.rand((n_cols,), device=flag_gems.device) + 0.1
+    result_dtype = torch.promote_types(dtype, aweights.dtype)
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_fweights = utils.to_reference(fweights)
     ref_aweights = utils.to_reference(aweights)
 
+    ref_out = torch.cov(ref_inp, fweights=ref_fweights, aweights=ref_aweights).to(
+        result_dtype
+    )
+
     res_out = flag_gems.cov(inp, fweights=fweights, aweights=aweights)
 
-    ref_out = torch.cov(ref_inp, fweights=ref_fweights, aweights=ref_aweights).to(dtype)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n_cols)
+    utils.gems_assert_close(res_out, ref_out, result_dtype, reduce_dim=n_cols)
 
 
 @pytest.mark.cov
@@ -144,8 +156,8 @@ def test_cov_non_contiguous(dtype):
     inp = base[::2, ::2]
     ref_inp = utils.to_reference(inp, upcast=True)
 
-    res_out = flag_gems.cov(inp)
-
     ref_out = torch.cov(ref_inp).to(dtype)
+
+    res_out = flag_gems.cov(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.shape[1])

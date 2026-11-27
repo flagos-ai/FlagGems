@@ -197,8 +197,8 @@ def cov(
     between the number of observations and the divisor (Bessel's correction, 1
     by default). ``fweights`` and ``aweights`` are optional frequency and
     analytic weights over the observations. The computation runs in float32
-    internally and the result is cast back to the input dtype, matching the
-    precision behaviour expected from a stable Triton implementation.
+    internally and the result is cast back to the input dtype, promoted to the
+    ``aweights`` dtype exactly as ``torch.cov`` does.
     """
     logger.debug("GEMS COV")
 
@@ -214,7 +214,11 @@ def cov(
     x = x.contiguous()
     n_rows, n_cols = x.shape
     device = x.device
+    # torch.cov promotes the result to the analytic-weight dtype; fweights are
+    # integral and do not participate in the promotion.
     out_dtype = input.dtype
+    if aweights is not None:
+        out_dtype = torch.promote_types(out_dtype, aweights.dtype)
     single_variable = n_rows == 1
 
     # Build the combined observation weight vector w = fweights * aweights,
