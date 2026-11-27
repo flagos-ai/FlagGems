@@ -17,17 +17,22 @@ import logging
 import torch
 import triton
 
-from flag_gems.ops.ctc_loss import (_REDUCTION_MEAN, _REDUCTION_NONE,
-                                    _REDUCTION_SUM, _compute_dtype,
-                                    _is_integral_dtype, _length_stats,
-                                    _lengths_to_tensor, _reduction_enum)
+from flag_gems.ops.ctc_loss import (
+    _REDUCTION_MEAN,
+    _REDUCTION_NONE,
+    _REDUCTION_SUM,
+    _compute_dtype,
+    _is_integral_dtype,
+    _length_stats,
+    _lengths_to_tensor,
+    _reduction_enum,
+)
 from flag_gems.ops.isinf import isinf
 from flag_gems.ops.where import where_self
 from flag_gems.runtime import torch_device_fn
 
 from ._ctc_loss import _ctc_loss_forward_kernel
-from ._ctc_loss_backward import (_ctc_loss_backward_kernel,
-                                 _ctc_loss_init_grad_kernel)
+from ._ctc_loss_backward import _ctc_loss_backward_kernel, _ctc_loss_init_grad_kernel
 from .cumsum import cumsum
 
 logger = logging.getLogger(__name__)

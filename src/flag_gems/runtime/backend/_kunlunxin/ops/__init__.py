@@ -405,6 +405,7 @@ from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
 from .cov import cov
+from .ctc_loss import ctc_loss
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
@@ -413,12 +414,11 @@ from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumprod_backward import cumprod_backward
-from .ctc_loss import ctc_loss
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
-from .det import det
 from .dequantize import dequantize
+from .det import det
 from .detach_copy import detach_copy
 from .diag import diag
 from .diag_embed import diag_embed
@@ -1486,10 +1486,10 @@ __all__ = [
     "cumsum_",
     "cumsum_out",
     "deg2rad",
-    "det",
     "deg2rad_",
     "deg2rad_out",
     "dequantize",
+    "det",
     "detach_copy",
     "diag",
     "diag_embed",

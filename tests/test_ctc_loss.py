@@ -147,15 +147,53 @@ def _reference_ctc_loss(
     ref_targets = utils.to_reference(targets)
     ref_input_lengths = utils.to_reference(input_lengths)
     ref_target_lengths = utils.to_reference(target_lengths)
-    ref_out = F.ctc_loss(
-        ref_log_probs,
-        ref_targets,
-        ref_input_lengths,
-        ref_target_lengths,
-        blank=blank,
-        reduction=reduction,
-        zero_infinity=zero_infinity,
-    )
+    if flag_gems.vendor_name == "kunlunxin":
+        # F.ctc_loss dispatches aten::_use_cudnn_ctc_loss, which is not built
+        # into the CI torch for the CPU backend. Emulate its contract on top
+        # of the native aten::_ctc_loss (2D unbatched inputs, float targets,
+        # zero_infinity and the reduction all live in the composite).
+        lp_work = ref_log_probs
+        unbatched_ref = lp_work.ndim == 2
+        if unbatched_ref:
+            lp_work = lp_work.unsqueeze(1)
+        lp_work = lp_work.contiguous()
+        tgt = ref_targets
+        if torch.is_floating_point(tgt):
+            tgt = tgt.to(torch.long)
+        tgt = tgt.contiguous()
+        il = ref_input_lengths
+        if not torch.is_tensor(il):
+            il = torch.tensor(il, dtype=torch.long)
+        il = il.reshape(-1).contiguous()
+        tl = ref_target_lengths
+        if not torch.is_tensor(tl):
+            tl = torch.tensor(tl, dtype=torch.long)
+        tl = tl.reshape(-1).contiguous()
+
+        ref_nll, _ = torch.ops.aten._ctc_loss(
+            lp_work, tgt, il, tl, blank, zero_infinity
+        )
+        if zero_infinity:
+            ref_nll = torch.where(
+                torch.isinf(ref_nll), torch.zeros_like(ref_nll), ref_nll
+            )
+        if reduction == "none":
+            ref_out = ref_nll.squeeze() if unbatched_ref else ref_nll
+        elif reduction == "sum":
+            ref_out = ref_nll.sum()
+        else:
+            denom = tl.clamp_min(1).to(ref_nll.dtype)
+            ref_out = (ref_nll / denom).mean()
+    else:
+        ref_out = F.ctc_loss(
+            ref_log_probs,
+            ref_targets,
+            ref_input_lengths,
+            ref_target_lengths,
+            blank=blank,
+            reduction=reduction,
+            zero_infinity=zero_infinity,
+        )
     return ref_log_probs, ref_out.to(log_probs.dtype)
 
 
