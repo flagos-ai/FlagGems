@@ -174,8 +174,8 @@ def test__aminmax(shape, dtype):
     ref_min, ref_max = torch._aminmax(ref_inp)
     res_min, res_max = _checked_aminmax(inp)
 
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
+    utils.gems_assert_equal(res_min.detach(), ref_min.detach())
+    utils.gems_assert_equal(res_max.detach(), ref_max.detach())
 
 
 @pytest.mark.underscore_aminmax
@@ -189,8 +189,8 @@ def test__aminmax_zero(shape, dtype):
     ref_min, ref_max = torch._aminmax(ref_inp)
     res_min, res_max = _checked_aminmax(inp)
 
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
+    utils.gems_assert_equal(res_min.detach(), ref_min.detach())
+    utils.gems_assert_equal(res_max.detach(), ref_max.detach())
 
 
 @pytest.mark.underscore_aminmax
@@ -208,12 +208,8 @@ def test__aminmax_inf(shape, dtype):
     ref_min, ref_max = torch._aminmax(ref_inp)
     res_min, res_max = _checked_aminmax(inp)
 
-    utils.gems_assert_equal(
-        res_min.detach().cpu(), ref_min.detach().cpu(), equal_nan=True
-    )
-    utils.gems_assert_equal(
-        res_max.detach().cpu(), ref_max.detach().cpu(), equal_nan=True
-    )
+    utils.gems_assert_equal(res_min.detach(), ref_min.detach(), equal_nan=True)
+    utils.gems_assert_equal(res_max.detach(), ref_max.detach(), equal_nan=True)
 
 
 @pytest.mark.underscore_aminmax
@@ -225,8 +221,8 @@ def test__aminmax_int(shape):
     ref_min, ref_max = torch._aminmax(ref_inp)
     res_min, res_max = _checked_aminmax(inp)
 
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
+    utils.gems_assert_equal(res_min.detach(), ref_min.detach())
+    utils.gems_assert_equal(res_max.detach(), ref_max.detach())
 
 
 @pytest.mark.underscore_aminmax
@@ -237,8 +233,8 @@ def test__aminmax_scalar():
     ref_min, ref_max = torch._aminmax(ref_inp)
     res_min, res_max = _checked_aminmax(inp)
 
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
+    utils.gems_assert_equal(res_min.detach(), ref_min.detach())
+    utils.gems_assert_equal(res_max.detach(), ref_max.detach())
 
 
 @pytest.mark.underscore_aminmax_out
@@ -335,8 +331,8 @@ def test_underscore_aminmax_non_contiguous(view):
     ref_min, ref_max = torch._aminmax(ref_inp)
     res_min, res_max = _checked_aminmax(inp)
 
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
+    utils.gems_assert_equal(res_min.detach(), ref_min.detach())
+    utils.gems_assert_equal(res_max.detach(), ref_max.detach())
 
 
 @pytest.mark.underscore_aminmax_out
