@@ -3448,6 +3448,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: cholesky_inverse_backward
+  description: First-order autograd rule for cholesky_inverse implemented with Triton
+    kernels or zero-copy gradient views.
+  for:
+  - cholesky_inverse
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: cholesky_solve
   description: 'Solves a system of linear equations with a symmetric positive-definite
     matrix

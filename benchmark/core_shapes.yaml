@@ -101,6 +101,18 @@ exponential:
     - [1073741824]
   shape_desc: "input shape"
 
+cholesky_inverse_backward:
+  shapes:
+  - - 1
+    - 4
+  - - 2
+    - 16
+  - - 4
+    - 32
+  - - 2
+    - 64
+  shape_desc: backward input shape
+
 svd:
   shapes:
     - [4096, 2, 2]

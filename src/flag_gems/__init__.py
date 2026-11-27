@@ -1240,7 +1240,12 @@ _FULL_CONFIG = (
     ("chalf", chalf),
     ("channel_shuffle", channel_shuffle),
     ("cholesky", cholesky),
-    ("cholesky_inverse", cholesky_inverse),
+    (
+        "cholesky_inverse",
+        cholesky_inverse,
+        None,
+        (f"Autograd{backend_info.dispatch_key}",),
+    ),
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
