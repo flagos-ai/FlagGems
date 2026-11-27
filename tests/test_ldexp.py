@@ -432,9 +432,12 @@ def test_ldexp_backward_int_exponent(dtype):
     out_grad = torch.randn_like(res_out)
     (res_dself,) = torch.autograd.grad(res_out, self, out_grad)
 
-    ref_self = self.detach().double().requires_grad_(True)
-    ref_out = torch.ldexp(ref_self, other)
-    (ref_dself,) = torch.autograd.grad(ref_out, ref_self, out_grad.double())
+    ref_self = utils.to_reference(self, False).double().requires_grad_(True)
+    ref_other = utils.to_reference(other, False)
+    ref_out = torch.ldexp(ref_self, ref_other)
+    (ref_dself,) = torch.autograd.grad(
+        ref_out, ref_self, utils.to_reference(out_grad, True).double()
+    )
     utils.gems_assert_close(res_dself, ref_dself, dtype)
 
     res_d, res_o = flag_gems.ldexp_backward(out_grad, self.detach(), other)
@@ -454,11 +457,13 @@ def test_ldexp_backward_float_exponent(dtype):
     out_grad = torch.randn_like(res_out)
     res_dself, res_dother = torch.autograd.grad(res_out, (self, other), out_grad)
 
-    ref_self = self.detach().double().requires_grad_(True)
-    ref_other = other.detach().double().requires_grad_(True)
+    ref_self = utils.to_reference(self, False).double().requires_grad_(True)
+    ref_other = utils.to_reference(other, False).double().requires_grad_(True)
     ref_out = torch.ldexp(ref_self, ref_other)
     ref_dself, ref_dother = torch.autograd.grad(
-        ref_out, (ref_self, ref_other), out_grad.double()
+        ref_out,
+        (ref_self, ref_other),
+        utils.to_reference(out_grad, True).double(),
     )
     utils.gems_assert_close(res_dself, ref_dself, dtype)
     utils.gems_assert_close(res_dother, ref_dother, dtype)
