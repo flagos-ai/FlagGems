@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "frobenius_norm",
+  "requires_triton_kernel": true,
+  "description": "Exact native contract aten::frobenius_norm.dim(Tensor self, int[] dim, bool keepdim=False) -> Tensor. Reduce over supplied dimensions, retaining them if requested. Output stays on the input device. For the tested real floating inputs, output dtype matches input dtype; complex input behavior is outside the restored test coverage. Preserve duplicate-dimension RuntimeError contract; no mutation or return alias. Restored master tests use candidate-only top-level injection; builtin export is not assumed.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int[]"
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
