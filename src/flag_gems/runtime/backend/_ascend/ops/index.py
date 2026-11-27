@@ -33,6 +33,15 @@ logger = logging.getLogger(__name__)
 
 _LAYOUT_2D_TILE = 0
 _LAYOUT_SUFFIX_LOOP = 1
+_MAX_LAYOUT_COPY_BYTES = 128 * 1024**2
+_MAX_LAYOUT_COPY_TO_OUTPUT_RATIO = 4
+_ASCEND_MAX_GRID_AXIS = 65_535
+_INDEX_MAX_PROGRAMS = 48
+_INDEX_BOUNDS_BLOCK_SIZE = 1024
+_MASK_COMPACTION_BLOCK_SIZE = 1024
+_GATHER_BLOCK_SIZE = 1024
+_GATHER_MIN_WIDE_PAYLOAD = 128
+_INT32_OFFSET_LIMIT = 2**31
 
 
 def _shape_product(shape):
@@ -103,7 +112,6 @@ def _find_adjacent_index_config(
 def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefix_size):
     """Select Ascend adjacent-index candidates from backend YAML configs."""
 
-    max_grid_axis = 65535
     max_tile_elems = 4096 if suffix_size >= 256 else 8192
 
     if suffix_size < 64:
@@ -129,7 +137,7 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
             (16, 256, _LAYOUT_2D_TILE),
         )
 
-    min_block_m = max(1, _ceil_div(index_len, max_grid_axis))
+    min_block_m = max(1, _ceil_div(index_len, _ASCEND_MAX_GRID_AXIS))
     use_suffix_loop = _should_use_adjacent_suffix_loop(
         index_len, suffix_size, prefix_size
     )
@@ -143,9 +151,9 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
             continue
         if block_m * block_s > max_tile_elems:
             continue
-        if _ceil_div(index_len, block_m) > max_grid_axis:
+        if _ceil_div(index_len, block_m) > _ASCEND_MAX_GRID_AXIS:
             continue
-        if _ceil_div(suffix_size, block_s) > max_grid_axis:
+        if _ceil_div(suffix_size, block_s) > _ASCEND_MAX_GRID_AXIS:
             continue
         if indices_len > 1 and block_m > 16:
             continue
@@ -487,8 +495,8 @@ def _can_use_linearized_adjacent_index(inp, indices):
     # A direct gather is slower for small views. Bound layout-copy work by
     # either a small absolute budget or a constant multiple of output size.
     return (
-        inp.numel() * inp.element_size() <= 128 * 1024**2
-        or inp.numel() <= 4 * output_numel
+        inp.numel() * inp.element_size() <= _MAX_LAYOUT_COPY_BYTES
+        or inp.numel() <= _MAX_LAYOUT_COPY_TO_OUTPUT_RATIO * output_numel
     )
 
 
@@ -537,8 +545,8 @@ def _check_index_bounds(index, size):
     if index.numel() == 0:
         return
     index = index.contiguous()
-    block = min(1024, triton.next_power_of_2(index.numel()))
-    programs = min(48, triton.cdiv(index.numel(), block))
+    block = min(_INDEX_BOUNDS_BLOCK_SIZE, triton.next_power_of_2(index.numel()))
+    programs = min(_INDEX_MAX_PROGRAMS, triton.cdiv(index.numel(), block))
     capturing = torch_device_fn.is_current_stream_capturing()
     valid = (
         None
@@ -603,13 +611,17 @@ def _boolean_coordinates(mask, device):
         return [
             torch.empty(0, device=mask.device, dtype=torch.int64) for _ in mask.shape
         ]
-    tiles = triton.cdiv(mask.numel(), 1024)
+    tiles = triton.cdiv(mask.numel(), _MASK_COMPACTION_BLOCK_SIZE)
     counts = torch.empty(tiles, device=mask.device, dtype=torch.int32)
     prefixes = torch.empty(tiles, device=mask.device, dtype=torch.int64)
     total = torch.empty((), device=mask.device, dtype=torch.int64)
-    grid = (min(tiles, 65535),)
-    _mask_block_counts[grid](mask, counts, mask.numel(), BLOCK=1024)
-    _mask_prefix_counts[(1,)](counts, prefixes, total, tiles, BLOCK=1024)
+    grid = (min(tiles, _ASCEND_MAX_GRID_AXIS),)
+    _mask_block_counts[grid](
+        mask, counts, mask.numel(), BLOCK=_MASK_COMPACTION_BLOCK_SIZE
+    )
+    _mask_prefix_counts[(1,)](
+        counts, prefixes, total, tiles, BLOCK=_MASK_COMPACTION_BLOCK_SIZE
+    )
     count = int(total.item())
     coordinates = torch.empty((mask.ndim, count), device=mask.device, dtype=torch.int64)
     if count:
@@ -620,7 +632,7 @@ def _boolean_coordinates(mask, device):
             mask.numel(),
             count,
             tuple(mask.shape),
-            BLOCK=1024,
+            BLOCK=_MASK_COMPACTION_BLOCK_SIZE,
         )
     return [coordinates.select(0, dim) for dim in range(mask.ndim)]
 
@@ -707,11 +719,14 @@ def _gather_function(
     # the indexed source base stays int64 when the view spans a wide address range.
     scalar_indices = (
         1 <= broadcast_numel
-        and plain_numel <= 1024
-        and (broadcast_numel <= 65535 or plain_numel >= 128)
+        and plain_numel <= _GATHER_BLOCK_SIZE
+        and (
+            broadcast_numel <= _ASCEND_MAX_GRID_AXIS
+            or plain_numel >= _GATHER_MIN_WIDE_PAYLOAD
+        )
         and sum((output_shape[axis] - 1) * strides[dim] for dim, axis in plain_axes)
-        < 2**31
-        and broadcast_numel * plain_numel < 2**31
+        < _INT32_OFFSET_LIMIT
+        and broadcast_numel * plain_numel < _INT32_OFFSET_LIMIT
     )
     if scalar_indices:
         out_strides = [1] * len(output_shape)
@@ -750,7 +765,7 @@ def _gather_function(
                 f"        source_base += tl.where(valid{i}, normalized{i}, 0) * {strides[dim]}",
                 f"        valid_index = valid_index & valid{i}",
             ]
-        if span < 2**31:
+        if span < _INT32_OFFSET_LIMIT:
             lines += ["        source_base = source_base.to(tl.int32)"]
         lines += [
             "        destination_base = destination_base.to(tl.int32)",
@@ -868,10 +883,15 @@ def _index_impl(inp, indices):
             plain_axes,
             broadcast_axes,
         )
-        programs = min(48, index_tiles or triton.cdiv(out.numel(), 1024))
+        programs = min(
+            _INDEX_MAX_PROGRAMS,
+            index_tiles or triton.cdiv(out.numel(), _GATHER_BLOCK_SIZE),
+        )
         # Eager and capture bounds checks run before gathering. Read and write
         # masks also exclude invalid coordinates during graph replay.
-        kernel[(programs,)](inp, *tensors, out, out.numel(), 1024, programs)
+        kernel[(programs,)](
+            inp, *tensors, out, out.numel(), _GATHER_BLOCK_SIZE, programs
+        )
     return out
 
 
