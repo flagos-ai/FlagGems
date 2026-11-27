@@ -2134,6 +2134,18 @@ ops:
   - Math
   stages:
   - stable: '4.0'
+- id: atan_backward
+  description: First-order autograd rule for atan implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - atan
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: atanh
   description: Triton kernel implementation for atanh.
   for:
