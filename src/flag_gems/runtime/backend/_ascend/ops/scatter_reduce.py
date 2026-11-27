@@ -34,8 +34,7 @@ logger = logging.getLogger(__name__)
 _SOURCE_PRODUCT_MIN_INDICES = 1 << 18
 
 _TRITON_VERSION = tuple(int(part) for part in triton.__version__.split(".")[:2])
-_REPLAY_ATOMICS_MIN_TRITON = (3, 5)
-_USE_REPLAY_ATOMICS = _TRITON_VERSION >= _REPLAY_ATOMICS_MIN_TRITON
+_USE_SEGMENT_SCAN = _TRITON_VERSION >= (3, 5)
 
 _MAX_SEGMENT_PROGRAMS = 1 << 15
 _SEGMENT_BLOCK = 256
@@ -369,7 +368,7 @@ def _reduce_packed_rows(keys, values, line_input, result, reduce, include_self):
     )
 
 
-if _USE_REPLAY_ATOMICS:
+if _USE_SEGMENT_SCAN:
     from .argsort import argsort as _scatter_order
 
     _reduce_packed = _reduce_packed_segments
@@ -471,11 +470,7 @@ def _scatter_reduce_prod(inp, dim, index, src, include_self):
 
 
 def _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self):
-    """Use scan/sorted-segment reductions for runtimes without replay atomics.
-
-    CANN 8.5 replay is not monotonic in source size, so non-idempotent sum and
-    mean updates must never fall back to the generic source-atomic kernels.
-    """
+    """Group sum and mean updates by destination on both Ascend runtimes."""
     if index.numel() == 0:
         return _generic_scatter_reduce(
             inp,
@@ -486,7 +481,16 @@ def _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self):
             include_self=include_self,
         )
     source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES or inp.numel() > 65535
-    if reduce in ("sum", "mean") or (reduce == "prod" and source_product):
+    large_extrema = (
+        _USE_SEGMENT_SCAN
+        and reduce in ("amin", "amax")
+        and max(index.numel(), inp.numel()) > _MAX_ATOMIC_ELEMENTS
+    )
+    if (
+        reduce in ("sum", "mean")
+        or (reduce == "prod" and source_product)
+        or large_extrema
+    ):
         return _scatter_reduce_sorted_segments(
             inp,
             dim,
@@ -507,49 +511,14 @@ def _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self):
     )
 
 
-def _scatter_reduce_with_claims(inp, dim, index, src, reduce, include_self):
-    """Claim sum/mean updates on runtimes that can replay source programs."""
-    if (
-        index.numel()
-        and max(index.numel(), inp.numel()) > _MAX_ATOMIC_ELEMENTS
-        and reduce in ("sum", "mean", "amin", "amax")
-    ):
-        return _scatter_reduce_sorted_segments(
-            inp, dim, index, src, reduce, include_self
-        )
-    if reduce == "prod":
-        # At large sizes the per-destination product lock can time out on 910B.
-        return _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self)
-    return _generic_scatter_reduce(
-        inp,
-        dim,
-        index,
-        src,
-        reduce,
-        include_self=include_self,
-        _deduplicate_programs=reduce in ("sum", "mean"),
-    )
-
-
-# Bind the runtime strategy once when this backend module is imported. Triton
-# 3.2 reduces each sorted row by destination because it cannot safely lower
-# claim atomics. Triton 3.5+ can claim sum/mean updates. Both
-# paths use the same scan or sorted segments for products.
-_scatter_reduce = (
-    _scatter_reduce_with_claims
-    if _USE_REPLAY_ATOMICS
-    else _scatter_reduce_with_segments
-)
-
-
 def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     logger.debug("GEMS_ASCEND SCATTER_REDUCE_TWO")
-    return _scatter_reduce(inp, dim, index, src, reduce, include_self)
+    return _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self)
 
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     logger.debug("GEMS_ASCEND SCATTER_REDUCE_TWO_")
-    result = _scatter_reduce(inp, dim, index, src, reduce, include_self)
+    result = _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self)
     inp.copy_(result)
     return inp
 
@@ -569,7 +538,7 @@ def scatter_reduce_out(
         raise RuntimeError(
             f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
         )
-    result = _scatter_reduce(inp, dim, index, src, reduce, include_self)
+    result = _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self)
     if out is not None:
         out.copy_(result)
         return out
