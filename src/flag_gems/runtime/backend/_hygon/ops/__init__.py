@@ -106,6 +106,7 @@ from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log import _foreach_log as _foreach_log
 from ._foreach_log10 import _foreach_log10 as _foreach_log10
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
+from ._foreach_max import _foreach_max as _foreach_max
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_maximum_List import _foreach_maximum_List as _foreach_maximum_List
@@ -129,9 +130,11 @@ from ._foreach_sigmoid import _foreach_sigmoid as _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin as _foreach_sin
+from ._foreach_sin_ import _foreach_sin_ as _foreach_sin_
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
+from ._foreach_tan import _foreach_tan as _foreach_tan
 from ._fused_rms_norm_backward import (
     _fused_rms_norm_backward as _fused_rms_norm_backward,
 )
@@ -461,6 +464,7 @@ __all__ = [
     "_foreach_log",
     "_foreach_log10",
     "_foreach_log10_",
+    "_foreach_max",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_maximum_List",
@@ -482,7 +486,9 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_foreach_sin",
+    "_foreach_sin_",
     "_foreach_sub__ScalarList",
+    "_foreach_tan",
     "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
