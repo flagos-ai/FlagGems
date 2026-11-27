@@ -180,6 +180,11 @@ def _cpu_flash_forward(
         outputs.append((probabilities @ vi).transpose(0, 1).to(query.dtype))
     output = torch.cat(outputs, dim=0) if varlen else torch.stack(outputs)
     lse = torch.cat(lses, dim=1) if varlen else torch.stack(lses)
+    if flag_gems.vendor_name == "hygon":
+        # ROCm exposes separate signed scalar fields. Preserve actual CPU RNG
+        # words in that ABI without claiming replay of the GPU generator.
+        cpu_rng_words = rng_state.view(torch.int64)
+        return output, lse, cpu_rng_words[0], cpu_rng_words[1], debug
     return output, lse, rng_state, torch.zeros((), dtype=rng_dtype), debug
 
 
@@ -317,7 +322,10 @@ def test__flash_attention_forward(dtype, shape, is_causal, scale_mode):
 @pytest.mark.skipif(
     flag_gems.vendor_name
     in {"hygon", "metax", "mthreads", "kunlunxin", "cambricon", "tsingmicro"},
-    reason="Existing FlashAttention sliding-window backend limitations: issues #2810, #2811, #2812, #2814, #5254, #4083",
+    reason=(
+        "Existing FlashAttention sliding-window backend limitations: "
+        "issues #2810, #2811, #2812, #2814, #5254, #4083"
+    ),
 )
 @pytest.mark.parametrize(
     "window_size_left,window_size_right", [(8, 0), (8, 8), (None, 4)]

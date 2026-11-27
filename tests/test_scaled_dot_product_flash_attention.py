@@ -113,6 +113,20 @@ def _cpu_flash_reference(
             )
         probabilities = probabilities * keep / (1.0 - dropout_p)
     output = (probabilities @ v).to(query.dtype)
+    if flag_gems.vendor_name == "hygon":
+        # Match separate signed scalar fields using real CPU RNG state bytes.
+        cpu_rng_words = rng_state.view(torch.int64)
+        return (
+            output,
+            logsumexp,
+            None,
+            None,
+            q_len,
+            kv_len,
+            cpu_rng_words[0],
+            cpu_rng_words[1],
+            debug_mask,
+        )
     return (
         output,
         logsumexp,
