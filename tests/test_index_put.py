@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
 import random
 import time
 
@@ -20,6 +21,9 @@ import pytest
 import torch
 
 import flag_gems
+
+from flag_gems.ops.index_put import generate_code
+from flag_gems.utils.code_utils import IndentedBuffer
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -31,9 +35,7 @@ else:
 
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,), False),
-    # grid.x = M / BLOCK_SIZE0 must stay within the launch limit, which is
-    # 65535 on some backends (e.g. enflame GCU300). M = 2**18 = 262144 exceeds
-    # it, so a kernel that chunks grid.x is required here.
+    # M = 2**18 requires more than 65535 programs with BLOCK_SIZE0 = 2.
     ((2**19,), ((2**18,),), (2**18,), False),
     ((32, 32), ((8,), (8,)), (8,), False),
     ((32, 32), ((8,), (2, 8)), (8,), False),
@@ -365,6 +367,60 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
 # observable instead of corrupting unrelated memory. See Issue #6411.
 
 _INDEX_PUT_ENTRIES = ["index_put_", "_index_put_impl_"]
+
+
+@pytest.mark.index_put_
+@pytest.mark.parametrize("op_name", _INDEX_PUT_ENTRIES)
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_index_put__large_n_grid(op_name, accumulate):
+    """Trailing tiles beyond grid.y=65535 must all receive their writes."""
+    if flag_gems.device != "cuda":
+        pytest.skip("requires CUDA-compatible memory accounting")
+    # BLOCK_SIZE1 = 2048; this extent needs 65536 trailing tiles.
+    width = 2048 * 65535 + 1
+    if torch.cuda.mem_get_info()[0] < width * 4 + 2**30:
+        pytest.skip("requires ~1.5 GiB of free memory")
+    inp = torch.empty((1, width), device=flag_gems.device, dtype=torch.float32)
+    inp.fill_(1)
+    index = torch.tensor([0], dtype=torch.int64, device=inp.device)
+    values = torch.tensor([[3.0]], dtype=inp.dtype, device=inp.device)
+    values = values.expand(1, width)
+    getattr(flag_gems, op_name)(inp, [index], values, accumulate)
+    expected = 4.0 if accumulate else 3.0
+    assert torch.all(inp == expected).item()
+
+
+def test_index_put__generated_grid_is_capped_and_stride_covers_all_tiles():
+    """Generated launches cap grid.x and walk all tiles."""
+    inp = torch.empty((1,), device=flag_gems.device)
+    index = torch.empty((1,), dtype=torch.int64, device=flag_gems.device)
+    code = generate_code(
+        (inp, [index], inp), "_index_put_wrapper", "_index_put_jit", IndentedBuffer()
+    ).getvalue()
+    module = ast.parse(code)
+    kernel = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_index_put_jit"
+    )
+    loop = next(node for node in ast.walk(kernel) if isinstance(node, ast.For))
+    assert isinstance(loop.iter, ast.Call)
+    assert ast.unparse(loop.iter).endswith("ext.num_programs(axis=0))")
+    wrapper = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_index_put_wrapper"
+    )
+    launch_grid = next(
+        node.value
+        for node in ast.walk(wrapper)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "grid"
+            for target in node.targets
+        )
+    )
+    assert "65535" in ast.unparse(launch_grid)
 
 
 @pytest.mark.index_put_

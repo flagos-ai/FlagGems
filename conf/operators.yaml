@@ -16587,17 +16587,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
-- id: paged_kv_block_gather
-  description: Gather the kv-cache blocks named by a block table into one contiguous
-    tensor for paged attention.
-  for:
-  - paged_kv_block_gather
-  labels:
-  - fused
-  kind:
-  - Attention
-  stages:
-  - beta: '5.4'
 - id: pairwise_distance
   description: 'Computes the pairwise distance between input vectors, or between columns
     of input matrices.

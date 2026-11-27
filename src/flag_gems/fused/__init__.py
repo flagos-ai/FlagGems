@@ -30,7 +30,6 @@ from flag_gems.fused.matmul_bias_activation import matmul_bias_activation
 from flag_gems.fused.matmuladd import matmuladd
 from flag_gems.fused.moe_load_balance_loss import moe_load_balance_loss
 from flag_gems.fused.outer import outer
-from flag_gems.fused.paged_kv_block_gather import paged_kv_block_gather
 from flag_gems.fused.post_layer_norm_residual import post_layer_norm_residual
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -63,7 +62,6 @@ __all__ = [
     "matmuladd",
     "moe_load_balance_loss",
     "outer",
-    "paged_kv_block_gather",
     "post_layer_norm_residual",
     "reglu",
     "reshape_and_cache_flash",
