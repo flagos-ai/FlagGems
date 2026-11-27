@@ -41,17 +41,17 @@ def test_equal(shape, dtype):
 
 
 @pytest.mark.equal
-@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(
+    "dtype,base", [(torch.int32, 2**24), (torch.int64, 2**24), (torch.int64, 2**53)]
+)
 @pytest.mark.parametrize("strided", [False, True])
-def test_equal_integer_precision(dtype, strided):
-    # 2**24 and 2**24 + 1 collapse to the same FP32 value; equal() must not
-    # report distinct integer ids as equal.
-    inp1_cpu = torch.tensor([2**24], dtype=dtype)
-    inp2_cpu = torch.tensor([2**24 + 1], dtype=dtype)
+def test_equal_integer_precision(dtype, base, strided):
+    inp1_cpu = torch.tensor([base, base + 1], dtype=dtype)
+    inp2_cpu = torch.tensor([base + 1, base + 1], dtype=dtype)
     inp1 = inp1_cpu.to(flag_gems.device)
     inp2 = inp2_cpu.to(flag_gems.device)
     if strided:
-        storage = torch.empty(2, dtype=dtype, device=flag_gems.device)
+        storage = torch.empty(2 * inp1.numel(), dtype=dtype, device=flag_gems.device)
         storage[::2].copy_(inp1)
         inp1 = storage[::2]
 
