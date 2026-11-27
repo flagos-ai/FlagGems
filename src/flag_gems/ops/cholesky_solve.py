@@ -2659,6 +2659,30 @@ def _cholesky_solve_complex(B, L, upper, batch_shape, N, nrhs, X=None):
     return X
 
 
+class CholeskySolveFunction(torch.autograd.Function):
+    """Autograd node for ``cholesky_solve``.
+
+    ``aten::cholesky_solve`` has no standalone backward operator, so the
+    gradient runs the Triton kernel in ``cholesky_solve_backward``. Only the
+    gradient w.r.t. the right-hand side ``B`` is produced; the factor is
+    treated as a constant, matching the ``grad_input_mask`` contract used by
+    the ATen formula when only ``B`` requires grad.
+    """
+
+    @staticmethod
+    def forward(ctx, B, L, upper):
+        ctx.save_for_backward(L)
+        ctx.upper = upper
+        return cholesky_solve_impl(B, L, upper)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (L,) = ctx.saved_tensors
+        from flag_gems.ops.cholesky_solve_backward import cholesky_solve_backward
+
+        return cholesky_solve_backward(grad_output, L, ctx.upper), None, None
+
+
 def cholesky_solve(B, L, upper=False, *, _out=None):
     """Solves a system of linear equations with a positive-definite
     matrix using the Cholesky factorization.
@@ -2675,6 +2699,12 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     Returns:
         X: solution tensor of shape (*, N, nrhs)
     """
+    if _out is None and torch.is_grad_enabled() and B.requires_grad:
+        return CholeskySolveFunction.apply(B, L, upper)
+    return cholesky_solve_impl(B, L, upper, _out=_out)
+
+
+def cholesky_solve_impl(B, L, upper=False, *, _out=None):
     logger.debug("GEMS CHOLESKY_SOLVE")
     assert L.dtype in (
         torch.float32,
