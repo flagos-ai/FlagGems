@@ -78,7 +78,7 @@ def config(binding, dtype):
     """
     import inspect
 
-    from benchmark.baseline import describe_call
+    from _common import describe as describe_call
 
     op = native()
     args, kwargs = build_inputs(binding, dtype, "cuda")

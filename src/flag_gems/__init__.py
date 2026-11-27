@@ -2835,7 +2835,9 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "linalg_eigh_backward",
     "maximum_backward",
     "only_enable",
+    "slow_conv2d_forward_backward",
     "use_gems",
 ]

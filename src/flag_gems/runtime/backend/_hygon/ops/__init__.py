@@ -41,9 +41,13 @@ from ._foreach_addcdiv__ScalarList import (
 )
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__ScalarList import (
+    _foreach_addcmul__ScalarList as _foreach_addcmul__ScalarList,
+)
 from ._foreach_addcmul__Tensor import (
     _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
 )
+from ._foreach_asin_ import _foreach_asin_ as _foreach_asin_
 from ._foreach_atan import _foreach_atan as _foreach_atan
 from ._foreach_atan_ import _foreach_atan_ as _foreach_atan_
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
@@ -51,6 +55,9 @@ from ._foreach_clamp_max__List import (
     _foreach_clamp_max__List as _foreach_clamp_max__List,
 )
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max__ScalarList import (
+    _foreach_clamp_max__ScalarList as _foreach_clamp_max__ScalarList,
+)
 from ._foreach_clamp_max_List import _foreach_clamp_max_List as _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import (
     _foreach_clamp_max_Scalar as _foreach_clamp_max_Scalar,
@@ -75,6 +82,7 @@ from ._foreach_clamp_min_ScalarList import (
 from ._foreach_copy import _foreach_copy as _foreach_copy
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_cos import _foreach_cos as _foreach_cos
+from ._foreach_cos_ import _foreach_cos_ as _foreach_cos_
 from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import (
@@ -85,6 +93,7 @@ from ._foreach_div_Scalar import _foreach_div_Scalar as _foreach_div_Scalar
 from ._foreach_div_ScalarList import _foreach_div_ScalarList as _foreach_div_ScalarList
 from ._foreach_div_Tensor import _foreach_div_Tensor as _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf as _foreach_erf
+from ._foreach_erf_ import _foreach_erf_ as _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_ as _foreach_erfc_
 from ._foreach_exp import _foreach_exp as _foreach_exp
 from ._foreach_exp_ import _foreach_exp_ as _foreach_exp_
@@ -92,10 +101,12 @@ from ._foreach_expm1 import _foreach_expm1 as _foreach_expm1
 from ._foreach_expm1_ import _foreach_expm1_ as _foreach_expm1_
 from ._foreach_floor import _foreach_floor as _foreach_floor
 from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
+from ._foreach_frac import _foreach_frac as _foreach_frac
 from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log import _foreach_log as _foreach_log
 from ._foreach_log10 import _foreach_log10 as _foreach_log10
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
+from ._foreach_max import _foreach_max as _foreach_max
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_maximum_List import _foreach_maximum_List as _foreach_maximum_List
@@ -118,9 +129,12 @@ from ._foreach_rsqrt import _foreach_rsqrt as _foreach_rsqrt
 from ._foreach_sigmoid import _foreach_sigmoid as _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sin import _foreach_sin as _foreach_sin
+from ._foreach_sin_ import _foreach_sin_ as _foreach_sin_
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
+from ._foreach_tan import _foreach_tan as _foreach_tan
 from ._fused_rms_norm_backward import (
     _fused_rms_norm_backward as _fused_rms_norm_backward,
 )
@@ -407,12 +421,15 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
+    "_foreach_asin_",
     "_foreach_atan",
     "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max__ScalarList",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
     "_foreach_clamp_max_ScalarList",
@@ -425,6 +442,7 @@ __all__ = [
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_cos",
+    "_foreach_cos_",
     "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
@@ -433,6 +451,7 @@ __all__ = [
     "_foreach_div_ScalarList",
     "_foreach_div_Tensor",
     "_foreach_erf",
+    "_foreach_erf_",
     "_foreach_erfc_",
     "_foreach_exp",
     "_foreach_exp_",
@@ -440,10 +459,12 @@ __all__ = [
     "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_frac",
     "_foreach_frac_",
     "_foreach_log",
     "_foreach_log10",
     "_foreach_log10_",
+    "_foreach_max",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_maximum_List",
@@ -464,7 +485,10 @@ __all__ = [
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign_",
+    "_foreach_sin",
+    "_foreach_sin_",
     "_foreach_sub__ScalarList",
+    "_foreach_tan",
     "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
