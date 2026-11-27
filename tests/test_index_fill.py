@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
@@ -45,6 +48,15 @@ INDEX_FILL_OPS = [
     "index_fill_",
 ]
 INDEX_FILL_OOB_PATHS = ("python_contiguous", "python_strided")
+
+
+# The earlier "core dumped" verdict came from the device-side aten reference of
+# test_index_fill_tensor_value, not from the kernels under test: on enflame GCU,
+# aten index_fill aborts when the 0-dim value tensor stays on the host while the
+# other operands are on the device (see _to_ref_value below). With the
+# reference value moved onto the reference device, the whole module runs on GCU:
+# 230 passed with --ref=cpu (the accuracy gate default) and with the device-side
+# reference, so no module-level skip is needed.
 
 
 def _make_input(shape, dtype):
@@ -157,6 +169,61 @@ def test_index_fill_duplicate_index():
     gems_assert_equal(inp, ref_inp)
 
 
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("shape", [(2, 16321), (4, 151936)])
+def test_index_fill_large_row_fill(shape):
+    # A large inner size used to produce a 2-D (m, n) launch with more than 255
+    # n-blocks, which backends such as Enflame GCU reject ("out of resource:
+    # grid.y"). The fill must stay within the launch limits and stay exact.
+    inp = torch.arange(
+        shape[0] * shape[1], dtype=torch.float32, device=flag_gems.device
+    ).reshape(shape)
+    index = torch.tensor([0, shape[0] - 1], dtype=torch.long, device=flag_gems.device)
+
+    ref_inp = to_reference(inp.clone(), False)
+    ref_index = to_reference(index, False)
+    ref_inp.index_fill_(0, ref_index, -5.0)
+
+    res_out = flag_gems.index_fill_(inp, 0, index, -5.0)
+
+    assert res_out is inp
+    gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_fill_
+def test_index_fill_grid_stride(monkeypatch):
+    # Cap the flat launch below the number of tile blocks so the kernel's
+    # grid-stride loop runs several iterations; this is what keeps oversized
+    # fills legal on backends with small grid limits. Vendor overrides (e.g.
+    # Ascend's `_ascend.ops.index_fill`) bound their own launches and have no
+    # `_MAX_GRID`; the correctness checks below still run for them.
+    index_fill_ops = importlib.import_module(flag_gems.index_fill_.__module__)
+    if hasattr(index_fill_ops, "_MAX_GRID"):
+        monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
+
+    shape = (256, 16)
+    inp = torch.arange(
+        shape[0] * shape[1], dtype=torch.float32, device=flag_gems.device
+    ).reshape(shape)
+    index = torch.arange(shape[0], dtype=torch.long, device=flag_gems.device)
+
+    ref_inp = to_reference(inp.clone(), False)
+    ref_index = to_reference(index, False)
+    ref_inp.index_fill_(0, ref_index, -6.0)
+    flag_gems.index_fill_(inp, 0, index, -6.0)
+    gems_assert_equal(inp, ref_inp)
+
+    # Same fill through the generic strided kernel (non-contiguous input).
+    base = torch.arange(
+        shape[1] * shape[0], dtype=torch.float32, device=flag_gems.device
+    ).reshape(shape[1], shape[0])
+    view = base.t()
+    ref_view = to_reference(view.clone(), False)
+    ref_view.index_fill_(0, ref_index, -6.0)
+    flag_gems.index_fill_(view, 0, index, -6.0)
+    gems_assert_equal(view, ref_view)
+
+
 @pytest.mark.index_fill
 def test_index_fill_noncontiguous():
     # Functional fill on a transposed view: the output is a strided clone
@@ -177,3 +244,39 @@ def test_index_fill_noncontiguous():
         base,
         torch.arange(12, dtype=torch.float32, device=flag_gems.device).reshape(3, 4),
     )
+
+
+INDEX_FILL_BACKWARD_CASES = [((1, 2), 0), ((4, 8), 0), ((2, 3, 5), 2)]
+
+
+@pytest.mark.index_fill_backward
+@pytest.mark.parametrize("shape, dim", INDEX_FILL_BACKWARD_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_fill_backward(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    index = torch.randperm(shape[dim], device=flag_gems.device)[: shape[dim] // 2]
+    value = torch.tensor(2.0, dtype=dtype, device=flag_gems.device)
+    value.requires_grad_(True)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_index = utils.to_reference(index)
+    ref_value = utils.to_reference(value, True)
+
+    ref_out = torch.index_fill(ref_inp, dim, ref_index, ref_value)
+    res_out = flag_gems.index_fill(inp, dim, index, value)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_dinp, res_dval = torch.autograd.grad(res_out, (inp, value), out_grad)
+    ref_dinp, ref_dval = torch.autograd.grad(
+        ref_out, (ref_inp, ref_value), ref_out_grad
+    )
+    utils.gems_assert_close(res_dinp, ref_dinp, dtype)
+    utils.gems_assert_close(res_dval, ref_dval, dtype)
+
+    res_dinp_direct, res_dval_direct = flag_gems.index_fill_backward(
+        out_grad, dim, index, True
+    )
+    utils.gems_assert_close(res_dinp_direct, ref_dinp, dtype)
+    utils.gems_assert_close(res_dval_direct, ref_dval, dtype)

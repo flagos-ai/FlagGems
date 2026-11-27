@@ -82,7 +82,7 @@ def test_sparse_bsr_tensor_unsafe_dtype(nnz, dtype):
     """The dtype argument converts the payload through the Triton kernel."""
     crow, col, values = _make_components(nnz, dtype)
     size = (4, 4, 2)
-    target = torch.float64
+    target = torch.float64 if utils.fp64_is_supported else torch.float32
 
     ref_values = utils.to_reference(values).to(target)
     ref = torch.ops.aten._sparse_bsr_tensor_unsafe(

@@ -125,6 +125,145 @@ def test_fill_scalar_(value, shape, dtype):
     flag_gems.fill_scalar_(x, value)
 
 
+@pytest.mark.fill_backward_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(0,), (3, 4)])
+@pytest.mark.parametrize("tensor_value", [False, True])
+@pytest.mark.parametrize("view", [False, True])
+def test_fill_backward_(dtype, shape, tensor_value, view):
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    grad = torch.ones_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_grad = utils.to_reference(grad, False)
+    ref_target = ref.clone()
+    target = actual.clone()
+    if view and len(shape) > 1:
+        ref_target = ref_target.T
+        target = target.T
+        ref_grad = ref_grad.T
+        grad = grad.T
+    if tensor_value:
+        value = torch.tensor(
+            2.0, device=flag_gems.device, dtype=dtype, requires_grad=True
+        )
+        ref_value = utils.to_reference(value.detach(), False).requires_grad_()
+        expected = torch.autograd.grad(
+            ref_target.fill_(ref_value), (ref, ref_value), ref_grad
+        )
+        result = torch.autograd.grad(
+            flag_gems.fill_tensor_(target, value), (actual, value), grad
+        )
+        utils.gems_assert_close(result[1], expected[1], dtype)
+    else:
+        expected = torch.autograd.grad(ref_target.fill_(2.0), ref, ref_grad)
+        result = torch.autograd.grad(flag_gems.fill_scalar_(target, 2.0), actual, grad)
+    utils.gems_assert_equal(result[0], expected[0])
+
+
+@pytest.mark.fill_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(0,), (3, 4)])
+@pytest.mark.parametrize("tensor_value", [False, True])
+def test_fill_backward(dtype, shape, tensor_value):
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    grad = torch.ones_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_grad = utils.to_reference(grad, False)
+    if tensor_value:
+        value = torch.tensor(
+            2.0, device=flag_gems.device, dtype=dtype, requires_grad=True
+        )
+        ref_value = utils.to_reference(value.detach(), False).requires_grad_()
+        expected = torch.autograd.grad(
+            torch.fill(ref, ref_value), (ref, ref_value), ref_grad
+        )
+        result = torch.autograd.grad(
+            flag_gems.fill_tensor(actual, value), (actual, value), grad
+        )
+        utils.gems_assert_close(result[1], expected[1], dtype)
+    else:
+        expected = torch.autograd.grad(torch.fill(ref, 2.0), ref, ref_grad)
+        result = torch.autograd.grad(flag_gems.fill_scalar(actual, 2.0), actual, grad)
+    utils.gems_assert_equal(result[0], expected[0])
+
+
+@pytest.mark.parametrize(
+    "inplace",
+    [
+        pytest.param(False, marks=pytest.mark.fill_backward, id="outplace"),
+        pytest.param(True, marks=pytest.mark.fill_backward_, id="inplace"),
+    ],
+)
+@pytest.mark.parametrize("value_device", ["cpu", "gpu"])
+def test_fill_tensor_value_gradient_mixed_dtype(value_device, inplace):
+    inp = torch.randn((3, 4), device=flag_gems.device, dtype=torch.float16)
+    grad = torch.ones_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_grad = utils.to_reference(grad, False)
+    value = torch.tensor(
+        2.0,
+        device="cpu" if value_device == "cpu" else flag_gems.device,
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    ref_value = utils.to_reference(value.detach(), False).requires_grad_()
+    native_input = ref.clone() if inplace else ref
+    gems_input = actual.clone() if inplace else actual
+    native_result = (
+        native_input.fill_(ref_value)
+        if inplace
+        else torch.fill(native_input, ref_value)
+    )
+    gems_result = (
+        flag_gems.fill_tensor_(gems_input, value)
+        if inplace
+        else flag_gems.fill_tensor(gems_input, value)
+    )
+    expected = torch.autograd.grad(native_result, (ref, ref_value), ref_grad)
+    result = torch.autograd.grad(gems_result, (actual, value), grad)
+    utils.gems_assert_equal(result[0], expected[0])
+    utils.gems_assert_equal(result[1], expected[1])
+
+
+@pytest.mark.parametrize(
+    "inplace",
+    [
+        pytest.param(False, marks=pytest.mark.fill_backward, id="outplace"),
+        pytest.param(True, marks=pytest.mark.fill_backward_, id="inplace"),
+    ],
+)
+@pytest.mark.parametrize("value_device", ["cpu", "gpu"])
+def test_fill_tensor_double_backward(value_device, inplace):
+    x = torch.randn((3, 4), device=flag_gems.device, requires_grad=True)
+    value = torch.tensor(
+        2.0,
+        device="cpu" if value_device == "cpu" else flag_gems.device,
+        requires_grad=True,
+    )
+    dout = torch.randn_like(x, requires_grad=True)
+
+    def gradient(op, inp, scalar, upstream):
+        result = op(inp.clone(), scalar) if inplace else op(inp, scalar)
+        first = torch.autograd.grad(result, scalar, upstream, create_graph=True)[0]
+        return torch.autograd.grad(first, upstream)[0]
+
+    native = lambda inp, scalar: (
+        inp.fill_(scalar) if inplace else torch.fill(inp, scalar)
+    )
+    gems = flag_gems.fill_tensor_ if inplace else flag_gems.fill_tensor
+    expected = gradient(
+        native,
+        utils.to_reference(x.detach(), False).requires_grad_(),
+        utils.to_reference(value.detach(), False).requires_grad_(),
+        utils.to_reference(dout.detach(), False).requires_grad_(),
+    )
+    actual = gradient(gems, x, value, dout)
+    utils.gems_assert_equal(actual, expected)
+
+
 FILL_SLICE_CASES = [
     # (shape, slice)
     ((4, 128), (slice(None), slice(64, None))),

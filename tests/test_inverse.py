@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # torch.inverse rejects the low precision dtypes, so only fp32/fp64 are covered.
 INVERSE_DTYPES = [torch.float32]
@@ -61,20 +62,58 @@ def _make_well_conditioned(shape, dtype, device):
     return eye + 0.05 * torch.randn(shape, dtype=dtype, device=device)
 
 
+def ref_inverse(a):
+    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
+    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
+    # the reference is computed wide on CPU there.  Other backends keep the
+    # to_reference() upcast behaviour (device, or CPU under --ref cpu).
+    if flag_gems.vendor_name == "thead" and tuple(a.shape) == (128, 128):
+        return torch.inverse(a.cpu().double()).to(a.dtype)
+    if flag_gems.vendor_name != "kunlunxin":
+        ref_A = utils.to_reference(a, upcast=True)
+        if (
+            flag_gems.vendor_name == "mthreads"
+            and ref_A.device.type == "cpu"
+            and not torch._C.has_lapack
+        ):
+            import numpy as np
+
+            return torch.from_numpy(np.linalg.inv(ref_A.numpy())).to(a.dtype)
+        return torch.inverse(ref_A).to(a.dtype)
+    a_cpu = (
+        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
+    )
+    ref = torch.inverse(a_cpu)
+    if not TO_CPU:
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 @pytest.mark.inverse
 @pytest.mark.parametrize("shape", INVERSE_SHAPES)
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
-def test_inverse(shape, dtype):
+def test_inverse(shape, dtype, request):
     # Inversion is ill conditioned by nature: the reference is upcast to fp64
     # so the comparison measures our error, not the reference's.
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = ref_inverse(A)
 
+    assert res_out.device == A.device
+    assert res_out.dtype == dtype
     assert res_out.shape == A.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    compared = res_out.cpu() if ref_out.device.type == "cpu" else res_out
+    try:
+        utils.gems_assert_close(compared, ref_out, dtype, atol=1e-3)
+    except AssertionError:
+        registry = request.config._override_registry
+        if (
+            flag_gems.vendor_name == "thead"
+            and shape == (128, 128)
+            and registry.get_override("inverse") is None
+        ):
+            pytest.xfail("PPU native inverse.out gives inaccurate results at 128x128")
+        raise
 
 
 @pytest.mark.inverse
@@ -82,10 +121,8 @@ def test_inverse(shape, dtype):
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
 def test_inverse_batch(shape, dtype):
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = ref_inverse(A)
 
     assert res_out.shape == A.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -98,10 +135,8 @@ def test_inverse_requires_pivoting(matrix, dtype):
     # Rows must be reordered for these matrices, so this pins down the
     # partial pivoting step rather than just the elimination arithmetic.
     A = torch.tensor(matrix, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = ref_inverse(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
 
@@ -133,10 +168,8 @@ def test_inverse_noncontiguous(dtype):
     A = _make_well_conditioned((64, 64), dtype, flag_gems.device)
     A_t = A.t()
 
-    ref_A = utils.to_reference(A_t, upcast=True)
-
     res_out = flag_gems.inverse(A_t)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = ref_inverse(A_t)
 
     assert res_out.shape == A_t.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -156,5 +189,8 @@ def test_inverse_empty(dtype):
 def test_inverse_unsupported_dtype():
     A = torch.randn((4, 4), dtype=torch.float16, device=flag_gems.device)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(
+        (AssertionError, RuntimeError),
+        match="unsupported dtype|Low precision dtypes not supported",
+    ):
         flag_gems.inverse(A)

@@ -33,6 +33,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 # (input shape, weight shape, kernel_size) triples. The first two keep the
 # kernel smaller than the input under every stride/padding/dilation combination
 # exercised below; the third is a non-square plane with a matching 1 x 2 kernel
@@ -79,12 +86,12 @@ def test_slow_conv_dilated2d(
 ):
     inp = torch.randn(shape_input, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(shape_weight, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     if bias:
         bias_tensor = torch.randn(shape_weight[0], dtype=dtype, device=flag_gems.device)
-        ref_bias = utils.to_reference(bias_tensor, True)
+        ref_bias = _reference_input(bias_tensor, True)
     else:
         bias_tensor = None
         ref_bias = None
@@ -96,6 +103,7 @@ def test_slow_conv_dilated2d(
     res_out = flag_gems.slow_conv_dilated2d(
         inp, weight, list(kernel), bias_tensor, stride, padding, dilation
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -105,8 +113,8 @@ def test_slow_conv_dilated2d_projection(dtype):
     """1 x 1 unit-stride unpadded kernel: the specialised plain-GEMM path."""
     inp = torch.randn((3, 5, 6, 7), dtype=dtype, device=flag_gems.device)
     weight = torch.randn((8, 5, 1, 1), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
@@ -114,6 +122,7 @@ def test_slow_conv_dilated2d_projection(dtype):
     res_out = flag_gems.slow_conv_dilated2d(
         inp, weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -137,8 +146,8 @@ def test_slow_conv_dilated2d_out(dtype, buffer_kind):
     """
     inp = torch.randn((2, 3, 9, 9), dtype=dtype, device=flag_gems.device)
     weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [2, 2]
@@ -160,6 +169,7 @@ def test_slow_conv_dilated2d_out(dtype, buffer_kind):
 
     assert res_out is out_buf
     assert res_out.shape == (2, 4, 7, 7)
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -187,23 +197,30 @@ def test_slow_conv_dilated2d_dispatch():
             include=["slow_conv_dilated2d_out"],
             registrar=flag_gems.GeneralOpRegistrar,
         )
-        cuda_entries = [
+        # The device key is "CUDA" only on an NVIDIA backend; gcu400 and the
+        # other vendor backends register under PrivateUse1.  Look for the key
+        # that actually belongs to the device under test instead of hardcoding
+        # CUDA, which made this assert unreachable off NVIDIA.
+        device_key = "CUDA" if flag_gems.device == "cuda" else "PrivateUse1"
+        device_entries = [
             line
             for line in torch._C._dispatch_dump(
                 "aten::slow_conv_dilated2d.out"
             ).splitlines()
-            if line.startswith("CUDA:")
+            if line.startswith(f"{device_key}:")
         ]
-        assert cuda_entries, "no CUDA kernel registered for the .out overload"
+        assert (
+            device_entries
+        ), f"no {device_key} kernel registered for the .out overload"
 
         # Dispatch through ``torch.ops.aten`` so the check cannot pass on the
         # Python entry point alone.  The reference is built with
-        # ``utils.to_reference`` so it lands on CPU under TO_CPU, which is what
+        # ``_reference_input`` so it lands on CPU under TO_CPU, which is what
         # ``gems_assert_close`` expects there.
         inp = torch.randn((2, 3, 9, 9), dtype=torch.float32, device=flag_gems.device)
         weight = torch.randn((4, 3, 3, 3), dtype=torch.float32, device=flag_gems.device)
-        ref_inp = utils.to_reference(inp, True)
-        ref_weight = utils.to_reference(weight, True)
+        ref_inp = _reference_input(inp, True)
+        ref_weight = _reference_input(weight, True)
         ref_out = torch.ops.aten.slow_conv_dilated2d(
             ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [2, 2]
         )
@@ -214,6 +231,7 @@ def test_slow_conv_dilated2d_dispatch():
             inp, weight, [3, 3], None, [1, 1], [1, 1], [2, 2], out=out_buf
         )
         assert res_out is out_buf
+        assert res_out.device == inp.device
         utils.gems_assert_close(res_out, ref_out, torch.float32, atol=DEFAULT_ATOL)
     finally:
         if hasattr(library, "_destroy"):
@@ -260,8 +278,8 @@ def test_slow_conv_dilated2d_unbatched(dtype):
     """3-D input matches ATen and the 4-D call's only batch element."""
     x3 = torch.randn((3, 8, 8), dtype=dtype, device=flag_gems.device)
     weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
-    ref_x3 = utils.to_reference(x3, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_x3 = _reference_input(x3, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_x3, ref_weight, [3, 3], None, [1, 1], [0, 0], [1, 1]
@@ -272,6 +290,7 @@ def test_slow_conv_dilated2d_unbatched(dtype):
         x3, weight, [3, 3], None, [1, 1], [0, 0], [1, 1]
     )
     assert res_out.shape == (4, 6, 6)
+    assert res_out.device == x3.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
     res_batched = flag_gems.slow_conv_dilated2d(
@@ -290,6 +309,7 @@ def test_slow_conv_dilated2d_unbatched(dtype):
     )
     assert out_res is out_buf
     assert out_buf.shape == (4, 6, 6)
+    assert out_res.device == x3.device
     utils.gems_assert_close(out_res, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -304,8 +324,8 @@ def test_slow_conv_dilated2d_negative_padding(dtype):
     """Negative padding crops the border instead of zero-extending it."""
     inp = torch.randn((2, 3, 8, 8), dtype=dtype, device=flag_gems.device)
     weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, [3, 3], None, [1, 1], [-1, -1], [1, 1]
@@ -315,6 +335,7 @@ def test_slow_conv_dilated2d_negative_padding(dtype):
     )
 
     assert res_out.shape == (2, 4, 4, 4)
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -323,7 +344,7 @@ def test_slow_conv_dilated2d_negative_padding(dtype):
 def test_slow_conv_dilated2d_non_square_geometry(dtype):
     """Non-square kernels and per-axis stride/padding/dilation are not transposed."""
     inp = torch.randn((2, 3, 9, 11), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = _reference_input(inp, True)
 
     for (k_h, k_w), stride, padding, dilation in [
         ((1, 2), [1, 1], [1, 1], [1, 1]),
@@ -333,7 +354,7 @@ def test_slow_conv_dilated2d_non_square_geometry(dtype):
         ((3, 3), [2, 1], [1, 0], [1, 2]),
     ]:
         weight = torch.randn((4, 3, k_h, k_w), dtype=dtype, device=flag_gems.device)
-        ref_weight = utils.to_reference(weight, True)
+        ref_weight = _reference_input(weight, True)
         ref_out = torch.ops.aten.slow_conv_dilated2d(
             ref_inp, ref_weight, [k_h, k_w], None, stride, padding, dilation
         )
@@ -341,6 +362,7 @@ def test_slow_conv_dilated2d_non_square_geometry(dtype):
             inp, weight, [k_h, k_w], None, stride, padding, dilation
         )
         assert res_out.shape == ref_out.shape
+        assert res_out.device == inp.device
         utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -353,8 +375,8 @@ def test_slow_conv_dilated2d_strided_input(dtype):
     )
     weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
     assert not inp.is_contiguous()
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
@@ -362,6 +384,7 @@ def test_slow_conv_dilated2d_strided_input(dtype):
     res_out = flag_gems.slow_conv_dilated2d(
         inp, weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -374,8 +397,8 @@ def test_slow_conv_dilated2d_channels_last(dtype):
     )
     weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
     assert inp.is_contiguous(memory_format=torch.channels_last)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
 
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
@@ -383,6 +406,7 @@ def test_slow_conv_dilated2d_channels_last(dtype):
     res_out = flag_gems.slow_conv_dilated2d(
         inp, weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
     )
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 

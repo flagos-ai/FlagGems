@@ -25,6 +25,11 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
+# GCU400 hard limit: grid.y <= 255 (same GCU_MAX_GRID_Y as addmm/_addmm_activation).
+# When index_len / inner exceeds 255*BLOCK, the cdiv'd y dimension raises OutOfResources,
+# so both kernels use a grid-stride loop over all y blocks (precedent: cummin dual-axis striding).
+GCU_MAX_GRID_Y = 63
+
 
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("index_select"))
@@ -35,30 +40,105 @@ def index_select_kernel(
     pid_x = tl.program_id(axis=0)
     pid_y = tl.program_id(axis=1)
     num_prog_x = tl.num_programs(axis=0)
+    num_prog_y = tl.num_programs(axis=1)
 
-    for k in range(0, tl.cdiv(M, num_prog_x * BLOCK_M)):
-        row_block_id = k * num_prog_x + pid_x
+    # y-block grid-stride is the outer loop: cols is computed once, and the k loop body is
+    # instruction-for-instruction identical to the unclamped version (common case has 1 y block per program, zero extra
+    # cost).
+    for y_block in range(pid_y, tl.cdiv(index_len, BLOCK_N), num_prog_y):
+        cols_offsets = y_block * BLOCK_N + tl.arange(0, BLOCK_N)
+        cols_mask = cols_offsets < index_len
 
-        rows_offsets = row_block_id * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-        rows_mask = rows_offsets < M
-        cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
+        for k in range(0, tl.cdiv(M, num_prog_x * BLOCK_M)):
+            row_block_id = k * num_prog_x + pid_x
 
-        out_mask = rows_mask & (cols_offsets < index_len)
+            rows_offsets = row_block_id * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+            rows_mask = rows_offsets < M
 
-        indices = tl.load(
-            index + cols_offsets, mask=(cols_offsets < index_len), other=0
-        )
-        inp_off = rows_offsets * N + indices[None, :]
-        out_off = rows_offsets * index_len + cols_offsets[None, :]
+            out_mask = rows_mask & cols_mask
 
-        selected = tl.load(inp + inp_off, mask=rows_mask, other=0.0)
-        tl.store(out + out_off, selected, mask=out_mask)
+            indices = tl.load(index + cols_offsets, mask=cols_mask, other=0)
+            inp_off = rows_offsets * N + indices[None, :]
+            out_off = rows_offsets * index_len + cols_offsets[None, :]
+
+            selected = tl.load(inp + inp_off, mask=rows_mask, other=0.0)
+            tl.store(out + out_off, selected, mask=out_mask)
+
+
+@libentry()
+@triton.jit
+def index_select_contiguous_kernel(
+    inp,  # contiguous, logical shape (outer, N, inner)
+    out,  # contiguous, logical shape (outer, index_len, inner)
+    index,
+    N,
+    inner,
+    index_len,
+    total_p,
+    BLOCK_I: tl.constexpr,
+    BLOCK_J: tl.constexpr,
+    GRID_X: tl.constexpr,
+    OUTER_ONE: tl.constexpr,
+):
+    # Do contiguous access directly in the input's original layout, replacing dim_compress's whole-tensor move:
+    # for a fixed (o, j), the inner dimension is one contiguous segment, handled by a single contiguous load/store.
+    # grid.x is fixed at GRID_X with a stride loop covering all (o, j) pairs; full expansion
+    # (grid.x=total_p) measured 0.66~0.92x worse (too many CTAs, scheduling overhead),
+    # so a fixed grid better matches the GCU compute unit count.
+    #
+    # One program handles BLOCK_J gathered rows at once when the row is short: a single-row program moves
+    # only `inner` elements (512 B for inner == 256), so the gather was latency-bound on short transfers
+    # and paid one index load per row. Grouping rows into a [BLOCK_J, BLOCK_I] tile multiplies the transfer
+    # size per program and amortizes the index load. For a long row the tile only adds mask arithmetic on top
+    # of an already DMA-sized transfer, so BLOCK_J == 1 keeps the original 1-D body verbatim (measured
+    # 2026-11-22, end-to-end benchmark): grouping a 65536-element row cost 0.0166 -> 0.0621 ms, while
+    #   (10000, 256) idx 1000 fp16: 0.0137 ms -> 0.0119 ms with BLOCK_J=8.
+    pid_x = tl.program_id(0)
+    pid_i = tl.program_id(1)
+    num_prog_i = tl.num_programs(1)
+    inner_blocks = tl.cdiv(inner, BLOCK_I)
+    # i-block grid-stride is the outer loop: i_offs/i_mask are computed once per block, and the p loop body is
+    # instruction-for-instruction identical to the unclamped version (common case has 1 i block per program, zero extra
+    # cost).
+    for bi in range(pid_i, inner_blocks, num_prog_i):
+        i_offs = bi * BLOCK_I + tl.arange(0, BLOCK_I)
+        i_mask = i_offs < inner
+        if BLOCK_J == 1:
+            for p in range(pid_x, total_p, GRID_X):
+                if OUTER_ONE:
+                    # With dim == 0, outer is always 1 and p is j, so integer division / modulo is avoided
+                    o = 0
+                    j = p
+                else:
+                    o = p // index_len
+                    j = p % index_len
+                idx = tl.load(index + j).to(tl.int32)
+                in_off = (o * N + idx) * inner + i_offs
+                out_off = p * inner + i_offs
+                val = tl.load(inp + in_off, mask=i_mask, other=0)
+                tl.store(out + out_off, val, mask=i_mask)
+        else:
+            for base_p in range(pid_x, tl.cdiv(total_p, BLOCK_J), GRID_X):
+                p = base_p * BLOCK_J + tl.arange(0, BLOCK_J)
+                p_mask = p < total_p
+                if OUTER_ONE:
+                    o = p * 0
+                    j = p
+                else:
+                    o = p // index_len
+                    j = p % index_len
+                idx = tl.load(index + j, mask=p_mask, other=0).to(tl.int32)
+                in_off = (o * N + idx)[:, None] * inner + i_offs[None, :]
+                out_off = p[:, None] * inner + i_offs[None, :]
+                tile_mask = p_mask[:, None] & i_mask[None, :]
+                val = tl.load(inp + in_off, mask=tile_mask, other=0)
+                tl.store(out + out_off, val, mask=tile_mask)
 
 
 def make_contiguous_with_correct_stride(tensor):
-    """确保 contiguous 后的 tensor 具有正确的 stride"""
+    """Ensure the tensor has the correct stride after calling contiguous."""
     if tensor.numel() == 0:
-        # 对于空 tensor，手动创建具有正确 stride 的版本
+        # For empty tensors, manually build a version with the correct stride
         new_tensor = tensor.flatten().view(tensor.shape)
         return new_tensor.contiguous()
     return tensor.contiguous()
@@ -68,17 +148,77 @@ def index_select(inp, dim, index):
     logger.debug("GEMS_ENFLAME INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
+    # Do not write `assert (... for i in index)`: creating the generator already iterates index,
+    # triggering Tensor.unbind, measured at 0.31ms per call (90%+ of end-to-end), and a generator is always
+    # truthy, so the check is invalid anyway. The common implementation src/flag_gems/ops/index_select.py has
+    # no such check either; index range is guaranteed by the caller.
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
     dim = dim % inp.ndim
     inp_shape = list(inp.shape)
     index_len = index.numel()
-
-    # with dim_compress
-    inp = dim_compress(inp, dim)
     N = inp_shape[dim]
+
+    inner = 1
+    for s in inp_shape[dim + 1 :]:
+        inner *= s
+    outer = inp.numel() // (N * inner)
+    total_p = outer * index_len
+
+    # When dim is not the last dimension and the contiguous block after dim is large enough, access the original layout
+    # contiguously, avoiding dim_compress's permute().contiguous() whole-tensor copy and the output-side
+    # permute().contiguous() copy (two O(numel) moves are the main bottleneck).
+    if dim != inp.ndim - 1 and inner >= 16 and index_len > 0:
+        out_shape = list(inp_shape)
+        out_shape[dim] = index_len
+        out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+        if not inp.is_contiguous():
+            inp = inp.contiguous()
+        # One launch rule for the whole contiguous-gather family: BLOCK spans the largest contiguous run of a row
+        # (capped at 65536 elements), grid.x is pinned at 48 and a stride loop covers the p axis. That keeps the CTA
+        # count near the GCU400 compute-unit count while giving every CTA a DMA-sized contiguous chunk; the earlier
+        # "small BLOCK + more CTAs" shape paid a per-CTA gather-index load and short
+        # transfers on exactly the large-inner
+        # cases (measured 2026-11-21, do_bench median, core shapes):
+        #   (1024x65536, idx 102) fp16: B2048/gx96 181us -> B65536/nw8/gx48 15.5us (native 15.7us, 1.01x)
+        #   (4096x4096,  idx 409) fp32: B1024        35.2us -> B4096/nw2/gx48  10.9us (native 10.2us, 0.93x)
+        #   (4096x4096,  idx 409) fp16: B1024        34.3us -> B4096/nw2/gx48   8.9us (native  7.8us, 0.88x)
+        # Small/medium inner keeps the previous shape (block == whole row, gx=48, 2 warps) and measures unchanged.
+        block_i = min(triton.next_power_of_2(inner), 65536)
+        # Rows per program: only a short row (<= 512 B at fp16) gains from grouping, and only when
+        # there are enough rows to amortize the grouped index load.
+        if block_i <= 256 and total_p >= 256:
+            block_j = min(8, max(1, triton.next_power_of_2(total_p)))
+        else:
+            block_j = 1
+        grid_x = min(triton.cdiv(total_p, block_j), MAX_GRID_DIM)
+        if block_i <= 4096:
+            warps = 2
+        elif block_i <= 32768:
+            warps = 4
+        else:
+            warps = 8
+        index_select_contiguous_kernel[
+            (grid_x, min(triton.cdiv(inner, block_i), GCU_MAX_GRID_Y))
+        ](
+            inp,
+            out,
+            index,
+            N,
+            inner,
+            index_len,
+            total_p,
+            block_i,
+            block_j,
+            grid_x,
+            outer == 1,
+            num_warps=warps,
+        )
+        return out
+
+    # with dim_compress (when dim == last this is an identity permute, no copy)
+    inp = dim_compress(inp, dim)
     M = inp.numel() // N
     out_shape = list(inp.shape)
     out_shape[inp.ndim - 1] = index_len
@@ -86,7 +226,7 @@ def index_select(inp, dim, index):
 
     grid = lambda meta: (
         min(triton.cdiv(M, meta["BLOCK_M"]), MAX_GRID_DIM),
-        triton.cdiv(index_len, meta["BLOCK_N"]),
+        min(triton.cdiv(index_len, meta["BLOCK_N"]), GCU_MAX_GRID_Y),
     )
     index_select_kernel[grid](inp, out, M, N, index, index_len)
     if dim != out.ndim - 1:

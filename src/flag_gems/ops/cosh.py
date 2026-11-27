@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -29,8 +30,26 @@ def cosh_func(x):
     return 0.5 * (tl.exp(x) + tl.exp(-x))
 
 
+class CoshFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        ctx.save_for_backward(A)
+        return cosh_func(A)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::cosh`` has no standalone backward operator, so the gradient
+        # runs a Triton kernel from ``flag_gems.ops.cosh_backward``.
+        (A,) = ctx.saved_tensors
+        from flag_gems.ops.cosh_backward import cosh_backward
+
+        return cosh_backward(grad_output, A)
+
+
 def cosh(A):
     logger.debug("GEMS COSH")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return CoshFunction.apply(A)
     return cosh_func(A)
 
 

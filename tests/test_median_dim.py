@@ -37,7 +37,7 @@ def _selected_along_dim(inp, dim, indices, keepdim):
     """Elements that ``indices`` actually points at."""
     dim = dim % inp.ndim
     idx = indices if keepdim else indices.unsqueeze(dim)
-    picked = torch.gather(inp, dim, idx)
+    picked = torch.gather(inp.cpu(), dim, idx.cpu())
     return picked if keepdim else picked.squeeze(dim)
 
 
@@ -48,15 +48,20 @@ def _call_median_dim(inp, dim, keepdim, equal_nan=False, exact_indices=True):
 
     result = flag_gems.median_dim(inp, dim=dim, keepdim=keepdim)
 
+    assert result.values.device == inp.device and result.values.dtype == inp.dtype
+    assert result.indices.device == inp.device and result.indices.dtype == torch.int64
+    assert result.values.shape == result.indices.shape
+    assert result.values.shape == ref.values.shape
+    assert result.indices.shape == ref.indices.shape
     utils.gems_assert_equal(result.values, ref.values, equal_nan=equal_nan)
     assert tuple(result.values.shape) == tuple(ref.values.shape)
     assert tuple(result.indices.shape) == tuple(ref.indices.shape)
-    # Whatever index comes back has to point at the median it reports.  Both
-    # sides live on the accelerator, so move them to the reference device
-    # first: gems_assert_equal expects `ref` to be there when --ref=cpu is used.
+    # Observe that each index selects its reported value on CPU, after checking
+    # the original target metadata above. This also covers backends whose
+    # gather implementation does not accept the input dtype.
     utils.gems_assert_equal(
-        utils.to_reference(_selected_along_dim(inp, dim, result.indices, keepdim)),
-        utils.to_reference(result.values),
+        _selected_along_dim(inp, dim, result.indices, keepdim),
+        result.values.cpu(),
         equal_nan=equal_nan,
     )
     if exact_indices:
@@ -67,7 +72,9 @@ def _call_median_dim(inp, dim, keepdim, equal_nan=False, exact_indices=True):
 @pytest.mark.median_dim
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", [0, -1])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BYTE_INT_DTYPES
+)
 def test_median_dim(dim, keepdim, dtype):
     inp = _unique_input((9, 7), dim, dtype)
     _call_median_dim(inp, dim, keepdim)

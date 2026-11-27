@@ -107,6 +107,57 @@ def _make_bsc(shape, block, nnz_blocks, dtype=torch.float32, device=None):
     return torch.sparse_bsc_tensor(crow_t, col_t, vals, size=shape, device=device)
 
 
+def _make_csr(shape, nnz, dtype=torch.float32, device=None):
+    """Build a valid CSR tensor from its own buffers.
+
+    ``Tensor.to_sparse_csr`` has no kernel on the GCU sparse backend, so the
+    non-column-compressed fixtures are assembled directly instead of being
+    converted from CSC. The resulting tensor is an ordinary CSR tensor, which
+    is all the rejection contract needs.
+    """
+    device = flag_gems.device if device is None else device
+    nrows = shape[-2]
+    # ``_col_counts`` buckets nnz over its second argument: here one bucket per
+    # row, so the pointer array has nrows + 1 entries.
+    counts = _col_counts(nrows, nrows, nnz)
+    crow = [0]
+    for c in counts:
+        crow.append(crow[-1] + c)
+    col = []
+    for c, cnt in enumerate(counts):
+        col.extend(list(range(cnt)))
+    return torch.sparse_csr_tensor(
+        torch.tensor(crow, dtype=torch.int64, device=device),
+        torch.tensor(col, dtype=torch.int64, device=device),
+        _gen_values(nnz, dtype),
+        size=shape,
+        device=device,
+    )
+
+
+def _make_bsr(shape, block, nnz_blocks, dtype=torch.float32, device=None):
+    """Build a valid BSR tensor from its own buffers (same reason as ``_make_csr``)."""
+    device = flag_gems.device if device is None else device
+    nrows = shape[-2]
+    br, bc = block
+    r_blks = (nrows + br - 1) // br
+    counts = _col_counts(r_blks, r_blks, nnz_blocks)
+    crow = [0]
+    for c in counts:
+        crow.append(crow[-1] + c)
+    col = []
+    for c, cnt in enumerate(counts):
+        col.extend(list(range(cnt)))
+    vals = _gen_values(nnz_blocks * br * bc, dtype).reshape((nnz_blocks,) + block)
+    return torch.sparse_bsr_tensor(
+        torch.tensor(crow, dtype=torch.int64, device=device),
+        torch.tensor(col, dtype=torch.int64, device=device),
+        vals,
+        size=shape,
+        device=device,
+    )
+
+
 def _make_strided_ccol_csc(shape=(4, 6), nnz=6):
     """CSC whose internal ccol storage is non-contiguous (interleaved view).
 
@@ -326,6 +377,10 @@ def test_accuracy_ccol_indices_copy_input_not_mutated():
     assert torch.equal(before, inp.ccol_indices())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSR layout not supported on this device",
+)
 @pytest.mark.ccol_indices_copy
 @pytest.mark.parametrize(
     "layout,layout_name",
@@ -480,7 +535,7 @@ def test_accuracy_ccol_indices_copy_out_dtype_mismatch():
 
 @pytest.mark.ccol_indices_copy_out
 def test_accuracy_ccol_indices_copy_out_rejects_non_column_compressed():
-    inp = _make_csc((4, 6), 6).to_sparse_csr()
+    inp = _make_csr((4, 6), 6)
     out = torch.empty(7, dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError) as res_exc:
         flag_gems.ccol_indices_copy_out(inp, out=out)

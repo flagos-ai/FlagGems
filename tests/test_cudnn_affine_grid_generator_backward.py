@@ -22,6 +22,13 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .conftest import TO_CPU
 
+# enflame GCU: `aten::cudnn_affine_grid_generator_backward` only has a CUDA
+# kernel, neither a CPU nor a PrivateUse1 one, so it cannot produce the expected
+# value there. Because the grid is linear in theta the vector-Jacobian product
+# has an exact closed form, which is what enflame compares against instead of
+# skipping the case; every other vendor keeps the aten reference.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
 # Custom shapes: (N, C, H, W); the spatial (H, W) extent is the reduction
 # dimension, so the shapes also cover the degenerate 1x1 grid and large
 # reduction planes.
@@ -46,6 +53,43 @@ else:
 # cudnn does not support bfloat16 for this operator (CUDNN_STATUS_BAD_PARAM);
 # float16 and float32 are supported (cudnn computes in float32 internally).
 CUDNN_AFFINE_GRID_BACKWARD_DTYPES = [torch.float16, torch.float32]
+
+
+def _skip_if_reference_unavailable():
+    """Skip only the cases whose reference cannot run.
+
+    On enflame the reference is the closed-form Jacobian below, which is device
+    independent and also works when `--ref cpu` puts the reference on the host,
+    so those cases run in both modes. Every other vendor keeps the bare aten
+    reference, which is CUDA-only and therefore has to skip in quick-cpu mode.
+    """
+    if TO_CPU and not ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(
+            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+
+
+def _reference_jacobian(ref_grad, N, C, H, W):
+    """The vector-Jacobian product the operator has to produce.
+
+    The aten operator is CUDA-only, so on enflame it is replaced by the exact
+    closed form, evaluated in float64 on the host: the GCU build has no float64
+    support and the closed form must not run through the kernel under test.
+    """
+    if ATEN_REFERENCE_UNSUPPORTED:
+        return _manual_backward(ref_grad.detach().cpu().double(), N, C, H, W)
+    return torch.ops.aten.cudnn_affine_grid_generator_backward(ref_grad, N, C, H, W)
+
+
+def _reference_jacobian_into(ref_out, ref_grad, N, C, H, W):
+    """Fill the reference `.out` buffer instead of returning a new tensor."""
+    if ATEN_REFERENCE_UNSUPPORTED:
+        ref_out.copy_(_manual_backward(ref_grad.detach().cpu().double(), N, C, H, W))
+    else:
+        torch.ops.aten.cudnn_affine_grid_generator_backward(
+            ref_grad, N, C, H, W, out=ref_out
+        )
+    return ref_out
 
 
 def _make_grad(shape, dtype):
@@ -101,15 +145,12 @@ def _manual_backward(ref_grad, N, C, H, W):
 @pytest.mark.parametrize("shape", AFFINE_GRID_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", CUDNN_AFFINE_GRID_BACKWARD_DTYPES)
 def test_cudnn_affine_grid_generator_backward(shape, dtype):
-    if TO_CPU:
-        pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_if_reference_unavailable()
 
     N, C, H, W = shape
     grad, ref_grad = _make_grad(shape, dtype)
 
-    ref_out = torch.ops.aten.cudnn_affine_grid_generator_backward(ref_grad, N, C, H, W)
+    ref_out = _reference_jacobian(ref_grad, N, C, H, W)
     res_out = flag_gems.cudnn_affine_grid_generator_backward(grad, N, C, H, W)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -119,10 +160,7 @@ def test_cudnn_affine_grid_generator_backward(shape, dtype):
 @pytest.mark.parametrize("shape", AFFINE_GRID_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", CUDNN_AFFINE_GRID_BACKWARD_DTYPES)
 def test_cudnn_affine_grid_generator_backward_out(shape, dtype):
-    if TO_CPU:
-        pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_if_reference_unavailable()
 
     N, C, H, W = shape
     grad, ref_grad = _make_grad(shape, dtype)
@@ -130,9 +168,7 @@ def test_cudnn_affine_grid_generator_backward_out(shape, dtype):
     ref_out = torch.empty((N, 2, 3), dtype=ref_grad.dtype, device=ref_grad.device)
     out = torch.empty((N, 2, 3), dtype=dtype, device=flag_gems.device)
 
-    torch.ops.aten.cudnn_affine_grid_generator_backward(
-        ref_grad, N, C, H, W, out=ref_out
-    )
+    _reference_jacobian_into(ref_out, ref_grad, N, C, H, W)
     res_out = flag_gems.cudnn_affine_grid_generator_backward_out(
         grad, N, C, H, W, out=out
     )
@@ -146,19 +182,14 @@ def test_cudnn_affine_grid_generator_backward_out(shape, dtype):
 @pytest.mark.parametrize("dtype", CUDNN_AFFINE_GRID_BACKWARD_DTYPES)
 def test_cudnn_affine_grid_generator_backward_extreme(shape, dtype):
     """All-zero and constant-gradient inputs, where the exact sums are known."""
-    if TO_CPU:
-        pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_if_reference_unavailable()
 
     N, C, H, W = shape
     for fill in (0.0, 1.0):
         grad = torch.full((N, H, W, 2), fill, dtype=dtype, device=flag_gems.device)
         ref_grad = utils.to_reference(grad, True)
 
-        ref_out = torch.ops.aten.cudnn_affine_grid_generator_backward(
-            ref_grad, N, C, H, W
-        )
+        ref_out = _reference_jacobian(ref_grad, N, C, H, W)
         res_out = flag_gems.cudnn_affine_grid_generator_backward(grad, N, C, H, W)
 
         utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -167,10 +198,7 @@ def test_cudnn_affine_grid_generator_backward_extreme(shape, dtype):
 @pytest.mark.cudnn_affine_grid_generator_backward
 @pytest.mark.parametrize("dtype", CUDNN_AFFINE_GRID_BACKWARD_DTYPES)
 def test_cudnn_affine_grid_generator_backward_non_contiguous(dtype):
-    if TO_CPU:
-        pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_if_reference_unavailable()
 
     N, C, H, W = 2, 3, 16, 12
     base = torch.randn((N, H, W, 4), dtype=dtype, device=flag_gems.device)
@@ -178,7 +206,7 @@ def test_cudnn_affine_grid_generator_backward_non_contiguous(dtype):
     assert not grad.is_contiguous()
 
     ref_grad = utils.to_reference(grad, True)
-    ref_out = torch.ops.aten.cudnn_affine_grid_generator_backward(ref_grad, N, C, H, W)
+    ref_out = _reference_jacobian(ref_grad, N, C, H, W)
     res_out = flag_gems.cudnn_affine_grid_generator_backward(grad, N, C, H, W)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -189,10 +217,7 @@ def test_cudnn_affine_grid_generator_backward_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", CUDNN_AFFINE_GRID_BACKWARD_DTYPES)
 def test_cudnn_affine_grid_generator_backward_out_non_contiguous(shape, dtype):
     """A strided out tensor, on both the direct and the chunked reduction path."""
-    if TO_CPU:
-        pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_if_reference_unavailable()
 
     N, C, H, W = shape
     grad = torch.randn((N, H, W, 2), dtype=dtype, device=flag_gems.device)
@@ -205,9 +230,7 @@ def test_cudnn_affine_grid_generator_backward_out_non_contiguous(shape, dtype):
     out = out_buf[:, :, ::2]
     assert not out.is_contiguous()
 
-    torch.ops.aten.cudnn_affine_grid_generator_backward(
-        ref_grad, N, C, H, W, out=ref_out
-    )
+    _reference_jacobian_into(ref_out, ref_grad, N, C, H, W)
     res_out = flag_gems.cudnn_affine_grid_generator_backward_out(
         grad, N, C, H, W, out=out
     )
@@ -239,15 +262,12 @@ def test_cudnn_affine_grid_generator_backward_unit_dim(shape, dtype):
     ``cudnn_affine_grid_generator_backward``, i.e. the very operator under
     test.
     """
-    if TO_CPU:
-        pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_if_reference_unavailable()
 
     N, C, H, W = shape
     grad = torch.randn((N, H, W, 2), dtype=dtype, device=flag_gems.device)
     ref_grad = utils.to_reference(grad, True)
-    ref_out = _manual_backward(ref_grad, N, C, H, W)
+    ref_out = _manual_backward(ref_grad.detach().cpu().double(), N, C, H, W)
 
     res_out = flag_gems.cudnn_affine_grid_generator_backward(grad, N, C, H, W)
 
@@ -268,7 +288,8 @@ def test_cudnn_affine_grid_generator_backward_out_dispatch(dtype):
     """
     if TO_CPU:
         pytest.skip(
-            "cudnn_affine_grid_generator_backward is CUDA-only, cannot run in quick-cpu mode"
+            "the dispatched `.out` kernel needs device-resident tensors, "
+            "skip under --ref=cpu"
         )
 
     N, C, H, W = 2, 3, 8, 6

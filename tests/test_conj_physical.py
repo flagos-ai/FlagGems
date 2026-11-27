@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 # torch.rand / torch.randn have no FP8 implementation, so FP8 inputs are built
 # in FP32 and cast; FP8 results are also compared bitwise because torch rejects
@@ -33,7 +34,9 @@ _SUPPORTED_CONJ_FP8_DTYPES = CONJ_FP8_DTYPES if utils.fp8_is_supported else ()
 # Same reasoning for complex: creating a complex tensor on a backend without
 # complex support can abort the process rather than raise.
 _SUPPORTED_CONJ_COMPLEX_DTYPES = (
-    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+    if utils.complex_is_supported
+    else []
 )
 
 # Dtype sweep: the low-precision dtypes first, then the float and int sweep.
@@ -208,9 +211,25 @@ _LAYOUT_SHAPES = {
     "expanded": (3, 4),
 }
 
+# The native aten::_conj_physical kernel aborts the process for real dtypes on
+# the enflame backend (measured: SIGABRT for float32/float16/int32/int64/bool,
+# while complex64 works), so the on-device ATen reference used by the tests
+# below cannot be built for those dtypes. Only the enflame vendor is affected.
+_ATEN_REAL_ABORTS = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: native aten::_conj_physical aborts "
+        "the process for real dtypes in enflame backend"
+    ),
+)
+
+# Same condition as a plain flag, for the tests that can keep running with the
+# on-device ATen probe removed instead of skipping the whole case.
+ATEN_REAL_ABORTS_ON_DEVICE = flag_gems.vendor_name == "enflame"
+
 _UNDERSCORE_DTYPES = ([torch.complex64] if utils.complex_is_supported else []) + [
-    torch.float32,
-    torch.int32,
+    pytest.param(torch.float32, marks=_ATEN_REAL_ABORTS),
+    pytest.param(torch.int32, marks=_ATEN_REAL_ABORTS),
 ]
 
 
@@ -260,12 +279,18 @@ def test__conj_physical_real_does_not_alias(dtype):
         inp = torch.randint(-9, 9, (3, 4), dtype=dtype, device=flag_gems.device)
 
     # Aliasing is a same-device property, so compare against ATen on-device.
-    aten_out = torch.ops.aten._conj_physical(inp)
+    # enflame: the native kernel aborts the process for real dtypes (see
+    # `_ATEN_REAL_ABORTS`), so only that probe is dropped there; every
+    # FlagGems contract below still runs for those dtypes.
+    aten_out = None
+    if not ATEN_REAL_ABORTS_ON_DEVICE:
+        aten_out = torch.ops.aten._conj_physical(inp)
     res_out = flag_gems.ops._conj_physical(inp)
 
     # ATen itself must not alias here; assert that first so the test documents
     # the contract it is pinning rather than just gems' behaviour.
-    assert aten_out.data_ptr() != inp.data_ptr()
+    if aten_out is not None:
+        assert aten_out.data_ptr() != inp.data_ptr()
     assert res_out.data_ptr() != inp.data_ptr(), "result aliases its input"
     assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
 

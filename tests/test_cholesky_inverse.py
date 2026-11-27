@@ -26,23 +26,86 @@ CHOLESKY_INVERSE_BATCH_SHAPES = [
 # float64 request is silently downgraded to float32, so it can never match a
 # true-fp64 reference; skip fp64 on that backend only. Every other vendor keeps
 # running float64 exactly as before.
-_SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
-    flag_gems.runtime.device.vendor_name == "kunlunxin",
-    reason="Kunlunxin XPU has no real float64 (silently downgraded to float32)",
+_SKIP_FP64_ON_VENDORS = pytest.mark.skipif(
+    flag_gems.runtime.device.vendor_name in ("kunlunxin", "enflame"),
+    reason=(
+        "Kunlunxin XPU has no real float64 (silently downgraded to float32); "
+        "enflame/GCU does not support FP64/FP4/COMPLEX128"
+    ),
 )
 CHOLESKY_INVERSE_DTYPES = [
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64_ON_KUNLUNXIN),
+    pytest.param(torch.float64, marks=_SKIP_FP64_ON_VENDORS),
 ]
+
+
+def _factor_metadata(factor):
+    return (
+        factor.device,
+        factor.dtype,
+        tuple(factor.shape),
+        tuple(factor.stride()),
+        factor.storage_offset(),
+        factor.untyped_storage().data_ptr(),
+        factor.requires_grad,
+    )
+
+
+def _snapshot_factor(factor):
+    metadata = _factor_metadata(factor)
+    values = factor.detach().clone() if factor.numel() else None
+    return metadata, values
+
+
+def _assert_readonly_output_abi(result, factor, snapshot):
+    metadata, values = snapshot
+    assert _factor_metadata(factor) == metadata
+    if values is not None:
+        # gems_assert_equal compares on CPU when the reference is there; pass the
+        # snapshot as a CPU reference so --ref=cpu runs do not mix devices.
+        utils.gems_assert_equal(factor, values.cpu())
+    assert isinstance(result, torch.Tensor)
+    assert result.device == metadata[0]
+    assert result.dtype == metadata[1]
+    assert tuple(result.shape) == metadata[2]
+    if values is None:
+        # Empty tensors can all have data_ptr=0: Python identity is required.
+        assert result is factor
+    else:
+        assert result.untyped_storage().data_ptr() != metadata[5]
 
 
 def _make_positive_definite(shape, dtype, device):
     """Create a positive-definite matrix and return its Cholesky factor."""
+    if (
+        dtype == torch.float64
+        and torch.device(device).type != "cpu"
+        and flag_gems.vendor_name in {"ascend", "iluvatar"}
+    ):
+        pytest.skip("backend float64 Cholesky cannot construct a valid factor")
     n = shape[-1]
     B = torch.randn(shape, dtype=dtype, device=device)
     A = B @ B.transpose(-2, -1) + torch.eye(n, dtype=dtype, device=device) * n
     L = torch.linalg.cholesky(A)
     return L
+
+
+def _reference_cholesky_inverse(factor, upper):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and factor.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        # PyTorch's CPU cholesky_inverse requires LAPACK in the MUSA build.
+        import numpy as np
+
+        matrix = factor.numpy()
+        triangle = np.triu(matrix) if upper else np.tril(matrix)
+        inverse = np.linalg.inv(triangle)
+        transposed = inverse.swapaxes(-1, -2)
+        result = inverse @ transposed if upper else transposed @ inverse
+        return torch.from_numpy(result)
+    return torch.cholesky_inverse(factor, upper=upper)
 
 
 @pytest.mark.cholesky_inverse
@@ -53,8 +116,10 @@ def test_cholesky_inverse(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
 
-    ref_out = torch.cholesky_inverse(ref_L, upper=False)
+    ref_out = _reference_cholesky_inverse(ref_L, upper=False)
+    snapshot = _snapshot_factor(L)
     res_out = flag_gems.cholesky_inverse(L, upper=False)
+    _assert_readonly_output_abi(res_out, L, snapshot)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -67,8 +132,10 @@ def test_cholesky_inverse_upper(shape, dtype):
     U = L.transpose(-2, -1).contiguous()
     ref_U = utils.to_reference(U)
 
-    ref_out = torch.cholesky_inverse(ref_U, upper=True)
+    ref_out = _reference_cholesky_inverse(ref_U, upper=True)
+    snapshot = _snapshot_factor(U)
     res_out = flag_gems.cholesky_inverse(U, upper=True)
+    _assert_readonly_output_abi(res_out, U, snapshot)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -80,7 +147,9 @@ def test_cholesky_inverse_batch(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     ref_L = utils.to_reference(L)
 
-    ref_out = torch.cholesky_inverse(ref_L, upper=False)
+    ref_out = _reference_cholesky_inverse(ref_L, upper=False)
+    snapshot = _snapshot_factor(L)
     res_out = flag_gems.cholesky_inverse(L, upper=False)
+    _assert_readonly_output_abi(res_out, L, snapshot)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

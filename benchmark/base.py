@@ -38,6 +38,7 @@ from . import consts
 from .baseline import describe_call
 from .conftest import Config, emit_record_logger, update_case_list, update_result
 from .consts import (
+    MAX_BACKWARD_ELEMENTS,
     BenchmarkCaseList,
     BenchmarkCasePlan,
     BenchmarkCaseSpec,
@@ -93,11 +94,13 @@ def get_iter_count(fn):
 
 class Benchmark:
     device: str = device
+    aggregate_results_by_dtype = False
     DEFAULT_METRICS = consts.DEFAULT_METRICS
     DEFAULT_DTYPES = consts.FLOAT_DTYPES
     DEFAULT_SHAPES = consts.DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    MAX_BACKWARD_ELEMENTS = MAX_BACKWARD_ELEMENTS
     EPS = 1e-7
     """
     the base class for the operations benchmark
@@ -279,6 +282,17 @@ class Benchmark:
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
             )
 
+        # P2: For backward benchmarks, filter out shapes that exceed the
+        # VRAM budget.  Backward passes retain the computation graph and
+        # allocate gradient tensors, so peak memory is much higher than
+        # forward.  Keep at least the shapes that fit within the limit.
+        if self.is_backward and self.MAX_BACKWARD_ELEMENTS is not None:
+            filtered = [
+                s for s in self.shapes if math.prod(s) <= self.MAX_BACKWARD_ELEMENTS
+            ]
+            if filtered:
+                self.shapes = filtered
+
     def set_more_shapes(self) -> Optional[list[list[Any] | tuple[Any]]]:
         """Base method (optional to override in subclasses).
         Returns additional shapes if applicable."""
@@ -327,7 +341,11 @@ class Benchmark:
 
     def get_latency(self, op, *args, **kwargs):
         fn, xs = self._benchmark_callable(op, *args, **kwargs)
-        return self._time_callable(fn, xs)
+        try:
+            return self._time_callable(fn, xs)
+        finally:
+            del fn, xs
+            gc.collect()
 
     def _benchmark_callable(self, op, *args, **kwargs):
         fn = lambda: op(*args, **kwargs)
@@ -441,9 +459,18 @@ class Benchmark:
             elif isinstance(item, dict):
                 kwargs.update(item)
         if self.is_backward:
+            # NOTE: We set requires_grad in-place instead of cloning first to avoid
+            # doubling VRAM usage (backward already needs 3-4x the forward memory).
+            # Safety constraint: all backward benchmarks MUST use pure-function
+            # operators that do NOT modify input data in-place, because the same
+            # args are reused for both baseline and candidate in _measure_input().
+            # Currently all backward benchmarks satisfy this (is_backward=True and
+            # is_inplace=True are mutually exclusive, and torch.autograd.grad()
+            # itself never mutates input tensors).
+            # If you add a new backward benchmark, ensure its operator is pure.
             args = [
                 (
-                    a.clone().requires_grad_()
+                    a.requires_grad_(True)
                     if torch.is_tensor(a) and torch.is_floating_point(a)
                     else a
                 )
@@ -527,7 +554,11 @@ class Benchmark:
             result_dict["native_baseline_skip_reason"] = (
                 Config.native_baseline_skip_reason
             )
-        update_result(self.op_name, result_dict)
+        update_result(
+            self.op_name,
+            result_dict,
+            aggregate_by_dtype=self.aggregate_results_by_dtype,
+        )
         emit_record_logger(result.to_json())
         return result
 
@@ -815,6 +846,148 @@ class Benchmark:
             target_device=self.device,
         )
 
+    @staticmethod
+    def _profile_invokes_kernel(fn):
+        """Profile *fn* once and return whether any device kernel was launched.
+
+        Runs *fn* under ``torch.profiler.profile`` and checks for at least one
+        non-CPU event with recorded device time.  This is the single source of
+        truth for kernel-launch detection, used by both the inline baseline
+        guard (``_verify_base_invokes_kernel``) and the standalone
+        ``--kernel-check`` mode.
+        """
+        from torch.autograd import DeviceType
+
+        with torch.profiler.profile() as prof:
+            fn()
+            torch_device_fn.synchronize()
+
+        return any(
+            event.device_type != DeviceType.CPU and event.self_device_time_total > 0
+            for event in prof.key_averages()
+        )
+
+    def _verify_base_invokes_kernel(self, op, args, kwargs):
+        """Confirm the native baseline actually launches a device kernel.
+
+        A baseline that silently falls back to a no-op or CPU-only path
+        would make latency_base (and derived metrics like speedup) report
+        comparisons against something that never touched the device.
+
+        When no kernel is detected the test is *skipped* rather than failed,
+        so it shows as SKIPPED in CI reports and does not pollute the FAILED
+        count that is reserved for genuine benchmark errors.
+
+        The result is cached per Benchmark instance so the profiling overhead
+        is incurred at most once, even when multiple cases share the same op.
+        """
+        if hasattr(self, "_base_kernel_verified"):
+            if not self._base_kernel_verified:
+                pytest.skip(
+                    f"Benchmark baseline for '{self.op_name}' did not invoke any "
+                    "device kernel; latency_base would not reflect real execution"
+                )
+            return
+
+        fn, _ = self._benchmark_callable(op, *args, **kwargs)
+        invoked = self._profile_invokes_kernel(fn)
+        self._base_kernel_verified = invoked
+        if not invoked:
+            pytest.skip(
+                f"Benchmark baseline for '{self.op_name}' did not invoke any "
+                "device kernel; latency_base would not reflect real execution"
+            )
+
+    def _run_kernel_check_cases(self, case_ids=None):
+        """Check that the baseline invokes at least one device kernel.
+
+        Runs the torch baseline once per selected case under
+        ``_profile_invokes_kernel`` and records whether a device kernel was
+        observed.  The session passes as long as at least one case across the
+        whole benchmark run launched a kernel (checked in pytest_sessionfinish).
+
+        Legacy benchmarks (those using ``input_fn`` / ``get_input_iter`` rather
+        than the case-based API) are also supported: the first input from the
+        first dtype is profiled once and recorded as a single synthetic case.
+        """
+        if not self.supports_cases():
+            return self._run_kernel_check_legacy()
+        cases = self._collect_cases()
+        if not cases:
+            raise ValueError(f"Operator '{self.op_name}' has no kernel-check cases.")
+        Config.available_case_ids.update(case.case_id for case in cases)
+        selected = None if case_ids is None else set(case_ids)
+        executed = []
+        for case in cases:
+            if selected is not None and case.case_id not in selected:
+                continue
+            record = {
+                "operator": self.op_name,
+                "nodeid": Config.current_nodeid,
+                "case_id": case.case_id,
+                "invoked_kernel": False,
+                "status": "failed",
+            }
+            Config.kernel_check_records.append(record)
+            try:
+                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                record["invoked_kernel"] = self._profile_invokes_kernel(fn)
+            except Exception as exc:
+                record["error"] = str(exc)
+                raise
+            finally:
+                del args, kwargs
+            record["status"] = "passed"
+            Config.executed_case_ids.add(case.case_id)
+            executed.append(case.case_id)
+        return executed
+
+    def _run_kernel_check_legacy(self):
+        """Kernel-check fallback for legacy benchmarks that use ``input_fn``.
+
+        Legacy benchmarks expose ``get_input_iter(dtype)`` instead of the
+        case-based API (``get_case_iter`` / ``build_inputs``).  For each dtype
+        we grab the *first* input, profile it, and record a synthetic case so
+        that ``pytest_sessionfinish`` can aggregate the result.
+
+        Returns:
+            list[str]: synthetic case-ids that were executed.
+        """
+        executed = []
+        for dtype in self.to_bench_dtypes:
+            case_id = f"{self.op_name}-legacy-{dtype}"
+            record = {
+                "operator": self.op_name,
+                "nodeid": Config.current_nodeid,
+                "case_id": case_id,
+                "invoked_kernel": False,
+                "status": "failed",
+            }
+            Config.kernel_check_records.append(record)
+            try:
+                input_iter = self.get_input_iter(dtype)
+                input_data = next(input_iter)
+                args, kwargs = self.unpack_to_args_kwargs(input_data)
+                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                record["invoked_kernel"] = self._profile_invokes_kernel(fn)
+            except Exception as exc:
+                record["error"] = str(exc)
+                raise
+            finally:
+                # release references to potentially large tensors
+                try:
+                    del args, kwargs
+                except NameError:
+                    pass
+            record["status"] = "passed"
+            Config.available_case_ids.add(case_id)
+            Config.executed_case_ids.add(case_id)
+            executed.append(case_id)
+            # One dtype is enough to determine kernel behaviour; stop early.
+            break
+        return executed
+
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
         # Attach profiling time-share metadata when --model-profile was
@@ -831,7 +1004,23 @@ class Benchmark:
             metric.case_metadata = input_metadata(self.op_name, args)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
-                metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
+                # A failing native baseline must not discard the candidate
+                # measurement: leave latency_base unset so speedup falls back
+                # to the external baseline comparison below. Queued accelerator
+                # work is drained first, because a device-side failure would
+                # otherwise be attributed to the candidate timing that follows.
+                try:
+                    metric.latency_base = self.get_latency(
+                        self.torch_op, *args, **kwargs
+                    )
+                except pytest.skip.Exception:
+                    raise
+                except Exception as e:
+                    torch_device_fn.synchronize()
+                    print(
+                        f"\033[33mBASELINE FAILED\033[0m: Operator={self.op_name} "
+                        f"dtype={dtype} err=<<<{e}>>>"
+                    )
             if "latency" in self.to_bench_metrics:
                 op, dispatch, overridden = self._candidate_call()
                 registry = Config.override_registry
@@ -856,31 +1045,31 @@ class Benchmark:
                         )
                     metric.candidate_source = "override"
             if "speedup" in self.to_bench_metrics:
-                if Config.skip_native:
-                    if metric.latency_base is not None and metric.latency is not None:
-                        metric.speedup = (metric.latency_base + self.EPS) / (
-                            metric.latency + self.EPS
-                        )
-                else:
+                if metric.latency_base is not None and metric.latency is not None:
                     metric.speedup = (metric.latency_base + self.EPS) / (
                         metric.latency + self.EPS
                     )
 
             self._apply_external_baseline(metric, dtype, baseline_context)
 
+            # `speedup` is the native on-machine gems-vs-torch ratio and stays
+            # None when no reference ran here; `compared_speedup` is the
+            # vs-baseline ratio. The two are never substituted for each other:
+            # choosing between them is the consumer's job (optest's
+            # _case_record), which needs an unambiguous native value to label
+            # provenance correctly. This only records which field is populated.
+            if metric.speedup is not None:
+                metric.speedup_source = "origin"
+            else:
+                metric.speedup_source = None
+
             if "gbps" in self.to_bench_metrics:
-                if Config.skip_native:
-                    if metric.latency_base is not None:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
-                    if metric.latency is not None:
-                        metric.gbps = self.get_gbps(args, latency=metric.latency)
-                else:
+                if metric.latency_base is not None:
                     metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
+                if metric.latency is not None:
                     metric.gbps = self.get_gbps(args, latency=metric.latency)
 
-            if "tflops" in self.to_bench_metrics:
+            if "tflops" in self.to_bench_metrics and metric.latency is not None:
                 metric.tflops = (
                     self.get_tflops(self.torch_op, *args, **kwargs)
                     / metric.latency
@@ -888,6 +1077,8 @@ class Benchmark:
                     * 1e3
                 )
                 # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+        except pytest.skip.Exception:
+            raise  # let pytest.skip() propagate as SKIPPED
         except (RuntimeError, Exception) as e:
             metric.error_msg = str(e)
             pytest.fail(str(e))  # raise exception again
@@ -925,6 +1116,9 @@ class Benchmark:
 
         if getattr(Config, "preflight_only", False):
             return self._run_preflight_cases(selected_case_ids)
+
+        if getattr(Config, "kernel_check", False):
+            return self._run_kernel_check_cases(selected_case_ids)
 
         if getattr(Config, "profile_only", False):
             return self._run_profile_cases(selected_case_ids or [])

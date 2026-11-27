@@ -18,12 +18,17 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # torch.istft requires a complex spectrogram (the return_complex=True output of
 # torch.stft). cuFFT rejects bfloat16 spectrograms, so bfloat16 is not
 # reachable through a stft/istft round trip; float16 spectrograms are complex32
 # and torch.istft accepts them directly.
-FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64]
+FLOAT_DTYPES = [
+    torch.float16,
+    torch.float32,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
+]
 
 # torch computes the fp16/complex32 inverse transform in half precision, and
 # the Triton overlap-add/envelope buffers are fp16 as well. Four hann frames
@@ -170,7 +175,9 @@ def test_istft_1d_signal(dtype):
 # fp16 is omitted here: the complex-return and normalized variants are covered
 # by test_istft_roundtrip for all three dtypes, and the fp64 path here already
 # pins the exact-arithmetic behavior this test targets.
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_istft_variants(dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("fp64 is not supported on this backend")

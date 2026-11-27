@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 # aten::multilabel_margin_loss is the dispatch target the wrapper replaces, so
 # every reference goes through it rather than through the nn.functional alias.
@@ -300,7 +301,15 @@ def _fill_rows(target, pattern):
         # Active ids are the last k classes in descending order: a unique
         # non-prefix set that reaches class C-1, so an implementation assuming
         # the active ids are the prefix 0..k-1 computes a different loss.
-        target[:, :k] = torch.arange(classes - k, classes, device=target.device).flip(0)
+        if flag_gems.vendor_name == "enflame":
+            # aten::flip has no int64 kernel on the enflame GCU backend
+            # (topsatenFlip: data type not support), so the descending ids are
+            # built by subtraction there. Both branches yield the same ids.
+            target[:, :k] = classes - 1 - torch.arange(k, device=target.device)
+        else:
+            target[:, :k] = torch.arange(
+                classes - k, classes, device=target.device
+            ).flip(0)
     elif pattern == "ragged":
         # Row r keeps 1 + r % k active ids, so row lengths differ inside one
         # target and the per-row terminator search cannot be hoisted.
@@ -845,7 +854,10 @@ def test_multilabel_margin_loss_out_of_range_target(bad_id, reduction):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "out_dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 def test_multilabel_margin_loss_out_dtype(out_dtype):
     # The native overload casts into whatever floating buffer it is handed
     # rather than requiring the input dtype (measured: fp16 and fp64 buffers
