@@ -68,6 +68,26 @@ else:
         pass
 
 
+def measure_calls(fn, *, warmup_calls=0, repeat_calls=1):
+    """Synchronized wall-time sample with explicit counts, without calibration.
+
+    This is a readiness measurement, not headline kernel timing. In particular,
+    zero warmup and one repeat invokes fn exactly once on every backend.
+    """
+    if type(warmup_calls) is not int or warmup_calls < 0:
+        raise ValueError("warmup_calls must be a nonnegative integer")
+    if type(repeat_calls) is not int or repeat_calls < 1:
+        raise ValueError("repeat_calls must be a positive integer")
+    for _ in range(warmup_calls):
+        fn()
+    torch_device_fn.synchronize()
+    start = time.perf_counter()
+    for _ in range(repeat_calls):
+        fn()
+    torch_device_fn.synchronize()
+    return (time.perf_counter() - start) * 1000 / repeat_calls
+
+
 def get_iter_count(fn):
     if Config.mode == consts.BenchMode.OPERATOR:
         torch_device_fn.synchronize()
@@ -1696,10 +1716,12 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 
 class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    output_dtype = None
+
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = generate_tensor_input(shape, cur_dtype, self.device)
-            out = torch.empty_like(inp)
+            out = torch.empty_like(inp, dtype=self.output_dtype)
             yield inp, {"out": out}
 
     def supports_cases(self) -> bool:
@@ -1724,7 +1746,7 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
     def build_inputs(self, case: BenchmarkCaseSpec):
         shape = case.builder_args[0].builder_args[0]
         inp = generate_tensor_input(shape, case.dtype, self.device)
-        out = torch.empty_like(inp)
+        out = torch.empty_like(inp, dtype=self.output_dtype)
         return inp, {"out": out}
 
 
@@ -1735,11 +1757,7 @@ class BoolUnaryPointwiseOutBenchmark(UnaryPointwiseOutBenchmark):
     output is allocated with torch.bool instead of the input dtype.
     """
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for shape in self.shapes:
-            inp = generate_tensor_input(shape, cur_dtype, self.device)
-            out = torch.empty(inp.shape, dtype=torch.bool, device=self.device)
-            yield inp, {"out": out}
+    output_dtype = torch.bool
 
 
 class MarginRankingLossBenchmark(GenericBenchmark):

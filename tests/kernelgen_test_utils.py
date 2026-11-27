@@ -153,16 +153,54 @@ _FP8_DTYPES = {
 }
 
 
+def _comparison_to_cpu(tensor):
+    fp8 = tensor.dtype in _FP8_DTYPES
+    if tensor.layout == torch.strided and (
+        (
+            flag_gems.vendor_name in ("ascend", "kunlunxin")
+            and tensor.device.type != "cpu"
+        )
+        or (fp8 and tensor.is_neg())
+    ):
+        # A strided FP8 .cpu() can invoke an unsupported NPU StridedSlice.
+        # Transfer storage bytes, then interpret the original geometry on CPU.
+        values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+            tensor.untyped_storage().cpu(),
+            tensor.storage_offset(),
+            tensor.size(),
+            tensor.stride(),
+        )
+        if fp8:
+            values = values.float()
+        # Storage does not encode lazy flags. Apply them after widening FP8,
+        # whose native negation kernel is also unavailable on some backends.
+        if tensor.is_conj():
+            values = values.conj()
+        if tensor.is_neg():
+            values = torch._neg_view(values)
+        return values
+    values = tensor.cpu()
+    return values.float() if fp8 else values
+
+
 def _comparison_values(result, reference):
     from . import accuracy_utils as utils
 
     assert result.dtype == reference.dtype
-    result = utils.to_cpu(result, reference)
-    # FP8 has no native comparison kernel. Conversion is lossless and happens
-    # only after checking the original dtype; tolerance uses that dtype too.
-    if result.dtype in _FP8_DTYPES:
-        return result.float(), reference.float()
-    return result, reference
+    if result.dtype in _FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex()
+    ):
+        # Validate the original contract before host copies hide placement.
+        assert result.shape == reference.shape
+        assert result.layout == reference.layout
+        if utils.TO_CPU:
+            assert reference.device == torch.device("cpu")
+        else:
+            assert result.device == reference.device
+        # FP8 casts and some backends' complex comparisons need CPU observation.
+        # The caller still uses the original dtype's tolerance.
+        return _comparison_to_cpu(result), _comparison_to_cpu(reference)
+    return utils.to_cpu(result, reference), reference
 
 
 def assert_result_close(result, reference, *, atol=1e-4):
@@ -188,10 +226,11 @@ def assert_result_equal(result, reference):
 def to_reference(inp, upcast=False):
     """Independent tensor oracle for these tests, retaining view metadata.
 
-    A plain clone can compact strides, reset offsets or materialize lazy flags.
-    Copy dense storage to keep those tested properties. This does not reproduce
-    inter-input aliases or autograd history; version-counter tests use their
-    own reference setup.
+    A plain clone or device transfer can compact strides, reset offsets or
+    materialize lazy flags. Copy dense storage to the reference device before
+    rebuilding the view. Optional upcasting still follows accuracy_utils' value
+    conversion policy. This does not reproduce inter-input aliases or autograd
+    history; version-counter tests use their own reference setup.
     """
     from . import accuracy_utils as utils
 
@@ -200,8 +239,13 @@ def to_reference(inp, upcast=False):
     if inp.layout != torch.strided or inp.is_quantized or inp.is_nested:
         reference = inp.detach().clone()
     else:
-        reference = torch.empty(0, dtype=inp.dtype, device=inp.device).set_(
-            inp.untyped_storage().clone(),
+        storage = inp.untyped_storage()
+        if utils.TO_CPU and inp.device.type != "cpu":
+            storage = storage.cpu()
+        else:
+            storage = storage.clone()
+        reference = torch.empty(0, dtype=inp.dtype, device=storage.device).set_(
+            storage,
             inp.storage_offset(),
             inp.size(),
             inp.stride(),
