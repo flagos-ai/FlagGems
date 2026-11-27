@@ -67,6 +67,7 @@ from .index_copy_ import index_copy_
 from .index_reduce import index_reduce, index_reduce_
 from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
+from .isreal import isreal
 from .kthvalue import kthvalue
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
@@ -211,6 +212,7 @@ __all__ = [
     "index_reduce_",
     "index_reduce_out",
     "index_select_backward",
+    "isreal",
     "kthvalue",
     "ldl_factor_ex",
     "lift_fresh",
