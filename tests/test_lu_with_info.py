@@ -84,6 +84,15 @@ def _unpack_lu_no_pivot(lu):
 def test_lu_with_info(shape, dtype, pivot):
     if DEVICE != "cuda" and not pivot:
         pytest.skip("pivot=False only supported on CUDA")
+    if VENDOR == "kunlunxin" and not utils.TO_CPU and not pivot:
+        pytest.skip("Kunlunxin native LU does not support pivot=False")
+    if (
+        VENDOR == "thead"
+        and not utils.TO_CPU
+        and not pivot
+        and shape in ((512, 512), (1024, 1024))
+    ):
+        pytest.skip("PPU native LU without pivoting aborts for these two square shapes")
     inp = _make_input(shape, pivot, DEVICE, dtype)
     ref_inp = utils.to_reference(inp)
     ref_lu, ref_pivots, ref_info = torch._lu_with_info(ref_inp, pivot=pivot)
@@ -279,6 +288,8 @@ def test_lu_info_reports_nan_only_as_nonzero_when_zero_absent():
     ids=["batch0", "rows0", "cols0", "both0"],
 )
 def test_lu_with_info_empty_batch_dimensions(shape):
+    if VENDOR == "kunlunxin":
+        pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
     # A zero-sized batch dimension enters the factorizer with batch == 0, and a
     # zero-sized row/column enters it with an empty matrix; both must return
     # the correctly shaped LU, empty pivots, and zero info, matching native.
@@ -298,33 +309,25 @@ def test_lu_with_info_empty_batch_dimensions(shape):
 
 @pytest.mark.lu_with_info
 @pytest.mark.parametrize("zero_pos", [0, 2, 4], ids=["first", "middle", "last"])
-@pytest.mark.xfail(
-    reason="the shared linalg_lu_factor kernel divides by a zero pivot, "
-    "which poisons the factorization (nan) for zero pivots at the first/"
-    "middle positions; only the last-diagonal case survives because "
-    "elimination never touches it. Reproduces deterministically on the "
-    "inputs this test builds. Fixing it belongs to linalg_lu_factor, "
-    "shared by several operators, not to this PR.",
-    strict=False,
-)
-def test_lu_with_info_exact_zero_pivot_position(zero_pos):
-    # A diagonal matrix with an exact zero on the diagonal puts the zero pivot
-    # at a *known* position: partial pivoting cannot move it (the zero sits on
-    # the diagonal, where the pivot search lands), so the expected ``info`` is
-    # the 1-indexed position and can be asserted exactly. Row-combination
-    # constructions, by contrast, let elimination order decide where (or
-    # whether) an exact zero appears, which is what the earlier
-    # zero-last-row cases got wrong.
-    diag = [1.0, 2.0, 3.0, 4.0, 5.0]
+def test_lu_with_info_exact_zero_pivot_position(zero_pos, request):
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        pytest.skip("Kunlunxin cannot preserve the required FP64 input storage")
+
     diag = [1.0, 2.0, 3.0, 4.0, 5.0]
     diag[zero_pos] = 0.0
-    inp = torch.diag(torch.tensor(diag, dtype=torch.float64)).to(flag_gems.device)
+    host = torch.diag(torch.tensor(diag, dtype=torch.float64))
+    inp = host.to(flag_gems.device)
 
-    ref_lu, _, ref_info = torch._lu_with_info(utils.to_reference(inp), pivot=True)
-    res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, pivot=True)
+    # Iluvatar's native device LU can report the wrong exact zero pivot.
+    ref_inp = host if flag_gems.vendor_name == "iluvatar" else utils.to_reference(inp)
+    _, _, ref_info = torch._lu_with_info(ref_inp, pivot=True)
+    _, _, res_info = flag_gems._lu_with_info(inp, pivot=True)
+    assert res_info.device == inp.device
+    assert res_info.dtype == torch.int32
+    assert int(ref_info.item()) == zero_pos + 1
 
-    assert int(ref_info.item()) == zero_pos + 1, (
-        "the native reference must report the zero diagonal position; "
-        "if this fails, the reference itself does not behave as expected"
-    )
+    registry = getattr(request.config, "_override_registry", None)
+    stock = registry is None or registry.get_override("_lu_with_info") is None
+    if stock and zero_pos in (0, 2) and int(res_info.item()) != zero_pos + 1:
+        pytest.xfail("shared linalg_lu_factor divides by early zero pivots")
     utils.gems_assert_equal(res_info, ref_info)
