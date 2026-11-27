@@ -25,6 +25,8 @@ if triton.__version__ >= "3.4":
         fill_tensor_,
         fill_tensor_out,
     )
+    
+    from .grouped_gemm_w8a8_fp8 import grouped_gemm_w8a8_fp8  # noqa: F401
     from .max_pool3d_backward import (  # noqa: F401
         max_pool3d,
         max_pool3d_backward,
