@@ -154,7 +154,58 @@ def conv_depthwise3d_kernel(
     tl.store(output_ptr, accum, mask=mask)
 
 
+class ConvDepthwise3DFunction(torch.autograd.Function):
+    """Autograd node for ``conv_depthwise3d``.
+
+    ``aten::conv_depthwise3d`` has no standalone backward operator, so the
+    gradient w.r.t. the input runs the Triton kernel in
+    ``conv_depthwise3d_backward``. Only the input gradient is produced: weight
+    and bias gradients are not implemented, matching the other conv backward
+    operators in this repo (``cudnn_convolution_backward``,
+    ``convolution_overrideable_backward``).
+    """
+
+    @staticmethod
+    def forward(ctx, input, weight, kernel_size, bias, stride, padding, dilation):
+        # The input gradient only needs the input's shape/dtype/device, never
+        # its values, but saving the tensor keeps that metadata exact.
+        ctx.save_for_backward(input, weight)
+        ctx.kernel_size = kernel_size
+        ctx.stride = stride
+        ctx.padding = padding
+        ctx.dilation = dilation
+        return conv_depthwise3d_impl(
+            input, weight, kernel_size, bias, stride, padding, dilation
+        )
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weight = ctx.saved_tensors
+        from flag_gems.ops.conv_depthwise3d_backward import conv_depthwise3d_backward
+
+        grad_input = conv_depthwise3d_backward(
+            grad_output,
+            input,
+            weight,
+            ctx.kernel_size,
+            ctx.stride,
+            ctx.padding,
+            ctx.dilation,
+        )
+        return grad_input, None, None, None, None, None, None
+
+
 def conv_depthwise3d(input, weight, kernel_size, bias, stride, padding, dilation):
+    if torch.is_grad_enabled() and input.requires_grad:
+        return ConvDepthwise3DFunction.apply(
+            input, weight, kernel_size, bias, stride, padding, dilation
+        )
+    return conv_depthwise3d_impl(
+        input, weight, kernel_size, bias, stride, padding, dilation
+    )
+
+
+def conv_depthwise3d_impl(input, weight, kernel_size, bias, stride, padding, dilation):
     logger.debug("GEMS CONV_DEPTHWISE3D")
     assert (
         input.ndim == 5

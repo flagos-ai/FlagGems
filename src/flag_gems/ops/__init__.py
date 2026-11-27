@@ -719,6 +719,7 @@ from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.conv_depthwise3d import conv_depthwise3d
+from flag_gems.ops.conv_depthwise3d_backward import conv_depthwise3d_backward
 from flag_gems.ops.conv_tbc import conv_tbc, conv_tbc_out
 from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
@@ -2487,6 +2488,7 @@ __all__ = [
     "conv2d",
     "conv3d",
     "conv_depthwise3d",
+    "conv_depthwise3d_backward",
     "conv_tbc",
     "conv_tbc_backward",
     "conv_tbc_out",
