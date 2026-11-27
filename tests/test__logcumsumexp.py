@@ -43,6 +43,30 @@ LOGCUMSUMEXP_SHAPES = (
 EMPTY_SHAPES = [(0,), (2, 0), (0, 3), (3, 0), (2, 0, 4), (2, 4, 0)]
 
 
+def _complex_scan_observations(result, reference, inp):
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == inp.shape
+    assert reference.shape == inp.shape
+    # Observe complex masks and phases on the host: some backends cannot run
+    # those operations, or cannot retain the upcast reference dtype on device.
+    return result.detach().cpu(), reference.detach().cpu()
+
+
+def _complex_logcumsumexp_reference(inp, dim):
+    try:
+        return torch.ops.aten._logcumsumexp(inp, dim)
+    except NotImplementedError as error:
+        if (
+            flag_gems.vendor_name == "mthreads"
+            and not utils.TO_CPU
+            and inp.dtype == torch.complex64
+            and "\"logcumsumexp_musa\" not implemented for 'ComplexFloat'" in str(error)
+        ):
+            pytest.skip("MUSA native logcumsumexp does not support nonempty complex64")
+        raise
+
+
 @pytest.mark.underscore_logcumsumexp
 @pytest.mark.parametrize("shape", LOGCUMSUMEXP_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -244,22 +268,11 @@ def test__logcumsumexp_complex(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.ops.aten._logcumsumexp(ref_inp, dim)
+    ref_out = _complex_logcumsumexp_reference(ref_inp, dim)
     res_out = flag_gems._logcumsumexp(inp, dim)
 
     assert res_out.dtype == dtype
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
-
-
-def _host_complex_masks(tensor):
-    """NaN/±Inf branch masks of a complex tensor, evaluated on the host.
-
-    ``torch.isnan`` and ``torch.isinf`` abort the process on a complex GCU
-    tensor (TOPSATEN reports them as unsupported), so the masks are built after
-    moving the tensor to the CPU; the comparison itself is unchanged.
-    """
-    host = tensor.cpu() if tensor.device.type != "cpu" else tensor
-    return torch.isnan(host), torch.isinf(host.real), torch.isinf(host.imag)
 
 
 @pytest.mark.underscore_logcumsumexp
@@ -284,26 +297,14 @@ def test__logcumsumexp_complex_special_values(data):
     inp = torch.tensor(data, dtype=torch.complex64, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten._logcumsumexp(ref_inp, 0)
+    ref_out = _complex_logcumsumexp_reference(ref_inp, 0)
     res_out = flag_gems._logcumsumexp(inp, 0)
 
-    utils.gems_assert_close(res_out, ref_out, torch.complex64, equal_nan=True)
-    if flag_gems.vendor_name == "enflame":
-        # torch.isnan/isinf abort on a complex GCU tensor, so the branch masks
-        # are built on the host; the comparison semantics are unchanged.
-        res_nan, res_real_inf, res_imag_inf = _host_complex_masks(res_out)
-        ref_nan, ref_real_inf, ref_imag_inf = _host_complex_masks(ref_out)
-        assert res_nan.equal(ref_nan)
-        assert res_real_inf.equal(ref_real_inf)
-        assert res_imag_inf.equal(ref_imag_inf)
-    else:
-        # Compare the branch structure on one device: under --ref=cpu the
-        # reference is materialized on the host, and Tensor.equal requires
-        # matching devices.
-        ref_on_dev = ref_out.to(res_out.device)
-        assert torch.isnan(res_out).equal(torch.isnan(ref_on_dev))
-        assert torch.isinf(res_out.real).equal(torch.isinf(ref_on_dev.real))
-        assert torch.isinf(res_out.imag).equal(torch.isinf(ref_on_dev.imag))
+    observed, expected = _complex_scan_observations(res_out, ref_out, inp)
+    utils.gems_assert_close(observed, expected, torch.complex64, equal_nan=True)
+    assert torch.isnan(observed).equal(torch.isnan(expected))
+    assert torch.isinf(observed.real).equal(torch.isinf(expected.real))
+    assert torch.isinf(observed.imag).equal(torch.isinf(expected.imag))
 
 
 # ---------------------------------------------------------------------------
@@ -661,11 +662,12 @@ def test__logcumsumexp_long_complex_rows(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.ops.aten._logcumsumexp(ref_inp, dim)
+    ref_out = _complex_logcumsumexp_reference(ref_inp, dim)
     res_out = flag_gems._logcumsumexp(inp, dim)
 
     assert res_out.shape == ref_out.shape
-    _assert_complex_scan_close(res_out, ref_out.to(res_out.device))
+    observed, expected = _complex_scan_observations(res_out, ref_out, inp)
+    _assert_complex_scan_close(observed, expected)
 
 
 @pytest.mark.underscore_logcumsumexp
@@ -693,23 +695,14 @@ def test__logcumsumexp_long_complex_rows_special_values(data):
     )
     ref_x = utils.to_reference(x)
 
-    ref_out = torch.ops.aten._logcumsumexp(ref_x, 0)
+    ref_out = _complex_logcumsumexp_reference(ref_x, 0)
     res_out = flag_gems._logcumsumexp(x, 0)
-    ref_on_dev = ref_out.to(res_out.device)
+    observed, expected = _complex_scan_observations(res_out, ref_out, x)
 
     # The branch structure is compared exactly; finite prefixes only need fp32
     # rounding agreement.
-    if flag_gems.vendor_name == "enflame":
-        # torch.isnan/isinf abort on a complex GCU tensor, so the masks are
-        # built on the host; the comparison semantics are unchanged.
-        res_nan, res_real_inf, res_imag_inf = _host_complex_masks(res_out)
-        ref_nan, ref_real_inf, ref_imag_inf = _host_complex_masks(ref_on_dev)
-        assert res_nan.equal(ref_nan)
-        assert res_real_inf.equal(ref_real_inf)
-        assert res_imag_inf.equal(ref_imag_inf)
-    else:
-        assert torch.isnan(res_out).equal(torch.isnan(ref_on_dev))
-        assert torch.isinf(res_out.real).equal(torch.isinf(ref_on_dev.real))
-        assert torch.isinf(res_out.imag).equal(torch.isinf(ref_on_dev.imag))
+    assert torch.isnan(observed).equal(torch.isnan(expected))
+    assert torch.isinf(observed.real).equal(torch.isinf(expected.real))
+    assert torch.isinf(observed.imag).equal(torch.isinf(expected.imag))
     if not utils.TO_CPU:
-        _assert_complex_scan_close(res_out, ref_on_dev)
+        _assert_complex_scan_close(observed, expected)
