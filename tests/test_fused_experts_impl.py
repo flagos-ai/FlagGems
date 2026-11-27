@@ -286,10 +286,10 @@ def test_fused_moe_vs_ref(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -325,8 +325,23 @@ try:
     )
 
     HAS_VLLM_FUSED_MOE = True
+    VLLM_FUSED_MOE_SKIP_REASON = "vLLM is required"
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
+    VLLM_FUSED_MOE_SKIP_REASON = "vLLM is required"
+except Exception as vllm_import_error:
+    # vLLM's fused-MoE import pulls in transformers -> sklearn, which raises a
+    # numpy ABI ValueError on this image and would abort collection of the
+    # entire run instead of only losing the optional vLLM reference.  Only the
+    # enflame backend degrades to a skipped vLLM comparison; every other vendor
+    # keeps the original hard failure.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    HAS_VLLM_FUSED_MOE = False
+    VLLM_FUSED_MOE_SKIP_REASON = (
+        "enflame GCU: importing vllm.model_executor.layers.fused_moe raises "
+        f"{type(vllm_import_error).__name__}: {vllm_import_error}"
+    )
 
 
 def _vllm_fused_moe_reference_unusable():
@@ -345,7 +360,7 @@ VLLM_FUSED_MOE_REFERENCE_UNUSABLE = _vllm_fused_moe_reference_unusable()
 
 
 @pytest.mark.fused_experts_impl
-@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM is required")
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason=VLLM_FUSED_MOE_SKIP_REASON)
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
@@ -370,10 +385,10 @@ def test_fused_moe_vs_vllm(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -430,10 +445,10 @@ def test_accuracy_fused_moe_fp8(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Per-tensor quantization of weights
     finfo = torch.finfo(torch.float8_e4m3fn)
@@ -824,10 +839,10 @@ def test_fused_moe_int8(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
 
@@ -943,10 +958,10 @@ def test_fused_moe_int8_w8a16(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
     # Per-channel quantization
@@ -1025,10 +1040,10 @@ def test_fused_moe_int4_w4a16(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
     int4_max = 7
@@ -1104,10 +1119,10 @@ def test_fused_moe_inplace(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
@@ -1164,10 +1179,10 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)

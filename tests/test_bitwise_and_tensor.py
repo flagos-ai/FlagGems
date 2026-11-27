@@ -20,6 +20,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.and_tensor
 @pytest.mark.bitwise_and_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)

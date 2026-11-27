@@ -50,11 +50,58 @@ def test_eq_scalar(shape, dtype):
 
 
 @pytest.mark.eq
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("strided", [False, True])
+def test_eq_integer_precision(dtype, strided):
+    # FP32 rounds 2**24 and 2**24 + 1 to the same value, so comparing in FP32
+    # would report distinct integer ids as equal.
+    inp1_cpu = torch.tensor([2**24, 2**24 + 1, 2**24 + 2], dtype=dtype)
+    inp2_cpu = torch.full_like(inp1_cpu, 2**24 + 1)
+    inp1 = inp1_cpu.to(flag_gems.device)
+    inp2 = inp2_cpu.to(flag_gems.device)
+    if strided:
+        storage = torch.empty(2 * inp1.numel(), dtype=dtype, device=flag_gems.device)
+        storage[::2].copy_(inp1)
+        inp1 = storage[::2]
+
+    ref_out = torch.eq(inp1_cpu, inp2_cpu)
+    res_out = flag_gems.eq(inp1, inp2).cpu()
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.eq_scalar
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_eq_scalar_integer_precision(dtype):
+    inp1_cpu = torch.tensor([2**24, 2**24 + 1, 2**24 + 2], dtype=dtype)
+    inp1 = inp1_cpu.to(flag_gems.device)
+
+    ref_out = torch.eq(inp1_cpu, 2**24 + 1)
+    res_out = flag_gems.eq_scalar(inp1, 2**24 + 1).cpu()
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.eq_scalar
+def test_eq_scalar_float_scalar():
+    # A floating-point scalar must not be truncated to an integer.
+    inp1_cpu = torch.tensor([1, 2, 3], dtype=torch.int64)
+    inp1 = inp1_cpu.to(flag_gems.device)
+
+    ref_out = torch.eq(inp1_cpu, 2.5)
+    res_out = flag_gems.eq_scalar(inp1, 2.5).cpu()
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.eq
 @pytest.mark.eq_scalar
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 @pytest.mark.parametrize("strided", [False, True])
 @pytest.mark.parametrize("value", [2**24, -(2**24), 2**31 - 2])
-def test_eq_integer_precision(dtype, strided, value):
+def test_eq_integer_precision_original_matrix(dtype, strided, value):
+    if dtype == torch.int64 and not utils.int64_is_supported:
+        pytest.skip("INT64 is not supported on this backend")
     inp = torch.tensor([value, value + 1], dtype=dtype, device=flag_gems.device)
     other = torch.full_like(inp, value + 1)
     if strided:
@@ -71,6 +118,9 @@ def test_eq_integer_precision(dtype, strided, value):
 @pytest.mark.eq
 @pytest.mark.eq_scalar
 @pytest.mark.parametrize("value", [2**53, 2**63 - 2, -(2**63)])
+@pytest.mark.skipif(
+    not utils.int64_is_supported, reason="INT64 is not supported on this backend"
+)
 def test_eq_int64_limits(value):
     inp = torch.tensor([value, value + 1], dtype=torch.int64, device=flag_gems.device)
     ref_inp = inp.cpu()
@@ -97,6 +147,8 @@ def test_eq_int64_limits(value):
 )
 @pytest.mark.parametrize("scalar_tensor", [False, True])
 def test_eq_mixed_dtype(left_dtype, right_dtype, scalar_tensor):
+    if torch.int64 in (left_dtype, right_dtype) and not utils.int64_is_supported:
+        pytest.skip("INT64 is not supported on this backend")
     left = torch.tensor([0, 1, -1], dtype=left_dtype, device=flag_gems.device)
     right = torch.tensor(
         -1 if scalar_tensor else [-1, 1, 0], dtype=right_dtype, device=flag_gems.device
@@ -111,6 +163,8 @@ def test_eq_mixed_dtype(left_dtype, right_dtype, scalar_tensor):
 )
 @pytest.mark.parametrize("value", [True, 2, 255, 2**32 - 1, 2**63 - 1])
 def test_eq_scalar_integer_promotion(dtype, value):
+    if (dtype == torch.int64 or value > 2**31 - 1) and not utils.int64_is_supported:
+        pytest.skip("INT64 is not supported on this backend")
     inp = torch.tensor([0, 1, -1], dtype=dtype, device=flag_gems.device)
     utils.gems_assert_equal(flag_gems.eq_scalar(inp, value), torch.eq(inp.cpu(), value))
 
@@ -130,6 +184,8 @@ def test_eq_scalar_integer_promotion(dtype, value):
     ],
 )
 def test_eq_controls(dtype):
+    if dtype == torch.bfloat16 and not utils.bf16_is_supported:
+        pytest.skip("BF16 is not supported on this backend")
     inp = torch.tensor([0, 1, 0], dtype=dtype, device=flag_gems.device)
     other = torch.tensor([1, 1, 0], dtype=dtype, device=flag_gems.device)
     utils.gems_assert_equal(flag_gems.eq(inp, other), torch.eq(inp.cpu(), other.cpu()))
@@ -146,3 +202,88 @@ def test_eq_small_integer_limits(dtype):
     other = inp.roll(1)
     utils.gems_assert_equal(flag_gems.eq(inp, other), torch.eq(inp.cpu(), other.cpu()))
     utils.gems_assert_equal(flag_gems.eq(inp, inp), torch.eq(inp.cpu(), inp.cpu()))
+
+
+@pytest.mark.eq
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "strong_dtype,strong_values,weak_dtype,weak_value",
+    [
+        (torch.int8, [-1, 0, 1], torch.uint8, 255),
+        (torch.uint8, [0, 1, 255], torch.int8, -1),
+        (torch.bool, [0, 1], torch.int64, 2),
+        (torch.int8, [0, 1, -1], torch.bool, True),
+    ],
+)
+def test_eq_zero_dim_integer_promotion(
+    strong_dtype, strong_values, weak_dtype, weak_value, reverse
+):
+    if torch.int64 in (strong_dtype, weak_dtype) and not utils.int64_is_supported:
+        pytest.skip("INT64 is not supported on this backend")
+    strong = torch.tensor(strong_values, dtype=strong_dtype, device=flag_gems.device)
+    weak = torch.tensor(weak_value, dtype=weak_dtype, device=flag_gems.device)
+    left, right = (weak, strong) if reverse else (strong, weak)
+    utils.gems_assert_equal(
+        flag_gems.eq(left, right), torch.eq(left.cpu(), right.cpu())
+    )
+
+
+@pytest.mark.eq_scalar
+def test_eq_scalar_bool_and_integer_launch_sequence():
+    inp = torch.tensor([0, 1, -1], dtype=torch.int8, device=flag_gems.device)
+    for value in (True, 2, False, 255):
+        utils.gems_assert_equal(
+            flag_gems.eq_scalar(inp, value), torch.eq(inp.cpu(), value)
+        )
+
+
+@pytest.mark.eq
+@pytest.mark.eq_scalar
+def test_eq_integer_dispatch():
+    inp = torch.tensor([0, 1, -1], dtype=torch.int8, device=flag_gems.device)
+    weak = torch.tensor(255, dtype=torch.uint8, device=flag_gems.device)
+    expected = [torch.eq(inp.cpu(), weak.cpu())]
+    expected.extend(torch.eq(inp.cpu(), value) for value in (True, 2, 255))
+    with flag_gems.use_gems(include=["eq", "eq_scalar"]):
+        assert {"eq.Tensor", "eq.Scalar"}.issubset(flag_gems.all_registered_keys())
+        actual = [torch.eq(inp, weak)]
+        actual.extend(torch.eq(inp, value) for value in (True, 2, 255))
+    for result, reference in zip(actual, expected):
+        utils.gems_assert_equal(result, reference)
+
+
+@pytest.mark.eq
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "left_dtype,left_values,right_dtype,right_values",
+    [
+        (torch.int8, [-1, 1], torch.uint8, [255, 1]),
+        (torch.int32, [2**24 + 1, 2**24], torch.int64, [2**24 + 1, 2**24 + 1]),
+    ],
+)
+def test_eq_mixed_integer_tensors(
+    left_dtype, left_values, right_dtype, right_values, reverse
+):
+    if torch.int64 in (left_dtype, right_dtype) and not utils.int64_is_supported:
+        pytest.skip("INT64 is not supported on this backend")
+    left = torch.tensor(left_values, dtype=left_dtype, device=flag_gems.device)
+    right = torch.tensor(right_values, dtype=right_dtype, device=flag_gems.device)
+    if reverse:
+        left, right = right, left
+    utils.gems_assert_equal(
+        flag_gems.eq(left, right), torch.eq(left.cpu(), right.cpu())
+    )
+
+
+@pytest.mark.eq
+@pytest.mark.eq_scalar
+@pytest.mark.skipif(
+    not utils.fp64_is_supported, reason="FP64 is not supported on this backend"
+)
+def test_eq_float64_precision_is_preserved():
+    inp = torch.tensor(
+        [1.0, 1.0 + 2**-40], dtype=torch.float64, device=flag_gems.device
+    )
+    other = torch.ones_like(inp)
+    utils.gems_assert_equal(flag_gems.eq(inp, other), torch.eq(inp.cpu(), other.cpu()))
+    utils.gems_assert_equal(flag_gems.eq_scalar(inp, 1.0), torch.eq(inp.cpu(), 1.0))

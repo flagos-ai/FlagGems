@@ -14,19 +14,41 @@
 
 import logging
 
-from .bitwise_or import bitwise_or_scalar
+import torch
+import triton
+import triton.language as tl
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+from .bitwise_or import bitwise_or_scalar, config_
 
 logger = logging.getLogger(__name__)
 
 
-def or_scalar(self, other):
-    """``__or__.Scalar`` for Kunlunxin.
+@pointwise_dynamic(
+    is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_
+)
+@triton.jit
+def or_bool_int_scalar_func(x, y):
+    return x.to(tl.int64) | y.to(tl.int64)
 
-    ``__or__.Scalar`` and ``bitwise_or.Scalar`` are the same ATen operation's
-    two entry points; the generic ``or_scalar`` is bound to the slow generic
-    bitwise_or kernel at import time.  Route straight to the XPU-tuned
-    ``bitwise_or_scalar`` (which packs bool/int16 into int32 on large tensors),
-    mirroring ``or_tensor``.
-    """
+
+def or_scalar(self, other):
     logger.debug("GEMS_KUNLUNXIN OR_SCALAR")
+    if (
+        self.dtype == torch.bool
+        and isinstance(other, int)
+        and not isinstance(other, bool)
+        and -(1 << 31) <= int(other) < (1 << 31)
+    ):
+        return or_bool_int_scalar_func(self, other)
+    if (
+        self.dtype == torch.bool
+        and isinstance(other, int)
+        and not isinstance(other, bool)
+    ):
+        # Out-of-int32-range scalar: keep the generic promotion semantics
+        # (int64 result) instead of truncating through the scalar kernel.
+        from flag_gems.ops.or_scalar import or_scalar as _generic_or_scalar
+
+        return _generic_or_scalar(self, other)
     return bitwise_or_scalar(self, other)

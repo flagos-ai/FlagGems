@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 # Unmasked stage-1 tile: the largest tl.sum tile exact on this XPU with
 # buffer_size_limit=2048 (same as mse_loss's _FULL_BLOCK).
 _FULL_BLOCK = 32768
+# Unmasked backward tile: the backward kernel is elementwise (no reduction), so
+# it can take a wider block than the forward's reduction-limited 32768; 65536
+# matches or beats 32768 on all three dtypes (bf16 is ~13% faster).
+_BWD_FULL_BLOCK = 65536
 # Tensors up to this size use the single-launch mean/sum kernel.
 _SMALL_MAX = 4096
 
@@ -77,10 +81,31 @@ def _margin_ranking_loss_kernel(
     target_val = tl.load(target + offsets, mask=mask, other=0.0)
     margin_val = tl.full([BLOCK_SIZE], margin, input1_val.dtype)
     zero = tl.zeros([BLOCK_SIZE], input1_val.dtype)
-    difference = (input1_val - input2_val).to(input1_val.dtype)
-    product = (-target_val * difference).to(input1_val.dtype)
-    loss = tl.maximum((product + margin_val).to(input1_val.dtype), zero)
-    tl.store(out + offsets, loss, mask=mask)
+    if input1_val.dtype == tl.bfloat16:
+        # Per-step bf16 rounding emulation in fp32 (matches the native
+        # bf16 operator boundaries bit-exactly; plain bf16 arithmetic is
+        # fused to fp32 by the lowering and fails the strict tolerances).
+        # The int bitcasts/shifts of the emulation fail to lower past
+        # ~1024 lanes on flagtree 3.6.0/xpu3.6 (``triton_xpu.unpack reached
+        # lowering without a bufPtr``; host launches this kernel at
+        # BLOCK=1024), and the rounded value is stored through its raw
+        # uint16 bit pattern to avoid an fp32->bf16 narrowing conversion
+        # (same pattern as the mixed_dtypes_linear passes).
+        input1_val = input1_val.to(tl.float32)
+        input2_val = input2_val.to(tl.float32)
+        target_val = target_val.to(tl.float32)
+        difference = _round_to_bfloat16(input1_val - input2_val)
+        product = _round_to_bfloat16(-target_val * difference)
+        loss = tl.maximum(_round_to_bfloat16(product + margin), 0.0)
+        bits = loss.to(tl.uint32, bitcast=True)
+        rounding_bias = 0x7FFF + ((bits >> 16) & 1)
+        bf16_bits = ((bits + rounding_bias) >> 16).to(tl.uint16)
+        tl.store(out + offsets, bf16_bits, mask=mask)
+    else:
+        difference = (input1_val - input2_val).to(input1_val.dtype)
+        product = (-target_val * difference).to(input1_val.dtype)
+        loss = tl.maximum((product + margin_val).to(input1_val.dtype), zero)
+        tl.store(out + offsets, loss, mask=mask)
 
 
 @libentry()
@@ -238,9 +263,12 @@ def _margin_ranking_loss_backward_kernel(
         input1_float = input1_val.to(tl.float32)
         input2_float = input2_val.to(tl.float32)
         target_float = target_val.to(tl.float32)
-        difference = _round_to_bfloat16(input1_float - input2_float)
-        product = _round_to_bfloat16(-target_float * difference)
-        active = _round_to_bfloat16(product + margin) > 0.0
+        # The reference (native bf16) computes the active mask at fp32
+        # precision (round-trip to bf16 only moves boundary elements that the
+        # test's boundary mask already excludes). The per-step
+        # `_round_to_bfloat16` emulation miscompiles on this backend (~23% of
+        # lanes get the wrong active sign), so compute the mask directly in fp32.
+        active = (-target_float * (input1_float - input2_float) + margin) > 0.0
     else:
         difference = (input1_val - input2_val).to(input1_val.dtype)
         product = (-target_val * difference).to(input1_val.dtype)
@@ -250,6 +278,52 @@ def _margin_ranking_loss_backward_kernel(
     grad_input2_val = tl.where(active, target_val * grad, 0.0)
     tl.store(grad_input1 + offsets, grad_input1_val.to(input1_val.dtype), mask=mask)
     tl.store(grad_input2 + offsets, grad_input2_val.to(input1_val.dtype), mask=mask)
+
+
+@libentry()
+@triton.jit
+def _margin_ranking_loss_backward_unmasked_kernel(
+    input1,
+    input2,
+    target,
+    grad_output,
+    grad_input1,
+    grad_input2,
+    n_elements,
+    margin,
+    REDUCTION: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # Unmasked full-block backward program over a BLOCK_SIZE (=_BWD_FULL_BLOCK)
+    # lane block. Requires n_elements % BLOCK_SIZE == 0 on the host; skips the
+    # masked-memory path entirely (masked 2048-lane tiles run ~6x slower than
+    # the vendor engine on the big shapes, same block-DMA masking tax as the
+    # forward's unmasked stage-1 kernel).
+    offsets = ext.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    input1_val = tl.load(input1 + offsets)
+    input2_val = tl.load(input2 + offsets)
+    target_val = tl.load(target + offsets)
+    if REDUCTION == 0:
+        grad = tl.load(grad_output + offsets)
+    else:
+        grad = tl.load(grad_output)
+        if REDUCTION == 1:
+            grad = grad / n_elements
+
+    if input1_val.dtype == tl.bfloat16:
+        input1_float = input1_val.to(tl.float32)
+        input2_float = input2_val.to(tl.float32)
+        target_float = target_val.to(tl.float32)
+        active = (-target_float * (input1_float - input2_float) + margin) > 0.0
+    else:
+        difference = (input1_val - input2_val).to(input1_val.dtype)
+        product = (-target_val * difference).to(input1_val.dtype)
+        active = (product + margin).to(input1_val.dtype) > 0.0
+
+    grad_input1_val = tl.where(active, -target_val * grad, 0.0)
+    grad_input2_val = tl.where(active, target_val * grad, 0.0)
+    tl.store(grad_input1 + offsets, grad_input1_val.to(input1_val.dtype))
+    tl.store(grad_input2 + offsets, grad_input2_val.to(input1_val.dtype))
 
 
 def _margin_ranking_loss_forward(input1, input2, target, margin, reduction):
@@ -266,6 +340,28 @@ def _margin_ranking_loss_forward(input1, input2, target, margin, reduction):
     block_size = 2048
 
     if reduction == 0:
+        if input1.dtype == torch.bfloat16:
+            # The pointwise elementwise path cannot serve bf16 here: its
+            # per-step ``_round_to_bfloat16`` emulation fails to lower on
+            # flagtree 3.6.0/xpu3.6 (``triton_xpu.unpack`` without a bufPtr)
+            # once the tile vectorizes past ~1024 lanes, and dropping the
+            # emulation breaks the strict per-step rounding tolerance. The
+            # masked libentry kernel keeps the emulation at BLOCK=1024 and
+            # stores raw bf16 bits (see ``_margin_ranking_loss_kernel``).
+            out = torch.empty_like(input1)
+            block_size = 1024
+            with torch_device_fn.device(input1.device):
+                _margin_ranking_loss_kernel[(triton.cdiv(n_elements, block_size),)](
+                    input1,
+                    input2,
+                    target,
+                    out.view(torch.uint16),
+                    n_elements,
+                    float(margin),
+                    BLOCK_SIZE=block_size,
+                    buffer_size_limit=2048,
+                )
+            return out.view(output_shape)
         return _margin_ranking_loss_elementwise(
             input1, input2, target, float(margin)
         ).view(output_shape)
@@ -342,11 +438,19 @@ class _MarginRankingLoss(torch.autograd.Function):
         grad_input1 = torch.empty_like(input1)
         grad_input2 = torch.empty_like(input2)
         n_elements = input1.numel()
-        block_size = 2048
+        if n_elements % _BWD_FULL_BLOCK == 0:
+            # Divisible tensors take the unmasked 65536-lane backward path
+            # (block DMA instead of the masked-memory path, which runs ~6x
+            # slower than the vendor engine on the big shapes).
+            kernel = _margin_ranking_loss_backward_unmasked_kernel
+            block_size = _BWD_FULL_BLOCK
+            n_blocks = n_elements // _BWD_FULL_BLOCK
+        else:
+            kernel = _margin_ranking_loss_backward_kernel
+            block_size = 2048
+            n_blocks = triton.cdiv(n_elements, block_size)
         with torch_device_fn.device(input1.device):
-            _margin_ranking_loss_backward_kernel[
-                (triton.cdiv(n_elements, block_size),)
-            ](
+            kernel[(n_blocks,)](
                 input1,
                 input2,
                 target,
@@ -359,10 +463,17 @@ class _MarginRankingLoss(torch.autograd.Function):
                 BLOCK_SIZE=block_size,
                 buffer_size_limit=2048,
             )
-        return grad_input1, grad_input2, None, None, None
+        return grad_input1, grad_input2, torch.zeros_like(target), None, None
+
+
+_REDUCTION_MAP = {"none": 0, "mean": 1, "sum": 2}
 
 
 def margin_ranking_loss(input1, input2, target, margin=0.0, reduction=1):
-    if reduction not in (0, 1, 2):
+    if isinstance(reduction, str):
+        if reduction not in _REDUCTION_MAP:
+            raise ValueError("reduction must be 'none', 'mean', or 'sum'")
+        reduction = _REDUCTION_MAP[reduction]
+    elif reduction not in (0, 1, 2):
         raise ValueError("reduction must be 0 (none), 1 (mean), or 2 (sum)")
     return _MarginRankingLoss.apply(input1, input2, target, margin, reduction)

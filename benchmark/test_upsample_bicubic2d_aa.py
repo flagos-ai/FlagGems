@@ -18,8 +18,20 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .conftest import Config
 
 vendor_name = flag_gems.vendor_name
+
+# torch_gcu has no Half/BFloat16 kernel for _upsample_bicubic2d_aa_backward and
+# the CPU fallback rejects both dtypes, so only the fp32 native baseline can be
+# timed on enflame. The skip_native marker is whole-test only, so the baseline is
+# skipped per dtype instead of for the fp32 case as well.
+_ENFLAME_NATIVE_UNTIMED_DTYPES = (torch.float16, torch.bfloat16)
+_ENFLAME_NATIVE_SKIP_REASON = (
+    "torch_gcu has no Half/BFloat16 _upsample_bicubic2d_aa_backward kernel and "
+    "the CPU fallback raises NotImplementedError for both dtypes, so the native "
+    "baseline cannot be timed"
+)
 
 
 # TODO(Qiming): Kill this class
@@ -96,7 +108,18 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
     def get_input_iter(self, dtype):
         for N, C, Hi, Wi, Ho, Wo, ac, _label in self._cfgs:
             grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=dtype)
+            # The case label is descriptive only; passing it positionally would
+            # break the 6-argument aten schema of the backward op.
             yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None
+
+    def _measure_input(self, input, case_id=None, dtype=None):
+        if vendor_name == "enflame":
+            untimed = dtype in _ENFLAME_NATIVE_UNTIMED_DTYPES
+            Config.skip_native = untimed
+            Config.native_baseline_skip_reason = (
+                _ENFLAME_NATIVE_SKIP_REASON if untimed else None
+            )
+        return super()._measure_input(input, case_id=case_id, dtype=dtype)
 
     def get_tflops(self, op, *args, **kwargs):
         grad = args[0]
@@ -104,6 +127,10 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.upsample_bicubic2d_aa_backward
+@pytest.mark.skip_native(
+    vendors="mthreads",
+    reason="MThreads muDNN rejects antialiasing in bicubic backward",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

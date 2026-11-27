@@ -32,7 +32,7 @@ class DynQuantMatmul4BitBenchmark(base.Benchmark):
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.skipif(
     flag_gems.vendor_name
-    in ("nvidia", "hygon", "iluvatar", "ascend", "mthreads", "metax"),
+    in ("nvidia", "hygon", "iluvatar", "ascend", "mthreads", "metax", "thead"),
     reason=(
         "aten::_dyn_quant_matmul_4bit has no native device kernel on this backend; "
         "CPU fallback is not a performance baseline"

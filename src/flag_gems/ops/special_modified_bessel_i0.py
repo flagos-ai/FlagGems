@@ -19,6 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,58 +32,63 @@ def _special_modified_bessel_i0_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_programs = tl.num_programs(axis=0)
+    # grid.x is capped at 65535, so walk the flat range with a stride.
+    for start in tl.range(pid * BLOCK_SIZE, n_elements, num_programs * BLOCK_SIZE):
+        offsets = start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
 
-    x = tl.load(
-        x_ptr + offsets,
-        mask=mask,
-        other=0.0,
-    ).to(tl.float32)
+        x = tl.load(
+            x_ptr + offsets,
+            mask=mask,
+            other=0.0,
+        ).to(tl.float32)
 
-    ax = tl.abs(x)
-    use_small = ax <= 3.75
+        ax = tl.abs(x)
+        use_small = ax <= 3.75
 
-    # ---------------------------------------------------------
-    # Small region: |x| <= 3.75
-    # ---------------------------------------------------------
-    z = ax * (1.0 / 3.75)
-    y = z * z
+        # ---------------------------------------------------------
+        # Small region: |x| <= 3.75
+        # ---------------------------------------------------------
+        z = ax * (1.0 / 3.75)
+        y = z * z
 
-    p_small_inner = tl.fma(y, 0.0045813, 0.0360768)
-    p_small_inner = tl.fma(y, p_small_inner, 0.2659732)
-    p_small_inner = tl.fma(y, p_small_inner, 1.2067492)
-    p_small_inner = tl.fma(y, p_small_inner, 3.0899424)
-    p_small_inner = tl.fma(y, p_small_inner, 3.5156229)
-    res_small = tl.fma(y, p_small_inner, 1.0)
+        p_small_inner = tl.fma(y, 0.0045813, 0.0360768)
+        p_small_inner = tl.fma(y, p_small_inner, 0.2659732)
+        p_small_inner = tl.fma(y, p_small_inner, 1.2067492)
+        p_small_inner = tl.fma(y, p_small_inner, 3.0899424)
+        p_small_inner = tl.fma(y, p_small_inner, 3.5156229)
+        res_small = tl.fma(y, p_small_inner, 1.0)
 
-    # ---------------------------------------------------------
-    # Large region: |x| > 3.75
-    #
-    # tl.where does not short-circuit, so use a safe denominator
-    # for lanes that will eventually select the small branch.
-    # ---------------------------------------------------------
-    safe_ax = tl.where(use_small, 3.75, ax)
-    yb = 3.75 / safe_ax
+        # ---------------------------------------------------------
+        # Large region: |x| > 3.75
+        #
+        # tl.where does not short-circuit, so use a safe denominator
+        # for lanes that will eventually select the small branch.
+        # ---------------------------------------------------------
+        safe_ax = tl.where(use_small, 3.75, ax)
+        yb = 3.75 / safe_ax
 
-    p_big_inner = tl.fma(yb, 0.00392377, -0.01647633)
-    p_big_inner = tl.fma(yb, p_big_inner, 0.02635537)
-    p_big_inner = tl.fma(yb, p_big_inner, -0.02057706)
-    p_big_inner = tl.fma(yb, p_big_inner, 0.00916281)
-    p_big_inner = tl.fma(yb, p_big_inner, -0.00157565)
-    p_big_inner = tl.fma(yb, p_big_inner, 0.00225319)
-    p_big_inner = tl.fma(yb, p_big_inner, 0.01328592)
-    p_big = tl.fma(yb, p_big_inner, 0.39894228)
+        p_big_inner = tl.fma(yb, 0.00392377, -0.01647633)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.02635537)
+        p_big_inner = tl.fma(yb, p_big_inner, -0.02057706)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.00916281)
+        p_big_inner = tl.fma(yb, p_big_inner, -0.00157565)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.00225319)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.01328592)
+        p_big = tl.fma(yb, p_big_inner, 0.39894228)
 
-    res_big = tl.exp(safe_ax) * p_big * tl.rsqrt(safe_ax)
+        res_big = tl.exp(safe_ax) * p_big * tl.rsqrt(safe_ax)
 
-    result = tl.where(use_small, res_small, res_big)
+        result = tl.where(use_small, res_small, res_big)
 
-    tl.store(out_ptr + offsets, result, mask=mask)
+        tl.store(out_ptr + offsets, result, mask=mask)
 
 
 def _launch_special_modified_bessel_i0(out: torch.Tensor, x: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Input and output must be CUDA tensors"
+    assert (
+        x.device.type == flag_gems.device and out.device.type == flag_gems.device
+    ), "Input and output must be accelerator device tensors"
     assert (
         out.numel() == x.numel()
     ), "Input and output must have the same number of elements"
@@ -106,7 +113,7 @@ def _launch_special_modified_bessel_i0(out: torch.Tensor, x: torch.Tensor):
     n_elements = out_contig.numel()
     # BLOCK_SIZE=1024 balances occupancy and register pressure on H20
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), 65535),)
 
     _special_modified_bessel_i0_kernel[grid](
         x_contig, out_contig, n_elements, BLOCK_SIZE=BLOCK_SIZE
@@ -119,9 +126,9 @@ def _launch_special_modified_bessel_i0(out: torch.Tensor, x: torch.Tensor):
 
 def special_modified_bessel_i0(x: torch.Tensor):
     logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_I0")
-    if not x.is_cuda:
+    if x.device.type != flag_gems.device:
         raise ValueError(
-            "special_modified_bessel_i0: input tensor must be on CUDA device"
+            f"special_modified_bessel_i0: input tensor must be on the {flag_gems.device} device"
         )
     # Result dtype follows PyTorch's floating type behavior
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
@@ -132,9 +139,10 @@ def special_modified_bessel_i0(x: torch.Tensor):
 
 def special_modified_bessel_i0_out(x: torch.Tensor, out: torch.Tensor):
     logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_I0_OUT")
-    if not (x.is_cuda and out.is_cuda):
+    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise ValueError(
-            "special_modified_bessel_i0_out: input and output tensors must be on CUDA device"
+            "special_modified_bessel_i0_out: input and output tensors must be on the "
+            f"{flag_gems.device} device"
         )
     if not out.is_floating_point():
         raise TypeError(

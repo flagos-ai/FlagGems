@@ -56,6 +56,10 @@ class NnzBenchmark(base.Benchmark):
             yield (inp,)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nnz
 def test_nnz():
     bench = NnzBenchmark(

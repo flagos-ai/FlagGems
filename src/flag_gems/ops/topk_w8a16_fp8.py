@@ -530,6 +530,9 @@ if HAS_TLE_GPU:
         )
         smem_selected_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (offs_k,))
         tl.store(smem_selected_ptrs, tl.full([K_PAD], min_packed, dtype=x_ultype))
+        # Keep indirect stores as element-pointer arithmetic. A full-shape TLE
+        # pointer view can be lowered as a dense store when BLOCK_N == K_PAD.
+        smem_selected_base = tle_gpu.gpu.local_ptr(smem_selected, (0,))
 
         smem_write_count = tle_gpu.gpu.alloc(
             [1],
@@ -556,7 +559,7 @@ if HAS_TLE_GPU:
                 write_count_ptrs, one, mask=take_gt, sem="relaxed", scope="cta"
             )
             write_mask = take_gt & (pos < K_PAD)
-            dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
+            dst_ptrs = smem_selected_base + pos
             tl.store(dst_ptrs, packed, mask=write_mask)
 
         for t in tl.range(0, n_tiles):
@@ -572,7 +575,7 @@ if HAS_TLE_GPU:
                 write_count_ptrs, one, mask=take_eq, sem="relaxed", scope="cta"
             )
             write_mask = take_eq & (pos < K_PAD)
-            dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
+            dst_ptrs = smem_selected_base + pos
             tl.store(dst_ptrs, packed, mask=write_mask)
 
         selected_packed = tl.load(smem_selected_ptrs)

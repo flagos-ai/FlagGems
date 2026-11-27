@@ -44,6 +44,32 @@ def _skip_if_device_ref_int(dtype):
         )
 
 
+def _skip_if_device_ref_16bit_dim(dtype):
+    # Native aten torch.min(x, dim=...) aborts the whole process (SIGABRT) on
+    # this backend for the 16-bit dtypes float16/bfloat16/int16, for every shape
+    # probed ((1,2), (4096,256), (200,2560,3) x each dim); the float32/int32
+    # device references work. These cases stay covered by the --ref=cpu run.
+    if not cfg.TO_CPU and dtype in (torch.float16, torch.bfloat16, torch.int16):
+        pytest.skip(
+            f"XPU device reference aborts for min(dim) on {dtype}; "
+            "run with --ref=cpu"
+        )
+
+
+def _skip_if_cpu_ref_scalar_compare():
+    # With --ref=cpu the 0-dim reference scalar lives on the host, and the tie
+    # tests compare it against the device tensor (`inp == ref_out`). aten::eq
+    # requires both operands on the GCU here ("tensor's device must be gcu, but
+    # with cpu") and aborts the process, so this case stays on the
+    # device-reference path only. The tie split itself is still covered by
+    # _grad_global above, which runs on both paths.
+    if cfg.TO_CPU and flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame: aten::eq aborts on a device-vs-cpu 0-dim compare; "
+            "run without --ref=cpu"
+        )
+
+
 def _skip_if_device_ref_all_inf():
     # The XPU (xpu) device reduction initializes with +FLT_MAX, so an all-inf
     # input reduces to +FLT_MAX instead of inf; skipped on the device run
@@ -97,6 +123,7 @@ def test_min_all_inf(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 def test_min_dim(shape, dim, keepdim, dtype):
     _skip_if_device_ref_int(dtype)
+    _skip_if_device_ref_16bit_dim(dtype)
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
@@ -110,3 +137,187 @@ def test_min_dim(shape, dim, keepdim, dtype):
 
     utils.gems_assert_equal(res_out_index, ref_out_index)
     utils.gems_assert_equal(res_out_value, ref_out_value)
+
+
+# ---------------------------------------------------------------------------
+# Backward
+#
+# aten::min(Tensor) and aten::min.dim are both differentiated by the autograd
+# engine, so the tests below always go through the full autograd path: build a
+# forward graph, then compare the input gradient of the FlagGems entry against
+# the input gradient of the native torch reference for the same upstream
+# gradient.
+# ---------------------------------------------------------------------------
+
+BACKWARD_GLOBAL_SHAPES = [
+    (1,),
+    (1024,),
+    (7, 19),
+    (4096, 256),
+]
+
+BACKWARD_DIM_CASES = [
+    ((1, 2), 0, False),
+    ((1, 2), 1, True),
+    ((7, 5, 3), 0, False),
+    ((7, 5, 3), 1, True),
+    ((7, 5, 3), 2, False),
+    ((7, 5, 3), -1, True),
+    ((7, 5, 3), -2, False),
+    ((4096, 256), 0, False),
+    ((4096, 256), 1, True),
+    ((4096, 256), 1, False),
+    ((4096, 256), -1, False),
+    ((1024,), 0, False),
+]
+
+
+def _tie_input(shape, dtype, levels=4):
+    inp = torch.randint(0, levels, shape, dtype=torch.int64, device="cpu")
+    return inp.to(dtype=dtype).to(flag_gems.device)
+
+
+def _nan_input(shape, dtype, stride=7):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    flat = inp.reshape(-1)
+    flat[::stride] = float("nan")
+    return inp
+
+
+def _grad_global(inp, dtype):
+    grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    res_inp = inp.detach().clone().requires_grad_()
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+
+    res_out = flag_gems.min(res_inp)
+    ref_out = torch.min(ref_inp)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+    (res_dx,) = torch.autograd.grad(res_out, res_inp, grad)
+    (ref_dx,) = torch.autograd.grad(ref_out, ref_inp, utils.to_reference(grad))
+    utils.gems_assert_close(res_dx, ref_dx, dtype)
+    return res_out, ref_out, res_dx, ref_dx
+
+
+def _grad_dim(inp, dim, keepdim, dtype, equal_nan=False):
+    res_inp = inp.detach().clone().requires_grad_()
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+
+    ref_values, ref_indices = torch.min(ref_inp, dim=dim, keepdim=keepdim)
+    res_values, res_indices = flag_gems.min_dim(res_inp, dim=dim, keepdim=keepdim)
+    utils.gems_assert_equal(res_indices, ref_indices)
+    utils.gems_assert_close(res_values, ref_values, dtype, equal_nan=equal_nan)
+
+    grad = torch.randn(ref_values.shape, dtype=dtype, device=flag_gems.device)
+    (res_dx,) = torch.autograd.grad(res_values, res_inp, grad)
+    (ref_dx,) = torch.autograd.grad(ref_values, ref_inp, utils.to_reference(grad))
+    utils.gems_assert_close(res_dx, ref_dx, dtype, equal_nan=equal_nan)
+    return res_values, res_dx, ref_dx
+
+
+@pytest.mark.min_backward
+@pytest.mark.parametrize("shape", BACKWARD_GLOBAL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_backward(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    _grad_global(inp, dtype)
+
+
+@pytest.mark.min_backward
+@pytest.mark.parametrize("shape", [(2, 32), (4096, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_backward_ties(shape, dtype):
+    # The global adjoint must split grad_output evenly between every tie.
+    _skip_if_cpu_ref_scalar_compare()
+    inp = _tie_input(shape, dtype)
+    res_out, ref_out, res_dx, ref_dx = _grad_global(inp, dtype)
+    tie_count = int((inp == ref_out).sum())
+    assert tie_count > 1, "the tie case must actually contain ties"
+    assert torch.count_nonzero(res_dx) == tie_count
+    tied_grad = res_dx[inp == ref_out]
+    assert torch.equal(tied_grad, tied_grad[0].expand_as(tied_grad))
+
+
+@pytest.mark.min_backward
+@pytest.mark.parametrize("shape", [(2, 32), (4096, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_backward_nan_forward_gap(shape, dtype):
+    # Known pre-existing limitation, not introduced by the backward: the
+    # FlagGems forward reductions use `tl.min`, whose combine rule drops NaN, so
+    # `flag_gems.min` returns the minimum of the non-NaN entries while
+    # `torch.min` returns NaN.  The adjoint must nevertheless stay consistent
+    # with whatever the forward returned: the upstream gradient is split evenly
+    # between the entries equal to that value and the gradient still sums to
+    # `grad_output`.  ATen's own NaN rule (NaN wins, split between the NaN
+    # entries) differs from the result produced by this forward kernel.
+    inp = _nan_input(shape, dtype)
+    assert bool(torch.isnan(torch.min(inp)))
+
+    res_inp = inp.detach().clone().requires_grad_(True)
+    grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.min(res_inp)
+    assert not bool(
+        torch.isnan(res_out)
+    ), "forward NaN handling changed; update this test"
+
+    (res_dx,) = torch.autograd.grad(res_out, res_inp, grad)
+    tie_count = int((inp == res_out).sum())
+    assert tie_count >= 1
+    assert int(torch.count_nonzero(res_dx)) == tie_count
+    torch.testing.assert_close(
+        res_dx.sum().cpu(),
+        grad.cpu(),
+        atol=1e-4 * tie_count,
+        rtol=flag_gems.testing.RESOLUTION[dtype],
+    )
+
+
+@pytest.mark.min_backward
+@pytest.mark.parametrize("shape,dim,keepdim", BACKWARD_DIM_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_backward_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    _grad_dim(inp, dim, keepdim, dtype)
+
+
+@pytest.mark.min_backward
+@pytest.mark.parametrize(
+    "shape,dim,keepdim", [((65, 130), 1, False), ((8, 9, 3), 0, True)]
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_backward_dim_ties(shape, dim, keepdim, dtype):
+    # min.dim keeps only the first argmin: the adjoint must not be split.
+    inp = _tie_input(shape, dtype)
+    res_values, res_dx, ref_dx = _grad_dim(inp, dim, keepdim, dtype)
+    assert torch.equal(res_dx.cpu(), ref_dx.cpu())
+    assert int((res_dx != 0).sum()) == res_values.numel()
+
+
+@pytest.mark.min_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_backward_dim_non_contiguous(dtype):
+    # The adjoint only needs the reduced layout, so a transposed input works.
+    inp = torch.randn((17, 33), dtype=dtype, device=flag_gems.device).t()
+    assert not inp.is_contiguous()
+    _grad_dim(inp, 0, False, dtype)
+    _grad_dim(inp, 1, False, dtype)
+
+
+@pytest.mark.min_backward
+def test_min_backward_grid_stride_and_large_grid_limit(monkeypatch):
+    import importlib
+
+    module = importlib.import_module(flag_gems.min.__module__)
+    assert module._global_plan(65536 * 4096)[2] == 65535
+    original_plan = module._global_plan
+
+    def force_grid_stride(n_elements):
+        count_grid, count_block, _, fill_block, wide = original_plan(n_elements)
+        return count_grid, count_block, 1, fill_block, wide
+
+    monkeypatch.setattr(module, "_global_plan", force_grid_stride)
+    inp = torch.randn(8193, device=flag_gems.device, requires_grad=True)
+    ref_inp = inp.detach().clone().requires_grad_(True)
+    (grad,) = torch.autograd.grad(flag_gems.min(inp), inp)
+    (ref_grad,) = torch.autograd.grad(torch.min(ref_inp), ref_inp)
+    torch.testing.assert_close(grad, ref_grad, rtol=0, atol=0)

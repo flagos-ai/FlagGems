@@ -42,6 +42,14 @@ def conv_transpose3d_input_fn(shape, dtype, device):
 
 
 @pytest.mark.conv_transpose3d
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "GCU topsatenConvolution returns TOPSATEN_STATUS_NOT_SUPPORT for the "
+        "transposed 3-D path and torch_gcu aborts the process, so there is no "
+        "native baseline; the Triton candidate is still timed"
+    ),
+)
 def test_conv_transpose3d():
     bench = ConvTranspose3dBenchmark(
         input_fn=conv_transpose3d_input_fn,

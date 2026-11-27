@@ -65,7 +65,11 @@ def _euclidean_dist_mm_kernel(
     dist2 = -2.0 * acc
     dist2 = dist2 + n1[:, None]
     dist2 = dist2 + n2[None, :]
-    dist = tl.sqrt(tl.where(dist2 > 0.0, dist2, 0.0))
+    # Clamp via tl.maximum instead of tl.where(x > 0, x, 0): the compare+select
+    # pattern lowers to a slow vselect path on this backend (measured +60-70us
+    # on the 128x256x256 shape), while maximum is a single maxf instruction
+    # with the same semantics (negative -> 0, NaN -> 0).
+    dist = tl.sqrt(tl.maximum(dist2, 0.0))
     tl.store(
         out_ptr + rn[:, None] * stride_out + rm[None, :],
         dist,

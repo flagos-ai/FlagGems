@@ -13,31 +13,6 @@ from flag_gems.utils.random_utils import (
 
 logger = logging.getLogger(__name__)
 
-# Fused feature-dropout kernels (kunlunxin / XPU override).
-#
-# The generic ops/feature_dropout.py uses TWO non-@libentry kernels (recompiled
-# per shape -> IR explosion, source loc feature_dropout.py:17):
-#   1. generate_feature_mask_kernel: materializes an (N, C) mask tensor.
-#   2. apply_feature_mask_kernel: 1D grid over flat numel, per element computes
-#      n = i // (C*spatial), c = (i % (C*spatial)) // spatial and GATHERS
-#      mask[n*C + c] (integer div/mod, no HW divider on XPU + discrete gather).
-#
-# We split on the spatial size because the two regimes are fundamentally
-# different work:
-#   * spatial == 1 (2D input): feature dropout degenerates to ELEMENTWISE
-#     dropout (each (n, c) is its own channel with its own random). Mirror the
-#     proven kunlunxin dropout_forward pattern: wide 1D blocks, UNROLL=8, inline
-#     philox, fused multiply, NO mask materialization (the generic path wastes a
-#     full (N,C)-sized 2.6GB mask roundtrip here). @libentry -> compiles once.
-#   * spatial > 1: feature dropout keeps/drops an ENTIRE channel, so the mask is
-#     constant across the whole contiguous spatial run of a channel. Use a 2D
-#     grid (channel-block x spatial-block); the per-channel philox random is
-#     drawn INLINE (deterministic in the flat channel id -> identical for every
-#     spatial block of the same channel) so there is no mask tensor, no gather,
-#     no div/mod. The inner spatial axis is stride-1 (block DMA). BLOCK_S is
-#     sized to cover the whole spatial run in one block whenever feasible so the
-#     philox draw happens once per channel-block.
-
 UNROLL = 8
 
 
@@ -163,55 +138,179 @@ def _fd_elementwise_tail_kernel(
     tl.store(Y + off, y, mask=mask)
 
 
+@triton.jit
+def _fd_channel_keep_bits(
+    c0base, c1, philox_seed, ch_base, local, p, WORDS: tl.constexpr
+):
+    # `local` is the tile-local channel offset.  Draw the (at most WORDS * 32)
+    # channel randoms ONCE on a small vector, pack the keep bits into 32-bit
+    # words and let every lane extract its own channel bit.  Used when the
+    # channel id has no constancy information for the backend (non-power-of-two
+    # spatial), where a per-lane philox would be evaluated per element.
+    lanes = tl.arange(0, WORDS * 32)
+    c0 = c0base + (ch_base + lanes).to(tl.uint32)
+    _O = c0 * 0
+    r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
+    bits = (uint_to_uniform_float(r0) > p).to(tl.int32) << (lanes & 31)
+    word = tl.sum(tl.where(lanes < 32, bits, 0), axis=0)
+    if WORDS > 1:
+        w1 = tl.sum(tl.where((lanes >= 32) & (lanes < 64), bits, 0), axis=0)
+        word = tl.where(local < 32, word, w1)
+    if WORDS > 2:
+        w2 = tl.sum(tl.where((lanes >= 64) & (lanes < 96), bits, 0), axis=0)
+        word = tl.where(local < 64, word, w2)
+    if WORDS > 3:
+        w3 = tl.sum(tl.where((lanes >= 96) & (lanes < 128), bits, 0), axis=0)
+        word = tl.where(local < 96, word, w3)
+    # Unsigned shift: the signed 32-bit variable shift is ~3x slower here.
+    return ((word.to(tl.uint32) >> (local & 31).to(tl.uint32)) & 1) != 0
+
+
 @libentry()
 @triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset"])
-def _fd_channel_kernel(
+def _fd_channel_bulk_kernel(
     X,
     Y,
-    NC,  # N * C (total number of channels)
-    spatial,  # product of spatial dims (H*W*...)
     p,
     scale,
     philox_seed,
     philox_offset,
-    BLOCK_C: tl.constexpr,
-    BLOCK_S: tl.constexpr,
+    SPATIAL: tl.constexpr,
+    POW2: tl.constexpr,
+    LOG2S: tl.constexpr,
+    MAGIC: tl.constexpr,
+    MSHIFT: tl.constexpr,
+    WORDS: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
+    idx = tl.arange(0, BLOCK)
+    base = tl.program_id(0) * BLOCK
+    off = base + idx
+
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
+    c0base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
-    pid_c = tl.program_id(0)
+    if POW2:
+        ch = off >> LOG2S
+        c0 = c0base + ch.to(tl.uint32)
+        _O = c0 * 0
+        r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
+        keep = uint_to_uniform_float(r0) > p
+        x = tl.load(X + off)
+        tl.store(Y + off, tl.where(keep, x * scale, 0.0))
+    else:
+        ch_base = base // SPATIAL
+        local = ((base % SPATIAL) + idx) * MAGIC >> MSHIFT  # channel offset
+        keep = _fd_channel_keep_bits(c0base, c1, philox_seed, ch_base, local, p, WORDS)
+        x = tl.load(X + off)
+        tl.store(Y + off, tl.where(keep, x * scale, 0.0))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset"])
+def _fd_channel_tail_kernel(
+    X,
+    Y,
+    base,
+    N,
+    p,
+    scale,
+    philox_seed,
+    philox_offset,
+    SPATIAL: tl.constexpr,
+    POW2: tl.constexpr,
+    LOG2S: tl.constexpr,
+    MAGIC: tl.constexpr,
+    MSHIFT: tl.constexpr,
+    WORDS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Remainder [base, N): a single masked load/store per program, the safe XPU
+    # partial-tile pattern (no multi-sub-store, no 2D tile).  Same two RNG
+    # strategies as the bulk kernel (see there); WORDS == 0 means the remainder
+    # straddles too many channels for the packed words and falls back to the
+    # per-lane draw.
+    idx = tl.arange(0, BLOCK)
+    off = base + idx
+    mask = off < N
+
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    if POW2:
+        ch = off >> LOG2S
+        c0 = c0base + ch.to(tl.uint32)
+        _O = c0 * 0
+        r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
+        keep = uint_to_uniform_float(r0) > p
+    elif WORDS > 0:
+        ch_base = base // SPATIAL
+        local = ((base % SPATIAL) + idx) * MAGIC >> MSHIFT
+        keep = _fd_channel_keep_bits(c0base, c1, philox_seed, ch_base, local, p, WORDS)
+    else:
+        if MAGIC > 0:
+            ch = (base // SPATIAL) + (((base % SPATIAL) + idx) * MAGIC >> MSHIFT)
+        else:
+            ch = off // SPATIAL
+        c0 = c0base + ch.to(tl.uint32)
+        _O = c0 * 0
+        r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
+        keep = uint_to_uniform_float(r0) > p
+
+    x = tl.load(X + off, mask=mask, other=0.0)
+    tl.store(Y + off, tl.where(keep, x * scale, 0.0), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset", "spatial"])
+def _fd_channel_row_kernel(
+    X,
+    Y,
+    spatial,
+    p,
+    scale,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    # Fallback for spatial runs whose fixed-point division could not be made
+    # exact for a whole BLOCK tile (very large non-power-of-two spatial): one
+    # program owns one BLOCK slice of a single channel, 1D affine offsets and a
+    # SINGLE masked store.  Correct for every shape; slower than the bulk path.
+    ch = tl.program_id(0)
     pid_s = tl.program_id(1)
 
-    ch = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)  # [BLOCK_C]
-    s = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)  # [BLOCK_S]
-    ch_valid = ch < NC
-    s_valid = s < spatial
-
-    # Per-channel philox random (deterministic in ch -> constant across spatial).
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32) + ch.to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    c0 = c0 + ch.to(tl.uint32)
     _O = c0 * 0
     r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
-    rand_vals = uint_to_uniform_float(r0)  # [BLOCK_C]
-    m = tl.where(rand_vals > p, scale, 0.0)  # [BLOCK_C]
+    keep = uint_to_uniform_float(r0) > p
 
-    # [BLOCK_C, BLOCK_S] contiguous tile: inner spatial axis is stride-1.
-    offset = ch[:, None] * spatial + s[None, :]
-    tile_mask = ch_valid[:, None] & s_valid[None, :]
-    x = tl.load(X + offset, mask=tile_mask, other=0.0)
-    y = x * m[:, None]
-    tl.store(Y + offset, y, mask=tile_mask)
+    s = pid_s * BLOCK + tl.arange(0, BLOCK)
+    mask = s < spatial
+    off = ch * spatial + s
+    x = tl.load(X + off, mask=mask, other=0.0)
+    tl.store(Y + off, tl.where(keep, x * scale, 0.0), mask=mask)
 
 
-def _elementwise_launch_config(N):
+def _elementwise_launch_config(N, dtype):
+    # Measured on XPU for the large per-element dropout kernels: fp32/bf16 run
+    # at ~36 GB/s with the narrow 512/4 tile vs ~14 GB/s with 1024/16, while
+    # fp16 is already RNG-bound (torch is too) and prefers the wide tile
+    # (~1.06x for 1024/16 vs ~0.93x for 512/4).  Small tensors are launch-bound
+    # and keep the historical mapping.
     if N <= 512:
         return 512, 4
-    elif N <= 1024:
+    if N <= 1024:
         return 1024, 8
-    else:
+    if N <= 65536 or dtype == torch.float16:
         return 1024, 16
+    return 512, 4
 
 
 def _tail_block(n_tail):
@@ -223,16 +322,25 @@ def _tail_block(n_tail):
     return b
 
 
-def _channel_config(spatial):
-    # Size BLOCK_S to cover the whole spatial run in one block whenever feasible
-    # (so the inline philox draw happens once per channel-block, not once per
-    # spatial-tile). Target a ~8192-element tile with the inner (stride-1)
-    # spatial axis wide for good block DMA.
-    bs = triton.next_power_of_2(spatial)
-    if bs > 2048:
-        bs = 2048
-    bc = max(1, 8192 // bs)
-    return bc, bs, 16
+def _div_magic(d, n_max):
+    """Smallest (M, S) such that (x * M) >> S == x // d for all 0 <= x < n_max,
+    with M * n_max still inside int32 (x and M are 32-bit in the kernel)."""
+    for s in range(10, 32):
+        m = -(-(1 << s) // d)  # ceil(2**s / d)
+        if m * n_max >= (1 << 31):
+            continue
+        # floor(x * ceil(2**s/d) / 2**s) == floor(x/d) for x < n_max iff
+        # n_max * (d - 1) < 2**s.
+        if n_max * (d - 1) < (1 << s):
+            return m, s
+    return None
+
+
+# A program owns ~32K contiguous lanes: below ~1K lanes the XPU lowering falls
+# back to per-element scalar memory ops, and the measured bandwidth keeps
+# improving up to ~32K lanes per program for these streaming kernels.
+_CHANNEL_BLOCK = 32768
+_CHANNEL_WARPS = 8
 
 
 def _feature_dropout_impl(input, out, p):
@@ -249,7 +357,7 @@ def _feature_dropout_impl(input, out, p):
         if spatial == 1:
             # Elementwise regime (2D input): each (n, c) is its own channel.
             numel = NC
-            block, num_warps = _elementwise_launch_config(numel)
+            block, num_warps = _elementwise_launch_config(numel, input.dtype)
             tile = block * UNROLL
             n_full = (numel // tile) * tile
             increment = triton.cdiv(numel, 4) * 4
@@ -283,24 +391,100 @@ def _feature_dropout_impl(input, out, p):
                     num_warps=4,
                 )
         else:
-            block_c, block_s, num_warps = _channel_config(spatial)
-            grid = (triton.cdiv(NC, block_c), triton.cdiv(spatial, block_s))
             # NC randoms consumed (one philox draw per channel).
             increment = triton.cdiv(NC, 4) * 4
             philox_seed, philox_offset = philox_backend_seed_offset(increment)
-            _fd_channel_kernel[grid](
-                input,
-                out,
-                NC,
-                spatial,
-                p,
-                scale,
-                philox_seed,
-                philox_offset,
-                BLOCK_C=block_c,
-                BLOCK_S=block_s,
-                num_warps=num_warps,
-            )
+            numel = NC * spatial
+            pow2 = spatial & (spatial - 1) == 0
+            log2s = (spatial.bit_length() - 1) if pow2 else 0
+            magic, mshift = 0, 0
+            words = 0
+            block = _CHANNEL_BLOCK
+            if not pow2:
+                # Pick the widest tile whose whole channel span still fits in the
+                # packed decision words (WORDS * 32 channels).
+                found = None
+                # A single packed word (<= 32 channels per tile) is by far the
+                # cheapest per element: chaining the word selection over 4 words
+                # costs ~3x, more than the wider tile gains back.
+                for cand_block, cand_words in (
+                    (2048, 32),
+                    (_CHANNEL_BLOCK, 128),
+                    (8192, 128),
+                    (4096, 64),
+                ):
+                    span = cand_block // spatial + 2
+                    if span <= cand_words:
+                        found = _div_magic(spatial, cand_block + spatial)
+                        if found is not None:
+                            block, words = cand_block, cand_words // 32
+                            break
+            else:
+                found = True
+            if found is None:
+                block = min(32768, max(1024, triton.next_power_of_2(spatial)))
+                grid = (NC, triton.cdiv(spatial, block))
+                _fd_channel_row_kernel[grid](
+                    input,
+                    out,
+                    spatial,
+                    p,
+                    scale,
+                    philox_seed,
+                    philox_offset,
+                    BLOCK=block,
+                    num_warps=_CHANNEL_WARPS,
+                )
+                return out
+            if not pow2:
+                magic, mshift = found
+            n_full = (numel // block) * block
+            if n_full > 0:
+                _fd_channel_bulk_kernel[(n_full // block,)](
+                    input,
+                    out,
+                    p,
+                    scale,
+                    philox_seed,
+                    philox_offset,
+                    SPATIAL=spatial,
+                    POW2=pow2,
+                    LOG2S=log2s,
+                    MAGIC=magic,
+                    MSHIFT=mshift,
+                    WORDS=words,
+                    BLOCK=block,
+                    num_warps=_CHANNEL_WARPS,
+                )
+            n_tail = numel - n_full
+            if n_tail > 0:
+                tblock = max(1024, triton.next_power_of_2(n_tail))
+                t_magic, t_mshift, t_words = 0, 0, 0
+                if not pow2:
+                    found_tail = _div_magic(spatial, tblock + spatial)
+                    if found_tail is not None:
+                        t_magic, t_mshift = found_tail
+                        span = triton.cdiv(n_tail, spatial) + 2
+                        if span <= 128:
+                            t_words = max(1, triton.cdiv(span, 32))
+                _fd_channel_tail_kernel[(1,)](
+                    input,
+                    out,
+                    n_full,
+                    numel,
+                    p,
+                    scale,
+                    philox_seed,
+                    philox_offset,
+                    SPATIAL=spatial,
+                    POW2=pow2,
+                    LOG2S=log2s,
+                    MAGIC=t_magic,
+                    MSHIFT=t_mshift,
+                    WORDS=t_words,
+                    BLOCK=tblock,
+                    num_warps=_CHANNEL_WARPS,
+                )
     return out
 
 
@@ -323,54 +507,6 @@ def feature_dropout_(input, p, train=True):
     input = input.contiguous()
     _feature_dropout_impl(input, input, p)
     return input
-
-
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
-# Generated by KernelGen: https://github.com/flagos-ai/KernelGen
-
-# ---------------------------------------------------------------------------
-# feature_dropout: random channel dropout over contiguous (N, C, ...) input.
-#   - train False  or p == 0  -> exact copy (scale 1, every plane kept)
-#   - train True   and p >= 1 -> exact zeros
-#   - otherwise: per (n, c) plane, kept planes are multiplied by
-#     scale = 1/(1-p), dropped planes are zeroed.  Each (n,c) gets an
-#     independent Bernoulli(p) draw.
-#
-# The harness validates dropout structurally (kept planes == input*scale,
-# dropped planes == 0, loose dropped-fraction tolerance).  Bernoulli draws
-# come from a cheap deterministic 32-bit integer hash of the flat plane id.
-# Plane id == flat_index >> log2(spatial) for power-of-two spatial (every
-# harness shape), otherwise flat index (2D input, spatial == 1).
-#
-# Numerics: kept values must bit-match torch's elementwise multiply
-# x * scale (fp32 product, single RNE rounding to the tensor dtype).  The
-# plain fp32->bf16 cast on XPU is verified RNE-correct (bit-exact vs torch on
-# random data including exact midpoint ties), so all dtypes go through the
-# same cast path.  (An earlier variant wrote bf16 as raw int16 patterns via
-# an explicit round-to-nearest-even bit trick; that was removed because the
-# 2048-wide int16 store miscompiles on XPU - a 32-element group's second half
-# is duplicated from the first half, i.e. a 16-element shift.)
-#
-# Kernel form: flat fully-coalesced streaming.  An unmasked aligned kernel
-# (one contiguous 2048-element tile per program, as two 1024-wide chunks)
-# covers the in-bounds prefix; a single masked-store tail kernel covers the
-# remainder (XPU silently drops ALL stores of a program that contains any
-# fully-masked sub-store, so the aligned kernel never carries a store mask).
-# ---------------------------------------------------------------------------
 
 
 @triton.jit

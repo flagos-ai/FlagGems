@@ -19,14 +19,40 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.tensorview import (
+    HAS_TENSORVIEW,
+    has_no_duplicates,
+    tensorview_call,
+    tile_fits_ub,
+    tile_rows_for_ub,
+)
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+if HAS_TENSORVIEW:
+    import triton.experimental.tle as tle_exp
+    from triton.experimental.tle import tile_load, tile_store
+
+
+@libentry()
+@triton.jit
+def _index_add_bounds_kernel(
+    index, valid, count, upper_bound, BLOCK: tl.constexpr, SINGLE_PROGRAM: tl.constexpr
+):
+    pid = tle.program_id(0).to(tl.int64)
+    all_valid = tl.full((), 1, tl.int32)
+    for start in range(pid * BLOCK, count, tl.num_programs(0).to(tl.int64) * BLOCK):
+        offsets = start + tl.arange(0, BLOCK)
+        active = offsets < count
+        values = tl.load(index + offsets, active, other=0)
+        within_bounds = (~active) | ((values >= 0) & (values < upper_bound))
+        all_valid = tl.minimum(all_valid, tl.min(within_bounds.to(tl.int32), 0))
+    if SINGLE_PROGRAM:
+        tl.store(valid, all_valid)
+    else:
+        tl.atomic_min(valid, all_valid, sem="relaxed")
 
 
 @libentry()
@@ -79,6 +105,7 @@ def _index_add_contiguous_suffix_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ROW_BLOCKS_PER_PROGRAM: tl.constexpr,
+    FULL_COLUMNS: tl.constexpr,
     ACCUMULATE_FP32: tl.constexpr,
 ):
     pid_row_group = tle.program_id(axis=0)
@@ -108,7 +135,13 @@ def _index_add_contiguous_suffix_kernel(
             valid = row_mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
             src_offsets = row * suffix_size + cols
-            out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+            # Keep the base scalar so complete columns retain vector stores.
+            # Masked atomics may still issue zero updates after Ascend lowering.
+            out_row = tl.where(valid, prefix_idx * out_dim + dst_dim_idx, 0)
+            safe_cols = cols
+            if not FULL_COLUMNS:
+                safe_cols = tl.minimum(cols, suffix_size - 1)
+            out_offsets = out_row * suffix_size + safe_cols
             values = tl.load(src + src_offsets, mask=row_mask & col_mask, other=0.0)
             if ACCUMULATE_FP32:
                 values = values.to(tl.float32)
@@ -127,7 +160,7 @@ def _index_add_contiguous_suffix_flat_kernel(
     index,
     src,
     total_count,
-    index_len,
+    index_len: tl.constexpr,
     out_dim,
     suffix_size,
     alpha,
@@ -137,7 +170,7 @@ def _index_add_contiguous_suffix_flat_kernel(
 ):
     pid_group = tle.program_id(axis=0)
 
-    # A 1D layout is safer for leading-dim and tiny-suffix updates.  Program 0
+    # A 1D layout handles tiny-suffix updates.  Program 0
     # is a no-op for the same reason as the row-tiled kernel above.
     active_group = pid_group > 0
     for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
@@ -145,19 +178,71 @@ def _index_add_contiguous_suffix_flat_kernel(
         offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = active_group & (offsets < total_count)
 
-        cols = offsets % suffix_size
-        rows = offsets // suffix_size
+        # A neutral atomic update still needs a valid address. Sanitize the
+        # logical coordinate before decoding rows and columns, including pid 0.
+        safe_offsets = tl.where(mask, offsets, 0)
+        cols = safe_offsets % suffix_size
+        rows = safe_offsets // suffix_size
         src_dim_idx = rows % index_len
         prefix_idx = rows // index_len
         dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
         valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
         src_offsets = rows * suffix_size + cols
-        out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+        safe_dst_dim_idx = tl.minimum(tl.maximum(dst_dim_idx, 0), out_dim - 1)
+        out_offsets = (prefix_idx * out_dim + safe_dst_dim_idx) * suffix_size + cols
         values = tl.load(src + src_offsets, mask=mask, other=0.0)
         if ACCUMULATE_FP32:
             values = values.to(tl.float32)
         tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def _index_add_short_kernel(
+    out,
+    index,
+    src,
+    count,
+    out_dim,
+    alpha,
+    INDEX_LEN: tl.constexpr,
+    SUFFIX: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Each program owns disjoint [prefix, suffix] coordinates. Resolve the
+    # duplicate-index case before storing, so no atomic operation is needed.
+    pid = tle.program_id(0)
+    index0 = tl.load(index).to(tl.int64)
+    valid0 = (index0 >= 0) & (index0 < out_dim)
+    if INDEX_LEN == 2:
+        index1 = tl.load(index + 1).to(tl.int64)
+        valid1 = (index1 >= 0) & (index1 < out_dim)
+        duplicate = index0 == index1
+    output_dtype = out.dtype.element_ty
+    for start in range(
+        ((pid - 1) * BLOCK).to(tl.int64),
+        count,
+        (tl.num_programs(0) - 1) * BLOCK,
+    ):
+        offsets = start + tl.arange(0, BLOCK)
+        mask = (pid > 0) & (offsets < count)
+        prefix = offsets // SUFFIX
+        col = offsets % SUFFIX
+        src0 = (prefix * INDEX_LEN) * SUFFIX + col
+        dst0 = (prefix * out_dim + index0) * SUFFIX + col
+        value0 = tl.load(src + src0, mask, other=0).to(output_dtype)
+        old0 = tl.load(out + dst0, mask & valid0, other=0)
+        result0 = (old0 + value0 * alpha).to(output_dtype)
+        if INDEX_LEN == 2:
+            value1 = tl.load(src + src0 + SUFFIX, mask, other=0).to(output_dtype)
+            dst1 = (prefix * out_dim + index1) * SUFFIX + col
+            old1 = tl.load(out + dst1, mask & valid1 & ~duplicate, other=0)
+            result1 = (old1 + value1 * alpha).to(output_dtype)
+            combined = (result0 + value1 * alpha).to(output_dtype)
+            result0 = tl.where(duplicate, combined, result0)
+            tl.store(out + dst1, result1, mask & valid1 & ~duplicate)
+        tl.store(out + dst0, result0, mask & valid0)
 
 
 def _get_block_config(M, N):
@@ -174,13 +259,37 @@ def _volume(shape):
 
 
 def _assert_index_in_bounds(index, upper_bound):
-    # Validate before scatter so an in-place call leaves its input unchanged on error.
-    lower, upper = torch.ops.aten.aminmax.default.redispatch(
-        _FALLBACK_KEYSET, index, dim=None, keepdim=False
-    )
-    assert (
-        lower.item() >= 0 and upper.item() < upper_bound
-    ), "0 <= index < self.size(dim)"
+    # Capture cannot synchronize device values back to Python. The suffix kernels
+    # mask every index on each execution, including replays with new indices.
+    # Keep eager validation before scatter to preserve the input on failure.
+    if index.device.type != "cpu":
+        with torch_device_fn.device(index.device):
+            if torch_device_fn.is_current_stream_capturing():
+                return
+    if index.device.type == "cpu" or index.numel() <= 2:
+        # One small transfer avoids a reduction and two scalar synchronizations.
+        values = index.cpu().tolist()
+        assert all(
+            0 <= value < upper_bound for value in values
+        ), "0 <= index < self.size(dim)"
+        return
+    with torch_device_fn.device(index.device):
+        single_program = index.numel() <= 8192
+        if single_program:
+            valid = torch.empty((), dtype=torch.int32, device=index.device)
+            grid = (1,)
+        else:
+            valid = torch.ones((), dtype=torch.int32, device=index.device)
+            grid = (min(triton.cdiv(index.numel(), 1024), 65535),)
+        _index_add_bounds_kernel[grid](
+            index,
+            valid,
+            index.numel(),
+            upper_bound,
+            BLOCK=1024,
+            SINGLE_PROGRAM=single_program,
+        )
+    assert valid.item() != 0, "0 <= index < self.size(dim)"
 
 
 def _can_use_contiguous_suffix_path(inp, dim, index, src):
@@ -198,11 +307,13 @@ def _can_use_contiguous_suffix_path(inp, dim, index, src):
         and all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim)
     ):
         return False
-    return _volume(src.shape[dim + 1 :]) > 1
+    # A unit suffix includes 1-D counters and final-dimension updates. They also
+    # require atomic accumulation when an index occurs more than once.
+    return _volume(src.shape[dim + 1 :]) >= 1
 
 
 def _flat_contiguous_suffix_block_config(total_count):
-    block_size = 128
+    block_size = min(128, triton.next_power_of_2(total_count))
     blocks = triton.cdiv(total_count, block_size)
     blocks_per_program = 1
     if blocks > 65535:
@@ -243,7 +354,7 @@ def _run_contiguous_suffix_flat_path(out, dim, index, src, alpha):
 
 def _contiguous_suffix_block_config(row_count, suffix_size):
     block_m = 16
-    block_n = 64 if suffix_size <= 64 else 512
+    block_n = min(512, triton.next_power_of_2(suffix_size))
     if triton.cdiv(suffix_size, block_n) > 65535:
         return None
 
@@ -258,7 +369,26 @@ def _contiguous_suffix_block_config(row_count, suffix_size):
 
 def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     suffix_size = _volume(src.shape[dim + 1 :])
-    if dim == 0 or suffix_size < 16:
+    if index.numel() <= 2:
+        count = _volume(src.shape[:dim]) * suffix_size
+        # A scalar update needs no masked vector lanes. Keep existing row tiles.
+        block = 1 if count == 1 else 256
+        grid = (min(triton.cdiv(count, block), 65534) + 1,)
+        with torch_device_fn.device(out.device):
+            _index_add_short_kernel[grid](
+                out,
+                index,
+                src,
+                count,
+                out.size(dim),
+                alpha,
+                INDEX_LEN=index.numel(),
+                SUFFIX=suffix_size,
+                BLOCK=block,
+                enable_fp_fusion=False,
+            )
+        return True
+    if suffix_size < 16:
         return _run_contiguous_suffix_flat_path(out, dim, index, src, alpha)
 
     row_count = _volume(src.shape[:dim]) * index.numel()
@@ -285,6 +415,7 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             ROW_BLOCKS_PER_PROGRAM=row_blocks_per_program,
+            FULL_COLUMNS=(suffix_size % block_n == 0),
             ACCUMULATE_FP32=(
                 out.dtype == torch.float32 and src.dtype == torch.bfloat16
             ),
@@ -292,7 +423,7 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     return True
 
 
-def index_add(inp, dim, index, src, alpha=1):
+def _index_add_generic(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_ASCEND INDEX_ADD")
 
     inp = inp.contiguous()
@@ -302,6 +433,8 @@ def index_add(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return inp.clone()
     M = src.numel() // N
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
@@ -347,7 +480,7 @@ def index_add(inp, dim, index, src, alpha=1):
         return out
 
 
-def index_add_(inp, dim, index, src, alpha=1):
+def _index_add__generic(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_ASCEND INDEX_ADD_")
 
     index = index.contiguous()
@@ -356,6 +489,8 @@ def index_add_(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return inp
     M = src.numel() // N
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
@@ -429,3 +564,195 @@ def index_add_(inp, dim, index, src, alpha=1):
             inp.copy_(out_contig)
 
     return inp
+
+
+# ---------------------------------------------------------------------------
+# TensorView fast path
+#
+# Along dim 0 an index names a whole contiguous row, so the accumulate becomes
+# read-modify-write on a GatherScatterView: the addressed rows come in as one
+# block DMA per tile, the source rows come in through a PartitionView, and the
+# sum goes back out through the same sparse view.
+#
+# Restricted to unique indices. Two tiles holding the same row would each read
+# it before either writes back, so one update would be lost -- the generic
+# kernel does not have this problem because it accumulates through a different
+# decomposition. torch.index_add explicitly permits repeated indices, and the
+# test suite exercises them, so the check is load-bearing rather than cautious.
+#
+# Also restricted to rows of at least one write granule, and skipped entirely
+# under graph capture; both are explained at the checks in _tv_eligible.
+# ---------------------------------------------------------------------------
+TV_BLOCK_M = 32
+
+# Smallest row the scatter can write without disturbing its neighbour. Rows
+# below this share a write granule with the next row, which breaks the
+# read-modify-write above.
+_SCATTER_GRANULE_BYTES = 32
+
+if HAS_TENSORVIEW:
+
+    @triton.jit
+    def index_add_tv_kernel(
+        out,
+        src,
+        index,
+        num_indices,
+        num_rows,
+        alpha,
+        WIDTH: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_WIDTH: tl.constexpr,
+    ):
+        tile = tl.program_id(0)
+        offsets = tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        rows = tl.load(index + offsets, mask=offsets < num_indices, other=-1).to(
+            tl.int32
+        )
+
+        out_view = tle_exp.make_gather_scatter_view(
+            out,
+            shape=[num_rows, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_M, BLOCK_WIDTH],
+            sparse_dim=[0],
+            bounds_check=True,
+        )
+        src_view = tle_exp.make_partition_view(
+            src,
+            shape=[num_indices, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_M, BLOCK_WIDTH],
+        )
+        current = tile_load(
+            out_view, index=(rows, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        update = tile_load(
+            src_view, index=(tile, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+
+        tile_store(
+            out_view,
+            value=(current + alpha * update).to(out.dtype.element_ty),
+            index=(rows, 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+
+    def _launch_index_add_tv(out, index, src, alpha, block_m=None):
+        src = src.contiguous()
+        num_rows = out.shape[0]
+        # The destination view is built with bounds_check=True, which *defines*
+        # an out-of-range row as "skip this row". That is what lets the tail of
+        # the index tile carry -1, but it would also turn an invalid index into
+        # a silently dropped update, where the generic path raises. Assert here,
+        # before the launch, so an in-place call leaves its input unchanged --
+        # the same contract and the same message the generic path gives.
+        _assert_index_in_bounds(index, num_rows)
+        # Trailing dimensions collapse into one contiguous row.
+        width = _volume(out.shape[1:]) if out.dim() > 1 else 1
+        if block_m is None:
+            # The current and update tiles are both live as fp32.
+            block_m = tile_rows_for_ub(triton.next_power_of_2(width) * 4, 2, TV_BLOCK_M)
+        num_indices = index.numel()
+        grid = (triton.cdiv(num_indices, block_m),)
+        with torch_device_fn.device(out.device):
+            index_add_tv_kernel[grid](
+                out,
+                src,
+                index,
+                num_indices,
+                num_rows,
+                alpha,
+                WIDTH=width,
+                BLOCK_M=block_m,
+                BLOCK_WIDTH=triton.next_power_of_2(width),
+            )
+        return out
+
+    def _index_add_tensorview(inp, dim, index, src, alpha=1):
+        logger.debug("GEMS_ASCEND INDEX_ADD(TENSORVIEW)")
+        out = inp.contiguous().clone()
+        return _launch_index_add_tv(out, index.contiguous(), src, alpha)
+
+    def _index_add__tensorview(inp, dim, index, src, alpha=1):
+        logger.debug("GEMS_ASCEND INDEX_ADD_(TENSORVIEW)")
+        if inp.is_contiguous():
+            return _launch_index_add_tv(inp, index.contiguous(), src, alpha)
+        work = inp.contiguous()
+        _launch_index_add_tv(work, index.contiguous(), src, alpha)
+        inp.copy_(work)
+        return inp
+
+    def _tv_eligible(inp, dim, index, src):
+        if inp.numel() == 0 or index.numel() == 0:
+            return False
+        if dim % max(inp.ndim, 1) != 0:
+            return False
+        # This gate reads the index values, so its answer is only valid for the
+        # indices it saw. A captured graph replays with whatever the index
+        # buffer holds at replay time, which may well repeat a row the capture
+        # decided was unique. has_no_duplicates would also have to synchronize,
+        # which capture does not allow. The generic kernel masks every index on
+        # each execution, so it stays correct across replays; take it.
+        if inp.device.type != "cpu":
+            with torch_device_fn.device(inp.device):
+                if torch_device_fn.is_current_stream_capturing():
+                    return False
+        # bfloat16 goes through an fp32 staging buffer in the generic path to
+        # keep the accumulate accurate; leave that alone.
+        if inp.dtype == torch.bfloat16 or src.dtype != inp.dtype:
+            return False
+        if index.numel() != src.shape[0]:
+            return False
+        # The trailing dimensions collapse into one row, so a wide tail makes a
+        # row too wide to stage and UB overflow is a compile error. Same
+        # row_bytes and live_tiles the launch uses.
+        width = _volume(inp.shape[1:]) if inp.dim() > 1 else 1
+        if not tile_fits_ub(triton.next_power_of_2(width) * 4, 2):
+            return False
+        # A row narrower than one write granule cannot be scattered on its own:
+        # two destination rows share a granule, and the read-modify-write below
+        # then loses one of the two updates. Measured on this part, writing rows
+        # at index [100..107] through a GatherScatterView: 16 B rows lose an
+        # update at both fp16 and fp32, 24 B and wider never do. The loss needs
+        # the destinations to be close -- a gap of 4 rows or more is clean at
+        # 16 B -- but the gate cannot depend on the index values, so it requires
+        # a full granule. Narrow rows go to the generic kernel, which
+        # accumulates through a different decomposition and does not share this
+        # constraint.
+        if width * inp.element_size() < _SCATTER_GRANULE_BYTES:
+            return False
+        # Repeated indices lose updates on this path, see the note above.
+        return has_no_duplicates(index, inp.shape[0])
+
+    def index_add(inp, dim, index, src, alpha=1):
+        if not _tv_eligible(inp, dim, index, src):
+            return _index_add_generic(inp, dim, index, src, alpha)
+        return tensorview_call(
+            "INDEX_ADD",
+            _index_add_tensorview,
+            _index_add_generic,
+            inp,
+            dim,
+            index,
+            src,
+            alpha,
+        )
+
+    def index_add_(inp, dim, index, src, alpha=1):
+        if not _tv_eligible(inp, dim, index, src):
+            return _index_add__generic(inp, dim, index, src, alpha)
+        return tensorview_call(
+            "INDEX_ADD_",
+            _index_add__tensorview,
+            _index_add__generic,
+            inp,
+            dim,
+            index,
+            src,
+            alpha,
+        )
+
+else:
+    index_add = _index_add_generic
+    index_add_ = _index_add__generic

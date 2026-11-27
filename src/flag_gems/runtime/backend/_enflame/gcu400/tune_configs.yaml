@@ -93,49 +93,90 @@ addmm:
     BLOCK_SIZE_K: 256
   num_stages: 2
   num_warps: 4
+# addbmm keeps its own space so the gemm autotune list above (shared by addmm,
+# bmm and baddbmm) is not changed. Measured on GCU400, the dropped candidates
+# either fail at compile time (256x256x256 needs 1310720 bytes of dsm memory
+# against a 917504 limit) or are far slower than the kept configs
+# (32x32x32 is up to 65x slower on large shapes), so benchmarking them only
+# inflated the cold-start cost of every shape/dtype/layout case.
+#
+# num_warps=1 is the single largest win on this kernel (+20% fp16, +75% fp32 at
+# (16,4096^3) against the former num_warps=4 space): one warp per program keeps
+# the cluster on the GEMM core instead of splitting the tile across SIPs. The
+# 512-wide K tile then beats 256 on 16-bit input (+45% over 128x128x256/w4 at
+# (2,4096^3)) because the batch loop already serialises B x K steps. fp32 still
+# prefers the 256-wide K tile, autotune decides per dtype. The 64-wide K tile is
+# the fallback for the N == 1 and tiny-K layouts, see _prune_addbmm_configs;
+# it keeps num_warps=4 because the num_warps=1 form fails to link on GCU400
+# (ld.lld: relocation R_DTU_ADDR16_LO_ICALL against tops_cvt_v0_si8_to_v1_si8).
+addbmm:
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 512
+  num_stages: 2
+  num_warps: 1
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 256
+  num_stages: 4
+  num_warps: 1
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 512
+  num_stages: 2
+  num_warps: 1
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 64
+  num_stages: 2
+  num_warps: 4
 bmm:
-- META:
-    BLOCK_M: 512
-    BLOCK_N: 512
-    BLOCK_K: 512
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 512
-    BLOCK_N: 512
-    BLOCK_K: 256
-  num_stages: 3
-  num_warps: 4
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 512
-    BLOCK_K: 256
-  num_stages: 3
-  num_warps: 2
 - META:
     BLOCK_M: 256
     BLOCK_N: 256
     BLOCK_K: 256
-  num_stages: 3
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 256
+    BLOCK_K: 128
+  num_stages: 2
   num_warps: 4
 - META:
     BLOCK_M: 128
     BLOCK_N: 256
     BLOCK_K: 256
-  num_stages: 3
+  num_stages: 2
   num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 256
+  num_stages: 2
+  num_warps: 2
 - META:
     BLOCK_M: 128
     BLOCK_N: 128
-    BLOCK_K: 128
-  num_stages: 3
-  num_warps: 4
+    BLOCK_K: 256
+  num_stages: 2
+  num_warps: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 256
+  num_stages: 2
+  num_warps: 2
 - META:
     BLOCK_M: 64
     BLOCK_N: 64
     BLOCK_K: 64
-  num_stages: 3
-  num_warps: 4
+  num_stages: 2
+  num_warps: 2
 baddbmm:
 - META:
     TILE_M: 128
@@ -247,6 +288,13 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 128
     SPLIT_K: 1
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+    SPLIT_K: 2
   num_stages: 2
   num_warps: 4
 softmax_non_inner:
@@ -859,11 +907,11 @@ var_mean:
 
 conv2d_forward:
 - META:
-    BLOCK_NI_HO_WO: 64
+    BLOCK_NI_HO_WO: 128
     BLOCK_CO: 64
     BLOCK_CI: 32
-  num_stages: 1
-  num_warps: 1
+  num_stages: 2
+  num_warps: 4
 
 conv2d_backward_weight:
 - META:
@@ -871,42 +919,42 @@ conv2d_backward_weight:
     BLOCK_CO: 32
     BLOCK_NO: 32
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
     BLOCK_CI_HK_WK: 64
     BLOCK_CO: 32
     BLOCK_NO: 32
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
     BLOCK_CI_HK_WK: 64
     BLOCK_CO: 64
     BLOCK_NO: 32
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
     BLOCK_CI_HK_WK: 128
     BLOCK_CO: 32
     BLOCK_NO: 32
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
     BLOCK_CI_HK_WK: 128
     BLOCK_CO: 64
     BLOCK_NO: 32
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
     BLOCK_CI_HK_WK: 128
     BLOCK_CO: 128
     BLOCK_NO: 32
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
     BLOCK_CI_HK_WK: 128
     BLOCK_CO: 256
     BLOCK_NO: 32
-  num_stages: 3
+  num_stages: 2
   num_warps: 4
 batch_norm:
 - gen: true
@@ -1023,7 +1071,7 @@ linear:
       BLOCK_SIZE_M: 128
       BLOCK_SIZE_N: 256
       BLOCK_SIZE_K: 128
-    num_stages: 3
+    num_stages: 2
     num_warps: 2
   - META:
       BLOCK_SIZE_M: 128
@@ -1035,7 +1083,7 @@ linear:
       BLOCK_SIZE_M: 128
       BLOCK_SIZE_N: 256
       BLOCK_SIZE_K: 64
-    num_stages: 3
+    num_stages: 2
     num_warps: 2
   - META:
       BLOCK_SIZE_M: 64
@@ -1047,5 +1095,141 @@ linear:
       BLOCK_SIZE_M: 128
       BLOCK_SIZE_N: 128
       BLOCK_SIZE_K: 64
-    num_stages: 3
+    num_stages: 2
     num_warps: 2
+
+adaptive_max_pool3d:
+  # gcu400 tuned (2026-11-09, direct-scan kernel, 2x640x64x42x72->16x14x14):
+  # OPB=1024/w16/s3 = 35.2 ms, OPB=2048/w8/s3 = 43.6 ms, OPB=256/w8/s3 = 61.2 ms.
+  # Small-OPB entries kept for tiny outputs where large blocks waste threads.
+  - META:
+      OUT_PER_BLOCK: 1024
+      CHAN_PER_BLOCK: 1
+    num_warps: 16
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 1024
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 2048
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 2
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 128
+      CHAN_PER_BLOCK: 1
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 1
+    num_warps: 2
+    num_stages: 5
+
+adaptive_max_pool2d:
+  # gcu400: OUT_PER_BLOCK sweep, same ladder as adaptive_max_pool3d.  Both
+  # kernels (divisible fast path _adaptive_max_pool2d_div_kernel and the
+  # general _adaptive_max_pool2d_kernel) take OUT_PER_BLOCK from this list;
+  # KH/KW and MAX_WIN_H/MAX_WIN_W are bound at the call site.
+  # Without this entry the loader falls back to the nvidia default configs
+  # (BLOCK_H/BLOCK_W), which leaves OUT_PER_BLOCK unbound and the launch
+  # fails with "dynamic_func() missing 1 required positional argument".
+  - META:
+      OUT_PER_BLOCK: 1024
+    num_warps: 16
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 1024
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 128
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+    num_warps: 2
+    num_stages: 5
+
+quantized_max_pool3d:
+  # gcu400: 1-D grid pooling kernel, tuned on (4,3,16,56,56) /
+  # (4,3,16,128,128). The kernel is load-instruction bound (~7.6 GB/s of
+  # strided byte gathers), so tile shape is a weak lever: an exhaustive
+  # 15-config sweep only moved these shapes by ~2%. What does matter is the
+  # program count - num_warps=1 wins once ~2K programs are in flight, while
+  # few-program shapes want the largest tile with the highest warp count.
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 32
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_H: 4
+      BLOCK_W: 32
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 64
+    num_warps: 8
+    num_stages: 3
+
+quantized_max_pool3d_channel:
+  # gcu400: channel-tiled variant (folded (channel, height) row axis), used
+  # when the input has >= 512 (n, c) planes. Winners for (8,64,8,28,28) /
+  # (16,128,4,14,14) / (32,256,2,7,7); the last one needs the widest channel
+  # tile (128 planes, 8 warps) for another 9%. Without this entry the loader
+  # falls back to the nvidia default configs (BLOCK_H/BLOCK_W), which leaves
+  # BLOCK_C unbound and the launch fails with "dynamic_func() missing 3
+  # required positional arguments".
+  - META:
+      BLOCK_C: 16
+      BLOCK_H: 4
+      BLOCK_W: 16
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_C: 16
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_C: 32
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_C: 64
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_C: 128
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 8
+    num_stages: 3

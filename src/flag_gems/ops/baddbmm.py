@@ -23,7 +23,9 @@ from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as ext
 from .bmm import bmm
+from .copy import copy_
 from .mul import mul
+from .sum import sum_dim
 
 logger = logging.getLogger(__name__)
 
@@ -185,15 +187,19 @@ class BaddbmmFunction(torch.autograd.Function):
     def forward(ctx, bias, A, B, beta, alpha):
         logger.debug("GEMS BADDBMM_FORWARD")
 
-        ctx.save_for_backward(A, B, bias)
-        ctx.alpha = alpha
-        ctx.beta = beta
+        BaddbmmFunction._save_context(ctx, bias, A, B, beta, alpha)
 
         batch, M, K = A.shape
         _, _, N = B.shape
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
         _baddbmm_launch(bias, A, B, beta, alpha, out)
         return out
+
+    @staticmethod
+    def _save_context(ctx, bias, A, B, beta, alpha):
+        ctx.save_for_backward(A, B, bias)
+        ctx.alpha = alpha
+        ctx.beta = beta
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -214,6 +220,22 @@ class BaddbmmFunction(torch.autograd.Function):
 
 
 def compute_bias_grad(d_output, beta, bias):
+    if (
+        d_output.dtype in (torch.float16, torch.bfloat16)
+        and d_output.shape != bias.shape
+    ):
+        bias_shape = (1,) * (d_output.ndim - bias.ndim) + bias.shape
+        dims = [
+            dim
+            for dim, (source, target) in enumerate(zip(d_output.shape, bias_shape))
+            if source != target
+        ]
+        if dims:
+            # Accumulate broadcast axes in FP32 and round only the final bias gradient.
+            grad_bias = sum_dim(d_output, dim=dims, dtype=torch.float32)
+            out = torch.empty(bias.shape, device=bias.device, dtype=bias.dtype)
+            return copy_(out, mul(grad_bias, beta).view(bias.shape))
+
     grad_bias = mul(d_output, beta)
     if grad_bias.shape != bias.shape:
         # Sum over broadcasted dimensions

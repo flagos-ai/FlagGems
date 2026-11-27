@@ -29,14 +29,32 @@ device = device.name
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func(x, y):
-    if x.dtype.is_int() and y.dtype.is_int():
-        # Keep narrow integer/bool comparisons in a supported integer width.
-        if x.dtype.primitive_bitwidth < 32:
-            x = x.to(tl.int32)
-        if y.dtype.primitive_bitwidth < 32:
-            y = y.to(tl.int32)
-        return x == y
-    return x.to(tl.float32) == y.to(tl.float32)
+    # Compare in a dtype that does not discard information: FP32 represents
+    # fp16/bf16 exactly, but it rounds integers above 2**24 (so distinct ids
+    # can compare equal) and truncates fp64 values.  Integer operands must
+    # therefore stay in an integer type, and fp64 must stay in fp64.
+    if x.dtype.is_fp64() or y.dtype.is_fp64():
+        return x.to(tl.float64) == y.to(tl.float64)
+    elif x.dtype.is_floating() or y.dtype.is_floating():
+        return x.to(tl.float32) == y.to(tl.float32)
+    else:
+        return x.to(tl.int64) == y.to(tl.int64)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+)
+@triton.jit
+def eq_func_zero_dim(x, y, cast_left):
+    # A zero-dimensional integer tensor is weakly promoted against a
+    # non-scalar integer tensor. Cast inside the kernel, not on the host.
+    if cast_left:
+        lhs = x.to(y.dtype).to(tl.int64)
+        rhs = y.to(tl.int64)
+    else:
+        lhs = x.to(tl.int64)
+        rhs = y.to(x.dtype).to(tl.int64)
+    return lhs == rhs
 
 
 def eq(A, B):
@@ -46,35 +64,39 @@ def eq(A, B):
         else:
             A = A.to(B.device)
     logger.debug("GEMS EQ")
-    # ALWAYS_BOOL controls output allocation, not input promotion. In particular,
-    # signed/unsigned pairs and zero-dimensional tensors need PyTorch's rules.
     if (
         A.dtype != B.dtype
+        and (A.ndim == 0) != (B.ndim == 0)
         and not A.dtype.is_floating_point
         and not B.dtype.is_floating_point
         and not A.dtype.is_complex
         and not B.dtype.is_complex
     ):
-        dtype = torch.result_type(A, B)
-        A, B = A.to(dtype), B.to(dtype)
+        cast_left = A.ndim == 0
+        strong = B if cast_left else A
+        if strong.dtype != torch.bool:
+            return eq_func_zero_dim(A, B, cast_left)
     return eq_func(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func_scalar(x, y):
-    if x.dtype.is_int() and y.dtype.is_int():
-        if x.dtype == tl.int1:
-            return x.to(tl.int32) == y
-        if x.dtype.primitive_bitwidth < 32:
-            return x.to(tl.int32) == y.to(x.dtype).to(tl.int32)
-        return x == y.to(x.dtype)
-    return x.to(tl.float32) == y.to(tl.float32)
+    # A floating-point scalar promotes the comparison to floating point (it
+    # must not be truncated to an integer), while an integer scalar keeps
+    # integer semantics so that large integer values stay exact.
+    if y.dtype.is_floating() or x.dtype.is_floating():
+        if x.dtype.is_fp64() or y.dtype.is_fp64():
+            return x.to(tl.float64) == y.to(tl.float64)
+        return x.to(tl.float32) == y.to(tl.float32)
+    if x.dtype == tl.int1:
+        return x.to(tl.int64) == y.to(tl.int64)
+    return x.to(tl.int64) == y.to(x.dtype).to(tl.int64)
 
 
 def eq_scalar(A, B):
     logger.debug("GEMS EQ_SCALAR")
-    # Keep bool and integer scalar calls on the same integer launch signature.
+    # Normalize the scalar launch signature across successive bool/int calls.
     if isinstance(B, bool):
         B = int(B)
     return eq_func_scalar(A, B)

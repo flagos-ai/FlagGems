@@ -210,6 +210,10 @@ def test_dyn_quant_matmul_4bit_invalid(fault, match):
         flag_gems._dyn_quant_matmul_4bit(x, p, block, k, n)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="4-bit quantization not supported on this device",
+)
 @pytest.mark.dyn_quant_matmul_4bit
 def test_dyn_quant_matmul_4bit_compile():
     x = torch.randn((7, 64), device=flag_gems.device)

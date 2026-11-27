@@ -44,8 +44,12 @@ def _check_indices_kernel(
     PSTRIDES: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    row = tl.program_id(0)
-    batch = tl.program_id(1).to(tl.int64)
+    # Flatten segment and batch coordinates into CUDA grid dimension 0;
+    # dimension 1 is limited to 65535 even when the batch product is larger.
+    segment_count = tl.maximum(cdim, 1)
+    pid = tl.program_id(0).to(tl.int64)
+    row = pid % segment_count
+    batch = pid // segment_count
     cb = tl.full((), 0, tl.int64)
     pb = tl.full((), 0, tl.int64)
     for d in tl.static_range(len(BSHAPE) - 1, -1, -1):
@@ -54,23 +58,28 @@ def _check_indices_kernel(
         cb += coord * CSTRIDES[d]
         pb += coord * PSTRIDES[d]
     lanes = tl.arange(0, BLOCK)
-    lo = tl.load(comp + cb + row * cs).to(tl.int64)
-    hi = tl.load(comp + cb + (row + 1) * cs, mask=row < cdim, other=0).to(tl.int64)
     if cdim == 0:
-        valid = (lo == 0) & (nnz == 0)
+        # ATen has no compressed segments to check, but still validates every
+        # plain coordinate against dim. Compressed offsets and ordering are
+        # irrelevant in this case, including when nnz is nonzero.
+        start = tl.full((), 0, tl.int64)
+        end = nnz.to(tl.int64)
+        bad = tl.full((BLOCK,), False, tl.int1)
     else:
+        lo = tl.load(comp + cb + row * cs).to(tl.int64)
+        hi = tl.load(comp + cb + (row + 1) * cs, mask=row < cdim, other=0).to(tl.int64)
         valid = (lo >= 0) & (hi >= lo) & (hi <= nnz) & (hi - lo <= dim)
         valid &= (row != 0) | (lo == 0)
         valid &= (row != cdim - 1) | (hi == nnz)
-    bad = (lanes == 0) & ~valid
-    # Invalid offsets must be rejected without allowing an out-of-bounds read.
-    start = tl.minimum(tl.maximum(lo, 0), nnz)
-    end = tl.minimum(tl.maximum(hi, 0), nnz)
+        bad = (lanes == 0) & ~valid
+        # Reject invalid offsets without allowing an out-of-bounds read.
+        start = tl.minimum(tl.maximum(lo, 0), nnz)
+        end = tl.minimum(tl.maximum(hi, 0), nnz)
     for offset in range(start, end, BLOCK):
         idx = offset + lanes
         mask = idx < end
         val = tl.load(plain + pb + idx * ps, mask=mask, other=0).to(tl.int64)
-        predecessor = mask & (idx > start)
+        predecessor = mask & (idx > start) & (cdim != 0)
         prev = tl.load(plain + pb + (idx - 1) * ps, mask=predecessor, other=0).to(
             tl.int64
         )
@@ -122,13 +131,17 @@ def _check_indices(is_crow, compressed_idx, plain_idx, cdim, dim, nnz):
     ):
         if not limit.min <= value <= limit.max:
             raise RuntimeError(f"{limit.bits}-bit integer overflow in {name} = {value}")
+    # With no segment and no plain coordinates, content validation is empty.
+    # Keep this after shape/dtype/batch/overflow checks so metadata is checked.
+    if cdim == 0 and nnz == 0:
+        return None
     batch_shape = compressed_idx.shape[:-1]
     count = 1
     for extent in batch_shape:
         count *= extent
     if count:
         with torch_device_fn.device(compressed_idx.device):
-            _check_indices_kernel[(max(cdim, 1), count)](
+            _check_indices_kernel[(max(cdim, 1) * count,)](
                 compressed_idx,
                 plain_idx,
                 cdim,
@@ -184,8 +197,12 @@ def _validate_metadata(
         raise RuntimeError(
             "values must have dimensionality > sum of batch and block dimensionalities"
         )
-    if compressed_indices.stride(-1) != 1 or plain_indices.stride(-1) != 1:
-        raise RuntimeError("indices must be contiguous per batch")
+    # ATen skips the plain-index stride check only when it has no elements.
+    # Compressed indices must retain unit last stride even for zero batches.
+    if plain_indices.numel() != 0 and plain_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {pname} to be a contiguous tensor per batch")
+    if compressed_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {cname} to be a contiguous tensor per batch")
     size = tuple(operator.index(extent) for extent in size)
     if len(size) != batch_ndim + 2 + dense_ndim:
         raise RuntimeError(

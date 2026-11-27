@@ -127,12 +127,21 @@ def test_trapz_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_trapz_int_promotion(dtype):
     """Integer inputs are promoted to float32, matching PyTorch."""
+    if (
+        flag_gems.vendor_name == "enflame"
+        and dtype in (torch.int16, torch.int32)
+        and not utils.TO_CPU
+    ):
+        pytest.skip(
+            "Enflame native trapezoid integer sum promotes to unsupported Int64"
+        )
     inp = torch.randint(-8, 8, (3, 4), device="cpu", dtype=dtype).to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.trapezoid(ref_inp, dx=0.5, dim=-1)
     res_out = flag_gems.trapz(inp, dx=0.5, dim=-1)
 
+    assert res_out.device == inp.device
     assert res_out.dtype == torch.float32
     utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=4)
 
@@ -171,6 +180,9 @@ def test_trapz_complex(shape, dtype, dim):
     if dim >= len(shape) or dim < -len(shape):
         pytest.skip("Invalid dim for shape")
 
+    if flag_gems.vendor_name == "ascend" and dtype == torch.complex32:
+        pytest.skip("Ascend does not support casting complex inputs to complex32")
+
     real = torch.randn(shape, device=flag_gems.device)
     imag = torch.randn(shape, device=flag_gems.device)
     inp = torch.complex(real, imag).to(dtype)
@@ -185,6 +197,80 @@ def test_trapz_bool():
     inp = torch.randint(0, 2, (3, 4), device=flag_gems.device, dtype=torch.bool)
     with pytest.raises(RuntimeError):
         flag_gems.trapz(inp, dx=1.0, dim=-1)
+
+
+@pytest.mark.trapz
+def test_trapz_invalid_dx():
+    """bool and complex dx (scalar or 0-d tensor) are rejected, matching ATen.
+
+    A plain float() coercion would silently turn True into 1.0 and drop the
+    imaginary part of a complex dx, so validation must happen before conversion.
+    """
+    inp = torch.randn(4, device=flag_gems.device)
+    for dx in [True, False, 1 + 2j, torch.tensor(True), torch.tensor(1 + 2j)]:
+        with pytest.raises(RuntimeError, match="only support dx as a real number"):
+            flag_gems.trapz(inp, dx=dx)
+
+        with pytest.raises(RuntimeError, match="only support dx as a real number"):
+            torch.trapezoid(inp.cpu(), dx=dx)
+
+    # Real 0-d int/float tensors are accepted and match the scalar dx path.
+    for dx in [2, 2.0, torch.tensor(2), torch.tensor(2.0)]:
+        ref_inp = utils.to_reference(inp, True)
+        ref_out = torch.trapezoid(ref_inp, dx=dx)
+        res_out = flag_gems.trapz(inp, dx=dx)
+        utils.gems_assert_close(res_out, ref_out, inp.dtype)
+
+
+@pytest.mark.trapz
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + [torch.int32])
+def test_trapz_empty_dim_ordering(dtype):
+    """An empty reduction dim returns before the bool/complex/dx checks run.
+
+    ATen short-circuits an empty reduction dimension to zeros of the input dtype
+    *before* validating dx, so an invalid dx must not raise there. A degenerate
+    N == 1 dim still validates dx, which the non-empty cases below cover.
+    """
+    for shape, dim in [((2, 0), -1), ((0, 3), 0)]:
+        inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+
+        for dx in [1.0, True, 1 + 2j]:
+            ref_out = torch.trapezoid(ref_inp, dx=dx, dim=dim)
+            res_out = flag_gems.trapz(inp, dx=dx, dim=dim)
+            utils.gems_assert_close(res_out, ref_out, ref_out.dtype)
+
+
+@pytest.mark.trapz
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_trapz_single_length_dim_ordering(dtype):
+    """N == 1 still validates dx, matching ATen's ordering."""
+    inp = torch.zeros((3, 1), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.trapezoid(ref_inp, dx=1.0, dim=-1)
+    res_out = flag_gems.trapz(inp, dx=1.0, dim=-1)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+    for dx in [True, 1 + 2j]:
+        with pytest.raises(RuntimeError, match="only support dx as a real number"):
+            flag_gems.trapz(inp, dx=dx, dim=-1)
+
+
+@pytest.mark.trapz
+def test_trapz_bool_complex_ordering():
+    """A non-degenerate dim still rejects bool/complex y, and dx is checked too."""
+    bool_inp = torch.zeros(2, 3, dtype=torch.bool, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="bool input"):
+        flag_gems.trapz(bool_inp, dx=1.0, dim=-1)
+
+    cplx_inp = torch.randn(2, 3, dtype=torch.complex64, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="complex inputs are not supported"):
+        flag_gems.trapz(cplx_inp, dx=1.0, dim=-1)
+
+    # Invalid dim is reported before any dtype/dx rejection.
+    with pytest.raises(IndexError):
+        flag_gems.trapz(bool_inp, dx=True, dim=5)
 
 
 @pytest.mark.trapz
