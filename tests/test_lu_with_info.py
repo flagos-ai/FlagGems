@@ -27,6 +27,60 @@ else:
     _PIVOT_VALUES = [True]
 
 
+def _cpu_lu_without_lapack(input, *, pivot=True, check_errors=False):
+    """Gaussian elimination on CPU, including 1-based partial pivots and info."""
+    assert input.device.type == "cpu" and input.ndim >= 2
+    m, n = input.shape[-2:]
+    k = min(m, n)
+    lu = input.clone(memory_format=torch.contiguous_format)
+    pivots = torch.empty((*input.shape[:-2], k), dtype=torch.int32)
+    info = torch.zeros(input.shape[:-2], dtype=torch.int32)
+    if not input.numel() or not k:
+        return lu, pivots, info
+    matrix = lu.reshape(-1, m, n)
+    batch = torch.arange(matrix.shape[0])
+    flat_pivots, flat_info = pivots.reshape(-1, k), info.reshape(-1)
+    for j in range(k):
+        selected = (
+            matrix[:, j:, j].abs().argmax(dim=-1) + j
+            if pivot
+            else torch.full_like(batch, j)
+        )
+        flat_pivots[:, j] = selected.to(torch.int32) + 1
+        old_row = matrix[:, j, :].clone()
+        matrix[:, j, :] = matrix[batch, selected, :]
+        matrix[batch, selected, :] = old_row
+        diagonal = matrix[:, j, j]
+        zero = diagonal == 0
+        flat_info[(flat_info == 0) & zero] = j + 1
+        if j + 1 < m:
+            matrix[:, j + 1 :, j] = torch.where(
+                zero[:, None],
+                matrix[:, j + 1 :, j],
+                matrix[:, j + 1 :, j] / diagonal[:, None],
+            )
+            if j + 1 < n:
+                matrix[:, j + 1 :, j + 1 :] -= (
+                    matrix[:, j + 1 :, j, None] * matrix[:, None, j, j + 1 :]
+                )
+    if check_errors and (info > 0).any():
+        raise RuntimeError("LU factorization has a zero diagonal pivot")
+    return lu, pivots, info
+
+
+def _reference_lu(input, *, pivot=True, check_errors=False):
+    try:
+        return torch._lu_with_info(input, pivot=pivot, check_errors=check_errors)
+    except RuntimeError as error:
+        if not (
+            VENDOR == "mthreads"
+            and input.device.type == "cpu"
+            and "requires compiling PyTorch with LAPACK" in str(error)
+        ):
+            raise
+        return _cpu_lu_without_lapack(input, pivot=pivot, check_errors=check_errors)
+
+
 def _make_singular(shape, device, dtype):
     """Construct a batch of matrices where one element is exactly singular.
 
@@ -86,11 +140,12 @@ def test_lu_with_info(shape, dtype, pivot):
         pytest.skip("pivot=False only supported on CUDA")
     inp = _make_input(shape, pivot, DEVICE, dtype)
     ref_inp = utils.to_reference(inp)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(ref_inp, pivot=pivot)
+    ref_lu, ref_pivots, ref_info = _reference_lu(ref_inp, pivot=pivot)
     res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, pivot=pivot)
     # LU has the same shape/dtype as the input
     assert res_lu.shape == ref_lu.shape
-    assert res_lu.dtype == ref_lu.dtype
+    assert res_lu.dtype == inp.dtype
+    assert all(value.device == inp.device for value in (res_lu, res_pivots, res_info))
     # pivots are int32, shape (batch, min(m,n))
     assert res_pivots.dtype == torch.int32
     assert res_pivots.shape == ref_pivots.shape
@@ -138,7 +193,7 @@ def test_lu_with_info_singular(shape, dtype):
     """Singular matrices must produce a nonzero ``info`` matching the reference."""
     inp = _make_singular(shape, DEVICE, dtype)
     ref_inp = utils.to_reference(inp)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(ref_inp, pivot=True)
+    ref_lu, ref_pivots, ref_info = _reference_lu(ref_inp, pivot=True)
     res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, pivot=True)
     assert res_info.dtype == torch.int32
     # The all-zero-last-row construction is singular, so every batch element
@@ -181,7 +236,7 @@ def test_lu_with_info_singular_positions(shape, pos, dtype):
     """
     inp = _make_rank_deficient_at(shape, pos, DEVICE, dtype)
     ref_inp = utils.to_reference(inp)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(ref_inp, pivot=True)
+    ref_lu, ref_pivots, ref_info = _reference_lu(ref_inp, pivot=True)
     res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, pivot=True)
     assert torch.isfinite(res_lu).all(), "LU contains non-finite values"
     # info must track the reference exactly, whether or not the elimination
@@ -208,7 +263,7 @@ def test_lu_with_info_empty(shape, dtype):
     """Empty matrices (m=0 or n=0) return correctly shaped zero-info outputs."""
     inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = utils.to_reference(inp)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(ref_inp, pivot=True)
+    ref_lu, ref_pivots, ref_info = _reference_lu(ref_inp, pivot=True)
     res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, pivot=True)
     assert res_lu.shape == ref_lu.shape
     assert res_pivots.shape == ref_pivots.shape
@@ -224,7 +279,7 @@ def test_lu_with_info_info_shape(shape, dtype):
     full_shape = shape
     inp = torch.randn(full_shape, dtype=dtype, device=DEVICE)
     ref_inp = utils.to_reference(inp)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(ref_inp, pivot=True)
+    ref_lu, ref_pivots, ref_info = _reference_lu(ref_inp, pivot=True)
     res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, pivot=True)
     assert res_info.shape == ref_info.shape
 
@@ -283,7 +338,7 @@ def test_lu_with_info_empty_batch_dimensions(shape):
     # zero-sized row/column enters it with an empty matrix; both must return
     # the correctly shaped LU, empty pivots, and zero info, matching native.
     inp = torch.zeros(shape, dtype=torch.float64, device=flag_gems.device)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(
+    ref_lu, ref_pivots, ref_info = _reference_lu(
         utils.to_reference(inp), check_errors=False
     )
     res_lu, res_pivots, res_info = flag_gems._lu_with_info(inp, check_errors=False)
@@ -309,7 +364,7 @@ def test_lu_with_info_exact_zero_pivot_position(zero_pos, request):
 
     # Iluvatar's native device LU can report the wrong exact zero pivot.
     ref_inp = host if flag_gems.vendor_name == "iluvatar" else utils.to_reference(inp)
-    _, _, ref_info = torch._lu_with_info(ref_inp, pivot=True)
+    _, _, ref_info = _reference_lu(ref_inp, pivot=True)
     _, _, res_info = flag_gems._lu_with_info(inp, pivot=True)
     assert res_info.device == inp.device
     assert res_info.dtype == torch.int32
