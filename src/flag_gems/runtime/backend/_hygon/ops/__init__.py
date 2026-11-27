@@ -154,6 +154,7 @@ from ._foreach_tan_ import _foreach_tan_ as _foreach_tan_
 from ._foreach_tanh import _foreach_tanh as _foreach_tanh
 from ._foreach_tanh_ import _foreach_tanh_ as _foreach_tanh_
 from ._foreach_trunc import _foreach_trunc as _foreach_trunc
+from ._foreach_trunc_ import _foreach_trunc_ as _foreach_trunc_
 from ._fused_rms_norm_backward import (
     _fused_rms_norm_backward as _fused_rms_norm_backward,
 )
@@ -527,6 +528,7 @@ __all__ = [
     "_foreach_tanh",
     "_foreach_tanh_",
     "_foreach_trunc",
+    "_foreach_trunc_",
     "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
