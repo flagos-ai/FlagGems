@@ -32,6 +32,13 @@ class UpsampleBilinear2dAaBackwardBenchmark(base.Benchmark):
             ))
 
     def build_inputs(self, case):
+        if flag_gems.vendor_name == "enflame" and case.dtype in (
+            torch.float16, torch.bfloat16
+        ):
+            pytest.skip(
+                "Enflame native AA bilinear backward falls back to CPU, whose "
+                "kernel does not support Half or BFloat16; float32 is supported"
+            )
         N, C, Hi, Wi, Ho, Wo, ac = case.builder_args[0].builder_args[0]
         grad = torch.randn((N, C, Ho, Wo), device=self.device, dtype=case.dtype)
         return grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None
