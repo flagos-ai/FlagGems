@@ -63,6 +63,12 @@ def _complex_logcumsumexp_reference(inp, dim):
 @pytest.mark.parametrize("shape", LOGCUMSUMEXP_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__logcumsumexp(shape, dtype):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not utils.TO_CPU
+        and dtype == torch.bfloat16
+    ):
+        pytest.skip("MUSA native logcumsumexp does not support nonempty BFloat16")
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -74,6 +80,7 @@ def test__logcumsumexp(shape, dtype):
     ref_out = torch._logcumsumexp(ref_inp, dim)
     res_out = flag_gems._logcumsumexp(inp, dim)
 
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
