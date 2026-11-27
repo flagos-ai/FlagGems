@@ -1,10 +1,7 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
-from .consts import BenchmarkMetrics
 
 # FP16/BF16 only: int8 matmul requires half-precision activation
 FP16_BF16_DTYPES = [torch.float16, torch.bfloat16]
@@ -39,9 +36,6 @@ WEIGHT_INT8PACK_MM_SHAPES = [
 
 class WeightInt8packMMBenchmark(base.Benchmark):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.gems_op = flag_gems.weight_int8pack_mm
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = WEIGHT_INT8PACK_MM_SHAPES
@@ -67,36 +61,15 @@ class WeightInt8packMMBenchmark(base.Benchmark):
         scales = torch.randn((N,), dtype=case.dtype, device=self.device)
         return (A, B, scales)
 
-    def _run_metric(self, input_item):
-        metric = BenchmarkMetrics()
-        A, B, scales = input_item
-        metric.shape_detail = self.record_shapes(A, B, scales)
-        try:
-            if "latency_base" in self.to_bench_metrics:
-                metric.latency_base = self.get_latency(self.torch_op, A, B, scales)
-            if "latency" in self.to_bench_metrics:
-                metric.latency = self.get_latency(self.gems_op, A, B, scales)
-            if "speedup" in self.to_bench_metrics:
-                metric.speedup = metric.latency_base / metric.latency
-        except (RuntimeError, Exception) as e:
-            metric.error_msg = str(e)
-            pytest.fail(str(e))
-        return metric
 
 
-def weight_int8pack_mm_torch(A, B, scales):
-    """Torch baseline: dequantize int8 weights and compute matmul with scaling."""
-    B_fp = B.to(A.dtype)
-    result = torch.matmul(A, B_fp.T)
-    result = result * scales.unsqueeze(0)
-    return result
 
 
 @pytest.mark.weight_int8pack_mm
 def test_weight_int8pack_mm():
     bench = WeightInt8packMMBenchmark(
         op_name="weight_int8pack_mm",
-        torch_op=weight_int8pack_mm_torch,
+        torch_op=torch.ops.aten._weight_int8pack_mm.default,
         dtypes=FP16_BF16_DTYPES,
     )
     bench.run()

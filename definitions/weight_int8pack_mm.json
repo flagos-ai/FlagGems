@@ -2,22 +2,25 @@
   "api_version": "v6.0",
   "name": "weight_int8pack_mm",
   "requires_triton_kernel": true,
-  "description": "Performs int8 weight-only quantized matrix multiplication with per-channel scales.",
+  "description": "Candidate signature (A, B, scales), positional mapping to exact native aten::_weight_int8pack_mm(Tensor self, Tensor mat2, Tensor scales) -> Tensor. A is activation [M,K], B is int8 weight [N,K] (one byte per element, not bit-packed), scales is per-output-channel [N]; return [M,N], no input mutation or alias. Existing master accuracy uses half/bfloat16 activation and an eager mathematical oracle (cast weight, matmul then scale), which can round differently from fused native execution. That oracle is accuracy-only and is not the benchmark native baseline. Benchmark calls exact native API without manual dequantization or fallback. Native schema existence does not establish backend capability.",
   "parameters": [
     {
       "name": "A",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "B",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "scales",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [
