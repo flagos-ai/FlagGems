@@ -16,7 +16,11 @@
 import logging
 
 import torch
+import triton
 
+from flag_gems.ops.argsort import argsort as gems_argsort
+from flag_gems.ops.copy import copy_ as gems_copy_
+from flag_gems.ops.gather import gather as gems_gather
 from flag_gems.ops.topk import topk as gems_topk
 
 logger = logging.getLogger(__name__)
@@ -26,8 +30,7 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
     """
     Returns the kth smallest elements and their indices along the given dimension.
 
-    This implementation uses topk with largest=False to get the k smallest elements,
-    then extracts the kth element from the result.
+    Use topk for small selections and tiled argsort for large selections.
     """
     logger.debug("GEMS KTHVALUE")
 
@@ -72,6 +75,19 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
             torch.empty(out_shape, dtype=inp.dtype, device=inp.device),
             torch.empty(out_shape, dtype=torch.int64, device=inp.device),
         )
+
+    # The multi-stage topk grows its 1024-element chunks for large k and puts
+    # all chunk candidates in one block subject to Triton's tensor size limit.
+    if dim_size >= 4096 and (k > 1024 or triton.cdiv(dim_size, 1024) * k > (1 << 20)):
+        sorted_indices = gems_argsort(inp, dim=dim)
+        kth_index = sorted_indices.narrow(dim, k - 1, 1)
+        # Copy the selected indices so the output does not retain the full sort.
+        indices = torch.empty_like(kth_index, memory_format=torch.contiguous_format)
+        gems_copy_(indices, kth_index)
+        values = gems_gather(inp, dim, indices).to(original_dtype)
+        if not keepdim:
+            return values.squeeze(dim), indices.squeeze(dim)
+        return values, indices
 
     # Determine if we need to transpose
     need_transpose = dim != ndim - 1
