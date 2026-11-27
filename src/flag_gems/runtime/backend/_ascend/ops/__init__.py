@@ -333,6 +333,7 @@ from .multi_margin_loss import (
 )
 from .multinomial import multinomial
 from .mv import mv
+from .nan_to_num_ import nan_to_num_
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
@@ -822,6 +823,7 @@ __all__ = [
     "multi_margin_loss_backward_out",
     "multinomial",
     "mv",
+    "nan_to_num_",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
