@@ -418,7 +418,6 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .dequantize import dequantize
-from .det import det
 from .detach_copy import detach_copy
 from .diag import diag
 from .diag_embed import diag_embed
@@ -1489,7 +1488,6 @@ __all__ = [
     "deg2rad_",
     "deg2rad_out",
     "dequantize",
-    "det",
     "detach_copy",
     "diag",
     "diag_embed",
