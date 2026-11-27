@@ -60,18 +60,21 @@ _QINT_TO_INT = {
 def quantized_max_pool3d_forward_kernel(
     input_ptr,
     output_ptr,
-    # Input tensor strides
-    in_stride_n,
-    in_stride_c,
-    in_stride_d,
-    in_stride_h,
-    in_stride_w,
+    # Input tensor strides (compile-time: the tap addresses stay affine, which
+    # is what lets the backend emit per-row block loads instead of a discrete
+    # per-lane gather; the layouts that reach this kernel are finite, so the
+    # extra specializations are cheap).
+    in_stride_n: tl.constexpr,
+    in_stride_c: tl.constexpr,
+    in_stride_d: tl.constexpr,
+    in_stride_h: tl.constexpr,
+    in_stride_w: tl.constexpr,
     # Output tensor strides
-    out_stride_n,
-    out_stride_c,
-    out_stride_d,
-    out_stride_h,
-    out_stride_w,
+    out_stride_n: tl.constexpr,
+    out_stride_c: tl.constexpr,
+    out_stride_d: tl.constexpr,
+    out_stride_h: tl.constexpr,
+    out_stride_w: tl.constexpr,
     # Input/Output shapes
     in_c,
     in_d,
@@ -163,6 +166,656 @@ def quantized_max_pool3d_forward_kernel(
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
 
 
+# ---------------------------------------------------------------------------
+# Fast path for the benchmark-dominant geometry (k=3, s=2, p=1, dilation=1).
+#
+# The generic tiled kernel above addresses every tap with a 2-D pointer tensor
+# whose row stride is only known at runtime, so on XPU3 each tap lowers to a
+# per-lane gather, and (BLOCK_H, BLOCK_W) tiles themselves are serialized
+# row-by-row by the backend (~0.5-1.3 GB/s).  The two flat kernels below keep
+# every access a 1-D, run-contiguous stream, which is the only access shape
+# that reaches the block-DMA path on this toolchain (~240-520 GB/s):
+#
+#   1. ``wpool``: max over the 3 W taps -> an intermediate of shape
+#      (N, C, D, H, out_w).  Lanes enumerate the whole intermediate, so both
+#      the load runs and the store are contiguous.  For an even ``in_w`` the
+#      rows are 2-byte aligned and the tap bytes are extracted from an int16
+#      "pair" view, so both taps are plain unit-stride int16 loads.
+#   2. ``hdpool``: max over the 3x3 (d, h) window of the intermediate ->
+#      (N, C, out_d, out_h, out_w).  Lanes enumerate the final output; the nine
+#      taps are scalar offsets from a per-lane base that stays run-contiguous
+#      along W.
+#
+# Shape guidance (measured on XPU3): putting a ``tl.where`` on a *load address*
+# turns the run-contiguous gather into a serialized per-lane path (up to 16x
+# slower), so padding taps are neutralized by a value-level ``tl.where`` and
+# the intermediate is allocated with a neutral-slack halo that keeps every
+# computed address in bounds.  Padding the addresses instead is not an option.
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_wpool_word_kernel(
+    x_ptr,
+    a_ptr,
+    total_words,
+    out_w: tl.constexpr,
+    signed: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """W-window max, four outputs per lane, packed into one int32 store.
+
+    ``x_ptr`` is the input viewed as int64 (little-endian: byte 0 = lowest
+    address) and ``a_ptr`` the intermediate viewed as int32.  The 9 taps of
+    the 4 outputs in a lane are bytes ``8j-1 .. 8j+7``, i.e. the previous and
+    the current word, so the whole pass is two unit-stride int64 loads plus one
+    unit-stride int32 store per 4 outputs.
+
+    Note: a plain int32-word variant (three loads, no 64-bit shifts) is ~2x
+    faster but the *masked negative-offset* int32 load silently returns values
+    from neighbouring lanes on XPU3, so this masked form keeps int64.  The
+    unmasked two-launch split below (``_wpool_head_kernel`` +
+    ``_wpool_body_kernel``) avoids the masked negative load entirely and does
+    use int32 words.
+    """
+    pid = tl.program_id(0)
+    j = pid * BLOCK + tl.arange(0, BLOCK)
+    m = j < total_words
+
+    wc = tl.load(x_ptr + j, mask=m, other=0)
+    wp = tl.load(x_ptr + j - 1, mask=(j > 0) & m, other=0)
+
+    b0 = wc & 0xFF
+    b1 = (wc >> 8) & 0xFF
+    b2 = (wc >> 16) & 0xFF
+    b3 = (wc >> 24) & 0xFF
+    b4 = (wc >> 32) & 0xFF
+    b5 = (wc >> 40) & 0xFF
+    b6 = (wc >> 48) & 0xFF
+    b7 = (wc >> 56) & 0xFF
+    bp = (wp >> 56) & 0xFF
+
+    if signed:
+        b0 = tl.where(b0 >= 128, b0 - 256, b0)
+        b1 = tl.where(b1 >= 128, b1 - 256, b1)
+        b2 = tl.where(b2 >= 128, b2 - 256, b2)
+        b3 = tl.where(b3 >= 128, b3 - 256, b3)
+        b4 = tl.where(b4 >= 128, b4 - 256, b4)
+        b5 = tl.where(b5 >= 128, b5 - 256, b5)
+        b6 = tl.where(b6 >= 128, b6 - 256, b6)
+        b7 = tl.where(b7 >= 128, b7 - 256, b7)
+        bp = tl.where(bp >= 128, bp - 256, bp)
+
+    # ``r + i == 0`` (only i == 0) or ``r + i == out_w`` marks a row start:
+    # its left tap belongs to the padding.
+    r = (4 * j) % out_w
+
+    m0 = tl.maximum(tl.maximum(tl.where(r == 0, neutral, bp), b0), b1)
+    m1 = tl.maximum(tl.maximum(tl.where(r + 1 == out_w, neutral, b1), b2), b3)
+    m2 = tl.maximum(tl.maximum(tl.where(r + 2 == out_w, neutral, b3), b4), b5)
+    m3 = tl.maximum(tl.maximum(tl.where(r + 3 == out_w, neutral, b5), b6), b7)
+
+    packed = (
+        (m0 & 0xFF) | ((m1 & 0xFF) << 8) | ((m2 & 0xFF) << 16) | ((m3 & 0xFF) << 24)
+    )
+    tl.store(a_ptr + j, packed.to(tl.int32), mask=m)
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_wpool_head_kernel(
+    x_ptr,
+    a_ptr,
+    total_words,
+    out_w: tl.constexpr,
+    signed: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Word-0 block of the two-launch W pass (masked, int64 view).
+
+    Processes words ``[pid * BLOCK, (pid + 1) * BLOCK)``.  The launch grid
+    keeps the head at one block per program, so the residual prefix does not
+    serialize on a single program.
+    """
+    pid = tl.program_id(0)
+    j = pid * BLOCK + tl.arange(0, BLOCK)
+    m = j < total_words
+
+    wc = tl.load(x_ptr + j, mask=m, other=0)
+    wp = tl.load(x_ptr + j - 1, mask=(j > 0) & m, other=0)
+
+    b0 = wc & 0xFF
+    b1 = (wc >> 8) & 0xFF
+    b2 = (wc >> 16) & 0xFF
+    b3 = (wc >> 24) & 0xFF
+    b4 = (wc >> 32) & 0xFF
+    b5 = (wc >> 40) & 0xFF
+    b6 = (wc >> 48) & 0xFF
+    b7 = (wc >> 56) & 0xFF
+    bp = (wp >> 56) & 0xFF
+
+    if signed:
+        b0 = tl.where(b0 >= 128, b0 - 256, b0)
+        b1 = tl.where(b1 >= 128, b1 - 256, b1)
+        b2 = tl.where(b2 >= 128, b2 - 256, b2)
+        b3 = tl.where(b3 >= 128, b3 - 256, b3)
+        b4 = tl.where(b4 >= 128, b4 - 256, b4)
+        b5 = tl.where(b5 >= 128, b5 - 256, b5)
+        b6 = tl.where(b6 >= 128, b6 - 256, b6)
+        b7 = tl.where(b7 >= 128, b7 - 256, b7)
+        bp = tl.where(bp >= 128, bp - 256, bp)
+
+    r = (4 * j) % out_w
+    m0 = tl.maximum(tl.maximum(tl.where(r == 0, neutral, bp), b0), b1)
+    m1 = tl.maximum(tl.maximum(tl.where(r + 1 == out_w, neutral, b1), b2), b3)
+    m2 = tl.maximum(tl.maximum(tl.where(r + 2 == out_w, neutral, b3), b4), b5)
+    m3 = tl.maximum(tl.maximum(tl.where(r + 3 == out_w, neutral, b5), b6), b7)
+
+    packed = (
+        (m0 & 0xFF) | ((m1 & 0xFF) << 8) | ((m2 & 0xFF) << 16) | ((m3 & 0xFF) << 24)
+    )
+    tl.store(a_ptr + j, packed.to(tl.int32), mask=m)
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_wpool_body_kernel(
+    x_ptr,
+    x8_ptr,
+    a_ptr,
+    out_w: tl.constexpr,
+    signed: tl.constexpr,
+    neutral: tl.constexpr,
+    START: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Unmasked body of the two-launch W pass (no masks at all).
+
+    Program ``pid`` covers words ``[START + pid * BLOCK, START + (pid + 1) *
+    BLOCK)``, i.e. everything after the masked head.  ``START`` is a constant
+    (always a multiple of 256) so every index keeps its divisibility and stays
+    int32; a runtime start disables that and costs ~60% on this backend.
+
+    The two full words come from the int32 view; the single ``bp`` byte is a
+    plain u8 load, which trims the read traffic to 9B per 4 outputs.
+    """
+    pid = tl.program_id(0)
+    j = START + pid * BLOCK + tl.arange(0, BLOCK)
+
+    lo = tl.load(x_ptr + 2 * j)
+    hi = tl.load(x_ptr + 2 * j + 1)
+    bp = tl.load(x8_ptr + 8 * j - 1).to(tl.int32)
+
+    b0 = lo & 0xFF
+    b1 = (lo >> 8) & 0xFF
+    b2 = (lo >> 16) & 0xFF
+    b3 = (lo >> 24) & 0xFF
+    b4 = hi & 0xFF
+    b5 = (hi >> 8) & 0xFF
+    b6 = (hi >> 16) & 0xFF
+    b7 = (hi >> 24) & 0xFF
+
+    if signed:
+        b0 = tl.where(b0 >= 128, b0 - 256, b0)
+        b1 = tl.where(b1 >= 128, b1 - 256, b1)
+        b2 = tl.where(b2 >= 128, b2 - 256, b2)
+        b3 = tl.where(b3 >= 128, b3 - 256, b3)
+        b4 = tl.where(b4 >= 128, b4 - 256, b4)
+        b5 = tl.where(b5 >= 128, b5 - 256, b5)
+        b6 = tl.where(b6 >= 128, b6 - 256, b6)
+        b7 = tl.where(b7 >= 128, b7 - 256, b7)
+        bp = tl.where(bp >= 128, bp - 256, bp)
+
+    r = (4 * j) % out_w
+    m0 = tl.maximum(tl.maximum(tl.where(r == 0, neutral, bp), b0), b1)
+    m1 = tl.maximum(tl.maximum(tl.where(r + 1 == out_w, neutral, b1), b2), b3)
+    m2 = tl.maximum(tl.maximum(tl.where(r + 2 == out_w, neutral, b3), b4), b5)
+    m3 = tl.maximum(tl.maximum(tl.where(r + 3 == out_w, neutral, b5), b6), b7)
+
+    packed = (
+        (m0 & 0xFF) | ((m1 & 0xFF) << 8) | ((m2 & 0xFF) << 16) | ((m3 & 0xFF) << 24)
+    )
+    tl.store(a_ptr + j, packed.to(tl.int32))
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_wpool_row7_kernel(
+    x_ptr,
+    a_ptr,
+    num_rows,
+    signed: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """W-window max for ``in_w == 7`` (out_w == 4): one row per lane.
+
+    Odd ``in_w`` keeps rows out of the int16/int32 pair views, and the generic
+    computed-address byte kernel is ~6x slower.  With ``in_w == 7`` a row has
+    exactly four outputs, so a lane can load the seven row bytes, max the
+    windows and emit one packed int32 (four bytes) for the flat intermediate.
+    """
+    pid = tl.program_id(0)
+    r = pid * BLOCK + tl.arange(0, BLOCK)
+    m = r < num_rows
+    base = r * 7
+
+    b0 = tl.load(x_ptr + base + 0, mask=m, other=0).to(tl.int32)
+    b1 = tl.load(x_ptr + base + 1, mask=m, other=0).to(tl.int32)
+    b2 = tl.load(x_ptr + base + 2, mask=m, other=0).to(tl.int32)
+    b3 = tl.load(x_ptr + base + 3, mask=m, other=0).to(tl.int32)
+    b4 = tl.load(x_ptr + base + 4, mask=m, other=0).to(tl.int32)
+    b5 = tl.load(x_ptr + base + 5, mask=m, other=0).to(tl.int32)
+    b6 = tl.load(x_ptr + base + 6, mask=m, other=0).to(tl.int32)
+
+    if signed:
+        b0 = tl.where(b0 >= 128, b0 - 256, b0)
+        b1 = tl.where(b1 >= 128, b1 - 256, b1)
+        b2 = tl.where(b2 >= 128, b2 - 256, b2)
+        b3 = tl.where(b3 >= 128, b3 - 256, b3)
+        b4 = tl.where(b4 >= 128, b4 - 256, b4)
+        b5 = tl.where(b5 >= 128, b5 - 256, b5)
+        b6 = tl.where(b6 >= 128, b6 - 256, b6)
+
+    # taps of output q are bytes 2q-1, 2q, 2q+1 clipped to the row; the clips
+    # fall on the dtype-min neutral, so ``tl.maximum`` over the in-row bytes
+    # alone is exact.
+    o0 = tl.maximum(b0, b1)
+    o1 = tl.maximum(tl.maximum(b1, b2), b3)
+    o2 = tl.maximum(tl.maximum(b3, b4), b5)
+    o3 = tl.maximum(b5, b6)
+
+    packed = (
+        (o0.to(tl.int32) & 0xFF)
+        | ((o1.to(tl.int32) & 0xFF) << 8)
+        | ((o2.to(tl.int32) & 0xFF) << 16)
+        | ((o3.to(tl.int32) & 0xFF) << 24)
+    )
+    tl.store(a_ptr + r, packed, mask=m)
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_hdpool_pair_kernel(
+    a_ptr,
+    out_ptr,
+    total_pairs,
+    in_d: tl.constexpr,
+    in_h: tl.constexpr,
+    out_d: tl.constexpr,
+    out_h: tl.constexpr,
+    out_w2: tl.constexpr,
+    signed: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """3x3 (d, h) window max, two outputs per lane on the int16 pair views."""
+    pid = tl.program_id(0)
+    j = pid * BLOCK + tl.arange(0, BLOCK)
+    m = j < total_pairs
+
+    pj = j % out_w2
+    oh = (j // out_w2) % out_h
+    od = (j // (out_w2 * out_h)) % out_d
+    plane = j // (out_w2 * out_h * out_d)
+
+    hw2 = in_h * out_w2  # int16 elements per intermediate depth slice
+    base = plane * (in_d * hw2) + (2 * od) * hw2 + (2 * oh) * out_w2 + pj
+
+    acc_lo = tl.full((BLOCK,), neutral, tl.int32)
+    acc_hi = tl.full((BLOCK,), neutral, tl.int32)
+    for kd in tl.static_range(0, 3):
+        d_in = 2 * od + kd - 1
+        d_ok = (d_in >= 0) & (d_in < in_d)
+        for kh in tl.static_range(0, 3):
+            h_in = 2 * oh + kh - 1
+            h_ok = (h_in >= 0) & (h_in < in_h)
+            ok = d_ok & h_ok
+            pv = tl.load(a_ptr + base + (kd - 1) * hw2 + (kh - 1) * out_w2, mask=m)
+            if signed:
+                lo = (pv << 8) >> 8
+                hi = pv >> 8
+            else:
+                lo = pv & 0xFF
+                hi = (pv >> 8) & 0xFF
+            acc_lo = tl.maximum(acc_lo, tl.where(ok, lo, neutral))
+            acc_hi = tl.maximum(acc_hi, tl.where(ok, hi, neutral))
+
+    packed = (acc_lo & 0xFF) | ((acc_hi & 0xFF) << 8)
+    tl.store(out_ptr + j, packed.to(tl.int16), mask=m)
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_wpool_pair_kernel(
+    x_ptr,
+    a_ptr,
+    total,
+    out_w: tl.constexpr,
+    signed: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """W-window max on the int16 pair view (``in_w`` even, pair index == lane)."""
+    pid = tl.program_id(0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
+    m = o < total
+    q = o % out_w
+
+    p = tl.load(x_ptr + o, mask=m, other=0)
+    # ``pair[o - 1]`` supplies the left tap.  Both the ``o > 0`` guard and the
+    # block-tail mask go into the *mask*: an equivalent ``tl.where`` on the
+    # address silently miscompiles on XPU3 (it returns values from the wrong
+    # pair for the first rows), so the address itself must stay plain.
+    pl = tl.load(x_ptr + o - 1, mask=(o > 0) & m, other=0)
+
+    if signed:
+        lo = (p << 8) >> 8
+        hi = p >> 8
+        lhi = pl >> 8
+    else:
+        lo = p & 0xFF
+        hi = (p >> 8) & 0xFF
+        lhi = (pl >> 8) & 0xFF
+
+    lhi = tl.where(q > 0, lhi, neutral)
+    v = tl.maximum(tl.maximum(lo, hi), lhi)
+    if signed:
+        tl.store(a_ptr + o, v.to(tl.int8), mask=m)
+    else:
+        tl.store(a_ptr + o, v.to(tl.uint8), mask=m)
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_wpool_kernel(
+    x_ptr,
+    a_ptr,
+    total,
+    # Geometry (compile-time so the flat index decompositions stay cheap)
+    numel: tl.constexpr,
+    in_w: tl.constexpr,
+    out_w: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """W-window max for an odd ``in_w`` (rows are not pair-aligned)."""
+    pid = tl.program_id(0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
+    m = o < total
+
+    q = o % out_w
+    base = (o // out_w) * in_w + 2 * q
+    base = tl.minimum(base, numel - 1)
+
+    # Padding taps are filtered by the load *mask* (never by a ``tl.where`` on
+    # the address: that form silently miscompiles on XPU3 and is also ~16x
+    # slower), and the value falls back to the neutral element.
+    has_l = q > 0
+    left = tl.load(x_ptr + base - 1, mask=has_l & m, other=neutral)
+    left = tl.where(has_l, left, neutral)
+
+    mid = tl.load(x_ptr + base, mask=m, other=neutral)
+
+    # Right tap ``2q + 1``: a padding slot when the window runs past the row
+    # (odd ``in_w`` with ceil_mode, or a widened out_w).
+    has_r = 2 * q + 1 < in_w
+    raddr = tl.minimum(base + 1, numel - 1)
+    right = tl.load(x_ptr + raddr, mask=has_r & m, other=neutral)
+    right = tl.where(has_r, right, neutral)
+
+    v = tl.maximum(tl.maximum(left, mid), right)
+    tl.store(a_ptr + o, v, mask=m)
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool3d_hdpool_kernel(
+    a_ptr,
+    out_ptr,
+    total,
+    # Intermediate/final geometry (compile-time)
+    in_d: tl.constexpr,
+    in_h: tl.constexpr,
+    out_d: tl.constexpr,
+    out_h: tl.constexpr,
+    out_w: tl.constexpr,
+    neutral: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
+    m = o < total
+
+    q = o % out_w
+    oh = (o // out_w) % out_h
+    od = (o // (out_w * out_h)) % out_d
+    plane = o // (out_w * out_h * out_d)  # (n, c) index
+
+    hw = in_h * out_w  # one intermediate depth-slice
+    base = plane * (in_d * hw) + (2 * od) * hw + (2 * oh) * out_w + q
+
+    acc = tl.full((BLOCK,), neutral, a_ptr.type.element_ty)
+    for kd in tl.static_range(0, 3):
+        d_in = 2 * od + kd - 1
+        d_ok = (d_in >= 0) & (d_in < in_d)
+        for kh in tl.static_range(0, 3):
+            h_in = 2 * oh + kh - 1
+            h_ok = (h_in >= 0) & (h_in < in_h)
+            ok = d_ok & h_ok
+            v = tl.load(a_ptr + base + (kd - 1) * hw + (kh - 1) * out_w, mask=m)
+            acc = tl.maximum(acc, tl.where(ok, v, neutral))
+    tl.store(out_ptr + o, acc, mask=m)
+
+
+def _fast_pool3d_geometry(params, input, out_int):
+    """Return the flat-plan parameters, or ``None`` when the fast path cannot run.
+
+    The two flat kernels implement exactly the benchmark-dominant geometry:
+    k=3, stride=2, padding=1, dilation=1, on a contiguous 1-byte quantized
+    input with a contiguous 1-byte output.  Every other geometry keeps the
+    generic tiled kernel.
+
+    The W pass also assumes the flat row layout ``out_w == in_w // 2`` (even
+    ``in_w``) or ``out_w == (in_w + 1) // 2`` (odd ``in_w``, right edge clipped
+    by the kernel).  ``ceil_mode`` can widen ``out_w`` by one for even widths;
+    that geometry needs the unguarded right edge, so it stays on the generic
+    kernel.
+    """
+    kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw = params
+    if (kd, kh, kw) != (3, 3, 3):
+        return None
+    if (sd, sh, sw) != (2, 2, 2):
+        return None
+    if (pd, ph, pw) != (1, 1, 1):
+        return None
+    if (dd, dh, dw) != (1, 1, 1):
+        return None
+    if input.element_size() != 1 or out_int.element_size() != 1:
+        return None
+    if not input.is_contiguous() or not out_int.is_contiguous():
+        return None
+    in_w = input.shape[-1]
+    out_w = out_int.shape[-1]
+    if out_w != (in_w // 2 if in_w % 2 == 0 else (in_w + 1) // 2):
+        return None
+    neutral = -128 if input.dtype == torch.qint8 else 0
+    return neutral
+
+
+_WPOOL_BLOCK = 2048
+_WPOOL_BODY_BLOCK = 4096
+_WPOOL_HEAD_BLOCK = 256
+_WPOOL_ROW7_BLOCK = 1024
+# HD pair pass: small outputs keep long windows per program, large outputs are
+# better with more programs (measured on the benchmark matrix).
+_HDPOOL_PAIR_SMALL = 4096
+_HDPOOL_PAIR_LARGE = 1024
+_HDPOOL_PAIR_SMALL_MAX = 65536
+_HDBYTE_BLOCK = 2048
+_PAD_SLACK = 4096
+
+
+def _wpool_split(words):
+    """Split the word range into a masked head ``[0, h)`` and an exact body.
+
+    Returns ``(h, body_blocks)`` with ``h % 256 == 0``, ``(words - h) %
+    4096 == 0`` and ``body_blocks == (words - h) // 4096``.  The head absorbs
+    the residual prefix so the unmasked body always runs with the large block.
+    ``None`` when the input is too small to split that way.
+    """
+    h = words % _WPOOL_BODY_BLOCK
+    if h == 0:
+        h = _WPOOL_BODY_BLOCK
+    if h % _WPOOL_HEAD_BLOCK != 0 or h >= words:
+        return None
+    return h, (words - h) // _WPOOL_BODY_BLOCK
+
+
+def _launch_quantized_max_pool3d_fast(int_repr, out_int, neutral):
+    """Two flat passes: W-window max, then the 3x3 (d, h) window max."""
+    in_n, in_c, in_d, in_h, in_w = int_repr.shape
+    out_n, out_c, out_d, out_h, out_w = out_int.shape
+
+    numel = int_repr.numel()
+    total_inter = in_n * in_c * in_d * in_h * out_w
+    total_out = out_int.numel()
+
+    hw = in_h * out_w
+    # Neutral slack so every computed tap address of both kernels lands inside
+    # the allocation (values outside the live rows are neutralized in-kernel).
+    # The live region must start on a 128-byte boundary: the W kernel's packed
+    # int32 stores lose ~40% of their throughput at 8/16-byte offsets
+    # (measured), and 128 bytes covers every word/pair view alignment.
+    pad_lo = (((hw + out_w + 1) + 127) // 128) * 128
+    pad_hi = (((hw + out_w + 1) + 127) // 128) * 128 + _PAD_SLACK
+    inter = torch.empty(
+        (pad_lo + total_inter + pad_hi), dtype=int_repr.dtype, device=int_repr.device
+    )
+    inter_live = inter[pad_lo : pad_lo + total_inter]
+
+    signed = int_repr.dtype == torch.int8
+    align8 = int_repr.storage_offset() % 8 == 0
+    words = total_inter // 4
+    split = _wpool_split(words) if total_inter % 4 == 0 else None
+
+    if in_w % 2 == 0 and out_w >= 4 and numel % 8 == 0 and align8 and split:
+        # Two-launch split: a masked head on the int64 view for the residual
+        # prefix, then an unmasked int32 body for the rest.  The body's offsets
+        # are all non-negative, which sidesteps the XPU3 miscompile of masked
+        # negative-offset int32 loads, and its int32 ALU is ~2x the int64 form.
+        head_words, body_blocks = split
+        quantized_max_pool3d_wpool_head_kernel[(head_words // _WPOOL_HEAD_BLOCK,)](
+            int_repr.reshape(-1).view(torch.int64),
+            inter_live.view(torch.int32),
+            min(head_words, words),
+            out_w=out_w,
+            signed=signed,
+            neutral=neutral,
+            BLOCK=_WPOOL_HEAD_BLOCK,
+        )
+        if body_blocks > 0:
+            quantized_max_pool3d_wpool_body_kernel[(body_blocks,)](
+                int_repr.reshape(-1).view(torch.int32),
+                int_repr.reshape(-1),
+                inter_live.view(torch.int32),
+                out_w=out_w,
+                signed=signed,
+                neutral=neutral,
+                START=head_words,
+                BLOCK=_WPOOL_BODY_BLOCK,
+            )
+    elif in_w == 7 and out_w == 4 and total_inter % 4 == 0:
+        # Odd row width: rows are out of every multi-byte view, so pool one row
+        # per lane (four outputs -> one packed int32 store).
+        num_rows = in_n * in_c * in_d * in_h
+        quantized_max_pool3d_wpool_row7_kernel[
+            (triton.cdiv(num_rows, _WPOOL_ROW7_BLOCK),)
+        ](
+            int_repr,
+            inter_live.view(torch.int32),
+            num_rows,
+            signed=signed,
+            neutral=neutral,
+            BLOCK=_WPOOL_ROW7_BLOCK,
+        )
+    elif in_w % 2 == 0 and out_w >= 4 and numel % 8 == 0 and align8:
+        # Words not divisible by any exact block: masked int64 word kernel.
+        quantized_max_pool3d_wpool_word_kernel[(triton.cdiv(words, _WPOOL_BLOCK),)](
+            int_repr.reshape(-1).view(torch.int64),
+            inter_live.view(torch.int32),
+            words,
+            out_w=out_w,
+            signed=signed,
+            neutral=neutral,
+            BLOCK=_WPOOL_BLOCK,
+        )
+    elif in_w % 2 == 0 and int_repr.storage_offset() % 2 == 0:
+        # Rows are 2-byte aligned: both W taps come from unit-stride int16
+        # loads of the pair view (pair index == flat intermediate index).
+        quantized_max_pool3d_wpool_pair_kernel[
+            (triton.cdiv(total_inter, _WPOOL_BLOCK),)
+        ](
+            int_repr.reshape(-1).view(torch.int16),
+            inter_live,
+            total_inter,
+            out_w=out_w,
+            signed=signed,
+            neutral=neutral,
+            BLOCK=_WPOOL_BLOCK,
+        )
+    else:
+        quantized_max_pool3d_wpool_kernel[(triton.cdiv(total_inter, _WPOOL_BLOCK),)](
+            int_repr,
+            inter_live,
+            total_inter,
+            numel=numel,
+            in_w=in_w,
+            out_w=out_w,
+            neutral=neutral,
+            BLOCK=_WPOOL_BLOCK,
+        )
+
+    out_align = out_int.storage_offset() % 2 == 0
+    if out_w % 2 == 0 and total_out % 2 == 0 and out_align:
+        total_pairs = total_out // 2
+        hd_block = (
+            _HDPOOL_PAIR_SMALL
+            if total_pairs <= _HDPOOL_PAIR_SMALL_MAX
+            else _HDPOOL_PAIR_LARGE
+        )
+        quantized_max_pool3d_hdpool_pair_kernel[(triton.cdiv(total_pairs, hd_block),)](
+            inter_live.view(torch.int16),
+            out_int.reshape(-1).view(torch.int16),
+            total_pairs,
+            in_d=in_d,
+            in_h=in_h,
+            out_d=out_d,
+            out_h=out_h,
+            out_w2=out_w // 2,
+            signed=signed,
+            neutral=neutral,
+            BLOCK=hd_block,
+        )
+    else:
+        quantized_max_pool3d_hdpool_kernel[(triton.cdiv(total_out, _HDBYTE_BLOCK),)](
+            inter_live,
+            out_int,
+            total_out,
+            in_d=in_d,
+            in_h=in_h,
+            out_d=out_d,
+            out_h=out_h,
+            out_w=out_w,
+            neutral=neutral,
+            BLOCK=_HDBYTE_BLOCK,
+        )
+    return out_int
+
+
 def _launch_quantized_max_pool3d(input, params, out_shape, out_int):
     """Run the pooling kernel over ``input``'s integer representation."""
     kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw = params
@@ -173,6 +826,10 @@ def _launch_quantized_max_pool3d(input, params, out_shape, out_int):
     # the vendor ``int_repr`` registration exists, but a direct view also
     # avoids the dispatch entirely and works for strided inputs.
     int_repr = _int_view(input)
+
+    neutral = _fast_pool3d_geometry(params, input, out_int)
+    if neutral is not None:
+        return _launch_quantized_max_pool3d_fast(int_repr, out_int, neutral)
 
     grid = lambda meta: (
         in_n * in_c,
