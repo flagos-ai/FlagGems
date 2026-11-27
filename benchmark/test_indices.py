@@ -17,6 +17,11 @@ import torch
 
 from . import base
 
+# ``indices`` and ``_indices`` are metadata-only accessors: they return a
+# zero-copy view of the sparse coordinate buffer and never launch a device
+# kernel, so --kernel-check has nothing to profile for them.
+_KERNEL_CHECK = getattr(base.Config, "kernel_check", False)
+
 # ``indices`` reads the (sparse_dim, nnz) coordinate buffer of a coalesced
 # sparse COO tensor, so the workload axis is nnz alone; sparse_dim stays 2.
 # This file is shared with the private ``_indices`` benchmark (which carries
@@ -65,6 +70,7 @@ class IndicesBenchmark(base.Benchmark):
 
 
 @pytest.mark.indices
+@pytest.mark.skipif(_KERNEL_CHECK, reason="aten::indices launches no device kernel")
 def test_indices():
     bench = IndicesBenchmark(
         op_name="indices",
@@ -91,6 +97,7 @@ class UnderscoreIndicesBenchmark(base.Benchmark):
 
 
 @pytest.mark.underscore_indices
+@pytest.mark.skipif(_KERNEL_CHECK, reason="aten::_indices launches no device kernel")
 def test__indices():
     bench = UnderscoreIndicesBenchmark(
         op_name="_indices",

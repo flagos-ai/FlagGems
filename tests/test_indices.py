@@ -302,3 +302,23 @@ def test__indices_dense_rejected():
     inp = torch.randn(2, 3, device=flag_gems.device)
     with pytest.raises(NotImplementedError):
         flag_gems._indices(inp)
+
+
+@pytest.mark.indices_backward
+def test_indices_backward_non_differentiable():
+    """``indices`` returns a zero-copy int64 alias, so it has no gradient.
+
+    The backward form is therefore undefined; this pins that the accessor
+    output matches the native accessor and is non-differentiable, rather than
+    fabricating a gradient for a coordinate buffer.
+    """
+    sparse = _make_coo(2, 8, (4, 5))
+    ref_sparse = utils.to_reference(sparse, False)
+
+    res = flag_gems.indices(sparse)
+    ref = torch.Tensor.indices(ref_sparse)
+
+    utils.gems_assert_equal(res, ref)
+    assert res.dtype == torch.int64
+    assert not res.requires_grad
+    assert res.grad_fn is None
