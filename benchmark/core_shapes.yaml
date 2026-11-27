@@ -667,6 +667,17 @@ EmbeddingBenchmark:
     - [256, 256]
     - [1024, 1024]
 
+polygamma_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 pointwise input shape
+
 
 # Shapes chosen to span the runtime regimes ``embedding_spmdm`` encounters
 # in practice: tiny embed tables, wide embedding dims, large batch sizes

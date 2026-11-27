@@ -2086,7 +2086,7 @@ _FULL_CONFIG = (
     ("polar", polar),
     ("polygamma", polygamma),
     ("polygamma.out", polygamma_out),
-    ("polygamma_", polygamma_),
+    ("polygamma_", polygamma_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
     ("pow.Tensor_Tensor", pow_tensor_tensor),
