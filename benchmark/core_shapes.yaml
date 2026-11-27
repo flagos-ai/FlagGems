@@ -526,6 +526,26 @@ grouped_mm:
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
 
+nll_loss2d_forward_backward:
+  shapes:
+  - - 2
+    - 7
+    - 3
+    - 5
+  - - 4
+    - 16
+    - 16
+    - 16
+  - - 8
+    - 64
+    - 32
+    - 32
+  - - 8
+    - 128
+    - 64
+    - 64
+  shape_desc: Frozen backward30 nll2d input shape
+
 sparse_mm_reduce_impl:
   shapes:
     - [2, 512, 512, 512]
