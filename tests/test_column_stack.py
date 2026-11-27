@@ -89,3 +89,11 @@ def test_exception_column_stack(shape, dtype):
 
     with pytest.raises(RuntimeError):
         _ = flag_gems.column_stack(inp)
+
+
+@pytest.mark.column_stack
+def test_column_stack_rejects_mismatched_rank():
+    torch.manual_seed(0)
+    inputs = [_make_inputs([shape], torch.float32)[0] for shape in [(5,), (5, 1, 1)]]
+    with pytest.raises(RuntimeError):
+        flag_gems.column_stack(inputs)
