@@ -93,6 +93,7 @@ tests/test_fft.py  # input must be on CUDA
 tests/test__linalg_det.py  # Torch not compiled with CUDA enabled
 tests/test_nested_to_padded_tensor.py  # aten::to_padded_tensor not on NestedTensornpu
 tests/test_nested_from_padded_and_nested_example.py  # aten::_nested_from_padded_and_nested_example not on NestedTensornpu
+tests/test_nested_tensor_storage_offsets.py  # aten::_nested_tensor_storage_offsets not on NestedTensornpu backend
 tests/test_dequantize.py  # aten::empty_quantized not on Quantizednpu
 tests/test_empty_per_channel_affine_quantized.py  # aten::_empty_per_channel_affine_quantized not on Quantizednpu
 tests/test_fused_marlin_moe.py  # Torch not compiled with CUDA enabled
