@@ -31,6 +31,11 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("rank", [0, 1, 2, 9])
 @pytest.mark.parametrize("coalesced", [None, False, True])
 def test_validate_sparse_coo_tensor_args(dtype, nnz, rank, coalesced):
+    if flag_gems.vendor_name == "enflame" and coalesced is True and nnz > 1 and rank:
+        pytest.skip(
+            "aten defect: aten::_validate_sparse_coo_tensor_args lacks the coalesced-check kernel "
+            "on gcu (DispatchStub: missing kernel for gcu), so the reference produces no result"
+        )
     indices = torch.zeros((rank, nnz), dtype=torch.int64, device=flag_gems.device)
     if rank:
         indices[0] = torch.arange(nnz, device=flag_gems.device)
@@ -63,6 +68,16 @@ def test_validate_sparse_coo_tensor_args(dtype, nnz, rank, coalesced):
     ],
 )
 def test_validate_sparse_coo_tensor_args_invalid(case):
+    if flag_gems.vendor_name == "enflame" and case in (
+        "duplicate",
+        "unsorted",
+        "nnz_mismatch",
+    ):
+        pytest.skip(
+            "aten defect: these three cases have no earlier error to report, so the reference falls "
+            "through to the coalesced check, and aten::_validate_sparse_coo_tensor_args lacks that "
+            "kernel on gcu (DispatchStub: missing kernel for gcu), so the messages cannot align"
+        )
     indices = torch.tensor([[0, 1], [0, 0]], device=flag_gems.device)
     values = torch.zeros(2, device=flag_gems.device)
     if case == "bounds":
@@ -117,6 +132,11 @@ def test_validate_sparse_coo_tensor_args_dense_and_scalar():
 @pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("case", ["bounds", "negative", "duplicate", "unsorted"])
 def test_validate_sparse_coo_tensor_args_invalid_high_rank(case):
+    if flag_gems.vendor_name == "enflame" and case in ("duplicate", "unsorted"):
+        pytest.skip(
+            "aten defect: the coalesced-check branch lacks a kernel on gcu "
+            "(DispatchStub: missing kernel for gcu), so the native/FlagGems messages cannot align"
+        )
     indices = torch.zeros((9, 2), dtype=torch.int64, device=flag_gems.device)
     size = (1,) * 8 + (2,)
     indices[-1, -1] = 1
@@ -145,6 +165,11 @@ def test_validate_sparse_coo_tensor_args_invalid_high_rank(case):
 def test_validate_sparse_coo_tensor_args_values_nnz(value_nnz, coalesced):
     # Validation checks coordinate bounds and optional ordering, rather than
     # enforcing the constructor's values/indices nnz equality.
+    if flag_gems.vendor_name == "enflame" and coalesced is True and value_nnz > 1:
+        pytest.skip(
+            "aten defect: aten::_validate_sparse_coo_tensor_args lacks the coalesced-check kernel "
+            "on gcu (DispatchStub: missing kernel for gcu), so the reference produces no result"
+        )
     indices = torch.tensor([[0, 1], [0, 0]], device=flag_gems.device)
     values = torch.zeros(value_nnz, device=flag_gems.device)
     assert (
@@ -187,6 +212,11 @@ def test_validate_sparse_coo_tensor_args_singleton_uncoalesced_values():
 def test_validate_sparse_coo_tensor_args_strided_offset(rank, nnz):
     # A transposed, sliced descriptor exercises both non-unit strides and a
     # storage offset; 1025 entries also covers a pair across the tile boundary.
+    if flag_gems.vendor_name == "enflame" and nnz > 1:
+        pytest.skip(
+            "aten defect: with nnz>1 and is_coalesced=True the reference enters the coalesced "
+            "kernel that gcu is missing (DispatchStub: missing kernel for gcu)"
+        )
     storage = torch.zeros(
         (2 * nnz + 1, rank), dtype=torch.int64, device=flag_gems.device
     )
@@ -215,6 +245,11 @@ def test_validate_sparse_coo_tensor_args_strided_offset(rank, nnz):
 )
 def test_validate_sparse_coo_tensor_args_error_across_tiles(case):
     # Extrema and ordering must include the tile tail and the 1023/1024 pair.
+    if flag_gems.vendor_name == "enflame" and case in ("duplicate", "unsorted"):
+        pytest.skip(
+            "aten defect: the coalesced-check branch lacks a kernel on gcu "
+            "(DispatchStub: missing kernel for gcu), so the native/FlagGems messages cannot align"
+        )
     indices = torch.zeros((2, 1025), dtype=torch.int64, device=flag_gems.device)
     indices[0] = torch.arange(1025, device=flag_gems.device)
     if case == "negative":
@@ -250,6 +285,11 @@ def test_validate_sparse_coo_tensor_args_error_across_tiles(case):
 def test_validate_sparse_coo_tensor_args_index_dtype_message(dtype):
     # These dtypes are invalid for nonempty COO index descriptors; compare the
     # accessor error instead of conflating it with coordinate bounds errors.
+    if flag_gems.vendor_name == "enflame" and dtype not in (torch.int32, torch.float32):
+        pytest.skip(
+            "aten defect: the reference aten::_validate_sparse_coo_tensor_args SIGABRTs on gcu while "
+            f" handling the {dtype} index descriptor (process-level abort, not a catchable exception)"
+        )
     indices = torch.zeros((2, 1), dtype=dtype, device=flag_gems.device)
     values = torch.zeros(1, device=flag_gems.device)
     with pytest.raises(RuntimeError) as native_error:

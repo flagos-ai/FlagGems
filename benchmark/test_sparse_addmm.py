@@ -103,8 +103,22 @@ class SparseAddmmBenchmark(base.BlasBenchmark):
         return 2 * nnz * n
 
 
+# GCU400 has no native sparse addmm: the eager baseline below calls
+# ``aten::addmm.out`` on a SparseCsr tensor and this torch build does not
+# register that kernel for the PrivateUse1-backend sparse CSR dispatch key
+# ("Could not run 'aten::addmm.out' with arguments from the 'SparseCsrgcu'
+# backend"). Without a baseline leg the ratio is undefined, so both cases are
+# reported as unmeasurable on enflame only; every other vendor keeps running.
+_ENFLAME_NO_SPARSE_BASELINE = (
+    "enflame GCU: aten::addmm.out has no SparseCsr kernel on this backend, so "
+    "the torch baseline leg cannot be timed (benchmark unmeasurable)"
+)
+
+
 @pytest.mark.sparse_addmm
 def test_sparse_addmm(monkeypatch):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(_ENFLAME_NO_SPARSE_BASELINE)
     bench = SparseAddmmBenchmark(
         op_name="sparse_addmm",
         input_fn=_input_fn,
@@ -128,6 +142,8 @@ def _input_fn_out(m, n, k, dtype, device, b_column_major=False, sparsity=0.9):
 
 @pytest.mark.sparse_addmm_out
 def test_sparse_addmm_out(monkeypatch):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(_ENFLAME_NO_SPARSE_BASELINE)
     bench = SparseAddmmBenchmark(
         op_name="sparse_addmm_out",
         input_fn=_input_fn_out,

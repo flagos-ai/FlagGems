@@ -36,7 +36,7 @@ def _make_dep_token(
     for dependency tracking in TorchScript. The value of the returned tensor
     is uninitialized and should not be used.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _MAKE_DEP_TOKEN")
+    logger.debug("GEMS_ENFLAME _MAKE_DEP_TOKEN")
     if dtype is None:
         dtype = torch.float32
     if device is None:

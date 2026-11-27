@@ -82,6 +82,305 @@ def upsample_nearest2d_kernel(
             nc_iter_tmp += TOTAL_TILE
 
 
+# Fast path for power-of-two integer scales (OH == IH * 2**log2_sh, OW == IW * 2**log2_sw).
+# Loads each unique input row block once (W axis gathered with run-length duplication),
+# then replicates it over SH output rows. Stores are fully contiguous row segments.
+@triton.jit
+def upsample_nearest2d_pow2_element_kernel(
+    ptr_o,
+    ptr_i,
+    IH,
+    IW,
+    OH,
+    OW,
+    NC,
+    GW,
+    LOG2_SH: tl.constexpr,
+    LOG2_SW: tl.constexpr,
+    BH: tl.constexpr,
+    TOW: tl.constexpr,
+    NTP: tl.constexpr,
+    NCZ: tl.constexpr,
+    SINGLE_NC: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    SH: tl.constexpr = 1 << LOG2_SH
+    pid_g = tl.program_id(0)
+    pid_h = tl.program_id(1)
+    nc0 = tl.program_id(2)
+    r = tl.arange(0, BH)
+    c = tl.arange(0, TOW)
+    cw = c >> LOG2_SW
+    ih = pid_h * BH + r
+    if SINGLE_NC:
+        base_i = nc0.to(tl.int64) * (IH * IW)
+        base_o = nc0.to(tl.int64) * (OH * OW)
+        for t in tl.static_range(NTP):
+            tw = pid_g * NTP + t
+            if tw < GW:
+                ow = tw * TOW + c
+                iw = (tw * TOW >> LOG2_SW) + cw
+                if EVEN:
+                    src = tl.load(ptr_i + base_i + ih[:, None] * IW + iw[None, :])
+                    for sh in tl.static_range(SH):
+                        ohr = ih * SH + sh
+                        tl.store(ptr_o + base_o + ohr[:, None] * OW + ow[None, :], src)
+                else:
+                    mh = ih < IH
+                    mw = ow < OW
+                    src = tl.load(
+                        ptr_i + base_i + ih[:, None] * IW + iw[None, :],
+                        mask=mh[:, None] & mw[None, :],
+                        other=0.0,
+                    )
+                    for sh in tl.static_range(SH):
+                        ohr = ih * SH + sh
+                        tl.store(
+                            ptr_o + base_o + ohr[:, None] * OW + ow[None, :],
+                            src,
+                            mask=(ohr < OH)[:, None] & mw[None, :],
+                        )
+    else:
+        for nc in range(nc0, NC, NCZ):
+            base_i = nc.to(tl.int64) * (IH * IW)
+            base_o = nc.to(tl.int64) * (OH * OW)
+            for t in tl.static_range(NTP):
+                tw = pid_g * NTP + t
+                if tw < GW:
+                    ow = tw * TOW + c
+                    iw = (tw * TOW >> LOG2_SW) + cw
+                    if EVEN:
+                        src = tl.load(ptr_i + base_i + ih[:, None] * IW + iw[None, :])
+                        for sh in tl.static_range(SH):
+                            ohr = ih * SH + sh
+                            tl.store(
+                                ptr_o + base_o + ohr[:, None] * OW + ow[None, :], src
+                            )
+                    else:
+                        mh = ih < IH
+                        mw = ow < OW
+                        src = tl.load(
+                            ptr_i + base_i + ih[:, None] * IW + iw[None, :],
+                            mask=mh[:, None] & mw[None, :],
+                            other=0.0,
+                        )
+                        for sh in tl.static_range(SH):
+                            ohr = ih * SH + sh
+                            tl.store(
+                                ptr_o + base_o + ohr[:, None] * OW + ow[None, :],
+                                src,
+                                mask=(ohr < OH)[:, None] & mw[None, :],
+                            )
+
+
+# Packed fast path for 2-byte dtypes with SW == 2: each output int32 word is the
+# input element duplicated into both halves ((x << 16) | x), so stores run at
+# 4-byte granularity instead of the 2-byte element-rate limit.
+@triton.jit
+def upsample_nearest2d_pow2_pack16_kernel(
+    ptr_o32,
+    ptr_i,
+    IH,
+    IW,
+    OH,
+    OW32,
+    NC,
+    GW,
+    LOG2_SH: tl.constexpr,
+    BH: tl.constexpr,
+    BW: tl.constexpr,
+    NTP: tl.constexpr,
+    NCZ: tl.constexpr,
+    SINGLE_NC: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    SH: tl.constexpr = 1 << LOG2_SH
+    pid_g = tl.program_id(0)
+    pid_h = tl.program_id(1)
+    nc0 = tl.program_id(2)
+    r = tl.arange(0, BH)
+    c = tl.arange(0, BW)
+    ih = pid_h * BH + r
+    if SINGLE_NC:
+        base_i = nc0.to(tl.int64) * (IH * IW)
+        base_o = nc0.to(tl.int64) * (OH * OW32)
+        for t in tl.static_range(NTP):
+            tw = pid_g * NTP + t
+            if tw < GW:
+                iw = tw * BW + c
+                if EVEN:
+                    x = tl.load(ptr_i + base_i + ih[:, None] * IW + iw[None, :])
+                    xi = x.to(tl.int16, bitcast=True).to(tl.int32) & 0xFFFF
+                    w = xi | (xi << 16)
+                    for sh in tl.static_range(SH):
+                        ohr = ih * SH + sh
+                        tl.store(
+                            ptr_o32 + base_o + ohr[:, None] * OW32 + iw[None, :], w
+                        )
+                else:
+                    mh = ih < IH
+                    mw = iw < IW
+                    x = tl.load(
+                        ptr_i + base_i + ih[:, None] * IW + iw[None, :],
+                        mask=mh[:, None] & mw[None, :],
+                        other=0.0,
+                    )
+                    xi = x.to(tl.int16, bitcast=True).to(tl.int32) & 0xFFFF
+                    w = xi | (xi << 16)
+                    for sh in tl.static_range(SH):
+                        ohr = ih * SH + sh
+                        tl.store(
+                            ptr_o32 + base_o + ohr[:, None] * OW32 + iw[None, :],
+                            w,
+                            mask=(ohr < OH)[:, None] & mw[None, :],
+                        )
+    else:
+        for nc in range(nc0, NC, NCZ):
+            base_i = nc.to(tl.int64) * (IH * IW)
+            base_o = nc.to(tl.int64) * (OH * OW32)
+            for t in tl.static_range(NTP):
+                tw = pid_g * NTP + t
+                if tw < GW:
+                    iw = tw * BW + c
+                    if EVEN:
+                        x = tl.load(ptr_i + base_i + ih[:, None] * IW + iw[None, :])
+                        xi = x.to(tl.int16, bitcast=True).to(tl.int32) & 0xFFFF
+                        w = xi | (xi << 16)
+                        for sh in tl.static_range(SH):
+                            ohr = ih * SH + sh
+                            tl.store(
+                                ptr_o32 + base_o + ohr[:, None] * OW32 + iw[None, :], w
+                            )
+                    else:
+                        mh = ih < IH
+                        mw = iw < IW
+                        x = tl.load(
+                            ptr_i + base_i + ih[:, None] * IW + iw[None, :],
+                            mask=mh[:, None] & mw[None, :],
+                            other=0.0,
+                        )
+                        xi = x.to(tl.int16, bitcast=True).to(tl.int32) & 0xFFFF
+                        w = xi | (xi << 16)
+                        for sh in tl.static_range(SH):
+                            ohr = ih * SH + sh
+                            tl.store(
+                                ptr_o32 + base_o + ohr[:, None] * OW32 + iw[None, :],
+                                w,
+                                mask=(ohr < OH)[:, None] & mw[None, :],
+                            )
+
+
+_POW2_SCALE_MAX = 16
+_GRID_Y_MAX = 255
+_NTP = 4
+_NUM_WARPS = 4
+
+
+def _pow2_floor(value):
+    result = 1
+    while result * 2 <= value:
+        result *= 2
+    return result
+
+
+def _pow2_log_scale(out_size, in_size, reciprocal):
+    """Return log2(scale) if out_size == in_size * 2**k (k <= 16) and the
+    effective reciprocal scale is exactly 1 / 2**k; otherwise None."""
+    if in_size <= 0 or out_size % in_size != 0:
+        return None
+    scale = out_size // in_size
+    if scale < 1 or scale > _POW2_SCALE_MAX or (scale & (scale - 1)) != 0:
+        return None
+    if reciprocal != 1.0 / scale:
+        return None
+    return scale.bit_length() - 1
+
+
+def _launch_pow2_fastpath(
+    output, input, OH, OW, reciprocal_scale_h, reciprocal_scale_w
+):
+    N, C, IH, IW = input.shape
+    NC = N * C
+    if NC <= 0 or IH <= 0 or IW <= 0 or OH <= 0 or OW <= 0:
+        return True
+    if IH * IW >= 2**31 or OH * OW >= 2**31:
+        return False
+    log2_sh = _pow2_log_scale(OH, IH, reciprocal_scale_h)
+    log2_sw = _pow2_log_scale(OW, IW, reciprocal_scale_w)
+    if log2_sh is None or log2_sw is None:
+        return False
+    dtype = input.dtype
+    esize = input.element_size()
+    with torch_device_fn.device(input.device):
+        if esize == 2 and log2_sw == 1 and dtype in (torch.float16, torch.bfloat16):
+            BH = 64
+            BW = min(256, _pow2_floor(IW))
+            while triton.cdiv(IH, BH) > _GRID_Y_MAX and BH < 256:
+                BH *= 2
+            if triton.cdiv(IH, BH) > _GRID_Y_MAX:
+                return False
+            OW32 = OW // 2
+            gw = triton.cdiv(IW, BW)
+            gh = triton.cdiv(IH, BH)
+            ncz = min(NC, 128)
+            even = (IH % BH == 0) and (IW % BW == 0)
+            grid = (triton.cdiv(gw, _NTP), gh, ncz)
+            upsample_nearest2d_pow2_pack16_kernel[grid](
+                output.view(torch.int32),
+                input,
+                IH,
+                IW,
+                OH,
+                OW32,
+                NC,
+                gw,
+                log2_sh,
+                BH,
+                BW,
+                _NTP,
+                ncz,
+                ncz >= NC,
+                even,
+                num_warps=_NUM_WARPS,
+            )
+            return True
+        if esize in (2, 4) and dtype in (torch.float16, torch.bfloat16, torch.float32):
+            if esize == 2 and OW >= 512:
+                BH, TOW = 16, 512
+            else:
+                BH, TOW = 64, min(256, _pow2_floor(OW))
+            while triton.cdiv(IH, BH) > _GRID_Y_MAX and BH < 256:
+                BH *= 2
+            if triton.cdiv(IH, BH) > _GRID_Y_MAX:
+                return False
+            gw = triton.cdiv(OW, TOW)
+            gh = triton.cdiv(IH, BH)
+            ncz = min(NC, 128)
+            even = (IH % BH == 0) and (OW % TOW == 0)
+            grid = (triton.cdiv(gw, _NTP), gh, ncz)
+            upsample_nearest2d_pow2_element_kernel[grid](
+                output,
+                input,
+                IH,
+                IW,
+                OH,
+                OW,
+                NC,
+                gw,
+                log2_sh,
+                log2_sw,
+                BH,
+                TOW,
+                _NTP,
+                ncz,
+                ncz >= NC,
+                even,
+                num_warps=_NUM_WARPS,
+            )
+            return True
+    return False
+
+
 def upsample_nearest2d(
     input: torch.Tensor,
     output_size: Tuple[int],
@@ -103,23 +402,26 @@ def upsample_nearest2d(
         reciprocal_scale_w = IW / OW
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    total_threads = OH * OW
-    grid = lambda META: (
-        triton.cdiv(total_threads, META["BLOCK_SIZE"]),
-        min(128, triton.cdiv(N * C, 4)),
-    )
-
-    with torch_device_fn.device(input.device):
-        upsample_nearest2d_kernel[grid](
-            output,
-            input,
-            N,
-            C,
-            OH,
-            OW,
-            IH,
-            IW,
-            reciprocal_scale_h,
-            reciprocal_scale_w,
+    if not _launch_pow2_fastpath(
+        output, input, OH, OW, reciprocal_scale_h, reciprocal_scale_w
+    ):
+        total_threads = OH * OW
+        grid = lambda META: (
+            triton.cdiv(total_threads, META["BLOCK_SIZE"]),
+            min(128, triton.cdiv(N * C, 4)),
         )
+
+        with torch_device_fn.device(input.device):
+            upsample_nearest2d_kernel[grid](
+                output,
+                input,
+                N,
+                C,
+                OH,
+                OW,
+                IH,
+                IW,
+                reciprocal_scale_h,
+                reciprocal_scale_w,
+            )
     return output

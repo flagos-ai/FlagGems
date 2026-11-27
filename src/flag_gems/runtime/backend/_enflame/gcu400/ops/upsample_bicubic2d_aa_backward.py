@@ -25,6 +25,27 @@ logger = logging.getLogger(__name__)
 _WEIGHT_CACHE_MAX_ENTRIES = 128
 _weight_matrix_cache = OrderedDict()
 
+# GCU rejects grid.x > 65535, grid.y > 255 and grid.z > 255.  The row dimension
+# of every kernel below is NC * H, which easily exceeds those limits for batched
+# tensors, so the rows are folded into grid.z (and, for the very largest inputs,
+# split over consecutive launches).
+_GRID_X_LIMIT = 65535
+_GRID_Z_LIMIT = 255
+_MAX_ROWS_PER_LAUNCH = _GRID_X_LIMIT * _GRID_Z_LIMIT
+
+# Elements per program tile; keeps the memory-bound gathers wide enough to
+# saturate bandwidth instead of paying per-program launch latency.
+_ROW_TILE_ELEMS = 1024
+
+
+def _row_chunks(rows, col_tiles):
+    """Yield (grid, row_offset) covering all `rows` within the grid limits."""
+    for row_offset in range(0, rows, _MAX_ROWS_PER_LAUNCH):
+        chunk_rows = min(_MAX_ROWS_PER_LAUNCH, rows - row_offset)
+        row_groups = triton.cdiv(chunk_rows, _GRID_X_LIMIT)
+        grid_x = triton.cdiv(chunk_rows, row_groups)
+        yield (grid_x, col_tiles, row_groups), row_offset, grid_x
+
 
 @triton.jit
 def _cubic_aa_filter(x):
@@ -68,6 +89,10 @@ def _fused_backward_kernel(
     inv_w_scale,
     # Stride
     stride_go_nc,  # = H_out * W_out
+    # Grid decoding
+    num_rows,  # = NC * H_in
+    row_offset,  # first row block of the current launch
+    row_grid_x,  # grid.x extent, grid.z folds back into the row block id
     # Compile-time constants
     BLOCK_IW: tl.constexpr,
     MAX_OH: tl.constexpr,
@@ -75,7 +100,12 @@ def _fused_backward_kernel(
     MAX_KSIZE_H: tl.constexpr,
     MAX_KSIZE_W: tl.constexpr,
 ):
-    pid_row = tl.program_id(0)  # nc * H_in + ih
+    # One program owns a single (nc, ih) row: the fused path only runs on small
+    # tensors and its MAX_OH x MAX_OW unrolled loop makes wider tiles explode in
+    # code size on GCU.
+    pid_row = row_offset + tl.program_id(0) + tl.program_id(2) * row_grid_x
+    if pid_row >= num_rows:
+        return
     pid_col = tl.program_id(1)  # iw tile
 
     nc = pid_row // H_in
@@ -209,24 +239,31 @@ def _pass1_w_gather_nchw_kernel(
     W_out,
     support_w,
     inv_w_scale,
+    num_rows,  # = NC * H_out
+    row_offset,
+    row_grid_x,
     BLOCK_IW: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
     MAX_OW: tl.constexpr,
     MAX_KSIZE_W: tl.constexpr,
 ):
-    pid_row = tl.program_id(0)
+    pid_row_block = row_offset + tl.program_id(0) + tl.program_id(2) * row_grid_x
     pid_col = tl.program_id(1)
+
+    rows = pid_row_block * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
+    row_mask = rows < num_rows
 
     iw_base = pid_col * BLOCK_IW
     iws = iw_base + tl.arange(0, BLOCK_IW)
     iw_mask = iws < W_in
     iw_f = iws.to(tl.float32)
 
-    go_base = pid_row.to(tl.int64) * W_out
-    buf_base = pid_row.to(tl.int64) * W_in
+    go_base = rows.to(tl.int64) * W_out
+    buf_base = rows.to(tl.int64) * W_in
 
     ow_starts = tl.maximum(_f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
-    accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
+    accum = tl.zeros([BLOCK_ROWS, BLOCK_IW], dtype=tl.float32)
 
     for d_ow in tl.static_range(MAX_OW):
         ow = ow_starts + d_ow
@@ -243,11 +280,17 @@ def _pass1_w_gather_nchw_kernel(
         wx = tl.where(in_range, wx_raw, 0.0)
 
         g = tl.load(
-            grad_out_ptr + go_base + ow_safe.to(tl.int64), mask=in_range, other=0.0
+            grad_out_ptr + go_base[:, None] + ow_safe.to(tl.int64)[None, :],
+            mask=row_mask[:, None] & in_range[None, :],
+            other=0.0,
         )
-        accum += wx * g
+        accum += wx[None, :] * g
 
-    tl.store(buf_ptr + buf_base + iws.to(tl.int64), accum, mask=iw_mask)
+    tl.store(
+        buf_ptr + buf_base[:, None] + iws.to(tl.int64)[None, :],
+        accum,
+        mask=row_mask[:, None] & iw_mask[None, :],
+    )
 
 
 @triton.jit
@@ -262,29 +305,36 @@ def _pass2_h_gather_nchw_kernel(
     support_h,
     inv_h_scale,
     stride_buf_hw,  # = H_out * W_in
+    num_rows,  # = NC * H_in
+    row_offset,
+    row_grid_x,
     BLOCK_IW: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
     MAX_OH: tl.constexpr,
     MAX_KSIZE_H: tl.constexpr,
 ):
-    pid_row = tl.program_id(0)
+    pid_row_block = row_offset + tl.program_id(0) + tl.program_id(2) * row_grid_x
     pid_col = tl.program_id(1)
 
-    nc = pid_row // H_in
-    ih = pid_row % H_in
+    rows = pid_row_block * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
+    row_mask = rows < num_rows
+
+    nc = rows // H_in
+    ih = rows % H_in
     ih_f = ih.to(tl.float32)
 
     iw_base = pid_col * BLOCK_IW
     iws = iw_base + tl.arange(0, BLOCK_IW)
     iw_mask = iws < W_in
 
-    oh_start = tl.maximum(_f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
+    oh_starts = tl.maximum(_f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
     buf_nc_base = nc.to(tl.int64) * stride_buf_hw
 
-    accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
+    accum = tl.zeros([BLOCK_ROWS, BLOCK_IW], dtype=tl.float32)
 
     for d_oh in tl.static_range(MAX_OH):
-        oh = oh_start + d_oh
+        oh = oh_starts + d_oh
         oh_valid = (oh >= 0) & (oh < H_out)
         oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
 
@@ -297,16 +347,24 @@ def _pass2_h_gather_nchw_kernel(
         )
         wy = tl.where(ih_in_range, wy_raw, 0.0)
 
-        buf_off = buf_nc_base + oh_safe.to(tl.int64) * W_in + iws.to(tl.int64)
-        b = tl.load(buf_ptr + buf_off, mask=iw_mask & ih_in_range, other=0.0)
+        buf_off = (
+            buf_nc_base[:, None]
+            + oh_safe.to(tl.int64)[:, None] * W_in
+            + iws.to(tl.int64)[None, :]
+        )
+        b = tl.load(
+            buf_ptr + buf_off,
+            mask=row_mask[:, None] & ih_in_range[:, None] & iw_mask[None, :],
+            other=0.0,
+        )
 
-        accum += wy * b
+        accum += wy[:, None] * b
 
-    gi_off = pid_row.to(tl.int64) * W_in + iws.to(tl.int64)
+    gi_off = rows.to(tl.int64)[:, None] * W_in + iws.to(tl.int64)[None, :]
     tl.store(
         grad_in_ptr + gi_off,
         accum.to(grad_in_ptr.dtype.element_ty),
-        mask=iw_mask,
+        mask=row_mask[:, None] & iw_mask[None, :],
     )
 
 
@@ -503,7 +561,7 @@ def _upsample_bicubic2d_aa_backward(
     scales_h=None,
     scales_w=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BICUBIC2D_AA_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_BICUBIC2D_AA_BACKWARD")
     N, C, H_in, W_in = input_size
     H_out, W_out = output_size
 
@@ -555,7 +613,14 @@ def _upsample_bicubic2d_aa_backward(
     BLOCK_IW = min(triton.next_power_of_2(max(W_in, 1)), 256)
     if BLOCK_IW < 32:
         BLOCK_IW = 32
-    nw = 1 if BLOCK_IW <= 32 else (2 if BLOCK_IW <= 64 else 4)
+    # Few programs with a tiny per-program tile are latency bound on GCU, so the
+    # row dimension is tiled as well: every program covers BLOCK_ROWS rows of
+    # BLOCK_IW columns (about 1024 elements).
+    BLOCK_ROWS = max(1, min(64, _ROW_TILE_ELEMS // BLOCK_IW))
+    # The fused kernel keeps one row per program, so its warp count follows the
+    # row width alone; the tiled 2-pass kernels scale with the tile size.
+    nw_fused = 1 if BLOCK_IW <= 32 else (2 if BLOCK_IW <= 64 else 4)
+    nw = max(1, min(8, (BLOCK_ROWS * BLOCK_IW) // 256))
 
     # ---- Choose fused vs 2-pass ----
     total_elems = NC * max(H_in * W_in, H_out * W_out)
@@ -577,30 +642,36 @@ def _upsample_bicubic2d_aa_backward(
         grad_in_flat = torch.empty(
             NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
         )
-        grid = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
-        _fused_backward_kernel[grid](
-            grad_out_flat,
-            grad_in_flat,
-            H_in,
-            H_out,
-            h_scale,
-            support_h,
-            invscale_h,
-            inv_h_scale,
-            W_in,
-            W_out,
-            w_scale,
-            support_w,
-            invscale_w,
-            inv_w_scale,
-            H_out * W_out,  # stride_go_nc
-            BLOCK_IW=BLOCK_IW,
-            MAX_OH=MAX_OH,
-            MAX_OW=MAX_OW,
-            MAX_KSIZE_H=MAX_KSIZE_H,
-            MAX_KSIZE_W=MAX_KSIZE_W,
-            num_warps=nw,
-        )
+        fused_rows = NC * H_in
+        for grid, row_offset, grid_x in _row_chunks(
+            fused_rows, triton.cdiv(W_in, BLOCK_IW)
+        ):
+            _fused_backward_kernel[grid](
+                grad_out_flat,
+                grad_in_flat,
+                H_in,
+                H_out,
+                h_scale,
+                support_h,
+                invscale_h,
+                inv_h_scale,
+                W_in,
+                W_out,
+                w_scale,
+                support_w,
+                invscale_w,
+                inv_w_scale,
+                H_out * W_out,  # stride_go_nc
+                fused_rows,
+                row_offset,
+                grid_x,
+                BLOCK_IW=BLOCK_IW,
+                MAX_OH=MAX_OH,
+                MAX_OW=MAX_OW,
+                MAX_KSIZE_H=MAX_KSIZE_H,
+                MAX_KSIZE_W=MAX_KSIZE_W,
+                num_warps=nw_fused,
+            )
         return grad_in_flat.reshape(N, C, H_in, W_in)
 
     else:
@@ -658,42 +729,54 @@ def _upsample_bicubic2d_aa_backward(
         buf = torch.empty(
             NC, H_out, W_in, dtype=torch.float32, device=grad_output.device
         )
-        grid1 = (NC * H_out, triton.cdiv(W_in, BLOCK_IW))
-        _pass1_w_gather_nchw_kernel[grid1](
-            grad_out_flat,
-            buf,
-            wx,
-            wx_start,
-            W_in,
-            W_out,
-            support_w,
-            inv_w_scale,
-            BLOCK_IW=BLOCK_IW,
-            MAX_OW=MAX_OW,
-            MAX_KSIZE_W=MAX_KSIZE_W,
-            num_warps=nw,
-        )
+        for grid1, row_offset, grid_x in _row_chunks(
+            triton.cdiv(NC * H_out, BLOCK_ROWS), triton.cdiv(W_in, BLOCK_IW)
+        ):
+            _pass1_w_gather_nchw_kernel[grid1](
+                grad_out_flat,
+                buf,
+                wx,
+                wx_start,
+                W_in,
+                W_out,
+                support_w,
+                inv_w_scale,
+                NC * H_out,
+                row_offset,
+                grid_x,
+                BLOCK_IW=BLOCK_IW,
+                BLOCK_ROWS=BLOCK_ROWS,
+                MAX_OW=MAX_OW,
+                MAX_KSIZE_W=MAX_KSIZE_W,
+                num_warps=nw,
+            )
 
         # Phase 2: H-gather -> grad_in [NC, H_in, W_in]
         grad_in_flat = torch.empty(
             NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
         )
-        grid2 = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
-        _pass2_h_gather_nchw_kernel[grid2](
-            buf,
-            grad_in_flat,
-            wy,
-            wy_start,
-            H_in,
-            W_in,
-            H_out,
-            support_h,
-            inv_h_scale,
-            H_out * W_in,  # stride_buf_hw
-            BLOCK_IW=BLOCK_IW,
-            MAX_OH=MAX_OH,
-            MAX_KSIZE_H=MAX_KSIZE_H,
-            num_warps=nw,
-        )
+        for grid2, row_offset, grid_x in _row_chunks(
+            triton.cdiv(NC * H_in, BLOCK_ROWS), triton.cdiv(W_in, BLOCK_IW)
+        ):
+            _pass2_h_gather_nchw_kernel[grid2](
+                buf,
+                grad_in_flat,
+                wy,
+                wy_start,
+                H_in,
+                W_in,
+                H_out,
+                support_h,
+                inv_h_scale,
+                H_out * W_in,  # stride_buf_hw
+                NC * H_in,
+                row_offset,
+                grid_x,
+                BLOCK_IW=BLOCK_IW,
+                BLOCK_ROWS=BLOCK_ROWS,
+                MAX_OH=MAX_OH,
+                MAX_KSIZE_H=MAX_KSIZE_H,
+                num_warps=nw,
+            )
 
         return grad_in_flat.reshape(N, C, H_in, W_in)

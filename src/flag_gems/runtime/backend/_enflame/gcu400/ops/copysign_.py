@@ -53,6 +53,10 @@ _FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _FLAT_MAX_NUMEL = 2**31 - 1 - 65536
 _INT32_LIMIT = 2**31
 
+_ONCT_BLOCK = 32768
+_ONCT_GRID_LIMIT = 65535
+_ONCT_MIN_NUMEL = 524288
+
 
 def _unwrap_if_constexpr(o):
     return o.value if isinstance(o, tl.constexpr) else o
@@ -107,6 +111,39 @@ def _copysign_flat_block(numel):
     return 65536
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _copysign_inplace_onetile_kernel(X, Y, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        x = tl.load(X + offs)
+        y = tl.load(Y + offs)
+    else:
+        mask = offs < N
+        x = tl.load(X + offs, mask=mask)
+        y = tl.load(Y + offs, mask=mask)
+    abs_val = tl.abs(x)
+    num_bits: tl.constexpr = x.dtype.primitive_bitwidth
+    uint_dtype = _get_uint_dtype(num_bits)
+    sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+    other_u = y.to(uint_dtype, bitcast=True)
+    res = tl.where((other_u & sign_bit_mask) != 0, -abs_val, abs_val)
+    if EVEN:
+        tl.store(X + offs, res)
+    else:
+        tl.store(X + offs, res, mask=mask)
+
+
+def _use_onetile(x, numel):
+    return (
+        x.element_size() == 4
+        and _ONCT_MIN_NUMEL < numel
+        and numel % _ONCT_BLOCK == 0
+        and triton.cdiv(numel, _ONCT_BLOCK) <= _ONCT_GRID_LIMIT
+    )
+
+
 def _max_flat_offset(t):
     offset = 0
     for size, stride in zip(t.shape, t.stride()):
@@ -116,13 +153,20 @@ def _max_flat_offset(t):
 
 
 def _launch_flat(x, y, numel):
-    block = _copysign_flat_block(numel)
-    grid = (min(triton.cdiv(numel, block), _FLAT_GRID_CAP),)
-    even = numel % block == 0
+    if _use_onetile(x, numel):
+        block = _ONCT_BLOCK
+        grid = (triton.cdiv(numel, block),)
+        even = True
+        kernel = _copysign_inplace_onetile_kernel
+    else:
+        block = _copysign_flat_block(numel)
+        grid = (min(triton.cdiv(numel, block), _FLAT_GRID_CAP),)
+        even = numel % block == 0
+        kernel = _copysign_inplace_flat_kernel
     for attempt in range(3):
         try:
             with torch_device_fn.device(x.device):
-                _copysign_inplace_flat_kernel[grid](
+                kernel[grid](
                     x,
                     y,
                     numel,

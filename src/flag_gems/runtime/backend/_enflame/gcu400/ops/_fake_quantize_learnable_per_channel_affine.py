@@ -38,58 +38,147 @@ from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-_BLOCK = 1024
+_RUN_MIN_INNER = 1024
+_RUN_MAX_BLOCK = 16384
+_FLAT_BLOCK = 4096
+_SMALL_N = 4096
+_INNER1_BLOCK = 8192
+_MAX_GRID = 65535
+
+
+def _is_pow2(value):
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def _pow2_at_most(value, cap):
+    block = 1
+    while block * 2 <= value and block * 2 <= cap:
+        block *= 2
+    return max(block, 1)
+
+
+def _next_pow2(value):
+    block = 1
+    while block < value:
+        block *= 2
+    return block
 
 
 @triton.jit
-def _fake_quantize_per_channel_kernel(
-    X,
-    SCALE,
-    ZP,
-    OUT,
-    numel,
+def _learnable_run_kernel(
+    x_ptr,
+    scale_ptr,
+    zero_point_ptr,
+    out_ptr,
     inner,
-    channels,
-    qmin,
-    qmax,
+    n_channels,
+    quant_min,
+    quant_max,
     BLOCK: tl.constexpr,
 ):
-    # Mirror the PyTorch native (CPU/CUDA) fake-quantise arithmetic bit-for-bit.
-    # ``rcp_rn`` emits the correctly-rounded fp32 reciprocal that matches C's
-    # ``1.0f / scale`` (``1.0 / scale`` in Triton folds into a true division and
-    # flips round-half-to-even at exact half-way quotients).
-    pid = tl.program_id(0).to(tl.int64)
-    off = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    m = off < numel
-    # gcu400 masked lanes still touch memory, so every masked lane must point
-    # at element 0; an unmapped tail lane would fault the MMU.
-    safe = tl.where(m, off, 0)
+    run_id = tl.program_id(0)
+    channel = run_id % n_channels
+    chunk_start = tl.program_id(1) * BLOCK
+    lane = tl.arange(0, BLOCK)
+    mask = lane < inner - chunk_start
+    offsets = run_id * inner + chunk_start + lane
+    # Masked-out lanes all point to element 0, avoiding reads past the end of the allocation
+    safe = tl.where(mask, offsets, 0)
 
-    c = (safe // inner) % channels
-    x = tl.load(X + safe, mask=m, other=0.0).to(tl.float32)
-    scale = tl.load(SCALE + c, mask=m, other=1.0).to(tl.float32)
-    zp = tl.load(ZP + c, mask=m, other=0)
+    scale = tl.load(scale_ptr + channel).to(tl.float32)
+    zero_point = tl.load(zero_point_ptr + channel).to(tl.float32)
+    zero_point = tl.minimum(
+        tl.maximum(tl_extra_shim.rint(zero_point), quant_min), quant_max
+    )
+    lower = quant_min - zero_point
+    upper = quant_max - zero_point
 
-    inv_scale = tl_extra_shim.rcp_rn(scale)
-    qval = tl_extra_shim.nearbyint(x * inv_scale) + zp.to(tl.float32)
-    bounded = tl.minimum(qmax, tl.maximum(qmin, qval))
-    out = (bounded - zp.to(tl.float32)) * scale
-    tl.store(OUT + safe, out.to(OUT.dtype.element_ty), mask=m)
-
-
-def _prepare_zero_point(zero_point, quant_min, quant_max):
-    """Round, clamp and cast the learnable zero point to int, mirroring the
-    behaviour of ``_get_rounded_zero_point`` followed by ``.to(kInt)`` in the
-    PyTorch native implementation."""
-    return zero_point.round().clamp_(quant_min, quant_max).to(torch.int32)
+    x = tl.load(x_ptr + safe, mask=mask, other=0.0).to(tl.float32)
+    quantized = tl_extra_shim.nearbyint(x * tl_extra_shim.rcp_rn(scale))
+    out = tl.minimum(tl.maximum(quantized, lower), upper) * scale
+    tl.store(out_ptr + safe, out.to(out_ptr.dtype.element_ty), mask=mask)
 
 
-def _launch(self, scale, zero_point_rounded, axis, quant_min, quant_max, out):
+@triton.jit
+def _learnable_inner1_kernel(
+    x_ptr,
+    scale_ptr,
+    zero_point_ptr,
+    out_ptr,
+    numel,
+    n_channels,
+    quant_min,
+    quant_max,
+    COL: tl.constexpr,
+    TILE_ROWS: tl.constexpr,
+):
+    tile_start = tl.program_id(0) * (TILE_ROWS * n_channels)
+    columns = tl.arange(0, COL)
+    offsets = (
+        tile_start + tl.arange(0, TILE_ROWS)[:, None] * n_channels + columns[None, :]
+    )
+    mask = (columns[None, :] < n_channels) & (offsets < numel)
+    safe = tl.where(mask, offsets, 0)
+
+    col_mask = columns < n_channels
+    safe_col = tl.where(col_mask, columns, 0)
+    scale = tl.load(scale_ptr + safe_col, mask=col_mask, other=1.0).to(tl.float32)[
+        None, :
+    ]
+    zero_point = tl.load(zero_point_ptr + safe_col, mask=col_mask, other=0.0).to(
+        tl.float32
+    )
+    zero_point = tl.minimum(
+        tl.maximum(tl_extra_shim.rint(zero_point), quant_min), quant_max
+    )
+    lower = quant_min - zero_point[None, :]
+    upper = quant_max - zero_point[None, :]
+
+    x = tl.load(x_ptr + safe, mask=mask, other=0.0).to(tl.float32)
+    quantized = tl_extra_shim.nearbyint(x * tl_extra_shim.rcp_rn(scale))
+    out = tl.minimum(tl.maximum(quantized, lower), upper) * scale
+    tl.store(out_ptr + safe, out.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _learnable_flat_kernel(
+    x_ptr,
+    scale_ptr,
+    zero_point_ptr,
+    out_ptr,
+    numel,
+    quant_min,
+    quant_max,
+    INNER: tl.constexpr,
+    N_CHANNELS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < numel
+    safe = tl.where(mask, offsets, 0)
+    channel = (offsets // INNER) % N_CHANNELS
+
+    scale = tl.load(scale_ptr + channel, mask=mask, other=1.0).to(tl.float32)
+    zero_point = tl.load(zero_point_ptr + channel, mask=mask, other=0.0).to(tl.float32)
+    zero_point = tl.minimum(
+        tl.maximum(tl_extra_shim.rint(zero_point), quant_min), quant_max
+    )
+    lower = quant_min - zero_point
+    upper = quant_max - zero_point
+
+    x = tl.load(x_ptr + safe, mask=mask, other=0.0).to(tl.float32)
+    quantized = tl_extra_shim.nearbyint(x * tl_extra_shim.rcp_rn(scale))
+    out = tl.minimum(tl.maximum(quantized, lower), upper) * scale
+    tl.store(out_ptr + safe, out.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+def _launch(self, scale, zero_point, axis, quant_min, quant_max, out):
     if axis < 0:
         axis += self.dim()
     x = self if self.is_contiguous() else self.contiguous()
     scale = scale if scale.is_contiguous() else scale.contiguous()
-    channels = int(x.shape[axis])
+    zero_point = zero_point if zero_point.is_contiguous() else zero_point.contiguous()
+    n_channels = int(x.shape[axis])
     inner = 1
     for d in x.shape[axis + 1 :]:
         inner *= int(d)
@@ -107,20 +196,64 @@ def _launch(self, scale, zero_point_rounded, axis, quant_min, quant_max, out):
     store = target if contiguous_out else torch.empty_like(x)
 
     if numel:
-        grid = (triton.cdiv(numel, _BLOCK),)
-        _fake_quantize_per_channel_kernel[grid](
-            x,
-            scale,
-            zero_point_rounded,
-            store,
-            numel,
-            inner,
-            channels,
-            float(quant_min),
-            float(quant_max),
-            BLOCK=_BLOCK,
-            num_warps=4,
-        )
+        quant_min = float(quant_min)
+        quant_max = float(quant_max)
+        if inner == 1 and n_channels <= 4096 and numel // n_channels <= _MAX_GRID:
+            col = _next_pow2(n_channels)
+            rows_total = numel // n_channels
+            tile_rows = max(
+                min(
+                    _INNER1_BLOCK // col,
+                    _pow2_at_most(rows_total, _INNER1_BLOCK // col),
+                ),
+                1,
+            )
+            grid = (triton.cdiv(rows_total, tile_rows),)
+            _learnable_inner1_kernel[grid](
+                x,
+                scale,
+                zero_point,
+                store,
+                numel,
+                n_channels,
+                quant_min,
+                quant_max,
+                COL=col,
+                TILE_ROWS=tile_rows,
+                num_warps=4,
+            )
+        elif inner >= _RUN_MIN_INNER and (numel // inner) <= _MAX_GRID:
+            block = min(max(_pow2_at_most(inner, _RUN_MAX_BLOCK), 256), _RUN_MAX_BLOCK)
+            num_warps = 4 if block >= 8192 else 2 if block >= 2048 else 1
+            grid = (numel // inner, triton.cdiv(inner, block))
+            _learnable_run_kernel[grid](
+                x,
+                scale,
+                zero_point,
+                store,
+                inner,
+                n_channels,
+                quant_min,
+                quant_max,
+                BLOCK=block,
+                num_warps=num_warps,
+            )
+        else:
+            block = _SMALL_N if numel <= _SMALL_N else _FLAT_BLOCK
+            grid = (triton.cdiv(numel, block),)
+            _learnable_flat_kernel[grid](
+                x,
+                scale,
+                zero_point,
+                store,
+                numel,
+                quant_min,
+                quant_max,
+                INNER=inner,
+                N_CHANNELS=n_channels,
+                BLOCK=block,
+                num_warps=4,
+            )
     if not contiguous_out:
         target.copy_(store)
     return target
@@ -135,14 +268,13 @@ def _fake_quantize_learnable_per_channel_affine_inner(
 def _fake_quantize_learnable_per_channel_affine(
     self, scale, zero_point, axis, quant_min, quant_max, grad_factor=1.0
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE")
+    logger.debug("GEMS_ENFLAME FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE")
     if self.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
         raise TypeError(
             f"unsupported dtype {self.dtype}; only floating-point dtypes are supported"
         )
-    zero_point_rounded = _prepare_zero_point(zero_point, quant_min, quant_max)
     return _fake_quantize_learnable_per_channel_affine_inner(
-        self, scale, zero_point_rounded, axis, quant_min, quant_max
+        self, scale, zero_point, axis, quant_min, quant_max
     )
 
 
@@ -157,8 +289,7 @@ def _fake_quantize_learnable_per_channel_affine_out_impl(
     *,
     out=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_OUT")
-    zero_point_rounded = _prepare_zero_point(zero_point, quant_min, quant_max)
+    logger.debug("GEMS_ENFLAME FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_OUT")
     return _fake_quantize_learnable_per_channel_affine_inner(
-        self, scale, zero_point_rounded, axis, quant_min, quant_max, out=out
+        self, scale, zero_point, axis, quant_min, quant_max, out=out
     )

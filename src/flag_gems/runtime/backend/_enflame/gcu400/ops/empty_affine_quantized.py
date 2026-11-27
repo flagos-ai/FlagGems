@@ -89,7 +89,7 @@ def _empty_affine_quantized(
     Returns:
         torch.Tensor: Quantized tensor carrying the requested quantizer.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 EMPTY_AFFINE_QUANTIZED")
+    logger.debug("GEMS_ENFLAME EMPTY_AFFINE_QUANTIZED")
     return _NATIVE_FACTORY.redispatch(
         _NATIVE_FACTORY_KEY,
         size,
@@ -126,7 +126,7 @@ def _empty_affine_quantized_out(
     identity; an unchanged size keeps ``out``'s strides and a changed size
     resizes contiguously, matching the native ``.out`` geometry.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 EMPTY_AFFINE_QUANTIZED_OUT")
+    logger.debug("GEMS_ENFLAME EMPTY_AFFINE_QUANTIZED_OUT")
     if not isinstance(memory_format, torch.memory_format):
         raise RuntimeError(
             "memory_format must be a torch.memory_format, got "

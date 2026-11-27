@@ -227,7 +227,7 @@ def _dtype_constexpr(dtype):
 
 
 def cumulative_trapezoid(y, *, dx=1, dim=-1):
-    logger.debug("GEMS_ENFLAME_GCU400 CUMULATIVE_TRAPEZOID")
+    logger.debug("GEMS_ENFLAME CUMULATIVE_TRAPEZOID")
 
     assert y.dtype in (
         torch.float16,

@@ -37,6 +37,17 @@ _MAX_JAGGED_DIMS = 5
 _MAX_GRID_SIZE = 65535
 _VALIDATION_CACHE_CAPACITY = 128
 
+# GCU400 pays ~52ns of dispatch tax per program (see _nested_view_from_jagged_copy):
+# a 256-lane program per chunk makes large copies dispatch-bound (65536 programs
+# cost ~3.4ms before any data moves). Instead each task copies one fat block of a
+# padded sequence, the grid is capped at 256 programs and the kernel's grid-stride
+# loop iterates. Block bounds: 8192 lanes for 8-byte lanes, 32768 for 4-byte lanes
+# (calibrated sweep, 2026-11-19); blocks shrink with the padded sequence so small
+# shapes keep the launch-bound single-chunk form.
+_SINGLE_BLOCK_MAX_WIDE = 8192
+_SINGLE_BLOCK_MAX_NARROW = 32768
+_SINGLE_GRID_CAP = 256
+
 # Offsets are commonly reused for many invocations. Content validation must read
 # device data to report malformed trees synchronously, so cache successful checks
 # by object identity and Tensor version. A weak reference prevents this bounded
@@ -297,6 +308,10 @@ def _tensor_version(tensor):
         return None
 
 
+def _next_pow2(value):
+    return 1 << (max(value, 1) - 1).bit_length()
+
+
 def _validation_cache_key(offsets, max_lengths):
     versions = tuple(_tensor_version(offset) for offset in offsets)
     if any(version is None for version in versions):
@@ -436,10 +451,14 @@ def _check_inputs(dense, offsets, total_L):
 def _launch_single(dense, offset, output, max_length, inner_size):
     if output.numel() == 0 or dense.size(0) == 0:
         return
-    block_size = 256
-    chunks_per_batch = triton.cdiv(max_length * inner_size, block_size)
+    sequence_lanes = max_length * inner_size
+    lane_width = dense.element_size()
+    block_max = _SINGLE_BLOCK_MAX_NARROW if lane_width <= 4 else _SINGLE_BLOCK_MAX_WIDE
+    block_size = min(block_max, _next_pow2(sequence_lanes))
+    chunks_per_batch = triton.cdiv(sequence_lanes, block_size)
     total_tasks = dense.size(0) * chunks_per_batch
-    grid = (min(total_tasks, _MAX_GRID_SIZE),)
+    grid = (min(total_tasks, _SINGLE_GRID_CAP),)
+    num_warps = 8 if block_size >= 2048 else 4
     use_int64_index = max(dense.numel(), output.numel(), offset.numel()) >= 2**31
     _padded_dense_to_jagged_single_kernel[grid](
         dense,
@@ -452,6 +471,7 @@ def _launch_single(dense, offset, output, max_length, inner_size):
         output.size(0),
         USE_INT64_INDEX=use_int64_index,
         BLOCK_SIZE=block_size,
+        num_warps=num_warps,
     )
 
 
@@ -510,7 +530,7 @@ def _launch_multi(dense, offsets, output, max_lengths, total_L, inner_size):
 
 def _padded_dense_to_jagged_forward(dense, offsets, total_L=None):
     """Convert padded dense storage into a one- to five-level jagged tensor."""
-    logger.debug("GEMS_ENFLAME_GCU400 PADDED_DENSE_TO_JAGGED_FORWARD")
+    logger.debug("GEMS_ENFLAME PADDED_DENSE_TO_JAGGED_FORWARD")
 
     num_jagged_dims, max_lengths, total_L = _check_inputs(dense, offsets, total_L)
     dense_contiguous = dense.contiguous()
@@ -519,21 +539,34 @@ def _padded_dense_to_jagged_forward(dense, offsets, total_L=None):
     output = torch.empty((total_L, inner_size), dtype=dense.dtype, device=dense.device)
 
     # This operator only copies elements. Storage views preserve every output
-    # bit, including NaN payloads and signed zero. FP64-as-int64 also avoids
-    # backends that cannot lower FP64 loads, while packing FP16 widens copies.
+    # bit, including NaN payloads and signed zero. Packing 16-bit dtypes into
+    # 64-bit lanes (and FP32 into 32-bit-pair lanes) widens every access so a
+    # block moves 2-8x more bytes per program, which matters because GCU400
+    # programs pay a per-program dispatch tax. FP16/BF16 pack 2/4 elements per
+    # lane, FP32 packs 2, and honest 8-byte dtypes (int64) stay as they are.
+    # GCU caveat: torch_gcu stores FP64 tensors as packed FP32 in the first
+    # numel*4 bytes ("GCU not support Double use Float replace"), so an int64
+    # view spans twice the real allocation and the store would fault the
+    # device. One FP64 element maps to exactly one packed int32 slot, so the
+    # int32 view keeps every index in bounds while preserving the packed bits
+    # (same representation the native aten leg produces).
     kernel_dense = dense_contiguous
     kernel_output = output
     kernel_inner_size = inner_size
     if dense.dtype == torch.float64:
-        kernel_dense = dense_contiguous.view(torch.int64)
-        kernel_output = output.view(torch.int64)
-    elif dense.dtype == torch.float16 and inner_size % 4 == 0:
+        kernel_dense = dense_contiguous.view(torch.int32)
+        kernel_output = output.view(torch.int32)
+    elif dense.dtype in (torch.float16, torch.bfloat16) and inner_size % 4 == 0:
         kernel_dense = dense_contiguous.view(torch.int64)
         kernel_output = output.view(torch.int64)
         kernel_inner_size = inner_size // 4
-    elif dense.dtype == torch.float16 and inner_size % 2 == 0:
+    elif dense.dtype in (torch.float16, torch.bfloat16) and inner_size % 2 == 0:
         kernel_dense = dense_contiguous.view(torch.int32)
         kernel_output = output.view(torch.int32)
+        kernel_inner_size = inner_size // 2
+    elif dense.dtype == torch.float32 and inner_size % 2 == 0:
+        kernel_dense = dense_contiguous.view(torch.int64)
+        kernel_output = output.view(torch.int64)
         kernel_inner_size = inner_size // 2
 
     with torch_device_fn.device(dense.device):
