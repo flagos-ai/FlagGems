@@ -15584,7 +15584,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
