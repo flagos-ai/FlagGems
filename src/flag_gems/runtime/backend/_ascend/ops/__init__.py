@@ -452,6 +452,7 @@ from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy import xlogy, xlogy_out, xlogy_tensor_scalar, xlogy_tensor_scalar_out
 from .xlogy_ import xlogy_
+from .xlogy_scalar_tensor import xlogy_scalar_tensor
 from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -959,6 +960,7 @@ __all__ = [
     "xlogy",
     "xlogy_",
     "xlogy_out",
+    "xlogy_scalar_tensor",
     "xlogy_tensor_scalar",
     "xlogy_tensor_scalar_out",
     "zero",
