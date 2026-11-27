@@ -80,6 +80,7 @@ jobs:
           TOTAL_SHARDS: '8'
           SHARD_INDEX: ${{ matrix.shard_index }}
           QUICK_TESTS: '1'
+          DAILY_PYTHON_OP: '1'
           # sys.monitoring-based tracing (Python >= 3.12) adds far less overhead
           # than the default C tracer when importing flag_gems under coverage.
           COVERAGE_CORE: sysmon

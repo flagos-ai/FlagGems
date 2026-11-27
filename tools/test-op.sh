@@ -101,7 +101,18 @@ TEST_CASES_CPU=()
 # but bring no test file of their own. We still want to exercise them, selected
 # by pytest marker below.
 OPS_IMPL_FILES=()
+declare -A DAILY_PYTHON_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${DAILY_PYTHON_OP:-}" == "1" ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    DAILY_PYTHON_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/daily-python-op-blacklist.txt"
+fi
 for item in $CHANGED_FILES; do
+  if [[ -n "${DAILY_PYTHON_OP_BLACKLIST[$item]:-}" ]]; then
+    echo "Skipping daily python-op blacklist: $item"
+    continue
+  fi
   file_name=$(basename "$item")
   case $item in
     tests/test_quant.py)
