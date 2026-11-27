@@ -31,4 +31,6 @@ sorted by ``str.casefold`` (``tools/ci_checks/check_init_exports.py``).
 See ``a5/__init__.py`` for the import rules that apply to modules here.
 """
 
-__all__ = []
+from .mhc_pre_big_fuse_fwd import mhc_pre_big_fuse_fwd
+
+__all__ = ["mhc_pre_big_fuse_fwd"]

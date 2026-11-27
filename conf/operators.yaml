@@ -14364,6 +14364,17 @@ ops:
   - Tensor
   stages:
   - alpha: 5.5.0
+- id: mhc_pre_big_fuse_fwd
+  description: Fuse four-stream mHC pre-mixing from reduced prenorm GEMM partials.
+  for:
+  - mhc_pre_big_fuse_fwd
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: min
   description: Returns the minimum value of all elements in the `input` tensor.
   for:
