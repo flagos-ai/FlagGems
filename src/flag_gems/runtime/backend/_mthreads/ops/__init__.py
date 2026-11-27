@@ -81,6 +81,7 @@ from ._foreach_frac_ import _foreach_frac_
 from ._foreach_log1p_ import _foreach_log1p_
 from ._foreach_log2 import _foreach_log2
 from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10 import _foreach_log10
 from ._foreach_log10_ import _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
@@ -367,6 +368,7 @@ __all__ = [
     "_foreach_exp_",
     "_foreach_frac",
     "_foreach_frac_",
+    "_foreach_log10",
     "_foreach_log10_",
     "_foreach_log1p_",
     "_foreach_log2",
