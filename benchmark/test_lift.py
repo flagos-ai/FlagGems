@@ -17,8 +17,14 @@ import torch
 
 from . import base, consts
 
+# aten::lift is a metadata-only op: it returns the input tensor unchanged and
+# never launches a device kernel, so --kernel-check has nothing to profile for
+# it. The lift.out benchmark below does launch a copy kernel and is checked.
+_KERNEL_CHECK = getattr(base.Config, "kernel_check", False)
+
 
 @pytest.mark.lift
+@pytest.mark.skipif(_KERNEL_CHECK, reason="aten::lift launches no device kernel")
 def test_lift():
     bench = base.UnaryPointwiseBenchmark(
         op_name="lift",
