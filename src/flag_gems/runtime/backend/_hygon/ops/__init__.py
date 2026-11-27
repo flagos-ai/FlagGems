@@ -129,6 +129,7 @@ from ._foreach_mul__Scalar import _foreach_mul__Scalar
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 from ._foreach_mul__Tensor import _foreach_mul__Tensor as _foreach_mul__Tensor
 from ._foreach_mul_List import _foreach_mul_List as _foreach_mul_List
+from ._foreach_mul_Scalar import _foreach_mul_Scalar as _foreach_mul_Scalar
 from ._foreach_mul_ScalarList import _foreach_mul_ScalarList as _foreach_mul_ScalarList
 from ._foreach_mul_Tensor import _foreach_mul_Tensor as _foreach_mul_Tensor
 from ._foreach_neg import _foreach_neg as _foreach_neg
@@ -515,6 +516,7 @@ __all__ = [
     "_foreach_mul__ScalarList",
     "_foreach_mul__Tensor",
     "_foreach_mul_List",
+    "_foreach_mul_Scalar",
     "_foreach_mul_ScalarList",
     "_foreach_mul_Tensor",
     "_foreach_neg",
