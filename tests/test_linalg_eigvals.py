@@ -204,7 +204,7 @@ def test_linalg_eigvals_out_non_contiguous(dtype):
 
 
 @pytest.mark.linalg_eigvals_out
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_linalg_eigvals_out_float64(dtype):
     """float64 input returns complex128 and must stay on device."""
     inp = torch.randn((5, 5), dtype=dtype, device=flag_gems.device)

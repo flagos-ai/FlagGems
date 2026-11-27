@@ -20,94 +20,138 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-
-@triton.jit
-def _fallback_lgamma(x):
-    z = x - 1.0
-    a = 0.9999999999998099
-    a += 676.5203681218851 / (z + 1.0)
-    a += -1259.1392167224028 / (z + 2.0)
-    a += 771.3234287776531 / (z + 3.0)
-    a += -176.6150291621406 / (z + 4.0)
-    a += 12.507343278686905 / (z + 5.0)
-    a += -0.13857109526572012 / (z + 6.0)
-    a += 9.984369578019572e-6 / (z + 7.0)
-    a += 1.5056327351493116e-7 / (z + 8.0)
-    t = z + 7.5
-    return 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
-
-
-_lgamma = getattr(tl_extra_shim, "lgamma", _fallback_lgamma)
+# Launch config mirrors the GCU400-tuned lgamma_ kernel (same compute-heavy
+# unary family): BLOCK=2048 / num_warps=4 on a fixed 48-CTA grid-stride form.
+# The 1D grid is capped at 48 programs, so no shape can exceed the 65535
+# grid.x hardware limit (the previous one-block-per-program form died with
+# OutOfResources at 2**29 elements).
+NUM_SIPS = 24
+BLOCK = 2048
+NUM_WARPS = 4
+# Few-lgamma shapes (p <= 6 => at most 3 evaluations) are latency-bound per
+# element and run faster with two warps; larger p is throughput-bound on the
+# transcendental pipeline and prefers four.
+NUM_WARPS_NARROW = 2
+NARROW_TERM_LIMIT = 3
+LN2 = 0.6931471805599453
+LOG_PI = 1.1447298858494002
 
 
 @triton.jit
+def _lgamma_stirling(x, SHIFT_THRESHOLD: tl.constexpr, SHORT_SERIES: tl.constexpr):
+    # fp32 lgamma via shift-to->=3 + Stirling asymptotics, validated against CPU
+    # double and 2-25x faster than the libdevice extern, which also degrades
+    # 7.7x on 16-bit-wide pipelines.
+    # The mvlgamma contract is x > (p-1)/2, so every lgamma argument here is
+    # strictly positive.  For 0 < x < 0.5 the reflection identity
+    # lgamma(x) = log(pi) - log|sin(pi x)| - lgamma(1-x) is therefore replaced by
+    # the much cheaper recurrence lgamma(x) = lgamma(x+1) - log(x): the -log(x)
+    # term is folded into the shift product `t`, so it reuses the single
+    # tl.log(t) that the shift already needs instead of adding one log for the
+    # sin polynomial arm.
+    small = x < 0.5
+    y = tl.where(small, x + 1.0, x)
+    t = tl.where(small, x, 1.0)
+    for _ in tl.static_range(SHIFT_THRESHOLD):
+        m = y < SHIFT_THRESHOLD * 1.0
+        t = tl.where(m, t * y, t)
+        y = tl.where(m, y + 1.0, y)
+    logy = tl.log(y)
+    r = tl.math.rsqrt(y * y)
+    r2 = r * r
+    if SHORT_SERIES:
+        # 16-bit storage cannot resolve the O(1/(1260 y^5)) term, so drop it:
+        # the omitted tail is 1/(1680 y^7) <= 2.6e-8 at y >= 3.5, far below the
+        # bf16/fp16 unit round-off.
+        series = r * (0.08333333333333333 - r2 * 0.002777777777777778)
+    else:
+        series = r * (
+            0.08333333333333333
+            - r2 * (0.002777777777777778 - r2 * 0.0007936507936507937)
+        )
+    result = (y - 0.5) * logy - y + 0.9189385332046727 + series - tl.log(t)
+    # Gamma's poles (0 and the negative integers) and +-inf map to +inf.
+    result = tl.where((x <= 0.0) | (tl.abs(x) == float("inf")), float("inf"), result)
+    return result
+
+
+@triton.jit
+def _mvlgamma_sum(
+    x_f32,
+    M: tl.constexpr,
+    IS_ODD: tl.constexpr,
+    LIN: tl.constexpr,
+    CONST: tl.constexpr,
+    SHIFT_THRESHOLD: tl.constexpr,
+    SHORT_SERIES: tl.constexpr,
+):
+    # mvlgamma(x, p) = p*(p-1)/4*log(pi) + sum_{k=0}^{p-1} lgamma(x - k/2).
+    # Consecutive even/odd terms are paired through the Legendre duplication
+    # formula lgamma(z) + lgamma(z+1/2) = (1-2z)*ln2 + ln(pi)/2 + lgamma(2z)
+    # with z = x-j-1/2, an exact identity over the whole domain (poles of
+    # either pair member map to poles of lgamma(2z)).  This halves the lgamma
+    # evaluations: M pairs + one leftover term for odd p, instead of p terms,
+    # leaving a single LIN*x + CONST epilogue with host-precomputed scalars.
+    # M/IS_ODD/LIN/CONST come from the host because the enflame frontend does
+    # not fold constexpr // expressions (p-derived values are computed in the
+    # Python wrapper).
+    acc = tl.zeros_like(x_f32)
+    for j in tl.static_range(M):
+        acc += _lgamma_stirling(
+            2.0 * x_f32 - (2 * j + 1), SHIFT_THRESHOLD, SHORT_SERIES
+        )
+    if IS_ODD:
+        acc += _lgamma_stirling(x_f32 - M, SHIFT_THRESHOLD, SHORT_SERIES)
+    return acc + LIN * x_f32 + CONST
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def mvlgamma_kernel(
     x_ptr,
     output_ptr,
     n_elements,
-    p_val,
-    BLOCK_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+    M: tl.constexpr,
+    IS_ODD: tl.constexpr,
+    LIN: tl.constexpr,
+    CONST: tl.constexpr,
+    WIDE: tl.constexpr,
+    SHORT_SERIES: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    x = tl.load(x_ptr + offsets, mask=mask)
-    x_f32 = x.to(tl.float32)
-
-    # Load p value
-    p = tl.load(p_val)
-
-    # Compute the constant term: p * (p - 1) / 4 * log(π)
-    LOG_PI = 1.1447298858494002  # log(π)
-    LOG_PI_OVER_4 = LOG_PI / 4.0
-
-    p_f32 = p.to(tl.float32)
-    constant_term = p_f32 * (p_f32 - 1.0) * LOG_PI_OVER_4
-
-    # Compute sum of lgamma terms: sum_{k=0}^{p-1} lgamma(x - k/2)
-    sum_term = tl.zeros_like(x_f32)
-
-    # Unrolled loop for common p values (1 to 12)
-    t0 = _lgamma(x_f32 - 0.0)
-    t1 = _lgamma(x_f32 - 0.5)
-    t2 = _lgamma(x_f32 - 1.0)
-    t3 = _lgamma(x_f32 - 1.5)
-    t4 = _lgamma(x_f32 - 2.0)
-    t5 = _lgamma(x_f32 - 2.5)
-    t6 = _lgamma(x_f32 - 3.0)
-    t7 = _lgamma(x_f32 - 3.5)
-    t8 = _lgamma(x_f32 - 4.0)
-    t9 = _lgamma(x_f32 - 4.5)
-    t10 = _lgamma(x_f32 - 5.0)
-    t11 = _lgamma(x_f32 - 5.5)
-
-    # Select based on p at runtime using tl.where
-    sum_term = t0
-    sum_term = tl.where(p >= 2, sum_term + t1, sum_term)
-    sum_term = tl.where(p >= 3, sum_term + t2, sum_term)
-    sum_term = tl.where(p >= 4, sum_term + t3, sum_term)
-    sum_term = tl.where(p >= 5, sum_term + t4, sum_term)
-    sum_term = tl.where(p >= 6, sum_term + t5, sum_term)
-    sum_term = tl.where(p >= 7, sum_term + t6, sum_term)
-    sum_term = tl.where(p >= 8, sum_term + t7, sum_term)
-    sum_term = tl.where(p >= 9, sum_term + t8, sum_term)
-    sum_term = tl.where(p >= 10, sum_term + t9, sum_term)
-    sum_term = tl.where(p >= 11, sum_term + t10, sum_term)
-    sum_term = tl.where(p >= 12, sum_term + t11, sum_term)
-
-    result = constant_term + sum_term
-    result = result.to(x.dtype)
-    tl.store(output_ptr + offsets, result, mask=mask)
+    num_pids = tl.num_programs(0)
+    num_blocks = (n_elements + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        # WIDE: the grid cap no longer bounds the covered offset domain, so
+        # element offsets past int32 (n_elements > 2**31 - BLOCK) must be
+        # computed in int64 to avoid wrap-around loads/stores.
+        if WIDE:
+            off = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            off = block_id * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            x = tl.load(x_ptr + off)
+            result = _mvlgamma_sum(
+                x.to(tl.float32), M, IS_ODD, LIN, CONST, 3, SHORT_SERIES
+            )
+            tl.store(output_ptr + off, result.to(x.dtype))
+        else:
+            mask = off < n_elements
+            x = tl.load(x_ptr + off, mask=mask, other=0.0)
+            result = _mvlgamma_sum(
+                x.to(tl.float32), M, IS_ODD, LIN, CONST, 3, SHORT_SERIES
+            )
+            tl.store(output_ptr + off, result.to(x.dtype), mask=mask)
 
 
 def mvlgamma(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 MVLGAMMA")
+    logger.debug("GEMS_ENFLAME MVLGAMMA")
     A = args[0]
     p = args[1] if len(args) > 1 else kwargs.get("p", 1)
 
@@ -117,14 +161,18 @@ def mvlgamma(*args, **kwargs):
     if not isinstance(p, int) or p < 1:
         raise ValueError("p must be a positive integer")
 
-    # Limit p to 12 since we unrolled the loop 12 times
+    # Limit p to 12 (the aten contract for mvlgamma).
     if p > 12:
         raise ValueError("p must be <= 12 for this implementation")
 
-    # Create a 1D tensor to pass p to the kernel
-    p_tensor = torch.tensor([p], dtype=torch.int32, device=A.device)
+    # Host-precomputed duplication-formula coefficients for _mvlgamma_sum:
+    # sum_{j<m}(2j+2-2x)*ln2 + m*ln(pi)/2 + p*(p-1)*log(pi)/4 folds to
+    # LIN*x + CONST with m = p // 2 pairs.
+    m = p // 2
+    is_odd = p % 2
+    lin = -2.0 * m * LN2
+    const = m * (m + 1) * LN2 + 0.5 * m * LOG_PI + p * (p - 1) * 0.25 * LOG_PI
 
-    # Make input contiguous for reading
     x = A.contiguous()
 
     n_elements = x.numel()
@@ -132,7 +180,22 @@ def mvlgamma(*args, **kwargs):
         return torch.empty_like(A)
 
     output = torch.empty_like(x)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (min(triton.cdiv(n_elements, BLOCK), NUM_SIPS * 2),)
+    num_lgamma_terms = m + is_odd
+    num_warps = NUM_WARPS_NARROW if num_lgamma_terms <= NARROW_TERM_LIMIT else NUM_WARPS
     with torch_device_fn.device(x.device):
-        mvlgamma_kernel[grid](x, output, n_elements, p_tensor, BLOCK_SIZE=1024)
+        mvlgamma_kernel[grid](
+            x,
+            output,
+            n_elements,
+            BLOCK=BLOCK,
+            EVEN=(n_elements % BLOCK) == 0,
+            M=m,
+            IS_ODD=is_odd,
+            LIN=lin,
+            CONST=const,
+            WIDE=n_elements > 2**31 - BLOCK,
+            SHORT_SERIES=x.dtype not in (torch.float32, torch.float64),
+            num_warps=num_warps,
+        )
     return output

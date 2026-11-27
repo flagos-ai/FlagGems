@@ -18,13 +18,20 @@
 
 One Triton program owns one full ``n x n`` symmetric operator held as a
 pow2-padded, register-resident 2D tile.  The operator is reconstructed from the
-triangle selected by ``UPLO`` and diagonalised with threshold Jacobi sweeps:
-plane rotations are applied in-register and a rotation is skipped outright when
-its off-diagonal element is already below the working-precision floor.  The
-resulting diagonal is sorted ascending with a rank-based comparison sort.
+triangle selected by ``UPLO`` and diagonalised with the classic LAPACK-style
+two-stage pipeline used by EISPACK's ``tred1``/``tql1``:
 
-The exact matrix order ``n`` is a ``tl.constexpr`` so the sweep enumerates only
-the ``n(n-1)/2`` real index pairs rather than the pow2-padded ``N(N-1)/2``.
+1. Householder reflectors reduce the operator to symmetric tridiagonal form.
+   Each reflector needs only two cross-lane reductions (column extraction and
+   the ``A @ v`` product), everything else is elementwise tile algebra.
+2. The EISPACK ``tql1`` implicit-shift QL iteration computes the eigenvalues of
+   the tridiagonal.  The per-rotation working set is a handful of scalars, so
+   the chase is pure scalar arithmetic; only the two tridiagonal arrays are
+   touched per rotation (one masked reduction each way).
+
+This replaces the previous register-tile cyclic Jacobi, whose per-rotation row
+extractions cost two layout-tax reductions apiece and whose O(sweeps * n^2)
+serial rotation count dominated at n >= 4.
 
 All computation that produces the returned values happens inside the device
 kernel; the host wrapper only allocates the output, reads metadata and launches.
@@ -39,14 +46,8 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
-# Maximum number of threshold-Jacobi sweeps.  Cyclic Jacobi converges
-# quadratically, so a small bound reaches machine precision for the small ``n``
-# this kernel targets (n <= 16).
-_SWEEPS = 8
-
-
 @triton.jit
-def _eigvalsh_jacobi_kernel(
+def _eigvalsh_hql_kernel(
     A_ptr,
     Out_ptr,
     s_b,
@@ -55,13 +56,12 @@ def _eigvalsh_jacobi_kernel(
     s_o,
     NP: tl.constexpr,
     N: tl.constexpr,
-    SWEEPS: tl.constexpr,
     UPLO_L: tl.constexpr,
-    THRESH: tl.constexpr,
 ):
     pid = tl.program_id(0)
     ri = tl.arange(0, N)
     ci = tl.arange(0, N)
+    lane = tl.arange(0, N)
 
     # ---------------------------------------------------------------- load
     mask = (ri[:, None] < NP) & (ci[None, :] < NP)
@@ -75,96 +75,176 @@ def _eigvalsh_jacobi_kernel(
     else:
         A = tl.where(ri[:, None] <= ci[None, :], t, tt)
 
-    # ------------------------------------------------------- Jacobi sweeps
-    # Threshold Jacobi: a rotation whose off-diagonal element is already below
-    # the working-precision floor cannot move the eigenvalues (perturbation is
-    # O(|a_pq|)), so it is skipped entirely.  The per-pair test costs one masked
-    # tile reduction; the skipped rotation would have cost five tile broadcasts,
-    # the two row extractions and the rotation block.  The largest |a_pq| seen
-    # during a sweep is accumulated for free from the values that test already
-    # produced; once a whole sweep stays at or below the threshold the matrix is
-    # converged and every remaining sweep is skipped outright.
-    thresh = tl.max(tl.abs(A)) * THRESH
-    maxoff = 2.0 * thresh
-    for _ in range(SWEEPS):
-        if maxoff > thresh:
-            mx = thresh * 0.0
-            for p in tl.static_range(0, NP - 1):
-                for q in tl.static_range(p + 1, NP):
-                    apq = tl.sum(
-                        tl.where((ri[:, None] == p) & (ci[None, :] == q), A, 0.0)
-                    )
-                    mx = tl.maximum(mx, tl.abs(apq))
-                    if tl.abs(apq) > thresh:
-                        rowp = tl.sum(tl.where(ri[:, None] == p, A, 0.0), axis=0)
-                        rowq = tl.sum(tl.where(ri[:, None] == q, A, 0.0), axis=0)
+    # -------------------------------------------------- Householder phase
+    # For each column K the reflector annihilates A[K+2:, K].  The Householder
+    # vector v is the masked column with its first entry shifted by
+    # alpha = -sign(x0) * |x|; the similarity P A P with P = I - beta v v^T
+    # is applied as the rank-2 update
+    #     A <- A - beta (v w^T + w v^T) + beta^2 gamma v v^T,
+    # w = A v masked to the trailing block, gamma = v^T w.  v vanishes outside
+    # the trailing block, so the outer products confine themselves; the
+    # annihilated column/row K is produced by the u[K] = v2/2 seed below
+    # instead of patch writes.
+    for K in tl.static_range(0, NP - 2):
+        # colK[i] = A[i, K] for i > K, else 0: pick column K, sum over the
+        # column axis so the result stays indexed by the row lane.
+        colK = tl.sum(tl.where((ci[None, :] == K) & (ri[:, None] > K), A, 0.0), axis=1)
+        x0 = tl.sum(tl.where(lane == K + 1, colK, 0.0))
+        x2 = tl.sum(colK * colK)
+        # Unconditional reflector: when the column is already zero the update
+        # degenerates to the identity (beta = 0, alpha = 0), so no runtime
+        # branch is needed and the [N, N] tile never crosses an scf.if
+        # boundary.
+        xnorm = tl.sqrt(x2)
+        alpha = tl.where(x0 >= 0.0, -xnorm, xnorm)
+        v = tl.where(lane == K + 1, x0 - alpha, colK)
+        # v2 = ||x||^2 - 2 alpha x0 + alpha^2, all scalars.
+        v2 = x2 - 2.0 * alpha * x0 + alpha * alpha
+        v2safe = tl.where(v2 > 0.0, v2, 1.0)
+        beta = tl.where(v2 > 0.0, 2.0 / v2safe, 0.0)
+        w = tl.sum(v[:, None] * A, axis=0)
+        gamma = tl.sum(w * v)
+        # tred2-style merge: A - beta (v w^T + w v^T) + beta^2 gamma v v^T
+        #   == A - beta (v u^T + u v^T) with u = w - (beta*gamma/2) v.
+        #
+        # Seeding u[K] = v2/2 (i.e. beta*u[K] == 1) makes the update place
+        # alpha on the (K+1, K) / (K, K+1) corners and exact zeros in the
+        # rest of column/row K by itself:
+        #   (K+1, K):  x0 - beta*(x0-alpha)          = alpha
+        #   (i > K+1, K) and (K, j > K+1): A - beta*u[K]*v = A - v = 0
+        # so no masked patch writes are needed at all.
+        w = tl.where(lane < K, 0.0, w)
+        u = w - (0.5 * beta * gamma) * v
+        u = tl.where(lane == K, 0.5 * v2, u)
+        A = A - beta * (v[:, None] * u[None, :] + u[:, None] * v[None, :])
 
-                        app = tl.sum(tl.where(ri == p, rowp, 0.0))
-                        aqq = tl.sum(tl.where(ri == q, rowq, 0.0))
+    # ----------------------------------------- extract tridiagonal arrays
+    # d_vec[k] = A[k, k]; e_vec[k] = A[k + 1, k] (subdiagonal between k and
+    # k+1).  e_vec[NP-1] reads the padded zero row, which is exactly the
+    # EISPACK e(n) = 0 sentinel.
+    d_vec = tl.sum(tl.where(ri[:, None] == ci[None, :], A, 0.0), axis=0)
+    e_vec = tl.sum(tl.where(ri[:, None] == ci[None, :] + 1, A, 0.0), axis=0)
 
-                        # Rotation cosine/sine of the annihilating angle, in a
-                        # form that needs only one square root and one
-                        # reciprocal square root: with d1 = aqq-app,
-                        # rr = sqrt(d1^2+4*apq^2) and qv = |d1| + rr the exact
-                        # rotation is
-                        #   cos = qv * rsqrt(2*rr*qv)
-                        #   sin = sign(d1)*2*apq * rsqrt(2*rr*qv)
-                        # which satisfies cos^2 + sin^2 = 1 by construction.
-                        d1 = aqq - app
-                        rr = tl.sqrt(d1 * d1 + 4.0 * apq * apq)
-                        qv = tl.abs(d1) + rr
-                        iw = tl.rsqrt(2.0 * rr * qv)
-                        c = qv * iw
-                        s = tl.where(d1 >= 0.0, 2.0 * apq * iw, -2.0 * apq * iw)
+    # ------------------------------------------------------- tql1 phase
+    # Verbatim 0-based port of EISPACK tql1 (Bowdler/Martin/Reinsch/Wilkinson):
+    # one Wilkinson-shifted implicit QL sweep per unconverged leading position
+    # L, chasing from M-1 down to L.  The block end M is found once per L and
+    # held fixed across that position's iterations, exactly like the Fortran.
+    # f tracks the accumulated origin shift so each converged eigenvalue is
+    # restored as d(L) + f.
+    f = 0.0
+    tst1 = 0.0
+    for L in tl.static_range(0, NP):
+        # tst1 = running max of |d(L)| + |e(L)| (e(NP-1) is the zero sentinel).
+        # The window scalars dL_s/eL_s/dL1_s/el1_s/dM_s cache the hot entries
+        # the shift and the chase read, so the QL iterations pay no per-visit
+        # extraction for them.
+        dL_s = tl.sum(tl.where(lane == L, d_vec, 0.0))
+        if L < NP - 1:
+            eL_s = tl.sum(tl.where(lane == L, e_vec, 0.0))
+        else:
+            eL_s = 0.0
+        tst1 = tl.maximum(tst1, tl.abs(dL_s) + tl.abs(eL_s))
 
-                        # Exact rotated diagonal entries, from c and s directly.
-                        c2 = c * c
-                        s2 = s * s
-                        cs = 2.0 * c * s
-                        dpp = c2 * app - cs * apq + s2 * aqq
-                        dqq = s2 * app + cs * apq + c2 * aqq
+        # Look for the first negligible subdiagonal at or after L.  The
+        # sentinel e_vec[NP-1] = 0 is always negligible, so M <= NP-1.
+        sm = (tst1 + tl.abs(e_vec)) == tst1
+        Mv = tl.min(tl.where(sm & (lane >= L), lane, N))
+        dL1_s = tl.sum(tl.where(lane == L + 1, d_vec, 0.0))
+        el1_s = tl.sum(tl.where(lane == L + 1, e_vec, 0.0))
+        dM_s = tl.sum(tl.where(lane == Mv, d_vec, 0.0))
 
-                        # New rows of A' = J^T A J.  The generic expression
-                        # c*rowp - s*rowq is exact for every column outside
-                        # {p,q}; the rotated 2x2 block is patched in place so
-                        # that the same two vectors, broadcast along rows and
-                        # along columns, already carry the exact (p,p)/(q,q)
-                        # diagonals and the exactly zero (p,q)/(q,p) corners.
-                        nrowp = tl.where(
-                            ri == p,
-                            dpp,
-                            tl.where(ri == q, 0.0, c * rowp - s * rowq),
-                        )
-                        nrowq = tl.where(
-                            ri == q,
-                            dqq,
-                            tl.where(ri == p, 0.0, s * rowp + c * rowq),
-                        )
+        j = 0
+        done = tl.where(Mv == L, 1, 0)
+        while done == 0:
+            if j == 30:
+                done = 1
+            else:
+                j += 1
+                # ---- form shift ----
+                pp = (dL1_s - dL_s) / (2.0 * eL_s)
+                rr = tl.sqrt(pp * pp + 1.0)
+                sgn = tl.where(pp >= 0.0, rr, -rr)
+                dL_new = eL_s / (pp + sgn)
+                dL1_new = eL_s * (pp + sgn)
+                dl1 = dL1_new
+                h = dL_s - dL_new
+                f += h
+                # Padded lanes are never read by the QL and are overwritten
+                # before the sort, so the shift needs no upper mask.
+                d_vec = tl.where(lane >= L + 2, d_vec - h, d_vec)
+                d_vec = tl.where(lane == L, dL_new, d_vec)
+                d_vec = tl.where(lane == L + 1, dL1_new, d_vec)
+                # the same uniform shift applies to the cached window scalars
+                # (lane Mv is either replaced by the shift when Mv == L+1, or
+                # decremented by h when Mv >= L+2)
+                dM_s = tl.where(Mv == L + 1, dL1_new, dM_s)
+                dM_s = tl.where(Mv >= L + 2, dM_s - h, dM_s)
+                dL_s = dL_new
+                dL1_s = dL1_new
 
-                        A = tl.where(ri[:, None] == p, nrowp[None, :], A)
-                        A = tl.where(ri[:, None] == q, nrowq[None, :], A)
-                        A = tl.where(ci[None, :] == p, nrowp[:, None], A)
-                        A = tl.where(ci[None, :] == q, nrowq[:, None], A)
-            maxoff = mx
+                # ---- ql transformation ----
+                p = dM_s
+                c = 1.0
+                c2 = 1.0
+                s = 0.0
+                s2 = 0.0
+                c3 = 1.0
+                g = 0.0
+                hc = 0.0
+                el1 = el1_s
+                ii = Mv - 1
+                while ii >= L:
+                    e_i = tl.sum(tl.where(lane == ii, e_vec, 0.0))
+                    d_i = tl.sum(tl.where(lane == ii, d_vec, 0.0))
+                    c3 = c2
+                    c2 = c
+                    s2 = s
+                    g = c * e_i
+                    hc = c * p
+                    r = tl.sqrt(p * p + e_i * e_i)
+                    e_next = s * r
+                    e_vec = tl.where(lane == ii + 1, e_next, e_vec)
+                    s = e_i / r
+                    c = p / r
+                    p = c * d_i - s * g
+                    d_next = hc + s * (c * g + s * d_i)
+                    d_vec = tl.where(lane == ii + 1, d_next, d_vec)
+                    # keep the window scalars current
+                    dM_s = tl.where(ii == Mv - 1, d_next, dM_s)
+                    el1_s = tl.where(ii == L, e_next, el1_s)
+                    dL1_s = tl.where(ii == L, d_next, dL1_s)
+                    ii -= 1
+                # ---- post-chase: deflate e(L), patch d(L) ----
+                ppost = -s * s2 * c3 * el1 * eL_s / dl1
+                e_L_new = s * ppost
+                d_L_new = c * ppost
+                e_vec = tl.where(lane == L, e_L_new, e_vec)
+                d_vec = tl.where(lane == L, d_L_new, d_vec)
+                eL_s = e_L_new
+                dL_s = d_L_new
+                done = tl.where(tst1 + tl.abs(e_L_new) == tst1, 1, 0)
+
+        # Fold the accumulated shift back into the converged eigenvalue.
+        d_vec = tl.where(lane == L, dL_s + f, d_vec)
 
     # ------------------------------------------------------ sort ascending
-    diag = tl.sum(tl.where(ri[:, None] == ci[None, :], A, 0.0), axis=1)
     # Padded lanes must sort to the tail.
-    diag = tl.where(ri < NP, diag, float("inf"))
+    d_vec = tl.where(lane < NP, d_vec, float("inf"))
 
-    lt = (diag[:, None] > diag[None, :]) | (
-        (diag[:, None] == diag[None, :]) & (ri[:, None] > ri[None, :])
+    lt = (d_vec[:, None] > d_vec[None, :]) | (
+        (d_vec[:, None] == d_vec[None, :]) & (lane[:, None] > lane[None, :])
     )
     rank = tl.sum(lt.to(tl.int32), axis=1)
 
-    vals = tl.sum(tl.where(rank[:, None] == ri[None, :], diag[:, None], 0.0), axis=0)
-    tl.store(Out_ptr + pid * s_o + ri, vals, mask=ri < NP)
+    vals = tl.sum(tl.where(rank[:, None] == lane[None, :], d_vec[:, None], 0.0), axis=0)
+    tl.store(Out_ptr + pid * s_o + lane, vals, mask=lane < NP)
 
 
 def linalg_eigvalsh(self, UPLO="L"):
     # ``aten::linalg_eigvalsh(Tensor self, str UPLO="L")`` defaults UPLO, so it
     # has to default here too or ``torch.linalg.eigvalsh(A)`` fails to bind.
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGVALSH")
+    logger.debug("GEMS_ENFLAME LINALG_EIGVALSH")
     if UPLO not in ("L", "U"):
         raise RuntimeError(
             "Expected UPLO argument to be 'L' or 'U', but got " + str(UPLO)
@@ -191,17 +271,7 @@ def linalg_eigvalsh(self, UPLO="L"):
     N = triton.next_power_of_2(max(n, 1))
     out = torch.empty((B, n), device=self.device, dtype=self.dtype)
 
-    # Relative skip threshold for threshold-Jacobi.  It is far below the
-    # accuracy the declared output dtype can carry, so skipped rotations cannot
-    # move an eigenvalue beyond the tolerance.
-    if self.dtype == torch.float64:
-        thresh = 1e-13
-    elif self.dtype == torch.float32:
-        thresh = 1e-7
-    else:
-        thresh = 1e-4
-
-    _eigvalsh_jacobi_kernel[(B,)](
+    _eigvalsh_hql_kernel[(B,)](
         mat,
         out,
         mat.stride(0),
@@ -210,9 +280,7 @@ def linalg_eigvalsh(self, UPLO="L"):
         out.stride(0),
         NP=n,
         N=N,
-        SWEEPS=_SWEEPS,
         UPLO_L=(UPLO == "L"),
-        THRESH=thresh,
         num_warps=1,
     )
     return out.reshape(self.shape[:-2] + (n,))
@@ -226,7 +294,7 @@ def linalg_eigvalsh_out(self, UPLO="L", *, out):
     kernel above.  Like ATen, a mismatched ``out`` dtype is rejected instead of
     being cast, and a wrongly-shaped ``out`` is resized.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGVALSH_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_EIGVALSH_OUT")
     result = linalg_eigvalsh(self, UPLO)
     if out.dtype != result.dtype:
         raise RuntimeError(

@@ -22,19 +22,42 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
+try:  # Construct the jagged NestedTensor directly to save one aten dispatch
+    from torch.nested._internal.nested_tensor import NestedTensor as _NestedTensor
+except (
+    Exception
+):  # pragma: no cover - fall back when older torch lacks this internal class
+    _NestedTensor = None
+
 
 @triton.jit
 def _nested_select_backward_kernel(
     grad_ptr,
     out_ptr,
-    start,
-    end,
+    offsets_ptr,
+    index,
     n_cols,
     total,
+    WIDE_INDEX: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0).to(tl.int64)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    # The two component boundaries are read on device: pulling them to the host
+    # first (`offsets[i:i+2].tolist()`) forces a device->host sync, which stalls
+    # the whole async pipeline and costs more than this kernel itself.
+    start = tl.load(offsets_ptr + index)
+    end = tl.load(offsets_ptr + index + 1)
+    if not WIDE_INDEX:
+        # Narrow back to int32 (offsets are int64) so the row arithmetic below
+        # stays on the fast int32 path.
+        start = start.to(tl.int32)
+        end = end.to(tl.int32)
+    # Index arithmetic defaults to int32: GCU has no fast int64 path, and the
+    # int64 form costs more than the scatter itself for these tiny buffers.
+    # WIDE_INDEX is only switched on when the buffer exceeds the int32 range.
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if WIDE_INDEX:
+        offsets = offsets.to(tl.int64)
     mask = offsets < total
     row = offsets // n_cols
     col = offsets % n_cols
@@ -54,7 +77,7 @@ def _nested_select_backward(grad, self, dim, index):
     PyTorch autograd; selecting along ragged or dense dimensions is not
     supported for nested tensors.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_SELECT_BACKWARD")
+    logger.debug("GEMS_ENFLAME _NESTED_SELECT_BACKWARD")
     if not self.is_nested:
         raise ValueError(
             "_nested_select_backward expects `self` to be a nested tensor."
@@ -68,25 +91,49 @@ def _nested_select_backward(grad, self, dim, index):
             f"_nested_select_backward only supports dim == 0, got dim == {dim}."
         )
 
-    buffer = self.values().contiguous()
+    # Keep the whole host path sync-free: the component count comes from the
+    # offsets shape and the output shape from `values()`, so nothing schedules a
+    # device->host copy (only `offset[index:index+2].tolist()` used to, and that
+    # single sync dominated the launch).
     offsets = self.offsets().contiguous()
     num_components = offsets.numel() - 1
     if index < 0:
         index += num_components
-    start = int(offsets[index].item())
-    end = int(offsets[index + 1].item())
 
     grad = grad.contiguous()
-    n_cols = buffer.shape[-1] if buffer.dim() > 1 else 1
+    values_shape = self.values().shape
+    n_cols = values_shape[-1] if len(values_shape) > 1 else 1
 
-    out = torch.empty(buffer.shape, dtype=grad.dtype, device=grad.device)
+    out = torch.empty(values_shape, dtype=grad.dtype, device=grad.device)
     total = out.numel()
     # 1024 threads = 32 warps; saturates memory bandwidth for this elementwise
     # gradient scatter, so a fixed block beats autotune overhead.
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(total, BLOCK_SIZE),)
     _nested_select_backward_kernel[grid](
-        grad, out, start, end, n_cols, total, BLOCK_SIZE=BLOCK_SIZE
+        grad,
+        out,
+        offsets,
+        index,
+        n_cols,
+        total,
+        WIDE_INDEX=total > 2**31 - 1,
+        BLOCK_SIZE=BLOCK_SIZE,
     )
 
-    return torch.nested.nested_tensor_from_jagged(out, offsets=offsets)
+    # Construct the jagged NestedTensor wrapper directly, saving the aten
+    # round-trip through `nested_tensor_from_jagged` (measured ~40us/call); fall back to the official entry point on
+    # construction failure.
+    try:
+        if _NestedTensor is None:
+            raise RuntimeError(
+                "torch.nested._internal.nested_tensor.NestedTensor unavailable"
+            )
+        return _NestedTensor(out, offsets)
+    except Exception:
+        logger.debug(
+            "GEMS _NESTED_SELECT_BACKWARD: direct NestedTensor build failed, "
+            "falling back to nested_tensor_from_jagged",
+            exc_info=True,
+        )
+        return torch.nested.nested_tensor_from_jagged(out, offsets=offsets)

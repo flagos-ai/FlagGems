@@ -21,7 +21,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
@@ -623,26 +623,3 @@ def _gcu_int64_indices():
         return int(val) != 0
     except ValueError:
         return False
-
-
-def _install_native_cummax_guard():
-    global _CUMMAX_GUARD_LIBRARY
-    if not _gcu_int64_indices():
-        return
-    if getattr(torch, _CUMMAX_GUARD_FLAG, False):
-        return
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl("cummax", cummax, runtime.device.dispatch_key)
-    except RuntimeError as error:
-        logger.warning(
-            "cummax %s-key registration skipped: %s",
-            runtime.device.dispatch_key,
-            error,
-        )
-        return
-    _CUMMAX_GUARD_LIBRARY = library
-    setattr(torch, _CUMMAX_GUARD_FLAG, True)
-
-
-_install_native_cummax_guard()

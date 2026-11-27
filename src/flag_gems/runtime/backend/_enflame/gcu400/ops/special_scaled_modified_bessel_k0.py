@@ -484,7 +484,7 @@ def special_scaled_modified_bessel_k0(x, *, out=None):
         )
 
         return public_impl(x, out=out)
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SCALED_MODIFIED_BESSEL_K0")
+    logger.debug("GEMS_ENFLAME SPECIAL_SCALED_MODIFIED_BESSEL_K0")
     if not isinstance(x, torch.Tensor):
         raise TypeError("special_scaled_modified_bessel_k0: x must be a Tensor")
     # GCU400: no CUDA device restriction, the kernel itself is a device-independent Triton implementation.
@@ -521,5 +521,5 @@ def special_scaled_modified_bessel_k0(x, *, out=None):
 
 def special_scaled_modified_bessel_k0_out(x, out):
     """``aten::special_scaled_modified_bessel_k0.out``: write into ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SCALED_MODIFIED_BESSEL_K0_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_SCALED_MODIFIED_BESSEL_K0_OUT")
     return special_scaled_modified_bessel_k0(x, out=out)

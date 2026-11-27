@@ -154,6 +154,131 @@ def trapezoid_x_pair_kernel(
     tl.store(out_ptr + pid, out, mask=row_mask)
 
 
+# GCU note: when the integration dim is the only non-singleton axis the flattened
+# problem is a single (or very few) row of huge length, so the row-per-program
+# kernel above leaves the grid with one CTA and serialises megabytes through the
+# BLOCK_N loop (measured 74 ms for a 4 Mi-element fp16 input, i.e. ~0.001x ATen).
+# Split the integration axis instead: each program owns one (row, column-slice)
+# block, writes one partial sum per row into an (M, NSPLIT) float32 scratch, and
+# a tiny second kernel folds the slices. The weighted-sum form is element-wise
+# over k, so slicing k is a pure re-association of the same sum.
+_SPLIT_ROW_THRESHOLD = 256  # below this the row grid is too small to fill the device
+_SPLIT_MIN_N = 8192  # only pay the extra reduce launch for long rows
+_SPLIT_NSPLIT = 128  # observed gcu400 throughput plateau for column slices
+_SPLIT_BLOCK_N = 2048
+
+
+@libentry()
+@triton.jit
+def trapezoid_x_split_kernel(
+    y_ptr,
+    x_ptr,
+    part_ptr,
+    M,
+    N,
+    x_m_stride,
+    COL_CHUNK: tl.constexpr,
+    CHUNK_ITERS: tl.constexpr,
+    NSPLIT: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    COMPUTE_DTYPE: tl.constexpr,
+):
+    # One program handles a single row over the column slice [pid_s*COL_CHUNK,
+    # (pid_s+1)*COL_CHUNK). The slice length is fixed at compile time through
+    # CHUNK_ITERS so the loop bound stays static; only the tail slice is masked.
+    pid = ext.program_id(0)
+    row = pid // NSPLIT
+    pid_s = pid % NSPLIT
+    row_ok = row < M
+    y_row = y_ptr + row * N
+    x_row = x_ptr + row * x_m_stride
+
+    acc = tl.zeros([BLOCK_N], dtype=COMPUTE_DTYPE)
+    for it in range(0, CHUNK_ITERS):
+        k = pid_s * COL_CHUNK + it * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = (k < N) & row_ok
+        kp = tl.minimum(k + 1, N - 1)
+        km = tl.maximum(k - 1, 0)
+        y_k = tl.load(y_row + k, mask=mask, other=0.0).to(COMPUTE_DTYPE)
+        x_kp = tl.load(x_row + kp, mask=mask, other=0.0).to(COMPUTE_DTYPE)
+        x_km = tl.load(x_row + km, mask=mask, other=0.0).to(COMPUTE_DTYPE)
+        acc += y_k * 0.5 * (x_kp - x_km)
+
+    tl.store(part_ptr + row * NSPLIT + pid_s, tl.sum(acc, axis=0), mask=row_ok)
+
+
+@libentry()
+@triton.jit
+def trapezoid_x_split_reduce_kernel(
+    part_ptr,
+    out_ptr,
+    M,
+    NSPLIT,
+    BLOCK_S: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    # Fold the (M, NSPLIT) partial sums along the slice axis. The row count is
+    # small by construction (the split path is only taken for flat inputs), so a
+    # single narrow tile per program is enough. NSPLIT need not be a power of two
+    # (it comes from the column-chunk ceil-division), so the tile is padded to
+    # BLOCK_S and masked.
+    rows = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    s = tl.arange(0, BLOCK_S)[None, :]
+    mask = (rows < M) & (s < NSPLIT)
+    part = tl.load(part_ptr + rows * NSPLIT + s, mask=mask, other=0.0)
+    tl.store(out_ptr + rows, tl.sum(part, axis=1)[:, None], mask=rows < M)
+
+
+# GCU note: gcu400 persistent row-reduction form for the shared 1-D spacing
+# case (x_m_stride == 0). One program per SPC (48) strides over row tiles, so
+# the y stream keeps the flat-bandwidth access pattern of the gcu400 sum ops
+# instead of thousands of short-lived programs. The x neighbour loads stay
+# [BLOCK_N] 1-D tiles (loaded once per column block and broadcast over the row
+# block in registers), and tl.sum(axis=1) per column block keeps only a
+# [BLOCK_M] accumulator alive across the loop -- the 2D accumulator tile of
+# trapezoid_x_kernel is what pushed the per-program register set past what the
+# row-broadcast x loads leave resident.
+_ROW_MAX_GRID = 48
+_ROW_TILE_BYTES = 131072  # per-tile byte budget, matches the gcu400 sum config
+_ROW_TILE_ELEMS = 65536  # 2D tile element cap (larger 2D tiles device-fault)
+_ROW_TREE_WIDTH = 4096  # tl.sum(axis=1) drops to a tiered slow path below this
+
+
+@libentry()
+@triton.jit(do_not_specialize=["M", "N"])
+def trapezoid_x_row_kernel(
+    y_ptr,
+    x_ptr,
+    out_ptr,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    COMPUTE_DTYPE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (M + BLOCK_M - 1) // BLOCK_M
+    for tile_id in tl.range(pid, num_tile, step):
+        rows = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        row_mask = rows < M
+        acc = tl.zeros([BLOCK_M], dtype=COMPUTE_DTYPE)
+        for off in tl.range(0, N, BLOCK_N):
+            k = off + tl.arange(0, BLOCK_N)
+            col_mask = k < N
+            mask = row_mask[:, None] & col_mask[None, :]
+            kp = tl.minimum(k + 1, N - 1)
+            km = tl.maximum(k - 1, 0)
+            y_k = tl.load(
+                y_ptr + rows[:, None] * N + k[None, :], mask=mask, other=0.0
+            ).to(COMPUTE_DTYPE)
+            x_kp = tl.load(x_ptr + kp, mask=col_mask, other=0.0).to(COMPUTE_DTYPE)
+            x_km = tl.load(x_ptr + km, mask=col_mask, other=0.0).to(COMPUTE_DTYPE)
+            w = (0.5 * (x_kp - x_km))[None, :]
+            acc += tl.sum(y_k * w, axis=1)
+        tl.store(out_ptr + rows, acc.to(out_ptr.dtype.element_ty), mask=row_mask)
+
+
 def _normalize_dim(ndim, dim):
     # Mirror ATen's dim validation: a 0-d tensor has no dims, and out-of-range dims
     # raise IndexError with the exact same message wording.
@@ -368,8 +493,14 @@ def _trapezoid_x_impl(y, x, dim):
             # A single sample point spans no interval, so the integral is zero.
             return torch.zeros(out_shape, dtype=out_dtype, device=y.device)
 
-        y_b = y.broadcast_to(full_shape)
-        y2 = y_b.movedim(dim, -1).contiguous().reshape(-1, N)
+        if dim == y.dim() - 1 and y.shape == full_shape and y.is_contiguous():
+            # Already row-major with the integration axis last: skip the
+            # broadcast/movedim/contiguous dispatches (~7 us of host time each
+            # call on gcu400, which dominates the small shapes).
+            y2 = y.reshape(-1, N)
+        else:
+            y_b = y.broadcast_to(full_shape)
+            y2 = y_b.movedim(dim, -1).contiguous().reshape(-1, N)
         M = y2.shape[0]
 
         if M == 0:
@@ -384,8 +515,94 @@ def _trapezoid_x_impl(y, x, dim):
             x2 = x_b.movedim(dim, -1).contiguous().reshape(-1, N)
             x_m_stride = N
 
+        if M <= _SPLIT_ROW_THRESHOLD and N >= _SPLIT_MIN_N:
+            # Few rows, long integration axis: split that axis across programs
+            # instead of walking it serially inside a single CTA.
+            nsplit = min(_SPLIT_NSPLIT, triton.cdiv(N, _SPLIT_BLOCK_N))
+            col_chunk = (
+                triton.cdiv(triton.cdiv(N, nsplit), _SPLIT_BLOCK_N) * _SPLIT_BLOCK_N
+            )
+            nsplit = triton.cdiv(N, col_chunk)
+            chunk_iters = col_chunk // _SPLIT_BLOCK_N
+            part = torch.empty((M, nsplit), dtype=torch.float32, device=y.device)
+            out = torch.empty((M,), dtype=kernel_out_dtype, device=y.device)
+            with torch_device_fn.device(y.device):
+                trapezoid_x_split_kernel[(M * nsplit,)](
+                    y2,
+                    x2,
+                    part,
+                    M,
+                    N,
+                    x_m_stride,
+                    COL_CHUNK=col_chunk,
+                    CHUNK_ITERS=chunk_iters,
+                    NSPLIT=nsplit,
+                    BLOCK_N=_SPLIT_BLOCK_N,
+                    COMPUTE_DTYPE=_compute_dtype(out_dtype),
+                )
+                trapezoid_x_split_reduce_kernel[(triton.cdiv(M, 64),)](
+                    part,
+                    out,
+                    M,
+                    nsplit,
+                    BLOCK_S=triton.next_power_of_2(nsplit),
+                    BLOCK_M=64,
+                )
+            result = out.reshape(out_shape)
+            return result.to(out_dtype) if kernel_out_dtype != out_dtype else result
+
+        if x_m_stride == 0:
+            # Shared 1-D spacing: persistent row reduction. One program per
+            # gcu400 SPC strides over row tiles, the x neighbour loads stay
+            # [BLOCK_N] 1-D tiles (the weight broadcasts over the row block in
+            # registers), and the per-column tl.sum keeps only a [BLOCK_M]
+            # accumulator alive across the loop. Measured 3.2-10.7x faster
+            # than the row-broadcast form below on the core shapes.
+            es = y.element_size()
+            block_n = min(triton.next_power_of_2(N), _ROW_TREE_WIDTH)
+            batch_rows = triton.next_power_of_2(max(1, triton.cdiv(M, _ROW_MAX_GRID)))
+            block_m = max(
+                1,
+                min(
+                    _ROW_TILE_BYTES // (es * block_n),
+                    _ROW_TILE_ELEMS // block_n,
+                    batch_rows,
+                ),
+            )
+            # num_warps=4 miscompiles the axis-1 tree at width 1024 (P10
+            # family); the measured safe/speed domain is nw=2 for narrow
+            # blocks and nw=1 for wide ones.
+            num_warps = 2 if block_n <= 1024 else 1
+            out = torch.empty((M,), dtype=kernel_out_dtype, device=y.device)
+            grid = (min(_ROW_MAX_GRID, triton.cdiv(M, block_m)),)
+            with torch_device_fn.device(y.device):
+                trapezoid_x_row_kernel[grid](
+                    y2,
+                    x2,
+                    out,
+                    M,
+                    N,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    COMPUTE_DTYPE=_compute_dtype(out_dtype),
+                    num_warps=num_warps,
+                    num_stages=1,
+                )
+            result = out.reshape(out_shape)
+            return result.to(out_dtype) if kernel_out_dtype != out_dtype else result
+
+        # GCU: the 16-bit input dtypes are widened element by element into the
+        # fp32 accumulator, and a wider accumulator tile amortises that widening
+        # (measured ~2.5x faster than 32x128 on (4096,4096) and (10000,4096)).
+        # fp32/fp64 inputs are memory bound and prefer the narrower tile. Short
+        # rows (N <= 128) keep BLOCK_N = 128 so no lane is masked away.
+        if kernel_out_dtype in (torch.float16, torch.bfloat16) and N > 128:
+            block_m, block_n = 16, 256
+        else:
+            block_m, block_n = 32, 128
+
         out = torch.empty((M,), dtype=kernel_out_dtype, device=y.device)
-        grid = lambda meta: (triton.cdiv(M, 32),)  # noqa: E731
+        grid = lambda meta: (triton.cdiv(M, block_m),)  # noqa: E731
         with torch_device_fn.device(y.device):
             trapezoid_x_kernel[grid](
                 y2,
@@ -394,8 +611,8 @@ def _trapezoid_x_impl(y, x, dim):
                 M,
                 N,
                 x_m_stride,
-                BLOCK_M=32,
-                BLOCK_N=128,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
                 COMPUTE_DTYPE=_compute_dtype(out_dtype),
             )
         result = out.reshape(out_shape)
@@ -526,7 +743,7 @@ class _TrapezoidX(torch.autograd.Function):
 
 
 def trapezoid_x(y, x, dim=-1):
-    logger.debug("GEMS_ENFLAME_GCU400 TRAPEZOID_X")
+    logger.debug("GEMS_ENFLAME TRAPEZOID_X")
     if _is_complex(y, x):
         # Complex routes through the CPU fallback, which is autograd
         # transparent on its own; _TrapezoidX.forward would run under

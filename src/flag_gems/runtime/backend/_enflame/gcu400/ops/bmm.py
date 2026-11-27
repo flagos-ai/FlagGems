@@ -18,93 +18,218 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Native-kernel delegation (capture + call_boxed), same pattern as the local
-# _linalg_eigvals / linalg_multi_dot / linalg_cond vendor ops.
+# No native-kernel delegation: every bmm / bmm_out call runs the Triton kernel
+# below, at every workload size.
 #
-# Measured on L600 (bench kernel mode, do_bench median w1000/r100, cold L2):
-# the Triton kernel beats the native vendor GEMM only while the problem is
-# launch/overhead bound; once the native primo++ pipeline saturates it is
-# ~2x faster than any swept Triton config ((128,256,256) is the tile sweet
-# spot, matching the matrix_power job's 50+ combo sweep):
+# The tile table that drives ``_select_gemm_config`` was measured on L600
+# (bench kernel mode, do_bench median w1000/r100, cold L2). It reads as a ratio
+# of the Triton kernel to a native vendor GEMM, and (128,256,256) is the tile
+# sweet spot (matching the matrix_power job's 50+ combo sweep):
 #   (2,384^3)   Triton 1.08-1.19x   (2,512^3)  Triton 1.12-1.17x
 #   (2,640^3)   Triton 0.96x        (2,768^3)  Triton 0.93x
 #   (4,512^3)   Triton 0.64x        (16,384^3) Triton 0.57x
 #   (16,1024^3) Triton 0.51x        (16,4096^3) Triton 0.55x
-# The kernels below are captured at import time - before any use_gems()
-# registration replaces the PrivateUse1 entry - so call_boxed runs the
-# original device kernel bit-identically with zero dispatch overhead
-# (verified 1.000-1.006x vs plain torch.bmm on the shapes above).
-# Dispatch line: total work B*M*N*K >= 2^29 routes to the native kernel;
-# both sides of the line have measured anchor points (see table above).
+# The right column is where a saturated native vendor GEMM pipeline would win.
+# This backend does not take that shortcut: the Triton kernel runs those shapes
+# too, and the table only explains the tile choice.
 # ---------------------------------------------------------------------------
-_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
-_NATIVE_BMM = None
-_NATIVE_BMM_OUT = None
-if _CAN_CAPTURE_NATIVE_KERNEL:
-    try:
-        _NATIVE_BMM = torch.library.get_kernel(
-            torch.ops.aten.bmm.default, runtime.device.dispatch_key
-        )
-        _NATIVE_BMM_OUT = torch.library.get_kernel(
-            torch.ops.aten.bmm.out, runtime.device.dispatch_key
-        )
-    except Exception:  # noqa: B902
-        _NATIVE_BMM = None
-        _NATIVE_BMM_OUT = None
 
-_DEVICE_KEYSET = torch._C.DispatchKeySet(
-    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+
+# Hardware DSM (distributed shared memory) budget of one GCU400 cluster. The
+# staged A/B tiles of every software-pipeline stage live there, so a tile table
+# that ignores this limit fails to compile ("out of resource: dsm memory").
+#
+# The compiler-level budget is 512KiB and every tier below is sized against it,
+# which keeps the legacy tile table byte-for-byte unchanged.
+_DSM_LIMIT_BYTES = 512 * 1024
+
+# Real hardware DSM budget of one cluster as reported by the compile error
+# ("Hardware limit: 917504"). The fp32 accumulator of the epilogue is counted in
+# that pool as well, which is what makes a 512x256 output tile the largest
+# affordable 16-bit tile (512*256*4 = 512KiB of accumulator plus the staged A/B
+# tiles). Only the 16-bit wide-tile tier below uses the real budget.
+_DSM_HARD_LIMIT_BYTES = 917504
+
+
+def _pow2_ceil(value):
+    return 1 << max(0, int(value) - 1).bit_length()
+
+
+def _clamp_tile(dim, tile, floor=64):
+    # Never request a tile far larger than the problem dimension. Oversized
+    # tiles both waste DSM and overflow it: (B, 64, 1, 4096) used to request a
+    # 256-wide N tile for a single output column and failed to compile.
+    #
+    # The floor of 64 is a correctness guard, not just padding: on GCU400 the
+    # unmasked (EVEN) store/download path silently computes wrong values for
+    # BLOCK_M in {16, 32} combined with BLOCK_N >= 256, e.g. (2,32,512,4096)
+    # with (32,256,256) returns relerr ~2.7 while (32,128,256) and
+    # (64,256,256) are exact. Keeping BLOCK_M >= 64 avoids that region.
+    if dim >= tile:
+        return tile
+    return max(floor, min(tile, _pow2_ceil(dim)))
+
+
+def _fit_num_stages(
+    block_m, block_n, block_k, elem_bytes, num_stages, limit=_DSM_LIMIT_BYTES
+):
+    # Shrink the software pipeline until the staged tiles fit the DSM budget.
+    while num_stages > 1:
+        staged = (block_m * block_k + block_k * block_n) * elem_bytes * num_stages
+        if staged <= limit:
+            break
+        num_stages -= 1
+    return num_stages
+
+
+def _fit_num_stages_with_acc(
+    block_m, block_n, block_k, elem_bytes, num_stages, max_stages=4
+):
+    # Same as _fit_num_stages but for the wide-tile tier, where the fp32
+    # accumulator of the epilogue occupies the same pool as the staged A/B
+    # tiles. Sizing only the staged tiles overflows: (512,256,64,ns=2) reports
+    # "Required: 1703936" once the 512KiB accumulator is added in.
+    acc_bytes = block_m * block_n * 4
+    for stages in range(min(max_stages, num_stages), 0, -1):
+        staged = (block_m * block_k + block_k * block_n) * elem_bytes * stages
+        if acc_bytes + staged <= _DSM_HARD_LIMIT_BYTES:
+            return stages
+    return 1
+
+
+# Candidate 16-bit tiles for the band above the tiny tier, ordered by
+# descending output area. The GCU400 GEMM core is fed by a deep K block: on
+# board A056D50610028 (2026-11-26, do_bench kernel mode, real torch.bmm
+# baseline) the winning 16-bit tiles at every saturated shape are
+#   128x256x512/w2/ns2  0.694x (2,4096^3)  0.639x (16,1024^3)
+#                       0.640x (16,2048^3) 0.648x (16,4096^3)
+#   128x256x256/w2/ns3  0.648x / 0.602x / 0.611x / 0.608x
+#   128x256x512/w4/ns2  0.599x / 0.559x / 0.559x / 0.570x
+# while the previous wide 512x256x64 leader only reaches 0.26-0.29x here and,
+# worse, is *numerically wrong* on this board (max abs error 0.125 at K=4096
+# versus 0 for the 128x256 tiles), so the deep-K tile replaces it. The 512-deep
+# K block keeps the reduction loop at 2-8 masked iterations and still fits two
+# pipeline stages in the DSM pool (384KiB per stage for 128x256x512 + the 128KiB
+# fp32 accumulator = 896KiB of the 917504B budget).
+_16BIT_TILE_LADDER = (
+    (128, 256, 512, 2),
+    (128, 256, 256, 2),
+    (128, 128, 128, 2),
+    (64, 64, 32, 4),
 )
-_NATIVE_WORK_THRESHOLD = 1 << 29
+
+# One GCU400 "wave" of output tiles. Below this the wide tile is dropped one
+# ladder step at a time until the grid can fill the clusters again.
+_MIN_PROGRAMS_PER_TILE = 24
 
 
-def _should_delegate_to_native(A, B):
-    if _NATIVE_BMM is None:
-        return False
-    if A.device.type != runtime.device.name:
-        return False
-    Batch, M, K = A.shape
-    N = B.shape[2]
-    return Batch * M * N * K >= _NATIVE_WORK_THRESHOLD
+def _select_16bit_tiles(Batch, M, N, K):
+    selected = None
+    for block_m, block_n, block_k, num_warps in _16BIT_TILE_LADDER:
+        block_m = _clamp_tile(M, block_m)
+        block_n = _clamp_tile(N, block_n)
+        block_k = _clamp_tile(K, block_k, floor=16)
+        selected = (block_m, block_n, block_k, num_warps)
+        programs = Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n)
+        if programs >= _MIN_PROGRAMS_PER_TILE:
+            break
+    return selected
 
 
-def _select_bmm_config(Batch, M, N, K, dtype):
-    # Select GEMM tiles deterministically by dtype and shape tier, replacing libtuner autotune.
-    # From the same-source sweep: BM=128/BN=256 is generally optimal; fp16/bf16 prefers BK=256/w=4,
-    # fp32 prefers BK=128/w=2; very large batches of big square matrices need larger BM or smaller BK to avoid
-    # exceeding the grid.x hardware limit and keep pipeline efficiency; tiny K / tiny shapes use small tiles to reduce
-    # waste.
-    # Small-shape tier (the only Triton tier on the delegated path) measured: fp16/bf16 use (128,128,128,w4);
-    # fp32 at (2,384^3) with (64,128,128,w4,ns2) is ~7% faster (16.0 -> 14.9us, median).
+def _select_gemm_config(Batch, M, N, K, dtype):
+    # Single source of truth for the GEMM tile table, shared by bmm / bmm_out /
+    # baddbmm / baddbmm_out / baddbmm_ (all of them compute the same batched
+    # GEMM core; baddbmm only adds a stride-based bias epilogue).
+    #
+    # Tiles were swept per shape tier on GCU400 (4-1, 2 clusters x 12 SIPs):
+    #   * (2,384^3)  fp16/bf16: (128,128,512,w4,ns2) 13.4us vs (128,128,256) 14.7us
+    #     vs the previous (256,128,128) 16.9us and (64,128,128,w1) 25.3us.
+    #     A 512-deep K block keeps the inner loop at one masked iteration.
+    #   * the whole <= 512^3 tier (the Triton-only band) was re-swept later:
+    #     a 256-wide M tile with a 128-deep K block beats the old 512-deep K
+    #     block, because the deep K block leaves too few output tiles to fill
+    #     the clusters while the shallow one actually gets double buffered.
+    #     (2,384^3) fp16/bf16 1.08x -> 1.24x, fp32 0.97x -> 1.13x of native;
+    #     (2,128^3) clamps down to (128,128,128), still the sweep winner.
+    #   * saturated shapes (>= 4096^2, batch >= 8) keep the wide fp16 tile.
+    #     Re-measured on 2026-11-21 on board A084P50610002 with an interleaved
+    #     same-process A/B (min of 3 rounds, real torch.bmm baseline): the wide
+    #     (128,256,*) tile is 0.52-0.55x of native at (2,4096^2), (16,1024^2),
+    #     (16,2048^2) and (16,4096^2), while the square (256,256,128) tile that
+    #     was tried in between lands at 0.33-0.35x at every one of those shapes
+    #     (256x128x128 0.39-0.42x, 128x128x128 0.25-0.27x).  The wide tile is
+    #     therefore kept for the 16-bit large band on this board.
+    #
+    # DSM note: the staged A/B tiles must fit _DSM_LIMIT_BYTES for two pipeline
+    # stages, otherwise _fit_num_stages collapses num_stages to 1 and the K loop
+    # loses its double buffer entirely.  (128,128,512) costs 128KB per stage in
+    # fp32, so fp32 never uses a 512-deep K block; the tier below keeps
+    # (256,128,128) = 48KB per stage, which double buffers comfortably.
+    #   * superseded on 2026-11-22: the (128,256,*) tiles above were limited by
+    #     the 512KiB "compiler" DSM budget, but a cluster really owns 917504 B.
+    #     Re-sweeping with the real budget shows the 16-bit core scales with
+    #     tile area up to (512,256,64), which is ~2x the old wide tile at every
+    #     saturated shape, so the two former 16-bit branches collapse into
+    #     _select_16bit_tiles below.
+    #   * re-swept again on 2026-11-26 on board A056D50610028: the (512,256,64)
+    #     tile is not portable: it lands at 0.26-0.29x here and computes
+    #     wrong values, while a deep-K (128,256,512) tile with 2 warps reaches
+    #     0.64-0.69x. See _16BIT_TILE_LADDER for the numbers.
     num_stages = 3
     if K < 128:
-        block_m, block_n, block_k, num_warps = 64, 64, 32, 4
+        block_m, block_n, block_k, num_warps, num_stages = 64, 64, 32, 4, 2
     elif M <= 512 and N <= 512 and K <= 512:
         if dtype == torch.float32:
-            block_m, block_n, block_k, num_warps, num_stages = 64, 128, 128, 4, 2
+            block_m, block_n, block_k, num_warps, num_stages = 256, 128, 128, 4, 2
         else:
-            block_m, block_n, block_k, num_warps = 128, 128, 128, 4
-    elif M >= 4096 and N >= 4096 and Batch >= 8:
-        if dtype == torch.float32:
-            block_m, block_n, block_k, num_warps = 256, 128, 128, 4
-        else:
-            block_m, block_n, block_k, num_warps = 128, 256, 128, 2
+            # (2,384^3) fp16/bf16: 64x128x128/w2/ns2 9.0us (1.35x) versus the
+            # previous 256x256x128 15.2us (0.78x) and 128x128x128/w2 9.2us
+            # (1.30x); the 64-wide M tile also gives twice the output tiles, so
+            # it keeps the clusters fed on small batches.
+            block_m, block_n, block_k, num_warps, num_stages = 64, 128, 128, 2, 2
     elif dtype == torch.float32:
         block_m, block_n, block_k, num_warps = 128, 256, 128, 2
     else:
-        block_m, block_n, block_k, num_warps = 128, 256, 256, 4
+        # 16-bit band above the tiny tier. The deep-K ladder below is the
+        # fastest measured configuration on this board at every saturated
+        # shape, so it replaces both former 16-bit tiers (the "saturated"
+        # branch and the generic branch).
+        block_m, block_n, block_k, num_warps = _select_16bit_tiles(Batch, M, N, K)
+        elem_bytes = 2
+        num_stages = _fit_num_stages_with_acc(
+            block_m, block_n, block_k, elem_bytes, num_stages
+        )
+        even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
+        return block_m, block_n, block_k, num_warps, num_stages, even
+
+    block_m = _clamp_tile(M, block_m)
+    block_n = _clamp_tile(N, block_n)
+    block_k = _clamp_tile(K, block_k, floor=16)
+    if block_n > 256 and block_m < 128:
+        # Keep the wide-N tiles on tall enough blocks; see _clamp_tile notes.
+        block_n = 256
+    elem_bytes = 4 if dtype in (torch.float32, torch.float64) else 2
+    num_stages = _fit_num_stages(block_m, block_n, block_k, elem_bytes, num_stages)
 
     # Exact decision: only when all three dimensions are divisible by the actually selected tiles are load/store
     # free of out-of-bounds access, in which case an unmasked fast path is compiled; otherwise use the masked generic
     # path.
     even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
     return block_m, block_n, block_k, num_warps, num_stages, even
+
+
+# Conservative last-resort tile used when the primary config exceeds the DSM
+# budget at compile time (keeps the operator usable instead of raising).
+_SAFE_FALLBACK_CONFIG = (64, 64, 64, 4, 2)
+
+
+def _select_bmm_config(Batch, M, N, K, dtype):
+    return _select_gemm_config(Batch, M, N, K, dtype)
 
 
 @libentry()
@@ -207,11 +332,63 @@ def bmm_kernel(
 
 def _launch_bmm(A, B, out, Batch, M, N, K):
     # Centralize config dispatch and kernel launch, shared by bmm / bmm_out.
+    if out.numel() == 0:
+        # An empty output (batch, M or N == 0) has no tile to compute or store.
+        return
+    if K == 0:
+        # Empty reduction: every element of the result is exactly zero.  The K
+        # loop below would be zero-trip, which miscompiles on this backend —
+        # the epilogue store is dropped and the output keeps whatever memory
+        # held (see ``test_bmm{, _out}_empty_dimensions``) — so fill the
+        # output here instead of launching the kernel.
+        #
+        # The fill stays inside Triton (the FlagGems scalar-fill kernel) rather
+        # than ``Tensor.zero_()``: the native zero-fill runs off the Triton
+        # launch path, and reading back the tiny (60 byte) result right after it
+        # was observed to return one stale output row when the whole accuracy
+        # suite ran in one process.
+        # Imported lazily on purpose: a module-level import of the fill module
+        # is resolved while the vendor ops package is still initialising, which
+        # leaves its shared ``pointwise_dynamic`` wrapper half-built.
+        from flag_gems.runtime.backend._enflame.gcu400.ops.fill import fill_scalar_
+
+        fill_scalar_(out, 0)
+        return
     block_m, block_n, block_k, num_warps, num_stages, even = _select_bmm_config(
         Batch, M, N, K, A.dtype
     )
+    _run_bmm_kernel(
+        A,
+        B,
+        out,
+        Batch,
+        M,
+        N,
+        K,
+        block_m,
+        block_n,
+        block_k,
+        num_warps,
+        num_stages,
+        even,
+    )
+
+
+def _run_bmm_kernel(
+    A, B, out, Batch, M, N, K, block_m, block_n, block_k, num_warps, num_stages, even
+):
     grid = (Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
-    bmm_kernel[grid](
+    launch = dict(
+        dot_out_dtype=tl.float32,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        BLOCK_K=block_k,
+        GROUP_M=8,
+        EVEN=even,
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+    args = (
         A,
         B,
         out,
@@ -228,29 +405,52 @@ def _launch_bmm(A, B, out, Batch, M, N, K):
         out.stride(0),
         out.stride(1),
         out.stride(2),
-        dot_out_dtype=tl.float32,
-        BLOCK_M=block_m,
-        BLOCK_N=block_n,
-        BLOCK_K=block_k,
-        GROUP_M=8,
-        EVEN=even,
-        num_warps=num_warps,
-        num_stages=num_stages,
     )
+    try:
+        bmm_kernel[grid](*args, **launch)
+    except triton.runtime.errors.OutOfResources:
+        # The selected tiles do not fit the hardware DSM budget for this shape;
+        # retry once with the conservative tile instead of failing the operator.
+        block_m, block_n, block_k, num_warps, num_stages = _SAFE_FALLBACK_CONFIG
+        block_m = _clamp_tile(M, block_m)
+        block_n = _clamp_tile(N, block_n)
+        block_k = _clamp_tile(K, block_k, floor=16)
+        even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
+        grid = (Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+        bmm_kernel[grid](
+            *args,
+            dot_out_dtype=tl.float32,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            BLOCK_K=block_k,
+            GROUP_M=8,
+            EVEN=even,
+            num_warps=num_warps,
+            num_stages=num_stages,
+        )
+
+
+def _as_gemm_friendly(A, B):
+    # The kernel indexes A as [m, k] and B as [k, n] using explicit strides, so
+    # any layout with a unit stride along the *inner* dot axis is fed directly.
+    # Forcing .contiguous() on a transposed B used to materialize a copy through
+    # an extra kernel: (2,512^3) measured 24.1us copy+kernel vs 19.5us strided
+    # (native 25.1us). Only layouts with no unit stride on either axis (e.g. a
+    # sliced/broadcast view) still get a copy.
+    if A.stride(2) != 1 and not A.is_contiguous():
+        A = A.contiguous()
+    if B.stride(2) != 1 and B.stride(1) != 1 and not B.is_contiguous():
+        B = B.contiguous()
+    return A, B
 
 
 def bmm(A, B):
     logger.debug("GEMS_ENFLAME BMM")
     assert A.shape[0] == B.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
-    # Saturation range (large workload) delegates to the native kernel: bit-identical, zero dispatch overhead;
-    # Passed through unchanged (native supports arbitrary stride, so non-contiguous inputs need no contiguous copy).
-    if _should_delegate_to_native(A, B):
-        return _NATIVE_BMM.call_boxed(_DEVICE_KEYSET, A, B)
     Batch, M, K = A.shape
     _, _, N = B.shape
-    A = A.contiguous()
-    B = B.contiguous()
+    A, B = _as_gemm_friendly(A, B)
     out = torch.empty((Batch, M, N), dtype=A.dtype, device=A.device)
     _launch_bmm(A, B, out, Batch, M, N, K)
     return out
@@ -260,11 +460,8 @@ def bmm_out(A, B, out):
     logger.debug("GEMS_ENFLAME BMM_OUT")
     assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
-    if _should_delegate_to_native(A, B) and _NATIVE_BMM_OUT is not None:
-        return _NATIVE_BMM_OUT.call_boxed(_DEVICE_KEYSET, A, B, out=out)
     Batch, M, K = A.shape
     _, _, N = B.shape
-    A = A.contiguous()
-    B = B.contiguous()
+    A, B = _as_gemm_friendly(A, B)
     _launch_bmm(A, B, out, Batch, M, N, K)
     return out

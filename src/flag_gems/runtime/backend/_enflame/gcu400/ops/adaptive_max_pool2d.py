@@ -233,7 +233,7 @@ def adaptive_max_pool2d(
     input: torch.Tensor,
     output_size,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 ENFLAME ADAPTIVE_MAX_POOL2D")
+    logger.debug("GEMS_ENFLAME ENFLAME ADAPTIVE_MAX_POOL2D")
     input = input.contiguous()
 
     out_h, out_w = _parse_output_size(output_size)

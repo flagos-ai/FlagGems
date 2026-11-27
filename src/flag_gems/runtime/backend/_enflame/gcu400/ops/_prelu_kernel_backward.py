@@ -83,7 +83,7 @@ def _prelu_kernel_backward_kernel(
 
 
 def _prelu_kernel_backward(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 _PRELU_KERNEL_BACKWARD")
+    logger.debug("GEMS_ENFLAME _PRELU_KERNEL_BACKWARD")
 
     # Extract inputs
     if len(args) >= 3:

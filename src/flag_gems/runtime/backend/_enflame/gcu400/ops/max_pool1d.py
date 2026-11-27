@@ -118,7 +118,7 @@ def max_pool1d(
     ceil_mode=False,
 ):
     """Max pooling operation over 1D input, implemented with a Triton kernel."""
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_POOL1D")
+    logger.debug("GEMS_ENFLAME MAX_POOL1D")
 
     assert input.ndim in (2, 3), f"max_pool1d expects 2D or 3D input, got {input.ndim}D"
 
