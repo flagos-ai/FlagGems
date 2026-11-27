@@ -293,7 +293,7 @@ from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
 from flag_gems.ops._linalg_solve_ex import _linalg_solve_ex
-from flag_gems.ops._linalg_svd import _linalg_svd
+from flag_gems.ops._linalg_svd import _linalg_svd, linalg_svd_backward
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
@@ -2933,6 +2933,7 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
+    "linalg_svd_backward",
     "linalg_svdvals",
     "linalg_tensorinv",
     "linalg_tensorinv_out",
