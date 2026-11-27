@@ -180,7 +180,6 @@ def test_max_pool2d_with_indices():
     )
     bench.set_gems(flag_gems.max_pool2d_with_indices)
 
-    bench.set_gems(flag_gems.max_pool2d_with_indices)
     bench.run()
 
 
