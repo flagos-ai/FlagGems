@@ -584,6 +584,15 @@ upsample_bicubic2d_aa:
   block_x: [512, 256, 128, 64]
   block_y: [2, 1]
 
+upsample_bilinear2d_aa:
+- gen: true
+  param_map:
+    META:
+      BLOCK_X: block_x
+      BLOCK_Y: block_y
+  block_x: [512, 256, 128, 64]
+  block_y: [2, 1]
+
 mv:
 - gen: true
   param_map:
