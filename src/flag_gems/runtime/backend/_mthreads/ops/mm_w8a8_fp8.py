@@ -1087,8 +1087,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     is_narrow_ws = (16 <= m <= 128 and n == 16 and k == 2048) or (
         64 <= n <= 512
         and (
-            (128 <= m <= 1024 and k in (2048, 4096))
-            or (16 <= m <= 1024 and k == 7168)
+            (128 <= m <= 1024 and k in (2048, 4096)) or (16 <= m <= 1024 and k == 7168)
         )
     )
     is_short_ws = (16 <= m < 128 and n >= 64 and 2048 <= k <= 4096) or (
