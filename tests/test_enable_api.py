@@ -42,14 +42,30 @@ def _op_log_fragment(fn):
     return f"{fn.__module__}.{fn.__name__}"
 
 
-def _extra_log_text(caplog, vendor_root):
-    """Format caplog records from *vendor_root* as '[DEBUG] name.funcName: msg' lines."""
-    if vendor_root is None:
+def _vendor_log_roots(*fns):
+    """Return the set of non-flag_gems top-level logger names used by *fns*.
+
+    A backend may override only some ops (e.g. hopper overrides ``mul`` but not
+    ``add``), so every probed op has to be checked, not just one of them.
+    """
+    return {r for r in (_vendor_log_root(fn) for fn in fns) if r is not None}
+
+
+def _capture_vendor_logs(caplog, vendor_roots):
+    for root in vendor_roots:
+        caplog.set_level(logging.DEBUG, logger=root)
+
+
+def _extra_log_text(caplog, vendor_roots):
+    """Format caplog records from *vendor_roots* as '[DEBUG] name.funcName: msg' lines."""
+    if not vendor_roots:
         return ""
+    if isinstance(vendor_roots, str):
+        vendor_roots = {vendor_roots}
     return "\n".join(
         f"[DEBUG] {r.name}.{r.funcName}: {r.getMessage()}"
         for r in caplog.records
-        if r.name.startswith(vendor_root)
+        if any(r.name.startswith(root) for root in vendor_roots)
     )
 
 
@@ -84,11 +100,10 @@ def test_enable(tmp_path, caplog):
         flag_gems.bitwise_not,
         flag_gems.masked_fill,
     ]
-    vendor_root = _vendor_log_root(_probe_ops[0])
-    if vendor_root is not None:
-        caplog.set_level(logging.DEBUG, logger=vendor_root)
+    vendor_roots = _vendor_log_roots(*_probe_ops)
+    _capture_vendor_logs(caplog, vendor_roots)
     log_content = run_ops_and_logs(tmp_path, "gems_enable.log")
-    log_content += _extra_log_text(caplog, vendor_root)
+    log_content += _extra_log_text(caplog, vendor_roots)
     log_prefixes = {
         line.split(":", 1)[0].strip()
         for line in log_content.splitlines()
@@ -128,15 +143,16 @@ def test_enable_with_exclude(exclude_op, tmp_path):
     "include_op", [["sum"], ["mul", "sum"], ["bitwise_not", "masked_fill"]]
 )
 def test_only_enable(include_op, tmp_path, caplog):
-    vendor_root = _vendor_log_root(flag_gems.add)
-    if vendor_root is not None:
-        caplog.set_level(logging.DEBUG, logger=vendor_root)
+    vendor_roots = _vendor_log_roots(
+        flag_gems.add, flag_gems.mul, flag_gems.sum, flag_gems.masked_fill
+    )
+    _capture_vendor_logs(caplog, vendor_roots)
     log_content = run_ops_and_logs(
         tmp_path,
         f"gems_only_enable_{ops_list_to_str(include_op)}.log",
         include=include_op,
     )
-    log_content += _extra_log_text(caplog, vendor_root)
+    log_content += _extra_log_text(caplog, vendor_roots)
     pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     for op in found_ops:
@@ -150,15 +166,16 @@ def test_only_enable_with_yaml(tmp_path, caplog):
     yaml_path = tmp_path / "only_enable.yaml"
     yaml_path.write_text("include:\n  - sum\n  - mul\n")
 
-    vendor_root = _vendor_log_root(flag_gems.add)
-    if vendor_root is not None:
-        caplog.set_level(logging.DEBUG, logger=vendor_root)
+    vendor_roots = _vendor_log_roots(
+        flag_gems.add, flag_gems.mul, flag_gems.sum, flag_gems.masked_fill
+    )
+    _capture_vendor_logs(caplog, vendor_roots)
     log_content = run_ops_and_logs(
         tmp_path,
         "gems_only_enable_yaml.log",
         include=str(yaml_path),
     )
-    log_content += _extra_log_text(caplog, vendor_root)
+    log_content += _extra_log_text(caplog, vendor_roots)
     # Match funcName (last segment after the last dot before the colon)
     pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
@@ -193,10 +210,10 @@ def test_only_enable_default(tmp_path, monkeypatch, caplog):
         "add": lambda a, b: a + b,
     }
 
-    vendor_root = _vendor_log_root(flag_gems.add)
-    if vendor_root is not None:
+    vendor_roots = _vendor_log_roots(flag_gems.add, flag_gems.mul, flag_gems.sum)
+    if vendor_roots:
         caplog.clear()
-        caplog.set_level(logging.DEBUG, logger=vendor_root)
+        _capture_vendor_logs(caplog, vendor_roots)
     with flag_gems.use_gems(include="default", record=True, path=path_file):
         a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
         b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
@@ -210,7 +227,7 @@ def test_only_enable_default(tmp_path, monkeypatch, caplog):
 
     assert path_file.exists(), f"Log file {path_file} not found"
     log_content = path_file.read_text()
-    log_content += _extra_log_text(caplog, vendor_root)
+    log_content += _extra_log_text(caplog, vendor_roots)
 
     pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
