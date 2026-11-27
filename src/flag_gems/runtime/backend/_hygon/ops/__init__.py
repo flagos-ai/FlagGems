@@ -41,6 +41,9 @@ from ._foreach_addcdiv__ScalarList import (
 )
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__ScalarList import (
+    _foreach_addcmul__ScalarList as _foreach_addcmul__ScalarList,
+)
 from ._foreach_addcmul__Tensor import (
     _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
 )
@@ -407,6 +410,7 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
     "_foreach_atan",
     "_foreach_atan_",
