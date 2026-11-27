@@ -1682,3 +1682,8 @@ binary_cross_entropy_with_logits_backward:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+moe_topk_gate_forward:
+  shapes:
+    - [512, 256]
+    - [8001, 256]
