@@ -159,7 +159,9 @@ def renorm_backward_kernel(
             norm_parts += x * x
         else:
             norm_parts += tl_extra_shim.pow(abs_x, p_val)
-        dot_parts += x * g
+        # ATen multiplies in the input dtype, then sums in the accumulation
+        # dtype. Keep that first rounding, including for nearly canceled grads.
+        dot_parts += (x * g).to(self.dtype.element_ty).to(tl.float32)
 
     norm_sum = tl.sum(norm_parts)
     if p_val == 1.0:
@@ -192,9 +194,15 @@ def renorm_backward_kernel(
         elif p_val == 2.0:
             norm_grad = x / norm
         else:
-            sign = tl.where(x > 0, 1.0, tl.where(x < 0, -1.0, 0.0))
-            norm_grad = sign * tl_extra_shim.pow(tl.abs(x), p_val - 1.0)
-            norm_grad /= tl_extra_shim.pow(norm, p_val - 1.0)
+            if p_val > 2.0:
+                power = tl_extra_shim.pow(tl.abs(x), p_val - 2.0)
+                power = power.to(self.dtype.element_ty).to(tl.float32)
+                scaled_self = (x * power).to(self.dtype.element_ty).to(tl.float32)
+            else:
+                sign = tl.where(x > 0, 1.0, tl.where(x < 0, -1.0, 0.0))
+                scaled_self = sign * tl_extra_shim.pow(tl.abs(x), p_val - 1.0)
+                scaled_self = scaled_self.to(self.dtype.element_ty).to(tl.float32)
+            norm_grad = scaled_self / tl_extra_shim.pow(norm, p_val - 1.0)
         clipped = maxnorm * invnorm * (g - invnorm * dot * norm_grad)
         result = tl.where(norm > maxnorm, clipped, g)
         tl.store(grad_input + out_offset, result, mask=mask)

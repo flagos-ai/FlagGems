@@ -100,6 +100,20 @@ def test_renorm_backward(shape, dtype, p, dim):
 
 
 @pytest.mark.renorm_backward
+def test_renorm_backward_bfloat16_dot_rounding():
+    # Exact BF16 inputs whose product needs rounding before the reduction.
+    inp = torch.full((2, 1), 0.75, dtype=torch.bfloat16, device=flag_gems.device)
+    grad = torch.full_like(inp, 1.0078125)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    (expected,) = torch.autograd.grad(
+        torch.renorm(ref_inp, 1.0, 1, 1.0), ref_inp, utils.to_reference(grad)
+    )
+    actual = flag_gems.renorm_backward(grad, inp, 1.0, 1, 1.0)
+
+    utils.gems_assert_close(actual, expected, inp.dtype)
+
+
+@pytest.mark.renorm_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_renorm_backward_unclipped(dtype):
     inp = torch.randn((7, 11), dtype=dtype, device=flag_gems.device) * 0.01
