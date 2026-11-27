@@ -3814,6 +3814,20 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: complex_backward
+  description: Computes the gradients of aten::complex with respect to its real and
+    imaginary parts, returning (Re(grad), Im(grad)) for a complex upstream gradient.
+    FlagGems has no complex forward operator, so this kernel is exposed as a plain
+    function.
+  for:
+  - complex_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: concat
   description: An alias of `cat()`.
   for:
