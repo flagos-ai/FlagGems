@@ -867,6 +867,14 @@ huber_loss:
     - [3072, 65536]
   shape_desc: "M, N"
 
+sinh_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 # frobenius_norm is a reduction op whose kernel tiles (M rows x N cols): tiny
 # reduction widths (N << BLOCK_N) previously fell back to the wide-tile
 # vector_norm config family and ran an order of magnitude slower than eager

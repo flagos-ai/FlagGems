@@ -19449,6 +19449,17 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: sinh_backward
+  description: First-order backward of sinh, using saved forward state.
+  for:
+  - sinh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation

@@ -2300,7 +2300,7 @@ _FULL_CONFIG = (
     ("sin_", sin_),
     ("sinc", sinc),
     ("sinc_", sinc_),
-    ("sinh", sinh),
+    ("sinh", sinh, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("sinh_", sinh_),
     ("slice_backward", slice_backward),
     ("slice_copy.Tensor", slice_copy),

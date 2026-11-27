@@ -1519,7 +1519,7 @@ from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinc import sinc, sinc_
-from flag_gems.ops.sinh import sinh, sinh_
+from flag_gems.ops.sinh import sinh, sinh_, sinh_backward
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
@@ -3321,6 +3321,7 @@ __all__ = [
     "sinc_",
     "sinh",
     "sinh_",
+    "sinh_backward",
     "slice_backward",
     "slice_copy",
     "slice_copy_out",
