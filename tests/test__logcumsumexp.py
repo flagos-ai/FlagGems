@@ -264,7 +264,8 @@ def test__logcumsumexp_complex(shape, dim, dtype):
     res_out = flag_gems._logcumsumexp(inp, dim)
 
     assert res_out.dtype == dtype
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
+    observed, expected = _complex_scan_observations(res_out, ref_out, inp)
+    utils.gems_assert_close(observed, expected, dtype, reduce_dim=1)
 
 
 @pytest.mark.underscore_logcumsumexp
