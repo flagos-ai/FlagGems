@@ -21,7 +21,6 @@ import pytest
 import torch
 
 import flag_gems
-
 from flag_gems.ops.index_put import generate_code
 from flag_gems.utils.code_utils import IndentedBuffer
 

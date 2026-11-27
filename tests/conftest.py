@@ -210,12 +210,18 @@ def pytest_runtest_teardown(item, nextitem):
 def pytest_sessionfinish(session, exitstatus):
     report_path = session.config.getoption("--repro-dispatch-report")
     if report_path:
-        existing = json.loads(open(report_path).read()) if os.path.exists(report_path) else {}
+        existing = (
+            json.loads(open(report_path).read()) if os.path.exists(report_path) else {}
+        )
         mode = os.environ.get("FLAGGEMS_REPRO_MODE", "native")
         existing[mode] = {
             "exit_status": int(exitstatus),
             "nodes": {
-                nodeid: {key: value for key, value in result.items() if key in ("result", "reason")}
+                nodeid: {
+                    key: value
+                    for key, value in result.items()
+                    if key in ("result", "reason")
+                }
                 for nodeid, result in TEST_RESULTS.items()
             },
         }
