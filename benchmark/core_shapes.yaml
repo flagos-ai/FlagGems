@@ -787,6 +787,22 @@ argmin:
     - [512, 512]
     - [64, 64, 64]
 
+softshrink_backward_out:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
+softshrink_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 log_softmax:
   shapes:
     - [64, 64]
