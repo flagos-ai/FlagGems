@@ -747,6 +747,17 @@ ConcatBenchmark:
     - [512, 2048]
   shape_desc: "((B), M, N) * 3"
 
+pow_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 pointwise input shape
+
 TensorRepeatBenchmark:
   shapes:
     - [64, 64]
