@@ -76,17 +76,24 @@ from ._foreach_erf_ import _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_exp import _foreach_exp
 from ._foreach_exp_ import _foreach_exp_
+from ._foreach_floor import _foreach_floor
+from ._foreach_floor_ import _foreach_floor_
 from ._foreach_frac import _foreach_frac
 from ._foreach_frac_ import _foreach_frac_
+from ._foreach_log import _foreach_log
 from ._foreach_log1p_ import _foreach_log1p_
 from ._foreach_log2 import _foreach_log2
 from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10 import _foreach_log10
 from ._foreach_log10_ import _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_maximum_List import _foreach_maximum_List
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
+from ._foreach_minimum__List import _foreach_minimum__List
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum__ScalarList import _foreach_minimum__ScalarList
+from ._foreach_minimum_List import _foreach_minimum_List
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._foreach_mul__List import _foreach_mul__List
@@ -366,17 +373,24 @@ __all__ = [
     "_foreach_erfc_",
     "_foreach_exp",
     "_foreach_exp_",
+    "_foreach_floor",
+    "_foreach_floor_",
     "_foreach_frac",
     "_foreach_frac_",
+    "_foreach_log",
+    "_foreach_log10",
     "_foreach_log10_",
     "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
     "_foreach_maximum_List",
     "_foreach_maximum_Scalar",
+    "_foreach_minimum__List",
     "_foreach_minimum__Scalar",
     "_foreach_minimum__ScalarList",
+    "_foreach_minimum_List",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
     "_foreach_mul__List",
