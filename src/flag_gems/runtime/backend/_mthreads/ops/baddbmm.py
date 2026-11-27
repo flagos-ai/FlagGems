@@ -500,9 +500,11 @@ def _use_ws(bias, A, B, M, N, K):
     )
 
 
-def _use_sqmma(A, B, N, K):
+def _use_sqmma(A, B, N, K, alpha, beta):
     return (
-        is_sqmma_compatible(A, B, N, K)
+        float(alpha) == 1.0
+        and float(beta) == 1.0
+        and is_sqmma_compatible(A, B, N, K)
         and A.shape[0] * A.shape[1] * N * K * 2 >= _SQMMA_MIN_FLOPS
     )
 
@@ -521,9 +523,12 @@ class BaddbmmFunction(torch.autograd.Function):
         fast_out = _baddbmm_kernels.try_forward(bias, A, B, alpha, beta)
         if fast_out is not None:
             return fast_out
+        # Legacy kernels assume row-major operands.  Keep their original
+        # contract after giving stride-aware specialized paths the raw views.
+        bias, A, B = bias.contiguous(), A.contiguous(), B.contiguous()
         if _use_ws(bias, A, B, M, N, K):
             return baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta)
-        if _use_sqmma(A, B, N, K):
+        if _use_sqmma(A, B, N, K, alpha, beta):
             return _baddbmm_sqmma(bias, A, B, beta, alpha)
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
         _baddbmm_launch(bias, A, B, beta, alpha, out)
@@ -615,7 +620,7 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
     # instead of paying for a temporary product plus three elementwise passes.
     if out.is_contiguous() and _use_ws(bias, A, B, M, N, K):
         return baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta, C=out)
-    if _use_sqmma(A, B, N, K):
+    if _use_sqmma(A, B, N, K, alpha, beta):
         A, B = A.contiguous(), B.contiguous()
         product = bmm_sqmma(A, B, A.dtype, batch, M, N, K)
         scaled = mul(product, alpha)
@@ -634,9 +639,9 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
     return BaddbmmFunction.apply(
-        bias.contiguous(),
-        A.contiguous(),
-        B.contiguous(),
+        bias,
+        A,
+        B,
         beta,
         alpha,
     )

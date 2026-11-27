@@ -86,6 +86,70 @@ def test_baddbmm_out(M, N, K, scalar, dtype):
 
 
 @pytest.mark.baddbmm
+@pytest.mark.baddbmm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads", reason="MThreads small-M baddbmm regression"
+)
+@pytest.mark.parametrize("scalar", [1.0, *SCALARS])
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+def test_baddbmm_mthreads_small_m(scalar, dtype):
+    batch, M, N, K = 4, 15, 160, 1024
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    expected = torch.baddbmm(
+        to_reference(bias, True),
+        to_reference(mat1, True),
+        to_reference(mat2, True),
+        alpha=scalar,
+        beta=scalar,
+    )
+
+    actual = flag_gems.baddbmm(bias, mat1, mat2, alpha=scalar, beta=scalar)
+    gems_assert_close(actual, expected, dtype, reduce_dim=K)
+
+    out = torch.empty_like(actual)
+    result = flag_gems.baddbmm_out(bias, mat1, mat2, alpha=scalar, beta=scalar, out=out)
+    assert result is out
+    gems_assert_close(out, expected, dtype, reduce_dim=K)
+
+
+@pytest.mark.baddbmm
+@pytest.mark.baddbmm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads", reason="MThreads row-wise GEMV paths"
+)
+@pytest.mark.parametrize(
+    "M,N,K,b_column_major",
+    [
+        (1, 64, 4096, False),
+        (2, 16, 4096, False),
+        (2, 16, 4096, True),
+        (64, 4, 16384, False),
+        (64, 4, 16384, True),
+    ],
+)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+def test_baddbmm_mthreads_full_bias_gemv(M, N, K, b_column_major, dtype):
+    batch = 4
+    a = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    b = (
+        torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device).transpose(1, 2)
+        if b_column_major
+        else torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    )
+    bias = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
+    reference = torch.baddbmm(
+        to_reference(bias, True), to_reference(a, True), to_reference(b, True)
+    )
+    result = flag_gems.baddbmm(bias, a, b)
+    gems_assert_close(result, reference, dtype, reduce_dim=K)
+    out = torch.empty_like(bias)
+    assert flag_gems.baddbmm_out(bias, a, b, out=out) is out
+    gems_assert_close(out, reference, dtype, reduce_dim=K)
+
+
+@pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", BACKWARD_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", GEMM_DTYPES)

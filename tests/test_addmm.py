@@ -49,7 +49,7 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "mthreads",
     "metax",
 )
-_ADDMM_BETA_ZERO_VENDORS = ("ascend", "nvidia", "hygon", "thead", "metax")
+_ADDMM_BETA_ZERO_VENDORS = ("ascend", "nvidia", "hygon", "thead", "mthreads", "metax")
 
 if IS_KUNLUNXIN:
     _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)
@@ -243,6 +243,54 @@ def test_addmm_out_beta_zero_ignores_bias(dtype):
 
     assert torch.isfinite(out).all()
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm
+@pytest.mark.addmm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads", reason="MThreads specialized addmm paths"
+)
+@pytest.mark.parametrize(
+    "M,N,K", [(1, 64, 4096), (17, 64, 64), (64, 64, 4096), (256, 256, 128)]
+)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+def test_addmm_mthreads_specialized_beta_zero_ignores_bias(M, N, K, dtype):
+    if M >= 64:
+        try:
+            from triton.experimental.tle import is_tle_supported
+        except ImportError:
+            pytest.skip("installed FlagTree has no TLE capability query")
+        if not is_tle_supported(
+            (
+                "pipe",
+                "gpu.alloc",
+                "gpu.copy",
+                "gpu.buffered_tensor.subslice",
+                "gpu.warp_specialize",
+                "gpu.wgmma",
+            )
+        ):
+            pytest.skip("installed FlagTree lacks the addmm TLE primitives")
+
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    bias = torch.full((M, N), float("nan"), dtype=dtype, device=flag_gems.device)
+    expected = torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+        alpha=0.5,
+        beta=0,
+    )
+
+    actual = flag_gems.addmm(bias, mat1, mat2, alpha=0.5, beta=0)
+    out = torch.empty_like(actual)
+    assert flag_gems.addmm_out(bias, mat1, mat2, alpha=0.5, beta=0, out=out) is out
+
+    assert torch.isfinite(actual).all()
+    assert torch.isfinite(out).all()
+    utils.gems_assert_close(actual, expected, dtype, reduce_dim=K)
+    utils.gems_assert_close(out, expected, dtype, reduce_dim=K)
 
 
 @pytest.mark.addmm_out_vector_bias

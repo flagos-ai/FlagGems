@@ -26,6 +26,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ..gemm_common import small_m_nn_gemv_kernel, small_m_nt_gemv_kernel
+
 DIRECT_BM1_BN1_BK32_PATH = "direct_b4_m1_n1_k32_bm1_bn1_bk32"
 DIRECT_NN_BM32_BN128_BK32_FP32_K71_PATH = (
     "direct_nn_b4_m495_n5333_k71_bm32_bn128_3xbk32_fp32_tf32x3"
@@ -40,7 +42,83 @@ DIRECT_NT_BM64_BN128_BK64_F16_K71_PATH = (
     "direct_nt_b4_m495_n5333_k71_bm64_bn128_bk64_tail16_f16_ieee"
 )
 
+# Fixed, stride-aware launches avoid both the libtuner lookup in the generic
+# fallback and the full B.contiguous() copy for a transpose-view B tensor.
+_CATALOG_CONFIGS = {
+    (16384, 1, 4096): ("bm64_bn16_bk64_w4", 64, 16, 64, 4),
+    (512, 256, 2048): ("bm64_bn128_bk64_w8", 64, 128, 64, 8),
+    (128, 128, 64): ("bm64_bn64_bk64_w4", 64, 64, 64, 4),
+    (65, 257, 2049): ("bm32_bn64_bk64_w4", 32, 64, 64, 4),
+}
+_CATALOG_SMALL_M_SHAPES = {(1, 64, 4096), (2, 16, 4096)}
+_CATALOG_PATH_PREFIX = "catalog_"
+_CATALOG_NN_GEMV_PATH = "catalog_nn_gemv"
+_CATALOG_NT_GEMV_PATH = "catalog_nt_gemv"
+_CATALOG_GEMV4_SHAPE = (64, 4, 16384)
+_CATALOG_GEMV4_PATH = "catalog_gemv4"
+
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
+@triton.jit
+def _bmm_catalog_strided_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_ob,
+    stride_om,
+    stride_on,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Fixed-tile BMM with explicit strides for both NN and NT inputs."""
+
+    pid_n = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_b = tl.program_id(2)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    for k_start in range(0, K, BLOCK_K):
+        k = k_start + offs_k
+        a = tl.load(
+            a_ptr
+            + pid_b * stride_ab
+            + offs_m[:, None] * stride_am
+            + k[None, :] * stride_ak,
+            mask=(offs_m[:, None] < M) & (k[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            b_ptr
+            + pid_b * stride_bb
+            + k[:, None] * stride_bk
+            + offs_n[None, :] * stride_bn,
+            mask=(k[:, None] < K) & (offs_n[None, :] < N),
+            other=0.0,
+        )
+        acc = tl.dot(a, b, acc=acc, input_precision="ieee")
+
+    tl.store(
+        out_ptr
+        + pid_b * stride_ob
+        + offs_m[:, None] * stride_om
+        + offs_n[None, :] * stride_on,
+        acc,
+        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
+    )
 
 
 @triton.jit
@@ -194,9 +272,48 @@ def _common_inputs_eligible(a: torch.Tensor, b: torch.Tensor) -> bool:
     )
 
 
+def _catalog_inputs_eligible(a: torch.Tensor, b: torch.Tensor) -> bool:
+    if a.ndim != 3 or b.ndim != 3:
+        return False
+
+    shape = (a.shape[1], b.shape[2], a.shape[2])
+    return (
+        a.shape[0] == b.shape[0]
+        and a.shape[0] in (2, 4, 8)
+        and a.shape[2] == b.shape[1]
+        and (
+            shape in _CATALOG_CONFIGS
+            or shape in _CATALOG_SMALL_M_SHAPES
+            or shape == _CATALOG_GEMV4_SHAPE
+        )
+        and a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and a.is_contiguous()
+        and (b.is_contiguous() or _is_upstream_transpose_view(b))
+        and a.device == b.device
+        and a.device.type == "musa"
+    )
+
+
 def dispatch_path(a: torch.Tensor, b: torch.Tensor) -> Optional[str]:
     """Return a specialized path, or ``None`` for the general fallback."""
 
+    if _catalog_inputs_eligible(a, b):
+        shape = (a.shape[1], b.shape[2], a.shape[2])
+        trans_b = _is_upstream_transpose_view(b)
+        if shape in _CATALOG_SMALL_M_SHAPES:
+            return _CATALOG_NT_GEMV_PATH if trans_b else _CATALOG_NN_GEMV_PATH
+        if shape == _CATALOG_GEMV4_SHAPE:
+            return _CATALOG_GEMV4_PATH
+        use_tiled_path = (
+            shape == (128, 128, 64)
+            or (shape == (16384, 1, 4096) and b.is_contiguous())
+            or (shape == (512, 256, 2048) and (trans_b or a.shape[0] == 8))
+            or (shape == (65, 257, 2049) and trans_b)
+        )
+        if use_tiled_path:
+            config_name = _CATALOG_CONFIGS[shape][0]
+            return _CATALOG_PATH_PREFIX + config_name
     if not _common_inputs_eligible(a, b):
         return None
     shape = (a.shape[0], a.shape[1], b.shape[2], a.shape[2])
@@ -236,6 +353,83 @@ def launch(
     out: torch.Tensor,
 ) -> None:
     batch = a.shape[0]
+    if path in (_CATALOG_GEMV4_PATH, _CATALOG_NN_GEMV_PATH, _CATALOG_NT_GEMV_PATH):
+        M, N, K = a.shape[1], b.shape[2], a.shape[2]
+        if path == _CATALOG_NT_GEMV_PATH:
+            block_n = 1
+            block_k, num_warps = (2048, 4) if M == 1 else (4096, 8)
+            kernel = small_m_nt_gemv_kernel
+            grid = (N, batch)
+        else:
+            if path == _CATALOG_GEMV4_PATH:
+                block_n = 4 if _is_upstream_transpose_view(b) else 2
+                block_k = 2048
+            else:
+                block_n, block_k = (4, 4096) if M == 1 else (2, 2048)
+            num_warps = 8
+            kernel = small_m_nn_gemv_kernel
+            grid = (triton.cdiv(N, block_n), M, batch)
+        kernel[grid](
+            a,
+            b,
+            out,
+            out,
+            1.0,
+            0.0,
+            a.stride(0),
+            a.stride(1),
+            a.stride(2),
+            b.stride(0),
+            b.stride(1),
+            b.stride(2),
+            0,
+            0,
+            0,
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+            M=M,
+            N=N,
+            K=K,
+            BLOCK_N=block_n,
+            BLOCK_K=block_k,
+            FUSE_BIAS=False,
+            BETA_ZERO=True,
+            num_warps=num_warps,
+            num_stages=1,
+        )
+        return
+    if path.startswith(_CATALOG_PATH_PREFIX):
+        M, N, K = a.shape[1], b.shape[2], a.shape[2]
+        config_name, block_m, block_n, block_k, num_warps = _CATALOG_CONFIGS[(M, N, K)]
+        if path != _CATALOG_PATH_PREFIX + config_name:
+            raise ValueError(f"invalid catalog BMM path: {path}")
+        _bmm_catalog_strided_kernel[
+            (triton.cdiv(N, block_n), triton.cdiv(M, block_m), batch)
+        ](
+            a,
+            b,
+            out,
+            a.stride(0),
+            a.stride(1),
+            a.stride(2),
+            b.stride(0),
+            b.stride(1),
+            b.stride(2),
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+            M=M,
+            N=N,
+            K=K,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            BLOCK_K=block_k,
+            num_warps=num_warps,
+            num_stages=1,
+            enable_backend_opt=True,
+        )
+        return
     if path == DIRECT_BM1_BN1_BK32_PATH:
         _bmm_bm1_bn1_bk32_direct_kernel[(batch,)](
             a,
