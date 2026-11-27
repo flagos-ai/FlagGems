@@ -2069,7 +2069,7 @@ _FULL_CONFIG = (
     ("ones_like", ones_like),
     ("orgqr", orgqr),
     ("orgqr.out", orgqr_out),
-    ("ormqr", ormqr),
+    ("ormqr", ormqr, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("outer", outer),
     ("pad", pad),
     ("pad_sequence", pad_sequence),
