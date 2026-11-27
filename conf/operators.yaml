@@ -16111,6 +16111,19 @@ ops:
   - Tensor
   stages:
   - alpha: '5.3'
+- id: normal_backward
+  description: Triton backward implementation and autograd contract for normal_tensor_tensor.
+  for:
+  - normal.Tensor_Tensor
+  - normal.Tensor_float
+  - normal.float_Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: normal_float_float_
   description: 'Returns a tensor of random numbers drawn from separate normal distributions
 
