@@ -1454,6 +1454,40 @@ def flash_attention_backward(
     logger.debug("GEMS FLASH_ATTENTION_BACKWARD")
     if not 0.0 <= dropout_p < 1.0:
         raise ValueError("dropout_p must be in [0, 1)")
+    flag_gems_rng = (
+        dropout_p > 0.0
+        and rng_state is not None
+        and unused is not None
+        and rng_state.shape == unused.shape == (1,)
+        and rng_state.dtype == unused.dtype == torch.int64
+        and rng_state.device == unused.device == query.device
+    )
+    if flag_gems_rng or (query.dtype == torch.float32 and not dropout_p):
+        from flag_gems.ops.flash_attention_backward import flash_attn_backward
+
+        dQ, dK, dV, _ = flash_attn_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cu_seq_q=cum_seq_q,
+            cu_seq_k=cum_seq_k,
+            max_seqlen_q=int(max_q),
+            max_seqlen_k=int(max_k),
+            is_dropout=flag_gems_rng,
+            dropout_p=dropout_p,
+            rng_state=(
+                (int(rng_state.item()), int(unused.item())) if flag_gems_rng else None
+            ),
+            is_causal=is_causal,
+            window_size_left=-1 if window_size_left is None else window_size_left,
+            window_size_right=-1 if window_size_right is None else window_size_right,
+            softmax_scale=scale,
+            compensate_dv=True,
+        )
+        return dQ, dK, dV
     if dropout_p and (query.ndim != 4 or (scale is not None and scale <= 0)):
         raise NotImplementedError(
             "Hygon dropout currently requires dense positive-scale inputs"

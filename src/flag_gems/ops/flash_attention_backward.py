@@ -136,7 +136,16 @@ def _prune_dense_dq_configs(configs, named_args, **kwargs):
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD", "S5000"],
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "DO_BIAS_GRAD",
+        "FP32",
+        "IS_DROPOUT",
+        "S5000",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -197,6 +206,7 @@ def _flash_attn_bwd_dq_fused(
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     DO_BIAS_GRAD: tl.constexpr,
+    FP32: tl.constexpr,
     S5000: tl.constexpr,
 ):
     start_m = tl.program_id(0)
@@ -281,7 +291,10 @@ def _flash_attn_bwd_dq_fused(
             other=0.0,
         )
 
-        s = tl.dot(q, tl.trans(k)) * sm_scale
+        if FP32:
+            s = tl.dot(q, tl.trans(k), input_precision="ieee") * sm_scale
+        else:
+            s = tl.dot(q, tl.trans(k)) * sm_scale
 
         if HAS_BIAS:
             bb = batch_idx * stride_bb + head_q_idx * stride_bh
@@ -305,8 +318,16 @@ def _flash_attn_bwd_dq_fused(
             s = s - alibi_slope * tl.abs(dist).to(tl.float32)
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
+        # Keep the pre-dropout softmax probability separate from the
+        # probability used by the value path.  The softmax derivative is
+        # P * (dP_drop - sum(P_drop * dP)); using P_drop for the outer
+        # factor incorrectly applies the dropout mask to the subtraction term.
         p = tl.exp(s - Li[:, None])
-        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        if FP32:
+            dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
+        else:
+            dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        dp_drop = dp
 
         if IS_DROPOUT:
             rng_off = (
@@ -318,14 +339,16 @@ def _flash_attn_bwd_dq_fused(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
-        dq = dq + tl.dot(ds.to(q.dtype), k)
+        ds = p * (dp_drop - Di[:, None]) * sm_scale
+        if FP32:
+            dq = dq + tl.dot(ds, k, input_precision="ieee")
+        else:
+            dq = dq + tl.dot(ds.to(q.dtype), k)
 
         if DO_BIAS_GRAD:
-            ds_bias = p * (dp - Di[:, None])
+            ds_bias = p * (dp_drop - Di[:, None])
             bb_out = batch_idx * stride_bb + head_q_idx * stride_bh
             tl.store(
                 dBias
@@ -362,7 +385,16 @@ def _prune_dense_dkv_configs(configs, named_args, **kwargs):
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
     # device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "S5000", "DV_PRECISION"],
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "FP32",
+        "IS_DROPOUT",
+        "S5000",
+        "DV_PRECISION",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -419,6 +451,7 @@ def _flash_attn_bwd_dkv(
     HAS_WINDOW: tl.constexpr,
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
+    FP32: tl.constexpr,
     S5000: tl.constexpr,
     DV_PRECISION: tl.constexpr,
 ):
@@ -533,7 +566,10 @@ def _flash_attn_bwd_dkv(
         Li = tl.load(L + ld_base + offs_m_c, mask=mask_m, other=0.0)
         Di = tl.load(D + ld_base + offs_m_c, mask=mask_m, other=0.0)
 
-        s = tl.dot(q, tl.trans(k)) * sm_scale
+        if FP32:
+            s = tl.dot(q, tl.trans(k), input_precision="ieee") * sm_scale
+        else:
+            s = tl.dot(q, tl.trans(k)) * sm_scale
 
         if HAS_BIAS:
             bb = batch_idx * stride_bb + head_q_idx * stride_bh
@@ -559,7 +595,12 @@ def _flash_attn_bwd_dkv(
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
         p = tl.exp(s - Li[:, None])
-        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        if FP32:
+            dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
+        else:
+            dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        p_drop = p
+        dp_drop = dp
 
         if IS_DROPOUT:
             rng_off = (
@@ -571,22 +612,25 @@ def _flash_attn_bwd_dkv(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            p_drop = tl.where(drop_mask, p * drop_scale, 0.0)
+            dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
-        dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-        if DV_PRECISION == "ieee":
-            dv += tl.dot(tl.trans(p), do.to(tl.float32), input_precision="ieee")
+        ds = p * (dp_drop - Di[:, None]) * sm_scale
+        if FP32:
+            dk = dk + tl.dot(tl.trans(ds), q, input_precision="ieee")
         else:
-            p_hi = p.to(q.dtype)
+            dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
+        if FP32 or DV_PRECISION == "ieee":
+            dv += tl.dot(tl.trans(p_drop), do.to(tl.float32), input_precision="ieee")
+        else:
+            p_hi = p_drop.to(q.dtype)
             dv += tl.dot(tl.trans(p_hi), do)
             if DV_PRECISION != "input":
                 # Scale the residual before narrowing to retain FP16 subnormals on Ascend.
                 residual_scale: tl.constexpr = (
                     4096.0 if DV_PRECISION == "scaled_split" else 1.0
                 )
-                p_lo = ((p - p_hi.to(tl.float32)) * residual_scale).to(q.dtype)
+                p_lo = ((p_drop - p_hi.to(tl.float32)) * residual_scale).to(q.dtype)
                 dv += tl.dot(tl.trans(p_lo), do) * (1.0 / residual_scale)
 
     tl.store(
@@ -1345,6 +1389,7 @@ def flash_attn_backward(
                 HEAD_DIM=Head_Dim,
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
+                FP32=device.vendor_name == "hygon" and Q.dtype == torch.float32,
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
@@ -1356,7 +1401,7 @@ def flash_attn_backward(
             dv_precision = "input"
             if (
                 compensate_dv
-                and not use_dropout
+                and (not use_dropout or device.vendor_name == "hygon")
                 and Q.dtype in (torch.float16, torch.bfloat16)
             ):
                 dv_precision = _COMPENSATED_DV_PRECISION
@@ -1409,6 +1454,7 @@ def flash_attn_backward(
                 HEAD_DIM=Head_Dim,
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
+                FP32=device.vendor_name == "hygon" and Q.dtype == torch.float32,
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
