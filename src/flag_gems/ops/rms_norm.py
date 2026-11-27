@@ -14,6 +14,7 @@
 
 import logging
 import math
+import struct
 
 import torch
 import triton
@@ -31,8 +32,59 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+def split_fp32(value):
+    """Split a Python float into two FP32 values whose sum approximates it.
+
+    The low part carries the bits that a single FP32 cannot hold, so a kernel
+    can consume the constant at roughly double precision without ever using
+    FP64 arithmetic.
+    """
+    high = struct.unpack("=f", struct.pack("=f", value))[0]
+    low = struct.unpack("=f", struct.pack("=f", value - high))[0]
+    return high, low
+
+
+@triton.jit
+def compensated_rrms(square_sum, inv_n_hi, inv_n_lo, eps_hi, eps_lo):
+    """Return 1 / sqrt(square_sum / N + eps), accurate to about one ULP.
+
+    ``square_sum / N + eps`` is first evaluated as an unevaluated sum of a
+    high and a low FP32 part: the multiplication error is recovered with an
+    FMA (``TwoProduct``) and the addition error with a ``TwoSum``. A single
+    Newton step for the reciprocal square root then consumes both parts, so
+    the refinement is not limited by the rounding of the variance itself.
+
+    The error-free transformations need a real fused multiply-add. ``tl.fma``
+    is used explicitly rather than relying on the compiler to contract
+    ``a * b + c``; on a backend that lowers it to separate operations the
+    compensation simply contributes nothing and the result stays as accurate
+    as the plain expression.
+    """
+    # square_sum * (1/N) + eps, keeping the error of both operations.
+    product = square_sum * inv_n_hi
+    value = product + eps_hi
+    virtual_eps = value - product
+    product_sum_error = product - (value - virtual_eps)
+    eps_sum_error = (-virtual_eps) + eps_hi
+    sum_error = product_sum_error + eps_sum_error
+    product_error = tl.fma(square_sum, inv_n_hi, -product)
+    value_error = product_error + sum_error
+    value_error = tl.fma(square_sum, inv_n_lo, value_error)
+    value_error = value_error + eps_lo
+
+    # One Newton step, y' = y + y/2 * (1 - x * y^2), with x and y^2 compensated.
+    estimate = 1 / tl.sqrt(value)
+    estimate_squared = estimate * estimate
+    square_error = tl.fma(estimate, estimate, -estimate_squared)
+    residual = tl.fma(-value, estimate_squared, 1.0)
+    residual = tl.fma(-value, square_error, residual)
+    residual = tl.fma(-value_error, estimate_squared, residual)
+    residual = tl.fma(-value_error, square_error, residual)
+    return tl.fma(estimate * 0.5, residual, estimate)
+
+
 @libentry()
-@triton.jit(do_not_specialize=["eps"])
+@triton.jit(do_not_specialize=["eps", "inv_n_hi", "inv_n_lo", "eps_lo"])
 def rms_norm_kernel(
     out_ptr,  # pointer to the output
     INV_RMS,  # pointer to inverse rms
@@ -44,6 +96,9 @@ def rms_norm_kernel(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
+    inv_n_hi,  # high part of 1 / N
+    inv_n_lo,  # low part of 1 / N
+    eps_lo,  # low part of eps
     BLOCK_SIZE: tl.constexpr,
 ):
     if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
@@ -61,8 +116,8 @@ def rms_norm_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(in_ptr + cols * x_stride_c, mask, other=0.0).to(cdtype)
 
-    var = tl.sum(x * x, axis=0) / N
-    rrms = 1 / tl.sqrt(var + eps)
+    square_sum = tl.sum(x * x, axis=0)
+    rrms = compensated_rrms(square_sum, inv_n_hi, inv_n_lo, eps, eps_lo)
 
     w = tl.load(w_ptr + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
     # Cast x_normed back to input dtype before multiplying with weight
@@ -78,7 +133,7 @@ def rms_norm_kernel(
     configs=runtime.get_tuned_config("rms_norm_loop"),
     key=["N"],
 )
-@triton.jit(do_not_specialize=["eps"])
+@triton.jit(do_not_specialize=["eps", "inv_n_hi", "inv_n_lo", "eps_lo"])
 def rms_norm_loop_kernel(
     out_ptr,
     INV_RMS,
@@ -86,6 +141,9 @@ def rms_norm_loop_kernel(
     w_ptr,
     N,
     eps,
+    inv_n_hi,
+    inv_n_lo,
+    eps_lo,
     TILE_N: tl.constexpr,
 ):
     if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
@@ -114,8 +172,8 @@ def rms_norm_loop_kernel(
     x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
     acc += x * x
 
-    var = tl.sum(acc) / N
-    rrms = 1 / tl.sqrt(var + eps)
+    square_sum = tl.sum(acc)
+    rrms = compensated_rrms(square_sum, inv_n_hi, inv_n_lo, eps, eps_lo)
     tl.store(INV_RMS + pid, rrms)
 
     # Pass 2: normalize in reverse order (better L2 cache reuse)
@@ -315,13 +373,34 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     weight = weight.contiguous()
     y = torch.empty_like(x)
     inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+    # Split the two constants on the host: FP32 alone cannot represent the low
+    # part, and the kernel has no FP64 to recover it.
+    inv_n_hi, inv_n_lo = split_fp32(1.0 / N)
+    _, eps_lo = split_fp32(eps)
 
     with torch_device_fn.device(x.device):
         if N <= 4096:
             BLOCK_SIZE = triton.next_power_of_2(N)
-            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+            rms_norm_kernel[M,](
+                y,
+                inv_rms,
+                x,
+                weight,
+                N,
+                1,
+                N,
+                1,
+                N,
+                eps,
+                inv_n_hi,
+                inv_n_lo,
+                eps_lo,
+                BLOCK_SIZE,
+            )
         else:
-            rms_norm_loop_kernel[M,](y, inv_rms, x, weight, N, eps)
+            rms_norm_loop_kernel[M,](
+                y, inv_rms, x, weight, N, eps, inv_n_hi, inv_n_lo, eps_lo
+            )
 
     return y, inv_rms
 
