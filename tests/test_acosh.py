@@ -472,7 +472,7 @@ def test_acosh_inplace_backward_noncontiguous(dtype):
 def test_acosh_inplace_rejects_leaf_without_writing(view):
     leaf = torch.full((4, 4), 2.0, device=flag_gems.device, requires_grad=True)
     target = leaf.t() if view else leaf
-    before = leaf.detach().clone()
+    before = utils.to_reference(leaf.detach().clone())
     version = leaf._version
 
     with pytest.raises(RuntimeError, match="view of a leaf" if view else "leaf"):
@@ -488,7 +488,7 @@ def test_acosh_inplace_rejects_expanded_write(requires_grad):
     leaf = torch.full((4, 1), 2.0, device=flag_gems.device, requires_grad=requires_grad)
     base = leaf.clone()
     target = base.expand(4, 4)
-    before = base.detach().clone()
+    before = utils.to_reference(base.detach().clone())
     version = base._version
 
     with pytest.raises(RuntimeError, match="single memory location"):
