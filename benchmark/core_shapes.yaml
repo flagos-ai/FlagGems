@@ -283,6 +283,28 @@ gcd:
     - [64, 256, 256]
   shape_desc: "(B), M, N"
 
+celu_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
+celu_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 softmax_backward:
   shapes:
     - [1048576] # 1024 * 1024
