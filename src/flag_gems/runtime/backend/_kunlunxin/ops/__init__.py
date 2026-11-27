@@ -520,6 +520,8 @@ from .foreach_div import (  # noqa: F401
 from .foreach_erf import _foreach_erf, _foreach_erf_  # noqa: F401
 from .foreach_log1p import _foreach_log1p, _foreach_log1p_  # noqa: F401
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
+from .fractional_max_pool3d import fractional_max_pool3d
+from .fractional_max_pool3d_backward import fractional_max_pool3d_backward
 from .frexp import frexp
 from .full import full
 from .full_like import full_like
@@ -1571,6 +1573,8 @@ __all__ = [
     "fmod_tensor_",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
+    "fractional_max_pool3d",
+    "fractional_max_pool3d_backward",
     "frexp",
     "full",
     "full_like",
@@ -2363,3 +2367,31 @@ def _patch_sobol_engine_ff_ops_module():
 
 
 _patch_sobol_engine_ff_ops_module()
+
+# --- Route flag_gems.ops._fused_rms_norm_backward to the vendor kernel ---------
+# ``SpecOpRegistrar`` only swaps the top-level ``flag_gems.<name>``; the
+# benchmark / tests that call the ops submodule directly
+# (``flag_gems.ops._fused_rms_norm_backward``, e.g.
+# ``benchmark/test_fused_rms_norm.py``) would otherwise hit the generic
+# implementation, whose 2D axis-0 ``tl.sum`` in the dw kernel does not legalize
+# on the current XPU triton (``TritonXPUUnrollControl`` pipeline failure).  The
+# ``setattr`` is process-global and idempotent; same pattern as
+# ``_patch_sobol_engine_ff_ops_module``.
+_fused_rms_norm_backward_ops_patched = False
+
+
+def _patch_fused_rms_norm_backward_ops_module():
+    global _fused_rms_norm_backward_ops_patched
+    if _fused_rms_norm_backward_ops_patched:
+        return
+    _fused_rms_norm_backward_ops_patched = True
+
+    import flag_gems
+
+    # Guard against an unusual import order where flag_gems.ops is not yet
+    # bound; in that case the SpecOpRegistrar top-level swap still applies.
+    if getattr(flag_gems, "ops", None) is not None:
+        setattr(flag_gems.ops, "_fused_rms_norm_backward", _fused_rms_norm_backward)
+
+
+_patch_fused_rms_norm_backward_ops_module()

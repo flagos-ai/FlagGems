@@ -21,16 +21,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason=(
-        "generic fractional_max_pool3d_backward kernel fails to compile on the "
-        "XPU Triton backend (ConvertTritonXPUToLLVM), and the generic "
-        "fractional_max_pool3d forward fails in TritonXPULegalize; both are "
-        "tracked upstream"
-    ),
-)
-
 # 5D shapes: (batch, channels, depth, height, width)
 FRACTIONAL_MAXPOOL3D_BACKWARD_CONFIGS = [
     ((4, 3, 8, 32, 32), 2, (4, 16, 16)),
