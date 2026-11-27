@@ -61,6 +61,17 @@ def _reference_depthwise2d(inp, weight, kernel_size, bias, stride, padding, dila
     )
 
 
+@pytest.fixture(autouse=True)
+def _full_precision_musa_convolution():
+    if flag_gems.vendor_name == "mthreads":
+        from torch_musa.core import mudnn
+
+        with mudnn.flags(allow_tf32=False):
+            yield
+    else:
+        yield
+
+
 @pytest.mark.underscore_conv_depthwise2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
