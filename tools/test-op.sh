@@ -51,8 +51,9 @@ FULL_RUN=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   FULL_RUN=true
-  # Replace "__ALL__" with all tests
-  CHANGED_FILES=$(find tests -name "test*.py")
+  # Replace "__ALL__" with all tests; skip deprecated/ (those ops have
+  # migrated to FlagGems-vllm and are retained only for backward compatibility).
+  CHANGED_FILES=$(find tests -name "test*.py" -not -path "tests/deprecated/*")
   # add options to generate summary report
   EXTRA_OPTS="--md-report"
   EXTRA_OPTS+=" --md-report-verbose=1"
