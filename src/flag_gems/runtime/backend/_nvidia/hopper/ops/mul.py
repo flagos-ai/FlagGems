@@ -3,6 +3,8 @@
 
 """Hopper contiguous, scalar and dense broadcast multiplication for FP32 and BF16."""
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -19,6 +21,8 @@ from flag_gems.ops.mul import (
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
+
+logger = logging.getLogger(__name__)
 
 
 # next_power_of_2 that is valid on both plain ints (host) and ``tl.constexpr``
@@ -133,7 +137,10 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    def grid(meta):
+        return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
     with torch_device_fn.device(output.device):
         if (
             n_elements < 2**31
@@ -173,7 +180,10 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    def grid(meta):
+        return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
     with torch_device_fn.device(output.device):
         kernel = mul_scalar_kernel
         launch = {}
@@ -482,4 +492,5 @@ _REAL_LAUNCHERS = (
 
 
 def mul(A, B, *, out=None):
+    logger.debug("GEMS_NVIDIA_HOPPER MUL")
     return _mul(A, B, out=out, launchers=_REAL_LAUNCHERS)

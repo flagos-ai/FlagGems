@@ -147,6 +147,10 @@ class BenchConfig:
         # When set, each op's profiling.prefill/decode metadata is attached to
         # BenchmarkMetrics.time_share so it appears as an extra column.
         self.model_profile = None
+        # Speedup source preference: "origin" (native speedup) or "nv_baseline"
+        # (compared_speedup from --base-data). When both are available, this
+        # controls which one is used as the primary speedup value.
+        self.speedup_source = "origin"
 
 
 def _load_model_profile(path):
@@ -241,6 +245,21 @@ def pytest_addoption(parser):
         default=None,
         metavar="FILE",
         help="Optional ops-baseline JSON for external NVIDIA speedup comparison.",
+    )
+    parser.addoption(
+        "--speedup-source",
+        action="store",
+        default="origin",
+        choices=["origin", "nv_baseline"],
+        help=(
+            "Deprecated and ignored here; accepted only so existing invocations "
+            "keep working. This runner always reports both ratios separately: "
+            "'speedup' is the on-machine gems-vs-torch ratio (None when no "
+            "reference ran) and 'compared_speedup' is the vs-baseline ratio from "
+            "--base-data. Preferring one over the other is done downstream by the "
+            "consumer (optest's --speedup-source), which relabels "
+            "'speedup_source' accordingly."
+        ),
     )
     parser.addoption(
         "--reference-only",
@@ -533,6 +552,7 @@ def pytest_configure(config):
     shape_file_str = config.getoption("--shape_file")
     Config.shape_file = shape_file_str
     Config.base_data = BaselineData.load(config.getoption("--base-data"))
+    Config.speedup_source = config.getoption("--speedup-source")
 
     # --model-profile: load profiling YAML and force --shape_file to it so
     # only the ops/shapes defined there are benchmarked.
