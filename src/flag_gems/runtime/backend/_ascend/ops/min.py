@@ -21,6 +21,9 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.min import (  # noqa: F401 — re-export for test introspection
+    _global_plan,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
