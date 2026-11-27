@@ -22379,6 +22379,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: swiglu_forward_and_per_token_cast
+  description: Fuse SwiGLU activation and group-32 per-token FP8 quantization.
+  for:
+  - swiglu_forward_and_per_token_cast
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
