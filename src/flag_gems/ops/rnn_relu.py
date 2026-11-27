@@ -278,6 +278,7 @@ def rnn_relu_kernel_forward(
     weight_ih, weight_hh, bias_ih, bias_hh = _params_unpack(params, has_biases)
 
     input = input.contiguous()
+    hx = hx.contiguous()
     output = output.contiguous()
     hidden = hidden.contiguous()
     hidden_read = hidden_read.contiguous()

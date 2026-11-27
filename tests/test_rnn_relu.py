@@ -262,3 +262,48 @@ def test_rnn_relu_large_hidden(hidden_size):
     assert all(result.device == inp.device for result in out_gems)
     utils.gems_assert_close(out_gems[0], ref[0], dtype, atol=atol)
     utils.gems_assert_close(out_gems[1], ref[1], dtype, atol=atol)
+
+
+@pytest.mark.skipif(
+    flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    reason="Triton kernel is CUDA-only",
+)
+@pytest.mark.rnn_relu
+@pytest.mark.parametrize("contiguous", [True, False], ids=["contiguous", "transposed"])
+def test_rnn_relu_hx_layout(contiguous):
+    from flag_gems.ops.rnn_relu import rnn_relu
+
+    seq_len, batch_size, input_size, hidden_size = 4, 3, 8, 5
+    device = flag_gems.device
+    dtype = torch.float32
+    inp = torch.zeros(seq_len, batch_size, input_size, device=device, dtype=dtype)
+    # Use distinct positive values and a diagonal recurrence so the initial
+    # state affects both the sequence output and the final hidden state.
+    hx = (
+        torch.arange(1, batch_size * hidden_size + 1, device=device, dtype=dtype)
+        .reshape(1, hidden_size, batch_size)
+        .transpose(1, 2)
+    )
+    if contiguous:
+        hx = hx.contiguous()
+    assert hx.is_contiguous() == contiguous
+
+    params = (
+        torch.zeros(hidden_size, input_size, device=device, dtype=dtype),
+        0.5 * torch.eye(hidden_size, device=device, dtype=dtype),
+    )
+    ref_out, ref_hidden = torch.rnn_relu(
+        utils.to_reference(inp),
+        utils.to_reference(hx.contiguous()),
+        tuple(utils.to_reference(param) for param in params),
+        False,
+        1,
+        0.0,
+        False,
+        False,
+        False,
+    )
+    out, hidden = rnn_relu(inp, hx, params, has_biases=False)
+
+    utils.gems_assert_close(out, ref_out, dtype)
+    utils.gems_assert_close(hidden, ref_hidden, dtype)
