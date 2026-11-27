@@ -34,6 +34,7 @@ from .batch_norm_no_update import run as _batch_norm_no_update
 from .batch_norm_with_update_functional import _batch_norm_with_update_functional
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
+from .column_stack import column_stack
 from .column_stack_out import column_stack_out
 from .compute_linear_combination import _compute_linear_combination
 from .concatenate import run as concatenate
@@ -190,6 +191,7 @@ __all__ = [
     "avg_pool3d_backward",
     "cholesky_solve",
     "cholesky_solve_out",
+    "column_stack",
     "column_stack_out",
     "concatenate",
     "constant_pad_nd",
