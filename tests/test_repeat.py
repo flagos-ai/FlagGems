@@ -82,7 +82,8 @@ def test_repeat_backward_zero_repeat(dtype):
     inp = torch.randn((3, 5), dtype=dtype, device=flag_gems.device)
     grad = torch.empty((6, 0), dtype=dtype, device=flag_gems.device)
     result = flag_gems.repeat_backward(grad, (2, 0), inp.shape)
-    utils.gems_assert_equal(result, torch.zeros_like(inp))
+    expected = torch.zeros_like(utils.to_reference(inp))
+    utils.gems_assert_equal(result, expected)
 
 
 @pytest.mark.repeat_backward
