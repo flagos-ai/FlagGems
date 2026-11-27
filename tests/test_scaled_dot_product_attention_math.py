@@ -336,3 +336,95 @@ def test_flaggems_sdpa_math_dispatch_gqa(math_caplog):
         in math_caplog.text
     )
     utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize(
+    "mask_kind", ["2d_float", "4d_broadcast_float", "all_neg_inf_row", "2d_bool"]
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_scaled_dot_product_attention_math_broadcast_and_all_masked_rows(
+    mask_kind, dtype
+):
+    utils.init_seed(1234567890)
+    batch, heads, q_len, kv_len, head_dim = 2, 4, 17, 23, 32
+    q = torch.randn(batch, heads, q_len, head_dim, dtype=dtype, device=device)
+    k = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=device)
+    v = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=device)
+
+    if mask_kind == "2d_float":
+        keep = torch.randint(0, 2, (q_len, kv_len), device=device).to(torch.bool)
+        keep[:, 0] = True
+        attn_mask = torch.where(
+            keep, torch.zeros((), dtype=dtype, device=device), -float("inf")
+        )
+    elif mask_kind == "4d_broadcast_float":
+        keep = torch.randint(0, 2, (batch, 1, q_len, kv_len), device=device).to(
+            torch.bool
+        )
+        keep[:, :, :, 0] = True
+        attn_mask = torch.where(
+            keep, torch.zeros((), dtype=dtype, device=device), -float("inf")
+        )
+    elif mask_kind == "all_neg_inf_row":
+        attn_mask = torch.zeros((batch, 1, q_len, kv_len), dtype=dtype, device=device)
+        attn_mask[0, 0, 0, :] = -float("inf")
+    else:
+        attn_mask = torch.randint(0, 2, (q_len, kv_len), device=device).to(torch.bool)
+
+    ref_out, ref_weights = sdpa_math(
+        utils.to_reference(q),
+        utils.to_reference(k),
+        utils.to_reference(v),
+        attn_mask=utils.to_reference(attn_mask),
+        is_causal=False,
+    )
+    res_out, res_weights = flag_gems._scaled_dot_product_attention_math(
+        q, k, v, attn_mask=attn_mask, is_causal=False
+    )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize("q_len,kv_len", [(0, 8), (8, 0)])
+def test_scaled_dot_product_attention_math_empty_seq(q_len, kv_len):
+    q = torch.empty(2, 4, q_len, 16, dtype=torch.float16, device=device)
+    k = torch.empty(2, 4, kv_len, 16, dtype=torch.float16, device=device)
+    v = torch.empty(2, 4, kv_len, 16, dtype=torch.float16, device=device)
+    ref_out, ref_weights = sdpa_math(
+        utils.to_reference(q), utils.to_reference(k), utils.to_reference(v)
+    )
+    res_out, res_weights = flag_gems._scaled_dot_product_attention_math(q, k, v)
+    assert res_out.shape == ref_out.shape
+    assert res_weights.shape == ref_weights.shape
+    if res_out.numel() > 0:
+        utils.gems_assert_close(res_out, ref_out, torch.float16, atol=1e-3)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_scaled_dot_product_attention_math_non_contiguous_float_broadcast_mask(dtype):
+    utils.init_seed(1234567890)
+    batch, heads, q_len, kv_len, head_dim = 2, 4, 16, 20, 32
+    q = torch.randn(batch, heads, q_len, head_dim, dtype=dtype, device=device)
+    k = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=device)
+    v = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=device)
+    attn_mask = torch.randn(
+        batch, 1, kv_len, q_len, dtype=dtype, device=device
+    ).transpose(2, 3)
+    assert not attn_mask.is_contiguous()
+
+    ref_out, ref_weights = sdpa_math(
+        utils.to_reference(q),
+        utils.to_reference(k),
+        utils.to_reference(v),
+        attn_mask=utils.to_reference(attn_mask),
+    )
+    res_out, res_weights = flag_gems._scaled_dot_product_attention_math(
+        q, k, v, attn_mask=attn_mask
+    )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
