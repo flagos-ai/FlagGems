@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import logging
 import math
 from collections import namedtuple
@@ -30,6 +31,10 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
 logger = logging.getLogger(__name__)
+MAX_GRID_DIM = 65535
+MinResult = namedtuple("min", ["values", "indices"])
+_generic_min = importlib.import_module("flag_gems.ops.min")
+_global_plan = _generic_min._global_plan
 
 
 @libentry()
@@ -40,7 +45,7 @@ def min_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = ext.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -86,42 +91,48 @@ def min_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    pid_m = ext.program_id(0).to(tl.int64)
+    pid_k = ext.program_id(1).to(tl.int64)
+    num_pid_m = tl.num_programs(0).to(tl.int64)
+    num_pid_k = tl.num_programs(1).to(tl.int64)
 
     dtype = inp.type.element_ty
-    # you just cannot create a function that return a tl.dtype in triton lang
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
     max_value = get_dtype_max(dtype)
-    min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
-    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
-        if dtype is tl.int64:
-            inp_vals = tl.where(mask, inp_vals, max_value)
-        local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
-        # if return indices is not supported, call a tl.argmax in addition
-        # local_argmin = tl.argmin(inp_vals, 1)
-        update = local_min < min_values
-        min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
 
-    offset_index = m_offset * K + pid_k
-    out_value_ptrs = out_value + offset_index
-    out_index_ptrs = out_index + offset_index
-    mask1 = m_offset < M
-    tl.store(out_value_ptrs, min_values, mask=mask1)
-    tl.store(out_index_ptrs, argmin_values, mask=mask1)
+    for m_start in range(pid_m * BLOCK_M, M, num_pid_m * BLOCK_M):
+        m_offset = m_start + tl.arange(0, BLOCK_M)
+        mask1 = m_offset < M
+        for k_offset in range(pid_k, K, num_pid_k):
+            min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
+            argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+            for start_n in range(0, N, BLOCK_N):
+                n_offset = start_n + tl.arange(0, BLOCK_N)
+                offset = m_offset[:, None] * N * K + n_offset[None, :] * K + k_offset
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
+                inp_ptrs = inp + offset
+                inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+                if dtype is tl.int64:
+                    inp_vals = tl.where(mask, inp_vals, max_value)
+                local_min, local_argmin = tl.min(
+                    inp_vals,
+                    1,
+                    return_indices=True,
+                    return_indices_tie_break_left=True,
+                )
+                update = local_min < min_values
+                min_values = tl.where(update, local_min, min_values)
+                argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+
+            offset_index = m_offset * K + k_offset
+            out_value_ptrs = out_value + offset_index
+            out_index_ptrs = out_index + offset_index
+            tl.store(out_value_ptrs, min_values, mask=mask1)
+            tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
-def min(inp):
-    logger.debug("GEMS_ASCEND MIN")
+def _min_impl(inp):
+    inp = inp.contiguous()
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -137,8 +148,7 @@ def min(inp):
     return out
 
 
-def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ASCEND MIN_DIM")
+def _min_dim_impl(inp, dim=None, keepdim=False):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -157,12 +167,106 @@ def min_dim(inp, dim=None, keepdim=False):
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
+    if M == 0 or K == 0:
+        return MinResult(values=out_value, indices=out_index)
+
+    def grid(meta):
+        axis0 = triton.cdiv(M, meta["BLOCK_M"])
+        axis0 = axis0 if axis0 <= MAX_GRID_DIM else MAX_GRID_DIM
+        axis0 = axis0 if axis0 >= 1 else 1
+        max_axis1 = MAX_GRID_DIM // axis0
+        axis1 = K if K <= max_axis1 else max_axis1
+        axis1 = axis1 if axis1 >= 1 else 1
+        return (
+            axis0,
+            axis1,
+        )
+
     with torch_device_fn.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N, K)
-    Min_out = namedtuple("min", ["values", "indices"])
-    out = Min_out(values=out_value, indices=out_index)
+    return MinResult(values=out_value, indices=out_index)
+
+
+def _min_backward_global(grad_output, inp, result):
+    n_elements = inp.numel()
+    out = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
+    if n_elements == 0:
+        return out
+    source = inp if inp.is_contiguous() else inp.contiguous()
+    count_grid, count_block, fill_grid, fill_block, wide = _global_plan(n_elements)
+    partials = torch.empty(count_grid, dtype=torch.int32, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        _generic_min.min_backward_global_count_kernel[(count_grid,)](
+            source,
+            result,
+            partials,
+            n_elements,
+            NUM_PROGRAMS=count_grid,
+            BLOCK_SIZE=count_block,
+            INT64_OFFSET=wide,
+        )
+        _generic_min.min_backward_global_fill_kernel[(fill_grid,)](
+            source,
+            grad_output,
+            result,
+            partials,
+            out,
+            n_elements,
+            NUM_PARTIALS=count_grid,
+            BLOCK_SIZE=fill_block,
+            INT64_OFFSET=wide,
+        )
     return out
+
+
+class MinFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp):
+        inp = inp.contiguous()
+        result = _min_impl(inp)
+        ctx.save_for_backward(inp, result)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if grad_output is None:
+            return None
+        inp, result = ctx.saved_tensors
+        return _min_backward_global(grad_output, inp, result)
+
+
+class MinDimFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        inp = inp.contiguous()
+        values, indices = _min_dim_impl(inp, dim, keepdim)
+        ctx.save_for_backward(inp, indices)
+        ctx.dim = dim
+        ctx.mark_non_differentiable(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        if grad_values is None:
+            return None, None, None
+        inp, indices = ctx.saved_tensors
+        return (
+            _generic_min._min_backward_dim(grad_values, inp, indices, ctx.dim),
+            None,
+            None,
+        )
+
+
+def min(inp):
+    logger.debug("GEMS_ASCEND MIN")
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        return MinFunction.apply(inp)
+    return _min_impl(inp)
+
+
+def min_dim(inp, dim=None, keepdim=False):
+    logger.debug("GEMS_ASCEND MIN_DIM")
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        values, indices = MinDimFunction.apply(inp, dim, keepdim)
+        return MinResult(values=values, indices=indices)
+    return _min_dim_impl(inp, dim=dim, keepdim=keepdim)

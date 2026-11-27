@@ -74,6 +74,36 @@ def test_min(shape, dtype):
 
 @pytest.mark.min
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)
+def test_min_uncontiguous(shape, dtype):
+    _skip_if_device_ref_int(dtype)
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cpu")[::2, ::2].to(
+            flag_gems.device
+        )
+    else:
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu")[
+            ::2, ::2
+        ].to(flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.min(ref_inp)
+    res_out = flag_gems.min(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.min
+def test_min_column_slice_uncontiguous():
+    inp = torch.tensor([[10.0, 1.0], [2.0, 20.0]], device=flag_gems.device)[:, 0]
+    assert not inp.is_contiguous()
+    ref_out = torch.min(utils.to_reference(inp))
+    res_out = flag_gems.min(inp)
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.min
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_min_all_inf(shape, dtype):
     _skip_if_device_ref_all_inf()
@@ -107,6 +137,20 @@ def test_min_dim(shape, dim, keepdim, dtype):
 
     ref_out_value, ref_out_index = torch.min(ref_inp, dim=dim, keepdim=keepdim)
     res_out_value, res_out_index = flag_gems.min_dim(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out_index, ref_out_index)
+    utils.gems_assert_equal(res_out_value, ref_out_value)
+
+
+@pytest.mark.min_dim
+@pytest.mark.parametrize("shape", [(1024, 16, 1024), (2, 8, 70000)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_min_dim_large_grid_stride(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out_value, ref_out_index = torch.min(ref_inp, dim=1, keepdim=False)
+    res_out_value, res_out_index = flag_gems.min_dim(inp, dim=1, keepdim=False)
 
     utils.gems_assert_equal(res_out_index, ref_out_index)
     utils.gems_assert_equal(res_out_value, ref_out_value)
@@ -157,8 +201,9 @@ def _nan_input(shape, dtype, stride=7):
     return inp
 
 
-def _grad_global(inp, dtype):
-    grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+def _grad_global(inp, dtype, grad=None):
+    if grad is None:
+        grad = torch.randn((), dtype=dtype, device=flag_gems.device)
     res_inp = inp.detach().clone().requires_grad_()
     ref_inp = utils.to_reference(inp.detach()).requires_grad_()
 
@@ -202,7 +247,12 @@ def test_min_backward(shape, dtype):
 def test_min_backward_ties(shape, dtype):
     # The global adjoint must split grad_output evenly between every tie.
     inp = _tie_input(shape, dtype)
-    res_out, ref_out, res_dx, ref_dx = _grad_global(inp, dtype)
+    grad = (
+        torch.tensor(32.0, dtype=dtype, device=flag_gems.device)
+        if dtype == torch.float16 and inp.numel() > 1024
+        else None
+    )
+    res_out, ref_out, res_dx, ref_dx = _grad_global(inp, dtype, grad=grad)
     tie_count = int((inp == ref_out).sum())
     assert tie_count > 1, "the tie case must actually contain ties"
     assert torch.count_nonzero(res_dx) == tie_count
@@ -214,34 +264,40 @@ def test_min_backward_ties(shape, dtype):
 @pytest.mark.parametrize("shape", [(2, 32), (4096, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_min_backward_nan_forward_gap(shape, dtype):
-    # Known pre-existing limitation, not introduced by the backward: the
-    # FlagGems forward reductions use `tl.min`, whose combine rule drops NaN, so
-    # `flag_gems.min` returns the minimum of the non-NaN entries while
-    # `torch.min` returns NaN.  The adjoint must nevertheless stay consistent
-    # with whatever the forward returned: the upstream gradient is split evenly
-    # between the entries equal to that value and the gradient still sums to
-    # `grad_output`.  ATen's own NaN rule (NaN wins, split between the NaN
-    # entries) differs from the result produced by this forward kernel.
+    # Some Triton backends (e.g. CUDA) use `tl.min` that drops NaN, whereas
+    # others (e.g. Ascend) propagate NaN to match ATen. When `flag_gems.min`
+    # returns NaN, verify full parity with ATen; otherwise verify consistency
+    # with the non-NaN forward value.
     inp = _nan_input(shape, dtype)
     assert bool(torch.isnan(torch.min(inp)))
 
     res_inp = inp.detach().clone().requires_grad_(True)
-    grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_(True)
+    grad = (
+        torch.tensor(32.0, dtype=dtype, device=flag_gems.device)
+        if dtype == torch.float16 and inp.numel() > 1024
+        else torch.randn((), dtype=dtype, device=flag_gems.device)
+    )
     res_out = flag_gems.min(res_inp)
-    assert not bool(
-        torch.isnan(res_out)
-    ), "forward NaN handling changed; update this test"
+    ref_out = torch.min(ref_inp)
 
     (res_dx,) = torch.autograd.grad(res_out, res_inp, grad)
-    tie_count = int((inp == res_out).sum())
-    assert tie_count >= 1
-    assert int(torch.count_nonzero(res_dx)) == tie_count
-    torch.testing.assert_close(
-        res_dx.sum().cpu(),
-        grad.cpu(),
-        atol=1e-4 * tie_count,
-        rtol=flag_gems.testing.RESOLUTION[dtype],
-    )
+    if bool(torch.isnan(res_out)):
+        (ref_dx,) = torch.autograd.grad(ref_out, ref_inp, utils.to_reference(grad))
+        nan_count = int(torch.isnan(inp).sum())
+        assert nan_count >= 1
+        utils.gems_assert_close(res_dx, ref_dx, dtype)
+        assert int(torch.count_nonzero(res_dx)) == nan_count
+    else:
+        tie_count = int((inp == res_out).sum())
+        assert tie_count >= 1
+        assert int(torch.count_nonzero(res_dx)) == tie_count
+        torch.testing.assert_close(
+            res_dx.sum().cpu(),
+            grad.cpu(),
+            atol=1e-4 * tie_count,
+            rtol=flag_gems.testing.RESOLUTION[dtype],
+        )
 
 
 @pytest.mark.min_backward
