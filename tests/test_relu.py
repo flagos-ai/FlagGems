@@ -54,7 +54,9 @@ def test_relu_backward(shape, dtype):
     grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp).requires_grad_()
-    (ref_grad,) = torch.autograd.grad(torch.relu(ref_inp), ref_inp, grad)
+    (ref_grad,) = torch.autograd.grad(
+        torch.relu(ref_inp), ref_inp, utils.to_reference(grad)
+    )
 
     inp.requires_grad_()
     out = flag_gems.relu(inp)
@@ -71,7 +73,7 @@ def test_relu_backward_boundary(dtype):
     result = flag_gems.relu(inp)
     grad_input = flag_gems.relu_backward(grad, result)
     expected = torch.tensor([0.0, 0.0, 0.0, 4.0], dtype=dtype, device=flag_gems.device)
-    utils.gems_assert_equal(grad_input, expected)
+    utils.gems_assert_equal(grad_input, utils.to_reference(expected))
 
 
 @pytest.mark.relu_backward
@@ -80,7 +82,9 @@ def test_relu_backward_noncontiguous(dtype):
     inp = torch.randn((47, 31), dtype=dtype, device=flag_gems.device).t()
     grad = torch.randn((47, 31), dtype=dtype, device=flag_gems.device).t()
     ref_inp = utils.to_reference(inp).requires_grad_()
-    (ref_grad,) = torch.autograd.grad(torch.relu(ref_inp), ref_inp, grad)
+    (ref_grad,) = torch.autograd.grad(
+        torch.relu(ref_inp), ref_inp, utils.to_reference(grad)
+    )
 
     inp.requires_grad_()
     (result,) = torch.autograd.grad(flag_gems.relu(inp), inp, grad)
