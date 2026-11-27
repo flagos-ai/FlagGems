@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import logging
 import os
 import sys
@@ -22,6 +23,9 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+# When the token count exceeds this threshold, switch to the large-tile persistent kernel (see _stage_bulk_kernel).
+_BULK_TOKEN_THRESHOLD = 8
 
 
 def _gcu_real_int64_storage():
@@ -146,6 +150,130 @@ def _stage_deepseek_v4_mega_moe_inputs_kernel(
         )
 
 
+@triton.jit
+def _stage_bulk_kernel(
+    hidden_states,
+    x_fp8,
+    x_sf,
+    topk_ids,
+    topk_weights,
+    topk_idx_out,
+    topk_weights_out,
+    hidden_stride_m: tl.constexpr,
+    hidden_stride_k: tl.constexpr,
+    x_stride_m: tl.constexpr,
+    x_stride_k: tl.constexpr,
+    x_sf_stride_m: tl.constexpr,
+    x_sf_stride_k: tl.constexpr,
+    topk_ids_stride_m: tl.constexpr,
+    topk_ids_stride_k: tl.constexpr,
+    topk_weights_stride_m: tl.constexpr,
+    topk_weights_stride_k: tl.constexpr,
+    topk_idx_stride_m: tl.constexpr,
+    topk_idx_stride_k: tl.constexpr,
+    topk_weights_out_stride_m: tl.constexpr,
+    topk_weights_out_stride_k: tl.constexpr,
+    num_tokens,
+    top_k: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_K: tl.constexpr,
+    BLOCK_TOPK: tl.constexpr,
+    GRID_M: tl.constexpr,
+    IDX_TY: tl.constexpr,
+) -> None:
+    """Persistent version tiled along the token dimension: each program loops with a stride
+    along tokens.
+
+    The int32 packing of quantization groups pins BLOCK_K at 128 (4 groups x 8 bits), so a
+    program handling only one (token, 128) block moves just 256B, and the program count grows
+    linearly with the token count (8192 tokens = 130k programs, 24.7ms). This version uses a
+    large [BLOCK_M, 128] tile with the grid fixed at (hidden/128, GRID_M); measured 8192x2048
+    drops from 24.7ms to 0.13ms.
+    """
+    pid_k = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    num_m_progs = tl.num_programs(1)
+
+    k_offsets = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    group_offsets = tl.arange(0, BLOCK_K // GROUP_K)
+    num_groups: tl.constexpr = BLOCK_K // GROUP_K
+
+    for m_start in tl.range(pid_m * BLOCK_M, num_tokens, num_m_progs * BLOCK_M):
+        m_offsets = m_start + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < num_tokens
+
+        hidden = tl.load(
+            hidden_states
+            + m_offsets[:, None] * hidden_stride_m
+            + k_offsets[None, :] * hidden_stride_k,
+            mask=m_mask[:, None],
+            other=0.0,
+        ).to(tl.float32)
+
+        hidden_groups = tl.reshape(hidden, [BLOCK_M, num_groups, GROUP_K])
+        amax = tl.max(tl.abs(hidden_groups), axis=2)
+        amax = tl.maximum(amax, 1.0e-4)
+
+        scale = amax / 448.0
+        scale_bits = scale.to(tl.uint32, bitcast=True)
+        scale_exp = ((scale_bits >> 23) & 0xFF) + ((scale_bits & 0x7FFFFF) != 0).to(
+            tl.uint32
+        )
+        scale_exp = tl.minimum(tl.maximum(scale_exp, 1), 254)
+        rounded_scale = (scale_exp << 23).to(tl.float32, bitcast=True)
+
+        scaled = tl.reshape(
+            hidden_groups * (1.0 / rounded_scale)[:, :, None], [BLOCK_M, BLOCK_K]
+        )
+        tl.store(
+            x_fp8 + m_offsets[:, None] * x_stride_m + k_offsets[None, :] * x_stride_k,
+            scaled.to(tl.float8e4nv),
+            mask=m_mask[:, None],
+        )
+
+        packed = tl.sum(
+            scale_exp.to(tl.int32) << (group_offsets[None, :] * 8), axis=1
+        ).to(tl.int32)
+        tl.store(
+            x_sf + m_offsets * x_sf_stride_m + pid_k * x_sf_stride_k,
+            packed,
+            mask=m_mask,
+        )
+
+        if pid_k == 0:
+            topk_offsets = tl.arange(0, BLOCK_TOPK)
+            topk_mask = m_mask[:, None] & (topk_offsets[None, :] < top_k)
+            ids = tl.load(
+                topk_ids
+                + m_offsets[:, None] * topk_ids_stride_m
+                + topk_offsets[None, :] * topk_ids_stride_k,
+                mask=topk_mask,
+                other=0,
+            ).to(IDX_TY)
+            tl.store(
+                topk_idx_out
+                + m_offsets[:, None] * topk_idx_stride_m
+                + topk_offsets[None, :] * topk_idx_stride_k,
+                ids,
+                mask=topk_mask,
+            )
+            weights = tl.load(
+                topk_weights
+                + m_offsets[:, None] * topk_weights_stride_m
+                + topk_offsets[None, :] * topk_weights_stride_k,
+                mask=topk_mask,
+                other=0.0,
+            )
+            tl.store(
+                topk_weights_out
+                + m_offsets[:, None] * topk_weights_out_stride_m
+                + topk_offsets[None, :] * topk_weights_out_stride_k,
+                weights,
+                mask=topk_mask,
+            )
+
+
 def stage_deepseek_v4_mega_moe_inputs(
     hidden_states: torch.Tensor,
     topk_weights: torch.Tensor,
@@ -155,7 +283,7 @@ def stage_deepseek_v4_mega_moe_inputs(
     topk_idx_out: torch.Tensor,
     topk_weights_out: torch.Tensor,
 ) -> None:
-    logger.debug("GEMS_ENFLAME_GCU400 STAGE_DEEPSEEK_V4_MEGA_MOE_INPUTS")
+    logger.debug("GEMS_ENFLAME STAGE_DEEPSEEK_V4_MEGA_MOE_INPUTS")
     num_tokens, hidden_size = hidden_states.shape
     if num_tokens == 0:
         return
@@ -194,8 +322,51 @@ def stage_deepseek_v4_mega_moe_inputs(
         )
 
     block_k = 128
-    grid = (num_tokens, triton.cdiv(hidden_size, block_k))
     block_topk = triton.next_power_of_2(top_k)
+
+    # With very few tokens, a fine-grained grid over (token, k-block) is actually faster (no tile-flattening overhead;
+    # (7,256,8) measured 0.0096ms vs 0.0113ms for the large tile); with many tokens, switch to the large-tile persistent
+    # version.
+    if num_tokens > _BULK_TOKEN_THRESHOLD:
+        bulk_block_m = 256
+        bulk_grid_m = min(12, triton.cdiv(num_tokens, bulk_block_m))
+        grid = (triton.cdiv(hidden_size, block_k), bulk_grid_m)
+        with torch_device_fn.device(hidden_states.device):
+            _stage_bulk_kernel[grid](
+                hidden_states,
+                x_fp8,
+                x_sf,
+                topk_ids,
+                topk_weights,
+                kernel_idx_out,
+                topk_weights_out,
+                hidden_states.stride(0),
+                hidden_states.stride(1),
+                x_fp8.stride(0),
+                x_fp8.stride(1),
+                x_sf.stride(0),
+                x_sf.stride(1),
+                topk_ids.stride(0),
+                topk_ids.stride(1),
+                topk_weights.stride(0),
+                topk_weights.stride(1),
+                kernel_idx_out.stride(0),
+                kernel_idx_out.stride(1),
+                topk_weights_out.stride(0),
+                topk_weights_out.stride(1),
+                num_tokens,
+                top_k,
+                BLOCK_M=bulk_block_m,
+                BLOCK_K=block_k,
+                GROUP_K=32,
+                BLOCK_TOPK=block_topk,
+                GRID_M=bulk_grid_m,
+                IDX_TY=idx_ty,
+                num_warps=1,
+            )
+        return
+
+    grid = (num_tokens, triton.cdiv(hidden_size, block_k))
     with torch_device_fn.device(hidden_states.device):
         _stage_deepseek_v4_mega_moe_inputs_kernel[grid](
             hidden_states,
@@ -236,7 +407,7 @@ _stage_deepseek_v4_mega_moe_inputs = stage_deepseek_v4_mega_moe_inputs
 # Generic-module rebinding (test / bench / direct-import routing)
 #
 # SpecOpRegistrar only replaces the top-level ``flag_gems`` entry.
-# ``from flag_gems.deprecated.stage_deepseek_v4_mega_moe_inputs import
+# ``from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import
 # stage_deepseek_v4_mega_moe_inputs`` (used by the accuracy test and the
 # benchmark) keeps resolving to the generic implementation, which makes this
 # vendor copy invisible to them. Rebind the generic module's public function
@@ -249,7 +420,7 @@ _stage_deepseek_v4_mega_moe_inputs = stage_deepseek_v4_mega_moe_inputs
 # every execution rebinds to its own function object, and the identity guard
 # only prevents pathological self-rebinding.
 _generic_stage_module = sys.modules.get(
-    "flag_gems.deprecated.stage_deepseek_v4_mega_moe_inputs"
+    "flag_gems.fused.stage_deepseek_v4_mega_moe_inputs"
 )
 if _generic_stage_module is not None and _generic_stage_module is not sys.modules.get(
     __name__
@@ -261,7 +432,7 @@ if _generic_stage_module is not None and _generic_stage_module is not sys.module
         _stage_deepseek_v4_mega_moe_inputs
     )
 
-_generic_fused_package = sys.modules.get("flag_gems.deprecated")
+_generic_fused_package = sys.modules.get("flag_gems.fused")
 if _generic_fused_package is not None:
     _generic_fused_package.stage_deepseek_v4_mega_moe_inputs = (
         stage_deepseek_v4_mega_moe_inputs

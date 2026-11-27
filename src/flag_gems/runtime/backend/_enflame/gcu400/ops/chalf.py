@@ -20,59 +20,55 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry, libtuner  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-CHALF_CONFIGS = [
-    triton.Config({"BLOCK_SIZE": 512}, num_warps=4),
-    triton.Config({"BLOCK_SIZE": 1024}, num_warps=4),
-    triton.Config({"BLOCK_SIZE": 1024}, num_warps=8),
-    triton.Config({"BLOCK_SIZE": 2048}, num_warps=8),
-    triton.Config({"BLOCK_SIZE": 4096}, num_warps=8),
-]
+# Deterministic tile: libtuner's do_bench aborts the device on its first
+# launch on gcu400, so the block size is fixed and the grid is capped.
+BLOCK_SIZE = 1024
 
 
 @libentry()
-@libtuner(
-    configs=CHALF_CONFIGS,
-    key=["n_elements"],
-)
 @triton.jit
 def chalf_real_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     # Real input -> complex32 output: real part = input, imaginary part = 0.
     # out_ptr is a view_as_real (float16) buffer with interleaved real/imag slots.
     pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_pids = tl.num_programs(0)
+    num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
 
-    base = offsets * 2
-    val = tl.load(in_ptr + offsets, mask=mask)
-    zero = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
 
-    tl.store(out_ptr + base, val, mask=mask)
-    tl.store(out_ptr + base + 1, zero, mask=mask)
+        base = offsets * 2
+        val = tl.load(in_ptr + offsets, mask=mask)
+        zero = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+
+        tl.store(out_ptr + base, val, mask=mask)
+        tl.store(out_ptr + base + 1, zero, mask=mask)
 
 
 @libentry()
-@libtuner(
-    configs=CHALF_CONFIGS,
-    key=["n_elements"],
-)
 @triton.jit
 def chalf_complex_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     # Complex input -> complex32 output: cast real/imag slots down to float16.
     # Both in_ptr and out_ptr are view_as_real buffers; n_elements counts float slots.
     pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_pids = tl.num_programs(0)
+    num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
 
-    val = tl.load(in_ptr + offsets, mask=mask)
-    tl.store(out_ptr + offsets, val, mask=mask)
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+
+        val = tl.load(in_ptr + offsets, mask=mask)
+        tl.store(out_ptr + offsets, val, mask=mask)
 
 
 def chalf(input: torch.Tensor, memory_format=None) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 CHALF")
+    logger.debug("GEMS_ENFLAME CHALF")
 
     if input.is_complex():
         # Resolve conj bit so view_as_real reflects the logical values.
@@ -85,8 +81,8 @@ def chalf(input: torch.Tensor, memory_format=None) -> torch.Tensor:
         out_real = torch.view_as_real(output)
         n_elements = in_real.numel()
 
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        chalf_complex_kernel[grid](in_real, out_real, n_elements)
+        grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), 65535),)
+        chalf_complex_kernel[grid](in_real, out_real, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return output
 
     # Real (or integer) input -> complex32 with zero imaginary part.
@@ -96,6 +92,6 @@ def chalf(input: torch.Tensor, memory_format=None) -> torch.Tensor:
     out_real = torch.view_as_real(output)
     n_elements = src.numel()
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    chalf_real_kernel[grid](src, out_real, n_elements)
+    grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), 65535),)
+    chalf_real_kernel[grid](src, out_real, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return output

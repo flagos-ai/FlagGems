@@ -20,18 +20,31 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+# GCU400 has 48 compute units and a hard grid.x limit of 65535 (P19). The partial kernel uses a
+# persistent grid-stride scheme (one program striding across multiple tiles), so any N stays within the limit; 48-way +
+# large
+# tiles also give significantly better bandwidth than the one-tile-one-program linear layout (2^24/2^30 fp32 measured:
+# 2110/2406 GB/s vs 826 GB/s for the linear layout).
+MAX_GRID = 48
+
+# Not exceeding this length, a single program reduces all the way in one launch, saving the second launch
+# (fix-round measurements: N=4096 across three dtypes 4.04-4.06µs, old two-stage version 7.0µs).
+SINGLE_MAX = 8192
+
+# Tile size for the partial kernel of 4-byte types (empirically bandwidth-optimal for fp32).
+BLOCK_4B = 32768
+
+# Tile size for the partial kernel of 2-byte types (empirically optimal for fp16/bf16, with vector accumulation).
+BLOCK_2B = 8192
 
 
 @libentry()
 @triton.jit
 def dot_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
-    pid = ext.program_id(0)
-    block_start = pid * BLOCK_SIZE
-
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    offsets = tl.arange(0, BLOCK_SIZE)
 
     mask = offsets < N
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
@@ -42,19 +55,46 @@ def dot_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["N"])
 def dot_kernel_1(x_ptr, y_ptr, mid_ptr, N, BLOCK_SIZE: tl.constexpr):
-    pid = ext.program_id(0)
-    block_start = pid * BLOCK_SIZE
+    # 4-byte types: scalar fp32 accumulation, one reduction per tile.
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (N + BLOCK_SIZE - 1) // BLOCK_SIZE
 
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    acc = tl.zeros([], dtype=tl.float32)
+    for tile_id in tl.range(pid, num_tile, step):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
-    mask = offsets < N
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        mask = offsets < N
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
-    partial_sum = tl.sum(x * y)
-    tl.store(mid_ptr + pid, partial_sum)
+        acc += tl.sum(x * y)
+
+    tl.store(mid_ptr + pid, acc)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def dot_kernel_1v(x_ptr, y_ptr, mid_ptr, N, BLOCK_SIZE: tl.constexpr):
+    # 2-byte types: vector fp32 accumulation of BLOCK size, with a single cross-lane reduction only at the end of the
+    # loop.
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (N + BLOCK_SIZE - 1) // BLOCK_SIZE
+
+    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for tile_id in tl.range(pid, num_tile, step):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+
+        mask = offsets < N
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+        acc += x * y
+
+    tl.store(mid_ptr + pid, tl.sum(acc, axis=0))
 
 
 @libentry()
@@ -69,45 +109,42 @@ def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
 
 
 def dot(x, y):
-    logger.debug("GEMS_ENFLAME_GCU400 DOT")
+    logger.debug("GEMS_ENFLAME DOT")
 
     assert x.shape == y.shape, "Input vectors must have the same shape"
     assert x.dim() == 1, "Input must be 1D tensors"
 
     N = x.shape[0]
 
-    # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel,
-    # and performance is better when N < 4096
-    if N >= 4096:
-        # t9 batch Step 4 B04: fix block_size=8192 instead of sqrt(N).
-        # mid_size drops from N/1024 to N/8192 (large shape 1024 -> 128 CTAs),
-        # reducing the second kernel's single-CTA reduction by 8x; 22 A/B rounds, three runs reproduced 2.58~2.68x.
-        block_size = 8192
-
-        mid_size = triton.cdiv(N, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
-
-        grid_1 = (mid_size, 1, 1)
-        grid_2 = (1, 1, 1)
-
-        mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
-        out = torch.empty([], dtype=x.dtype, device=x.device)
-
-        with torch_device_fn.device(x.device):
-            dot_kernel_1[grid_1](x, y, mid, N, block_size)
-            dot_kernel_2[grid_2](mid, out, mid_size, block_mid)
-
-    else:
+    # Small scale: a single launch reduces all the way (2^30 fix-round measurements at N=4096 across all dtypes:
+    # 4.04us vs 7.0us for the two-stage version).
+    if N <= SINGLE_MAX:
         block_size = triton.next_power_of_2(N)
 
-        grid = (1, 1, 1)
-
-        # t9 batch Step 4 B02: allocate the scalar output directly in the input dtype;
-        # tl.store's fp32->fp16/bf16 conversion is bit-identical to .to(x.dtype),
-        # saving one extra kernel launch on small shapes (0.0064 -> 0.0042ms).
         out = torch.empty([], dtype=x.dtype, device=x.device)
 
         with torch_device_fn.device(x.device):
-            dot_kernel[grid](x, y, out, N, block_size)
+            dot_kernel[(1, 1, 1)](x, y, out, N, block_size)
+
+        return out
+
+    # Large scale: two-stage persistent partial + single-program merge. grid is always <= MAX_GRID,
+    # so N >= 2^29 no longer triggers a grid.x overflow (P19: before the fix, the 2^30 case required 131072).
+    if x.element_size() == 4:
+        block_size = BLOCK_4B
+        kernel_1 = dot_kernel_1
+    else:
+        block_size = BLOCK_2B
+        kernel_1 = dot_kernel_1v
+
+    mid_size = min(MAX_GRID, triton.cdiv(N, block_size))
+    block_mid = triton.next_power_of_2(mid_size)
+
+    mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
+    out = torch.empty([], dtype=x.dtype, device=x.device)
+
+    with torch_device_fn.device(x.device):
+        kernel_1[(mid_size, 1, 1)](x, y, mid, N, block_size, num_warps=4)
+        dot_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, num_warps=1)
 
     return out

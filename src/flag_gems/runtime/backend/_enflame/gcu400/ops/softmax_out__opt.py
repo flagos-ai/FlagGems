@@ -69,7 +69,7 @@ __all__ = ["softmax_out"]
 
 
 def softmax_out(self, dim, half_to_float=False, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 SOFTMAX_OUT")
+    logger.debug("GEMS_ENFLAME SOFTMAX_OUT")
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     if self.numel() == 0:
         return _prod_softmax_out(self, dim, half_to_float, out=out)

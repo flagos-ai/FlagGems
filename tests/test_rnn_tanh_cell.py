@@ -21,8 +21,16 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, QUICK_MODE, gems_assert_close, to_reference
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    QUICK_MODE,
+    fp64_is_supported,
+    gems_assert_close,
+    to_reference,
+)
 from .conftest import TO_CPU
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 # (batch, input_size, hidden_size)
 SHAPES = (
@@ -141,15 +149,26 @@ def test_accuracy_rnn_tanh_cell_zero_sized(batch, input_size, hidden_size):
     if res_out.numel():
         # An empty reduction leaves only the biases, so the result is still
         # well defined and must match the reference.
-        ref_out = _reference(
-            to_reference(input, True),
-            to_reference(hx, True),
-            to_reference(w_ih, True),
-            to_reference(w_hh, True),
-            to_reference(b_ih, True),
-            to_reference(b_hh, True),
-            dtype,
-        )
+        if IS_KUNLUNXIN and input_size == 0:
+            ref_out = _reference(
+                to_reference(input, True).cpu(),
+                to_reference(hx, True).cpu(),
+                to_reference(w_ih, True).cpu(),
+                to_reference(w_hh, True).cpu(),
+                to_reference(b_ih, True).cpu(),
+                to_reference(b_hh, True).cpu(),
+                dtype,
+            )
+        else:
+            ref_out = _reference(
+                to_reference(input, True),
+                to_reference(hx, True),
+                to_reference(w_ih, True),
+                to_reference(w_hh, True),
+                to_reference(b_ih, True),
+                to_reference(b_hh, True),
+                dtype,
+            )
         gems_assert_close(res_out, ref_out, dtype, reduce_dim=hidden_size + 1)
 
 
@@ -196,8 +215,9 @@ def test_accuracy_rnn_tanh_cell_invalid_input():
     with pytest.raises(RuntimeError, match="elements"):
         flag_gems.rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih[:-1], b_hh)
 
-    with pytest.raises(RuntimeError, match="same dtype"):
-        flag_gems.rnn_tanh_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
+    if fp64_is_supported:
+        with pytest.raises(RuntimeError, match="same dtype"):
+            flag_gems.rnn_tanh_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
 
 
 @pytest.mark.rnn_tanh_cell

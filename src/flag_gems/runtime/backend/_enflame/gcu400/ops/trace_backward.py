@@ -45,7 +45,7 @@ def trace_backward_kernel(
 
 
 def trace_backward(grad, sizes):
-    logger.debug("GEMS_ENFLAME_GCU400 TRACE_BACKWARD")
+    logger.debug("GEMS_ENFLAME TRACE_BACKWARD")
 
     if grad.dim() != 0:
         raise RuntimeError(

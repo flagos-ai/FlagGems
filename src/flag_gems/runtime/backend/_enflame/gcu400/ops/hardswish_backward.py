@@ -46,5 +46,5 @@ def hardswish_backward_func(grad_output, self):
 
 
 def hardswish_backward(grad_output, self):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDSWISH_BACKWARD")
+    logger.debug("GEMS_ENFLAME HARDSWISH_BACKWARD")
     return hardswish_backward_func(grad_output, self)

@@ -870,42 +870,47 @@ def scatter_reduce_sum_2d_kernel(
     BLOCK: tl.constexpr,
     LOOP: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    if USE_CLAIM:
-        program_claimed = tl.atomic_cas(
-            claim_ptr + pid,
-            0,
-            1,
-            sem="acq_rel",
-        )
-    base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
-
-    for i in range(LOOP):
-        offsets = (base_offsets + i * BLOCK).to(tl.int64)
-        mask = offsets < N
+    # Grid-stride over the BLOCK * LOOP tiles: the launch grid is capped at the
+    # device grid.x limit, so a large N needs several tiles per program.
+    first_pid = tl.program_id(axis=0)
+    workers = tl.num_programs(axis=0)
+    tasks = tl.cdiv(N, BLOCK * LOOP)
+    for pid in range(first_pid, tasks, workers):
         if USE_CLAIM:
-            mask &= program_claimed == 0
+            program_claimed = tl.atomic_cas(
+                claim_ptr + pid,
+                0,
+                1,
+                sem="acq_rel",
+            )
+        base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
 
-        row = offsets // idx_ncols
-        col = offsets % idx_ncols
+        for i in range(LOOP):
+            offsets = (base_offsets + i * BLOCK).to(tl.int64)
+            mask = offsets < N
+            if USE_CLAIM:
+                mask &= program_claimed == 0
 
-        if DIM == 0:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = idx * out_ncols + col
-        else:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = row * out_ncols + idx
+            row = offsets // idx_ncols
+            col = offsets % idx_ncols
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
-        tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
+            if DIM == 0:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = idx * out_ncols + col
+            else:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = row * out_ncols + idx
 
-        if USE_MASK:
-            ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.store(mask_ptr + out_offsets, ones, mask=mask)
+            src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+            tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
+
+            if USE_MASK:
+                ones = tl.full((BLOCK,), 1, dtype=tl.int32)
+                tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -1022,45 +1027,50 @@ def scatter_reduce_mean_2d_kernel(
     BLOCK: tl.constexpr,
     LOOP: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    if USE_CLAIM:
-        program_claimed = tl.atomic_cas(
-            claim_ptr + pid,
-            0,
-            1,
-            sem="acq_rel",
-        )
-    base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
-
-    for i in range(LOOP):
-        offsets = (base_offsets + i * BLOCK).to(tl.int64)
-        mask = offsets < N
+    # Grid-stride over the BLOCK * LOOP tiles: the launch grid is capped at the
+    # device grid.x limit, so a large N needs several tiles per program.
+    first_pid = tl.program_id(axis=0)
+    workers = tl.num_programs(axis=0)
+    tasks = tl.cdiv(N, BLOCK * LOOP)
+    for pid in range(first_pid, tasks, workers):
         if USE_CLAIM:
-            mask &= program_claimed == 0
+            program_claimed = tl.atomic_cas(
+                claim_ptr + pid,
+                0,
+                1,
+                sem="acq_rel",
+            )
+        base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
 
-        row = offsets // idx_ncols
-        col = offsets % idx_ncols
+        for i in range(LOOP):
+            offsets = (base_offsets + i * BLOCK).to(tl.int64)
+            mask = offsets < N
+            if USE_CLAIM:
+                mask &= program_claimed == 0
 
-        if DIM == 0:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = idx * out_ncols + col
-        else:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = row * out_ncols + idx
+            row = offsets // idx_ncols
+            col = offsets % idx_ncols
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+            if DIM == 0:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = idx * out_ncols + col
+            else:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = row * out_ncols + idx
 
-        tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
-        ones_f = tl.full((BLOCK,), 1.0, dtype=tl.float32)
-        tl.atomic_add(count_ptr + out_offsets, ones_f, mask=mask, sem="relaxed")
+            src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
-        if USE_MASK:
-            ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.store(mask_ptr + out_offsets, ones_i, mask=mask)
+            tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
+            ones_f = tl.full((BLOCK,), 1.0, dtype=tl.float32)
+            tl.atomic_add(count_ptr + out_offsets, ones_f, mask=mask, sem="relaxed")
+
+            if USE_MASK:
+                ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
+                tl.store(mask_ptr + out_offsets, ones_i, mask=mask)
 
 
 @libentry()
@@ -1083,54 +1093,63 @@ def scatter_reduce_amax_2d_kernel(
     LOOP: tl.constexpr,
     PROPAGATE_MIN_NAN: tl.constexpr = False,
 ):
-    pid = tl.program_id(axis=0)
-    base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
+    # Grid-stride over the BLOCK * LOOP tiles: the launch grid is capped at the
+    # device grid.x limit, so a large N needs several tiles per program.
+    first_pid = tl.program_id(axis=0)
+    workers = tl.num_programs(axis=0)
+    tasks = tl.cdiv(N, BLOCK * LOOP)
+    for pid in range(first_pid, tasks, workers):
+        base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
 
-    for i in range(LOOP):
-        offsets = (base_offsets + i * BLOCK).to(tl.int64)
-        mask = offsets < N
+        for i in range(LOOP):
+            offsets = (base_offsets + i * BLOCK).to(tl.int64)
+            mask = offsets < N
 
-        row = offsets // idx_ncols
-        col = offsets % idx_ncols
+            row = offsets // idx_ncols
+            col = offsets % idx_ncols
 
-        if DIM == 0:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = idx * out_ncols + col
-        else:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = row * out_ncols + idx
-
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
-
-        if PROPAGATE_MIN_NAN and not IS_AMAX:
-            _atomic_min_propagate_nan(out_ptr, out_offsets, src_val, mask)
-        elif USE_CAS:
-            stop = tl.where(mask, 0, 1).to(tl.int1)
-            block_stop = False
-            while not block_stop:
-                cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
-                if IS_AMAX:
-                    new_val = tl.maximum(cur_val, src_val)
-                else:
-                    new_val = tl.minimum(cur_val, src_val)
-                cas_res = tl.atomic_cas(
-                    out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
-                )
-                stop |= cur_val == cas_res
-                block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
-        else:
-            if IS_AMAX:
-                tl.atomic_max(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
+            if DIM == 0:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = idx * out_ncols + col
             else:
-                tl.atomic_min(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = row * out_ncols + idx
 
-        if USE_MASK:
-            ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.store(mask_ptr + out_offsets, ones, mask=mask)
+            src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+
+            if PROPAGATE_MIN_NAN and not IS_AMAX:
+                _atomic_min_propagate_nan(out_ptr, out_offsets, src_val, mask)
+            elif USE_CAS:
+                stop = tl.where(mask, 0, 1).to(tl.int1)
+                block_stop = False
+                while not block_stop:
+                    cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
+                    if IS_AMAX:
+                        new_val = tl.maximum(cur_val, src_val)
+                    else:
+                        new_val = tl.minimum(cur_val, src_val)
+                    cas_res = tl.atomic_cas(
+                        out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
+                    )
+                    stop |= cur_val == cas_res
+                    block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+            else:
+                if IS_AMAX:
+                    tl.atomic_max(
+                        out_ptr + out_offsets, src_val, mask=mask, sem="relaxed"
+                    )
+                else:
+                    tl.atomic_min(
+                        out_ptr + out_offsets, src_val, mask=mask, sem="relaxed"
+                    )
+
+            if USE_MASK:
+                ones = tl.full((BLOCK,), 1, dtype=tl.int32)
+                tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 # ---------------------------------------------------------------------------
@@ -1959,7 +1978,7 @@ def scatter_reduce(
     Returns:
         Output tensor with same shape and dtype as inp.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE_TWO")
+    logger.debug("GEMS_ENFLAME SCATTER_REDUCE_TWO")
 
     assert reduce in (
         "sum",
@@ -2063,6 +2082,12 @@ def scatter_reduce(
     out_strides_p = [int(x) for x in _pad5(list(out.stride()), 0)]
 
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]),)
+    # The 2D kernels stride over their BLOCK * LOOP tiles, so their grid can be
+    # capped at the device grid.x limit; the generic kernels still take one
+    # program per tile and must keep the uncapped grid.
+    grid_2d = lambda meta: (
+        min(triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), _MAX_ROWWISE_GRID_X),
+    )
     prod_grid = _prod_grid(
         N,
         _product_grid_limit,
@@ -2096,7 +2121,7 @@ def scatter_reduce(
                 idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
-                scatter_reduce_sum_2d_kernel[grid](
+                scatter_reduce_sum_2d_kernel[grid_2d](
                     index,
                     src,
                     out,
@@ -2212,7 +2237,7 @@ def scatter_reduce(
                 idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
-                scatter_reduce_mean_2d_kernel[grid](
+                scatter_reduce_mean_2d_kernel[grid_2d](
                     index,
                     src,
                     out,
@@ -2274,7 +2299,7 @@ def scatter_reduce(
                 idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
-                scatter_reduce_amax_2d_kernel[grid](
+                scatter_reduce_amax_2d_kernel[grid_2d](
                     index,
                     src,
                     out,
@@ -2336,7 +2361,7 @@ def scatter_reduce(
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
-    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE_TWO_")
+    logger.debug("GEMS_ENFLAME SCATTER_REDUCE_TWO_")
 
     rowwise_strategy = _select_rowwise_strategy(
         inp,
@@ -2367,7 +2392,7 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
-    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE_TWO_OUT")
+    logger.debug("GEMS_ENFLAME SCATTER_REDUCE_TWO_OUT")
 
     if out is not None and out.dtype != inp.dtype:
         raise RuntimeError(

@@ -445,30 +445,23 @@ def _launch_gru_cell_backward(
 _FUSED_LAUNCH = None
 _FUSED_RESOLVED = False
 
-# Scale threshold for the fused kernel (measured, unit = batch_size * hidden_size):
-#  - has_bias=True: the two-step implementation additionally runs a bias reduction kernel with ~60us fixed cost,
-#     so fusion is faster even at very small scale (>= 512, e.g. 8x64);
-#  - has_bias=False: the two-step implementation has only 1 lightweight main kernel, while a single fused launch
-#    is ~12us and is slower at small scale, so switch only at >= 131072 (e.g. 512x1024).
-_FUSED_MIN_ELEMS_WITH_BIAS = 512
-_FUSED_MIN_ELEMS_NO_BIAS = 131072
-
 
 def _fused_launcher():
-    """Get gcu400's single-kernel fused implementation (module in the same directory), or return None.
+    """Get gcu400's row-streaming launcher (module in the same directory), or None.
 
-    The fused implementation partitions CTAs by hidden column block and computes four gate gradients plus bias reduction
-    in registers,
-    saving 2~3 launches and rereading 2xBx3H elements versus the two-step implementation here.
-    The resolution result is cached, avoiding the import machinery on every call.
+    The row-streaming implementation streams whole rows per program (rank-1
+    contiguous loads/stores) with register-accumulated bias partials plus a
+    tiny finalize kernel, replacing the threshold dispatch of the previous
+    release.  The resolution result is cached, avoiding the import machinery
+    on every call.
     """
     global _FUSED_LAUNCH, _FUSED_RESOLVED
     if not _FUSED_RESOLVED:
         _FUSED_RESOLVED = True
         try:
-            from .thnn_fused_gru_cell_backward import _launch_fused_kernel
+            from .thnn_fused_gru_cell_backward import _launch_backward
 
-            _FUSED_LAUNCH = _launch_fused_kernel
+            _FUSED_LAUNCH = _launch_backward
         except Exception:  # pragma: no cover - fall back to the two-step implementation
             _FUSED_LAUNCH = None
     return _FUSED_LAUNCH
@@ -477,27 +470,35 @@ def _fused_launcher():
 def _thnn_fused_gru_cell_backward(
     grad_hy: torch.Tensor, workspace: torch.Tensor, has_bias: bool
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL_BACKWARD")
+    logger.debug("GEMS_ENFLAME _THNN_FUSED_GRU_CELL_BACKWARD")
     _validate_inputs(grad_hy, workspace)
     batch_size, hidden_size = grad_hy.shape
-    gate_shape = (batch_size, 3 * hidden_size)
-    options = {"dtype": grad_hy.dtype, "device": grad_hy.device}
-    grad_input_gates = torch.empty(gate_shape, **options)
-    grad_hidden_gates = torch.empty(gate_shape, **options)
-    grad_hx = torch.empty((batch_size, hidden_size), **options)
+    # One flat allocation + views instead of five separate torch.empty calls:
+    # the benchmark timing window only hides ~85us of host time per call and
+    # each device allocation costs ~4.5us of Python on this backend.
+    gate_numel = batch_size * 3 * hidden_size
+    hx_numel = batch_size * hidden_size
+    bias_numel = 3 * hidden_size
     if has_bias:
-        bias_shape = (3 * hidden_size,)
-        grad_input_bias = torch.empty(bias_shape, **options)
-        grad_hidden_bias = torch.empty(bias_shape, **options)
+        sizes = (gate_numel, gate_numel, hx_numel, bias_numel, bias_numel)
+    else:
+        sizes = (gate_numel, gate_numel, hx_numel)
+    pieces = torch.empty(sum(sizes), dtype=grad_hy.dtype, device=grad_hy.device).split(
+        list(sizes)
+    )
+    grad_input_gates = pieces[0].view(batch_size, 3 * hidden_size)
+    grad_hidden_gates = pieces[1].view(batch_size, 3 * hidden_size)
+    grad_hx = pieces[2].view(batch_size, hidden_size)
+    if has_bias:
+        grad_input_bias = pieces[3]
+        grad_hidden_bias = pieces[4]
     else:
         grad_input_bias = None
         grad_hidden_bias = None
 
-    numel = batch_size * hidden_size
-    min_elems = _FUSED_MIN_ELEMS_WITH_BIAS if has_bias else _FUSED_MIN_ELEMS_NO_BIAS
-    fused_launch = _fused_launcher() if numel >= min_elems else None
-    if fused_launch is not None:
-        fused_launch(
+    fast_launch = _fused_launcher()
+    if fast_launch is not None:
+        fast_launch(
             grad_hy,
             workspace,
             grad_input_gates,
@@ -545,7 +546,7 @@ def _thnn_fused_gru_cell_backward_out(
     out3: torch.Tensor,
     out4: torch.Tensor,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
     _validate_inputs(grad_hy, workspace)
     if not has_bias:
         raise RuntimeError("the out overload requires has_bias=True")

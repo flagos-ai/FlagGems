@@ -251,7 +251,18 @@ def test_accuracy_shape_as_tensor_disjoint_from_native_neighbors():
 @pytest.mark.shape_as_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame has no CUDA/SparseCUDA/SparseCsrCUDA",
+    reason=(
+        "enflame GCU (PrivateUse1) has no CUDA/SparseCUDA/SparseCsrCUDA "
+        "dispatch keys; Library(aten, IMPL) sentinels registered on those "
+        "keys are never reached by GCU tensors"
+    ),
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_shape_as_tensor"
+    ),
 )
 def test_accuracy_shape_as_tensor_dispatch_sentinel():
     # Registration-path check: the op is registered on CUDA, SparseCUDA and
@@ -267,7 +278,8 @@ def test_accuracy_shape_as_tensor_dispatch_sentinel():
         return flag_gems.shape_as_tensor(self)
 
     lib = torch.library.Library("aten", "IMPL")
-    for key in ("CUDA", "SparseCUDA", "SparseCsrCUDA"):
+    backend = "PrivateUse1" if flag_gems.vendor_name == "mthreads" else "CUDA"
+    for key in (backend, f"Sparse{backend}", f"SparseCsr{backend}"):
         lib.impl("_shape_as_tensor", sentinel, key)
 
     dev = flag_gems.device

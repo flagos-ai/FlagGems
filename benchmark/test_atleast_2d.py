@@ -34,6 +34,11 @@ ATLEAST_2D_SHAPES = [
 
 
 class Atleast2dBenchmark(base.Benchmark):
+    # atleast_2d is a pure host-side view: neither the native baseline nor the
+    # FlagGems candidate launches a device kernel, so --kernel-check has
+    # nothing to profile.
+    kernel_check_exempt = True
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = ATLEAST_2D_SHAPES
 

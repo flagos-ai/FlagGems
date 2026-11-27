@@ -169,7 +169,7 @@ def special_logsumexp(inp, dim, keepdim=False):
     Returns:
         Tensor with logsumexp computed along the specified dimension
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOGSUMEXP")
+    logger.debug("GEMS_ENFLAME SPECIAL_LOGSUMEXP")
 
     # Handle dim as int or list
     if isinstance(dim, (list, tuple)):

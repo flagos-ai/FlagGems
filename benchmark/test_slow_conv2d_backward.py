@@ -30,7 +30,8 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base, consts, utils
+from .test_slow_conv2d_forward import SLOW_CONV2D_FORWARD_SHAPES
 
 
 class SlowConv2dBackwardBenchmark(base.Benchmark):
@@ -68,6 +69,10 @@ class SlowConv2dBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.slow_conv2d_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The MUSA build has no native ATen reference for this operator",
+)
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_slow_conv2d_backward(dtype):
     bench = SlowConv2dBackwardBenchmark(
@@ -75,5 +80,52 @@ def test_slow_conv2d_backward(dtype):
         torch_op=torch.ops.aten._slow_conv2d_backward.output_mask,
         gems_op=flag_gems.ops._slow_conv2d_backward,
         dtypes=[dtype],
+    )
+    bench.run()
+
+
+# The cases above time the standalone gradient operator. The repository's
+# contract for a backward benchmark is the autograd path itself, so this case
+# rebuilds the forward graph once and times only
+# ``torch.autograd.grad(..., retain_graph=True)`` (benchmark/base.py's
+# is_backward=True protocol). It reuses the complete shape/dtype matrix of
+# ``SlowConv2dForwardBenchmark`` -- the same 4 geometry rows x 3 float dtypes --
+# so the backward measurement covers every default forward case rather than a
+# hand-picked subset.
+class SlowConv2dForwardBackwardBenchmark(base.Benchmark):
+    """Time the autograd backward of ``_slow_conv2d_forward``.
+
+    ``gems_op`` is the direct FlagGems forward wrapper, whose custom
+    ``_SlowConv2dForward`` Function calls the Triton backward kernels; the
+    baseline is the native ``aten::_slow_conv2d_forward`` whose generated
+    ``SlowConv2DBackward0`` node calls ATen's im2col backward. Both sides build
+    the same graph and only the backward call is inside the timer.
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SLOW_CONV2D_FORWARD_SHAPES
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for n, c_in, h, w, c_out, k, stride, padding in self.shapes:
+            inp = utils.generate_tensor_input((n, c_in, h, w), cur_dtype, self.device)
+            weight = utils.generate_tensor_input(
+                (c_out, c_in, k, k), cur_dtype, self.device
+            )
+            bias = utils.generate_tensor_input((c_out,), cur_dtype, self.device)
+            yield inp, weight, [k, k], bias, [stride, stride], [padding, padding]
+
+
+@pytest.mark.slow_conv2d_forward_backward
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_slow_conv2d_backward_autograd(dtype):
+    bench = SlowConv2dForwardBackwardBenchmark(
+        op_name="slow_conv2d_backward",
+        torch_op=torch.ops.aten._slow_conv2d_forward,
+        gems_op=flag_gems.ops._slow_conv2d_forward,
+        dtypes=[dtype],
+        is_backward=True,
     )
     bench.run()

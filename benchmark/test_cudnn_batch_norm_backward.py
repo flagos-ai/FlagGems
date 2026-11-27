@@ -61,9 +61,21 @@ def _inputs(shape, dtype, device):
         grad_output = torch.randn_like(inp)
         momentum = 0.1
         eps = 1e-5
-        _, save_mean, save_invstd, reserve = torch.ops.aten.cudnn_batch_norm.default(
-            inp, weight, bias, running_mean, running_var, True, momentum, eps
-        )
+        if flag_gems.vendor_name == "enflame":
+            # torch_gcu has no PrivateUse1 kernel for aten::cudnn_batch_norm, so
+            # the saved statistics are produced by the ATen native batch norm and
+            # the (by the timed operator unused) cuDNN reserve buffer is a
+            # placeholder; shapes, dtypes and the timed operator are unchanged.
+            _, save_mean, save_invstd = torch.ops.aten.native_batch_norm.default(
+                inp, weight, bias, running_mean, running_var, True, momentum, eps
+            )
+            reserve = torch.empty(0, dtype=torch.uint8, device=device)
+        else:
+            _, save_mean, save_invstd, reserve = (
+                torch.ops.aten.cudnn_batch_norm.default(
+                    inp, weight, bias, running_mean, running_var, True, momentum, eps
+                )
+            )
         yield (
             inp,
             grad_output,
@@ -77,6 +89,13 @@ def _inputs(shape, dtype, device):
         )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_batch_norm_backward "
+        "(the CPU-only build exposes no CPU kernel either), so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_batch_norm_backward
 def test_cudnn_batch_norm_backward():
     bench = CudnnBatchNormBackwardBenchmark(
