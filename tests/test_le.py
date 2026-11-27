@@ -59,9 +59,11 @@ def test_le_backward_non_differentiable():
     """
     A = torch.randn(1024, dtype=torch.float32, device=flag_gems.device)
     B = torch.randn(1024, dtype=torch.float32, device=flag_gems.device)
+    ref_A = utils.to_reference(A, False)
+    ref_B = utils.to_reference(B, False)
 
     res_out = flag_gems.le(A, B)
-    ref_out = torch.le(A, B)
+    ref_out = torch.le(ref_A, ref_B)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.dtype == torch.bool
