@@ -17,43 +17,76 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import consts
 from .test_scatter_reduce import (
+    TensorSelectBenchmark,
+    gather_scatter_gbps,
     scatter_reduce_input_fn_factory,
-    scatter_reduce_more_shapes,
-)
-
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="CANN scatter_reduce falls back to CPU, so NPU events are unavailable",
+    skip_tsingmicro,
 )
 
 
-class ScatterReduceInplaceBenchmark(base.GenericBenchmark2DOnly):
-    def set_more_shapes(self):
-        generic_shapes = super().set_more_shapes()
-        scatter_shapes = scatter_reduce_more_shapes(generic_shapes)
-        return list(dict.fromkeys(scatter_shapes + generic_shapes))
-
-
-@pytest.mark.scatter_reduce_
+@pytest.mark.scatter_reduce_two
+@skip_tsingmicro
 @pytest.mark.skip_native(
-    vendors=["enflame"],
-    reason=(
-        "torch_gcu topsatenScatterReduce has no native baseline for non-mean "
-        "scatter_reduce reductions and aborts the process, so only the Triton "
-        "candidate is timed"
-    ),
+    vendors=["ascend", "enflame"],
+    reason="Native aten::scatter_reduce.two has no NPU kernel timing for cases "
+    "such as FP16 sum on Ascend and aborts on int64 indices on Enflame",
 )
+def test_scatter_reduce():
+    """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_two",
+        torch_op=torch.ops.aten.scatter_reduce.two,
+        input_fn=scatter_reduce_input_fn_factory(),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two_
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    flag_gems.vendor_name == "enflame",
+    reason="Enflame does not support this scatter_reduce benchmark",
 )
-def test_scatter_reduce_two_inplace():
-    bench = ScatterReduceInplaceBenchmark(
-        op_name="scatter_reduce_",
-        torch_op=torch.Tensor.scatter_reduce_,
+@skip_tsingmicro
+@pytest.mark.skip_native(
+    vendors="ascend",
+    reason="Native aten::scatter_reduce_.two has no NPU kernel timing for cases "
+    "such as FP32 prod",
+)
+def test_scatter_reduce_():
+    """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_two_",
+        torch_op=torch.ops.aten.scatter_reduce_.two,
         input_fn=scatter_reduce_input_fn_factory(is_inplace=True),
+        get_gbps=gather_scatter_gbps,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="Enflame does not support this scatter_reduce benchmark",
+)
+@skip_tsingmicro
+@pytest.mark.skip_native(
+    vendors="ascend",
+    reason="Native aten::scatter_reduce.two_out falls back to CPU on older runtimes "
+    "and rejects include_self=False on 910B1 with CANN 9.2.1",
+)
+def test_scatter_reduce_out():
+    """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_two_out",
+        torch_op=torch.ops.aten.scatter_reduce.two_out,
+        input_fn=scatter_reduce_input_fn_factory(use_out=True),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

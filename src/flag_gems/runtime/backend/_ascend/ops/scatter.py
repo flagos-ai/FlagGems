@@ -23,6 +23,7 @@ import triton
 import triton.language as tl
 from triton.language.extra.cann import extension as _al
 
+from flag_gems.ops.scatter import LEGACY_REDUCTIONS
 from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -31,6 +32,8 @@ from flag_gems.utils.shape_utils import (
     has_internal_overlapping,
     restride_dim,
 )
+
+from .scatter_reduce import _scatter_reduce_with_segments
 
 logger = logging.getLogger(__name__)
 
@@ -707,8 +710,17 @@ def _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace):
     return work.to(torch.bfloat16)
 
 
+# Ascend lacks bool atomics. Sum and product on 0/1 values preserve OR and
+# AND respectively when scatter_reduce casts the result back to bool.
+_SCATTER_REDUCE_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.bool)
+
+
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    logger.debug("GEMS_ASCEND SCATTER")
+    if reduce in LEGACY_REDUCTIONS and inp.dtype in _SCATTER_REDUCE_DTYPES:
+        return _scatter_reduce_with_segments(
+            inp, dim, index, src, LEGACY_REDUCTIONS[reduce], include_self=True
+        )
     if reduce is not None and inp.dtype == torch.bfloat16:
         return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=False)
 
@@ -725,13 +737,16 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    logger.debug("GEMS_ASCEND SCATTER_")
     out_contiguous = inp.is_contiguous()
     if not out_contiguous:
         assert (
             has_internal_overlapping(inp) != MemOverlap.Yes
         ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
+    if reduce in LEGACY_REDUCTIONS and inp.dtype in _SCATTER_REDUCE_DTYPES:
+        inp.copy_(scatter(inp, dim, index, src, reduce))
+        return inp
     if reduce is not None and inp.dtype == torch.bfloat16:
         return _scatter_reduce_bf16(inp, dim, index, src, reduce, inplace=True)
 

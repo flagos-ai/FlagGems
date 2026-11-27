@@ -29,6 +29,8 @@ from flag_gems.utils.shape_utils import (
 
 logger = logging.getLogger(__name__)
 
+LEGACY_REDUCTIONS = {"add": "sum", "multiply": "prod"}
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")

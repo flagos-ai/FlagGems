@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+import math
+
 import pytest
 import torch
 
@@ -20,17 +23,12 @@ from flag_gems.utils import shape_utils
 
 from . import base, consts
 
-pytestmark = [
-    pytest.mark.skipif(
-        flag_gems.vendor_name == "ascend",
-        reason="CANN scatter_reduce falls back to CPU, so NPU events are unavailable",
-    ),
-    pytest.mark.skipif(
-        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-    ),
-]
+skip_tsingmicro = pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 
 REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
+LEGACY_REDUCE_MODES = ("add", "multiply")
 # None exercises the schema default by omitting the include_self keyword.
 INCLUDE_SELF_CASES = (None, False)
 
@@ -45,7 +43,40 @@ def scatter_reduce_more_shapes(shapes):
     ]
 
 
-class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
+class ScatterReduceBenchmark(base.GenericBenchmark2DOnly):
+    def get_latency(self, op, *args, **kwargs):
+        measure = super().get_latency
+        if (
+            flag_gems.vendor_name != "ascend"
+            or base.Config.mode != consts.BenchMode.KERNEL
+        ):
+            return measure(op, *args, **kwargs)
+        try:
+            latency = measure(op, *args, **kwargs)
+            # FlagTree can count CANN's zero-duration task-id rollover marker
+            # (PLACE_HOLDER_SQE) as an extra task and invalidate the sample.
+            if math.isinf(latency):
+                logging.getLogger(__name__).warning(
+                    "Ascend profiler returned infinite latency. Repeating the sample."
+                )
+                latency = measure(op, *args, **kwargs)
+            if not math.isfinite(latency) or latency <= 0:
+                raise RuntimeError(f"Invalid Ascend scatter kernel latency: {latency}")
+            return latency
+        except RuntimeError:
+            logging.getLogger(__name__).error(
+                "%s failed for shape=%s dtype=%s dim=%s reduce=%s include_self=%s",
+                self.op_name,
+                tuple(args[0].shape),
+                args[0].dtype,
+                args[1],
+                kwargs["reduce"],
+                kwargs.get("include_self", True),
+            )
+            raise
+
+
+class TensorSelectBenchmark(ScatterReduceBenchmark):
     """Benchmark scatter-style ATen operators with tensor index inputs."""
 
     def set_more_metrics(self):
@@ -56,20 +87,29 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return scatter_reduce_more_shapes(super().set_more_shapes())
 
 
-def scatter_reduce_input_fn_factory(*, use_out=False, is_inplace=False):
+class ScatterReduceInplaceBenchmark(ScatterReduceBenchmark):
+    def set_more_shapes(self):
+        generic_shapes = super().set_more_shapes()
+        scatter_shapes = scatter_reduce_more_shapes(generic_shapes)
+        return list(dict.fromkeys(scatter_shapes + generic_shapes))
+
+
+def scatter_reduce_input_fn_factory(*, use_out=False, is_inplace=False, legacy=False):
     """Yield every parameter combination in one benchmark record per dtype."""
+    reduce_modes = LEGACY_REDUCE_MODES if legacy else REDUCE_MODES
+    include_self_cases = (None,) if legacy else INCLUDE_SELF_CASES
 
     def inner(shape, dtype, device):
-        for reduce in REDUCE_MODES:
-            for include_self in INCLUDE_SELF_CASES:
+        for reduce in reduce_modes:
+            for include_self in include_self_cases:
                 inp = torch.randn(shape, dtype=dtype, device=device)
                 dim = -1
                 index = torch.randint(
                     0, shape[dim], shape, dtype=torch.long, device=device
                 )
-                if is_inplace and reduce == "sum":
+                if is_inplace and reduce in ("add", "sum"):
                     src = torch.zeros(shape, dtype=dtype, device=device)
-                elif is_inplace and reduce == "prod":
+                elif is_inplace and reduce in ("multiply", "prod"):
                     src = torch.ones(shape, dtype=dtype, device=device)
                 else:
                     src = torch.randn(shape, dtype=dtype, device=device)
@@ -91,79 +131,41 @@ def gather_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.skip_native(
-    vendors=["enflame"],
-    reason=(
-        "aten::scatter_reduce aborts on GCU, so no native baseline can be timed; "
-        "the candidate latency is still measured"
-    ),
-)
 @pytest.mark.scatter_reduce
+@skip_tsingmicro
+@pytest.mark.skip_native(
+    vendors=["ascend", "enflame"],
+    reason="Ascend lacks a native NPU baseline for the full legacy add/multiply "
+    "benchmark, and Enflame cannot time the native scatter reduction",
+)
 def test_scatter_reduce_optest():
-    """Report every functional scatter_reduce case under the optest operator ID."""
+    """Benchmark the legacy tensor-source aten::scatter.reduce overload."""
 
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
-        torch_op=torch.ops.aten.scatter_reduce,
-        input_fn=scatter_reduce_input_fn_factory(),
+        torch_op=torch.ops.aten.scatter.reduce,
+        gems_op=flag_gems.scatter,
+        input_fn=scatter_reduce_input_fn_factory(legacy=True),
         get_gbps=gather_scatter_gbps,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.skip_native(
-    vendors=["enflame"],
-    reason=(
-        "aten::scatter_reduce.two aborts on GCU: topsop CheckArgs rejects the "
-        "int64 index that TORCH_GCU_ENABLE_INT64_AND_UINT64=1 keeps as int64, "
-        "so no native baseline can be timed"
-    ),
-)
-@pytest.mark.scatter_reduce_two
-def test_scatter_reduce():
-    """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
-    bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_two",
-        torch_op=torch.ops.aten.scatter_reduce.two,
-        input_fn=scatter_reduce_input_fn_factory(),
-        get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
-)
 @pytest.mark.scatter_reduce_
-@pytest.mark.scatter_reduce_two_
-def test_scatter_reduce_():
-    """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
-    bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_two_",
-        torch_op=torch.ops.aten.scatter_reduce_.two,
-        input_fn=scatter_reduce_input_fn_factory(is_inplace=True),
-        get_gbps=gather_scatter_gbps,
+@skip_tsingmicro
+@pytest.mark.skip_native(
+    vendors=["ascend", "enflame"],
+    reason="Ascend lacks a native NPU baseline for the full legacy add/multiply "
+    "benchmark, and Enflame cannot time the native scatter reduction",
+)
+def test_scatter_reduce_legacy_inplace():
+    bench = ScatterReduceInplaceBenchmark(
+        op_name="scatter_reduce_",
+        torch_op=torch.ops.aten.scatter_.reduce,
+        gems_op=flag_gems.scatter_,
+        input_fn=scatter_reduce_input_fn_factory(is_inplace=True, legacy=True),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
-    )
-    bench.run()
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="aten and cpu dosenot support",
-)
-@pytest.mark.scatter_reduce_two_out
-def test_scatter_reduce_out():
-    """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""
-    bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_two_out",
-        torch_op=torch.ops.aten.scatter_reduce.two_out,
-        input_fn=scatter_reduce_input_fn_factory(use_out=True),
-        get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
