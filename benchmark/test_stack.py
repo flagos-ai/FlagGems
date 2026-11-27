@@ -69,12 +69,41 @@ def test_stack():
     bench.run()
 
 
+class PrivateStackBenchmark(StackBenchmark):
+    def get_case_iter(self, cur_dtype):
+        dims = (
+            (0, -1)
+            if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            else (0,)
+        )
+        ordinal = 0
+        for shape in self.shapes:
+            for dim in dims:
+                yield self._case_from_plan(
+                    cur_dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"inputs": [shape, shape, shape]},
+                        params={"dim": dim},
+                        builder_args=(shape, dim),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        shape, dim = case.builder_args[0].builder_args
+        for inputs in self.input_fn(shape, case.dtype, self.device):
+            if inputs[1]["dim"] == dim:
+                return inputs
+        raise RuntimeError("Private stack case has no matching original input recipe")
+
+
 @pytest.mark.underscore_stack
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test__stack():
-    bench = StackBenchmark(
+    bench = PrivateStackBenchmark(
         op_name="_stack",
         input_fn=_input_fn,
         torch_op=torch._stack,
