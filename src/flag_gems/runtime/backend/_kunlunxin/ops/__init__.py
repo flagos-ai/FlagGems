@@ -1071,6 +1071,8 @@ from .weight_int8pack_mm import weight_int8pack_mm
 from .weight_norm import _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .wrapped_linear_prepack import _wrapped_linear_prepack
+from .wrapped_quantized_linear_prepacked import _wrapped_quantized_linear_prepacked
 from .xlogy import (
     xlogy,
     xlogy_,
@@ -1308,6 +1310,8 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
+    "_wrapped_linear_prepack",
+    "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
     "absolute",
