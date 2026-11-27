@@ -15402,6 +15402,17 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: neg_backward
+  description: Triton backward implementation and autograd contract for neg.
+  for:
+  - neg
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: neg_view_copy
   description: 'Returns a fresh contiguous tensor holding the element-wise negation
     of `self`, the materialized (copied) counterpart of the `_neg_view` view.
