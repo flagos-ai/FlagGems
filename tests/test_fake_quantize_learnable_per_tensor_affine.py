@@ -83,7 +83,7 @@ def _run_with_contract(
     for value, (metadata, raw) in zip(inputs, snapshots):
         current_metadata, current_raw = _snapshot(value)
         assert current_metadata == metadata
-        assert torch.equal(current_raw, raw)
+        utils.gems_assert_equal(current_raw, raw)
         if result.numel() and metadata[10]:
             storage = result.untyped_storage()
             assert storage._cdata != metadata[8]
