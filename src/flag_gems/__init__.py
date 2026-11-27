@@ -1156,7 +1156,7 @@ _FULL_CONFIG = (
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("batch_norm_stats", batch_norm_stats),
     ("batch_norm_update_stats", batch_norm_update_stats),
-    ("bernoulli", bernoulli),
+    ("bernoulli", bernoulli, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("bernoulli_.float", bernoulli_),
     ("bilinear", bilinear),
     ("binary_cross_entropy", binary_cross_entropy),

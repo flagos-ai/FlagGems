@@ -2579,6 +2579,18 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: bernoulli_backward
+  description: First-order autograd rule for bernoulli implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - bernoulli
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: bf16_paged_mqa_logits
   description: 'Compute multi-head weighted ReLU attention logits on paged BF16
 

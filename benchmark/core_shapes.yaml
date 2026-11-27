@@ -116,6 +116,17 @@ svd:
     - [256, 256]
   shape_desc: "(*B), M, N"
 
+bernoulli_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 linalg_qr:
   shapes:
     # square: tiny -> large
