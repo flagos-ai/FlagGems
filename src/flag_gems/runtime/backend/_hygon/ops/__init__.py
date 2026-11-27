@@ -133,6 +133,7 @@ from ._foreach_sin_ import _foreach_sin_ as _foreach_sin_
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
+from ._foreach_tan import _foreach_tan as _foreach_tan
 from ._fused_rms_norm_backward import (
     _fused_rms_norm_backward as _fused_rms_norm_backward,
 )
@@ -485,6 +486,7 @@ __all__ = [
     "_foreach_sin",
     "_foreach_sin_",
     "_foreach_sub__ScalarList",
+    "_foreach_tan",
     "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
