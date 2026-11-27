@@ -20009,7 +20009,7 @@ ops:
   kind:
   - BLAS
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: sparse_addmm_out
   description: |
     A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)
