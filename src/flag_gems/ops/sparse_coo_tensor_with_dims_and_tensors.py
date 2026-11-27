@@ -48,7 +48,6 @@ logger = logging.getLogger(__name__)
 _FALLBACK_KEYSET = (
     torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd)
     | torch._C.DispatchKeySet(torch._C.DispatchKey.SparseCUDA)
-    | torch._C.DispatchKeySet(torch._C.DispatchKey.SparsePrivateUse1)
 )
 _WITH_TENSORS = torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors.default
 _SPARSE_COO = torch.sparse_coo
