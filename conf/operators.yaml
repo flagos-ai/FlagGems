@@ -19935,6 +19935,17 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: sort_backward
+  description: First-order backward of sort, using saved forward state.
+  for:
+  - sort
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: sort_stable
   description: 'Sorts the elements of the `input` tensor along a given dimension in
     ascending order by value.

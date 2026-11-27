@@ -1270,6 +1270,18 @@ FractionalMaxPool2dBenchmark:
     - [128, 512, 7, 7]
   shape_desc: "N, C, H, W"
 
+sort_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 pixel_shuffle:
   shapes:
     - [1, 4, 2, 3, 2]
