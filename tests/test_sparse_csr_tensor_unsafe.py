@@ -94,9 +94,17 @@ def test_sparse_csr_tensor_unsafe_hybrid(nnz, dtype):
     _assert_sparse_equal(res, ref)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame GCU has no FP64 device arithmetic; the payload conversion to "
+    "float64 cannot be lowered and torch_gcu maps Double to Float",
+)
 @pytest.mark.sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("nnz", [1, 4])
 @pytest.mark.parametrize("dtype", CSR_UNSAFE_DTYPES)
+@pytest.mark.skipif(
+    not utils.fp64_is_supported, reason="fp64 dtype conversion requires fp64 support"
+)
 def test_sparse_csr_tensor_unsafe_dtype(nnz, dtype):
     """The dtype argument converts the payload through the Triton kernel."""
     crow, col, values = _make_components(nnz, dtype)

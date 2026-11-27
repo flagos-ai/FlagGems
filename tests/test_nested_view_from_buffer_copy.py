@@ -58,10 +58,6 @@ def test_nested_view_from_buffer_copy(dtype, metadata_placement):
         utils.gems_assert_close(res_t, ref_t_matched, dtype)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="nested tensor not supported on this device",
-)
 @pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_nested_view_from_buffer_copy_oversized_tail(dtype):

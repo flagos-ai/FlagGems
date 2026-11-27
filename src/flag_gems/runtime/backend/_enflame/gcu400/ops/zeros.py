@@ -23,7 +23,9 @@ from flag_gems.runtime import device
 device_ = device
 logger = logging.getLogger(__name__)
 
-BLOCK_SIZE = 1024
+BLOCK_SIZE = 16384
+SMALL_BLOCK_SIZE = 4096
+SMALL_SIZE_THRESHOLD = 262144
 NUM_WARPS = 1
 GRID_SIZE = 24
 
@@ -55,6 +57,10 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     n_elements = out.numel()
     if n_elements == 0:
         return out
-    grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), GRID_SIZE),)
-    zeros_kernel[grid](out, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS)
+    if n_elements >= SMALL_SIZE_THRESHOLD:
+        block_size = BLOCK_SIZE
+    else:
+        block_size = SMALL_BLOCK_SIZE
+    grid = (min(triton.cdiv(n_elements, block_size), GRID_SIZE),)
+    zeros_kernel[grid](out, n_elements, BLOCK_SIZE=block_size, num_warps=NUM_WARPS)
     return out

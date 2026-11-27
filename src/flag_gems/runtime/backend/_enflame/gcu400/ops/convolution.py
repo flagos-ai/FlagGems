@@ -122,6 +122,14 @@ def _conv_kernel(
 
         ci_g = pid_g * C_in_pg + ci_loc
 
+        # A masked lane can still point past its channel block: GCU touches the
+        # address of a masked load, so an unclamped index reads the
+        # neighbouring allocation (which may hold NaN/Inf left in a freed
+        # buffer) instead of the masked-off lanes.  Clamp the channel indices
+        # the same way the spatial ones (i0/i1/i2) are clamped below.
+        ci_loc_v = tl.where(kmask, ci_loc, 0)
+        ci_g_v = tl.where(kmask, ci_g, 0)
+
         if TRANSPOSED:
             n0 = o0[:, None] + P0 - ka[None, :] * DL0
             i0 = n0 // S0
@@ -147,7 +155,7 @@ def _conv_kernel(
         amask = mask_m[:, None] & kmask[None, :] & v0 & v1 & v2
         aoff = (
             (bidx * x_ns)[:, None]
-            + (ci_g * x_cs)[None, :]
+            + (ci_g_v * x_cs)[None, :]
             + i0 * x_0s
             + i1 * x_1s
             + i2 * x_2s
@@ -155,11 +163,11 @@ def _conv_kernel(
         a = tl.load(x_ptr + aoff, mask=amask, other=0.0)
 
         if TRANSPOSED:
-            icv = ci_g[:, None]
-            ocv = offs_n[None, :]
+            icv = ci_g_v[:, None]
+            ocv = tl.where(mask_n, offs_n, 0)[None, :]
         else:
-            icv = ci_loc[:, None]
-            ocv = co_g[None, :]
+            icv = ci_loc_v[:, None]
+            ocv = tl.where(mask_n, co_g, 0)[None, :]
 
         woff = (
             icv * w_ic_s
@@ -181,7 +189,9 @@ def _conv_kernel(
         # only then adds the bias (a second rounding).  Reproduce that
         # round-trip instead of a single fused fp32 accumulate + bias + cast,
         # which is what makes bias-bearing reduced-precision workloads drift.
-        bv = tl.load(b_ptr + co_g, mask=mask_n, other=0.0).to(tl.float32)
+        bv = tl.load(b_ptr + tl.where(mask_n, co_g, 0), mask=mask_n, other=0.0).to(
+            tl.float32
+        )
         acc = acc.to(out_ptr.dtype.element_ty).to(tl.float32) + bv[None, :]
 
     ooff = (
@@ -208,54 +218,66 @@ def _next_pow2(v, lo, hi):
 _COMPUTE_BOUND_MACS = 1 << 20
 
 
-def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32):
+def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32, nd):
     """Pick implicit-GEMM tiles for an (M, C_out_pg, KDIM) problem.
 
-    Tiny problems keep the original conservative 64x16x32 tiling: they are
-    bound by launch latency, so reshaping the tiles only perturbs noise.
+    GCU400 rework (measured on Triton GCU 4.1.6, bench core shapes, fp16/fp32,
+    per-shape sweep of BM/BN/BK x num_warps 1/2/4/8):
 
-    Past that point the fixed tiling starved the MMA pipelines. A 16-lane N
-    tile issues one ``tl.dot`` per 16 output channels, so a 64-channel layer
-    re-gathered the same activations four times instead of reusing them
-    inside one wider tile. Those shapes size all three tiles from the problem
-    instead.
-
-    The two dtype regimes want different shapes, which an exhaustive
-    BM/BN/BK/num_warps sweep over layer-sized shapes on H20-3e bears out:
-
-    * fp16/bf16 run on tensor cores, so a deep ``BK`` and a wide ``BN`` pay
-      for themselves.
-    * fp32 uses ``input_precision="ieee"`` to stay inside this operator's
-      accuracy tolerance, which lowers to plain FMA. With no MMA pipeline to
-      fill, a deep reduction tile only serializes the inner loop, so the fp32
-      path keeps the reduction shallow and spends occupancy on independent
-      programs instead.
+      * num_warps=1 wins everywhere. A single warp keeps the MMA pipeline
+        ownership intact; num_warps>=2 splits the (BLOCK_M, BLOCK_K) operand
+        tiles across warps, and on this backend that serializes the dot
+        issue path instead of helping it (group 612us at w1 vs 7279us at w2;
+        conv1d fp32 311us at w1 vs 4321us at w2).  The old table only reached
+        w1 for 128x128 tiles, which left every 64-wide-N shape on w4 and an
+        8-9x gap on the wide layers.
+      * fp32 (ieee FMA, no MMA) splits by shape: plain 2-D/3-D layers prefer
+        a shallower BM=64 tile -- more independent programs in flight beat a
+        deeper per-program loop when there is no tensor-core pipeline to
+        fill (stem fp32 7.3ms at (64,64,32) vs 15.5ms at (128,64,32)).
+        Single-block-K (1x1) and 1-D fp32 keep BM=128 (1x1 429us vs 557us;
+        conv1d 307us vs 422us).
+      * 16-bit keeps BM=128 for 2-D layers but drops to BM=64 for the 3-D
+        gather (three-deep tap decode makes the (128,*) address vectors the
+        per-program bottleneck: conv3d 1562us at (64,64,32) vs 3251us at
+        (128,64,32)).
+      * BN is sized from the problem (pow2, floor 64 for MMA width, cap 128)
+      and BK stays 32: BK=64 doubles the 2-D index/mask vectors and measured
+      slower everywhere (stem 52ms vs 46ms at w4, 15.5ms vs 5.3ms at w1
+      fp16); BK=16 won 1.06-1.22x in short probes but regressed up to 41%
+      under the official bench protocol, so it is vetoed.
+      * Tiny problems (launch-latency bound) sit on (32,16,32) w1: the old
+        (64,16,32) w4 grid left the whole conv on one program (~44us); a
+        32-row tile doubles the grid and a single warp runs the small
+        pipeline for ~11-13us.
     """
     if M * C_out_pg * KDIM < _COMPUTE_BOUND_MACS:
-        BM = 64
-        if M <= 16:
-            BM = 16
-        elif M <= 32:
-            BM = 32
-        return BM, 16, 32, 4
-
-    BM = _next_pow2(M, 16, 128)
-    BN = _next_pow2(C_out_pg, 16, 128)
-    BK = _next_pow2(KDIM, 16, 32)
+        return 32, 16, 32, 1
 
     if is_ieee_fp32:
-        BK = min(BK, 32)
-        BN = min(BN, 64)
-        return BM, BN, BK, 2 if BM * BN <= 128 * 32 else 4
+        # fp32 (ieee FMA, no MMA) regimes, all measured at w1:
+        #  * tiny K (1x1 projection): the whole reduction is one BK=32 block,
+        #    and the wider BM=128 tile keeps the per-program loop busy (1x1
+        #    429us at (128,64,32) vs 557us at (64,64,32)).
+        #  * 1-D: a wide BN=128 matches the 128-channel head (307us at
+        #    (128,128,32) vs 422us at (64,128,32)).
+        #  * plain 2-D/3-D: a shallower BM=64 tile -- more independent
+        #    programs in flight beat a deeper per-program loop when there is
+        #    no tensor-core pipeline to fill (stem fp32 7.3ms at (64,64,32)
+        #    vs 15.3ms at (128,64,32)).
+        if KDIM <= 64:
+            return 128, 64, 32, 1
+        if nd == 1:
+            return 128, 128, 32, 1
+        return 64, 64, 32, 1
 
-    tile = BM * BN
-    if tile >= 128 * 128:
-        num_warps = 1
-    elif tile >= 64 * 32:
-        num_warps = 4
-    else:
-        num_warps = 2
-    return BM, BN, BK, num_warps
+    # 16-bit regimes.  BK=32: BK=64 doubles the 2-D index/mask vectors and
+    # loses everywhere (stem 52ms vs 46ms at w4, 15.5ms vs 5.3ms at w1), and
+    # BK=16 wins 1.06x in a probe yet regressed 41% on the 3-D gather under
+    # the official bench protocol, so 32 stays.
+    if nd == 3:
+        return 64, 64, 32, 1
+    return 128, _next_pow2(C_out_pg, 64, 128), 32, 1
 
 
 def _gv(v, i, d):
@@ -273,7 +295,7 @@ def _gv(v, i, d):
 def convolution(
     input, weight, bias, stride, padding, dilation, transposed, output_padding, groups
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION")
+    logger.debug("GEMS_ENFLAME CONVOLUTION")
     x = input
     w = weight
     nd = x.dim() - 2
@@ -470,7 +492,9 @@ def convolution(
     has_bias = bias is not None and getattr(bias, "numel", lambda: 0)() > 0
     b_ptr = bias if has_bias else x
 
-    BM, BN, BK, num_warps = _select_tiles(M, C_out_pg, KDIM, x.dtype == torch.float32)
+    BM, BN, BK, num_warps = _select_tiles(
+        M, C_out_pg, KDIM, x.dtype == torch.float32, nd
+    )
 
     grid = (triton.cdiv(M, BM), triton.cdiv(C_out_pg, BN), g)
     _conv_kernel[grid](

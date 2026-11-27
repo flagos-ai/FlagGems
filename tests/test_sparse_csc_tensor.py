@@ -140,6 +140,14 @@ def test_sparse_csc_tensor_rejects_dtype_mismatch(dtype):
 
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend has no SparseCSR "
+        "kernel for aten::_to_sparse_csr, so the CSC->CSR roundtrip used as "
+        "the assertion vehicle cannot run"
+    ),
+)
 def test_sparse_csc_tensor_roundtrip_to_csr(dtype):
     """The constructed CSC tensor converts to CSR with identical contents."""
     sp = _make_csc((256, 256), dtype)

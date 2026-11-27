@@ -16,7 +16,7 @@ import logging
 
 import torch
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +44,6 @@ _RESIZE_AS_SPARSE_SPARSE_KEY_FLAG = (
     "_flag_gems_gcu400_resize_as_sparse_sparse_key_registered"
 )
 _RESIZE_AS_SPARSE_LIBRARY = None
-
-
-def _ensure_sparse_key_registration():
-    """Idempotently register the resize_as_sparse_ implementation on Sparse<device-key>."""
-    global _RESIZE_AS_SPARSE_LIBRARY
-    if getattr(torch, _RESIZE_AS_SPARSE_SPARSE_KEY_FLAG, False):
-        return
-
-    sparse_key = "Sparse" + runtime.device.dispatch_key
-    _RESIZE_AS_SPARSE_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _RESIZE_AS_SPARSE_LIBRARY.impl(
-            "resize_as_sparse_", resize_as_sparse_, sparse_key
-        )
-    except RuntimeError as error:
-        logger.warning("resize_as_sparse_ sparse-key registration skipped: %s", error)
-    setattr(torch, _RESIZE_AS_SPARSE_SPARSE_KEY_FLAG, True)
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +105,19 @@ def _install_clone_alias_views():
     _native_tensor_clone = torch.Tensor.clone
 
     def _clone_with_alias_views(self, *args, **kwargs):
+        if self.layout == torch.sparse_coo and self.dense_dim() > 0:
+            # The backend COO copy drops the hybrid dense dimensions (probe:
+            # sparse_dim=2/dense_dim=1 becomes sparse_dim=3/dense_dim=0), so a
+            # plain hybrid clone silently changes the sparse/dense split and any
+            # later ``resize_as_sparse_`` rejects the result as a sparse-dim
+            # change. Rebuild the container from independently cloned components
+            # so the hybrid layout survives; copy semantics are unchanged.
+            return torch.sparse_coo_tensor(
+                self._indices().clone(),
+                self._values().clone(),
+                self.size(),
+                is_coalesced=self.is_coalesced(),
+            )
         out = _native_tensor_clone(self, *args, **kwargs)
         views = self.__dict__
         if views and isinstance(out, torch.Tensor):
@@ -160,7 +156,7 @@ def resize_as_sparse_(self: torch.Tensor, the_template: torch.Tensor) -> torch.T
     ``_indices().shape[0]`` — the same no-re-dispatch convention that module
     documents for its own body.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_AS_SPARSE_")
+    logger.debug("GEMS_ENFLAME RESIZE_AS_SPARSE_")
     tmpl_layout = the_template.layout
     if self.layout != _SPARSE_COO or tmpl_layout not in _ALLOWED_TEMPLATE_LAYOUTS:
         raise NotImplementedError(
@@ -177,6 +173,10 @@ def resize_as_sparse_(self: torch.Tensor, the_template: torch.Tensor) -> torch.T
         )
         return self
 
+    # A/B against the shape-property / identity-fast rewrite showed no
+    # measurable gain (0.99x, inside the noise band): the body cost is two
+    # unavoidable dispatches (`_indices().shape` and `sparse_resize_`), so the
+    # original ordering is kept.
     tmpl_size = the_template.size()
     if tmpl_layout == _STRIDED:
         # Dense templates contribute no sparse dimensions; native reads
@@ -190,6 +190,5 @@ def resize_as_sparse_(self: torch.Tensor, the_template: torch.Tensor) -> torch.T
     return self
 
 
-_ensure_sparse_key_registration()
 _install_detach_alias_views()
 _install_clone_alias_views()

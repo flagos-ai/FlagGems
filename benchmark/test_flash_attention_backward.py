@@ -423,6 +423,10 @@ def _flash_attn_bwd_gems(
     flag_gems.vendor_name == "ascend",
     reason="CANN 8.5/9.1.1 torch_npu has no native ATen flash backward baseline",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.flash_attention_backward
 @pytest.mark.parametrize("causal", (False, True), ids=("noncausal", "causal"))
 @pytest.mark.parametrize("head_size", _SAFE_HEAD_SIZES, ids=lambda dim: f"d{dim}")
@@ -556,6 +560,10 @@ def _flash_family_param(family, index, case):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="CANN 8.5/9.1.1 torch_npu has no native ATen flash backward baseline",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
 )
 @pytest.mark.parametrize(
     "family,case_index",
@@ -759,6 +767,10 @@ def _sdp_flash_attn_bwd_gems(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.scaled_dot_product_flash_attention_backward
 @pytest.mark.parametrize("is_causal", [False, True])
 def test_perf_scaled_dot_product_flash_attention_backward(is_causal):
@@ -953,6 +965,14 @@ def _cudnn_attn_bwd_gems(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for "
+        "aten::_scaled_dot_product_cudnn_attention_backward, so only the Triton "
+        "candidate is benchmarked"
+    ),
+)
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
 def test_perf_scaled_dot_product_cudnn_attention_backward():
     bench = CudnnAttentionBackwardBenchmark(
@@ -1157,6 +1177,14 @@ def _efficient_attn_bwd_gems(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for "
+        "aten::_efficient_attention_backward, so the native baseline leg cannot "
+        "run on this vendor"
+    ),
+)
 @pytest.mark.efficient_attention_backward
 def test_perf_efficient_attention_backward():
     bench = EfficientAttentionBackwardBenchmark(
@@ -1346,6 +1374,10 @@ def _sdp_eff_attn_bwd_gems(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.scaled_dot_product_efficient_attention_backward
 def test_perf_scaled_dot_product_efficient_attention_backward():
     bench = SdpEfficientAttentionBackwardBenchmark(

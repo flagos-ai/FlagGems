@@ -29,6 +29,10 @@ def _input_fn(shape, cur_dtype, device):
         yield inp, {"shifts": 1, "dims": 0}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.roll
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

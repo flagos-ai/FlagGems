@@ -11,6 +11,14 @@ def _standard_gamma_grad_input_fn(shape, dtype, device):
     yield self_grad, output
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_standard_gamma_grad; its "
+        "CPU fallback only implements float32/float64, so half and bfloat16 have "
+        "no native baseline"
+    ),
+)
 @pytest.mark.standard_gamma_grad
 def test_standard_gamma_grad():
     bench = base.GenericBenchmark(

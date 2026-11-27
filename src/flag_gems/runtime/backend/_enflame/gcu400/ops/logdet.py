@@ -32,19 +32,37 @@ _REGISTER_TILE_LIMIT = 32
 # Per-program (batch, n, n) tile element cap for the batched version, and the desired CTA count (12 SIP * 4)
 _BATCH_TILE_ELEMENTS = 8192
 _TARGET_CTA_COUNT = 48
-_MIN_BATCH_FOR_BATCHED_KERNEL = 256
 
 
 def _pick_block_batch(block_n: int, batch_count: int) -> int:
     """Choose how many matrices each program handles: too-small batch falls back to the single-matrix kernel (avoiding
     tiles
     full of masked-out empty matrices), otherwise trade tile capacity against CTA count.
+
+    ceil rather than floor decides the per-CTA matrix count: floor yields 64+ CTAs (e.g. 128
+    matrices, floor(128/48)=2 -> block_batch=2 -> 64 CTAs), and the extra partial wave drags
+    the 16x16 batch from 0.14ms to 0.41ms; ceil gives 128/48->4, i.e. 32 CTAs in exactly one wave.
     """
-    if batch_count < _MIN_BATCH_FOR_BATCHED_KERNEL:
-        return 1
     capacity = max(1, _BATCH_TILE_ELEMENTS // (block_n * block_n))
-    target = triton.next_power_of_2(max(1, batch_count // _TARGET_CTA_COUNT))
+    target = triton.next_power_of_2(max(1, -(-batch_count // _TARGET_CTA_COUNT)))
     return max(1, min(capacity, target))
+
+
+def _pick_num_warps(block_n: int, block_batch: int, element_size: int) -> int:
+    """Warp count for the batched kernel, measured per matrix order on GCU400.
+
+    Large n (16) needs many elimination steps and every pivot reduction crosses lanes, so four
+    warps are needed to hide the reduction latency; n=8 is fastest with a single warp once the
+    batch is large (32 lanes fill one matrix block); n<=4 is extrapolated from the tile size.
+    """
+    if block_n >= 16:
+        # With few matrices per CTA (small tile), more warps are needed to flatten reduction latency; with many
+        # matrices,
+        # a single CTA already has enough parallelism, and adding warps just makes the 32 CTAs compete for free SPCs.
+        return 4 if block_batch <= 8 else 2
+    if block_n == 8:
+        return 1 if block_batch >= 64 else 2
+    return min(8, max(1, (block_batch * block_n * block_n * element_size) // 4096))
 
 
 @libentry()
@@ -191,7 +209,7 @@ def _logdet_batch_register_kernel(
 
 
 def logdet(inp):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGDET")
+    logger.debug("GEMS_ENFLAME LOGDET")
 
     if inp.dim() < 2 or inp.shape[-1] != inp.shape[-2]:
         raise RuntimeError("logdet: input must be batches of square matrices")
@@ -225,10 +243,7 @@ def logdet(inp):
     with torch_device_fn.device(inp.device):
         if block_batch > 1:
             # Batched version: each program consumes block_batch matrices so small matrices also fill the vector width
-            num_warps = min(
-                8,
-                max(1, (block_batch * block_n * block_n * inp.element_size()) // 4096),
-            )
+            num_warps = _pick_num_warps(block_n, block_batch, inp.element_size())
             _logdet_batch_register_kernel[(triton.cdiv(batch_count, block_batch),)](
                 inp_contiguous,
                 out,

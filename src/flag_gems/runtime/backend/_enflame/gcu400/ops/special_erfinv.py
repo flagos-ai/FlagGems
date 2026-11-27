@@ -26,75 +26,83 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
-# GCU400 override of the generic KernelGen copy: the generic launcher derives
-# the grid directly from numel / BLOCK_SIZE = 1024, so the 512M-element core
-# bench shapes request grid.x = 524288 and the launch dies with
-# OutOfResources (hardware grid.x limit 65535; QA 1109 perf failures / TCC-3084
-# cluster).  The kernel below keeps the exact generic math but walks the tensor
-# with a grid-stride loop under a persistent grid capped at 2 CTAs per SIP
-# (48 total, erfinv_.py / special_expit.py precedent).
+# Align the number of resident CTAs with the SIP count (erfinv_.py rescan on 2026-11-16: B4096/c24 == c48, <1%).
+NUM_CTAS = 24
+
+# Dispatch boundary for deep-block streaming on large fp32 shapes. Combining 16-bit with any two-branch polynomial body
+# at BLOCK>4096
+# triggers a compiler lowering cliff (2-7× degradation, including the U2 dual-block in-flight form; the single-branch
+# tail-only body is immune —
+# the cliff signature correlates with the active set × in-flight lane count), so always stick to B4096/w4.
+_FP32_DEEP_BLOCK_NUMEL = 1 << 24
+_DEEP_BLOCK = 131072
 
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
-def _special_erfinv_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    num_pids = tl.num_programs(axis=0)
-    lane_offsets = tl.arange(0, BLOCK_SIZE)
+def _special_erfinv_kernel(
+    x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, USE_RSQRT: tl.constexpr
+):
+    # Two polynomial branches (ported back from erfinv_.py / erfinv on 2026-11-16, global abs err 1.86e-5):
+    #   center branch q·P(q²) (|q|<=0.425, pure FMA); tail branch T(sqrt(-log(0.5(1-|x|)))-1.6).
+    # Endpoint semantics follow naturally: x=±1 → u=0 → log→-inf → sqrt→inf → tail polynomial → ±inf;
+    # |x|>1 → u<0 → log(neg)=nan propagates; NaN input propagates likewise; 0 → center branch q·P(0)=±0.
+    # minlive reordering (compute the tail branch first + reuse the y variable): bit-for-bit identical to the original
+    # ordering in erfinv_.py
+    # (is_center uses |x|<=0.85 ⟺ |q|<=0.425, with 2·fl(0.425) exact); -2.6% across all dtypes at B4096.
+    # USE_RSQRT: sqrt(z)→z·rsqrt(z) (hardware primitive replaces extern sqrt). z=-log(u)∈[log2,+inf)
+    # is always positive and z=+inf occurs only at x=±1 — the z*z==z select takes f=1 exactly at {0,1,+inf}, making
+    # z·f==sqrt(z) exact (inf→inf, NaN propagates via rsqrt(nan)=nan); enabled only for the fp32 deep-block config
+    # (at B4096/w4, rsqrt is 1-5% slower in measurements).
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
     num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    lane = tl.arange(0, BLOCK_SIZE)
     for block_id in tl.range(pid, num_blocks, num_pids):
-        offsets = block_id * BLOCK_SIZE + lane_offsets
-        mask = offsets < n_elements
+        off = block_id * BLOCK_SIZE + lane
+        mask = off < n_elements
+        x = tl.load(x_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        abx = tl.math.abs(x)
+        is_center = abx <= 0.85
+        u = 0.5 * (1.0 - abx)
+        z = -tl.math.log(u)
+        if USE_RSQRT:
+            f = tl.where(z * z == z, 1.0, tl.math.rsqrt(z))
+            v = z * f - 1.6
+        else:
+            v = tl.math.sqrt(z) - 1.6
+        w = 7.645191756e-05
+        w = w * v - 8.727375877e-04
+        w = w * v + 4.518085617e-03
+        w = w * v - 1.479333944e-02
+        w = w * v + 3.740890474e-02
+        w = w * v - 8.644987914e-02
+        w = w * v + 1.207493122e0
+        w = w * v + 1.006524121e0
+        y = tl.where(x < 0.0, -w, w)
+        q = 0.5 * x
+        t = q * q
+        p = 4.296451014e4
+        p = p * t - 1.876153977e4
+        p = p * t + 3.715949402e3
+        p = p * t - 3.111872501e2
+        p = p * t + 2.805659723e1
+        p = p * t + 3.683845979e0
+        p = p * t + 1.859579801e0
+        p = p * t + 1.772448984e0
+        y = tl.where(is_center, q * p, y)
+        tl.store(out_ptr + off, y, mask=mask)
 
-        x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-        xf = x.to(tl.float32)
 
-        one = 1.0
-        absx = tl.abs(xf)
-        w = -tl.log((one - xf) * (one + xf))
-
-        use_low = w < 5.0
-
-        wl = w - 2.5
-        pl = 2.81022636e-08
-        pl = 3.43273939e-07 + pl * wl
-        pl = -3.5233877e-06 + pl * wl
-        pl = -4.39150654e-06 + pl * wl
-        pl = 2.1858087e-04 + pl * wl
-        pl = -1.25372503e-03 + pl * wl
-        pl = -4.17768164e-03 + pl * wl
-        pl = 2.46640727e-01 + pl * wl
-        pl = 1.50140941e00 + pl * wl
-
-        wh = tl.sqrt(w) - 3.0
-        ph = -2.00214257e-04
-        ph = 1.00950558e-04 + ph * wh
-        ph = 1.34934322e-03 + ph * wh
-        ph = -3.67342844e-03 + ph * wh
-        ph = 5.73950773e-03 + ph * wh
-        ph = -7.62246130e-03 + ph * wh
-        ph = 9.43887047e-03 + ph * wh
-        ph = 1.00167406e00 + ph * wh
-        ph = 2.83297682e00 + ph * wh
-
-        p = tl.where(use_low, pl, ph)
-        res = p * xf
-
-        nan_vec = tl.full([BLOCK_SIZE], float("nan"), dtype=tl.float32)
-        inf_vec = tl.full([BLOCK_SIZE], float("inf"), dtype=tl.float32)
-
-        mask_nan = xf != xf
-        mask_oob = absx > 1.0
-        mask_pos1 = xf == 1.0
-        mask_neg1 = xf == -1.0
-
-        res = tl.where(mask_nan, nan_vec, res)
-        res = tl.where(mask_oob, nan_vec, res)
-        res = tl.where(mask_pos1, inf_vec, res)
-        res = tl.where(mask_neg1, -inf_vec, res)
-
-        y = res.to(x.dtype)
-        tl.store(out_ptr + offsets, y, mask=mask)
+def _choose_launch(n_elements, is_fp32):
+    # (BLOCK_SIZE, num_warps, USE_RSQRT)
+    if n_elements <= 1024:
+        return 1024, 4, False
+    if n_elements <= 32768:
+        return triton.next_power_of_2(n_elements), 4, False
+    if is_fp32 and n_elements >= _FP32_DEEP_BLOCK_NUMEL:
+        return _DEEP_BLOCK, 2, True
+    return 4096, 4, False
 
 
 def _launch_special_erfinv_kernel(x: torch.Tensor, out: torch.Tensor):
@@ -106,24 +114,24 @@ def _launch_special_erfinv_kernel(x: torch.Tensor, out: torch.Tensor):
     n_elements = x.numel()
     if n_elements == 0:
         return
-    if n_elements < 4096:
-        BLOCK_SIZE = max(256, triton.next_power_of_2(n_elements))
-    else:
-        BLOCK_SIZE = 4096
-    grid_size = min(triton.cdiv(n_elements, BLOCK_SIZE), NUM_SIPS * 2)
+    block_size, num_warps, use_rsqrt = _choose_launch(
+        n_elements, x.dtype == torch.float32
+    )
+    grid_size = min(triton.cdiv(n_elements, block_size), NUM_CTAS)
     with torch_device_fn.device(x.device):
         _special_erfinv_kernel[(grid_size,)](
             x,
             out,
             n_elements,
-            BLOCK_SIZE=BLOCK_SIZE,
-            num_warps=4,
+            BLOCK_SIZE=block_size,
+            USE_RSQRT=use_rsqrt,
+            num_warps=num_warps,
         )
 
 
 def special_erfinv(x: torch.Tensor):
     """Special erfinv function"""
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFINV")
+    logger.debug("GEMS_ENFLAME SPECIAL_ERFINV")
     x_in = x
     if not x_in.is_contiguous():
         x_in = x_in.contiguous()
@@ -137,7 +145,7 @@ def special_erfinv(x: torch.Tensor):
 
 def special_erfinv_out(x: torch.Tensor, out: torch.Tensor):
     """Special erfinv out function"""
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFINV_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_ERFINV_OUT")
     # Resize out to match input shape if necessary
     if out.shape != x.shape:
         out.resize_(x.shape)
@@ -156,10 +164,16 @@ def special_erfinv_out(x: torch.Tensor, out: torch.Tensor):
 
 def special_erfinv_(x: torch.Tensor):
     """Special erfinv_ in-place function"""
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFINV_")
+    logger.debug("GEMS_ENFLAME SPECIAL_ERFINV_")
+    if x.is_contiguous():
+        # Single-launch in-place: grid-stride blocks of each program are disjoint, read before write, so no aliasing
+        # risk
+        # (same scheme as erfinv_.py).
+        _launch_special_erfinv_kernel(x, x)
+        return x
     original_shape = x.shape
     original_stride = x.stride()
-    x_in = x if x.is_contiguous() else x.contiguous()
+    x_in = x.contiguous()
     tmp = torch.empty_like(x_in)
     _launch_special_erfinv_kernel(x_in, tmp)
     x.copy_(tmp)

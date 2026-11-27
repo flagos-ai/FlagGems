@@ -356,7 +356,7 @@ def cholesky_inverse(L, upper=False):
     Returns:
         The inverse of the original positive-definite matrix.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY_INVERSE")
+    logger.debug("GEMS_ENFLAME CHOLESKY_INVERSE")
     assert L.dtype in (
         torch.float32,
         torch.float64,

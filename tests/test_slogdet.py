@@ -60,8 +60,12 @@ class _MusaCpuSlogdet(torch.autograd.Function):
 
 
 def _reference_slogdet(inp):
-    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
-        return torch.return_types.linalg_slogdet(_MusaCpuSlogdet.apply(inp))
+    if flag_gems.vendor_name == "mthreads":
+        # The MUSA solver does not support complex inputs.
+        if inp.is_complex():
+            inp = inp.cpu()
+        if inp.device.type == "cpu" and not torch._C.has_lapack:
+            return torch.return_types.linalg_slogdet(_MusaCpuSlogdet.apply(inp))
     return torch.linalg.slogdet(inp)
 
 

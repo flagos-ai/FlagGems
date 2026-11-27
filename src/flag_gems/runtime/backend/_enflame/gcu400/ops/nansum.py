@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 from functools import lru_cache, reduce
 
 import torch
@@ -58,6 +57,56 @@ def _nansum_acc_type(inp_dtype: tl.dtype) -> tl.dtype:
     return tl.float32
 
 
+@tl.constexpr
+def _nansum_tile_acc_type_or(inp_dtype: tl.dtype, acc_mode: tl.constexpr) -> tl.dtype:
+    """Tile accumulator selected by ``acc_mode`` (0 default, 1 int32, 2 float32).
+
+    Modes 1 and 2 are only requested by the host when the narrow type is exact
+    for that input dtype and reduction length (see ``_nansum_heur_acc_mode``).
+    """
+    if acc_mode == 2:
+        return tl.float32
+    if acc_mode == 1:
+        return tl.int32
+    return _nansum_acc_type(inp_dtype)
+
+
+@tl.constexpr
+def _nansum_inner_acc_type(inp_dtype: tl.dtype, reduce_len: tl.constexpr) -> tl.dtype:
+    """Accumulator for the last-dim (inner) kernel.
+
+    8-bit integers narrow to int32 in :func:`_nansum_tile_acc_type`, but the
+    lane-wise byte -> word integer widening is what makes that path ~8x slower
+    than the 16-bit one. A float32 tile is exact for 8-bit inputs (every partial
+    sum is an integer with ``|sum| <= 255 * 32768 < 2**24``) and rides the much
+    faster 8-bit -> float widening instead.
+    """
+    base: tl.constexpr = _nansum_tile_acc_type(inp_dtype, reduce_len)
+    # Only 8-bit inputs: a 16-bit tile is *not* exactly representable in float32.
+    if base == tl.int32 and inp_dtype.primitive_bitwidth == 8:
+        return tl.float32
+    return base
+
+
+@tl.constexpr
+def _nansum_tile_acc_type(inp_dtype: tl.dtype, reduce_len: tl.constexpr) -> tl.dtype:
+    # torch widens integer sums to int64, but a 64-bit accumulator vector costs
+    # 8 bytes per lane and spills the tile as soon as it gets wide. Narrow ints
+    # cannot overflow a 32-bit tile accumulator (see bounds below), so tile-local
+    # math stays in int32 and only the per-tile scalar is widened on store.
+    if inp_dtype.is_int():
+        if inp_dtype.primitive_bitwidth == 8 and reduce_len <= 32768:
+            # |8-bit| * 32768 <= 4.2e6
+            return tl.int32
+        if inp_dtype.primitive_bitwidth == 16 and reduce_len <= 16384:
+            # |16-bit| * 16384 <= 2.15e9 (uint16 stays <= INT32_MAX)
+            return tl.int32
+        return tl.int64
+    if inp_dtype.is_fp64():
+        return tl.float64
+    return tl.float32
+
+
 @libentry()
 @triton.jit
 def _nan_to_zero_kernel(
@@ -82,7 +131,7 @@ def nansum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    cdtype: tl.constexpr = _nansum_acc_type(inp.dtype.element_ty)
+    cdtype: tl.constexpr = _nansum_tile_acc_type(inp.dtype.element_ty, BLOCK_SIZE)
 
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -150,7 +199,18 @@ def _nansum_global(inp, *, dtype=None):
         compute_dtype = torch.float64
     else:
         compute_dtype = torch.float32
-    block_size = max(triton.next_power_of_2(math.ceil(math.sqrt(M))), 4096)
+    # Size the tile from the amount of work *per program*, not from sqrt(M):
+    # the per-CTA prologue and the reduction tree dominate while a tile holds
+    # only a few thousand elements, so the widest legal tile wins as long as
+    # enough programs remain to fill the device. Measured on 16.7M elements:
+    # BLOCK=4096 -> 281us, BLOCK=32768 -> 51us (fp16 and fp32 alike, i.e. the
+    # path is ALU/prologue bound, not bandwidth bound).
+    target_programs = max(_num_sms() * 8, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(M, target_programs))
+    # Grid.x is capped at 65535, so the tile must cover M / 65535 elements; the
+    # 32K cap keeps a full int32 tile accumulator inside the register file.
+    block_size = min(max(block_size, 4096), 32768)
+    block_size = max(block_size, triton.next_power_of_2(triton.cdiv(M, _GRID_X_LIMIT)))
     mid_size = triton.cdiv(M, block_size)
     mid = torch.empty(mid_size, dtype=compute_dtype, device=inp.device)
 
@@ -163,7 +223,7 @@ def _nansum_global(inp, *, dtype=None):
 
 
 def nansum(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 NANSUM")
+    logger.debug("GEMS_ENFLAME NANSUM")
     if dim is None:
         result = _nansum_global(inp, dtype=dtype)
         return result.reshape([1] * inp.ndim) if keepdim else result
@@ -171,7 +231,7 @@ def nansum(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def nansum_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 NANSUM_OUT")
+    logger.debug("GEMS_ENFLAME NANSUM_OUT")
     result = nansum(inp, dim=dim, keepdim=keepdim, dtype=dtype)
     out.copy_(result)
     return out
@@ -280,7 +340,11 @@ def _nansum_tile_k_raw(args):
                     break
             else:
                 break
-        return prev_tile_k
+        # The k axis is the contiguous one, so a narrow TILE_K reduces every load
+        # to a few contiguous elements per row. Keep at least 64 lanes of it
+        # unless K itself is smaller (measured: (64, 512, 512) over dim 1, fp16
+        # 106us at TILE_K=8).
+        return max(prev_tile_k, min(64, triton.next_power_of_2(args["K"])))
     else:
         tile_k = 1
         upper_bound = min(args["K"], MAX_TILE_K)
@@ -296,6 +360,16 @@ def _nansum_tile_k_raw(args):
 
 # gcu400 caps grid.y at 255, and the k axis is launched on grid.y.
 _GRID_Y_LIMIT = 255
+# gcu400 caps grid.x at 65535, and the row axis is launched on grid.x.
+_GRID_X_LIMIT = 65535
+# Element budget of one last-dim inner tile (TILE_M * TILE_N). Bigger tiles
+# amortize the per-CTA prologue, which dominates while the row count is large;
+# the cap keeps a 4-byte accumulator tile (plus the dsm copy the backend makes)
+# below the 917504-byte dsm budget.
+_INNER_TILE_BUDGET = 65536
+# Width of one int64 reduction stage; wider int64 reductions fail to link
+# ("relocation ... tops_redsum_v2_si64"), so 64-bit sums are reduced in two steps.
+_INT64_REDUCE_CHUNK = tl.constexpr(64)
 
 
 def _nansum_heur_tile_k(args):
@@ -311,6 +385,10 @@ def _nansum_heur_tile_k(args):
 def _nansum_heur_tile_n_non_inner(args):
     tile_budget = 32768 if args["M"] <= 1 else 8192
     tile_n = triton.cdiv(tile_budget, args["TILE_K"])
+    # Never tile wider than the reduction axis: the surplus lanes are masked off
+    # on every load and store, so a 2x-too-wide tile halves the useful work
+    # (measured: (64, 512, 512) over dim 1, fp16 106us -> 61us).
+    tile_n = min(tile_n, triton.next_power_of_2(args["N"]))
     if args["M"] <= 1:
         tile_n = min(tile_n, args["N"])
         return triton.next_power_of_2(tile_n + 1) // 2
@@ -319,6 +397,30 @@ def _nansum_heur_tile_n_non_inner(args):
 
 def _nansum_heur_one_tile_per_cta(args):
     return args["TILE_N"] >= args["N"]
+
+
+def _nansum_heur_acc_mode(args):
+    """Pick the narrowest *exact* tile accumulator for the non-inner kernel.
+
+    The accumulator is ``TILE_N * TILE_K`` elements wide, so int64 doubles the
+    dsm footprint and spills: measured on 16.7M int8 elements (64, 512, 512)
+    reduced over dim 0, int64 -> 834us, int32 -> 70us. 1-byte inputs do even
+    better in float32 (values stay below 2**24, so every partial sum is exact)
+    because the byte -> float widening is several times faster than byte ->
+    word; that alone takes the same case to ~55us and the int8 last-dim
+    reduction from 8.1ms to 1.6ms.
+    """
+    dtype = args["input_ptr"].dtype
+    if dtype.is_floating_point or dtype.itemsize > 2:
+        return 0
+    reduce_len = args["N"]
+    if dtype.itemsize == 1:
+        if reduce_len <= 32768:
+            return 2
+        if reduce_len <= 8_000_000:  # 255 * 8e6 < INT32_MAX
+            return 1
+        return 0
+    return 1 if reduce_len <= 16384 else 0
 
 
 def _nansum_heur_num_warps_non_inner(args):
@@ -340,16 +442,49 @@ def _nansum_heur_tile_n_inner(args):
         return 4096
 
 
+@tl.constexpr
+def _nansum_needs_split_int64_reduce(
+    cdtype: tl.dtype, tile_n: tl.constexpr
+) -> tl.constexpr:
+    return cdtype == tl.int64 and tile_n > _INT64_REDUCE_CHUNK
+
+
+def _nansum_acc_is_64bit(dtype):
+    if dtype.is_floating_point:
+        return dtype == torch.float64
+    # 32/64-bit integers accumulate in int64 (see _nansum_tile_acc_type)
+    return dtype.itemsize > 2
+
+
 def _nansum_heur_tile_m_inner(args):
     NUM_SMS = _num_sms()
 
-    if args["M"] <= NUM_SMS * 16 or args["N"] > 256:
-        return 1
+    if args["M"] <= NUM_SMS * 16:
+        tile_m = 1
+    else:
+        TARGET_GRID = NUM_SMS * 6
+        tile_m = triton.next_power_of_2(max(args["M"] // TARGET_GRID, 1))
+        # The dsm budget is spent by the accumulator tile, not by the input, so
+        # size the tile from the accumulator width: int64 for 32/64-bit ints.
+        tile_budget = _INNER_TILE_BUDGET
+        if _nansum_acc_is_64bit(args["input_ptr"].dtype):
+            tile_budget //= 2
+        max_tile_m = max(tile_budget // args["TILE_N"], 1)
+        tile_m = min(tile_m, max_tile_m, 64)
 
-    TARGET_GRID = NUM_SMS * 6
-    tile_m = triton.next_power_of_2(max(args["M"] // TARGET_GRID, 1))
-    max_tile_m = max(16384 // args["TILE_N"], 1)
-    return min(tile_m, max_tile_m, 256)
+    # grid.x is capped at 65535 on gcu400, so one row per CTA overflows the x
+    # axis for tall reductions; grow TILE_M just enough to stay legal.
+    rows_per_grid = triton.cdiv(args["M"], _GRID_X_LIMIT)
+    if rows_per_grid > tile_m:
+        tile_m = triton.next_power_of_2(rows_per_grid)
+    return tile_m
+
+
+def _nansum_inner_grid(M, TILE_M):
+    blocks = triton.cdiv(M, TILE_M)
+    if blocks <= _GRID_X_LIMIT:
+        return (blocks, 1, 1)
+    return (_GRID_X_LIMIT, triton.cdiv(blocks, _GRID_X_LIMIT), 1)
 
 
 def _nansum_heur_num_warps_inner(args):
@@ -368,6 +503,7 @@ def _nansum_heur_num_warps_inner(args):
         TILE_K=_nansum_heur_tile_k,
         TILE_N=_nansum_heur_tile_n_non_inner,
         ONE_TILE_PER_CTA=_nansum_heur_one_tile_per_cta,
+        ACC_MODE=_nansum_heur_acc_mode,
         num_warps=_nansum_heur_num_warps_non_inner,
     ),
 )
@@ -381,9 +517,12 @@ def nansum_dim_kernel_non_inner(
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
+    ACC_MODE: tl.constexpr,
     WIDE_INDEX: tl.constexpr,
 ):
-    cdtype: tl.constexpr = _nansum_acc_type(input_ptr.dtype.element_ty)
+    cdtype: tl.constexpr = _nansum_tile_acc_type_or(
+        input_ptr.dtype.element_ty, ACC_MODE
+    )
 
     # Element offsets reach numel, so they pass INT32_MAX for tensors above 2**31
     # elements. Widen the index math only for those: 64-bit address arithmetic
@@ -438,13 +577,16 @@ def nansum_dim_kernel_inner(
     output_ptr,
     input_ptr,
     M,
-    N,
+    N: tl.constexpr,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
-    cdtype: tl.constexpr = _nansum_acc_type(input_ptr.dtype.element_ty)
+    cdtype: tl.constexpr = _nansum_inner_acc_type(input_ptr.dtype.element_ty, N)
 
-    pid = ext.program_id(0).to(tl.int64)
+    # The M axis is flattened over a 2D launch because grid.x is capped at
+    # 65535 on gcu400; keeping TILE_M small is what keeps the accumulator tile
+    # in registers for wide rows.
+    pid = (ext.program_id(0) + ext.program_id(1) * ext.num_programs(0)).to(tl.int64)
     m_start = pid * TILE_M + tl.arange(0, TILE_M)[:, None]
     m_mask = m_start < M
 
@@ -458,7 +600,15 @@ def nansum_dim_kernel_inner(
             inp = tl.where(inp != inp, 0.0, inp)
         _sum += inp
 
-    result = tl.sum(_sum, axis=1)[:, None]
+    if _nansum_needs_split_int64_reduce(cdtype, TILE_N):
+        # Split the int64 row sum: the backend only links reductions of up to
+        # _INT64_REDUCE_CHUNK lanes for 64-bit integers.
+        chunked = tl.reshape(
+            _sum, (TILE_M, TILE_N // _INT64_REDUCE_CHUNK, _INT64_REDUCE_CHUNK)
+        )
+        result = tl.sum(tl.sum(chunked, axis=2), axis=1)[:, None]
+    else:
+        result = tl.sum(_sum, axis=1)[:, None]
     tl.store(output_ptr + m_start, result, mask=m_mask)
 
 
@@ -565,7 +715,7 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                     out, inp, M, N, K, WIDE_INDEX=inp.numel() > _INT32_MAX
                 )
             else:
-                grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+                grid = lambda meta: _nansum_inner_grid(M, meta["TILE_M"])
                 nansum_dim_kernel_inner[grid](out, inp, M, N)
 
         return out if keepdim else _squeeze_dims(out, dims)

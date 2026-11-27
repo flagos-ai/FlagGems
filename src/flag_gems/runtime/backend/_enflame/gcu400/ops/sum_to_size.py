@@ -30,9 +30,86 @@ logger = logging.getLogger(__name__)
 # every SP busy without paying the ~52ns/CTA dispatch floor of large grids.
 _MAX_GRID = 48
 
+# Task starvation threshold: below this many (k_tile) tasks the plain tiled
+# kernel leaves SPs idle (e.g. (4096, 4096) -> K/BK = 16 tasks on 48 SPs while
+# per-CTA streaming tops out near DRAM-fair-share). Those shapes take the
+# two-stage partial+merge path below, which splits the reduced dim across
+# row groups to fill the grid.
+_STARVED_TASKS = 48
+
 # Largest tensor the fast kernel may index: offsets stay inside the i32 safe
 # domain (m*N*K + i*K + k must not overflow a signed 32-bit offset).
 _MAX_FAST_NUMEL = 2**31 - 1
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "K", "num_task", "rows_per_group"])
+def sum_to_size_partial_kernel(
+    X,
+    Part,
+    N,
+    K,
+    num_task,
+    rows_per_group,
+    BLOCK_I: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    num_stages: tl.constexpr,
+):
+    """Stage 1 of the starved-shape path: task = (k_tile, i_group).
+
+    The reduced dim is split into ``num_groups`` row groups so the task count
+    multiplies past the grid cap; each program fp32-sums one row group of one
+    k slice and plain-stores the partial to ``Part[i_group, k_slice]``. No
+    atomics anywhere: the merge stage adds the groups in fp32 and casts once,
+    so accuracy matches (or beats) the single-kernel path.
+    """
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_k_tile = (K + BLOCK_K - 1) // BLOCK_K
+    for task_id in tl.range(pid, num_task, step, num_stages=num_stages):
+        k_tile = task_id % num_k_tile
+        i_group = task_id // num_k_tile
+        k_offset = k_tile * BLOCK_K + tl.arange(0, BLOCK_K)
+        k_mask = k_offset < K
+        row_lo = i_group * rows_per_group
+        row_hi = tl.minimum(N, row_lo + rows_per_group)
+        acc = tl.zeros([BLOCK_K], dtype=tl.float32)
+        for i_start in tl.range(row_lo, row_hi, BLOCK_I):
+            i_offset = i_start + tl.arange(0, BLOCK_I)
+            mask = (i_offset[:, None] < row_hi) & k_mask[None, :]
+            x = tl.load(
+                X + i_offset[:, None] * K + k_offset[None, :],
+                mask=mask,
+                other=0.0,
+            ).to(tl.float32)
+            acc += tl.sum(x, axis=0)
+        tl.store(Part + i_group * K + k_offset, acc, k_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["K", "num_groups"])
+def sum_to_size_merge_kernel(
+    Part,
+    Out,
+    K,
+    num_groups,
+    BLOCK_P: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Stage 2: add the ``num_groups`` fp32 partial rows, cast once to Out."""
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    p_offset = tl.arange(0, BLOCK_P)
+    for k_start in tl.range(pid * BLOCK_K, K, step * BLOCK_K):
+        k_offset = k_start + tl.arange(0, BLOCK_K)
+        k_mask = k_offset < K
+        part = tl.load(
+            Part + p_offset[:, None] * K + k_offset[None, :],
+            mask=(p_offset[:, None] < num_groups) & k_mask[None, :],
+            other=0.0,
+        )
+        acc = tl.sum(part, axis=0)
+        tl.store(Out + k_offset, acc.to(Out.dtype.element_ty), k_mask)
 
 
 @libentry()
@@ -116,6 +193,69 @@ def _non_inner_config(N, K, element_size):
     return None
 
 
+def _starved_split_config(element_size):
+    """Partial+merge params for grid-starved shapes (few k tiles, wide rows).
+
+    The plain kernel parallelizes only over k tiles: K < 12288 with BLOCK_K
+    256/512 leaves fewer than 48 tasks, so most SPs idle while per-CTA
+    streaming already sits at the DRAM fair-share rate. Splitting the reduced
+    dim across row groups multiplies the task count to fill the grid. The
+    partials stay fp32 and the merge casts once, so accuracy matches the
+    single-kernel path. Measured on GCU400 (do_bench median, interleave A/B):
+    (4096, 4096) fp16 46.1 -> 26.6us, fp32 42.8 -> 37.3us.
+    """
+    if element_size == 2:
+        return 16, 128, 512, 4
+    if element_size == 4:
+        return 8, 64, 1024, 4
+    return None
+
+
+def _split_reduce(inp, reduce_dim, N, K, split):
+    """Two-stage starved-shape reduction: partial per (k_tile, i_group) then
+    a tiny merge over the fp32 partial rows. Only reached with M == 1."""
+    num_groups, BLOCK_I, BLOCK_K, num_warps_ = split
+    num_groups = min(num_groups, N)
+    rows_per_group = triton.cdiv(N, num_groups)
+    BLOCK_I = min(BLOCK_I, triton.next_power_of_2(rows_per_group))
+    BLOCK_K = min(BLOCK_K, triton.next_power_of_2(K))
+
+    inp = inp.contiguous()
+    out_shape = list(inp.shape)
+    out_shape[reduce_dim] = 1
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+    part = torch.empty([num_groups, K], dtype=torch.float32, device=inp.device)
+
+    num_k_tile = triton.cdiv(K, BLOCK_K)
+    num_task = num_k_tile * num_groups
+    grid = min(_MAX_GRID, num_task)
+    merge_BLOCK_K = 1024
+    merge_grid = min(_MAX_GRID, triton.cdiv(K, merge_BLOCK_K))
+    with torch_device_fn.device(inp.device):
+        sum_to_size_partial_kernel[(grid,)](
+            inp,
+            part,
+            N,
+            K,
+            num_task,
+            rows_per_group,
+            BLOCK_I=BLOCK_I,
+            BLOCK_K=BLOCK_K,
+            num_stages=1,
+            num_warps=num_warps_,
+        )
+        sum_to_size_merge_kernel[(merge_grid,)](
+            part,
+            out,
+            K,
+            num_groups,
+            BLOCK_P=triton.next_power_of_2(num_groups),
+            BLOCK_K=merge_BLOCK_K,
+            num_warps=2,
+        )
+    return out
+
+
 def _partial_reduce(inp, reduce_dims):
     """Sum ``reduce_dims`` with keepdim semantics, keeping dim 1 placeholders."""
     if len(reduce_dims) != 1:
@@ -147,6 +287,13 @@ def _partial_reduce(inp, reduce_dims):
     BLOCK_I = min(BLOCK_I, triton.next_power_of_2(N))
     BLOCK_K = min(BLOCK_K, triton.next_power_of_2(K))
 
+    # Square-ish shapes with too few k tiles to fill 48 SPs: split the reduced
+    # dim across row groups instead (partial + merge keeps fp32 accuracy).
+    if M == 1 and N >= 512 and M * triton.cdiv(K, BLOCK_K) < _STARVED_TASKS:
+        split = _starved_split_config(inp.element_size())
+        if split is not None:
+            return _split_reduce(inp, reduce_dim, N, K, split)
+
     inp = inp.contiguous()
     out_shape = list(shape)
     out_shape[reduce_dim] = 1
@@ -172,7 +319,7 @@ def _partial_reduce(inp, reduce_dims):
 
 
 def sum_to_size(inp, *size):
-    logger.debug("GEMS_ENFLAME_GCU400 SUM_TO_SIZE")
+    logger.debug("GEMS_ENFLAME SUM_TO_SIZE")
     # ``size`` may arrive as a single sequence (the aten schema passes a
     # SymInt[] list) or as a variadic list of ints (Tensor.sum_to_size(*size)).
     if len(size) == 1 and isinstance(size[0], (list, tuple)):

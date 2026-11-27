@@ -1136,7 +1136,7 @@ def _should_use_tle_bucket_sort_topk(inputs, topk):
 
 
 def bucket_sort_topk(inputs, starts, ends, topk):
-    logger.debug("GEMS_ENFLAME_GCU400 BUCKET_SORT_TOPK")
+    logger.debug("GEMS_ENFLAME BUCKET_SORT_TOPK")
     if _should_use_tle_bucket_sort_topk(inputs, topk):
         try:
             return tle_bucket_sort_topk(inputs, starts, ends, topk)

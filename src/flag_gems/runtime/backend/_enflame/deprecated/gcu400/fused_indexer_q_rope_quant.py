@@ -1,17 +1,8 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
 import logging
+import os
 
 import torch
 import triton
@@ -20,7 +11,6 @@ import triton.language as tl
 from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
-
 
 # MXFP4: 32 elements per block, packed 2 nibbles per byte, ue8m0 block scale.
 MXFP4_BLOCK_SIZE = 32
@@ -377,7 +367,7 @@ def fused_indexer_q_rope_quant(
     a (values, scales) tuple (MXFP4). This matches the union type accepted
     by `SparseAttnIndexer.forward_*`.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_INDEXER_Q_ROPE_QUANT")
+    logger.debug("GEMS_ENFLAME FUSED_INDEXER_Q_ROPE_QUANT")
     assert positions.ndim == 1
     assert index_q.ndim == 3
     assert index_q_cos_sin_cache.ndim == 2
@@ -450,7 +440,7 @@ def fused_indexer_q_rope_quant(
             index_weights_head_scale,
             index_weights_out,
             index_weights_out.stride(0),
-            num_warps=1,  # TODO: Tune this
+            num_warps=int(os.environ.get("FG_FIRQ_WARPS", "1")),
         )
 
         # Values stay uint8 (2 E2M1 nibbles per byte). Scales are 4 ue8m0
@@ -466,7 +456,9 @@ def fused_indexer_q_rope_quant(
     index_q_fp8 = torch.empty_like(index_q, dtype=torch.float8_e4m3fn)
     # GCU: fold tokens beyond the grid.x hardware limit into grid.z pages;
     # shapes with num_tokens <= 65535 launch the identical 2-D grid.
-    grid_x = min(num_tokens, GCU_GRID_X_MAX)
+    # GCU400: keeping grid.x small and fixed while retaining grid.z paging can reduce
+    # invalid CTAs and page-boundary checks for small token counts; 256 measured better than 1024 / 4096 / 65535.
+    grid_x = min(num_tokens, int(os.environ.get("FG_FIRQ_GRID_X", "256")))
     grid_z = triton.cdiv(num_tokens, grid_x) if grid_x > 0 else 1
     _fused_indexer_q_rope_quant_kernel[(grid_x, num_index_q_heads, grid_z)](
         positions,
@@ -488,6 +480,6 @@ def fused_indexer_q_rope_quant(
         index_weights_out.stride(0),
         num_tokens,
         grid_x,
-        num_warps=1,  # TODO: Tune this
+        num_warps=int(os.environ.get("FG_FIRQ_WARPS", "1")),
     )
     return index_q_fp8, index_weights_out

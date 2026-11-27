@@ -20,14 +20,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.deprecated.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
 from flag_gems.utils import libentry
 
-from ...gcu400.ops.max import max_dim as _flaggems_max_dim
+from ...gcu400.ops.max import max_dim as _flaggems_max_dim  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -62,39 +62,6 @@ def _gcu_int64_layout_enabled() -> bool:
 
 _MAX_DIM_GUARD_FLAG = "_flag_gems_gcu400_max_dim_aten_guard_registered"
 _MAX_DIM_GUARD_LIBRARY = None
-
-
-def _install_native_max_dim_guard():
-    # In the int64 regime the native aten::max.dim (topsatenMax) rejects the
-    # "values + Long indices" contract with TOPSATEN_STATUS_NOT_SUPPORT and
-    # torch_gcu turns that into a hard process abort (no Python exception).
-    # torch.testing.assert_close hits this whenever a device-side comparison
-    # mismatches and formats its error message (torch.max(abs_diff, 0)),
-    # turning a clean FAIL/XFAIL into a whole-process ABORT. Route
-    # aten::max.dim to the FlagGems max_dim kernel (single launch; int64
-    # indices stored at true width in this regime). With the env off the
-    # native path applies the Long->Int replacement and works, so the guard
-    # stays out of the way.
-    global _MAX_DIM_GUARD_LIBRARY
-    if not _gcu_int64_layout_enabled():
-        return
-    if getattr(torch, _MAX_DIM_GUARD_FLAG, False):
-        return
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl("max.dim", _flaggems_max_dim, runtime.device.dispatch_key)
-    except RuntimeError as error:
-        logger.warning(
-            "max.dim %s-key registration skipped: %s",
-            runtime.device.dispatch_key,
-            error,
-        )
-        return
-    _MAX_DIM_GUARD_LIBRARY = library
-    setattr(torch, _MAX_DIM_GUARD_FLAG, True)
-
-
-_install_native_max_dim_guard()
 
 
 @libentry()
@@ -247,7 +214,7 @@ def chunk_gated_delta_rule(
 
     q/k may use fewer heads than v when the q/k head count divides the v head count.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CHUNK_GATED_DELTA_RULE")
+    logger.debug("GEMS_ENFLAME CHUNK_GATED_DELTA_RULE")
     if BT != 64:
         raise ValueError("chunk_gated_delta_rule currently supports only BT=64")
 

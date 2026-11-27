@@ -17,17 +17,8 @@ import logging
 from typing import Optional
 
 import torch
-import triton
-
-from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
-
-
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def _resize_as_kernel(src):
-    return src
 
 
 def resize_as(
@@ -36,7 +27,7 @@ def resize_as(
     *,
     memory_format: Optional[torch.memory_format] = None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_AS")
+    logger.debug("GEMS_ENFLAME RESIZE_AS")
 
     if memory_format is None:
         memory_format = torch.contiguous_format
@@ -53,19 +44,12 @@ def resize_as(
             f"autograd's resize can only change the shape of a given tensor, while preserving the number of elements."
         )
 
-    # Create output tensor with target shape
-    out = torch.empty(the_template.size(), device=self.device, dtype=self.dtype)
-
-    # Reshape source to destination shape (numel already verified equal).
-    src = self.reshape(the_template.shape)
-
-    # Handle empty tensors
-    if self.numel() == 0:
-        return out
-
-    overload = _resize_as_kernel.instantiate(src.ndim)
-    overload(src, out0=out)
-    return out
+    # Align with aten semantics: non-inplace resize_as only reinterprets size/stride, returning a view that shares
+    # storage with self, with no data movement (measured on aten: data_ptr is unchanged).
+    # The old implementation added an extra torch.empty + elementwise copy kernel, an O(n) redundant data movement for
+    # large tensors,
+    # and it lost the aliasing semantics.
+    return self.reshape(the_template.shape)
 
 
 def resize_as_(
@@ -74,7 +58,7 @@ def resize_as_(
     *,
     memory_format: Optional[torch.memory_format] = None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_AS_")
+    logger.debug("GEMS_ENFLAME RESIZE_AS_")
 
     if memory_format is None:
         memory_format = torch.contiguous_format

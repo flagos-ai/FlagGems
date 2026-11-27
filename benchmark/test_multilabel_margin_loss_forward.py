@@ -101,3 +101,29 @@ def test_multilabel_margin_loss_forward(dtype):
         dtypes=[dtype],
     )
     bench.run()
+
+
+def _multilabel_margin_loss_forward_loss_only(input, target, reduction):
+    return torch.ops.aten.multilabel_margin_loss_forward(input, target, reduction)[0]
+
+
+def _gems_multilabel_margin_loss_forward_loss_only(input, target, reduction):
+    return flag_gems.multilabel_margin_loss_forward(input, target, reduction)[0]
+
+
+@pytest.mark.multilabel_margin_loss_forward_backward
+@pytest.mark.parametrize("dtype", BENCH_DTYPES)
+def test_multilabel_margin_loss_forward_backward(dtype):
+    fallback_reason = _native_fallback_reason(dtype)
+    if fallback_reason is not None:
+        pytest.skip(fallback_reason)
+
+    bench = MultilabelMarginLossBenchmark(
+        op_name="multilabel_margin_loss_forward_backward",
+        input_fn=multilabel_margin_loss_forward_input_fn,
+        torch_op=_multilabel_margin_loss_forward_loss_only,
+        gems_op=_gems_multilabel_margin_loss_forward_loss_only,
+        dtypes=[dtype],
+        is_backward=True,
+    )
+    bench.run()

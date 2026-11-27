@@ -23,6 +23,20 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 
+# This operator is just a conditional elementwise copy; the measured ceiling is a pure copy kernel
+# (about 26.8us for 1M fp16), so there is only one tuning goal: keep the grid in the bandwidth-optimal range
+# (8192 elements per program, 2 warps, about 8~128 programs), and avoid extra work beyond the implicit
+# bool→float conversion.
+_BLOCK_MAX = 8192
+
+
+def _pick_block(n_elements):
+    block = 1024
+    while block * 2 <= n_elements // 16 and block * 2 <= _BLOCK_MAX:
+        block *= 2
+    return min(block, _BLOCK_MAX)
+
+
 @triton.jit
 def fake_quantize_per_channel_affine_cachemask_backward_kernel(
     grad_ptr,
@@ -42,18 +56,16 @@ def fake_quantize_per_channel_affine_cachemask_backward_kernel(
 
 
 def fake_quantize_per_channel_affine_cachemask_backward(grad, mask):
-    logger.debug(
-        "GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_CHANNEL_AFFINE_CACHEMASK_BACKWARD"
-    )
     grad = grad.contiguous()
     mask = mask.contiguous()
     output = torch.empty_like(grad)
     n_elements = grad.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    block = _pick_block(n_elements)
+    grid = (triton.cdiv(n_elements, block),)
     with torch_device_fn.device(grad.device):
         fake_quantize_per_channel_affine_cachemask_backward_kernel[grid](
-            grad, mask, output, n_elements, BLOCK_SIZE=32768
+            grad, mask, output, n_elements, BLOCK_SIZE=block, num_warps=2
         )
     return output

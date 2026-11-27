@@ -32,6 +32,13 @@ ascend_only = pytest.mark.skipif(
     reason="the optimized Grouped MatMul implementation targets Ascend",
 )
 
+# Vendor implementations that expose the same argument-validation contract as
+# the Ascend one. Extend this tuple as more backends gain equivalent validation.
+contract_only = pytest.mark.skipif(
+    flag_gems.vendor_name not in ("ascend", "enflame"),
+    reason="Grouped MatMul argument validation contract is not covered here",
+)
+
 GROUPED_MATMUL_FULL_CASES = (
     (1024, 2048, 4096, 32),
     (1024, 4096, 1024, 32),
@@ -241,7 +248,7 @@ def test_grouped_matmul_group_boundaries(
 
 
 @pytest.mark.grouped_matmul
-@ascend_only
+@contract_only
 def test_grouped_matmul_rejects_invalid_group_list_type():
     x = torch.empty((1, 256), device=flag_gems.device, dtype=torch.float16)
     weight = torch.empty((1, 256, 256), device=flag_gems.device, dtype=torch.float16)
@@ -251,7 +258,7 @@ def test_grouped_matmul_rejects_invalid_group_list_type():
 
 
 @pytest.mark.grouped_matmul
-@ascend_only
+@contract_only
 @pytest.mark.parametrize(
     "field,shape,dtype,error,match",
     (

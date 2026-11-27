@@ -33,6 +33,6 @@ def softshrink_backward_kernel(grad_output, self, lambd):
 
 
 def softshrink_backward(grad_output, self, lambd):
-    logger.debug("GEMS_ENFLAME_GCU400 SOFTSHRINK_BACKWARD")
+    logger.debug("GEMS_ENFLAME SOFTSHRINK_BACKWARD")
     grad_input = softshrink_backward_kernel(grad_output, self, lambd)
     return grad_input

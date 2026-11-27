@@ -158,7 +158,9 @@ def generate_destination_passing_padding_wrapper(
         code.writeline("if out0.numel() // BLOCK_SIZE > 65535:")
         with code.indent():
             code.writeline("BLOCK_SIZE = 32768")
-        code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
+        code.writeline(
+            "grid = (min(triton.cdiv(out0.numel(), BLOCK_SIZE), 65535), 1, 1)"
+        )
         code.newline()
 
         code.writeline("x_shape = in0.shape")
@@ -291,105 +293,116 @@ def generate_pad_kernel(
 
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        code.writeline("block_offset = pid * BLOCK_SIZE")
-        code.writeline("offset = block_offset + tl.arange(0, BLOCK_SIZE)")
-        code.newline()
-
-        code.writeline("remaining = offset ")
-        for i in range(rank):
-            code.writeline(f"idx = remaining // out_strides{i}")
-            code.writeline(f"dst_index_{i} = idx")
-            code.writeline(f"remaining = remaining - idx * out_strides{i}")
+        code.writeline("num_pids = tl.num_programs(0)")
+        code.writeline("num_blocks = (out_elem_cnt + BLOCK_SIZE - 1) // BLOCK_SIZE")
+    with code.indent():
+        code.writeline("for block_id in tl.range(pid, num_blocks, num_pids):")
+        with code.indent():
+            code.writeline("block_offset = block_id * BLOCK_SIZE")
+            code.writeline("offset = block_offset + tl.arange(0, BLOCK_SIZE)")
             code.newline()
 
-        code.writeline("if_pad_false_mask = tl.zeros((BLOCK_SIZE, ), dtype=tl.int32)")
-        code.writeline("if_pad_true_mask = tl.full((BLOCK_SIZE, ), 1, dtype=tl.int32)")
+            code.writeline("remaining = offset ")
+            for i in range(rank):
+                code.writeline(f"idx = remaining // out_strides{i}")
+                code.writeline(f"dst_index_{i} = idx")
+                code.writeline(f"remaining = remaining - idx * out_strides{i}")
+                code.newline()
 
-        code.writeline(
-            "cond = ((dst_index_0 >= valid_dim0_start) & (dst_index_0 < valid_dim0_end))"
-        )
-
-        for i in range(1, rank):
             code.writeline(
-                f"cond &= ((dst_index_{i} >= valid_dim{i}_start) & (dst_index_{i} < valid_dim{i}_end))"
+                "if_pad_false_mask = tl.zeros((BLOCK_SIZE, ), dtype=tl.int32)"
+            )
+            code.writeline(
+                "if_pad_true_mask = tl.full((BLOCK_SIZE, ), 1, dtype=tl.int32)"
             )
 
-        code.writeline(
-            "if_pad = tl.where(cond, if_pad_false_mask, if_pad_true_mask).to(tl.int1)"
-        )
-
-        for i in range(rank):
-            code.writeline(f"src_index_{i} = dst_index_{i} - valid_dim{i}_start ")
-
-        for i in range(rank):
             code.writeline(
-                f"src_index_{i} = tl.where(src_index_{i} < 0, 0, src_index_{i})"
+                "cond = ((dst_index_0 >= valid_dim0_start) & (dst_index_0 < valid_dim0_end))"
             )
 
-        code.newline()
-        code.writeline("if IS_REFLECT: ")
-        with code.indent():
-            for i in range(rank):
+            for i in range(1, rank):
                 code.writeline(
-                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start),
-                        valid_dim{i}_start - dst_index_{i}, src_index_{i})"""
-                )
-            for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} >= valid_dim{i}_end),
-                    (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"""
+                    f"cond &= ((dst_index_{i} >= valid_dim{i}_start) & (dst_index_{i} < valid_dim{i}_end))"
                 )
 
-        code.newline()
-        code.writeline("if IS_REPLICATE: ")
-        with code.indent():
-            for i in range(rank):
-                code.writeline(
-                    f"src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start), 0, src_index_{i})"
-                )
-            for i in range(rank):
-                end_cond = f"dst_index_{i} >= valid_dim{i}_end"
-                code.writeline(
-                    f"src_index_{i} = tl.where(dim{i}_has_pad & ({end_cond}), "
-                    f"x_shape{i} - 1, src_index_{i})"
-                )
-
-        code.newline()
-        code.writeline("if IS_CIRCULAR: ")
-        with code.indent():
-            for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start),
-                        dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"""
-                )
-            for i in range(rank):
-                code.writeline(
-                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} >= valid_dim{i}_end),
-                        dst_index_{i} - valid_dim{i}_end, src_index_{i})"""
-                )
-
-        code.newline()
-
-        code.writeline("src_offset = src_index_0 * in_strides0")
-        for i in range(1, rank):
-            code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
-
-        code.writeline("load_cond = src_index_0 < x_shape0")
-        for i in range(1, rank):
-            code.writeline(f"load_cond &= src_index_{i} < x_shape{i}")
-
-        code.writeline("if IS_CONSTANT: ")
-        with code.indent():
-            # use explicit comparison and bitwise-and for non-scalar masks
             code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)"
+                "if_pad = tl.where(cond, if_pad_false_mask, if_pad_true_mask).to(tl.int1)"
             )
-        code.writeline("else: ")
-        with code.indent():
+
+            for i in range(rank):
+                code.writeline(f"src_index_{i} = dst_index_{i} - valid_dim{i}_start ")
+
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(src_index_{i} < 0, 0, src_index_{i})"
+                )
+
+            code.newline()
+            code.writeline("if IS_REFLECT: ")
+            with code.indent():
+                for i in range(rank):
+                    code.writeline(
+                        f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start),
+                            valid_dim{i}_start - dst_index_{i}, src_index_{i})"""
+                    )
+                for i in range(rank):
+                    code.writeline(
+                        f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} >= valid_dim{i}_end),
+                        (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"""  # noqa: E501
+                    )
+
+            code.newline()
+            code.writeline("if IS_REPLICATE: ")
+            with code.indent():
+                for i in range(rank):
+                    code.writeline(
+                        f"src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start), 0, src_index_{i})"  # noqa: E501
+                    )
+                for i in range(rank):
+                    end_cond = f"dst_index_{i} >= valid_dim{i}_end"
+                    code.writeline(
+                        f"src_index_{i} = tl.where(dim{i}_has_pad & ({end_cond}), "
+                        f"x_shape{i} - 1, src_index_{i})"
+                    )
+
+            code.newline()
+            code.writeline("if IS_CIRCULAR: ")
+            with code.indent():
+                for i in range(rank):
+                    code.writeline(
+                        f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start),
+                            dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"""
+                    )
+                for i in range(rank):
+                    code.writeline(
+                        f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} >= valid_dim{i}_end),
+                            dst_index_{i} - valid_dim{i}_end, src_index_{i})"""
+                    )
+
+            code.newline()
+
+            code.writeline("src_offset = src_index_0 * in_strides0")
+            for i in range(1, rank):
+                code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
+
+            code.writeline("load_cond = src_index_0 < x_shape0")
+            for i in range(1, rank):
+                code.writeline(f"load_cond &= src_index_{i} < x_shape{i}")
+
+            code.writeline("if IS_CONSTANT: ")
+            with code.indent():
+                # use explicit comparison and bitwise-and for non-scalar masks
+                code.writeline(
+                    "x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)"
+                )
+            code.writeline("else: ")
+            with code.indent():
+                code.writeline(
+                    "x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)"
+                )
             code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)"
+                "tl.store(out0_ptr + offset, x_val, mask=offset < out_elem_cnt)"
             )
-        code.writeline("tl.store(out0_ptr + offset, x_val, mask=offset < out_elem_cnt)")
 
     return code
 

@@ -44,13 +44,13 @@ def special_log_ndtr_func(x):
 
 
 def special_log_ndtr(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOG_NDTR")
+    logger.debug("GEMS_ENFLAME SPECIAL_LOG_NDTR")
     if A.dtype not in (torch.float32,):
         raise ValueError("special_log_ndtr only supports float32")
     return special_log_ndtr_func(A)
 
 
 def special_log_ndtr_(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOG_NDTR_")
+    logger.debug("GEMS_ENFLAME SPECIAL_LOG_NDTR_")
     special_log_ndtr_func(A, out0=A)
     return A

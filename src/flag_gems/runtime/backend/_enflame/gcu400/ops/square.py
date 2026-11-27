@@ -59,7 +59,10 @@ def _choose_block(n_total, itemsize):
     # BLOCK ladder swept on this kernel body (see module docstring); mid
     # buckets follow the validated family ladder (rad2deg/special_exp2).
     if n_total <= 65536:
-        return 8192
+        # Use one full block for small shapes: the 64x64 (4096) shape measured 3.34us vs the common pointwise
+        # implementation 17.59us (torch 4.64us); previously this shape fell back to the common implementation, resulting
+        # in 0.21x.
+        return min(triton.next_power_of_2(n_total), 8192)
     if n_total <= 524288:
         return 32768
     if n_total > (1 << 28) and itemsize <= 2:
@@ -100,10 +103,10 @@ def square(A):
     logger.debug("GEMS_ENFLAME SQUARE")
     n = A.numel()
     if (
-        n < 65536
+        n < 256
         or not A.is_contiguous()
         or A.dtype not in (torch.float16, torch.bfloat16, torch.float32)
-        or n >= (1 << 31)
+        or n >= (1 << 31) - (1 << 17)
     ):
         from flag_gems.ops.square import square as _public
 
