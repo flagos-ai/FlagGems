@@ -61,7 +61,9 @@ def _assert_readonly_output_abi(result, factor, snapshot):
     metadata, values = snapshot
     assert _factor_metadata(factor) == metadata
     if values is not None:
-        assert torch.equal(factor, values)
+        # gems_assert_equal compares on CPU when the reference is there; pass the
+        # snapshot as a CPU reference so --ref=cpu runs do not mix devices.
+        utils.gems_assert_equal(factor, values.cpu())
     assert isinstance(result, torch.Tensor)
     assert result.device == metadata[0]
     assert result.dtype == metadata[1]
