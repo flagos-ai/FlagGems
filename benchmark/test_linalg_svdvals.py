@@ -17,8 +17,6 @@ import os
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 from .test_linalg_cond import _MusaLinalgStaticBaseline
