@@ -340,6 +340,19 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
         _ssbd_pool_key[grid_out](
             o_idx, stride_pack, y_keys, nnz, D, sparse_dim, BLOCK=_BLOCK
         )
+        if int(dim) < 0 and k != sparse_dim - 1:
+            # Probed on this build: the native kernel applies the entry-local
+            # form dv = y * (d - d*y) for every negative dim argument on every
+            # rank and sparse_dim (CPU and CUDA agree, and the standalone op
+            # equals the autograd gradient); a negative dim is never wrapped
+            # onto a pooled axis.  The ``local`` fast path below already covers
+            # the dim == -(sparse_dim) sub-case; re-keying every remaining
+            # negative-dim element to its own full row-major coordinate makes
+            # each pooled group a singleton, and the pooled path then
+            # degenerates to exactly that entry-local form.
+            _ssbd_entry_coords[grid_out](
+                o_idx, stride_pack, y_keys, nnz, D, sparse_dim, BLOCK=_BLOCK
+            )
         sorted_y_keys, perm_y = sort(y_keys)
         slot_sorted, _, ngroups = _seg_boundaries(sorted_y_keys)
         s_buf = torch.zeros(ngroups, dtype=result_flat.dtype, device=device)
@@ -348,6 +361,8 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
         # A negative dim keeps every stored coordinate in the reduction key, so
         # the only grouping left is by the entry itself; a non-negative dim
         # drops its own digit and entries sharing a key are summed together.
+        # ``local`` is the entry-local fast path; negative dims other than
+        # dim == -(sparse_dim) are routed to it by the re-keying above.
         local = int(dim) < 0 and k == sparse_dim - 1
         steps = max(1, min(62, (max(nnz_g * D, 1) - 1).bit_length() + 1))
         g_coords = torch.zeros(max(nnz_g * D, 1), dtype=torch.int64, device=device)

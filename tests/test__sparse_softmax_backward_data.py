@@ -427,3 +427,108 @@ def test_sparse_softmax_backward_data_dispatch():
     assert torch.equal(res._indices().cpu(), ref._indices().cpu())
     assert res_out is o
     assert torch.equal(res_out._values().cpu(), ref._values().cpu())
+
+
+def _colliding_coords_case(dim, dtype, device):
+    """A coalesced operand pair whose entries share the pooled group, so the
+    pooled paths and the entry-local path produce different values.
+
+    A negative ``dim`` wraps to sparse dim ``w = dim % 2``; the pooled rule
+    would group the entries that share every other sparse coordinate.  The two
+    columns below therefore share coordinate ``1 - w`` and differ on ``w``,
+    which puts both entries into one pooled group while their wrapped forward
+    also normalizes them together.  Random coordinates almost never collide, so
+    the shared test grid cannot distinguish the two rules; this support does.
+    """
+    w = dim % 2
+    kept = 1 - w
+    indices = torch.zeros((2, 2), dtype=torch.long)
+    indices[w] = torch.tensor([0, 1])
+    indices[kept] = torch.tensor([kept])  # both entries share this coordinate
+    values = torch.tensor([0.3, 1.7], dtype=dtype, device=device)
+    grad_values = torch.tensor([1.0, 0.0], dtype=dtype, device=device)
+    shape = (6, 5)
+    output = torch.sparse_coo_tensor(indices, values, shape, device=device).coalesce()
+    grad = torch.sparse_coo_tensor(
+        indices, grad_values, shape, device=device
+    ).coalesce()
+    self_tensor = torch.empty(0, dtype=dtype, device=device)
+    return grad, output, self_tensor
+
+
+# The negative-dim tests are also tagged with the requested backward operator ID
+# ``sparse_softmax_backward`` so the CI marker selector collects this backward
+# workload set under its own ID (the file itself keeps the upstream
+# ``sparse_softmax_backward_data`` marker).
+
+
+@pytest.mark.sparse_softmax_backward
+@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.parametrize("dim", [-2, -1])
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test__sparse_softmax_backward_data_negative_dim_entry_local(dim, dtype):
+    """Every negative dim argument takes the entry-local form on this build.
+
+    Measured on the native sparse backend of the target device (CPU and CUDA
+    agree): a negative ``dim`` applies ``dv = y * (d - d*y)`` per stored entry
+    and never pools the members of a wrapped sparse group, even when the wrapped
+    dim would put several entries into one group.  A pooled implementation
+    returns finite but wrong values on colliding coordinates, which the main
+    grid (distinct random coordinates) cannot expose.
+    """
+    grad, output, self_tensor = _colliding_coords_case(dim, dtype, flag_gems.device)
+
+    ref = torch.ops.aten._sparse_softmax_backward_data(
+        tu.to_reference(grad),
+        tu.to_reference(output),
+        dim,
+        tu.to_reference(self_tensor),
+    )
+    res = flag_gems._sparse_softmax_backward_data(grad, output, dim, self_tensor)
+
+    assert res.is_coalesced()
+    tu.assert_result_close(res, ref)
+
+
+@pytest.mark.sparse_softmax_backward
+@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.parametrize("dim", [-2, -1])
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test__sparse_softmax_backward_data_negative_dim_differs_from_pooled(dim, dtype):
+    """Guard the negative-dim branch against a pooled-regression.
+
+    The entry-local result and the pooled result of the colliding support are
+    distinct on this data; the pooled values are computed here only to assert
+    that the candidate does not return them.
+    """
+    grad, output, self_tensor = _colliding_coords_case(dim, dtype, flag_gems.device)
+
+    res = flag_gems._sparse_softmax_backward_data(
+        grad, output, dim, self_tensor
+    ).coalesce()
+    ref = torch.ops.aten._sparse_softmax_backward_data(
+        tu.to_reference(grad),
+        tu.to_reference(output),
+        dim,
+        tu.to_reference(self_tensor),
+    )
+
+    # The pooled alternative on the same support: one group per wrapped
+    # sparse-dim group, per dense position.
+    ref_out = tu.to_reference(output)
+    y = ref_out._values().cpu()
+    d = tu.to_reference(grad)._values().cpu()
+    w = dim % 2
+    pooled = torch.empty_like(y)
+    idx_ref = ref_out._indices().cpu()
+    for j in range(y.shape[0]):
+        mask = torch.ones(y.shape[0], dtype=torch.bool)
+        for s in range(2):
+            if s != w:
+                mask &= idx_ref[s] == idx_ref[s, j]
+        pooled[j] = y[j] * (d[j] - (d[mask] * y[mask]).sum(dim=0))
+
+    assert torch.allclose(
+        res._values().cpu(), ref._values().cpu(), rtol=1e-5, atol=1e-5
+    )
+    assert not torch.allclose(res._values().cpu(), pooled.cpu(), rtol=1e-5, atol=1e-5)

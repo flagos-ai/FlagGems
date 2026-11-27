@@ -20631,6 +20631,21 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: sparse_softmax_backward
+  description: The backward computation of `torch.ops.aten._sparse_softmax()`, exercised
+    through the autograd of the forward operator and the independent
+    `_sparse_softmax_backward_data` schema; every negative dim argument takes the
+    entry-local gradient form.
+  for:
+  - _sparse_softmax_backward_data
+  - _sparse_softmax_backward_data.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - beta: '5.4'
 - id: sparse_softmax_backward_data
   description: 'Computes the gradient of stored values for sparse COO softmax as y
     * (dy - sum(dy * y)) pooled over the entries that share the reduced coordinate,

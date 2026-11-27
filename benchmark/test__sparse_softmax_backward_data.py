@@ -105,3 +105,23 @@ def test__sparse_softmax_backward_data():
         dtypes=_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.sparse_softmax_backward
+def test_sparse_softmax_backward():
+    """The requested backward operator ID, sharing the backward benchmark plan.
+
+    ``_sparse_softmax_backward_data`` is the independent ATen backward of
+    ``_sparse_softmax`` (the engine-generated ``SparseSoftmaxBackward0`` node
+    calls exactly this schema), so the same descriptors, input builder and
+    candidate entry cover both IDs; only the marker differs.
+    """
+    bench = SparseSoftmaxBackwardDataBenchmark(
+        op_name="sparse_softmax_backward",
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        torch_op=torch.ops.aten._sparse_softmax_backward_data,
+        gems_op=getattr(flag_gems, "_sparse_softmax_backward_data", None),
+        dtypes=_DTYPES,
+    )
+    bench.run()
