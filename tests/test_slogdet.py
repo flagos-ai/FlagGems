@@ -69,6 +69,11 @@ def _reference_slogdet(inp):
     return torch.linalg.slogdet(inp)
 
 
+def _skip_eye_input(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        pytest.skip("Ascend torch.eye input construction does not support FP64")
+
+
 def _tols(dtype, n):
     """Tolerances scaled by matrix size: LU error grows with the pivot count."""
     if dtype in (torch.float32, torch.complex64):
@@ -103,6 +108,10 @@ def test_slogdet(shape, dtype):
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_slogdet_complex(shape, dtype):
     """Complex input: sign is a unit-modulus complex number, logabsdet is real."""
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip(
+            "Ascend torch.randn input construction does not support complex dtypes"
+        )
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
@@ -156,6 +165,7 @@ def test_slogdet_near_singular_scaled(dtype):
 @pytest.mark.parametrize("scale", [1e-3, 1e-2, 1e2, 1e3])
 def test_slogdet_scaled_identity(dtype, scale):
     """Uniformly scaled matrices stay accurate away from unit magnitude."""
+    _skip_eye_input(dtype)
     n = 4
     A = torch.eye(n, dtype=dtype, device=flag_gems.device) * scale
     ref = _reference_slogdet(utils.to_reference(A))
@@ -310,13 +320,7 @@ def test_slogdet_non_contiguous(dtype):
 @pytest.mark.slogdet
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_nan_inf(dtype):
-    """Non-finite entries must not crash and must not fabricate a finite result.
-
-    Inf input is checked against ATen directly. NaN input is only checked for
-    non-finiteness: ATen itself is not self-consistent there (for
-    [[nan, 0], [0, 1]] the CPU path returns logabsdet=nan while the CUDA path
-    returns -inf), so there is no single reference value to match.
-    """
+    """Non-finite inputs must not produce a finite logabsdet; sign is backend-defined."""
     inf_cases = {
         "inf": ([[float("inf"), 0.0], [0.0, 1.0]], 1.0),
         "neg_inf": ([[float("-inf"), 0.0], [0.0, 1.0]], -1.0),
@@ -336,10 +340,20 @@ def test_slogdet_nan_inf(dtype):
     for name, vals in nan_cases.items():
         A = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
-        la = res_logabsdet.item()
-        assert not (
-            la == la and abs(la) != float("inf")
-        ), f"{name}: a NaN input must not produce a finite logabsdet, got {la}"
+        # ATen's LU backends do not agree on the value for a NaN input:
+        # CUDA can return sign=1.0/logabsdet=0.0 while CPU/Ascend returns
+        # nan/-inf. The portable contract is a non-finite logabsdet and a
+        # valid slogdet sign; an exact value is not portable.
+        res_sign_value = res_sign.item()
+        assert res_sign_value != res_sign_value or res_sign_value in (
+            -1.0,
+            0.0,
+            1.0,
+        ), f"{name}: invalid slogdet sign for a NaN input: {res_sign_value}"
+        assert not torch.isfinite(res_logabsdet).item(), (
+            f"{name}: a NaN input must not produce a finite logabsdet, got "
+            f"{res_logabsdet.item()}"
+        )
 
 
 @pytest.mark.slogdet
@@ -354,6 +368,7 @@ def test_slogdet_large(n):
     Rounding both dimensions up to a power of two would make n=1025 build a
     2048x2048 block and exceed Triton's maximum tensor size.
     """
+    _skip_eye_input(torch.float64)
     dtype = torch.float64
     torch.manual_seed(0)
     # A diagonally dominant matrix keeps the LU well conditioned so the
@@ -377,6 +392,7 @@ def test_slogdet_large(n):
 )
 def test_slogdet_large_1025():
     """The exact size called out in review: 1025x1025."""
+    _skip_eye_input(torch.float64)
     n = 1025
     dtype = torch.float64
     torch.manual_seed(0)
@@ -395,9 +411,9 @@ def test_slogdet_large_1025():
 def test_slogdet_invalid_inputs():
     """Invalid inputs raise, matching the ATen conditions."""
     dev = flag_gems.device
-    with pytest.raises(RuntimeError, match="at least 2 dimensions"):
+    with pytest.raises(RuntimeError, match="at least 2 dimensions|nonempty least 2D"):
         flag_gems.slogdet(torch.randn(5, dtype=torch.float32, device=dev))
-    with pytest.raises(RuntimeError, match="at least 2 dimensions"):
+    with pytest.raises(RuntimeError, match="at least 2 dimensions|nonempty least 2D"):
         flag_gems.slogdet(torch.randn((), dtype=torch.float32, device=dev))
     with pytest.raises(RuntimeError, match="square"):
         flag_gems.slogdet(torch.randn(3, 4, dtype=torch.float32, device=dev))
@@ -413,22 +429,38 @@ def test_slogdet_invalid_inputs():
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_backward(dtype):
     """d logabsdet / dA == inv(A)^T, matching ATen."""
+    _skip_eye_input(dtype)
     n = 5
     torch.manual_seed(0)
     A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
         n, dtype=dtype, device=flag_gems.device
     )
 
-    ref_A = utils.to_reference(A).clone().requires_grad_(True)
+    use_cpu_oracle = flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+    ref_input = A.cpu() if use_cpu_oracle else utils.to_reference(A)
+    ref_A = ref_input.clone().requires_grad_(True)
     ref = _reference_slogdet(ref_A)
     ref.logabsdet.backward()
 
     gems_A = A.clone().requires_grad_(True)
     _, logabsdet = flag_gems.slogdet(gems_A)
-    logabsdet.backward()
+    assert logabsdet.device == gems_A.device
+    if use_cpu_oracle:
+        # Create the loss seed on CPU and bypass unreliable FP64 leaf accumulation.
+        try:
+            (gems_grad,) = torch.autograd.grad(logabsdet.cpu(), gems_A)
+        except RuntimeError as error:
+            if "CUBLAS_STATUS_NOT_SUPPORTED" not in str(error):
+                raise
+            pytest.xfail("Iluvatar ATen does not support FP64 LU in slogdet backward")
+    else:
+        logabsdet.backward()
+        gems_grad = gems_A.grad
 
+    assert gems_grad.device == gems_A.device
+    assert gems_grad.dtype == gems_A.dtype
     torch.testing.assert_close(
-        gems_A.grad.cpu(), ref_A.grad.cpu().to(gems_A.grad.dtype), **_tols(dtype, n)
+        gems_grad.cpu(), ref_A.grad.cpu().to(gems_grad.dtype), **_tols(dtype, n)
     )
 
 
@@ -436,22 +468,38 @@ def test_slogdet_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_batched_backward(dtype):
     """Batched backward parity."""
+    _skip_eye_input(dtype)
     n = 4
     torch.manual_seed(0)
     A = torch.randn(3, n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
         n, dtype=dtype, device=flag_gems.device
     )
 
-    ref_A = utils.to_reference(A).clone().requires_grad_(True)
+    use_cpu_oracle = flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+    ref_input = A.cpu() if use_cpu_oracle else utils.to_reference(A)
+    ref_A = ref_input.clone().requires_grad_(True)
     ref = _reference_slogdet(ref_A)
     ref.logabsdet.sum().backward()
 
     gems_A = A.clone().requires_grad_(True)
     _, logabsdet = flag_gems.slogdet(gems_A)
-    logabsdet.sum().backward()
+    assert logabsdet.device == gems_A.device
+    if use_cpu_oracle:
+        # Create the loss seed on CPU and bypass unreliable FP64 leaf accumulation.
+        try:
+            (gems_grad,) = torch.autograd.grad(logabsdet.cpu().sum(), gems_A)
+        except RuntimeError as error:
+            if "CUBLAS_STATUS_NOT_SUPPORTED" not in str(error):
+                raise
+            pytest.xfail("Iluvatar ATen does not support FP64 LU in slogdet backward")
+    else:
+        logabsdet.sum().backward()
+        gems_grad = gems_A.grad
 
+    assert gems_grad.device == gems_A.device
+    assert gems_grad.dtype == gems_A.dtype
     torch.testing.assert_close(
-        gems_A.grad.cpu(), ref_A.grad.cpu().to(gems_A.grad.dtype), **_tols(dtype, n)
+        gems_grad.cpu(), ref_A.grad.cpu().to(gems_grad.dtype), **_tols(dtype, n)
     )
 
 
@@ -459,6 +507,7 @@ def test_slogdet_batched_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_identity(dtype):
     """The identity has sign 1 and logabsdet 0."""
+    _skip_eye_input(dtype)
     for n in (1, 3, 8, 65):
         A = torch.eye(n, dtype=dtype, device=flag_gems.device)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
