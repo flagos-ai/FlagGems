@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 
 
@@ -27,12 +26,8 @@ def _make_grouped_inputs(groups, n_size, k_size, dtype):
     torch.manual_seed(0)
     group_sizes = [1 + (group_idx * 17) % 31 for group_idx in range(groups)]
     total_m = sum(group_sizes)
-    mat_a = torch.rand(
-        (total_m, k_size), dtype=dtype, device=flag_gems.device
-    )
-    mat_b = torch.rand(
-        (groups, k_size, n_size), dtype=dtype, device=flag_gems.device
-    )
+    mat_a = torch.rand((total_m, k_size), dtype=dtype, device=flag_gems.device)
+    mat_b = torch.rand((groups, k_size, n_size), dtype=dtype, device=flag_gems.device)
     offs = torch.tensor(
         [sum(group_sizes[: group_idx + 1]) for group_idx in range(groups)],
         dtype=torch.int32,
@@ -47,8 +42,7 @@ def _grouped_reference(mat_a, mat_b, offs):
     ref_offs = utils.to_reference(offs, False)
     boundaries = [0] + ref_offs.cpu().tolist()
     chunks = [
-        ref_a[boundaries[group_idx] : boundaries[group_idx + 1]]
-        @ ref_b[group_idx]
+        ref_a[boundaries[group_idx] : boundaries[group_idx + 1]] @ ref_b[group_idx]
         for group_idx in range(ref_b.shape[0])
     ]
     return torch.cat(chunks, dim=0)
@@ -57,7 +51,7 @@ def _grouped_reference(mat_a, mat_b, offs):
 @pytest.mark.grouped_mm
 @pytest.mark.group_mm
 @pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.8"),
+    flag_gems.vendor_name != "hygon" and utils.SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
 )
 @pytest.mark.parametrize("groups,n_size,k_size", GNK_SHAPES)
