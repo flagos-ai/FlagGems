@@ -52,6 +52,7 @@ from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .expand_copy import expand_copy
+from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
 from .float_power_scalar_tensor import float_power_scalar_tensor
 from .float_power_tensor_scalar import float_power_tensor_scalar
 from .float_power_tensor_tensor import float_power_tensor_tensor
@@ -202,6 +203,7 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "expand_copy",
+    "fake_quantize_per_tensor_affine",
     "float_power_scalar_tensor",
     "float_power_tensor_scalar",
     "float_power_tensor_tensor",
