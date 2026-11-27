@@ -46,11 +46,13 @@ from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
 from .cudnn_convolution import cudnn_convolution
+from .det import det
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .expand_copy import expand_copy
+from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
 from .float_power_scalar_tensor import float_power_scalar_tensor
 from .float_power_tensor_scalar import float_power_tensor_scalar
 from .float_power_tensor_tensor import float_power_tensor_tensor
@@ -69,6 +71,7 @@ from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .isreal import isreal
 from .kthvalue import kthvalue
+from .less_equal import less_equal
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
@@ -79,6 +82,8 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_norm import linalg_norm
+from .linalg_polar import linalg_polar
+from .linalg_polar_out import linalg_polar_out
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -86,15 +91,18 @@ from .linalg_solve_triangular import (
 )
 from .linalg_svdvals import linalg_svdvals
 from .linalg_tensorinv import linalg_tensorinv
+from .linalg_vander import linalg_vander
 from .linear import linear
 from .log10_ import log10_
 from .log_normal import log_normal
 from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .max_pool2d_backward import max_pool2d_backward
 from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .median import median
+from .median_dim_values import median_dim_values
 from .mm import mm, mm_out
 from .mvlgamma import run as mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -110,6 +118,8 @@ from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_int
 from .replication_pad1d_backward import replication_pad1d_backward
 from .resolve_neg import resolve_neg
+from .row_stack import row_stack
+from .row_stack_out import row_stack_out
 from .scatter_add import scatter_add_
 from .smm import smm
 from .softplus import softplus_backward
@@ -190,10 +200,12 @@ __all__ = [
     "conv_transpose2d",
     "conv_transpose3d",
     "cudnn_convolution",
+    "det",
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
     "expand_copy",
+    "fake_quantize_per_tensor_affine",
     "float_power_scalar_tensor",
     "float_power_tensor_scalar",
     "float_power_tensor_tensor",
@@ -215,6 +227,7 @@ __all__ = [
     "isreal",
     "kthvalue",
     "ldl_factor_ex",
+    "less_equal",
     "lift_fresh",
     "lift_out",
     "linalg_cholesky",
@@ -226,21 +239,26 @@ __all__ = [
     "linalg_matrix_power",
     "linalg_matrix_power_out",
     "linalg_norm",
+    "linalg_polar",
+    "linalg_polar_out",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
     "linalg_tensorinv",
+    "linalg_vander",
     "linear",
     "log10_",
     "log_normal",
     "log_normal_",
     "matmul_bf16",
     "matmul_int8",
+    "max_pool2d_backward",
     "max_pool2d_with_indices_backward",
     "max_pool3d_with_indices_backward",
     "median",
+    "median_dim_values",
     "mm",
     "mm_out",
     "mvlgamma",
@@ -260,6 +278,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "replication_pad1d_backward",
     "resolve_neg",
+    "row_stack",
+    "row_stack_out",
     "run",
     "scaled_dot_product_attention",
     "scatter_add_",

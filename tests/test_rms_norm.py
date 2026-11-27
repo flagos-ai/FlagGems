@@ -181,6 +181,14 @@ def test_rms_norm_ascend_core_dim_boundary(ascend_rms_norm, M, N):
         "rms_norm_grad_dx_kernel",
         "rms_norm_grad_dw_kernel",
     ]
+    # On a TensorView-capable build the forward is served by the tiled kernel
+    # instead, which has to cap its grid for the same reason. Record it too and
+    # require the forward to come from exactly one of the two.
+    forward_names = {"rms_norm_kernel"}
+    if "rms_norm_tv_kernel" in ascend_rms_norm:
+        names.append("rms_norm_tv_kernel")
+        forward_names.add("rms_norm_tv_kernel")
+
     saved = {name: ascend_rms_norm[name] for name in names}
     recs = {name: _GridRecorder(saved[name]) for name in names}
     try:
@@ -189,14 +197,18 @@ def test_rms_norm_ascend_core_dim_boundary(ascend_rms_norm, M, N):
     finally:
         ascend_rms_norm.update(saved)
 
+    forward_launches = sum(len(recs[name].grids) for name in forward_names)
+    assert forward_launches == 1, f"forward launched {forward_launches} times"
+
     for name, rec in recs.items():
-        assert len(rec.grids) == 1, f"{name} launched {len(rec.grids)} times"
-        grid = rec.grids[0]
-        # NPU collapses a 2D grid to 1D, so the product is the coreDim.
-        core_dim = 1
-        for dim in grid:
-            core_dim *= dim
-        assert 0 < core_dim <= MAX_CORE_DIM, f"{name} launched coreDim={core_dim}"
+        if name not in forward_names:
+            assert len(rec.grids) == 1, f"{name} launched {len(rec.grids)} times"
+        for grid in rec.grids:
+            # NPU collapses a 2D grid to 1D, so the product is the coreDim.
+            core_dim = 1
+            for dim in grid:
+                core_dim *= dim
+            assert 0 < core_dim <= MAX_CORE_DIM, f"{name} launched coreDim={core_dim}"
 
 
 @pytest.mark.rms_norm
