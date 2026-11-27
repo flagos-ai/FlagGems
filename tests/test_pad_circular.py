@@ -41,6 +41,7 @@ SHAPE_PAD_CASES = [
 
 
 @pytest.mark.pad_circular
+@pytest.mark.underscore_pad_circular
 @pytest.mark.parametrize("shape, pad", SHAPE_PAD_CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pad_circular(shape, pad, dtype):
