@@ -70,7 +70,7 @@ def test_slow_conv2d_forward(dtype):
     bench = SlowConv2dForwardBenchmark(
         op_name="slow_conv2d_forward",
         torch_op=torch.ops.aten._slow_conv2d_forward,
-        gems_op=flag_gems.ops._slow_conv2d_forward,
+        gems_op=flag_gems._slow_conv2d_forward,
         dtypes=[dtype],
     )
     bench.run()
