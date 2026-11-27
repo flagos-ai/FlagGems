@@ -81,6 +81,8 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
 from .linalg_norm import linalg_norm
+from .linalg_polar import linalg_polar
+from .linalg_polar_out import linalg_polar_out
 from .linalg_qr import linalg_qr, linalg_qr_out
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -233,6 +235,8 @@ __all__ = [
     "linalg_matrix_power",
     "linalg_matrix_power_out",
     "linalg_norm",
+    "linalg_polar",
+    "linalg_polar_out",
     "linalg_qr",
     "linalg_qr_out",
     "linalg_solve_triangular",
