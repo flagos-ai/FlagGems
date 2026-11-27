@@ -422,7 +422,6 @@ _FULL_CONFIG = (
     ("_foreach_trunc_", _foreach_trunc_),
     ("_foreach_zero", _foreach_zero),
     ("_foreach_zero_", _foreach_zero_),
-    ("_functional_assert_async.msg", _functional_assert_async),
     (
         "_functional_sym_constrain_range",
         _functional_sym_constrain_range,
@@ -1472,7 +1471,6 @@ _FULL_CONFIG = (
     ("exp2", exp2),
     ("exp2_", exp2_),
     ("exp_", exp_),
-    ("expand", expand),
     ("expand_copy", expand_copy),
     ("expm1", expm1),
     ("expm1.out", expm1_out),
@@ -1527,7 +1525,6 @@ _FULL_CONFIG = (
     ("fill_diagonal_", fill_diagonal_),
     ("fix", fix),
     ("fix_", fix_),
-    ("flatten.using_ints", flatten),
     ("flatten_dense_tensors", flatten_dense_tensors),
     ("flip", flip),
     ("fliplr", fliplr),
@@ -1648,8 +1645,6 @@ _FULL_CONFIG = (
     ("histogram.bin_ct", histogram_bin_ct),
     ("histogram.bins_tensor", histogram_bins_tensor),
     ("histogramdd", histogramdd, None, ["CompositeImplicitAutograd"]),
-    ("hsplit.array", hsplit),
-    ("hsplit.int", hsplit),
     ("hspmm", hspmm, None, ["SparseCUDA"]),
     ("hstack", hstack),
     ("huber_loss", huber_loss),
@@ -1661,7 +1656,7 @@ _FULL_CONFIG = (
         "i0",
         i0,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("i0.out", i0_out),
     ("i0_", i0_),
@@ -1736,13 +1731,13 @@ _FULL_CONFIG = (
         "lerp.Scalar",
         lerp_scalar,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     (
         "lerp.Tensor",
         lerp_tensor,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
@@ -2245,7 +2240,6 @@ _FULL_CONFIG = (
     ("round", round),
     ("round.out", round_out),
     ("round_", round_),
-    ("row_indices", row_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("row_indices_copy", row_indices_copy, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "row_indices_copy.out",
@@ -2547,7 +2541,6 @@ _FULL_CONFIG = (
     ("topk", topk),
     ("trace", trace),
     ("trace_backward", trace_backward),
-    ("transpose.int", transpose),
     ("transpose_", transpose_),
     ("transpose_copy.int", transpose_copy),
     ("trapezoid.dx", trapz),
@@ -2570,7 +2563,6 @@ _FULL_CONFIG = (
     ("true_divide_.Tensor", true_divide_tensor_),
     ("trunc", trunc),
     ("trunc_", trunc_),
-    ("unbind.int", unbind),
     ("unbind_copy.int", unbind_copy),
     ("unflatten_dense_tensors", unflatten_dense_tensors),
     ("unfold", unfold),
@@ -2581,9 +2573,6 @@ _FULL_CONFIG = (
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),
     ("unique_dim_consecutive", unique_dim_consecutive),
-    ("unsafe_split_with_sizes", unsafe_split_with_sizes),
-    ("unsqueeze", unsqueeze),
-    ("unsqueeze_", unsqueeze_),
     ("upsample_bicubic2d", upsample_bicubic2d),
     ("upsample_bicubic2d_backward", upsample_bicubic2d_backward),
     ("upsample_bicubic2d_backward.grad_input", upsample_bicubic2d_backward_grad_input),
@@ -2621,7 +2610,6 @@ _FULL_CONFIG = (
     ("var.dim", var_dim),
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
-    ("view_as_complex", view_as_complex),
     ("view_as_complex_copy", view_as_complex_copy),
     ("view_as_real_copy", view_as_real_copy),
     ("view_copy", view_copy),
@@ -2809,7 +2797,12 @@ class use_gems:
         del self.exclude
         del self.include
         del self.registrar
-        del current_work_registrar
+        # Reset to None instead of `del`: the module-level name must keep
+        # existing, otherwise `flag_gems.current_work_registrar` raises
+        # AttributeError after the first use_gems() exit. Callers and backends
+        # only check `is not None`, and tests save/restore this attribute
+        # around only_enable(), which requires it to stay readable.
+        current_work_registrar = None
         if self.record:
             teardown_flaggems_logging()
 
@@ -2842,8 +2835,10 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "linalg_eigh_backward",
     "linalg_svd_backward",
     "maximum_backward",
     "only_enable",
+    "slow_conv2d_forward_backward",
     "use_gems",
 ]
