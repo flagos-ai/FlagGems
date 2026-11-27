@@ -184,6 +184,18 @@ segment_reduce_backward:
 segment_reduce_backward_out:
   <<: *segment_reduce_shapes
 
+cat_backward:
+  shapes:
+  - - 1
+    - 64
+  - - 64
+    - 64
+  - - 1024
+    - 64
+  - - 8192
+    - 64
+  shape_desc: backward input shape
+
 gelu_backward:
   shapes:
     - [1048576] # 1024 * 1024

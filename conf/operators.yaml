@@ -3186,6 +3186,18 @@ ops:
   stages:
   - stable: '2.2'
   cpp: '4.0'
+- id: cat_backward
+  description: First-order autograd rule for cat implemented with Triton kernels or
+    zero-copy gradient views.
+  for:
+  - cat
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: cat_out
   description: A variant of `cat` that assigns the result to the provided `out` parameter.
   for:

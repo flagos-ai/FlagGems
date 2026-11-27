@@ -1212,7 +1212,7 @@ _FULL_CONFIG = (
     ("bucketize.Tensor", bucketize),
     ("can_cast", can_cast, None, ["CompositeImplicitAutograd"]),
     ("cartesian_prod", cartesian_prod),
-    ("cat", cat),
+    ("cat", cat, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
     ("cauchy_", cauchy_),
