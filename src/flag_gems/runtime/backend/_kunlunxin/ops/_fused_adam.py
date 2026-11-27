@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Kunlunxin kernels and dispatch for fused Adam."""
+
 import logging
 import math
 
@@ -19,7 +21,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._fused_adam import _fused_adam as _generic_fused_adam
+from flag_gems.ops._fused_adam import _fused_adam_ as _generic_fused_adam_
+
+from .clone import clone
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +113,12 @@ def _fused_adam_flat_kernel(
     inv_bc2 = 1.0 / _one_minus_exp(step * LOG_BETA2)
 
     corrected_m = m * inv_bc1
+    variance = v
     if AMSGRAD:
-        corrected_v = v * inv_bc2
         prev_max = tl.load(max_exp_avg_sq + offsets)
-        new_max = tl.maximum(prev_max, corrected_v)
-        tl.store(max_exp_avg_sq + offsets, new_max)
-        denom = tl.sqrt(new_max) + EPS
-    else:
-        denom = tl.sqrt(v * inv_bc2) + EPS
+        variance = tl.maximum(prev_max, v)
+        tl.store(max_exp_avg_sq + offsets, variance)
+    denom = tl.sqrt(variance * inv_bc2) + EPS
 
     if WEIGHT_DECAY > 0:
         update = corrected_m / denom + WEIGHT_DECAY * p
@@ -277,7 +279,7 @@ def _legacy_fused_adam(
             )
         kernel_state_steps.extend([state_steps[index]] * len(chunks))
 
-    _generic_fused_adam(
+    _generic_fused_adam_(
         kernel_params,
         kernel_grads,
         kernel_exp_avgs,
@@ -296,8 +298,8 @@ def _legacy_fused_adam(
     )
 
 
-def _fused_adam(
-    params,
+def _fused_adam_(
+    self,
     grads,
     exp_avgs,
     exp_avg_sqs,
@@ -314,10 +316,10 @@ def _fused_adam(
     grad_scale=None,
     found_inf=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN FUSED_ADAM")
+    logger.debug("GEMS_KUNLUNXIN FUSED_ADAM_")
 
     plan = _fast_plan(
-        params,
+        self,
         grads,
         exp_avgs,
         exp_avg_sqs,
@@ -332,7 +334,7 @@ def _fused_adam(
     )
     if plan is None:
         _legacy_fused_adam(
-            params,
+            self,
             grads,
             exp_avgs,
             exp_avg_sqs,
@@ -348,7 +350,7 @@ def _fused_adam(
             grad_scale,
             found_inf,
         )
-        return params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs
+        return
 
     log_beta1 = math.log(beta1)
     log_beta2 = math.log(beta2)
@@ -371,11 +373,10 @@ def _fused_adam(
             amsgrad,
             maximize,
         )
-    return params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs
 
 
-def _fused_adam_(
-    self,
+def _fused_adam(
+    params,
     grads,
     exp_avgs,
     exp_avg_sqs,
@@ -392,13 +393,13 @@ def _fused_adam_(
     grad_scale=None,
     found_inf=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN FUSED_ADAM_")
-    _fused_adam(
-        self,
-        grads,
-        exp_avgs,
-        exp_avg_sqs,
-        max_exp_avg_sqs,
+    logger.debug("GEMS_KUNLUNXIN FUSED_ADAM")
+    outputs = tuple(
+        [clone(tensor) for tensor in tensors]
+        for tensors in (params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs)
+    )
+    _fused_adam_(
+        *outputs,
         state_steps,
         lr=lr,
         beta1=beta1,
@@ -410,4 +411,4 @@ def _fused_adam_(
         grad_scale=grad_scale,
         found_inf=found_inf,
     )
-    return None
+    return outputs
