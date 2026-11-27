@@ -16731,6 +16731,17 @@ ops:
   - Math
   stages:
   - stable: '3.0'
+- id: polar_backward
+  description: Triton backward implementation and autograd contract for polar.
+  for:
+  - polar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: polygamma
   description: 'Computes the n-th derivative of the digamma function of the input
     (the polygamma function),
