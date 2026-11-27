@@ -409,6 +409,7 @@ from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .subtract import subtract
+from .subtract_ import subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .take import take, take_out
@@ -917,6 +918,7 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "subtract",
+    "subtract_",
     "sum",
     "sum_dim",
     "sum_dim_out",
