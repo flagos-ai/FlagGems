@@ -14364,6 +14364,17 @@ ops:
   - Tensor
   stages:
   - alpha: 5.5.0
+- id: mhc_post_fwd
+  description: Apply four-stream mHC residual and post-layer mixing.
+  for:
+  - mhc_post_fwd
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: min
   description: Returns the minimum value of all elements in the `input` tensor.
   for:
