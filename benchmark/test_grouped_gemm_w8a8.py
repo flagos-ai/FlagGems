@@ -38,6 +38,10 @@ No dynamic routing metadata is cached or copied to the CPU. Initial input/output
 allocation, JIT and object construction are outside event timing. The candidate's
 own expert-prefix construction is inside timing. Accuracy tests belong to
 tests/test_grouped_gemm_w8a8.py. Historical reference=deep_gemm remains explicit.
+
+NVIDIA uses the same shape/input loop with block-scaled FP8 operands. Its
+DeepGEMM baseline receives prepacked, aligned inputs; padding and scale layout
+preparation stay outside timing. The candidate includes its task preparation.
 """
 
 import json
@@ -49,7 +53,10 @@ import triton
 import triton.language as tl
 
 import flag_gems
-from tests.test_grouped_gemm_w8a8 import deepgemm_grouped_gemm, make_grouped_gemm_case
+from tests.test_grouped_gemm_w8a8 import (
+    get_grouped_gemm_int8_reference,
+    make_grouped_gemm_case,
+)
 
 from . import base, consts
 from .base import Benchmark
@@ -410,7 +417,7 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
         return output
 
 
-class GroupedGemmInt8Benchmark(Benchmark):
+class GroupedGemmBenchmark(Benchmark):
     DEFAULT_SHAPES = [(45, 512, 6144, 257), (45, 6144, 256, 257)]
     DEFAULT_SHAPE_DESC = "M,N,K,E"
 
@@ -423,14 +430,61 @@ class GroupedGemmInt8Benchmark(Benchmark):
                 lengths = [m // e + (expert < m % e) for expert in range(e)]
             if len(lengths) != e or sum(lengths) != m:
                 raise ValueError("expert row lengths must match M and E")
-            yield make_grouped_gemm_case(lengths, n, k, self.device)
+            if cur_dtype != torch.float8_e4m3fn:
+                yield make_grouped_gemm_case(lengths, n, k, self.device)
+                continue
+
+            import deep_gemm
+
+            args = make_grouped_gemm_case(
+                lengths, n, k, self.device, seed=42, dtype=cur_dtype, block_scaled=True
+            )
+            # DeepGEMM requires aligned expert segments and column-major A scales.
+            # Prepack once outside timing; only the native FP8 GEMM is measured.
+            alignment = deep_gemm.get_mk_alignment_for_contiguous_layout()
+            padded_lengths = [
+                triton.cdiv(length, alignment) * alignment for length in lengths
+            ]
+            padded_m = sum(padded_lengths)
+            a = torch.zeros((padded_m, k), dtype=cur_dtype, device=self.device)
+            sa = torch.zeros(
+                (k // 128, padded_m), dtype=torch.float32, device=self.device
+            ).T
+            layout = torch.full((padded_m,), -1, dtype=torch.int32, device=self.device)
+            start = padded_start = 0
+            for expert, (length, padded_length) in enumerate(
+                zip(lengths, padded_lengths)
+            ):
+                rows = slice(padded_start, padded_start + length)
+                a[rows].copy_(args[0][start : start + length])
+                sa[rows].copy_(args[1][start : start + length])
+                layout[rows] = expert
+                start += length
+                padded_start += padded_length
+            output = torch.empty(
+                (padded_m, n), dtype=torch.bfloat16, device=self.device
+            )
+            self.native_inputs = (a, sa), (args[2], args[3]), output, layout
+            yield args
+
+    def fp8_reference(self, *args):
+        import deep_gemm
+
+        deep_gemm.m_grouped_fp8_gemm_nt_contiguous(
+            *self.native_inputs, recipe=(1, 128, 128), disable_ue8m0_cast=True
+        )
+        return self.native_inputs[2]
 
 
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("metax", "thead", "hygon")
-    or "grouped_gemm_w8a8" not in vars(flag_gems),
-    reason="requires a registered MetaX, PPU or Hygon grouped GEMM implementation",
+    not (
+        flag_gems.vendor_name in ("ascend", "hygon", "metax", "thead")
+        and "grouped_gemm_w8a8" in vars(flag_gems)
+        or flag_gems.vendor_name == "nvidia"
+        and "grouped_gemm_w8a8_fp8" in vars(flag_gems)
+    ),
+    reason="requires a registered grouped GEMM implementation",
 )
 def test_grouped_gemm_w8a8():
     if flag_gems.vendor_name == "hygon":
@@ -449,11 +503,22 @@ def test_grouped_gemm_w8a8():
         )
         bench.torch_op = bench.mctlass_reference
     else:
-        pytest.importorskip("deep_gemm")
-        bench = GroupedGemmInt8Benchmark(
+        block_scaled = flag_gems.vendor_name == "nvidia"
+        if block_scaled:
+            pytest.importorskip("deep_gemm")
+            torch_op = None
+        else:
+            torch_op = get_grouped_gemm_int8_reference()
+        bench = GroupedGemmBenchmark(
             op_name="grouped_gemm_w8a8",
-            torch_op=deepgemm_grouped_gemm,
-            gems_op=flag_gems.grouped_gemm_w8a8,
-            dtypes=[torch.bfloat16],
+            torch_op=torch_op,
+            gems_op=(
+                flag_gems.grouped_gemm_w8a8_fp8
+                if block_scaled
+                else flag_gems.grouped_gemm_w8a8
+            ),
+            dtypes=[torch.float8_e4m3fn if block_scaled else torch.bfloat16],
         )
+        if block_scaled:
+            bench.torch_op = bench.fp8_reference
     bench.run()
