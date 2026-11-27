@@ -69,6 +69,7 @@ from .index_copy_ import index_copy_
 from .index_reduce import index_reduce, index_reduce_
 from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
+from .int_repr import int_repr
 from .isreal import isreal
 from .kthvalue import kthvalue
 from .less_equal import less_equal
@@ -224,6 +225,7 @@ __all__ = [
     "index_reduce_",
     "index_reduce_out",
     "index_select_backward",
+    "int_repr",
     "isreal",
     "kthvalue",
     "ldl_factor_ex",
