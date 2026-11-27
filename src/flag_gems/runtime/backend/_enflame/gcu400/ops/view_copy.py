@@ -11,7 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+#
+# GCU400 customization (2026-11-21 retune): DMA bytes per tile (not CTAs or
+# num_stages) set the streaming bandwidth. Measured A/B on do_bench(median):
+# 512 KiB/tile at num_warps=4 reaches ~1.73 TB/s for fp32 and ~2.04 TB/s for
+# 16-bit in the big band, versus ~1.5 TB/s for the previous 256 KiB ladder;
+# the 1M-64M fp32 band prefers 8-byte lanes with a 64 KiB tile.
 import logging
 
 import torch
@@ -19,7 +24,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +31,66 @@ logger = logging.getLogger(__name__)
 # rationale.
 _GRID_SIZE = 48
 
+# --- TUNING PARAMS START ---
+_TINY_N = 8192
+_SMALL_N = 1 << 20
+_LARGE_N = 1 << 26
+_LARGE_TILE_BYTES = 512 * 1024
+_MEDIUM_TILE_BYTES = 256 * 1024
+_SMALL_TILE_BYTES = 32 * 1024
+_MEDIUM_WIDE_TILE_BYTES = 64 * 1024
+# --- TUNING PARAMS END ---
 
-@libentry()
-@triton.jit
+
+@triton.jit(do_not_specialize=["n_elements"])
 def view_copy_kernel(
     src_ptr,
     dst_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
-    GRID_SIZE: tl.constexpr,
-    NUM_STAGES: tl.constexpr,
+    MASKED: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
+    num_ctas = tl.num_programs(axis=0)
     num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
-    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
-        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < n_elements
-        vals = tl.load(src_ptr + offsets, mask=mask)
-        tl.store(dst_ptr + offsets, vals, mask=mask)
+    lane_offset = tl.arange(0, BLOCK_SIZE)
+    for tile_id in tl.range(pid, num_tile, num_ctas):
+        offsets = tile_id * BLOCK_SIZE + lane_offset
+        if MASKED:
+            mask = offsets < n_elements
+            tl.store(
+                dst_ptr + offsets, tl.load(src_ptr + offsets, mask=mask), mask=mask
+            )
+        else:
+            tl.store(dst_ptr + offsets, tl.load(src_ptr + offsets))
+
+
+def _pick_launch(n, element_size):
+    """Return (view_bytes, tile_bytes, num_warps) for this element count/width."""
+    if n <= _TINY_N:
+        return element_size, max(triton.next_power_of_2(n), 64) * element_size, 4
+    if n <= _SMALL_N:
+        return element_size, _SMALL_TILE_BYTES, 4
+    if n >= _LARGE_N:
+        return element_size, _LARGE_TILE_BYTES, 4
+    if element_size == 4:
+        # Medium fp32 band: 8-byte lanes keep the DMA queue full.
+        return 8, _MEDIUM_WIDE_TILE_BYTES, 4
+    return element_size, _MEDIUM_TILE_BYTES, 2
+
+
+def _widen(t, view_bytes):
+    """Reinterpret a contiguous tensor with wider lanes (pure metadata view).
+
+    The flat view is taken first: ``Tensor.view(dtype)`` alone requires the last
+    dimension to divide evenly, which fails for shapes such as 16x7x57x32x29 even
+    though the total element count is even.
+    """
+    if view_bytes == 8:
+        return t.view(-1).view(torch.int64) if t.element_size() == 4 else None
+    if view_bytes == 4:
+        return t.view(-1).view(torch.int32) if t.element_size() == 2 else None
+    return None
 
 
 def view_copy(x: torch.Tensor, size) -> torch.Tensor:
@@ -86,17 +132,31 @@ def view_copy(x: torch.Tensor, size) -> torch.Tensor:
     if not out.is_contiguous():
         out = out.contiguous()
 
-    block_size = 16384
-    num_tile = triton.cdiv(n_elements, block_size)
+    view_bytes, tile_bytes, num_warps = _pick_launch(n_elements, x.element_size())
+    src_view, dst_view = src, out
+    if view_bytes > x.element_size():
+        wide_src, wide_dst = _widen(src, view_bytes), _widen(out, view_bytes)
+        legal = (
+            wide_src is not None
+            and wide_dst is not None
+            and src.data_ptr() % view_bytes == 0
+            and out.data_ptr() % view_bytes == 0
+        )
+        if legal:
+            src_view, dst_view = wide_src, wide_dst
+        else:
+            tile_bytes, num_warps = _MEDIUM_TILE_BYTES, 2
+    block_size = max(tile_bytes // src_view.element_size(), 64)
+    n_lanes = src_view.numel()
+    num_tile = triton.cdiv(n_lanes, block_size)
     grid = (min(_GRID_SIZE, num_tile), 1, 1)
     with torch_device_fn.device(x.device.index):
         view_copy_kernel[grid](
-            src,
-            out,
-            n_elements,
+            src_view,
+            dst_view,
+            n_lanes,
             BLOCK_SIZE=block_size,
-            GRID_SIZE=min(_GRID_SIZE, num_tile),
-            NUM_STAGES=4,
-            num_warps=4,
+            MASKED=bool(n_lanes % block_size),
+            num_warps=num_warps,
         )
     return out

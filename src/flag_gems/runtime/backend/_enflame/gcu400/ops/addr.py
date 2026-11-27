@@ -76,8 +76,50 @@ def addr_kernel(
     tl.store(output_ptrs, result, mask=mask_2d)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["beta", "alpha"])
+def addr_flat_kernel(
+    input_ptr,
+    vec1_ptr,
+    vec2_ptr,
+    output_ptr,
+    beta,
+    alpha,
+    N,
+    stride_input_m,
+    stride_vec1,
+    num_tiles,
+    BLOCK: tl.constexpr,
+    NPROG: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    for tile in range(pid, num_tiles, NPROG):
+        base = tile * BLOCK
+        row = base // N
+        col0 = base - row * N
+        offs = tl.arange(0, BLOCK)
+        vec1 = tl.load(vec1_ptr + row * stride_vec1).to(tl.float32)
+        vec2 = tl.load(vec2_ptr + col0 + offs).to(tl.float32)
+        input_val = tl.load(input_ptr + row * stride_input_m + col0 + offs).to(
+            tl.float32
+        )
+        result = beta * input_val + alpha * vec1 * vec2
+        tl.store(output_ptr + base + offs, result.to(output_ptr.dtype.element_ty))
+
+
+_FLAT_BLOCKS = (4096, 2048, 1024, 512, 256, 128, 64, 32)
+_NUM_SPS = 48
+
+
+def _pick_flat_block(N):
+    for block in _FLAT_BLOCKS:
+        if N % block == 0:
+            return block
+    return None
+
+
 def addr(input, vec1, vec2, *, beta=1, alpha=1):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDR")
+    logger.debug("GEMS_ENFLAME ADDR")
     if vec1.dim() != 1 or vec2.dim() != 1:
         raise ValueError("addr: expected 1-D vectors")
 
@@ -101,9 +143,41 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
         )
     out = torch.empty(output_shape, device=input.device, dtype=input.dtype)
 
+    total = M * N
+    if total == 0:
+        return out
+
+    if input_broadcasted.stride(1) == 1 and vec2.stride(0) == 1:
+        block = _pick_flat_block(N)
+        if block is not None:
+            tiles = total // block
+            if tiles <= _NUM_SPS:
+                nprog = tiles
+                num_warps = 1
+            else:
+                nprog = _NUM_SPS
+                num_warps = 4
+            with torch_device_fn.device(input.device):
+                addr_flat_kernel[(nprog,)](
+                    input_broadcasted,
+                    vec1,
+                    vec2,
+                    out,
+                    beta,
+                    alpha,
+                    N,
+                    input_broadcasted.stride(0),
+                    vec1.stride(0),
+                    tiles,
+                    BLOCK=block,
+                    NPROG=nprog,
+                    num_warps=num_warps,
+                )
+            return out
+
     BLOCK_SIZE_M = 32
     BLOCK_SIZE_N = 32
-    grid = lambda META: (
+    grid = (
         triton.cdiv(M, BLOCK_SIZE_M),
         triton.cdiv(N, BLOCK_SIZE_N),
     )
@@ -125,5 +199,6 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
             out.stride(1),
             BLOCK_SIZE_M=BLOCK_SIZE_M,
             BLOCK_SIZE_N=BLOCK_SIZE_N,
+            num_warps=1,
         )
     return out

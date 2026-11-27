@@ -209,7 +209,7 @@ def slogdet(A):
 # Wrapper for use with torch.linalg.slogdet interface
 def linalg_slogdet(A):
     """Return the sign and log absolute determinant of a square matrix."""
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SLOGDET")
+    logger.debug("GEMS_ENFLAME LINALG_SLOGDET")
     assert A.dtype == torch.float32
     sign, logabsdet, _lu, _pivots = slogdet(A)
     return sign, logabsdet

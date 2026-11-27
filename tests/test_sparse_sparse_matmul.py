@@ -16,7 +16,6 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -24,19 +23,12 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 # The implementation file is ``ops/_sparse_sparse_matmul.py``, whose file stem
-# derives the pytest marker ``underscore_sparse_sparse_matmul`` (the leading
-# underscore cannot be expressed with attribute access, hence the explicit
-# registration). Tag the main test with it as well so a marker-only selection
-# for the changed ops file is not empty; the public ``sparse_sparse_matmul``
-# id keeps its own marker.
-setattr(
-    pytest.mark,
-    "underscore_sparse_sparse_matmul",
-    MarkDecorator(
-        Mark("underscore_sparse_sparse_matmul", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+# derives the pytest marker ``underscore_sparse_sparse_matmul``. The prefixed
+# form is a plain attribute access, so the mark needs no manual registration:
+# ``pytest.ini`` already ignores unknown-mark warnings and no strict-marker mode
+# is enabled. Tag the main test with it as well so a marker-only selection for
+# the changed ops file is not empty; the public ``sparse_sparse_matmul`` id
+# keeps its own marker.
 
 # Shapes exercise square/rectangular cases, tiny launch-bound sizes, a
 # non-power-of-two pair and the zero-dimension boundaries (the op supports
@@ -139,6 +131,11 @@ def test_sparse_sparse_matmul(M, N, K, sparsity, dtype):
 def test_sparse_sparse_matmul_structure_and_zeros(dtype):
     """The support set is the deterministic intersection pattern and
     structural zeros are preserved (aten contract)."""
+    if flag_gems.vendor_name == "enflame" and dtype in _LOW_PREC_DTYPES:
+        pytest.skip(
+            "aten defect: the reference aten::_sparse_sparse_matmul does not support Half/BFloat16 "
+            'and raises NotImplementedError: "sparse_matmul" not implemented for this dtype'
+        )
     device = flag_gems.device
 
     # A carries an explicit zero at (0, 1); B stores (1, 2). The output must

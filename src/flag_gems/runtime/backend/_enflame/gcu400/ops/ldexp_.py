@@ -19,8 +19,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime  # noqa: F401
 from flag_gems.ops.neg import neg
 from flag_gems.ops.zeros_like import zeros_like
+from flag_gems.runtime import device as runtime_device
+from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
@@ -76,6 +79,93 @@ def _scale_exp2(x, e):
     semantics: ``ldexp(0, inf) = nan`` and ``ldexp(-0, -inf) = -0``.
     """
     return x * _exp2(e)
+
+
+# ---------------------------------------------------------------------------
+# Contiguous same-shape fast path (GCU400).
+#
+# torch_gcu ships no ``ldexp`` DispatchStub kernel, so the generic
+# pointwise_dynamic path is the only implementation available; its default
+# enflame codegen config caps the persistent grid at 12 CTAs, which measured
+# ~144 GB/s on a 3-stream pointwise workload (16M fp32) while the sibling
+# ``mul`` kernels sustain ~2.8 TB/s with the Fixed-Grid-48 + grid-stride
+# idiom.  This specialisation adopts that idiom (same tuning as the
+# out-of-place ``ldexp`` flat kernel) for the dominant call shape
+# (contiguous float base x integral tensor exponent) and keeps the generic
+# path for every other layout/dtype combination.
+# ---------------------------------------------------------------------------
+
+_DEVICE_NAME = runtime_device.name
+
+# Fixed Grid (48 CTAs) + grid-stride (mul.py family).
+_GRID_SIZE = 48
+_HUGE_STREAM_ELEMENTS = 1 << 25
+_FLAT_INT32_LIMIT = 1 << 31
+_FAST_SELF_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
+def _pick_ldexp_launch(n_elements, element_size):
+    """(BLOCK_SIZE, num_warps) for the contiguous in-place kernel.
+
+    The exponent stream is int32 (4 B/element) on top of the base tensor, so
+    every dtype carries the same on-chip tile budget as the out-of-place
+    ``ldexp`` flat kernel: at most three int32/fp32 tile vectors stay alive
+    at once (3 * 128 KB at BLOCK 32768, within the validated 384 KB budget).
+    Two-byte base types promote to fp32 inside the kernel, which keeps them
+    at the same per-tile budget.
+
+    Measured on GCU400 (do_bench median): num_warps 2 dominates the mid
+    streams everywhere (nw1 -8%, nw4 -25% at 16M fp32); BLOCK 32768 wins once
+    a 32768-element tile fills all 48 CTAs, while shorter streams run a
+    smaller tile so a short shape still occupies the whole fixed grid
+    (2-byte types BLOCK 8192: -5..-22% vs BLOCK 16384 across the band, 4/4
+    rounds stable; 4-byte types keep BLOCK 16384: 8192 loses by 4-45% at
+    >= 256K fp32 elements).  Tiny inputs stay on the BLOCK 1024 launch floor.
+    """
+    if n_elements <= 4096:
+        return 1024, 4
+    if n_elements >= _HUGE_STREAM_ELEMENTS:
+        # 2026-11-19 rescan (same verdict as the out-of-place `ldexp` kernel):
+        # the three-scale-factor chain is arithmetic-heavy, so 48 CTAs x 1 warp
+        # cannot hide it; num_warps=2 is 13-19% faster at 2^26/2^29 (16-bit
+        # 812 -> 919 GB/s, fp32 1145 -> 1362 GB/s) and nw4 regresses again.
+        return 32768, 2
+    if n_elements < _GRID_SIZE * 32768:
+        return (8192, 2) if element_size <= 2 else (16384, 2)
+    return 32768, 2
+
+
+@triton.jit
+def _ldexp_inplace_contig_kernel(
+    x_ptr,
+    e_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+):
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        e = tl.load(e_ptr + offsets, mask=mask)
+
+        # Same three power-of-two scaling stages as _ldexp_pow2 (bit-identical
+        # result: ((x*2^first)*2^second)*2^third), but each scale is consumed
+        # as soon as it is built so at most three int32/fp32 tile vectors stay
+        # alive at once (DSM budget at BLOCK 32768: 3 * 128 KB).  The exponent
+        # stream is int32 by the host-side gate, so the torch-version dependent
+        # wrap-vs-clamp normalisation is a no-op here and is skipped.
+        exponent = tl.maximum(tl.minimum(e, 381), -378)
+        first = tl.maximum(tl.minimum(exponent, 127), -126)
+        rest = exponent - first
+        result = x.to(tl.float32) * _pow2_scale(first)
+        second = tl.maximum(tl.minimum(rest, 127), -126)
+        rest = rest - second
+        result = result * _pow2_scale(second)
+        result = result * _pow2_scale(rest)
+
+        tl.store(x_ptr + offsets, result.to(x_ptr.dtype.element_ty), mask=mask)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -253,7 +343,7 @@ def _is_exact_alias(left, right):
 
 
 def ldexp_(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 LDEXP_")
+    logger.debug("GEMS_ENFLAME LDEXP_")
     if has_internal_overlapping(self) == MemOverlap.Yes:
         raise RuntimeError(
             "unsupported operation: more than one element of the written-to tensor "
@@ -303,6 +393,34 @@ def ldexp_(self, other):
         else:
             _ldexp_complex_(self, other)
     else:
+        # Contiguous same-shape integral-tensor-exponent fast path: a single
+        # flat kernel on the Fixed-Grid-48 + grid-stride idiom (see the
+        # specialisation note above _ldexp_inplace_contig_kernel).  Every
+        # condition below is required for the flat 1-D addressing to be
+        # valid; anything else keeps the generic strided implementation.
+        if (
+            integral_exponent
+            and other.dtype is torch.int32
+            and self.dtype in _FAST_SELF_DTYPES
+            and self.device.type == _DEVICE_NAME
+            and self.is_contiguous()
+            and self.shape == other.shape
+            and 0 < self.numel() < _FLAT_INT32_LIMIT
+        ):
+            n_elements = self.numel()
+            block_size, num_warps = _pick_ldexp_launch(n_elements, self.element_size())
+            tiles = (n_elements + block_size - 1) // block_size
+            grid = (_GRID_SIZE if tiles > _GRID_SIZE else tiles,)
+            with torch_device_fn.device(self.device):
+                _ldexp_inplace_contig_kernel[grid](
+                    self,
+                    other,
+                    n_elements,
+                    BLOCK_SIZE=block_size,
+                    GRID_SIZE=grid[0],
+                    num_warps=num_warps,
+                )
+            return self
         # The strided pointwise path mis-indexes the tail of a transposed
         # tensor (measured: shape (7, 19) with stride (1, 7) writes 0/garbage
         # into its last 3 columns), so compute into a contiguous buffer and
@@ -340,3 +458,7 @@ def ldexp_(self, other):
                 _NATIVE_COPY_KEYSET, self, out_target, False
             )
     return self
+
+
+# Module-level handle keeps the Library (and its kernels) alive for the
+# process; the registration itself must never break the flag_gems import.

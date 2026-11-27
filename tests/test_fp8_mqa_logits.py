@@ -29,7 +29,21 @@ except ImportError:
     fp8_mqa_logits = None
 
 
+try:
+    import vllm  # noqa: F401
+
+    VLLM_AVAILABLE = True
+except ImportError:
+    VLLM_AVAILABLE = False
+
+
 FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+# Vendors listed here have no vLLM/DeepGEMM reference kernel (it is CUDA Hopper
+# only), so they are validated against the dequantized torch reference instead
+# of being skipped as a whole file.
+TORCH_REFERENCE_VENDORS = ("enflame",)
+USE_DEEPGEMM_REFERENCE = flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS
 
 pytestmark = pytest.mark.skipif(
     not FP8_DTYPES,
@@ -46,6 +60,13 @@ def is_hopper_available() -> bool:
 
 
 HOPPER_AVAILABLE = is_hopper_available()
+
+# The Hopper gate only guards the vLLM/DeepGEMM reference path. Vendors that fall
+# back to the pure-torch reference (see TORCH_REFERENCE_VENDORS) run the suite on
+# their own device instead of being skipped as a whole file.
+RUN_DEVICE_SUITE = (flag_gems.vendor_name in TORCH_REFERENCE_VENDORS) or (
+    torch.cuda.is_available() and HOPPER_AVAILABLE
+)
 
 
 def has_deep_gemm() -> bool:
@@ -97,7 +118,7 @@ else:
 
 @pytest.mark.fp8_mqa_logits
 @pytest.mark.skipif(
-    not (torch.cuda.is_available() and HOPPER_AVAILABLE),
+    not RUN_DEVICE_SUITE,
     reason="requires CUDA with Hopper architecture (SM90+)",
 )
 @pytest.mark.parametrize("clean_logits", [True, False])
@@ -159,7 +180,7 @@ def test_fp8_mqa_logits(clean_logits: bool):
 
 @pytest.mark.fp8_mqa_logits
 @pytest.mark.skipif(
-    not (torch.cuda.is_available() and HOPPER_AVAILABLE),
+    not RUN_DEVICE_SUITE,
     reason="requires CUDA with Hopper architecture (SM90+)",
 )
 @pytest.mark.parametrize("M, N", MN_SHAPES)

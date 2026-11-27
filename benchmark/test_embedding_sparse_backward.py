@@ -57,10 +57,17 @@ def _input_fn(shape, dtype, device):
 )
 @pytest.mark.embedding_sparse_backward
 def test_embedding_sparse_backward():
+    # Sparse op: the candidate is called through the direct gems entry (same
+    # convention as the rest of the sparse family, e.g. ``coalesce``).  Inside
+    # the ``use_gems()`` dispatch scope the sparse constructor override shadows
+    # the native ``_sparse_coo_tensor_with_dims_and_tensors`` kernel at
+    # SparsePrivateUse1, so the COO assembly inside the kernel re-enters the
+    # override and dies with a RecursionError.
     bench = EmbeddingSparseBackwardBenchmark(
         input_fn=_input_fn,
         op_name="embedding_sparse_backward",
         torch_op=torch.ops.aten.embedding_sparse_backward,
+        gems_op=getattr(flag_gems, "embedding_sparse_backward", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

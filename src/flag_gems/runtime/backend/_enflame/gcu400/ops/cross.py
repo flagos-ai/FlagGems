@@ -49,13 +49,13 @@ def _default_dim(input, other):
 
 def cross(input, other, dim=None):
     """NVIDIA Triton implementation of ``torch.cross`` (aten::cross)."""
-    logger.debug("GEMS_ENFLAME_GCU400 CROSS")
+    logger.debug("GEMS_ENFLAME CROSS")
     resolved_dim = _default_dim(input, other) if dim is None else dim
     return _linalg_cross_impl(input, other, resolved_dim)
 
 
 def cross_out(input, other, dim=None, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 CROSS_OUT")
+    logger.debug("GEMS_ENFLAME CROSS_OUT")
     resolved_dim = _default_dim(input, other) if dim is None else dim
     _, output_shape = _validate_inputs(input, other, resolved_dim)
     if out.dtype != input.dtype:

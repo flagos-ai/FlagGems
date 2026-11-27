@@ -5,9 +5,129 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+_FLAT_GRID_CAP = 48
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+_FLAT_MAX_BLOCK = 65536
+# Flat offsets must stay inside the int32 domain of the codegen pointer math.
+_FLAT_MAX_NUMEL = 2**31 - 1 - _FLAT_MAX_BLOCK
+_SMALL_NUMEL = 4096
+# Size bands where the 16-bit tile ladder switches tier (see _flat_config).
+_SIXTEEN_BIT_TIER2 = 1 << 17
+_SIXTEEN_BIT_TIER3 = 1 << 22
+_FP32_LARGE_NUMEL = 1 << 21
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "ALPHA"])
+def _add_relu_flat_tile_kernel(
+    a_ptr, b_ptr, out_ptr, N, ALPHA, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
+    """One tile per CTA: out = max(0, a + alpha * b) on a contiguous 1D view."""
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        # No tail tile: skip the mask compare chain entirely.
+        acc = tl.load(a_ptr + offs).to(tl.float32)
+        acc += tl.load(b_ptr + offs).to(tl.float32) * ALPHA
+        tl.store(out_ptr + offs, tl.maximum(acc, 0.0))
+    else:
+        mask = offs < N
+        acc = tl.load(a_ptr + offs, mask=mask).to(tl.float32)
+        acc += tl.load(b_ptr + offs, mask=mask).to(tl.float32) * ALPHA
+        tl.store(out_ptr + offs, tl.maximum(acc, 0.0), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "ALPHA"])
+def _add_relu_flat_kernel(
+    a_ptr, b_ptr, out_ptr, N, ALPHA, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
+    """Grid-stride version, used once there are more tiles than CTAs."""
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    num_tiles = tl.cdiv(N, BLOCK)
+    for tile in range(pid, num_tiles, num_ctas):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            acc = tl.load(a_ptr + offs).to(tl.float32)
+            acc += tl.load(b_ptr + offs).to(tl.float32) * ALPHA
+            tl.store(out_ptr + offs, tl.maximum(acc, 0.0))
+        else:
+            mask = offs < N
+            acc = tl.load(a_ptr + offs, mask=mask).to(tl.float32)
+            acc += tl.load(b_ptr + offs, mask=mask).to(tl.float32) * ALPHA
+            tl.store(out_ptr + offs, tl.maximum(acc, 0.0), mask=mask)
+
+
+def _flat_config(numel, dtype):
+    """Pick (BLOCK, num_warps) for one flat launch; BLOCK<->num_warps is 1:1."""
+    if numel <= _SMALL_NUMEL:
+        # One CTA owns the whole tensor; round up so the mask covers the tail.
+        block = 1 << max(0, numel - 1).bit_length() if numel > 1 else 1
+        return (min(max(block, 256), _FLAT_MAX_BLOCK), 2)
+    if dtype is torch.float32:
+        # 8192 keeps one wave per CTA busy up to 2^21; larger tiles only pay off
+        # once every CTA walks several tiles (>=2^22).
+        if numel <= _FP32_LARGE_NUMEL:
+            return 8192, 4
+        return 32768, 4
+    # 16-bit: 2B elements halve the DSM footprint, so the tile can grow with the
+    # element count without spilling. The widest tier wants nw4 (one SIP per
+    # 16 lanes): 2^26 0.171ms and 2^30 2.56ms, 6-8% better than the same tile
+    # at nw2.
+    if numel <= _SIXTEEN_BIT_TIER2:
+        return 8192, 4
+    if numel <= _SIXTEEN_BIT_TIER3:
+        return 16384, 4
+    return 65536, 4
+
+
+def _flat_eligible(A, B):
+    if A.dtype not in _FLAT_DTYPES or B.dtype != A.dtype:
+        return False
+    if A.shape != B.shape:
+        # Broadcasting stays on the pointwise_dynamic path.
+        return False
+    numel = A.numel()
+    if numel == 0 or numel > _FLAT_MAX_NUMEL:
+        return False
+    return A.is_contiguous() and B.is_contiguous()
+
+
+def _flat_launch(A, B, out, alpha):
+    numel = A.numel()
+    block, num_warps = _flat_config(numel, A.dtype)
+    num_tiles = -(-numel // block)
+    even = numel % block == 0
+    with torch_device_fn.device(A.device):
+        if num_tiles <= _FLAT_GRID_CAP:
+            _add_relu_flat_tile_kernel[(num_tiles,)](
+                A,
+                B,
+                out,
+                numel,
+                alpha,
+                BLOCK=block,
+                EVEN=even,
+                num_warps=num_warps,
+                num_stages=2,
+            )
+        else:
+            _add_relu_flat_kernel[(_FLAT_GRID_CAP,)](
+                A,
+                B,
+                out,
+                numel,
+                alpha,
+                BLOCK=block,
+                EVEN=even,
+                num_warps=num_warps,
+                num_stages=2,
+            )
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
@@ -19,10 +139,14 @@ def add_relu_func(x, y):
 
 
 def _add_relu(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 ADD_RELU")
+    logger.debug("GEMS_ENFLAME ADD_RELU")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if B.device != A.device:
             B = B.to(A.device)
+        if _flat_eligible(A, B):
+            out = torch.empty_like(A)
+            _flat_launch(A, B, out, 1.0)
+            return out
         return add_relu_func(A, B)
     elif isinstance(A, torch.Tensor):
         return add_relu_func(A, B)

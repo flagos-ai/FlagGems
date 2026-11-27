@@ -19,58 +19,152 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# flat grid-stride family convention (same as square/leaky_relu backward, 2026-11-17):
+# The original generic flat copy used BLOCK=1024, grid=cdiv(n,1024); at n=2^30, grid.x=2^20
+# which exceeds the hardware limit of 65535; the full benchmark over large shapes hits OutOfResources (P19 instance,
+# compiler_problems/P19_grid_hard_limits/sources/flaggems_hardtanh_backward.md).
+# Switched to an in-kernel strided loop to cover large shapes, with grid capped at 48 CTA (24 SIP × 2); the EVEN bucket
+# (n % BLOCK == 0) is mask-free. The BLOCK/num_warps ladder follows the same body (2R1W cmp+mul)
+# per the leaky_relu_backward precedent (GCU400/L600 interleaved do_bench A/B for config selection, 2026-11-16),
+# re-scanned for this op (interleaved do_bench A/B in the same process, w1000/r100, 3 rounds, 2026-11-17) and confirmed:
+#   16-bit large bucket keeps 65536/nw2 (2^30 B131072/nw4 is only +0.3%, within the noise band,
+#   2^24 regresses by 9%); fp32 large bucket keeps 32768/nw2 (flat monotonic grid at 2^30
+#   is only +1-2% with 1-2% round-to-round variance and regresses at 2^26 — the eq precedent on "isolated-vs-sustained
+#   inversion" risk, rejected); the native-compare body (scalar reduced-precision comparison, no x up-cvt)
+#   only gains +4% at 2^24 16-bit with no gain in large buckets, and for non-representable scalars it deviates from the
+# upstream fp32
+#   comparison semantics, rejected; tiny fp32 single-CTA B4096/nw4 is ~9% above the launch floor
+#   (3.62 vs 3.30µs), so switched to B2048/nw2 with two CTA.
+# Only one num_warps per (dtype, BLOCK) (the libentry dispatch key does not include nw,
+# to avoid cache collisions).
+GRID_CAP = 48
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+# int32 safety domain: numel + BLOCK must stay < 2^31 (flat int32 offsets),
+# cf. square/leaky_relu precedents; larger sizes fall back to the public op.
+_FLAT_MAX_NUMEL = (1 << 31) - (1 << 17)
 
-@triton.jit
-def hardtanh_backward_kernel(
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements", "min_val", "max_val"])
+def _hardtanh_backward_kernel(
     grad_output_ptr,
     self_ptr,
-    out_ptr,
+    grad_input_ptr,
     n_elements,
     min_val,
     max_val,
     BLOCK_SIZE: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK_SIZE + arange
+        if EVEN:
+            grad_output = tl.load(grad_output_ptr + off)
+            x = tl.load(self_ptr + off)
+            # min_val/max_val are fp32 runtime args, so the comparisons
+            # promote x to fp32: bit-identical in-range decisions to the
+            # public fp32-compute kernel for every scalar value. The product
+            # runs in the native grad dtype: in_range is 0/1, so the result
+            # is exactly grad or sign-carrying zero, no rounding either way.
+            in_range = (x > min_val) & (x < max_val)
+            grad_input = grad_output * in_range.to(grad_output.dtype)
+            tl.store(grad_input_ptr + off, grad_input)
+        else:
+            mask = off < n_elements
+            grad_output = tl.load(grad_output_ptr + off, mask=mask)
+            x = tl.load(self_ptr + off, mask=mask)
+            in_range = (x > min_val) & (x < max_val)
+            grad_input = grad_output * in_range.to(grad_output.dtype)
+            tl.store(grad_input_ptr + off, grad_input, mask=mask)
 
-    grad_output = tl.load(grad_output_ptr + offsets, mask=mask)
-    self_val = tl.load(self_ptr + offsets, mask=mask)
 
-    grad_output_fp32 = grad_output.to(tl.float32)
-    self_fp32 = self_val.to(tl.float32)
-
-    in_range = (self_fp32 > min_val) & (self_fp32 < max_val)
-    result = grad_output_fp32 * in_range
-
-    tl.store(out_ptr + offsets, result.to(grad_output.dtype), mask=mask)
+def _bwd_config(numel, dtype):
+    # (BLOCK, num_warps, grid_cap) 2R1W ladder (same body class as
+    # leaky_relu_backward: cmp + mul).
+    #   >2^21: both widths use 16384/nw2 with one CTA per SIP (24) instead of
+    #          the former 65536-or-32768/nw2 tiles at 48 CTAs.  Re-measured on
+    #          2026-11-20 with a same-process real-op A/B harness (interleaved
+    #          rounds, spread <=0.2%): 16-bit +1.1% at 2^22, +1.3% at 2^24,
+    #          +0.7% at 2^30; fp32 +2.4% at 2^22, +1.0% at 2^24, +0.8% at 2^30.
+    #          Below 2^21 the narrow tiles stay: at 2^20 16-bit 8192/nw4 beats
+    #          16384/nw2 by 4.3% and fp32 16384/nw2 beats 8192/nw2 by 0.6%.
+    #   tiny <=4096 -> single-CTA npo2/nw4 (launch-overhead floor), except
+    #          fp32 (2048,4096] -> 2048/nw2 (two CTAs, floor-tracking).
+    if dtype not in _FLAT_DTYPES:
+        if numel <= 1024:
+            return 1024, 4, GRID_CAP
+        if numel <= 32768:
+            return triton.next_power_of_2(numel), 4, GRID_CAP
+        return 8192, 4, GRID_CAP
+    if numel <= 4096:
+        block = triton.next_power_of_2(numel)
+        if dtype is torch.float32 and block > 2048:
+            # single-CTA B4096/nw4 sits ~9% above the launch floor for fp32
+            # (3.62 vs 3.30us probe, 2026-11-17); two B2048/nw2 CTAs track it.
+            return 2048, 2, GRID_CAP
+        return (256 if block < 256 else block), 4, GRID_CAP
+    if dtype is torch.float32:
+        if numel <= (1 << 21):
+            return 16384, 2, GRID_CAP
+        return 16384, 2, 24
+    if numel <= (1 << 21):
+        return 8192, 4, GRID_CAP
+    return 16384, 2, 24
 
 
 def hardtanh_backward(grad_output, self, min_val, max_val):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDTANH_BACKWARD")
-    assert (
-        grad_output.device.type == device.name and self.device.type == device.name
-    ), f"Inputs must be on the {device.name} device"
-    assert grad_output.device == self.device
+    logger.debug("GEMS_ENFLAME HARDTANH_BACKWARD")
     n_elements = grad_output.numel()
     if n_elements == 0:
         return grad_output
-    # BLOCK_SIZE=1024: optimal for pointwise ops on H20, maximizes occupancy
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    out = torch.empty_like(grad_output)
-    hardtanh_backward_kernel[grid](
-        grad_output,
-        self,
-        out,
-        n_elements,
-        float(min_val),
-        float(max_val),
-        BLOCK_SIZE=BLOCK_SIZE,
-    )
-    return out
+    if (
+        n_elements >= _FLAT_MAX_NUMEL
+        or grad_output.shape != self.shape
+        or grad_output.device != self.device
+    ):
+        from flag_gems.ops.hardtanh_backward import hardtanh_backward as _public
+
+        return _public(grad_output, self, min_val, max_val)
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+    if not self.is_contiguous():
+        self = self.contiguous()
+    grad_input = torch.empty_like(grad_output)
+    block_size, num_warps, grid_cap = _bwd_config(n_elements, grad_output.dtype)
+    grid = min(triton.cdiv(n_elements, block_size), grid_cap)
+    even = n_elements % block_size == 0
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared nodes);
+    # retrying the launch recompiles and succeeds (square/leaky_relu precedents).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(grad_output.device):
+                _hardtanh_backward_kernel[(grid,)](
+                    grad_output,
+                    self,
+                    grad_input,
+                    n_elements,
+                    float(min_val),
+                    float(max_val),
+                    BLOCK_SIZE=block_size,
+                    EVEN=even,
+                    num_warps=num_warps,
+                )
+            return grad_input
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "hardtanh_backward flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )

@@ -114,7 +114,7 @@ def feature_dropout(input, p, train=True):
     Returns:
         Output tensor of same shape as input
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FEATURE_DROPOUT")
+    logger.debug("GEMS_ENFLAME FEATURE_DROPOUT")
 
     p_val = float(_to_scalar(p))
     train_val = bool(_to_scalar(train))
@@ -208,7 +208,7 @@ def feature_dropout_(input, p, train=True):
     """
     In-place version of feature_dropout.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FEATURE_DROPOUT_")
+    logger.debug("GEMS_ENFLAME FEATURE_DROPOUT_")
     if not train or p == 0:
         return input
     if p == 1:

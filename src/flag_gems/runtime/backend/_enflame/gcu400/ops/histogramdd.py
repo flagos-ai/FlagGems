@@ -19,7 +19,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -39,6 +38,48 @@ def _bins_device_tensor(bins, device):
         if len(_BINS_TENSOR_CACHE) < 64:
             _BINS_TENSOR_CACHE[key] = cached
     return cached
+
+
+@libentry()
+@triton.jit
+def _histdd_colminmax_kernel(
+    input_ptr,
+    mins_ptr,
+    maxs_ptr,
+    N,
+    D,
+    BLOCK_M: tl.constexpr,
+    DP: tl.constexpr,
+):
+    """Column-wise min/max of a contiguous (N, D) tensor into [D] outputs.
+
+    Replaces the flag_gems.aminmax(dim=0) composition: that op's dim-0 path
+    serializes on a single CTA for these small row-major inputs (~130-360us
+    on GCU400), while this kernel covers the whole input with one
+    [BLOCK_M, DP] tile per iteration. min/max are exact order-independent
+    reductions, so results stay bitwise-identical to the composed op.
+    """
+    rows = tl.arange(0, BLOCK_M)
+    cols = tl.arange(0, DP)
+    col_mask = cols < D
+    pos_inf = float("inf")
+    neg_inf = float("-inf")
+    acc_min = tl.full([DP], pos_inf, input_ptr.dtype.element_ty)
+    acc_max = tl.full([DP], neg_inf, input_ptr.dtype.element_ty)
+    for tile in range(0, tl.cdiv(N, BLOCK_M)):
+        row_offs = tile * BLOCK_M + rows
+        tile_mask = (row_offs < N)[:, None] & col_mask[None, :]
+        vals = tl.load(
+            input_ptr + row_offs[:, None] * D + cols[None, :],
+            mask=tile_mask,
+            other=0.0,
+        )
+        tile_min = tl.min(tl.where(tile_mask, vals, pos_inf), axis=0)
+        tile_max = tl.max(tl.where(tile_mask, vals, neg_inf), axis=0)
+        acc_min = tl.minimum(acc_min, tile_min, propagate_nan=tl.PropagateNan.ALL)
+        acc_max = tl.maximum(acc_max, tile_max, propagate_nan=tl.PropagateNan.ALL)
+    tl.store(mins_ptr + cols, acc_min, mask=col_mask)
+    tl.store(maxs_ptr + cols, acc_max, mask=col_mask)
 
 
 @libentry()
@@ -66,9 +107,10 @@ def histogramdd_kernel(
     to [v - 0.5, v + 0.5] and the uniform bin edges are written by program 0.
 
     Merge strategy (constexpr-selected):
-    - USE_ONEHOT: per-program local counts via onehot + tl.sum(axis=0), then
-      a single masked atomic per cell. Avoids the N-way same-address atomic
-      serialization that dominates when the histogram has few cells.
+    - USE_ONEHOT: per-program local counts via int8 one-hot dot
+      (dot(ones_i8[16, BLOCK], onehot_i8[BLOCK, CELLS]) + tl.max(axis=0)),
+      then a single masked atomic per cell. Avoids the N-way same-address
+      atomic serialization that dominates when the histogram has few cells.
     - NREP > 1: points of program pid atomically update replica pid % NREP,
       cutting per-cell contention by NREP; the host sums the replicas.
     - otherwise: direct atomic per point.
@@ -128,12 +170,17 @@ def histogramdd_kernel(
     # For fp64 inputs the histogram is accumulated in int32 (GCU atomic_rmw
     # has no f64 support) and cast back to fp64 on the host.
     if USE_ONEHOT:
-        onehot = (linear_bin_idx[:, None] == tl.arange(0, CELLS)[None, :]) & in_range[
-            :, None
-        ]
-        counts = tl.sum(onehot.to(tl.int32), axis=0)
+        # int8 one-hot dot reduction (histc regime): tl.sum(axis=0) on a
+        # [BLOCK, CELLS] int32 tile costs ~40% more device time than
+        # dot(ones_i8[16, BLOCK], onehot_i8[BLOCK, CELLS]) + tl.max(axis=0).
         cell_ids = tl.arange(0, CELLS)
         cell_mask = cell_ids < total_cells
+        onehot = (
+            (linear_bin_idx[:, None] == cell_ids[None, :]) & in_range[:, None]
+        ).to(tl.int8)
+        ones = tl.full([16, BLOCK_SIZE], 1, tl.int8)
+        acc = tl.dot(ones, onehot, out_dtype=tl.int32)
+        counts = tl.max(acc, axis=0)
         if FP64_INPUT:
             tl.atomic_add(hist_ptr + cell_ids, counts, mask=cell_mask, sem="relaxed")
         else:
@@ -175,7 +222,7 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         tuple: (hist, bin_edges) where hist has shape (bins[0], bins[1], ..., bins[D-1])
                and bin_edges is a list of D edge tensors
     """
-    logger.debug("GEMS_ENFLAME_GCU400 HISTOGRAMDD")
+    logger.debug("GEMS_ENFLAME HISTOGRAMDD")
 
     if input.dtype not in [torch.float32, torch.float64]:
         raise NotImplementedError(
@@ -237,7 +284,10 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         kernel_input = input
 
     # Per-dimension boundaries stay on device (no host synchronization);
-    # torch.aminmax fuses the two column reductions into one kernel launch
+    # the dedicated column min/max kernel covers the whole small input in one
+    # tile pass (the flag_gems.aminmax(dim=0) path serializes to a single CTA
+    # here and dominates the whole op on GCU400).
+    need_minmax = range_vals is None
     if range_vals is not None:
         kernel_mins = torch.tensor(
             [float(range_vals[2 * d]) for d in builtins.range(D)],
@@ -250,7 +300,8 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
             device=input.device,
         )
     else:
-        kernel_mins, kernel_maxs = flag_gems.aminmax(kernel_input, dim=0)
+        kernel_mins = torch.empty((D,), dtype=kernel_input.dtype, device=input.device)
+        kernel_maxs = torch.empty((D,), dtype=kernel_input.dtype, device=input.device)
 
     total_cells = 1
     for num_bins in bins:
@@ -265,8 +316,12 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
     bins_tensor = _bins_device_tensor(bins, input.device)
 
     # Merge-strategy dispatch (see kernel docstring):
-    # - few cells, small grid -> onehot local counts (avoids hot-cell atomics)
+    # - few cells, small grid -> onehot int8-dot local counts (avoids hot-cell
+    #   per-point atomics; probe 2026-11-18: dot 27.3us vs int32-sum 38.6us
+    #   at cells=64/N=4096)
     # - many points per cell -> replicate the histogram to dilute contention
+    #   (probe 2026-11-18: nrep=16/block=128 22.1us vs nrep=8/block=256 29.9us
+    #   at cells=256/N=4096)
     # - otherwise -> direct atomic per point
     use_onehot = False
     nrep = 1
@@ -277,7 +332,8 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         block = 1024 if cells <= 64 else 512
         use_onehot = triton.cdiv(N, block) <= 8
     if not use_onehot and N >= 16 * total_cells and total_cells <= 32768:
-        nrep = 8
+        nrep = 16
+        block = 128
 
     if nrep > 1:
         hist = torch.zeros((nrep,) + hist_shape, dtype=acc_dtype, device=input.device)
@@ -285,7 +341,22 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         hist = torch.zeros(hist_shape, dtype=acc_dtype, device=input.device)
 
     grid = (triton.cdiv(N, block),)
+    # One device context for both launches: the context switch itself costs
+    # host time that is visible at these small kernel sizes.
     with torch_device_fn.device(input.device):
+        if need_minmax:
+            # BM=2048/nw tuned on GCU400 (probe 2026-11-18): two-tile iteration
+            # beats one big 4096 tile by ~10-16% across D=2..4.
+            _histdd_colminmax_kernel[(1,)](
+                kernel_input,
+                kernel_mins,
+                kernel_maxs,
+                N,
+                D,
+                BLOCK_M=2048,
+                DP=triton.next_power_of_2(D),
+                num_warps=2 if D == 2 else 4,
+            )
         histogramdd_kernel[grid](
             kernel_input,
             hist,
@@ -309,10 +380,8 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
     if fp64_input:
         hist = hist.to(input.dtype)
         # Do one dtype conversion, then take views from the result; per-dimension .to() adds D launches.
-        edges_out = edges_buf.to(input.dtype)
-        bin_edges = [edges_out[d, : bins[d] + 1] for d in builtins.range(D)]
-    else:
-        bin_edges = [edges_buf[d, : bins[d] + 1] for d in builtins.range(D)]
+        edges_buf = edges_buf.to(input.dtype)
+    bin_edges = [edges_buf[d, : bins[d] + 1] for d in builtins.range(D)]
 
     # Apply density normalization if requested
     if density:

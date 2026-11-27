@@ -204,6 +204,23 @@ def _gelu_mul_grad_flat(
         tl.store(DY + off, d * x_gelu, mask)
 
 
+def _pick_tile(n):
+    """Select (tile width, CTA count) based on the element count.
+
+    Consistent with other gcu400 elementwise kernels: small shapes (<=32K elements) use an
+    exact tile of next_pow2(n) and finish in a single CTA; larger shapes use a tile of the
+    power of two of ceil(n/48), capped at 32K, so the CTAs stay as full as possible. Previously
+    64K elements still used a 32K tile -> only 2 CTAs (1.16x on the mid-size range beyond fp32
+    1M; switching to a 2048 tile / 32 CTAs improved it noticeably).
+    """
+    if n <= _SMALL_N:
+        return max(64, triton.next_power_of_2(n)), 1
+    block = min(
+        _TILE_BIG, max(2048, triton.next_power_of_2(triton.cdiv(n, _GRID_SIZE)))
+    )
+    return block, min(_GRID_SIZE, triton.cdiv(n, block))
+
+
 def _grid(n):
     return (min(MAX_GRID_SIZE, triton.cdiv(n, BLOCK_SIZE)),)
 
@@ -226,15 +243,8 @@ def _launch(x, y, out, mode):
     if n == 0:
         return
     two_byte = x.element_size() <= 2
-    if n <= _SMALL_N:
-        block = max(64, triton.next_power_of_2(n))
-        grid = _GRID_SIZE
-        num_warps = 4
-    else:
-        block = _TILE_BIG
-        grid = _GRID_SIZE
-        num_warps = 2 if two_byte else 4
-    grid = min(grid, triton.cdiv(n, block))
+    block, grid = _pick_tile(n)
+    num_warps = 2 if (two_byte and n > _SMALL_N) else 4
     _gelu_mul_flat[(grid, 1, 1)](
         x,
         y,
@@ -280,7 +290,7 @@ class GeluAndMul(torch.autograd.Function):
 
 def gelu_and_mul(x, y, approximate="none"):
     # Inference path: avoid autograd.Function.apply graph construction.
-    logger.debug("GEMS_ENFLAME_GCU400 GELU_AND_MUL")
+    logger.debug("GEMS_ENFLAME GELU_AND_MUL")
     if not torch.is_grad_enabled() or not (x.requires_grad or y.requires_grad):
         if approximate not in ("none", "tanh"):
             raise ValueError(f"Invalid approximate value: {approximate}")

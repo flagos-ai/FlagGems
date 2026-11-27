@@ -93,7 +93,7 @@ def _dyn_quant_pack_4bit_weight(
     format is distinct from the opaque uint8 CPU KleidiAI packing. K must be
     positive and even; N may be zero, in which case no kernel is launched.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _DYN_QUANT_PACK_4BIT_WEIGHT")
+    logger.debug("GEMS_ENFLAME _DYN_QUANT_PACK_4BIT_WEIGHT")
     if in_features <= 0 or in_features % 2 != 0:
         raise RuntimeError("in_features must be positive and even for INT4 packing")
     if out_features < 0:

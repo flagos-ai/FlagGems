@@ -389,7 +389,7 @@ def _launch(x, out, n):
 
 
 def special_bessel_y1(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_BESSEL_Y1")
+    logger.debug("GEMS_ENFLAME SPECIAL_BESSEL_Y1")
     if A.dtype != torch.float32:
         # float64 needs the libdevice path for its tighter tolerance; every
         # other dtype keeps the previous promotion/validation behaviour.

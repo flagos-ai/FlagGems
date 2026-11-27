@@ -389,6 +389,13 @@ def test_fused_adamw_native(dtype, tensor_lr):
 
 
 @pytest.mark.fused_adamw_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_fused_adamw_"
+    ),
+)
 def test_fused_adamw_optimizer():
     p = torch.randn(257, device=flag_gems.device, requires_grad=True)
     ref = p.detach().cpu().clone().requires_grad_()
@@ -417,6 +424,13 @@ def test_fused_adamw_optimizer():
     reason="Backend graph capture API is unavailable",
 )
 @pytest.mark.parametrize("tensor_lr", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_fused_adamw_"
+    ),
+)
 def test_fused_adamw_graph(tensor_lr):
     inputs = _inputs(torch.float32, True, shapes=[(i + 1,) for i in range(17)])
     scale = torch.tensor(4.0, device=flag_gems.device)

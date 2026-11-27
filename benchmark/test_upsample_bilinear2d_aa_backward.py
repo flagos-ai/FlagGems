@@ -59,6 +59,14 @@ class UpsampleBilinear2dAaBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.upsample_bilinear2d_aa_backward
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_upsample_bilinear2d_aa_backward "
+        "and its CPU fallback raises NotImplementedError for float16, so there is no "
+        "native baseline"
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

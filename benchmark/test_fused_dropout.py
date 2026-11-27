@@ -75,6 +75,13 @@ class FusedDropoutBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.fused_dropout
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_fused_dropout and its CPU "
+        "fallback does not implement the op, so there is no native baseline"
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Native aten::_fused_dropout falls back to CPU on CANN850 and CANN900",
