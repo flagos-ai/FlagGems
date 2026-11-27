@@ -576,6 +576,26 @@ sparse_sum:
     - [4096, 256]
   shape_desc: "M, N"   # 2-D sparse COO shapes; density is set by the benchmark input fn
 
+pixel_unshuffle_backward:
+  shapes:
+  - - 2
+    - 8
+    - 4
+    - 4
+  - - 4
+    - 32
+    - 16
+    - 16
+  - - 8
+    - 64
+    - 64
+    - 64
+  - - 8
+    - 128
+    - 64
+    - 64
+  shape_desc: Frozen backward30 pixel input shape
+
 sparse_sampled_addmm:
   shapes:
     - [2, 128, 128, 128]

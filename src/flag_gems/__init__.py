@@ -2079,7 +2079,12 @@ _FULL_CONFIG = (
     ("pin_memory", pin_memory, None, ["CompositeImplicitAutograd"]),
     ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
-    ("pixel_unshuffle", pixel_unshuffle),
+    (
+        "pixel_unshuffle",
+        pixel_unshuffle,
+        None,
+        (f"Autograd{backend_info.dispatch_key}",),
+    ),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("poisson", poisson),
     ("poisson_nll_loss", poisson_nll_loss),
