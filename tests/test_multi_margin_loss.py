@@ -73,9 +73,7 @@ def test_multi_margin_loss(shape, dtype, p, reduction, use_weight):
     margin = 0.7
     ref = _reference(input, target, p, margin, weight, reduction)
 
-    result = flag_gems.ops.multi_margin_loss(
-        input, target, p, margin, weight, reduction
-    )
+    result = flag_gems.multi_margin_loss(input, target, p, margin, weight, reduction)
 
     if input.dim() <= 1:
         assert result.shape == torch.Size([])
@@ -119,7 +117,7 @@ def test_multi_margin_loss_backward(shape, dtype, p, reduction, use_weight):
         utils.to_reference(weight, True),
         reduction,
     )
-    result = flag_gems.ops.multi_margin_loss_backward(
+    result = flag_gems.multi_margin_loss_backward(
         grad_output,
         input,
         target,
@@ -159,7 +157,7 @@ def test_multi_margin_loss_forward_backward_consistency():
     )
     ref_grad = torch.autograd.grad(ref_output, ref_input)[0]
 
-    output = flag_gems.ops.multi_margin_loss(
+    output = flag_gems.multi_margin_loss(
         input,
         target,
         2,
@@ -167,7 +165,7 @@ def test_multi_margin_loss_forward_backward_consistency():
         weight,
         1,
     )
-    result_grad = flag_gems.ops.multi_margin_loss_backward(
+    result_grad = flag_gems.multi_margin_loss_backward(
         torch.ones_like(output),
         input,
         target,
@@ -194,10 +192,10 @@ def test_multi_margin_loss_out_variants(dtype, p, reduction, use_weight):
     grad_output = torch.randn(output_shape, dtype=input.dtype, device=input.device)
     grad_input = torch.empty((1,), dtype=input.dtype, device=input.device)
 
-    result = flag_gems.ops.multi_margin_loss_out(
+    result = flag_gems.multi_margin_loss_out(
         input, target, p, 0.7, weight, reduction, out=out
     )
-    grad_result = flag_gems.ops.multi_margin_loss_backward_out(
+    grad_result = flag_gems.multi_margin_loss_backward_out(
         grad_output,
         input,
         target,
@@ -239,7 +237,7 @@ def test_multi_margin_loss_out_variants(dtype, p, reduction, use_weight):
 def test_multi_margin_loss_empty_batch(dtype, reduction):
     input = torch.empty((0, 7), dtype=dtype, device=flag_gems.device)
     target = torch.empty((0,), dtype=torch.int64, device=flag_gems.device)
-    result = flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, None, reduction)
+    result = flag_gems.multi_margin_loss(input, target, 1, 1.0, None, reduction)
 
     if reduction == 0:
         assert result.shape == torch.Size([0])
@@ -260,7 +258,7 @@ def test_multi_margin_loss_unbatched_none_is_scalar(input_shape, target_shape):
     C = 1 if input.dim() == 0 else input.shape[0]
     target = torch.zeros(target_shape, dtype=torch.int64, device=flag_gems.device)
     target.fill_(C - 1)
-    result = flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, None, 0)
+    result = flag_gems.multi_margin_loss(input, target, 1, 1.0, None, 0)
     assert result.shape == torch.Size([])
 
 
@@ -271,7 +269,7 @@ def test_multi_margin_loss_noncontiguous_inputs():
     assert not target.is_contiguous()
     assert not weight.is_contiguous()
     ref = _reference(input, target, 2, 0.7, weight, 0)
-    result = flag_gems.ops.multi_margin_loss(input, target, 2, 0.7, weight, 0)
+    result = flag_gems.multi_margin_loss(input, target, 2, 0.7, weight, 0)
     utils.gems_assert_close(result, ref, torch.float32, reduce_dim=65)
 
 
@@ -286,7 +284,7 @@ def test_multi_margin_loss_noncontiguous_inputs():
 def test_multi_margin_loss_hygon_reduced_routes(shape, reduction, use_weight):
     input, target, weight = _make_case(shape, torch.float32, use_weight)
     ref = _reference(input, target, 2, 0.7, weight, reduction)
-    result = flag_gems.ops.multi_margin_loss(
+    result = flag_gems.multi_margin_loss(
         input,
         target,
         2,
@@ -307,7 +305,7 @@ def test_multi_margin_loss_hygon_reduced_routes(shape, reduction, use_weight):
 def test_multi_margin_loss_rejects_invalid_reduction(reduction):
     input, target, _ = _make_case((3, 7), torch.float32, False)
     with pytest.raises(RuntimeError, match="reduction"):
-        flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, None, reduction)
+        flag_gems.multi_margin_loss(input, target, 1, 1.0, None, reduction)
 
 
 @pytest.mark.multi_margin_loss
@@ -315,7 +313,7 @@ def test_multi_margin_loss_rejects_invalid_reduction(reduction):
 def test_multi_margin_loss_rejects_invalid_p(p):
     input, target, _ = _make_case((3, 7), torch.float32, False)
     with pytest.raises(RuntimeError, match="p must be 1 or 2"):
-        flag_gems.ops.multi_margin_loss(input, target, p, 1.0, None, 1)
+        flag_gems.multi_margin_loss(input, target, p, 1.0, None, 1)
 
 
 @pytest.mark.multi_margin_loss
@@ -335,18 +333,16 @@ def test_multi_margin_loss_validates_shapes_and_dtypes():
     ]
     for case_input, case_target, case_weight, match in cases:
         with pytest.raises(RuntimeError, match=match):
-            flag_gems.ops.multi_margin_loss(
-                case_input, case_target, 1, 1.0, case_weight, 1
-            )
+            flag_gems.multi_margin_loss(case_input, case_target, 1, 1.0, case_weight, 1)
 
     empty_1d = torch.empty((0,), dtype=torch.float32, device=flag_gems.device)
     scalar_target = torch.zeros((), dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError, match="non-empty"):
-        flag_gems.ops.multi_margin_loss(empty_1d, scalar_target, 1, 1.0, None, 1)
+        flag_gems.multi_margin_loss(empty_1d, scalar_target, 1, 1.0, None, 1)
 
     empty_classes = torch.empty((3, 0), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError, match="non-empty"):
-        flag_gems.ops.multi_margin_loss(empty_classes, target, 1, 1.0, None, 1)
+        flag_gems.multi_margin_loss(empty_classes, target, 1, 1.0, None, 1)
 
 
 @pytest.mark.multi_margin_loss
@@ -354,7 +350,7 @@ def test_multi_margin_loss_requires_vector_target_for_2d_input():
     input = torch.randn((1, 7), dtype=torch.float32, device=flag_gems.device)
     target = torch.zeros((), dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError, match=r"shape \[N\]"):
-        flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, None, 0)
+        flag_gems.multi_margin_loss(input, target, 1, 1.0, None, 0)
 
 
 @pytest.mark.multi_margin_loss
@@ -363,7 +359,7 @@ def test_multi_margin_loss_requires_vector_weight():
     target = torch.zeros((), dtype=torch.int64, device=flag_gems.device)
     weight = torch.ones((), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError, match=r"shape \[C\]"):
-        flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, weight, 0)
+        flag_gems.multi_margin_loss(input, target, 1, 1.0, weight, 0)
 
 
 @pytest.mark.multi_margin_loss
@@ -376,11 +372,11 @@ import flag_gems
 
 input = torch.randn((2, 7), dtype=torch.float32, device=flag_gems.device)
 target = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
-flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, None, 0)
+flag_gems.multi_margin_loss(input, target, 1, 1.0, None, 0)
 # Backends with a synchronous target check cache valid immutable targets. An
 # in-place update must advance Tensor._version and force the second validation.
 target[1] = 7
-flag_gems.ops.multi_margin_loss(input, target, 1, 1.0, None, 0)
+flag_gems.multi_margin_loss(input, target, 1, 1.0, None, 0)
 flag_gems.runtime.torch_device_fn.synchronize()
 """
     result = subprocess.run(
@@ -406,11 +402,11 @@ import flag_gems
 input = torch.randn((2, 7), dtype=torch.float32, device=flag_gems.device)
 target = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
 grad_output = torch.randn((2,), dtype=torch.float32, device=flag_gems.device)
-flag_gems.ops.multi_margin_loss_backward(
+flag_gems.multi_margin_loss_backward(
     grad_output, input, target, 1, 1.0, None, 0
 )
 target[1] = 7
-flag_gems.ops.multi_margin_loss_backward(
+flag_gems.multi_margin_loss_backward(
     grad_output, input, target, 1, 1.0, None, 0
 )
 flag_gems.runtime.torch_device_fn.synchronize()
