@@ -61,7 +61,12 @@ def test__linalg_eigvals(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems._linalg_eigvals(inp)
+
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == inp.device
+    assert res_out.dtype == torch.complex64
+    assert res_out.shape == inp.shape[:-1]
 
     # For float32 input, the eigenvalues come back as complex64.
     utils.gems_assert_close(
@@ -80,7 +85,7 @@ def test__linalg_eigvals_complex(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems._linalg_eigvals(inp)
 
     assert res_out.dtype == dtype
     utils.gems_assert_close(
@@ -96,7 +101,7 @@ def test__linalg_eigvals_batched(shape):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems._linalg_eigvals(inp)
 
     assert res_out.shape == ref_out.shape == (*shape[:-1],)
     utils.gems_assert_close(
