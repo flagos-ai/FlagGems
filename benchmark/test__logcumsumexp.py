@@ -25,6 +25,19 @@ def _logcumsumexp_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
+def _logcumsumexp_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={"dim": 1}, builder_args=(dims,)
+    )
+
+
+def _logcumsumexp_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return next(_logcumsumexp_input_fn(shape, dtype, device))
+
+
 # The former ``skipif(vendor_name == "enflame")`` guard was dropped: device ATen
 # supports ``_logcumsumexp`` for fp16/fp32/bf16 on the enflame backend, so only
 # the enflame vendor was excluded and no other vendor's coverage changes.
@@ -32,7 +45,8 @@ def _logcumsumexp_input_fn(shape, cur_dtype, device):
 def test__logcumsumexp():
     bench = base.GenericBenchmark2DOnly(
         op_name="_logcumsumexp",
-        input_fn=_logcumsumexp_input_fn,
+        case_fn=_logcumsumexp_case_fn,
+        build_inputs_fn=_logcumsumexp_build_inputs_fn,
         torch_op=torch._logcumsumexp,
         dtypes=consts.FLOAT_DTYPES,
     )
