@@ -30,6 +30,7 @@ from ._fake_quantize_learnable_per_tensor_affine import (
 from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
     _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
+from ._foreach_abs import _foreach_abs
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_acos_ import _foreach_acos_
 from ._foreach_add__List import _foreach_add__List
@@ -45,22 +46,81 @@ from ._foreach_addcmul__ScalarList import _foreach_addcmul__ScalarList
 from ._foreach_addcmul__Tensor import _foreach_addcmul__Tensor
 from ._foreach_asin_ import _foreach_asin_
 from ._foreach_atan import _foreach_atan
+from ._foreach_atan_ import _foreach_atan_
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max__List import _foreach_clamp_max__List
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max__ScalarList import _foreach_clamp_max__ScalarList
 from ._foreach_clamp_max_List import _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
 from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
 from ._foreach_clamp_min__List import _foreach_clamp_min__List
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_clamp_min_List import _foreach_clamp_min_List
+from ._foreach_clamp_min_Scalar import _foreach_clamp_min_Scalar
+from ._foreach_clamp_min_ScalarList import _foreach_clamp_min_ScalarList
+from ._foreach_copy_ import _foreach_copy_
+from ._foreach_cos import _foreach_cos
+from ._foreach_cosh_ import _foreach_cosh_
+from ._foreach_div__List import _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._foreach_div__Tensor import _foreach_div__Tensor
+from ._foreach_div_List import _foreach_div_List
+from ._foreach_div_Scalar import _foreach_div_Scalar
+from ._foreach_div_ScalarList import _foreach_div_ScalarList
+from ._foreach_div_Tensor import _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf
 from ._foreach_erf_ import _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_exp import _foreach_exp
 from ._foreach_exp_ import _foreach_exp_
+from ._foreach_floor import _foreach_floor
+from ._foreach_floor_ import _foreach_floor_
+from ._foreach_frac import _foreach_frac
+from ._foreach_frac_ import _foreach_frac_
+from ._foreach_log import _foreach_log
+from ._foreach_log1p_ import _foreach_log1p_
+from ._foreach_log2 import _foreach_log2
+from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10 import _foreach_log10
+from ._foreach_log10_ import _foreach_log10_
+from ._foreach_maximum__List import _foreach_maximum__List
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_maximum_List import _foreach_maximum_List
+from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
+from ._foreach_maximum_ScalarList import _foreach_maximum_ScalarList
+from ._foreach_minimum__List import _foreach_minimum__List
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_minimum__ScalarList import _foreach_minimum__ScalarList
+from ._foreach_minimum_List import _foreach_minimum_List
+from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
+from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
+from ._foreach_mul__List import _foreach_mul__List
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_mul_Tensor import _foreach_mul_Tensor
+from ._foreach_neg import _foreach_neg
+from ._foreach_neg_ import _foreach_neg_
+from ._foreach_pow__List import _foreach_pow__List
+from ._foreach_pow__Scalar import _foreach_pow__Scalar
+from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_pow_ScalarAndTensor import _foreach_pow_ScalarAndTensor
+from ._foreach_reciprocal import _foreach_reciprocal
+from ._foreach_reciprocal_ import _foreach_reciprocal_
+from ._foreach_rsqrt import _foreach_rsqrt
+from ._foreach_sigmoid import _foreach_sigmoid
+from ._foreach_sigmoid_ import _foreach_sigmoid_
+from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sin_ import _foreach_sin_
+from ._foreach_sqrt import _foreach_sqrt
+from ._foreach_sqrt_ import _foreach_sqrt_
+from ._foreach_sub__List import _foreach_sub__List
+from ._foreach_sub__ScalarList import _foreach_sub__ScalarList
+from ._foreach_tanh import _foreach_tanh
+from ._foreach_tanh_ import _foreach_tanh_
+from ._foreach_trunc_ import _foreach_trunc_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -108,6 +168,7 @@ from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_, floor_divide, floor_divide_, true_divide_out
 from .dropout import dropout, dropout_backward
+from .einsum import einsum
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .erfinv import erfinv
@@ -142,11 +203,13 @@ from .index_select_backward import index_select_backward
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div
 from .kthvalue import kthvalue
 from .layernorm import layer_norm_backward
 from .lcm import lcm
 from .lcm_ import lcm_
+from .ldexp_ import ldexp_
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
@@ -154,6 +217,7 @@ from .linalg_householder_product import linalg_householder_product
 from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_multi_dot import linalg_multi_dot
 from .linalg_tensorinv import linalg_tensorinv
 from .log import log
 from .log2_ import log2_
@@ -224,6 +288,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
 from .special_multigammaln import special_multigammaln
+from .special_ndtri import special_ndtri
 from .special_round import special_round
 from .special_round_out import special_round_out
 from .square_ import square_
@@ -264,6 +329,7 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+    "_foreach_abs",
     "_foreach_abs_",
     "_foreach_acos_",
     "_foreach_add__List",
@@ -279,22 +345,81 @@ __all__ = [
     "_foreach_addcmul__Tensor",
     "_foreach_asin_",
     "_foreach_atan",
+    "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max__ScalarList",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
     "_foreach_clamp_max_ScalarList",
     "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
     "_foreach_clamp_min__ScalarList",
+    "_foreach_clamp_min_List",
+    "_foreach_clamp_min_Scalar",
+    "_foreach_clamp_min_ScalarList",
+    "_foreach_copy_",
+    "_foreach_cos",
+    "_foreach_cosh_",
+    "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
+    "_foreach_div_List",
+    "_foreach_div_Scalar",
+    "_foreach_div_ScalarList",
+    "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc_",
+    "_foreach_exp",
     "_foreach_exp_",
+    "_foreach_floor",
+    "_foreach_floor_",
+    "_foreach_frac",
+    "_foreach_frac_",
+    "_foreach_log",
+    "_foreach_log10",
+    "_foreach_log10_",
+    "_foreach_log1p_",
+    "_foreach_log2",
+    "_foreach_log2_",
+    "_foreach_maximum__List",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_maximum_List",
+    "_foreach_maximum_Scalar",
+    "_foreach_maximum_ScalarList",
+    "_foreach_minimum__List",
+    "_foreach_minimum__Scalar",
+    "_foreach_minimum__ScalarList",
+    "_foreach_minimum_List",
+    "_foreach_minimum_Scalar",
+    "_foreach_minimum_ScalarList",
+    "_foreach_mul__List",
+    "_foreach_mul__ScalarList",
+    "_foreach_mul_Tensor",
+    "_foreach_neg",
+    "_foreach_neg_",
+    "_foreach_pow__List",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
+    "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal",
+    "_foreach_reciprocal_",
+    "_foreach_rsqrt",
+    "_foreach_sigmoid",
+    "_foreach_sigmoid_",
+    "_foreach_sign_",
+    "_foreach_sin_",
+    "_foreach_sqrt",
+    "_foreach_sqrt_",
+    "_foreach_sub__List",
+    "_foreach_sub__ScalarList",
+    "_foreach_tanh",
+    "_foreach_tanh_",
+    "_foreach_trunc_",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
@@ -352,6 +477,7 @@ __all__ = [
     "div_mode_",
     "dropout",
     "dropout_backward",
+    "einsum",
     "erfinv",
     "erfinv_",
     "expand_copy",
@@ -392,11 +518,15 @@ __all__ = [
     "int_mm_out",
     "inverse",
     "isin",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kthvalue",
     "layer_norm_backward",
     "lcm",
     "lcm_",
+    "ldexp_",
     "ldl_factor_ex",
     "lift_fresh",
     "lift_out",
@@ -404,6 +534,7 @@ __all__ = [
     "linalg_householder_product",
     "linalg_inv_ex",
     "linalg_ldl_solve",
+    "linalg_multi_dot",
     "linalg_tensorinv",
     "log",
     "log10",
@@ -487,6 +618,7 @@ __all__ = [
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
+    "special_ndtri",
     "special_round",
     "special_round_out",
     "square_",
