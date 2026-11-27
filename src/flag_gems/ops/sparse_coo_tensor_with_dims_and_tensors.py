@@ -58,6 +58,8 @@ except (AttributeError, RuntimeError):
     _NATIVE_WITH_TENSORS = None
     _SPARSE_KEY_SET = None
 
+HAS_NATIVE_SPARSE_COO_CONSTRUCTOR = _NATIVE_WITH_TENSORS is not None
+
 
 def _coo_with_tensors(
     sparse_dim,
