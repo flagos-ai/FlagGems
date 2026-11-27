@@ -16,6 +16,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ._moe_topk_gate_forward_native import launch
+
 
 @triton.jit
 def _gate_kernel(
@@ -299,6 +301,40 @@ def moe_topk_gate_forward(
         topk_idx, topk_weights = out
 
     if rows == 0 or kp == 0:
+        return topk_idx, topk_weights
+
+    if (
+        0 < rows < 2**27
+        and E == 256
+        and K == 8
+        and not use_shared_as_routed
+        and out is None
+        and bias is not None
+        and bias.shape == (E,)
+        and all(
+            arg is None
+            for arg in (
+                mask,
+                image_bias,
+                image_token_mask,
+                fix_routing_mask,
+                to_physical_map,
+                logical_count,
+                unmapped_topk_idx,
+                force_random,
+                scores,
+            )
+        )
+        and logits.dtype == bias.dtype == torch.float32
+        and logits.device.type == "npu"
+        and logits.device == bias.device
+        and logits.is_contiguous()
+        and bias.is_contiguous()
+        and logits.data_ptr() % 32 == bias.data_ptr() % 32 == 0
+        and launch(
+            (logits, bias, topk_idx, topk_weights), (rows, float(routed_scaling_factor))
+        )
+    ):
         return topk_idx, topk_weights
 
     idx32 = topk_idx.view(torch.int32)
