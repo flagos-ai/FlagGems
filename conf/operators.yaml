@@ -20195,7 +20195,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: sparse_csc_tensor
   description: 'Assembles a compressed sparse column (CSC) tensor from its stored
     components: the column-pointer vector (ccol_indices), the row indices (row_indices)
