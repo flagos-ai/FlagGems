@@ -22,6 +22,7 @@ import flag_gems
 from flag_gems.ops.quantize_per_tensor import _quantize_per_tensor_impl
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # ``quantize_per_tensor`` only accepts float32 tensors on the quantized CUDA
 # backend (Half/BFloat16/Double raise "Quantize only works on Float Tensor"),
@@ -52,6 +53,28 @@ def _make_input(shape, device="cuda"):
     return torch.randn(shape, dtype=torch.float32, device=device) * 3.0
 
 
+def _assert_int_repr_matches(res, ref):
+    """Compare two int representations.
+
+    On the accelerator the kernel is bit-exact against aten. Under
+    ``--ref=cpu`` a quotient landing exactly on ``k + 0.5`` is resolved
+    differently by the two aten backends (CPU rounds an fp32 product, CUDA
+    rounds the fp64 quotient -- see ``test_quantize_per_tensor_half_way_values``),
+    so a handful of large random inputs may be off by one quantization level.
+    """
+    if utils.TO_CPU:
+        # The two operands live on different devices here, so compare on CPU.
+        res_int = res.int_repr().long().cpu()
+        ref_int = ref.int_repr().long().cpu()
+        diff = (res_int - ref_int).abs()
+        assert diff.max().item() <= 1, (
+            f"int_repr differs by more than one quantization level: "
+            f"max |diff| = {diff.max().item()}"
+        )
+    else:
+        utils.gems_assert_equal(res.int_repr(), ref.int_repr())
+
+
 @pytest.mark.quantize_per_tensor
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
@@ -64,7 +87,7 @@ def test_quantize_per_tensor(shape, in_dtype, scale, zero_point):
     ref_out = torch.quantize_per_tensor(ref_inp, scale, zero_point, in_dtype)
     res_out = flag_gems.quantize_per_tensor(res_inp, scale, zero_point, in_dtype)
 
-    utils.gems_assert_equal(res_out.int_repr(), ref_out.int_repr())
+    _assert_int_repr_matches(res_out, ref_out)
     assert res_out.dtype == in_dtype
     assert res_out.q_scale() == ref_out.q_scale()
     assert res_out.q_zero_point() == ref_out.q_zero_point()
@@ -92,7 +115,7 @@ def test_quantize_per_tensor_out(shape, in_dtype, scale, zero_point):
     )
 
     assert res_r is res_out
-    utils.gems_assert_equal(res_r.int_repr(), ref_r.int_repr())
+    _assert_int_repr_matches(res_r, ref_r)
     assert res_r.q_scale() == ref_r.q_scale()
     assert res_r.q_zero_point() == ref_r.q_zero_point()
 
@@ -148,7 +171,10 @@ def test_quantize_per_tensor_non_contiguous(in_dtype, layout):
 
 
 @pytest.mark.quantize_per_tensor
-@pytest.mark.parametrize("bad_dtype", [torch.float64, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "bad_dtype",
+    [pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16, torch.bfloat16],
+)
 def test_quantize_per_tensor_rejects_non_float32(bad_dtype):
     # ATen raises "Quantize only works on Float Tensor" rather than upcasting.
     inp = torch.randn(32, dtype=bad_dtype, device="cuda")
@@ -536,7 +562,7 @@ def test_quantize_per_tensor_out_uses_triton_not_native_copy(monkeypatch):
     kernel. This counts the Triton launches and asserts no ``aten::copy_`` is
     dispatched, so the guard fails if a ``copy_`` is reintroduced.
     """
-    gems_impl = importlib.import_module("flag_gems.ops.quantize_per_tensor")
+    gems_impl = importlib.import_module(flag_gems.quantize_per_tensor.__module__)
 
     calls = []
 
@@ -571,6 +597,16 @@ def test_quantize_per_tensor_out_uses_triton_not_native_copy(monkeypatch):
 
 
 @pytest.mark.quantize_per_tensor_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame backend has no aten::as_strided kernel for quantized tensors; "
+        "expand() on a quantized gcu tensor silently falls back to a CPU "
+        "tensor, so the stride-0 out fixture cannot be built on device and "
+        "native aten also raises a device mismatch instead of the overlap "
+        "error"
+    ),
+)
 def test_quantize_per_tensor_out_rejects_internally_overlapping_out():
     """A stride-0 (broadcast) ``out`` raises native's overlap message.
 

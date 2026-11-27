@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops import cumprod as flag_gems_cumprod
+from flag_gems import cumprod as flag_gems_cumprod
 
 from . import base, consts
 
@@ -29,6 +29,14 @@ CUMPROD_DTYPES = (
 CUMPROD_INPLACE_DTYPES = (
     consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
 )
+
+# On enflame gcu300 the native topsaten cumprod aborts the whole process
+# (TOPSATEN_STATUS_NOT_SUPPORT) for every bool/integer dtype, so the baseline
+# cannot be timed; Gems also fails to compile the bool/uint8/int16 variants.
+# Only the float dtypes are benchmarked there.
+if flag_gems.vendor_name == "enflame":
+    CUMPROD_DTYPES = consts.FLOAT_DTYPES
+    CUMPROD_INPLACE_DTYPES = consts.FLOAT_DTYPES
 
 
 def _make_input(shape, dtype, device):
@@ -58,6 +66,10 @@ def torch_cumprod(inp, dim):
     return torch.cumprod(inp, dim)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cumprod
 def test_cumprod():
     bench = base.GenericBenchmark2DOnly(
@@ -70,6 +82,10 @@ def test_cumprod():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cumprod_
 def test_cumprod_():
     bench = base.GenericBenchmark2DOnly(
@@ -104,6 +120,10 @@ def cumprod_backward_input_fn(shape, dtype, device):
     yield grad, inp, 1, output
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cumprod_backward
 def test_cumprod_backward():
     bench = base.GenericBenchmark2DOnly(

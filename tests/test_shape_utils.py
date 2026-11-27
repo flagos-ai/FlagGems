@@ -125,3 +125,52 @@ def test_heuristics_for_num_warps():
         assert shape_utils.heuristics_for_num_warps(1024) == 4
         assert shape_utils.heuristics_for_num_warps(2048) == 8
         assert shape_utils.heuristics_for_num_warps(4096) == 16
+
+
+def test_compute_stride_contiguous():
+    # A contiguous operand views into any compatible split.
+    assert shape_utils.computeStride((2, 3, 4), (12, 4, 1), (6, 4)) == (4, 1)
+    assert shape_utils.computeStride((2, 3, 4), (12, 4, 1), (24,)) == (1,)
+
+
+def test_compute_stride_transposed_is_not_viewable():
+    # (16, 4096) over strides (1, 16) spans two chunks: flatten cannot view it.
+    assert shape_utils.computeStride((16, 4096), (1, 16), (65536,)) is None
+
+
+def test_compute_stride_keeps_transposed_layout():
+    assert shape_utils.computeStride((16, 4096), (1, 16), (16, 64, 64)) == (1, 1024, 16)
+
+
+def test_compute_stride_unit_dims_any_stride():
+    # Size-1 new dims are valid regardless of the surrounding stride.
+    assert shape_utils.computeStride((4, 6), (6, 1), (1, 24)) == (24, 1)
+    assert shape_utils.computeStride((4, 1, 6), (6, 6, 1), (24,)) == (1,)
+
+
+def test_compute_stride_scalar_and_empty():
+    assert shape_utils.computeStride((), (), (1, 1)) == (1, 1)
+    assert shape_utils.computeStride((0, 4), (4, 1), (0, 4)) == (4, 1)
+    assert shape_utils.computeStride((0, 4), (4, 1), (0, 2, 2)) == (4, 2, 1)
+
+
+def test_compute_stride_matches_torch_view():
+    # The port must agree with aten::view on both the decision and the strides.
+    cases = [
+        ((2, 3, 4), (12, 4, 1)),
+        ((4, 6), (6, 1)),
+        ((6, 4), (1, 6)),
+        ((4, 1, 6), (6, 6, 1)),
+        ((8, 3, 2), (12, 2, 1)),
+    ]
+    for oldshape, oldstride in cases:
+        for newshape in [(24,), (6, 4), (2, 12), (4, 6), (1, 24), (24, 1)]:
+            stride = shape_utils.computeStride(oldshape, oldstride, newshape)
+            probe = torch.empty_strided(oldshape, oldstride)
+            try:
+                expected = probe.view(newshape).stride()
+            except RuntimeError:
+                expected = None
+            assert (stride is None) == (expected is None), (oldshape, newshape)
+            if stride is not None:
+                assert stride == expected

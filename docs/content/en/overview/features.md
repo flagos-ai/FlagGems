@@ -25,8 +25,8 @@ weight: 10
 ## Rich Collection of Operators
 
 FlagGems features a large collection of PyTorch compatible operators.
-Refer to [operator supported](/FlagGems/references/operators/) and
-[experimental operators](/FlagGems/references/experimental/)
+Refer to [operator supported](../references/operators.md) and
+[experimental operators](../references/experimental.md)
 for list of formally supported operators and experimental operators.
 
 ## Hand-optimized Performance for Selected Operators
@@ -34,11 +34,11 @@ for list of formally supported operators and experimental operators.
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode.
 The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](/FlagGems/images/speedup-20251225.png)
+![Operator Speedup](../../../assets/speedup-20251225.png)
 
 ## Eager-mode ready, independent of `torch.compile`
 
-> TODO: contents
+*FlagGems* operators register directly with ATen and execute seamlessly in native eager mode without requiring compilation and trace workflows via `torch.compile`, significantly simplifying debugging and deployment for plug-and-play acceleration.
 
 ## Automatic Code Generation
 
@@ -46,7 +46,7 @@ The speedup is calculated by averaging the speedup on each shape, representing t
 to easily generate both pointwise and fused operators.
 The auto-generation system supports a variety of requirements, including standard
 element-wise computations, non-tensor parameters, and specifying output data types.
-For more details, please refer to the [pointwise dynamic](/FlagGems/overview/pointwise-dynamic/)
+For more details, please refer to the [pointwise dynamic](pointwise-dynamic.md)
 documentation.
 
 ## Function-level kernel dispatching
@@ -65,7 +65,7 @@ resulting in a simplified cache key format and reduced unnecessary key computati
 FlagGems supports a wide range of hardware platforms (10+ backends) and
 has been extensively tested across different hardware configurations.
 For a comprehensive and up to date list of supported platforms,
-please check [platforms supported](/FlagGems/overview/platforms/).
+please check [platforms supported](platforms.md).
 
 ### C++-wrapped operators
 

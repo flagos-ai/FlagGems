@@ -57,14 +57,21 @@ def test_accuracy_flipud_non_float(dtype, high):
 
 
 @pytest.mark.flipud
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="complex tensors are not supported on Kunlunxin XPU",
+)
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test_accuracy_flipud_complex(dtype):
     inp = torch.randn((3, 5), dtype=dtype, device=flag_gems.device).T
-    expected = torch.flipud(utils.to_reference(inp, False))
+    # CPU flip is not implemented for complex32; flip only reorders elements, so
+    # the reference computed after an upcast is exactly equivalent.
+    ref_dtype = torch.complex64 if dtype == torch.complex32 else dtype
+    expected = torch.flipud(utils.to_reference(inp, False).to(ref_dtype))
 
     result = flag_gems.flipud(inp)
 
-    utils.gems_assert_equal(result, expected)
+    utils.gems_assert_equal(result.to(ref_dtype), expected)
     assert result.stride() == expected.stride()
 
 

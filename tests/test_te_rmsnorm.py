@@ -15,7 +15,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -42,6 +41,21 @@ try:
     }
 except ImportError:
     HAS_TE = False
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing and turns the whole
+    # module uncollectable.  The TE reference op has no GCU implementation
+    # (torch aten/TE not supported on this backend), so skip the module on
+    # enflame with the real cause instead of failing collection for every
+    # operator of the run.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: transformer-engine metapackage has no framework "
+            f"extension ({te_import_error}); the TE reference op is not "
+            "supported on this backend (torch aten/TE not supported on GCU)",
+            allow_module_level=True,
+        )
+    raise
 
 
 # =============================================================================
@@ -100,6 +114,7 @@ def _torch_rmsnorm_bwd(dz, x, weight, eps, zero_centered_gamma=False):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_fwd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -125,7 +140,7 @@ def test_te_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
         ref_inp, ref_weight, eps, zero_centered_gamma=zero_centered_gamma
     )
 
-    res_out, _, res_rsigma = te_rmsnorm_fwd(
+    res_out, _, res_rsigma = flag_gems.te_rmsnorm_fwd(
         inp,
         weight,
         eps,
@@ -142,11 +157,44 @@ def test_te_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
     utils.gems_assert_close(res_rsigma, ref_rsigma, torch.float32)
 
 
+@pytest.mark.te_rmsnorm
+@pytest.mark.te_rmsnorm_fwd
+@pytest.mark.parametrize("M", [10000, 4097])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_te_rmsnorm_fwd_n1(M, dtype):
+    """N == 1 flat-path coverage with M not divisible by BLOCK (4096).
+
+    The flat kernel is bound-masked; M chosen here (10000 % 4096 = 1808,
+    4097 % 4096 = 1) exercises the masked tail so an OOB would be caught.
+    """
+    shape = (M, 1)
+    eps = 1e-5
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(1, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_weight = utils.to_reference(weight)
+    ref_out, ref_rsigma = _torch_rmsnorm_fwd(ref_inp, ref_weight, eps)
+
+    res_out, _, res_rsigma = flag_gems.te_rmsnorm_fwd(
+        inp,
+        weight,
+        eps,
+        ln_out=None,
+        quantizer=None,
+        otype=dtype,
+        sm_margin=0,
+    )
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_rsigma, ref_rsigma, torch.float32)
+
+
 # =============================================================================
 # Forward Tests with TransformerEngine reference
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_fwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
@@ -185,7 +233,7 @@ def test_te_rmsnorm_fwd_vs_te(shape, dtype, zero_centered_gamma, use_ln_out):
     te_out, _, te_rsigma = te_result
 
     # FlagGems implementation
-    res_out, _, res_rsigma = te_rmsnorm_fwd(
+    res_out, _, res_rsigma = flag_gems.te_rmsnorm_fwd(
         inp,
         weight,
         eps,
@@ -207,6 +255,7 @@ def test_te_rmsnorm_fwd_vs_te(shape, dtype, zero_centered_gamma, use_ln_out):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_bwd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -222,7 +271,7 @@ def test_te_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
     dz = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     # Forward pass to get rsigma
-    out, _, rsigma = te_rmsnorm_fwd(
+    out, _, rsigma = flag_gems.te_rmsnorm_fwd(
         x,
         weight,
         eps,
@@ -242,7 +291,7 @@ def test_te_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
     )
 
     # FlagGems backward
-    res_dx, res_dgamma = te_rmsnorm_bwd(
+    res_dx, res_dgamma = flag_gems.te_rmsnorm_bwd(
         dz, x, rsigma, weight, sm_margin=0, zero_centered_gamma=zero_centered_gamma
     )
 
@@ -255,6 +304,7 @@ def test_te_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_bwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
@@ -292,7 +342,7 @@ def test_te_rmsnorm_bwd_vs_te(shape, dtype, zero_centered_gamma):
     te_dx, te_dgamma = te_bwd_result
 
     # FlagGems forward to get rsigma
-    gems_out, _, gems_rsigma = te_rmsnorm_fwd(
+    gems_out, _, gems_rsigma = flag_gems.te_rmsnorm_fwd(
         x,
         weight,
         eps,
@@ -304,7 +354,7 @@ def test_te_rmsnorm_bwd_vs_te(shape, dtype, zero_centered_gamma):
     )
 
     # FlagGems backward
-    res_dx, res_dgamma = te_rmsnorm_bwd(
+    res_dx, res_dgamma = flag_gems.te_rmsnorm_bwd(
         dz, x, gems_rsigma, weight, sm_margin=0, zero_centered_gamma=zero_centered_gamma
     )
 

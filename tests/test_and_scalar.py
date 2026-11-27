@@ -21,10 +21,17 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame GCU runtime aborts (core dumped) when running this op",
+)
+
 
 @pytest.mark.and_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.SMALL_INT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+)
 def test_and_scalar(shape, dtype, caplog):
     if dtype in utils.BOOL_TYPES:
         inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
@@ -32,9 +39,7 @@ def test_and_scalar(shape, dtype, caplog):
         )
         inp2 = bool(random.randint(0, 2))
     else:
-        inp1 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
+        inp1 = utils.randint_in_range(shape, dtype).to(flag_gems.device)
         inp2 = 0x00FF
 
     ref_inp1 = utils.to_reference(inp1)

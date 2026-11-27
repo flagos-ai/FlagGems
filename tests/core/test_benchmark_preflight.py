@@ -22,6 +22,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+import torch
 from _pytest.config.argparsing import Parser
 
 from benchmark import base, conftest
@@ -304,6 +305,102 @@ def test_benchmark_times_reference_and_live_override_separately(monkeypatch, run
     assert metric.latency == 1.0 and metric.latency_base == 2.0
 
 
+def _fake_profile(events):
+    class FakeProfiler:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def key_averages(self):
+            return events
+
+    return lambda: FakeProfiler()
+
+
+def test_profile_invokes_kernel_returns_false_for_cpu_only(monkeypatch, runner):
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    cpu_only = [SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0)]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(cpu_only))
+    assert bench._profile_invokes_kernel(lambda: None) is False
+
+
+def test_profile_invokes_kernel_returns_true_for_device_event(monkeypatch, runner):
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    events = [
+        SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0),
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=2.5),
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(events))
+    assert bench._profile_invokes_kernel(lambda: None) is True
+
+
+def test_base_without_device_kernel_is_rejected(monkeypatch, runner):
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    cpu_only = [SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0)]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(cpu_only))
+    with pytest.raises(pytest.skip.Exception, match="did not invoke any device kernel"):
+        bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
+
+
+def test_base_with_device_kernel_is_accepted(monkeypatch, runner):
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    events = [
+        SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0),
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=2.5),
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(events))
+    bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
+
+
+def test_verify_base_invokes_kernel_caches_result(monkeypatch, runner):
+    """After the first successful check, subsequent calls skip profiling."""
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    device_events = [
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=1.0)
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(device_events))
+    # First call profiles and caches
+    bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
+    assert bench._base_kernel_verified is True
+    # Replace profiler with one that would fail — cached result should skip it
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile([]))
+    bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})  # no error
+
+
+def test_verify_base_invokes_kernel_caches_failure(monkeypatch, runner):
+    """A cached False result raises on subsequent calls without re-profiling."""
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    cpu_only = [SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0)]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(cpu_only))
+    with pytest.raises(pytest.skip.Exception, match="did not invoke any device kernel"):
+        bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
+    assert bench._base_kernel_verified is False
+    # Second call should also raise from cache, even with a different profiler
+    monkeypatch.setattr(
+        base.torch.profiler,
+        "profile",
+        _fake_profile(
+            [SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=1.0)]
+        ),
+    )
+    with pytest.raises(pytest.skip.Exception, match="did not invoke any device kernel"):
+        bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
+
+
 def test_benchmark_cannot_claim_an_unused_override(monkeypatch, runner):
     bench, config, _ = runner
     config.override_registry.call_counts = lambda: {"flag_gems.example": 0}
@@ -312,3 +409,247 @@ def test_benchmark_cannot_claim_an_unused_override(monkeypatch, runner):
     monkeypatch.setattr(bench, "get_latency", lambda *args, **kwargs: 1.0)
     with pytest.raises(pytest.fail.Exception, match="did not invoke"):
         bench._measure_input((1,), case_id="case-0")
+
+
+# ---------------------------------------------------------------------------
+# --kernel-check tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def kc_runner(monkeypatch, runner):
+    """Extend the preflight runner with kernel_check mode active."""
+    bench, config, events = runner
+    config.kernel_check = True
+    config.preflight_only = False
+    config.kernel_check_records = []
+    # torch_op is set to `fail` by the runner fixture; replace it with a no-op
+    # so _benchmark_callable can build its lambda without raising.
+    bench.torch_op = lambda *a, **k: None
+    return bench, config, events
+
+
+def test_kernel_check_case_invokes_kernel_passes(monkeypatch, kc_runner):
+    from torch.autograd import DeviceType
+
+    bench, config, _ = kc_runner
+    device_events = [
+        SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0),
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=3.0),
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(device_events))
+    executed = bench._run_kernel_check_cases(case_ids=["case-0"])
+    assert executed == ["case-0"]
+    assert len(config.kernel_check_records) == 1
+    rec = config.kernel_check_records[0]
+    assert rec["invoked_kernel"] is True
+    assert rec["status"] == "passed"
+    assert "case-0" in config.executed_case_ids
+
+
+def test_kernel_check_case_no_kernel_records_false(monkeypatch, kc_runner):
+    from torch.autograd import DeviceType
+
+    bench, config, _ = kc_runner
+    cpu_only = [SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0)]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(cpu_only))
+    executed = bench._run_kernel_check_cases(case_ids=["case-0"])
+    assert executed == ["case-0"]
+    rec = config.kernel_check_records[0]
+    assert rec["invoked_kernel"] is False
+    assert rec["status"] == "passed"
+
+
+def test_kernel_check_all_cases_run_by_default(monkeypatch, kc_runner):
+    from torch.autograd import DeviceType
+
+    bench, config, _ = kc_runner
+    device_events = [
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=1.0)
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(device_events))
+    executed = bench._run_kernel_check_cases()
+    assert executed == ["case-0", "case-1", "case-2"]
+    assert len(config.kernel_check_records) == 3
+    assert all(r["invoked_kernel"] for r in config.kernel_check_records)
+
+
+def test_kernel_check_failure_records_error(monkeypatch, kc_runner):
+    bench, config, _ = kc_runner
+
+    class BrokenProfiler:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def key_averages(self):
+            raise RuntimeError("profiler exploded")
+
+    monkeypatch.setattr(base.torch.profiler, "profile", lambda: BrokenProfiler())
+    with pytest.raises(RuntimeError, match="profiler exploded"):
+        bench._run_kernel_check_cases(case_ids=["case-0"])
+    assert config.kernel_check_records[0]["status"] == "failed"
+    assert "profiler exploded" in config.kernel_check_records[0]["error"]
+    assert not config.executed_case_ids
+
+
+def test_kernel_check_legacy_fallback_invokes_kernel(monkeypatch, kc_runner):
+    """Legacy benchmarks (input_fn mode) should be profiled via the fallback path."""
+    bench, config, _ = kc_runner
+    monkeypatch.setattr(bench, "supports_cases", lambda: False)
+    bench.to_bench_dtypes = [torch.float32]
+    # Provide a legacy input iterator that yields one input tuple.
+    monkeypatch.setattr(bench, "get_input_iter", lambda dtype: iter([(42,)]))
+    monkeypatch.setattr(
+        bench,
+        "_profile_invokes_kernel",
+        staticmethod(lambda fn: True),
+    )
+    executed = bench._run_kernel_check_cases()
+    assert len(executed) == 1
+    assert executed[0].startswith("example-legacy-")
+    assert config.kernel_check_records[-1]["invoked_kernel"] is True
+    assert config.kernel_check_records[-1]["status"] == "passed"
+
+
+def test_kernel_check_legacy_fallback_no_kernel(monkeypatch, kc_runner):
+    """Legacy fallback records invoked_kernel=False when no device kernel fires."""
+    bench, config, _ = kc_runner
+    monkeypatch.setattr(bench, "supports_cases", lambda: False)
+    bench.to_bench_dtypes = [torch.float32]
+    monkeypatch.setattr(bench, "get_input_iter", lambda dtype: iter([(42,)]))
+    monkeypatch.setattr(
+        bench,
+        "_profile_invokes_kernel",
+        staticmethod(lambda fn: False),
+    )
+    executed = bench._run_kernel_check_cases()
+    assert len(executed) == 1
+    assert config.kernel_check_records[-1]["invoked_kernel"] is False
+    assert config.kernel_check_records[-1]["status"] == "passed"
+
+
+def test_kernel_check_rejects_empty_case_plan(monkeypatch, kc_runner):
+    bench, _, _ = kc_runner
+    monkeypatch.setattr(bench, "_collect_cases", lambda: [])
+    with pytest.raises(ValueError, match="no kernel-check cases"):
+        bench._run_kernel_check_cases()
+
+
+def test_kernel_check_session_passes_if_all_operators_have_kernel(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [
+        {"operator": "abs", "invoked_kernel": True},
+        {"operator": "abs", "invoked_kernel": True},
+    ]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.OK
+
+
+def test_kernel_check_session_fails_if_any_operator_has_no_kernel(runner):
+    """Even if one operator has a kernel, another without one should fail."""
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [
+        {"operator": "abs", "invoked_kernel": True},
+        {"operator": "empty", "invoked_kernel": False},
+    ]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+
+def test_kernel_check_session_fails_if_no_kernel(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [
+        {"operator": "empty", "invoked_kernel": False},
+        {"operator": "empty", "invoked_kernel": False},
+    ]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+
+def test_kernel_check_session_fails_if_no_records(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = []
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+
+def test_kernel_check_does_not_downgrade_interrupt(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [{"operator": "empty", "invoked_kernel": False}]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.INTERRUPTED,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.INTERRUPTED
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        ["--preflight-only"],
+        ["--profile-only", "--case-id", "x"],
+        ["--reference-only"],
+        ["--list-cases"],
+        ["--query"],
+    ],
+)
+def test_kernel_check_rejects_conflicting_cli_modes(monkeypatch, other):
+    from _pytest.config.argparsing import Parser
+
+    parser = Parser()
+    conftest.pytest_addoption(parser)
+    options = parser.parse(["--kernel-check", *other])
+    cfg = SimpleNamespace(
+        option=options,
+        addinivalue_line=lambda *args: None,
+        getini=lambda key: [],
+        getoption=lambda key: getattr(options, key.lstrip("-").replace("-", "_")),
+        hook=SimpleNamespace(pytest_flaggems_profile_scope=None),
+    )
+    with pytest.raises(pytest.UsageError, match="--kernel-check"):
+        conftest.pytest_configure(cfg)

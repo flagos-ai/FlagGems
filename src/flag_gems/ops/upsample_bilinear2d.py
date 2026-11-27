@@ -154,7 +154,8 @@ def upsample_bilinear2d(
     assert input.device.type == runtime.device.name
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
-
+    # The kernel assumes contiguous NCHW input.
+    input = input.contiguous()
     OH, OW = output_size
     N, C, IH, IW = input.shape
 

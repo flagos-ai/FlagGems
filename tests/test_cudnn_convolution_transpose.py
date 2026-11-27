@@ -18,15 +18,17 @@ import os
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
 from . import accuracy_utils as utils
 
-# NOTE: This test does not use flag_gems.use_gems() because it compares
-# torch.cudnn_convolution_transpose across different devices to verify
-# cuDNN device compatibility. The FlagGems wrapper delegates to the
-# same underlying torch.cudnn_convolution_transpose call.
+# FlagGems provides its own Triton transpose-convolution kernel, so this test
+# exercises that kernel directly (flag_gems.ops.cudnn_convolution_transpose) and
+# compares it against the generic torch conv_transpose2d reference. It must not
+# call the cuDNN-only aten entry point torch.cudnn_convolution_transpose, which
+# is unavailable on backends built without cuDNN (e.g. ROCm, which uses MIOpen).
 
 SHAPE_CONV_TRANSPOSE2D = [
     ((1, 2, 5, 5), (2, 2, 3, 3)),
@@ -51,7 +53,6 @@ def test_cudnn_convolution_transpose(
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
-    torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(
         kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -67,20 +68,18 @@ def test_cudnn_convolution_transpose(
     # Make sure output size is same as input for testing
     output_padding = (output_padding_h % stride, output_padding_w % stride)
 
-    ref_out = torch.cudnn_convolution_transpose(
+    ref_out = F.conv_transpose2d(
         ref_inp,
         ref_weight,
+        bias=None,
+        stride=(stride, stride),
         padding=(padding, padding),
         output_padding=output_padding,
-        stride=(stride, stride),
-        dilation=(dilation, dilation),
         groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
+        dilation=(dilation, dilation),
     ).to(dtype)
 
-    res_out = torch.cudnn_convolution_transpose(
+    res_out = flag_gems.ops.cudnn_convolution_transpose(
         inp,
         weight,
         padding=(padding, padding),

@@ -32,8 +32,7 @@ def test_xlogy_(shape, dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = ref_x.xlogy_(ref_y)
 
-    with flag_gems.use_gems():
-        res_out = x.xlogy_(y)
+    res_out = flag_gems.xlogy_(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(x, ref_x, dtype)
@@ -55,8 +54,7 @@ def test_xlogy_special_values_(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = ref_x.xlogy_(ref_y)
 
-    with flag_gems.use_gems():
-        res_out = x.xlogy_(y)
+    res_out = flag_gems.xlogy_(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
     utils.gems_assert_close(x, ref_x, dtype, equal_nan=True)
@@ -73,8 +71,7 @@ def test_xlogy_tensor_scalar_(shape, dtype):
     ref_x = utils.to_reference(x.clone(), True)
     ref_out = ref_x.xlogy_(scalar)
 
-    with flag_gems.use_gems():
-        res_out = x.xlogy_(scalar)
+    res_out = flag_gems.xlogy_tensor_scalar_(x, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(x, ref_x, dtype)

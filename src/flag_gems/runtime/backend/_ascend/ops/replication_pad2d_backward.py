@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.runtime.driver as driver
 
 from flag_gems.utils import triton_lang_extension as ext
 
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 # rows owned by one program.  Only the accumulator row-vectors are live at a
 # time, so this does NOT cost UB: every buffer is 1xWN regardless of R.
 DEFAULT_R = 16
+
+
+def get_npu_properties():
+    device = torch.npu.current_device()
+    return driver.active.utils.get_device_properties(device)
 
 
 @triton.jit
@@ -213,83 +219,93 @@ def _backward_rows_kernel(
 def _backward_wide_k1(
     gop,
     gip,
-    CO,
     OH,
     OW,
     H,
     W,
+    NTILES,
     PL: tl.constexpr,
     PR: tl.constexpr,
     PT: tl.constexpr,
     R: tl.constexpr,
     WN: tl.constexpr,
+    TILES_PER_PROG: tl.constexpr,
 ):
     pid = ext.program_id(0)
     nrb = (H + R - 1) // R
-    nc = CO + pid // nrb
-    j0 = (pid % nrb) * R
-    c_out = nc * OH * OW
-    c_in = nc * H * W
-    rr = j0 + tl.arange(0, R)
     iw = tl.arange(0, WN)
-    m = rr < H
 
-    A = tl.load(
-        gop + c_out + (rr + PT)[:, None] * OW + (PL + iw)[None, :],
-        mask=m[:, None],
-        other=0.0,
-    )
-    # Horizontal pad columns of the aligned row fold onto its two edge lanes.
-    # A width of one also goes through a 2-wide tile with the second lane masked
-    # off: the plain strided R-vector this replaces lowers ~100x slower on bf16,
-    # while a degenerate [R x 1] tile lowers ~100x slower on fp16, so neither
-    # width can use its "natural" form.  The masked second lane is never read.
-    if PL == 1:
-        one = tl.arange(0, 2)[None, :]
-        L = tl.sum(
-            tl.load(
-                gop + c_out + (rr + PT)[:, None] * OW + one,
-                mask=m[:, None] & (one == 0),
-                other=0.0,
-            ),
-            axis=1,
-        )
-        A = tl.where(iw[None, :] == 0, A + L[:, None], A)
-    elif PL > 1:
-        L = tl.sum(
-            tl.load(
-                gop + c_out + (rr + PT)[:, None] * OW + tl.arange(0, PL)[None, :],
+    # One program per vector core, so each walks TILES_PER_PROG tiles.
+    for idx in tl.range(0, TILES_PER_PROG):
+        t = pid * TILES_PER_PROG + idx
+        if t < NTILES:
+            nc = t // nrb
+            j0 = (t % nrb) * R
+            c_out = nc * OH * OW
+            c_in = nc * H * W
+            rr = j0 + tl.arange(0, R)
+            m = rr < H
+
+            A = tl.load(
+                gop + c_out + (rr + PT)[:, None] * OW + (PL + iw)[None, :],
                 mask=m[:, None],
                 other=0.0,
-            ),
-            axis=1,
-        )
-        A = tl.where(iw[None, :] == 0, A + L[:, None], A)
-    if PR == 1:
-        one = tl.arange(0, 2)[None, :]
-        Rv = tl.sum(
-            tl.load(
-                gop + c_out + (rr + PT)[:, None] * OW + (PL + W + one),
-                mask=m[:, None] & (one == 0),
-                other=0.0,
-            ),
-            axis=1,
-        )
-        A = tl.where(iw[None, :] == W - 1, A + Rv[:, None], A)
-    elif PR > 1:
-        Rv = tl.sum(
-            tl.load(
-                gop
-                + c_out
-                + (rr + PT)[:, None] * OW
-                + (PL + W + tl.arange(0, PR))[None, :],
-                mask=m[:, None],
-                other=0.0,
-            ),
-            axis=1,
-        )
-        A = tl.where(iw[None, :] == W - 1, A + Rv[:, None], A)
-    tl.store(gip + c_in + rr[:, None] * W + iw[None, :], A, mask=m[:, None])
+            )
+            # Horizontal pad columns of the aligned row fold onto its two edge
+            # lanes.  A width of one also goes through a 2-wide tile with the
+            # second lane masked off: the plain strided R-vector this replaces
+            # lowers ~100x slower on bf16, while a degenerate [R x 1] tile
+            # lowers ~100x slower on fp16, so neither width can use its
+            # "natural" form.  The masked second lane is never read.
+            if PL == 1:
+                one = tl.arange(0, 2)[None, :]
+                L = tl.sum(
+                    tl.load(
+                        gop + c_out + (rr + PT)[:, None] * OW + one,
+                        mask=m[:, None] & (one == 0),
+                        other=0.0,
+                    ),
+                    axis=1,
+                )
+                A = tl.where(iw[None, :] == 0, A + L[:, None], A)
+            elif PL > 1:
+                L = tl.sum(
+                    tl.load(
+                        gop
+                        + c_out
+                        + (rr + PT)[:, None] * OW
+                        + tl.arange(0, PL)[None, :],
+                        mask=m[:, None],
+                        other=0.0,
+                    ),
+                    axis=1,
+                )
+                A = tl.where(iw[None, :] == 0, A + L[:, None], A)
+            if PR == 1:
+                one = tl.arange(0, 2)[None, :]
+                Rv = tl.sum(
+                    tl.load(
+                        gop + c_out + (rr + PT)[:, None] * OW + (PL + W + one),
+                        mask=m[:, None] & (one == 0),
+                        other=0.0,
+                    ),
+                    axis=1,
+                )
+                A = tl.where(iw[None, :] == W - 1, A + Rv[:, None], A)
+            elif PR > 1:
+                Rv = tl.sum(
+                    tl.load(
+                        gop
+                        + c_out
+                        + (rr + PT)[:, None] * OW
+                        + (PL + W + tl.arange(0, PR))[None, :],
+                        mask=m[:, None],
+                        other=0.0,
+                    ),
+                    axis=1,
+                )
+                A = tl.where(iw[None, :] == W - 1, A + Rv[:, None], A)
+            tl.store(gip + c_in + rr[:, None] * W + iw[None, :], A, mask=m[:, None])
 
 
 @triton.jit
@@ -738,20 +754,28 @@ def _replication_pad2d_backward_impl(
             # of fp16/bf16 or the [R x W] tile overflows the 192KB UB and fails
             # to compile.
             r_wide = max(1, min(H, (16384 * 2 // itemsize) // W))
-            grid = (n_images * triton.cdiv(H, r_wide),)
+            row_blocks = triton.cdiv(H, r_wide)
+            n_tiles = n_images * row_blocks
+
+            # CANN caps blockDim at 65535, while only one wave of vector cores runs at once.
+            # Launch one program per vector core and let each program walk multiple tiles.
+            CORE_NUM = get_npu_properties()["num_vectorcore"]
+            tiles_per_prog = triton.cdiv(n_tiles, CORE_NUM)
+            grid = (triton.cdiv(n_tiles, tiles_per_prog),)
             _backward_wide_k1[grid](
                 grad_output,
                 out,
-                0,
                 OH,
                 OW,
                 H,
                 W,
+                n_tiles,
                 pad_left,
                 pad_right,
                 pad_top,
                 r_wide,
                 w_width,
+                tiles_per_prog,
             )
             # K1 already seeded rows 0/H-1 with the aligned value; K2 rewrites
             # them with every vertical contribution.  Skip it entirely when

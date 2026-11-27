@@ -19,8 +19,10 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems import runtime
-from flag_gems.ops.flash_kernel import (
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.random_utils import philox_backend_seed_offset
+
+from .flash_kernel import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
     flash_fwd_kernel,
@@ -28,8 +30,6 @@ from flag_gems.ops.flash_kernel import (
     flash_fwd_splitkv_kernel,
     flash_varlen_fwd_kernel,
 )
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(__name__)
 _debug = False
@@ -245,6 +245,91 @@ class fwd_params:
 
     def args(self):
         return tuple(getattr(self, k) for k in self.__slots__)
+
+
+# ---------------------------------------------------------------------------
+# Tile policy of flash_varlen_fwd_kernel on Enflame GCU400
+# ---------------------------------------------------------------------------
+# The generic ``mha_block_*`` heuristics assume a 4-warp CTA. For the varlen
+# forward kernel that is a poor fit: a paged K/V tile is assembled from
+# per-element offsets, so the compiler turns the tile load into scattered
+# per-lane accesses whose cost grows with the warp count. Keeping the tile on
+# a single sub-thread was 4x~128x faster than the 4-warp heuristic tiles on
+# every measured GCU400 shape (HEAD_DIM 128/192/256, fp16 and bf16, paged KV,
+# block_size 16, GCU400 with 48 SMs):
+#   512 q / 1 seq prefill        30.74 ms -> 0.29 ms
+#   4096 q / 4096 kv prefill   1146.36 ms -> 8.92 ms
+#   200 seq decode, kv 2333     464.77 ms -> 42.83 ms
+# BLOCK_N=64 was the fastest safe tile in all of them; a 32-wide tile was up
+# to 11x slower at HEAD_DIM 256 while 128 does not fit the VDMem budget.
+VARLEN_FWD_BLOCK_N = 64
+VARLEN_FWD_NUM_WARPS = 1
+VARLEN_FWD_NUM_STAGES = 1
+# Page sizes that are powers of two and fit the tile budget, so that a page
+# aligned BLOCK_N keeps load_from_page on the contiguous path.
+PAGED_PAGE_ALIGNED_BLOCK_SIZES = (16, 32, 64)
+VARLEN_FWD_PAGED_NUM_WARPS = 1
+VARLEN_FWD_BLOCK_M_PREFILL = 128
+VARLEN_FWD_BLOCK_M_FLOOR = 32
+
+
+def _varlen_fwd_decode_block_m(num_decode_ctas):
+    """Pick the query tile for the swapped (decode) layout.
+
+    In that layout one CTA serves one (sequence, kv-head) pair, so the grid is
+    ``batch_size * num_heads_k`` wide and BLOCK_M only scales the tile. With
+    few CTAs a wide tile amortises the K/V stream; once the grid covers the
+    device several times over, the wasted rows cost more than the reuse.
+    Measured decode shapes: 440 CTAs 3.10 ms (64 rows) vs 3.37 ms (128 rows);
+    1600 CTAs 42.83 ms (32 rows) vs 47.30 ms (64 rows) vs 50.66 ms (128 rows).
+    """
+    if num_decode_ctas >= 1024:
+        return 32
+    if num_decode_ctas >= 256:
+        return 64
+    return 128
+
+
+def _varlen_fwd_tile_config(
+    head_size,
+    is_paged,
+    seqlenq_ngroups_swapped,
+    batch_size,
+    num_heads_k,
+    max_seqlen_q,
+    block_size=1,
+):
+    """Launch config of flash_varlen_fwd_kernel measured on Enflame GCU400."""
+    if seqlenq_ngroups_swapped:
+        block_m = _varlen_fwd_decode_block_m(batch_size * num_heads_k)
+    else:
+        # The grid axis of the M tile is cdiv(max_seqlen_q, BLOCK_M), so when
+        # the longest query fits in one tile a wider tile only burns masked
+        # rows and shrinking it wins: 61-row batch 3.11 ms at 64 rows vs
+        # 3.37 ms at 128 rows; 15-row batch with kv 2333 42.77 ms at 32 rows vs
+        # 50.65 ms at 128 rows. A 32-row floor keeps the tile wide enough to
+        # amortise the K/V stream (16 rows degrade to 76.85 ms on that shape).
+        block_m = min(
+            VARLEN_FWD_BLOCK_M_PREFILL,
+            max(VARLEN_FWD_BLOCK_M_FLOOR, triton.next_power_of_2(max_seqlen_q)),
+        )
+    block_n = VARLEN_FWD_BLOCK_N
+    num_warps = VARLEN_FWD_NUM_WARPS
+    if is_paged and block_size in PAGED_PAGE_ALIGNED_BLOCK_SIZES:
+        # One n-block == one KV page: load_from_page then reads each page with a
+        # scalar base offset, so the scattered per-column gather that forced the
+        # tiles above no longer applies.  Measured on GCU400, page size 16,
+        # 200 seq / kv 2333: 51.2 ms (gather, 64-wide) -> 46.7 ms (page
+        # aligned).  With 64-entry pages the same change is 51.2 ms -> 12.9 ms.
+        block_n = block_size
+        num_warps = VARLEN_FWD_PAGED_NUM_WARPS
+    return {
+        "BLOCK_M": block_m,
+        "BLOCK_N": block_n,
+        "BLOCK_K": triton.next_power_of_2(head_size),
+        "num_warps": num_warps,
+        "num_stages": VARLEN_FWD_NUM_STAGES if is_paged else 1,
+    }
 
 
 def mha_varlan_fwd(
@@ -545,35 +630,15 @@ def mha_varlan_fwd(
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
-        # We assess which phase the requests are likely to be in and set the config accordingly.
-        total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
-        avg_rows_per_sm = total_rows / num_sms
-        avg_rows_per_batch = total_q / batch_size
-        avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
-        # Heuristic: if avg_rows_per_sm >= 128, we are likely in prefill phase.
-        # This is a rough heuristic and may not be accurate for all scenarios.
-        if avg_rows_per_cta > 64:
-            varlen_fwd_config_str = "mha_block_128"
-        elif avg_rows_per_cta > 32:
-            varlen_fwd_config_str = "mha_block_64"
-        elif avg_rows_per_cta > 16:
-            varlen_fwd_config_str = "mha_block_32"
-        else:
-            varlen_fwd_config_str = "mha_block_16"
-        if flag_gems.vendor_name == "mthreads":
-            varlen_fwd_config_str = "mha_block_32"
-
-        cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
-        cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](args),
-            "BLOCK_N": cfg["BLOCK_N"](args),
-            "BLOCK_K": triton.next_power_of_2(head_size),
-            "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
-        }
+        cfg_params = _varlen_fwd_tile_config(
+            head_size=head_size,
+            is_paged=is_paged,
+            seqlenq_ngroups_swapped=seqlenq_ngroups_swapped,
+            batch_size=batch_size,
+            num_heads_k=num_heads_k,
+            max_seqlen_q=max_seqlen_q,
+            block_size=block_size,
+        )
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
@@ -639,7 +704,7 @@ def mha_varlan_fwd_opt(
 
     is_paged = page_table is not None
     if not is_paged:
-        page_table = torch.emtpty((0, 0), device=q_device, dtype=torch.int32)
+        page_table = torch.empty((0, 0), device=q_device, dtype=torch.int32)
 
     # q shape: [total_q_tokens, num_heads, head_size]
     # k shape:
@@ -795,8 +860,10 @@ def mha_varlan_fwd_opt(
             )
         else:
             is_dropout = False
-            # philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
-            philox_args = None
+            # Keep the same argument types as the non-opt entry point so both
+            # entry points hit one compiled kernel instead of two: a None
+            # placeholder would add it to the specialization key.
+            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
 
         p_dropout = 1 - p_dropout
         p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -809,8 +876,9 @@ def mha_varlan_fwd_opt(
                 device=q_device,
             )
         else:
-            # p = torch.empty((), device=q_device)
-            p = None
+            # Same placeholder tensor as the non-opt entry point: passing None
+            # here would key a separate specialization of the same kernel.
+            p = torch.empty((), device=q_device)
         if zero_tensors:
             out.zero_()
             lse.fill_(float("-inf"))
@@ -836,7 +904,7 @@ def mha_varlan_fwd_opt(
             o_batch_stride,  # o_batch_stride,
             cu_seqlens_q is not None,  # is_cu_seqlens_q,
             cu_seqlens_q,  # cu_seqlens_q_ptr,
-            cu_seqlens_k is not None,  # is_cu_seqlens_k,
+            seqused_k is None,  # is_cu_seqlens_k (same rule as the non-opt entry)
             cu_seqlens_k,  # cu_seqlens_k_ptr,
             seqused_k is not None,  # is_seqused_k,
             seqused_k,  # seqused_k_ptr,
@@ -895,35 +963,15 @@ def mha_varlan_fwd_opt(
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
-        # We assess which phase the requests are likely to be in and set the config accordingly.
-        total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
-        avg_rows_per_sm = total_rows / num_sms
-        avg_rows_per_batch = total_q / batch_size
-        avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
-        # Heuristic: if avg_rows_per_sm >= 128, we are likely in prefill phase.
-        # This is a rough heuristic and may not be accurate for all scenarios.
-        if avg_rows_per_cta > 64:
-            varlen_fwd_config_str = "mha_block_128"
-        elif avg_rows_per_cta > 32:
-            varlen_fwd_config_str = "mha_block_64"
-        elif avg_rows_per_cta > 16:
-            varlen_fwd_config_str = "mha_block_32"
-        else:
-            varlen_fwd_config_str = "mha_block_16"
-        if flag_gems.vendor_name == "mthreads":
-            varlen_fwd_config_str = "mha_block_32"
-
-        cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
-        cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](args),
-            "BLOCK_N": cfg["BLOCK_N"](args),
-            "BLOCK_K": triton.next_power_of_2(head_size),
-            "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
-        }
+        cfg_params = _varlen_fwd_tile_config(
+            head_size=head_size,
+            is_paged=is_paged,
+            seqlenq_ngroups_swapped=seqlenq_ngroups_swapped,
+            batch_size=batch_size,
+            num_heads_k=num_heads_k,
+            max_seqlen_q=max_seqlen_q,
+            block_size=block_size,
+        )
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
@@ -1167,7 +1215,9 @@ def mha_fwd(
                         "lse_split_stride": lse_splits.stride(0),
                         "out_b_stride": out.stride(0),
                         "out_s_stride": out.stride(-3),
-                        "out_h_stride": out.stride(-1),
+                        # Head stride is the second-to-last dim of the BSHD view;
+                        # stride(-1) is the contiguous head-size stride.
+                        "out_h_stride": out.stride(-2),
                         "out_splits_ptr": out_splits,
                         "lse_splits_ptr": lse_splits,
                         "n_splits": n_splits,
@@ -1175,6 +1225,8 @@ def mha_fwd(
                         "BLOCK_K": BLOCK_K,
                         "q_total": B * H * Q,
                         "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
+                        "num_heads": H,
+                        "seqlen_q": Q,
                     }
                     combine_kernel(**combine_args)
                     return kernel

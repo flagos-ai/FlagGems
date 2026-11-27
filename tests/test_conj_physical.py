@@ -19,30 +19,31 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 # torch.rand / torch.randn have no FP8 implementation, so FP8 inputs are built
 # in FP32 and cast; FP8 results are also compared bitwise because torch rejects
 # non-zero tolerances for 1-byte floats.
 CONJ_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
+# Rely on the backend-declared capability flag rather than probing with a live
+# cast: on some backends an unsupported FP8 cast aborts the process instead of
+# raising a catchable exception.
+_SUPPORTED_CONJ_FP8_DTYPES = CONJ_FP8_DTYPES if utils.fp8_is_supported else ()
 
-def _supported_fp8_dtypes(device):
-    """Keep only the FP8 dtypes the current device can actually materialize."""
-    supported = []
-    for dtype in CONJ_FP8_DTYPES:
-        try:
-            torch.randn(1, device=device).to(dtype)
-        except Exception:
-            continue
-        supported.append(dtype)
-    return supported
-
+# Same reasoning for complex: creating a complex tensor on a backend without
+# complex support can abort the process rather than raise.
+_SUPPORTED_CONJ_COMPLEX_DTYPES = (
+    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+    if utils.complex_is_supported
+    else []
+)
 
 # Dtype sweep: the low-precision dtypes first, then the float and int sweep.
 CONJ_DTYPES = [
     torch.int8,
     torch.uint8,
-    *_supported_fp8_dtypes(flag_gems.device),
+    *_SUPPORTED_CONJ_FP8_DTYPES,
     torch.float16,
     torch.bfloat16,
     torch.float32,
@@ -138,6 +139,9 @@ def test_conj_physical(shape, dtype, value_range):
 
 
 @pytest.mark.conj_physical
+@pytest.mark.skipif(
+    not utils.complex_is_supported, reason="device does not support complex dtypes"
+)
 @pytest.mark.parametrize("shape", CONJ_SHAPES)
 @pytest.mark.parametrize("value_range", CONJ_VALUE_RANGES)
 def test_conj_physical_complex(shape, value_range):
@@ -207,7 +211,26 @@ _LAYOUT_SHAPES = {
     "expanded": (3, 4),
 }
 
-_UNDERSCORE_DTYPES = [torch.complex64, torch.float32, torch.int32]
+# The native aten::_conj_physical kernel aborts the process for real dtypes on
+# the enflame backend (measured: SIGABRT for float32/float16/int32/int64/bool,
+# while complex64 works), so the on-device ATen reference used by the tests
+# below cannot be built for those dtypes. Only the enflame vendor is affected.
+_ATEN_REAL_ABORTS = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: native aten::_conj_physical aborts "
+        "the process for real dtypes in enflame backend"
+    ),
+)
+
+# Same condition as a plain flag, for the tests that can keep running with the
+# on-device ATen probe removed instead of skipping the whole case.
+ATEN_REAL_ABORTS_ON_DEVICE = flag_gems.vendor_name == "enflame"
+
+_UNDERSCORE_DTYPES = ([torch.complex64] if utils.complex_is_supported else []) + [
+    pytest.param(torch.float32, marks=_ATEN_REAL_ABORTS),
+    pytest.param(torch.int32, marks=_ATEN_REAL_ABORTS),
+]
 
 
 @pytest.mark.underscore_conj_physical
@@ -256,12 +279,18 @@ def test__conj_physical_real_does_not_alias(dtype):
         inp = torch.randint(-9, 9, (3, 4), dtype=dtype, device=flag_gems.device)
 
     # Aliasing is a same-device property, so compare against ATen on-device.
-    aten_out = torch.ops.aten._conj_physical(inp)
+    # enflame: the native kernel aborts the process for real dtypes (see
+    # `_ATEN_REAL_ABORTS`), so only that probe is dropped there; every
+    # FlagGems contract below still runs for those dtypes.
+    aten_out = None
+    if not ATEN_REAL_ABORTS_ON_DEVICE:
+        aten_out = torch.ops.aten._conj_physical(inp)
     res_out = flag_gems.ops._conj_physical(inp)
 
     # ATen itself must not alias here; assert that first so the test documents
     # the contract it is pinning rather than just gems' behaviour.
-    assert aten_out.data_ptr() != inp.data_ptr()
+    if aten_out is not None:
+        assert aten_out.data_ptr() != inp.data_ptr()
     assert res_out.data_ptr() != inp.data_ptr(), "result aliases its input"
     assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
 
@@ -275,7 +304,7 @@ def test__conj_physical_real_does_not_alias(dtype):
 
 
 @pytest.mark.underscore_conj_physical
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", _SUPPORTED_CONJ_COMPLEX_DTYPES)
 def test__conj_physical_conj_bit_input(dtype):
     """A conj-bit input conjugates its *logical* value: conj(conj(x)) == x."""
     base = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
@@ -294,7 +323,7 @@ def test__conj_physical_conj_bit_input(dtype):
 
 
 @pytest.mark.underscore_conj_physical
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.float32, torch.int32])
+@pytest.mark.parametrize("dtype", _UNDERSCORE_DTYPES)
 @pytest.mark.parametrize("shape", [(0,), (0, 4), (3, 0)])
 def test__conj_physical_empty(dtype, shape):
     """Zero-element inputs skip the launch but still return a correct tensor."""
@@ -310,7 +339,7 @@ def test__conj_physical_empty(dtype, shape):
 
 
 @pytest.mark.underscore_conj_physical
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", _SUPPORTED_CONJ_COMPLEX_DTYPES)
 def test__conj_physical_matches_backward_formula(dtype):
     """The forward result is what makes the ATen gradient formula come out right.
 
@@ -364,7 +393,10 @@ def test__conj_physical_out_layout_parity(layout, dtype):
 
 
 @pytest.mark.underscore_conj_physical_out
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.float32])
+@pytest.mark.parametrize(
+    "dtype",
+    ([torch.complex64] if utils.complex_is_supported else []) + [torch.float32],
+)
 def test__conj_physical_out_non_contiguous(dtype):
     """A strided (non-contiguous) ``out`` is written through, not re-laid-out."""
     inp = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
@@ -388,7 +420,7 @@ def test__conj_physical_out_non_contiguous(dtype):
 
 
 @pytest.mark.underscore_conj_physical_out
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.float32, torch.int32])
+@pytest.mark.parametrize("dtype", _UNDERSCORE_DTYPES)
 def test__conj_physical_out_resizes(dtype):
     """A mismatched ``out`` is resized, matching ATen."""
     if dtype.is_complex or dtype.is_floating_point:
@@ -413,6 +445,9 @@ def test__conj_physical_out_resizes(dtype):
 
 
 @pytest.mark.underscore_conj_physical_out
+@pytest.mark.skipif(
+    not utils.complex_is_supported, reason="device does not support complex dtypes"
+)
 def test__conj_physical_out_rejects_wrong_dtype():
     """Mismatched ``out`` dtype raises with ATen's exact message."""
     inp = torch.randn((3, 4), dtype=torch.complex64, device=flag_gems.device)

@@ -56,6 +56,8 @@ else:
 
 
 def _maybe_move_to_cpu(res, ref):
+    if not isinstance(res, torch.Tensor) or not isinstance(ref, torch.Tensor):
+        return res, ref
     if res.device.type == "cpu" or ref.device.type == "cpu":
         return res, ref
 
@@ -83,6 +85,11 @@ def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
     assert res.dtype == dtype
     ref = ref.to(dtype)
     res, ref = _maybe_move_to_cpu(res, ref)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        # torch.testing.assert_close only supports bitwise tolerance for fp8;
+        # upcast both sides to fp32 for the comparison.
+        res = res.to(torch.float32)
+        ref = ref.to(torch.float32)
     rtol = RESOLUTION[dtype]
     torch.testing.assert_close(
         res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
@@ -90,4 +97,5 @@ def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
 
 
 def assert_equal(res, ref, equal_nan=False):
+    res, ref = _maybe_move_to_cpu(res, ref)
     torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)

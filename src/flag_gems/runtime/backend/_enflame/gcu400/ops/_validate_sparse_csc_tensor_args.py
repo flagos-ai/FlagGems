@@ -1,0 +1,317 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import operator
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+
+from ._sparse_mm_reduce_impl import _gcu_int64_indices
+
+logger = logging.getLogger(__name__)
+
+# A warp scans one compressed segment in tiles; larger segments loop without
+# assuming a maximum number of entries per row/column.
+_BLOCK = 128
+# One warp per program keeps the device_assert path short (a single SIP
+# assertion instead of one per warp), which matters for the async error path.
+_NUM_WARPS = 1
+# Fixed grid matched to GCU400 topology: 4 DIEs x 6 SIPs x 8 sub-threads.
+_NUM_PROGRAMS = 48
+# Wide grids pay off as soon as there are many tiny segments: one warp per
+# program keeps a single SIP busy per program, so 96 two-warp programs measured
+# ~3% faster than 48 one-warp programs on the 131072-segment batch case while
+# the small cases keep the original launch shape.
+_WIDE_SEGMENT_THRESHOLD = 1024
+_WIDE_NUM_PROGRAMS = 96
+_WIDE_NUM_WARPS = 2
+
+
+@triton.jit
+def _check_indices_kernel(
+    comp,
+    plain,
+    cdim,
+    dim,
+    nnz,
+    cs,
+    ps,
+    total_segments,
+    bad_ptr,
+    BSHAPE: tl.constexpr,
+    CSTRIDES: tl.constexpr,
+    PSTRIDES: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NUM_PROGRAMS: tl.constexpr,
+    INT32_IDX: tl.constexpr,
+):
+    if INT32_IDX:
+        # See _gcu_int64_indices: with the int64 layout disabled torch_gcu gives
+        # an int64 index tensor a 4-byte element stride, so the declared int64
+        # loads below would step past the end of the buffer.
+        comp = comp.to(tl.pointer_type(tl.int32))
+        plain = plain.to(tl.pointer_type(tl.int32))
+    program = tl.program_id(0)
+    cdim_safe = tl.maximum(cdim, 1)
+    lanes = tl.arange(0, BLOCK)
+    # Verdicts accumulate lane-wise and are reduced once at the end: a
+    # cross-lane reduction inside the segment loop costs a full shuffle
+    # cascade per segment, which dominates once there are tens of thousands of
+    # one-entry segments.
+    bad_lanes = tl.zeros((BLOCK,), tl.int32)
+    # Each program strides over a disjoint subset of all (row, batch) segments;
+    # verdicts are accumulated and asserted once, keeping the error path intact.
+    for segment in range(program, total_segments, NUM_PROGRAMS):
+        row = segment % cdim_safe
+        batch = (segment // cdim_safe).to(tl.int64)
+        cb = tl.full((), 0, tl.int64)
+        pb = tl.full((), 0, tl.int64)
+        for d in tl.static_range(len(BSHAPE) - 1, -1, -1):
+            coord = batch % BSHAPE[d]
+            batch = batch // BSHAPE[d]
+            cb += coord * CSTRIDES[d]
+            pb += coord * PSTRIDES[d]
+        if cdim == 0:
+            # ATen has no compressed segments to check, but still validates every
+            # plain coordinate against dim. Compressed offsets and ordering are
+            # irrelevant in this case, including when nnz is nonzero.
+            start = tl.full((), 0, tl.int64)
+            end = nnz.to(tl.int64)
+            bad = tl.full((BLOCK,), False, tl.int1)
+        else:
+            lo = tl.load(comp + cb + row * cs).to(tl.int64)
+            hi = tl.load(comp + cb + (row + 1) * cs, mask=row < cdim, other=0).to(
+                tl.int64
+            )
+            valid = (lo >= 0) & (hi >= lo) & (hi <= nnz) & (hi - lo <= dim)
+            valid &= (row != 0) | (lo == 0)
+            valid &= (row != cdim - 1) | (hi == nnz)
+            bad = (lanes == 0) & ~valid
+            # Invalid offsets must be rejected without an out-of-bounds read.
+            start = tl.minimum(tl.maximum(lo, 0), nnz)
+            end = tl.minimum(tl.maximum(hi, 0), nnz)
+        for offset in range(start, end, BLOCK):
+            idx = offset + lanes
+            mask = idx < end
+            val = tl.load(plain + pb + idx * ps, mask=mask, other=0).to(tl.int64)
+            predecessor = mask & (idx > start) & (cdim != 0)
+            prev = tl.load(plain + pb + (idx - 1) * ps, mask=predecessor, other=0).to(
+                tl.int64
+            )
+            bad |= mask & ((val < 0) | (val >= dim) | (predecessor & (prev >= val)))
+        bad_lanes = tl.maximum(bad_lanes, bad.to(tl.int32))
+    bad_any = tl.max(bad_lanes, 0)
+    # Publish the verdict to a per-program slot instead of raising a device
+    # assertion.  On GCU400 a SIP assertion aborts the whole process (it cannot
+    # be turned into a catchable RuntimeError) and additionally hangs when the
+    # caller disabled core dumps (RLIMIT_CORE=0, as tests do for child
+    # processes), so the host raises after reading these slots back.
+    tl.store(bad_ptr + program, bad_any)
+
+
+def _check_indices(is_crow, compressed_idx, plain_idx, cdim, dim, nnz):
+    if compressed_idx.ndim == 0 or plain_idx.ndim == 0:
+        raise IndexError("Dimension specified as -1 but tensor has no dimensions")
+    cname, pname, dname = (
+        ("crow_indices", "col_indices", "nrows")
+        if is_crow
+        else ("ccol_indices", "row_indices", "ncols")
+    )
+    if compressed_idx.shape[-1] != cdim + 1 or cdim < 0:
+        raise RuntimeError(
+            f"{cname} have wrong shape: {cname}.shape[-1] = {compressed_idx.shape[-1]} "
+            f"is not equal to {dname} + 1 = {cdim + 1}"
+        )
+    if plain_idx.shape[-1] != nnz or nnz < 0:
+        raise RuntimeError(
+            f"{pname} have wrong shape: {pname}.shape[-1] = {plain_idx.shape[-1]} is not equal to nnz = {nnz}"
+        )
+    if compressed_idx.dtype != plain_idx.dtype or plain_idx.dtype not in (
+        torch.int32,
+        torch.int64,
+    ):
+        raise RuntimeError(
+            "compressed and plain indices must have the same int32 or int64 dtype"
+        )
+    if compressed_idx.device != plain_idx.device:
+        raise RuntimeError("compressed and plain indices must be on the same device")
+    if compressed_idx.shape[:-1] != plain_idx.shape[:-1]:
+        raise RuntimeError(
+            "compressed and plain indices must have the same batch dimensions"
+        )
+    # ATen checks that all three dimensions fit the index scalar type.
+    limit = torch.iinfo(plain_idx.dtype)
+    for name, value in (
+        ("plain dimension", dim),
+        ("compressed dimension", cdim),
+        ("nnz", nnz),
+    ):
+        if not limit.min <= value <= limit.max:
+            raise RuntimeError(f"{limit.bits}-bit integer overflow in {name} = {value}")
+    batch_shape = compressed_idx.shape[:-1]
+    count = 1
+    for extent in batch_shape:
+        count *= extent
+    total_segments = max(cdim, 1) * count
+    # torch_gcu's int64 layout regime decides the element width the kernel must
+    # load (see _gcu_int64_indices); host tensors always keep 8-byte elements.
+    int32_idx = (
+        compressed_idx.device.type not in ("cpu", "meta")
+        and compressed_idx.dtype == torch.int64
+        and not _gcu_int64_indices()
+    )
+    if total_segments:
+        if total_segments >= _WIDE_SEGMENT_THRESHOLD:
+            programs, num_warps = _WIDE_NUM_PROGRAMS, _WIDE_NUM_WARPS
+        else:
+            programs, num_warps = _NUM_PROGRAMS, _NUM_WARPS
+        grid = min(programs, total_segments)
+        # One int32 verdict slot per program; every program stores its slot, so
+        # no device-side initialisation kernel is needed.
+        verdict = torch.empty(grid, dtype=torch.int32, device=compressed_idx.device)
+        with torch_device_fn.device(compressed_idx.device):
+            _check_indices_kernel[(grid,)](
+                compressed_idx,
+                plain_idx,
+                cdim,
+                dim,
+                nnz,
+                compressed_idx.stride(-1),
+                plain_idx.stride(-1),
+                total_segments,
+                verdict,
+                BSHAPE=tuple(batch_shape),
+                CSTRIDES=compressed_idx.stride()[:-1],
+                PSTRIDES=plain_idx.stride()[:-1],
+                BLOCK=_BLOCK,
+                NUM_PROGRAMS=programs,
+                INT32_IDX=int32_idx,
+                num_warps=num_warps,
+            )
+        # Single device-to-host read supplies the verdict; invalid indices are
+        # reported as a normal RuntimeError so callers can catch them.
+        if max(verdict.tolist()):
+            raise RuntimeError(
+                "invalid sparse compressed indices: bounds, endpoints, or sorted distinct entries"
+            )
+
+
+def _validate_metadata(
+    compressed_indices, plain_indices, values, size, layout, check_pinning
+):
+    if layout not in (
+        torch.sparse_csr,
+        torch.sparse_csc,
+        torch.sparse_bsr,
+        torch.sparse_bsc,
+    ):
+        raise RuntimeError(
+            "layout must be SparseCsr, SparseCsc, SparseBsr or SparseBsc"
+        )
+    row_major = layout in (torch.sparse_csr, torch.sparse_bsr)
+    blocked = layout in (torch.sparse_bsr, torch.sparse_bsc)
+    cname, pname = (
+        ("crow_indices", "col_indices")
+        if row_major
+        else ("ccol_indices", "row_indices")
+    )
+    for tensor, name in (
+        (plain_indices, pname),
+        (compressed_indices, cname),
+        (values, "values"),
+    ):
+        if not isinstance(tensor, torch.Tensor):
+            raise TypeError(f"{name} must be a Tensor")
+        if tensor.layout != torch.strided:
+            raise RuntimeError(f"expected {name} to be a strided tensor")
+    batch_ndim = compressed_indices.ndim - 1
+    block_ndim = 2 if blocked else 0
+    dense_ndim = values.ndim - batch_ndim - block_ndim - 1
+    if batch_ndim < 0:
+        raise RuntimeError(f"{cname} must have dimensionality >= 1")
+    if compressed_indices.ndim != plain_indices.ndim:
+        raise RuntimeError(f"{cname} and {pname} dimensionalities must be equal")
+    if dense_ndim < 0:
+        raise RuntimeError(
+            "values must have dimensionality > sum of batch and block dimensionalities"
+        )
+    # ATen skips the plain-index stride check only when it has no elements.
+    # Compressed indices must retain unit last stride even for zero batches.
+    if plain_indices.numel() != 0 and plain_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {pname} to be a contiguous tensor per batch")
+    if compressed_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {cname} to be a contiguous tensor per batch")
+    size = tuple(operator.index(extent) for extent in size)
+    if len(size) != batch_ndim + 2 + dense_ndim:
+        raise RuntimeError(
+            "tensor dimensionality must be sum of batch, base, and dense dimensionalities"
+        )
+    batch_shape = size[:batch_ndim]
+    if any(
+        t.shape[:batch_ndim] != batch_shape
+        for t in (compressed_indices, plain_indices, values)
+    ):
+        raise RuntimeError(
+            "all batch dimensions must be equal to tensor batch dimensions"
+        )
+    br = max(1, values.shape[batch_ndim + 1]) if blocked else 1
+    bc = max(1, values.shape[batch_ndim + 2]) if blocked else 1
+    rows, cols = size[batch_ndim : batch_ndim + 2]
+    if rows < 0 or cols < 0 or rows % br or cols % bc:
+        raise RuntimeError(
+            "tensor shape must be nonnegative and divisible by the values blocksize"
+        )
+    cdim, dim = (rows // br, cols // bc) if row_major else (cols // bc, rows // br)
+    nnz = values.shape[batch_ndim]
+    if compressed_indices.shape[-1] != cdim + 1:
+        raise RuntimeError(f"{cname}.shape[-1] must equal the compressed dimension + 1")
+    if plain_indices.shape[-1] != nnz:
+        raise RuntimeError(f"{pname}.shape[-1] must equal nnz as defined by values")
+    if compressed_indices.dtype != plain_indices.dtype or plain_indices.dtype not in (
+        torch.int32,
+        torch.int64,
+    ):
+        raise RuntimeError("indices must have the same int32 or int64 dtype")
+    if (
+        compressed_indices.device != plain_indices.device
+        or compressed_indices.device != values.device
+    ):
+        raise RuntimeError("device of indices must match device of values")
+    if check_pinning is not False:
+        if (
+            compressed_indices.is_pinned() != plain_indices.is_pinned()
+            or compressed_indices.is_pinned() != values.is_pinned()
+        ):
+            raise RuntimeError(
+                "memory pinning of indices must match memory pinning of values"
+            )
+    if compressed_indices.is_meta:
+        if nnz:
+            raise RuntimeError("expected nnz to be 0 for sparse meta tensor")
+        return None
+    _check_indices(row_major, compressed_indices, plain_indices, cdim, dim, nnz)
+    return None
+
+
+def _validate_sparse_csc_tensor_args(
+    ccol_indices, row_indices, values, size, check_pinning=None
+):
+    logger.debug("GEMS_ENFLAME _VALIDATE_SPARSE_CSC_TENSOR_ARGS")
+    return _validate_metadata(
+        ccol_indices, row_indices, values, size, torch.sparse_csc, check_pinning
+    )

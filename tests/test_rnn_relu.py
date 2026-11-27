@@ -25,9 +25,30 @@ RNN_HIDDEN_SIZES = [8, 16]
 pytestmark = pytest.mark.rnn_relu
 
 
+@pytest.fixture(autouse=True)
+def _metax_full_precision():
+    if flag_gems.vendor_name != "metax":
+        yield
+        return
+    cudnn_tf32 = torch.backends.cudnn.allow_tf32
+    matmul_tf32 = torch.backends.cuda.matmul.allow_tf32
+    try:
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        yield
+    finally:
+        torch.backends.cudnn.allow_tf32 = cudnn_tf32
+        torch.backends.cuda.matmul.allow_tf32 = matmul_tf32
+
+
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -53,29 +74,39 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
     params = tuple(rnn._flat_weights)
     hx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
 
-    ref_input = utils.to_reference(input_tensor)
-    ref_hx = utils.to_reference(hx)
-    ref_params = tuple(utils.to_reference(p) for p in params)
+    # Reference at double precision: the Triton kernel accumulates in float32
+    # and lands within ~1e-7 of the exact result, while aten's native rnn_relu
+    # accumulates differently and drifts further from it.
+    ref_input = utils.to_reference(input_tensor, True)
+    ref_hx = utils.to_reference(hx, True)
+    ref_params = tuple(utils.to_reference(p, True) for p in params)
 
     # Run PyTorch reference
     ref_out = torch.rnn_relu(
         ref_input, ref_hx, ref_params, True, 1, 0.0, False, False, batch_first
     )
 
-    # Run FlagGems implementation (via torch dispatch)
-    with flag_gems.use_gems():
-        res_out = torch.rnn_relu(
-            input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
-        )
+    # Run FlagGems implementation
+    res_out = flag_gems.rnn_relu(
+        input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
+    )
 
-    # Compare outputs
-    utils.gems_assert_close(res_out[0], ref_out[0], dtype)
-    utils.gems_assert_close(res_out[1], ref_out[1], dtype)
+    # Compare outputs against the double-precision reference, with a per-dtype
+    # tolerance sized for the low-precision rounding of the kernel.
+    assert all(result.device == input_tensor.device for result in res_out)
+    atol = {torch.float32: 1e-4, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
+    utils.gems_assert_close(res_out[0], ref_out[0], dtype, atol=atol)
+    utils.gems_assert_close(res_out[1], ref_out[1], dtype, atol=atol)
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -87,9 +118,9 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
 def test_rnn_relu_direct_wrapper(
     seq_len, batch_size, input_size, hidden_size, dtype, batch_first
 ):
-    """Direct wrapper smoke test: call flag_gems.ops.rnn_relu.rnn_relu directly
+    """Direct wrapper smoke test: call flag_gems.rnn_relu directly
     and compare against PyTorch's native rnn_relu (float64 reference)."""
-    from flag_gems.ops.rnn_relu import rnn_relu as gems_rnn_relu
+    gems_rnn_relu = flag_gems.rnn_relu
 
     if batch_first:
         input_tensor = torch.randn(
@@ -129,14 +160,20 @@ def test_rnn_relu_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 def test_rnn_relu_direct_backward():
     """Direct wrapper backward: compare gradients against native PyTorch recomputation."""
     from flag_gems.ops.rnn_relu import _params_unpack
-    from flag_gems.ops.rnn_relu import rnn_relu as gems_rnn_relu
+
+    gems_rnn_relu = flag_gems.rnn_relu
 
     seq, batch, input_size, hidden_size = 4, 2, 8, 8
     dtype = torch.float32
@@ -159,9 +196,11 @@ def test_rnn_relu_direct_backward():
     (out_g.sum() + hid_g.sum()).backward()
 
     # Side 2: Native PyTorch recompute (same as backward internals)
-    inp_r = inp_data.detach().clone().requires_grad_(True)
-    hx_r = hx_data.detach().clone().requires_grad_(True)
-    params_r = tuple(p.detach().clone().requires_grad_(True) for p in params_data)
+    inp_r = utils.to_reference(inp_data).detach().clone().requires_grad_(True)
+    hx_r = utils.to_reference(hx_data).detach().clone().requires_grad_(True)
+    params_r = tuple(
+        utils.to_reference(p).detach().clone().requires_grad_(True) for p in params_data
+    )
     weight_ih, weight_hh, bias_ih, bias_hh = _params_unpack(params_r, True)
     h = hx_r[0].clone()
     outputs = []
@@ -182,14 +221,19 @@ def test_rnn_relu_direct_backward():
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
+    flag_gems.vendor_name not in ("mthreads", "enflame")
+    and (
+        (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ),
+    reason="This RNN suite requires a validated native target",
 )
 @pytest.mark.rnn_relu
 @pytest.mark.parametrize("hidden_size", [128, 256, 512])
 def test_rnn_relu_large_hidden(hidden_size):
     """Regression: hidden_size previously had chunk-level read-after-write bug."""
-    from flag_gems.ops.rnn_relu import rnn_relu as gems_rnn_relu
+    gems_rnn_relu = flag_gems.rnn_relu
 
     seq, batch, input_size = 3, 1, 16
     dtype = torch.float32
@@ -201,9 +245,20 @@ def test_rnn_relu_large_hidden(hidden_size):
     )
     params = tuple(p.detach() for p in rnn._flat_weights)
 
-    ref = torch.rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
+    ref = torch.rnn_relu(
+        utils.to_reference(inp),
+        utils.to_reference(hx),
+        tuple(utils.to_reference(p) for p in params),
+        True,
+        1,
+        0.0,
+        False,
+        False,
+        False,
+    )
     out_gems = gems_rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
 
     atol = 2e-3
+    assert all(result.device == inp.device for result in out_gems)
     utils.gems_assert_close(out_gems[0], ref[0], dtype, atol=atol)
     utils.gems_assert_close(out_gems[1], ref[1], dtype, atol=atol)

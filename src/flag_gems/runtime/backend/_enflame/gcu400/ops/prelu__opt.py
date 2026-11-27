@@ -1,0 +1,359 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""prelu candidate v3: four-way dispatch by weight/channel structure, removing per-element weight gather.
+
+Production v2's only hot path is per-element ``tl.load(w_ptr + channel)``: when channel
+addresses are constant within a block or repeat with a stride (S=512/1024 core shapes), the GCU backend scalarizes the
+gather,
+giving only 0.13x at (64,512,512) and 0.049x at (1024,1024,1024) (do_bench numbers,
+the ablation floor without w-load is 27.3us / 1389.5us respectively).
+
+v3 dispatch (n >= 65536 to enter new paths, small shapes keep gather at 1.39x):
+1. scalar weight: flat unmasked full blocks + one tail block (v1s, b131072/w4 -> 1.00-1.04x);
+2. S >= 2 per-channel: row-block tile [BLOCK_R, BLOCK_S], alpha = w[rows % C]
+   one [BLOCK_R] gather + row broadcast (fp16/bf16 tile 131072/nw2, fp32 tile
+   65536/nw2 -> (64,512,512) 2.52x/2.19x/1.70x, 1024^3 1.02x/0.84x/0.81x);
+3. S == 1 per-channel: channel tile [BLOCK_R, BLOCK_C], alpha = w[cols] contiguous
+   vector + column broadcast ((4096,4096) 0.87x/0.81x - 2D addressing tax floor 37.3us);
+4. others (n < 65536, grid overflow): v2 gather path unchanged as fallback (pow2 uses shifts).
+
+Rejected (measured this round): loop tiling v5 0.22-0.33x (deep loop small tile without pipelining),
+reshape broadcast v6 0.61x + fp32 DSM triple materialization OOR, per-row tiling v9 0.15x
+(w vector reloaded per program, no cache hits). alpha row broadcast materializes a 3rd DSM tile,
+so cap the tile at 131072 (fp16/bf16) / 65536 (fp32) to prevent OutOfResources.
+"""
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+import flag_gems
+
+logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _prelu_scalar_kernel(
+    x_ptr,
+    w_ptr,
+    out_ptr,
+    n_elements,
+    n_full,
+    BLOCK_SIZE: tl.constexpr,
+    HAS_TAIL: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    alpha = tl.load(w_ptr)
+    if HAS_TAIL:
+        if pid * BLOCK_SIZE < n_full:
+            x = tl.load(x_ptr + offsets)
+            tl.store(out_ptr + offsets, tl.where(x >= 0, x, alpha * x))
+        else:
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask, other=0)
+            tl.store(out_ptr + offsets, tl.where(x >= 0, x, alpha * x), mask=mask)
+    else:
+        x = tl.load(x_ptr + offsets)
+        tl.store(out_ptr + offsets, tl.where(x >= 0, x, alpha * x))
+
+
+@triton.jit
+def _prelu_rowtile_kernel(
+    x_ptr,
+    w_ptr,
+    out_ptr,
+    R,
+    C,
+    S,
+    BLOCK_R: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    pid_r = tl.program_id(0)
+    pid_s = tl.program_id(1)
+    rows = pid_r * BLOCK_R + tl.arange(0, BLOCK_R)
+    cols = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)
+    alpha = tl.load(w_ptr + rows % C)
+    ptrs = rows[:, None] * S + cols[None, :]
+    if EVEN:
+        x = tl.load(x_ptr + ptrs)
+        tl.store(out_ptr + ptrs, tl.where(x >= 0, x, alpha[:, None] * x))
+    else:
+        mask = (rows < R)[:, None] & (cols < S)[None, :]
+        x = tl.load(x_ptr + ptrs, mask=mask, other=0)
+        tl.store(out_ptr + ptrs, tl.where(x >= 0, x, alpha[:, None] * x), mask=mask)
+
+
+@triton.jit
+def _prelu_channel_kernel(
+    x_ptr,
+    w_ptr,
+    out_ptr,
+    R,
+    C,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    pid_r = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    rows = pid_r * BLOCK_R + tl.arange(0, BLOCK_R)
+    cols = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+    alpha = tl.load(w_ptr + cols, mask=cols < C, other=0)
+    ptrs = rows[:, None] * C + cols[None, :]
+    if EVEN:
+        x = tl.load(x_ptr + ptrs)
+        tl.store(out_ptr + ptrs, tl.where(x >= 0, x, alpha[None, :] * x))
+    else:
+        mask = (rows < R)[:, None] & (cols < C)[None, :]
+        x = tl.load(x_ptr + ptrs, mask=mask, other=0)
+        tl.store(out_ptr + ptrs, tl.where(x >= 0, x, alpha[None, :] * x), mask=mask)
+
+
+@triton.jit
+def _prelu_gather_kernel(
+    x_ptr,
+    w_ptr,
+    out_ptr,
+    n_elements,
+    S,
+    C,
+    USE_SHIFT: tl.constexpr,
+    LOG2_S: tl.constexpr,
+    C_MASK: tl.constexpr,
+    W_SCALAR: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    out_offset = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    in_range = out_offset < n_elements
+    x = tl.load(x_ptr + out_offset, mask=in_range, other=0)
+    if W_SCALAR:
+        alpha = tl.load(w_ptr)
+    else:
+        if USE_SHIFT:
+            channel = (out_offset >> LOG2_S) & C_MASK
+        else:
+            channel = (out_offset // S) % C
+        alpha = tl.load(w_ptr + channel, mask=in_range, other=0)
+    tl.store(out_ptr + out_offset, tl.where(x >= 0, x, alpha * x), mask=in_range)
+
+
+@triton.jit
+def _prelu_rowtile_s0_kernel(
+    x_ptr,
+    w_ptr,
+    out_ptr,
+    C,
+    S,
+    BLOCK_R: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+):
+    """Large-shape arm for S>=2 bf16: alpha is loaded through a block_ptr with strides=(1, 0).
+
+    dispatch guarantees BLOCK_R divides C, so a row block never wraps across channels.
+    """
+    pr = tl.program_id(0)
+    ps = tl.program_id(1)
+    r0 = pr * BLOCK_R
+    abp = tl.make_block_ptr(
+        base=w_ptr,
+        shape=(C, BLOCK_S),
+        strides=(1, 0),
+        offsets=(r0 % C, 0),
+        block_shape=(BLOCK_R, BLOCK_S),
+        order=(0, 1),
+    )
+    alpha = tl.load(abp)
+    rows = r0 + tl.arange(0, BLOCK_R)
+    cols = ps * BLOCK_S + tl.arange(0, BLOCK_S)
+    ptrs = rows[:, None] * S + cols[None, :]
+    x = tl.load(x_ptr + ptrs)
+    tl.store(out_ptr + ptrs, tl.where(x >= 0, x, alpha * x))
+
+
+def _pow2_floor(value):
+    p = 1
+    while p * 2 <= value:
+        p *= 2
+    return p
+
+
+def _next_pow2(value):
+    p = 1
+    while p < value:
+        p *= 2
+    return p
+
+
+def _launch_gather(x, weight, out, n_elements, S, C, w_is_scalar):
+    if n_elements >= 65536:
+        block = 131072
+    else:
+        block = min(max(1024, _next_pow2(n_elements)), 4096)
+    grid = (triton.cdiv(n_elements, block),)
+    if grid[0] > 65535:
+        block = 32768
+        grid = (triton.cdiv(n_elements, block),)
+    use_shift = S > 0 and (S & (S - 1)) == 0 and C > 0 and (C & (C - 1)) == 0
+    _prelu_gather_kernel[grid](
+        x,
+        weight,
+        out,
+        n_elements,
+        S,
+        C,
+        int(use_shift),
+        S.bit_length() - 1 if use_shift else 0,
+        C - 1 if use_shift else 0,
+        int(w_is_scalar),
+        block,
+        num_warps=2 if block >= 2048 and n_elements < 65536 else 4,
+    )
+
+
+def prelu(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME PRELU (v3 structural dispatch)")
+    if len(args) >= 2:
+        x, weight = args[0], args[1]
+    else:
+        x = kwargs.get("input", kwargs.get("self"))
+        weight = kwargs.get("weight")
+    if x is None or weight is None:
+        raise ValueError("prelu expects (input, weight) as arguments.")
+    if x.device.type != flag_gems.device or weight.device.type != flag_gems.device:
+        raise AssertionError(f"Tensors must be {flag_gems.device} tensors.")
+    if weight.dtype != x.dtype:
+        weight = weight.to(dtype=x.dtype)
+    x = x.contiguous()
+    weight = weight.contiguous()
+
+    out = torch.empty_like(x)
+    n_elements = x.numel()
+    if n_elements == 0:
+        return out
+
+    ndim = x.dim()
+    if weight.numel() == 1:
+        channels, spatial, w_is_scalar = 1, 1, True
+    else:
+        if ndim == 0:
+            raise AssertionError("Non-scalar weight provided for a 0-dim input.")
+        if ndim == 1:
+            channels, spatial = x.shape[0], 1
+        else:
+            channels, spatial = x.shape[1], 1
+            if ndim > 2:
+                for dim in x.shape[2:]:
+                    spatial *= dim
+        if weight.numel() != channels:
+            raise AssertionError(
+                f"Weight numel ({weight.numel()}) must equal channel dimension size ({channels})."
+            )
+        w_is_scalar = False
+    channels = max(int(channels), 1)
+    spatial = max(int(spatial), 1)
+
+    if n_elements < 65536:
+        _launch_gather(x, weight, out, n_elements, spatial, channels, w_is_scalar)
+        return out
+
+    if w_is_scalar:
+        block = 262144 if x.dtype == torch.float16 else 131072
+        n_full = n_elements // block * block
+        has_tail = 1 if n_elements % block else 0
+        grid = (n_elements // block + has_tail,)
+        _prelu_scalar_kernel[grid](
+            x,
+            weight,
+            out,
+            n_elements,
+            n_full,
+            BLOCK_SIZE=block,
+            HAS_TAIL=has_tail,
+            num_warps=4,
+        )
+        return out
+
+    is_bf16 = x.dtype == torch.bfloat16
+    if x.dtype == torch.float16:
+        tile, max_s_block = 131072, 1024
+    else:
+        tile, max_s_block = 65536, 1024
+
+    if spatial >= 2:
+        if (
+            is_bf16
+            and n_elements >= (1 << 28)
+            and channels % 128 == 0
+            and spatial % 512 == 0
+        ):
+            block_r, block_s = 128, 512
+            grid = (n_elements // spatial // block_r, spatial // block_s)
+            if grid[0] <= 65535 and grid[1] <= 255:
+                _prelu_rowtile_s0_kernel[grid](
+                    x,
+                    weight,
+                    out,
+                    channels,
+                    spatial,
+                    BLOCK_R=block_r,
+                    BLOCK_S=block_s,
+                    num_warps=2,
+                )
+                return out
+        block_s = min(_pow2_floor(spatial), max_s_block)
+        block_r = max(1, min(tile // block_s, 512))
+        rows = n_elements // spatial
+        grid = (triton.cdiv(rows, block_r), triton.cdiv(spatial, block_s))
+        if grid[0] <= 65535 and grid[1] <= 255:
+            even = rows % block_r == 0 and spatial % block_s == 0
+            _prelu_rowtile_kernel[grid](
+                x,
+                weight,
+                out,
+                rows,
+                channels,
+                spatial,
+                BLOCK_R=block_r,
+                BLOCK_S=block_s,
+                EVEN=int(even),
+                num_warps=2,
+            )
+            return out
+    else:
+        rows = n_elements // channels
+        block_c = min(_next_pow2(channels), 4096)
+        block_r = max(1, min(tile // block_c, _next_pow2(rows)))
+        grid = (triton.cdiv(rows, block_r), triton.cdiv(channels, block_c))
+        if grid[0] <= 65535 and grid[1] <= 255:
+            even = rows % block_r == 0 and channels % block_c == 0
+            _prelu_channel_kernel[grid](
+                x,
+                weight,
+                out,
+                rows,
+                channels,
+                BLOCK_R=block_r,
+                BLOCK_C=block_c,
+                EVEN=int(even),
+                num_warps=4,
+            )
+            return out
+
+    _launch_gather(x, weight, out, n_elements, spatial, channels, w_is_scalar)
+    return out

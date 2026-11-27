@@ -42,6 +42,11 @@ def _input_fn(shape, dtype, device):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="native torch.multinomial aborts the process on these shapes "
+    "(topsop multinomial kernel crash, RC=134), so no baseline latency exists",
+)
 def test_multinomial_with_replacement():
     # Custom shapes for multinomial to avoid OOM on NPU and stay within
     # the n_categories <= 2^24 hardware limit of aclnnMultinomial.

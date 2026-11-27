@@ -25,12 +25,45 @@ try:
     TE_OP = getattr(tex, "reglu", None)
 except ImportError:
     TE_OP = None
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing and turns the whole
+    # module uncollectable.  The TE reference op has no GCU implementation
+    # (torch aten/TE not supported on this backend), so skip the module on
+    # enflame with the real cause instead of failing collection for every
+    # operator of the run.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: transformer-engine metapackage has no framework "
+            f"extension ({te_import_error}); the TE reference op is not "
+            "supported on this backend (torch aten/TE not supported on GCU)",
+            allow_module_level=True,
+        )
+    raise
+
+
+def _reference_reglu(input_tensor: torch.Tensor, quantizer=None) -> torch.Tensor:
+    """High-precision (fp64) reference for ReGLU.
+
+    ``ReGLU(a, b)`` with ``a = input[..., :N]``, ``b = input[..., N:]`` is
+    ``relu(a) * b``. Takes the same arguments as TransformerEngine's entry point
+    so it can stand in for it when TE is not installed.
+    """
+    n = input_tensor.shape[-1] // 2
+    a = input_tensor[..., :n].to(torch.float64)
+    b = input_tensor[..., n:].to(torch.float64)
+    return torch.clamp(a, min=0.0) * b
+
+
+if TE_OP is None:
+    # TransformerEngine is not installed: bind the fp64 torch reference in
+    # place of the TE entry point so the accuracy test runs instead of skipping.
+    TE_OP = _reference_reglu
 
 
 @pytest.mark.reglu
 @pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(TE_OP is None, reason="'reglu' not found in TransformerEngine")
 def test_reglu(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 

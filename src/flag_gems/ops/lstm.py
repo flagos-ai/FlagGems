@@ -7,9 +7,11 @@ import triton.language as tl
 
 from flag_gems.ops.dropout import dropout as _dropout
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+_tanh = tl_extra_shim.tanh
 
 # Small recurrent shapes dominate this operator in the benchmark suite. These
 # block sizes keep register use controlled while still covering common hidden
@@ -73,20 +75,12 @@ def _store_hx_slice_kernel(
 
 
 @libentry()
-@triton.jit
-def _lstm_step_kernel(
+@triton.jit(do_not_specialize=["batch_size", "hidden_size"])
+def _lstm_step_ih_kernel(
     x_ptr,
-    h_prev_ptr,
-    c_prev_ptr,
     w_ih_ptr,
-    w_hh_ptr,
-    b_ih_ptr,
-    b_hh_ptr,
-    h_next_ptr,
-    c_next_ptr,
-    out_ptr,
+    gi_ptr,
     seq_idx,
-    out_feature_offset,
     input_size,
     hidden_size,
     batch_size,
@@ -95,8 +89,167 @@ def _lstm_step_kernel(
     x_stride_f,
     w_ih_stride_r,
     w_ih_stride_c,
+    gi_stride_b,
+    gi_stride_n,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Rounded ``x @ w_ih.T`` for the four gates.
+
+    On XPU a single kernel holding both projection loops plus the gate chain
+    exceeds the pipeline-event budget (``pipeline event id 64 exceeds the
+    limit 64``).  The step is therefore split into three launches; each kernel
+    stays below that budget and the split is numerically transparent because
+    the partial sums are kept in accumulator precision.
+    """
+    pid_b = tl.program_id(0)
+    pid_h = tl.program_id(1)
+    offs_b = pid_b * BLOCK_B + tl.arange(0, BLOCK_B)
+    offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
+    b_mask = offs_b < batch_size
+    h_mask = offs_h < hidden_size
+
+    row_i = offs_h
+    row_f = offs_h + hidden_size
+    row_g = offs_h + 2 * hidden_size
+    row_o = offs_h + 3 * hidden_size
+
+    i_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    f_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    g_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    o_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+
+    for k0 in range(0, input_size, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        k_mask = offs_k < input_size
+        x = tl.load(
+            x_ptr
+            + seq_idx * x_stride_s
+            + offs_b[:, None] * x_stride_b
+            + offs_k[None, :] * x_stride_f,
+            mask=b_mask[:, None] & k_mask[None, :],
+            other=0.0,
+        )
+        w_off = offs_k[:, None] * w_ih_stride_c
+        w_mask = k_mask[:, None] & h_mask[None, :]
+        w_i = tl.load(
+            w_ih_ptr + row_i[None, :] * w_ih_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        w_f = tl.load(
+            w_ih_ptr + row_f[None, :] * w_ih_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        w_g = tl.load(
+            w_ih_ptr + row_g[None, :] * w_ih_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        w_o = tl.load(
+            w_ih_ptr + row_o[None, :] * w_ih_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        i_acc = tl.dot(x, w_i, i_acc, input_precision="ieee", out_dtype=tl.float32)
+        f_acc = tl.dot(x, w_f, f_acc, input_precision="ieee", out_dtype=tl.float32)
+        g_acc = tl.dot(x, w_g, g_acc, input_precision="ieee", out_dtype=tl.float32)
+        o_acc = tl.dot(x, w_o, o_acc, input_precision="ieee", out_dtype=tl.float32)
+
+    out_mask = b_mask[:, None] & h_mask[None, :]
+    base = offs_b[:, None] * gi_stride_b
+    tl.store(gi_ptr + base + row_i[None, :] * gi_stride_n, i_acc, mask=out_mask)
+    tl.store(gi_ptr + base + row_f[None, :] * gi_stride_n, f_acc, mask=out_mask)
+    tl.store(gi_ptr + base + row_g[None, :] * gi_stride_n, g_acc, mask=out_mask)
+    tl.store(gi_ptr + base + row_o[None, :] * gi_stride_n, o_acc, mask=out_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["batch_size", "hidden_size"])
+def _lstm_step_hh_kernel(
+    h_prev_ptr,
+    w_hh_ptr,
+    gh_ptr,
+    hidden_size,
+    batch_size,
+    h_stride_b,
+    h_stride_k,
     w_hh_stride_r,
     w_hh_stride_c,
+    gh_stride_b,
+    gh_stride_n,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Rounded ``h_prev @ w_hh.T`` for the four gates."""
+    pid_b = tl.program_id(0)
+    pid_h = tl.program_id(1)
+    offs_b = pid_b * BLOCK_B + tl.arange(0, BLOCK_B)
+    offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
+    b_mask = offs_b < batch_size
+    h_mask = offs_h < hidden_size
+
+    row_i = offs_h
+    row_f = offs_h + hidden_size
+    row_g = offs_h + 2 * hidden_size
+    row_o = offs_h + 3 * hidden_size
+
+    i_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    f_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    g_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    o_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+
+    for k0 in range(0, hidden_size, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        k_mask = offs_k < hidden_size
+        h = tl.load(
+            h_prev_ptr + offs_b[:, None] * h_stride_b + offs_k[None, :] * h_stride_k,
+            mask=b_mask[:, None] & k_mask[None, :],
+            other=0.0,
+        )
+        w_off = offs_k[:, None] * w_hh_stride_c
+        w_mask = k_mask[:, None] & h_mask[None, :]
+        w_i = tl.load(
+            w_hh_ptr + row_i[None, :] * w_hh_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        w_f = tl.load(
+            w_hh_ptr + row_f[None, :] * w_hh_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        w_g = tl.load(
+            w_hh_ptr + row_g[None, :] * w_hh_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        w_o = tl.load(
+            w_hh_ptr + row_o[None, :] * w_hh_stride_r + w_off, mask=w_mask, other=0.0
+        )
+        i_acc = tl.dot(h, w_i, i_acc, input_precision="ieee", out_dtype=tl.float32)
+        f_acc = tl.dot(h, w_f, f_acc, input_precision="ieee", out_dtype=tl.float32)
+        g_acc = tl.dot(h, w_g, g_acc, input_precision="ieee", out_dtype=tl.float32)
+        o_acc = tl.dot(h, w_o, o_acc, input_precision="ieee", out_dtype=tl.float32)
+
+    out_mask = b_mask[:, None] & h_mask[None, :]
+    base = offs_b[:, None] * gh_stride_b
+    tl.store(gh_ptr + base + row_i[None, :] * gh_stride_n, i_acc, mask=out_mask)
+    tl.store(gh_ptr + base + row_f[None, :] * gh_stride_n, f_acc, mask=out_mask)
+    tl.store(gh_ptr + base + row_g[None, :] * gh_stride_n, g_acc, mask=out_mask)
+    tl.store(gh_ptr + base + row_o[None, :] * gh_stride_n, o_acc, mask=out_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["batch_size", "hidden_size"])
+def _lstm_step_combine_kernel(
+    gi_ptr,
+    gh_ptr,
+    c_prev_ptr,
+    b_ih_ptr,
+    b_hh_ptr,
+    h_next_ptr,
+    c_next_ptr,
+    out_ptr,
+    seq_idx,
+    out_feature_offset,
+    hidden_size,
+    batch_size,
+    gi_stride_b,
+    gi_stride_n,
+    gh_stride_b,
+    gh_stride_n,
+    c_stride_b,
+    c_stride_k,
     b_ih_stride,
     b_hh_stride,
     out_stride_s,
@@ -105,144 +258,84 @@ def _lstm_step_kernel(
     HAS_BIAS: tl.constexpr,
     BLOCK_B: tl.constexpr,
     BLOCK_H: tl.constexpr,
-    BLOCK_K: tl.constexpr,
 ):
+    """Add both projections and the biases, then run the gate chain."""
     pid_b = tl.program_id(0)
     pid_h = tl.program_id(1)
     offs_b = pid_b * BLOCK_B + tl.arange(0, BLOCK_B)
     offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
     bh_mask = (offs_b[:, None] < batch_size) & (offs_h[None, :] < hidden_size)
 
-    i_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
-    f_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
-    g_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
-    o_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    row_i = offs_h
+    row_f = offs_h + hidden_size
+    row_g = offs_h + 2 * hidden_size
+    row_o = offs_h + 3 * hidden_size
 
-    for k_block in range(0, tl.cdiv(input_size, BLOCK_K)):
-        offs_k = k_block * BLOCK_K + tl.arange(0, BLOCK_K)
-        x_offsets = (
-            seq_idx * x_stride_s
-            + offs_b[:, None] * x_stride_b
-            + offs_k[None, :] * x_stride_f
-        )
-        x = tl.load(
-            x_ptr + x_offsets,
-            mask=(offs_b[:, None] < batch_size) & (offs_k[None, :] < input_size),
-            other=0.0,
-        )
-
-        w_i = tl.load(
-            w_ih_ptr
-            + (offs_h[None, :]) * w_ih_stride_r
-            + offs_k[:, None] * w_ih_stride_c,
-            mask=(offs_k[:, None] < input_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        w_f = tl.load(
-            w_ih_ptr
-            + (hidden_size + offs_h[None, :]) * w_ih_stride_r
-            + offs_k[:, None] * w_ih_stride_c,
-            mask=(offs_k[:, None] < input_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        w_g = tl.load(
-            w_ih_ptr
-            + (2 * hidden_size + offs_h[None, :]) * w_ih_stride_r
-            + offs_k[:, None] * w_ih_stride_c,
-            mask=(offs_k[:, None] < input_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        w_o = tl.load(
-            w_ih_ptr
-            + (3 * hidden_size + offs_h[None, :]) * w_ih_stride_r
-            + offs_k[:, None] * w_ih_stride_c,
-            mask=(offs_k[:, None] < input_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        i_acc += tl.dot(x, w_i, out_dtype=tl.float32, allow_tf32=False)
-        f_acc += tl.dot(x, w_f, out_dtype=tl.float32, allow_tf32=False)
-        g_acc += tl.dot(x, w_g, out_dtype=tl.float32, allow_tf32=False)
-        o_acc += tl.dot(x, w_o, out_dtype=tl.float32, allow_tf32=False)
-
-    for k_block in range(0, tl.cdiv(hidden_size, BLOCK_K)):
-        offs_k = k_block * BLOCK_K + tl.arange(0, BLOCK_K)
-        h = tl.load(
-            h_prev_ptr + offs_b[:, None] * hidden_size + offs_k[None, :],
-            mask=(offs_b[:, None] < batch_size) & (offs_k[None, :] < hidden_size),
-            other=0.0,
-        )
-
-        w_i = tl.load(
-            w_hh_ptr
-            + (offs_h[None, :]) * w_hh_stride_r
-            + offs_k[:, None] * w_hh_stride_c,
-            mask=(offs_k[:, None] < hidden_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        w_f = tl.load(
-            w_hh_ptr
-            + (hidden_size + offs_h[None, :]) * w_hh_stride_r
-            + offs_k[:, None] * w_hh_stride_c,
-            mask=(offs_k[:, None] < hidden_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        w_g = tl.load(
-            w_hh_ptr
-            + (2 * hidden_size + offs_h[None, :]) * w_hh_stride_r
-            + offs_k[:, None] * w_hh_stride_c,
-            mask=(offs_k[:, None] < hidden_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        w_o = tl.load(
-            w_hh_ptr
-            + (3 * hidden_size + offs_h[None, :]) * w_hh_stride_r
-            + offs_k[:, None] * w_hh_stride_c,
-            mask=(offs_k[:, None] < hidden_size) & (offs_h[None, :] < hidden_size),
-            other=0.0,
-        )
-        i_acc += tl.dot(h, w_i, out_dtype=tl.float32, allow_tf32=False)
-        f_acc += tl.dot(h, w_f, out_dtype=tl.float32, allow_tf32=False)
-        g_acc += tl.dot(h, w_g, out_dtype=tl.float32, allow_tf32=False)
-        o_acc += tl.dot(h, w_o, out_dtype=tl.float32, allow_tf32=False)
+    base_i = offs_b[:, None] * gi_stride_b
+    base_h = offs_b[:, None] * gh_stride_b
+    i_acc = tl.load(
+        gi_ptr + base_i + row_i[None, :] * gi_stride_n, mask=bh_mask, other=0.0
+    )
+    f_acc = tl.load(
+        gi_ptr + base_i + row_f[None, :] * gi_stride_n, mask=bh_mask, other=0.0
+    )
+    g_acc = tl.load(
+        gi_ptr + base_i + row_g[None, :] * gi_stride_n, mask=bh_mask, other=0.0
+    )
+    o_acc = tl.load(
+        gi_ptr + base_i + row_o[None, :] * gi_stride_n, mask=bh_mask, other=0.0
+    )
+    i_acc += tl.load(
+        gh_ptr + base_h + row_i[None, :] * gh_stride_n, mask=bh_mask, other=0.0
+    )
+    f_acc += tl.load(
+        gh_ptr + base_h + row_f[None, :] * gh_stride_n, mask=bh_mask, other=0.0
+    )
+    g_acc += tl.load(
+        gh_ptr + base_h + row_g[None, :] * gh_stride_n, mask=bh_mask, other=0.0
+    )
+    o_acc += tl.load(
+        gh_ptr + base_h + row_o[None, :] * gh_stride_n, mask=bh_mask, other=0.0
+    )
 
     if HAS_BIAS:
         bias_i = tl.load(
-            b_ih_ptr + offs_h * b_ih_stride,
+            b_ih_ptr + row_i * b_ih_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_i += tl.load(
-            b_hh_ptr + offs_h * b_hh_stride,
+            b_hh_ptr + row_i * b_hh_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_f = tl.load(
-            b_ih_ptr + (hidden_size + offs_h) * b_ih_stride,
+            b_ih_ptr + row_f * b_ih_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_f += tl.load(
-            b_hh_ptr + (hidden_size + offs_h) * b_hh_stride,
+            b_hh_ptr + row_f * b_hh_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_g = tl.load(
-            b_ih_ptr + (2 * hidden_size + offs_h) * b_ih_stride,
+            b_ih_ptr + row_g * b_ih_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_g += tl.load(
-            b_hh_ptr + (2 * hidden_size + offs_h) * b_hh_stride,
+            b_hh_ptr + row_g * b_hh_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_o = tl.load(
-            b_ih_ptr + (3 * hidden_size + offs_h) * b_ih_stride,
+            b_ih_ptr + row_o * b_ih_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
         bias_o += tl.load(
-            b_hh_ptr + (3 * hidden_size + offs_h) * b_hh_stride,
+            b_hh_ptr + row_o * b_hh_stride,
             mask=offs_h < hidden_size,
             other=0.0,
         )
@@ -251,19 +344,20 @@ def _lstm_step_kernel(
         g_acc += bias_g[None, :]
         o_acc += bias_o[None, :]
 
-    log2e: tl.constexpr = 1.4426950408889634
-    i_gate = 1.0 / (1.0 + tl.exp2(-i_acc * log2e))
-    f_gate = 1.0 / (1.0 + tl.exp2(-f_acc * log2e))
-    g_gate = 2.0 / (1.0 + tl.exp2(-2.0 * g_acc * log2e)) - 1.0
-    o_gate = 1.0 / (1.0 + tl.exp2(-o_acc * log2e))
+    # ``tl.exp2`` is miscompiled on XPU (a constant ~8e-2 error even for small
+    # inputs), so use the native sigmoid and the accurate tanh shim instead.
+    i_gate = tl.sigmoid(i_acc)
+    f_gate = tl.sigmoid(f_acc)
+    g_gate = _tanh(g_acc)
+    o_gate = tl.sigmoid(o_acc)
 
     c_prev = tl.load(
-        c_prev_ptr + offs_b[:, None] * hidden_size + offs_h[None, :],
+        c_prev_ptr + offs_b[:, None] * c_stride_b + offs_h[None, :] * c_stride_k,
         mask=bh_mask,
         other=0.0,
     ).to(tl.float32)
     c_next = f_gate * c_prev + i_gate * g_gate
-    h_next = o_gate * (2.0 / (1.0 + tl.exp2(-2.0 * c_next * log2e)) - 1.0)
+    h_next = o_gate * _tanh(c_next)
 
     state_offsets = offs_b[:, None] * hidden_size + offs_h[None, :]
     out_offsets = (
@@ -388,20 +482,70 @@ def _run_direction(
         return
 
     block_h = _block_size(hidden_size, _BLOCK_H_MAX)
-    block_k = _block_size(max(input_size, hidden_size), _BLOCK_K_MAX)
+    # XPU's Triton pipeline overflows its event budget when one kernel carries
+    # both projection loops plus the gate chain, and its inliner also fails
+    # when a loop holds four ``tl.dot`` ops with a K tile below 64.  The step is
+    # therefore split into three launches and the reduction tile is pinned at
+    # 64, masking the edges instead.
+    block_k = _BLOCK_K_MAX
     grid = (
         triton.cdiv(batch_size, _BLOCK_B),
         triton.cdiv(hidden_size, block_h),
     )
+    # Per-gate partial sums in accumulator precision, consumed by the combine
+    # kernel: gi = x @ w_ih.T, gh = h_prev @ w_hh.T.
+    gi = torch.empty(
+        (batch_size, 4 * hidden_size), device=layer_input.device, dtype=torch.float32
+    )
+    gh = torch.empty_like(gi)
     with torch_device_fn.device(layer_input.device):
+        if input_size == 0:
+            # An empty reduction contributes nothing (the bias is added by the
+            # combine kernel), and a zero-trip loop is miscompiled on XPU, so
+            # write the zeros directly instead of launching the projection.
+            gi.zero_()
         for step in range(seq_len):
             seq_idx = seq_len - 1 - step if reverse else step
-            _lstm_step_kernel[grid](
-                layer_input,
+            if input_size != 0:
+                _lstm_step_ih_kernel[grid](
+                    layer_input,
+                    w_ih,
+                    gi,
+                    seq_idx,
+                    input_size,
+                    hidden_size,
+                    batch_size,
+                    layer_input.stride(0),
+                    layer_input.stride(1),
+                    layer_input.stride(2),
+                    w_ih_stride_r,
+                    w_ih_stride_c,
+                    gi.stride(0),
+                    gi.stride(1),
+                    BLOCK_B=_BLOCK_B,
+                    BLOCK_H=block_h,
+                    BLOCK_K=block_k,
+                )
+            _lstm_step_hh_kernel[grid](
                 h_work,
-                c_work,
-                w_ih,
                 w_hh,
+                gh,
+                hidden_size,
+                batch_size,
+                h_work.stride(0),
+                h_work.stride(1),
+                w_hh_stride_r,
+                w_hh_stride_c,
+                gh.stride(0),
+                gh.stride(1),
+                BLOCK_B=_BLOCK_B,
+                BLOCK_H=block_h,
+                BLOCK_K=block_k,
+            )
+            _lstm_step_combine_kernel[grid](
+                gi,
+                gh,
+                c_work,
                 b_ih,
                 b_hh,
                 h_next,
@@ -409,16 +553,14 @@ def _run_direction(
                 layer_output,
                 seq_idx,
                 out_feature_offset,
-                input_size,
                 hidden_size,
                 batch_size,
-                layer_input.stride(0),
-                layer_input.stride(1),
-                layer_input.stride(2),
-                w_ih_stride_r,
-                w_ih_stride_c,
-                w_hh_stride_r,
-                w_hh_stride_c,
+                gi.stride(0),
+                gi.stride(1),
+                gh.stride(0),
+                gh.stride(1),
+                c_work.stride(0),
+                c_work.stride(1),
                 b_ih_stride,
                 b_hh_stride,
                 layer_output.stride(0),
@@ -427,7 +569,6 @@ def _run_direction(
                 HAS_BIAS=has_biases,
                 BLOCK_B=_BLOCK_B,
                 BLOCK_H=block_h,
-                BLOCK_K=block_k,
             )
             h_work, h_next = h_next, h_work
             c_work, c_next = c_next, c_work

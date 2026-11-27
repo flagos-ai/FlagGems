@@ -58,6 +58,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
+from .sort import sort_stable as _gems_sort_stable
+
 logger = logging.getLogger(__name__)
 
 # Tile used by every elementwise per-row kernel.  All per-row 1D helper buffers
@@ -624,7 +626,16 @@ def _argsort_keys(keys_pad: torch.Tensor, num_keys: int):
                 num_warps=_num_warps(block),
             )
         return perm, sorted_keys
-    sorted_keys, perm = torch.sort(keys_pad[:num_keys])
+    # ``torch.sort`` is silently wrong on this backend for int64 keys whose
+    # magnitude exceeds the int32 range at several lengths (n = 2049, 4097,
+    # 6000 were observed: values come back unsorted and the returned indices
+    # even leave [0, n-1], which then makes the downstream gathers read out of
+    # bounds).  int32 inputs always encode to ``value + 2**31`` and later passes
+    # additionally add ``group_id << 32``, so every multi-column path hits it.
+    # The backend's own radix sort is used instead (same entry point as
+    # ``unique``/``_unique2``); it was verified correct for these lengths,
+    # every distribution (all-equal / sorted / reversed) and up to 65536 keys.
+    sorted_keys, perm = _gems_sort_stable(keys_pad[:num_keys], stable=True)
     return _to_row_padded(perm, num_keys), _to_row_padded(sorted_keys, num_keys)
 
 
@@ -931,6 +942,16 @@ def unique_dim(
         raise IndexError(
             f"Dimension out of range (expected to be in range of "
             f"[{-input.ndim}, {input.ndim - 1}], but got {dim})"
+        )
+
+    # Match ATen: any zero-sized dimension other than ``dim`` makes the
+    # operation undefined (CPU raises instead of returning an empty result).
+    if input.ndim > 0 and any(
+        extent == 0 and axis != dim for axis, extent in enumerate(input.shape)
+    ):
+        raise RuntimeError(
+            "There are 0 sized dimensions, and they aren't selected, "
+            "so unique cannot be applied"
         )
 
     device = input.device

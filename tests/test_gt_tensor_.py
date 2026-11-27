@@ -21,6 +21,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.inplace
+@pytest.mark.gt_
 @pytest.mark.gt_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -33,4 +34,22 @@ def test_gt_tensor_(shape, dtype):
     ref_out = ref_inp1.gt_(ref_inp2)
     res_out = flag_gems.gt_tensor_(inp1, inp2)
 
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.gt_
+@pytest.mark.gt_tensor_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_gt_tensor__byte(shape, dtype):
+    inp1 = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1.clone())
+    ref_inp2 = utils.to_reference(inp2)
+
+    ref_out = ref_inp1.gt_(ref_inp2)
+    res_out = flag_gems.gt_tensor_(inp1, inp2)
+
+    assert res_out.dtype == ref_out.dtype
     utils.gems_assert_equal(res_out, ref_out)

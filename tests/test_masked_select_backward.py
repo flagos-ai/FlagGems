@@ -19,12 +19,47 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
 SHAPES = [(0,), (17,), (4096,), (4097,), (128, 256), (65536,), (65537,)]
 BOUNDARY_SHAPES = [(32769,), (262144,), (262145,)]
 if not cfg.QUICK_MODE:
     SHAPES += [(1024, 1024)]
+
+
+EXTENDED_DTYPES = [
+    torch.bool,
+    torch.int32,
+    pytest.param(
+        torch.float64,
+        # torch_xmlir silently downcasts float64 to float32 on Kunlunxin, so
+        # the fp64 path cannot be constructed there (same guard as test_inner).
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name in ("kunlunxin", "enflame")
+            and not utils.fp64_is_supported,
+            reason="float64 is downcast to float32 on this device",
+        ),
+    ),
+]
+if utils.complex_is_supported:
+    EXTENDED_DTYPES.append(torch.complex64)
+
+
+@pytest.fixture(autouse=True)
+def _cpu_reference_on_kunlunxin(monkeypatch):
+    """Compute the reference on CPU on Kunlunxin.
+
+    CI runs this file without ``--ref cpu``. The on-device eager
+    ``masked_select_backward`` cannot serve as the reference on XPU:
+    ``torch_xmlir``'s ``masked_scatter`` does not implement bool/complex
+    inputs, and the eager result keeps the input's memory format while
+    upstream ATen always returns a contiguous tensor. Flip the shared
+    ``--ref cpu`` switch for the duration of each test, so the reference
+    follows the same path as that mode.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        monkeypatch.setattr(utils, "TO_CPU", True)
 
 
 def _make_args(shape, dtype, threshold=0.5):
@@ -69,9 +104,7 @@ def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
 
 
 @pytest.mark.masked_select_backward
-@pytest.mark.parametrize(
-    "dtype", [torch.bool, torch.int32, torch.float64, torch.complex64]
-)
+@pytest.mark.parametrize("dtype", EXTENDED_DTYPES)
 def test_accuracy_masked_select_backward_extended_dtypes(dtype):
     shape = (73, 71)
     mask = torch.rand(shape, device=flag_gems.device) < 0.4
@@ -184,10 +217,19 @@ def test_masked_select_backward_errors():
 
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("size", [17, 65537, 262145])
-@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.int32] + ([torch.int64] if utils.int64_is_supported else []),
+)
 def test_masked_select_backward_large_integer_values(size, dtype):
     inp = torch.zeros(size, dtype=dtype, device=flag_gems.device)
-    mask = torch.arange(size, device=inp.device) % 3 != 0
+    # int32 indices: torch.arange defaults to int64, and comparing an int64
+    # tensor aborts the process on backends without int64 support.
+    mask = (
+        torch.arange(size, dtype=torch.int32, device=inp.device) % 3 != 0
+        if not utils.int64_is_supported
+        else torch.arange(size, device=inp.device) % 3 != 0
+    )
     count = int(mask.sum())
     base = 2**25 + 1 if dtype == torch.int32 else 2**60 + 1
     grad = torch.arange(count, dtype=dtype, device=inp.device) + base
@@ -196,7 +238,14 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 
 
 @pytest.mark.masked_select_backward
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype",
+    (
+        [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+        if utils.complex_is_supported
+        else []
+    ),
+)
 def test_masked_select_backward_conjugated_grad(dtype):
     inp = torch.randn(73, dtype=dtype, device=flag_gems.device)
     mask = torch.arange(73, device=inp.device) % 2 == 0

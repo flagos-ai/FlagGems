@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
@@ -27,7 +28,11 @@ DEVICE = flag_gems.device
 # the dynamic range for pivoted elimination
 _FP64 = utils.fp64_is_supported
 # Only fp32 and fp64 are numerically viable for LU factorization
-_TEST_DTYPES = [torch.float32, torch.float64] if _FP64 else [torch.float32]
+_TEST_DTYPES = (
+    [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+    if _FP64
+    else [torch.float32]
+)
 
 
 def _make_invertible_matrix(shape, dtype, device):
@@ -67,7 +72,16 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     A = _make_invertible_matrix(shape, dtype, DEVICE)
     ref_A = utils.to_reference(A)
 
-    ref_result = torch.linalg.inv_ex(ref_A, check_errors=check_errors)
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and ref_A.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        ref_inverse = torch.from_numpy(np.linalg.inv(ref_A.numpy()))
+    else:
+        ref_inverse = torch.linalg.inv_ex(ref_A, check_errors=check_errors).inverse
     res_result = flag_gems.linalg_inv_ex(A, check_errors=check_errors)
 
     n = shape[-1]
@@ -81,9 +95,7 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     assert torch.all(res_result.info == 0)
 
     # Compare inverse directly (LU + solve accumulates O(n^2) error)
-    utils.gems_assert_close(
-        res_result.inverse, ref_result.inverse, dtype, reduce_dim=n * n
-    )
+    utils.gems_assert_close(res_result.inverse, ref_inverse, dtype, reduce_dim=n * n)
 
 
 @pytest.mark.linalg_inv_ex

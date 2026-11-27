@@ -90,12 +90,12 @@ b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
 c = ops.mm(a, b)
 ```
 
-For fused operators, you can import and use them directly from the `flag_gems.fused` package:
+For fused operators, you can import and use them directly from the `flag_gems.deprecated` package:
 
 ```python
 import torch
 import flag_gems
-from flag_gems.fused.moe_align_block_size import moe_align_block_size
+from flag_gems.deprecated.moe_align_block_size import moe_align_block_size
 
 # Example usage of moe_align_block_size
 num_tokens = 4096
@@ -142,12 +142,12 @@ This is useful for debugging or verifying which operators are active.
 
 For advanced usage scenarios, check the following related documentation:
 
-- [Selective enablement](/FlagGems/usage/selective/)
-- [Using experimental operators](/FlagGems/usage/experimental/)
-- [Enabling logging](/FlagGems/usage/debugging/) for debugging
-- [Using FlagGems on non-NVIDIA hardware](/FlagGems/usage/non-nvidia/)
-- [Using FlagGems in a multi-GPU or distributed environment](/FlagGems/usage/distributed/)
-- [Integrating FlagGems with a popular framework](/FlagGems/usage/frameworks/)
-- [Building your own models using FlagGems modules](/FlagGems/usage/modules/)
-- [Enable pre-tuning for better performance](/FlagGems/usage/tuning/)
-- [Using C++ wrapped operators for optimal performance](/FlagGems/usage/cpp/)
+- [Selective enablement](selective.md)
+- [Using experimental operators](experimental.md)
+- [Enabling logging](debugging.md) for debugging
+- [Using FlagGems on non-NVIDIA hardware](non-nvidia.md)
+- [Using FlagGems in a multi-GPU or distributed environment](distributed.md)
+- [Integrating FlagGems with a popular framework](frameworks.md)
+- [Building your own models using FlagGems modules](modules.md)
+- [Enable pre-tuning for better performance](tuning.md)
+- [Using C++ wrapped operators for optimal performance](cpp.md)

@@ -33,11 +33,15 @@ def test_to_dtype(shape, dtype):
         pytest.skip("#2855: Skiping complex to_copy test on tsingmicro platform")
     if flag_gems.vendor_name == "ascend" and dtype in utils.COMPLEX_DTYPES:
         pytest.skip("Issues #3267: Ascend NPU does not support complex32 dtype")
+    if flag_gems.vendor_name == "enflame" and dtype in utils.COMPLEX_DTYPES:
+        pytest.skip(
+            "Enflame GCU400 has no native complex dtype support: "
+            "aten::_to_copy complex redispatch aborts"
+        )
     x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = ref_x.to(dtype)
-    with flag_gems.use_gems():
-        out = x.to(dtype)
+    out = flag_gems.to_copy(x, dtype=dtype)
     utils.gems_assert_equal(out, ref_out)
 
 
@@ -49,12 +53,16 @@ def test_to_copy_dtype_cast(shape, target_dtype):
         pytest.skip("#2855: Skiping complex to_copy test on tsingmicro platform")
     if flag_gems.vendor_name == "ascend" and target_dtype in utils.COMPLEX_DTYPES:
         pytest.skip("Issues #3267: Ascend NPU does not support complex32 dtype")
+    if flag_gems.vendor_name == "enflame" and target_dtype in utils.COMPLEX_DTYPES:
+        pytest.skip(
+            "Enflame GCU400 has no native complex dtype support: "
+            "aten::_to_copy complex redispatch aborts"
+        )
     src_dtype = torch.float32 if target_dtype != torch.float32 else torch.float16
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=target_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=target_dtype)
+    res_out = flag_gems.to_copy(x, dtype=target_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -72,12 +80,11 @@ def test_to_copy_preserve_strides(memory_format):
         dtype=ref_x.dtype,
         memory_format=memory_format,
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(
-            x,
-            dtype=x.dtype,
-            memory_format=memory_format,
-        )
+    res_out = flag_gems.to_copy(
+        x,
+        dtype=x.dtype,
+        memory_format=memory_format,
+    )
     utils.gems_assert_equal(res_out, ref_out)
     if memory_format is torch.preserve_format:
         assert res_out.stride() == ref_out.stride()
@@ -104,8 +111,7 @@ def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -122,8 +128,7 @@ def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -146,8 +151,7 @@ def test_to_copy_int_to_float(shape, src_dtype, dst_dtype):
         x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -169,8 +173,7 @@ def test_to_copy_int_to_int(shape, src_dtype, dst_dtype):
         x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -186,8 +189,7 @@ def test_to_copy_float_to_uint8(shape, src_dtype):
     x = torch.randint(0, 255, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=torch.uint8)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=torch.uint8)
+    res_out = flag_gems.to_copy(x, dtype=torch.uint8)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -209,8 +211,7 @@ def test_to_copy_uint8_to_float(shape, dst_dtype):
         x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -230,6 +231,5 @@ def test_to_copy_uint8_to_int(shape, dst_dtype):
         x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)

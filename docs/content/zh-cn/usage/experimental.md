@@ -1,5 +1,5 @@
 ---
-title: 使用实验性质的算子
+title: 使用实验性算子
 weight: 40
 ---
 
@@ -19,39 +19,30 @@ weight: 40
  limitations under the License.
  -->
 
+# 使用实验性算子
 
-<!--
-# Using Experimental Operators
--->
-# 使用实验性质的算子
+`flag_gems.experimental_ops` 模块为社区孵化中的前沿算子提供了独立的命名空间。这些算子通常处于精度对齐、性能极限压测或 API 设计收敛阶段，尚未正式合入稳定版发布中。
 
-<!--
-The `experimental_ops` module provides a space for new operators
-that are not yet ready for production release.
-Operators in this package are accessible via `flag_gems.experimental_ops.*`.
-These operators follow the same development patterns as the core, stable operators.
--->
-*FlagGems* 的 `experimental_ops` 模块提供了一个名字空间，
-用来存放尚未为生产环境使用准备就绪的算子。
-在这个包中的算子可以通过 `flag_gems.experimental_ops.*` 的形式来访问。
-实验性质算子的开发与与核心的稳定算子相同的开发模式。
+虽然处于实验阶段，但这些算子均严格遵循与核心算子一致的代码规范与接口设计。开发者可按如下方式显式调用以尝鲜体验：
+
+## 1. 直接显式导入调用
 
 ```python
-from flag_gems import experimental_ops as ops
+from flag_gems import experimental_ops as exp_ops
 
-result = ops.rmsnorm(*args)
+# 调用实验性 RMSNorm 算子
+result = exp_ops.rmsnorm(*args)
 ```
 
-<!--
-You can also use experimental operators in a `use_gems()` context,
-however, you have to explicitly specify the full path for accessing the operator.
--->
-你也可以在 `use_gems()` 所构造的上下文管理器中使用实验性质的算子，
-不过你必须使用算子的完整包名才能访问到这类算子。
+## 2. 在加速上下文中调用
+
+在 `with flag_gems.use_gems():` 上下文中，亦可通过模块全路径直接调用实验性算子：
 
 ```python
+import flag_gems
+
 with flag_gems.use_gems():
     result = flag_gems.experimental_ops.rmsnorm(*args)
 ```
 
-<!--TODO(Qiming): Add link to experimental operators-->
+当前所有处于实验阶段的算子列表可参阅[实验性算子清单](../references/experimental.md)。

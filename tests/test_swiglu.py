@@ -25,6 +25,21 @@ try:
     TE_OP = getattr(tex, "swiglu", None)
 except ImportError:
     TE_OP = None
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing and turns the whole
+    # module uncollectable.  The TE reference op has no GCU implementation
+    # (torch aten/TE not supported on this backend), so skip the module on
+    # enflame with the real cause instead of failing collection for every
+    # operator of the run.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: transformer-engine metapackage has no framework "
+            f"extension ({te_import_error}); the TE reference op is not "
+            "supported on this backend (torch aten/TE not supported on GCU)",
+            allow_module_level=True,
+        )
+    raise
 
 
 def generate_input(
@@ -60,8 +75,20 @@ def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
     input_tensor = generate_input(shape, dtype, device)
 
     if TE_OP is not None:
-        ref_out = TE_OP(input_tensor, quantizer=None).to(device)
-        ref_out = utils.to_reference(ref_out)
+        if flag_gems.vendor_name == "kunlunxin":
+            otype = {
+                torch.float16: tex.DType.kFloat16,
+                torch.bfloat16: tex.DType.kBFloat16,
+                torch.float32: tex.DType.kFloat32,
+            }[dtype]
+            ref_out = TE_OP(input_tensor, None, otype=otype)
+            # TE's swiglu flattens leading dims to 2D; restore the original shape.
+            ref_out = ref_out.view(
+                *input_tensor.shape[:-1], input_tensor.shape[-1] // 2
+            )
+        else:
+            ref_out = TE_OP(input_tensor, quantizer=None)
+        ref_out = utils.to_reference(ref_out.to(device))
     else:
         # TransformerEngine is unavailable (e.g. on Ascend), so the golden is
         # the torch reference: silu on the first half times the second half.

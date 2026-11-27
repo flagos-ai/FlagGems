@@ -331,7 +331,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # (Auto-Adjusted Block Size) shrinks BLOCK_CI to next_power_of_2(weight_c)
     # which violates the K >= 16 constraint. Pad input/weight channels to 16.
     _MIN_DOT_K = 16
-    if weight_c < _MIN_DOT_K:
+    if weight_c < _MIN_DOT_K and runtime.device.vendor_name != "iluvatar":
         pad_c = _MIN_DOT_K - weight_c
         if groups == 1:
             # Simple case: pad channel dim at the end (dim=1 for 5D input)

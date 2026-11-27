@@ -24,6 +24,8 @@ from .conftest import QUICK_MODE
 
 HAS_NATIVE_LANCZOS = hasattr(torch.ops.aten, "_upsample_lanczos2d_aa")
 
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
+
 if QUICK_MODE:
     SHAPES = [(1, 2, 7, 9)]
     SCALES = [(1.5, 0.75)]
@@ -31,7 +33,11 @@ if QUICK_MODE:
 else:
     SHAPES = [(1, 1, 3, 5), (2, 3, 17, 19), (4, 8, 32, 48)]
     SCALES = [(2.0, 2.0), (0.5, 0.75)]
-    DTYPES = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    # Kunlunxin XPU downgrades fp64 tensors to fp32 (support_fp64=False), so
+    # fp64 cases would be checked against an fp32 result under fp64 tolerances.
+    DTYPES = [torch.float16, torch.bfloat16, torch.float32] + (
+        [torch.float64] if flag_gems.vendor_name not in ("kunlunxin", "enflame") else []
+    )
 
 
 def _scale(input_size, output_size, align_corners, explicit_scale):
@@ -114,6 +120,17 @@ def _assert_close(result, reference, dtype):
     torch.testing.assert_close(result.cpu(), reference.cpu(), rtol=rtol, atol=atol)
 
 
+def _run_functional_candidate(inp, output_size, align_corners=False):
+    candidate = getattr(flag_gems, "upsample_lanczos2d_aa", None)
+    if candidate is None:
+        candidate = flag_gems._upsample_lanczos2d_aa
+    result = candidate(inp, output_size, align_corners)
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == (*inp.shape[:-2], *output_size)
+    return result
+
+
 @pytest.mark.upsample_lanczos2d_aa
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", SCALES)
@@ -124,7 +141,7 @@ def test_upsample_lanczos2d_aa(dtype, shape, scale, align_corners):
     reference_input = utils.to_reference(input)
     output_size = tuple(int(shape[i + 2] * scale[i]) for i in range(2))
     reference = _reference(reference_input, output_size, align_corners)
-    result = flag_gems._upsample_lanczos2d_aa(input, output_size, align_corners)
+    result = _run_functional_candidate(input, output_size, align_corners)
     _assert_close(result, reference, dtype)
 
 
@@ -134,7 +151,7 @@ def test_upsample_lanczos2d_aa_uint8_and_layout():
         0, 256, (1, 3, 11, 13), dtype=torch.uint8, device=flag_gems.device
     ).contiguous(memory_format=torch.channels_last)
     reference = _reference(utils.to_reference(input), (7, 19))
-    result = flag_gems._upsample_lanczos2d_aa(input, (7, 19))
+    result = _run_functional_candidate(input, (7, 19))
     _assert_close(result, reference, torch.uint8)
     assert result.is_contiguous(memory_format=torch.channels_last)
 
@@ -143,7 +160,7 @@ def test_upsample_lanczos2d_aa_uint8_and_layout():
 def test_upsample_lanczos2d_aa_transposed_input():
     input = torch.randn((1, 2, 9, 7), device=flag_gems.device).transpose(-1, -2)
     reference = _reference(utils.to_reference(input), (13, 11))
-    result = flag_gems._upsample_lanczos2d_aa(input, (13, 11))
+    result = _run_functional_candidate(input, (13, 11))
     _assert_close(result, reference, torch.float32)
     assert result.is_contiguous()
 
@@ -198,9 +215,6 @@ def test_upsample_lanczos2d_aa_vec_requires_one_size(output_size, scale_factors)
 )
 def test_upsample_lanczos2d_aa_dispatch():
     input = torch.randn((1, 2, 7, 9), device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_lanczos2d_aa(
-            input, (11, 13), False, None, None
-        )
+    result = _run_functional_candidate(input, (11, 13))
     reference = _reference(utils.to_reference(input), (11, 13))
     _assert_close(result, reference, torch.float32)

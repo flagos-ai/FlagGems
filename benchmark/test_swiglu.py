@@ -41,6 +41,30 @@ except ImportError:
     TE_AVAILABLE = False
     TE_OP = None
     GEMS_OP = None
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing and turns the module
+    # uncollectable.  enflame has no TE extension, so it measures against the
+    # eager torch composition instead (see `test_swiglu`); every other vendor
+    # keeps failing loudly because it is expected to ship a TE baseline.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    TE_IMPORT_ERROR = te_import_error
+    TE_AVAILABLE = False
+    TE_OP = None
+    GEMS_OP = None
+
+
+def _te_swiglu(inp, fp8_meta_tensor=None):
+    """TE swiglu; kunlunxin TE requires an explicit otype (DType)."""
+    if flag_gems.vendor_name == "kunlunxin":
+        otype = {
+            torch.float16: tex.DType.kFloat16,
+            torch.bfloat16: tex.DType.kBFloat16,
+            torch.float32: tex.DType.kFloat32,
+        }[inp.dtype]
+        return TE_OP(inp, None, otype=otype)
+    return TE_OP(inp, None)
 
 
 @pytest.mark.swiglu
@@ -48,8 +72,19 @@ def test_swiglu():
     if TE_AVAILABLE and TE_OP is not None and GEMS_OP is not None:
         bench = base.TexGluForwardBenchmark(
             op_name="swiglu",
-            torch_op=TE_OP,
+            torch_op=_te_swiglu,
             gems_op=GEMS_OP,
+            dtypes=consts.FLOAT_DTYPES,
+        )
+    elif flag_gems.vendor_name == "enflame":
+        # enflame GCU: no TransformerEngine/torch_npu baseline exists, so the
+        # reference is the eager torch composition of the same math.  This
+        # branch only changes what the enflame benchmark measures and leaves the
+        # TE/torch_npu paths of the other vendors untouched.
+        bench = base.TexGluForwardBenchmark(
+            op_name="swiglu",
+            torch_op=enflame_swiglu_golden,
+            gems_op=flag_gems.swiglu,
             dtypes=consts.FLOAT_DTYPES,
         )
     elif NPU_SWIGLU is not None:
@@ -72,6 +107,12 @@ def test_swiglu():
 # core_shapes.yaml like other ops.
 def npu_swiglu_golden(input_tensor: torch.Tensor) -> torch.Tensor:
     return torch_npu.npu_swiglu(input_tensor, dim=-1)
+
+
+def enflame_swiglu_golden(input_tensor: torch.Tensor, quantizer=None) -> torch.Tensor:
+    """Eager torch SwiGLU: silu on the gate half times the shift half."""
+    gate, shift = input_tensor.chunk(2, dim=-1)
+    return torch.nn.functional.silu(gate) * shift
 
 
 class SwigluBenchmark(base.GenericBenchmark):

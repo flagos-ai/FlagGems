@@ -18,7 +18,9 @@ def _parse_pool3d_params(kernel_size, stride, padding, dilation):
     """
 
     def _parse_param(param, name, default=None):
-        if param is None:
+        # An empty list means "same as kernel_size" (the aten default `int[3] stride=[]`),
+        # which the autograd derivative forwards verbatim to the backward call.
+        if param is None or (isinstance(param, (list, tuple)) and len(param) == 0):
             return default
         if isinstance(param, int):
             return param, param, param
@@ -148,7 +150,9 @@ def max_pool3d_with_indices_backward(
         grad_output.shape[4],
     )
 
-    grad_input = torch.zeros_like(self, dtype=torch.float32)
+    grad_input = torch.zeros_like(
+        self, dtype=torch.float32, memory_format=torch.contiguous_format
+    )
 
     if grad_input.numel() == 0:
         return grad_input.to(out_dtype)

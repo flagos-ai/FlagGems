@@ -67,10 +67,9 @@ def test_value_selecting_reduction_backward(grad_shape, sizes, dim, keepdim, dty
     ref_out = torch.ops.aten.value_selecting_reduction_backward(
         ref_grad, dim, ref_indices, list(sizes), keepdim
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.value_selecting_reduction_backward(
-            grad, dim, indices, list(sizes), keepdim
-        )
+    res_out = flag_gems.value_selecting_reduction_backward(
+        grad, dim, indices, list(sizes), keepdim
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -79,6 +78,16 @@ def test_value_selecting_reduction_backward(grad_shape, sizes, dim, keepdim, dty
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_value_selecting_reduction_backward_max_dim(dtype):
     # realistic max(dim=1) backward: (4, 8) input reduced along dim 1
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip(
+            "aten gap: aten::max.dim cannot return int64 indices on gcu when the "
+            "input is fp16/bf16 (topsatenMax supports the int64-index output only "
+            "for fp32/int32 input, reports TOPSATEN_STATUS_NOT_SUPPORT and aborts "
+            "the process), so the reduction indices cannot be built on device"
+        )
     inp = torch.randn((4, 8), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
@@ -91,10 +100,9 @@ def test_value_selecting_reduction_backward_max_dim(dtype):
     ref_out = torch.ops.aten.value_selecting_reduction_backward(
         ref_grad_output, 1, ref_indices, list(ref_inp.shape), False
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.value_selecting_reduction_backward(
-            grad_output, 1, indices, list(inp.shape), False
-        )
+    res_out = flag_gems.value_selecting_reduction_backward(
+        grad_output, 1, indices, list(inp.shape), False
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -103,6 +111,16 @@ def test_value_selecting_reduction_backward_max_dim(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_value_selecting_reduction_backward_min_dim(dtype):
     # realistic min(dim=1) backward: (4, 8) input reduced along dim 1
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip(
+            "aten gap: aten::min.dim cannot return int64 indices on gcu when the "
+            "input is fp16/bf16 (topsatenMin supports the int64-index output only "
+            "for fp32/int32 input, reports TOPSATEN_STATUS_NOT_SUPPORT and aborts "
+            "the process), so the reduction indices cannot be built on device"
+        )
     inp = torch.randn((4, 8), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
@@ -115,9 +133,8 @@ def test_value_selecting_reduction_backward_min_dim(dtype):
     ref_out = torch.ops.aten.value_selecting_reduction_backward(
         ref_grad_output, 1, ref_indices, list(ref_inp.shape), False
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.value_selecting_reduction_backward(
-            grad_output, 1, indices, list(inp.shape), False
-        )
+    res_out = flag_gems.value_selecting_reduction_backward(
+        grad_output, 1, indices, list(inp.shape), False
+    )
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -143,22 +143,6 @@ def upsample_nearest3d(
     if output.numel() == 0:
         return output
 
-    # Exact 2x fast path (XPU 2026-08-21): when every output dimension is
-    # exactly twice the input dimension, out[2*d+od, 2*h+oh, 2*w+ow] == in[d,h,w]
-    # for the 8 parity classes (od, oh, ow) in {0,1}^3, identical to the
-    # floor((o * in/out)) nearest-neighbour mapping.  The 8 copies are plain
-    # strided views, so torch.ops.aten._copy_from (never overridden by gems)
-    # dispatches straight to the native strided-copy engine -- far cheaper than
-    # one discrete-gather Triton lane per output voxel (see upsample_nearest1d
-    # vendor fast path; 3D keeps the whole ~50MB in the copy engine).
-    if OD == 2 * ID and OH == 2 * IH and OW == 2 * IW:
-        for od in (0, 1):
-            for oh in (0, 1):
-                for ow in (0, 1):
-                    dst = output[:, :, od::2, oh::2, ow::2]
-                    torch.ops.aten._copy_from(input, dst, False)
-        return output
-
     total_out = NC * OD * OH * OW
     BLOCK_SIZE = 1024
     need_mask = total_out % BLOCK_SIZE != 0

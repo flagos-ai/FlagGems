@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 import flag_gems
 
@@ -28,14 +29,44 @@ try:
     TE_OP = getattr(tex, "dswiglu", None)
 except ImportError:
     TE_OP = None
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing and turns the module
+    # uncollectable.  There is no GCU baseline for the TE reference op (torch
+    # aten/TE not supported on this backend), so skip on enflame with the real
+    # cause instead of failing collection for every operator of the run.
+    # enflame has no TE extension, so it measures against eager torch autograd
+    # instead (see `test_dswiglu`); the other vendors keep failing loudly
+    # because they are expected to ship a TE baseline.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    TE_IMPORT_ERROR = te_import_error
+    TE_OP = None
+
+
+def _te_dswiglu(grad_output, inp, quantizer=None):
+    if flag_gems.vendor_name == "kunlunxin":
+        return TE_OP(grad_output, inp)
+    return TE_OP(grad_output, inp, quantizer)
+
+
+def enflame_dswiglu_golden(grad_output, inp, quantizer=None):
+    """Eager torch dSwiGLU through autograd (silu/mul forward and backward)."""
+    x = inp.detach().clone().requires_grad_(True)
+    gate, shift = x.chunk(2, dim=-1)
+    out = torch.nn.functional.silu(gate) * shift
+    (grad_in,) = torch.autograd.grad(out, (x,), (grad_output,))
+    return grad_in
 
 
 @pytest.mark.dswiglu
-@pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 def test_dswiglu():
+    if TE_OP is None and flag_gems.vendor_name != "enflame":
+        pytest.skip("'dswiglu' not found in TransformerEngine")
+    torch_op = _te_dswiglu if TE_OP is not None else enflame_dswiglu_golden
     bench = base.TexGluBackwardBenchmark(
         op_name="dswiglu",
-        torch_op=TE_OP,
+        torch_op=torch_op,
         gems_op=flag_gems.dswiglu,
         dtypes=consts.FLOAT_DTYPES,
     )

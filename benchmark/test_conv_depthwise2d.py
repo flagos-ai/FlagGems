@@ -19,6 +19,8 @@ import flag_gems
 
 from . import base, consts
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 class ConvDepthwise2DBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
@@ -58,6 +60,21 @@ def _input_fn(shape, dtype, device):
     )
 
 
+def _conv_depthwise2d_torch_op(
+    input, weight, kernel_size, bias, stride, padding, dilation
+):
+    return torch.nn.functional.conv2d(
+        input, weight, bias, stride, padding, dilation, groups=input.shape[1]
+    )
+
+
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_conv_depthwise2d; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.conv_depthwise2d
 def test_conv_depthwise2d():
     torch.backends.cudnn.allow_tf32 = False
@@ -65,7 +82,11 @@ def test_conv_depthwise2d():
     bench = ConvDepthwise2DBenchmark(
         op_name="conv_depthwise2d",
         input_fn=_input_fn,
-        torch_op=torch.ops.aten._conv_depthwise2d,
+        torch_op=(
+            _conv_depthwise2d_torch_op
+            if IS_KUNLUNXIN
+            else torch.ops.aten._conv_depthwise2d
+        ),
         gems_op=flag_gems._conv_depthwise2d,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -27,6 +27,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 _ILUVATAR = tl.constexpr(runtime_device.vendor_name == "iluvatar")
+_ASCEND = tl.constexpr(runtime_device.vendor_name == "ascend")
 
 _CANN_VERSION = None
 _CANN_SIZE_RATIO = False
@@ -187,9 +188,18 @@ def _upsample_bilinear2d_backward_kernel(
                         ox, x, IW, SW, ALIGN_CORNERS, acc_dtype
                     )
                     active = valid & (oy < OH) & (ox < OW) & match_y & match_x
-                    value = tl.load(source + oy * GS2 + ox * GS3, active, other=0).to(
-                        acc_dtype
-                    )
+                    if _ASCEND:
+                        # Ascend may issue scalar reads for masked gather lanes.
+                        # Keep inactive taps inside the allocation as well.
+                        load_offset = n * GS0 + c * GS1 + oy * GS2 + ox * GS3
+                        load_offset = tl.where(active, load_offset, 0)
+                        value = tl.load(GradOutput + load_offset, active, other=0).to(
+                            acc_dtype
+                        )
+                    else:
+                        value = tl.load(
+                            source + oy * GS2 + ox * GS3, active, other=0
+                        ).to(acc_dtype)
                     contribution = (wy * wx) * value
                     # Merging clamped taps must preserve an original 0 * Inf update.
                     contribution = tl.where(
@@ -301,7 +311,7 @@ def _bilinear_backward_fill_or_copy(source, destination, zero):
     is_ascend = runtime_device.vendor_name == "ascend"
     block = 1024 if is_ascend else 256
     programs = triton.cdiv(destination.numel(), block)
-    if is_ascend:
+    if is_ascend and _CANN_VERSION != "9.0.0":
         properties = triton.runtime.driver.active.utils.get_device_properties(
             destination.device.index
         )
@@ -1074,26 +1084,30 @@ def upsample_bilinear2d_backward(
     disjoint = disjoint and not is_ascend
     disjoint = disjoint and n * c * ih * iw >= 65536 and oh * ow > 1
     with torch_device_fn.device(grad_output.device):
-        if (
-            _CANN_VERSION == "9.0.0"
-            and copy
-            and n * c * ih * iw < 2**30
-            and grad_output.stride() == grad_input.stride()
-            and (
+        if copy and _CANN_VERSION == "9.0.0":
+            # Identity backward: every output pixel maps to exactly one input pixel.
+            # Use a direct device copy when layouts are compatible.
+            if (
                 grad_output.is_contiguous()
-                or grad_output.is_contiguous(memory_format=torch.channels_last)
-            )
-        ):
-            properties = triton.runtime.driver.active.utils.get_device_properties(
-                grad_output.device.index
-            )
-            programs = min(
-                triton.cdiv(n * c * ih * iw, 4096),
-                properties.get("num_vectorcore", 40),
-            )
-            _upsample_bilinear2d_backward_ascend_copy[(programs,)](
-                grad_output, grad_input, n * c * ih * iw, 4096
-            )
+                and grad_input.is_contiguous()
+                and grad_output.dtype == grad_input.dtype
+            ):
+                grad_input.copy_(grad_output)
+                return grad_input
+            if (
+                n * c * ih * iw < 2**30
+                and grad_output.stride() == grad_input.stride()
+                and (
+                    grad_output.is_contiguous()
+                    or grad_output.is_contiguous(memory_format=torch.channels_last)
+                )
+            ):
+                programs = triton.cdiv(n * c * ih * iw, 4096)
+                _upsample_bilinear2d_backward_ascend_copy[(programs,)](
+                    grad_output, grad_input, n * c * ih * iw, 4096
+                )
+                return grad_input
+            _bilinear_backward_fill_or_copy(grad_output, grad_input, False)
             return grad_input
         if (runtime_device.vendor_name == "hygon" or _CANN_VERSION == "8.5.0") and max(
             sum(
@@ -1280,6 +1294,68 @@ def upsample_bilinear2d_backward(
                 enable_fp_fusion=False,
             )
             return grad_input
+        if (
+            _CANN_VERSION == "9.0.0"
+            and not index64
+            and grad_output.dtype != torch.float64
+            and grad_output.is_contiguous()
+            and grad_input.is_contiguous()
+        ):
+            if exact_down and ow <= 512:
+                # The four quarter-weight taps occupy disjoint input tiles.
+                rows = min(8, 512 // triton.next_power_of_2(ow))
+                _upsample_bilinear2d_backward_ascend_down2[
+                    (n * c * triton.cdiv(oh, rows),)
+                ](
+                    grad_output,
+                    grad_input,
+                    n * c,
+                    oh,
+                    ow,
+                    rows,
+                    triton.next_power_of_2(rows * ow),
+                )
+                return grad_input
+            double = (
+                oh == 2 * ih
+                and ow == 2 * iw
+                and min(ih, iw) >= 32
+                and ih & (ih - 1) == 0
+                and iw & (iw - 1) == 0
+            )
+            fractional = ih < oh and iw < ow and 0.5 <= sh <= 0.75 and 0.5 <= sw <= 0.75
+            if (
+                (double or fractional)
+                and n * c * ih * iw >= 4096
+                and max(oh, ow) <= 256
+                and min(ih, iw) >= 24
+            ):
+                rows = 4
+                taps_h, taps_w = (5, 5) if double else (kh, kw)
+                patch_rows = min(oh, math.ceil((rows - 1) / sh) + taps_h + 2)
+                _upsample_bilinear2d_backward_ascend_fused[
+                    (n * c * triton.cdiv(ih, rows),)
+                ](
+                    grad_output,
+                    grad_input,
+                    n * c,
+                    ih,
+                    iw,
+                    oh,
+                    ow,
+                    sh,
+                    sw,
+                    align_corners,
+                    double,
+                    taps_h,
+                    taps_w,
+                    rows,
+                    triton.next_power_of_2(rows * ow),
+                    triton.next_power_of_2(rows * iw),
+                    triton.next_power_of_2(patch_rows * ow),
+                    enable_fp_fusion=False,
+                )
+                return grad_input
         if exact_down or (exact_up and not is_ascend):
             _upsample_bilinear2d_backward_exact2x_kernel[
                 (triton.cdiv(n * c * ih * iw, block),)
@@ -1368,9 +1444,6 @@ def upsample_bilinear2d_backward(
                     temporary = torch.empty(
                         (n, c, oh, iw), dtype=torch.float32, device=grad_output.device
                     )
-                properties = triton.runtime.driver.active.utils.get_device_properties(
-                    grad_output.device.index
-                )
                 axis_output = grad_input
                 if not channels_last and not grad_input.is_contiguous():
                     axis_output = torch.empty(
@@ -1430,9 +1503,8 @@ def upsample_bilinear2d_backward(
                         scale,
                         taps,
                     ), (rows, patch) in zip(axes, configurations):
-                        programs = min(
-                            (n if channels_last else n * c) * triton.cdiv(h, rows),
-                            properties.get("num_vectorcore", 40),
+                        programs = (n if channels_last else n * c) * triton.cdiv(
+                            h, rows
                         )
                         _upsample_bilinear2d_backward_ascend_axis[(programs,)](
                             source,
@@ -1496,12 +1568,7 @@ def upsample_bilinear2d_backward(
                     destination = torch.empty(
                         input_size, dtype=grad_input.dtype, device=grad_input.device
                     )
-                properties = triton.runtime.driver.active.utils.get_device_properties(
-                    grad_output.device.index
-                )
-                programs = min(
-                    n * c * triton.cdiv(ih, rows), properties.get("num_vectorcore", 40)
-                )
+                programs = n * c * triton.cdiv(ih, rows)
                 _upsample_bilinear2d_backward_ascend_rows[(programs,)](
                     source,
                     destination,
@@ -1524,7 +1591,7 @@ def upsample_bilinear2d_backward(
                     _bilinear_backward_fill_or_copy(destination, grad_input, False)
                 return grad_input
         programs = triton.cdiv(n * c * ih * iw, block)
-        if is_ascend:
+        if is_ascend and _CANN_VERSION != "9.0.0":
             # Bound the grid by the vector cores and process remaining tiles locally.
             properties = triton.runtime.driver.active.utils.get_device_properties(
                 grad_output.device.index
@@ -1599,3 +1666,146 @@ def upsample_bilinear2d_backward_grad_input(
         scales_w,
         grad_input=grad_input,
     )
+
+
+@triton.jit
+def _ascend_bilinear_inverse_start(
+    index, SCALE: tl.constexpr, ALIGN: tl.constexpr, DOUBLE: tl.constexpr
+):
+    if DOUBLE:
+        # The extra tap also includes a zero-weight update to input 1 from output 0.
+        return tl.maximum(2 * index - 2, 0)
+    shift: tl.constexpr = 0.0 if ALIGN else 0.5
+    return tl.maximum(
+        tl.floor((index.to(tl.float32) - 1.0 + shift) / SCALE - shift), 0
+    ).to(tl.int32)
+
+
+@triton.jit
+def _ascend_bilinear_triangle_weight(
+    output, position, INPUT_SIZE: tl.constexpr, SCALE: tl.constexpr, ALIGN: tl.constexpr
+):
+    if ALIGN:
+        real = output.to(tl.float32) * SCALE
+    else:
+        real = tl.maximum((output.to(tl.float32) + 0.5) * SCALE - 0.5, 0.0)
+    coordinate = position.to(tl.float32)
+    right = real >= coordinate
+    outside_right = real >= coordinate + 1.0
+    last = position == INPUT_SIZE - 1
+    weight = tl.where(right, 1.0 - (real - coordinate), real - (coordinate - 1.0))
+    weight = tl.where(last & right, 1.0, weight)
+    match = (real >= coordinate - 1.0) & (last | ~outside_right)
+    # A zero coefficient of a distinct tap already forms NaN when multiplied by Inf.
+    zero_tap = last & ((real == coordinate) | outside_right)
+    return weight, match, zero_tap
+
+
+@triton.jit
+def _upsample_bilinear2d_backward_ascend_fused(
+    GradOutput,
+    GradInput,
+    PLANES: tl.constexpr,
+    IH: tl.constexpr,
+    IW: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    ALIGN: tl.constexpr,
+    DOUBLE: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    ROWS: tl.constexpr,
+    WIDE: tl.constexpr,
+    NARROW: tl.constexpr,
+    PATCH: tl.constexpr,
+):
+    tiles: tl.constexpr = triton.cdiv(IH, ROWS)
+    tasks: tl.constexpr = PLANES * tiles
+    count = tl.cdiv(tasks, tl.num_programs(0))
+    begin = tl.program_id(0) * count
+    source_index = tl.arange(0, PATCH)
+    wide = tl.arange(0, WIDE)
+    if (OW & (OW - 1)) == 0:
+        wide_row = wide // OW
+    else:
+        wide_row = tl.floor(tl.div_rn(wide.to(tl.float32), OW)).to(tl.int32)
+    ox = wide - wide_row * OW
+    narrow = tl.arange(0, NARROW)
+    if (IW & (IW - 1)) == 0:
+        narrow_row = narrow // IW
+    else:
+        narrow_row = tl.floor(tl.div_rn(narrow.to(tl.float32), IW)).to(tl.int32)
+    ix = narrow - narrow_row * IW
+    start_x = _ascend_bilinear_inverse_start(ix, SW, ALIGN, DOUBLE)
+    for task in range(begin, tl.minimum(begin + count, tasks)):
+        plane = task // tiles
+        row = (task % tiles) * ROWS
+        patch_row = _ascend_bilinear_inverse_start(row, SH, ALIGN, DOUBLE)
+        values = tl.load(
+            GradOutput + (plane * OH + patch_row) * OW + source_index,
+            source_index < (OH - patch_row) * OW,
+            other=0,
+        ).to(tl.float32)
+        iy = row + wide_row
+        start_y = _ascend_bilinear_inverse_start(iy, SH, ALIGN, DOUBLE)
+        vertical = tl.full((WIDE,), 0.0, tl.float32)
+        for dy in range(KH):
+            oy = start_y + dy
+            wy, match_y, zero_y = _ascend_bilinear_triangle_weight(
+                oy, iy, IH, SH, ALIGN
+            )
+            index = (oy - patch_row) * OW + ox
+            value = tl.gather(values, tl.minimum(tl.maximum(index, 0), PATCH - 1), 0)
+            term = tl.where(
+                zero_y & _bilinear_backward_isinf(value), float("nan"), wy * value
+            )
+            vertical += tl.where((oy < OH) & match_y, term, 0.0)
+        result = tl.full((NARROW,), 0.0, tl.float32)
+        for dx in range(KW):
+            output_x = start_x + dx
+            wx, match_x, zero_x = _ascend_bilinear_triangle_weight(
+                output_x, ix, IW, SW, ALIGN
+            )
+            index = narrow_row * OW + output_x
+            value = tl.gather(vertical, tl.minimum(index, WIDE - 1), 0)
+            term = tl.where(
+                zero_x & _bilinear_backward_isinf(value), float("nan"), wx * value
+            )
+            result += tl.where((output_x < OW) & match_x, term, 0.0)
+        tl.store(
+            GradInput + (plane * IH + row) * IW + narrow,
+            result,
+            narrow < tl.minimum(ROWS, IH - row) * IW,
+        )
+
+
+@triton.jit
+def _upsample_bilinear2d_backward_ascend_down2(
+    GradOutput,
+    GradInput,
+    PLANES: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
+    ROWS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    tiles: tl.constexpr = triton.cdiv(OH, ROWS)
+    tasks: tl.constexpr = PLANES * tiles
+    count = tl.cdiv(tasks, tl.num_programs(0))
+    begin = tl.program_id(0) * count
+    source = tl.arange(0, BLOCK)
+    dest = tl.arange(0, 4 * BLOCK)
+    iy = tl.floor(tl.div_rn(dest.to(tl.float32), 2 * OW)).to(tl.int32)
+    ix = dest - iy * (2 * OW)
+    gather_from = tl.minimum((iy // 2) * OW + ix // 2, BLOCK - 1)
+    for task in range(begin, tl.minimum(begin + count, tasks)):
+        plane = task // tiles
+        row = (task % tiles) * ROWS
+        valid = tl.minimum(OH - row, ROWS) * OW
+        base = (plane * OH + row) * OW
+        value = tl.load(GradOutput + base + source, source < valid, other=0)
+        value = value.to(tl.float32) * 0.25
+        result = tl.gather(value, gather_from, axis=0)
+        tl.store(GradInput + 4 * base + dest, result, dest < 4 * valid)

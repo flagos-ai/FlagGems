@@ -21,6 +21,10 @@ import flag_gems
 
 from . import base, utils
 
+# Vendors whose reference is the plain torch formulation instead of NVIDIA
+# TransformerEngine, which is unusable on these backends.
+TORCH_REFERENCE_VENDORS = ("enflame", "kunlunxin")
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
@@ -31,6 +35,23 @@ except ImportError:
     TE_AVAILABLE = False
     TE_SCALED_SOFTMAX_FORWARD = None
     TE_SCALED_SOFTMAX_BACKWARD = None
+except RuntimeError:
+    # An empty transformer-engine meta package raises RuntimeError at import
+    # time. Only enflame replaces the TransformerEngine reference with the plain
+    # torch formulation, so keep the hard failure for every other vendor.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    TE_AVAILABLE = False
+    TE_SCALED_SOFTMAX_FORWARD = None
+    TE_SCALED_SOFTMAX_BACKWARD = None
+
+
+def _torch_scaled_softmax_forward(S, scale_factor):
+    return torch.softmax(S * scale_factor, dim=-1)
+
+
+def _torch_scaled_softmax_backward(P, dP, scale_factor):
+    return (dP - (dP * P).sum(dim=-1, keepdim=True)) * P * scale_factor
 
 
 class ScaledSoftmaxBenchmark(base.GenericBenchmark):
@@ -63,16 +84,24 @@ def scaled_softmax_forward_input_fn(shape, dtype, device):
 
 
 @pytest.mark.scaled_softmax_forward
-@pytest.mark.skipif(TE_AVAILABLE is False, reason="TransformerEngine is not available")
 @pytest.mark.skipif(
-    TE_SCALED_SOFTMAX_FORWARD is None,
+    TE_AVAILABLE is False and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
+    reason="TransformerEngine is not available",
+)
+@pytest.mark.skipif(
+    TE_SCALED_SOFTMAX_FORWARD is None
+    and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
     reason="'scaled_softmax_forward' not found in TransformerEngine",
 )
 def test_scaled_softmax_forward():
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
+        torch_op = _torch_scaled_softmax_forward
+    else:
+        torch_op = TE_SCALED_SOFTMAX_FORWARD
     bench = ScaledSoftmaxBenchmark(
         input_fn=scaled_softmax_forward_input_fn,
         op_name="scaled_softmax_forward",
-        torch_op=TE_SCALED_SOFTMAX_FORWARD,
+        torch_op=torch_op,
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(flag_gems.scaled_softmax_forward)
@@ -88,16 +117,24 @@ def scaled_softmax_backward_input_fn(shape, dtype, device):
 
 
 @pytest.mark.scaled_softmax_backward
-@pytest.mark.skipif(TE_AVAILABLE is False, reason="TransformerEngine is not available")
 @pytest.mark.skipif(
-    TE_SCALED_SOFTMAX_BACKWARD is None,
+    TE_AVAILABLE is False and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
+    reason="TransformerEngine is not available",
+)
+@pytest.mark.skipif(
+    TE_SCALED_SOFTMAX_BACKWARD is None
+    and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS,
     reason="'scaled_softmax_backward' not found in TransformerEngine",
 )
 def test_perf_scaled_softmax_backward():
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
+        torch_op = _torch_scaled_softmax_backward
+    else:
+        torch_op = TE_SCALED_SOFTMAX_BACKWARD
     bench = ScaledSoftmaxBenchmark(
         input_fn=scaled_softmax_backward_input_fn,
         op_name="scaled_softmax_backward",
-        torch_op=TE_SCALED_SOFTMAX_BACKWARD,
+        torch_op=torch_op,
         dtypes=[torch.float16, torch.bfloat16],
     )
 

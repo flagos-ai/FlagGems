@@ -23,8 +23,50 @@ from . import accuracy_utils as utils
 # in the implementation, so it is covered on both sides.
 SLOGDET_SHAPES = [(2, 3, 3), (4, 4), (8, 8), (16, 16), (32, 32), (64, 64)]
 
-REAL_DTYPES = [torch.float32, torch.float64]
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+# Only collect the dtypes the current device can actually run: complex128 needs
+# both complex and fp64 support.
+REAL_DTYPES = [torch.float32]
+if utils.fp64_is_supported:
+    REAL_DTYPES.append(torch.float64)
+
+COMPLEX_DTYPES = []
+if utils.complex_is_supported:
+    COMPLEX_DTYPES.append(torch.complex64)
+    if utils.fp64_is_supported:
+        COMPLEX_DTYPES.append(torch.complex128)
+
+
+class _MusaCpuSlogdet(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp):
+        import numpy as np
+
+        values = inp.detach().resolve_conj().resolve_neg().numpy()
+        sign, logabsdet = np.linalg.slogdet(values)
+        ctx.save_for_backward(inp)
+        sign = torch.from_numpy(np.asarray(sign))
+        logabsdet = torch.from_numpy(np.asarray(logabsdet))
+        ctx.mark_non_differentiable(sign)
+        return sign, logabsdet
+
+    @staticmethod
+    def backward(ctx, _grad_sign, grad_logabsdet):
+        import numpy as np
+
+        (inp,) = ctx.saved_tensors
+        values = inp.detach().resolve_conj().resolve_neg().numpy()
+        inverse = torch.from_numpy(np.linalg.inv(values))
+        return grad_logabsdet[..., None, None] * inverse.mH
+
+
+def _reference_slogdet(inp):
+    if flag_gems.vendor_name == "mthreads":
+        # The MUSA solver does not support complex inputs.
+        if inp.is_complex():
+            inp = inp.cpu()
+        if inp.device.type == "cpu" and not torch._C.has_lapack:
+            return torch.return_types.linalg_slogdet(_MusaCpuSlogdet.apply(inp))
+    return torch.linalg.slogdet(inp)
 
 
 def _tols(dtype, n):
@@ -42,7 +84,7 @@ def test_slogdet(shape, dtype):
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
-    ref = torch.linalg.slogdet(ref_A)
+    ref = _reference_slogdet(ref_A)
     res_sign, res_logabsdet = flag_gems.slogdet(A)
 
     n = shape[-1]
@@ -64,7 +106,7 @@ def test_slogdet_complex(shape, dtype):
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
-    ref = torch.linalg.slogdet(ref_A)
+    ref = _reference_slogdet(ref_A)
     res_sign, res_logabsdet = flag_gems.slogdet(A)
 
     n = shape[-1]
@@ -95,7 +137,7 @@ def test_slogdet_near_singular_scaled(dtype):
     for small in (1e-8, 1e-11, 1e-12, 1e-20):
         vals = torch.tensor([small, 1.0], dtype=dtype, device=flag_gems.device)
         A = torch.diag(vals)
-        ref = torch.linalg.slogdet(utils.to_reference(A))
+        ref = _reference_slogdet(utils.to_reference(A))
         res_sign, res_logabsdet = flag_gems.slogdet(A)
 
         assert torch.isfinite(
@@ -116,7 +158,7 @@ def test_slogdet_scaled_identity(dtype, scale):
     """Uniformly scaled matrices stay accurate away from unit magnitude."""
     n = 4
     A = torch.eye(n, dtype=dtype, device=flag_gems.device) * scale
-    ref = torch.linalg.slogdet(utils.to_reference(A))
+    ref = _reference_slogdet(utils.to_reference(A))
     res_sign, res_logabsdet = flag_gems.slogdet(A)
 
     torch.testing.assert_close(
@@ -156,7 +198,7 @@ def test_slogdet_singular(dtype):
     # [[1,2,3],[1,2,3],[4,5,7]] is mathematically singular but ATen still
     # reports a finite logabsdet for it, so it is not usable here.)
     for name, A in cases.items():
-        ref = torch.linalg.slogdet(utils.to_reference(A))
+        ref = _reference_slogdet(utils.to_reference(A))
         res_sign, res_logabsdet = flag_gems.slogdet(A)
         assert res_sign.item() == 0.0, f"{name}: expected sign 0"
         assert res_logabsdet.item() == float("-inf"), f"{name}: expected -inf"
@@ -169,7 +211,7 @@ def test_slogdet_1x1(dtype):
     """1x1 matrices: sign(a), log|a|."""
     for val in (2.5, -2.5, 1.0):
         A = torch.tensor([[val]], dtype=dtype, device=flag_gems.device)
-        ref = torch.linalg.slogdet(utils.to_reference(A))
+        ref = _reference_slogdet(utils.to_reference(A))
         res_sign, res_logabsdet = flag_gems.slogdet(A)
         torch.testing.assert_close(
             res_sign.cpu(), ref.sign.cpu().to(res_sign.dtype), rtol=1e-6, atol=1e-6
@@ -188,8 +230,14 @@ def test_slogdet_empty_matrix(dtype):
     """A 0x0 matrix is an empty product: sign 1, logabsdet 0."""
     for shape in [(0, 0), (2, 0, 0)]:
         A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        ref = torch.linalg.slogdet(utils.to_reference(A))
+        ref_inp = (
+            A.cpu() if flag_gems.vendor_name == "mthreads" else utils.to_reference(A)
+        )
+        ref = _reference_slogdet(ref_inp)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
+        if flag_gems.vendor_name == "mthreads":
+            assert res_sign.device == A.device
+            assert res_logabsdet.device == A.device
         assert res_sign.shape == ref.sign.shape
         assert torch.all(res_sign.cpu() == 1)
         assert torch.all(res_logabsdet.cpu() == 0)
@@ -201,7 +249,7 @@ def test_slogdet_empty_batch(dtype):
     """An empty batch returns empty outputs with the right shape."""
     for shape in [(0, 3, 3), (0, 2, 4, 4)]:
         A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        ref = torch.linalg.slogdet(utils.to_reference(A))
+        ref = _reference_slogdet(utils.to_reference(A))
         res_sign, res_logabsdet = flag_gems.slogdet(A)
         assert res_sign.shape == ref.sign.shape
         assert res_logabsdet.shape == ref.logabsdet.shape
@@ -215,7 +263,7 @@ def test_slogdet_multi_dim_batch(dtype, batch_shape):
     """Multi-dimensional batches reduce over the trailing two dims only."""
     n = 4
     A = torch.randn(*batch_shape, n, n, dtype=dtype, device=flag_gems.device)
-    ref = torch.linalg.slogdet(utils.to_reference(A))
+    ref = _reference_slogdet(utils.to_reference(A))
     res_sign, res_logabsdet = flag_gems.slogdet(A)
 
     assert res_sign.shape == batch_shape
@@ -239,7 +287,7 @@ def test_slogdet_non_contiguous(dtype):
 
     transposed = base.t()
     before = transposed.clone()
-    ref = torch.linalg.slogdet(utils.to_reference(transposed))
+    ref = _reference_slogdet(utils.to_reference(transposed))
     res_sign, res_logabsdet = flag_gems.slogdet(transposed)
     assert not transposed.is_contiguous()
     torch.testing.assert_close(
@@ -252,7 +300,7 @@ def test_slogdet_non_contiguous(dtype):
     wide = torch.randn(4, 8, dtype=dtype, device=flag_gems.device)
     strided = wide[:, ::2]
     assert not strided.is_contiguous()
-    ref2 = torch.linalg.slogdet(utils.to_reference(strided))
+    ref2 = _reference_slogdet(utils.to_reference(strided))
     _, res2 = flag_gems.slogdet(strided)
     torch.testing.assert_close(
         res2.cpu(), ref2.logabsdet.cpu().to(res2.dtype), **_tols(dtype, 4)
@@ -295,6 +343,10 @@ def test_slogdet_nan_inf(dtype):
 
 
 @pytest.mark.slogdet
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="tiled-path parity is checked at fp64 precision",
+)
 @pytest.mark.parametrize("n", [65, 128, 257])
 def test_slogdet_large(n):
     """Matrices above the register-tile boundary use the tiled path.
@@ -309,7 +361,7 @@ def test_slogdet_large(n):
     A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
         n, dtype=dtype, device=flag_gems.device
     )
-    ref = torch.linalg.slogdet(utils.to_reference(A))
+    ref = _reference_slogdet(utils.to_reference(A))
     res_sign, res_logabsdet = flag_gems.slogdet(A)
 
     assert res_sign.item() == pytest.approx(ref.sign.item())
@@ -319,6 +371,10 @@ def test_slogdet_large(n):
 
 
 @pytest.mark.slogdet
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="tiled-path parity is checked at fp64 precision",
+)
 def test_slogdet_large_1025():
     """The exact size called out in review: 1025x1025."""
     n = 1025
@@ -327,7 +383,7 @@ def test_slogdet_large_1025():
     A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
         n, dtype=dtype, device=flag_gems.device
     )
-    ref = torch.linalg.slogdet(utils.to_reference(A))
+    ref = _reference_slogdet(utils.to_reference(A))
     res_sign, res_logabsdet = flag_gems.slogdet(A)
     assert res_sign.item() == pytest.approx(ref.sign.item())
     torch.testing.assert_close(
@@ -364,7 +420,7 @@ def test_slogdet_backward(dtype):
     )
 
     ref_A = utils.to_reference(A).clone().requires_grad_(True)
-    ref = torch.linalg.slogdet(ref_A)
+    ref = _reference_slogdet(ref_A)
     ref.logabsdet.backward()
 
     gems_A = A.clone().requires_grad_(True)
@@ -387,7 +443,7 @@ def test_slogdet_batched_backward(dtype):
     )
 
     ref_A = utils.to_reference(A).clone().requires_grad_(True)
-    ref = torch.linalg.slogdet(ref_A)
+    ref = _reference_slogdet(ref_A)
     ref.logabsdet.sum().backward()
 
     gems_A = A.clone().requires_grad_(True)

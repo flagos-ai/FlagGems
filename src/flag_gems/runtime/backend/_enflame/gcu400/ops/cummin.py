@@ -20,10 +20,12 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
+
+from ..utils.tie_break import minimum_with_index_tie_break_right
 
 Tensor = torch.Tensor
 
@@ -32,9 +34,7 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def tl_cummin(input, index, axis=0):
-    return tl.associative_scan(
-        (input, index), axis, ext.minimum_with_index_tie_break_right
-    )
+    return tl.associative_scan((input, index), axis, minimum_with_index_tie_break_right)
 
 
 @triton.jit
@@ -42,7 +42,7 @@ def tl_min_tie_break_right(input, index, axis=None, keep_dims=False):
     return tl.reduce(
         (input, index),
         axis,
-        ext.minimum_with_index_tie_break_right,
+        minimum_with_index_tie_break_right,
         keep_dims=keep_dims,
     )
 
@@ -72,9 +72,13 @@ def add_base_min_kernel(
         partial_min_indices_ptrs = partial_min_indices + pid - 1
         last_part_min_index_via_min = tl.load(partial_min_indices_ptrs)
 
-        final_vals = tl.minimum(out_vals, last_part_min_via_min)
-        final_indices = tl.where(
-            out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min
+        # tl.minimum drops NaN; the tie-break barrier propagates it the way
+        # torch.cummin does.
+        final_vals, final_indices = minimum_with_index_tie_break_right(
+            out_vals,
+            out_indices,
+            last_part_min_via_min,
+            last_part_min_index_via_min,
         )
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
@@ -288,9 +292,13 @@ def add_base_min_abc_kernel(
         partial_min_index_ptrs = partial_min_indices + last_part_offset
         last_part_min_index_via_min = tl.load(partial_min_index_ptrs)
 
-        final_vals = tl.minimum(out_vals, last_part_min_via_min)
-        final_indices = tl.where(
-            out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min
+        # tl.minimum drops NaN; the tie-break barrier propagates it the way
+        # torch.cummin does.
+        final_vals, final_indices = minimum_with_index_tie_break_right(
+            out_vals,
+            out_indices,
+            last_part_min_via_min,
+            last_part_min_index_via_min,
         )
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
@@ -353,88 +361,177 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
             )
 
 
+@triton.jit
+def _float_ord_key(vals):
+    """float32 -> monotonic int32 sort key (a < b iff key(a) < key(b), NaN -> smallest key).
+
+    Transform: negatives become ``(~bits) ^ INT_MIN`` and positives keep their bit pattern, so
+    "negative -> negative key, positive -> non-negative key" turns the IEEE754 sign-magnitude
+    order into a full int32 order; keys compare with one integer compare, dropping the scan
+    combine from ~14 vector ops to 7 (scan is serial per element on GCU, ops dominate). NaN
+    """
+    bits = vals.to(tl.int32, bitcast=True)
+    # For negative numbers, bitwise-complement and then flip the sign bit; for positive numbers, use the bit pattern
+    # directly: result is "negative → negative key, positive → non-negative key"
+    key = tl.where(bits >= 0, bits, (~bits) ^ (-2147483648))
+    # Treat ±0.0 as equal (consistent with torch's tie-break convention: take the later index)
+    key = tl.where((bits == 0) | (bits == -2147483648), 0, key)
+    mag = bits & 0x7FFFFFFF
+    return tl.where(mag > 0x7F800000, -2147483648, key)
+
+
+@triton.jit
+def _ord_key_to_float(key):
+    """Inverse of the above; an INT_MIN key maps back to NaN."""
+    bits = tl.where(key >= 0, key, ~(key ^ (-2147483648)))
+    val = bits.to(tl.float32, bitcast=True)
+    return tl.where(key == -2147483648, float("nan"), val)
+
+
+@triton.jit
+def _min_key_tie_break_right(a_key, a_index, b_key, b_index):
+    """Minimum combine over (key, index); on equal keys the later index wins."""
+    take_a = (a_key < b_key) | ((a_key == b_key) & (a_index > b_index))
+    return tl.where(take_a, a_key, b_key), tl.where(take_a, a_index, b_index)
+
+
+@triton.jit
+def tl_cummin_key(keys, idxs, axis):
+    return tl.associative_scan((keys, idxs), axis, _min_key_tie_break_right)
+
+
 @libentry()
 @triton.jit()
 def scan_part_min_abc_loop_kernel(
     inp,
     out,
     out_indices,
+    A,
     B,
     C,
     loop_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tl.program_id(0)
-    pid_c = tl.program_id(1)
+    num_a = tl.num_programs(0)
+    num_c = tl.num_programs(1)
 
-    a_idx = pid_a
-    c_idx = pid_c
     t_idx = tl.arange(0, BLOCK_SIZE)
-    ac_offset = a_idx * B * C + c_idx
+    last_mask = t_idx == (BLOCK_SIZE - 1)
 
     # init
     max_value = get_dtype_max(inp.type.element_ty)
-    prev_min_val = tl.full([], max_value, dtype=tl.float32)
-    prev_min_val_idx = tl.full([], 0, dtype=tl.int32)
-    last_mask = t_idx == (BLOCK_SIZE - 1)
 
-    for l_idx in tl.range(loop_num):
-        b_idx = l_idx * BLOCK_SIZE + t_idx
-        mask = b_idx < B
-        offset = ac_offset + b_idx * C
+    # Grid-stride over the (A, C) planes: GCU caps grid.x at 65535 and grid.y
+    # at 255, so a single launch may only cover a subset of them.
+    for a_idx in tl.range(tl.program_id(0), A, num_a):
+        for c_idx in tl.range(tl.program_id(1), C, num_c):
+            ac_offset = a_idx * B * C + c_idx
+            prev_min_val = tl.full([], max_value, dtype=tl.float32)
+            prev_key = tl.full([], 2147483647, dtype=tl.int32)
+            prev_min_val_idx = tl.full([], 0, dtype=tl.int32)
 
-        inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
-        if (
-            tl.constexpr(inp_vals.dtype.is_int64())
-            | tl.constexpr(inp_vals.dtype.is_uint64())
-        ) | tl.constexpr(inp_vals.dtype.is_fp64()):
-            vals = inp_vals
-        elif tl.constexpr(inp_vals.dtype.is_int()):
-            vals = inp_vals.to(tl.int32)
-        else:
-            vals = inp_vals.to(tl.float32)
-        idxs = b_idx
+            for l_idx in tl.range(loop_num):
+                b_idx = l_idx * BLOCK_SIZE + t_idx
+                mask = b_idx < B
+                offset = ac_offset + b_idx * C
 
-        # cummin
-        result, cummin_indices = tl_cummin(vals, idxs, axis=0)
+                inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+                if (
+                    tl.constexpr(inp_vals.dtype.is_int64())
+                    | tl.constexpr(inp_vals.dtype.is_uint64())
+                ) | tl.constexpr(inp_vals.dtype.is_fp64()):
+                    vals = inp_vals
+                elif tl.constexpr(inp_vals.dtype.is_int()):
+                    vals = inp_vals.to(tl.int32)
+                else:
+                    vals = inp_vals.to(tl.float32)
+                idxs = b_idx
 
-        # broadcast
-        prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
-        prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
+                # cummin
+                if tl.constexpr(vals.dtype.is_floating()):
+                    # Floating-point values use "monotonic integer keys": after folding NaN into the minimum key,
+                    # combine only needs comparison + selection
+                    # (~7 vector operations), half as many operations as a NaN-aware tuple combine,
+                    # measured close to the roughly 2x faster integer path.
+                    res_key, cummin_indices = tl_cummin_key(
+                        _float_ord_key(vals), idxs, axis=0
+                    )
+                else:
+                    result, cummin_indices = tl_cummin(vals, idxs, axis=0)
 
-        # update result from prev val and idx
-        cummin_indices = tl.where(
-            result <= prev_min_val_b, cummin_indices, prev_min_val_idx_b
-        )
-        result = tl.minimum(result, prev_min_val_b)
+                # broadcast
+                prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
 
-        # update global min val and idx
-        prev_min_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
-        prev_min_val_idx = tl.sum(tl.where(last_mask, cummin_indices, 0), axis=0)
+                if tl.constexpr(vals.dtype.is_floating()):
+                    # Since the key has folded NaN into the minimum value, using <= directly satisfies both "once NaN
+                    # appears,
+                    # it stays NaN" and "take the later index on ties" semantics
+                    prev_key_b = tl.broadcast_to(prev_key, (BLOCK_SIZE,))
+                    use_result = res_key <= prev_key_b
+                    cummin_indices = tl.where(
+                        use_result, cummin_indices, prev_min_val_idx_b
+                    )
+                    res_key = tl.where(use_result, res_key, prev_key_b)
+                    result = _ord_key_to_float(res_key)
+                    prev_key = tl.sum(tl.where(last_mask, res_key, 0), axis=0)
+                else:
+                    prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
+                    use_result = result <= prev_min_val_b
+                    cummin_indices = tl.where(
+                        use_result, cummin_indices, prev_min_val_idx_b
+                    )
+                    result = tl.where(use_result, result, prev_min_val_b)
+                    # update global min val
+                    prev_min_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
 
-        # store result
-        tl.store(out + offset, result, mask=mask)
-        tl.store(out_indices + offset, cummin_indices, mask=mask)
+                # update global min idx
+                prev_min_val_idx = tl.sum(
+                    tl.where(last_mask, cummin_indices, 0), axis=0
+                )
+
+                # store result
+                tl.store(out + offset, result, mask=mask)
+                tl.store(out_indices + offset, cummin_indices, mask=mask)
 
 
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
-    # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if B < 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(B)
+    # BLOCK_SIZE = min(4096, next_pow2(B)): measured 4%~13% faster than 1024 when RL=4096
+    # ([4096,4096] 51.0→49.0ms; [1024,65536] 206.7→199.7ms); going up to 8192 will
+    # regress due to register pressure (362ms).
+    BLOCK_SIZE = min(4096, triton.next_power_of_2(B))
     loop_num = math.ceil(B / BLOCK_SIZE)
 
-    grid = (A, C)
+    # GCU caps grid.x at 65535 and grid.y at 255; the kernel strides over the
+    # remaining planes, so clamping the launch is always safe.
+    grid = (min(A, 65535), min(C, 255))
     with torch_device_fn.device(inp.device):
         scan_part_min_abc_loop_kernel[grid](
             inp,
             out,
             out_indices,
+            A,
             B,
             C,
             loop_num,
             BLOCK_SIZE,
         )
+
+
+def _cummin_impl(input, dim, M, N, K, dtype):
+    out = torch.empty_like(input, dtype=dtype, device=input.device)
+    out_indices = torch.empty_like(input, dtype=torch.int32, device=input.device)
+
+    compute_dtype = out.dtype
+    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
+        compute_dtype = torch.float32
+
+    if M == 1 and K == 1:
+        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
+    elif M * K <= 16:
+        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
+    else:
+        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
+    return out, out_indices
 
 
 def cummin(
@@ -457,17 +554,37 @@ def cummin(
     dtype = input.dtype
     if dtype is torch.bool:
         dtype = torch.int64
-    out = torch.empty_like(input, dtype=dtype, device=input.device)
-    out_indices = torch.empty_like(input, dtype=torch.int32, device=input.device)
 
-    compute_dtype = out.dtype
-    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
-        compute_dtype = torch.float32
+    # torch propagates NaN and reports the most recent NaN position.  The scan
+    # combine drops NaNs on this backend, so run the regular min on a NaN-free
+    # copy and patch the NaN prefix back in afterwards.  Every tensor
+    # computation on this path goes through FlagGems operators; PyTorch is only
+    # used for data initialisation, dtype conversion and views.
+    if input.is_floating_point() and flag_gems.any(flag_gems.isnan(input)).item():
+        nan_mask = flag_gems.isnan(input)
+        pos_shape = [1] * input.ndim
+        pos_shape[dim] = N
+        # Encode NaN positions as -1, -2, ..., -N so the scan minimum selects
+        # the most recent NaN.  arange() here only initialises data.
+        neg_pos = torch.arange(
+            -1, -N - 1, -1, device=input.device, dtype=torch.int32
+        ).view(pos_shape)
+        big = 1 << 30  # larger than any position, still fits int32
+        big_pos = torch.full_like(neg_pos, big, dtype=torch.int32)
+        key = flag_gems.where_self(nan_mask, neg_pos, big_pos)
+        latest_min, _ = _cummin_impl(key, dim, M, N, K, torch.int32)
+        has_nan = flag_gems.lt_scalar(latest_min, big)
+        # -1 - latest_min is -latest_min - 1, i.e. the decoded NaN position.
+        latest = flag_gems.sub(-1, latest_min).to(torch.int64)
 
-    if M == 1 and K == 1:
-        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
-    elif M * K <= 16:
-        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
-    else:
-        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
+        inf = torch.tensor(float("inf"), dtype=input.dtype, device=input.device)
+        safe = flag_gems.where_self(nan_mask, inf, input)
+        vals, idx = _cummin_impl(safe, dim, M, N, K, dtype)
+
+        nan_val = torch.tensor(float("nan"), dtype=vals.dtype, device=vals.device)
+        vals = flag_gems.where_self(has_nan, nan_val, vals)
+        idx = flag_gems.where_self(has_nan, latest.to(torch.int32), idx)
+        return vals, idx.to(torch.int32).to(torch.int64)
+
+    out, out_indices = _cummin_impl(input, dim, M, N, K, dtype)
     return out, out_indices.to(torch.int32).to(torch.int64)

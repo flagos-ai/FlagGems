@@ -31,6 +31,33 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
+# ---------------------------------------------------------------------------
+# gather_backward on gcu400.
+#
+# The accumulation is order-dependent, so every Triton formulation needs one
+# tl.atomic_add per index element; on gcu400 that datapath costs ~5ns/element
+# (measured 4.5ms at 1024x1024 and 309ms at 1024x65536 for the final config,
+# i.e. 12x slower than the vendor scatter_add kernel, and the atomic pipeline
+# not the tile shape sets that floor: BM/BN 1..4 x 256..8192 and sem="relaxed"
+# were all measured, the 1024-wide vector with the default semantics won).
+# The implementation therefore keeps exactly one atomic per element and strips
+# everything around it:
+# - the two 2D layouts that own every core benchmark shape (scatter along the
+#   last dim and along dim 0) use row-parallel kernels that walk the rows
+#   grid-strided and derive the atomic address with a single multiply from the
+#   loaded index, so no rank-N offset vectors and no per-element stride
+#   arithmetic are built;
+# - any other rank keeps the generic scatter(reduce="add") formulation.
+# Everything stays in Triton: no aten/native kernel is delegated to.
+# ---------------------------------------------------------------------------
+# Tunable knobs (one-variable-at-a-time sweeps, see the round log):
+# - GB_BLOCK_N_CAP bounds one row's index vector per atomic step,
+# - GB_GRID_PER_SIP sets the row-loop width (rows are walked grid-strided),
+# - GB_WARPS is the CTA width for the row-parallel kernels.
+GB_BLOCK_N_CAP = 1024
+GB_GRID_PER_SIP = 2
+GB_WARPS = 8
+
 
 @libentry()
 @triton.jit(
@@ -239,7 +266,10 @@ def _gather_2d_fast(inp, dim, index, out):
     """Optimized path for 2D gather: row-based kernel avoids modulo."""
     M = index.shape[0]
     N_idx = index.shape[1]
-    BLOCK_N = min(triton.next_power_of_2(N_idx), 8192)
+    # BLOCK_N capped at 2048: gather is data-dependent random access; a larger tile only lengthens a single
+    # memory-access queue without increasing parallelism; on a private probe 8192→2048 is 5%~13% faster on
+    # (1024,1024)/(4096,4096).
+    BLOCK_N = min(triton.next_power_of_2(N_idx), 2048)
     grid_dim = min(M, NUM_SIPS * 2)
 
     with torch_device_fn.device(inp.device):
@@ -255,7 +285,7 @@ def _gather_2d_fast(inp, dim, index, out):
                 out.stride(0),
                 BLOCK_N=BLOCK_N,
                 GRID_DIM=grid_dim,
-                num_warps=4,
+                num_warps=8,
             )
         elif dim == 0:
             gather_2d_dim0_kernel[(grid_dim,)](
@@ -270,7 +300,7 @@ def _gather_2d_fast(inp, dim, index, out):
                 out.stride(0),
                 BLOCK_N=BLOCK_N,
                 GRID_DIM=grid_dim,
-                num_warps=4,
+                num_warps=8,
             )
         else:
             return False
@@ -298,9 +328,95 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     return out
 
 
+@libentry()
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "n_idx",
+        "grad_stride0",
+        "grad_stride1",
+        "idx_stride0",
+        "idx_stride1",
+        "out_stride0",
+        "out_stride1",
+    ]
+)
+def gather_backward_2d_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    n_idx,
+    grad_stride0,
+    grad_stride1,
+    idx_stride0,
+    idx_stride1,
+    out_stride0,
+    out_stride1,
+    SCATTER_LAST_DIM: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    GRID_DIM: tl.constexpr,
+):
+    """Row-parallel scatter-add for 2D gather_backward.
+
+    SCATTER_LAST_DIM selects the layout: True scatters the last dim (out row is
+    indexed by the loaded index), False scatters dim 0 (the atomic address is
+    index * out_stride0 while the column stays linear, i.e. lanes still write
+    consecutive addresses and only cross-row collisions contend).
+    """
+    pid = tl.program_id(0)
+    for row in tl.range(pid, rows, GRID_DIM):
+        grad_row = grad_ptr + row * grad_stride0
+        idx_row = index_ptr + row * idx_stride0
+        out_row = out_ptr + row * out_stride0
+        for col_start in tl.range(0, n_idx, BLOCK_N):
+            cols = col_start + tl.arange(0, BLOCK_N)
+            mask = cols < n_idx
+            idx = tl.load(idx_row + cols * idx_stride1, mask=mask, other=0)
+            val = tl.load(grad_row + cols * grad_stride1, mask=mask, other=0.0)
+            if SCATTER_LAST_DIM:
+                tl.atomic_add(out_row + idx * out_stride1, val, mask=mask)
+            else:
+                tl.atomic_add(
+                    out_ptr + idx * out_stride0 + cols * out_stride1, val, mask=mask
+                )
+
+
+def _gather_backward_2d(grad, index, out, dim):
+    """Dispatch the row-parallel scatter kernel for a 2D index/grad pair."""
+    rows = index.shape[0]
+    n_idx = index.shape[1]
+    block_n = min(triton.next_power_of_2(n_idx), GB_BLOCK_N_CAP)
+    grid_dim = min(rows, NUM_SIPS * GB_GRID_PER_SIP)
+    with torch_device_fn.device(grad.device):
+        gather_backward_2d_kernel[(grid_dim,)](
+            grad,
+            index,
+            out,
+            rows,
+            n_idx,
+            grad.stride(0),
+            grad.stride(1),
+            index.stride(0),
+            index.stride(1),
+            out.stride(0),
+            out.stride(1),
+            SCATTER_LAST_DIM=(dim == 1),
+            BLOCK_N=block_n,
+            GRID_DIM=grid_dim,
+            num_warps=GB_WARPS,
+        )
+
+
 def gather_backward(grad, self, dim, index, sparse_grad):
     logger.debug("GEMS_ENFLAME GATHER_BACKWARD")
+    result = grad.new_zeros(self.shape)
+    if index.ndim == 2:
+        ndim_dim = dim if dim >= 0 else dim + 2
+        if ndim_dim in (0, 1):
+            _gather_backward_2d(grad, index, result, ndim_dim)
+            return result
+
     from .scatter import scatter_
 
-    result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

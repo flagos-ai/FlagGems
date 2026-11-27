@@ -321,7 +321,7 @@ def norm(x, p=2, dim=None, keepdim=False):
             else:
                 v_norm_kernel[grid](x, out, M, N, p)
     if not keepdim:
-        out = out.squeeze(dim=dim)
+        out = out.squeeze() if dim is None else out.squeeze(dim=dim)
     return out
 
 
