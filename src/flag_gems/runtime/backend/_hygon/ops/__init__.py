@@ -105,6 +105,7 @@ from ._foreach_frac import _foreach_frac as _foreach_frac
 from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log import _foreach_log as _foreach_log
 from ._foreach_log1p import _foreach_log1p as _foreach_log1p
+from ._foreach_log1p_ import _foreach_log1p_ as _foreach_log1p_
 from ._foreach_log2 import _foreach_log2 as _foreach_log2
 from ._foreach_log2_ import _foreach_log2_ as _foreach_log2_
 from ._foreach_log10 import _foreach_log10 as _foreach_log10
@@ -481,6 +482,7 @@ __all__ = [
     "_foreach_log10",
     "_foreach_log10_",
     "_foreach_log1p",
+    "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_max",
