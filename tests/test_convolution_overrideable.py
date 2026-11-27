@@ -163,6 +163,7 @@ def test_convolution_overrideable_out(shape, kernel, groups, dtype):
     ).to(dtype)
 
     out = torch.empty_like(ref_out.to(flag_gems.device))
+    pointer = out.data_ptr()
     res_out = flag_gems.convolution_overrideable_out(
         inp,
         weight,
@@ -177,5 +178,8 @@ def test_convolution_overrideable_out(shape, kernel, groups, dtype):
     )
 
     reduce_dim = max((kernel[1]) * kernel[2] * kernel[3], 1)
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
-    assert res_out.data_ptr() == out.data_ptr()
+    assert res_out is out
+    assert out.data_ptr() == pointer
+    assert out.device == inp.device
+    assert out.dtype == dtype
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=reduce_dim)

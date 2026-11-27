@@ -88,6 +88,28 @@ def test_convolution_overrideable(monkeypatch):
     bench.run()
 
 
+def _input_fn_out(shape, dtype, device):
+    for (kwargs,) in _input_fn(shape, dtype, device):
+        inp, weight = kwargs["input"], kwargs["weight"]
+        output_spatial = [
+            (
+                inp.shape[axis + 2]
+                + 2 * kwargs["padding"][axis]
+                - kwargs["dilation"][axis] * (weight.shape[axis + 2] - 1)
+                - 1
+            )
+            // kwargs["stride"][axis]
+            + 1
+            for axis in range(2)
+        ]
+        kwargs["out"] = torch.empty(
+            (inp.shape[0], weight.shape[0], *output_spatial),
+            device=device,
+            dtype=dtype,
+        )
+        yield (kwargs,)
+
+
 @pytest.mark.convolution_overrideable_out
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
@@ -96,63 +118,17 @@ def test_convolution_overrideable(monkeypatch):
 def test_convolution_overrideable_out(monkeypatch):
     if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
-
     torch.backends.cudnn.allow_tf32 = False
 
-    def _out_gems(
-        input,
-        weight,
-        bias,
-        stride,
-        padding,
-        dilation,
-        transposed,
-        output_padding,
-        groups,
-    ):
-        out = torch.empty(
-            (
-                input.shape[0],
-                weight.shape[0],
-                (
-                    input.shape[2]
-                    + 2 * padding[0]
-                    - dilation[0] * (weight.shape[2] - 1)
-                    - 1
-                )
-                // stride[0]
-                + 1,
-                (
-                    input.shape[3]
-                    + 2 * padding[1]
-                    - dilation[1] * (weight.shape[3] - 1)
-                    - 1
-                )
-                // stride[1]
-                + 1,
-            ),
-            device=input.device,
-            dtype=input.dtype,
-        )
-        return flag_gems.convolution_overrideable_out(
-            input,
-            weight,
-            bias,
-            stride,
-            padding,
-            dilation,
-            transposed,
-            output_padding,
-            groups,
-            out=out,
-        )
+    def stock_out(*args, **kwargs):
+        return flag_gems.convolution_overrideable_out(*args, **kwargs)
 
     bench = ConvolutionOverrideableBenchmark(
-        input_fn=_input_fn,
+        input_fn=_input_fn_out,
         op_name="convolution_overrideable_out",
-        torch_op=torch.ops.aten.convolution,
+        torch_op=torch.ops.aten.convolution.out,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
-    bench.set_gems(_out_gems)
-
+    bench.set_gems(stock_out)
     bench.run()
