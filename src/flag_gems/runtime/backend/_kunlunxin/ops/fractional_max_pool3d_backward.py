@@ -228,9 +228,7 @@ def fractional_max_pool3d_backward(
     with torch_device_fn.device(input.device):
         if scatter_d and scatter_h and scatter_w:
             grad_input = torch.zeros_like(input)
-            _fractional_max_pool3d_backward_scatter_kernel[
-                (triton.cdiv(n_out, 256),)
-            ](
+            _fractional_max_pool3d_backward_scatter_kernel[(triton.cdiv(n_out, 256),)](
                 grad_output,
                 indices,
                 grad_input,
@@ -243,38 +241,24 @@ def fractional_max_pool3d_backward(
                 buffer_size_limit=2048,
             )
         else:
-            inv_alpha_d = (
-                (out_d - 1) / (in_d - kernel_d) if in_d > kernel_d else 0.0
-            )
-            inv_alpha_h = (
-                (out_h - 1) / (in_h - kernel_h) if in_h > kernel_h else 0.0
-            )
-            inv_alpha_w = (
-                (out_w - 1) / (in_w - kernel_w) if in_w > kernel_w else 0.0
-            )
+            inv_alpha_d = (out_d - 1) / (in_d - kernel_d) if in_d > kernel_d else 0.0
+            inv_alpha_h = (out_h - 1) / (in_h - kernel_h) if in_h > kernel_h else 0.0
+            inv_alpha_w = (out_w - 1) / (in_w - kernel_w) if in_w > kernel_w else 0.0
             max_d = max(
                 1,
-                min(
-                    out_d, int(math.ceil((kernel_d + 1) * inv_alpha_d)) + 6
-                ),
+                min(out_d, int(math.ceil((kernel_d + 1) * inv_alpha_d)) + 6),
             )
             max_h = max(
                 1,
-                min(
-                    out_h, int(math.ceil((kernel_h + 1) * inv_alpha_h)) + 6
-                ),
+                min(out_h, int(math.ceil((kernel_h + 1) * inv_alpha_h)) + 6),
             )
             max_w = max(
                 1,
-                min(
-                    out_w, int(math.ceil((kernel_w + 1) * inv_alpha_w)) + 6
-                ),
+                min(out_w, int(math.ceil((kernel_w + 1) * inv_alpha_w)) + 6),
             )
             n_elems = input.numel()
             grad_input = torch.empty_like(input)
-            _fractional_max_pool3d_backward_gather_kernel[
-                (triton.cdiv(n_elems, 128),)
-            ](
+            _fractional_max_pool3d_backward_gather_kernel[(triton.cdiv(n_elems, 128),)](
                 grad_output,
                 indices,
                 grad_input,
