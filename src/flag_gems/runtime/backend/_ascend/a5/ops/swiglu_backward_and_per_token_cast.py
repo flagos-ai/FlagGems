@@ -16,6 +16,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ._swiglu_backward_and_per_token_cast_native import launch
+
 
 @triton.jit
 def _div_ulp(a, b):
@@ -589,6 +591,32 @@ def swiglu_backward_and_per_token_cast(
         if do_recompute
         else None
     )
+
+    if (
+        round_sf
+        and col
+        and packed
+        and not has_w
+        and not do_recompute
+        and routed_scaling_factor is None
+        and psum_num_tokens_per_expert is None
+        and clamp_value is None
+        and 0 < num_tokens
+        and num_tokens % 8 == 0
+        and 0 < hidden
+        and hidden % 256 == 0
+        and num_tokens * hidden < 2**30
+        and xq.dtype == torch.float8_e4m3fn
+        and xsf.dtype == torch.float32
+        and act_x_grad.dtype == torch.bfloat16
+        and xq.device.type == "npu"
+        and all(
+            t.device == device and t.is_contiguous() and t.data_ptr() % 32 == 0
+            for t in (xq, xsf, act_x_grad)
+        )
+        and launch((xq, xsf, act_x_grad, xgrad, q8, buf), (num_tokens, hidden))
+    ):
+        return xgrad, (q8, sf_ret)
 
     dummy = xgrad
 
