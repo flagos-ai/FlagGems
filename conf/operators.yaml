@@ -3000,6 +3000,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: block_diag_backward
+  description: First-order autograd rule for block_diag implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - block_diag
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: bmm
   description: Performs a batch matrix-matrix product of matrices stored in `input`
     and `mat2`.

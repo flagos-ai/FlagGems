@@ -192,6 +192,18 @@ gelu_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+block_diag_backward:
+  shapes:
+  - - 1
+    - 1
+  - - 32
+    - 16
+  - - 256
+    - 128
+  - - 1024
+    - 512
+  shape_desc: backward input shape
+
 cosh:
   shapes:
     - [4096, 4096]
