@@ -282,8 +282,42 @@ def _ldexp_impl(self, other, out=None):
     return _copy_result(out, result)
 
 
+def ldexp_backward(grad_output, self, other):
+    """Backward of ``ldexp``.
+
+    ``d/dx ldexp(x, y) = 2^y`` and, for a floating-point exponent,
+    ``d/dy ldexp(x, y) = x * 2^y * ln(2)``. Integer exponents are not
+    differentiable and return ``None``. Complex ``self`` only supports the
+    ``self`` gradient here.
+    """
+    logger.debug("GEMS LDEXP_BACKWARD")
+    scale = _ldexp_impl(torch.ones_like(self), other)
+    grad_self = grad_output * scale
+    if other.is_floating_point() and not self.is_complex():
+        ln2 = 0.6931471805599453
+        grad_other = grad_output * self * scale * ln2
+        return grad_self, grad_other
+    return grad_self, None
+
+
+class LdexpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, other):
+        ctx.save_for_backward(self, other)
+        return _ldexp_forward(self, other)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        self, other = ctx.saved_tensors
+        return ldexp_backward(grad_output, self, other)
+
+
 def ldexp(self, other):
     logger.debug("GEMS LDEXP")
+    return LdexpFunction.apply(self, other)
+
+
+def _ldexp_forward(self, other):
     return _ldexp_impl(self, other)
 
 

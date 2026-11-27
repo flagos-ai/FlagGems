@@ -415,3 +415,60 @@ def test_ldexp_out_rejects_invalid_dtype():
     out = torch.empty((17,), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ldexp_out(self, other, out=out)
+
+
+_LDEXP_BACKWARD_DTYPES = [torch.float32] + (
+    [torch.float64] if utils.fp64_is_supported else []
+)
+
+
+@pytest.mark.ldexp_backward
+@pytest.mark.parametrize("dtype", _LDEXP_BACKWARD_DTYPES)
+def test_ldexp_backward_int_exponent(dtype):
+    self = torch.randn(1024, dtype=dtype, device=flag_gems.device)
+    other = torch.randint(0, 4, (1024,), device=flag_gems.device)
+    self.requires_grad_(True)
+
+    res_out = flag_gems.ldexp(self, other)
+    out_grad = torch.randn_like(res_out)
+    (res_dself,) = torch.autograd.grad(res_out, self, out_grad)
+
+    ref_self = utils.to_reference(self, False).double().requires_grad_(True)
+    ref_other = utils.to_reference(other, False)
+    ref_out = torch.ldexp(ref_self, ref_other)
+    (ref_dself,) = torch.autograd.grad(
+        ref_out, ref_self, utils.to_reference(out_grad, True).double()
+    )
+    utils.gems_assert_close(res_dself, ref_dself, dtype)
+
+    res_d, res_o = flag_gems.ldexp_backward(out_grad, self.detach(), other)
+    utils.gems_assert_close(res_d, ref_dself, dtype)
+    assert res_o is None
+
+
+@pytest.mark.ldexp_backward
+@pytest.mark.parametrize("dtype", _LDEXP_BACKWARD_DTYPES)
+def test_ldexp_backward_float_exponent(dtype):
+    self = torch.randn(1024, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(1024, dtype=dtype, device=flag_gems.device)
+    self.requires_grad_(True)
+    other.requires_grad_(True)
+
+    res_out = flag_gems.ldexp(self, other)
+    out_grad = torch.randn_like(res_out)
+    res_dself, res_dother = torch.autograd.grad(res_out, (self, other), out_grad)
+
+    ref_self = utils.to_reference(self, False).double().requires_grad_(True)
+    ref_other = utils.to_reference(other, False).double().requires_grad_(True)
+    ref_out = torch.ldexp(ref_self, ref_other)
+    ref_dself, ref_dother = torch.autograd.grad(
+        ref_out,
+        (ref_self, ref_other),
+        utils.to_reference(out_grad, True).double(),
+    )
+    utils.gems_assert_close(res_dself, ref_dself, dtype)
+    utils.gems_assert_close(res_dother, ref_dother, dtype)
+
+    res_d, res_o = flag_gems.ldexp_backward(out_grad, self.detach(), other.detach())
+    utils.gems_assert_close(res_d, ref_dself, dtype)
+    utils.gems_assert_close(res_o, ref_dother, dtype)

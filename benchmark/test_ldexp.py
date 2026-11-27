@@ -77,3 +77,21 @@ def test_ldexp_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def _ldexp_backward_input(shape, dtype, device):
+    self = torch.randn(shape, dtype=dtype, device=device)
+    other = torch.randn(shape, dtype=dtype, device=device)
+    yield self, other
+
+
+@pytest.mark.ldexp_backward
+def test_ldexp_backward():
+    bench = base.GenericBenchmark(
+        op_name="ldexp",
+        torch_op=torch.ldexp,
+        input_fn=_ldexp_backward_input,
+        dtypes=[torch.float32],
+        is_backward=True,
+    )
+    bench.run()

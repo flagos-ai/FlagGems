@@ -1085,7 +1085,7 @@ from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.l1_loss import l1_loss
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.lcm import lcm, lcm_
-from flag_gems.ops.ldexp import ldexp, ldexp_out
+from flag_gems.ops.ldexp import ldexp, ldexp_backward, ldexp_out
 from flag_gems.ops.ldexp_ import ldexp_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
@@ -2849,6 +2849,7 @@ __all__ = [
     "lcm_",
     "ldexp",
     "ldexp_",
+    "ldexp_backward",
     "ldexp_out",
     "ldl_factor",
     "ldl_factor_ex",

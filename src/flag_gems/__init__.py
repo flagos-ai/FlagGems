@@ -1737,7 +1737,12 @@ _FULL_CONFIG = (
     ("lcm", lcm),
     ("lcm_", lcm_),
     ("ldexp.out", ldexp_out),
-    ("ldexp.Tensor", ldexp),
+    (
+        "ldexp.Tensor",
+        ldexp,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("ldexp_", ldexp_),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
