@@ -59,7 +59,7 @@ def _call_median_dim(inp, dim, keepdim, equal_nan=False, exact_indices=True):
     # Observe that each index selects its reported value on CPU, after checking
     # the original target metadata above. This also covers backends whose
     # gather implementation does not accept the input dtype.
-    flag_gems.testing.assert_equal(
+    utils.gems_assert_equal(
         _selected_along_dim(inp, dim, result.indices, keepdim),
         result.values.cpu(),
         equal_nan=equal_nan,
