@@ -86,6 +86,7 @@ from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum__ScalarList import _foreach_minimum__ScalarList
+from ._foreach_minimum_List import _foreach_minimum_List
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._foreach_mul__List import _foreach_mul__List
@@ -375,6 +376,7 @@ __all__ = [
     "_foreach_maximum_Scalar",
     "_foreach_minimum__Scalar",
     "_foreach_minimum__ScalarList",
+    "_foreach_minimum_List",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
     "_foreach_mul__List",
