@@ -15319,7 +15319,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: native_batch_norm_legit_out
   description: Out variant of batch normalization with running statistics.
   for:
