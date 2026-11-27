@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # Benchmark shapes: (batch, n, k) - focus on batched small/medium matrices
@@ -52,11 +54,21 @@ class LinalgSolveExBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = SOLVE_EX_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            batch, n, k = shape
-            A, B = _solve_ex_input_fn(batch, n, k, cur_dtype, self.device)
-            yield A, B
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, (batch, n, k) in enumerate(self.shapes):
+            plan = base.BenchmarkCasePlan(
+                shape={"A": (batch, n, n), "B": (batch, n, k)},
+                params={},
+                builder_args=((batch, n, k),),
+            )
+            yield self._case_from_plan(dtype, ordinal, plan)
+
+    def build_inputs(self, case):
+        (shape,) = case.builder_args[0].builder_args
+        return _solve_ex_input_fn(*shape, case.dtype, self.device)
 
 
 @pytest.mark.linalg_solve_ex
@@ -81,4 +93,5 @@ def test__linalg_solve_ex():
         torch_op=torch._linalg_solve_ex,
         dtypes=SOLVE_EX_DTYPES,
     )
+    bench.set_gems(lambda a, b: flag_gems._linalg_solve_ex(a, b))
     bench.run()
