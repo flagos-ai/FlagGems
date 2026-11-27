@@ -129,6 +129,7 @@ from ._foreach_sigmoid import _foreach_sigmoid as _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin as _foreach_sin
+from ._foreach_sin_ import _foreach_sin_ as _foreach_sin_
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
@@ -482,6 +483,7 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign_",
     "_foreach_sin",
+    "_foreach_sin_",
     "_foreach_sub__ScalarList",
     "_fused_rms_norm_backward",
     "_masked_scale",
