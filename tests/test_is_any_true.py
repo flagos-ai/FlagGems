@@ -53,11 +53,20 @@ def test_is_any_true(n, kind):
 @pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("rank", [2, 8, 9, 12])
 def test_is_any_true_arbitrary_rank(rank):
-    inp = torch.zeros((2,) * rank, dtype=torch.bool, device=flag_gems.device)
+    use_cpu_reference = flag_gems.vendor_name == "mthreads" and rank == 12
+    input_device = "cpu" if use_cpu_reference else flag_gems.device
+    inp = torch.zeros((2,) * rank, dtype=torch.bool, device=input_device)
     inp[(1,) * rank] = True
     inp = inp.transpose(0, -1)
-    reference = torch.ops.aten._is_any_true.default(utils.to_reference(inp))
-    utils.gems_assert_equal(flag_gems._is_any_true(inp), reference)
+    if use_cpu_reference:
+        ref_inp = inp
+        inp = inp.to(flag_gems.device)
+    else:
+        ref_inp = utils.to_reference(inp)
+    reference = torch.ops.aten._is_any_true.default(ref_inp)
+    result = flag_gems._is_any_true(inp)
+    assert result.device == inp.device
+    utils.gems_assert_equal(result, reference)
 
 
 @pytest.mark.is_any_true
@@ -67,8 +76,10 @@ def test_is_any_true_scalar_and_expand():
         torch.tensor(False, device=flag_gems.device),
         torch.tensor(True, device=flag_gems.device).expand(17, 19),
     ):
+        result = flag_gems._is_any_true(inp)
+        assert result.device == inp.device
         utils.gems_assert_equal(
-            flag_gems._is_any_true(inp),
+            result,
             torch.ops.aten._is_any_true.default(utils.to_reference(inp)),
         )
 

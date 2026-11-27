@@ -32,6 +32,15 @@ int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
 
+# The vendor flag says fp8 is advertised, not that the device can compile the
+# kernel: Triton's CUDA backend only lowers fp8e4nv pointers on sm89+, so the
+# shared KernelGen helper adds that arch check on NVIDIA and trusts the vendor
+# flag elsewhere. ``fp8_is_supported`` above stays the plain vendor bool that
+# other test files read directly.
+FP8_DTYPES = (
+    [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_compiles_on_device() else []
+)
+
 _SKIP_FP64 = pytest.mark.skipif(
     not fp64_is_supported,
     reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
@@ -286,9 +295,7 @@ SMALL_INT_DTYPES = [torch.int8, torch.uint8]
 BOOL_TYPES = [torch.bool]
 # 1-byte dtypes (int8/uint8) and fp8 dtypes are not part of the default CI lists;
 # tests that target them parametrize over these constants explicitly.
-# Kept as an alias until #9827 (which deletes it and renames its 19 remaining
-# consumers to BYTE_DTYPES) merges; this PR's own files already use BYTE_DTYPES.
-BYTE_INT_DTYPES = SMALL_INT_DTYPES
+BYTE_INT_DTYPES = [torch.int8, torch.uint8]
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
     if complex_is_supported
@@ -296,16 +303,9 @@ COMPLEX_DTYPES = (
 )
 
 # Low-precision dtypes: int8/uint8 are always available; float8 only where the
-# device exposes it (mirrors fp8_is_supported above).
+# device exposes it (see FP8_DTYPES at the top of this module, arch-gated via
+# kernelgen_test_utils.fp8_is_supported).
 BYTE_DTYPES = [torch.int8, torch.uint8]
-# The vendor flag says fp8 is advertised, not that the device can compile the
-# kernel: Triton's CUDA backend only lowers fp8e4nv pointers on sm89+, so the
-# shared KernelGen helper adds that arch check on NVIDIA and trusts the vendor
-# flag elsewhere. ``fp8_is_supported`` above stays the plain vendor bool that
-# other test files read directly.
-FP8_DTYPES = (
-    [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_compiles_on_device() else []
-)
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
@@ -494,7 +494,7 @@ def _vendor_arch_names():
     vendor_dir = backend_dir / f"_{flag_gems.vendor_name}"
     if not vendor_dir.is_dir():
         return set()
-    excluded = ("ops", "fused")
+    excluded = ("ops", "deprecated")
     return {
         p.name
         for p in vendor_dir.iterdir()

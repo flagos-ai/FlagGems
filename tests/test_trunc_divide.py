@@ -24,6 +24,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 # Note: tl.math.div_rz only support float32, cast will cause diff
 # with torch, so we only do float32 test for now.
@@ -138,6 +140,9 @@ def test_trunc_divide_tensor_int(shape, dtype):
 
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
+    if IS_KUNLUNXIN and not inp1.is_floating_point():
+        ref_inp1 = ref_inp1.cpu()
+        ref_inp2 = ref_inp2.cpu()
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
     res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
@@ -160,6 +165,8 @@ def test_trunc_divide_tensor_scalar_int(shape, dtype):
         inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 10)
     ref_inp1 = utils.to_reference(inp1, False)
+    if IS_KUNLUNXIN and not inp1.is_floating_point():
+        ref_inp1 = ref_inp1.cpu()
 
     ref_out = torch.div(ref_inp1, scalar, rounding_mode="trunc")
     res_out = flag_gems.div_mode(inp1, scalar, rounding_mode="trunc")
@@ -182,6 +189,8 @@ def test_trunc_div_scalar_tensor_int(shape, dtype):
         inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 100)
     ref_inp2 = utils.to_reference(inp2, False)
+    if IS_KUNLUNXIN and not inp2.is_floating_point() and ref_inp2.device.type != "cpu":
+        ref_inp2 = ref_inp2.cpu()
 
     ref_out = torch.div(scalar, ref_inp2, rounding_mode="trunc")
     res_out = flag_gems.div_mode(scalar, inp2, rounding_mode="trunc")

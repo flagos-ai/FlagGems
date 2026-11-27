@@ -85,9 +85,16 @@ def test_slow_conv2d_forward(shape, kernel_size, stride, padding, has_bias, dtyp
         else None
     )
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_bias = utils.to_reference(bias, True)
+    if flag_gems.vendor_name == "mthreads":
+        ref_inp = inp.to(device="cpu", dtype=torch.float64)
+        ref_weight = weight.to(device="cpu", dtype=torch.float64)
+        ref_bias = (
+            bias.to(device="cpu", dtype=torch.float64) if bias is not None else None
+        )
+    else:
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
     ref_out = torch.ops.aten._slow_conv2d_forward(
         ref_inp,
         ref_weight,
@@ -105,6 +112,7 @@ def test_slow_conv2d_forward(shape, kernel_size, stride, padding, has_bias, dtyp
         [stride[0], stride[1]],
         [padding[0], padding[1]],
     )
+    assert res_out.device == inp.device
     assert res_out.shape == (n, c_out, h_out, w_out)
     # fp16/bf16 convolutions accumulate over the full reduction window in the
     # same fp32 accumulator on both sides, but the tap ordering differs, so the

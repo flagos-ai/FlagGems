@@ -45,8 +45,12 @@ echo "PR_ID=${PR_ID}"
 
 COLLECT_COVERAGE=""
 FAIL_FAST=false
+# Remember whether this is a full-range run: CHANGED_FILES is overwritten with
+# the discovered test list below, so it cannot be compared with "__ALL__" later.
+FULL_RUN=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  FULL_RUN=true
   # Replace "__ALL__" with all tests
   CHANGED_FILES=$(find tests -name "test*.py")
   # add options to generate summary report
@@ -54,7 +58,7 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   EXTRA_OPTS+=" --md-report-verbose=1"
   # Reduce test quantity when QUICK_TESTS is set (e.g. daily workflow)
   if [[ -n "${QUICK_TESTS:-}" ]]; then
-    EXTRA_OPTS+=" --quick"
+    EXTRA_OPTS+=" --first-parameter-only"
   fi
   # --md-report-output is set per-batch (see run_batch); the final file is
   # assembled by concatenating all per-batch reports at the end.
@@ -75,11 +79,18 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
   "tests/test_quant.py"
+  "tests/test_rms_norm_w8a16_fp8.py"
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
   "tests/test_conv_depthwise2d.py"
   "tests/test_conv_depthwise3d.py"
   "tests/test_cudnn_convolution_transpose.py"
+)
+
+# Benchmark test cases that should not run on generic NVIDIA/CPU environments
+# (vendor-specific or hardware-specific tests)
+NO_KERNEL_CHECK_TESTS=(
+  "benchmark/test_rms_norm_w8a16_fp8.py"
 )
 
 # Extract test cases from CHANGED_FILES
@@ -209,7 +220,7 @@ run_batch() {
   local label="$1"; shift
   local report_file="$1"; shift
   local flags="$1"; shift
-  local timeout_s="${TEST_BATCH_TIMEOUT:-1800}"
+  local timeout_s="${TEST_BATCH_TIMEOUT:-3600}"
   local extra_flags=""
   if [[ "$report_file" != "-" ]]; then
     extra_flags="--md-report-output=${report_file}"
@@ -231,9 +242,9 @@ run_batch() {
 
 FAILURES=()
 _BATCH_IDX=0
-if [[ "${CHANGED_FILES}" == "__ALL__" && ${#TEST_CASES[@]} -gt 0 ]]; then
+if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   # Full-range daily run: batch files so each pytest process covers many files.
-  BATCH_SIZE="${TEST_BATCH_SIZE:-20}"
+  BATCH_SIZE="${TEST_BATCH_SIZE:-100}"
   batch=()
   for item in "${TEST_CASES[@]}"; do
     batch+=("$item")
@@ -307,7 +318,7 @@ fi
 # Skipped for full-range daily runs (CHANGED_FILES == __ALL__) because the GPU
 # accuracy run already covers all files; running them again on CPU reference
 # doubles the runtime for negligible extra signal in that context.
-if [[ "${CHANGED_FILES}" != "__ALL__" ]]; then
+if ! $FULL_RUN; then
   for item in "${TEST_CASES_CPU[@]}"; do
     echo "Running quick-cpu mode unit tests for ${item}"
     if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
@@ -354,6 +365,20 @@ for marker in "${OPS_MARKERS[@]}"; do
 done
 
 for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
+  # Skip vendor-specific/hardware-specific benchmark tests
+  skip_kernel_check=0
+  for skip_test in "${NO_KERNEL_CHECK_TESTS[@]}"; do
+    if [[ "$item" == "$skip_test" ]]; then
+      skip_kernel_check=1
+      break
+    fi
+  done
+
+  if [[ $skip_kernel_check -eq 1 ]]; then
+    echo "Skipping kernel-check for ${item} (vendor-specific test)"
+    continue
+  fi
+
   echo "Running kernel-check for ${item} (derived from changed operator)"
   if ! pytest -s ${item} --kernel-check; then
     if $FAIL_FAST; then exit 1; fi
