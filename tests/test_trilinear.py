@@ -87,6 +87,32 @@ def test_trilinear_backward_expand_broadcast(dtype):
 
 @pytest.mark.trilinear_backward
 @_NVIDIA_ONLY
+@pytest.mark.parametrize("seed", [4, 27, 35])
+def test_trilinear_backward_expand_rounding(seed):
+    # Each seed exposed a rounding error in one of the three input gradients.
+    device = flag_gems.device
+    dtype = torch.float16
+    generator = torch.Generator(device=device).manual_seed(seed)
+    inputs = tuple(
+        torch.randn(
+            shape, dtype=dtype, device=device, generator=generator, requires_grad=True
+        )
+        for shape in ((2, 3), (2, 4), (3, 4))
+    )
+    expands = ([2], [1], [0])
+    ref_out = torch._trilinear(*inputs, *expands, [1], unroll_dim=0)
+    grad = torch.randn(ref_out.shape, dtype=dtype, device=device, generator=generator)
+    expected = torch.autograd.grad(ref_out, inputs, grad)
+    actual = flag_gems._trilinear_backward(grad, *inputs, *expands, [1])
+
+    for result, reference in zip(actual, expected):
+        utils.gems_assert_close(
+            result, utils.to_reference(reference), dtype, reduce_dim=4
+        )
+
+
+@pytest.mark.trilinear_backward
+@_NVIDIA_ONLY
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_trilinear_backward_noncontiguous_and_selective(dtype):
     if utils.TO_CPU:

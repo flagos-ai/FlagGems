@@ -94,6 +94,8 @@ def _trilinear_grad_one(
     other1_strides: tl.constexpr,
     other2_strides: tl.constexpr,
     grad_strides: tl.constexpr,
+    GRAD_POSITION: tl.constexpr,
+    REDUCTION_AXIS: tl.constexpr,
     BLOCK_REDUCE: tl.constexpr,
 ):
     if pid < n_elements:
@@ -102,14 +104,17 @@ def _trilinear_grad_one(
             output_coord = (pid // target_divs.value[dim]) % target_shape.value[dim]
             output_offset += output_coord * output_strides.value[dim]
 
+        # ATen unrolls axis 1 in its backward contraction. A reduction on
+        # that axis rounds each partial product and each running sum.
+        STEP: tl.constexpr = 1 if REDUCTION_AXIS == 1 else BLOCK_REDUCE
         total = 0.0
         start = 0
         while start < reduction_elements:
-            reduction_index = start + tl.arange(0, BLOCK_REDUCE)
+            reduction_index = start + tl.arange(0, STEP)
             mask = reduction_index < reduction_elements
-            other1_offset = tl.zeros((BLOCK_REDUCE,), dtype=tl.int64)
-            other2_offset = tl.zeros((BLOCK_REDUCE,), dtype=tl.int64)
-            grad_offset = tl.zeros((BLOCK_REDUCE,), dtype=tl.int64)
+            other1_offset = tl.zeros((STEP,), dtype=tl.int64)
+            other2_offset = tl.zeros((STEP,), dtype=tl.int64)
+            grad_offset = tl.zeros((STEP,), dtype=tl.int64)
 
             for dim in tl.static_range(len(fixed_divs.value)):
                 fixed_coord = (pid // fixed_divs.value[dim]) % fixed_sizes.value[dim]
@@ -124,8 +129,25 @@ def _trilinear_grad_one(
             grad = tl.load(grad_output_ptr + grad_offset, mask=mask, other=0.0)
             other1 = tl.load(other1_ptr + other1_offset, mask=mask, other=0.0)
             other2 = tl.load(other2_ptr + other2_offset, mask=mask, other=0.0)
-            total += tl.sum(grad * other1 * other2, axis=0)
-            start += BLOCK_REDUCE
+            if REDUCTION_AXIS >= 0:
+                if GRAD_POSITION == 2:
+                    pair = (other1.to(tl.float32) * other2.to(tl.float32)).to(
+                        grad.dtype
+                    )
+                    last = grad
+                else:
+                    pair = (grad.to(tl.float32) * other1.to(tl.float32)).to(grad.dtype)
+                    last = other2
+                term = pair.to(tl.float32) * last.to(tl.float32)
+                if REDUCTION_AXIS == 1:
+                    term = term.to(grad.dtype).to(tl.float32)
+                    total = (total + tl.sum(term, axis=0)).to(grad.dtype).to(tl.float32)
+                else:
+                    # The last product is part of the dot reduction in ATen.
+                    total += tl.sum(term, axis=0)
+            else:
+                total += tl.sum(grad * other1 * other2, axis=0)
+            start += STEP
 
         tl.store(grad_input_ptr + output_offset, total)
 
@@ -175,6 +197,9 @@ def _trilinear_backward_kernel(
     fixed_sizes3: tl.constexpr,
     reduction_divs3: tl.constexpr,
     reduction_sizes3: tl.constexpr,
+    REDUCTION_AXIS1: tl.constexpr,
+    REDUCTION_AXIS2: tl.constexpr,
+    REDUCTION_AXIS3: tl.constexpr,
     TILED: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     BLOCK_REDUCE: tl.constexpr,
@@ -217,6 +242,8 @@ def _trilinear_backward_kernel(
             i2_common_strides,
             i3_common_strides,
             grad_common_strides,
+            0,
+            REDUCTION_AXIS1,
             BLOCK_REDUCE,
         )
         _trilinear_grad_one(
@@ -237,6 +264,8 @@ def _trilinear_backward_kernel(
             i1_common_strides,
             i3_common_strides,
             grad_common_strides,
+            1,
+            REDUCTION_AXIS2,
             BLOCK_REDUCE,
         )
         _trilinear_grad_one(
@@ -257,6 +286,8 @@ def _trilinear_backward_kernel(
             i1_common_strides,
             i2_common_strides,
             grad_common_strides,
+            2,
+            REDUCTION_AXIS3,
             BLOCK_REDUCE,
         )
 
@@ -404,6 +435,16 @@ def _grad_common_strides(grad_output, common_shape, sumdim):
     return tuple(strides)
 
 
+def _native_reduction_axis(reduction_sizes, last_strides, dtype):
+    if dtype not in (torch.float16, torch.bfloat16):
+        return -1
+    axes = [dim for dim, size in enumerate(reduction_sizes) if size > 1]
+    if len(axes) != 1:
+        return -1
+    axis = axes[0]
+    return axis if axis == 1 or last_strides[axis] != 0 else -1
+
+
 def _trilinear_backward(
     grad_output,
     i1,
@@ -499,6 +540,9 @@ def _trilinear_backward(
             fixed_sizes3=target3[3],
             reduction_divs3=target3[4],
             reduction_sizes3=target3[5],
+            REDUCTION_AXIS1=_native_reduction_axis(target1[5], expanded3[1], i1.dtype),
+            REDUCTION_AXIS2=_native_reduction_axis(target2[5], expanded3[1], i2.dtype),
+            REDUCTION_AXIS3=_native_reduction_axis(target3[5], grad_strides, i3.dtype),
             TILED=tiled,
             BLOCK_SIZE=block_size,
             BLOCK_REDUCE=block_reduce,
