@@ -2055,6 +2055,30 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: asinh_backward
+  description: First-order gradient of asinh through autograd, computed by a fused
+    Triton kernel. There is no separate aten::asinh_backward operator.
+  for:
+  - asinh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: asinh_backward_
+  description: Extended first-order gradient for asinh_; validated against the out-of-place
+    PyTorch operation.
+  for:
+  - asinh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: assert_async
   description: 'A utility used to perform data-dependent assertions on GPU tensors
 
