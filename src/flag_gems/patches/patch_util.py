@@ -155,7 +155,11 @@ def patch_vllm_lib(lib_name, fn_name, fn, key, verbose=True):
         raise ValueError(f"Library {lib_name} is not recognized.")
 
     lib = libs[lib_name]
-    lib.impl(fn_name, fn, key)
+    # Use allow_override=True to make patch_empty_vllm() idempotent: calling it
+    # multiple times should not raise RuntimeError if the kernel is already
+    # registered. This is necessary because the same ops may be registered
+    # through different code paths (e.g., flag_gems.enable() + patch_empty_vllm()).
+    lib.impl(fn_name, fn, key, allow_override=True)
 
     if verbose:
         print(f"Patched torch.ops.{lib_name}.{fn_name} with FLAGGEMS {fn.__name__}")
