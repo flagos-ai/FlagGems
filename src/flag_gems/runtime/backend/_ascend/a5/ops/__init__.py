@@ -31,4 +31,6 @@ sorted by ``str.casefold`` (``tools/ci_checks/check_init_exports.py``).
 See ``a5/__init__.py`` for the import rules that apply to modules here.
 """
 
-__all__ = []
+from .per_token_cast import per_token_cast
+
+__all__ = ["per_token_cast"]
