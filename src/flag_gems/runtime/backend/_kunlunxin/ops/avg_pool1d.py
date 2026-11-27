@@ -45,6 +45,22 @@ logger = logging.getLogger(__name__)
 # Only `o == 0` lanes (row starts) take the padding into account: their left tap
 # is zero and `count_include_pad=False` divides by 2 instead of 3.  That is a
 # value-level `tl.where`, which keeps the load addresses affine.
+#
+# Known trade-offs:
+# - The left stream re-reads the whole pair array and drops its low half, so the
+#   kernel reads about 2x the input bytes, ~25% of them unused.  This is the
+#   price for keeping both streams unit-stride; the stride-2 gather variant was
+#   far slower on this backend.
+# - The pair view is little-endian only (`hi` is the later element) and both the
+#   dtype view and the vector loads need a naturally aligned base pointer.
+#   `_avg_pool1d_pair` checks both and falls back to the 4-D path otherwise.
+# - `OUT_L` is a constexpr so the row-start test folds into shift/multiply
+#   instead of a soft integer modulo.  The same kernel with a runtime `out_l`
+#   measures 15-46% slower (64K -> 1M outputs, fp32/fp16), so the constexpr is
+#   kept.  The cost is one compiled kernel per distinct output length: dynamic
+#   seq_len workloads pay a first-call compile per new `L`, which is accepted
+#   because decode-style shapes repeat and the modulo speedup applies to every
+#   subsequent call.
 # ---------------------------------------------------------------------------
 
 _PAIR_MIN_TOTAL = 4096  # below this a single clamped launch is faster
@@ -52,23 +68,31 @@ _PAIR_SMALL_BLOCK = 512
 _PAIR_HEAD_OUT = 512  # SAFE head lanes (keeps the body base aligned)
 
 
-def _pair_body_block(total):
-    """Measured body tile (median of do_bench, 5 rounds, constexpr OUT_L)."""
-    if total <= 65536:
-        return 8192
-    if total <= 131072:
+def _pair_body_block(dtype, total):
+    """Body tile from a do_bench sweep (median, 100 reps, out_l 8 and 64).
+
+    Non-decreasing in ``total`` for each dtype: 4096 below 32K outputs where the
+    launch dominates, then fp32 stays at 8192 while 16-bit gains 4-10% from
+    16384 above 256K outputs.
+    """
+    if total <= 32768:
         return 4096
-    if total <= 262144:
+    if dtype == torch.float32 or total <= 262144:
         return 8192
     return 16384
 
 
-def _pair_unroll(dtype, total):
-    """Measured unroll factor: fp16 always 8, fp32 peaks at 4 below 512k."""
+def _pair_unroll(dtype):
+    """Unroll factor from the same sweep.
+
+    fp16 gains 5-50% from 8 at every size (more at larger sizes), fp32 peaks at
+    4 (8 is 10-20% slower above 256K outputs), and bf16 is flat, so it keeps the
+    cheaper 2.
+    """
     if dtype == torch.float16:
         return 8
     if dtype == torch.float32:
-        return 8 if total > 262144 else 4
+        return 4
     return 2
 
 
@@ -162,10 +186,14 @@ def avg_pool1d_pair_body_kernel(
     tl.store(out_ptr + q, res.to(out_ptr.type.element_ty), mask=mask)
 
 
-def _pair_params(kernel_size, stride, padding, ceil_mode):
-    """Return (k, s, p) as ints, or None when the geometry is not supported."""
-    if ceil_mode:
-        return None
+def _pool1d_params(kernel_size, stride, padding):
+    """Normalize int / 1-element sequence pooling args to int scalars.
+
+    Follows ATen's 1-D pooling defaults: an omitted or empty ``stride`` means
+    ``stride == kernel_size`` and an empty ``padding`` means 0.  Returns
+    ``(k, s, p)``; invalid argument forms give ``None`` entries so the caller
+    falls back to the 4-D path, which then reports the error.
+    """
 
     def _scalar(value):
         if isinstance(value, int):
@@ -175,13 +203,22 @@ def _pair_params(kernel_size, stride, padding, ceil_mode):
         return None
 
     k = _scalar(kernel_size)
-    # stride=None/[] means stride == kernel_size (PyTorch default).
-    s = (
-        k
-        if stride is None or (isinstance(stride, (list, tuple)) and not stride)
-        else _scalar(stride)
-    )
+    s = _scalar(stride)
+    if s is None and (
+        stride is None or (isinstance(stride, (list, tuple)) and not stride)
+    ):
+        s = k
     p = _scalar(padding)
+    if p is None and isinstance(padding, (list, tuple)) and not padding:
+        p = 0
+    return k, s, p
+
+
+def _pair_params(kernel_size, stride, padding, ceil_mode):
+    """Return (k, s, p) as ints, or None when the geometry is not supported."""
+    if ceil_mode:
+        return None
+    k, s, p = _pool1d_params(kernel_size, stride, padding)
     if k is None or s is None or p is None:
         return None
     return k, s, p
@@ -203,6 +240,14 @@ def _avg_pool1d_pair(
     if in_l % 2 != 0 or in_l < 2:
         return None
 
+    wide = input.dtype == torch.float32
+    # The pair view reinterprets adjacent elements as int64 (fp32) or int32
+    # (16-bit), on a little-endian host.  `is_contiguous()` pins the strides but
+    # not the base pointer of a view with a storage offset, so check alignment
+    # explicitly and fall back when the pair view would be misaligned.
+    if input.data_ptr() % (8 if wide else 4) != 0:
+        return None
+
     out_l = in_l // 2
     total = n * c * out_l
     if total > 2**31 - 1:
@@ -212,7 +257,6 @@ def _avg_pool1d_pair(
     if total == 0:
         return out
 
-    wide = input.dtype == torch.float32
     pair = input.view(torch.int64 if wide else torch.int32).reshape(-1)
     kwargs = dict(
         WIDE=wide,
@@ -243,17 +287,17 @@ def _avg_pool1d_pair(
         num_warps=4,
         **kwargs,
     )
-    block = _pair_body_block(total)
+    block = _pair_body_block(input.dtype, total)
     rest = total - head
     avg_pool1d_pair_body_kernel[(triton.cdiv(rest, block),)](
         pair,
         out,
         total,
         OUT_L=out_l,
-        Q_OFF=_PAIR_HEAD_OUT,
+        Q_OFF=head,
         BLOCK=block,
         num_warps=4,
-        unroll_num=_pair_unroll(input.dtype, total),
+        unroll_num=_pair_unroll(input.dtype),
         **kwargs,
     )
     return out
@@ -285,33 +329,14 @@ def avg_pool1d(
 
     input_4d = input.unsqueeze(2)  # (N, C, L) -> (N, C, 1, L)
 
-    # Convert 1D parameters to 2D: kernel_size -> (1, kernel_size)
-    if isinstance(kernel_size, int):
-        kernel_size_1d = kernel_size
-        kernel_size_2d = (1, kernel_size)
-    else:
-        kernel_size_1d = kernel_size[0]
-        kernel_size_2d = (1, kernel_size[0])
-
-    # stride=None or stride=[] means stride=kernel_size (PyTorch default behavior)
-    if stride is None or (isinstance(stride, list) and len(stride) == 0):
-        stride_2d = (1, kernel_size_1d)
-    elif isinstance(stride, int):
-        stride_2d = (1, stride)
-    else:
-        stride_2d = (1, stride[0])
-
-    if isinstance(padding, int):
-        padding_2d = (0, padding)
-    else:
-        padding_2d = (0, padding[0])
+    k_1d, stride_1d, padding_1d = _pool1d_params(kernel_size, stride, padding)
 
     # Call avg_pool2d
     output_4d = avg_pool2d(
         input_4d,
-        kernel_size=kernel_size_2d,
-        stride=stride_2d,
-        padding=padding_2d,
+        kernel_size=(1, k_1d),
+        stride=(1, stride_1d),
+        padding=(0, padding_1d),
         ceil_mode=ceil_mode,
         count_include_pad=count_include_pad,
         divisor_override=None,

@@ -24,7 +24,9 @@ class AvgPool1dBenchmark(base.GenericBenchmark):
     def get_input_iter(self, dtype) -> Generator:
         shapes_3d = [
             (4, 3, 224),
+            (8, 32, 96),
             (16, 64, 128),
+            (12, 96, 70),
             (32, 128, 64),
             (64, 256, 32),
             (128, 512, 16),
