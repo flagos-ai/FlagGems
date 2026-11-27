@@ -300,6 +300,7 @@ from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
     _scaled_dot_product_attention_math,
+    _scaled_dot_product_attention_math_for_mps,
     _scaled_dot_product_cudnn_attention,
     _scaled_dot_product_flash_attention,
     cudnn_attention_forward,
@@ -397,6 +398,10 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_csr_to_coo import (  # noqa: F401
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from .copy import copy, copy_
 from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
@@ -524,7 +529,6 @@ from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_
 from .frexp import frexp
 from .full import full
 from .full_like import full_like
-from .functional_assert_async import _functional_assert_async
 from .fused_experts_impl import (
     fused_experts_impl,
     inplace_fused_experts,
@@ -553,6 +557,7 @@ from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .gru_cell import gru_cell
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
@@ -574,7 +579,6 @@ from .histogramdd_from_bin_cts import (
     _histogramdd_from_bin_cts,
     _histogramdd_from_bin_cts_out,
 )
-from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
 from .i0 import i0, i0_out
@@ -1028,7 +1032,6 @@ from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
 from .unique_dim_consecutive import unique_dim_consecutive
-from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
@@ -1250,7 +1253,6 @@ __all__ = [
     "_foreach_tanh_",
     "_foreach_zero",
     "_foreach_zero_",
-    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
@@ -1614,7 +1616,9 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru",
     "gru_cell",
+    "gru_data",
     "gt",
     "gt_scalar",
     "gt_scalar_",
@@ -1631,7 +1635,6 @@ __all__ = [
     "hinge_embedding_loss",
     "histc",
     "histogramdd",
-    "hsplit",
     "hstack",
     "hypot",
     "hypot_",

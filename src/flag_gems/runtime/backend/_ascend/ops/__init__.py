@@ -223,6 +223,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
@@ -252,6 +253,7 @@ from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .inverse import inverse
+from .isfinite import isfinite
 from .isin import isin
 from .isposinf import isposinf
 from .isreal import isreal
@@ -331,6 +333,7 @@ from .mv import mv
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
+from .native_group_norm import native_group_norm
 from .ne_ import ne_
 from .negative import negative
 from .nested_view_from_jagged_copy import nested_view_from_jagged_copy
@@ -379,6 +382,7 @@ from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_o
 from .select_backward import select_backward
 from .select_copy import select_copy
 from .select_scatter import select_scatter
+from .selu_ import selu_
 from .silu import silu, silu_
 from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
@@ -677,6 +681,7 @@ __all__ = [
     "greater_equal_",
     "group_norm",
     "group_norm_backward",
+    "grouped_gemm_w8a8",
     "grouped_matmul",
     "gru",
     "gru_data",
@@ -710,6 +715,7 @@ __all__ = [
     "index_select_backward",
     "inner",
     "inverse",
+    "isfinite",
     "isin",
     "isposinf",
     "isreal",
@@ -811,6 +817,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "narrow_copy",
+    "native_group_norm",
     "native_layer_norm",
     "ne_",
     "negative",
@@ -872,6 +879,7 @@ __all__ = [
     "select_backward",
     "select_copy",
     "select_scatter",
+    "selu_",
     "silu",
     "silu_",
     "silu_backward",
