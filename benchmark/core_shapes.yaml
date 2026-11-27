@@ -231,6 +231,17 @@ linalg_matrix_norm_out:
     - [8, 4, 32, 32]
   shape_desc: "(*B), M, N"
 
+cauchy_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 log10:
   shapes:
     - [4096, 4096]

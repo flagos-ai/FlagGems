@@ -1215,7 +1215,7 @@ _FULL_CONFIG = (
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
-    ("cauchy_", cauchy_),
+    ("cauchy_", cauchy_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("ccol_indices", ccol_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     (
         "ccol_indices_copy",
