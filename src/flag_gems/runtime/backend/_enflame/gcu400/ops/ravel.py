@@ -34,13 +34,19 @@ The copy path is dispatched on the canonical layout shape (GCU tuning):
 
 * rank 1 with a constant stride ``T0``      -> ``_ravel_strided1d_kernel``
 * rank >= 2, i32-safe, >= 64Ki elements, whose outermost canonical dim has
-  stride 1 and both extents split into >= 64-wide power-of-two tiles
+  stride 1 and splits into power-of-two tiles of the stride-1 extent
   -> ``_ravel_tile_kernel`` with ``TRANSPOSE=True``: the (B_A, B_B) tile loads
   along the stride-1 axis and stores through swapped index roles, so both
-  sides issue long contiguous runs without ``tl.trans``.
+  sides issue long contiguous runs without ``tl.trans``.  Tile geometry is
+  regime-dependent (measured): a narrow stride-1 axis (s0 < 64) takes
+  (1024, 32) tiles at 1 warp, the bandwidth-bound regime (numel >= 8Mi)
+  takes (512, 256) tiles at 2 warps, the launch-bound regime keeps
+  (256, 256) at 4 warps.  Row counts that do not divide into full tiles are
+  covered by flat-gather tail programs appended to the same launch.
 * rank >= 2, i32-safe, >= 64Ki elements, whose innermost canonical dim has
   stride 1 and the inner extent splits into a >= 32-wide power-of-two tile
-  -> ``_ravel_tile_kernel`` with ``TRANSPOSE=False`` (straight block copy).
+  -> ``_ravel_tile_kernel`` with ``TRANSPOSE=False`` (straight block copy),
+  with the same tail mechanism for non-divisible row counts.
 * anything else, and every complex dtype    -> ``_ravel_copy_kernel`` /
   ``_ravel_copy_cplx_kernel`` (rank-agnostic flat gather).
 
@@ -52,9 +58,17 @@ GCU specifics baked into this copy (measured on GCU400 / L600):
   (``numel`` and the max source offset < 2**31); the int64 variants remain as
   the fallback for larger tensors.
 * Masked 2D transpose tiles are a known silent-corruption class on this
-  backend (compiler problem P15), so the tile kernel runs unmasked and is
-  only dispatched on exact power-of-two divisibility; every other layout
-  falls back to the flat gather.
+  backend (compiler problem P15), so the tile kernel runs unmasked and the
+  store side only ever issues contiguous masked 1D-style runs; every layout
+  that cannot be covered by full tiles falls back to the flat gather.
+* Tile rows whose count does not split into power-of-two tiles (e.g. a
+  (4100, 2048) transpose) no longer demote the whole copy to the flat
+  gather: the same single kernel launch appends "tail" programs after the
+  full-tile programs on the same grid axis.  A tail program copies the
+  remainder region with the flat-gather access pattern (contiguous masked
+  1D loads/stores, the proven-correct class of ``_ravel_copy_kernel``),
+  enumerated in output order so its stores stay contiguous.  This keeps the
+  launch count at one and avoids masked transposed-tile stores entirely.
 * Grid limits are enforced (axis 0 <= 65534, axis 1 <= 255).  The previous
   tile dispatch placed the flattened rest-extent on grid axis 1 and crashed
   with ``OutOfResources: grid.y`` for e.g. a (100000, 32) transposed input.
@@ -87,6 +101,23 @@ _GRID_Y_MAX = 255
 # show no tile benefit); above it, 256-wide tiles are the measured optimum.
 _TILE_MIN_NUMEL = 65536
 _TILE_CAP = 256
+# At this element count the copy leaves the launch-bound regime and wider
+# 512-row tiles pay off (measured on GCU400/L600: 4096x4096 fp32 transpose
+# 65.5us at (512, 256, nw=2) vs 69.7us at (256, 256, nw=4)).
+_TILE_BIG_NUMEL = 8 * 1024 * 1024
+# Tail programs (the non-power-of-two remainder of the row axis) reuse the
+# flat-gather lane shape: 4096 lanes per program is the proven-correct block
+# size of _ravel_copy_kernel on this backend.
+_TAIL_BLOCK = 4096
+
+
+def _prev_pow2(n):
+    """Largest power of two <= ``n`` (the tile row width; the remainder rows
+    are covered by tail programs, so divisibility is no longer required)."""
+    p = 1
+    while p * 2 <= n:
+        p *= 2
+    return p
 
 
 @triton.jit
@@ -119,12 +150,16 @@ def _ravel_tile_kernel(
     d7,
     s7,
     t7,
+    NA_FULL,
+    R_A,
     R2: tl.constexpr,
     TRANSPOSE: tl.constexpr,
     A_FIRST: tl.constexpr,
     NEG: tl.constexpr,
     B_A: tl.constexpr,
     B_B: tl.constexpr,
+    TAIL: tl.constexpr,
+    TAIL_BLOCK: tl.constexpr,
 ):
     """Unmasked (B_A, B_B) tile copy over a stride-1 axis (int32 offsets).
 
@@ -134,6 +169,13 @@ def _ravel_tile_kernel(
     outermost canonical dim) and the store swaps the index roles, keeping both
     sides coalesced without ``tl.trans``; otherwise the output row index is
     ``a`` and the store is a straight block copy.
+
+    With ``TAIL`` the grid appends extra programs after the ``NA_FULL``
+    full-tile programs on the same ``a`` axis.  Each tail program copies one
+    ``TAIL_BLOCK`` slice of the ``R_A * EXT_B`` remainder elements with the
+    flat-gather pattern (contiguous masked 1D access, like
+    ``_ravel_copy_kernel``), enumerated in output order so the masked store
+    stays a contiguous 1D run -- never a masked transposed-tile store (P15).
     """
     if A_FIRST:
         pid_a = tl.program_id(0)
@@ -141,35 +183,73 @@ def _ravel_tile_kernel(
     else:
         pid_a = tl.program_id(1)
         pid_b = tl.program_id(0)
-    a = pid_a * B_A + tl.arange(0, B_A)
-    b = pid_b * B_B + tl.arange(0, B_B)
-    if R2 == 1:
-        g = a * t0
+    if TAIL and pid_a >= NA_FULL:
+        tt = (pid_a - NA_FULL) * TAIL_BLOCK + tl.arange(0, TAIL_BLOCK)
+        tm = tt < R_A * EXT_B
+        if TRANSPOSE:
+            tb = tt // R_A
+            tao = tt % R_A
+        else:
+            tao = tt // EXT_B
+            tb = tt % EXT_B
+        ta = NA_FULL * B_A + tao
+        if R2 == 1:
+            tg = ta * t0
+        else:
+            tg = tl.zeros((TAIL_BLOCK,), dtype=tl.int32)
+            if R2 > 0:
+                tg += ((ta // d0) % s0) * t0
+            if R2 > 1:
+                tg += ((ta // d1) % s1) * t1
+            if R2 > 2:
+                tg += ((ta // d2) % s2) * t2
+            if R2 > 3:
+                tg += ((ta // d3) % s3) * t3
+            if R2 > 4:
+                tg += ((ta // d4) % s4) * t4
+            if R2 > 5:
+                tg += ((ta // d5) % s5) * t5
+            if R2 > 6:
+                tg += ((ta // d6) % s6) * t6
+        tsrc = tg + tb
+        tv = tl.load(in_ptr + tsrc, mask=tm, other=0)
+        if NEG:
+            tv = -tv
+        if TRANSPOSE:
+            tdst = tb * EXT_A + ta
+        else:
+            tdst = ta * EXT_B + tb
+        tl.store(out_ptr + tdst, tv, mask=tm)
     else:
-        g = tl.zeros((B_A,), dtype=tl.int32)
-        if R2 > 0:
-            g += ((a // d0) % s0) * t0
-        if R2 > 1:
-            g += ((a // d1) % s1) * t1
-        if R2 > 2:
-            g += ((a // d2) % s2) * t2
-        if R2 > 3:
-            g += ((a // d3) % s3) * t3
-        if R2 > 4:
-            g += ((a // d4) % s4) * t4
-        if R2 > 5:
-            g += ((a // d5) % s5) * t5
-        if R2 > 6:
-            g += ((a // d6) % s6) * t6
-    src = g[:, None] + b[None, :]
-    v = tl.load(in_ptr + src)
-    if NEG:
-        v = -v
-    if TRANSPOSE:
-        dst = b[None, :] * EXT_A + a[:, None]
-    else:
-        dst = a[:, None] * EXT_B + b[None, :]
-    tl.store(out_ptr + dst, v)
+        a = pid_a * B_A + tl.arange(0, B_A)
+        b = pid_b * B_B + tl.arange(0, B_B)
+        if R2 == 1:
+            g = a * t0
+        else:
+            g = tl.zeros((B_A,), dtype=tl.int32)
+            if R2 > 0:
+                g += ((a // d0) % s0) * t0
+            if R2 > 1:
+                g += ((a // d1) % s1) * t1
+            if R2 > 2:
+                g += ((a // d2) % s2) * t2
+            if R2 > 3:
+                g += ((a // d3) % s3) * t3
+            if R2 > 4:
+                g += ((a // d4) % s4) * t4
+            if R2 > 5:
+                g += ((a // d5) % s5) * t5
+            if R2 > 6:
+                g += ((a // d6) % s6) * t6
+        src = g[:, None] + b[None, :]
+        v = tl.load(in_ptr + src)
+        if NEG:
+            v = -v
+        if TRANSPOSE:
+            dst = b[None, :] * EXT_A + a[:, None]
+        else:
+            dst = a[:, None] * EXT_B + b[None, :]
+        tl.store(out_ptr + dst, v)
 
 
 @triton.jit
@@ -457,13 +537,23 @@ def _flat_grid(numel, block):
     return (_GRID_X_MAX, ny), _GRID_X_MAX, True
 
 
-def _launch_tile(inp, out, rest, ext_a, ext_b, transpose, neg, ba, bb):
-    """Launch the unmasked tile kernel; False when the grid limits reject it."""
-    na = ext_a // ba
+def _launch_tile(inp, out, rest, ext_a, ext_b, transpose, neg, ba, bb, num_warps=4):
+    """Launch the tile kernel (full tiles + flat tail programs); False when
+    the grid limits reject it."""
+    na_full = ext_a // ba
+    if na_full == 0:
+        return False
+    rem = ext_a - na_full * ba
+    n_tail = triton.cdiv(rem * ext_b, _TAIL_BLOCK) if rem else 0
+    na = na_full + n_tail
     nb = ext_b // bb
     a_first = na >= nb
     grid = (na, nb) if a_first else (nb, na)
     if grid[0] > _GRID_X_MAX or grid[1] > _GRID_Y_MAX:
+        return False
+    if n_tail and (
+        n_tail * _TAIL_BLOCK > _I32_OFF_LIMIT or rem * ext_b > _I32_OFF_LIMIT
+    ):
         return False
     _ravel_tile_kernel[grid](
         inp,
@@ -471,13 +561,17 @@ def _launch_tile(inp, out, rest, ext_a, ext_b, transpose, neg, ba, bb):
         ext_a,
         ext_b,
         *_pack(rest),
+        na_full,
+        rem,
         R2=len(rest),
         TRANSPOSE=transpose,
         A_FIRST=a_first,
         NEG=neg,
         B_A=ba,
         B_B=bb,
-        num_warps=4,
+        TAIL=bool(rem),
+        TAIL_BLOCK=_TAIL_BLOCK,
+        num_warps=num_warps,
     )
     return True
 
@@ -568,23 +662,53 @@ def _copy_impl(inp):
         if t0 == 1 and all(st > 0 for _, st in dims[1:]):
             rest = dims[1:]
             ext_a = numel // s0
-            ba = min(_TILE_CAP, _pow2div(ext_a))
             bb = min(_TILE_CAP, _pow2div(s0))
-            # Narrow tiles lose to the flat gather (measured: a (32, 32) tile
-            # on a 100000x32 transpose runs 211us vs 138us flat).
-            if ba >= 64 and bb >= 64 and ext_a % ba == 0 and s0 % bb == 0:
-                if _launch_tile(inp, out, rest, ext_a, s0, True, neg, ba, bb):
-                    return out
+            # Remainder rows on the a axis go to tail programs, so the tile
+            # row width no longer needs to divide ext_a exactly; only the
+            # load-side width must still divide the stride-1 extent.  The
+            # store side is contiguous along a, so its geometry trades
+            # against load coalescing, measured per regime below.
+            if s0 % bb == 0 and bb >= 32:
+                if bb < 64:
+                    # Narrow stride-1 axis: long store rows dominate.  A
+                    # (100000, 32) transpose runs 21.6us at (1024, 32, nw=1)
+                    # vs 140us flat and 77.4us native.
+                    ba = min(1024, _prev_pow2(ext_a))
+                    if ba >= 64:
+                        if _launch_tile(
+                            inp, out, rest, ext_a, s0, True, neg, ba, bb, num_warps=1
+                        ):
+                            return out
+                elif numel >= _TILE_BIG_NUMEL:
+                    # Bandwidth-bound regime: 512-row tiles with 2 warps
+                    # (measured optimum family on 4096x4096 transposes).
+                    ba = min(512, _prev_pow2(ext_a))
+                    if ba >= 64:
+                        if _launch_tile(
+                            inp, out, rest, ext_a, s0, True, neg, ba, bb, num_warps=2
+                        ):
+                            return out
+                else:
+                    # Launch-bound regime: the historical 256x256 tile at 4
+                    # warps stays optimal (measured on a 1024x1024
+                    # transpose: 8.7us vs 8.9-9.6us for 512-wide rows).
+                    ba = min(_TILE_CAP, _prev_pow2(ext_a))
+                    if ba >= 64:
+                        if _launch_tile(
+                            inp, out, rest, ext_a, s0, True, neg, ba, bb, num_warps=4
+                        ):
+                            return out
         # Straight block tile: the innermost canonical dim is the stride-1
-        # axis and only the inner width gates coalescing.  Same stride-0 and
-        # narrow-tile exclusions as the transposing arm.
+        # axis and only the inner width gates coalescing.  Same stride-0
+        # exclusion as the transposing arm; the a-axis remainder again runs
+        # on tail programs inside the same launch.
         sN, tN = dims[-1]
         if tN == 1 and all(st > 0 for _, st in dims[:-1]):
             prefix = dims[:-1]
             ext_a = numel // sN
-            ba = min(_TILE_CAP, _pow2div(ext_a))
+            ba = min(_TILE_CAP, _prev_pow2(ext_a))
             bb = min(_TILE_CAP, _pow2div(sN))
-            if ba >= 16 and bb >= 32 and ext_a % ba == 0 and sN % bb == 0:
+            if ba >= 16 and bb >= 32 and sN % bb == 0:
                 if _launch_tile(inp, out, prefix, ext_a, sN, False, neg, ba, bb):
                     return out
 
@@ -621,16 +745,21 @@ class _RavelCopy(torch.autograd.Function):
 
 def ravel(self):
     """``aten::ravel(Tensor(a) self) -> Tensor(a)``."""
-    logger.debug("GEMS_ENFLAME_GCU400 RAVEL")
+    logger.debug("GEMS_ENFLAME RAVEL")
+    # Hot path first: a dense strided tensor is contiguous in the standard
+    # row-major sense exactly when it flattens to a pure view, and
+    # ``flatten()`` is the cheapest C-bound primitive that produces it
+    # (measured 0.95us vs 1.01us for ``view(-1)`` on GCU400).  Sparse and
+    # non-strided layouts report a non-contiguous row-major layout and fall
+    # through to the contract checks below.
+    if isinstance(self, torch.Tensor) and self.is_contiguous():
+        return self.flatten()
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "ravel(): argument 'self' must be a Tensor, not %s" % type(self).__name__
         )
     if self.layout != torch.strided:
         raise RuntimeError("unsupported memory format option Contiguous")
-
-    if self.is_contiguous():
-        return self.view(-1)
 
     if self.requires_grad and torch.is_grad_enabled():
         return _RavelCopy.apply(self)

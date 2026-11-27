@@ -19,6 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# The enflame specialization forwards 64-bit values to the sibling ``_coalesce``
+# kernel, which caps the materialised key space at 2**24, so the large-key case
+# below stays device-path only for that dtype.
+_I64_LARGE_KEY_LANE = flag_gems.vendor_name != "enflame"
+
 # Merge duplicate COO coordinates and sum their stored values.
 # FP8 inputs are exercised by the rejection test.
 # This list feeds parametrize, a comprehension and _special_value_cases(), so
@@ -242,6 +247,11 @@ _LARGE_KEY_CASES = [((8193, 8193), 3000)]
 @pytest.mark.parametrize("case", _LARGE_KEY_CASES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_coalesce_large_key_space(case, dtype):
+    if dtype is torch.int64 and not _I64_LARGE_KEY_LANE:
+        pytest.skip(
+            "enflame coalesces 64-bit values through a kernel whose dense key "
+            "space is capped at 2**24"
+        )
     shape, nnz = case
     inp = _make_sparse_input(shape, nnz, dtype)
     assert not inp.is_coalesced()

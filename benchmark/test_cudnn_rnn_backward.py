@@ -105,6 +105,10 @@ class CudnnRnnBackwardBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten dose not support",
+)
 @pytest.mark.cudnn_rnn_backward
 def test_cudnn_rnn_backward():
     bench = CudnnRnnBackwardBenchmark(

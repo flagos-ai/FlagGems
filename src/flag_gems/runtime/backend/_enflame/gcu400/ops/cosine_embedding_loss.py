@@ -42,29 +42,38 @@ def _cosine_embedding_loss_elementwise_kernel(
     BLOCK_D: tl.constexpr,
 ):
     # One program per row: compute cosine similarity along the last dim, then
-    # the per-sample loss, and write it to out[row].
-    row = tl.program_id(axis=0)
-    if row >= n_rows:
-        return
-
+    # the per-sample loss, and write it to out[row]. The row is reduced in
+    # BLOCK_D chunks: a 1-D core shape makes d ~ 1e9, and a single
+    # next_pow2(d) tile overflows the 917504 B DSM budget at compile time.
+    pid = tl.program_id(axis=0)
+    num_pids = tl.num_programs(axis=0)
     cols = tl.arange(0, BLOCK_D)
-    mask = cols < d
 
-    x1 = tl.load(x1_ptr + row * x1_stride0 + cols, mask=mask, other=0.0).to(tl.float32)
-    x2 = tl.load(x2_ptr + row * x2_stride0 + cols, mask=mask, other=0.0).to(tl.float32)
+    for row in tl.range(pid, n_rows, num_pids):
+        dot = 0.0
+        sq1 = 0.0
+        sq2 = 0.0
+        for start in range(0, d, BLOCK_D):
+            idx = start + cols
+            mask = idx < d
+            v1 = tl.load(x1_ptr + row * x1_stride0 + idx, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            v2 = tl.load(x2_ptr + row * x2_stride0 + idx, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            dot += tl.sum(v1 * v2, axis=0)
+            sq1 += tl.sum(v1 * v1, axis=0)
+            sq2 += tl.sum(v2 * v2, axis=0)
 
-    dot = tl.sum(x1 * x2, axis=0)
-    norm1 = tl.sqrt(tl.sum(x1 * x1, axis=0))
-    norm2 = tl.sqrt(tl.sum(x2 * x2, axis=0))
-    denom = norm1 * norm2
-    cos = dot / (denom + 1e-8)
+        cos = dot / (tl.sqrt(sq1) * tl.sqrt(sq2) + 1e-8)
 
-    y = tl.load(y_ptr + row).to(tl.float32)
-    # target == 1  -> 1 - cos ; target == -1 -> max(0, cos - margin)
-    is_pos = y > 0.0
-    loss = tl.where(is_pos, 1.0 - cos, tl.maximum(cos - margin, 0.0))
+        y = tl.load(y_ptr + row).to(tl.float32)
+        # target == 1  -> 1 - cos ; target == -1 -> max(0, cos - margin)
+        is_pos = y > 0.0
+        loss = tl.where(is_pos, 1.0 - cos, tl.maximum(cos - margin, 0.0))
 
-    tl.store(out_ptr + row, loss)
+        tl.store(out_ptr + row, loss)
 
 
 @triton.jit
@@ -82,29 +91,37 @@ def _cosine_embedding_loss_per_row_kernel(
 ):
     # One program per sample-row: compute the per-row loss in float32 and write
     # it to mid[row]. A 1D (BLOCK_D,) tile keeps every load well under Triton's
-    # per-tile numel limit regardless of the row count. The final reduction over
-    # mid is done by _cosine_embedding_loss_final_reduce_kernel.
-    row = tl.program_id(axis=0)
-    if row >= n_rows:
-        return
+    # per-tile numel limit regardless of the row count, and the row is walked
+    # in BLOCK_D chunks so a d ~ 1e9 core shape stays inside the DSM budget.
+    # The final reduction over mid is done by
+    # _cosine_embedding_loss_final_reduce_kernel.
+    pid = tl.program_id(axis=0)
+    num_pids = tl.num_programs(axis=0)
     cols = tl.arange(0, BLOCK_D)
-    col_mask = cols < d
 
-    x1 = tl.load(x1_ptr + row * x1_stride0 + cols, mask=col_mask, other=0.0).to(
-        tl.float32
-    )
-    x2 = tl.load(x2_ptr + row * x2_stride0 + cols, mask=col_mask, other=0.0).to(
-        tl.float32
-    )
-    dot = tl.sum(x1 * x2, axis=0)
-    norm1 = tl.sqrt(tl.sum(x1 * x1, axis=0))
-    norm2 = tl.sqrt(tl.sum(x2 * x2, axis=0))
-    cos = dot / (norm1 * norm2 + 1e-8)
+    for row in tl.range(pid, n_rows, num_pids):
+        dot = 0.0
+        sq1 = 0.0
+        sq2 = 0.0
+        for start in range(0, d, BLOCK_D):
+            idx = start + cols
+            col_mask = idx < d
+            v1 = tl.load(x1_ptr + row * x1_stride0 + idx, mask=col_mask, other=0.0).to(
+                tl.float32
+            )
+            v2 = tl.load(x2_ptr + row * x2_stride0 + idx, mask=col_mask, other=0.0).to(
+                tl.float32
+            )
+            dot += tl.sum(v1 * v2, axis=0)
+            sq1 += tl.sum(v1 * v1, axis=0)
+            sq2 += tl.sum(v2 * v2, axis=0)
 
-    y = tl.load(y_ptr + row).to(tl.float32)
-    is_pos = y > 0.0
-    loss = tl.where(is_pos, 1.0 - cos, tl.maximum(cos - margin, 0.0))
-    tl.store(mid_ptr + row, loss)
+        cos = dot / (tl.sqrt(sq1) * tl.sqrt(sq2) + 1e-8)
+
+        y = tl.load(y_ptr + row).to(tl.float32)
+        is_pos = y > 0.0
+        loss = tl.where(is_pos, 1.0 - cos, tl.maximum(cos - margin, 0.0))
+        tl.store(mid_ptr + row, loss)
 
 
 @triton.jit
@@ -185,7 +202,7 @@ def cosine_embedding_loss(
     margin: float = 0.0,
     reduction=1,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 COSINE_EMBEDDING_LOSS")
+    logger.debug("GEMS_ENFLAME COSINE_EMBEDDING_LOSS")
     input1, input2, target = _check_tensors(input1, input2, target)
     red = _normalize_reduction(reduction)
     margin = float(margin)
@@ -204,8 +221,8 @@ def cosine_embedding_loss(
         out = torch.empty((n_rows,), device=input1.device, dtype=input1.dtype)
         if n_rows == 0:
             return out
-        BLOCK_D = triton.next_power_of_2(d)
-        _cosine_embedding_loss_elementwise_kernel[(n_rows,)](
+        BLOCK_D = min(triton.next_power_of_2(d), 4096)
+        _cosine_embedding_loss_elementwise_kernel[(min(n_rows, 65535),)](
             x1, x2, y, out, n_rows, d, x1_stride0, x2_stride0, margin, BLOCK_D=BLOCK_D
         )
         # Restore the leading shape (target shape).
@@ -220,12 +237,12 @@ def cosine_embedding_loss(
                 return torch.full(
                     (), float("nan"), device=input1.device, dtype=input1.dtype
                 )
-        BLOCK_D = triton.next_power_of_2(d)
+        BLOCK_D = min(triton.next_power_of_2(d), 4096)
         # Stage 1: one program per row writes its float32 loss into mid.
         mid_size = n_rows
         block_mid = min(1024, triton.next_power_of_2(mid_size))
         mid = torch.empty((mid_size,), device=input1.device, dtype=torch.float32)
-        _cosine_embedding_loss_per_row_kernel[(n_rows,)](
+        _cosine_embedding_loss_per_row_kernel[(min(n_rows, 65535),)](
             x1,
             x2,
             y,

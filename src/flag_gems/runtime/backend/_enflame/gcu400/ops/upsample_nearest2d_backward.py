@@ -674,7 +674,7 @@ def _upsample_nearest2d_backward(
 def upsample_nearest2d_backward(
     grad_output, output_size, input_size, scales_h=None, scales_w=None
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_NEAREST2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_NEAREST2D_BACKWARD")
     return _upsample_nearest2d_backward(
         grad_output, output_size, input_size, scales_h, scales_w, None
     )
@@ -689,7 +689,7 @@ def upsample_nearest2d_backward_grad_input(
     *,
     grad_input,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_NEAREST2D_BACKWARD.GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_NEAREST2D_BACKWARD.GRAD_INPUT")
     return _upsample_nearest2d_backward(
         grad_output, output_size, input_size, scales_h, scales_w, grad_input
     )

@@ -727,7 +727,11 @@ def _prepare_inputs(input, other, dim):
 
 def _resolve_view(input):
     if input.is_complex() and input.is_conj():
-        input = torch.ops.aten.conj_physical.default.redispatch(_FALLBACK_KEYSET, input)
+        # gcu400: Tensor.resolve_conj() leaves the conj bit set, and
+        # conj_physical() applied to a conj view double-conjugates.  Toggle the
+        # view first, then materialise: the result carries the logical values
+        # with the flag cleared (verified against CPU for the same input).
+        input = torch.conj_physical(input.conj())
     if input.is_neg():
         input = torch.ops.aten.neg.default.redispatch(_FALLBACK_KEYSET, input)
     return input
@@ -794,13 +798,16 @@ def _launch_linalg_cross_kernel(input, other, output, dim, layout=None):
             other_real = torch.view_as_real(other)
             output_real = torch.view_as_real(output)
             if layout is None:
-                _linalg_cross_complex_contiguous_kernel[grid](
+                # gcu400: the coalesced 2-D tile kernel (tl.reshape/split over
+                # a (BLOCK, 4) tile) miscomputes every vector on this backend;
+                # the per-lane interleaved kernel below is exact.
+                _linalg_cross_complex_kernel[grid](
                     input_real,
                     other_real,
                     output_real,
                     num_vectors,
                     BLOCK_SIZE=block_size,
-                    num_warps=8,
+                    num_warps=4,
                 )
             else:
                 (
@@ -1010,12 +1017,12 @@ def _linalg_cross_impl(input, other, dim, output=None):
 
 def linalg_cross(input, other, *, dim=-1):
     """NVIDIA Triton implementation of ``torch.linalg.cross``."""
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_CROSS")
+    logger.debug("GEMS_ENFLAME LINALG_CROSS")
     return _linalg_cross_impl(input, other, dim)
 
 
 def linalg_cross_out(input, other, *, dim=-1, out):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_CROSS_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_CROSS_OUT")
     if torch._C._is_alias_of(out, input) or torch._C._is_alias_of(out, other):
         raise RuntimeError(
             "linalg_cross: out must not share memory with either input tensor"

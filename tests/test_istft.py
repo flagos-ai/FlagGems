@@ -176,17 +176,7 @@ def test_istft_1d_signal(dtype):
 # by test_istft_roundtrip for all three dtypes, and the fp64 path here already
 # pins the exact-arithmetic behavior this test targets.
 @pytest.mark.parametrize(
-    "dtype",
-    [
-        torch.float32,
-        pytest.param(
-            torch.float64,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "enflame",
-                reason="enflame dose not support fp64",
-            ),
-        ),
-    ],
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 )
 def test_istft_variants(dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:

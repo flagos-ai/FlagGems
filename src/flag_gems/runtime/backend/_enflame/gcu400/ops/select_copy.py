@@ -19,35 +19,141 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_SIZE = 1024
 _MAX_RANK = 8
+_INT32_MAX = 2**31 - 1
+
+# Flat copy tiers over int32 words (see knowledge/compiler_traps.md, word-copy
+# calibration 2026-11-17).  The grid is capped so every kernel below uses a
+# grid-stride tile loop: grid.x never approaches the 65535 hardware limit no
+# matter how large the slice is (the generic one-block-per-program form
+# overflows grid.x at 64M elements).
+_FLAT_SMALL_BLOCK, _FLAT_SMALL_GRID, _FLAT_SMALL_WARPS = 8192, 48, 4
+_FLAT_MID_WORDS = 16 * 1024 * 1024
+_FLAT_MID_BLOCK, _FLAT_MID_GRID, _FLAT_MID_WARPS = 32768, 48, 4
+_FLAT_DEEP_WORDS = 32 * 1024 * 1024
+_FLAT_DEEP_BLOCK, _FLAT_DEEP_GRID, _FLAT_DEEP_WARPS = 32768, 96, 8
+
+_GATHER_BLOCK, _GATHER_GRID, _GATHER_WARPS = 1024, 48, 4
+_ROWS_BLOCK, _ROWS_GRID, _ROWS_WARPS = 8192, 48, 4
 
 
+@libentry()
 @triton.jit
-def _select_copy_contig_kernel(
+def _select_copy_flat_kernel(
     src_ptr,
     dst_ptr,
+    src_offset,
     n_elements,
-    BLOCK_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+    WIDE: tl.constexpr,
+    MASKED: tl.constexpr,
 ):
-    """Contiguous fast path: copy the selected slice out linearly.
+    """Contiguous run copy: flat 1-D addressing with a grid-stride tile loop.
 
-    The wrapper passes ``self.select(dim, index)`` — the selected slice, which
-    for a contiguous input with ``dim == 0`` is itself a contiguous tensor
-    carrying the correct data pointer (its storage offset is folded in).
+    ``src_offset`` folds the selected position into the base pointer on the
+    host side, so no aten view is materialized on the hot path.
     """
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    offsets = offsets.to(tl.int64)
-    values = tl.load(src_ptr + offsets, mask=mask)
-    tl.store(dst_ptr + offsets, values, mask=mask)
+    pid = tl.program_id(0)
+    num_tiles = tl.cdiv(n_elements, BLOCK)
+    for tile_id in tl.range(pid, num_tiles, GRID):
+        if WIDE:
+            offsets = tile_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        if MASKED:
+            mask = offsets < n_elements
+            values = tl.load(src_ptr + src_offset + offsets, mask=mask, other=0)
+            tl.store(dst_ptr + offsets, values, mask=mask)
+        else:
+            values = tl.load(src_ptr + src_offset + offsets)
+            tl.store(dst_ptr + offsets, values)
 
 
+@libentry()
+@triton.jit
+def _select_copy_gather_kernel(
+    src_ptr,
+    dst_ptr,
+    src_offset,
+    stride,
+    n_elements,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+    WIDE: tl.constexpr,
+    MASKED: tl.constexpr,
+):
+    """Constant-stride gather: ``out[i] = src[src_offset + i * stride]``.
+
+    The output index needs no decomposition at all, so every element costs
+    one multiply - the generic rank-decomposition kernel pays an int64
+    div/mod chain here instead (measured 6.4us vs 3.xus for 8K elements).
+    """
+    pid = tl.program_id(0)
+    num_tiles = tl.cdiv(n_elements, BLOCK)
+    for tile_id in tl.range(pid, num_tiles, GRID):
+        if WIDE:
+            offsets = tile_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        src_offsets = src_offset + offsets * stride
+        if MASKED:
+            mask = offsets < n_elements
+            values = tl.load(src_ptr + src_offsets, mask=mask)
+            tl.store(dst_ptr + offsets, values, mask=mask)
+        else:
+            values = tl.load(src_ptr + src_offsets)
+            tl.store(dst_ptr + offsets, values)
+
+
+@libentry()
+@triton.jit
+def _select_copy_rows_kernel(
+    src_ptr,
+    dst_ptr,
+    src_offset,
+    row_stride,
+    n_elements,
+    ROW: tl.constexpr,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+    WIDE: tl.constexpr,
+    MASKED: tl.constexpr,
+):
+    """Row-block copy: ``out[m * ROW + c] = src[src_offset + m * R + c]``.
+
+    ``ROW`` (the contiguous row length) is a constexpr so power-of-two rows
+    fold the division to a shift; ``row_stride`` stays a runtime scalar.
+    The column index must be written in rem form (``offsets % ROW``): the
+    decomposed subtraction ``offsets - row * ROW`` is silently miscompiled
+    for gather addressing (knowledge/compiler_traps.md, rem-form entry;
+    device-verified 2026-11-17: row 0 correct, later rows read at wrong
+    offsets).
+    """
+    pid = tl.program_id(0)
+    num_tiles = tl.cdiv(n_elements, BLOCK)
+    for tile_id in tl.range(pid, num_tiles, GRID):
+        if WIDE:
+            offsets = tile_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        col = offsets % ROW
+        row = offsets // ROW
+        src_offsets = src_offset + row * row_stride + col
+        if MASKED:
+            mask = offsets < n_elements
+            values = tl.load(src_ptr + src_offsets, mask=mask)
+            tl.store(dst_ptr + offsets, values, mask=mask)
+        else:
+            values = tl.load(src_ptr + src_offsets)
+            tl.store(dst_ptr + offsets, values)
+
+
+@libentry()
 @triton.jit
 def _select_copy_strided_kernel(
     src_ptr,
@@ -71,34 +177,122 @@ def _select_copy_strided_kernel(
     n_elements,
     src_offset,
     RANK: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+    WIDE: tl.constexpr,
 ):
-    """Gather the selected slice from a (possibly) non-contiguous input.
+    """General rank-decomposition fallback for non-affine slices.
 
-    The output is contiguous, so its flat offset is the output index. For each
-    output index the matching source element is recovered by decomposing it
-    along the *slice* shape (row-major, the input dimensions other than
-    ``dim``) and applying the input strides for those dimensions, plus the
-    precomputed ``src_offset`` (the selected position along ``dim`` and the
-    input's storage offset are folded into it).
+    Same math as the generic kernel, but the index chain stays in int32
+    unless WIDE (the generic version widened every offset to int64, and the
+    emulated 64-bit div/mod chain made e.g. 64K-element copies ~3x slower
+    than the aten baseline).
     """
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    offsets = offsets.to(tl.int64)
-
+    pid = tl.program_id(0)
+    num_tiles = tl.cdiv(n_elements, BLOCK)
     src_strides = [s0, s1, s2, s3, s4, s5, s6, s7]
     slice_dims = [d0, d1, d2, d3, d4, d5, d6, d7]
+    for tile_id in tl.range(pid, num_tiles, GRID):
+        if WIDE:
+            offsets = tile_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+            rem = offsets
+            src_offsets = tl.full([], src_offset, tl.int64)
+        else:
+            offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+            rem = offsets
+            src_offsets = tl.full([], src_offset, tl.int32)
+        mask = offsets < n_elements
+        for j in tl.static_range(RANK - 2, -1, -1):
+            idx = rem % slice_dims[j]
+            rem = rem // slice_dims[j]
+            src_offsets += idx * src_strides[j]
+        values = tl.load(src_ptr + src_offsets, mask=mask)
+        tl.store(dst_ptr + offsets, values, mask=mask)
 
-    rem = offsets
-    src_offsets = tl.full([], src_offset, tl.int64)
-    for j in tl.static_range(RANK - 2, -1, -1):
-        idx = rem % slice_dims[j]
-        rem = rem // slice_dims[j]
-        src_offsets += idx * src_strides[j]
 
-    values = tl.load(src_ptr + src_offsets, mask=mask)
-    tl.store(dst_ptr + offsets, values, mask=mask)
+def _int32_viewable(tensor: torch.Tensor) -> bool:
+    """Whether ``tensor`` can be reinterpreted as int32 words (4-byte lanes)."""
+    esize = tensor.element_size()
+    if (tensor.numel() * esize) % 4 != 0:
+        return False
+    return (tensor.storage_offset() * esize) % 4 == 0
+
+
+def _launch_flat(
+    src: torch.Tensor, dst: torch.Tensor, src_offset: int, n_elements: int
+):
+    """Copy the ``n_elements``-long contiguous run at ``src_offset`` in ``src``.
+
+    Sub-4-byte dtypes are widened to int32 words when the storage allows,
+    halving the lane count of the same byte traffic.
+    """
+    esize = src.element_size()
+    if (
+        esize < 4
+        and (src_offset * esize) % 4 == 0
+        and _int32_viewable(src)
+        and _int32_viewable(dst)
+    ):
+        try:
+            src = src.view(torch.int32)
+            dst = dst.view(torch.int32)
+            src_offset = src_offset * esize // 4
+            n_elements = n_elements * esize // 4
+        except (RuntimeError, TypeError):
+            pass
+    if n_elements <= _FLAT_MID_WORDS:
+        block, grid_cap, num_warps = (
+            _FLAT_SMALL_BLOCK,
+            _FLAT_SMALL_GRID,
+            _FLAT_SMALL_WARPS,
+        )
+    elif n_elements <= _FLAT_DEEP_WORDS:
+        block, grid_cap, num_warps = _FLAT_MID_BLOCK, _FLAT_MID_GRID, _FLAT_MID_WARPS
+    else:
+        block, grid_cap, num_warps = (
+            _FLAT_DEEP_BLOCK,
+            _FLAT_DEEP_GRID,
+            _FLAT_DEEP_WARPS,
+        )
+    grid = (min(grid_cap, triton.cdiv(n_elements, block)),)
+    _select_copy_flat_kernel[grid](
+        src,
+        dst,
+        src_offset,
+        n_elements,
+        BLOCK=block,
+        GRID=grid_cap,
+        WIDE=n_elements > _INT32_MAX - block or src_offset > _INT32_MAX - n_elements,
+        MASKED=n_elements % block != 0,
+        num_warps=num_warps,
+    )
+
+
+def _row_form(dims, strides):
+    """Collapse the slice into an affine row-block form ``(row_len, row_stride)``.
+
+    The flat output index ``i`` decomposes as ``m * L + c`` with the source
+    offset ``src_offset + m * R + c``.  ``L == 1`` is a pure constant-stride
+    gather; ``L == n`` (reported as ``row_stride == 0`` with the whole slice
+    contiguous) is a single flat run.  Returns ``None`` when the slice is not
+    affinely addressable.  Size-1 dims are dropped by the caller.
+    """
+    k = len(dims)
+    length = 1
+    t = 0
+    while t < k and strides[k - 1 - t] == length:
+        length *= dims[k - 1 - t]
+        t += 1
+    head = k - t
+    if head == 0:
+        return length, 0
+    row_stride = strides[head - 1]
+    expected = row_stride
+    for i in range(head - 1, -1, -1):
+        if strides[i] != expected:
+            return None
+        expected *= dims[i]
+    return length, row_stride
 
 
 def select_copy(self: torch.Tensor, dim: int, index: int):
@@ -111,7 +305,7 @@ def select_copy(self: torch.Tensor, dim: int, index: int):
     PyTorch; 0-dim inputs, empty slices and out-of-range indices are rejected
     with the same error messages PyTorch raises.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SELECT_COPY")
+    logger.debug("GEMS_ENFLAME SELECT_COPY")
 
     if self.dim() == 0:
         raise RuntimeError("select() cannot be applied to a 0-dim tensor.")
@@ -125,6 +319,17 @@ def select_copy(self: torch.Tensor, dim: int, index: int):
     dim = dim % self.dim()
     index = index % dim_size
 
+    # Fast path: a contiguous input selecting along dim 0 is one flat run
+    # starting at ``index * stride(0)``.  This is the common large-copy shape
+    # and skips the affine analysis below.
+    if dim == 0 and self.is_contiguous():
+        out = torch.empty(self.shape[1:], dtype=self.dtype, device=self.device)
+        n_elements = out.numel()
+        if n_elements == 0:
+            return out
+        _launch_flat(self, out, index * int(self.stride(0)), n_elements)
+        return out
+
     shape = list(self.shape)
     del shape[dim]
     out = torch.empty(shape, dtype=self.dtype, device=self.device)
@@ -137,18 +342,60 @@ def select_copy(self: torch.Tensor, dim: int, index: int):
     # storage offset, so only the selected step along ``dim`` is added here.
     src_offset = index * int(self.stride(dim))
 
-    if self.is_contiguous() and (dim == 0 or n_elements <= 1):
-        # For a contiguous input the selected slice is itself contiguous only
-        # when ``dim == 0`` (the remaining strides are ``(..., 1)``); for any
-        # other ``dim`` the slice keeps stride != 1, so use the strided gather.
-        with torch_device_fn.device(self.device):
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-            _select_copy_contig_kernel[grid](
-                self.select(dim, index),
-                out,
-                n_elements,
-                BLOCK_SIZE=_BLOCK_SIZE,
+    # Affine form of the slice (input dims other than ``dim``); size-1 dims
+    # contribute nothing regardless of their stride.
+    slice_dims = list(self.shape)
+    slice_strides = [int(s) for s in self.stride()]
+    del slice_dims[dim]
+    del slice_strides[dim]
+    pairs = [(d, s) for d, s in zip(slice_dims, slice_strides) if d != 1]
+    dims = [d for d, _ in pairs]
+    strides = [s for _, s in pairs]
+
+    row_form = _row_form(dims, strides)
+    if row_form is not None:
+        row_len, row_stride = row_form
+        if row_len == n_elements:
+            # One contiguous run starting at ``src_offset``.
+            _launch_flat(self, out, src_offset, n_elements)
+            return out
+        if row_len == 1:
+            src_max = src_offset + (n_elements - 1) * row_stride
+            block, grid_cap, num_warps = (
+                _GATHER_BLOCK,
+                _GATHER_GRID,
+                _GATHER_WARPS,
             )
+            grid = (min(grid_cap, triton.cdiv(n_elements, block)),)
+            _select_copy_gather_kernel[grid](
+                self,
+                out,
+                src_offset,
+                row_stride,
+                n_elements,
+                BLOCK=block,
+                GRID=grid_cap,
+                WIDE=n_elements > _INT32_MAX - block or src_max > _INT32_MAX,
+                MASKED=n_elements % block != 0,
+                num_warps=num_warps,
+            )
+            return out
+        src_max = src_offset + (n_elements // row_len - 1) * row_stride + (row_len - 1)
+        block, grid_cap, num_warps = _ROWS_BLOCK, _ROWS_GRID, _ROWS_WARPS
+        grid = (min(grid_cap, triton.cdiv(n_elements, block)),)
+        _select_copy_rows_kernel[grid](
+            self,
+            out,
+            src_offset,
+            row_stride,
+            n_elements,
+            ROW=row_len,
+            BLOCK=block,
+            GRID=grid_cap,
+            WIDE=n_elements > _INT32_MAX - block or src_max > _INT32_MAX,
+            MASKED=n_elements % block != 0,
+            num_warps=num_warps,
+        )
         return out
 
     rank = self.dim()
@@ -159,23 +406,22 @@ def select_copy(self: torch.Tensor, dim: int, index: int):
     # Both arrays describe the *slice* (the input dimensions other than
     # ``dim``), padded to 8 entries with size-1 / zero-stride slots so the
     # kernel always receives its full fixed argument sets.
-    src_strides = [int(s) for s in self.stride()]
-    slice_dims = list(self.shape)
-    del src_strides[dim]
-    del slice_dims[dim]
-    src_strides = src_strides + [0] * (_MAX_RANK - len(src_strides))
-    slice_dims = slice_dims + [1] * (_MAX_RANK - len(slice_dims))
-
-    with torch_device_fn.device(self.device):
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _select_copy_strided_kernel[grid](
-            self,
-            out,
-            *src_strides,
-            *slice_dims,
-            n_elements,
-            src_offset,
-            RANK=rank,
-            BLOCK_SIZE=_BLOCK_SIZE,
-        )
+    src_strides = slice_strides + [0] * (_MAX_RANK - len(slice_strides))
+    padded_dims = slice_dims + [1] * (_MAX_RANK - len(slice_dims))
+    src_max = src_offset + sum((d - 1) * s for d, s in zip(padded_dims, src_strides))
+    block = 1024
+    grid = (min(48, triton.cdiv(n_elements, block)),)
+    _select_copy_strided_kernel[grid](
+        self,
+        out,
+        *src_strides,
+        *padded_dims,
+        n_elements,
+        src_offset,
+        RANK=rank,
+        BLOCK=block,
+        GRID=48,
+        WIDE=n_elements > _INT32_MAX - block or src_max > _INT32_MAX,
+        num_warps=4,
+    )
     return out

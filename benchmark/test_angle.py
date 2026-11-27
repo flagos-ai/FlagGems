@@ -20,6 +20,13 @@ import flag_gems
 from . import base, consts
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::angle; its CPU fallback "
+        "aborts the process, so there is no native baseline"
+    ),
+)
 @pytest.mark.angle
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

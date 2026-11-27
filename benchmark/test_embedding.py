@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -69,6 +71,10 @@ def test_embedding():
 
 
 @pytest.mark.embedding_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten 不支持",
+)
 def test_embedding_backward():
     # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
     bench = EmbeddingBenchmark(

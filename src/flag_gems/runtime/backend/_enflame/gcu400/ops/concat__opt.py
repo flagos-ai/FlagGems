@@ -124,7 +124,7 @@ def _fast_cat(A):
 def concat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 CONCAT")
+    logger.debug("GEMS_ENFLAME CONCAT")
     A = list(A)
     if _can_fast_path(A, dim):
         return _fast_cat(A)

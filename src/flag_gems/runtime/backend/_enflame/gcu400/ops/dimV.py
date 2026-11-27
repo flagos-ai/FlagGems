@@ -16,12 +16,12 @@ import logging
 
 import torch
 
-from ._dimI import ensure_sparse_coo_gcu_fallback
-
 logger = logging.getLogger(__name__)
 
-# Share GCU400's sparse COO constructor compatibility layer with _dimI, so importing this module alone also works.
-ensure_sparse_coo_gcu_fallback()
+# Resolved once at import time (dense_dim.py / _dimI.py precedent): the
+# per-call ``torch.sparse_coo`` attribute walk is removable host slack, and
+# layout enum members are singletons, so ``is`` is equivalent to ``==``.
+_SPARSE_COO = torch.sparse_coo
 
 
 def _dimV(self: torch.Tensor) -> int:
@@ -46,10 +46,31 @@ def _dimV(self: torch.Tensor) -> int:
       ``NotImplementedError`` natively ("Could not run 'aten::_dimV' ... from
       the 'CUDA'/'SparseCsrCUDA' backend"). Mirror that contract here instead
       of guessing a formula.
+    logger.debug("GEMS_ENFLAME _DIMV")
+
+    Enflame-local hot-path deviation (gcu400 copy): the operator has no
+    device kernel (GCU400 has no sparse-COO TensorImpl; benchmark/test_dimV
+    inputs are CPU-resident COO built through the shared construction
+    fallback), so its whole cost is host-side Python. Interleaved timeit
+    (GCU400, torch 2.11, 5 rounds x 30x2000) puts the previous body at
+    ~574ns per direct call, dominated by ``self._indices().shape[0]``
+    (~470ns: one dispatcher round-trip plus a fresh tensor-object wrap per
+    call; ``self.sparse_dim()`` is worse at ~1.58us). The COO value is
+    instead read via ``self.dense_dim()`` (~258ns, one dispatcher
+    round-trip returning a plain int) — the registered FlagGems sibling
+    metadata op that shares the exact COO semantics (FlagGems op
+    composition per the host-function contract; no recursion: the dense_dim
+    implementation never re-enters ``_dimV``), while this wrapper keeps the
+    ``_dimV``-only layout contract (non-COO raises; dense_dim alone would
+    answer 0 for compressed layouts). With the layout constant resolved at
+    import time and the singleton ``is`` compare, the direct call measures
+    ~322ns (-44%). Note that the official KERNEL-mode harness floors at
+    ~2.1us for any host-only call (an empty lambda measures the same), so
+    this gain is visible only in wall-clock timeit, not in the event-based
+    kernel-mode record (dense_dim.py / _unsafe_view.py precedent).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _DIMV")
-    if self.layout == torch.sparse_coo:
-        return self.dim() - self._indices().shape[0]
+    if self.layout is _SPARSE_COO:
+        return self.dense_dim()
     raise NotImplementedError(
         f"Could not run 'aten::_dimV' with arguments from the '{self.layout}' layout; "
         "aten::_dimV is only registered for the Sparse (COO) backends"

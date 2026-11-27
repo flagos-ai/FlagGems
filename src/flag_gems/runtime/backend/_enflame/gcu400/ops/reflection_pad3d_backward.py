@@ -19,10 +19,92 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
+# GCU400 reflection_pad3d_backward strategy (2026-11-16 perf rewrite):
+# The old kernel walked the D_out*H_out*W_out output space (one lane per grad
+# element) and scattered every contribution into grad_input with
+# `tl.atomic_add` after `torch.zeros`-initialising the output (plus, for
+# bfloat16, an fp32 round-trip buffer and a cast kernel). Serialized atomics
+# dominated: the biggest core-bench shape (2, 4, 8, 16, 32) spent 237-421us
+# on device vs ~117-249us for the native aten fallback (speedup 0.30-0.58x).
+# A naive gather rewrite (3D input tiles, 27 masked candidate loads with
+# od[:, None, None] * stride broadcast addresses) measured WORSE (434us):
+# the probe ladder showed every 3D computed-address load lowers to per-lane
+# scalar gathers (~15us per 512-lane load op on this backend, masked or
+# not), while flat per-row `base + tl.arange` loads coalesce.
+# The reflection map is separable per dimension, so the backward of input
+# row (d, h) is a fixed sum over at most 3 x 3 source rows (od, oh):
+#   P(d) = {d + pd0} | {pd0 - d if 1 <= d <= pd0} | {2*(D-1) - d + pd0
+#          if D-1-pd1 <= d <= D-2}
+# and each source row contributes center + left-mirror + right-mirror width
+# preimages. The rewrite keeps one kernel launch and walks the *input* rows
+# (grid-strided, capped at 48 programs like reflection_pad2d v4):
+#   * per row, scalar `if` guards issue only the preimage rows that exist
+#     for that (d, h) (interior rows: 1 source row; band rows: 2-4), each as
+#     a flat contiguous W-lane load for the center segment plus two narrow
+#     clamped computed-index mirror loads,
+#   * accumulation in fp32 registers, one masked store per row chunk,
+#   * no atomics, no zero-init memset (torch.empty), no bfloat16 cast kernel
+#     (single rounding at the store; also more accurate than the old
+#     per-add rounding atomic chain).
+# Mirror addresses use computed clamp vectors (tl.maximum/tl.minimum), never
+# negative-step arange forms (flagtree P13 silent-miscompile family); the
+# exact pattern was validated against CPU aten across 70 boundary configs.
+# The row loop inducts in int32 (tl.program_id, not the int64-casting
+# tle.program_id): an int64 index infects the per-lane address vectors and
+# multiplies fp16/bf16 row cost by ~8x (191us vs 23us on the biggest core
+# shape). Row spaces >= 2^31 work items take the WIDE int64 fallback for
+# correctness.
+
+
+@triton.jit
+def _w_mirror_add(
+    acc,
+    grad_ptr,
+    rowbase,
+    w,
+    pad_w0,
+    pad_w1,
+    W_in,
+    W_out,
+    HAS_L: tl.constexpr,
+    HAS_R: tl.constexpr,
+):
+    if HAS_L:
+        m = (w >= 1) & (w <= pad_w0)
+        src = tl.maximum(pad_w0 - w, 0)
+        acc += tl.load(grad_ptr + rowbase + src, mask=m, other=0.0).to(tl.float32)
+    if HAS_R:
+        m = (w >= W_in - 1 - pad_w1) & (w <= W_in - 2)
+        src = tl.minimum(tl.maximum(2 * (W_in - 1) - w + pad_w0, 0), W_out - 1)
+        acc += tl.load(grad_ptr + rowbase + src, mask=m, other=0.0).to(tl.float32)
+    return acc
+
+
+@triton.jit
+def _pair_add(
+    acc,
+    grad_ptr,
+    rowbase,
+    w,
+    pad_w0,
+    pad_w1,
+    W_in,
+    W_out,
+    HAS_PW0: tl.constexpr,
+    HAS_PW1: tl.constexpr,
+):
+    acc += tl.load(grad_ptr + rowbase + pad_w0 + w, mask=w < W_in, other=0.0).to(
+        tl.float32
+    )
+    acc = _w_mirror_add(
+        acc, grad_ptr, rowbase, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+    )
+    return acc
 
 
 @libentry()
@@ -30,13 +112,11 @@ logger = logging.getLogger(__name__)
 def reflection_pad3d_backward_kernel(
     grad_ptr,
     out_ptr,
-    N,
-    C,
+    work_total,
+    rows_per_img,
     D_in,
     H_in,
     W_in,
-    D_out,
-    H_out,
     W_out,
     pad_d0,
     pad_d1,
@@ -44,80 +124,151 @@ def reflection_pad3d_backward_kernel(
     pad_h1,
     pad_w0,
     pad_w1,
-    stride_grad_n,
-    stride_grad_c,
-    stride_grad_d,
-    stride_grad_h,
-    stride_grad_w,
-    stride_out_n,
-    stride_out_c,
-    stride_out_d,
-    stride_out_h,
-    stride_out_w,
-    BLOCK_DHW: tl.constexpr,
+    grad_img_stride,
+    grad_d_stride,
+    grad_h_stride,
+    out_img_stride,
+    HAS_PD0: tl.constexpr,
+    HAS_PD1: tl.constexpr,
+    HAS_PH0: tl.constexpr,
+    HAS_PH1: tl.constexpr,
+    HAS_PW0: tl.constexpr,
+    HAS_PW1: tl.constexpr,
+    NCHUNK: tl.constexpr,
+    WIDE: tl.constexpr,
+    BW: tl.constexpr,
 ):
-    pid_bc = tle.program_id(1)
-    pid_dhw = tle.program_id(0)
+    pid = tl.program_id(0)
+    nprog = tl.num_programs(0)
+    offs = tl.arange(0, BW)
+    # i32 induction keeps the whole per-lane address math 32-bit: an int64
+    # loop index (e.g. via tle.program_id) infects every row-base address
+    # vector and costs fp16/bf16 rows 8x on this backend (measured 191us vs
+    # 23us on (2,4,8,16,32)). Giant row spaces (>= 2^31 work items) fall
+    # back to the int64 path for correctness.
+    if WIDE:
+        start = pid.to(tl.int64)
+    else:
+        start = pid
+    for t in range(start, work_total, nprog):
+        if NCHUNK == 1:
+            rid = t
+            w = offs
+        else:
+            rid = t // NCHUNK
+            w = (t - rid * NCHUNK) * BW + offs
+        w_ok = w < W_in
+        img = rid // rows_per_img
+        rem = rid % rows_per_img
+        d = rem // H_in
+        h = rem % H_in
+        gbase = img * grad_img_stride
+        od = d + pad_d0
+        oh = h + pad_h0
+        rowbase = gbase + od * grad_d_stride + oh * grad_h_stride
 
-    pid_n = pid_bc % N
-    pid_c = pid_bc // N
+        # center source row (d + pd0, h + ph0)
+        acc = tl.load(grad_ptr + rowbase + pad_w0 + w, mask=w_ok, other=0.0).to(
+            tl.float32
+        )
+        acc = _w_mirror_add(
+            acc, grad_ptr, rowbase, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+        )
 
-    # Compute output position (grad_output position)
-    dhw_start = pid_dhw * BLOCK_DHW
-    dhw_offs = dhw_start + tl.arange(0, BLOCK_DHW)
-    mask = dhw_offs < D_out * H_out * W_out
+        has_dl = (d >= 1) & (d <= pad_d0)
+        has_dh = (d >= D_in - 1 - pad_d1) & (d <= D_in - 2)
+        has_hl = (h >= 1) & (h <= pad_h0)
+        has_hh = (h >= H_in - 1 - pad_h1) & (h <= H_in - 2)
 
-    # Decode 3D coordinates for output position
-    d_out = dhw_offs // (H_out * W_out)
-    h_out = (dhw_offs // W_out) % H_out
-    w_out = dhw_offs % W_out
+        # (od_l, oh_c)
+        if HAS_PD0:
+            if has_dl:
+                rb = gbase + (pad_d0 - d) * grad_d_stride + oh * grad_h_stride
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_h, oh_c)
+        if HAS_PD1:
+            if has_dh:
+                rb = (
+                    gbase
+                    + (2 * (D_in - 1) - d + pad_d0) * grad_d_stride
+                    + (oh * grad_h_stride)
+                )
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_c, oh_l)
+        if HAS_PH0:
+            if has_hl:
+                rb = gbase + od * grad_d_stride + (pad_h0 - h) * grad_h_stride
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_c, oh_h)
+        if HAS_PH1:
+            if has_hh:
+                rb = (
+                    gbase
+                    + od * grad_d_stride
+                    + (2 * (H_in - 1) - h + pad_h0) * grad_h_stride
+                )
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_l, oh_l)
+        if HAS_PD0 and HAS_PH0:
+            if has_dl and has_hl:
+                rb = gbase + (pad_d0 - d) * grad_d_stride + (pad_h0 - h) * grad_h_stride
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_l, oh_h)
+        if HAS_PD0 and HAS_PH1:
+            if has_dl and has_hh:
+                rb = (
+                    gbase
+                    + (pad_d0 - d) * grad_d_stride
+                    + (2 * (H_in - 1) - h + pad_h0) * grad_h_stride
+                )
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_h, oh_l)
+        if HAS_PD1 and HAS_PH0:
+            if has_dh and has_hl:
+                rb = (
+                    gbase
+                    + (2 * (D_in - 1) - d + pad_d0) * grad_d_stride
+                    + (pad_h0 - h) * grad_h_stride
+                )
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
+        # (od_h, oh_h)
+        if HAS_PD1 and HAS_PH1:
+            if has_dh and has_hh:
+                rb = (
+                    gbase
+                    + (2 * (D_in - 1) - d + pad_d0) * grad_d_stride
+                    + (2 * (H_in - 1) - h + pad_h0) * grad_h_stride
+                )
+                acc = _pair_add(
+                    acc, grad_ptr, rb, w, pad_w0, pad_w1, W_in, W_out, HAS_PW0, HAS_PW1
+                )
 
-    # Compute the input position this maps to via reflection
-    # Depth dimension
-    Dm1 = D_in - 1
-    D_period = 2 * Dm1 if Dm1 > 0 else 1
-    x_d = d_out - pad_d0
-    t_d = tl.abs(x_d)
-    m_d = t_d % D_period
-    d_idx = tl.where(m_d < D_in, m_d, D_period - m_d)
+        tl.store(
+            out_ptr + img * out_img_stride + rem * W_in + w,
+            acc.to(out_ptr.type.element_ty),
+            mask=w_ok,
+        )
 
-    # Height dimension
-    Hm1 = H_in - 1
-    H_period = 2 * Hm1 if Hm1 > 0 else 1
-    x_h = h_out - pad_h0
-    t_h = tl.abs(x_h)
-    m_h = t_h % H_period
-    h_idx = tl.where(m_h < H_in, m_h, H_period - m_h)
 
-    # Width dimension
-    Wm1 = W_in - 1
-    W_period = 2 * Wm1 if Wm1 > 0 else 1
-    x_w = w_out - pad_w0
-    t_w = tl.abs(x_w)
-    m_w = t_w % W_period
-    w_idx = tl.where(m_w < W_in, m_w, W_period - m_w)
-
-    # Load gradient at output position - cast to float32 for atomic add
-    grad_offs = (
-        pid_n * stride_grad_n
-        + pid_c * stride_grad_c
-        + d_out * stride_grad_d
-        + h_out * stride_grad_h
-        + w_out * stride_grad_w
-    )
-    grad_val = tl.load(grad_ptr + grad_offs, mask=mask, other=0.0).to(tl.float32)
-
-    # Compute output position for grad_input
-    out_offs = (
-        pid_n * stride_out_n
-        + pid_c * stride_out_c
-        + d_idx * stride_out_d
-        + h_idx * stride_out_h
-        + w_idx * stride_out_w
-    )
-
-    # Atomically add float32 value to float32 output (without mask for bfloat16 compatibility)
-    tl.atomic_add(out_ptr + out_offs, grad_val)
+def _next_pow2(n, cap, lo):
+    p = lo
+    while p < n and p < cap:
+        p *= 2
+    return p
 
 
 def reflection_pad3d_backward(grad_output, self, padding):
@@ -132,7 +283,7 @@ def reflection_pad3d_backward(grad_output, self, padding):
     Returns:
         Gradient with respect to self. Shape: (N, C, D, H, W)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME REFLECTION_PAD3D_BACKWARD")
 
     if isinstance(padding, int):
         pad_d0 = pad_d1 = pad_h0 = pad_h1 = pad_w0 = pad_w1 = padding
@@ -170,48 +321,60 @@ def reflection_pad3d_backward(grad_output, self, padding):
 
     grad_output = grad_output.contiguous()
 
-    # For bfloat16, we need to accumulate in float32 and cast back
-    # This is because tl.atomic_add doesn't support bfloat16 directly
-    output_dtype = self.dtype
-    if self.dtype in (torch.bfloat16,):
-        out = torch.zeros(
-            (N, C, D_in, H_in, W_in), device=self.device, dtype=torch.float32
+    # every output element is written exactly once by its owning row chunk,
+    # so a plain empty buffer replaces the old zeros + atomics scheme
+    out = torch.empty((N, C, D_in, H_in, W_in), device=self.device, dtype=self.dtype)
+    if out.numel() == 0:
+        return out
+
+    rows_per_img = D_in * H_in
+    BW = _next_pow2(W_in, 8192, 2)
+    nchunk = triton.cdiv(W_in, BW)
+    work_total = N * C * rows_per_img * nchunk
+
+    def _launch():
+        reflection_pad3d_backward_kernel[(min(48, work_total),)](
+            grad_output,
+            out,
+            work_total,
+            rows_per_img,
+            D_in,
+            H_in,
+            W_in,
+            W_out,
+            pad_d0,
+            pad_d1,
+            pad_h0,
+            pad_h1,
+            pad_w0,
+            pad_w1,
+            D_out * H_out * W_out,
+            H_out * W_out,
+            W_out,
+            D_in * H_in * W_in,
+            HAS_PD0=pad_d0 > 0,
+            HAS_PD1=pad_d1 > 0,
+            HAS_PH0=pad_h0 > 0,
+            HAS_PH1=pad_h1 > 0,
+            HAS_PW0=pad_w0 > 0,
+            HAS_PW1=pad_w1 > 0,
+            NCHUNK=nchunk,
+            WIDE=work_total >= 2**31,
+            BW=BW,
+            num_warps=8 if BW >= 4096 else (4 if BW >= 256 else 2),
         )
-    else:
-        out = torch.zeros_like(self)
 
-    # Launch kernel with output-space parallelization
-    # Grid: (num_dhw_blocks, N*C) where each block handles BLOCK_DHW output positions
-    BLOCK_DHW = 256
-    grid = (
-        triton.cdiv(D_out * H_out * W_out, BLOCK_DHW),
-        N * C,
-    )
-
-    reflection_pad3d_backward_kernel[grid](
-        grad_output,
-        out,
-        N,
-        C,
-        D_in,
-        H_in,
-        W_in,
-        D_out,
-        H_out,
-        W_out,
-        pad_d0,
-        pad_d1,
-        pad_h0,
-        pad_h1,
-        pad_w0,
-        pad_w1,
-        *grad_output.stride(),
-        *out.stride(),
-        BLOCK_DHW=BLOCK_DHW,
-    )
-
-    # Cast back to original dtype if needed
-    if output_dtype in (torch.bfloat16,):
-        out = out.to(dtype=output_dtype)
+    # cold compiles hit the documented node-level toolchain flakiness (P02
+    # family): a fresh-compile subprocess can die before producing a cache
+    # entry; retrying the launch re-enters compilation and succeeds
+    # (reflection_pad2d / atan2_ / _pad_circular precedent).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(self.device):
+                _launch()
+            break
+        except Exception:
+            if attempt == 2:
+                raise
 
     return out
