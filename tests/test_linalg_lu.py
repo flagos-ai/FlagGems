@@ -9,16 +9,18 @@ from . import accuracy_utils as utils
 
 DEVICE = flag_gems.device
 VENDOR = flag_gems.vendor_name
+IS_KUNLUNXIN = VENDOR == "kunlunxin"
 
 if VENDOR == "nvidia":
     _TEST_DTYPES = [torch.float32, torch.float64]
 else:
     _TEST_DTYPES = [torch.float32]
 
-# pivot=False is only supported on CUDA
+# pivot=False is only supported on CUDA. Kunlunxin's torch build reports
+# device.type == "cuda" but has no no-pivot factorization.
 if utils.TO_CPU:
     _PIVOT_VALUES = [True]
-elif DEVICE == "cuda":
+elif DEVICE == "cuda" and not IS_KUNLUNXIN:
     _PIVOT_VALUES = [True, False]
 else:
     _PIVOT_VALUES = [True]

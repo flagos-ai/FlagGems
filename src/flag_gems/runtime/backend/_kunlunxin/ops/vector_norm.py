@@ -366,10 +366,14 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += pow(tl.abs(a), ord)
+        # For ord < 0 a masked-out lane seeded with 0.0 would compute
+        # 0.0 ** (-2) = inf and poison the whole row's sum (out becomes 0.0).
+        # Seed the padding with 1.0 (1.0 ** ord == 1.0 for every ord, so no
+        # inf/NaN is ever produced) and zero the contribution explicitly.
+        a = tl.load(X + cols, mask, other=1.0).to(tl.float32)
+        _sum += tl.where(mask, pow(tl.abs(a), ord), 0.0)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
@@ -387,8 +391,11 @@ def l1_norm_kernel_1(
     Mid = Mid + pid
     mask = offset < M
 
-    x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(pow(tl.abs(x), ord))
+    # Seed the padding with 1.0 (1.0 ** ord == 1.0) so an ord < 0 lane never
+    # evaluates 0.0 ** ord == inf; its contribution is zeroed explicitly (see
+    # v_norm_kernel).
+    x = tl.load(X, mask=mask, other=1.0).to(tl.float32)
+    mid = tl.sum(tl.where(mask, pow(tl.abs(x), ord), 0.0))
     tl.store(Mid, mid)
 
 

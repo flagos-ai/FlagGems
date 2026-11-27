@@ -39,14 +39,23 @@ SOLVE_EX_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
 def _make_solve_ex_inputs(shape, k, dtype, device, left=True):
     """Create well-conditioned A and random B for solve_ex test."""
     n = shape[-1]
-    A = torch.randn(*shape, dtype=dtype, device=device)
-    eye = torch.eye(n, dtype=dtype, device=device)
+    # The XPU torch build has no complex `eye` and no complex matmul, so the
+    # complex inputs are built on CPU and moved; the solve itself still runs
+    # on the XPU kernels.
+    build_device = (
+        "cpu" if flag_gems.vendor_name == "kunlunxin" and dtype.is_complex else device
+    )
+    A = torch.randn(*shape, dtype=dtype, device=build_device)
+    eye = torch.eye(n, dtype=dtype, device=build_device)
     batch_dims = [1] * (A.ndim - 2)
     if batch_dims:
         eye = eye.view(*batch_dims, n, n)
     A = A @ A.mH + eye * n
     B_shape = shape[:-1] + (k,) if left else shape[:-2] + (k, n)
-    B = torch.randn(*B_shape, dtype=dtype, device=device)
+    B = torch.randn(*B_shape, dtype=dtype, device=build_device)
+    if build_device != device:
+        A = A.to(device)
+        B = B.to(device)
     return A, B
 
 
@@ -276,14 +285,13 @@ def test__linalg_solve_ex_complex(n, dtype):
     res_out, res_lu, res_pivots, res_info = flag_gems._linalg_solve_ex(A, B)
 
     # gems_assert_close asserts against a real-dtype resolution table, so the
-    # complex outputs are compared directly here.
+    # complex outputs are compared directly here. Do it on the CPU: some XPU
+    # torch builds do not implement complex eq/isclose on device (CI's
+    # torch_xmlir raises [NOT IMPLEMENTED] from isclose -> eq), while a CPU
+    # comparison is exact and portable.
     rtol = 1e-3 if dtype == torch.complex64 else 1e-7
-    torch.testing.assert_close(
-        utils.to_cpu(res_out, ref_out), ref_out, rtol=rtol, atol=1e-4 * n
-    )
-    torch.testing.assert_close(
-        utils.to_cpu(res_lu, ref_lu), ref_lu, rtol=rtol, atol=1e-4 * n
-    )
+    torch.testing.assert_close(res_out.cpu(), ref_out.cpu(), rtol=rtol, atol=1e-4 * n)
+    torch.testing.assert_close(res_lu.cpu(), ref_lu.cpu(), rtol=rtol, atol=1e-4 * n)
     utils.gems_assert_equal(res_pivots, ref_pivots)
     utils.gems_assert_equal(res_info, ref_info)
 
@@ -309,6 +317,10 @@ def test__linalg_solve_ex_non_contiguous(dtype):
 @pytest.mark.underscore_linalg_solve_ex
 def test__linalg_solve_ex_dtype_mismatch():
     """A and B must agree on dtype, as ATen requires."""
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # a mismatched dtype pair cannot be created there.
+        pytest.skip("float64 is not supported by this device")
     A = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
     B = torch.randn(4, 2, dtype=torch.float64, device=flag_gems.device)
 
