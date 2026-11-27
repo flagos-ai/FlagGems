@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import logging
 import math
 
@@ -63,17 +64,32 @@ _ASCEND_SPLIT_BYTE_RADIX_MIN_N = 8192
 _ASCEND_RADIX_MAX_N = torch.iinfo(torch.int32).max
 _TORCH_VERSION = version.parse(torch.__version__.split("+", 1)[0])
 _TRITON_VERSION = version.parse(triton.__version__.split("+", 1)[0])
-_ASCEND_910B2C = torch.npu.get_device_name().startswith("Ascend910B2C")
-_ASCEND_CANN85_TOPK_SUPPORTED = (
-    _ASCEND_910B2C
-    and _TORCH_VERSION.release[:2] == (2, 9)
-    and _TRITON_VERSION.release[:2] == (3, 2)
-)
-_ASCEND_CANN9_TOPK_SUPPORTED = (
-    _ASCEND_910B2C
-    and _TORCH_VERSION.release[:2] == (2, 10)
-    and _TRITON_VERSION.release[:2] == (3, 5)
-)
+
+
+@functools.lru_cache(maxsize=1)
+def _is_ascend_910b2c():
+    # Lazily queried: at module-import time no NPU context may exist yet, and
+    # torch.npu.get_device_name() without an active context raises (device
+    # id resolves to None, then compared with `< 0`). Deferring to first call
+    # (always after flag_gems is fully imported and a device is in use) avoids
+    # that, and caching keeps the device query off the hot path afterward.
+    return torch.npu.get_device_name(0).startswith("Ascend910B2C")
+
+
+def _ascend_cann85_topk_supported():
+    return (
+        _is_ascend_910b2c()
+        and _TORCH_VERSION.release[:2] == (2, 9)
+        and _TRITON_VERSION.release[:2] == (3, 2)
+    )
+
+
+def _ascend_cann9_topk_supported():
+    return (
+        _is_ascend_910b2c()
+        and _TORCH_VERSION.release[:2] == (2, 10)
+        and _TRITON_VERSION.release[:2] == (3, 5)
+    )
 
 
 @libentry()
@@ -730,8 +746,8 @@ def _nanmedian_float_sort_select(inp, M, N, values, indices):
 
 
 def _nanmedian_float_topk_supported(N):
-    return _ASCEND_CANN9_TOPK_SUPPORTED or (
-        _ASCEND_CANN85_TOPK_SUPPORTED and N <= _ASCEND_TOPK_FUSED_MAX_N
+    return _ascend_cann9_topk_supported() or (
+        _ascend_cann85_topk_supported() and N <= _ASCEND_TOPK_FUSED_MAX_N
     )
 
 
@@ -740,7 +756,7 @@ def _nanmedian_float_topk_select(inp, M, N, values, indices):
     rows = inp.reshape(M, N)
     k = (N + 1) // 2
 
-    if _ASCEND_CANN9_TOPK_SUPPORTED and N > _ASCEND_TOPK_SHORT_N:
+    if _ascend_cann9_topk_supported() and N > _ASCEND_TOPK_SHORT_N:
         grid = min(M, CORE_NUM)
         rows_per_program = triton.cdiv(M, grid)
         valid_counts = torch.empty_strided(
@@ -776,7 +792,7 @@ def _nanmedian_float_topk_select(inp, M, N, values, indices):
         return
 
     top_values, top_indices = torch.topk(rows, k, dim=-1, largest=False, sorted=True)
-    if _ASCEND_CANN85_TOPK_SUPPORTED:
+    if _ascend_cann85_topk_supported():
         grid = M
         rows_per_program = 1
         num_warps = 4

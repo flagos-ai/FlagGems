@@ -253,6 +253,21 @@ def _make_sparse(*case, dtype, value_range=("-1", "1"), values=None):
     )
 
 
+def _assert_sparse_equal(res, ref, *, equal_nan=True):
+    """Compare values, observing them on the host when the device cannot.
+
+    Kunlunxin has no complex isclose kernel, and these tensors are compared
+    exactly (the copy contract is device-independent), so the metadata is
+    checked on the device and the values on the host for that dtype.
+    """
+    if flag_gems.vendor_name == "kunlunxin" and res.dtype.is_complex:
+        assert res.dtype == ref.dtype
+        assert res.layout == ref.layout
+        assert res.shape == ref.shape
+        res, ref = res.cpu(), ref.cpu()
+    utils.gems_assert_equal(res, ref, equal_nan=equal_nan)
+
+
 def _assert_copy_result(res_out, ref_out, inp):
     """A fresh contiguous copy, never a view sharing the input values' storage."""
     if res_out.numel():
@@ -262,7 +277,7 @@ def _assert_copy_result(res_out, ref_out, inp):
     assert res_out.is_contiguous()
     # equal_nan: the copy is bit-exact, but NaN payloads may differ between the
     # native reference copy and the Triton copy; the values still correspond.
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    _assert_sparse_equal(res_out, ref_out, equal_nan=True)
 
 
 def _rejection_input(kind, dtype):
@@ -427,7 +442,7 @@ def test_values_copy(case, dtype, value_range):
     res_out = flag_gems.values_copy(inp)
 
     _assert_copy_result(res_out, ref_out, inp)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy_out
@@ -443,8 +458,8 @@ def test_values_copy_out(case, dtype, value_range):
     res_ret = flag_gems.values_copy(inp, out=out)
 
     assert res_ret is out
-    utils.gems_assert_equal(out, ref_out, equal_nan=True)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(out, ref_out, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy
@@ -461,7 +476,7 @@ def test_values_copy_values_view(kind, dtype):
     res_out = flag_gems.values_copy(inp)
 
     _assert_copy_result(res_out, ref_out, inp)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy
@@ -489,8 +504,8 @@ def test_values_copy_out_into_offset_buffer(case, dtype):
     assert out.storage_offset() == 3 and out.is_contiguous()
     assert out.shape == values_shape
     # The whole buffer, so the sentinel neighbours must survive the write.
-    utils.gems_assert_equal(buffer, ref_buffer, equal_nan=True)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(buffer, ref_buffer, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy
@@ -520,8 +535,8 @@ def test_values_copy_out_into_strided_view(case, dtype):
     assert tuple(res_ret.shape) == tuple(ref_out.shape) == tuple(inp.values().shape)
     assert out.stride() == ref_out.stride()
     # Exact whole-parent comparison: written slice and sentinel neighbours.
-    utils.gems_assert_equal(parent, ref_parent, equal_nan=True)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(parent, ref_parent, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy
@@ -539,7 +554,7 @@ def test_values_copy_special_values(dtype, scenario):
     res_out = flag_gems.values_copy(inp)
 
     _assert_copy_result(res_out, ref_out, inp)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy
@@ -559,8 +574,8 @@ def test_values_copy_out_special_values(dtype, scenario):
     res_ret = flag_gems.values_copy(inp, out=out)
 
     assert res_ret is out
-    utils.gems_assert_equal(out, ref_out, equal_nan=True)
-    utils.gems_assert_equal(inp, ref_inp, equal_nan=True)
+    _assert_sparse_equal(out, ref_out, equal_nan=True)
+    _assert_sparse_equal(inp, ref_inp, equal_nan=True)
 
 
 @pytest.mark.values_copy
@@ -586,7 +601,7 @@ def test_values_copy_backward(case, dtype):
     ref_grad = torch.autograd.grad(ref_out, ref_values, grad_outputs=ref_upstream)[0]
     res_grad = torch.autograd.grad(res_out, values, grad_outputs=upstream)[0]
 
-    utils.gems_assert_equal(res_grad, ref_grad)
+    _assert_sparse_equal(res_grad, ref_grad)
 
 
 @pytest.mark.values_copy
@@ -764,7 +779,7 @@ def test_values_copy_noncontiguous_stored_values(case, dtype):
 
     assert res.shape == ref.shape
     assert res.untyped_storage().data_ptr() != stored.untyped_storage().data_ptr()
-    utils.gems_assert_equal(res, ref)
+    _assert_sparse_equal(res, ref)
 
 
 @pytest.mark.values_copy
@@ -785,4 +800,4 @@ def test_values_copy_out_noncontiguous_stored_values(case):
         res = flag_gems._values_copy_out(inp, out=out)
 
         assert res is out
-        utils.gems_assert_equal(out, ref)
+        _assert_sparse_equal(out, ref)
