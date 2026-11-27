@@ -99,6 +99,7 @@ from ._foreach_expm1 import _foreach_expm1 as _foreach_expm1
 from ._foreach_expm1_ import _foreach_expm1_ as _foreach_expm1_
 from ._foreach_floor import _foreach_floor as _foreach_floor
 from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
+from ._foreach_frac import _foreach_frac as _foreach_frac
 from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log import _foreach_log as _foreach_log
 from ._foreach_log10 import _foreach_log10 as _foreach_log10
@@ -450,6 +451,7 @@ __all__ = [
     "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_frac",
     "_foreach_frac_",
     "_foreach_log",
     "_foreach_log10",
