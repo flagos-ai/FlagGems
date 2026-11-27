@@ -47,6 +47,7 @@ from ._foreach_addcmul__ScalarList import (
 from ._foreach_addcmul__Tensor import (
     _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
 )
+from ._foreach_asin_ import _foreach_asin_ as _foreach_asin_
 from ._foreach_atan import _foreach_atan as _foreach_atan
 from ._foreach_atan_ import _foreach_atan_ as _foreach_atan_
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
@@ -81,6 +82,7 @@ from ._foreach_clamp_min_ScalarList import (
 from ._foreach_copy import _foreach_copy as _foreach_copy
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_cos import _foreach_cos as _foreach_cos
+from ._foreach_cos_ import _foreach_cos_ as _foreach_cos_
 from ._foreach_div__List import _foreach_div__List as _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import (
@@ -99,6 +101,7 @@ from ._foreach_expm1 import _foreach_expm1 as _foreach_expm1
 from ._foreach_expm1_ import _foreach_expm1_ as _foreach_expm1_
 from ._foreach_floor import _foreach_floor as _foreach_floor
 from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
+from ._foreach_frac import _foreach_frac as _foreach_frac
 from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log import _foreach_log as _foreach_log
 from ._foreach_log10 import _foreach_log10 as _foreach_log10
@@ -125,6 +128,7 @@ from ._foreach_rsqrt import _foreach_rsqrt as _foreach_rsqrt
 from ._foreach_sigmoid import _foreach_sigmoid as _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
+from ._foreach_sin import _foreach_sin as _foreach_sin
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
@@ -416,6 +420,7 @@ __all__ = [
     "_foreach_addcmul__Scalar",
     "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
+    "_foreach_asin_",
     "_foreach_atan",
     "_foreach_atan_",
     "_foreach_ceil",
@@ -434,6 +439,7 @@ __all__ = [
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_cos",
+    "_foreach_cos_",
     "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
@@ -450,6 +456,7 @@ __all__ = [
     "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_frac",
     "_foreach_frac_",
     "_foreach_log",
     "_foreach_log10",
@@ -474,6 +481,7 @@ __all__ = [
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign_",
+    "_foreach_sin",
     "_foreach_sub__ScalarList",
     "_fused_rms_norm_backward",
     "_masked_scale",
