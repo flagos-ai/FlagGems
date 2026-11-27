@@ -59,7 +59,6 @@ def test_tanh_backward(shape, dtype):
     ref_grad = utils.to_reference(res_grad, True)
 
     ref_in_grad = torch.ops.aten.tanh_backward(ref_grad, ref_out)
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.tanh_backward(res_grad, res_out)
+    res_in_grad = flag_gems.tanh_backward(res_grad, res_out)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
