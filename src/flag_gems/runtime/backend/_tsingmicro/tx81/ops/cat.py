@@ -69,15 +69,11 @@ def copy_func(x):
     return x
 
 
-def cat(
-    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
-    logger.debug("GEMS_TSINGMICRO CAT")
-
-    if len(A) == 0:
-        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
-    if len(A) == 1:
-        return A[0]
+def _cat_validate(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int
+) -> Tuple[List[torch.Tensor], int, List[int]]:
+    """Validate and normalize inputs; returns (A, dim, out_shape)."""
+    A = list(A)
 
     # Find max ndim among all tensors
     max_ndim = max(_.ndim for _ in A)
@@ -122,9 +118,15 @@ def cat(
 
     out_shape = list(inp0_shape)
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
-    out0 = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
+    return A, dim, out_shape
+
+
+def _cat_impl(
+    A: List[torch.Tensor], dim: int, out0: torch.Tensor
+) -> torch.Tensor:
+    """Copy every input tensor into ``out0`` along ``dim``."""
     out0_dim_offsets = list(
-        itertools.accumulate([s[dim] for s in inp_shapes[:-1]], initial=0)
+        itertools.accumulate([a.shape[dim] for a in A[:-1]], initial=0)
     )
 
     # Per-dim offsets cannot be expressed with block pointers (boundary_check
@@ -139,6 +141,9 @@ def cat(
     try:
         for a, out0_dim_offset in zip(A, out0_dim_offsets):
             out_tensor_view = out0.narrow(dim, out0_dim_offset, a.shape[dim])
+            if a.ndim == 3 and a.numel() > 0 and a.is_contiguous():
+                copy_tensor(out_tensor_view, a)
+                continue
             if _int64_large_strided_unsafe(out_tensor_view, a):
                 # TX Triton cannot lower some int64 pointwise copies with a large
                 # non-contiguous stride. Reuse copy_'s ATen redispatch fallback.
@@ -157,3 +162,47 @@ def cat(
         if precision_token is not None:
             restore_precision_mode(precision_token)
     return out0
+
+
+def cat(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
+) -> torch.Tensor:
+    logger.debug("GEMS_TSINGMICRO CAT")
+
+    if len(A) == 0:
+        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
+    if len(A) == 1:
+        return A[0]
+
+    A, dim, out_shape = _cat_validate(A, dim)
+    out0 = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
+    return _cat_impl(A, dim, out0)
+
+
+def cat_out(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int = 0,
+    *,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    logger.debug("GEMS_TSINGMICRO CAT_OUT")
+
+    if len(A) == 0:
+        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
+    if len(A) == 1:
+        t = A[0]
+        out.resize_(t.shape)
+        if out.dtype != t.dtype:
+            out.copy_(t.to(out.dtype))
+        else:
+            out.copy_(t)
+        return out
+
+    A, dim, out_shape = _cat_validate(A, dim)
+    if out.dtype != A[0].dtype:
+        raise RuntimeError(
+            f"cat.out: expected out dtype {A[0].dtype}, got {out.dtype}"
+        )
+    if list(out.shape) != out_shape:
+        out.resize_(out_shape)
+    return _cat_impl(A, dim, out)

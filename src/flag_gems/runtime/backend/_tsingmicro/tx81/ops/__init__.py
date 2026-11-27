@@ -68,7 +68,7 @@ from .bitwise_xor import (
     bitwise_xor_tensor,
     bitwise_xor_tensor_,
 )
-from .cat import cat
+from .cat import cat, cat_out
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
@@ -318,6 +318,7 @@ __all__ = [
     "bitwise_xor_tensor",
     "bitwise_xor_tensor_",
     "cat",
+    "cat_out",
     "ceil",
     "ceil_",
     "ceil_out",
