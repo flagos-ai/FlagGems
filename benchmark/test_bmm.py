@@ -16,8 +16,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import bmm_out as triton_bmm_out
 from flag_gems import bmm_w8a8_fp8
+from flag_gems.ops.bmm import bmm_out as triton_bmm_out
 
 from . import base, consts
 
@@ -77,7 +77,17 @@ FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
 
 
 def _is_fp8e4nv_supported():
-    if FP8_DTYPE is None or not torch.cuda.is_available():
+    if FP8_DTYPE is None:
+        return False
+    if flag_gems.vendor_name == "enflame":
+        # GCU has no CUDA capability query; probe whether the backend can
+        # allocate an fp8e4nv tensor instead.
+        try:
+            torch.zeros(1, dtype=FP8_DTYPE, device=flag_gems.device)
+        except Exception:
+            return False
+        return True
+    if not torch.cuda.is_available():
         return False
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
@@ -214,6 +224,13 @@ class BmmW8A8Fp8Benchmark(base.Benchmark):
 @pytest.mark.skipif(
     not _is_fp8e4nv_supported(),
     reason="FP8 BMM W8A8 block-scale requires CUDA fp8e4nv support",
+)
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the generic Triton bf16 bmm baseline cannot run under the GCU "
+        "auto-adjust-block-size autotuner path; time the fp8 kernel only"
+    ),
 )
 def test_bmm_w8a8_fp8_vs_triton_bf16():
     bench = BmmW8A8Fp8Benchmark(

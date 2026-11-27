@@ -82,6 +82,15 @@ def test_accuracy_fractional_max_pool3d_backward(
     grad_output = torch.randn_like(res_out)
     ref_grad_output = grad_output.to(device=ref_inp.device, dtype=ref_inp.dtype)
 
+    if flag_gems.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
+        # On this backend the 16-bit forward computes the random window in
+        # half precision, so it picks different max positions than the fp32
+        # reference forward (CUDA uses accscalar=float and agrees with it).
+        # This case checks the backward kernel, so feed both backwards the
+        # same indices; the forward's index choice is covered by
+        # tests/test_fractional_max_pool3d.py.
+        res_indices = ref_indices.to(inp.device)
+
     # Backward pass
     ref_grad_input = torch.ops.aten.fractional_max_pool3d_backward(
         ref_grad_output,

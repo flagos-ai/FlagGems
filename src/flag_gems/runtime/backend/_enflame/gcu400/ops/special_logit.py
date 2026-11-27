@@ -45,6 +45,7 @@ def special_logit_flat_kernel(
     n_elements,
     eps,
     HAS_EPS: tl.constexpr,
+    IS_16BIT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -62,9 +63,17 @@ def special_logit_flat_kernel(
         if HAS_EPS:
             lo = eps
             hi = 1.0 - eps
-            x_f32 = tl.where(
-                x_f32 != x_f32, x_f32, tl.minimum(tl.maximum(x_f32, lo), hi)
-            )
+            if IS_16BIT:
+                # NaN-propagating double-where clamp: NaN fails both compares
+                # and flows through to the log unchanged. Saves the explicit
+                # NaN compare+select on fp16/bf16 (512M eps 2509 -> 2424 us).
+                x_f32 = tl.where(x_f32 > hi, hi, tl.where(x_f32 < lo, lo, x_f32))
+            else:
+                # fp32 measured faster with min/max + NaN select
+                # (3419 vs 3582 us at 512M).
+                x_f32 = tl.where(
+                    x_f32 != x_f32, x_f32, tl.minimum(tl.maximum(x_f32, lo), hi)
+                )
 
         y = tl.log(x_f32 / (1.0 - x_f32))
         tl.store(y_ptr + offsets, y.to(y_ptr.dtype.element_ty), mask=mask)
@@ -74,8 +83,11 @@ def _choose_block(n_elements, itemsize):
     # 1R1W pointwise ladder validated on this kernel family (sigmoid/square):
     # tiny shapes want the exact next_pow2 tile; 2-byte large shapes peak at
     # 131072 (fp16 536M), 4-byte mid shapes at 32768 and 536M at 65536.
+    # 2026-11-16: tiny rung caps the tile at 1024 so the tail spreads over
+    # several CTAs instead of one serial CTA (4096 fp16 4.07 -> 3.70 us,
+    # fp32 4.67 -> 3.71 us, do_bench kernel mode).
     if n_elements <= 8192:
-        return max(256, triton.next_power_of_2(n_elements))
+        return max(256, min(triton.next_power_of_2(n_elements), 1024))
     if n_elements <= 65536:
         return 8192
     if n_elements <= 524288:
@@ -102,6 +114,7 @@ def _launch_flat(input, result, n_elements, eps):
                     n_elements,
                     eps if eps is not None else 0.0,
                     HAS_EPS=(eps is not None),
+                    IS_16BIT=(input.element_size() <= 2),
                     BLOCK=BLOCK,
                     num_warps=2,
                 )

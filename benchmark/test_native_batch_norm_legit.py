@@ -123,6 +123,13 @@ def test_native_batch_norm_legit_no_stats():
     )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_native_batch_norm_legit.out; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.native_batch_norm_legit_out
 def test_native_batch_norm_legit_out():
     _run_benchmark(
@@ -133,6 +140,13 @@ def test_native_batch_norm_legit_out():
     )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_native_batch_norm_legit.no_stats_out; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.native_batch_norm_legit_no_stats_out
 def test_native_batch_norm_legit_no_stats_out():
     _run_benchmark(

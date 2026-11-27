@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -31,40 +32,99 @@ _GCU_NUM_SPC = 48
 # 64-128B/lane for wider ones, measured on GCU400.
 _GCU_BLOCK_1B = 16384
 _GCU_BLOCK_WIDE = 8192
+# Below this element count the whole tensor fits in one narrow block, and a
+# 8192-wide BLOCK would leave most lanes masked off. Measured on GCU400 with
+# n=1024: BLOCK=1024 gives 3.07us vs 3.62us for the wide default (the masked
+# lanes and their offset/compare arithmetic are pure overhead there).
+# 1-byte dtypes are excluded: their load/store does not vectorize as well, and
+# BLOCK=1024 measured *slower* there (4.89us vs 3.64us at n=1024, 6.86us vs
+# 4.04us at n=65536), so they keep the wide block.
+_GCU_SNUG_LIMIT = 2048
 # Largest n that keeps tl.cdiv's internal (n + BLOCK - 1) inside int32 for
 # every BLOCK in use (max 16384 = 2**14), so the fast kernel can rely on the
 # i32 specialization of n_elements without an overflow-truncated block count.
 _FLAT_I32_MAX = 2**31 - 2**15
 
 
-def _flat_block_size(itemsize: int) -> int:
-    return _GCU_BLOCK_1B if itemsize == 1 else _GCU_BLOCK_WIDE
+def _flat_block_size(n: int, itemsize: int) -> int:
+    if itemsize == 1:
+        return _GCU_BLOCK_1B
+    if n <= _GCU_SNUG_LIMIT:
+        # Use a BLOCK sized to fit the data for small tensors, avoiding all lanes being masked out under a wide BLOCK.
+        return max(256, triton.next_power_of_2(n))
+    return _GCU_BLOCK_WIDE
+
+
+def _interleaved_words(t: torch.Tensor) -> torch.Tensor:
+    """Reinterpret a complex64 tensor's storage as interleaved fp32 words.
+
+    The copy kernels read raw storage, so a lazy conjugate/negative bit has to
+    be materialized before the copy. ``torch.view_as_real`` rejects an
+    unresolved conjugated tensor, and ``resolve_conj`` cannot clear the bit on
+    this backend (its registration hands back a raw clone that keeps it), so
+    the bit is dropped by rebinding the storage instead -- pure metadata, the
+    same trick as ``conj_physical._words_view`` -- and folded into the kernels
+    as lane-negation flags. Word offsets are doubled complex-element offsets;
+    every element stores its (real, imag) pair consecutively, so the copy
+    output's parity identifies the lane.
+    """
+    words = torch.empty(0, dtype=torch.float32, device=t.device)
+    words.set_(
+        t.untyped_storage(),
+        t.storage_offset() * 2,
+        tuple(t.shape) + (2,),
+        tuple(s * 2 for s in t.stride()) + (1,),
+    )
+    return words
 
 
 @triton.jit
+def _apply_lane_negation(
+    value, offsets, NEGATE_REAL: tl.constexpr, NEGATE_IMAG: tl.constexpr
+):
+    # Interleaved (real, imag) word stream: even offsets carry the real part.
+    # IEEE negation of an fp32 word is an exact sign-bit flip, so both the
+    # raw-copy and the lazy-bit cases match aten bit-exactly.
+    if NEGATE_REAL and NEGATE_IMAG:
+        value = -value
+    elif NEGATE_REAL:
+        value = tl.where((offsets & 1) == 0, -value, value)
+    elif NEGATE_IMAG:
+        value = tl.where((offsets & 1) == 1, -value, value)
+    return value
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def _detach_copy_flat(
     x_ptr,
     out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
     NUM_SPC: tl.constexpr,
+    NEGATE_REAL: tl.constexpr,
+    NEGATE_IMAG: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
     for block_id in tl.range(pid, num_blocks, NUM_SPC):
         offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
-        val = tl.load(x_ptr + offsets, mask=mask)
-        tl.store(out_ptr + offsets, val, mask=mask)
+        val = tl.load(x_ptr + offsets, mask=mask, cache_modifier=".cg")
+        val = _apply_lane_negation(val, offsets, NEGATE_REAL, NEGATE_IMAG)
+        tl.store(out_ptr + offsets, val, mask=mask, cache_modifier=".cg")
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def _detach_copy_flat_i64(
     x_ptr,
     out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
     NUM_SPC: tl.constexpr,
+    NEGATE_REAL: tl.constexpr,
+    NEGATE_IMAG: tl.constexpr,
 ):
     # Same walk, but the block count is derived in i64: n_elements may sit
     # within int32 range yet close enough to INT32_MAX that cdiv's
@@ -74,13 +134,22 @@ def _detach_copy_flat_i64(
     for block_id in tl.range(pid, num_blocks, NUM_SPC):
         offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
-        val = tl.load(x_ptr + offsets, mask=mask)
-        tl.store(out_ptr + offsets, val, mask=mask)
+        val = tl.load(x_ptr + offsets, mask=mask, cache_modifier=".cg")
+        val = _apply_lane_negation(val, offsets, NEGATE_REAL, NEGATE_IMAG)
+        tl.store(out_ptr + offsets, val, mask=mask, cache_modifier=".cg")
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def _detach_copy_strided(
-    x_ptr, out_ptr, n_elements, meta_ptr, ndim: tl.constexpr, BLOCK_SIZE: tl.constexpr
+    x_ptr,
+    out_ptr,
+    n_elements,
+    meta_ptr,
+    ndim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEGATE_REAL: tl.constexpr,
+    NEGATE_IMAG: tl.constexpr,
 ):
     # meta layout: for dim i in [0, ndim): meta[2*i] = shape[i], meta[2*i+1] = stride[i]
     pid = tl.program_id(0).to(tl.int64)
@@ -96,26 +165,9 @@ def _detach_copy_strided(
         idx = idx // d
         in_off += c * s
     val = tl.load(x_ptr + in_off, mask=mask)
+    # Output offsets are linear, so their parity still identifies the lane.
+    val = _apply_lane_negation(val, offsets, NEGATE_REAL, NEGATE_IMAG)
     tl.store(out_ptr + offsets, val, mask=mask)
-
-
-def _resolve_lazy_bits(input: torch.Tensor) -> torch.Tensor:
-    """Materialize lazy conjugate / negative bits before any raw storage read.
-
-    Both copy kernels load the underlying storage directly, so a view carrying
-    a lazy bit — e.g. ``torch._neg_view(x)`` or ``x.conj()`` — would be copied
-    bitwise: ``detach_copy(torch._neg_view(x))`` would return ``x`` instead of
-    the logical value ``-x``. ``resolve_conj`` / ``resolve_neg`` return the
-    input unchanged when no bit is set and otherwise materialize the logical
-    values into fresh storage, which is also what the native operator observes
-    before copying (its freshly allocated result carries no lazy bits).
-    """
-    if input.is_conj():
-        input = input.resolve_conj()
-    is_neg = getattr(input, "is_neg", None)
-    if is_neg is not None and is_neg():
-        input = input.resolve_neg()
-    return input
 
 
 def detach_copy(self: torch.Tensor) -> torch.Tensor:
@@ -132,19 +184,43 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
     operator, which also returns a contiguous tensor for a non-contiguous
     input.
 
-    Complex inputs stay on the device path: they are resolved of their lazy
-    conjugate/negative bits and reinterpreted through ``torch.view_as_real``
-    as interleaved (real, imag) pairs, copied by the same kernels, and
+    Complex inputs stay on the device path: complex64 is reinterpreted as its
+    interleaved (real, imag) fp32 words, copied by the same kernels, and
     reassembled with ``torch.view_as_complex`` (Triton has no complex dtype
-    mapping, so the kernels themselves stay real-valued).
+    mapping, so the kernels themselves stay real-valued). Lazy
+    conjugate/negative bits fold into the kernels as lane-negation flags; the
+    other complex dtypes go through ``torch.view_as_real``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 DETACH_COPY")
-    # Lazy conjugate/negative bits must be materialized before the kernels
-    # read raw storage (no-op views are returned untouched).
-    self = _resolve_lazy_bits(self)
+    logger.debug("GEMS_ENFLAME DETACH_COPY")
+    # Lazy conjugate/negative bits must be materialized before the kernels read
+    # raw storage (no-op views are returned untouched); the kernels would
+    # otherwise copy ``torch._neg_view(x)`` bitwise and return ``x`` instead of
+    # ``-x``. Inlined rather than kept in a helper: at this launch scale an
+    # extra Python frame is a measurable part of the total.
     is_complex = self.dtype.is_complex
+    negate_real = False
+    negate_imag = False
     if is_complex:
-        self = torch.view_as_real(self)
+        is_neg_bit = bool(getattr(self, "is_neg", lambda: False)())
+        conj_bit = bool(self.is_conj())
+        if self.dtype == torch.complex64:
+            # For logical value conj_A(neg_N(storage)) the real word is negated
+            # iff N and the imaginary word iff N xor A.
+            negate_real = is_neg_bit
+            negate_imag = is_neg_bit != conj_bit
+            self = _interleaved_words(self)
+        else:
+            # Other complex dtypes keep the aten path (unsupported on the
+            # fp64-less devices this backend targets).
+            if conj_bit:
+                self = self.resolve_conj()
+            if is_neg_bit:
+                self = self.resolve_neg()
+            self = torch.view_as_real(self)
+    else:
+        is_neg = getattr(self, "is_neg", None)
+        if is_neg is not None and is_neg():
+            self = self.resolve_neg()
     n = self.numel()
     # Fresh contiguous storage, exactly like native detach_copy. ``empty_like``
     # would preserve a non-contiguous input's strides, which both the kernels'
@@ -155,13 +231,13 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
         # the required result, and a grid of (0,) must not be launched.
         return torch.view_as_complex(out) if is_complex else out
     if self.is_contiguous():
-        # Measured on GCU400: memory-op latency is amortized when each lane
-        # covers >=64B, i.e. BLOCK 8192 for itemsize >= 2 and 16384 for 1-byte
-        # dtypes (bool); small tensors copy fine through the same masked
-        # block (a snug power-of-two block was measured *slower*). The grid
-        # is one full wave at most; larger tensors loop grid-stride.
-        block = _flat_block_size(self.element_size())
-        grid = (min(triton.cdiv(n, block), _GCU_NUM_SPC),)
+        # Memory-op latency is amortized once each lane covers >=64B, i.e.
+        # BLOCK 8192 for itemsize >= 2 and 16384 for 1-byte dtypes; small
+        # tensors instead take a block snug to their size so the wide block's
+        # masked-off lanes stop costing offset arithmetic. The grid is one full
+        # wave at most; larger tensors loop grid-stride.
+        block = _flat_block_size(n, self.dtype.itemsize)
+        grid = (min((n + block - 1) // block, _GCU_NUM_SPC),)
         kernel = _detach_copy_flat if n <= _FLAT_I32_MAX else _detach_copy_flat_i64
         with torch_device_fn.device(self.device):
             kernel[grid](
@@ -170,6 +246,8 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
                 n,
                 BLOCK_SIZE=block,
                 NUM_SPC=_GCU_NUM_SPC,
+                NEGATE_REAL=negate_real,
+                NEGATE_IMAG=negate_imag,
                 num_warps=4,
             )
     else:
@@ -186,12 +264,20 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
         )
         # Tuning measured on H20 (see the task report): the strided kernel's
         # per-element div/mod address computation prefers narrower blocks than
-        # the flat path — BLOCK=256 beats the shared 1024 default by 10-58%
+        # the flat path - BLOCK=256 beats the shared 1024 default by 10-58%
         # across the shapes swept, with num_warps=4 at the knee.
         BLOCK = 256
         grid = (triton.cdiv(n, BLOCK),)
         with torch_device_fn.device(self.device):
             _detach_copy_strided[grid](
-                self, out, n, meta, ndim=nd, BLOCK_SIZE=BLOCK, num_warps=4
+                self,
+                out,
+                n,
+                meta,
+                ndim=nd,
+                BLOCK_SIZE=BLOCK,
+                NEGATE_REAL=negate_real,
+                NEGATE_IMAG=negate_imag,
+                num_warps=4,
             )
     return torch.view_as_complex(out) if is_complex else out

@@ -52,6 +52,13 @@ class ConjPhysicalInplaceBenchmark(base.GenericBenchmarkExcluse3D):
         return None
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::conj_physical_; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.conj_physical_
 def test_conj_physical_():
     if flag_gems.vendor_name == "ascend":

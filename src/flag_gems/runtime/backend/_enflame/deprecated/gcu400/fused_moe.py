@@ -39,7 +39,13 @@ OCP_MX_BLOCK_SIZE = 32
 # positive from 4096 tokens; direct_sum is kept separate because it is a
 # reduction-layout decision even though it currently shares the same cutoff.
 MOE_GEMM_TUNING_MIN_TOKENS = 4096
-MOE_DIRECT_SUM_MIN_TOKENS = 1
+# direct_sum uses tl.atomic_add to accumulate directly into the output (fp16/bf16); the accumulation order across top-k
+# slots is
+# determined by scheduling, so results are not reproducible. The upstream policy enables it only at >=4096 tokens;
+# it was once lowered to 1 here, causing two consecutive calls with the same input to differ under the 1024-token Qwen
+# geometry
+# (tests/test_fused_moe_reduction.py::test_fused_moe_repeat_and_graph_reuse).
+MOE_DIRECT_SUM_MIN_TOKENS = 4096
 _HALF_GEMM_TILE_M = 256
 _HALF_GEMM_TILE_K = 64
 _HALF_GEMM2_TILE_N = 256
@@ -334,7 +340,7 @@ def get_moe_wna16_block_config(
         num_k_blocks = size_n // block_size_k
         num_m_blocks = (
             num_valid_tokens + block_size_m - 1
-        ) // block_size_m + num_experts
+        ) / block_size_m + num_experts
         if num_valid_tokens // real_top_k <= block_size_m:
             num_m_blocks = min(num_m_blocks, num_valid_tokens)
         num_blocks = num_m_blocks * num_n_blocks * num_k_blocks
@@ -345,6 +351,7 @@ def get_moe_wna16_block_config(
 
         if (
             num_m_blocks <= 16
+            and size_k % (block_size_k * 2) == 0
             and size_k % (block_size_k * 2) == 0
             and block_size_k <= 512
             and num_blocks >= 512
@@ -431,7 +438,7 @@ def get_default_config(
         else:
             group_m = 1
 
-        block_k = 128 if M <= 64 else 64
+        block_k = 64
 
         if N >= 4096:
             block_n = 128 if M <= 128 else 256
@@ -699,7 +706,7 @@ def _fp8_quantize(
         block_k = block_shape[1]
         assert A.size(-1) % block_k == 0
         if A.ndim == 2 and A.stride(-1) == 1:
-            from ...gcu400.ops.per_token_group_quant_fp8 import (
+            from flag_gems.ops.per_token_group_quant_fp8 import (
                 per_token_group_quant_fp8,
             )
 
@@ -1432,7 +1439,17 @@ def fused_moe_kernel(
                 acc_up = acc_up * a_scale * b_scale_up
 
         # SiLU activation fusion
-        accumulator = tl.fdiv(acc_gate, (1.0 + tl.exp(-acc_gate))) * acc_up
+        # Cast the three factors to compute_type (i.e., the activation dtype) before multiplying: the reference
+        # implementations
+        # (the grouped reference in tests/test_fused_moe_reduction.py and this kernel's
+        # PAIR_GATE_UP_DOT branch) all do "round gate/sigmoid/up individually, then multiply in half precision".
+        # Computing everything at once in fp32 and then rounding differs from the reference by 2~4 ULP on fp16, causing
+        # the fp16/topk=1 reduction cases to exceed atol=rtol=2e-3.
+        accumulator = (
+            acc_gate.to(compute_type)
+            * tl.sigmoid(acc_gate).to(compute_type)
+            * acc_up.to(compute_type)
+        )
 
     else:
         if off_experts == -1:
@@ -1597,6 +1614,185 @@ def fused_moe_kernel(
         tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
+# GCU400 plain-half small-K routed GEMM fast path (2026-11-18).
+# The stock k-loop form (BLOCK_K=32-class configs) walks into two known GCU
+# compiler traps (see workspace knowledge/compiler_traps.md):
+#   1. loop-carried pointer vectors (`a_ptrs += BLOCK_SIZE_K * stride`) are
+#      materialized as a scalar loop + mfence (~15x, still present on the
+#      4.1.6 toolchain);
+#   2. BLOCK_K=32 bf16 operand tiles are 64B short-burst loads.
+# The fast path instead does one full-K tl.dot per compile-time unrolled N
+# slice on a grid of pid_m only, which measured 40.0/85.3us -> 8.0/6.5us on
+# the dispatch_fused_moe_kernel benchmark shapes (8,4,64,64,2) and
+# (32,8,128,128,2), bf16/fp16, and is numerically identical to the stock
+# kernel (fp32 accumulate, routed weight applied after the dot in fp32).
+# num_warps must stay 1: nw=2 on these small-tile dot forms measured 3-9x
+# slower (same family as the compiler_traps "num_warps=2 small-tile" entry).
+# Routed weights are deliberately NOT folded into the A operand: folding adds
+# a bf16 rounding of w*a and diverges from the stock kernel numerics.
+_MOE_SMALLK_MAX_K = 512
+_MOE_SMALLK_MAX_N = 512
+_MOE_SMALLK_MAX_SLICES = 8
+# DSM budget per program: A tile + one B slice (bf16/fp16) + fp32 accumulator.
+_MOE_SMALLK_DSM_BUDGET = 800 * 1024
+# int32-safe element bound: bf16 element offsets stay under 2**30 so byte
+# offsets computed in the kernel stay under the 2**31 int32 limit.
+_MOE_SMALLK_MAX_TENSOR_ELEMS = 1 << 30
+
+
+def _moe_smallk_slice_config(N: int) -> tuple[int, int] | None:
+    """Pick the widest N slice that tiles N in at most _MOE_SMALLK_MAX_SLICES."""
+    for slice_n in (128, 64, 32, 16):
+        if N % slice_n == 0 and N // slice_n <= _MOE_SMALLK_MAX_SLICES:
+            return slice_n, N // slice_n
+    return None
+
+
+@triton.jit
+def fused_moe_smallk_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    num_valid_tokens,
+    stride_am,
+    stride_be,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    N_SLICES: tl.constexpr,
+    SLICE_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    MUL_ROUTED_WEIGHT: tl.constexpr,
+    top_k: tl.constexpr,
+    compute_type: tl.constexpr,
+):
+    """Plain half-precision routed GEMM fast path (small pow2 K, full-K dot).
+
+    Grid is (num_pid_m,): each program covers all N via compile-time unrolled
+    slices and reuses its A tile across slices. Addresses are derived from the
+    loop-free induction form (no loop-carried pointer vectors). Routed weight
+    is applied after the dot in fp32, matching the stock kernel numerics;
+    experts absent from the current EP rank (expert id -1) contribute zeros
+    through the same masked store.
+    """
+    pid = tl.program_id(axis=0)
+    num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
+    if pid * BLOCK_M >= num_tokens_post_padded:
+        return
+    offs = tl.arange(0, BLOCK_M).to(tl.int32)
+    offs_token = tl.load(sorted_token_ids_ptr + pid * BLOCK_M + offs).to(tl.int32)
+    token_mask = offs_token < num_valid_tokens
+    offs_token_c = tl.minimum(offs_token, num_valid_tokens - 1)
+    off_experts = tl.load(expert_ids_ptr + pid).to(tl.int32)
+    # Clamp absent experts to expert 0 so the B load stays in bounds; their
+    # accumulator is zeroed below before the store.
+    off_experts_load = tl.maximum(off_experts, 0)
+
+    offs_k = tl.arange(0, BLOCK_K)
+    a_row = offs_token_c // top_k * stride_am
+    a = tl.load(
+        a_ptr + a_row[:, None] + offs_k[None, :],
+        mask=token_mask[:, None],
+        other=0.0,
+    )
+    b_expert = b_ptr + off_experts_load * stride_be
+    for s in tl.static_range(N_SLICES):
+        offs_bn = s * SLICE_N + tl.arange(0, SLICE_N).to(tl.int32)
+        b = tl.load(b_expert + offs_k[:, None] + offs_bn[None, :] * stride_bn)
+        acc = tl.dot(a, b)
+        if off_experts == -1:
+            acc = tl.zeros((BLOCK_M, SLICE_N), dtype=tl.float32)
+        if MUL_ROUTED_WEIGHT:
+            moe_weight = tl.load(
+                topk_weights_ptr + offs_token, mask=token_mask, other=0
+            )
+            acc = acc * moe_weight[:, None]
+        acc = acc.to(compute_type)
+        offs_cn = s * SLICE_N + tl.arange(0, SLICE_N)
+        c_ptrs = (
+            c_ptr + stride_cm * offs_token_c[:, None] + stride_cn * offs_cn[None, :]
+        )
+        tl.store(c_ptrs, acc, mask=token_mask[:, None])
+
+
+def _launch_fused_moe_smallk(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    topk_weights: Optional[torch.Tensor],
+    sorted_token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,
+    top_k: int,
+    num_tokens: int,
+    EM: int,
+    config: dict[str, Any],
+    compute_type: tl.dtype,
+) -> bool:
+    """Launch the small-K fast path; return False when the shape/layout is not eligible."""
+    BLOCK_M = config["BLOCK_SIZE_M"]
+    K = B.size(2)
+    N = B.size(1)
+    if (
+        BLOCK_M < 16
+        or BLOCK_M & (BLOCK_M - 1)
+        or K < 16
+        or K > _MOE_SMALLK_MAX_K
+        or K & (K - 1)
+        or N > _MOE_SMALLK_MAX_N
+        or A.numel() >= _MOE_SMALLK_MAX_TENSOR_ELEMS
+        or B.numel() >= _MOE_SMALLK_MAX_TENSOR_ELEMS
+        or C.numel() >= _MOE_SMALLK_MAX_TENSOR_ELEMS
+    ):
+        return False
+    slice_cfg = _moe_smallk_slice_config(N)
+    if slice_cfg is None:
+        return False
+    SLICE_N, N_SLICES = slice_cfg
+    stride_am = A.stride(0)
+    stride_be = B.stride(0)
+    stride_bn = B.stride(1)
+    stride_cm = C.stride(1)
+    stride_cn = C.stride(2)
+    if A.stride(1) != 1 or B.stride(2) != 1 or stride_cn != 1:
+        return False
+    dsm_bytes = (BLOCK_M * K + K * SLICE_N) * 2 + BLOCK_M * SLICE_N * 4
+    if dsm_bytes > _MOE_SMALLK_DSM_BUDGET:
+        return False
+    grid = (triton.cdiv(EM, BLOCK_M),)
+    fused_moe_smallk_kernel[grid](
+        A,
+        B,
+        C,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        num_tokens,
+        stride_am,
+        stride_be,
+        stride_bn,
+        stride_cm,
+        stride_cn,
+        BLOCK_M=BLOCK_M,
+        N_SLICES=N_SLICES,
+        SLICE_N=SLICE_N,
+        BLOCK_K=K,
+        MUL_ROUTED_WEIGHT=mul_routed_weight,
+        top_k=top_k,
+        compute_type=compute_type,
+        num_warps=1,
+        num_stages=1,
+    )
+    return True
+
+
 def invoke_fused_moe_wna16_triton_kernel(
     A: torch.Tensor,
     B: torch.Tensor,
@@ -1713,7 +1909,7 @@ def invoke_fused_moe_triton_kernel(
     out_top_k: int = 1,
 ) -> None:
     """Launch the fused_moe_kernel Triton kernel."""
-    logger.debug("GEMS_ENFLAME_GCU400 INVOKE_FUSED_MOE_TRITON_KERNEL")
+    logger.debug("GEMS_ENFLAME INVOKE_FUSED_MOE_TRITON_KERNEL")
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids is None or sorted_token_ids.stride(0) == 1
@@ -1743,6 +1939,41 @@ def invoke_fused_moe_triton_kernel(
             )
     else:
         EM = num_tokens * config["BLOCK_SIZE_M"]
+
+    # GCU400 fast path: plain half-precision routed GEMM with small pow2 K.
+    # Falls back to the stock kernel below for any layout the fast kernel
+    # does not cover (quantization, bias, SiLU fusion, direct_sum, naive
+    # block assignment, large or non-pow2 K/N, non-contiguous operands).
+    if (
+        not use_fp8_w8a8
+        and not use_int8_w8a8
+        and not use_int8_w8a16
+        and not use_int4_w4a16
+        and block_shape is None
+        and B_bias is None
+        and not FUSE_SILU
+        and not direct_sum
+        and sorted_token_ids is not None
+        and A_scale is None
+        and B_scale is None
+        and compute_type in (tl.bfloat16, tl.float16)
+    ):
+        if _launch_fused_moe_smallk(
+            A,
+            B,
+            C,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            mul_routed_weight,
+            top_k,
+            num_tokens,
+            EM,
+            config,
+            compute_type,
+        ):
+            return
 
     #  FUSE_SILU means B.size(1) contains both Gate and Up. N is halved.
     actual_N = B.size(1) // 2 if FUSE_SILU else B.size(1)
@@ -1816,6 +2047,229 @@ def invoke_fused_moe_triton_kernel(
     )
 
 
+@triton.jit
+def _routed_gemm_plain_kernel(
+    c_ptr,
+    a_ptr,
+    b_ptr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    stride_am,
+    stride_ak,
+    stride_be,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    num_valid_tokens,
+    top_k: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    MUL_ROUTED_WEIGHT: tl.constexpr,
+    K_DIVISIBLE_BY_BLOCK_K: tl.constexpr,
+    N_DIVISIBLE_BY_BLOCK_N: tl.constexpr,
+    COMPUTE_DTYPE: tl.constexpr,
+):
+    """Lean routed GEMM for the unquantized, bias-free fused-MoE path.
+
+    The generic ``fused_moe_kernel`` carries quantization, bias, SiLU and
+    direct-sum branches that are all dead in the plain case but still cost
+    register pressure and a long prologue.  At decode-sized batches
+    (a few hundred sorted slots) that prologue dominates: the generic kernel
+    needs ~3.6us per program while a block only performs 16x32xK MACs.
+    This kernel keeps one program per (sorted block, N tile) and only the
+    arithmetic the plain path needs.
+
+    ``sorted_token_ids`` is laid out with blocks of ``BLOCK_M`` slots, so
+    ``BLOCK_M`` must match the block size used by ``moe_align_block_size``.
+    """
+    pid = tl.program_id(0)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
+
+    num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
+    if pid_m * BLOCK_M >= num_tokens_post_padded:
+        return
+
+    offs_m = tl.arange(0, BLOCK_M).to(tl.int32)
+    token_slots = tl.load(sorted_token_ids_ptr + pid_m * BLOCK_M + offs_m).to(tl.int32)
+    token_mask = token_slots < num_valid_tokens
+
+    expert_id = tl.load(expert_ids_ptr + pid_m).to(tl.int32)
+
+    offs_k = tl.arange(0, BLOCK_K).to(tl.int32)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int32)
+    # Row base of A (gathered, the sorted slot layout is expert-major) and the
+    # column base of B ([expert, n, k] layout, so the tile reads as (K, N)).
+    # Both are loop invariant: the K tile is addressed by an offset recomputed
+    # from these bases on every iteration. Carrying mutated pointer tensors
+    # (`ptr += BLOCK_K * stride`) across iterations instead of recomputing the
+    # offsets yields garbage from the second K tile on GCU, which silently
+    # corrupts every routed GEMM whose K exceeds one tile.
+    a_row_base = a_ptr + (token_slots[:, None] // top_k) * stride_am
+    b_row_base = b_ptr + expert_id * stride_be + offs_n[None, :] * stride_bn
+
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        k_base = k * BLOCK_K
+        if K_DIVISIBLE_BY_BLOCK_K:
+            a = tl.load(
+                a_row_base + (k_base + offs_k[None, :]) * stride_ak,
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            if N_DIVISIBLE_BY_BLOCK_N:
+                b = tl.load(b_row_base + (k_base + offs_k[:, None]) * stride_bk)
+            else:
+                b = tl.load(
+                    b_row_base + (k_base + offs_k[:, None]) * stride_bk,
+                    mask=offs_n[None, :] < N,
+                    other=0.0,
+                )
+        else:
+            k_remaining = K - k_base
+            a = tl.load(
+                a_row_base + (k_base + offs_k[None, :]) * stride_ak,
+                mask=token_mask[:, None] & (offs_k[None, :] < k_remaining),
+                other=0.0,
+            )
+            b = tl.load(
+                b_row_base + (k_base + offs_k[:, None]) * stride_bk,
+                mask=(offs_k[:, None] < k_remaining) & (offs_n[None, :] < N),
+                other=0.0,
+            )
+        accumulator = tl.dot(a, b, acc=accumulator)
+
+    if MUL_ROUTED_WEIGHT:
+        # Router weights are applied in fp32 before the dtype cast
+        moe_weight = tl.load(topk_weights_ptr + token_slots, mask=token_mask, other=0.0)
+        accumulator = accumulator * moe_weight[:, None]
+
+    out = accumulator.to(COMPUTE_DTYPE)
+    c_ptrs = c_ptr + token_slots[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    out_mask = token_mask[:, None]
+    if not N_DIVISIBLE_BY_BLOCK_N:
+        out_mask = out_mask & (offs_n[None, :] < N)
+    tl.store(c_ptrs, out, mask=out_mask)
+
+
+# Decode-sized batches are where the generic kernel's prologue dominates.
+# Larger routed GEMMs keep using the tuned generic kernel, which tiles N and K
+# far better than this lean kernel, so the fast path is also capped on N and K.
+_PLAIN_ROUTED_GEMM_MAX_SLOTS = 1024
+_PLAIN_ROUTED_GEMM_MAX_N = 32768
+_PLAIN_ROUTED_GEMM_MAX_K = 16384
+# Tile caps of the lean kernel. BLOCK_N x BLOCK_K stays inside one private-storage
+# tile; larger K tiles force the kernel to walk fewer, wider steps per program.
+_PLAIN_ROUTED_GEMM_MAX_BLOCK_N = 512
+_PLAIN_ROUTED_GEMM_MAX_BLOCK_K = 512
+
+
+def _can_use_plain_routed_gemm(
+    A,
+    B,
+    C,
+    topk_weights,
+    sorted_token_ids,
+    mul_routed_weight,
+    use_fp8_w8a8,
+    use_int8_w8a8,
+    use_int8_w8a16,
+    use_int4_w4a16,
+    per_channel_quant,
+    block_shape,
+    B_bias,
+    FUSE_SILU,
+    direct_sum,
+) -> bool:
+    if sorted_token_ids is None or (mul_routed_weight and topk_weights is None):
+        return False
+    if use_fp8_w8a8 or use_int8_w8a8 or use_int8_w8a16 or use_int4_w4a16:
+        return False
+    if per_channel_quant or block_shape is not None or B_bias is not None:
+        return False
+    if FUSE_SILU or direct_sum:
+        return False
+    if A.dtype not in (torch.bfloat16, torch.float16):
+        return False
+    if B.dtype != A.dtype or C.dtype != A.dtype:
+        return False
+    if C.dim() != 3 or B.dim() != 3 or A.dim() != 2:
+        return False
+    if C.stride(2) != 1 or B.stride(2) != 1:
+        return False
+    if B.size(1) > _PLAIN_ROUTED_GEMM_MAX_N or B.size(2) > _PLAIN_ROUTED_GEMM_MAX_K:
+        return False
+    return sorted_token_ids.numel() <= _PLAIN_ROUTED_GEMM_MAX_SLOTS
+
+
+def invoke_plain_routed_gemm(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    topk_weights: torch.Tensor,
+    sorted_token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,
+    top_k: int,
+    config: dict[str, Any],
+) -> None:
+    logger.debug("GEMS_ENFLAME INVOKE_PLAIN_ROUTED_GEMM")
+    M = A.size(0)
+    N = B.size(1)
+    K = B.size(2)
+    num_valid_tokens = M * top_k
+
+    EM = sorted_token_ids.size(0)
+    # Same slot-count cap as the generic kernel so the tail blocks stay cheap
+    if A.size(0) < config["BLOCK_SIZE_M"]:
+        EM = min(EM, A.size(0) * top_k * config["BLOCK_SIZE_M"])
+
+    # BLOCK_M must equal the moe_align_block_size block size: expert_ids is
+    # one entry per BLOCK_M slots of sorted_token_ids.
+    BLOCK_M = config["BLOCK_SIZE_M"]
+    BLOCK_N = min(triton.next_power_of_2(N), _PLAIN_ROUTED_GEMM_MAX_BLOCK_N)
+    BLOCK_K = min(triton.next_power_of_2(K), _PLAIN_ROUTED_GEMM_MAX_BLOCK_K)
+
+    grid = (triton.cdiv(EM, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+    _routed_gemm_plain_kernel[grid](
+        C,
+        A,
+        B,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        A.stride(0),
+        A.stride(1),
+        B.stride(0),
+        B.stride(2),
+        B.stride(1),
+        C.stride(1),
+        C.stride(2),
+        num_valid_tokens,
+        top_k=top_k,
+        K=K,
+        N=N,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+        MUL_ROUTED_WEIGHT=mul_routed_weight,
+        K_DIVISIBLE_BY_BLOCK_K=(K % BLOCK_K == 0),
+        N_DIVISIBLE_BY_BLOCK_N=(N % BLOCK_N == 0),
+        COMPUTE_DTYPE=tl.bfloat16 if A.dtype == torch.bfloat16 else tl.float16,
+        num_warps=1,
+        num_stages=1,
+    )
+
+
 def dispatch_fused_moe_kernel(
     A: torch.Tensor,
     B: torch.Tensor,
@@ -1843,7 +2297,7 @@ def dispatch_fused_moe_kernel(
     out_top_k: int = 1,
 ) -> None:
     """Dispatch to the appropriate fused MoE kernel based on quantization flags."""
-    logger.debug("GEMS_ENFLAME_GCU400 DISPATCH_FUSED_MOE_KERNEL")
+    logger.debug("GEMS_ENFLAME DISPATCH_FUSED_MOE_KERNEL")
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids is None or sorted_token_ids.stride(0) == 1
@@ -1858,6 +2312,37 @@ def dispatch_fused_moe_kernel(
         # use_int8_w8a16,
         # use_int4_w4a16,
         pass
+    if _can_use_plain_routed_gemm(
+        A,
+        B,
+        C,
+        topk_weights,
+        sorted_token_ids,
+        mul_routed_weight,
+        use_fp8_w8a8,
+        use_int8_w8a8,
+        use_int8_w8a16,
+        use_int4_w4a16,
+        per_channel_quant,
+        block_shape,
+        B_bias,
+        FUSE_SILU,
+        direct_sum,
+    ):
+        invoke_plain_routed_gemm(
+            A,
+            B,
+            C,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            mul_routed_weight,
+            top_k,
+            config,
+        )
+        return
+
     if (use_int8_w8a16 or use_int4_w4a16) and (
         block_shape is not None and block_shape[1] > 0
     ):
@@ -2091,7 +2576,7 @@ def fused_experts_impl(
     direct_sum_supported = is_plain_half_config or is_fp8_blockwise
 
     # Check if we can safely fuse the activation with the first GEMM pass
-    can_use_fused_silu = (
+    can_use_fused_silu = (  # noqa: F841
         activation_enum in (MoEActivation.SILU, MoEActivation.SWIGLUOAI)
         and w1_bias is None
         and expert_map is None  # Fused kernel doesn't handle EP -1 experts
@@ -2129,7 +2614,7 @@ def fused_experts_impl(
         )
 
         SPARSITY_FACTOR = 4
-        naive_block_assignment = (
+        naive_block_assignment = False and (
             expert_map is None
             and tokens_in_chunk * top_k_num * SPARSITY_FACTOR <= global_num_experts
             and not (
@@ -2157,7 +2642,7 @@ def fused_experts_impl(
             sorted_token_ids = None
 
         # 1. Extract a unified boolean flag for GEMM1 fusion and select config
-        do_fuse_silu = can_use_fused_silu and not naive_block_assignment
+        do_fuse_silu = False  # R6 experiment: let GEMM1 use the lean routed kernel
         use_half_gemm_fast_paths = not is_embedded_config and is_plain_half_config
 
         gemm1_config = base_config
@@ -2319,7 +2804,7 @@ def inplace_fused_experts(
     Same semantics as ``fused_experts_impl(..., inplace=True)``.
     Returns None (the result is stored in ``hidden_states``).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 INPLACE_FUSED_EXPERTS")
+    logger.debug("GEMS_ENFLAME INPLACE_FUSED_EXPERTS")
     fused_experts_impl(
         hidden_states,
         w1,
@@ -2422,7 +2907,7 @@ def outplace_fused_experts(
 
     Same semantics as ``fused_experts_impl(..., inplace=False)``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 OUTPLACE_FUSED_EXPERTS")
+    logger.debug("GEMS_ENFLAME OUTPLACE_FUSED_EXPERTS")
     kernel_kwargs = dict(
         activation=activation,
         apply_router_weight_on_input=apply_router_weight_on_input,

@@ -357,29 +357,41 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
+def _reduce_needs_fp32_upcast(dtype, reduce):
+    """Whether a reduce scatter must accumulate in fp32.
+
+    The reduce kernels rely on 32-bit atomics, which have no bfloat16 form, so
+    every bf16 reduce is staged through fp32 and rounded back afterwards. fp16
+    multiply needs the extra mantissa as well to stay inside the aten tolerance.
+    """
+    if reduce is None:
+        return False
+    if dtype == torch.bfloat16:
+        return True
+    return reduce == "multiply" and dtype == torch.float16
+
+
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ENFLAME SCATTER")
 
     orig_dtype = inp.dtype
-    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    needs_upcast = _reduce_needs_fp32_upcast(orig_dtype, reduce)
     if needs_upcast:
         inp = inp.to(torch.float32)
         src = src.to(torch.float32)
 
     out = inp.clone()
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
-    # src must be judged by the as_strided view: the original src's leading dim may be larger
+    # src must be checked using the view after as_strided: the leading dimensions of the original src may be larger
     if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_strided):
-        scatter_last_dim(out, dim, index, src_strided, reduce == "add")
+        if reduce is None and enough_rows_for_row_flat(index):
+            scatter_row_flat(out, dim, index, src_strided)
+        else:
+            scatter_last_dim(out, dim, index, src_strided, reduce == "add")
         if needs_upcast:
             out = out.to(orig_dtype)
         return out
@@ -416,17 +428,12 @@ def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ENFLAME SCATTER_")
 
     orig_dtype = inp.dtype
-    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    needs_upcast = _reduce_needs_fp32_upcast(orig_dtype, reduce)
     if needs_upcast:
         out = inp.to(torch.float32)
         src = src.to(torch.float32)
     else:
         out = inp
-
-    if reduce is not None:
-        assert orig_dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
@@ -434,7 +441,10 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     src_restrided = src.as_strided(index.shape, src.stride())
     if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_restrided):
-        scatter_last_dim(out, dim, index, src_restrided, reduce == "add")
+        if reduce is None and enough_rows_for_row_flat(index):
+            scatter_row_flat(out, dim, index, src_restrided)
+        else:
+            scatter_last_dim(out, dim, index, src_restrided, reduce == "add")
         if needs_upcast:
             inp.copy_(out.to(orig_dtype))
         return inp
@@ -480,6 +490,73 @@ def scatter_(inp, dim, index, src, reduce=None):
 LAST_DIM_TILE_BYTES = 4 * 1024
 LAST_DIM_MAX_BLOCK_N = 2048
 LAST_DIM_ATOMIC_BLOCK_N = 4096
+LAST_DIM_ROWOWN_MAX_WIDTH = 16384
+
+
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "width",
+        "idx_row_stride",
+        "src_row_stride",
+        "out_row_stride",
+        "num_col_tile",
+    ]
+)
+def scatter_row_flat_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    width,
+    idx_row_stride,
+    src_row_stride,
+    out_row_stride,
+    num_col_tile,
+    INT32: tl.constexpr,
+    EVEN_COLS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Row-locked trailing-dim scatter: each CTA claims whole rows in turn and scans column tiles.
+
+    The write address is row base + index value; all scattered writes to the same row are done by
+    the same CTA over adjacent iterations. The row axis needs no mask (the range loop is
+    naturally bounded); only the column mask is used when the trailing width does not divide BLOCK_N.
+    """
+    pid = tl.program_id(0)
+    num_cta = tl.num_programs(0)
+    for row in range(pid, rows, num_cta):
+        if INT32:
+            idx_row = row.to(tl.int32) * idx_row_stride.to(tl.int32)
+            src_row = row.to(tl.int32) * src_row_stride.to(tl.int32)
+            out_row = row.to(tl.int32) * out_row_stride.to(tl.int32)
+        else:
+            idx_row = row.to(tl.int64) * idx_row_stride
+            src_row = row.to(tl.int64) * src_row_stride
+            out_row = row.to(tl.int64) * out_row_stride
+        for col_tile in range(0, num_col_tile):
+            col_idx = col_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+            if EVEN_COLS:
+                index_val = tl.load(index_ptr + idx_row + col_idx)
+                src_val = tl.load(src_ptr + src_row + col_idx)
+            else:
+                cmask = col_idx < width
+                index_val = tl.load(index_ptr + idx_row + col_idx, mask=cmask, other=0)
+                src_val = tl.load(src_ptr + src_row + col_idx, mask=cmask, other=0)
+            if INT32:
+                out_off = out_row + index_val.to(tl.int32)
+            else:
+                out_off = out_row + index_val
+            if EVEN_COLS:
+                tl.store(out_ptr + out_off, src_val)
+            else:
+                tl.store(out_ptr + out_off, src_val, mask=cmask)
+
+
+# Temporary override for tuning (remove after the sweep)
+_TUNE_BLOCK_M = int(os.environ.get("FG_SC_BM", "0"))
+_TUNE_BLOCK_N = int(os.environ.get("FG_SC_BN", "0"))
+_TUNE_WARPS = int(os.environ.get("FG_SC_NW", "0"))
 
 
 @triton.jit(
@@ -626,14 +703,15 @@ SCATTER_MUL_MAX_GRID = 4096
 
 
 def scatter_last_dim_multiply(out, dim, index, src):
-    """Host dispatch for last-dim scatter (multiply), writes out in place and returns it."""
+    """Host-side dispatch for trailing-dim scatter (multiply), writing into out and returning it."""
     rank = index.dim()
     width = index.shape[-1]
     rows = index.numel() // width
+    element_size = max(out.element_size(), index.element_size())  # noqa: F841
     block_m = 1
     block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
     num_col_tile = triton.cdiv(width, block_n)
-    # When parallelism is low, narrow the column block so more CTAs join the same row
+    # When parallelism is insufficient, narrow the column block so more CTAs participate in the same row
     while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
         block_n //= 2
         num_col_tile = triton.cdiv(width, block_n)
@@ -721,6 +799,10 @@ def _last_dim_tile(rows, width, element_size, add):
     if add:
         block_n = min(triton.next_power_of_2(width), LAST_DIM_ATOMIC_BLOCK_N)
         block_m = 1
+        if _TUNE_BLOCK_M:
+            block_m = _TUNE_BLOCK_M
+        if _TUNE_BLOCK_N:
+            block_n = min(triton.next_power_of_2(width), _TUNE_BLOCK_N)
     else:
         block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
         block_m = _rows_per_tile(block_n)
@@ -760,7 +842,54 @@ def scatter_last_dim(out, dim, index, src, add):
         EVEN=even,
         BLOCK_M=block_m,
         BLOCK_N=block_n,
-        # Atomic write throughput grows linearly with warp count and saturates at 4; plain writes need only 2 warps
-        num_warps=4 if add else 2,
+        # For non-atomic writes, nw4 is measured better than nw2 (2026-11-16 sweep: (4096,4096) oop -4%,
+        # (1024,65536) in-place -0.3%); atomic-write throughput grows linearly with warp count and saturates at 4
+        num_warps=4,
+    )
+    return out
+
+
+def enough_rows_for_row_flat(index):
+    """Dispatch threshold for the row-locked path.
+
+    With fewer rows than MAX_GRID_DIM the row locking lacks parallelism; when the index trailing
+    width exceeds the threshold the row-locked form loses slightly (~0.9%: very wide rows
+    serialize column tiles along the CTA critical path), so both fall back to the tiled form.
+    """
+    if index.dim() < 2 or index.shape[-1] == 0:
+        return False
+    if index.shape[-1] > LAST_DIM_ROWOWN_MAX_WIDTH:
+        return False
+    return index.numel() // index.shape[-1] >= MAX_GRID_DIM
+
+
+def scatter_row_flat(out, dim, index, src):
+    """Host-side dispatch for the row-locked trailing-dim scatter, writing into out."""
+    rank = index.dim()
+    width = index.shape[-1]
+    rows = index.numel() // width
+    block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
+    if block_n > 512:
+        # Column-block width bands from measurements (2026-11-16 GCU400 sweep): when 512 < width <= 2048,
+        # BN=512; when width > 2048, BN=2048 is best; splitting wide rows into multiple tiles lets the next tile's
+        # load overlap with the previous tile's scatter write. At 512 and below, the whole row is one block.
+        block_n = 512 if width <= 2048 else 2048
+    num_col_tile = triton.cdiv(width, block_n)
+    even_cols = width % block_n == 0
+    int32 = all(_max_offset(t) < 2**31 for t in (out, index, src))
+    scatter_row_flat_kernel[(MAX_GRID_DIM,)](
+        src,
+        index,
+        out,
+        rows,
+        width,
+        index.stride(rank - 2),
+        src.stride(rank - 2),
+        out.stride(rank - 2),
+        num_col_tile,
+        INT32=int32,
+        EVEN_COLS=even_cols,
+        BLOCK_N=block_n,
+        num_warps=4,
     )
     return out

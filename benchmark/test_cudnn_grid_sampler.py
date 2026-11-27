@@ -82,6 +82,13 @@ class GridSamplerOutBenchmark(GridSamplerBenchmark):
             yield inp, grid, {"out": out}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_grid_sampler; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_grid_sampler
 def test_cudnn_grid_sampler():
     bench = GridSamplerBenchmark(

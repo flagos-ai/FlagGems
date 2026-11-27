@@ -299,7 +299,7 @@ def hadamard_transform(x, scale=1.0):
     GCU400 path: plane decomposition + dense in-register +/-1 matrix dot;
     other shapes fall back to the generic implementation.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 HADAMARD_TRANSFORM")
+    logger.debug("GEMS_ENFLAME HADAMARD_TRANSFORM")
     if (
         x.is_floating_point()
         and x.dim() > 0
@@ -312,25 +312,25 @@ def hadamard_transform(x, scale=1.0):
 
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 3 * 2^k (generic path)."""
-    logger.debug("GEMS_ENFLAME_GCU400 HADAMARD_TRANSFORM_12N")
+    logger.debug("GEMS_ENFLAME HADAMARD_TRANSFORM_12N")
     return _generic_hadamard_transform_12N(x, scale)
 
 
 def hadamard_transform_20N(x, scale=1.0):
     """Hadamard transform for dim = 5 * 2^k (generic path)."""
-    logger.debug("GEMS_ENFLAME_GCU400 HADAMARD_TRANSFORM_20N")
+    logger.debug("GEMS_ENFLAME HADAMARD_TRANSFORM_20N")
     return _generic_hadamard_transform_20N(x, scale)
 
 
 def hadamard_transform_28N(x, scale=1.0):
     """Hadamard transform for dim = 7 * 2^k (generic path)."""
-    logger.debug("GEMS_ENFLAME_GCU400 HADAMARD_TRANSFORM_28N")
+    logger.debug("GEMS_ENFLAME HADAMARD_TRANSFORM_28N")
     return _generic_hadamard_transform_28N(x, scale)
 
 
 def hadamard_transform_40N(x, scale=1.0):
     """Hadamard transform for dim = 40 * 2^k (generic path)."""
-    logger.debug("GEMS_ENFLAME_GCU400 HADAMARD_TRANSFORM_40N")
+    logger.debug("GEMS_ENFLAME HADAMARD_TRANSFORM_40N")
     return _generic_hadamard_transform_40N(x, scale)
 
 

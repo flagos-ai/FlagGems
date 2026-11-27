@@ -177,6 +177,14 @@ def sdp_fused_overrideable_attn_bwd_input_fn(config, dtype, device):
     )
 
 
+@pytest.mark.skip_native(
+    vendors="enflame",
+    reason=(
+        "aten::_scaled_dot_product_fused_attention_overrideable_backward is a "
+        "privateuse1-only hook with no GCU native kernel, so there is no native "
+        "baseline to time; record the Triton candidate latency only"
+    ),
+)
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.scaled_dot_product_fused_attention_overrideable_backward
 def test_scaled_dot_product_fused_attention_overrideable_backward():

@@ -33,6 +33,16 @@ DTYPES = [
 
 TARGET = torch.float16
 
+# The complex cases compare against the native ``aten::_cast_Half`` reference,
+# which on the enflame backend redispatches into a complex copy the runtime
+# reports as unsupported (TOPSATEN_STATUS_NOT_SUPPORT, and a hard abort for
+# complex128).  The reference itself cannot run there, so those cases are
+# skipped for the enflame vendor only.
+_SKIP_COMPLEX = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame backend cannot run the native complex _cast_Half reference",
+)
+
 
 def make_input(shape, dtype):
     if dtype.is_floating_point:
@@ -113,6 +123,7 @@ def test_cast_Half_special_values(dtype):
 
 
 @pytest.mark.cast_Half
+@_SKIP_COMPLEX
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 @pytest.mark.parametrize("layout", ["contiguous", "transpose", "slice", "expand"])
 def test_cast_Half_complex_layout(dtype, layout):
@@ -127,6 +138,7 @@ def test_cast_Half_complex_layout(dtype, layout):
 
 
 @pytest.mark.cast_Half
+@_SKIP_COMPLEX
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_cast_Half_complex_noncontiguous_grad(dtype):
     x = torch.randn((4, 5), device=flag_gems.device, dtype=dtype, requires_grad=True)
@@ -142,7 +154,14 @@ def test_cast_Half_complex_noncontiguous_grad(dtype):
 
 
 @pytest.mark.cast_Half
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.complex64])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float64,
+        pytest.param(torch.complex64, marks=_SKIP_COMPLEX),
+    ],
+)
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Half_autograd(dtype, non_blocking):
     x = torch.randn(17, device=flag_gems.device, dtype=dtype, requires_grad=True)
