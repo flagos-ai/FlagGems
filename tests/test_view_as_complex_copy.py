@@ -24,7 +24,7 @@ IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
 def _assert_equal(actual, expected):
-    if IS_KUNLUNXIN:
+    if IS_KUNLUNXIN or (flag_gems.vendor_name == "ascend" and actual.dtype.is_complex):
         actual, expected = actual.cpu(), expected.cpu()
     utils.gems_assert_equal(actual, expected)
 
@@ -37,6 +37,15 @@ VIEW_AS_COMPLEX_FLOAT_DTYPES = [torch.float16, torch.float32]
 if not cfg.QUICK_MODE and utils.fp64_is_supported:
     VIEW_AS_COMPLEX_FLOAT_DTYPES.append(torch.float64)
 VIEW_AS_COMPLEX_DTYPES = VIEW_AS_COMPLEX_FLOAT_DTYPES
+
+_ASCEND_COMPLEX32_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend copy does not support nonempty complex32 output",
+)
+VIEW_AS_COMPLEX_DTYPE_PARAMS = [
+    pytest.param(dtype, marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else ())
+    for dtype in VIEW_AS_COMPLEX_DTYPES
+]
 
 if cfg.QUICK_MODE:
     # (input_shape,) tuples whose last dimension is 2.
@@ -90,7 +99,7 @@ def _assert_matches(res, ref, inp):
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize("input_shape", VIEW_AS_COMPLEX_SHAPES)
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy(input_shape, dtype):
     inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -102,7 +111,7 @@ def test_accuracy_view_as_complex_copy(input_shape, dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_dtype_mapping(dtype):
     inp = torch.randn(6, 2, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.view_as_complex_copy(inp)
@@ -117,7 +126,7 @@ def test_accuracy_view_as_complex_copy_dtype_mapping(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_values(dtype):
     # The reinterpret must be bit-exact: real part = last dim index 0, imag
     # part = last dim index 1.
@@ -130,7 +139,7 @@ def test_accuracy_view_as_complex_copy_values(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_noncontiguous_batch(dtype):
     # Non-contiguous batch dims are allowed as long as the last dim keeps
     # stride 1; the strided gather path must honor the real strides.
@@ -144,7 +153,7 @@ def test_accuracy_view_as_complex_copy_noncontiguous_batch(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_transposed(dtype):
     # Transpose keeps the last dimension's stride 1 while scrambling the rest.
     base = torch.randn(3, 5, 2, dtype=dtype, device=flag_gems.device)
@@ -157,7 +166,7 @@ def test_accuracy_view_as_complex_copy_transposed(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_high_rank_noncontiguous(dtype):
     # 4-D/5-D/6-D non-contiguous inputs: only non-contiguous inputs reach
     # _view_as_complex_copy_strided_kernel, whose leading-dim stride slots are
@@ -185,7 +194,7 @@ def test_accuracy_view_as_complex_copy_high_rank_noncontiguous(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_expanded(dtype):
     # Zero-stride batch dims must be materialized into concrete copies.
     base = torch.randn(1, 2, dtype=dtype, device=flag_gems.device)
@@ -198,7 +207,7 @@ def test_accuracy_view_as_complex_copy_expanded(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_storage_offset(dtype):
     base = torch.randn(20, dtype=dtype, device=flag_gems.device)
     inp = base[4:12].view(4, 2)
@@ -210,7 +219,7 @@ def test_accuracy_view_as_complex_copy_storage_offset(dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_complex_copy_independent_storage(dtype):
     inp = torch.randn(8, 2, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.view_as_complex_copy(inp)
