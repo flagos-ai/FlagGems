@@ -173,6 +173,20 @@ def test_max_dim_big_shape(shape, dim, keepdim, dtype):
     utils.gems_assert_equal(res_out_value, ref_out_value)
 
 
+@pytest.mark.max_dim
+@pytest.mark.parametrize("shape", [(1024, 16, 1024), (2, 8, 70000)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_max_dim_large_grid_stride(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out_value, ref_out_index = torch.max(ref_inp, dim=1, keepdim=False)
+    res_out_value, res_out_index = flag_gems.max_dim(inp, dim=1, keepdim=False)
+
+    utils.gems_assert_equal(res_out_index, ref_out_index)
+    utils.gems_assert_equal(res_out_value, ref_out_value)
+
+
 # ---------------------------------------------------------------------------
 # Backward: torch.max(x) (full reduction) and torch.max(x, dim, keepdim)
 #
