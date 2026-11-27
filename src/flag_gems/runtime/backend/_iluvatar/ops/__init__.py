@@ -86,6 +86,7 @@ from .linalg_solve_triangular import (
 )
 from .linalg_svdvals import linalg_svdvals
 from .linalg_tensorinv import linalg_tensorinv
+from .linalg_vander import linalg_vander
 from .linear import linear
 from .log10_ import log10_
 from .log_normal import log_normal
@@ -232,6 +233,7 @@ __all__ = [
     "linalg_solve_triangular_out",
     "linalg_svdvals",
     "linalg_tensorinv",
+    "linalg_vander",
     "linear",
     "log10_",
     "log_normal",
