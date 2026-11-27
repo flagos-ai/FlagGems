@@ -34,9 +34,6 @@ def lgamma(x):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def igammac_func(a, x):
-    # Small value to determine convergence - must be constexpr for Triton
-    EPS = tl.constexpr(1e-12)
-
     # igammac(a, x) = Q(a, x) = Gamma(a, x) / Gamma(a)
     # where Gamma(a, x) is the upper incomplete gamma function
     # Using the relation: Q(a, x) = 1 - P(a, x) = 1 - gamma(a, x) / Gamma(a)
@@ -58,96 +55,27 @@ def igammac_func(a, x):
     term = 1.0 / a_f32
     sum_val = term
 
-    # Second term: x/(a+1)
-    term = term * x_f32 / (a_f32 + 1.0)
-    sum_val = sum_val + term
+    # After merging adjacent pairs, each pair needs only one division (fp32 division on GCU is far more expensive than
+    # multiply-add):
+    #   t_n + t_{n+1} = t_{n-1}·x·(a+n+1+x) / ((a+n)(a+n+1))
+    #   t_{n+1}       = t_{n-1}·x² / ((a+n)(a+n+1))
+    # The original 19 divisions are reduced to 10 (n=1..18 paired + n=19 computed alone).
+    for n in tl.static_range(1, 19, 2):
+        denominator = (a_f32 + n) * (a_f32 + n + 1.0)
+        pair_sum = term * x_f32 * (a_f32 + n + 1.0 + x_f32) / denominator
+        term = term * x_f32 * x_f32 / denominator
+        sum_val = sum_val + pair_sum
 
-    # Third term: x^2/((a+1)*(a+2))
-    term = term * x_f32 / (a_f32 + 2.0)
-    sum_val = sum_val + term
-
-    # Fourth term
-    term = term * x_f32 / (a_f32 + 3.0)
-    sum_val = sum_val + term
-
-    # Fifth term
-    term = term * x_f32 / (a_f32 + 4.0)
-    sum_val = sum_val + term
-
-    # Sixth term
-    term = term * x_f32 / (a_f32 + 5.0)
-    sum_val = sum_val + term
-
-    # Seventh term
-    term = term * x_f32 / (a_f32 + 6.0)
-    sum_val = sum_val + term
-
-    # Eighth term
-    term = term * x_f32 / (a_f32 + 7.0)
-    sum_val = sum_val + term
-
-    # Ninth term
-    term = term * x_f32 / (a_f32 + 8.0)
-    sum_val = sum_val + term
-
-    # Tenth term
-    term = term * x_f32 / (a_f32 + 9.0)
-    sum_val = sum_val + term
-
-    # Eleventh term
-    term = term * x_f32 / (a_f32 + 10.0)
-    sum_val = sum_val + term
-
-    # Twelfth term
-    term = term * x_f32 / (a_f32 + 11.0)
-    sum_val = sum_val + term
-
-    # Thirteenth term
-    term = term * x_f32 / (a_f32 + 12.0)
-    sum_val = sum_val + term
-
-    # Fourteenth term
-    term = term * x_f32 / (a_f32 + 13.0)
-    sum_val = sum_val + term
-
-    # Fifteenth term
-    term = term * x_f32 / (a_f32 + 14.0)
-    sum_val = sum_val + term
-
-    # Add more terms for better accuracy
-    # Sixteenth term
-    term = term * x_f32 / (a_f32 + 15.0)
-    sum_val = sum_val + term
-
-    # Seventeenth term
-    term = term * x_f32 / (a_f32 + 16.0)
-    sum_val = sum_val + term
-
-    # Eighteenth term
-    term = term * x_f32 / (a_f32 + 17.0)
-    sum_val = sum_val + term
-
-    # Nineteenth term
-    term = term * x_f32 / (a_f32 + 18.0)
-    sum_val = sum_val + term
-
-    # Twentieth term
+    # Accumulate the 19th term separately
     term = term * x_f32 / (a_f32 + 19.0)
     sum_val = sum_val + term
 
-    # Add eps to avoid log(0)
-    sum_val = sum_val + EPS
-
-    # Compute lower incomplete gamma in log space
-    # gamma(a, x) = x^a * e^(-x) * sum
-    log_gamma_lower = a_f32 * tl.log(x_f32) - x_f32 + tl.log(sum_val)
-
-    # Compute P(a, x) = gamma(a, x) / Gamma(a)
-    # In log space: log(P) = log(gamma) - log(Gamma)
-    log_p = log_gamma_lower - log_gamma_a
-
-    # P(a, x) = exp(log_P), clamped to [0, 1]
-    p = tl.exp(log_p)
+    # P(a, x) = exp(a·ln x - x - lnΓ(a)) · sum
+    # Multiply sum directly on the outside of the exponential factor, eliminating the original implementation's log(sum)
+    # (one log per element),
+    # while also avoiding the need for an EPS patch when sum underflows.
+    scale = tl.exp(a_f32 * tl.log(x_f32) - x_f32 - log_gamma_a)
+    p = scale * sum_val
 
     # Clamp to avoid numerical issues
     p = tl.where(p > 1.0, 1.0, p)
@@ -163,7 +91,7 @@ def igammac_func(a, x):
 
 
 def igammac_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 IGAMMAC_")
+    logger.debug("GEMS_ENFLAME IGAMMAC_")
     # igammac_cuda (and thus this kernel) only supports floating point dtypes;
     # Half/BFloat16 are not supported. Reject them explicitly.
     supported_dtypes = (torch.float32, torch.float64)

@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
 
@@ -13,10 +12,44 @@ logger = logging.getLogger(__name__)
 # Hardware limit of grid dimension x on GCU400
 MAX_GRID_X = 65535
 
+# Curated autotune configuration set (replacing the default 3x3x3x3=81 grid):
+# Output planes are generally <= 32x32, so BLOCK covering the whole plane suffices; num_warps is determined empirically
+# -
+# forward is best at nw2, while backward needs more warps to advance because of atomic_add.
+# The compiler must generate a separate version for each (BLOCK_H, BLOCK_W, num_warps, num_stages); converging the
+# configuration
+# count can reduce the number of compilations for a single shape from ~81 to ~9.
+_FWD_CONFIGS = [
+    triton.Config({"BLOCK_H": block_h, "BLOCK_W": block_w}, num_warps=2, num_stages=3)
+    for block_h in (8, 16, 32)
+    for block_w in (8, 16, 32)
+] + [
+    # After the kernel shape changed (mask reduction, int32 indices), give autotune two more higher-parallelism
+    # candidates: on large planes nw4 has a chance of beating nw2.
+    triton.Config({"BLOCK_H": block_h, "BLOCK_W": block_w}, num_warps=4, num_stages=3)
+    for block_h, block_w in ((16, 16), (32, 16), (32, 32))
+]
+_BWD_CONFIGS = [
+    triton.Config(
+        {"BLOCK_H": block_h, "BLOCK_W": block_w}, num_warps=warps, num_stages=4
+    )
+    for block_h, block_w, warps in (
+        (8, 8, 8),
+        (8, 16, 8),
+        (16, 16, 2),
+        (16, 16, 4),
+        (16, 16, 8),
+        (32, 16, 4),
+        (32, 32, 2),
+        (32, 32, 4),
+        (32, 32, 8),
+    )
+]
+
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_tuned_config("fractional_max_pool2d_forward"),
+    configs=_FWD_CONFIGS,
     key=["out_h", "out_w", "kernel_h", "kernel_w"],
 )
 @triton.jit
@@ -72,6 +105,7 @@ def fractional_max_pool2d_forward_kernel(
 
     h_mask = h_out_offsets < out_h
     w_mask = w_out_offsets < out_w
+    tile_mask = h_mask[:, None] & w_mask[None, :]
 
     for pid_nc in range(pid_nc_start, num_nc, grid_nc):
         n_idx = pid_nc // in_c
@@ -100,48 +134,63 @@ def fractional_max_pool2d_forward_kernel(
         w_starts = tl.where(w_out_offsets == out_w - 1, in_w - kernel_w, w_starts)
 
         max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-        max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
+        # Indices are carried only as int32 inside the kernel (saving the i64 vector ALU); at the final store
+        # convert to int64 in one shot, avoiding another cast kernel on the host side.
+        max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int32)
 
         h_base = h_starts[:, None]
         w_base = w_starts[None, :]
 
-        for kh in range(kernel_h):
-            for kw in range(kernel_w):
-                h_in = h_base + kh
-                w_in = w_base + kw
+        # Strength reduction: compute the address/index base within a tile only once, each kernel tap does only a scalar
+        # add
+        offset_base = h_base * in_stride_h + w_base * in_stride_w
+        index_base = h_base * in_w + w_base
 
-                in_mask = (
-                    h_mask[:, None]
-                    & w_mask[None, :]
-                    & (h_in >= 0)
-                    & (h_in < in_h)
-                    & (w_in >= 0)
-                    & (w_in < in_w)
-                )
+        # Use the 0th tap directly as the initial value, saving one compare + two selects;
+        # Only record the index when the value is strictly greater than the dtype minimum, keeping semantics exactly the
+        # same as "initialize with min_val,
+        # update only on strictly greater" (the index remains -1 for extreme-value inputs).
+        first_mask = h_mask[:, None] & w_mask[None, :] & (h_base >= 0) & (h_base < in_h)
+        first_mask = first_mask & (w_base >= 0) & (w_base < in_w)
+        first_val = tl.load(
+            input_base_ptr + offset_base, mask=first_mask, other=min_val
+        )
+        max_val_acc = first_val
+        max_idx_acc = tl.where(first_mask & (first_val > min_val), index_base, -1)
 
-                input_offset = h_in * in_stride_h + w_in * in_stride_w
-                current_val = tl.load(
-                    input_base_ptr + input_offset, mask=in_mask, other=min_val
-                )
-                current_idx = h_in * in_w + w_in
+        for tap in range(1, kernel_h * kernel_w):
+            kh = tap // kernel_w
+            kw = tap % kernel_w
+            # Compute row-direction validity only once on (BLOCK_H, 1), saving the 2D comparison chain for each tap
+            h_in = h_base + kh
+            h_valid = h_mask[:, None] & (h_in >= 0) & (h_in < in_h)
+            w_in = w_base + kw
+            in_mask = h_valid & w_mask[None, :] & (w_in >= 0) & (w_in < in_w)
 
-                update_mask = current_val > max_val_acc
-                max_val_acc = tl.where(update_mask, current_val, max_val_acc)
-                max_idx_acc = tl.where(update_mask, current_idx, max_idx_acc)
+            tap_offset = kh * in_stride_h + kw * in_stride_w
+            current_val = tl.load(
+                input_base_ptr + (offset_base + tap_offset),
+                mask=in_mask,
+                other=min_val,
+            )
+            current_idx = index_base + (kh * in_w + kw)
+
+            update_mask = current_val > max_val_acc
+            max_val_acc = tl.where(update_mask, current_val, max_val_acc)
+            max_idx_acc = tl.where(update_mask, current_idx, max_idx_acc)
 
         # Write output and indices
         out_nc_offset = pid_nc * out_h * out_w
         out_offsets = (
             out_nc_offset + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
         )
-        out_mask = h_mask[:, None] & w_mask[None, :]
-        tl.store(output_ptr + out_offsets, max_val_acc, mask=out_mask)
-        tl.store(indices_ptr + out_offsets, max_idx_acc, mask=out_mask)
+        tl.store(output_ptr + out_offsets, max_val_acc, mask=tile_mask)
+        tl.store(indices_ptr + out_offsets, max_idx_acc.to(tl.int64), mask=tile_mask)
 
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_tuned_config("fractional_max_pool2d_backward"),
+    configs=_BWD_CONFIGS,
     key=["out_h", "out_w"],
     reset_to_zero=["grad_input_ptr"],
 )
@@ -164,6 +213,9 @@ def fractional_max_pool2d_backward_kernel(
     # Tiling meta-parameters
     BLOCK_H: tl.constexpr,
     BLOCK_W: tl.constexpr,
+    # True when windows do not overlap (alpha >= kernel): each input position is written at most once,
+    # so a plain store can replace atomic_add.
+    USE_ATOMIC: tl.constexpr = True,
 ):
     """Backward kernel for fractional max pool 2d.
 
@@ -205,9 +257,16 @@ def fractional_max_pool2d_backward_kernel(
         in_offsets = in_nc_offset + idx_vals
 
         valid_mask = out_mask & (idx_vals >= 0)
-        tl.atomic_add(
-            grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask
-        )
+        if USE_ATOMIC:
+            tl.atomic_add(
+                grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask
+            )
+        else:
+            # Windows do not overlap: within the same launch each grad_input element is hit by at most one output
+            # position, so a plain store is equivalent to atomic_add with no atomics overhead.
+            tl.store(
+                grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask
+            )
 
 
 def fractional_max_pool2d(
@@ -350,7 +409,24 @@ def fractional_max_pool2d_backward(
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
+    # Determine whether windows may overlap: the increment of the (i+1)-th window start relative to the i-th
+    # floor((i+1+s)*alpha) - floor((i+s)*alpha) >= floor(alpha),
+    # so when alpha >= kernel the increment is always >= kernel, windows are pairwise non-overlapping (at most
+    # adjacent),
+    # each input position is hit by at most one output position, so atomics can be avoided.
+    alpha_h = (in_h - kernel_h) / (out_h - 1) if out_h > 1 else 0.0
+    alpha_w = (in_w - kernel_w) / (out_w - 1) if out_w > 1 else 0.0
+    windows_disjoint = alpha_h >= kernel_h and alpha_w >= kernel_w
+    # When the output grid exactly tiles the input (out * kernel == in) and windows do not overlap, each input element
+    # is guaranteed to be written once, so the fill kernel for zeros initialization can be omitted.
+    fully_covered = (
+        windows_disjoint and in_h == out_h * kernel_h and in_w == out_w * kernel_w
+    )
+
+    if fully_covered:
+        grad_input = torch.empty_like(input, dtype=torch.float32)
+    else:
+        grad_input = torch.zeros_like(input, dtype=torch.float32)
 
     if grad_input.numel() == 0:
         return grad_input.to(grad_output.dtype)
@@ -377,6 +453,7 @@ def fractional_max_pool2d_backward(
         out_stride_nc,
         out_stride_h,
         out_stride_w,
+        USE_ATOMIC=not windows_disjoint,
     )
 
     return grad_input.to(grad_output.dtype)

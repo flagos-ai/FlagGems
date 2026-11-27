@@ -21,8 +21,16 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 _COMPLEX_DTYPES = (
-    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+    if utils.complex_is_supported
+    else []
 )
 
 LOGCUMSUMEXP_SHAPES = (
@@ -45,14 +53,11 @@ def test__logcumsumexp(shape, dtype):
 
     dim = 1 if shape == utils.REDUCTION_SHAPES[-1] else -1
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    use_cpu_reference = flag_gems.vendor_name == "mthreads" and dtype == torch.bfloat16
-    ref_inp = inp.cpu().double() if use_cpu_reference else utils.to_reference(inp, True)
+    ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch._logcumsumexp(ref_inp, dim)
     res_out = flag_gems._logcumsumexp(inp, dim)
 
-    if use_cpu_reference:
-        assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
@@ -246,6 +251,17 @@ def test__logcumsumexp_complex(shape, dim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
 
+def _host_complex_masks(tensor):
+    """NaN/±Inf branch masks of a complex tensor, evaluated on the host.
+
+    ``torch.isnan`` and ``torch.isinf`` abort the process on a complex GCU
+    tensor (TOPSATEN reports them as unsupported), so the masks are built after
+    moving the tensor to the CPU; the comparison itself is unchanged.
+    """
+    host = tensor.cpu() if tensor.device.type != "cpu" else tensor
+    return torch.isnan(host), torch.isinf(host.real), torch.isinf(host.imag)
+
+
 @pytest.mark.underscore_logcumsumexp
 @pytest.mark.parametrize(
     "data",
@@ -272,12 +288,22 @@ def test__logcumsumexp_complex_special_values(data):
     res_out = flag_gems._logcumsumexp(inp, 0)
 
     utils.gems_assert_close(res_out, ref_out, torch.complex64, equal_nan=True)
-    # Compare the branch structure on one device: under --ref=cpu the reference
-    # is materialized on the host, and Tensor.equal requires matching devices.
-    ref_on_dev = ref_out.to(res_out.device)
-    assert torch.isnan(res_out).equal(torch.isnan(ref_on_dev))
-    assert torch.isinf(res_out.real).equal(torch.isinf(ref_on_dev.real))
-    assert torch.isinf(res_out.imag).equal(torch.isinf(ref_on_dev.imag))
+    if flag_gems.vendor_name == "enflame":
+        # torch.isnan/isinf abort on a complex GCU tensor, so the branch masks
+        # are built on the host; the comparison semantics are unchanged.
+        res_nan, res_real_inf, res_imag_inf = _host_complex_masks(res_out)
+        ref_nan, ref_real_inf, ref_imag_inf = _host_complex_masks(ref_out)
+        assert res_nan.equal(ref_nan)
+        assert res_real_inf.equal(ref_real_inf)
+        assert res_imag_inf.equal(ref_imag_inf)
+    else:
+        # Compare the branch structure on one device: under --ref=cpu the
+        # reference is materialized on the host, and Tensor.equal requires
+        # matching devices.
+        ref_on_dev = ref_out.to(res_out.device)
+        assert torch.isnan(res_out).equal(torch.isnan(ref_on_dev))
+        assert torch.isinf(res_out.real).equal(torch.isinf(ref_on_dev.real))
+        assert torch.isinf(res_out.imag).equal(torch.isinf(ref_on_dev.imag))
 
 
 # ---------------------------------------------------------------------------
@@ -570,7 +596,15 @@ def _assert_complex_scan_close(res_out, ref_out):
     NaNs are compared as a mask (they must appear in the same places); only the
     entries where both sides are *finite* are checked for value agreement, so an
     ``inf - inf`` in the difference cannot turn into a spurious NaN.
+
+    Everything runs on the host: ``torch.isnan``/``torch.isinf``/``isfinite``
+    abort on a complex GCU tensor (TOPSATEN does not implement them), and moving
+    both operands keeps the comparison semantics identical.
     """
+    if res_out.device.type != "cpu":
+        res_out = res_out.cpu()
+    if ref_out.device.type != "cpu":
+        ref_out = ref_out.cpu()
     assert torch.isnan(res_out).equal(torch.isnan(ref_out))
     both_finite = torch.isfinite(res_out) & torch.isfinite(ref_out)
     if bool(both_finite.any()):
@@ -665,8 +699,17 @@ def test__logcumsumexp_long_complex_rows_special_values(data):
 
     # The branch structure is compared exactly; finite prefixes only need fp32
     # rounding agreement.
-    assert torch.isnan(res_out).equal(torch.isnan(ref_on_dev))
-    assert torch.isinf(res_out.real).equal(torch.isinf(ref_on_dev.real))
-    assert torch.isinf(res_out.imag).equal(torch.isinf(ref_on_dev.imag))
+    if flag_gems.vendor_name == "enflame":
+        # torch.isnan/isinf abort on a complex GCU tensor, so the masks are
+        # built on the host; the comparison semantics are unchanged.
+        res_nan, res_real_inf, res_imag_inf = _host_complex_masks(res_out)
+        ref_nan, ref_real_inf, ref_imag_inf = _host_complex_masks(ref_on_dev)
+        assert res_nan.equal(ref_nan)
+        assert res_real_inf.equal(ref_real_inf)
+        assert res_imag_inf.equal(ref_imag_inf)
+    else:
+        assert torch.isnan(res_out).equal(torch.isnan(ref_on_dev))
+        assert torch.isinf(res_out.real).equal(torch.isinf(ref_on_dev.real))
+        assert torch.isinf(res_out.imag).equal(torch.isinf(ref_on_dev.imag))
     if not utils.TO_CPU:
         _assert_complex_scan_close(res_out, ref_on_dev)

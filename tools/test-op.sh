@@ -101,7 +101,31 @@ TEST_CASES_CPU=()
 # but bring no test file of their own. We still want to exercise them, selected
 # by pytest marker below.
 OPS_IMPL_FILES=()
+declare -A DAILY_PYTHON_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${DAILY_PYTHON_OP:-}" == "1" ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    DAILY_PYTHON_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/daily-python-op-blacklist.txt"
+fi
+declare -A ASCEND_DAILY_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${BACKEND:-}" == *ascend* ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    ASCEND_DAILY_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/ascend-daily-op-blacklist.txt"
+fi
 for item in $CHANGED_FILES; do
+  if [[ -n "${DAILY_PYTHON_OP_BLACKLIST[$item]:-}" ]]; then
+    echo "Skipping daily python-op blacklist: $item"
+    continue
+  fi
+  if [[ -n "${ASCEND_DAILY_OP_BLACKLIST[$item]:-}" ]]; then
+    # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
+    # TODO: unblock each test once the underlying issue is resolved
+    echo "Skipping Ascend daily-op blacklist: $item"
+    continue
+  fi
   file_name=$(basename "$item")
   case $item in
     tests/test_quant.py)
@@ -260,10 +284,19 @@ if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   fi
 else
   # Per-PR run: a handful of changed files, run individually for precise
-  # failure attribution and -x fail-fast.
+  # failure attribution and -x fail-fast. Guard each file with the same shell
+  # timeout as the batched daily runs, and print node ids, so a hung test fails
+  # with rc=124 and leaves the last started test in the log instead of blocking
+  # the job until the workflow timeout.
   for item in "${TEST_CASES[@]}"; do
     echo "Running unit tests for ${item}"
-    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+    PYTHONUNBUFFERED=1 timeout "${TEST_BATCH_TIMEOUT:-3600}" \
+      coverage run -m pytest -s -v ${EXTRA_OPTS} ${item}
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+      if [[ $rc -eq 124 ]]; then
+        echo "::error::${item} timed out after ${TEST_BATCH_TIMEOUT:-3600}s"
+      fi
       if $FAIL_FAST; then exit 1; fi
       FAILURES+=("${item}")
     fi

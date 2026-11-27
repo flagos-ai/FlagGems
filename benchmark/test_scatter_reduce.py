@@ -98,9 +98,9 @@ def gather_scatter_gbps(bench_fn_args, latency):
 @pytest.mark.scatter_reduce
 @skip_tsingmicro
 @pytest.mark.skip_native(
-    vendors="ascend",
-    reason="Native aten::scatter.reduce lacks NPU reduction timing for the full "
-    "legacy add/multiply benchmark",
+    vendors=["ascend", "enflame"],
+    reason="Ascend lacks a native NPU baseline for the full legacy add/multiply "
+    "benchmark, and Enflame cannot time the native scatter reduction",
 )
 def test_scatter_reduce_optest():
     """Benchmark the legacy tensor-source aten::scatter.reduce overload."""
@@ -119,9 +119,9 @@ def test_scatter_reduce_optest():
 @pytest.mark.scatter_reduce_
 @skip_tsingmicro
 @pytest.mark.skip_native(
-    vendors="ascend",
-    reason="Native aten::scatter_.reduce lacks NPU reduction timing for the full "
-    "legacy add/multiply benchmark",
+    vendors=["ascend", "enflame"],
+    reason="Ascend lacks a native NPU baseline for the full legacy add/multiply "
+    "benchmark, and Enflame cannot time the native scatter reduction",
 )
 def test_scatter_reduce_legacy_inplace():
     bench = ScatterReduceInplaceBenchmark(

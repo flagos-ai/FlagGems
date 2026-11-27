@@ -66,6 +66,10 @@ def test_trace(shape, dtype):
         torch.bool,
     ]:
         ref_out = torch.sum(torch.diagonal(ref_inp))
+        # Upstream leaves ``res_out`` unbound on this branch; bind it for the
+        # enflame backend only so other vendors keep their current behavior.
+        if flag_gems.vendor_name == "enflame":
+            res_out = flag_gems.trace(inp)
     else:
         ref_out = torch.trace(ref_inp)
 

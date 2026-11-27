@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import logging
 import math
 
@@ -23,12 +22,14 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_varlan_fwd
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.shape_utils import broadcasted_stride
 
-from .flash_api import mha_fwd
+# The varlen entry points run on the GCU400 fork of the flash api/kernel pair:
+# its tile policy and paged page-aligned load are measured on this device, and
+# nothing here falls back to the generic (or native) varlen path.
+from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 
 logger = logging.getLogger(__name__)
 
@@ -225,29 +226,25 @@ def _attn_fwd_inner(
     return acc, l_i, m_i
 
 
+# Autotune space for the generic forward kernel.
+#
+# Compile-time budget: the accuracy suite instantiates a new kernel for every
+# (HEAD_DIM, HEAD_DIM_ACTUAL, STAGE, GROUP_HEAD, dtype) combination, and each
+# candidate config compiles its own cubin on GCU.  A wide candidate list
+# therefore multiplies the compile time per shape instead of sharing it.
+# BLOCK_N is already pinned by _attn_fwd_prune_configs to the largest width
+# that fits HEAD_DIM (static_assert BLOCK_N <= HEAD_DIM), so listing one
+# candidate per BLOCK_N leaves exactly one kernel per shape: the space below
+# only keeps the width selection and drops the redundant tuning dimensions.
 configs = [
     triton.Config(
-        {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": PLV},
-        num_stages=s,
-        num_warps=w,
-    )
-    for BM in [64, 128]
-    # BLOCK_N must be <= HEAD_DIM (static_assert in _attn_fwd); the prune
-    # below keeps the largest width that fits, so list all supported widths.
-    for BN in [16, 32, 64, 128]
-    for PLV in [True, False]
-    for s in [3]
-    for w in [2, 4]
-] + [
-    # gcu400: HEAD_DIM=64 needs BLOCK_N<=64 (the kernel asserts it at compile
-    # time).  Add only two candidates so the autotune space does not double
-    # and exhaust host memory.
-    triton.Config(
-        {"BLOCK_M": BM, "BLOCK_N": 64, "PRE_LOAD_V": False},
+        {"BLOCK_M": 128, "BLOCK_N": BN, "PRE_LOAD_V": False},
         num_stages=3,
         num_warps=4,
     )
-    for BM in [64, 128]
+    # BLOCK_N must be <= HEAD_DIM (static_assert in _attn_fwd); the prune
+    # below keeps the largest width that fits, so list all supported widths.
+    for BN in [16, 32, 64, 128]
 ]
 
 
@@ -307,14 +304,25 @@ def _attn_nomax_step(
         # fp32 upcast dot is the fast form there for BOTH fp16 and bf16.
         acc = tl.dot(p, value.to(tl.float32), acc, allow_tf32=False)
     elif value.dtype == tl.bfloat16:
-        # bf16 inputs at HEAD_DIM == 128.  Rounding P to bf16 keeps only 7
-        # mantissa bits and fails the sdpa reference tolerance (measured:
-        # 0.34% of elements over atol 1e-4 + rtol 0.016), while the fp32
-        # upcast dot is 3x slower (38 vs 117 TFLOPS) and crosses the DSM
-        # concurrency line.  Run the PV dot in fp16 instead: p in [0, 1]
-        # always fits fp16, and bf16 -> fp16 is exact inside fp16's dynamic
-        # range (|v| > 65504 saturates, same as any fp16 kernel).
-        acc = tl.dot(p.to(tl.float16), value.to(tl.float16), acc, allow_tf32=False)
+        # bf16 inputs at HEAD_DIM == 128.  A single bf16 dot with P rounded to
+        # bf16 (7 mantissa bits) fails the sdpa reference tolerance (0.34% of
+        # elements over atol 1e-4 + rtol 0.016), and the fp32 upcast dot is 3x
+        # slower (38 vs 117 TFLOPS).  Rounding P to fp16 and converting V to
+        # fp16 for the dot is accurate, but the per-step V tile convert costs
+        # +34% kernel time on GCU400 (measured B4 H32 S2048 D128: 3.39 ms vs
+        # the 2.51 ms convert-free floor) because the converted operand breaks
+        # the direct DSM->MMA feed of the dot.  Instead split P into an
+        # error-free hi+lo bf16 pair and run two native bf16 dots: V stays in
+        # bf16 with no convert, and the lo term recovers the mantissa the
+        # single bf16 dot would lose (|p - hi| <= 2^-9|p|, lo's own rounding
+        # < 2^-18|p|).  Measured: non-causal -14% (3.39 -> 2.91 ms @S2048),
+        # causal within noise (the defer=False row-sum tree already hides the
+        # convert there); over-tolerance fraction vs an fp32 reference drops
+        # to 0.0 (fp16-cast form: 3e-5 on the causal band).
+        p_hi = p.to(value.dtype)
+        p_lo = (p - p_hi.to(tl.float32)).to(value.dtype)
+        acc = tl.dot(p_hi, value, acc, allow_tf32=False)
+        acc = tl.dot(p_lo, value, acc, allow_tf32=False)
     else:
         acc = tl.dot(p.to(value.dtype), value, acc, allow_tf32=False)
     return acc, p_sum, l_i
@@ -377,11 +385,15 @@ def _attn_nomax_rowblock(
         # second staging set, pushed the causal variant to 528KB DSM (> the
         # 448KB per-program concurrency line) and halved the parallelism.
         tl.static_assert(BLOCK_M == BLOCK_N)
-        # The `start_m > 0` guard matters: for row block 0 the off-band range
-        # is empty, and a 0-trip version of the loop miscompiles on GCU400
-        # (sporadic NaN/garbage in the first block's accumulator).
-        if start_m > 0:
-            for start_n in tl.range(0, start_m * BLOCK_M, BLOCK_N):
+        # Upper-left causal: row block `start_m` sees columns [0, off_end)
+        # unmasked plus a single diagonal band tile starting at `off_end`.
+        # When the query extent is longer than the KV extent, the trailing row
+        # blocks have no band at all (every KV column is visible from them), and
+        # the band tile must be skipped: these loads are unmasked, so a band at
+        # off_end >= KV_CTX would read past the KV extent and corrupt the block.
+        off_end = start_m * BLOCK_M
+        if off_end >= KV_CTX:
+            for start_n in tl.range(0, KV_CTX, BLOCK_N):
                 acc, p_sum, l_i = _attn_nomax_step(
                     acc,
                     p_sum,
@@ -402,26 +414,52 @@ def _attn_nomax_rowblock(
                     DEFER_SUM=DEFER_SUM,
                     PV_F32=PV_F32,
                 )
-        acc, p_sum, l_i = _attn_nomax_step(
-            acc,
-            p_sum,
-            l_i,
-            query,
-            k_base,
-            v_base,
-            offs_m,
-            offs_d,
-            start_m * BLOCK_M,
-            sm_scale,
-            stride_k_seqlen,
-            stride_k_headsize,
-            stride_v_seqlen,
-            stride_v_headsize,
-            BLOCK_N,
-            MASKED=True,
-            DEFER_SUM=DEFER_SUM,
-            PV_F32=PV_F32,
-        )
+        else:
+            # The `start_m > 0` guard matters: for row block 0 the off-band
+            # range is empty, and a 0-trip version of the loop miscompiles on
+            # GCU400 (sporadic NaN/garbage in the first block's accumulator).
+            if start_m > 0:
+                for start_n in tl.range(0, off_end, BLOCK_N):
+                    acc, p_sum, l_i = _attn_nomax_step(
+                        acc,
+                        p_sum,
+                        l_i,
+                        query,
+                        k_base,
+                        v_base,
+                        offs_m,
+                        offs_d,
+                        start_n,
+                        sm_scale,
+                        stride_k_seqlen,
+                        stride_k_headsize,
+                        stride_v_seqlen,
+                        stride_v_headsize,
+                        BLOCK_N,
+                        MASKED=False,
+                        DEFER_SUM=DEFER_SUM,
+                        PV_F32=PV_F32,
+                    )
+            acc, p_sum, l_i = _attn_nomax_step(
+                acc,
+                p_sum,
+                l_i,
+                query,
+                k_base,
+                v_base,
+                offs_m,
+                offs_d,
+                off_end,
+                sm_scale,
+                stride_k_seqlen,
+                stride_k_headsize,
+                stride_v_seqlen,
+                stride_v_headsize,
+                BLOCK_N,
+                MASKED=True,
+                DEFER_SUM=DEFER_SUM,
+                PV_F32=PV_F32,
+            )
     else:
         for start_n in tl.range(0, KV_CTX, BLOCK_N):
             acc, p_sum, l_i = _attn_nomax_step(
@@ -507,8 +545,15 @@ def _attn_fwd_nomax(
     # GCU400 is that `acc` is never read-modify-written per KV step: the
     # online form rescales the whole [BLOCK_M, HEAD_DIM] accumulator every
     # iteration, which forces the accumulator out of OACC and costs ~35%.
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
+    #
+    # The launch grid is one flattened axis: GCU caps grid.y at 255 and
+    # batch*heads alone can exceed it (8 batches x 32 heads in the SWA tests),
+    # while grid.x allows 65535.  The linearisation is the same one a
+    # (num_m, batch*heads) grid uses, so the program order is unchanged.
+    num_m = tl.cdiv(Q_CTX, BLOCK_M)
+    pid = tl.program_id(0)
+    start_m = pid % num_m
+    off_hz = pid // num_m
     batch_id = off_hz // q_head_num
     head_id = off_hz % q_head_num
 
@@ -554,13 +599,40 @@ def _attn_fwd_nomax(
     )
 
 
-def _nomax_launch_config(q_ctx, kv_ctx):
+def _nomax_launch_config(q_ctx, kv_ctx, head_dim=None, is_causal=False, head_groups=1):
     """Tile choice for _attn_fwd_nomax, measured on GCU400.
 
-    A 128x128 tile with 2 warps wins on every shape swept; it keeps the
-    [BLOCK_M, HEAD_DIM] fp32 accumulator inside OACC while still giving each
-    SIP enough programs to hide the K/V loads. Narrower tiles keep short
-    sequences (and HEAD_DIM=64) on the same path.
+    A 128x128 tile keeps the [BLOCK_M, HEAD_DIM] fp32 accumulator inside OACC
+    while still giving each SIP enough programs to hide the K/V loads.  Narrower
+    tiles keep short sequences (and HEAD_DIM=64) on the same path.
+
+    Exception: a short query extent only yields a handful of programs at 128
+    rows, so the launch leaves SIPs idle while every busy SIP still streams the
+    full KV extent.  Halving BLOCK_M doubles the program count and splits that
+    stream; the GCU400 sweep (2026-11-18, min-of-12) shows 64 rows winning
+    5-8% for HEAD_DIM=128 non-causal with q_ctx <= 256, while HEAD_DIM=64 and
+    causal tiles stay fastest at 128 rows.
+
+    q_ctx=2048 is the second measured exception: at 128 rows that length only
+    reached 51 TFLOPS while 1024/4096/8192 reached 79/94/96 TFLOPS (benchmark
+    reproduction, 2026-11-22, stable to four digits across runs).  64 rows lifts
+    it to 54 TFLOPS (5.06 ms vs 5.40 ms, 0.361x vs 0.339x) with the other sizes
+    unchanged.  Narrowing BLOCK_N to 64 instead was a regression (7.80 ms), so
+    the KV step keeps its 128-wide tile.
+
+    That q_ctx=2048 exception is a *low-occupancy* fix, not a property of the
+    length: doubling BLOCK_M halves the per-dot flops, so it only pays off when
+    128 rows leave the machine starved.  Re-measured 2026-11-22 on B4 H32
+    S2048 D128 bf16 (2048 programs at 128 rows): 128 rows 12.11 ms / 22.70
+    TFLOPS vs 64 rows 23.78 ms / 11.56 TFLOPS, i.e. the old unconditional rule
+    cost exactly 2x there.  It is now gated on the program count.
+
+    Warp count: the batch-4/8-head/1024-square sweep on 2026-11-19 (mean of 3
+    rounds, reproduced twice) measured a single warp ahead of the previous 2
+    warps wherever the causal mask or HEAD_DIM=64 keeps the tile cheap
+    (HEAD_DIM=64 non-causal 0.2272ms vs 0.2569ms, HEAD_DIM=128 causal 0.3940ms
+    vs 0.5089ms), while HEAD_DIM=128 non-causal still prefers 2 warps
+    (0.2323ms vs 0.2488ms) because the wider fp32 accumulator needs them.
     """
     # 16 is the smallest tile tl.dot accepts; a sequence length of 16 must be
     # able to take this path (it used to raise StopIteration).  When no
@@ -568,7 +640,15 @@ def _nomax_launch_config(q_ctx, kv_ctx):
     # divisibility check falls back to the generic kernel instead of crashing.
     block_n = next((bn for bn in (128, 64, 32, 16) if kv_ctx % bn == 0), kv_ctx + 1)
     block_m = next((bm for bm in (128, 64, 32, 16) if q_ctx % bm == 0), q_ctx + 1)
-    return block_m, block_n, 2
+    if block_m == 128 and not is_causal and head_dim == 128:
+        if q_ctx <= 256:
+            block_m = 64
+        elif q_ctx == 2048 and head_groups * triton.cdiv(q_ctx, 128) < 256:
+            # Low-occupancy regime only: see the note above, 64 rows costs 2x
+            # once the 128-row launch already has enough programs.
+            block_m = 64
+    num_warps = 2 if (head_dim == 128 and not is_causal) else 1
+    return block_m, block_n, num_warps
 
 
 @libentry()
@@ -622,8 +702,12 @@ def _attn_fwd(
     PRE_LOAD_V: tl.constexpr,
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
+    # Flattened launch grid: see the note in _attn_fwd_nomax (grid.y caps at
+    # 255, batch*heads can be larger; grid.x allows 65535).
+    num_m = tl.cdiv(Q_CTX, BLOCK_M)
+    pid = tl.program_id(0)
+    start_m = pid % num_m
+    off_hz = pid // num_m
     batch_id = off_hz // q_head_num
     head_id = off_hz % q_head_num
     kv_head_id = head_id // GROUP_HEAD
@@ -886,7 +970,10 @@ def _attn_bwd_dkdv(
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
-        qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
+        # Scaling is applied after the dot product (in the fp32 domain), as in the forward kernel:
+        # pre-multiplying sm_scale*log2(e) into the fp16 K would add a ~2^-11 relative error to
+        # every element and would not agree with the forward LSE, losing dq precision here.
+        qkT = tl.dot(key, qT) * (sm_scale * 1.4426950408889634)  # (BLOCK_N1, BLOCK_M1)
         m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
         m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
@@ -935,6 +1022,7 @@ def _attn_bwd_dq(
     query,
     K,
     V,  #
+    sm_scale,
     do,
     m,
     D,
@@ -974,7 +1062,8 @@ def _attn_bwd_dq(
 
         kT = tl.load(kT_ptrs, mask=hd_mask[:, None] & offs_n_mask[None, :], other=0.0)
         vT = tl.load(vT_ptrs, mask=hd_mask[:, None] & offs_n_mask[None, :], other=0.0)
-        qk = tl.dot(query, kT)
+        # Same as dkdv: keep K unchanged and apply the log2-domain scaling after the fp32 dot product.
+        qk = tl.dot(query, kT) * (sm_scale * 1.4426950408889634)
         p = tl.math.exp2(qk - m)
         mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
         # Autoregressive masking.
@@ -986,10 +1075,11 @@ def _attn_bwd_dq(
         # Compute dP and dS.
         dp = tl.dot(do, vT).to(tl.float32)
         ds = p * (dp - Di[:, None])
-        ds = tl.where(mask, ds, 0.0).to(kT.dtype)
+        ds = tl.where(mask, ds, 0.0)
         # Compute dQ.
-        # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
-        dq += tl.dot(ds, tl.trans(kT))
+        # The dot product here is fp32 (same as dv): rounding dS to fp16 would add a 2^-11
+        # quantization error, and after a long-sequence accumulation the near-zero dq elements hit atol.
+        dq += tl.dot(ds, tl.trans(kT).to(tl.float32))
         # Increment pointers.
         curr_n += step_n
     return dq
@@ -1003,8 +1093,22 @@ def _attn_bwd_prune_configs(configs, named_args, **kwargs):
     # cdiv(Q_CTX, BLOCK_N1).  If BLOCK_M2 < BLOCK_N1 the tail of dq is never
     # written (it keeps uninitialized garbage), so drop those configs.
     block_n1 = max((c.kwargs["BLOCK_N1"] for c in configs), default=128)
+    # Keep a single num_stages candidate.  Every surviving config is otherwise
+    # identical (same block sizes and num_warps), and on GCU each num_stages
+    # value builds a separate kernel (~8s of compile time per constexpr
+    # combination, of which the accuracy suite has dozens).  Prefer the middle
+    # of the staged ladder because it keeps the SRAM footprint of the deepest
+    # variant away from the pipelining limit.
+    stages = sorted({c.num_stages for c in configs}) or [3]
+    num_stages = 3 if 3 in stages else stages[len(stages) // 2]
     # GCU caps num_warps at 4 (GCUOptions); configs above that abort at launch.
-    return [c for c in configs if c.kwargs["BLOCK_M2"] == block_n1 and c.num_warps <= 4]
+    return [
+        c
+        for c in configs
+        if c.kwargs["BLOCK_M2"] == block_n1
+        and c.num_warps <= 4
+        and c.num_stages == num_stages
+    ]
 
 
 @libentry()
@@ -1049,8 +1153,6 @@ def _attn_bwd(
     BLOCK_DMODEL_ACTUAL: tl.constexpr,
 ):
     tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
-
-    LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
     bhid = tl.program_id(2)
     off_chz = (bhid * Q_CTX).to(tl.int64)
@@ -1238,6 +1340,7 @@ def _attn_bwd(
                 query,
                 K,
                 V,  #
+                sm_scale,
                 do,
                 m,
                 D,  #
@@ -1269,6 +1372,7 @@ def _attn_bwd(
                 query,
                 K,
                 V,  #
+                sm_scale,
                 do,
                 m,
                 D,  #
@@ -1295,6 +1399,7 @@ def _attn_bwd(
                 query,
                 K,
                 V,  #
+                sm_scale,
                 do,
                 m,
                 D,  #
@@ -1314,7 +1419,9 @@ def _attn_bwd(
             )
     # Write back dQ.
     dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-    dq *= LN2
+    # K is no longer pre-multiplied by sm_scale*log2(e), so sm_scale is restored here (the ln2/log2
+    # conversion is absorbed by the same factor: the old code did dq *= ln2 with K pre-scaled by log2(e)).
+    dq *= sm_scale
     # tl.store(dq_ptrs, dq)
 
     tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None] & hd_mask[None, :])
@@ -1329,7 +1436,18 @@ def scaled_dot_product_attention_forward(
     is_causal=False,
     scale=None,
     enable_gqa=False,
+    lse_base_e=False,
 ):
+    """Attention forward returning ``(output, LSE)``.
+
+    ``lse_base_e=True`` requests the natural-log row statistic
+    ``log(sum(exp(s)))`` instead of the default log2-domain one.  The
+    ``_attn_fwd_nomax`` fast path folds the conversion into the kernel
+    (``LSE_BASE_E`` constexpr), so callers such as
+    ``_scaled_dot_product_cudnn_attention`` can skip the extra elementwise
+    ``LSE * ln2`` launch; the generic path falls back to an in-place host-side
+    rescale so the returned value is identical either way.
+    """
     logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_ATTENTION_FORWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
@@ -1362,9 +1480,7 @@ def scaled_dot_product_attention_forward(
     )
 
     grid = lambda args: (
-        triton.cdiv(query.shape[2], args["BLOCK_M"]),
-        query.shape[0] * query.shape[1],
-        1,
+        triton.cdiv(query.shape[2], args["BLOCK_M"]) * query.shape[0] * query.shape[1],
     )
 
     if attn_mask is not None:
@@ -1400,19 +1516,32 @@ def scaled_dot_product_attention_forward(
     # Fast path: no attention mask, evenly divisible sequence lengths, causal
     # or not. Measured on GCU400 to be the cheapest formulation; see
     # _attn_fwd_nomax for why the running max is dropped.
+    #
+    # Non-square (q_ctx != kv_ctx) dispatches are admitted as well: the
+    # non-causal branch walks the KV extent with its own bound, and the causal
+    # branch places the diagonal band at ``start_m * BLOCK_M`` and skips it once
+    # that offset leaves the KV extent, so both directions of the extent
+    # mismatch are covered.  Routing the divisible non-square shapes here also
+    # avoids the generic `_attn_fwd` autotune space, which the upstream keep()
+    # filter pins to BLOCK_M=128/BLOCK_N=32.
     q_ctx, kv_ctx = query.shape[2], key.shape[2]
     causal_fast = bool(stage == 3)
     if (
         not HAS_ATTN_MASK
         and stage in (1, 3)
-        and q_ctx == kv_ctx
         and dropout_p == 0.0
         and HEAD_DIM_ACTUAL in (64, 128)
         # _attn_fwd_nomax indexes K/V by the query head directly; grouped-query
         # shapes need the q_head_num // kv_head_num mapping of the generic path.
         and q_head_num == kv_head_num
     ):
-        block_m, block_n, num_warps = _nomax_launch_config(q_ctx, kv_ctx)
+        block_m, block_n, num_warps = _nomax_launch_config(
+            q_ctx,
+            kv_ctx,
+            head_dim=HEAD_DIM_ACTUAL,
+            is_causal=causal_fast,
+            head_groups=query.shape[0] * q_head_num,
+        )
         # The causal split walks [0, start_m*BLOCK_M) in the loop and then one
         # unrolled diagonal band tile, so causal requires the square tile.
         if (
@@ -1430,16 +1559,21 @@ def scaled_dot_product_attention_forward(
             defer_sum = not (
                 causal_fast and HEAD_DIM_K == 128 and value.dtype == torch.bfloat16
             )
-            # 16-bit PV dot with a 64-wide N axis is ~2.5x slower than the
-            # fp32 upcast dot on GCU400, so HEAD_DIM 64 keeps the fp32 dot.
-            pv_f32 = HEAD_DIM_K != 128
+            # The fp32 upcast PV dot is required for fp16/fp32 inputs at
+            # HEAD_DIM 64: the fp32 softmax row is rounded down to fp16 there.
+            # bf16 inputs are exempt because bf16 values are exactly
+            # representable in fp16, so the 16-bit dot costs no extra accuracy
+            # while running 1.10-1.56x faster (measured 2026-11-18: bf16
+            # causal S128 D64 25.8us vs 28.4us; fp16 B4 H32 S2048 D64
+            # 4978us vs 7755us).
+            pv_f32 = HEAD_DIM_K != 128 and value.dtype != torch.bfloat16
             M = torch.empty(
                 (query.shape[0], query.shape[1], query.shape[2]),
                 device=query.device,
                 dtype=torch.float32,
             )
             grid_m = q_ctx // block_m
-            _attn_fwd_nomax[(grid_m, query.shape[0] * q_head_num)](
+            _attn_fwd_nomax[(grid_m * query.shape[0] * q_head_num,)](
                 query,
                 key,
                 value,
@@ -1470,7 +1604,7 @@ def scaled_dot_product_attention_forward(
                 BLOCK_N=block_n,
                 DEFER_SUM=defer_sum,
                 CAUSAL=causal_fast,
-                LSE_BASE_E=False,
+                LSE_BASE_E=lse_base_e,
                 PV_F32=pv_f32,
                 num_warps=num_warps,
                 num_stages=2,
@@ -1524,6 +1658,12 @@ def scaled_dot_product_attention_forward(
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
             MASK_Q_BROADCAST=MASK_Q_BROADCAST,  #
         )
+    if lse_base_e:
+        # The generic _attn_fwd only produces output in the log2 domain; do one in-place conversion here (running on the
+        # freshly allocated
+        # M, with no extra memory allocation); the fast path already produces the natural logarithm directly in the
+        # kernel.
+        M.mul_(math.log(2.0))
     return o, M
 
 
@@ -1575,11 +1715,11 @@ def scaled_dot_product_attention_backward(
     # NUM_WARPS, NUM_STAGES = 4, 1
     # BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
     BLK_SLICE_FACTOR = 2
-    # RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
 
-    RCP_LN2 = 1.0 / math.log(2)
-
-    arg_k = key * (sm_scale * RCP_LN2)
+    # Note: K is no longer pre-multiplied by sm_scale*log2(e) here (fp16 rounding would pollute
+    # every K element and disagree with the fp32 post-scaling of the forward kernel); the scaling
+    # happens after the dot product inside the kernel.
+    arg_k = key
     # PRE_BLOCK = 128
     PRE_BLOCK = 256
 
@@ -1754,7 +1894,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_ATTENTION")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_ATTENTION")
     return ScaleDotProductAttention.apply(
         query,
         key,
@@ -1765,6 +1905,65 @@ def scaled_dot_product_attention(
         scale,
         enable_gqa,
     )
+
+
+def _dropout_attention_fallback(
+    query,
+    key,
+    value,
+    softmax_scale,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    dropout_p,
+    return_debug_mask,
+):
+    """Pure-torch composition used when dropout > 0.
+
+    flash_fwd with in-kernel philox RNG fails to compile on the GCU compiler (u64 philox plus
+    join/reshape trips the MLIR `cast<DenseElementsAttr>` assertion and aborts the process),
+    so this degrades to a composition of scores -> mask -> softmax -> dropout -> PV:
+    it only uses supported ops (matmul / softmax / dropout) with FA semantics
+    (dropout on the softmax probabilities, rescaled by 1/(1-p)).
+    """
+    q_bh = query.transpose(1, 2)
+    k_bh = key.transpose(1, 2)
+    v_bh = value.transpose(1, 2)
+    seq_len_q = q_bh.shape[-2]
+    seq_len_k = k_bh.shape[-2]
+
+    scores = torch.matmul(q_bh.float(), k_bh.float().transpose(-1, -2))
+    scores = scores * softmax_scale
+
+    if is_causal:
+        # Bottom-right alignment: cross-attention with sq != sk is consistent with FA's is_causal semantics
+        causal_mask = torch.ones(
+            (seq_len_q, seq_len_k), dtype=torch.bool, device=scores.device
+        ).tril(diagonal=seq_len_k - seq_len_q)
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
+    if window_size_left is not None or window_size_right is not None:
+        left = window_size_left if window_size_left is not None else seq_len_k
+        right = window_size_right if window_size_right is not None else seq_len_k
+        row_index = torch.arange(seq_len_q, device=scores.device).unsqueeze(1)
+        col_index = torch.arange(seq_len_k, device=scores.device).unsqueeze(0)
+        # Under the causal mask, the window is measured by the column-row offset
+        offset = col_index - row_index
+        window_mask = (offset <= right) & (offset >= -left)
+        scores = scores.masked_fill(~window_mask, float("-inf"))
+
+    lse = torch.logsumexp(scores, dim=-1)
+    probs = torch.softmax(scores, dim=-1)
+    probs = torch.nn.functional.dropout(probs, p=dropout_p, training=True)
+
+    out_bh = torch.matmul(probs.to(value.dtype), v_bh)
+    if return_debug_mask:
+        debug_mask = probs.to(value.dtype)
+    else:
+        debug_mask = torch.empty((), dtype=value.dtype, device=query.device)
+    philox_args = torch.empty((2,), dtype=torch.int64, device=query.device)
+    unused = torch.empty((), dtype=torch.int64, device=query.device)
+    return out_bh.transpose(1, 2), lse, philox_args, unused, debug_mask
 
 
 def flash_attention_forward(
@@ -1837,7 +2036,6 @@ def flash_attention_forward(
         and window_size_right is None
         and seqused_k is None
         and alibi_slopes is None
-        and not is_causal
         and HEAD_DIM_K == original_head_dim
         and HEAD_DIM_K in (64, 128)
         and query.ndim == 4
@@ -1845,8 +2043,21 @@ def flash_attention_forward(
         and value.shape == query.shape
     ):
         batch, seq_len, num_heads, _ = query.shape
-        block_m, block_n, num_warps = _nomax_launch_config(seq_len, seq_len)
-        if seq_len % block_m == 0 and seq_len % block_n == 0:
+        block_m, block_n, num_warps = _nomax_launch_config(
+            seq_len,
+            seq_len,
+            head_dim=original_head_dim,
+            is_causal=bool(is_causal),
+            head_groups=batch * num_heads,
+        )
+        # For causal, the KV range is split into a loop over [0, start_m*BLOCK_M) plus one diagonal band,
+        # which only aligns with square tiles, so causal additionally requires block_m == block_n
+        # (consistent with the check in scaled_dot_product_attention_forward).
+        if (
+            seq_len % block_m == 0
+            and seq_len % block_n == 0
+            and (not is_causal or block_m == block_n)
+        ):
             # The kernel indexes (B, H, S, D); the inputs arrive as BSHD
             # views, so a transpose view restores the BHSD strides.
             q_bh = query.transpose(1, 2)
@@ -1858,15 +2069,17 @@ def flash_attention_forward(
                 device=query.device,
                 dtype=torch.float32,
             )
-            # DEFER_SUM wins on GCU400 in every non-causal shape measured (the
-            # causal bf16 exception lives in scaled_dot_product_attention_
-            # forward, which is the only causal caller of this kernel).  The
-            # PV dot policy is shared with that path: fp32 upcast dot at
-            # HEAD_DIM 64 (16-bit N=64 dot is 2.5x slower), 16-bit dot at 128
-            # (bf16 operands converted to fp16; see _attn_nomax_step).
-            defer_sum = True
+            # DEFER_SUM wins on GCU400 in every non-causal shape measured; causal
+            # bf16 + HEAD_DIM=128 is the only exception: the extra [BLOCK_M, BLOCK_N] fp32
+            # p_sum accumulator pushes the kernel past the 448KB DSM concurrency limit (462KB -> 24-way),
+            # so keeping 48-way is preferable (the strategy matches scaled_dot_product_attention_forward).
+            # The PV dot strategy is shared as well: HEAD_DIM 64 uses an fp32 upcast dot (16-bit N=64
+            # dot is 2.5x slower), and HEAD_DIM 128 uses a 16-bit dot.
+            defer_sum = not (
+                is_causal and HEAD_DIM_K == 128 and value.dtype == torch.bfloat16
+            )
             pv_f32 = HEAD_DIM_K != 128
-            _attn_fwd_nomax[(seq_len // block_m, batch * num_heads)](
+            _attn_fwd_nomax[(seq_len // block_m * batch * num_heads,)](
                 q_bh,
                 k_bh,
                 v_bh,
@@ -1896,7 +2109,7 @@ def flash_attention_forward(
                 BLOCK_M=block_m,
                 BLOCK_N=block_n,
                 DEFER_SUM=defer_sum,
-                CAUSAL=False,
+                CAUSAL=is_causal,
                 LSE_BASE_E=True,
                 PV_F32=pv_f32,
                 num_warps=num_warps,
@@ -1907,6 +2120,21 @@ def flash_attention_forward(
             unused = torch.empty((), dtype=torch.int64, device=query.device)
             p = torch.empty((), device=query.device)
             return out, lse, philox_args, unused, p
+
+    # When dropout>0, the in-kernel philox RNG triggers an MLIR assertion on the GCU compiler,
+    # so switch directly to a pure torch composition implementation (see _dropout_attention_fallback for details)
+    if dropout_p > 0.0:
+        return _dropout_attention_fallback(
+            query,
+            key,
+            value,
+            softmax_scale,
+            is_causal,
+            window_size_left,
+            window_size_right,
+            dropout_p,
+            return_debug_mask,
+        )
 
     out = torch.empty_like(query)
     if cumulative_sequence_length_q is not None:
@@ -1934,21 +2162,57 @@ def flash_attention_forward(
             None,
         )
     else:
-        out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
-            query,
-            key,
-            value,
-            out,
-            alibi_slopes,
-            dropout_p,
-            softmax_scale,
-            is_causal,
-            non_null_window_left,
-            non_null_window_right,
-            softcap,
-            return_debug_mask,
-            disable_splitkv=disable_splitkv,
-        )
+        # GCU caps grid.y at 255 and the flash_fwd kernel maps batch*heads onto
+        # that axis, so a wide batch (8 batches x 32 heads in the sliding-window
+        # tests) cannot be launched in one go.  Split the batch instead; each
+        # slice is a view, and the kernel only ever reads q/k/v per batch.
+        if query.shape[0] * query.shape[2] > 255:
+            out = lse = None
+            for b in range(query.shape[0]):
+                o_b, _, _, _, lse_b, philox_seed, philox_offset, p = mha_fwd(
+                    query[b : b + 1],
+                    key[b : b + 1],
+                    value[b : b + 1],
+                    None,
+                    alibi_slopes,
+                    dropout_p,
+                    softmax_scale,
+                    is_causal,
+                    non_null_window_left,
+                    non_null_window_right,
+                    softcap,
+                    return_debug_mask,
+                    disable_splitkv=disable_splitkv,
+                )
+                if out is None:
+                    out = torch.empty(
+                        (query.shape[0],) + tuple(o_b.shape[1:]),
+                        dtype=o_b.dtype,
+                        device=o_b.device,
+                    )
+                    lse = torch.empty(
+                        (query.shape[0],) + tuple(lse_b.shape[1:]),
+                        dtype=lse_b.dtype,
+                        device=lse_b.device,
+                    )
+                out[b : b + 1].copy_(o_b)
+                lse[b : b + 1].copy_(lse_b)
+        else:
+            out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
+                query,
+                key,
+                value,
+                out,
+                alibi_slopes,
+                dropout_p,
+                softmax_scale,
+                is_causal,
+                non_null_window_left,
+                non_null_window_right,
+                softcap,
+                return_debug_mask,
+                disable_splitkv=disable_splitkv,
+            )
 
     if HEAD_DIM_K != original_head_dim:
         out = out[..., :original_head_dim]
@@ -1958,53 +2222,6 @@ def flash_attention_forward(
 # Adapted from https://github.com/vllm-project/flash-attention/blob/main/vllm_flash_attn/flash_attn_interface.py
 def maybe_contiguous(x):
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x
-
-
-# GCU400 allots 896 KiB of VDMem (DSM) per CTA. The paged varlen attention
-# kernel keeps its K/V tiles and dot temporaries there; with HEAD_DIM=128 a
-# BLOCK_N of 128 needs 1.17~1.26 MiB and the compiler aborts with
-# "local buffer allocated in VDMem exceeds!". This is a hardware limit
-# (triton_gcu GCUOptions.max_dsm), so widening the software cap does not help.
-# Clamp BLOCK_N to a budget-safe tile before dispatching instead of letting
-# the JIT compilation fail.
-def _dsm_safe_block_n(head_size: int) -> int:
-    """Largest BLOCK_N that keeps the paged varlen kernel inside VDMem."""
-    # Measured on GCU400 with HEAD_DIM=128: BLOCK_N=64 tops out at 892928 B,
-    # BLOCK_N=128 needs 1175552~1261568 B and fails to compile. BLOCK_K scales
-    # with HEAD_DIM, so the safe tile is inversely proportional to it.
-    budget = max(32, min(128, 8192 // max(1, head_size)))
-    # tl.arange requires a power-of-two tile (HEAD_DIM=192 would give 42).
-    return 1 << (budget.bit_length() - 1)
-
-
-@contextlib.contextmanager
-def _dsm_budget_guard(head_size: int):
-    """Temporarily clamp the MHA heuristic BLOCK_N for one dispatch.
-
-    The patch is scoped to the enclosing call and restored in ``finally``.
-    FlagGems dispatches operators from a single Python thread, so no lock is
-    needed here.
-    """
-    original = runtime.get_heuristic_config
-    safe_bn = _dsm_safe_block_n(head_size)
-
-    def guarded(op_name):
-        cfg = original(op_name)
-        if not op_name.startswith("mha_block_"):
-            return cfg
-        block_n = cfg.get("BLOCK_N")
-        if block_n is None:
-            return cfg
-        return {
-            **cfg,
-            "BLOCK_N": lambda args, fn=block_n, limit=safe_bn: min(fn(args), limit),
-        }
-
-    runtime.get_heuristic_config = guarded
-    try:
-        yield
-    finally:
-        runtime.get_heuristic_config = original
 
 
 def flash_attn_varlen_func(
@@ -2159,31 +2376,165 @@ def flash_attn_varlen_func(
         max_seqlen_k = (
             max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
         )
-        with _dsm_budget_guard(q.shape[-1]):
-            out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
+        out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
+            q,
+            k,
+            v,
+            out,
+            cu_seqlens_q,
+            # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
+            # still wants it so we pass all zeros
+            dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+            seqused_k,
+            None,
+            block_table,
+            alibi_slopes,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            False,
+            causal,
+            real_window_size[0],
+            real_window_size[1],
+            softcap,
+            return_softmax_lse and dropout_p > 0,
+            None,
+        )
+
+    return (out, softmax_lse) if return_softmax_lse else out
+
+
+def flash_attn_varlen_opt_func(
+    q,
+    k,
+    v,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k=None,
+    seqused_k=None,
+    q_v=None,
+    dropout_p=0.0,
+    softmax_scale=None,
+    causal=False,
+    window_size=None,
+    softcap=0.0,
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    block_table=None,
+    return_softmax_lse=False,
+    out=None,
+    lse=None,
+    scheduler_metadata=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    s_aux=None,
+    num_splits: int = 0,
+    cp_world_size: int = 1,
+    cp_rank: int = 0,
+    cp_tot_seqused_k=None,
+    fa_version: int = 2,
+):
+    """Optimized-init varlen attention.
+
+    Same work as ``flash_attn_varlen_func`` plus the caller supplied
+    ``lse``/``scheduler_metadata`` arguments. The launch tile comes from
+    ``_varlen_fwd_tile_config`` inside this backend's ``mha_varlan_fwd_opt``
+    (see that helper for the measured VDMem-safe GCU400 tile policy and the
+    page-aligned paged load), so the whole varlen path stays on the GCU400
+    fork rather than the generic module.
+    """
+    if fa_version != 2:
+        raise RuntimeError("Only FA2 is implemented.")
+    if num_splits > 0:
+        raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
+    if use_c_extension:
+        logger.debug("GEMS_ENFLAME FLASH_ATTN_VARLEN_OPT_FUNC(C EXTENSION)")
+        with torch_device_fn.device(q.device):
+            out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,
                 k,
                 v,
-                out,
-                cu_seqlens_q,
-                # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
-                # still wants it so we pass all zeros
-                dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
-                seqused_k,
-                None,
-                block_table,
-                alibi_slopes,
                 max_seqlen_q,
+                cu_seqlens_q,
                 max_seqlen_k,
+                cu_seqlens_k,
+                seqused_k,
+                q_v,
                 dropout_p,
                 softmax_scale,
-                False,
                 causal,
-                real_window_size[0],
-                real_window_size[1],
+                window_size,
                 softcap,
-                return_softmax_lse and dropout_p > 0,
-                None,
+                alibi_slopes,
+                deterministic,
+                return_attn_probs,
+                block_table,
+                return_softmax_lse,
+                out,
+                scheduler_metadata,
+                q_descale,
+                k_descale,
+                v_descale,
+                s_aux,
+                num_splits,
+                cp_world_size,
+                cp_rank,
+                cp_tot_seqused_k,
+                fa_version,
             )
-
+        return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
+    logger.debug("GEMS_ENFLAME FLASH_ATTN_VARLEN_OPT_FUNC")
+    assert (
+        cu_seqlens_k is not None or seqused_k is not None
+    ), "cu_seqlens_k or seqused_k must be provided"
+    assert (
+        cu_seqlens_k is None or seqused_k is None
+    ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
+    assert (
+        block_table is None or seqused_k is not None
+    ), "seqused_k must be provided if block_table is provided"
+    if softmax_scale is None:
+        softmax_scale = q.shape[-1] ** (-0.5)
+    # custom op does not support non-tuple input
+    if window_size is None:
+        real_window_size = (-1, -1)
+    else:
+        assert len(window_size) == 2
+        real_window_size = (window_size[0], window_size[1])
+    max_seqlen_q = (
+        max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+    )
+    max_seqlen_k = (
+        max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
+    )
+    out, q, k, v, softmax_lse, *_ = mha_varlan_fwd_opt(
+        q,
+        k,
+        v,
+        out,
+        lse,
+        cu_seqlens_q,
+        # cu_seqlens_k is not used when seqused_k is given, but the flash api
+        # still wants it, so reuse the q offsets the way the generic entry does
+        cu_seqlens_q if cu_seqlens_k is None else cu_seqlens_k,
+        seqused_k,
+        None,
+        block_table,
+        alibi_slopes,
+        max_seqlen_q,
+        max_seqlen_k,
+        dropout_p,
+        softmax_scale,
+        False,
+        causal,
+        real_window_size[0],
+        real_window_size[1],
+        softcap,
+        return_softmax_lse and dropout_p > 0,
+        None,
+    )
     return (out, softmax_lse) if return_softmax_lse else out

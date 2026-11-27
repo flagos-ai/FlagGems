@@ -114,7 +114,7 @@ def _convert_indices_from_coo_to_csr(self, size, *, out_int32=False, out=None):
     *, bool out_int32=False) -> Tensor``. The result has length ``size + 1``
     and is int64 unless ``out_int32=True``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _CONVERT_INDICES_FROM_COO_TO_CSR")
+    logger.debug("GEMS_ENFLAME _CONVERT_INDICES_FROM_COO_TO_CSR")
     inp = self
     if not isinstance(inp, torch.Tensor):
         raise TypeError(
@@ -193,7 +193,7 @@ def _convert_indices_from_coo_to_csr(self, size, *, out_int32=False, out=None):
 
 def _convert_indices_from_coo_to_csr_out(self, size, *, out_int32=False, out):
     """``aten::_convert_indices_from_coo_to_csr.out``: write into ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 _CONVERT_INDICES_FROM_COO_TO_CSR_OUT")
+    logger.debug("GEMS_ENFLAME _CONVERT_INDICES_FROM_COO_TO_CSR_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError(
             "_convert_indices_from_coo_to_csr.out: out must be a Tensor, got "

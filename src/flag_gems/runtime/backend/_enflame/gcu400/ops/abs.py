@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
+# int32 offset safe domain: the masked tail block evaluates
+# block_id * BLOCK + arange for masked lanes as well, reaching up to
+# num_blocks * BLOCK - 1; keep n_total <= 2^31 - 2^17 (BLOCK <= 131072)
+# so flat int32 offsets cannot wrap negative on the tail block.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
+
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
@@ -47,37 +55,87 @@ def abs_flat_kernel(
         tl.store(out_ptr + off, out, mask=mask)
 
 
-def _run_abs(inp, out, N_total):
-    if N_total <= 65536:
-        BLOCK = 8192
-    elif N_total <= 524288:
-        BLOCK = 32768
-    else:
-        BLOCK = 65536
+# GCU400 retune (2026-11-16, interleaved do_bench(median) A/B, 3 rounds):
+# tiny shapes want the exact next_pow2 tile (-2.5~-3.5%); the 16M mid
+# bucket wants num_warps 8->2 (-2.2% 16-bit, -9.6% fp32); the 512M big
+# bucket wants BLOCK 65536->131072 at nw2 for 16-bit (-4.0% out-of-place,
+# -5.6% in-place) while fp32 already sits on the ~2.96TB/s memory floor
+# with B65536/nw8 and keeps it.
+#
+# 2026-11-18 grid-cap retune (interleaved min-of-4 A/B, 3 dtypes):
+# the 16.7M 16-bit bucket is the only class below the HBM floor (~1.86TB/s
+# vs ~2.1TB/s peak).  Halving the resident program count from 48 to 24
+# (one CTA per SIP instead of two) lifts it by +6.5% fp16 / +6.3% bf16;
+# 18 and 12 CTAs are clearly worse (-3% / -22%).  Every other class keeps
+# the 48-CTA cap -- 24/36 CTAs regress the 512M buckets by 20~26%.
+def _choose_launch(n_total, itemsize):
+    """Return (block, num_warps, grid_cap) for the flat abs kernel."""
+    if n_total <= 8192:
+        return max(triton.next_power_of_2(n_total), 64), 4, NUM_SIPS * 2
+    if n_total <= 65536:
+        return 8192, 8, NUM_SIPS * 2
+    if n_total <= 524288:
+        return 32768, 8, NUM_SIPS * 2
+    if itemsize == 4:
+        return 65536, 8, NUM_SIPS * 2
+    if n_total > (1 << 28):
+        return 131072, 2, NUM_SIPS * 2
+    return 65536, 2, NUM_SIPS
 
-    NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
 
-    with torch_device_fn.device(inp.device):
-        abs_flat_kernel[(grid_size,)](
-            inp,
-            out,
-            N_total,
-            BLOCK=BLOCK,
-            num_warps=8,
-        )
+def _launch_abs(inp, out):
+    n_total = inp.numel()
+    if n_total == 0:
+        return
+    block, num_warps, grid_cap = _choose_launch(n_total, inp.element_size())
+    grid_size = min(triton.cdiv(n_total, block), grid_cap)
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared
+    # nodes); retrying the launch recompiles and succeeds (neg.py /
+    # square.py / rad2deg.py precedents).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(inp.device):
+                abs_flat_kernel[(grid_size,)](
+                    inp,
+                    out,
+                    n_total,
+                    BLOCK=block,
+                    num_warps=num_warps,
+                )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "abs flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )
+
+
+def _flat_path_ok(A):
+    return (
+        A.is_contiguous() and A.dtype in _FLAT_DTYPES and A.numel() < _INT32_SAFE_LIMIT
+    )
 
 
 def abs(A):
     logger.debug("GEMS_ENFLAME ABS")
-    inp = A.contiguous()
-    out = torch.empty_like(inp)
-    _run_abs(inp, out, inp.numel())
+    if not _flat_path_ok(A):
+        from flag_gems.ops.abs import abs as _public
+
+        return _public(A)
+    out = torch.empty_like(A)
+    _launch_abs(A, out)
     return out
 
 
 def abs_(A):
     logger.debug("GEMS_ENFLAME ABS_")
-    inp = A.contiguous()
-    _run_abs(inp, A, inp.numel())
+    if not _flat_path_ok(A):
+        from flag_gems.ops.abs import abs_ as _public
+
+        return _public(A)
+    _launch_abs(A, A)
     return A

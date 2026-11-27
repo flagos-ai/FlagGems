@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import consts
 from .test_scatter_reduce import (
     TensorSelectBenchmark,
@@ -27,9 +29,9 @@ from .test_scatter_reduce import (
 @pytest.mark.scatter_reduce_two
 @skip_tsingmicro
 @pytest.mark.skip_native(
-    vendors="ascend",
+    vendors=["ascend", "enflame"],
     reason="Native aten::scatter_reduce.two has no NPU kernel timing for cases "
-    "such as FP16 sum",
+    "such as FP16 sum on Ascend and aborts on int64 indices on Enflame",
 )
 def test_scatter_reduce():
     """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
@@ -44,6 +46,10 @@ def test_scatter_reduce():
 
 
 @pytest.mark.scatter_reduce_two_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="Enflame does not support this scatter_reduce benchmark",
+)
 @skip_tsingmicro
 @pytest.mark.skip_native(
     vendors="ascend",
@@ -64,6 +70,10 @@ def test_scatter_reduce_():
 
 
 @pytest.mark.scatter_reduce_two_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="Enflame does not support this scatter_reduce benchmark",
+)
 @skip_tsingmicro
 @pytest.mark.skip_native(
     vendors="ascend",

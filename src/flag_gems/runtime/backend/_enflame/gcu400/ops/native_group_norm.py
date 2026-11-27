@@ -21,5 +21,5 @@ logger = logging.getLogger(__name__)
 
 def native_group_norm(input, weight, bias, N, C, HxW, group, eps):
     """Run native group normalization through the existing implementation."""
-    logger.debug("GEMS_ENFLAME_GCU400 NATIVE_GROUP_NORM")
+    logger.debug("GEMS_ENFLAME NATIVE_GROUP_NORM")
     return group_norm(input, weight, bias, N, C, HxW, group, eps)

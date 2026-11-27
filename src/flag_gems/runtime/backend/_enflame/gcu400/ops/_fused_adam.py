@@ -136,7 +136,7 @@ def _fused_adam(
     - p = p - lr * m / (sqrt(v_hat) + eps) - lr * weight_decay * p (AdamW)
       or p = p - lr * m / (sqrt(v_hat) + eps) (Adam)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_ADAM")
+    logger.debug("GEMS_ENFLAME FUSED_ADAM")
 
     # Adam optimizer state must be float32
     for p in params:
@@ -220,7 +220,7 @@ def _fused_adam_(
     found_inf=None,
 ):
     """In-place version of fused Adam."""
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_ADAM_")
+    logger.debug("GEMS_ENFLAME FUSED_ADAM_")
     _fused_adam(
         self,
         grads,

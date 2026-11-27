@@ -193,7 +193,7 @@ class UnsafeMaskedIndexPutAccumulateFunction:
 
 
 def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
-    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_MASKED_INDEX_PUT_ACCUMULATE")
+    logger.debug("GEMS_ENFLAME UNSAFE_MASKED_INDEX_PUT_ACCUMULATE")
     unsafe_masked_index_put_accumulate_func = UnsafeMaskedIndexPutAccumulateFunction()
 
     # indices is Tensor?[] - a list/tuple of optional tensors (torch convention).

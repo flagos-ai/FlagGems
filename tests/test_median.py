@@ -425,6 +425,8 @@ def test_median_empty_no_dim(dtype):
 def test_median_extra_no_dim_dtypes(dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     inp = _make_input((9,), dtype)
     ref_inp = utils.to_reference(inp)
 
@@ -1341,7 +1343,14 @@ def test_median_large_width_duplicate_indices_select_value(dtype):
     midpoint = width // 2
     row = torch.arange(width, dtype=torch.int64, device=flag_gems.device)
     row[midpoint + 1] = midpoint
-    inp = torch.stack((row, row.flip(0))).to(dtype)
+    if flag_gems.vendor_name == "enflame":
+        # flip runs on the host: the device-side aten::flip rejects int64 on
+        # this backend (topsop op_aten_flip.cc: "data type not support!"),
+        # which aborts the process before the operator under test is called.
+        flipped_row = row.cpu().flip(0).to(row.device)
+    else:
+        flipped_row = row.flip(0)
+    inp = torch.stack((row, flipped_row)).to(dtype)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.median(ref_inp, dim=1)

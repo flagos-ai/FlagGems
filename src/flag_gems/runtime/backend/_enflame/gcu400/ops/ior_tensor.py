@@ -34,5 +34,5 @@ def ior_tensor(self, other):
     "GEMS" for this module (P23: a committed ``GEMS_ENFLAME`` prefix flips the
     caplog gate red under the short-name import mechanism).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 IOR_TENSOR")
+    logger.debug("GEMS_ENFLAME IOR_TENSOR")
     return bitwise_or_tensor_(self, other)

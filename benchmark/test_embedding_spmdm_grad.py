@@ -41,6 +41,15 @@ def _torch_backward(grad_output, table, indices, weights):
     batch_size, bag_size = indices.shape
 
     flat_indices = indices.reshape(-1)
+    # The native topsaten embedding backward only accepts int32 indices on
+    # enflame GCU (int64 aborts the process), so feed it an int32 copy there.
+    # Other vendors keep the original int64 indices; the scattered rows and
+    # arithmetic are otherwise identical.
+    baseline_indices = (
+        flat_indices.to(torch.int32)
+        if flag_gems.vendor_name == "enflame"
+        else flat_indices
+    )
     expanded_grad = (
         grad_output[:, None, :]
         .expand(batch_size, bag_size, embedding_dim)
@@ -53,7 +62,7 @@ def _torch_backward(grad_output, table, indices, weights):
 
     grad_table = torch.ops.aten.embedding_dense_backward(
         sample_grad,
-        flat_indices,
+        baseline_indices,
         num_embeddings,
         -1,
         False,
@@ -61,7 +70,7 @@ def _torch_backward(grad_output, table, indices, weights):
     if weights is None:
         return grad_table, None
 
-    selected_table = torch.index_select(table, 0, flat_indices)
+    selected_table = torch.index_select(table, 0, baseline_indices)
     grad_weights = (selected_table * expanded_grad).sum(dim=1).reshape_as(weights)
     return grad_table, grad_weights
 

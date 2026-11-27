@@ -43,13 +43,14 @@ VECTOR_BIAS_MNK_SHAPES = (
 
 _ADDMM_LAYOUT_BIAS_VENDORS = (
     "ascend",
+    "enflame",
     "nvidia",
     "hygon",
     "thead",
     "mthreads",
     "metax",
 )
-_ADDMM_BETA_ZERO_VENDORS = ("ascend", "nvidia", "hygon", "thead", "metax")
+_ADDMM_BETA_ZERO_VENDORS = ("ascend", "enflame", "nvidia", "hygon", "thead", "metax")
 
 if IS_KUNLUNXIN:
     _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)

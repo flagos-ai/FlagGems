@@ -118,6 +118,12 @@ class SparseMmBenchmark(base.BlasBenchmark):
 
 @pytest.mark.sparse_mm
 def test_sparse_mm(monkeypatch):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "aten defect: the case builds its CSR input through torch.ops.aten.to_sparse_csr, and "
+            "this backend does not implement aten::to_sparse_csr / aten::_to_sparse (SparseCsrgcu), "
+            "so input preparation raises NotImplementedError and timing never starts"
+        )
     bench = SparseMmBenchmark(
         op_name="sparse_mm",
         input_fn=_input_fn,

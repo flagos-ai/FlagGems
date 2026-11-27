@@ -57,6 +57,13 @@ class CudnnAffineGridBackwardOutBenchmark(CudnnAffineGridBackwardBenchmark):
             yield grad, N, C, H, W, {"out": out}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_affine_grid_generator_backward "
+        "(the CPU-only build exposes no CPU kernel either), so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_affine_grid_generator_backward
 def test_cudnn_affine_grid_generator_backward():
     bench = CudnnAffineGridBackwardBenchmark(
@@ -68,6 +75,13 @@ def test_cudnn_affine_grid_generator_backward():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_affine_grid_generator_backward.out "
+        "(the CPU-only build exposes no CPU kernel either), so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_affine_grid_generator_backward_out
 def test_cudnn_affine_grid_generator_backward_out():
     bench = CudnnAffineGridBackwardOutBenchmark(

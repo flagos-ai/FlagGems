@@ -76,6 +76,10 @@ class LogSigmoidBackwardOutBenchmark(LogSigmoidBackwardBenchmark):
             yield grad_output, inp, buffer, {"grad_input": grad_input}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.log_sigmoid_backward
 def test_log_sigmoid_backward():
     bench = LogSigmoidBackwardBenchmark(
@@ -87,6 +91,10 @@ def test_log_sigmoid_backward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.log_sigmoid_backward_out
 def test_log_sigmoid_backward_out():
     bench = LogSigmoidBackwardOutBenchmark(

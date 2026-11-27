@@ -490,7 +490,7 @@ def tril_indices(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 TRIL_INDICES")
+    logger.debug("GEMS_ENFLAME TRIL_INDICES")
     return _triangular_indices(
         row,
         col,
@@ -513,7 +513,7 @@ def triu_indices(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 TRIU_INDICES")
+    logger.debug("GEMS_ENFLAME TRIU_INDICES")
     return _triangular_indices(
         row,
         col,

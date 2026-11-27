@@ -208,7 +208,7 @@ def embedding_spmdm(
     Returns:
         Tensor with shape ``[B, D]`` and the same dtype as ``embedding_table``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 EMBEDDING_SPMDM")
+    logger.debug("GEMS_ENFLAME EMBEDDING_SPMDM")
     (
         num_embeddings,
         embedding_dim,

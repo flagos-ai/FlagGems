@@ -26,6 +26,13 @@ def input_fn(shape, cur_dtype, device):
     yield self, p
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::bernoulli_; its CPU fallback "
+        "aborts the process, so there is no native baseline"
+    ),
+)
 @pytest.mark.bernoulli_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -44,6 +51,13 @@ def bernoulli_input_fn(shape, cur_dtype, device):
     yield torch.rand(shape, dtype=cur_dtype, device=device),
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::bernoulli; its CPU fallback "
+        "aborts the process, so there is no native baseline"
+    ),
+)
 @pytest.mark.bernoulli
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

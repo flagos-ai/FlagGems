@@ -6,11 +6,65 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# GCU400 grid.x hard limit is 65535 (P19 family): the KernelGen
+# one-block-per-program grid (cdiv(n, 1024)) overflows for the bench core
+# shapes (536870912 elements -> grid 524288).  Persistent grid-stride form
+# with a capped grid, mirroring the proven sgn.py / silu.py patterns.
+NUM_SIPS = 48
 
-@triton.jit
+# int32 offset safe domain: the masked tail block evaluates
+# block_id * BLOCK + arange for masked lanes as well, reaching up to
+# num_blocks * BLOCK - 1; keep n <= 2^31 - 2^17 (BLOCK <= 131072)
+# so flat int32 offsets cannot wrap negative on the tail block.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
+
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+# 2R1W tile ladder from the silu_backward retune (2026-11-17, interleaved
+# do_bench(median, w1000/r100) A/B on GCU400/L600): wide tiles only hide
+# the per-element f32 math for 16-bit streams; fp32 wants 32768 at the same
+# element count (75.7 vs 83.7us at 16.7M).  In the sub-launch-quantum band a
+# single 65536 tile wins for divisible sizes (4.09us at 65536) while odd
+# sizes prefer more smaller blocks (6.39us at 131073 on 32768 vs 7.99 on
+# 65536); tiny sizes ride the ~3.1us launch floor on several small CTAs.
+# The tail mask costs nothing at nw2 but is exposed at wider warps, so the
+# masked arm always runs nw<=2.
+
+
+def _choose_block(n_total, itemsize):
+    if n_total <= 8192:
+        return min(max(triton.next_power_of_2(triton.cdiv(n_total, 4)), 256), 1024), 1
+    if n_total <= (1 << 18):
+        return (65536 if n_total % 65536 == 0 else 32768), 2
+    if itemsize == 4:
+        return 32768, 2
+    return 65536, 2
+
+
+# GCU400 division lowering, ablated for this op (2026-11-17, interleaved
+# do_bench(median, w1000/r100), 536870912-element core shape): the silu
+# "constant-numerator reciprocal is the only fast form" rule does NOT
+# transfer to logit_backward's two reciprocals --
+#   two-rcp g*(1/s)*(1/(1-s))       2911us  (worse than plain division)
+#   v0    g/(c*(1-c)), c=clamp(s)   1759us
+#   v9    g/(s*(1-s)), raw s        1512us  (clamp is a no-op on every
+#                                           in-range lane, and the
+#                                           out-of-range lanes are zeroed
+#                                           by the where() select, so
+#                                           dropping it is bit-identical)
+#   v12   g*(1/(s-s*s)), raw s      1427us  <-- 16-bit winner
+# For fp32 the ordering flips: v0 2133us < v9 2140 < v12 2414.  The eps arm
+# therefore dispatches on dtype: FAST_RCP (v12 form) for 16-bit streams,
+# plain clamped division for fp32.  tl.range num_stages (1/2/4), grid 96
+# and B32768@16-bit / B65536@fp32 all measured neutral-to-worse; the
+# silu_backward 2R1W ladder (B65536@16-bit, B32768@fp32, nw2, g48) is
+# confirmed optimal for this kernel too.
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
 def logit_backward_kernel(
     grad_out_ptr,
     self_ptr,
@@ -18,33 +72,58 @@ def logit_backward_kernel(
     n_elements,
     eps,
     HAS_EPS: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    FAST_RCP: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_pids = tl.num_programs(axis=0)
+    arange = tl.arange(0, BLOCK)
 
-    grad_out = tl.load(grad_out_ptr + offsets, mask=mask, other=0)
-    self_vals = tl.load(self_ptr + offsets, mask=mask, other=0)
-    self_f32 = self_vals.to(tl.float32)
+    num_blocks = (n_elements + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        if EVEN:
+            grad_out = tl.load(grad_out_ptr + off)
+            self_vals = tl.load(self_ptr + off)
+        else:
+            mask = off < n_elements
+            grad_out = tl.load(grad_out_ptr + off, mask=mask)
+            self_vals = tl.load(self_ptr + off, mask=mask)
 
-    if HAS_EPS:
-        lo = eps
-        hi = 1.0 - eps
-        # Clamp self to [eps, 1-eps] for numerical stability
-        self_clamped = tl.minimum(tl.maximum(self_f32, lo), hi)
-        # If original value was out of range, gradient is 0
-        # Otherwise compute gradient using clamped value
-        in_range = (self_f32 >= lo) & (self_f32 <= hi)
-        grad_input = tl.where(
-            in_range,
-            grad_out.to(tl.float32) / (self_clamped * (1.0 - self_clamped)),
-            0.0,
-        )
-    else:
-        grad_input = grad_out.to(tl.float32) / (self_f32 * (1.0 - self_f32))
-    tl.store(y_ptr + offsets, grad_input.to(OUT_DTYPE), mask=mask)
+        grad = grad_out.to(tl.float32)
+        self_f32 = self_vals.to(tl.float32)
+
+        if HAS_EPS:
+            lo = eps
+            hi = 1.0 - eps
+            # Clamp semantics: the gradient of an element outside
+            # [eps, 1-eps] is zero.  For every in-range element the clamp
+            # is the identity, so dividing the raw value is bit-identical
+            # where it matters and the where() zeroes the rest.
+            in_range = (self_f32 >= lo) & (self_f32 <= hi)
+            if FAST_RCP:
+                grad_input = tl.where(
+                    in_range,
+                    grad * (1.0 / (self_f32 - self_f32 * self_f32)),
+                    0.0,
+                )
+            else:
+                self_clamped = tl.minimum(tl.maximum(self_f32, lo), hi)
+                grad_input = tl.where(
+                    in_range,
+                    grad / (self_clamped * (1.0 - self_clamped)),
+                    0.0,
+                )
+        else:
+            grad_input = grad / (self_f32 * (1.0 - self_f32))
+
+        if EVEN:
+            tl.store(y_ptr + off, grad_input.to(OUT_DTYPE))
+        else:
+            mask = off < n_elements
+            tl.store(y_ptr + off, grad_input.to(OUT_DTYPE), mask=mask)
 
 
 def _to_triton_dtype(dtype):
@@ -55,6 +134,36 @@ def _to_triton_dtype(dtype):
     if dtype == torch.bfloat16:
         return tl.bfloat16
     return None
+
+
+def _launch_flat(kernel, args, n_total, block, num_warps, **kernel_kwargs):
+    even = n_total % block == 0
+    if not even and num_warps > 2:
+        num_warps = 2
+    grid_size = min(triton.cdiv(n_total, block), NUM_SIPS)
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared
+    # nodes); retrying the launch recompiles and succeeds (silu.py /
+    # abs.py precedents for the same toolchain family).
+    for attempt in range(3):
+        try:
+            kernel[(grid_size,)](
+                *args,
+                n_total,
+                BLOCK=block,
+                EVEN=even,
+                num_warps=num_warps,
+                **kernel_kwargs,
+            )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "logit_backward flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )
 
 
 def _logit_backward_impl(grad_output: torch.Tensor, self: torch.Tensor, eps=None):
@@ -70,45 +179,45 @@ def _logit_backward_impl(grad_output: torch.Tensor, self: torch.Tensor, eps=None
         if not (0.0 <= eps <= 0.5):
             raise ValueError("eps must be in the range [0.0, 0.5].")
 
+    if (
+        self.dtype not in _FLAT_DTYPES
+        or grad_output.dtype != self.dtype
+        or self.numel() >= _INT32_SAFE_LIMIT
+    ):
+        # Exotic dtype / mixed-dtype / beyond the flat int32 safe domain:
+        # defer to the generic FlagGems implementation (same op family).
+        from flag_gems.ops.logit_backward import logit_backward as _public
+
+        return _public(grad_output, self, eps=eps)
+
     grad_contig = grad_output.contiguous()
     self_contig = self.contiguous()
+    n_total = self_contig.numel()
+    if n_total == 0:
+        return torch.empty_like(self_contig)
 
-    in_supported = _to_triton_dtype(grad_contig.dtype) is not None
-    grad_kernel = grad_contig if in_supported else grad_contig.to(torch.float32)
-    self_kernel = self_contig if in_supported else self_contig.to(torch.float32)
+    out = torch.empty_like(self_contig)
+    block, num_warps = _choose_block(n_total, self_contig.element_size())
 
-    desired_dtype = self.dtype
-    desired_supported = _to_triton_dtype(desired_dtype) is not None
-    if desired_supported:
-        result = torch.empty_like(self, dtype=desired_dtype)
-        work_out = result
-    else:
-        work_out = torch.empty_like(self, dtype=torch.float32)
-
-    n_elements = grad_kernel.numel()
-    # A fixed 1024-element tile matches the pointwise kernel's one-value-per-element work pattern.
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    triton_dtype = _to_triton_dtype(work_out.dtype)
-    with torch_device_fn.device(self.device):
-        logit_backward_kernel[grid](
-            grad_kernel,
-            self_kernel,
-            work_out,
-            n_elements,
-            eps if eps is not None else 0.0,
-            HAS_EPS=(eps is not None),
-            BLOCK_SIZE=BLOCK_SIZE,
-            OUT_DTYPE=triton_dtype,
+    with torch_device_fn.device(self_contig.device):
+        _launch_flat(
+            logit_backward_kernel,
+            (
+                grad_contig,
+                self_contig,
+                out,
+            ),
+            n_total,
+            block,
+            num_warps,
+            eps=eps if eps is not None else 0.0,
+            HAS_EPS=eps is not None,
+            FAST_RCP=out.dtype in (torch.float16, torch.bfloat16),
+            OUT_DTYPE=_to_triton_dtype(out.dtype),
         )
-
-    if desired_supported:
-        return work_out
-    else:
-        return work_out.to(desired_dtype)
+    return out
 
 
 def logit_backward(grad_output, self, eps=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGIT_BACKWARD")
+    logger.debug("GEMS_ENFLAME LOGIT_BACKWARD")
     return _logit_backward_impl(grad_output, self, eps=eps)
