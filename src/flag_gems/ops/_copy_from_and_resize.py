@@ -26,8 +26,6 @@ import warnings
 
 import torch
 
-from flag_gems.ops.copy import copy_
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +37,10 @@ def _copy_from_and_resize(self: torch.Tensor, dst: torch.Tensor) -> torch.Tensor
     """
     logger.debug("GEMS _COPY_FROM_AND_RESIZE")
     dst.resize_(self.shape)
-    copy_(dst, self)
+    # Route through the ATen dispatcher so a backend-registered copy_
+    # (e.g. the Ascend override) serves the copy instead of the generic
+    # Triton path, which falls back to aten::_copy_from on some layouts.
+    dst.copy_(self)
     return dst
 
 
@@ -71,5 +72,5 @@ def _copy_from_and_resize_out(
             f"Expected out tensor to have device {result.device}, "
             f"but got {out.device} instead"
         )
-    copy_(out, result)
+    out.copy_(result)
     return out
