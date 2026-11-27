@@ -2837,5 +2837,6 @@ __all__ = [
     "flagtune",
     "maximum_backward",
     "only_enable",
+    "slow_conv2d_forward_backward",
     "use_gems",
 ]
