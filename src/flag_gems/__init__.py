@@ -2260,7 +2260,7 @@ _FULL_CONFIG = (
     ("rsub.Tensor", rsub_tensor),
     ("scalar_tensor", scalar_tensor),
     ("scatter.reduce", scatter),
-    ("scatter.src", scatter),
+    ("scatter.src", scatter, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
     ("scatter_add", scatter_add),

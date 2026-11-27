@@ -1082,6 +1082,18 @@ ScaledDotProductFusedAttentionOverrideableBenchmark:
     - [1, 16, 256, 64]
   shape_desc: "B, H, S, D"
 
+scatter_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 KronBenchmark:
   shapes:
     - [16, 16]
