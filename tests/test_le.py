@@ -47,3 +47,24 @@ def test_le_scalar(shape, dtype):
     res_out = flag_gems.le_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.le_backward_
+def test_le_backward__non_differentiable():
+    """``le`` outputs a comparison result, so it has no gradient.
+
+    The in-place backward form is undefined; this pins that the in-place
+    output matches the native op and is non-differentiable, rather than
+    fabricating a gradient.
+    """
+    A = torch.randn(1024, dtype=torch.float32, device=flag_gems.device)
+    B = torch.randn(1024, dtype=torch.float32, device=flag_gems.device)
+    ref_A = utils.to_reference(A, False)
+    ref_B = utils.to_reference(B, False)
+
+    res_out = flag_gems.le_(A, B)
+    ref_out = torch.ops.aten.le_(ref_A, ref_B)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert not res_out.requires_grad
+    assert res_out.grad_fn is None
