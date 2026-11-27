@@ -24,8 +24,6 @@ from flag_gems.utils.shape_utils import dim_compress
 
 logger = logging.getLogger(__name__)
 
-_BLOCK = 1024
-
 _TL_DTYPE = {
     torch.float16: tl.float16,
     torch.float32: tl.float32,
@@ -33,30 +31,32 @@ _TL_DTYPE = {
 }
 
 
+_EPILOGUE_BLOCK = 1024
+
+
 @triton.jit
 def _trapz_epilogue_kernel(
     tmp_ptr,
-    y_ptr,
+    first_ptr,
+    last_ptr,
     out_ptr,
-    M,
-    N,
     dx,
     OUT_DTYPE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    # Masked memory access is unreliable on this backend at small M (the tail
-    # lanes of a single under-full program trip an on-device kernel
-    # exception, status 719/714), observed on both the masked load and the
-    # masked store. Every address is therefore clamped into bounds. The caller
-    # sizes BLOCK to M, so a tail only exists when M is not a power of two and
-    # at most BLOCK - M lanes alias the last element.
-    raw_idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    idx = tl.minimum(raw_idx, M - 1)
-    t = tl.load(tmp_ptr + idx)
-    first = tl.load(y_ptr + idx * N).to(tl.float32)
-    last = tl.load(y_ptr + idx * N + (N - 1)).to(tl.float32)
-    r = dx * (t - 0.5 * (first + last))
-    tl.store(out_ptr + idx, r.to(OUT_DTYPE))
+    # Every address is a plain contiguous ramp: no clamp, no per-lane index
+    # arithmetic, no gather. Two earlier versions of this kernel died with an
+    # on-device kernel exception (status 719/714) on XPU3 -- one with a masked
+    # tail, one with a clamped index that gathered ``y[r, 0]`` / ``y[r, N - 1]``
+    # per lane (the M == 1 launch survived, the first multi-lane launch at
+    # M == 64 faulted). The caller therefore hands over three buffers that are
+    # all padded to a multiple of BLOCK, so the tail lanes land on allocated
+    # scratch instead of needing a mask.
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    t = tl.load(tmp_ptr + offs)
+    first = tl.load(first_ptr + offs).to(tl.float32)
+    last = tl.load(last_ptr + offs).to(tl.float32)
+    tl.store(out_ptr + offs, (dx * (t - 0.5 * (first + last))).to(OUT_DTYPE))
 
 
 @triton.jit
@@ -128,27 +128,32 @@ class _TrapzFn(torch.autograd.Function):
         y2 = yc.reshape(-1, N)
 
         tmp = _vendor_sum_dim(y2, [1], dtype=torch.float32)
-        out = torch.empty((M,), dtype=y.dtype, device=y.device)
-        # Size the program to M instead of always launching 1024 lanes. With a
-        # fixed 1024-wide launch every M < 1024 folds all the tail lanes onto
-        # the last row, so hundreds of lanes redundantly write the same output
-        # element; that write conflict trips an on-device kernel exception
-        # (status 719/714) on some cards. One lane per row keeps the store
-        # conflict-free and shrinks the launch for small M.
-        block = min(_BLOCK, triton.next_power_of_2(M))
+        # The epilogue is a plain contiguous elementwise kernel (see the kernel
+        # comment), so its three inputs are staged into buffers padded to a
+        # multiple of BLOCK: the two endpoint columns are gathered here by a
+        # layout-only copy instead of inside the kernel, and the padding absorbs
+        # the tail lanes. All of it is O(M) against an O(M * N) reduce.
+        block = _EPILOGUE_BLOCK
+        padded = triton.cdiv(M, block) * block
         with torch_device_fn.device(y.device):
+            tmp_p = torch.empty(padded, dtype=torch.float32, device=y.device)
+            tmp_p[:M].copy_(tmp)
+            first_p = torch.empty(padded, dtype=y.dtype, device=y.device)
+            first_p[:M].copy_(y2[:, 0])
+            last_p = torch.empty(padded, dtype=y.dtype, device=y.device)
+            last_p[:M].copy_(y2[:, N - 1])
+            out_p = torch.empty(padded, dtype=y.dtype, device=y.device)
             _trapz_epilogue_kernel[(triton.cdiv(M, block),)](
-                tmp,
-                y2,
-                out,
-                M,
-                N,
+                tmp_p,
+                first_p,
+                last_p,
+                out_p,
                 dx,
                 OUT_DTYPE=_TL_DTYPE[y.dtype],
                 BLOCK=block,
                 buffer_size_limit=2048,
             )
-        return out.reshape(out_shape)
+        return out_p[:M].reshape(out_shape)
 
     @staticmethod
     def backward(ctx, grad_output):
