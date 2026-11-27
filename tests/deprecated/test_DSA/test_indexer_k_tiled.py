@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.deprecated.DSA.indexer_k_tiled import (
     triton_lighting_indexer_k_tiled_interface,
 )
@@ -116,7 +117,7 @@ def to_reference(tensor, requires_grad=False):
     return result
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device(flag_gems.device)
 
 
 def make_lighting_indexer_input(
