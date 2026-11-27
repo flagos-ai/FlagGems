@@ -20,7 +20,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +96,12 @@ def _fractional_max_pool3d_forward_kernel(
     h_start = tl.where(h_out == out_h - 1, in_h - kernel_h, h_start)
     w_start = tl.where(w_out == out_w - 1, in_w - kernel_w, w_start)
 
-    dtype = input_ptr.type.element_ty
-    min_val = get_dtype_min(dtype)
-    max_val = tl.full((BLOCK_SIZE,), min_val, dtype=tl.float32).to(dtype)
+    # Accumulate the running max in fp32 (same recipe as the proven backend
+    # fractional_max_pool2d): the scf.for produced by a rolled range() loop
+    # that carries a bf16 value breaks the XPU ``tritonxpu-dtype-convert``
+    # pass ('scf.for' 0-th init/iter_arg type mismatch), so also unroll the
+    # small kernel window with tl.static_range.
+    max_val = tl.full((BLOCK_SIZE,), -float("inf"), dtype=tl.float32)
     if USE_INT32_IDX:
         max_idx = tl.full((BLOCK_SIZE,), -1, dtype=tl.int32)
     else:
@@ -109,13 +111,15 @@ def _fractional_max_pool3d_forward_kernel(
     in_dhw = in_d * in_hw
     plane_base = input_ptr + nc * in_dhw
 
-    for kd in range(kernel_d):
+    for kd in tl.static_range(0, kernel_d):
         d_in = d_start + kd
-        for kh in range(kernel_h):
-            for kw in range(kernel_w):
+        for kh in tl.static_range(0, kernel_h):
+            for kw in tl.static_range(0, kernel_w):
                 h_in = h_start + kh
                 w_in = w_start + kw
-                val = tl.load(plane_base + d_in * in_hw + h_in * in_w + w_in)
+                val = tl.load(plane_base + d_in * in_hw + h_in * in_w + w_in).to(
+                    tl.float32
+                )
                 update = val > max_val
                 max_val = tl.where(update, val, max_val)
                 if USE_INT32_IDX:
@@ -129,7 +133,9 @@ def _fractional_max_pool3d_forward_kernel(
                     )
                     max_idx = tl.where(update, idx, max_idx)
 
-    tl.store(output_ptr + offsets, max_val, mask=store_mask)
+    tl.store(
+        output_ptr + offsets, max_val.to(output_ptr.dtype.element_ty), mask=store_mask
+    )
     if USE_INT32_IDX:
         tl.store(indices_ptr + offsets, max_idx.to(tl.int64), mask=store_mask)
     else:
@@ -192,7 +198,9 @@ def fractional_max_pool3d(
 
     # Generate or validate random samples
     if _random_samples is None:
-        _random_samples = torch.rand(in_n, in_c, 3, device=input.device)
+        _random_samples = torch.rand(  # allow-torch-compute: RNG init
+            in_n, in_c, 3, device=input.device
+        )
     else:
         assert _random_samples.shape == (in_n, in_c, 3), (
             f"_random_samples must have shape ({in_n}, {in_c}, 3), "
