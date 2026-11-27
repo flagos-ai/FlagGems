@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import importlib
 import importlib.util
 import inspect
@@ -22,6 +23,7 @@ import sqlite3
 import sys
 import threading
 import time
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -1930,7 +1932,7 @@ def test_benchmark_success_count_tracks_finite_uncached_benchmarks(monkeypatch):
         assert tuner.benchmark_cache_hit_count == 1
         assert len(tuner.configs_timings) == 1
 
-    assert tuner._last_benchmark_args == (32,)
+    assert libentry_mod._revive_without_pinning(tuner._last_benchmark_args) == [32]
     assert tuner._last_benchmark_meta == {}
     assert tuner._run_mode is LibTunerRunMode.NORMAL
 
@@ -2157,6 +2159,32 @@ def test_adapted_config_cache_namespace_separates_tuning_modes(monkeypatch):
     assert "mm_kernel_flagtune_cost_model" not in (*names.values(), required_name)
 
 
+def test_last_benchmark_args_do_not_pin_tensors():
+    """LibTuner must not keep its benchmark arguments alive.
+
+    A LibTuner instance lives as long as the kernel it wraps, so storing the
+    call arguments directly would keep one full set of input and output tensors
+    resident for the whole process.
+    """
+    tensor = torch.empty(16)
+    witness = weakref.ref(tensor)
+    held = tuple(
+        libentry_mod._hold_without_pinning(value) for value in (tensor, 32, "name")
+    )
+
+    revived = libentry_mod._revive_without_pinning(held)
+    assert revived is not None
+    assert revived[0] is tensor
+    assert revived[1:] == [32, "name"]
+
+    del tensor, revived
+    gc.collect()
+    assert witness() is None
+
+    # Once a tensor has been released the caller is told to pass explicit args.
+    assert libentry_mod._revive_without_pinning(held) is None
+
+
 @pytest.mark.parametrize(
     ("benchmark_result", "expected_result"),
     [
@@ -2207,8 +2235,8 @@ def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(
     class FakeTuner:
         """Provide the retained context and _bench protocol used by the API."""
 
-        _last_benchmark_args = ("descriptor",)
-        _last_benchmark_meta = {"M": 32}
+        _last_benchmark_args = (libentry_mod._hold_without_pinning("descriptor"),)
+        _last_benchmark_meta = {"M": libentry_mod._hold_without_pinning(32)}
         arg_names = ["descriptor_arg"]
         nargs = None
         seen_tuned_metas = {"stale": [9.0, 9.0, 9.0]}

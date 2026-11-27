@@ -24,6 +24,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 from abc import abstractmethod
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -96,6 +97,40 @@ DEVICE_COUNT = runtime.device.device_count
 
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
+
+
+def _hold_without_pinning(value):
+    """Keep a reference for later re-benchmarking without extending the
+    lifetime of device tensors.
+
+    ``LibTuner`` instances live as long as the kernel they wrap, so storing the
+    call arguments directly keeps one full set of input/output tensors resident
+    for the whole process. Upstream Triton avoids exactly this by clearing
+    ``self.nargs`` at the end of ``Autotuner.run``.
+    """
+    try:
+        return (True, weakref.ref(value))
+    except TypeError:
+        # ints, floats, strings and tuples cannot be weak-referenced; they hold
+        # no device memory, so keeping them by value is harmless.
+        return (False, value)
+
+
+def _revive_without_pinning(held):
+    """Restore values stored by :func:`_hold_without_pinning`.
+
+    Returns ``None`` if any weakly held value has already been released, so the
+    caller falls back to requiring explicit arguments.
+    """
+    if held is None:
+        return None
+    revived = []
+    for is_weak, payload in held:
+        value = payload() if is_weak else payload
+        if is_weak and value is None:
+            return None
+        revived.append(value)
+    return revived
 
 
 def _supports_flagtune_cost_model(tuner: Any) -> bool:
@@ -925,19 +960,29 @@ class LibTuner(triton.runtime.Autotuner):
         if not quantiles or any(value < 0 or value > 1 for value in quantiles):
             raise ValueError("quantiles must contain values between 0 and 1")
         benchmark_quantiles = tuple(quantiles)
-        benchmark_args = (
-            tuple(args)
-            if args is not None
-            else getattr(self, "_last_benchmark_args", None)
-        )
-        benchmark_meta = (
-            dict(meta)
-            if meta is not None
-            else getattr(self, "_last_benchmark_meta", None)
-        )
+        if args is not None:
+            benchmark_args = tuple(args)
+        else:
+            revived = _revive_without_pinning(
+                getattr(self, "_last_benchmark_args", None)
+            )
+            benchmark_args = None if revived is None else tuple(revived)
+        if meta is not None:
+            benchmark_meta = dict(meta)
+        else:
+            held_meta = getattr(self, "_last_benchmark_meta", None)
+            revived_meta = _revive_without_pinning(
+                None if held_meta is None else tuple(held_meta.values())
+            )
+            benchmark_meta = (
+                None
+                if revived_meta is None
+                else dict(zip(held_meta.keys(), revived_meta))
+            )
         if benchmark_args is None or benchmark_meta is None:
             raise RuntimeError(
-                "benchmark_config requires explicit args/meta or a prior LibTuner.run"
+                "benchmark_config requires explicit args/meta, or a prior "
+                "LibTuner.run whose tensors are still alive"
             )
 
         original_nargs = getattr(self, "nargs", None)
@@ -1029,8 +1074,10 @@ class LibTuner(triton.runtime.Autotuner):
         exhaustive_collection = run_mode is LibTunerRunMode.EXHAUSTIVE_COLLECTION
         if hasattr(self, "seen_tuned_metas"):
             self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
-        self._last_benchmark_args = tuple(args)
-        self._last_benchmark_meta = dict(kwargs)
+        self._last_benchmark_args = tuple(_hold_without_pinning(a) for a in args)
+        self._last_benchmark_meta = {
+            name: _hold_without_pinning(value) for name, value in kwargs.items()
+        }
         used_cached_result = True
         cost_model_mode = (
             getattr(self, "_flagtune_mode", runtime.TuningMode.DEFAULT)
