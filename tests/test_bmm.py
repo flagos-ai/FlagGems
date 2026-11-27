@@ -232,8 +232,10 @@ def test_bmm_w8a8_fp8(batch, M, N, K, channel_wise, use_out, column_major):
     A_dequant = _dequant_a_fp8_per_mk_block(A_fp8, A_scale, block_m, block_k)
     B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale, block_n, block_k)
 
-    ref_out = torch.bmm(A_dequant, B_dequant).to(torch.bfloat16)
-    out = torch.empty_like(ref_out) if use_out else None
+    ref_A = utils.to_reference(A_dequant)
+    ref_B = utils.to_reference(B_dequant)
+    ref_out = torch.bmm(ref_A, ref_B).to(torch.bfloat16)
+    out = torch.empty_like(ref_out, device=A_fp8.device) if use_out else None
     res_out = flag_gems.bmm_w8a8_fp8(
         A_fp8,
         B_fp8,
