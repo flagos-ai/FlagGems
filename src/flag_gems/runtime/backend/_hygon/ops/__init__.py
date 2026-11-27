@@ -133,6 +133,7 @@ from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin as _foreach_sin
 from ._foreach_sin_ import _foreach_sin_ as _foreach_sin_
 from ._foreach_sqrt import _foreach_sqrt as _foreach_sqrt
+from ._foreach_sqrt_ import _foreach_sqrt_ as _foreach_sqrt_
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
@@ -492,6 +493,7 @@ __all__ = [
     "_foreach_sin",
     "_foreach_sin_",
     "_foreach_sqrt",
+    "_foreach_sqrt_",
     "_foreach_sub__ScalarList",
     "_foreach_tan",
     "_foreach_tan_",
