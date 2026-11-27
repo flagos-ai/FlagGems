@@ -399,7 +399,10 @@ def poisson_nll_loss(input, target, log_input, full, eps, reduction):
     is_fp16 = dtype == torch.float16
     is_bf16 = dtype == torch.bfloat16
     is_fp64 = dtype == torch.float64
-    eps = float(torch.tensor(eps, dtype=dtype).item())
+    # Keep eps in fp32/fp64. Rounding it through a 16-bit dtype underflows
+    # 1e-8 to 0, which turns log(input + eps) into log(0) for input == 0 and
+    # produces inf/NaN instead of the native result.
+    eps = float(eps)
     # Safe upper bound for the flat offsets of each operand.
     input_last = max(input.numel() - 1, 0)
     target_last = max(target.numel() - 1, 0)
