@@ -153,18 +153,19 @@ def _ctc_loss_cpu_reference(
         if unbatched_ref:
             lp_work = lp_work.unsqueeze(1)
         lp_work = lp_work.contiguous()
+        device = log_probs.device
         tgt = targets
         if torch.is_floating_point(tgt):
             tgt = tgt.to(torch.long)
-        tgt = tgt.contiguous()
+        tgt = tgt.to(device).contiguous()
         il = input_lengths
         if not torch.is_tensor(il):
-            il = torch.tensor(il, dtype=torch.long)
-        il = il.reshape(-1).contiguous()
+            il = torch.tensor(il, dtype=torch.long, device=device)
+        il = il.reshape(-1).to(device).contiguous()
         tl = target_lengths
         if not torch.is_tensor(tl):
-            tl = torch.tensor(tl, dtype=torch.long)
-        tl = tl.reshape(-1).contiguous()
+            tl = torch.tensor(tl, dtype=torch.long, device=device)
+        tl = tl.reshape(-1).to(device).contiguous()
 
         ref_nll, _ = torch.ops.aten._ctc_loss(
             lp_work, tgt, il, tl, blank, zero_infinity
