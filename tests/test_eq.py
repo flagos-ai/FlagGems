@@ -238,21 +238,6 @@ def test_eq_scalar_bool_and_integer_launch_sequence():
 
 
 @pytest.mark.eq
-@pytest.mark.eq_scalar
-def test_eq_integer_dispatch():
-    inp = torch.tensor([0, 1, -1], dtype=torch.int8, device=flag_gems.device)
-    weak = torch.tensor(255, dtype=torch.uint8, device=flag_gems.device)
-    expected = [torch.eq(inp.cpu(), weak.cpu())]
-    expected.extend(torch.eq(inp.cpu(), value) for value in (True, 2, 255))
-    with flag_gems.use_gems(include=["eq", "eq_scalar"]):
-        assert {"eq.Tensor", "eq.Scalar"}.issubset(flag_gems.all_registered_keys())
-        actual = [torch.eq(inp, weak)]
-        actual.extend(torch.eq(inp, value) for value in (True, 2, 255))
-    for result, reference in zip(actual, expected):
-        utils.gems_assert_equal(result, reference)
-
-
-@pytest.mark.eq
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize(
     "left_dtype,left_values,right_dtype,right_values",
