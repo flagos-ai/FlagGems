@@ -323,6 +323,17 @@ smooth_l1_loss_backward:
     - [64, 512, 512]
   shape_desc: "(B), M, N"
 
+native_dropout_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 pointwise input shape
+
 diag:
   shapes:
     - [64]

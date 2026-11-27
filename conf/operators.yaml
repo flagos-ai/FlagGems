@@ -15277,6 +15277,7 @@ ops:
   labels:
   - aten
   - nn.functional
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
