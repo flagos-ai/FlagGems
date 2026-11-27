@@ -475,6 +475,9 @@ def test_stft_torch_dispatch(entry, center, tmp_path, require_stft_fft):
     finally:
         library._destroy()
         flag_gems.current_work_registrar = previous_registrar
+        # only_enable(record=True) turns off propagation on the flag_gems logger;
+        # restore it so later caplog-based tests still see flag_gems.* records.
+        flag_gems.teardown_flaggems_logging()
     _assert_result(actual, expected.to(torch.complex64), 16)
     for actual_grad, expected_grad in zip(grads, expected_grads):
         utils.gems_assert_close(

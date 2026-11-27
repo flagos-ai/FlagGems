@@ -152,8 +152,9 @@ def test_slow_conv2d_backward_dispatches_to_gems(caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops._slow_conv2d_backward"):
         # Tests must not call use_gems(); only_enable is the sanctioned
         # registration API and reaches the same registrar.
-        flag_gems.only_enable(include=["_slow_conv2d_backward"])
+        previous_registrar = flag_gems.current_work_registrar
         try:
+            flag_gems.only_enable(include=["_slow_conv2d_backward"])
             gi, gw, gb = torch.ops.aten._slow_conv2d_backward.output_mask(
                 grad_output,
                 inp,
@@ -164,7 +165,8 @@ def test_slow_conv2d_backward_dispatches_to_gems(caplog):
                 [True, True, True],
             )
         finally:
-            flag_gems.enable()
+            flag_gems.current_work_registrar = previous_registrar
+            flag_gems.teardown_flaggems_logging()
 
     assert "GEMS _SLOW_CONV2D_BACKWARD" in caplog.text
     assert gi.device == gw.device == gb.device == inp.device

@@ -397,6 +397,10 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_csr_to_coo import (  # noqa: F401
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from .copy import copy, copy_
 from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
@@ -552,6 +556,7 @@ from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .gru_cell import gru_cell
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
@@ -1609,7 +1614,9 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru",
     "gru_cell",
+    "gru_data",
     "gt",
     "gt_scalar",
     "gt_scalar_",

@@ -557,3 +557,99 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
 
     assert res_view is out2
     utils.gems_assert_close(out2, ref_view, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.skipif(not IS_KUNLUNXIN, reason="kunlunxin fast-path dispatch boundaries")
+@pytest.mark.parametrize("m", list(range(1, 14)))
+@pytest.mark.parametrize("dtype", TENSORINV_DTYPES)
+def test_linalg_tensorinv_small_boundaries(m, dtype):
+    """Closed-form (m <= 4) and row-register Gauss-Jordan (5 <= m <= 12)
+    dispatch boundaries for the kunlunxin fast paths (m = 13 exercises the
+    LU fallback, which is correct but slower)."""
+    shape = (m, m)
+    if dtype == torch.float16:
+        A = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+        A = (
+            A @ A.T + torch.eye(m, dtype=torch.float32, device=flag_gems.device) * 0.1
+        ).to(torch.float16)
+    else:
+        A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = A @ A.T + torch.eye(m, dtype=dtype, device=flag_gems.device) * 0.1
+    ref_A = utils.to_reference(A)
+    if dtype == torch.float16:
+        ref_out = torch.linalg.tensorinv(ref_A.to(torch.float32), ind=1).to(
+            torch.float16
+        )
+    else:
+        ref_out = torch.linalg.tensorinv(ref_A, ind=1)
+    res_out = flag_gems.linalg_tensorinv(A, ind=1)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_linalg_tensorinv_permutation_4x4(dtype):
+    """A 4x4 permutation matrix (singular leading 2x2 block, det = -1) must
+    produce a finite inverse - the closed-form path must not depend on the
+    top-left 2x2 block being nonsingular."""
+    A = torch.tensor(
+        [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]],
+        dtype=torch.int64,
+        device=flag_gems.device,
+    ).to(dtype)
+    ref_A = utils.to_reference(A)
+    if dtype == torch.float16:
+        ref_out = torch.linalg.tensorinv(ref_A.to(torch.float32), ind=1).to(
+            torch.float16
+        )
+    else:
+        ref_out = torch.linalg.tensorinv(ref_A, ind=1)
+    res_out = flag_gems.linalg_tensorinv(A, ind=1)
+    assert torch.isfinite(res_out).all()
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_tensorinv
+def test_linalg_tensorinv_degenerate_leading_block():
+    """Invertible 4x4 with a singular leading 2x2 block (det = -1)."""
+    A = torch.tensor(
+        [
+            [1.0, 1.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0, 0.0],
+            [0.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+        ],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    ref_out = torch.linalg.tensorinv(utils.to_reference(A), ind=1)
+    res_out = flag_gems.linalg_tensorinv(A, ind=1)
+    assert torch.isfinite(res_out).all()
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.skipif(
+    not IS_KUNLUNXIN,
+    reason="kunlunxin ATen-compatible dtype guard (generic differs)",
+)
+def test_linalg_tensorinv_integer_dtype_raises():
+    """Integer input must raise like ATen instead of silently truncating."""
+    A = torch.ones(2, 2, dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(
+        RuntimeError, match="Expected a floating point or complex tensor as input"
+    ):
+        flag_gems.linalg_tensorinv(A, ind=1)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.skipif(
+    not IS_KUNLUNXIN,
+    reason="kunlunxin complex guard (generic differs)",
+)
+def test_linalg_tensorinv_complex_dtype_raises():
+    """Complex input must fail loudly instead of losing the imaginary part."""
+    A = torch.empty(2, 2, dtype=torch.complex64, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="complex tensors are not supported"):
+        flag_gems.linalg_tensorinv(A, ind=1)
