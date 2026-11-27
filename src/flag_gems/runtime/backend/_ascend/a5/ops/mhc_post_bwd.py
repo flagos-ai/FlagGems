@@ -16,6 +16,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ._mhc_post_bwd_native import launch
+
 
 @triton.jit
 def _mhc_post_bwd_kernel(
@@ -311,6 +313,18 @@ def mhc_post_bwd(x, residual, post_layer_mix, comb_res_mix, d_o):
         d_post_layer_mix,
         d_comb_res_mix,
     )
+    if (
+        0 < n < 2**26
+        and 0 < H <= 8192
+        and H % 128 == 0
+        and x.dtype == residual.dtype == d_o.dtype == torch.bfloat16
+        and post_layer_mix.dtype == comb_res_mix.dtype == torch.float32
+        and x.device.type == "npu"
+        and all(t.device == x.device and t.data_ptr() % 32 == 0 for t in args)
+        and launch(args, (n, H))
+    ):
+        return d_x, d_residual, d_post_layer_mix, d_comb_res_mix
+
     if H % 1024 == 0:
         _kernel_auto[(n,)](*args, H)
     else:
