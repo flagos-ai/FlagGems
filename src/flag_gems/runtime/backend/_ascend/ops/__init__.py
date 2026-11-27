@@ -267,6 +267,7 @@ from .isin import isin
 from .isposinf import isposinf
 from .isreal import isreal
 from .kl_div import kl_div
+from .kv_quant_sparse_attn import kv_quant_sparse_flash_attention
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
 from .le_ import le_
@@ -744,6 +745,7 @@ __all__ = [
     "isposinf",
     "isreal",
     "kl_div",
+    "kv_quant_sparse_flash_attention",
     "l1_loss",
     "layer_norm",
     "le_",
