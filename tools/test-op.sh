@@ -108,70 +108,28 @@ if $FULL_RUN && [[ "${DAILY_PYTHON_OP:-}" == "1" ]]; then
     DAILY_PYTHON_OP_BLACKLIST["$test_file"]=1
   done < "$(dirname "${BASH_SOURCE[0]}")/daily-python-op-blacklist.txt"
 fi
+declare -A ASCEND_DAILY_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${BACKEND:-}" == *ascend* ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    ASCEND_DAILY_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/ascend-daily-op-blacklist.txt"
+fi
 for item in $CHANGED_FILES; do
   if [[ -n "${DAILY_PYTHON_OP_BLACKLIST[$item]:-}" ]]; then
     echo "Skipping daily python-op blacklist: $item"
+    continue
+  fi
+  if [[ -n "${ASCEND_DAILY_OP_BLACKLIST[$item]:-}" ]]; then
+    # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
+    # TODO: unblock each test once the underlying issue is resolved
+    echo "Skipping Ascend daily-op blacklist: $item"
     continue
   fi
   file_name=$(basename "$item")
   case $item in
     tests/test_quant.py)
       # skip because it always fail
-      ;;
-    # Ascend daily-CI blacklist: tests that fail due to CANN 9.1.1 limitations
-    # or Triton/BiShengHIR compiler issues requiring deeper fixes.
-    # Only applied during full-range (daily) runs on the Ascend backend;
-    # PR CI runs (CHANGED_FILES != '__ALL__') are not affected.
-    tests/test_validate_sparse_compressed_tensor_args.py | \
-    tests/test_validate_sparse_bsc_tensor_args.py | \
-    tests/test_validate_sparse_coo_tensor_args.py | \
-    tests/test_DSA/test_sparse_mla_ops.py | \
-    tests/test_linalg_inv.py | \
-    tests/test_linalg_eigvalsh.py | \
-    tests/test_linalg_cholesky_ex.py | \
-    tests/test__philox_uniform_.py | \
-    tests/test_cov.py | \
-    tests/test_sparse_broadcast_to.py | \
-    tests/test_histogramdd_from_bin_cts.py | \
-    tests/test_lcm.py | \
-    tests/test_lcm_.py | \
-    tests/test_linalg_solve_ex.py | \
-    tests/test_var.py | \
-    tests/test_batch_norm.py | \
-    tests/test_batch_norm_impl_index_backward.py | \
-    tests/test_sparse_sum.py | \
-    tests/test_embedding_bag_dense_backward.py | \
-    tests/test_embedding_bag_sparse_backward.py | \
-    tests/test_bincount.py | \
-    tests/test_min.py | \
-    tests/test_nextafter_.py | \
-    tests/test_bf16_paged_mqa_logits.py | \
-    tests/test_cosh.py | \
-    tests/test_sparse_coo_tensor_with_dims.py | \
-    tests/test_convolution_overrideable.py | \
-    tests/test_convolution_overrideable_backward.py | \
-    tests/test_atanh_backward.py | \
-    tests/test_cudnn_rnn_flatten_weight.py | \
-    tests/test_amp_update_scale_.py | \
-    tests/test_cauchy.py | \
-    tests/test_trace_backward.py | \
-    tests/test_median_out.py | \
-    tests/test_addbmm.py | \
-    tests/test_alpha_dropout.py | \
-    tests/test_apply_rotary_pos_emb.py | \
-    tests/test_arctanh.py | \
-    tests/test_atan.py | \
-    tests/test_batch_norm_no_update.py | \
-    tests/test_bitwise_or_scalar.py)
-      if [[ "$FULL_RUN" == "true" && "${BACKEND:-}" == *ascend* ]]; then
-        # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
-        # TODO: unblock each test once the underlying issue is resolved
-        :
-      else
-        if [[ "$file_name" == test*.py ]]; then
-          TEST_CASES+=($item)
-        fi
-      fi
       ;;
     tests/*.py)
       if [[ "$file_name" == test*.py ]]; then
