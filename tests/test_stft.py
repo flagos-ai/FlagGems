@@ -468,6 +468,9 @@ def test_stft_torch_dispatch(entry, center, tmp_path, require_stft_fft):
     finally:
         library._destroy()
         flag_gems.current_work_registrar = previous_registrar
+        # only_enable(record=True) turns off propagation on the flag_gems logger;
+        # restore it so later caplog-based tests still see flag_gems.* records.
+        flag_gems.teardown_flaggems_logging()
     _assert_result(actual, expected.to(torch.complex64), 16)
     for actual_grad, expected_grad in zip(grads, expected_grads):
         utils.gems_assert_close(
@@ -648,7 +651,7 @@ def test_stft_chunked_forward_and_backward(monkeypatch, require_stft_fft):
     require_stft_fft(32, backward=True)
     import importlib
 
-    module = importlib.import_module("flag_gems.ops.stft")
+    module = importlib.import_module(flag_gems.stft.__module__)
     monkeypatch.setattr(module, "_FRAME_BYTES", 1024)
     inp_cpu = _make_input((2, 129), torch.complex64)
     window_cpu = _make_window("complex", 16, torch.float32)

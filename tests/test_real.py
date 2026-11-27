@@ -76,7 +76,7 @@ def _assert_real_view(result, input, expected):
 @pytest.mark.real
 @pytest.mark.parametrize("is_conj", [False, True])
 def test_real_uses_flag_gems_view_path(monkeypatch, is_conj):
-    real_module = importlib.import_module("flag_gems.ops.real")
+    real_module = importlib.import_module(flag_gems.real.__module__)
     view_as_real = real_module._VIEW_AS_REAL
     seen_sources = []
 

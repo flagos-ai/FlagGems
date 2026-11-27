@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -25,6 +27,18 @@ def test_fmax():
         torch_op=torch.fmax,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.fmax_backward
+def test_fmax_backward():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="fmax",
+        torch_op=torch.fmax,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.fmax)
     bench.run()
 
 

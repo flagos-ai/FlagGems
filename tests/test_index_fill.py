@@ -19,6 +19,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
@@ -184,10 +185,12 @@ def test_index_fill_large_row_fill(shape):
 def test_index_fill_grid_stride(monkeypatch):
     # Cap the flat launch below the number of tile blocks so the kernel's
     # grid-stride loop runs several iterations; this is what keeps oversized
-    # fills legal on backends with small grid limits.
-    index_fill_ops = importlib.import_module("flag_gems.ops.index_fill")
-
-    monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
+    # fills legal on backends with small grid limits. Vendor overrides (e.g.
+    # Ascend's `_ascend.ops.index_fill`) bound their own launches and have no
+    # `_MAX_GRID`; the correctness checks below still run for them.
+    index_fill_ops = importlib.import_module(flag_gems.index_fill_.__module__)
+    if hasattr(index_fill_ops, "_MAX_GRID"):
+        monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
 
     shape = (256, 16)
     inp = torch.arange(
@@ -232,3 +235,39 @@ def test_index_fill_noncontiguous():
         base,
         torch.arange(12, dtype=torch.float32, device=flag_gems.device).reshape(3, 4),
     )
+
+
+INDEX_FILL_BACKWARD_CASES = [((1, 2), 0), ((4, 8), 0), ((2, 3, 5), 2)]
+
+
+@pytest.mark.index_fill_backward
+@pytest.mark.parametrize("shape, dim", INDEX_FILL_BACKWARD_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_fill_backward(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    index = torch.randperm(shape[dim], device=flag_gems.device)[: shape[dim] // 2]
+    value = torch.tensor(2.0, dtype=dtype, device=flag_gems.device)
+    value.requires_grad_(True)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_index = utils.to_reference(index)
+    ref_value = utils.to_reference(value, True)
+
+    ref_out = torch.index_fill(ref_inp, dim, ref_index, ref_value)
+    res_out = flag_gems.index_fill(inp, dim, index, value)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_dinp, res_dval = torch.autograd.grad(res_out, (inp, value), out_grad)
+    ref_dinp, ref_dval = torch.autograd.grad(
+        ref_out, (ref_inp, ref_value), ref_out_grad
+    )
+    utils.gems_assert_close(res_dinp, ref_dinp, dtype)
+    utils.gems_assert_close(res_dval, ref_dval, dtype)
+
+    res_dinp_direct, res_dval_direct = flag_gems.index_fill_backward(
+        out_grad, dim, index, True
+    )
+    utils.gems_assert_close(res_dinp_direct, ref_dinp, dtype)
+    utils.gems_assert_close(res_dval_direct, ref_dval, dtype)
