@@ -16660,6 +16660,17 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: pixel_shuffle_backward
+  description: Triton backward implementation and autograd contract for pixel_shuffle.
+  for:
+  - pixel_shuffle
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: pixel_unshuffle
   description: 'Rearranges elements from a low-resolution feature map with many channels
 
