@@ -150,6 +150,7 @@ from ._foreach_sub__ScalarList import (
 )
 from ._foreach_sub_List import _foreach_sub_List as _foreach_sub_List
 from ._foreach_sub_Scalar import _foreach_sub_Scalar as _foreach_sub_Scalar
+from ._foreach_sub_ScalarList import _foreach_sub_ScalarList as _foreach_sub_ScalarList
 from ._foreach_tan import _foreach_tan as _foreach_tan
 from ._foreach_tan_ import _foreach_tan_ as _foreach_tan_
 from ._foreach_tanh import _foreach_tanh as _foreach_tanh
@@ -525,6 +526,7 @@ __all__ = [
     "_foreach_sub__ScalarList",
     "_foreach_sub_List",
     "_foreach_sub_Scalar",
+    "_foreach_sub_ScalarList",
     "_foreach_tan",
     "_foreach_tan_",
     "_foreach_tanh",
