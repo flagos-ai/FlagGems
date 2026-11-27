@@ -17,11 +17,12 @@
 Correctness is validated byte-exact against ``torch_npu.npu_dynamic_mx_quant``
 (aclnnDynamicMxQuantV3).  Run with::
 
-    pytest tests/test_npu_dynamic_mx_quant.py -v
+    pytest tests/test_npu_dynamic_mx_quant.py --noconftest -v
 
-The tests are skipped on non-Ascend devices.  An Ascend A5 (950DT) device is
-required for the kernel to be exercised; on earlier Ascend hardware the module
-still imports but the a5-specialisation path may not be active.
+The tests require an Atlas A5 (Ascend950) device.  On Ascend910 (a2) the MLIR
+backend does not support ``arith::TruncFOp`` to fp8, so every tile fails to
+compile.  The module-level ``pytestmark`` skips the whole file unless the
+running device reports a "950"-series SoC name.
 """
 
 import importlib.util
@@ -30,11 +31,6 @@ import pathlib
 import pytest
 import torch
 
-# flag_gems may fail to initialise on this machine (broken tl.ext backend).
-# Guard the import so collection succeeds even when the full import chain is
-# broken.  Run with:
-#   pytest tests/test_npu_dynamic_mx_quant.py --noconftest -v
-# to bypass the global conftest that also imports flag_gems.
 try:
     import flag_gems as _flag_gems
 
@@ -52,12 +48,44 @@ except (ImportError, RuntimeError):
         _VENDOR_NAME = "unavailable"
         _DEV_STR = "cpu"
 
+
+def _is_ascend_a5() -> bool:
+    """Return True only when running on an Atlas A5 (Ascend950) device.
+
+    This kernel uses fp8 ``arith::TruncFOp`` which the CANN MLIR backend on
+    Ascend910 (a2) does not support.  Gate the whole test file on the SoC
+    name so CI on 910 machines skips cleanly instead of hard-failing.
+    """
+    if _VENDOR_NAME != "ascend":
+        return False
+    try:
+        import torch
+        import torch_npu  # noqa: F401
+
+        name = torch.npu.get_device_name(0)  # e.g. "Ascend950DT_9582"
+        return "950" in name
+    except Exception:
+        pass
+    # Fallback: try the FlagGems arch resolver (may be unavailable).
+    try:
+        import torch
+
+        from flag_gems.runtime.backend._ascend import get_arch_key
+
+        return get_arch_key(torch.device("npu:0")) == "a5"
+    except Exception:
+        return False
+
+
+_ON_A5 = _is_ascend_a5()
+
 # ---------------------------------------------------------------------------
-# Skip the whole module on non-Ascend backends
+# Skip the whole module unless we are on an Atlas A5 (Ascend950) device
 # ---------------------------------------------------------------------------
 pytestmark = pytest.mark.skipif(
-    _VENDOR_NAME != "ascend",
-    reason="npu_dynamic_mx_quant is an Ascend-only operator",
+    not _ON_A5,
+    reason="npu_dynamic_mx_quant requires Atlas A5 (Ascend950); "
+    "skipped on non-a5 Ascend and non-Ascend backends",
 )
 
 # ---------------------------------------------------------------------------
