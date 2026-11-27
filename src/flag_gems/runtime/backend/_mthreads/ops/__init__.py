@@ -76,6 +76,8 @@ from ._foreach_erf_ import _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_exp import _foreach_exp
 from ._foreach_exp_ import _foreach_exp_
+from ._foreach_floor import _foreach_floor
+from ._foreach_floor_ import _foreach_floor_
 from ._foreach_frac import _foreach_frac
 from ._foreach_frac_ import _foreach_frac_
 from ._foreach_log1p_ import _foreach_log1p_
@@ -365,6 +367,8 @@ __all__ = [
     "_foreach_erfc_",
     "_foreach_exp",
     "_foreach_exp_",
+    "_foreach_floor",
+    "_foreach_floor_",
     "_foreach_frac",
     "_foreach_frac_",
     "_foreach_log10_",
