@@ -539,7 +539,13 @@ from .fused_moving_avg_obs_fake_quant import (  # noqa: F401
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .gcd_inplace import gcd_
-from .ge import ge, ge_scalar, greater_equal_
+from .ge import (
+    ge,
+    ge_scalar,
+    greater_equal_,
+    greater_equal_scalar_,
+    greater_equal_tensor_,
+)
 from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_  # noqa: F401
 from .geqrf import geqrf
@@ -1602,6 +1608,8 @@ __all__ = [
     "gradient",
     "greater",
     "greater_equal_",
+    "greater_equal_scalar_",
+    "greater_equal_tensor_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
