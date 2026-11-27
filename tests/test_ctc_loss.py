@@ -133,39 +133,35 @@ def _make_targets(batch, max_target, classes, blank, pattern, target_layout):
     return targets, target_lengths
 
 
-def _reference_ctc_loss(
+def _ctc_loss_cpu_reference(
     log_probs,
     targets,
     input_lengths,
     target_lengths,
-    blank,
-    reduction,
-    zero_infinity,
+    blank=0,
+    reduction="mean",
+    zero_infinity=False,
 ):
-    ref_log_probs = utils.to_reference(log_probs.detach(), False).to(torch.float32)
-    ref_log_probs.requires_grad_(True)
-    ref_targets = utils.to_reference(targets)
-    ref_input_lengths = utils.to_reference(input_lengths)
-    ref_target_lengths = utils.to_reference(target_lengths)
+    # F.ctc_loss dispatches aten::_use_cudnn_ctc_loss, which is not built into
+    # the CI torch for the CPU backend. On kunlunxin emulate the composite on
+    # the native aten::_ctc_loss (2D unbatched inputs, float targets,
+    # zero_infinity and the reduction all live in the composite; handled here).
+    # The upstream F.ctc_loss path is preserved verbatim in the else branch.
     if flag_gems.vendor_name == "kunlunxin":
-        # F.ctc_loss dispatches aten::_use_cudnn_ctc_loss, which is not built
-        # into the CI torch for the CPU backend. Emulate its contract on top
-        # of the native aten::_ctc_loss (2D unbatched inputs, float targets,
-        # zero_infinity and the reduction all live in the composite).
-        lp_work = ref_log_probs
+        lp_work = log_probs
         unbatched_ref = lp_work.ndim == 2
         if unbatched_ref:
             lp_work = lp_work.unsqueeze(1)
         lp_work = lp_work.contiguous()
-        tgt = ref_targets
+        tgt = targets
         if torch.is_floating_point(tgt):
             tgt = tgt.to(torch.long)
         tgt = tgt.contiguous()
-        il = ref_input_lengths
+        il = input_lengths
         if not torch.is_tensor(il):
             il = torch.tensor(il, dtype=torch.long)
         il = il.reshape(-1).contiguous()
-        tl = ref_target_lengths
+        tl = target_lengths
         if not torch.is_tensor(tl):
             tl = torch.tensor(tl, dtype=torch.long)
         tl = tl.reshape(-1).contiguous()
@@ -184,16 +180,41 @@ def _reference_ctc_loss(
         else:
             denom = tl.clamp_min(1).to(ref_nll.dtype)
             ref_out = (ref_nll / denom).mean()
-    else:
-        ref_out = F.ctc_loss(
-            ref_log_probs,
-            ref_targets,
-            ref_input_lengths,
-            ref_target_lengths,
-            blank=blank,
-            reduction=reduction,
-            zero_infinity=zero_infinity,
-        )
+        return ref_out
+    return F.ctc_loss(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths,
+        blank=blank,
+        reduction=reduction,
+        zero_infinity=zero_infinity,
+    )
+
+
+def _reference_ctc_loss(
+    log_probs,
+    targets,
+    input_lengths,
+    target_lengths,
+    blank,
+    reduction,
+    zero_infinity,
+):
+    ref_log_probs = utils.to_reference(log_probs.detach(), False).to(torch.float32)
+    ref_log_probs.requires_grad_(True)
+    ref_targets = utils.to_reference(targets)
+    ref_input_lengths = utils.to_reference(input_lengths)
+    ref_target_lengths = utils.to_reference(target_lengths)
+    ref_out = _ctc_loss_cpu_reference(
+        ref_log_probs,
+        ref_targets,
+        ref_input_lengths,
+        ref_target_lengths,
+        blank=blank,
+        reduction=reduction,
+        zero_infinity=zero_infinity,
+    )
     return ref_log_probs, ref_out.to(log_probs.dtype)
 
 
@@ -401,7 +422,7 @@ def test_ctc_loss_registered_intlist_forward():
     input_lengths = [8, 7]
     target_lengths_list = target_lengths.tolist()
 
-    ref_out = F.ctc_loss(
+    ref_out = _ctc_loss_cpu_reference(
         utils.to_reference(log_probs.detach(), False).to(torch.float32),
         utils.to_reference(targets),
         input_lengths,
@@ -433,7 +454,7 @@ def test_ctc_loss_registered_intlist_backward():
 
     ref_log_probs = utils.to_reference(log_probs.detach(), False).to(torch.float32)
     ref_log_probs.requires_grad_(True)
-    ref_out = F.ctc_loss(
+    ref_out = _ctc_loss_cpu_reference(
         ref_log_probs,
         utils.to_reference(targets),
         input_lengths,
@@ -471,7 +492,7 @@ def test_ctc_loss_registered_tensor_backward():
 
     ref_log_probs = utils.to_reference(log_probs.detach(), False).to(torch.float32)
     ref_log_probs.requires_grad_(True)
-    ref_out = F.ctc_loss(
+    ref_out = _ctc_loss_cpu_reference(
         ref_log_probs,
         utils.to_reference(targets),
         utils.to_reference(input_lengths),
