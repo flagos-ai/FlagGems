@@ -118,6 +118,8 @@ from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_int
 from .replication_pad1d_backward import replication_pad1d_backward
 from .resolve_neg import resolve_neg
+from .row_stack import row_stack
+from .row_stack_out import row_stack_out
 from .scatter_add import scatter_add_
 from .smm import smm
 from .softplus import softplus_backward
@@ -276,6 +278,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "replication_pad1d_backward",
     "resolve_neg",
+    "row_stack",
+    "row_stack_out",
     "run",
     "scaled_dot_product_attention",
     "scatter_add_",
