@@ -1548,7 +1548,7 @@ from flag_gems.ops.softmax import (
     softmax_backward_out,
     softmax_out,
 )
-from flag_gems.ops.softplus import softplus, softplus_backward
+from flag_gems.ops.softplus import softplus, softplus_backward, softplus_backward_out
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
@@ -3345,6 +3345,7 @@ __all__ = [
     "softmax_out",
     "softplus",
     "softplus_backward",
+    "softplus_backward_out",
     "softshrink",
     "softshrink_backward",
     "softshrink_out",
