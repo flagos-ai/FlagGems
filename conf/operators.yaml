@@ -18858,6 +18858,17 @@ ops:
   - Tensor
   stages:
   - stable: '3.0'
+- id: scatter_reduce_backward
+  description: First-order backward of scatter_reduce, using saved forward state.
+  for:
+  - scatter_reduce.two
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: scatter_reduce_two
   description: 'Applies a reduction to source values scattered at the indices specified
     by `index`.

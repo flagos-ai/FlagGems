@@ -1106,6 +1106,18 @@ IndexPutAccTrueBenchmark:
     - [[512, 512, 512], [[128], [128], [128]], [128], False]
     - [[512, 512, 512], [[2, 128], [2, 128], [2, 128]], [2, 128], False]
 
+scatter_reduce_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 glu:
   shapes:
     - [4, 8, 512, 128]
