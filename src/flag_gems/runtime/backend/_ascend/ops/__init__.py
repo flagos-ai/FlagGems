@@ -402,6 +402,7 @@ from .special_expit import special_expit
 from .special_expm1 import special_expm1
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
+from .special_round_out import special_round_out
 from .special_xlogy import special_xlogy
 from .special_xlogy_ import special_xlogy_
 from .square_ import square_
@@ -909,6 +910,7 @@ __all__ = [
     "special_expm1",
     "special_log1p_out",
     "special_logit_out",
+    "special_round_out",
     "special_xlogy",
     "special_xlogy_",
     "square_",
