@@ -21,11 +21,20 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .accuracy_utils import _SKIP_FP64
 
-DTYPES = (
-    [torch.float32]
-    if cfg.QUICK_MODE
-    else [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
-)
+DTYPES = [torch.float32]
+if not cfg.QUICK_MODE:
+    DTYPES.append(
+        pytest.param(
+            torch.float64,
+            marks=[
+                _SKIP_FP64,
+                pytest.mark.skipif(
+                    flag_gems.vendor_name == "enflame",
+                    reason="Enflame Float64 storage does not preserve double values",
+                ),
+            ],
+        )
+    )
 INTERPOLATIONS = (
     ["linear"]
     if cfg.QUICK_MODE
@@ -46,7 +55,18 @@ def _input(shape, dtype):
     return inp
 
 
+def _reference_input(inp, upcast=False):
+    if flag_gems.vendor_name == "enflame":
+        # Native GCU nanquantile requires Long indices that can be invalid.
+        ref = inp.cpu()
+        return ref.double() if upcast else ref
+    return utils.to_reference(inp, upcast)
+
+
 def _assert_close(result, reference, dtype, reduction_size):
+    assert result.device.type == torch.device(flag_gems.device).type
+    assert result.dtype == dtype
+    assert result.shape == reference.shape
     utils.gems_assert_close(
         result,
         reference,
@@ -68,10 +88,14 @@ def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
     )
     inp = _input((7, 33), dtype).T
     q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
+    upcast = interpolation == "linear"
     if use_cpu_reference:
         ref_inp, ref_q = inp.cpu(), q.cpu()
+        if upcast:
+            ref_inp, ref_q = ref_inp.double(), ref_q.double()
     else:
-        ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
+        ref_inp = _reference_input(inp, upcast)
+        ref_q = _reference_input(q, upcast)
     reference = torch.ops.aten.nanquantile.default(
         ref_inp, ref_q, dim, keepdim, interpolation=interpolation
     )
@@ -89,8 +113,14 @@ def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 @pytest.mark.parametrize("dim, keepdim", [(None, False), (0, True), (-1, False)])
 def test_nanquantile_scalar(dtype, interpolation, dim, keepdim):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.float64
+    ):
+        pytest.skip("Ascend native nanquantile sorting does not support Float64")
     inp = _input((17, 19), dtype)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _reference_input(inp)
     reference = torch.ops.aten.nanquantile.scalar(
         ref_inp, 0.37, dim, keepdim, interpolation=interpolation
     )
@@ -110,8 +140,9 @@ def test_nanquantile_out(dtype, q_shape):
     if q.numel():
         values = torch.linspace(0.1, 0.9, q.numel(), dtype=dtype, device=inp.device)
         q.copy_(values.reshape(q_shape))
-    ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
-    ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
+    ref_inp, ref_q = _reference_input(inp), _reference_input(q)
+    # The CPU reference is upcast, so the out buffer must follow its dtype.
+    ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
     reference = torch.ops.aten.nanquantile.out(
         ref_inp, ref_q, 1, True, interpolation="linear", out=ref_out
     )
@@ -128,8 +159,9 @@ def test_nanquantile_out(dtype, q_shape):
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 def test_nanquantile_scalar_out(dtype, interpolation):
     inp = _input((11, 15), dtype)
-    ref_inp = utils.to_reference(inp)
-    ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
+    ref_inp = _reference_input(inp)
+    # The CPU reference is upcast, so the out buffer must follow its dtype.
+    ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
     reference = torch.ops.aten.nanquantile.scalar_out(
         ref_inp, 0.73, 0, False, interpolation=interpolation, out=ref_out
     )
@@ -146,9 +178,9 @@ def test_nanquantile_scalar_out(dtype, interpolation):
 @pytest.mark.parametrize("use_out", [False, True])
 def test_nanquantile_dim_none_keepdim_shape(tensor_q, use_out):
     inp = _input((2, 3), torch.float32)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _reference_input(inp)
     q = torch.tensor([0.25, 0.75], device=inp.device) if tensor_q else 0.25
-    ref_q = utils.to_reference(q) if tensor_q else q
+    ref_q = _reference_input(q) if tensor_q else q
     if use_out:
         out = torch.empty(0, device=inp.device)
         ref_out = torch.empty(0, device=ref_inp.device)
@@ -185,7 +217,7 @@ def test_nanquantile_maximum_reduction_one_valid(valid_count):
     if valid_count:
         inp[0] = 13.0
     q = torch.tensor([0.0, 0.5, 1.0], device=inp.device)
-    reference = torch.nanquantile(utils.to_reference(inp), utils.to_reference(q))
+    reference = torch.nanquantile(_reference_input(inp), _reference_input(q))
     result = flag_gems.nanquantile(inp, q)
     utils.gems_assert_equal(result, reference, equal_nan=True)
 
@@ -195,7 +227,7 @@ def test_nanquantile_maximum_reduction_one_valid(valid_count):
 def test_nanquantile_large_q_is_tiled(size):
     inp = _input((2, size), torch.float32)
     q = torch.linspace(0, 1, 513, device=inp.device)
-    reference = torch.nanquantile(utils.to_reference(inp), utils.to_reference(q), dim=1)
+    reference = torch.nanquantile(_reference_input(inp), _reference_input(q), dim=1)
     result = flag_gems.nanquantile(inp, q, dim=1)
     _assert_close(result, reference, torch.float32, size)
 
@@ -208,8 +240,8 @@ def test_nanquantile_gather_interpolations(interpolation):
     inp = _input((2, 4097), torch.float32)
     q = torch.tensor([0.13, 0.51, 0.92], device=inp.device)
     reference = torch.nanquantile(
-        utils.to_reference(inp),
-        utils.to_reference(q),
+        _reference_input(inp),
+        _reference_input(q),
         dim=1,
         interpolation=interpolation,
     )
@@ -221,7 +253,7 @@ def test_nanquantile_gather_interpolations(interpolation):
 def test_nanquantile_noncontiguous_out():
     inp = _input((3, 1025), torch.float32)
     q = torch.tensor([0.2, 0.5, 0.8], device=inp.device)
-    ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
+    ref_inp, ref_q = _reference_input(inp), _reference_input(q)
     out = torch.empty((3, 3), device=inp.device).T
     ref_out = torch.empty((3, 3), device=ref_inp.device).T
     reference = torch.ops.aten.nanquantile.out(
@@ -241,7 +273,7 @@ def test_nanquantile_all_nan_and_path_boundaries(size):
     inp[1, 0] = -float("inf")
     inp[1, -1] = float("inf")
     q = torch.tensor([0.0, 0.5, 1.0], device=inp.device)
-    reference = torch.nanquantile(utils.to_reference(inp), utils.to_reference(q), dim=1)
+    reference = torch.nanquantile(_reference_input(inp), _reference_input(q), dim=1)
     result = flag_gems.nanquantile(inp, q, dim=1)
     _assert_close(result, reference, torch.float32, size)
 
@@ -253,13 +285,14 @@ def test_nanquantile_special_values_and_scalar_tensor_q():
         device=flag_gems.device,
     )
     q = torch.tensor(0.5, device=inp.device)
-    reference = torch.nanquantile(utils.to_reference(inp), utils.to_reference(q), dim=1)
+    reference = torch.nanquantile(_reference_input(inp), _reference_input(q), dim=1)
     result = flag_gems.nanquantile(inp, q, dim=1)
     _assert_close(result, reference, torch.float32, inp.shape[1])
-    result_valid = ~torch.isnan(result)
+    comparison = utils.to_cpu(result, reference)
+    result_valid = ~torch.isnan(comparison)
     reference_valid = ~torch.isnan(reference)
     utils.gems_assert_equal(
-        torch.signbit(result)[result_valid],
+        torch.signbit(comparison)[result_valid],
         torch.signbit(reference)[reference_valid],
     )
 
@@ -279,3 +312,7 @@ def test_nanquantile_errors():
         )
     with pytest.raises(RuntimeError):
         flag_gems.nanquantile(torch.empty(0, device=inp.device), 0.5)
+    with pytest.raises(RuntimeError):
+        flag_gems.nanquantile(
+            torch.empty(0, device=inp.device), torch.tensor(0.5, device=inp.device)
+        )
