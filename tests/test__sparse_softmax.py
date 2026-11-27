@@ -26,6 +26,11 @@ from . import kernelgen_test_utils as tu
 # The candidate is always the public entry point flag_gems._sparse_softmax called
 # with the same arguments.
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="aten::_sparse_softmax is not supported on the NPU backend",
+)
+
 _DEVICE = flag_gems.runtime.device
 
 # Measured on this NVIDIA target: the default half_to_float=False form has native

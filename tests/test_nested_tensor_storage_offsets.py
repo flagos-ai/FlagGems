@@ -171,6 +171,10 @@ def test_nested_tensor_storage_offsets_cpu_nested():
 
 
 @pytest.mark.nested_tensor_storage_offsets
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="aten::_nested_tensor_storage_offsets is not registered for NestedTensornpu backend",
+)
 def test_nested_tensor_storage_offsets_aliases_native_metadata():
     # The returned tensor is a zero-copy view of the nested tensor's internal
     # metadata storage: the same storage native hands out (identical
@@ -217,6 +221,10 @@ def test_nested_tensor_storage_offsets_non_nested_error():
 
 
 @pytest.mark.nested_tensor_storage_offsets
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="aten::_nested_tensor_storage_offsets is not registered for NestedTensornpu backend",
+)
 def test_nested_tensor_storage_offsets_dispatch_stability():
     # The impl delegates to the very op it registers (below the autograd key);
     # repeated dispatcher calls with an unrelated native op in between must
