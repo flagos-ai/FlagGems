@@ -265,6 +265,7 @@ from .addmv import addmv, addmv_, addmv_out  # noqa: F401
 from .addr import addr
 from .addr_ import addr_
 from .affine_grid_generator import affine_grid_generator  # noqa: F401
+from .affine_grid_generator_backward import affine_grid_generator_backward  # noqa: F401
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
 from .alpha_dropout import alpha_dropout  # noqa: F401
@@ -444,6 +445,7 @@ from .div import (
 from .dot import dot
 from .dropout import dropout, dropout_backward
 from .dropout_ import dropout_  # noqa: F401
+from .dstack import dstack  # noqa: F401
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .empty import empty  # noqa: F401
@@ -1467,6 +1469,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dstack",
     "efficient_attention_backward",
     "elu",
     "elu_",

@@ -16,6 +16,7 @@ import importlib
 import logging
 import os
 import threading
+import weakref
 
 import torch
 import triton
@@ -199,6 +200,32 @@ def _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups):
         num_warps=4,
     )
     return out
+
+
+# BF16 fast path reuses the vendor fp32-GEMM conv; upcast the (tiny)
+# weight once per tensor instead of per call. The cache is validated by a
+# weakref to the exact weight tensor and capped to bound memory.
+_WF32_CACHE = {}
+
+
+def _weight_f32(weight):
+    key = (
+        weight.data_ptr(),
+        weight._version,
+        tuple(weight.shape),
+        weight.dtype,
+        str(weight.device),
+    )
+    entry = _WF32_CACHE.get(key)
+    if entry is not None:
+        ref, t = entry
+        if ref() is weight:
+            return t
+    t = weight.float()
+    if len(_WF32_CACHE) >= 64:
+        _WF32_CACHE.clear()
+    _WF32_CACHE[key] = (weakref.ref(weight), t)
+    return t
 
 
 def _pair(value):
@@ -454,9 +481,16 @@ def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilatio
     # Route depthwise (groups == C) to the fast path directly.
     if user_bias is None and _vendor_ok(input, weight, stride, padding, dilation):
         if input.dtype == torch.bfloat16:
-            # bf16 reride in fp32; rounded back once.
+            # bf16 rerided in fp32 (vendor path has no bf16 instantiation);
+            # the weight upcast is cached per tensor.
             out = _vendor_depthwise(
-                input.float(), weight.float(), bias, stride, padding, dilation, groups
+                input.float(),
+                _weight_f32(weight),
+                bias,
+                stride,
+                padding,
+                dilation,
+                groups,
             )
             return out.to(input.dtype)
         return _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups)
