@@ -12,14 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Hygon W8A8 GEMM with INT8 dot products and overflow-safe long-K reduction."""
+"""Hygon integer GEMMs for prequantized W8A8 and dynamic W4A8."""
+
+from functools import lru_cache
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops._dyn_quant_matmul_4bit import (
+    _dyn_quant_matmul_4bit as _generic_dyn_quant_matmul_4bit,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+_HAS_PACKED_INT4 = False
+if HAS_TLE:
+    try:
+        import triton.experimental.tle.language as tle
+        from triton.experimental.tle import is_tle_supported
+        from triton.language.extra.hip.utils import _get_dot_scaled_lowering
+    except ImportError:
+        pass
+    else:
+        _HAS_PACKED_INT4 = _get_dot_scaled_lowering("int8", "int4") is not None
 
 _FLOATS = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -589,3 +606,128 @@ def mm_w8a8_int8_out(a, b, scale_a, scale_b, *, out, bias=None):
     ):
         raise ValueError("out must not alias inputs, scales or bias")
     return _run(a, b, scale_a, scale_b, out, m, n, k, bias)
+
+
+# (M, N, K) configurations validated against the original Hygon launcher.
+_DYN_QUANT_ASYNC_SHAPES = frozenset(
+    {
+        (1, 1024, 2560),
+        (1, 2560, 4096),
+        (1, 2560, 9728),
+        (1, 4096, 2560),
+        (1, 9728, 2560),
+        (32, 1024, 2560),
+        (32, 2560, 4096),
+        (32, 2560, 9728),
+        (32, 4096, 2560),
+        (128, 1024, 2560),
+        (128, 2560, 4096),
+    }
+)
+
+
+@triton.jit
+def _dyn_quant_matmul_4bit_async(
+    Q,
+    Scale,
+    Offset,
+    Packed,
+    Y,
+    M,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    tiles_n = tl.cdiv(N, BN)
+    groups: tl.constexpr = K // BK
+    weight_count: tl.constexpr = N * (K // 2)
+    for tile in range(tl.program_id(0), tl.cdiv(M, BM) * tiles_n, tl.num_programs(0)):
+        rows = tile // tiles_n * BM + tl.arange(0, BM)
+        n_start = tile % tiles_n * BN
+        ns = n_start + tl.arange(0, BN)
+        tl.assume(n_start >= 0)
+        tl.assume(n_start <= N - BN)
+        ks = tl.arange(0, BK)
+        bytes_k = tl.arange(0, BK // 2)
+        offset = tl.load(Offset + rows, rows < M, 0)
+        total = tl.zeros((BM, BN), tl.float32)
+        for group in range(groups):
+            start = group * BK
+            tl.assume(start >= 0)
+            tl.assume(start <= K - BK)
+            qp = Q + rows[:, None] * K + start + ks[None, :]
+            bp = Packed + ns[:, None] * (K // 2) + start // 2 + bytes_k[None, :]
+            codes = tl.load(bp).to(tl.uint8)
+            q = tle.load(qp, rows[:, None] < M, 0, is_async=True)
+            # FP32 ABI values encode offset-binary nibbles. Flip the sign bits
+            # for the signed dot and keep the zero-point correction.
+            signed_bits = codes ^ 0x88
+            lo = (codes & 15).to(tl.int32) - 8
+            hi = (codes >> 4).to(tl.int32) - 8
+            correction = tl.sum(lo + hi, 1)
+            acc = tl.dot_scaled(
+                q, None, "int8", signed_bits.T, None, "int4", out_dtype=tl.int32
+            )
+            acc += offset[:, None] * correction[None, :]
+            ws = tl.load(Packed + weight_count + ns * groups + group)
+            total += acc.to(tl.float32) * ws[None, :]
+        scale = tl.load(Scale + rows, rows < M, 0)
+        tl.store(
+            Y + rows[:, None] * N + ns[None, :],
+            total * scale[:, None],
+            rows[:, None] < M,
+        )
+
+
+@lru_cache(maxsize=None)
+def _supports_dyn_quant_async(device):
+    arch = getattr(torch_device_fn.get_device_properties(device), "gcnArchName", "")
+    return arch.split(":", 1)[0] == "gfx936" and is_tle_supported("load")
+
+
+def _try_dyn_quant_async(q, scale, offset, packed, output, block_size, has_bias):
+    if (
+        not _HAS_PACKED_INT4
+        or block_size != 32
+        or has_bias
+        or output.dtype != torch.float32
+    ):
+        return False
+    m, n = output.shape
+    k = q.shape[1]
+    if (m, n, k) not in _DYN_QUANT_ASYNC_SHAPES or not _supports_dyn_quant_async(
+        q.device
+    ):
+        return False
+    bm, bn, bk = 16, 32, 32
+    grid = (triton.cdiv(m, bm) * triton.cdiv(n, bn),)
+    _dyn_quant_matmul_4bit_async[grid](
+        q,
+        scale,
+        offset,
+        packed,
+        output,
+        m,
+        n,
+        k,
+        bm,
+        bn,
+        bk,
+        num_stages=1,
+        num_warps=2,
+        enable_fp_fusion=False,
+    )
+    return True
+
+
+def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_features):
+    return _generic_dyn_quant_matmul_4bit(
+        inp,
+        packed_weights,
+        block_size,
+        in_features,
+        out_features,
+        _try_fast_matmul=_try_dyn_quant_async if _HAS_PACKED_INT4 else None,
+    )
