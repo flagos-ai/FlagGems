@@ -1682,3 +1682,8 @@ binary_cross_entropy_with_logits_backward:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+engram_hash:
+  shapes:
+    - [512, 3]
+    - [8001, 3]

@@ -6145,6 +6145,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: engram_hash
+  description: Compute per-layer n-gram embedding table indices.
+  for:
+  - engram_hash
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: eq
   description: Computes element-wise equality.
   for:
