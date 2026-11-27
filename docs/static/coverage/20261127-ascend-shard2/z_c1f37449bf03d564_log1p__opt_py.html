@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Coverage for src/flag_gems/runtime/backend/_enflame/gcu400/ops/log1p__opt.py: 0%</title>
+    <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
+    <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
+    <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
+</head>
+<body class="pyfile">
+<header>
+    <div class="content">
+        <h1>
+            <span class="text">Coverage for </span><b>src<span class="sep">/</span>flag_gems<span class="sep">/</span>runtime<span class="sep">/</span>backend<span class="sep">/</span>_enflame<span class="sep">/</span>gcu400<span class="sep">/</span>ops<span class="sep">/</span>log1p__opt.py</b>:
+            <span class="pc_cov">0%</span>
+        </h1>
+        <aside id="help_panel_wrapper">
+            <input id="help_panel_state" type="checkbox">
+            <label for="help_panel_state">
+                <img id="keyboard_icon" src="keybd_closed_cb_900cfef5.png" alt="Show/hide keyboard shortcuts">
+            </label>
+            <div id="help_panel">
+                <p class="legend">Shortcuts on this page</p>
+                <div class="keyhelp">
+                    <p>
+                        <kbd>r</kbd>
+                        <kbd>m</kbd>
+                        <kbd>x</kbd>
+                        &nbsp; toggle line displays
+                    </p>
+                    <p>
+                        <kbd>j</kbd>
+                        <kbd>k</kbd>
+                        &nbsp; next/prev highlighted chunk
+                    </p>
+                    <p>
+                        <kbd>0</kbd> &nbsp; (zero) top of page
+                    </p>
+                    <p>
+                        <kbd>1</kbd> &nbsp; (one) first highlighted chunk
+                    </p>
+                    <p>
+                        <kbd>[</kbd>
+                        <kbd>]</kbd>
+                        &nbsp; prev/next file
+                    </p>
+                    <p>
+                        <kbd>u</kbd> &nbsp; up to the index
+                    </p>
+                    <p>
+                        <kbd>?</kbd> &nbsp; show/hide this help
+                    </p>
+                </div>
+            </div>
+        </aside>
+        <h2>
+            <span class="text">33 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">0<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">33<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+        </h2>
+        <p class="text">
+            <a id="prevFileLink" class="nav" href="z_c1f37449bf03d564_log1p_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
+            <a id="nextFileLink" class="nav" href="z_c1f37449bf03d564_log2_py.html">&#xbb; next</a>
+            &nbsp; &nbsp; &nbsp;
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.15.2">coverage.py v7.15.2</a>,
+            created at 2026-11-27 16:05 +0800
+        </p>
+        <aside class="hidden">
+            <button type="button" class="button_next_chunk" data-shortcut="j"></button>
+            <button type="button" class="button_prev_chunk" data-shortcut="k"></button>
+            <button type="button" class="button_top_of_page" data-shortcut="0"></button>
+            <button type="button" class="button_first_chunk" data-shortcut="1"></button>
+            <button type="button" class="button_prev_file" data-shortcut="["></button>
+            <button type="button" class="button_next_file" data-shortcut="]"></button>
+            <button type="button" class="button_to_index" data-shortcut="u"></button>
+            <button type="button" class="button_show_hide_help" data-shortcut="?"></button>
+        </aside>
+    </div>
+</header>
+<main id="source">
+    <p class="pln"><span class="n"><a id="t1" href="#t1">1</a></span><span class="t"><span class="str">"""log1p candidate v2: launch config tiered by dtype / element count (2026-11-16 perf round).</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t2" href="#t2">2</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t3" href="#t3">3</a></span><span class="t"><span class="str">v1 (the 11-02 TRACKED sweep) hardcoded `BLOCK=32768 / GRID=48 / num_warps=4 / NUM_STAGES=4`</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t4" href="#t4">4</a></span><span class="t"><span class="str">and split by dtype into fp16/bf16 BS65536 nw2 ST1 and fp32 BS8192 nw4 ST4 tiers. This round</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t5" href="#t5">5</a></span><span class="t"><span class="str">(11-16, GCU400/Libra, official bench kernel mode, same do_bench median w1000/r100 protocol) ran</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t"><span class="str">an ablation ladder plus a parameter sweep over 40+ configs x 6 variant bodies. Conclusion:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t"><span class="str">- **copy floor** (same-form flat gs-cap48 masked kernel with only log removed): fp32 2^24</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="str">  48-51us (2.7-2.8TB/s), 2^29 1418us (3.03TB/s), roughly equal to native log1p fp32</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="str">  48-51us (2.7-2.8TB/s), 2^29 1418us (3.03TB/s), roughly equal to native log1p fp32</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="str">- **The 0.64-0.68x on fp32 medium/large shapes is compiler-level**: `tl.log` on the GCU backend</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t"><span class="str">  becomes an opaque extern call `tops_log_v1_fp32(vector&lt;128xf32>)` (proven in llir) and cannot</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t"><span class="str">  overlap with the 2x-wide fp32 load/store pipeline; BS8192/nw4/ST4 is already the optimum of the</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t"><span class="str">  whole (BS, ns, nw, grid, body) space (75.1us vs a 50.2us floor). Widening the grid</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t"><span class="str">  (96/192/dense), EVEN mask removal and ns1-8 across all tiers gave no gain or regressed.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t"><span class="str">- **Rejected across the whole body space** (fp32 2^24, versus the extern tl.log 75.1us): the</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="str">  `fast_logf` extern matches tl.log config by config (reproduced on the same chain);</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t"><span class="str">  `fast_log2f*ln2` +12%; the accurate `__ef_logf` extern 3.0x; `__ef_log1pf` extern 4.3x; a</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t"><span class="str">  **pure Triton bit decomposition + D9 minimax Horner polynomial (5.96e-8 fp32 emulation error)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t"><span class="str">  is 10.6x worse** (801.9us) -- the backend materializes intermediates pathologically for</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t"><span class="str">  multi-op element chains with bitcast/where (ablation ladder: pure bit-decomposition body</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t"><span class="str">  82.9us, Horner+select body 119.9us, select-free body 130.9us, and 801.9us once 4 special-value</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t"><span class="str">  selects are added); the lgamma Lanczos pure-body precedent does not transfer to chains with</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t"><span class="str">  bitcast/select. The compiler issue is filed in the P archive format (tops_log_v1_fp32 extern not pipelinable).</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t"><span class="str">- **fp16/bf16 large shapes**: from n >= 2^26, BS131072 overtakes BS65536 (2^29: 785.7 vs</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t"><span class="str">  805.2us, +2.4%; 2^26: 104.5 vs 107.0us; 2^25 ties), so the boundary is 2^26.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t"><span class="str">- **Small shapes** (n &lt;= 4096): halve BS to `max(512, npo2(n//2))` to spread launch latency over</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t"><span class="str">  more CTAs (4096 elements: fp32 4.0->3.7us, fp16 3.4->3.3us, nw2/ST1); below n &lt;= 512, grid=1</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t"><span class="str">  ties with a smaller BS.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t"><span class="str">Host-side dtype promotion / non-contiguous / empty-tensor semantics are verbatim-isomorphic to</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t"><span class="str">production `log1p()`. From the 2026-11-16 evening round the `_config` tier table is single-sourced</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t"><span class="str">to production `log1p.py` (imported and reused here), and the `_launch` of `log1p_` / `log1p_out`</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t"><span class="str">applies the same tiers -- inplace/out and functional share the whole (BS, grid, nw, ns) evidence</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t"><span class="str">chain; the inplace large shapes previously stalled at the old TRACKED config BS16384/nw4/ST4</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t"><span class="str">(official bench core 15-cell mean only 0.70x, fp32 2^29 0.46x) and now match functional.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t"><span class="str">Probe pitfall: `torch.randn()+2.0` still produces x&lt;-1 making log1p return NaN, and</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t"><span class="str">`torch.equal` is always False for NaN, which would misjudge every config as failing;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t39" href="#t39">39</a></span><span class="t"><span class="str">sweeps and gates must use fully positive inputs.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t40" href="#t40">40</a></span><span class="t"><span class="str">"""</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t41" href="#t41">41</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t42" href="#t42">42</a></span><span class="t"><span class="key">import</span> <span class="nam">torch</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t43" href="#t43">43</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t"><span class="key">from</span> <span class="nam">flag_gems</span><span class="op">.</span><span class="nam">runtime</span> <span class="key">import</span> <span class="nam">torch_device_fn</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t"><span class="key">from</span> <span class="nam">flag_gems</span><span class="op">.</span><span class="nam">runtime</span><span class="op">.</span><span class="nam">backend</span><span class="op">.</span><span class="nam">_enflame</span><span class="op">.</span><span class="nam">gcu400</span><span class="op">.</span><span class="nam">ops</span><span class="op">.</span><span class="nam">log1p</span> <span class="key">import</span> <span class="nam">_config</span><span class="op">,</span> <span class="nam">log1p_backward</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t"><span class="key">from</span> <span class="nam">flag_gems</span><span class="op">.</span><span class="nam">runtime</span><span class="op">.</span><span class="nam">backend</span><span class="op">.</span><span class="nam">_enflame</span><span class="op">.</span><span class="nam">gcu400</span><span class="op">.</span><span class="nam">ops</span><span class="op">.</span><span class="nam">log1p</span> <span class="key">import</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">    <span class="nam">log1p_kernel</span> <span class="key">as</span> <span class="nam">_kernel_wrapped</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t"><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t"><span class="nam">_K</span> <span class="op">=</span> <span class="nam">_kernel_wrapped</span><span class="op">.</span><span class="nam">fn</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t"><span class="nam">__all__</span> <span class="op">=</span> <span class="op">[</span><span class="str">"log1p"</span><span class="op">,</span> <span class="str">"Log1pFunction"</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t"><span class="key">class</span> <span class="nam">Log1pFunction</span><span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">autograd</span><span class="op">.</span><span class="nam">Function</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t">    <span class="str">"""Autograd wrapper that gives log1p its fused first-order backward.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t"><span class="str">    ``aten::log1p`` is CompositeImplicitAutograd, so serving only the forward</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t"><span class="str">    kernel leaves the backward to ATen's composite ``1 + x`` add followed by a</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t"><span class="str">    division. Saving ``x`` and launching the fused ``log1p_backward_kernel``</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t"><span class="str">    keeps the whole path inside one pass; higher-order gradients are not built.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t"><span class="str">    """</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">    <span class="key">def</span> <span class="nam">forward</span><span class="op">(</span><span class="nam">ctx</span><span class="op">,</span> <span class="nam">x</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t">        <span class="nam">ctx</span><span class="op">.</span><span class="nam">save_for_backward</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t">        <span class="key">return</span> <span class="nam">_log1p_functional</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t69" href="#t69">69</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t70" href="#t70">70</a></span><span class="t">    <span class="key">def</span> <span class="nam">backward</span><span class="op">(</span><span class="nam">ctx</span><span class="op">,</span> <span class="nam">grad_output</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t71" href="#t71">71</a></span><span class="t">        <span class="op">(</span><span class="nam">x</span><span class="op">,</span><span class="op">)</span> <span class="op">=</span> <span class="nam">ctx</span><span class="op">.</span><span class="nam">saved_tensors</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t72" href="#t72">72</a></span><span class="t">        <span class="key">return</span> <span class="nam">log1p_backward</span><span class="op">(</span><span class="nam">grad_output</span><span class="op">,</span> <span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t73" href="#t73">73</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t74" href="#t74">74</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t75" href="#t75">75</a></span><span class="t"><span class="key">def</span> <span class="nam">_log1p_functional</span><span class="op">(</span><span class="nam">x</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t76" href="#t76">76</a></span><span class="t">    <span class="key">if</span> <span class="nam">x</span><span class="op">.</span><span class="nam">is_floating_point</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t77" href="#t77">77</a></span><span class="t">        <span class="nam">result_dtype</span> <span class="op">=</span> <span class="nam">x</span><span class="op">.</span><span class="nam">dtype</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t78" href="#t78">78</a></span><span class="t">    <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t79" href="#t79">79</a></span><span class="t">        <span class="nam">result_dtype</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">float32</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t80" href="#t80">80</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t81" href="#t81">81</a></span><span class="t">    <span class="nam">x_contig</span> <span class="op">=</span> <span class="nam">x</span><span class="op">.</span><span class="nam">to</span><span class="op">(</span><span class="nam">result_dtype</span><span class="op">)</span><span class="op">.</span><span class="nam">contiguous</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t82" href="#t82">82</a></span><span class="t">    <span class="nam">out</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">empty_like</span><span class="op">(</span><span class="nam">x_contig</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t83" href="#t83">83</a></span><span class="t">    <span class="nam">n</span> <span class="op">=</span> <span class="nam">out</span><span class="op">.</span><span class="nam">numel</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t84" href="#t84">84</a></span><span class="t">    <span class="key">if</span> <span class="nam">n</span> <span class="op">==</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t85" href="#t85">85</a></span><span class="t">        <span class="key">return</span> <span class="nam">out</span><span class="op">.</span><span class="nam">view_as</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t86" href="#t86">86</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t87" href="#t87">87</a></span><span class="t">    <span class="nam">BS</span><span class="op">,</span> <span class="nam">G</span><span class="op">,</span> <span class="nam">nw</span><span class="op">,</span> <span class="nam">ST</span> <span class="op">=</span> <span class="nam">_config</span><span class="op">(</span><span class="nam">n</span><span class="op">,</span> <span class="nam">result_dtype</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t88" href="#t88">88</a></span><span class="t">    <span class="nam">grid</span> <span class="op">=</span> <span class="op">(</span><span class="nam">G</span><span class="op">,</span> <span class="num">1</span><span class="op">,</span> <span class="num">1</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t">    <span class="key">with</span> <span class="nam">torch_device_fn</span><span class="op">.</span><span class="nam">device</span><span class="op">(</span><span class="nam">out</span><span class="op">.</span><span class="nam">device</span><span class="op">.</span><span class="nam">index</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t">        <span class="nam">_K</span><span class="op">[</span><span class="nam">grid</span><span class="op">]</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t91" href="#t91">91</a></span><span class="t">            <span class="nam">x_contig</span><span class="op">.</span><span class="nam">view</span><span class="op">(</span><span class="op">-</span><span class="num">1</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t92" href="#t92">92</a></span><span class="t">            <span class="nam">out</span><span class="op">.</span><span class="nam">view</span><span class="op">(</span><span class="op">-</span><span class="num">1</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t93" href="#t93">93</a></span><span class="t">            <span class="nam">n</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t94" href="#t94">94</a></span><span class="t">            <span class="nam">BLOCK_SIZE</span><span class="op">=</span><span class="nam">BS</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t95" href="#t95">95</a></span><span class="t">            <span class="nam">GRID_SIZE</span><span class="op">=</span><span class="nam">G</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t96" href="#t96">96</a></span><span class="t">            <span class="nam">NUM_STAGES</span><span class="op">=</span><span class="nam">ST</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t97" href="#t97">97</a></span><span class="t">            <span class="nam">num_warps</span><span class="op">=</span><span class="nam">nw</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t98" href="#t98">98</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t99" href="#t99">99</a></span><span class="t">    <span class="key">return</span> <span class="nam">out</span><span class="op">.</span><span class="nam">view_as</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t100" href="#t100">100</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t101" href="#t101">101</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t"><span class="key">def</span> <span class="nam">log1p</span><span class="op">(</span><span class="nam">x</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t">    <span class="key">if</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">is_grad_enabled</span><span class="op">(</span><span class="op">)</span> <span class="key">and</span> <span class="nam">x</span><span class="op">.</span><span class="nam">requires_grad</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t">        <span class="key">return</span> <span class="nam">Log1pFunction</span><span class="op">.</span><span class="nam">apply</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t">    <span class="key">return</span> <span class="nam">_log1p_functional</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+</main>
+<footer>
+    <div class="content">
+        <p>
+            <a class="nav" href="z_c1f37449bf03d564_log1p_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
+            <a class="nav" href="z_c1f37449bf03d564_log2_py.html">&#xbb; next</a>
+            &nbsp; &nbsp; &nbsp;
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.15.2">coverage.py v7.15.2</a>,
+            created at 2026-11-27 16:05 +0800
+        </p>
+    </div>
+</footer>
+</body>
+</html>
