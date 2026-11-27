@@ -1084,8 +1084,12 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
     is_transposed_ws = m == 1 and (n, k) in ((4096, 1024), (8192, 1024), (1536, 4096))
-    is_narrow_ws = 64 <= n <= 512 and (
-        (128 <= m <= 1024 and k in (2048, 4096)) or (16 <= m <= 1024 and k == 7168)
+    is_narrow_ws = (16 <= m <= 128 and n == 16 and k == 2048) or (
+        64 <= n <= 512
+        and (
+            (128 <= m <= 1024 and k in (2048, 4096))
+            or (16 <= m <= 1024 and k == 7168)
+        )
     )
     is_short_ws = (16 <= m < 128 and n >= 64 and 2048 <= k <= 4096) or (
         m <= 2 and n == 1536 and k == 4096
@@ -1115,7 +1119,10 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             if is_narrow_ws:
                 # Small-N grids need more independent tiles than the dense
                 # autotune space provides, including the M=128 split-K boundary.
-                if k == 2048:
+                if n == 16:
+                    # A compact tile keeps the narrow grid in a single launch.
+                    bm, bn, bk = 32, 32, 512
+                elif k == 2048:
                     bm, bn, bk = 64, 64, 512
                 elif m >= 512 or (k == 4096 and m >= 256):
                     bm, bn, bk = 128, 64, 512
