@@ -2434,6 +2434,18 @@ def flash_attention_forward(
                 **common,
             )
             d_off += 128
+        # Convert the raw row sums stored by _fa_lout_kernel into natural-log
+        # LSE (m + ln(row_sum)); _fa_lse_kernel handles fully-masked rows
+        # (row_sum == 0 -> -inf). Mirrors the SDPA path above.
+        total_lse = batch * q_head_num * q_len
+        _fa_lse_kernel[(triton.cdiv(total_lse, 256),)](
+            m_buf,
+            lse,
+            total_lse,
+            BLOCK=256,
+            num_warps=4,
+            num_stages=1,
+        )
 
     return out, lse, None, None, None
 

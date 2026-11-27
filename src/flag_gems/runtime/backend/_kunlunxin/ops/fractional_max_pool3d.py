@@ -1,0 +1,268 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def _fractional_max_pool3d_forward_kernel(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    random_samples_ptr,
+    numel,
+    # Input/Output shapes
+    in_d,
+    in_h,
+    in_w,
+    out_d,
+    out_h,
+    out_w,
+    # Precomputed alpha values for interval generation
+    alpha_d,
+    alpha_h,
+    alpha_w,
+    # Pooling parameters
+    kernel_d: tl.constexpr,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    # Whether the plane-local flat index fits int32 (host-computed)
+    USE_INT32_IDX: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Forward kernel for fractional max pool 3d (Kunlunxin/XPU).
+
+    One lane per output element (flat over N*C*D_out*H_out*W_out).  The pooling
+    window of every valid output position is guaranteed in-bounds by the host
+    assertion ``out + kernel - 1 <= in`` (alpha = (in - kernel) / (out - 1) >= 1),
+    so the per-window loads run without any mask (no masked-memory path); the
+    tail lanes are folded onto a valid position (safe_offsets) and only masked
+    on the store.
+    """
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    store_mask = offsets < numel
+    safe_offsets = tl.where(store_mask, offsets, 0)
+
+    out_hw = out_h * out_w
+    out_dhw = out_d * out_hw
+    nc = safe_offsets // out_dhw
+    rem = safe_offsets % out_dhw
+    d_out = rem // out_hw
+    rem2 = rem % out_hw
+    h_out = rem2 // out_w
+    w_out = rem2 % out_w
+
+    sample_d = tl.load(random_samples_ptr + nc * 3).to(tl.float32)
+    sample_h = tl.load(random_samples_ptr + nc * 3 + 1).to(tl.float32)
+    sample_w = tl.load(random_samples_ptr + nc * 3 + 2).to(tl.float32)
+
+    sample_alpha_d = (sample_d * alpha_d).to(tl.int32)
+    sample_alpha_h = (sample_h * alpha_h).to(tl.int32)
+    sample_alpha_w = (sample_w * alpha_w).to(tl.int32)
+
+    d_start = ((d_out.to(tl.float32) + sample_d) * alpha_d).to(
+        tl.int32
+    ) - sample_alpha_d
+    h_start = ((h_out.to(tl.float32) + sample_h) * alpha_h).to(
+        tl.int32
+    ) - sample_alpha_h
+    w_start = ((w_out.to(tl.float32) + sample_w) * alpha_w).to(
+        tl.int32
+    ) - sample_alpha_w
+
+    # Override the last position: start[output_size - 1] = input_size - pool_size
+    d_start = tl.where(d_out == out_d - 1, in_d - kernel_d, d_start)
+    h_start = tl.where(h_out == out_h - 1, in_h - kernel_h, h_start)
+    w_start = tl.where(w_out == out_w - 1, in_w - kernel_w, w_start)
+
+    # Accumulate the running max in fp32 (same recipe as the proven backend
+    # fractional_max_pool2d): the scf.for produced by a rolled range() loop
+    # that carries a bf16 value breaks the XPU ``tritonxpu-dtype-convert``
+    # pass ('scf.for' 0-th init/iter_arg type mismatch), so also unroll the
+    # small kernel window with tl.static_range.
+    max_val = tl.full((BLOCK_SIZE,), -float("inf"), dtype=tl.float32)
+    if USE_INT32_IDX:
+        max_idx = tl.full((BLOCK_SIZE,), -1, dtype=tl.int32)
+    else:
+        max_idx = tl.full((BLOCK_SIZE,), -1, dtype=tl.int64)
+
+    in_hw = in_h * in_w
+    in_dhw = in_d * in_hw
+    plane_base = input_ptr + nc * in_dhw
+
+    for kd in tl.static_range(0, kernel_d):
+        d_in = d_start + kd
+        for kh in tl.static_range(0, kernel_h):
+            for kw in tl.static_range(0, kernel_w):
+                h_in = h_start + kh
+                w_in = w_start + kw
+                val = tl.load(plane_base + d_in * in_hw + h_in * in_w + w_in).to(
+                    tl.float32
+                )
+                update = val > max_val
+                max_val = tl.where(update, val, max_val)
+                if USE_INT32_IDX:
+                    idx = d_in * in_hw + h_in * in_w + w_in
+                    max_idx = tl.where(update, idx, max_idx)
+                else:
+                    idx = (
+                        d_in.to(tl.int64) * in_hw
+                        + h_in.to(tl.int64) * in_w
+                        + w_in.to(tl.int64)
+                    )
+                    max_idx = tl.where(update, idx, max_idx)
+
+    tl.store(
+        output_ptr + offsets, max_val.to(output_ptr.dtype.element_ty), mask=store_mask
+    )
+    if USE_INT32_IDX:
+        tl.store(indices_ptr + offsets, max_idx.to(tl.int64), mask=store_mask)
+    else:
+        tl.store(indices_ptr + offsets, max_idx, mask=store_mask)
+
+
+def fractional_max_pool3d(
+    input: torch.Tensor,
+    kernel_size,
+    output_size=None,
+    output_ratio=None,
+    return_indices: bool = True,
+    _random_samples=None,
+):
+    """Fractional max pooling 3d operation (Kunlunxin/XPU specialization).
+
+    Applies fractional max pooling over a 3D input signal using stochastic
+    pooling regions determined by random_samples.
+    """
+    logger.debug("GEMS_KUNLUNXIN FRACTIONAL_MAX_POOL3D")
+    assert input.dim() == 5, f"Expected 5D input, got {input.dim()}D"
+
+    in_n, in_c, in_d, in_h, in_w = input.shape
+    input = input.contiguous()
+
+    if isinstance(kernel_size, int):
+        kernel_d = kernel_h = kernel_w = kernel_size
+    else:
+        kernel_d, kernel_h, kernel_w = kernel_size
+
+    if output_size is not None:
+        if isinstance(output_size, int):
+            out_d = out_h = out_w = output_size
+        else:
+            out_d, out_h, out_w = output_size
+    elif output_ratio is not None:
+        if isinstance(output_ratio, float):
+            out_d = int(in_d * output_ratio)
+            out_h = int(in_h * output_ratio)
+            out_w = int(in_w * output_ratio)
+        else:
+            out_d = int(in_d * output_ratio[0])
+            out_h = int(in_h * output_ratio[1])
+            out_w = int(in_w * output_ratio[2])
+    else:
+        raise ValueError("Either output_size or output_ratio must be specified")
+
+    assert out_d + kernel_d - 1 <= in_d, (
+        f"fractional_max_pool3d: kernel_d ({kernel_d}) + output_d ({out_d}) - 1 "
+        f"exceeds input_d ({in_d})"
+    )
+    assert out_h + kernel_h - 1 <= in_h, (
+        f"fractional_max_pool3d: kernel_h ({kernel_h}) + output_h ({out_h}) - 1 "
+        f"exceeds input_h ({in_h})"
+    )
+    assert out_w + kernel_w - 1 <= in_w, (
+        f"fractional_max_pool3d: kernel_w ({kernel_w}) + output_w ({out_w}) - 1 "
+        f"exceeds input_w ({in_w})"
+    )
+
+    # Generate or validate random samples
+    if _random_samples is None:
+        _random_samples = torch.rand(  # allow-torch-compute: RNG init
+            in_n, in_c, 3, device=input.device
+        )
+    else:
+        assert _random_samples.shape == (in_n, in_c, 3), (
+            f"_random_samples must have shape ({in_n}, {in_c}, 3), "
+            f"got {_random_samples.shape}"
+        )
+
+    # Reshape to [N*C, 3] contiguous for kernel access
+    random_samples_flat = _random_samples.reshape(in_n * in_c, 3).contiguous()
+
+    # Precompute alpha values for interval generation
+    alpha_d = (in_d - kernel_d) / (out_d - 1) if out_d > 1 else 0.0
+    alpha_h = (in_h - kernel_h) / (out_h - 1) if out_h > 1 else 0.0
+    alpha_w = (in_w - kernel_w) / (out_w - 1) if out_w > 1 else 0.0
+
+    output = torch.empty(
+        in_n, in_c, out_d, out_h, out_w, dtype=input.dtype, device=input.device
+    )
+    indices = torch.empty(
+        in_n, in_c, out_d, out_h, out_w, dtype=torch.int64, device=input.device
+    )
+
+    if output.numel() == 0:
+        return (output, indices) if return_indices else output
+
+    # The plane-local flat index d*in_h*in_w + h*in_w + w fits int32 as long as
+    # the plane has fewer than 2**31 elements; use the cheaper int32 accumulator
+    # in that case, falling back to int64 for enormous planes.
+    use_int32_idx = (in_d * in_h * in_w) < (2**31)
+
+    numel = output.numel()
+    block_size = 128 if numel >= 8192 else 64
+    grid = (triton.cdiv(numel, block_size),)
+
+    with torch_device_fn.device(input.device):
+        _fractional_max_pool3d_forward_kernel[grid](
+            input,
+            output,
+            indices,
+            random_samples_flat,
+            numel,
+            in_d,
+            in_h,
+            in_w,
+            out_d,
+            out_h,
+            out_w,
+            alpha_d,
+            alpha_h,
+            alpha_w,
+            kernel_d,
+            kernel_h,
+            kernel_w,
+            USE_INT32_IDX=use_int32_idx,
+            BLOCK_SIZE=block_size,
+            num_warps=1,
+            # XPU codegen knobs: these are what let the kunlunxin backend
+            # vectorize the strided per-lane gather (same recipe as the proven
+            # backend fractional_max_pool2d).
+            isCloseVectorization=True,
+            buffer_size_limit=2048,
+        )
+
+    if return_indices:
+        return output, indices
+    return output

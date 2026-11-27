@@ -223,13 +223,6 @@ def dense_flash_attention_ref(q, k, v, scale, is_causal, window_size=(-1, -1)):
     return output.to(q.dtype), softmax_lse
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin",
-    reason=(
-        "CI flagtree 0.7.0 libdevice lacks xpu::math_log/math_log2, so the "
-        "_fa_lout_kernel LSE path fails to link; tracked upstream"
-    ),
-)
 @pytest.mark.underscore_flash_attention_forward
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
