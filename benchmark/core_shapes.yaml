@@ -1682,3 +1682,8 @@ binary_cross_entropy_with_logits_backward:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+norm_forward_and_per_token_cast:
+  shapes:
+    - [512, 4096]
+    - [512, 5120]

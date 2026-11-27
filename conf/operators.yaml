@@ -16091,6 +16091,17 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: norm_forward_and_per_token_cast
+  description: Fuse RMS normalization and group-32 per-token FP8 quantization.
+  for:
+  - norm_forward_and_per_token_cast
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: norm_scalar
   description: A variant of `norm` that computes the norm over all elements.
   for:
