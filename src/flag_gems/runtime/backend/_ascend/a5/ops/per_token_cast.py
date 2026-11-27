@@ -16,6 +16,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ._per_token_cast_native import launch
+
 # ---------------------------------------------------------------- numerics
 
 
@@ -401,6 +403,23 @@ def per_token_cast(
         sfv = sbase
 
     if M == 0 or G == 0:
+        return oxt, sfv
+
+    if (
+        in_kind == 1
+        and xsf is None
+        and out is None
+        and packed
+        and col
+        and round_sf
+        and M % 16 == 0
+        and K % 256 == 0
+        and M * K < 2**31
+        and xin.device.type == "npu"
+        and xin.is_contiguous()
+        and xin.data_ptr() % 32 == 0
+        and launch((xin, oxt, sbase), (M, K, int(out_fp4)))
+    ):
         return oxt, sfv
 
     pair = out_fp4 or in_kind == 3
