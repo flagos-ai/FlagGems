@@ -801,6 +801,26 @@ def _backward(x, weight, bias, grad_out, dims, needs):
     c_out = weight.shape[0]
     is_f64 = x.dtype == torch.float64
     go = grad_out
+    # For the dtypes the shared backward operator serves with tensor cores
+    # (fp16/bf16/fp32), delegate so that this autograd Function and the
+    # registered `aten::_slow_conv2d_backward.output_mask` entry run one set of
+    # kernels instead of two divergent implementations. fp64 keeps the
+    # scalar-accumulation code below: it is already exact to ~1e-14 relative and
+    # Triton has no fp64 tl.dot, so there is nothing to gain by reshaping it.
+    if not is_f64:
+        from flag_gems.ops._slow_conv2d_backward import (
+            _slow_conv2d_backward as _slow_conv2d_backward_op,
+        )
+
+        return _slow_conv2d_backward_op(
+            grad_out,
+            x,
+            weight,
+            [k_h, k_w],
+            [s_h, s_w],
+            [p_h, p_w],
+            [bool(needs[0]), bool(needs[1]), bool(needs[2] and bias is not None)],
+        )
     if not go.is_contiguous():
         go = go.contiguous()
     go_sn, go_sc, go_sh, go_sw = go.stride()
