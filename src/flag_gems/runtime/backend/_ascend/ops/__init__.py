@@ -131,6 +131,10 @@ from .euclidean_dist import euclidean_dist
 from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
+from .fake_quantize_per_tensor_affine_cachemask_out import (
+    fake_quantize_per_tensor_affine_cachemask,
+    fake_quantize_per_tensor_affine_cachemask_out,
+)
 from .feature_dropout import feature_dropout
 from .fft_ifftshift import fft_ifftshift
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -590,6 +594,8 @@ __all__ = [
     "expand_copy",
     "exponential",
     "exponential_",
+    "fake_quantize_per_tensor_affine_cachemask",
+    "fake_quantize_per_tensor_affine_cachemask_out",
     "feature_dropout",
     "fft_ifftshift",
     "fill_diagonal_",
