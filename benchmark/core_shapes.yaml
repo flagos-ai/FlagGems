@@ -501,6 +501,18 @@ linear:
     - [1, 4096, 14336, 64]
   shape_desc: "B, M, N, K"
 
+nll_loss_forward_backward:
+  shapes:
+  - - 2
+    - 7
+  - - 64
+    - 128
+  - - 512
+    - 1024
+  - - 2048
+    - 1024
+  shape_desc: Frozen backward30 nll input shape
+
 addmm_vector_bias:
   shapes:
     - [1, 64, 256, 184]

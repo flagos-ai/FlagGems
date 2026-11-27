@@ -15914,6 +15914,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: nll_loss_forward_backward
+  description: Triton backward implementation and autograd contract for nll_loss_forward.
+  for:
+  - nll_loss_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: nll_loss_nd_backward
   description: 'Measures the performance of a classification model by penalizing low
     probabilities for correct classe.s
