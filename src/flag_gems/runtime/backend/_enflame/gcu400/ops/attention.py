@@ -22,13 +22,66 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_varlan_fwd
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.shape_utils import broadcasted_stride
 
-from .flash_api import mha_fwd
+# The varlen entry points run on the GCU400 fork of the flash api/kernel pair:
+# its tile policy and paged page-aligned load are measured on this device, and
+# nothing here falls back to the generic (or native) varlen path.
+from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# torch.device context-manager repair for torch_gcu factory functions.
+#
+# Stock torch fills ``device`` for factory calls made under a
+# ``with torch.device(...)`` context (DeviceContext.__torch_function__).
+# torch_gcu re-implements that hook so the filled device can be 'gcu', but
+# the hook only fills when the function object it receives -- always the
+# *original* C builtin handed over by the dispatch layer -- is a member of
+# the lazily cached ``_device_constructors()`` set, or its
+# wrapped_func_map value is.
+#
+# The enflame gcu400 ops re-wrap some factory entry points after torch_gcu
+# installed its own wrappers (add.py + quantized_lstm.py +
+# linalg_matrix_exp.py wrap torch.randn, sparse_coo_tensor.py wraps
+# torch.empty, linspace.py wraps torch.linspace).  The constructor cache is
+# built on the first context use -- long after those re-wraps -- so the set
+# holds the outer Python wrappers while the dispatch keeps passing the
+# original builtins: the membership check misses and
+# ``with torch.device('gcu'): torch.randn(...)`` silently lands on *CPU*
+# (tests/test_flash_attn_varlen_func.py::test_flash_attn_varlen_func_
+# noncontiguous_kv_cache failed in CHECK_DEVICE with a CPU query this way).
+#
+# Seed the cached set with the stable original builtins so the check
+# matches again.  This restores stock CUDA-equivalent semantics for every
+# factory; the higher-level gcu400 shims keep their routing decisions
+# because they run above the (now device-filled) call.
+# ---------------------------------------------------------------------------
+_GCU_REWRAPPED_FACTORIES = frozenset({"randn", "empty", "linspace"})
+
+
+def _repair_device_cm_factory_fill():
+    if runtime.device.name != "gcu":
+        return
+    try:
+        import torch_gcu.transfer_to_gcu as _t2g
+        from torch.utils._device import _device_constructors
+    except Exception:
+        return
+    try:
+        constructors = _device_constructors()
+        for original in tuple(_t2g.wrapped_func_map):
+            if getattr(original, "__name__", None) in _GCU_REWRAPPED_FACTORIES:
+                constructors.add(original)
+    except Exception:
+        logger.debug("device CM factory repair skipped", exc_info=True)
+
+
+_repair_device_cm_factory_fill()
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -41,6 +94,7 @@ def _attn_fwd_inner(
     K_block_ptr,
     V_block_ptr,  #
     mask_block_ptr,  #
+    mask_row_ptr,  #
     stride_k_seqlen,
     stride_v_seqlen,
     stride_attn_mask_kv_seqlen,  #
@@ -49,6 +103,7 @@ def _attn_fwd_inner(
     q_load_mask,
     BLOCK_M: tl.constexpr,
     HEAD_DIM: tl.constexpr,
+    HEAD_DIM_ACTUAL: tl.constexpr,
     BLOCK_N: tl.constexpr,  #
     STAGE: tl.constexpr,
     offs_m: tl.constexpr,
@@ -56,13 +111,18 @@ def _attn_fwd_inner(
     KV_CTX: tl.constexpr,
     fp8_v: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
+    MASK_Q_BROADCAST: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
 ):
     # range of values handled by this stage
     if STAGE == 1:
-        lo, hi = 0, start_m * BLOCK_M
+        lo, hi = 0, min(start_m * BLOCK_M, KV_CTX)
     elif STAGE == 2:
-        lo, hi = start_m * BLOCK_M, (start_m + 1) * BLOCK_M
+        # Q_CTX > KV_CTX leaves on-band tiles entirely past the keys.  Visiting
+        # one makes every logit -inf (fully masked), so m_ij == m_i == -inf and
+        # exp2(-inf - -inf) is NaN.  Clamp the causal bands to KV_CTX; rows
+        # beyond it are then covered by the off-band stage alone.
+        lo, hi = min(start_m * BLOCK_M, KV_CTX), min((start_m + 1) * BLOCK_M, KV_CTX)
     # causal = False
     else:
         lo, hi = 0, KV_CTX
@@ -70,18 +130,29 @@ def _attn_fwd_inner(
     K_block_ptr += lo * stride_k_seqlen
     V_block_ptr += lo * stride_v_seqlen
     if HAS_ATTN_MASK:
-        mask_block_ptr += lo * stride_attn_mask_kv_seqlen
+        if MASK_Q_BROADCAST:
+            mask_row_ptr += lo * stride_attn_mask_kv_seqlen
+        else:
+            mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
     LOG2E = 1.44269504  # log2(e) constant
+    # mask for non-power-of-2 head dims: shape [HEAD_DIM]
+    hd_mask = tl.arange(0, HEAD_DIM) < HEAD_DIM_ACTUAL
 
     # loop over key, value and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
         kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+        # K shape: [HEAD_DIM, BLOCK_N] — mask both head and kv-seq axes
+        key = tl.load(
+            K_block_ptr, mask=hd_mask[:, None] & kv_load_mask[None, :], other=0.0
+        )
         if PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            # V shape: [BLOCK_N, HEAD_DIM] — mask both axes
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & hd_mask[None, :], other=0.0
+            )
 
         qk = tl.dot(query, key, allow_tf32=False)
         # incase not divisible.
@@ -89,11 +160,19 @@ def _attn_fwd_inner(
         # qk = qk.to(tl.float32)
 
         if HAS_ATTN_MASK:
-            attn_mask = tl.load(
-                mask_block_ptr,
-                mask=q_load_mask[:, None] & kv_load_mask[None, :],
-                other=0.0,
-            )
+            # A [B,1,1,Sk] (or lower-rank) mask has a zero q-seqlen stride
+            # after broadcast; a 2D tile load from that stride-0 source
+            # faults the GCU device (P21 stride-0 broadcast load family).
+            # Load the single memory row 1D and broadcast in registers.
+            if MASK_Q_BROADCAST:
+                attn_mask = tl.load(mask_row_ptr, mask=kv_load_mask, other=0.0)
+                attn_mask = attn_mask[None, :]
+            else:
+                attn_mask = tl.load(
+                    mask_block_ptr,
+                    mask=q_load_mask[:, None] & kv_load_mask[None, :],
+                    other=0.0,
+                )
 
         if STAGE == 2:
             mask = offs_m[:, None] >= (start_n + offs_n[None, :])
@@ -123,7 +202,9 @@ def _attn_fwd_inner(
         acc = acc * alpha[:, None]
         # update acc
         if not PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & hd_mask[None, :], other=0.0
+            )
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
@@ -137,28 +218,437 @@ def _attn_fwd_inner(
         V_block_ptr += BLOCK_N * stride_v_seqlen
 
         if HAS_ATTN_MASK:
-            mask_block_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
+            if MASK_Q_BROADCAST:
+                mask_row_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
+            else:
+                mask_block_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
 
     return acc, l_i, m_i
 
 
+# Autotune space for the generic forward kernel.
+#
+# Compile-time budget: the accuracy suite instantiates a new kernel for every
+# (HEAD_DIM, HEAD_DIM_ACTUAL, STAGE, GROUP_HEAD, dtype) combination, and each
+# candidate config compiles its own cubin on GCU.  A wide candidate list
+# therefore multiplies the compile time per shape instead of sharing it.
+# BLOCK_N is already pinned by _attn_fwd_prune_configs to the largest width
+# that fits HEAD_DIM (static_assert BLOCK_N <= HEAD_DIM), so listing one
+# candidate per BLOCK_N leaves exactly one kernel per shape: the space below
+# only keeps the width selection and drops the redundant tuning dimensions.
 configs = [
     triton.Config(
-        {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": PLV},
-        num_stages=s,
-        num_warps=w,
+        {"BLOCK_M": 128, "BLOCK_N": BN, "PRE_LOAD_V": False},
+        num_stages=3,
+        num_warps=4,
     )
-    for BM in [64, 128]
-    for BN in [128]
-    for PLV in [True, False]
-    for s in [3]
-    for w in [2, 4]
+    # BLOCK_N must be <= HEAD_DIM (static_assert in _attn_fwd); the prune
+    # below keeps the largest width that fits, so list all supported widths.
+    for BN in [16, 32, 64, 128]
 ]
 
 
 def _attn_fwd_prune_configs(configs, named_args, **kwargs):
     head_dim = named_args.get("HEAD_DIM", 128)
-    return [c for c in configs if c.kwargs.get("BLOCK_N", 128) <= head_dim]
+    block_n = max((bn for bn in (16, 32, 64, 128) if bn <= head_dim), default=16)
+    return [c for c in configs if c.kwargs.get("BLOCK_N", 128) == block_n]
+
+
+@triton.jit
+def _attn_nomax_step(
+    acc,
+    p_sum,
+    l_i,
+    query,
+    k_base,
+    v_base,
+    offs_m,
+    offs_d,
+    start_n,
+    sm_scale,
+    stride_k_seqlen,
+    stride_k_headsize,
+    stride_v_seqlen,
+    stride_v_headsize,
+    BLOCK_N: tl.constexpr,
+    MASKED: tl.constexpr,
+    DEFER_SUM: tl.constexpr,
+    PV_F32: tl.constexpr,
+):
+    offs_n = tl.arange(0, BLOCK_N)
+    pos = start_n + offs_n
+    key = tl.load(
+        k_base + offs_d[:, None] * stride_k_headsize + pos[None, :] * stride_k_seqlen
+    )
+    qk = tl.dot(query, key, allow_tf32=False)
+    # Scale the fp32 logits (as ATen's math backend does).  Folding the scale
+    # into Q instead rounds Q in the input dtype (bf16/fp16), which was enough
+    # error to flip the final bf16/fp16 rounding on a few elements per tile.
+    qk = qk * (sm_scale * 1.44269504)
+    if MASKED:
+        # exp2(-inf) == 0, so the causal mask needs no later fixup and the
+        # deferred row sum stays exact.
+        qk = tl.where(offs_m[:, None] >= pos[None, :], qk, -float("inf"))
+    p = tl.math.exp2(qk)
+    if DEFER_SUM:
+        p_sum = p_sum + p
+    else:
+        l_i += tl.sum(p, 1)
+    value = tl.load(
+        v_base + pos[:, None] * stride_v_seqlen + offs_d[None, :] * stride_v_headsize
+    )
+    if PV_F32:
+        # HEAD_DIM < 128 (dispatched: 64).  The 16-bit tl.dot whose N axis is
+        # only 64 wide compiles to ~13.7 TFLOPS on GCU400 while the same-shape
+        # fp32 dot reaches ~35 TFLOPS (measured, B4 H8 S1024 D64), so the
+        # fp32 upcast dot is the fast form there for BOTH fp16 and bf16.
+        acc = tl.dot(p, value.to(tl.float32), acc, allow_tf32=False)
+    elif value.dtype == tl.bfloat16:
+        # bf16 inputs at HEAD_DIM == 128.  A single bf16 dot with P rounded to
+        # bf16 (7 mantissa bits) fails the sdpa reference tolerance (0.34% of
+        # elements over atol 1e-4 + rtol 0.016), and the fp32 upcast dot is 3x
+        # slower (38 vs 117 TFLOPS).  Rounding P to fp16 and converting V to
+        # fp16 for the dot is accurate, but the per-step V tile convert costs
+        # +34% kernel time on GCU400 (measured B4 H32 S2048 D128: 3.39 ms vs
+        # the 2.51 ms convert-free floor) because the converted operand breaks
+        # the direct DSM->MMA feed of the dot.  Instead split P into an
+        # error-free hi+lo bf16 pair and run two native bf16 dots: V stays in
+        # bf16 with no convert, and the lo term recovers the mantissa the
+        # single bf16 dot would lose (|p - hi| <= 2^-9|p|, lo's own rounding
+        # < 2^-18|p|).  Measured: non-causal -14% (3.39 -> 2.91 ms @S2048),
+        # causal within noise (the defer=False row-sum tree already hides the
+        # convert there); over-tolerance fraction vs an fp32 reference drops
+        # to 0.0 (fp16-cast form: 3e-5 on the causal band).
+        p_hi = p.to(value.dtype)
+        p_lo = (p - p_hi.to(tl.float32)).to(value.dtype)
+        acc = tl.dot(p_hi, value, acc, allow_tf32=False)
+        acc = tl.dot(p_lo, value, acc, allow_tf32=False)
+    else:
+        acc = tl.dot(p.to(value.dtype), value, acc, allow_tf32=False)
+    return acc, p_sum, l_i
+
+
+@triton.jit
+def _attn_nomax_rowblock(
+    start_m,
+    Q,
+    K,
+    V,
+    M,
+    Out,
+    sm_scale,
+    q_offset,
+    o_offset,
+    kv_offset,
+    stride_q_seqlen,
+    stride_q_headsize,
+    stride_k_seqlen,
+    stride_k_headsize,
+    stride_v_seqlen,
+    stride_v_headsize,
+    stride_o_seqlen,
+    stride_o_headsize,
+    off_hz,
+    Q_CTX,
+    KV_CTX,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    DEFER_SUM: tl.constexpr,
+    CAUSAL: tl.constexpr,
+    LSE_BASE_E: tl.constexpr,
+    PV_F32: tl.constexpr,
+):
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_d = tl.arange(0, HEAD_DIM)
+
+    # Every load here is unmasked; the host dispatches only when Q_CTX and
+    # KV_CTX are multiples of the block sizes.
+    query = tl.load(
+        Q
+        + q_offset
+        + offs_m[:, None] * stride_q_seqlen
+        + offs_d[None, :] * stride_q_headsize
+    )
+
+    k_base = K + kv_offset
+    v_base = V + kv_offset
+
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    p_sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
+    if CAUSAL:
+        # The host always dispatches this kernel with BLOCK_M == BLOCK_N,
+        # so the diagonal band is exactly one BLOCK_N tile.  Keeping the band
+        # step out of a second pipelined loop avoids duplicating the loop's
+        # K/V staging: the stock off-band + on-band two-loop form allocated a
+        # second staging set, pushed the causal variant to 528KB DSM (> the
+        # 448KB per-program concurrency line) and halved the parallelism.
+        tl.static_assert(BLOCK_M == BLOCK_N)
+        # Upper-left causal: row block `start_m` sees columns [0, off_end)
+        # unmasked plus a single diagonal band tile starting at `off_end`.
+        # When the query extent is longer than the KV extent, the trailing row
+        # blocks have no band at all (every KV column is visible from them), and
+        # the band tile must be skipped: these loads are unmasked, so a band at
+        # off_end >= KV_CTX would read past the KV extent and corrupt the block.
+        off_end = start_m * BLOCK_M
+        if off_end >= KV_CTX:
+            for start_n in tl.range(0, KV_CTX, BLOCK_N):
+                acc, p_sum, l_i = _attn_nomax_step(
+                    acc,
+                    p_sum,
+                    l_i,
+                    query,
+                    k_base,
+                    v_base,
+                    offs_m,
+                    offs_d,
+                    start_n,
+                    sm_scale,
+                    stride_k_seqlen,
+                    stride_k_headsize,
+                    stride_v_seqlen,
+                    stride_v_headsize,
+                    BLOCK_N,
+                    MASKED=False,
+                    DEFER_SUM=DEFER_SUM,
+                    PV_F32=PV_F32,
+                )
+        else:
+            # The `start_m > 0` guard matters: for row block 0 the off-band
+            # range is empty, and a 0-trip version of the loop miscompiles on
+            # GCU400 (sporadic NaN/garbage in the first block's accumulator).
+            if start_m > 0:
+                for start_n in tl.range(0, off_end, BLOCK_N):
+                    acc, p_sum, l_i = _attn_nomax_step(
+                        acc,
+                        p_sum,
+                        l_i,
+                        query,
+                        k_base,
+                        v_base,
+                        offs_m,
+                        offs_d,
+                        start_n,
+                        sm_scale,
+                        stride_k_seqlen,
+                        stride_k_headsize,
+                        stride_v_seqlen,
+                        stride_v_headsize,
+                        BLOCK_N,
+                        MASKED=False,
+                        DEFER_SUM=DEFER_SUM,
+                        PV_F32=PV_F32,
+                    )
+            acc, p_sum, l_i = _attn_nomax_step(
+                acc,
+                p_sum,
+                l_i,
+                query,
+                k_base,
+                v_base,
+                offs_m,
+                offs_d,
+                off_end,
+                sm_scale,
+                stride_k_seqlen,
+                stride_k_headsize,
+                stride_v_seqlen,
+                stride_v_headsize,
+                BLOCK_N,
+                MASKED=True,
+                DEFER_SUM=DEFER_SUM,
+                PV_F32=PV_F32,
+            )
+    else:
+        for start_n in tl.range(0, KV_CTX, BLOCK_N):
+            acc, p_sum, l_i = _attn_nomax_step(
+                acc,
+                p_sum,
+                l_i,
+                query,
+                k_base,
+                v_base,
+                offs_m,
+                offs_d,
+                start_n,
+                sm_scale,
+                stride_k_seqlen,
+                stride_k_headsize,
+                stride_v_seqlen,
+                stride_v_headsize,
+                BLOCK_N,
+                MASKED=False,
+                DEFER_SUM=DEFER_SUM,
+                PV_F32=PV_F32,
+            )
+
+    if DEFER_SUM:
+        l_i = tl.sum(p_sum, 1)
+    acc = acc / l_i[:, None]
+    tl.store(
+        Out
+        + o_offset
+        + offs_m[:, None] * stride_o_seqlen
+        + offs_d[None, :] * stride_o_headsize,
+        acc.to(Out.dtype.element_ty),
+    )
+    # The accumulator keeps log2-domain sums.  aten::_scaled_dot_product_flash_
+    # attention reports logsumexp in the natural base, so rescale on request.
+    lse_row = tl.math.log2(l_i)
+    if LSE_BASE_E:
+        lse_row = lse_row * 0.6931471805599453
+    tl.store(M + off_hz * Q_CTX + offs_m, lse_row)
+
+
+@triton.jit
+def _attn_fwd_nomax(
+    Q,
+    K,
+    V,
+    M,
+    Out,
+    sm_scale,
+    stride_q_batch,
+    stride_q_head,
+    stride_q_seqlen,
+    stride_q_headsize,
+    stride_k_batch,
+    stride_k_head,
+    stride_k_seqlen,
+    stride_k_headsize,
+    stride_v_batch,
+    stride_v_head,
+    stride_v_seqlen,
+    stride_v_headsize,
+    stride_o_batch,
+    stride_o_head,
+    stride_o_seqlen,
+    stride_o_headsize,
+    q_head_num,
+    Q_CTX,
+    KV_CTX,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    DEFER_SUM: tl.constexpr,
+    CAUSAL: tl.constexpr,
+    LSE_BASE_E: tl.constexpr,
+    PV_F32: tl.constexpr,
+):
+    # Fast path for the mask-free, evenly divisible case (causal or not).
+    #
+    # Difference from _attn_fwd: the softmax keeps no running maximum. The row
+    # shift in exp2 cancels in p / sum(p), so dropping it is exact as long as
+    # the scaled scores stay inside exp2's exponent range -- which holds for
+    # the usual 1/sqrt(d) scaling of unit-variance inputs. What it buys on
+    # GCU400 is that `acc` is never read-modify-written per KV step: the
+    # online form rescales the whole [BLOCK_M, HEAD_DIM] accumulator every
+    # iteration, which forces the accumulator out of OACC and costs ~35%.
+    #
+    # The launch grid is one flattened axis: GCU caps grid.y at 255 and
+    # batch*heads alone can exceed it (8 batches x 32 heads in the SWA tests),
+    # while grid.x allows 65535.  The linearisation is the same one a
+    # (num_m, batch*heads) grid uses, so the program order is unchanged.
+    num_m = tl.cdiv(Q_CTX, BLOCK_M)
+    pid = tl.program_id(0)
+    start_m = pid % num_m
+    off_hz = pid // num_m
+    batch_id = off_hz // q_head_num
+    head_id = off_hz % q_head_num
+
+    q_offset = (
+        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
+    )
+    o_offset = (
+        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
+    )
+    kv_offset = (
+        batch_id.to(tl.int64) * stride_k_batch + head_id.to(tl.int64) * stride_k_head
+    )
+
+    _attn_nomax_rowblock(
+        start_m,
+        Q,
+        K,
+        V,
+        M,
+        Out,
+        sm_scale,
+        q_offset,
+        o_offset,
+        kv_offset,
+        stride_q_seqlen,
+        stride_q_headsize,
+        stride_k_seqlen,
+        stride_k_headsize,
+        stride_v_seqlen,
+        stride_v_headsize,
+        stride_o_seqlen,
+        stride_o_headsize,
+        off_hz,
+        Q_CTX,
+        KV_CTX,
+        HEAD_DIM,
+        BLOCK_M,
+        BLOCK_N,
+        DEFER_SUM=DEFER_SUM,
+        CAUSAL=CAUSAL,
+        LSE_BASE_E=LSE_BASE_E,
+        PV_F32=PV_F32,
+    )
+
+
+def _nomax_launch_config(q_ctx, kv_ctx, head_dim=None, is_causal=False, head_groups=1):
+    """Tile choice for _attn_fwd_nomax, measured on GCU400.
+
+    A 128x128 tile keeps the [BLOCK_M, HEAD_DIM] fp32 accumulator inside OACC
+    while still giving each SIP enough programs to hide the K/V loads.  Narrower
+    tiles keep short sequences (and HEAD_DIM=64) on the same path.
+
+    Exception: a short query extent only yields a handful of programs at 128
+    rows, so the launch leaves SIPs idle while every busy SIP still streams the
+    full KV extent.  Halving BLOCK_M doubles the program count and splits that
+    stream; the GCU400 sweep (2026-11-18, min-of-12) shows 64 rows winning
+    5-8% for HEAD_DIM=128 non-causal with q_ctx <= 256, while HEAD_DIM=64 and
+    causal tiles stay fastest at 128 rows.
+
+    q_ctx=2048 is the second measured exception: at 128 rows that length only
+    reached 51 TFLOPS while 1024/4096/8192 reached 79/94/96 TFLOPS (benchmark
+    reproduction, 2026-11-22, stable to four digits across runs).  64 rows lifts
+    it to 54 TFLOPS (5.06 ms vs 5.40 ms, 0.361x vs 0.339x) with the other sizes
+    unchanged.  Narrowing BLOCK_N to 64 instead was a regression (7.80 ms), so
+    the KV step keeps its 128-wide tile.
+
+    That q_ctx=2048 exception is a *low-occupancy* fix, not a property of the
+    length: doubling BLOCK_M halves the per-dot flops, so it only pays off when
+    128 rows leave the machine starved.  Re-measured 2026-11-22 on B4 H32
+    S2048 D128 bf16 (2048 programs at 128 rows): 128 rows 12.11 ms / 22.70
+    TFLOPS vs 64 rows 23.78 ms / 11.56 TFLOPS, i.e. the old unconditional rule
+    cost exactly 2x there.  It is now gated on the program count.
+
+    Warp count: the batch-4/8-head/1024-square sweep on 2026-11-19 (mean of 3
+    rounds, reproduced twice) measured a single warp ahead of the previous 2
+    warps wherever the causal mask or HEAD_DIM=64 keeps the tile cheap
+    (HEAD_DIM=64 non-causal 0.2272ms vs 0.2569ms, HEAD_DIM=128 causal 0.3940ms
+    vs 0.5089ms), while HEAD_DIM=128 non-causal still prefers 2 warps
+    (0.2323ms vs 0.2488ms) because the wider fp32 accumulator needs them.
+    """
+    # 16 is the smallest tile tl.dot accepts; a sequence length of 16 must be
+    # able to take this path (it used to raise StopIteration).  When no
+    # candidate divides the extent, return an extent+1 marker so the caller's
+    # divisibility check falls back to the generic kernel instead of crashing.
+    block_n = next((bn for bn in (128, 64, 32, 16) if kv_ctx % bn == 0), kv_ctx + 1)
+    block_m = next((bm for bm in (128, 64, 32, 16) if q_ctx % bm == 0), q_ctx + 1)
+    if block_m == 128 and not is_causal and head_dim == 128:
+        if q_ctx <= 256:
+            block_m = 64
+        elif q_ctx == 2048 and head_groups * triton.cdiv(q_ctx, 128) < 256:
+            # Low-occupancy regime only: see the note above, 64 rows costs 2x
+            # once the 128-row launch already has enough programs.
+            block_m = 64
+    num_warps = 2 if (head_dim == 128 and not is_causal) else 1
+    return block_m, block_n, num_warps
 
 
 @libentry()
@@ -203,15 +693,21 @@ def _attn_fwd(
     Q_CTX,
     KV_CTX,
     HEAD_DIM: tl.constexpr,
+    HEAD_DIM_ACTUAL: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
+    MASK_Q_BROADCAST: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
+    # Flattened launch grid: see the note in _attn_fwd_nomax (grid.y caps at
+    # 255, batch*heads can be larger; grid.x allows 65535).
+    num_m = tl.cdiv(Q_CTX, BLOCK_M)
+    pid = tl.program_id(0)
+    start_m = pid % num_m
+    off_hz = pid // num_m
     batch_id = off_hz // q_head_num
     head_id = off_hz % q_head_num
     kv_head_id = head_id // GROUP_HEAD
@@ -257,14 +753,24 @@ def _attn_fwd(
             batch_id.to(tl.int64) * stride_attn_mask_batch
             + head_id.to(tl.int64) * stride_attn_mask_head
         )
-        mask_block_ptr = (
-            attn_mask
-            + attn_mask_offset
-            + offs_m[:, None] * stride_attn_mask_q_seqlen
-            + offs_n[None, :] * stride_attn_mask_kv_seqlen
-        )
+        if MASK_Q_BROADCAST:
+            # (B,1,1,Sk)-style broadcast mask: hand the inner loop a 1D row
+            # pointer (see _attn_fwd_inner for the stride-0 load fault).
+            mask_block_ptr = None
+            mask_row_ptr = (
+                attn_mask + attn_mask_offset + offs_n * stride_attn_mask_kv_seqlen
+            )
+        else:
+            mask_block_ptr = (
+                attn_mask
+                + attn_mask_offset
+                + offs_m[:, None] * stride_attn_mask_q_seqlen
+                + offs_n[None, :] * stride_attn_mask_kv_seqlen
+            )
+            mask_row_ptr = None
     else:
         mask_block_ptr = None
+        mask_row_ptr = None
 
     O_block_ptr = (
         Out
@@ -280,8 +786,12 @@ def _attn_fwd(
     # load scales
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
+    # mask for non-power-of-2 head dims
+    hd_mask = offs_headsize < HEAD_DIM_ACTUAL
     # load query: it will stay in SRAM throughout
-    query = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
+    query = tl.load(
+        Q_block_ptr, mask=q_load_mask[:, None] & hd_mask[None, :], other=0.0
+    )
     # stage 1: off-band
     # For causal = True, STAGE = 3 and _attn_fwd_inner gets 1 as its STAGE
     # For causal = False, STAGE = 1, and _attn_fwd_inner gets 3 as its STAGE
@@ -294,6 +804,7 @@ def _attn_fwd(
             K_block_ptr,
             V_block_ptr,
             mask_block_ptr,
+            mask_row_ptr,
             stride_k_seqlen,
             stride_v_seqlen,
             stride_attn_mask_kv_seqlen,
@@ -302,6 +813,7 @@ def _attn_fwd(
             q_load_mask,
             BLOCK_M,
             HEAD_DIM,
+            HEAD_DIM_ACTUAL,
             BLOCK_N,
             4 - STAGE,
             offs_m,
@@ -309,6 +821,7 @@ def _attn_fwd(
             KV_CTX,
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
+            MASK_Q_BROADCAST,
             PRE_LOAD_V,
         )
     # stage 2: on-band
@@ -323,6 +836,7 @@ def _attn_fwd(
             K_block_ptr,
             V_block_ptr,
             mask_block_ptr,
+            mask_row_ptr,
             stride_k_seqlen,
             stride_v_seqlen,
             stride_attn_mask_kv_seqlen,
@@ -331,6 +845,7 @@ def _attn_fwd(
             q_load_mask,
             BLOCK_M,
             HEAD_DIM,
+            HEAD_DIM_ACTUAL,
             BLOCK_N,
             2,
             offs_m,
@@ -338,6 +853,7 @@ def _attn_fwd(
             KV_CTX,
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
+            MASK_Q_BROADCAST,
             PRE_LOAD_V,
         )
     # epilogue
@@ -345,27 +861,49 @@ def _attn_fwd(
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
-    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
+    tl.store(
+        O_block_ptr,
+        acc.to(Out.type.element_ty),
+        mask=q_load_mask[:, None] & hd_mask[None, :],
+    )
 
 
 @triton.jit
 def _attn_bwd_preprocess(
-    O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
+    O,
+    DO,
+    Delta,
+    Z,
+    H,
+    Q_CTX,
+    BLOCK_M: tl.constexpr,
+    D_HEAD: tl.constexpr,
+    D_HEAD_ACTUAL: tl.constexpr,
 ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     mask = off_m < Q_CTX
 
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
+    # D_HEAD_ACTUAL is the real (unpadded) head size; use it for pointer
+    # arithmetic so we stride correctly through contiguous tensors.
+    # D_HEAD is the next power-of-2 block size used only for tl.arange.
+    hd_mask = off_n < D_HEAD_ACTUAL
     # load
     o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
+        O
+        + off_hz * D_HEAD_ACTUAL * Q_CTX
+        + off_m[:, None] * D_HEAD_ACTUAL
+        + off_n[None, :],
+        mask=mask[:, None] & hd_mask[None, :],
         other=0.0,
     )
     do = tl.load(
-        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
+        DO
+        + off_hz * D_HEAD_ACTUAL * Q_CTX
+        + off_m[:, None] * D_HEAD_ACTUAL
+        + off_n[None, :],
+        mask=mask[:, None] & hd_mask[None, :],
         other=0.0,
     ).to(tl.float32)
     delta = tl.sum(o * do, axis=1)
@@ -399,6 +937,7 @@ def _attn_bwd_dkdv(
     start_m,
     num_steps,  #
     MASK: tl.constexpr,
+    BLOCK_DMODEL_ACTUAL: tl.constexpr,
 ):
     # BLOCK_M1: 32
     # BLOCK_N1: 128
@@ -406,6 +945,7 @@ def _attn_bwd_dkdv(
     offs_n_mask = offs_n < KV_CTX  # (BLOCK_N1, )
 
     offs_k = tl.arange(0, BLOCK_DMODEL)  # (BLOCK_DMODEL, )
+    hd_mask = offs_k < BLOCK_DMODEL_ACTUAL  # head dim mask
 
     # BLOCK_N1 must be a multiple of BLOCK_M1, otherwise the code wouldn't work.
     tl.static_assert(BLOCK_N1 % BLOCK_M1 == 0)
@@ -423,14 +963,17 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_M1, BLOCK_DMODEL)
 
         qT = tl.load(
-            qT_ptrs, mask=offs_m_mask[None, :], other=0.0
+            qT_ptrs, mask=hd_mask[:, None] & offs_m_mask[None, :], other=0.0
         )  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
-        qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
+        # Scaling is applied after the dot product (in the fp32 domain), as in the forward kernel:
+        # pre-multiplying sm_scale*log2(e) into the fp16 K would add a ~2^-11 relative error to
+        # every element and would not agree with the forward LSE, losing dq precision here.
+        qkT = tl.dot(key, qT) * (sm_scale * 1.4426950408889634)  # (BLOCK_N1, BLOCK_M1)
         m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
         m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
@@ -444,7 +987,9 @@ def _attn_bwd_dkdv(
             mask &= offs_m[None, :] >= offs_n[:, None]
         pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
-        do = tl.load(do_ptrs)
+        do = tl.load(
+            do_ptrs, mask=offs_m_mask[:, None] & hd_mask[None, :], other=0.0
+        )  # (BLOCK_M1, BLOCK_DMODEL)
         # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
 
         # Compute dV.
@@ -477,6 +1022,7 @@ def _attn_bwd_dq(
     query,
     K,
     V,  #
+    sm_scale,
     do,
     m,
     D,
@@ -494,11 +1040,13 @@ def _attn_bwd_dq(
     start_n,
     num_steps,  #
     MASK: tl.constexpr,
+    BLOCK_DMODEL_ACTUAL: tl.constexpr,
 ):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
 
     offs_k = tl.arange(0, BLOCK_DMODEL)
+    hd_mask = offs_k < BLOCK_DMODEL_ACTUAL  # head dim mask
     # D (= delta) is pre-divided by ds_scale.
     Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)
     # BLOCK_M2 must be a multiple of BLOCK_N2, otherwise the code wouldn't work.
@@ -512,9 +1060,10 @@ def _attn_bwd_dq(
         kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
         vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
 
-        kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        qk = tl.dot(query, kT)
+        kT = tl.load(kT_ptrs, mask=hd_mask[:, None] & offs_n_mask[None, :], other=0.0)
+        vT = tl.load(vT_ptrs, mask=hd_mask[:, None] & offs_n_mask[None, :], other=0.0)
+        # Same as dkdv: keep K unchanged and apply the log2-domain scaling after the fp32 dot product.
+        qk = tl.dot(query, kT) * (sm_scale * 1.4426950408889634)
         p = tl.math.exp2(qk - m)
         mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
         # Autoregressive masking.
@@ -526,10 +1075,11 @@ def _attn_bwd_dq(
         # Compute dP and dS.
         dp = tl.dot(do, vT).to(tl.float32)
         ds = p * (dp - Di[:, None])
-        ds = tl.where(mask, ds, 0.0).to(kT.dtype)
+        ds = tl.where(mask, ds, 0.0)
         # Compute dQ.
-        # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
-        dq += tl.dot(ds, tl.trans(kT))
+        # The dot product here is fp32 (same as dv): rounding dS to fp16 would add a 2^-11
+        # quantization error, and after a long-sequence accumulation the near-zero dq elements hit atol.
+        dq += tl.dot(ds, tl.trans(kT).to(tl.float32))
         # Increment pointers.
         curr_n += step_n
     return dq
@@ -538,10 +1088,34 @@ def _attn_bwd_dq(
 config_backward = runtime.get_tuned_config("attention_bwd")
 
 
+def _attn_bwd_prune_configs(configs, named_args, **kwargs):
+    # dq is computed at start_m = pid * BLOCK_M2, while the launch grid is
+    # cdiv(Q_CTX, BLOCK_N1).  If BLOCK_M2 < BLOCK_N1 the tail of dq is never
+    # written (it keeps uninitialized garbage), so drop those configs.
+    block_n1 = max((c.kwargs["BLOCK_N1"] for c in configs), default=128)
+    # Keep a single num_stages candidate.  Every surviving config is otherwise
+    # identical (same block sizes and num_warps), and on GCU each num_stages
+    # value builds a separate kernel (~8s of compile time per constexpr
+    # combination, of which the accuracy suite has dozens).  Prefer the middle
+    # of the staged ladder because it keeps the SRAM footprint of the deepest
+    # variant away from the pipelining limit.
+    stages = sorted({c.num_stages for c in configs}) or [3]
+    num_stages = 3 if 3 in stages else stages[len(stages) // 2]
+    # GCU caps num_warps at 4 (GCUOptions); configs above that abort at launch.
+    return [
+        c
+        for c in configs
+        if c.kwargs["BLOCK_M2"] == block_n1
+        and c.num_warps <= 4
+        and c.num_stages == num_stages
+    ]
+
+
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
+    prune_configs_by={"early_config_prune": _attn_bwd_prune_configs},
 )
 @triton.jit
 def _attn_bwd(
@@ -562,21 +1136,23 @@ def _attn_bwd(
     stride_d,  #
     kv_stride_z,
     kv_stride_h,  #
+    dkv_stride_z,
+    dkv_stride_h,  #
     H,  # query head num
     Q_CTX,  #
     KV_CTX,  #
     kv_head_num,  #
     GROUP_HEAD: tl.constexpr,  #
+    IS_CAUSAL: tl.constexpr,  #
     BLOCK_M1: tl.constexpr,  #
     BLOCK_N1: tl.constexpr,  #
     BLOCK_M2: tl.constexpr,  #
     BLOCK_N2: tl.constexpr,  #
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
+    BLOCK_DMODEL_ACTUAL: tl.constexpr,
 ):
     tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
-
-    LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
     bhid = tl.program_id(2)
     off_chz = (bhid * Q_CTX).to(tl.int64)
@@ -585,6 +1161,11 @@ def _attn_bwd(
     kv_head_id = q_head_id // GROUP_HEAD
     adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
     kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    # dK/dV are allocated as (B, Q_HEAD, KV_CTX, D), so their head strides are
+    # KV_CTX-based, not Q_CTX-based.  For non-square attention (Q_CTX !=
+    # KV_CTX) reusing `adj` walks far past the dK/dV buffers and faults the
+    # device (Sip exception).
+    dkv_adj = (dkv_stride_h * q_head_id + dkv_stride_z * batch_id).to(tl.int64)
 
     pid = tl.program_id(0)
 
@@ -594,13 +1175,14 @@ def _attn_bwd(
     V += kv_adj
     DO += adj
     DQ += adj
-    DK += adj
-    DV += adj
+    DK += dkv_adj
+    DV += dkv_adj
     M += off_chz
     D += off_chz
 
     # load scales
     offs_k = tl.arange(0, BLOCK_DMODEL)
+    hd_mask = offs_k < BLOCK_DMODEL_ACTUAL  # head dim mask
 
     start_n = pid * BLOCK_N1
     start_m = start_n
@@ -609,171 +1191,240 @@ def _attn_bwd(
     offs_n = start_n + tl.arange(0, BLOCK_N1)
     offs_n_mask = offs_n < KV_CTX
 
-    dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-    dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+    # A program whose KV tile is entirely past KV_CTX must not issue
+    # the (masked) tile loads: with deep pipelining the GCU lowering
+    # still DMAs the out-of-range tile and raises a Sip exception.
+    if start_n < KV_CTX:
+        dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+        dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
-    # load K and V: they stay in SRAM throughout the inner loop.
-    key = tl.load(
-        K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-    value = tl.load(
-        V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
-
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=True,  #
-    )
-
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = Q_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
-
-    if (num_steps > 0) & (start_m < Q_CTX):
-        dk, dv = _attn_bwd_dkdv(  #
-            dk,
-            dv,  #
-            Q,
-            key,
-            value,
-            sm_scale,  #
-            DO,  #
-            M,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M1,
-            BLOCK_N1,
-            BLOCK_DMODEL,  #
-            start_n,
-            start_m,
-            num_steps,  #
-            MASK=False,  #
+        # load K and V: they stay in SRAM throughout the inner loop.
+        key = tl.load(
+            K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None] & hd_mask[None, :],
+            other=0.0,
         )
-    # tl.device_print("dv: ", dv)
+        value = tl.load(
+            V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None] & hd_mask[None, :],
+            other=0.0,
+        )
 
-    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+        if IS_CAUSAL:
+            num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
-    # Write back dK.
-    dk *= sm_scale
-    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+            dk, dv = _attn_bwd_dkdv(
+                dk,
+                dv,  #
+                Q,
+                key,
+                value,
+                sm_scale,  #
+                DO,  #
+                M,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                MASK_BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,  #
+                start_n,
+                start_m,
+                num_steps,  #
+                MASK=True,  #
+                BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+            )
+
+            # Compute dK and dV for non-masked blocks.
+            start_m += num_steps * MASK_BLOCK_M1
+            remaining_m = Q_CTX - start_m
+            num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
+
+            if (num_steps > 0) & (start_m < Q_CTX):
+                dk, dv = _attn_bwd_dkdv(  #
+                    dk,
+                    dv,  #
+                    Q,
+                    key,
+                    value,
+                    sm_scale,  #
+                    DO,  #
+                    M,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    BLOCK_M1,
+                    BLOCK_N1,
+                    BLOCK_DMODEL,  #
+                    start_n,
+                    start_m,
+                    num_steps,  #
+                    MASK=False,  #
+                    BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+                )
+        else:
+            # Non-causal: every KV block receives gradients from all Q blocks.
+            start_m = 0
+            num_steps = (Q_CTX + BLOCK_M1 - 1) // BLOCK_M1
+            if num_steps > 0:
+                dk, dv = _attn_bwd_dkdv(  #
+                    dk,
+                    dv,  #
+                    Q,
+                    key,
+                    value,
+                    sm_scale,  #
+                    DO,  #
+                    M,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    BLOCK_M1,
+                    BLOCK_N1,
+                    BLOCK_DMODEL,  #
+                    start_n,
+                    start_m,
+                    num_steps,  #
+                    MASK=False,  #
+                    BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+                )
+        # tl.device_print("dv: ", dv)
+
+        dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+        tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None] & hd_mask[None, :])
+
+        # Write back dK.
+        dk *= sm_scale
+        dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+        tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None] & hd_mask[None, :])
 
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
 
     query = tl.load(
         Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
+        mask=offs_m_mask[:, None] & hd_mask[None, :],
         other=0.0,
     )
     dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
     do = tl.load(
         DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
+        mask=offs_m_mask[:, None] & hd_mask[None, :],
         other=0.0,
     )
 
     m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
     m = m[:, None]
 
-    # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
+    if IS_CAUSAL:
+        end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
+        num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-    if num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            MASK_BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            start_n,
-            num_steps,  #
-            MASK=True,  #
-        )
+        # Stage 1 - Compute dQ for masked (diagonal) blocks.
+        if num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                sm_scale,
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                MASK_BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                start_n,
+                num_steps,  #
+                MASK=True,  #
+                BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+            )
 
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+        # Stage 2 - non-masked blocks.  Walk from 0: deriving the start as
+        # stage2_end_n - num_steps*BLOCK_N2 goes negative when KV_CTX is not a
+        # multiple of BLOCK_N2, and a negative offset is not caught by the
+        # `offs_n < KV_CTX` mask, so it reads out of bounds.
+        stage2_end_n = min(start_n, KV_CTX)
+        stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
 
-    if stage2_num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
-            stage2_num_steps,  #
-            MASK=False,  #
-        )
+        if stage2_num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                sm_scale,
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                0,
+                stage2_num_steps,  #
+                MASK=False,  #
+                BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+            )
+    else:
+        # Non-causal: every Q block attends to all KV blocks.
+        num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
+        if num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                sm_scale,
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                0,
+                num_steps,  #
+                MASK=False,  #
+                BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+            )
     # Write back dQ.
     dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-    dq *= LN2
+    # K is no longer pre-multiplied by sm_scale*log2(e), so sm_scale is restored here (the ln2/log2
+    # conversion is absorbed by the same factor: the old code did dq *= ln2 with K pre-scaled by log2(e)).
+    dq *= sm_scale
     # tl.store(dq_ptrs, dq)
 
-    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None] & hd_mask[None, :])
 
 
 def scaled_dot_product_attention_forward(
@@ -785,14 +1436,24 @@ def scaled_dot_product_attention_forward(
     is_causal=False,
     scale=None,
     enable_gqa=False,
+    lse_base_e=False,
 ):
+    """Attention forward returning ``(output, LSE)``.
+
+    ``lse_base_e=True`` requests the natural-log row statistic
+    ``log(sum(exp(s)))`` instead of the default log2-domain one.  The
+    ``_attn_fwd_nomax`` fast path folds the conversion into the kernel
+    (``LSE_BASE_E`` constexpr), so callers such as
+    ``_scaled_dot_product_cudnn_attention`` can skip the extra elementwise
+    ``LSE * ln2`` launch; the generic path falls back to an in-place host-side
+    rescale so the returned value is identical either way.
+    """
     logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_ATTENTION_FORWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
     o = torch.empty_like(query, dtype=value.dtype)
@@ -804,6 +1465,13 @@ def scaled_dot_product_attention_forward(
     else:
         sm_scale = scale
 
+    # Triton kernels require HEAD_DIM (constexpr block size) to be a power of
+    # 2.  Pass the padded size as the SRAM block width and the real size as
+    # HEAD_DIM_ACTUAL, then mask inside the kernels (same as the generic
+    # implementation, which supports arbitrary head dims this way).
+    HEAD_DIM_ACTUAL = HEAD_DIM_K
+    HEAD_DIM_K = triton.next_power_of_2(HEAD_DIM_K)
+
     q_head_num = query.shape[1]
     kv_head_num = key.shape[1]
     assert enable_gqa or q_head_num == kv_head_num, (
@@ -812,25 +1480,136 @@ def scaled_dot_product_attention_forward(
     )
 
     grid = lambda args: (
-        triton.cdiv(query.shape[2], args["BLOCK_M"]),
-        query.shape[0] * query.shape[1],
-        1,
+        triton.cdiv(query.shape[2], args["BLOCK_M"]) * query.shape[0] * query.shape[1],
     )
 
     if attn_mask is not None:
         HAS_ATTN_MASK = True
         if attn_mask.dtype == torch.bool:
             attn_mask = attn_mask.to(query.dtype) * -1.0e6
-        stride_attn_mask_batch = attn_mask.stride(0)
-        stride_attn_mask_head = attn_mask.stride(1)
-        stride_attn_mask_q_seqlen = attn_mask.stride(2)
-        stride_attn_mask_kv_seqlen = attn_mask.stride(3)
+        # The kernel indexes the full [B, H_q, S_q, S_k] attention matrix.
+        # Singleton and omitted mask dimensions must therefore have zero
+        # stride (broadcastable 2D/[B,1,1,Sk] masks), which the raw .stride()
+        # values do not provide.
+        (
+            stride_attn_mask_batch,
+            stride_attn_mask_head,
+            stride_attn_mask_q_seqlen,
+            stride_attn_mask_kv_seqlen,
+        ) = broadcasted_stride(
+            attn_mask.shape,
+            attn_mask.stride(),
+            (query.shape[0], q_head_num, query.shape[2], key.shape[2]),
+        )
+        # Zero q-seqlen stride means every query row reads the same memory
+        # row; the kernel then loads that row 1D and broadcasts in registers
+        # (2D stride-0 tile loads fault the GCU device, see _attn_fwd_inner).
+        MASK_Q_BROADCAST = stride_attn_mask_q_seqlen == 0
     else:
         HAS_ATTN_MASK = False
+        MASK_Q_BROADCAST = False
         stride_attn_mask_batch = 1
         stride_attn_mask_head = 1
         stride_attn_mask_q_seqlen = 1
         stride_attn_mask_kv_seqlen = 1
+
+    # Fast path: no attention mask, evenly divisible sequence lengths, causal
+    # or not. Measured on GCU400 to be the cheapest formulation; see
+    # _attn_fwd_nomax for why the running max is dropped.
+    #
+    # Non-square (q_ctx != kv_ctx) dispatches are admitted as well: the
+    # non-causal branch walks the KV extent with its own bound, and the causal
+    # branch places the diagonal band at ``start_m * BLOCK_M`` and skips it once
+    # that offset leaves the KV extent, so both directions of the extent
+    # mismatch are covered.  Routing the divisible non-square shapes here also
+    # avoids the generic `_attn_fwd` autotune space, which the upstream keep()
+    # filter pins to BLOCK_M=128/BLOCK_N=32.
+    q_ctx, kv_ctx = query.shape[2], key.shape[2]
+    causal_fast = bool(stage == 3)
+    if (
+        not HAS_ATTN_MASK
+        and stage in (1, 3)
+        and dropout_p == 0.0
+        and HEAD_DIM_ACTUAL in (64, 128)
+        # _attn_fwd_nomax indexes K/V by the query head directly; grouped-query
+        # shapes need the q_head_num // kv_head_num mapping of the generic path.
+        and q_head_num == kv_head_num
+    ):
+        block_m, block_n, num_warps = _nomax_launch_config(
+            q_ctx,
+            kv_ctx,
+            head_dim=HEAD_DIM_ACTUAL,
+            is_causal=causal_fast,
+            head_groups=query.shape[0] * q_head_num,
+        )
+        # The causal split walks [0, start_m*BLOCK_M) in the loop and then one
+        # unrolled diagonal band tile, so causal requires the square tile.
+        if (
+            q_ctx % block_m == 0
+            and kv_ctx % block_n == 0
+            and (not causal_fast or block_m == block_n)
+        ):
+            # Deferring the row sum wins on GCU400 in every measured shape
+            # except causal bf16 at HEAD_DIM=128: there the extra
+            # [BLOCK_M, BLOCK_N] fp32 p_sum accumulator pushes the compiled
+            # kernel over the 448KB DSM concurrency line (462KB -> 24-way);
+            # dropping it restores 48-way and the per-step row-sum tree is
+            # amortized over half the KV steps (35.9ms vs 65.9ms at
+            # B4 H32 S8192 D128 bf16 causal).
+            defer_sum = not (
+                causal_fast and HEAD_DIM_K == 128 and value.dtype == torch.bfloat16
+            )
+            # The fp32 upcast PV dot is required for fp16/fp32 inputs at
+            # HEAD_DIM 64: the fp32 softmax row is rounded down to fp16 there.
+            # bf16 inputs are exempt because bf16 values are exactly
+            # representable in fp16, so the 16-bit dot costs no extra accuracy
+            # while running 1.10-1.56x faster (measured 2026-11-18: bf16
+            # causal S128 D64 25.8us vs 28.4us; fp16 B4 H32 S2048 D64
+            # 4978us vs 7755us).
+            pv_f32 = HEAD_DIM_K != 128 and value.dtype != torch.bfloat16
+            M = torch.empty(
+                (query.shape[0], query.shape[1], query.shape[2]),
+                device=query.device,
+                dtype=torch.float32,
+            )
+            grid_m = q_ctx // block_m
+            _attn_fwd_nomax[(grid_m * query.shape[0] * q_head_num,)](
+                query,
+                key,
+                value,
+                M,
+                o,
+                sm_scale,
+                query.stride(0),
+                query.stride(1),
+                query.stride(2),
+                query.stride(3),
+                key.stride(0),
+                key.stride(1),
+                key.stride(2),
+                key.stride(3),
+                value.stride(0),
+                value.stride(1),
+                value.stride(2),
+                value.stride(3),
+                o.stride(0),
+                o.stride(1),
+                o.stride(2),
+                o.stride(3),
+                q_head_num,
+                q_ctx,
+                kv_ctx,
+                HEAD_DIM=HEAD_DIM_K,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                DEFER_SUM=defer_sum,
+                CAUSAL=causal_fast,
+                LSE_BASE_E=lse_base_e,
+                PV_F32=pv_f32,
+                num_warps=num_warps,
+                num_stages=2,
+            )
+            return o, M
 
     M = torch.empty(
         (query.shape[0], query.shape[1], query.shape[2]),
@@ -874,9 +1653,17 @@ def scaled_dot_product_attention_forward(
             query.shape[2],  #
             key.shape[2],  #
             HEAD_DIM_K,  #
+            HEAD_DIM_ACTUAL=HEAD_DIM_ACTUAL,  #
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
+            MASK_Q_BROADCAST=MASK_Q_BROADCAST,  #
         )
+    if lse_base_e:
+        # The generic _attn_fwd only produces output in the log2 domain; do one in-place conversion here (running on the
+        # freshly allocated
+        # M, with no extra memory allocation); the fast path already produces the natural logarithm directly in the
+        # kernel.
+        M.mul_(math.log(2.0))
     return o, M
 
 
@@ -899,7 +1686,6 @@ def scaled_dot_product_attention_backward(
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
     if scale is None:
@@ -917,7 +1703,11 @@ def scaled_dot_product_attention_backward(
     assert query.stride() == o.stride() == do.stride()
     assert key.stride() == value.stride()
 
-    BLOCK_DMODEL = HEAD_DIM_K
+    # Triton kernels require BLOCK_DMODEL to be a power of 2 (same padding
+    # scheme as the forward: block width padded to next_power_of_2, real
+    # size carried in BLOCK_DMODEL_ACTUAL and masked inside the kernels).
+    BLOCK_DMODEL_ACTUAL = HEAD_DIM_K
+    BLOCK_DMODEL = triton.next_power_of_2(HEAD_DIM_K)
     BATCH, Q_HEAD, Q_CTX = query.shape[:3]
     _, KV_HEAD, KV_CTX = key.shape[:3]
     group_head = Q_HEAD // KV_HEAD
@@ -925,11 +1715,11 @@ def scaled_dot_product_attention_backward(
     # NUM_WARPS, NUM_STAGES = 4, 1
     # BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
     BLK_SLICE_FACTOR = 2
-    # RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
 
-    RCP_LN2 = 1.0 / math.log(2)
-
-    arg_k = key * (sm_scale * RCP_LN2)
+    # Note: K is no longer pre-multiplied by sm_scale*log2(e) here (fp16 rounding would pollute
+    # every K element and disagree with the fp32 post-scaling of the forward kernel); the scaling
+    # happens after the dot product inside the kernel.
+    arg_k = key
     # PRE_BLOCK = 128
     PRE_BLOCK = 256
 
@@ -964,6 +1754,7 @@ def scaled_dot_product_attention_backward(
         Q_CTX,  #
         BLOCK_M=PRE_BLOCK,
         D_HEAD=BLOCK_DMODEL,  #
+        D_HEAD_ACTUAL=BLOCK_DMODEL_ACTUAL,  #
     )
 
     max_block_n1 = (
@@ -971,7 +1762,23 @@ def scaled_dot_product_attention_backward(
         if config_backward
         else 128
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
+    max_block_m2 = (
+        max([cfg.kwargs["BLOCK_M2"] for cfg in config_backward])
+        if config_backward
+        else 128
+    )
+    # One grid serves both halves of the kernel: dK/dV tiles walk KV_CTX, dQ
+    # tiles walk Q_CTX.  For non-square attention these need different counts,
+    # so launch the larger and let each half mask/guard its own excess.  Using
+    # only cdiv(Q_CTX, ...) left dK/dV tiles past Q_CTX/BN1 unwritten (garbage).
+    grid = (
+        max(
+            triton.cdiv(Q_CTX, max_block_m2),
+            triton.cdiv(KV_CTX, max_block_n1),
+        ),
+        1,
+        BATCH * Q_HEAD,
+    )
     # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
     # logger.info(f"{M.shape=}")
 
@@ -992,24 +1799,32 @@ def scaled_dot_product_attention_backward(
         query.stride(3),  #
         key.stride(0),
         key.stride(1),  #
+        dk.stride(0),
+        dk.stride(1),  #
         Q_HEAD,
         Q_CTX,  #
         KV_CTX,  #
         KV_HEAD,  #
         GROUP_HEAD=group_head,  #
+        IS_CAUSAL=is_causal,  #
         # BLOCK_M1=BLOCK_M1,
         # BLOCK_N1=BLOCK_N1,  #
         # BLOCK_M2=BLOCK_M2,
         # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
+        BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,  #
         # num_warps=NUM_WARPS,  #
         # num_stages=NUM_STAGES,  #
     )
 
     if group_head > 1:
-        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
-        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
+        dk = dk.reshape(
+            BATCH, Q_HEAD // group_head, group_head, KV_CTX, BLOCK_DMODEL_ACTUAL
+        )
+        dv = dv.reshape(
+            BATCH, Q_HEAD // group_head, group_head, KV_CTX, BLOCK_DMODEL_ACTUAL
+        )
         dk = dk.sum(dim=2)
         dv = dv.sum(dim=2)
 
@@ -1079,6 +1894,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_ATTENTION")
     return ScaleDotProductAttention.apply(
         query,
         key,
@@ -1089,6 +1905,65 @@ def scaled_dot_product_attention(
         scale,
         enable_gqa,
     )
+
+
+def _dropout_attention_fallback(
+    query,
+    key,
+    value,
+    softmax_scale,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    dropout_p,
+    return_debug_mask,
+):
+    """Pure-torch composition used when dropout > 0.
+
+    flash_fwd with in-kernel philox RNG fails to compile on the GCU compiler (u64 philox plus
+    join/reshape trips the MLIR `cast<DenseElementsAttr>` assertion and aborts the process),
+    so this degrades to a composition of scores -> mask -> softmax -> dropout -> PV:
+    it only uses supported ops (matmul / softmax / dropout) with FA semantics
+    (dropout on the softmax probabilities, rescaled by 1/(1-p)).
+    """
+    q_bh = query.transpose(1, 2)
+    k_bh = key.transpose(1, 2)
+    v_bh = value.transpose(1, 2)
+    seq_len_q = q_bh.shape[-2]
+    seq_len_k = k_bh.shape[-2]
+
+    scores = torch.matmul(q_bh.float(), k_bh.float().transpose(-1, -2))
+    scores = scores * softmax_scale
+
+    if is_causal:
+        # Bottom-right alignment: cross-attention with sq != sk is consistent with FA's is_causal semantics
+        causal_mask = torch.ones(
+            (seq_len_q, seq_len_k), dtype=torch.bool, device=scores.device
+        ).tril(diagonal=seq_len_k - seq_len_q)
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
+    if window_size_left is not None or window_size_right is not None:
+        left = window_size_left if window_size_left is not None else seq_len_k
+        right = window_size_right if window_size_right is not None else seq_len_k
+        row_index = torch.arange(seq_len_q, device=scores.device).unsqueeze(1)
+        col_index = torch.arange(seq_len_k, device=scores.device).unsqueeze(0)
+        # Under the causal mask, the window is measured by the column-row offset
+        offset = col_index - row_index
+        window_mask = (offset <= right) & (offset >= -left)
+        scores = scores.masked_fill(~window_mask, float("-inf"))
+
+    lse = torch.logsumexp(scores, dim=-1)
+    probs = torch.softmax(scores, dim=-1)
+    probs = torch.nn.functional.dropout(probs, p=dropout_p, training=True)
+
+    out_bh = torch.matmul(probs.to(value.dtype), v_bh)
+    if return_debug_mask:
+        debug_mask = probs.to(value.dtype)
+    else:
+        debug_mask = torch.empty((), dtype=value.dtype, device=query.device)
+    philox_args = torch.empty((2,), dtype=torch.int64, device=query.device)
+    unused = torch.empty((), dtype=torch.int64, device=query.device)
+    return out_bh.transpose(1, 2), lse, philox_args, unused, debug_mask
 
 
 def flash_attention_forward(
@@ -1146,6 +2021,121 @@ def flash_attention_forward(
     else:
         non_null_window_right = -1
 
+    # GCU400 fast path: the generic flash_fwd_kernel autotune space is pinned
+    # to BLOCK_M=128/BLOCK_N=32/num_warps=4 by the upstream keep() filter,
+    # which is far off the GCU400 sweet spot (128x128 tile, 2 warps, no
+    # running softmax max).  Square, unmasked, dropout-free dispatches run
+    # the tuned _attn_fwd_nomax kernel instead; everything else keeps the
+    # generic path.
+    if (
+        cumulative_sequence_length_q is None
+        and cumulative_sequence_length_k is None
+        and dropout_p == 0.0
+        and softcap == 0.0
+        and window_size_left is None
+        and window_size_right is None
+        and seqused_k is None
+        and alibi_slopes is None
+        and HEAD_DIM_K == original_head_dim
+        and HEAD_DIM_K in (64, 128)
+        and query.ndim == 4
+        and key.shape == query.shape
+        and value.shape == query.shape
+    ):
+        batch, seq_len, num_heads, _ = query.shape
+        block_m, block_n, num_warps = _nomax_launch_config(
+            seq_len,
+            seq_len,
+            head_dim=original_head_dim,
+            is_causal=bool(is_causal),
+            head_groups=batch * num_heads,
+        )
+        # For causal, the KV range is split into a loop over [0, start_m*BLOCK_M) plus one diagonal band,
+        # which only aligns with square tiles, so causal additionally requires block_m == block_n
+        # (consistent with the check in scaled_dot_product_attention_forward).
+        if (
+            seq_len % block_m == 0
+            and seq_len % block_n == 0
+            and (not is_causal or block_m == block_n)
+        ):
+            # The kernel indexes (B, H, S, D); the inputs arrive as BSHD
+            # views, so a transpose view restores the BHSD strides.
+            q_bh = query.transpose(1, 2)
+            k_bh = key.transpose(1, 2)
+            v_bh = value.transpose(1, 2)
+            o_bh = torch.empty_like(q_bh)
+            lse = torch.empty(
+                (batch, num_heads, seq_len),
+                device=query.device,
+                dtype=torch.float32,
+            )
+            # DEFER_SUM wins on GCU400 in every non-causal shape measured; causal
+            # bf16 + HEAD_DIM=128 is the only exception: the extra [BLOCK_M, BLOCK_N] fp32
+            # p_sum accumulator pushes the kernel past the 448KB DSM concurrency limit (462KB -> 24-way),
+            # so keeping 48-way is preferable (the strategy matches scaled_dot_product_attention_forward).
+            # The PV dot strategy is shared as well: HEAD_DIM 64 uses an fp32 upcast dot (16-bit N=64
+            # dot is 2.5x slower), and HEAD_DIM 128 uses a 16-bit dot.
+            defer_sum = not (
+                is_causal and HEAD_DIM_K == 128 and value.dtype == torch.bfloat16
+            )
+            pv_f32 = HEAD_DIM_K != 128
+            _attn_fwd_nomax[(seq_len // block_m * batch * num_heads,)](
+                q_bh,
+                k_bh,
+                v_bh,
+                lse,
+                o_bh,
+                softmax_scale,
+                q_bh.stride(0),
+                q_bh.stride(1),
+                q_bh.stride(2),
+                q_bh.stride(3),
+                k_bh.stride(0),
+                k_bh.stride(1),
+                k_bh.stride(2),
+                k_bh.stride(3),
+                v_bh.stride(0),
+                v_bh.stride(1),
+                v_bh.stride(2),
+                v_bh.stride(3),
+                o_bh.stride(0),
+                o_bh.stride(1),
+                o_bh.stride(2),
+                o_bh.stride(3),
+                num_heads,
+                seq_len,
+                seq_len,
+                HEAD_DIM=HEAD_DIM_K,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                DEFER_SUM=defer_sum,
+                CAUSAL=is_causal,
+                LSE_BASE_E=True,
+                PV_F32=pv_f32,
+                num_warps=num_warps,
+                num_stages=2,
+            )
+            out = o_bh.transpose(1, 2)
+            philox_args = torch.empty((2,), dtype=torch.int64, device=query.device)
+            unused = torch.empty((), dtype=torch.int64, device=query.device)
+            p = torch.empty((), device=query.device)
+            return out, lse, philox_args, unused, p
+
+    # When dropout>0, the in-kernel philox RNG triggers an MLIR assertion on the GCU compiler,
+    # so switch directly to a pure torch composition implementation (see _dropout_attention_fallback for details)
+    if dropout_p > 0.0:
+        return _dropout_attention_fallback(
+            query,
+            key,
+            value,
+            softmax_scale,
+            is_causal,
+            window_size_left,
+            window_size_right,
+            dropout_p,
+            return_debug_mask,
+        )
+
     out = torch.empty_like(query)
     if cumulative_sequence_length_q is not None:
         out, q, k, v, lse, philox_seed, philox_offset, p = mha_varlan_fwd(
@@ -1172,21 +2162,57 @@ def flash_attention_forward(
             None,
         )
     else:
-        out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
-            query,
-            key,
-            value,
-            out,
-            alibi_slopes,
-            dropout_p,
-            softmax_scale,
-            is_causal,
-            non_null_window_left,
-            non_null_window_right,
-            softcap,
-            return_debug_mask,
-            disable_splitkv=disable_splitkv,
-        )
+        # GCU caps grid.y at 255 and the flash_fwd kernel maps batch*heads onto
+        # that axis, so a wide batch (8 batches x 32 heads in the sliding-window
+        # tests) cannot be launched in one go.  Split the batch instead; each
+        # slice is a view, and the kernel only ever reads q/k/v per batch.
+        if query.shape[0] * query.shape[2] > 255:
+            out = lse = None
+            for b in range(query.shape[0]):
+                o_b, _, _, _, lse_b, philox_seed, philox_offset, p = mha_fwd(
+                    query[b : b + 1],
+                    key[b : b + 1],
+                    value[b : b + 1],
+                    None,
+                    alibi_slopes,
+                    dropout_p,
+                    softmax_scale,
+                    is_causal,
+                    non_null_window_left,
+                    non_null_window_right,
+                    softcap,
+                    return_debug_mask,
+                    disable_splitkv=disable_splitkv,
+                )
+                if out is None:
+                    out = torch.empty(
+                        (query.shape[0],) + tuple(o_b.shape[1:]),
+                        dtype=o_b.dtype,
+                        device=o_b.device,
+                    )
+                    lse = torch.empty(
+                        (query.shape[0],) + tuple(lse_b.shape[1:]),
+                        dtype=lse_b.dtype,
+                        device=lse_b.device,
+                    )
+                out[b : b + 1].copy_(o_b)
+                lse[b : b + 1].copy_(lse_b)
+        else:
+            out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
+                query,
+                key,
+                value,
+                out,
+                alibi_slopes,
+                dropout_p,
+                softmax_scale,
+                is_causal,
+                non_null_window_left,
+                non_null_window_right,
+                softcap,
+                return_debug_mask,
+                disable_splitkv=disable_splitkv,
+            )
 
     if HEAD_DIM_K != original_head_dim:
         out = out[..., :original_head_dim]
@@ -1376,4 +2402,139 @@ def flash_attn_varlen_func(
             None,
         )
 
+    return (out, softmax_lse) if return_softmax_lse else out
+
+
+def flash_attn_varlen_opt_func(
+    q,
+    k,
+    v,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k=None,
+    seqused_k=None,
+    q_v=None,
+    dropout_p=0.0,
+    softmax_scale=None,
+    causal=False,
+    window_size=None,
+    softcap=0.0,
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    block_table=None,
+    return_softmax_lse=False,
+    out=None,
+    lse=None,
+    scheduler_metadata=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    s_aux=None,
+    num_splits: int = 0,
+    cp_world_size: int = 1,
+    cp_rank: int = 0,
+    cp_tot_seqused_k=None,
+    fa_version: int = 2,
+):
+    """Optimized-init varlen attention.
+
+    Same work as ``flash_attn_varlen_func`` plus the caller supplied
+    ``lse``/``scheduler_metadata`` arguments. The launch tile comes from
+    ``_varlen_fwd_tile_config`` inside this backend's ``mha_varlan_fwd_opt``
+    (see that helper for the measured VDMem-safe GCU400 tile policy and the
+    page-aligned paged load), so the whole varlen path stays on the GCU400
+    fork rather than the generic module.
+    """
+    if fa_version != 2:
+        raise RuntimeError("Only FA2 is implemented.")
+    if num_splits > 0:
+        raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
+    if use_c_extension:
+        logger.debug("GEMS_ENFLAME FLASH_ATTN_VARLEN_OPT_FUNC(C EXTENSION)")
+        with torch_device_fn.device(q.device):
+            out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
+                q,
+                k,
+                v,
+                max_seqlen_q,
+                cu_seqlens_q,
+                max_seqlen_k,
+                cu_seqlens_k,
+                seqused_k,
+                q_v,
+                dropout_p,
+                softmax_scale,
+                causal,
+                window_size,
+                softcap,
+                alibi_slopes,
+                deterministic,
+                return_attn_probs,
+                block_table,
+                return_softmax_lse,
+                out,
+                scheduler_metadata,
+                q_descale,
+                k_descale,
+                v_descale,
+                s_aux,
+                num_splits,
+                cp_world_size,
+                cp_rank,
+                cp_tot_seqused_k,
+                fa_version,
+            )
+        return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
+    logger.debug("GEMS_ENFLAME FLASH_ATTN_VARLEN_OPT_FUNC")
+    assert (
+        cu_seqlens_k is not None or seqused_k is not None
+    ), "cu_seqlens_k or seqused_k must be provided"
+    assert (
+        cu_seqlens_k is None or seqused_k is None
+    ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
+    assert (
+        block_table is None or seqused_k is not None
+    ), "seqused_k must be provided if block_table is provided"
+    if softmax_scale is None:
+        softmax_scale = q.shape[-1] ** (-0.5)
+    # custom op does not support non-tuple input
+    if window_size is None:
+        real_window_size = (-1, -1)
+    else:
+        assert len(window_size) == 2
+        real_window_size = (window_size[0], window_size[1])
+    max_seqlen_q = (
+        max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+    )
+    max_seqlen_k = (
+        max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
+    )
+    out, q, k, v, softmax_lse, *_ = mha_varlan_fwd_opt(
+        q,
+        k,
+        v,
+        out,
+        lse,
+        cu_seqlens_q,
+        # cu_seqlens_k is not used when seqused_k is given, but the flash api
+        # still wants it, so reuse the q offsets the way the generic entry does
+        cu_seqlens_q if cu_seqlens_k is None else cu_seqlens_k,
+        seqused_k,
+        None,
+        block_table,
+        alibi_slopes,
+        max_seqlen_q,
+        max_seqlen_k,
+        dropout_p,
+        softmax_scale,
+        False,
+        causal,
+        real_window_size[0],
+        real_window_size[1],
+        softcap,
+        return_softmax_lse and dropout_p > 0,
+        None,
+    )
     return (out, softmax_lse) if return_softmax_lse else out

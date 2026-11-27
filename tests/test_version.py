@@ -310,6 +310,13 @@ def test_version_matches_reference_table():
 
 
 @pytest.mark.version
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_version"
+    ),
+)
 def test_version_dispatch_sentinel_composite_key():
     # Poison check: the shipped arrangement registers on the
     # CompositeImplicitAutograd key, which is the only key that intercepts
@@ -317,7 +324,7 @@ def test_version_dispatch_sentinel_composite_key():
     # sparse keys are registered natively but never selected -- measured with
     # fresh-process sentinels). torch.ops.aten._version must reach the
     # submitted implementation for dense, COO and CSR inputs.
-    from flag_gems.ops.version import version as real_impl
+    real_impl = flag_gems.version
 
     lib = torch.library.Library("aten", "IMPL")
     hits = []

@@ -22,7 +22,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import flag_gems
 
-from .accuracy_utils import to_reference
+from .accuracy_utils import _SKIP_FP64, to_reference
 
 DTYPES = [
     torch.float32,
@@ -415,7 +415,7 @@ REJECTED_DTYPES = [
     torch.int64,
     torch.bool,
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ]
 
 
@@ -506,6 +506,13 @@ def test_triangular_solve_out_rejects_autograd(requires_grad):
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("loss_output", ["solution", "clone", "both"])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::triangular_solve"
+    ),
+)
 def test_triangular_solve_autograd_broadcast(flags, dtype, loss_output):
     B, A = _inputs((2, 1), (3,), 7, 3, dtype, flags[2])
     ref_A = to_reference(A).detach().clone().requires_grad_()

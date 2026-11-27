@@ -378,7 +378,7 @@ export USE_C_EXTENSION=1
 
 为保持安装指南的专注度，更详尽的底层编译配置与多硬件支持字典已独立整理至专门的参考文档中：
 
-- **[完整加速器后端清单与映射表](build-options.md#1-支持的加速器后端清单)**：查看所有受支持的芯片平台标识符（如 `nvidia-cuda128`、`ascend-cann900`、`hygon`、`metax-maca3810`、`mthreads-musa520` 等）及依赖说明。
+- **[完整加速器后端清单与映射表](build-options.md#1-支持的加速器后端清单)**：查看所有受支持的芯片平台标识符（如 `nvidia-cuda128`、`ascend-cann900`、`hygon-dtk2604`、`metax-maca3810`、`mthreads-musa520` 等）及依赖说明。
 - **[CMake 编译选项参考](build-options.md#cmake-options)** {#cmake-options}：查看 `FLAGGEMS_BUILD_C_EXTENSIONS`、`FLAGGEMS_BACKEND`、`FLAGGEMS_BUILD_CTESTS` 等 CMake 构建选项定义与 `CMAKE_ARGS` 传参范例。
 - **[`scikit-build-core` 构建参数](build-options.md#scikit-build-core-options)** {#scikit-build-core-options}：查看用于 C++ 扩展打包的构建后端参数（`SKBUILD_CMAKE_BUILD_TYPE`、`SKBUILD_BUILD_DIR` 等）。
 - **[外部 `libtriton_jit` 库集成](build-options.md#libtriton-jit)** {#libtriton-jit}：查看如何自定义编译并链接独立的 TritonJIT 依赖库。

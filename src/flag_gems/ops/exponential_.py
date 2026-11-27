@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.flip import copy_func
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.random_utils import (
@@ -40,8 +41,20 @@ def safe_fast_log_f32(x):
     bits = x.to(tl.int32, bitcast=True)
     exponent = (bits >> 23) - 127
     mantissa = (bits & 0x7FFFFF).to(tl.float32) * (1.0 / 8388608.0) + 1.0
+    # Reduce the mantissa to [sqrt(1/2), sqrt(2)) and fold the adjustment into
+    # the exponent. Without this step u just below 1 has exponent -1 and
+    # mantissa ~2, so ln(u) is the difference of two ~0.69 terms and the
+    # polynomial's ~1e-5 absolute error survives as an absolute error of the
+    # result. That error is fatal for the left tail used by exponential-race
+    # (Gumbel-max) sampling: q below ~1e-5 was compressed against a ~6.5e-6
+    # floor, which made vLLM's sampler far more peaked than the categorical
+    # distribution (Issue #7162). With the reduced range ln(m) is small when
+    # u ~ 1, so the cancellation disappears.
+    large = mantissa > 1.4142135623730951
+    mantissa = tl.where(large, mantissa * 0.5, mantissa)
+    exponent = exponent + tl.where(large, 1, 0)
     t = mantissa - 1.0
-    # Degree-5 minimax polynomial for ln(1+t) on [0, 1)
+    # Degree-5 minimax polynomial for ln(1+t) on [sqrt(1/2) - 1, sqrt(2) - 1]
     p = 3.0102415366e-02
     p = p * t - 1.3011859043e-01
     p = p * t + 2.8330324636e-01
@@ -101,6 +114,13 @@ if device.vendor_name == "iluvatar":
     transform_exponential_f32 = transform_exponential_f32_precise
 else:
     transform_exponential_f32 = transform_exponential_f32_fast
+
+# Largest BLOCK among the autotune configs below. A launch grid rounds N up to
+# whole programs and the masked tail lanes still draw from the philox stream, so
+# a call may consume up to one extra program's worth of counters. The generator
+# offset has to reserve at least what the kernel consumes, otherwise the next
+# call replays part of this call's random stream. See Issue #7162.
+_MAX_BLOCK = 512
 
 
 @triton.jit
@@ -302,7 +322,26 @@ def fused_exponential_kernel_f64(
     tl.store(out_ptr + off3, y1_1, mask=off3 < N)
 
 
+class _ExponentialInplace(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, lambd, generator):
+        ctx.mark_dirty(x)
+        return _exponential_impl(x, lambd, generator=generator)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.zeros_like(grad_output), None, None
+
+
 def exponential_(x, lambd: float = 1.0, *, generator=None):
+    if torch.is_grad_enabled() and x.requires_grad:
+        return _ExponentialInplace.apply(x, lambd, generator)
+    result = _exponential_impl(x, lambd, generator=generator)
+    torch.autograd.graph.increment_version(x)
+    return result
+
+
+def _exponential_impl(x, lambd: float = 1.0, *, generator=None):
     logger.debug("GEMS EXPONENTIAL_")
 
     dtype = x.dtype
@@ -319,7 +358,10 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     if dtype is torch.float64:
         UNROLL = 2
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        increment = triton.cdiv(N, UNROLL)
+        # This kernel consumes 2 * BLOCK counters per launched program and the
+        # wrapper launches one program per 2 * BLOCK outputs, i.e. up to N + 2 *
+        # BLOCK counters per call.
+        increment = N + 2 * _MAX_BLOCK
         philox_seed, philox_offset = philox_backend_seed_offset(
             increment, generator=generator
         )
@@ -330,7 +372,8 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     elif dtype in (torch.float16, torch.bfloat16) and N < 65536:
         UNROLL = 4
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        increment = triton.cdiv(N, UNROLL)
+        # Each program consumes BLOCK counters; reserve the tail program.
+        increment = triton.cdiv(N, UNROLL) + _MAX_BLOCK
         philox_seed, philox_offset = philox_backend_seed_offset(
             increment, generator=generator
         )
@@ -341,7 +384,9 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     else:
         UNROLL = 8
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        increment = triton.cdiv(N, UNROLL)
+        # This kernel draws one counter per output element, so a call consumes
+        # up to N + 8 * BLOCK counters (not N // UNROLL).
+        increment = N + UNROLL * _MAX_BLOCK
         philox_seed, philox_offset = philox_backend_seed_offset(
             increment, generator=generator
         )
@@ -351,5 +396,5 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
             )
 
     if not inplace:
-        x.copy_(out)
+        copy_func(out, out0=x)
     return x

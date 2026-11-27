@@ -64,13 +64,27 @@ def bitwise_and_scalar_input_fn(shape, cur_dtype, device):
     yield inp1, inp2
 
 
+def _inplace_scalar_case_fn(shape, cur_dtype):
+    scalar = True if cur_dtype == torch.bool else 0x00FF
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"scalar": scalar},
+        builder_args=(shape,),
+    )
+
+
+def _build_inplace_scalar_inputs(plan, cur_dtype, device):
+    return next(bitwise_and_scalar_input_fn(plan.builder_args[0], cur_dtype, device))
+
+
 @pytest.mark.bitwise_and_scalar_
 def test_bitwise_and_scalar_():
     bench = base.GenericBenchmark(
         op_name="bitwise_and_scalar_",
         torch_op=lambda a, b: a.bitwise_and_(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
-        input_fn=bitwise_and_scalar_input_fn,
+        case_fn=_inplace_scalar_case_fn,
+        build_inputs_fn=_build_inplace_scalar_inputs,
         is_inplace=True,
     )
     bench.run()

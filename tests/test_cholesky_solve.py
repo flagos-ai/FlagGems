@@ -114,6 +114,31 @@ def _move_setup_tensors_to_device(build_on_cpu, *tensors):
     return tensors
 
 
+def _needs_cpu_lapack_fallback(tensor):
+    return (
+        VENDOR_NAME == "mthreads"
+        and tensor.device.type == "cpu"
+        and not torch._C.has_lapack
+    )
+
+
+def _cholesky_factor(matrix, upper=False):
+    if _needs_cpu_lapack_fallback(matrix):
+        import numpy as np
+
+        factor = torch.from_numpy(np.linalg.cholesky(matrix.numpy()))
+        return factor.mH.resolve_conj().contiguous() if upper else factor
+    return torch.linalg.cholesky(matrix, upper=upper)
+
+
+def _conditioned_qr(matrix):
+    if _needs_cpu_lapack_fallback(matrix):
+        import numpy as np
+
+        return torch.from_numpy(np.linalg.qr(matrix.numpy())[0])
+    return torch.linalg.qr(matrix)[0]
+
+
 def _make_cholesky_solve_inputs(shape, dtype, matrix_scale=1.0, rhs_scale=1.0):
     *batch_dims, n, nrhs = shape
     build_on_cpu = _use_cpu_complex_path(dtype)
@@ -123,7 +148,7 @@ def _make_cholesky_solve_inputs(shape, dtype, matrix_scale=1.0, rhs_scale=1.0):
     for _ in batch_dims:
         eye = eye.unsqueeze(0)
     A = matrix_scale * (B_mat @ B_mat.mH) + eye * 0.5
-    L = torch.linalg.cholesky(A)
+    L = _cholesky_factor(A)
     rhs = rhs_scale * torch.randn(
         *batch_dims, n, nrhs, dtype=dtype, device=setup_device
     )
@@ -139,7 +164,7 @@ def _make_cholesky_solve_broadcast_inputs(A_shape, rhs_shape, dtype, upper=False
     for _ in batch_dims:
         eye = eye.unsqueeze(0)
     A = B_mat @ B_mat.mH + eye * 0.5
-    factor = torch.linalg.cholesky(A, upper=upper)
+    factor = _cholesky_factor(A, upper=upper)
     rhs = torch.randn(*rhs_shape, dtype=dtype, device=setup_device)
     return _move_setup_tensors_to_device(build_on_cpu, A, factor, rhs)
 
@@ -152,7 +177,7 @@ def _make_conditioned_inputs(shape, dtype):
     real_dtype = torch.float32 if is_single_precision else torch.float64
     condition = 1e3 if is_single_precision else 1e6
     Q_src = torch.randn(*batch_dims, n, n, dtype=dtype, device=setup_device)
-    Q, _ = torch.linalg.qr(Q_src)
+    Q = _conditioned_qr(Q_src)
     eigs = torch.logspace(
         0.0,
         math.log10(condition),
@@ -161,7 +186,7 @@ def _make_conditioned_inputs(shape, dtype):
         device=setup_device,
     )
     A = (Q * eigs) @ Q.mH
-    L = torch.linalg.cholesky(A)
+    L = _cholesky_factor(A)
     rhs = torch.randn(*batch_dims, n, nrhs, dtype=dtype, device=setup_device)
     return _move_setup_tensors_to_device(build_on_cpu, A, L, rhs)
 
@@ -177,16 +202,34 @@ def _make_noncontiguous_last_dim(tensor):
     return holder[..., ::2]
 
 
+def _native_cholesky_solve(rhs, factor, upper):
+    if _needs_cpu_lapack_fallback(rhs):
+        import numpy as np
+
+        array = factor.resolve_conj().resolve_neg().numpy()
+        triangle = np.triu(array) if upper else np.tril(array)
+        adjoint = triangle.swapaxes(-1, -2).conj()
+        first, second = (adjoint, triangle) if upper else (triangle, adjoint)
+        right = rhs.resolve_conj().resolve_neg().numpy()
+        batch_shape = np.broadcast_shapes(triangle.shape[:-2], right.shape[:-2])
+        matrix_shape = (*batch_shape, *triangle.shape[-2:])
+        first = np.broadcast_to(first, matrix_shape)
+        second = np.broadcast_to(second, matrix_shape)
+        right = np.broadcast_to(right, (*batch_shape, *right.shape[-2:]))
+        return torch.from_numpy(np.linalg.solve(second, np.linalg.solve(first, right)))
+    return torch.cholesky_solve(rhs, factor, upper=upper)
+
+
 def _reference_cholesky_solve(rhs, factor, upper=False):
     if _use_cpu_complex_path(rhs.dtype):
-        ref_out = torch.cholesky_solve(
+        ref_out = _native_cholesky_solve(
             rhs.detach().cpu(), factor.detach().cpu(), upper=upper
         )
         return ref_out if utils.TO_CPU else ref_out.to(rhs.device)
 
     ref_rhs = utils.to_reference(rhs)
     ref_factor = utils.to_reference(factor)
-    return torch.cholesky_solve(ref_rhs, ref_factor, upper=upper)
+    return _native_cholesky_solve(ref_rhs, ref_factor, upper=upper)
 
 
 def _solve_with_gems(rhs, L, upper=False):
@@ -503,6 +546,11 @@ def test_cholesky_solve_complex(shape, dtype, upper):
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_noncontiguous(dtype, upper):
+    if VENDOR_NAME == "enflame" and dtype == torch.complex64 and upper:
+        pytest.skip(
+            "native complex64 cholesky factor does not match A for the "
+            "non-contiguous upper case on this device"
+        )
     A, L, rhs = _make_cholesky_solve_inputs((2, 16, 5), dtype)
     factor = L.mH.contiguous() if upper else L
     factor = _make_noncontiguous_last_dim(factor)

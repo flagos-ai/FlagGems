@@ -40,9 +40,12 @@ SWEEP_DTYPES = (
     utils.FLOAT_DTYPES
     + utils.INT_DTYPES
     + utils.BOOL_TYPES
-    + [torch.float64, torch.int64]
+    + ([torch.float64] if utils.fp64_is_supported else [])
+    + [torch.int64]
 )
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64] + (
+    [torch.complex128] if utils.fp64_is_supported else []
+)
 
 
 @pytest.mark.atleast_2d
@@ -51,7 +54,10 @@ COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 def test_accuracy_atleast_2d_complex(shape, dtype):
     # complex inputs: atleast_2d is a pure host-side reshape, so the
     # conjugate bit and imaginary part must survive the view unchanged.
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Ascend cannot run the complex normal_ kernel behind torch.randn.
+    inp = torch.testing.make_tensor(
+        shape, dtype=dtype, device=flag_gems.device, low=-1, high=1
+    )
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)

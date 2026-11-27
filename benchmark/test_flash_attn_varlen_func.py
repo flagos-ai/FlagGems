@@ -330,6 +330,17 @@ def flash_attn_varlen_legacy(*args, **kwargs):
     return result
 
 
+_ENFLAME_NO_NATIVE_BASELINE_REASON = (
+    "vllm.vllm_flash_attn requires the CUDA flash attention extensions "
+    "(_vllm_fa2_C / _vllm_fa3_C), which the enflame GCU backend does not provide, "
+    "so the native flash attention baseline cannot be executed"
+)
+
+
+def _enflame_missing_native_baseline(*args, **kwargs):
+    raise RuntimeError(_ENFLAME_NO_NATIVE_BASELINE_REASON)
+
+
 @pytest.mark.skipif(
     utils.SkipVersion("vllm", "<0.9"),
     reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
@@ -340,11 +351,14 @@ def flash_attn_varlen_legacy(*args, **kwargs):
 )
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2816: RuntimeError")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="#2886: TypeError")
+@pytest.mark.skip_native(vendors=["enflame"], reason=_ENFLAME_NO_NATIVE_BASELINE_REASON)
 @pytest.mark.flash_attn_varlen_func
 def test_flash_attn_varlen_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
 
-    if vendor_name == "iluvatar":
+    if vendor_name == "enflame":
+        flash_attn_varlen_func = _enflame_missing_native_baseline
+    elif vendor_name == "iluvatar":
         # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
         flash_attn_varlen_func = flash_attn_varlen_legacy
     else:
@@ -369,12 +383,15 @@ def test_flash_attn_varlen_func(monkeypatch):
 )
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2816: RuntimeError")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="#2886: TypeError")
+@pytest.mark.skip_native(vendors=["enflame"], reason=_ENFLAME_NO_NATIVE_BASELINE_REASON)
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.flash_attn_varlen_func_noncontig
 def test_flash_attn_varlen_func_noncontig(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
 
-    if vendor_name == "iluvatar":
+    if vendor_name == "enflame":
+        flash_attn_varlen_func = _enflame_missing_native_baseline
+    elif vendor_name == "iluvatar":
         # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
         flash_attn_varlen_func = flash_attn_varlen_legacy
     else:

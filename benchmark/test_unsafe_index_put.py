@@ -135,6 +135,15 @@ class UnsafeIndexPutAccTrueBenchmark(base.GenericBenchmark):
         return None
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_unsafe_index_put, so the "
+        "baseline runs aten::index_put_ whose accumulate=True kernel does not "
+        "return on the first shape ((2**28,) with 65536 indices, >26 min); the "
+        "baseline leg cannot be timed"
+    ),
+)
 @pytest.mark.unsafe_index_put
 def test_unsafe_index_put_acc_true():
     bench = UnsafeIndexPutAccTrueBenchmark(

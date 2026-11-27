@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -23,6 +25,10 @@ def logcumsumexp_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.logcumsumexp
 def test_logcumsumexp():
     bench = base.GenericBenchmark2DOnly(
@@ -40,6 +46,32 @@ def logcumsumexp_out_input_fn(shape, cur_dtype, device):
     yield inp, 1, {"out": out}
 
 
+@pytest.mark.logcumsumexp_backward
+def test_logcumsumexp_backward():
+    # ``use_gems()`` keeps the ATen autograd node above the device kernel, so
+    # the reference backward would still win on the ``torch.*`` path. Benchmark
+    # the public FlagGems entry directly to measure the Triton backward kernel.
+    #
+    # fp16 is deliberately absent: torch 2.8 raises
+    # ``"logcumsumexp_backward" not implemented for 'Half'`` for the native
+    # baseline (the candidate itself supports fp16 and is covered by
+    # tests/test_logcumsumexp.py). fp32 and bf16 exercise both the fp32 and the
+    # bf16 kernel paths.
+    bench = base.GenericBenchmark2DOnly(
+        op_name="logcumsumexp",
+        input_fn=logcumsumexp_input_fn,
+        torch_op=torch.logcumsumexp,
+        dtypes=[torch.float32, torch.bfloat16],
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.logcumsumexp)
+    bench.run()
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.logcumsumexp_out
 def test_logcumsumexp_out():
     bench = base.GenericBenchmark2DOnly(

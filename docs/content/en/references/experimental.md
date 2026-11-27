@@ -26,7 +26,7 @@ This document lists all experimental operators in FlagGems that have achieved an
 
 ## Performance Overview
 
-- **Total Operators**: 142
+- **Total Operators**: 139
 - **Average Speedup Range**: 0.81x - 7.23x
 - **Test Environment**: Hopper GPU
 - **Filtering Criteria**: Average speedup ≥ 0.8x
@@ -136,48 +136,44 @@ This document lists all experimental operators in FlagGems that have achieved an
 |  99 | `log1p_`                      | **1.00x** 📈  | Math       |
 | 100 | `frac`                        | **1.00x** ⚡  | Math       |
 | 101 | `_functional_sym_constrain_range_for_size` | **1.00x** ⚡  | Internal   |
-| 102 | `expand`                      | **1.00x** ⚡  | Shape      |
-| 103 | `lift`                        | **1.00x** ⚡  | Other      |
-| 104 | `unsqueeze`                   | **1.00x** ⚡  | Shape      |
-| 105 | `_unsafe_view`                | **1.00x** ⚡  | Internal   |
-| 106 | `softshrink`                  | **1.00x** ⚡  | Activation |
-| 107 | `log2_`                       | **1.00x** ⚡  | Math       |
-| 108 | `permute`                     | **1.00x** ⚡  | Shape      |
-| 109 | `leaky_relu_`                 | **1.00x** ⚡  | Activation |
-| 110 | `atanh_`                      | **1.00x** ⚡  | Math       |
-| 111 | `permute_copy`                | **1.00x** ⚡  | Shape      |
-| 112 | `fft_ifftshift`               | **1.00x** ⚡  | Other      |
-| 113 | `copy_`                       | **1.00x** ⚡  | Other      |
-| 114 | `fix_`                        | **1.00x** ⚡  | Math       |
-| 115 | `slice_scatter`               | **0.99x** ⚡  | Other      |
-| 116 | `exp2_`                       | **0.99x** ⚡  | Math       |
-| 117 | `rsqrt_`                      | **0.99x** ⚡  | Math       |
-| 118 | `threshold`                   | **0.98x** ⚡  | Activation |
-| 119 | `reciprocal`                  | **0.97x** ⚡  | Math       |
-| 120 | `maximum`                     | **0.97x** ⚡  | Arithmetic |
-| 121 | `abs`                         | **0.96x** ⚡  | Math       |
-| 122 | `arccosh`                     | **0.96x** ⚡  | Math       |
-| 123 | `multiply`                    | **0.95x** ⚡  | Arithmetic |
-| 124 | `margin_ranking_loss`         | **0.95x** ⚡  | Loss       |
-| 125 | `celu_`                       | **0.92x** ⚡  | Activation |
-| 126 | `hardswish`                   | **0.91x** ⚡  | Activation |
-| 127 | `soft_margin_loss`            | **0.90x** ⚡  | Loss       |
-| 128 | `replication_pad2d`           | **0.90x** ⚡  | Padding    |
-| 129 | `unsqueeze_copy`              | **0.89x** ⚡  | Shape      |
-| 130 | `native_dropout_backward`     | **0.89x** ⚡  | Other      |
-| 131 | `slice_backward`              | **0.88x** ⚡  | Other      |
-| 132 | `relu_`                       | **0.86x** ⚡  | Activation |
-| 133 | `negative_`                   | **0.86x** ⚡  | Math       |
-| 134 | `abs_`                        | **0.86x** ⚡  | Math       |
-| 135 | `take`                        | **0.86x** ⚡  | Other      |
-| 136 | `sgn`                         | **0.86x** ⚡  | Math       |
-| 137 | `erf_`                        | **0.82x** ⚡  | Math       |
-| 138 | `gelu_`                       | **0.82x** ⚡  | Activation |
-| 139 | `erfinv_`                     | **0.82x** ⚡  | Math       |
-| 140 | `_log_softmax_backward_data`  | **0.82x** ⚡  | Internal   |
-| 141 | `log10_`                      | **0.81x** ⚡  | Math       |
-| 142 | `rmsnorm`                     | **special** ⚡ | Normalization |
-
+| 102 | `lift`                        | **1.00x** ⚡  | Other      |
+| 103 | `softshrink`                  | **1.00x** ⚡  | Activation |
+| 104 | `log2_`                       | **1.00x** ⚡  | Math       |
+| 105 | `permute`                     | **1.00x** ⚡  | Shape      |
+| 106 | `leaky_relu_`                 | **1.00x** ⚡  | Activation |
+| 107 | `atanh_`                      | **1.00x** ⚡  | Math       |
+| 108 | `permute_copy`                | **1.00x** ⚡  | Shape      |
+| 109 | `fft_ifftshift`               | **1.00x** ⚡  | Other      |
+| 110 | `copy_`                       | **1.00x** ⚡  | Other      |
+| 111 | `fix_`                        | **1.00x** ⚡  | Math       |
+| 112 | `slice_scatter`               | **0.99x** ⚡  | Other      |
+| 113 | `exp2_`                       | **0.99x** ⚡  | Math       |
+| 114 | `rsqrt_`                      | **0.99x** ⚡  | Math       |
+| 115 | `threshold`                   | **0.98x** ⚡  | Activation |
+| 116 | `reciprocal`                  | **0.97x** ⚡  | Math       |
+| 117 | `maximum`                     | **0.97x** ⚡  | Arithmetic |
+| 118 | `abs`                         | **0.96x** ⚡  | Math       |
+| 119 | `arccosh`                     | **0.96x** ⚡  | Math       |
+| 120 | `multiply`                    | **0.95x** ⚡  | Arithmetic |
+| 121 | `margin_ranking_loss`         | **0.95x** ⚡  | Loss       |
+| 122 | `celu_`                       | **0.92x** ⚡  | Activation |
+| 123 | `hardswish`                   | **0.91x** ⚡  | Activation |
+| 124 | `soft_margin_loss`            | **0.90x** ⚡  | Loss       |
+| 125 | `replication_pad2d`           | **0.90x** ⚡  | Padding    |
+| 126 | `unsqueeze_copy`              | **0.89x** ⚡  | Shape      |
+| 127 | `native_dropout_backward`     | **0.89x** ⚡  | Other      |
+| 128 | `slice_backward`              | **0.88x** ⚡  | Other      |
+| 129 | `relu_`                       | **0.86x** ⚡  | Activation |
+| 130 | `negative_`                   | **0.86x** ⚡  | Math       |
+| 131 | `abs_`                        | **0.86x** ⚡  | Math       |
+| 132 | `take`                        | **0.86x** ⚡  | Other      |
+| 133 | `sgn`                         | **0.86x** ⚡  | Math       |
+| 134 | `erf_`                        | **0.82x** ⚡  | Math       |
+| 135 | `gelu_`                       | **0.82x** ⚡  | Activation |
+| 136 | `erfinv_`                     | **0.82x** ⚡  | Math       |
+| 137 | `_log_softmax_backward_data`  | **0.82x** ⚡  | Internal   |
+| 138 | `log10_`                      | **0.81x** ⚡  | Math       |
+| 139 | `rmsnorm`                     | **special** ⚡ | Normalization |
 **Legend**:
 
 - 🏆 **Outstanding**: Speedup ≥ 2.0x

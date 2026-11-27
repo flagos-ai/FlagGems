@@ -23,7 +23,33 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-_MAX_GRID_YZ = 255
+_MAX_GRID_YZ = 8
+_MAX_GRID = 48
+
+# GCU400 replication_pad1d strategy (2026-11-16 perf pass, same fix family as
+# replication_pad2d v5 / _pad_circular v4). The KernelGen baseline launches at
+# most 8 row programs on grid axis 1 and walks every (n, c) row serially with
+# a runtime div/mod decode and int64 index chains, so any shape with more than
+# ~32 rows pays a serial-row tax (core bench (8,32,256): 16.6us vs 4.1us
+# floor; (64,1024,256): 3542us vs 93us). The rewrite keeps one kernel launch
+# and splits contiguous inputs (rows flatten to R = B*C, row-major) into:
+#   * rowclamp kernels: U rows per program, full output width in one BLOCK,
+#     clamp-decoded source columns computed once per program, all U loads
+#     issued before all U stores (family "loads all issued" pattern; the
+#     sequential load->store chain measured +68% on (8,32,256)).
+#   * flat kernel: one flat grid over the R*Wo output elements with a
+#     compile-time-constant Wo row decode (mul-shift, i32) -- wins on tiny
+#     row counts (R < 16) and rows wider than the 8192 BLOCK cap where the
+#     row-group tiling cannot hold a full row.
+#   * the original strided kernel: unchanged fallback for non-contiguous
+#     input/out or outputs >= 2**31 elements (int64-safe).
+# Dispatch (probe-tuned on GCU400, bitwise-checked vs aten): R < 16 or
+# Wo > 8192 -> flat (BLOCK 256/nw1 for small totals, 2048/nw4 otherwise);
+# otherwise rowclamp with Wo >= 384 -> U4/nw4, R < 128 -> U4/nw1, else
+# U16/nw2. DSM peak: U16 x 512 lanes x 4B = 32KB (wide arm 4 x 8192 x 4B =
+# 128KB), well under the 448KB/program line. Cold compiles retry the launch
+# (documented P02 node-level toolchain flakiness, reflection_pad2d /
+# _pad_circular precedent).
 
 
 @triton.jit
@@ -69,6 +95,139 @@ def replication_pad1d_kernel(
         tl.store(ptrs_out, x, mask=mask)
 
 
+@triton.jit
+def _pad1d_flat_kernel(
+    x_ptr,
+    o_ptr,
+    total,
+    W: tl.constexpr,
+    Wo: tl.constexpr,
+    plw: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    G = tl.num_programs(0)
+    Wm1 = W - 1
+    offs = tl.arange(0, BLOCK)
+    for base in range(pid * BLOCK, total, G * BLOCK):
+        off = base + offs
+        m = off < total
+        row = off // Wo
+        col = off - row * Wo
+        sj = col - plw
+        sj = tl.maximum(sj, 0)
+        sj = tl.minimum(sj, Wm1)
+        v = tl.load(x_ptr + row * W + sj, mask=m)
+        tl.store(o_ptr + off, v, mask=m)
+
+
+@triton.jit
+def _pad1d_rowclamp_u4_kernel(
+    x_ptr,
+    o_ptr,
+    R,
+    W: tl.constexpr,
+    Wo: tl.constexpr,
+    plw: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    G = tl.num_programs(0)
+    offs = tl.arange(0, BLOCK)
+    m = offs < Wo
+    Wm1 = W - 1
+    sj = offs - plw
+    sj = tl.maximum(sj, 0)
+    sj = tl.minimum(sj, Wm1)
+    GU = G * 4
+    for r0 in range(pid * 4, R, GU):
+        if r0 + 4 <= R:
+            b0 = r0 * W
+            d0 = r0 * Wo
+            v0 = tl.load(x_ptr + b0 + 0 * W + sj, mask=m)
+            v1 = tl.load(x_ptr + b0 + 1 * W + sj, mask=m)
+            v2 = tl.load(x_ptr + b0 + 2 * W + sj, mask=m)
+            v3 = tl.load(x_ptr + b0 + 3 * W + sj, mask=m)
+            tl.store(o_ptr + d0 + 0 * Wo + offs, v0, mask=m)
+            tl.store(o_ptr + d0 + 1 * Wo + offs, v1, mask=m)
+            tl.store(o_ptr + d0 + 2 * Wo + offs, v2, mask=m)
+            tl.store(o_ptr + d0 + 3 * Wo + offs, v3, mask=m)
+        else:
+            for i in range(0, 4):
+                r_i = tl.minimum(r0 + i, R - 1)
+                v_i = tl.load(x_ptr + r_i * W + sj, mask=m)
+                tl.store(o_ptr + r_i * Wo + offs, v_i, mask=m)
+
+
+@triton.jit
+def _pad1d_rowclamp_u16_kernel(
+    x_ptr,
+    o_ptr,
+    R,
+    W: tl.constexpr,
+    Wo: tl.constexpr,
+    plw: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    G = tl.num_programs(0)
+    offs = tl.arange(0, BLOCK)
+    m = offs < Wo
+    Wm1 = W - 1
+    sj = offs - plw
+    sj = tl.maximum(sj, 0)
+    sj = tl.minimum(sj, Wm1)
+    GU = G * 16
+    for r0 in range(pid * 16, R, GU):
+        if r0 + 16 <= R:
+            b0 = r0 * W
+            d0 = r0 * Wo
+            v0 = tl.load(x_ptr + b0 + 0 * W + sj, mask=m)
+            v1 = tl.load(x_ptr + b0 + 1 * W + sj, mask=m)
+            v2 = tl.load(x_ptr + b0 + 2 * W + sj, mask=m)
+            v3 = tl.load(x_ptr + b0 + 3 * W + sj, mask=m)
+            v4 = tl.load(x_ptr + b0 + 4 * W + sj, mask=m)
+            v5 = tl.load(x_ptr + b0 + 5 * W + sj, mask=m)
+            v6 = tl.load(x_ptr + b0 + 6 * W + sj, mask=m)
+            v7 = tl.load(x_ptr + b0 + 7 * W + sj, mask=m)
+            v8 = tl.load(x_ptr + b0 + 8 * W + sj, mask=m)
+            v9 = tl.load(x_ptr + b0 + 9 * W + sj, mask=m)
+            v10 = tl.load(x_ptr + b0 + 10 * W + sj, mask=m)
+            v11 = tl.load(x_ptr + b0 + 11 * W + sj, mask=m)
+            v12 = tl.load(x_ptr + b0 + 12 * W + sj, mask=m)
+            v13 = tl.load(x_ptr + b0 + 13 * W + sj, mask=m)
+            v14 = tl.load(x_ptr + b0 + 14 * W + sj, mask=m)
+            v15 = tl.load(x_ptr + b0 + 15 * W + sj, mask=m)
+            tl.store(o_ptr + d0 + 0 * Wo + offs, v0, mask=m)
+            tl.store(o_ptr + d0 + 1 * Wo + offs, v1, mask=m)
+            tl.store(o_ptr + d0 + 2 * Wo + offs, v2, mask=m)
+            tl.store(o_ptr + d0 + 3 * Wo + offs, v3, mask=m)
+            tl.store(o_ptr + d0 + 4 * Wo + offs, v4, mask=m)
+            tl.store(o_ptr + d0 + 5 * Wo + offs, v5, mask=m)
+            tl.store(o_ptr + d0 + 6 * Wo + offs, v6, mask=m)
+            tl.store(o_ptr + d0 + 7 * Wo + offs, v7, mask=m)
+            tl.store(o_ptr + d0 + 8 * Wo + offs, v8, mask=m)
+            tl.store(o_ptr + d0 + 9 * Wo + offs, v9, mask=m)
+            tl.store(o_ptr + d0 + 10 * Wo + offs, v10, mask=m)
+            tl.store(o_ptr + d0 + 11 * Wo + offs, v11, mask=m)
+            tl.store(o_ptr + d0 + 12 * Wo + offs, v12, mask=m)
+            tl.store(o_ptr + d0 + 13 * Wo + offs, v13, mask=m)
+            tl.store(o_ptr + d0 + 14 * Wo + offs, v14, mask=m)
+            tl.store(o_ptr + d0 + 15 * Wo + offs, v15, mask=m)
+        else:
+            for i in range(0, 16):
+                r_i = tl.minimum(r0 + i, R - 1)
+                v_i = tl.load(x_ptr + r_i * W + sj, mask=m)
+                tl.store(o_ptr + r_i * Wo + offs, v_i, mask=m)
+
+
+def _next_pow2(n, cap):
+    p = 1
+    while p < n and p < cap:
+        p *= 2
+    return p
+
+
 def _launch_replication_pad1d_kernel(input: torch.Tensor, padding, out: torch.Tensor):
     if isinstance(padding, torch.Tensor):
         padding = tuple(padding.tolist())
@@ -109,25 +268,94 @@ def _launch_replication_pad1d_kernel(input: torch.Tensor, padding, out: torch.Te
         )
 
     num_nc = B * C
-    grid = (triton.cdiv(W_out, 256), min(num_nc, _MAX_GRID_YZ))
-    with torch_device_fn.device(input.device):
-        replication_pad1d_kernel[grid](
-            input,
-            out,
-            num_nc,
-            B,
-            C,
-            W_in,
-            W_out,
-            left,
-            in_s_n if dim == 3 else in_s_n,
-            in_s_c,
-            in_s_w,
-            out_s_n if (dim == 3 or out.dim() == 3) else 0,
-            out_s_c,
-            out_s_w,
-            BLOCK_SIZE=256,
-        )
+    total = num_nc * W_out
+
+    # fast path: contiguous rows flatten to (num_nc, W) row-major, and the
+    # whole output fits the i32 index domain (see module comment)
+    fast = (
+        input.is_contiguous() and out.is_contiguous() and 0 < total < 2**31 and W_in > 0
+    )
+
+    def _launch():
+        if fast:
+            if num_nc < 16 or W_out > 8192:
+                if total <= 16384:
+                    BLOCK, nw = 256, 1
+                else:
+                    BLOCK, nw = 2048, 4
+                grid = (min(_MAX_GRID, (total + BLOCK - 1) // BLOCK),)
+                _pad1d_flat_kernel[grid](
+                    input,
+                    out,
+                    total,
+                    W=W_in,
+                    Wo=W_out,
+                    plw=left,
+                    BLOCK=BLOCK,
+                    num_warps=nw,
+                )
+            else:
+                BLOCK = _next_pow2(W_out, 8192)
+                if W_out >= 384:
+                    U, nw = 4, 4
+                elif num_nc < 128:
+                    U, nw = 4, 1
+                else:
+                    U, nw = 16, 2
+                grid = (min(_MAX_GRID, (num_nc + U - 1) // U),)
+                if U == 4:
+                    _pad1d_rowclamp_u4_kernel[grid](
+                        input,
+                        out,
+                        num_nc,
+                        W=W_in,
+                        Wo=W_out,
+                        plw=left,
+                        BLOCK=BLOCK,
+                        num_warps=nw,
+                    )
+                else:
+                    _pad1d_rowclamp_u16_kernel[grid](
+                        input,
+                        out,
+                        num_nc,
+                        W=W_in,
+                        Wo=W_out,
+                        plw=left,
+                        BLOCK=BLOCK,
+                        num_warps=nw,
+                    )
+        else:
+            grid = (triton.cdiv(W_out, 256), min(num_nc, _MAX_GRID_YZ))
+            replication_pad1d_kernel[grid](
+                input,
+                out,
+                num_nc,
+                B,
+                C,
+                W_in,
+                W_out,
+                left,
+                in_s_n,
+                in_s_c,
+                in_s_w,
+                out_s_n if (dim == 3 or out.dim() == 3) else 0,
+                out_s_c,
+                out_s_w,
+                BLOCK_SIZE=256,
+            )
+
+    # cold compiles hit the documented node-level toolchain flakiness (P02
+    # family); retrying the launch re-enters compilation and succeeds.
+    # Zero cost on the warm path; re-execution is idempotent (pure copy).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(input.device):
+                _launch()
+            break
+        except Exception:
+            if attempt == 2:
+                raise
     return out
 
 

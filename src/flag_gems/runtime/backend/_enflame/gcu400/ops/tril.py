@@ -431,7 +431,7 @@ _WIDE_EXACT_ROW_MIN_N = 2048
 _WIDE_EXACT_ROW_MAX_N = 8192
 _WIDE_EXACT_ROW_MIN_ROWS = 256
 _WIDE_EXACT_ROW_ALWAYS_ROW_M = 512
-_TINY_BATCHED_TILE_MIN_BATCH = 128
+_TINY_BATCHED_TILE_MIN_BATCH = 64
 
 
 def _use_wide_exact_row(M: int, N: int, batch: int):
@@ -625,20 +625,24 @@ def _launch_exact_diag0_tile(
 def _launch_tril_inplace_contiguous(
     input: torch.Tensor,
     diagonal: int,
-    block_m: int = 16,
-    block_n: int = 64,
-    num_warps: int = 4,
+    block_m: int = 32,
+    block_n: int = 256,
+    num_warps: int = 2,
     num_stages: int = 2,
 ):
     M, N = input.shape[-2:]
     if input.numel() == 0:
         return input
 
+    batch = input.numel() // (M * N)
+    if M >= 4096 and M % 64 == 0 and N % 1024 == 0:
+        block_m, block_n, num_warps = 64, 1024, 4
+    elif batch > 1 and M == 512 and N == 512:
+        block_m, block_n, num_warps = 32, 512, 4
+
     active_rows = min(M, max(0, N - 1 - diagonal))
     if active_rows == 0:
         return input
-
-    batch = input.numel() // (M * N)
     num_n_tiles = triton.cdiv(N, block_n)
     grid = (
         triton.cdiv(active_rows, block_m),
@@ -790,6 +794,19 @@ def _launch_tril_strided_out(
     return out
 
 
+def _diag0_tile_config(M: int, N: int, batch: int, elem_size: int):
+    # Exact diag-0 tiling tuned on GCU400 across the QA core shapes:
+    # - huge square matrices prefer one 64x1024 tile per program;
+    # - large batched work amortizes per-program overhead with 64-row tiles for
+    #   2-byte dtypes, while 4-byte dtypes keep 32 rows to stay latency-friendly;
+    # - everything else does best with 32x512 tiles.
+    if M >= 4096 and M % 64 == 0 and N % 1024 == 0:
+        return 64, 1024
+    if batch > 1 and (M // 32) * (N // 512) * min(batch, _MAX_GRID_YZ) >= 4096:
+        return (64 if elem_size <= 2 else 32), 512
+    return 32, 512
+
+
 def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     M, N = input.shape[-2:]
     if input.numel() == 0:
@@ -803,6 +820,19 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
 
     input_to_use = input if input.is_contiguous() else input.contiguous()
     batch = input_to_use.numel() // (M * N)
+
+    if diagonal == 0 and M >= 512 and N >= 512 and M % 32 == 0 and N % 512 == 0:
+        block_m, block_n = _diag0_tile_config(M, N, batch, input_to_use.element_size())
+        programs = (M // block_m) * (N // block_n) * max(1, min(batch, _MAX_GRID_YZ))
+        if programs >= 32:
+            return _launch_exact_diag0_tile(
+                input_to_use,
+                out,
+                block_m=block_m,
+                block_n=block_n,
+                num_warps=4,
+                num_stages=2,
+            )
     if _use_wide_exact_row(M, N, batch):
         return _launch_exact_row(
             input_to_use,
@@ -810,20 +840,12 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
             diagonal,
             num_warps=_wide_exact_row_warps(N),
         )
-    if batch == 1 and M == 1024 and N == 1024 and diagonal == 0:
-        return _launch_exact_diag0_tile(
-            input_to_use,
-            out,
-            block_m=32,
-            block_n=64,
-            num_warps=4,
-        )
-    if batch >= 1 and M == 512 and N == 512 and diagonal == 0:
+    if batch == 1 and M == 512 and N == 512 and diagonal == 0:
         return _launch_exact_diag0_tile(
             input_to_use,
             out,
             block_m=16,
-            block_n=128,
+            block_n=256,
             num_warps=4,
         )
     if _use_tiny_batched_tile(M, N, batch):
@@ -836,6 +858,14 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
             num_warps=2,
         )
     if M <= 64 and N <= 64:
+        if diagonal == 0 and M % 16 == 0 and N % 64 == 0:
+            return _launch_exact_diag0_tile(
+                input_to_use,
+                out,
+                block_m=16,
+                block_n=64,
+                num_warps=2,
+            )
         return _launch_rows(
             input_to_use,
             out,
@@ -858,8 +888,8 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
                 input_to_use,
                 out,
                 diagonal,
-                block_m=16,
-                block_n=64,
+                block_m=32,
+                block_n=512,
                 num_warps=4,
             )
         return _launch_rows(
@@ -968,12 +998,37 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
                 num_warps=2,
             )
         if batch > 1 and M >= 256 and N >= 256:
+            if M == 512 and N == 512:
+                return _launch_tril_strided_out(
+                    input,
+                    out,
+                    int(diagonal),
+                    block_m=64,
+                    block_n=256,
+                    num_warps=4,
+                )
+            block_m = 32 if input.element_size() <= 2 else 64
             return _launch_tril_strided_out(
                 input,
                 out,
                 int(diagonal),
-                block_m=16,
-                block_n=64,
+                block_m=block_m,
+                block_n=512,
+                num_warps=4,
+            )
+        if (
+            batch == 1
+            and M >= 4096
+            and M % 64 == 0
+            and N % 1024 == 0
+            and input.element_size() <= 2
+        ):
+            return _launch_tril_strided_out(
+                input,
+                out,
+                int(diagonal),
+                block_m=64,
+                block_n=1024,
                 num_warps=4,
             )
         return _launch_tril_strided_out(
@@ -981,7 +1036,7 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
             out,
             int(diagonal),
             block_m=32,
-            block_n=64,
+            block_n=512,
             num_warps=4,
         )
 

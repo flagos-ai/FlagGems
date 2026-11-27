@@ -64,6 +64,11 @@ def _skip_half_cpu_reference(dtype, training):
     """
     if cfg.TO_CPU and training and dtype == torch.float16:
         pytest.skip("the CPU reference does not implement the training path for Half")
+    if flag_gems.vendor_name == "enflame" and training and dtype == torch.float16:
+        # enflame forwards aten::rrelu_with_noise to the same CPU kernel, so
+        # the device-side reference raises the identical "not implemented for
+        # 'Half'" error.
+        pytest.skip("enflame's rrelu_with_noise reference has no Half kernel")
 
 
 def _pair(shape, dtype, bounds, fill_noise=False):
@@ -557,9 +562,19 @@ def test_rrelu_with_noise_inplace_output_strides(training):
             torch.zeros_like(inp, memory_format=torch.contiguous_format)
         )
 
-        ref_out = torch.ops.aten.rrelu_with_noise_(
-            utils.to_reference(inp.clone()), ref_noise, lower, upper, training
-        )
+        if flag_gems.vendor_name == "kunlunxin":
+            _ref_in = torch.empty_strided(
+                inp.shape, inp.stride(), dtype=inp.dtype, device="cpu"
+            )
+            _ref_in.copy_(utils.to_reference(inp).cpu())
+            ref_noise = ref_noise.cpu()
+            ref_out = torch.ops.aten.rrelu_with_noise_(
+                _ref_in, ref_noise, lower, upper, training
+            )
+        else:
+            ref_out = torch.ops.aten.rrelu_with_noise_(
+                utils.to_reference(inp.clone()), ref_noise, lower, upper, training
+            )
 
         result = flag_gems.rrelu_with_noise_(inp, noise, lower, upper, training)
 

@@ -28,9 +28,7 @@ except ImportError:
     VLLM_AVAILABLE = False
 
 import flag_gems
-from flag_gems.ops.fp8_paged_mqa_logits import (
-    fp8_paged_mqa_logits as gems_fp8_paged_mqa_logits,
-)
+from flag_gems import fp8_paged_mqa_logits as gems_fp8_paged_mqa_logits
 
 from . import base
 
@@ -46,6 +44,18 @@ def is_hopper_available():
 
 DEEPGEMM_AVAILABLE = VLLM_AVAILABLE and has_deep_gemm()
 HOPPER_AVAILABLE = is_hopper_available()
+
+# The vLLM/DeepGEMM baseline is CUDA Hopper only. Vendors listed here are
+# timed against the dequantized torch reference instead of skipping the case.
+TORCH_REFERENCE_VENDORS = ("enflame",)
+USE_DEEPGEMM_BASELINE = (
+    DEEPGEMM_AVAILABLE
+    and HOPPER_AVAILABLE
+    and flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS
+)
+BASELINE_UNAVAILABLE = (
+    flag_gems.vendor_name not in TORCH_REFERENCE_VENDORS and not USE_DEEPGEMM_BASELINE
+)
 
 
 def kv_cache_cast_to_fp8_deepgemm(x: torch.Tensor) -> torch.Tensor:
@@ -154,11 +164,55 @@ def _build_case(
     )
 
 
+def torch_reference_fp8_paged_mqa_logits(
+    q_fp8, kv_cache, weights, context_lens, block_tables, max_model_len
+):
+    """Dequantized torch reference for the paged MQA logits baseline."""
+    batch_size, next_n, heads, dim = q_fp8.shape
+    block_size = kv_cache.shape[1]
+    device = q_fp8.device
+    q_float = q_fp8.to(torch.float32)
+    logits = torch.full(
+        (batch_size * next_n, max_model_len),
+        float("-inf"),
+        device=device,
+        dtype=torch.float32,
+    )
+    for batch_idx in range(batch_size):
+        context_len = int(context_lens[batch_idx])
+        for next_n_idx in range(next_n):
+            query_pos = context_len - next_n + next_n_idx
+            keep = min(context_len, query_pos + 1)
+            if keep <= 0:
+                continue
+            positions = torch.arange(keep, device=device)
+            phys_blocks = block_tables[batch_idx, positions // block_size].long()
+            intra_positions = positions % block_size
+            kv_rows = kv_cache[phys_blocks, intra_positions, 0]
+            kv_values = (
+                kv_rows[:, :dim]
+                .contiguous()
+                .view(torch.float8_e4m3fn)
+                .to(torch.float32)
+            )
+            kv_scales = (
+                kv_rows[:, dim : dim + 4].contiguous().view(torch.float32).squeeze(-1)
+            )
+            dots = (kv_values @ q_float[batch_idx, next_n_idx].T) * kv_scales.unsqueeze(
+                1
+            )
+            dots = torch.clamp(dots, min=0.0)
+            row_idx = batch_idx * next_n + next_n_idx
+            logits[row_idx, :keep] = (dots * weights[row_idx].unsqueeze(0)).sum(-1)
+    return logits
+
+
 class FP8PagedMQACompareBenchmark(base.Benchmark):
     def __init__(self):
+        baseline = self._vllm_wrapper if USE_DEEPGEMM_BASELINE else self._torch_wrapper
         super().__init__(
             "fp8_paged_mqa_logits_gems_vs_deepgemm",
-            self._vllm_wrapper,
+            baseline,
             [torch.bfloat16],
         )
         self.set_gems(self._gems_wrapper)
@@ -188,9 +242,12 @@ class FP8PagedMQACompareBenchmark(base.Benchmark):
                 block_tables,
                 max_model_len,
             ) = case
-            schedule_metadata = get_paged_mqa_logits_metadata(
-                context_lens, blocksize, get_num_sms()
-            )
+            if USE_DEEPGEMM_BASELINE:
+                schedule_metadata = get_paged_mqa_logits_metadata(
+                    context_lens, blocksize, get_num_sms()
+                )
+            else:
+                schedule_metadata = None
             yield (
                 q_fp8,
                 kv_dg,
@@ -229,6 +286,28 @@ class FP8PagedMQACompareBenchmark(base.Benchmark):
         )
 
     @staticmethod
+    def _torch_wrapper(
+        q_fp8,
+        kv_cache_fp8_deepgemm,
+        kv_cache_fp8_triton,
+        weights,
+        context_lens,
+        block_tables,
+        schedule_metadata,
+        max_model_len,
+        q_dtype,
+        blocksize,
+    ):
+        return torch_reference_fp8_paged_mqa_logits(
+            q_fp8.cpu(),
+            kv_cache_fp8_triton.cpu(),
+            weights.cpu(),
+            context_lens.cpu(),
+            block_tables.cpu(),
+            max_model_len,
+        )
+
+    @staticmethod
     def _gems_wrapper(
         q_fp8,
         kv_cache_fp8_deepgemm,
@@ -252,13 +331,8 @@ class FP8PagedMQACompareBenchmark(base.Benchmark):
 
 
 @pytest.mark.skipif(
-    not (
-        torch.cuda.is_available()
-        and VLLM_AVAILABLE
-        and DEEPGEMM_AVAILABLE
-        and HOPPER_AVAILABLE
-    ),
-    reason="requires CUDA + vLLM + DeepGEMM + Hopper",
+    BASELINE_UNAVAILABLE,
+    reason="requires CUDA + vLLM + DeepGEMM + Hopper baseline",
 )
 @pytest.mark.performance
 @pytest.mark.fp8_paged_mqa_logits

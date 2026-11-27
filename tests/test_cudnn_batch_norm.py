@@ -120,6 +120,30 @@ def test_cudnn_batch_norm_layout(shape, layout, dtype, training):
     _check(args, flag_gems.cudnn_batch_norm(*args, training, 0.1, 1e-5), ref, training)
 
 
+@pytest.mark.cudnn_batch_norm
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="requires FP64")
+@pytest.mark.parametrize("layout", ["contiguous", "channels_last"])
+@pytest.mark.parametrize("dtype", [torch.float64])
+def test_cudnn_batch_norm_fp64_inference_variance(layout, dtype):
+    args = _inputs((2, 6, 3, 5), dtype, layout)
+    x, w, b, rm, rv = args
+    x.fill_(1)
+    x[:, 2].fill_(1e150)
+    w.fill_(1)
+    b.zero_()
+    rm.zero_()
+    rv.copy_(
+        torch.tensor(
+            [0.0, 0.71, 1e300, float("inf"), float("nan"), -1.0],
+            dtype=dtype,
+            device=flag_gems.device,
+        )
+    )
+    ref = _reference(args, False, 0.2, 1e-5)
+    result = flag_gems.cudnn_batch_norm(*args, False, 0.2, 1e-5)
+    _check(args, result, ref, False)
+
+
 @pytest.mark.cudnn_batch_norm_out
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("training", [True, False])
@@ -209,7 +233,22 @@ def test_cudnn_batch_norm_invalid(bad):
 
 @pytest.mark.cudnn_batch_norm
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("registered", [False, True])
+@pytest.mark.parametrize(
+    "registered",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "enflame",
+                reason=(
+                    "torch aten not support due to: enflame backend does not "
+                    "support registering a python kernel on aten::cudnn_batch_norm"
+                ),
+            ),
+        ),
+    ],
+)
 @pytest.mark.parametrize("training", [True, False])
 @pytest.mark.parametrize("shape", [(3, 7, 17), (3, 7, 2051)])
 def test_cudnn_batch_norm_autograd_after_registration(
@@ -311,6 +350,13 @@ def test_cudnn_batch_norm_out_invalid(bad):
 
 
 @pytest.mark.cudnn_batch_norm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::cudnn_batch_norm"
+    ),
+)
 def test_cudnn_batch_norm_out_registered():
     args = _inputs((2, 3, 17), torch.float32)
     ref = _reference(args, True, 0.1, 1e-5)

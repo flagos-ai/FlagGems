@@ -30,13 +30,42 @@ def ops_list_to_str(ops_list):
     return "_".join(ops_list).replace(".", "_").replace("-", "_")
 
 
-def cambricon_log_text(caplog):
-    if flag_gems.vendor_name != "cambricon":
+def _vendor_log_root(fn):
+    """Return the top-level logger name used by *fn*'s module, or None if
+    already under the flag_gems hierarchy."""
+    root = fn.__module__.split(".")[0]
+    return None if root == "flag_gems" else root
+
+
+def _op_log_fragment(fn):
+    """Return the logger-name prefix (name.funcName) used by *fn*."""
+    return f"{fn.__module__}.{fn.__name__}"
+
+
+def _vendor_log_roots(*fns):
+    """Return the set of non-flag_gems top-level logger names used by *fns*.
+
+    A backend may override only some ops (e.g. hopper overrides ``mul`` but not
+    ``add``), so every probed op has to be checked, not just one of them.
+    """
+    return {r for r in (_vendor_log_root(fn) for fn in fns) if r is not None}
+
+
+def _capture_vendor_logs(caplog, vendor_roots):
+    for root in vendor_roots:
+        caplog.set_level(logging.DEBUG, logger=root)
+
+
+def _extra_log_text(caplog, vendor_roots):
+    """Format caplog records from *vendor_roots* as '[DEBUG] name.funcName: msg' lines."""
+    if not vendor_roots:
         return ""
+    if isinstance(vendor_roots, str):
+        vendor_roots = {vendor_roots}
     return "\n".join(
-        f"[DEBUG] flag_gems.{r.name}.{r.funcName}: {r.getMessage()}"
+        f"[DEBUG] {r.name}.{r.funcName}: {r.getMessage()}"
         for r in caplog.records
-        if r.name.startswith("_cambricon")
+        if any(r.name.startswith(root) for root in vendor_roots)
     )
 
 
@@ -60,34 +89,27 @@ def run_ops_and_logs(tmp_path, filename, include=None, exclude=None):
 
 
 def test_enable(tmp_path, caplog):
-    if flag_gems.vendor_name == "cambricon":
-        caplog.set_level(logging.DEBUG, logger="_cambricon")
+    # Ops that must appear in the log. We use the actual functions so the logger
+    # name and funcName are derived from the real implementation regardless of
+    # which vendor backend has overridden them.
+    _probe_ops = [
+        flag_gems.add,
+        flag_gems.mul,
+        flag_gems.sum,
+        flag_gems.gt_scalar,
+        flag_gems.bitwise_not,
+        flag_gems.masked_fill,
+    ]
+    vendor_roots = _vendor_log_roots(*_probe_ops)
+    _capture_vendor_logs(caplog, vendor_roots)
     log_content = run_ops_and_logs(tmp_path, "gems_enable.log")
-    if flag_gems.vendor_name == "cambricon":
-        log_content += cambricon_log_text(caplog)
+    log_content += _extra_log_text(caplog, vendor_roots)
     log_prefixes = {
         line.split(":", 1)[0].strip()
         for line in log_content.splitlines()
         if line.strip() and ":" in line
     }
-    if flag_gems.vendor_name == "cambricon":
-        expected_fragments = [
-            "flag_gems._cambricon.ops.add",
-            "flag_gems._cambricon.ops.mul",
-            "flag_gems._cambricon.ops.sum",
-            "flag_gems._cambricon.ops.gt.gt_scalar",
-            "flag_gems._cambricon.ops.bitwise_not",
-            "flag_gems._cambricon.ops.masked_fill",
-        ]
-    else:
-        expected_fragments = [
-            "flag_gems.ops.add",
-            "flag_gems.ops.mul",
-            "flag_gems.ops.sum",
-            "flag_gems.ops.gt.gt_scalar",
-            "flag_gems.ops.bitwise_not",
-            "flag_gems.ops.masked_fill",
-        ]
+    expected_fragments = [_op_log_fragment(fn) for fn in _probe_ops]
     missing = [
         frag
         for frag in expected_fragments
@@ -120,14 +142,18 @@ def test_enable_with_exclude(exclude_op, tmp_path):
 @pytest.mark.parametrize(
     "include_op", [["sum"], ["mul", "sum"], ["bitwise_not", "masked_fill"]]
 )
-def test_only_enable(include_op, tmp_path):
+def test_only_enable(include_op, tmp_path, caplog):
+    vendor_roots = _vendor_log_roots(
+        flag_gems.add, flag_gems.mul, flag_gems.sum, flag_gems.masked_fill
+    )
+    _capture_vendor_logs(caplog, vendor_roots)
     log_content = run_ops_and_logs(
         tmp_path,
         f"gems_only_enable_{ops_list_to_str(include_op)}.log",
         include=include_op,
     )
-
-    pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    log_content += _extra_log_text(caplog, vendor_roots)
+    pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     for op in found_ops:
         assert (
@@ -140,19 +166,18 @@ def test_only_enable_with_yaml(tmp_path, caplog):
     yaml_path = tmp_path / "only_enable.yaml"
     yaml_path.write_text("include:\n  - sum\n  - mul\n")
 
-    if flag_gems.vendor_name == "cambricon":
-        caplog.set_level(logging.DEBUG, logger="_cambricon")
+    vendor_roots = _vendor_log_roots(
+        flag_gems.add, flag_gems.mul, flag_gems.sum, flag_gems.masked_fill
+    )
+    _capture_vendor_logs(caplog, vendor_roots)
     log_content = run_ops_and_logs(
         tmp_path,
         "gems_only_enable_yaml.log",
         include=str(yaml_path),
     )
-    if flag_gems.vendor_name == "cambricon":
-        log_content += cambricon_log_text(caplog)
-    if flag_gems.vendor_name == "cambricon":
-        pattern = r"flag_gems\._cambricon\.ops\.\w+\.(\w+):"
-    else:
-        pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    log_content += _extra_log_text(caplog, vendor_roots)
+    # Match funcName (last segment after the last dot before the colon)
+    pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
 
     assert found_ops, "No ops were logged; expected YAML include to be applied"
@@ -185,9 +210,10 @@ def test_only_enable_default(tmp_path, monkeypatch, caplog):
         "add": lambda a, b: a + b,
     }
 
-    if flag_gems.vendor_name == "cambricon":
+    vendor_roots = _vendor_log_roots(flag_gems.add, flag_gems.mul, flag_gems.sum)
+    if vendor_roots:
         caplog.clear()
-        caplog.set_level(logging.DEBUG, logger="_cambricon")
+        _capture_vendor_logs(caplog, vendor_roots)
     with flag_gems.use_gems(include="default", record=True, path=path_file):
         a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
         b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
@@ -201,13 +227,9 @@ def test_only_enable_default(tmp_path, monkeypatch, caplog):
 
     assert path_file.exists(), f"Log file {path_file} not found"
     log_content = path_file.read_text()
-    if flag_gems.vendor_name == "cambricon":
-        log_content += cambricon_log_text(caplog)
+    log_content += _extra_log_text(caplog, vendor_roots)
 
-    if flag_gems.vendor_name == "cambricon":
-        pattern = r"flag_gems\._cambricon\.ops\.[^\.]+\.(\w+):"
-    else:
-        pattern = r"flag_gems\.ops\.[^\.]+\.(\w+):"
+    pattern = r"\[DEBUG\] \S+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     assert found_ops, "No ops were logged for default include"
     assert found_ops.issubset(

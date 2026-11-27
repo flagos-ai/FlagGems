@@ -22,7 +22,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +322,9 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
+    # tl.program_id (int32) — avoid ext.program_id (int64) + arange (int32)
+    # which inserts illegal arith.extsi on GCU300.
+    pid = tl.program_id(0).to(tl.int32) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
     col_mask = pid < N
     dY += pid[None, :]
     X += pid[None, :]

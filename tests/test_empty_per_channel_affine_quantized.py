@@ -93,6 +93,10 @@ def _assert_matches_reference(res, ref, *, size, dtype, axis, scales, zero_point
     assert int_repr.device == res.device
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
+)
 @pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype", _QUANTIZED_DTYPES)
@@ -132,6 +136,10 @@ def test_empty_per_channel_affine_quantized(shape, dtype):
     assert res_out.qscheme() == torch.per_channel_affine
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
+)
 @pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("axis", [0, 1, -1])
 def test_empty_per_channel_affine_quantized_axis(axis):
@@ -163,6 +171,10 @@ def test_empty_per_channel_affine_quantized_axis(axis):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
+)
 @pytest.mark.empty_per_channel_affine_quantized
 def test_empty_per_channel_affine_quantized_float_zero_points():
     if utils.TO_CPU:
@@ -214,6 +226,10 @@ def test_empty_per_channel_affine_quantized_device_default_cpu():
     assert tuple(res_out.shape) == shape
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
+)
 @pytest.mark.empty_per_channel_affine_quantized
 def test_empty_per_channel_affine_quantized_memory_format():
     if utils.TO_CPU:

@@ -86,67 +86,109 @@ def _native_keyset(tensor):
     return _CPU_KEYSET if tensor.device.type == "cpu" else _DEVICE_KEYSET
 
 
-def _native_mul(left, right):
-    return _NATIVE_MUL_TENSOR.call_boxed(_native_keyset(left), left, right)
+if _CAN_CAPTURE_NATIVE_KERNELS:
 
+    def _native_mul(left, right):
+        return _NATIVE_MUL_TENSOR.call_boxed(_native_keyset(left), left, right)
 
-def _native_scale(tensor, scale):
-    return _NATIVE_MUL_SCALAR.call_boxed(_native_keyset(tensor), tensor, scale)
+    def _native_scale(tensor, scale):
+        return _NATIVE_MUL_SCALAR.call_boxed(_native_keyset(tensor), tensor, scale)
 
+    def _native_add(left, right):
+        return _NATIVE_ADD.call_boxed(_native_keyset(left), left, right, alpha=1)
 
-def _native_add(left, right):
-    return _NATIVE_ADD.call_boxed(_native_keyset(left), left, right, alpha=1)
+    def _native_matmul(left, right):
+        keyset = _native_keyset(left)
+        if left.ndim == 2:
+            return _NATIVE_MM.call_boxed(keyset, left, right)
 
+        n = left.shape[-1]
+        batch_count = left.numel() // (n * n)
+        left_3d = left.as_strided(
+            (batch_count, n, n),
+            (n * n, left.stride(-2), left.stride(-1)),
+        )
+        right_3d = right.as_strided(
+            (batch_count, n, n),
+            (n * n, right.stride(-2), right.stride(-1)),
+        )
+        result = _NATIVE_BMM.call_boxed(keyset, left_3d, right_3d)
+        return result.reshape(left.shape)
 
-def _native_matmul(left, right):
-    keyset = _native_keyset(left)
-    if left.ndim == 2:
-        return _NATIVE_MM.call_boxed(keyset, left, right)
+    def _native_adjoint(tensor):
+        transposed = tensor.transpose(-2, -1)
+        if not tensor.is_complex():
+            return transposed
+        # A CUDA-only redispatch skips the Conjugate fallback key. Materialize the
+        # conjugation before the native matmul/add so complex inputs keep mH semantics.
+        return _NATIVE_CONJ_PHYSICAL.call_boxed(_native_keyset(tensor), transposed)
 
-    n = left.shape[-1]
-    batch_count = left.numel() // (n * n)
-    left_3d = left.as_strided(
-        (batch_count, n, n),
-        (n * n, left.stride(-2), left.stride(-1)),
-    )
-    right_3d = right.as_strided(
-        (batch_count, n, n),
-        (n * n, right.stride(-2), right.stride(-1)),
-    )
-    result = _NATIVE_BMM.call_boxed(keyset, left_3d, right_3d)
-    return result.reshape(left.shape)
+    def _native_copy_impl(keyset, dst, src, non_blocking=False):
+        return _NATIVE_COPY.call_boxed(keyset, dst, src, non_blocking)
 
+    def _native_eigh(inp):
+        # The native CUDA eigensolver internally calls aten::copy_.  Under a full
+        # use_gems context that nested call would otherwise re-enter FlagGems.
+        # Override only copy_ for the duration of the vendor-library call, then
+        # restore the surrounding dispatcher registration.
+        native_copy_lib = torch.library.Library("aten", "IMPL")
+        native_copy_lib.impl(
+            "copy_",
+            _native_copy_impl,
+            runtime.device.dispatch_key,
+            with_keyset=True,
+            allow_override=True,
+        )
+        try:
+            return _NATIVE_EIGH.call_boxed(_native_keyset(inp), inp, "L", True)
+        finally:
+            native_copy_lib._destroy()
 
-def _native_adjoint(tensor):
-    transposed = tensor.transpose(-2, -1)
-    if not tensor.is_complex():
-        return transposed
-    # A CUDA-only redispatch skips the Conjugate fallback key. Materialize the
-    # conjugation before the native matmul/add so complex inputs keep mH semantics.
-    return _NATIVE_CONJ_PHYSICAL.call_boxed(_native_keyset(tensor), transposed)
+    def _native_resize(out, shape):
+        _NATIVE_RESIZE.call_boxed(_native_keyset(out), out, shape, memory_format=None)
 
+    def _native_copy_into(out, src):
+        _NATIVE_COPY.call_boxed(_native_keyset(out), out, src, False)
 
-def _native_copy_impl(keyset, dst, src, non_blocking=False):
-    return _NATIVE_COPY.call_boxed(keyset, dst, src, non_blocking)
+else:
+    # PyTorch builds without ``aten::linalg_matrix_sqrth`` (for example 2.11) or
+    # without ``torch.library.get_kernel`` still run this composition, through
+    # the public ``torch.linalg`` API instead of pre-captured vendor kernels.
+    # The registration above stays version-gated, so this path is only reached
+    # by direct ``flag_gems.linalg_matrix_sqrth`` calls (the accuracy tests).
+    #
+    # The calls below carry an explicit ``allow-torch-compute`` pragma: this
+    # branch is unreachable on builds that register the operator, and there is
+    # no Triton formulation of a complex eigensolver or complex GEMM to
+    # delegate to, so the vendor kernels are the only implementation. They are
+    # still device work -- not a CPU fallback -- and the same composition is
+    # used by the captured-kernel branch above.
 
+    def _native_mul(left, right):
+        return torch.mul(left, right)  # allow-torch-compute: vendor kernel, see above
 
-def _native_eigh(inp):
-    # The native CUDA eigensolver internally calls aten::copy_.  Under a full
-    # use_gems context that nested call would otherwise re-enter FlagGems.
-    # Override only copy_ for the duration of the vendor-library call, then
-    # restore the surrounding dispatcher registration.
-    native_copy_lib = torch.library.Library("aten", "IMPL")
-    native_copy_lib.impl(
-        "copy_",
-        _native_copy_impl,
-        runtime.device.dispatch_key,
-        with_keyset=True,
-        allow_override=True,
-    )
-    try:
-        return _NATIVE_EIGH.call_boxed(_native_keyset(inp), inp, "L", True)
-    finally:
-        native_copy_lib._destroy()
+    def _native_scale(tensor, scale):
+        return torch.mul(tensor, scale)  # allow-torch-compute: vendor kernel, see above
+
+    def _native_add(left, right):
+        return torch.add(left, right, alpha=1)  # allow-torch-compute: vendor kernel
+
+    def _native_matmul(left, right):
+        return torch.matmul(left, right)  # allow-torch-compute: vendor complex GEMM
+
+    def _native_adjoint(tensor):
+        transposed = tensor.transpose(-2, -1)
+        return transposed.conj() if tensor.is_complex() else transposed
+
+    def _native_eigh(inp):
+        # No Triton complex eigensolver exists; this is the vendor kernel.
+        return torch.linalg.eigh(inp, UPLO="L")  # allow-torch-compute
+
+    def _native_resize(out, shape):
+        out.resize_(shape)
+
+    def _native_copy_into(out, src):
+        out.copy_(src)
 
 
 @libentry()
@@ -230,9 +272,7 @@ def linalg_matrix_sqrth_out(inp, *, out):
                 UserWarning,
                 stacklevel=2,
             )
-        _NATIVE_RESIZE.call_boxed(
-            _native_keyset(out), out, result.shape, memory_format=None
-        )
+        _native_resize(out, result.shape)
 
-    _NATIVE_COPY.call_boxed(_native_keyset(out), out, result, False)
+    _native_copy_into(out, result)
     return out

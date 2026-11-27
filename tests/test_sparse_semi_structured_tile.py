@@ -23,19 +23,27 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+
 # The implementation file is ``ops/_sparse_semi_structured_tile.py``, whose file
 # stem derives the pytest marker ``underscore_sparse_semi_structured_tile`` (the
 # leading underscore cannot be expressed with attribute access, hence the
 # explicit registration). Tag the main test with it as well so a marker-only
 # selection for the changed ops file is not empty; the public
 # ``sparse_semi_structured_tile`` id keeps its own marker.
+# ``_ispytest`` is a private pytest keyword: pytest >= 7 requires it, pytest 6
+# rejects it outright. Build the decorator with whichever form the installed
+# pytest accepts so the module stays collectable everywhere.
+def _make_mark_decorator(name):
+    try:
+        return MarkDecorator(Mark(name, (), {}, _ispytest=True), _ispytest=True)
+    except TypeError:
+        return MarkDecorator(Mark(name, (), {}))
+
+
 setattr(
     pytest.mark,
     "underscore_sparse_semi_structured_tile",
-    MarkDecorator(
-        Mark("underscore_sparse_semi_structured_tile", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
+    _make_mark_decorator("underscore_sparse_semi_structured_tile"),
 )
 
 # The op prunes a dense (rows, cols) tensor to 2:4 sparsity. Shapes exercise
@@ -151,7 +159,8 @@ def _reference_mask(dense, algorithm):
     padded[:rows, :cols] = vals
     keys = torch.full((rows_r, cols_r), float("-inf"), dtype=torch.float32)
     keys[:rows, :cols] = key
-    out = torch.zeros((rows_r, cols_r), dtype=torch.float64)
+    out_type = torch.float64 if utils.fp64_is_supported else torch.float32
+    out = torch.zeros((rows_r, cols_r), dtype=out_type)
     nb, ntb = rows_r // 4, cols_r // 4
     for i in range(nb):
         for j in range(ntb):
@@ -173,6 +182,43 @@ def _reference_mask(dense, algorithm):
     return out
 
 
+def _check_cpu_reference(dense, algorithm, packed, meta, packed_t, meta_t, masks):
+    """Partial validation without the aten reference leg.
+
+    Checks the layout of the five outputs of the CUTLASS compressed
+    representation and, for the forward pair, that decoding reproduces the
+    greedy 2:4 selection of the CPU reference ``_reference_mask`` exactly.
+    """
+    rows, cols = dense.shape
+    rows_r = (rows + 31) // 32 * 32
+    cols_r = (cols + 63) // 64 * 64
+    rows_t = (cols + 31) // 32 * 32
+    width_t = (rows + 63) // 64 * 64 // 2
+    ncols_t = (rows + 63) // 64 * 64 // 16
+
+    assert packed.shape == (rows_r, cols_r // 2) and packed.dtype == dense.dtype
+    assert meta.shape == (rows_r, 2, cols_r // 32) and meta.dtype == torch.int16
+    assert packed_t.shape == (rows_t, width_t) and packed_t.dtype == dense.dtype
+    assert meta_t.shape == (rows_t, 2, ncols_t // 2)
+    assert meta_t.dtype == torch.int16
+    assert masks.shape == (rows_r // 8, cols_r // 8, 8) and masks.dtype == torch.uint8
+
+    ref = _reference_mask(dense, algorithm)[:rows, :cols]
+    dense_fwd = _decode(packed, meta)
+    assert dense_fwd.shape == (rows_r, cols_r)
+    assert torch.equal(dense_fwd.cpu()[:rows, :cols], ref)
+
+    # The transposed representation only carries values taken from the input
+    # (no stale slot of the transpose packing heuristic is decoded back); the
+    # transposed problem has the original rows as its columns.
+    dense_tr = _decode(packed_t, meta_t)
+    assert dense_tr.shape == (rows_t, width_t * 2)
+    decoded = dense_tr[:cols, :rows].cpu().to(torch.float32)
+    present = decoded[decoded != 0]
+    source = dense.detach().cpu().to(torch.float32)
+    assert torch.isin(present, source).all()
+
+
 @pytest.mark.sparse_semi_structured_tile
 @pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
@@ -187,6 +233,18 @@ def test_sparse_semi_structured_tile(shape, dtype, algorithm):
     packed, meta, packed_t, meta_t, masks = flag_gems._sparse_semi_structured_tile(
         dense, algorithm, True
     )
+
+    # On enflame the aten reference leg is unavailable: torch_gcu registers only
+    # the CPU fallback for aten::_sparse_semi_structured_tile (no GCU kernel) and
+    # PyTorch ships no CPU kernel for that aten op, so the aten packing/mask
+    # outputs cannot be produced. The assertions that only need the CPU greedy
+    # reference ``_reference_mask`` and the documented output layout are kept
+    # instead of skipping the whole case; every other vendor keeps the full
+    # aten-based coverage below.
+    if flag_gems.vendor_name == "enflame":
+        _check_cpu_reference(dense, algorithm, packed, meta, packed_t, meta_t, masks)
+        return
+
     a_packed, a_meta, a_packed_t, a_meta_t, a_masks = _aten_tile(dense, algorithm)
 
     # 1. shapes/dtypes of the five outputs

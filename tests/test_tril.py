@@ -21,6 +21,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
+
 SHAPE_DIAGONAL = list(zip(utils.POINTWISE_SHAPES, [-2, -2, -1, 0, 1, 3]))
 TRIL_DTYPES = utils.FLOAT_DTYPES + [torch.int32] + utils.BOOL_TYPES
 TRIL_OUT_EDGE_DTYPES = [torch.float32, torch.int64, torch.bool]
@@ -113,7 +115,7 @@ def test_tril_noncontiguous(shape, diagonal, dtype):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
 )
 def test_tril_wide_exact_row_dispatch(shape, diagonal, dtype):
-    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    tril_mod = importlib.import_module(flag_gems.tril.__module__)
     batch = 1
     for size in shape[:-2]:
         batch *= size
@@ -143,7 +145,7 @@ def test_tril_wide_exact_row_dispatch(shape, diagonal, dtype):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
 )
 def test_tril_tiny_batched_tile_dispatch(shape, expected):
-    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    tril_mod = importlib.import_module(flag_gems.tril.__module__)
     batch = 1
     for size in shape[:-2]:
         batch *= size
@@ -164,7 +166,7 @@ def test_tril_tiny_batched_tile_dispatch(shape, expected):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
 )
 def test_tril_tiny_batched_tile_correctness(shape, diagonal, dtype):
-    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    tril_mod = importlib.import_module(flag_gems.tril.__module__)
     batch = 1
     for size in shape[:-2]:
         batch *= size
@@ -222,6 +224,7 @@ def test_tril_out_resizes(shape, diagonal, dtype):
 
 
 @pytest.mark.tril_out
+@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend not supported")
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 @pytest.mark.skipif(
@@ -249,6 +252,7 @@ def test_tril_out_aliases_input(diagonal, dtype):
 
 
 @pytest.mark.tril_out
+@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend not supported")
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 @pytest.mark.skipif(
@@ -280,6 +284,7 @@ def test_tril_out_noncontiguous_out(diagonal, dtype):
 
 
 @pytest.mark.tril_out
+@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend not supported")
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 @pytest.mark.skipif(
@@ -311,6 +316,7 @@ def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
 
 
 @pytest.mark.tril_out
+@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend not supported")
 @pytest.mark.parametrize("diagonal", [-99, 99])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 @pytest.mark.skipif(
@@ -345,7 +351,7 @@ def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
 )
 def test_tril_out_strided_dispatch_guards():
-    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    tril_mod = importlib.import_module(flag_gems.tril.__module__)
     inp = torch.empty((2, 5, 7), dtype=torch.float32, device=flag_gems.device)
 
     transposed = torch.empty((2, 7, 5), dtype=inp.dtype, device=inp.device).transpose(
@@ -390,6 +396,7 @@ def test_tril_inplace_noncontiguous(shape, diagonal, dtype):
 
 
 @pytest.mark.tril_
+@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend not supported")
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
 @pytest.mark.skipif(
@@ -402,6 +409,7 @@ def test_tril_inplace_strided_batched_view(diagonal, dtype):
 
 
 @pytest.mark.tril_
+@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend not supported")
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
 @pytest.mark.skipif(
@@ -427,6 +435,10 @@ def test_tril_inplace_expanded_view(diagonal, dtype):
 
 
 @pytest.mark.tril_
+@pytest.mark.skipif(
+    vendor_name == "enflame",
+    reason="Aten gcu backend implementationissues can lead to mismatched results",
+)
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
 @pytest.mark.skipif(

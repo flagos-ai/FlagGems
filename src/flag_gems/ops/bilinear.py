@@ -45,7 +45,6 @@ def bilinear_kernel(
     stride_om,
     stride_on,
     BIAS: tl.constexpr,
-    BLOCK_K1: tl.constexpr,
     BLOCK_K2: tl.constexpr,
 ):
     """
@@ -62,43 +61,41 @@ def bilinear_kernel(
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
-    acc = 0.0
-    for k1 in range(0, tl.cdiv(K1, BLOCK_K1)):
-        offs_k1 = k1 * BLOCK_K1 + tl.arange(0, BLOCK_K1)
-        mask_k1 = offs_k1 < K1
+    # XPU cannot reduce a 2-D tile here: a full `tl.sum(prod)` or an axis=0
+    # reduction silently mis-computes and an axis=1 reduction runs out of
+    # shared memory. Reductions fed by gathered loads mis-compute as well, and
+    # a `tt.reduce` nested inside two loops fails to legalize. So walk
+    # in1_features row by row, accumulate a 1-D vector over in2_features and
+    # reduce that vector once, after the loops.
+    offs_k2 = tl.arange(0, BLOCK_K2)
+    acc = tl.zeros([BLOCK_K2], dtype=tl.float32)
 
-        x1 = tl.load(
-            input1_ptr + pid_m * stride_i1m + offs_k1 * stride_i1k,
-            mask=mask_k1,
-            other=0.0,
-        ).to(tl.float32)
+    for i in range(0, K1):
+        x1 = tl.load(input1_ptr + pid_m * stride_i1m + i * stride_i1k).to(tl.float32)
 
         for k2 in range(0, tl.cdiv(K2, BLOCK_K2)):
-            offs_k2 = k2 * BLOCK_K2 + tl.arange(0, BLOCK_K2)
-            mask_k2 = offs_k2 < K2
+            offs = k2 * BLOCK_K2 + offs_k2
+            mask = offs < K2
 
             x2 = tl.load(
-                input2_ptr + pid_m * stride_i2m + offs_k2 * stride_i2k,
-                mask=mask_k2,
+                input2_ptr + pid_m * stride_i2m + offs * stride_i2k,
+                mask=mask,
+                other=0.0,
+            ).to(tl.float32)
+            w = tl.load(
+                weight_ptr + pid_n * stride_wn + i * stride_wk1 + offs * stride_wk2,
+                mask=mask,
                 other=0.0,
             ).to(tl.float32)
 
-            w_ptrs = (
-                weight_ptr
-                + pid_n * stride_wn
-                + offs_k1[:, None] * stride_wk1
-                + offs_k2[None, :] * stride_wk2
-            )
-            w_mask = mask_k1[:, None] & mask_k2[None, :]
-            w = tl.load(w_ptrs, mask=w_mask, other=0.0).to(tl.float32)
+            acc += (x1 * w) * x2
 
-            prod = x1[:, None] * w * x2[None, :]
-            acc += tl.sum(prod)
+    result = tl.sum(acc, axis=0)
 
     if BIAS:
-        acc += tl.load(bias_ptr + pid_n).to(tl.float32)
+        result += tl.load(bias_ptr + pid_n).to(tl.float32)
 
-    output = acc.to(output_ptr.dtype.element_ty)
+    output = result.to(output_ptr.dtype.element_ty)
     tl.store(output_ptr + pid_m * stride_om + pid_n * stride_on, output)
 
 
@@ -133,8 +130,8 @@ def bilinear(input1, input2, weight, bias=None):
 
     output = torch.empty((M, N), device=input1.device, dtype=input1.dtype)
 
-    BLOCK_K1 = min(triton.next_power_of_2(K1), 32)
-    BLOCK_K2 = min(triton.next_power_of_2(K2), 32)
+    # A one-element tile cannot be lowered on XPU, so keep at least 2 lanes.
+    BLOCK_K2 = max(min(triton.next_power_of_2(K2), 32), 2)
 
     grid = (M, N)
 
@@ -159,7 +156,6 @@ def bilinear(input1, input2, weight, bias=None):
             output.stride(0),
             output.stride(1),
             BIAS=bias is not None,
-            BLOCK_K1=BLOCK_K1,
             BLOCK_K2=BLOCK_K2,
         )
 
