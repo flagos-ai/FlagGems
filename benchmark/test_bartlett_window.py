@@ -1,8 +1,9 @@
 import pytest
 import torch
 
-from . import base
+import flag_gems
 
+from . import base
 
 BARTLETT_DTYPES = [torch.float32, torch.float64]
 
@@ -18,13 +19,19 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip(
+            "Enflame native Bartlett computes Double windows with Float precision"
+        )
     (window_length,) = plan.builder_args
-    return (), {
-        "window_length": window_length,
-        "periodic": plan.params["periodic"],
-        "dtype": dtype,
-        "device": device,
-    }
+    return (
+        {
+            "window_length": window_length,
+            "periodic": plan.params["periodic"],
+            "dtype": dtype,
+            "device": device,
+        },
+    )
 
 
 @pytest.mark.bartlett_window

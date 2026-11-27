@@ -37,14 +37,27 @@ def test_bartlett_window(window_length, periodic, dtype):
     res_out = flag_gems.bartlett_window(
         window_length, periodic=periodic, dtype=dtype, device=device
     )
+    requested = torch.device(device)
+    if requested.type != "cpu" and requested.index is None:
+        requested = torch.device(
+            requested.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert res_out.device == requested
+    assert res_out.dtype == dtype and res_out.shape == (window_length,)
+    reference_device = "cpu" if flag_gems.vendor_name == "enflame" else device
     # Compare against the float64 window: torch's low-precision path accumulates
     # in the output dtype and drifts by 1-2 ULP, so it is not a tight reference.
     ref_out = utils.to_reference(
         torch.bartlett_window(
-            window_length, periodic=periodic, dtype=torch.float64, device=device
+            window_length,
+            periodic=periodic,
+            dtype=torch.float64,
+            device=reference_device,
         ),
         True,
     ).to(dtype)
+    if flag_gems.vendor_name == "enflame":
+        res_out = res_out.cpu()
     if window_length > 1:
         utils.gems_assert_close(res_out, ref_out, dtype)
     else:
