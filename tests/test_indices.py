@@ -313,9 +313,10 @@ def test_indices_backward_non_differentiable():
     fabricating a gradient for a coordinate buffer.
     """
     sparse = _make_coo(2, 8, (4, 5))
+    ref_sparse = utils.to_reference(sparse, False)
 
     res = flag_gems.indices(sparse)
-    ref = torch.Tensor.indices(sparse)
+    ref = torch.Tensor.indices(ref_sparse)
 
     utils.gems_assert_equal(res, ref)
     assert res.dtype == torch.int64
