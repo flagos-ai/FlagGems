@@ -29,10 +29,13 @@ def test_scaled_dot_product_fused_attention_overrideable(
         batch, num_head, seq_len, head_dim, dtype=dtype, device=device
     ).uniform_(-0.1, 0.1)
 
-    # Reference from torch scaled_dot_product_attention
-    ref_output = utils.to_reference(
-        torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
-    )
+    # Compute the reference above the input dtype. Native BF16 SDPA loses
+    # precision on causal rows (also observed on the Nvidia python-op lane),
+    # so the reference must not run in BF16 itself.
+    ref_q, ref_k, ref_v = (utils.to_reference(x, upcast=True) for x in (q, k, v))
+    ref_output = torch.nn.functional.scaled_dot_product_attention(
+        ref_q, ref_k, ref_v, is_causal=is_causal
+    ).to(dtype)
 
     # Get result from our implementation
     (
@@ -49,7 +52,7 @@ def test_scaled_dot_product_fused_attention_overrideable(
         q, k, v, is_causal=is_causal
     )
 
-    # Compare outputs
+    assert output.device == q.device
     gems_assert_close(output, ref_output, dtype)
 
     # Verify return values shape and content
