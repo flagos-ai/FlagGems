@@ -154,8 +154,6 @@ from ._foreach_ternary_scalar import (  # noqa: F401
     _foreach_lerp_ScalarList,
 )
 from ._foreach_unary import (  # noqa: F401
-    _foreach_cos,
-    _foreach_cos_,
     _foreach_exp,
     _foreach_exp_,
     _foreach_log10,
@@ -205,6 +203,10 @@ from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
 from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
+from ._scaled_dot_product_attention_math import _scaled_dot_product_attention_math
+from ._scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
+)
 from ._scaled_dot_product_efficient_attention import (
     _scaled_dot_product_efficient_attention,
 )
@@ -298,7 +300,6 @@ from .atan2 import atan2, atan2_, atan2_out
 from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
-    _scaled_dot_product_attention_math,
     _scaled_dot_product_cudnn_attention,
     _scaled_dot_product_flash_attention,
     cudnn_attention_forward,
@@ -1283,6 +1284,8 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
