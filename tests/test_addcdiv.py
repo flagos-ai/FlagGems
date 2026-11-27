@@ -171,6 +171,31 @@ def test_addcdiv_backward_broadcast(dtype):
 
 
 @pytest.mark.addcdiv_backward
+def test_addcdiv_backward_broadcast_bfloat16_rounding():
+    # With these exactly representable BF16 inputs, rounding the scale before
+    # multiplying by grad produces a different result from rounding only once.
+    dtype = torch.bfloat16
+    device = flag_gems.device
+    inp = torch.zeros((2, 3), dtype=dtype, device=device)
+    numerator = torch.ones(3, dtype=dtype, device=device, requires_grad=True)
+    denominator = torch.full((2, 1), 0.703125, dtype=dtype, device=device)
+    grad = torch.full_like(inp, 1.5)
+    ref_numerator = utils.to_reference(numerator.detach()).requires_grad_()
+    ref_out = torch.addcdiv(
+        utils.to_reference(inp),
+        ref_numerator,
+        utils.to_reference(denominator),
+        value=0.5,
+    )
+    expected = torch.autograd.grad(ref_out, ref_numerator, utils.to_reference(grad))[0]
+
+    out = flag_gems.addcdiv(inp, numerator, denominator, value=0.5)
+    actual = torch.autograd.grad(out, numerator, grad)[0]
+
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.addcdiv_backward
 @pytest.mark.parametrize("required_input", [0, 1, 2])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_addcdiv_backward_single_input(required_input, dtype):

@@ -48,7 +48,10 @@ def addcdiv_backward_kernel(grad_output, tensor1, tensor2, value):
     grad = grad_output.to(tl.float32)
     numerator = tensor1.to(tl.float32)
     denominator = tensor2.to(tl.float32)
-    grad_tensor1 = grad * tl.math.div_rn(value, denominator)
+    # ATen materializes value / tensor2 in tensor2's dtype before multiplying
+    # by the upstream gradient. Keep the rounding before broadcast reduction.
+    tensor1_scale = tl.math.div_rn(value, denominator).to(tensor2.dtype)
+    grad_tensor1 = grad * tensor1_scale.to(tl.float32)
     scaled_numerator = (value * numerator).to(tensor1.dtype)
     squared_denominator = (denominator * denominator).to(tensor2.dtype)
     quotient = tl.math.div_rn(
