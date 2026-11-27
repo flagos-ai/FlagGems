@@ -1269,6 +1269,11 @@ def mm(a, b, *, out=None):
         if not m or not n or not k:
             out.zero_()
             return out
+        if b_strides[0] == 1:
+            from flag_gems.fused.metax_kcontig_mm import try_metax_kcontig_nt_mm
+
+            if try_metax_kcontig_nt_mm(a, b.t(), out):
+                return out
         if n == 1:
             mv(a, b[:, 0], out=out[:, 0])
             return out

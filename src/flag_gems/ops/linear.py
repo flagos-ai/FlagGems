@@ -402,6 +402,22 @@ def linear(input, weight, bias=None):
     input_flat = input.view(-1, K)
     M = input_flat.shape[0]
 
+    if (
+        runtime.device.vendor_name == "metax"
+        and bias is None
+        and input.dtype in (torch.bfloat16, torch.float16)
+        and K == 2048
+        and N == 130560
+        and 1 <= M <= 4096
+    ):
+        from flag_gems.fused.metax_kcontig_mm import try_metax_kcontig_nt_mm
+
+        output = torch.empty((M, N), device=input.device, dtype=input.dtype)
+        if try_metax_kcontig_nt_mm(input_flat, weight, output):
+            result = output.view(*batch_dims, N)
+            return result.squeeze(0) if single_1d else result
+        del output
+
     if input.dtype == torch.float32 and M <= _GEMV_MAX_M:
         output = _linear_gemv(input_flat, weight, bias, M, K, N)
     else:

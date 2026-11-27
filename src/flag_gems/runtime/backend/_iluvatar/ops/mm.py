@@ -203,7 +203,184 @@ def mm_kernel(
         tl.atomic_add(C, acc, mask=mask)
 
 
+@triton.jit
+def _mm_large_m_kernel(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    EVEN_M: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    first_m = group_id * GROUP_M
+    group_size = tl.minimum(grid_m - first_m, GROUP_M)
+    pid_m = first_m + ((pid % width) % group_size)
+    pid_n = (pid % width) // group_size
+
+    tile_start = pid_m * BLOCK_M
+    # The dispatcher guarantees M >= BLOCK_M. Slide the last full input tile
+    # back into the allocation; its stores skip the overlap with its neighbor.
+    row_base = tile_start if EVEN_M else tl.minimum(tile_start, M - BLOCK_M)
+    rm = row_base + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    ram = rm
+    rbn = rn
+    rk = tl.arange(0, BLOCK_K)
+
+    a_ptrs = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+    b_ptrs = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    if EVEN_K:
+        for _ in range(0, K // BLOCK_K):
+            a = tl.load(a_ptrs)
+            b = tl.load(b_ptrs)
+            acc = tl.dot(a, b, acc)
+            a_ptrs += BLOCK_K * stride_ak
+            b_ptrs += BLOCK_K * stride_bk
+    else:
+        for k0 in range(0, K, BLOCK_K):
+            mk = (k0 + rk) < K
+            a = tl.load(a_ptrs, mask=mk[None, :], other=0.0)
+            b = tl.load(b_ptrs, mask=mk[:, None], other=0.0)
+            acc = tl.dot(a, b, acc)
+            a_ptrs += BLOCK_K * stride_ak
+            b_ptrs += BLOCK_K * stride_bk
+
+    out = acc.to(C.dtype.element_ty)
+    c_ptrs = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    if EVEN_M and EVEN_N:
+        tl.store(c_ptrs, out)
+    else:
+        mask = (rm >= tile_start)[:, None] & (rn < N)[None, :]
+        tl.store(c_ptrs, out, mask=mask)
+
+
+_single_pass_mm = mm_kernel.jit_function
+
+
+_SMALL_BF16_TILES = {
+    (16, 2048, 2048): (16, 64, 128, 4, 2),
+    (16, 2048, 2560): (16, 64, 128, 4, 2),
+    (16, 6144, 2048): (16, 32, 128, 4, 2),
+    (32, 2048, 2048): (32, 128, 128, 8, 2),
+    (32, 2048, 2560): (32, 64, 64, 4, 2),
+    (48, 2048, 2560): (32, 128, 64, 4, 2),
+    (64, 2048, 2560): (32, 128, 64, 4, 2),
+}
+
+
 def _launch_mm(a, b, c, M, N, K):
+    from flag_gems.runtime.backend._iluvatar.ops.projection import eligible, project
+
+    if eligible(a, b, c):
+        with torch_device_fn.device(a.device):
+            return project(a, b, c)
+
+    tile = _SMALL_BF16_TILES.get((M, K, N)) if M <= 64 else None
+    if (
+        tile is not None
+        and a.dtype == b.dtype == c.dtype == torch.bfloat16
+        and a.stride() == (K, 1)
+        and b.stride() == (1, K)
+        and c.stride() == (N, 1)
+        and (a.storage_offset() | b.storage_offset() | c.storage_offset()) % 128 == 0
+    ):
+        bm, bn, bk, warps, stages = tile
+        with torch_device_fn.device(a.device):
+            _mm_large_m_kernel[(triton.cdiv(M, bm) * triton.cdiv(N, bn),)](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                K,
+                1,
+                1,
+                K,
+                N,
+                1,
+                BLOCK_M=bm,
+                BLOCK_N=bn,
+                BLOCK_K=bk,
+                GROUP_M=8,
+                EVEN_M=(M % bm == 0),
+                EVEN_N=True,
+                EVEN_K=True,
+                num_warps=warps,
+                num_stages=stages,
+            )
+        return c
+    if (
+        M >= 128
+        and (K, N) in ((2048, 2560), (2048, 2048), (2048, 12288), (6144, 2048))
+        and a.dtype == b.dtype == c.dtype == torch.bfloat16
+        and a.stride(1) == b.stride(0) == c.stride(1) == 1
+        and max(
+            (M - 1) * a.stride(0) + K,
+            (N - 1) * b.stride(1) + K,
+            (M - 1) * c.stride(0) + N,
+        )
+        < (1 << 30)
+    ):
+        # The BI-V150 transpose DMA assumes tightly packed weight rows.
+        # Repack atypical input views only; model parameters already satisfy
+        # this contract. The async A tile also requires dense rows, and both
+        # input bases must meet the vector alignment.
+        if a.stride(0) != K or a.storage_offset() % 128:
+            a = a.clone(memory_format=torch.contiguous_format)
+        if b.stride(1) != K or b.storage_offset() % 128:
+            b = b.t().clone(memory_format=torch.contiguous_format).t()
+        if M >= 256 and N >= 1024 and (K % 32 == 0):
+            bm, bn, bk, nw, ns = 256, 256, 32, 16, 2
+        else:
+            bm, bn, bk, nw, ns = 128, 128, (64 if K % 64 == 0 else 32), 8, 2
+        grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn),)
+        with torch_device_fn.device(a.device):
+            _mm_large_m_kernel[grid](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                BLOCK_M=bm,
+                BLOCK_N=bn,
+                BLOCK_K=bk,
+                GROUP_M=8,
+                EVEN_M=(M % bm == 0),
+                EVEN_N=(N % bn == 0),
+                EVEN_K=(K % bk == 0),
+                num_warps=nw,
+                num_stages=ns,
+            )
+        return c
+
     """Launch Triton matmul _kernel; c must be pre-allocated."""
     ab_dtype = get_higher_dtype(a.dtype, b.dtype)
     acc_dtype_tl = tl.float32

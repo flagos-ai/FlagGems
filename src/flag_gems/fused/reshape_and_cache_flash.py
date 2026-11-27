@@ -36,6 +36,8 @@ def reshape_and_cache_flash_kernel(
     value_cache,
     slot_mapping,
     block_stride,
+    token_stride: tl.constexpr,
+    head_stride: tl.constexpr,
     key_stride,
     value_stride,
     num_heads,
@@ -61,8 +63,8 @@ def reshape_and_cache_flash_kernel(
     head_offset = i % head_size
     tgt_key_value_idx = (
         block_idx * block_stride
-        + block_offset * num_heads * head_size
-        + head_idx * head_size
+        + block_offset * token_stride
+        + head_idx * head_stride
         + head_offset
     )
 
@@ -112,7 +114,7 @@ def reshape_and_cache_flash(
         key_stride = key.stride(0)
         value_stride = value.stride(0)
         block_stride = key_cache.stride(0)
-        assert key_cache.stride(0) == value_cache.stride(0)
+        assert key_cache.stride() == value_cache.stride()
 
         grid = (num_tokens,)
         with torch_device_fn.device(key.device):
@@ -123,6 +125,8 @@ def reshape_and_cache_flash(
                 value_cache,
                 slot_mapping,
                 block_stride,
+                key_cache.stride(1),
+                key_cache.stride(2),
                 key_stride,
                 value_stride,
                 num_heads,

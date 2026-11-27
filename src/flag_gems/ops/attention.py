@@ -1459,6 +1459,43 @@ def flash_attn_varlen_func(
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
         logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
+        if (
+            runtime.device.vendor_name == "iluvatar"
+            and k.dtype == torch.uint8
+            and v.dtype == torch.uint8
+            and block_table is not None
+            and seqused_k is not None
+            and q.dtype == torch.bfloat16
+            and q.shape[-2:] == (16, 128)
+            and k.shape[1:] in ((16, 2, 130), (16, 2, 99))
+            and dropout_p == 0.0
+            and alibi_slopes is None
+            and softcap == 0.0
+        ):
+            if k.shape[-1] == 99:
+                from flag_gems.fused.iluvatar_k8v4_kv import (
+                    k8v4_varlen_fwd as _kv_varlen_fwd,
+                )
+            else:
+                from flag_gems.fused.iluvatar_cm8_kv import (
+                    cm8_varlen_fwd as _kv_varlen_fwd,
+                )
+
+            q_c = maybe_contiguous(q)
+            out_cm8, lse_cm8 = _kv_varlen_fwd(
+                q_c,
+                k,
+                out,
+                cu_seqlens_q,
+                seqused_k,
+                max_seqlen_q,
+                max_seqlen_k,
+                block_table,
+                softmax_scale,
+                causal,
+                return_softmax_lse,
+            )
+            return (out_cm8, lse_cm8) if return_softmax_lse else out_cm8
         assert (
             cu_seqlens_k is not None or seqused_k is not None
         ), "cu_seqlens_k or seqused_k must be provided"
@@ -1477,7 +1514,6 @@ def flash_attn_varlen_func(
             assert len(window_size) == 2
             real_window_size = (window_size[0], window_size[1])
         q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
-        dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
         max_seqlen_q = (
             max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
         )
@@ -1490,9 +1526,7 @@ def flash_attn_varlen_func(
             v,
             out,
             cu_seqlens_q,
-            # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
-            # still wants it so we pass all zeros
-            dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+            cu_seqlens_q if cu_seqlens_k is None else cu_seqlens_k,
             seqused_k,
             None,
             block_table,
@@ -1508,6 +1542,7 @@ def flash_attn_varlen_func(
             softcap,
             return_softmax_lse and dropout_p > 0,
             None,
+            need_lse=return_softmax_lse,
         )
 
     return (out, softmax_lse) if return_softmax_lse else out
