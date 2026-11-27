@@ -96,6 +96,24 @@ def test_multinomial_with_replacement_1(shape, dtype, n_samples):
 
 
 @pytest.mark.multinomial
+@pytest.mark.parametrize("strided", [False, True])
+def test_multinomial_does_not_mutate_input(strided):
+    # The float32 fast path clamps probabilities in place, so it must not
+    # operate on caller-owned storage.
+    prob = torch.zeros((8, 2048), dtype=torch.float32, device=flag_gems.device)
+    prob[..., 0] = 1.0
+    if strided:
+        storage = torch.empty((8, 4096), dtype=torch.float32, device=flag_gems.device)
+        storage[:, ::2].copy_(prob)
+        prob = storage[:, ::2]
+    expected = prob.clone()
+
+    flag_gems.multinomial(prob, 1, False)
+
+    utils.gems_assert_equal(prob.cpu(), expected.cpu())
+
+
+@pytest.mark.multinomial
 @pytest.mark.parametrize("pool", utils.UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_multinomial_without_replacement(pool, dtype):
@@ -106,6 +124,15 @@ def test_multinomial_without_replacement(pool, dtype):
         ns = [k // 2, k]
     else:
         ns = [1]
+
+    # The uniqueness check below materializes `one_hot(out)`, a
+    # (pool[0], n, k) int64 tensor. For the largest pool that is 4.1 GiB with
+    # n = k // 2 and 8.2 GiB with n = k. On enflame/GCU a native int64
+    # allocation above 2 GiB aborts the process as soon as any Triton kernel has
+    # been launched in the same process, which is a torch_gcu allocator issue
+    # outside the operator under test, so only that pool is skipped.
+    if flag_gems.vendor_name == "enflame" and pool[0] * ns[-1] * k * 8 > 2**31:
+        pytest.skip("enflame/GCU: native int64 one_hot intermediate above 2 GiB aborts")
 
     for n in ns:
         out = flag_gems.multinomial(dist, n, False)

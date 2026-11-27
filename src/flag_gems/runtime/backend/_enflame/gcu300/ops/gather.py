@@ -106,10 +106,17 @@ def generate_gather_wrapper(
 ) -> IndentedBuffer:
     code.writeline(f"def {wrapper_name}(inp, dim, index, out, dim_stride, N):")
     with code.indent():
-        code.writeline("if index.max() > 2**30 - 1:")
+        # The int64 -> int32 downcast below is only unsafe when an index can
+        # exceed INT32_MAX. Gather semantics require index < inp.shape[dim], so
+        # the static extent proves safety in the common case and avoids the
+        # index.max() host sync (a full device drain on every call; gcu300
+        # decode does 40 gathers/token, one per MoE layer).
+        code.writeline("if inp.shape[dim] > 2**30 - 1:")
         with code.indent():
-            code.writeline("out = inp[index]")
-            code.writeline("return out")
+            code.writeline("if index.max() > 2**30 - 1:")
+            with code.indent():
+                code.writeline("out = inp[index]")
+                code.writeline("return out")
 
         code.writeline("# convert all the inputs to int32 only if they are int64")
         code.writeline("if inp.dtype == torch.int64:")

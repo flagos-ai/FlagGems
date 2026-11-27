@@ -26,6 +26,25 @@ from .conftest import TO_CPU
 
 _cudnn_rnn_impl = importlib.import_module(flag_gems.cudnn_rnn.__module__)
 
+# The fp16/fp32 reference is the cuDNN-backed aten kernel.  On backends without
+# cuDNN that kernel is not registered at all (the op is dangling: no CPU kernel,
+# and the device backend routes it to the CPU fallback), so every case whose
+# reference goes through torch.ops.aten._cudnn_rnn raises NotImplementedError.
+# The bfloat16 reference builds its own nn.{RNN,LSTM,GRU} forward instead and
+# keeps running, so the skip is applied per dtype / per test rather than to the
+# whole module.
+_CUDNN_REF_UNAVAILABLE = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten::_cudnn_rnn reference is cuDNN-only and unavailable on this backend",
+)
+
+# fp16/fp32 reference the aten kernel; bfloat16 uses the native nn forward.
+_ATEN_REF_DTYPES = [
+    pytest.param(torch.float16, marks=_CUDNN_REF_UNAVAILABLE),
+    pytest.param(torch.float32, marks=_CUDNN_REF_UNAVAILABLE),
+    torch.bfloat16,
+]
+
 
 def _cudnn_rnn_layer_dropout(x, p, train):
     """Inter-layer dropout as the operator applies it."""
@@ -216,6 +235,7 @@ _TOLERANCE = {torch.float32: 2e-3, torch.float16: 5e-3, torch.bfloat16: 3e-2}
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@_CUDNN_REF_UNAVAILABLE
 @pytest.mark.cudnn_rnn
 @pytest.mark.parametrize("seq_len, batch_size, input_size, hidden_size", _SHAPES)
 @pytest.mark.parametrize("mode, mode_name", _MODES)
@@ -236,6 +256,7 @@ def test_cudnn_rnn_accuracy(
     dtype,
 ):
     """Compare flag_gems.cudnn_rnn output against torch.ops.aten._cudnn_rnn."""
+    utils.init_seed(0)
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only, cannot run in quick-cpu mode")
 
@@ -316,7 +337,7 @@ def test_cudnn_rnn_accuracy(
 @pytest.mark.parametrize("mode, mode_name", _MODES)
 @pytest.mark.parametrize("num_layers", [1, 2])
 @pytest.mark.parametrize("bidirectional", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dtype", _ATEN_REF_DTYPES)
 def test_cudnn_rnn_accuracy_no_bias(
     seq_len,
     batch_size,
@@ -335,6 +356,7 @@ def test_cudnn_rnn_accuracy_no_bias(
     unidirectional, hidden_size <= 8 config; bidirectional / multi-layer / larger
     bf16 LSTM configs are skipped (RNN/GRU bf16 run on all configs).
     """
+    utils.init_seed(0)
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only, cannot run in quick-cpu mode")
 
@@ -439,7 +461,7 @@ _PROJ_SHAPES = [
 )
 @pytest.mark.parametrize("num_layers", [1, 2])
 @pytest.mark.parametrize("bidirectional", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dtype", _ATEN_REF_DTYPES)
 def test_cudnn_rnn_projection(
     seq_len,
     batch_size,
@@ -451,6 +473,7 @@ def test_cudnn_rnn_projection(
     dtype,
 ):
     """Test LSTM with projection (proj_size > 0)."""
+    utils.init_seed(0)
     if TO_CPU:
         pytest.skip("_cudnn_rnn is CUDA-only")
 
@@ -569,6 +592,7 @@ def test_cudnn_rnn_dropout_training(mode, mode_name, dtype):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
 @pytest.mark.parametrize("mode, mode_name", _MODES)
+@_CUDNN_REF_UNAVAILABLE
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_cudnn_rnn_dropout_state(mode, mode_name, dtype):
     """A supplied dropout_state is accepted but does not affect the output.
@@ -670,6 +694,7 @@ def test_cudnn_rnn_dropout_state(mode, mode_name, dtype):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
 @pytest.mark.parametrize("mode, mode_name", [(_MODES[2]), (_MODES[3])])  # LSTM, GRU
+@_CUDNN_REF_UNAVAILABLE
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_cudnn_rnn_dropout_eval(mode, mode_name, dtype):
     """Dropout in eval mode should match reference (dropout is a no-op)."""
@@ -899,6 +924,7 @@ def test_cudnn_rnn_lstm_no_cx(dtype):
 @pytest.mark.parametrize("mode, mode_name", _MODES)
 @pytest.mark.parametrize("num_layers", [1, 2])
 @pytest.mark.parametrize("bidirectional", [False, True])
+@_CUDNN_REF_UNAVAILABLE
 def test_cudnn_rnn_weight_buf(mode, mode_name, num_layers, bidirectional):
     """weight_buf reproduces the flattened cuDNN weight layout."""
     if TO_CPU:
@@ -975,6 +1001,7 @@ def test_cudnn_rnn_weight_buf(mode, mode_name, num_layers, bidirectional):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
 @pytest.mark.parametrize("mode, mode_name", _MODES)
+@_CUDNN_REF_UNAVAILABLE
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_cudnn_rnn_packed(mode, mode_name, dtype):
     """Test packed variable-length sequences."""
@@ -1046,6 +1073,7 @@ def test_cudnn_rnn_packed(mode, mode_name, dtype):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
+@_CUDNN_REF_UNAVAILABLE
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_cudnn_rnn_packed_bidirectional(dtype):
     """Test packed sequences with bidirectional LSTM."""
@@ -1122,6 +1150,13 @@ def test_cudnn_rnn_packed_bidirectional(dtype):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_cudnn_rnn"
+    ),
+)
 def test_cudnn_rnn_dispatch():
     """Verify that torch.ops.aten._cudnn_rnn dispatches through FlagGems."""
     if TO_CPU:

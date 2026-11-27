@@ -20,10 +20,10 @@ import flag_gems
 from . import base
 
 pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name in ("mthreads", "ascend", "hygon"),
+    flag_gems.vendor_name in ("mthreads", "ascend", "hygon", "enflame"),
     reason=(
         "native cudnn_batch_norm has no MUSA kernel, falls back to CPU on Ascend, "
-        "and is not compiled with cuDNN support on Hygon"
+        "and is not compiled with cuDNN support on Hygon and Enflame"
     ),
 )
 

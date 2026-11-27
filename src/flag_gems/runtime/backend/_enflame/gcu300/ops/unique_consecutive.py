@@ -67,6 +67,9 @@ def output_counts_impl(
     tile_size: tl.constexpr,
 ):
     """Compute counts from idx positions."""
+    # Keep index math in int32: ext.program_id returns int64 and mixing with
+    # tl.arange(int32) would insert illegal arith.extsi on GCU300.
+    global_pid = global_pid.to(tl.int32)
     r = tl.arange(0, tile_size)
     i0 = global_pid * tile_size + r
     mask = i0 < num_tasks
@@ -121,6 +124,7 @@ def local_ne_consecutive_impl(
     tile_size: tl.constexpr,
 ):
     """Compute ne_result (whether each element differs from previous) for a tile."""
+    global_pid = global_pid.to(tl.int32)
     r = tl.arange(0, tile_size)
     i0 = global_pid * tile_size + r
     mask = i0 < num_tasks
@@ -187,6 +191,7 @@ def global_cumsum_consecutive_impl(
     return_counts: tl.constexpr,
 ):
     """Compute global cumsum and scatter outputs."""
+    global_pid = global_pid.to(tl.int32)
     offset = global_pid * tile_size
     r = tl.arange(0, tile_size)
     i0 = offset + r
@@ -483,15 +488,16 @@ def unique_consecutive(
     num_tasks = flat_input.numel()
 
     if num_tasks == 0:
-        # Handle empty input
+        # Handle empty input. torch.unique_consecutive uses int64 for
+        # inverse_indices / counts even when the compute path is int32 on GCU300.
         output = torch.empty(0, dtype=input.dtype, device=input.device)
         inverse_indices = (
-            torch.empty(0, dtype=torch.int32, device=input.device)
+            torch.empty(0, dtype=torch.int64, device=input.device)
             if return_inverse
             else None
         )
         counts = (
-            torch.empty(0, dtype=torch.int32, device=input.device)
+            torch.empty(0, dtype=torch.int64, device=input.device)
             if return_counts
             else None
         )
@@ -516,6 +522,10 @@ def unique_consecutive(
     if counts is not None:
         # Same for the per-group counts: aten returns them as int64 regardless
         # of the input dtype.
+        counts = counts.to(torch.int64)
+
+    if counts is not None:
+        # Same for counts: kernel accumulates in int32 for GCU300 legality.
         counts = counts.to(torch.int64)
 
     return output, inverse_indices, counts

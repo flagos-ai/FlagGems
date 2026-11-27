@@ -172,6 +172,10 @@ def cudnn_convolution_relu_input_fn(case, dtype, device):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cudnn_convolution_relu
 def test_cudnn_convolution_relu():
     torch.backends.cudnn.allow_tf32 = False
@@ -185,6 +189,10 @@ def test_cudnn_convolution_relu():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cudnn_convolution_relu
 def test_cudnn_convolution_relu_no_bias():
     torch.backends.cudnn.allow_tf32 = False
@@ -198,6 +206,10 @@ def test_cudnn_convolution_relu_no_bias():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cudnn_convolution_relu_out
 def test_cudnn_convolution_relu_out():
     torch.backends.cudnn.allow_tf32 = False

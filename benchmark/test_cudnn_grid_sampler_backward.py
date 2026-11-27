@@ -77,6 +77,13 @@ class GridSamplerBackwardBenchmark(base.Benchmark):
         return ["gbps"]
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_grid_sampler_backward; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_grid_sampler_backward
 def test_cudnn_grid_sampler_backward():
     bench = GridSamplerBackwardBenchmark(
@@ -88,6 +95,13 @@ def test_cudnn_grid_sampler_backward():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_grid_sampler_backward.out; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_grid_sampler_backward_out
 def test_cudnn_grid_sampler_backward_out():
     outs = {}

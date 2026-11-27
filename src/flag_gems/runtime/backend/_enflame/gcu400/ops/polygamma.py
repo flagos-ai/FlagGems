@@ -299,7 +299,7 @@ def _polygamma_zeta_args(n):
 
 
 def polygamma(n, A):
-    logger.debug("GEMS_ENFLAME_GCU400 POLYGAMMA")
+    logger.debug("GEMS_ENFLAME POLYGAMMA")
     if n < 0:
         raise RuntimeError("polygamma(n, x) does not support negative n.")
     if n == 0:
@@ -319,7 +319,7 @@ def polygamma(n, A):
 
 
 def polygamma_(A, n):
-    logger.debug("GEMS_ENFLAME_GCU400 POLYGAMMA_")
+    logger.debug("GEMS_ENFLAME POLYGAMMA_")
     if n < 0:
         raise RuntimeError("polygamma(n, x) does not support negative n.")
     if n == 0:
@@ -337,7 +337,7 @@ def polygamma_(A, n):
 
 
 def polygamma_out(n, A, out):
-    logger.debug("GEMS_ENFLAME_GCU400 POLYGAMMA_OUT")
+    logger.debug("GEMS_ENFLAME POLYGAMMA_OUT")
     if n < 0:
         raise RuntimeError("polygamma(n, x) does not support negative n.")
     if n == 0:

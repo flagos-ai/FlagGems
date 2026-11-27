@@ -61,12 +61,16 @@ class SlowConv2dForwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.slow_conv2d_forward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The MUSA build has no native ATen reference for this operator",
+)
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_slow_conv2d_forward(dtype):
     bench = SlowConv2dForwardBenchmark(
         op_name="slow_conv2d_forward",
         torch_op=torch.ops.aten._slow_conv2d_forward,
-        gems_op=flag_gems.ops._slow_conv2d_forward,
+        gems_op=flag_gems._slow_conv2d_forward,
         dtypes=[dtype],
     )
     bench.run()

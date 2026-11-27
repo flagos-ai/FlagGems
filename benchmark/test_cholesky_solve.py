@@ -101,7 +101,12 @@ class CholeskySolveBenchmark(base.Benchmark):
             for _ in batch_dims:
                 eye = eye.unsqueeze(0)
             A = B_mat @ B_mat.mH + eye * 0.1
-            L = torch.linalg.cholesky(A)
+            if build_on_cpu and not torch._C.has_lapack:
+                import numpy as np
+
+                L = torch.from_numpy(np.linalg.cholesky(A.numpy()))
+            else:
+                L = torch.linalg.cholesky(A)
             factor = L.mH.contiguous() if upper else L
             rhs = torch.randn(
                 *batch_dims, n, nrhs, dtype=cur_dtype, device=setup_device

@@ -295,6 +295,7 @@ def test_actual_benchmark_methods_require_reference_invocation(contract, timer_c
         "ReferenceContractError": contract.ReferenceContractError,
         "reference_execution": contract.reference_execution,
         "select_candidate": contract.select_candidate,
+        "input_metadata": lambda op, args: {},
         "nullcontext": nullcontext,
         "gc": gc,
         "pytest": pytest,

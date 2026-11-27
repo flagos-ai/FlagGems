@@ -35,6 +35,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["slow_conv_transpose3d"]
@@ -233,6 +235,253 @@ def _sct3d_fwd_kernel(
     tl.store(ooff, acc.to(o_ptr.dtype.element_ty), mask=com[:, None] & spm[None, :])
 
 
+# ---------------------------------------------------------------------------
+# forward: residue-phase implicit gemm (GCU400 fast path)
+# ---------------------------------------------------------------------------
+# The gather-style kernel above lowers poorly on this backend: it evaluates a
+# per-element divisibility mask and runtime div/mod indices for every one of the
+# kD*kH*kW taps, and fp32 falls back to a scalar FMA loop over C_in.  This
+# variant reuses the residue-phase structure proven on the conv_transpose3d /
+# slow_conv_transpose2d siblings: output positions are partitioned by their
+# (od % stD, oh % stH, ow % stW) phase so a program only visits the taps whose
+# back-projection lands on an input sample, and the input index stays affine in
+# the compact output index (the per-tap scalar offset folds the division).
+#
+# Compile-time note: every shape/stride/padding/dilation scalar is a *runtime*
+# argument (`do_not_specialize`), the tap loop is a runtime loop with one
+# `tl.dot` in its body, and the bias/dtype switches are runtime values too.
+# The earlier variant made all of them constexpr and unrolled the taps into
+# kD*kH*kW statically nested `if`/dot regions; each new test shape then paid a
+# fresh 70-110 s backend compile (55 accuracy cases plus the benchmark shapes),
+# which dwarfed the actual kernel runtime.  With the generic form the whole
+# suite maps onto one instantiation per (element dtype, tile) combination, and
+# the taps that cannot contribute to a subgrid simply fall out through the
+# `tap_live` predicate.
+#
+# fp16/bf16 run the dot in fp32 after an in-register upcast (raw low-precision
+# dots are intermittently wrong on this backend), fp32 runs the same code path
+# because the upcast is a no-op there; both accumulate in fp32 and round once at
+# the store.
+_DOT_PRECISION = tl.constexpr("ieee")
+
+# Scalars that only affect addressing/loop bounds or select a predicated load,
+# never the generated tile shape: excluding them from specialization keeps one
+# compiled binary valid for every shape, stride, padding and bias combination.
+_SHAPE_ARGS = [
+    "N",
+    "C_in",
+    "D_in",
+    "H_in",
+    "W_in",
+    "C_out",
+    "D_out",
+    "H_out",
+    "W_out",
+    "kD",
+    "kH",
+    "kW",
+    "stD",
+    "stH",
+    "stW",
+    "paD",
+    "paH",
+    "paW",
+    "diD",
+    "diH",
+    "diW",
+    "compact_D",
+    "compact_H",
+    "compact_W",
+    "compact_total",
+    "b_stride",
+    "has_bias",
+]
+
+
+@libentry()
+@triton.jit(do_not_specialize=_SHAPE_ARGS)
+def _sct3d_gemm(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    o_ptr,
+    N,
+    C_in,
+    D_in,
+    H_in,
+    W_in,
+    C_out,
+    D_out,
+    H_out,
+    W_out,
+    kD,
+    kH,
+    kW,
+    stD,
+    stH,
+    stW,
+    paD,
+    paH,
+    paW,
+    diD,
+    diH,
+    diW,
+    compact_D,
+    compact_H,
+    compact_W,
+    compact_total,
+    b_stride,
+    has_bias,
+    BLOCK_N: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    """One subgrid of the transposed conv as a (spatial, C_out) GEMM tile.
+
+    Program ``(pid_m, pid_co, pid_sub)`` owns ``BLOCK_N`` output positions of
+    the ``pid_sub``-th stride residue class and ``BLOCK_CO`` output channels.
+    The GEMM K axis is (C_in, kD, kH, kW); the tap part is a runtime loop so the
+    IR (and therefore the backend compile time) does not grow with the kernel
+    volume.
+    """
+    pid_m = tl.program_id(0)
+    pid_co = tl.program_id(1)
+    pid_sub = tl.program_id(2)
+
+    residue_w = pid_sub % stW
+    residue_h = (pid_sub // stW) % stH
+    residue_d = pid_sub // (stW * stH)
+
+    idx = pid_m * BLOCK_N + tl.arange(0, BLOCK_N)
+    in_range = idx < compact_total
+    idx_w = idx % compact_W
+    idx_dh = idx // compact_W
+    idx_h = idx_dh % compact_H
+    idx_s = idx_dh // compact_H
+    idx_d = idx_s % compact_D
+    n = idx_s // compact_D
+
+    od = idx_d * stD + residue_d
+    oh = idx_h * stH + residue_h
+    ow = idx_w * stW + residue_w
+    out_valid = in_range & (od < D_out) & (oh < H_out) & (ow < W_out)
+
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    valid_co = co < C_out
+
+    acc = tl.zeros((BLOCK_N, BLOCK_CO), dtype=tl.float32)
+    # `has_bias` is a runtime flag so the biased and unbiased calls share one
+    # compiled binary; without a bias the load stays fully masked and adds 0.
+    bv = tl.load(
+        b_ptr + co * b_stride,
+        mask=valid_co & (has_bias != 0),
+        other=0.0,
+    ).to(tl.float32)
+    acc = acc + bv[None, :]
+
+    tap_count = kD * kH * kW
+    k_hw = kH * kW
+    depth_phase = (residue_d + paD) % stD
+    height_phase = (residue_h + paH) % stH
+    width_phase = (residue_w + paW) % stW
+
+    x_plane = D_in * H_in * W_in
+    w_ci_stride = C_out * tap_count
+
+    # A tap contributes to this subgrid iff (k * dilation) % stride equals the
+    # (residue + padding) phase; the per-tap offsets below fold the division by
+    # the stride, so the inner addressing is pure affine arithmetic.
+    for tap in range(tap_count):
+        kd = tap // k_hw
+        kh = (tap - kd * k_hw) // kW
+        kw = tap - kd * k_hw - kh * kW
+        tap_live = (
+            ((kd * diD) % stD == depth_phase)
+            & ((kh * diH) % stH == height_phase)
+            & ((kw * diW) % stW == width_phase)
+        )
+        id_ = idx_d + (residue_d + paD - kd * diD) // stD
+        ih_ = idx_h + (residue_h + paH - kh * diH) // stH
+        iw_ = idx_w + (residue_w + paW - kw * diW) // stW
+        tap_valid = (
+            tap_live
+            & (id_ >= 0)
+            & (id_ < D_in)
+            & (ih_ >= 0)
+            & (ih_ < H_in)
+            & (iw_ >= 0)
+            & (iw_ < W_in)
+            & out_valid
+        )
+        x_lane = n * (C_in * x_plane) + id_ * (H_in * W_in) + ih_ * W_in + iw_
+        w_row = w_ptr + co * tap_count + tap
+        for ci_base in range(0, C_in, BLOCK_CI):
+            cci = ci_base + tl.arange(0, BLOCK_CI)
+            ci_ok = cci < C_in
+            xv = tl.load(
+                x_ptr + x_lane[:, None] + (cci * x_plane)[None, :],
+                mask=tap_valid[:, None] & ci_ok[None, :],
+                other=0.0,
+            )
+            wv = tl.load(
+                w_row[None, :] + (cci * w_ci_stride)[:, None],
+                mask=ci_ok[:, None] & valid_co[None, :],
+                other=0.0,
+            )
+            # Unconditional fp32 upcast: it keeps the fp16/bf16 tensor-core
+            # inputs in fp32 (raw low-precision dots are intermittently wrong on
+            # this backend) and is a no-op for fp32 data, which lets one binary
+            # serve every float dtype's dot path.
+            acc = acc + tl.dot(
+                xv.to(tl.float32),
+                wv.to(tl.float32),
+                input_precision=_DOT_PRECISION,
+            )
+
+    ooff = (
+        (n[:, None] * C_out + co[None, :]) * (D_out * H_out * W_out)
+        + od[:, None] * (H_out * W_out)
+        + oh[:, None] * W_out
+        + ow[:, None]
+    )
+    tl.store(
+        o_ptr + ooff,
+        acc.to(o_ptr.dtype.element_ty),
+        mask=out_valid[:, None] & valid_co[None, :],
+    )
+
+
+def _residue_tiles(dtype, c_in, c_out, compact_total, k_d, k_h, k_w, st_d, st_h, st_w):
+    """Pick (BLOCK_N, BLOCK_CI, BLOCK_CO, num_warps, num_stages).
+
+    Swept over the benchmark shape matrix on GCU400 (BLOCK_N x num_warps x
+    stages grid, then CI/CO, then a BLOCK_N=256 follow-up; every cell passed
+    the CPU-fp64 accuracy gate first):
+      * BLOCK_N dominates: 128 is best on the strided shapes whatever the
+        tap count; stride-1 shapes carry all kD*kH*kW taps per program and
+        want a fat 256-row tile once the volume fills half a wave, but a
+        narrow 32-row tile when the whole grid would fall under one wave.
+      * BLOCK_CI/BLOCK_CO: tl.dot's 16 minimum; 32 once the channel count
+        reaches it (case C_out=32 measured 24% faster at BLOCK_CO=32).
+      * num_warps/num_stages move latency by <1% everywhere; keep the
+        sibling-proven num_warps=1/num_stages=2.
+
+    Only these tile sizes are constexpr (bias presence and the float dtype
+    only select masked loads / pointer types), so the whole test matrix reuses
+    a handful of compiled binaries instead of one per shape.
+    """
+    live_taps = max(1, (k_d * k_h * k_w) // (st_d * st_h * st_w))
+    if live_taps >= 8:
+        block_n = (
+            256 if compact_total >= 4096 else (32 if compact_total < 1024 else 128)
+        )
+    else:
+        block_n = 128
+    block_ci = 16 if c_in <= 16 else 32
+    block_co = 16 if c_out <= 16 else 32
+    return block_n, block_ci, block_co, 1, 2
+
+
 def _pow2_leq(value, lo, hi):
     """Largest power of two in [lo, hi] that does not exceed value (or lo)."""
     p = lo
@@ -289,7 +538,7 @@ def slow_conv_transpose3d(
     dilation=1,
     out=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_TRANSPOSE3D")
+    logger.debug("GEMS_ENFLAME SLOW_CONV_TRANSPOSE3D")
     inp = self
     if not torch.is_tensor(inp) or not torch.is_tensor(weight):
         raise TypeError("slow_conv_transpose3d expects tensor inputs")
@@ -350,6 +599,11 @@ def slow_conv_transpose3d(
                 "slow_conv_transpose3d: bias size (%d) must match C_out (%d)"
                 % (bias.numel(), C_out)
             )
+        # Both kernels index the bias by channel; a strided bias (e.g. a
+        # `[::2]` view) would otherwise be read in storage order, which puts
+        # the wrong constant on every channel plane but the first.
+        if not bias.is_contiguous():
+            bias = bias.contiguous()
 
     D_out = (D_in - 1) * st[0] - 2 * pa[0] + dl[0] * (kD - 1) + op[0] + 1
     H_out = (H_in - 1) * st[1] - 2 * pa[1] + dl[1] * (kH - 1) + op[1] + 1
@@ -379,9 +633,87 @@ def slow_conv_transpose3d(
         f64 = False
     else:
         raise RuntimeError("slow_conv_transpose3d: unsupported dtype %s" % str(dtype))
-    # The fp32 ieee tl.dot needs 255 registers and spills heavily; the scalar
-    # FMA outer-product path keeps fp32 fully in registers.  Tensor cores stay
-    # in use for the low-precision dtypes, where they are cheap.
+
+    # GCU400 fast path: the gather/FMA kernel above needs runtime div/mod
+    # indices and per-element divisibility masks on every tap; the
+    # residue-phase implicit GEMM is an order of magnitude faster on every
+    # benchmark shape.  Route every case that keeps all index math inside
+    # int32 to it.  Non-contiguous inputs are cheap to normalise here (the
+    # kernel is fully affine, so strides are only a host-side detail), and the
+    # bias stride is passed so a viewed bias needs no copy either.
+    int32_safe = max(out_t.numel(), x.numel(), weight.numel()) < (1 << 31) - 65536
+    if not f64 and int32_safe and out_t.is_contiguous():
+        x_fast = x if x.is_contiguous() else x.contiguous()
+        w_fast = weight if weight.is_contiguous() else weight.contiguous()
+        b_stride = bias.stride(0) if (bias is not None and bias.dim() > 0) else 0
+
+        n_subgrids = st[0] * st[1] * st[2]
+        compact_d = (D_out + st[0] - 1) // st[0]
+        compact_h = (H_out + st[1] - 1) // st[1]
+        compact_w = (W_out + st[2] - 1) // st[2]
+        compact_total = N * compact_d * compact_h * compact_w
+        block_n, block_ci, block_co, warps, stages = _residue_tiles(
+            dtype,
+            weight.shape[0],
+            C_out,
+            compact_total,
+            kD,
+            kH,
+            kW,
+            st[0],
+            st[1],
+            st[2],
+        )
+        grid = (
+            triton.cdiv(compact_total, block_n),
+            triton.cdiv(C_out, block_co),
+            n_subgrids,
+        )
+        _sct3d_gemm[grid](
+            x_fast,
+            w_fast,
+            bias if bias is not None else x_fast,
+            out_t,
+            N,
+            weight.shape[0],
+            D_in,
+            H_in,
+            W_in,
+            C_out,
+            D_out,
+            H_out,
+            W_out,
+            kD,
+            kH,
+            kW,
+            st[0],
+            st[1],
+            st[2],
+            pa[0],
+            pa[1],
+            pa[2],
+            dl[0],
+            dl[1],
+            dl[2],
+            compact_d,
+            compact_h,
+            compact_w,
+            compact_total,
+            b_stride,
+            1 if bias is not None else 0,
+            BLOCK_N=block_n,
+            BLOCK_CI=block_ci,
+            BLOCK_CO=block_co,
+            num_warps=warps,
+            num_stages=stages,
+        )
+        return out_t.squeeze(0) if unbatched else out_t
+
+    # Fallback only: float64 (a fp64 `tl.dot`/vector multiply does not lower on
+    # this backend), oversized tensors whose index math leaves int32, and a
+    # non-contiguous `out`.  This path holds the whole (BLOCK_CO, BLOCK_SP)
+    # accumulator in registers and walks C_in serially, so it stays fully in
+    # registers; the low-precision dtypes keep using tensor cores here.
     dot = dtype in (torch.float16, torch.bfloat16)
 
     BLOCK_SP, BLOCK_CO = _pick_blocks(S, C_out, N)

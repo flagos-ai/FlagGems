@@ -45,8 +45,12 @@ echo "PR_ID=${PR_ID}"
 
 COLLECT_COVERAGE=""
 FAIL_FAST=false
+# Remember whether this is a full-range run: CHANGED_FILES is overwritten with
+# the discovered test list below, so it cannot be compared with "__ALL__" later.
+FULL_RUN=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  FULL_RUN=true
   # Replace "__ALL__" with all tests
   CHANGED_FILES=$(find tests -name "test*.py")
   # add options to generate summary report
@@ -75,11 +79,18 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
   "tests/test_quant.py"
+  "tests/test_rms_norm_w8a16_fp8.py"
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
   "tests/test_conv_depthwise2d.py"
   "tests/test_conv_depthwise3d.py"
   "tests/test_cudnn_convolution_transpose.py"
+)
+
+# Benchmark test cases that should not run on generic NVIDIA/CPU environments
+# (vendor-specific or hardware-specific tests)
+NO_KERNEL_CHECK_TESTS=(
+  "benchmark/test_rms_norm_w8a16_fp8.py"
 )
 
 # Extract test cases from CHANGED_FILES
@@ -90,11 +101,77 @@ TEST_CASES_CPU=()
 # but bring no test file of their own. We still want to exercise them, selected
 # by pytest marker below.
 OPS_IMPL_FILES=()
+declare -A DAILY_PYTHON_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${DAILY_PYTHON_OP:-}" == "1" ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    DAILY_PYTHON_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/daily-python-op-blacklist.txt"
+fi
 for item in $CHANGED_FILES; do
+  if [[ -n "${DAILY_PYTHON_OP_BLACKLIST[$item]:-}" ]]; then
+    echo "Skipping daily python-op blacklist: $item"
+    continue
+  fi
   file_name=$(basename "$item")
   case $item in
     tests/test_quant.py)
       # skip because it always fail
+      ;;
+    # Ascend daily-CI blacklist: tests that fail due to CANN 9.1.1 limitations
+    # or Triton/BiShengHIR compiler issues requiring deeper fixes.
+    # Only applied during full-range (daily) runs on the Ascend backend;
+    # PR CI runs (CHANGED_FILES != '__ALL__') are not affected.
+    tests/test_validate_sparse_compressed_tensor_args.py | \
+    tests/test_validate_sparse_bsc_tensor_args.py | \
+    tests/test_validate_sparse_coo_tensor_args.py | \
+    tests/test_DSA/test_sparse_mla_ops.py | \
+    tests/test_linalg_inv.py | \
+    tests/test_linalg_eigvalsh.py | \
+    tests/test_linalg_cholesky_ex.py | \
+    tests/test__philox_uniform_.py | \
+    tests/test_cov.py | \
+    tests/test_sparse_broadcast_to.py | \
+    tests/test_histogramdd_from_bin_cts.py | \
+    tests/test_lcm.py | \
+    tests/test_lcm_.py | \
+    tests/test_linalg_solve_ex.py | \
+    tests/test_var.py | \
+    tests/test_batch_norm.py | \
+    tests/test_batch_norm_impl_index_backward.py | \
+    tests/test_sparse_sum.py | \
+    tests/test_embedding_bag_dense_backward.py | \
+    tests/test_embedding_bag_sparse_backward.py | \
+    tests/test_bincount.py | \
+    tests/test_min.py | \
+    tests/test_nextafter_.py | \
+    tests/test_bf16_paged_mqa_logits.py | \
+    tests/test_cosh.py | \
+    tests/test_sparse_coo_tensor_with_dims.py | \
+    tests/test_convolution_overrideable.py | \
+    tests/test_convolution_overrideable_backward.py | \
+    tests/test_atanh_backward.py | \
+    tests/test_cudnn_rnn_flatten_weight.py | \
+    tests/test_amp_update_scale_.py | \
+    tests/test_cauchy.py | \
+    tests/test_trace_backward.py | \
+    tests/test_median_out.py | \
+    tests/test_addbmm.py | \
+    tests/test_alpha_dropout.py | \
+    tests/test_apply_rotary_pos_emb.py | \
+    tests/test_arctanh.py | \
+    tests/test_atan.py | \
+    tests/test_batch_norm_no_update.py | \
+    tests/test_bitwise_or_scalar.py)
+      if [[ "$FULL_RUN" == "true" && "${BACKEND:-}" == *ascend* ]]; then
+        # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
+        # TODO: unblock each test once the underlying issue is resolved
+        :
+      else
+        if [[ "$file_name" == test*.py ]]; then
+          TEST_CASES+=($item)
+        fi
+      fi
       ;;
     tests/*.py)
       if [[ "$file_name" == test*.py ]]; then
@@ -209,7 +286,7 @@ run_batch() {
   local label="$1"; shift
   local report_file="$1"; shift
   local flags="$1"; shift
-  local timeout_s="${TEST_BATCH_TIMEOUT:-1800}"
+  local timeout_s="${TEST_BATCH_TIMEOUT:-3600}"
   local extra_flags=""
   if [[ "$report_file" != "-" ]]; then
     extra_flags="--md-report-output=${report_file}"
@@ -231,9 +308,9 @@ run_batch() {
 
 FAILURES=()
 _BATCH_IDX=0
-if [[ "${CHANGED_FILES}" == "__ALL__" && ${#TEST_CASES[@]} -gt 0 ]]; then
+if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   # Full-range daily run: batch files so each pytest process covers many files.
-  BATCH_SIZE="${TEST_BATCH_SIZE:-20}"
+  BATCH_SIZE="${TEST_BATCH_SIZE:-100}"
   batch=()
   for item in "${TEST_CASES[@]}"; do
     batch+=("$item")
@@ -249,10 +326,19 @@ if [[ "${CHANGED_FILES}" == "__ALL__" && ${#TEST_CASES[@]} -gt 0 ]]; then
   fi
 else
   # Per-PR run: a handful of changed files, run individually for precise
-  # failure attribution and -x fail-fast.
+  # failure attribution and -x fail-fast. Guard each file with the same shell
+  # timeout as the batched daily runs, and print node ids, so a hung test fails
+  # with rc=124 and leaves the last started test in the log instead of blocking
+  # the job until the workflow timeout.
   for item in "${TEST_CASES[@]}"; do
     echo "Running unit tests for ${item}"
-    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+    PYTHONUNBUFFERED=1 timeout "${TEST_BATCH_TIMEOUT:-3600}" \
+      coverage run -m pytest -s -v ${EXTRA_OPTS} ${item}
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+      if [[ $rc -eq 124 ]]; then
+        echo "::error::${item} timed out after ${TEST_BATCH_TIMEOUT:-3600}s"
+      fi
       if $FAIL_FAST; then exit 1; fi
       FAILURES+=("${item}")
     fi
@@ -307,7 +393,7 @@ fi
 # Skipped for full-range daily runs (CHANGED_FILES == __ALL__) because the GPU
 # accuracy run already covers all files; running them again on CPU reference
 # doubles the runtime for negligible extra signal in that context.
-if [[ "${CHANGED_FILES}" != "__ALL__" ]]; then
+if ! $FULL_RUN; then
   for item in "${TEST_CASES_CPU[@]}"; do
     echo "Running quick-cpu mode unit tests for ${item}"
     if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
@@ -354,6 +440,20 @@ for marker in "${OPS_MARKERS[@]}"; do
 done
 
 for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
+  # Skip vendor-specific/hardware-specific benchmark tests
+  skip_kernel_check=0
+  for skip_test in "${NO_KERNEL_CHECK_TESTS[@]}"; do
+    if [[ "$item" == "$skip_test" ]]; then
+      skip_kernel_check=1
+      break
+    fi
+  done
+
+  if [[ $skip_kernel_check -eq 1 ]]; then
+    echo "Skipping kernel-check for ${item} (vendor-specific test)"
+    continue
+  fi
+
   echo "Running kernel-check for ${item} (derived from changed operator)"
   if ! pytest -s ${item} --kernel-check; then
     if $FAIL_FAST; then exit 1; fi

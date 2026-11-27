@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def special_softmax(self, dim, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SOFTMAX")
+    logger.debug("GEMS_ENFLAME SPECIAL_SOFTMAX")
 
     from flag_gems import softmax as core_softmax
 

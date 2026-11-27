@@ -38,14 +38,18 @@ _DOT_PRECISION = tl.constexpr("ieee")
 
 _TRITON_DIRECT_LOWP_DTYPES = (torch.float16, torch.bfloat16)
 
+# Upcasting the 16-bit operands to fp32 before tl.dot turns every dot into an
+# fp32 MMA and doubles the DSM staging footprint.  tl.dot already accumulates
+# bf16/fp16 inputs in fp32, so the upcast buys precision nothing and costs
+# throughput; it is kept switchable so the two forms can be A/B measured.
+_TILED_UPCAST_LOWP = True
+
 _GENERAL_TRITON_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 _DIRECT_TILED_FAMILY_MAX_CHANNELS = 256
 _DIRECT_TILED_FAMILY_MAX_KERNEL = 5
 _DIRECT_TILED_FAMILY_MAX_STRIDE = 4
 _DIRECT_TILED_OUTPUT_PADDING_MIN_INPUT_ELEMENTS = 1024
-_DIRECT_TILED_DEFAULT_SCHEDULE = (64, 32, 32, 4)
-_DIRECT_STRIDE2_PAD1_3X3_MAX_CHANNELS = 256
 
 
 def _pair(value):
@@ -319,311 +323,270 @@ def _can_use_scatter_no_overlap(
     return weight_height * weight_width <= 25
 
 
-def _can_use_stride2_pad1_3x3_direct(
-    input,
-    weight,
-    bias,
-    stride_h,
-    stride_w,
-    padding_h,
-    padding_w,
-    output_padding_h,
-    output_padding_w,
-    groups,
-    dilation_h,
-    dilation_w,
-):
-    if bias is not None or groups != 1:
-        return False
-    if (dilation_h, dilation_w) != (1, 1):
-        return False
-    if (output_padding_h, output_padding_w) != (0, 0):
-        return False
-    if (stride_h, stride_w) != (2, 2) or (padding_h, padding_w) != (1, 1):
-        return False
-    if input.dim() != 4 or weight.dim() != 4:
-        return False
-    if input.device.type not in ("cuda", "gcu") or weight.device != input.device:
-        return False
-    if input.dtype not in _GENERAL_TRITON_DTYPES or weight.dtype != input.dtype:
-        return False
-    if input.dtype is torch.bfloat16 and not torch.cuda.is_bf16_supported():
-        return False
-    if not input.is_contiguous() or not weight.is_contiguous():
-        return False
-
-    batch, input_channels, input_height, input_width = input.shape
-    weight_input_channels, output_channels, weight_height, weight_width = weight.shape
-    if batch <= 0 or input_height <= 0 or input_width <= 0:
-        return False
-    if input_channels != weight_input_channels:
-        return False
-    if (weight_height, weight_width) != (3, 3):
-        return False
-    if input_channels < 16 or output_channels < 16:
-        return False
-    if (
-        input_channels > _DIRECT_STRIDE2_PAD1_3X3_MAX_CHANNELS
-        or output_channels > _DIRECT_STRIDE2_PAD1_3X3_MAX_CHANNELS
-    ):
-        return False
-    if input.dtype is torch.float32:
-        return True
-    if (
-        input.dtype is torch.float16
-        and input_channels <= 32
-        and output_channels >= 64
-        and input_height <= 16
-    ):
-        return True
-    return (
-        input.dtype is torch.bfloat16
-        and input_channels >= 64
-        and output_channels <= 32
-        and input_height <= 16
-    )
-
-
 @libentry()
 @triton.jit
-def _conv_transpose2d_direct_kernel(
+def _conv_transpose2d_tiled_dot(
     input_pointer,
     weight_pointer,
     output_pointer,
     batch_size: tl.constexpr,
+    input_channels: tl.constexpr,
     input_height: tl.constexpr,
     input_width: tl.constexpr,
     output_channels: tl.constexpr,
     output_height: tl.constexpr,
     output_width: tl.constexpr,
-    input_n_stride: tl.constexpr,
-    input_c_stride: tl.constexpr,
-    input_height_stride: tl.constexpr,
-    input_width_stride: tl.constexpr,
-    weight_ci_stride: tl.constexpr,
-    weight_co_stride: tl.constexpr,
-    weight_height_stride: tl.constexpr,
-    weight_width_stride: tl.constexpr,
-    output_n_stride: tl.constexpr,
-    output_c_stride: tl.constexpr,
-    output_height_stride: tl.constexpr,
-    output_width_stride: tl.constexpr,
-    input_channels: tl.constexpr,
     weight_height: tl.constexpr,
     weight_width: tl.constexpr,
     stride_height: tl.constexpr,
     stride_width: tl.constexpr,
     padding_height: tl.constexpr,
     padding_width: tl.constexpr,
+    upcast_fp32: tl.constexpr,
+    ci_blocks: tl.constexpr,
     BLOCK_NHW: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
 ):
+    # Residue-phase tiled dot for the direct family (groups=1, bias=None,
+    # dilation=1, contiguous): output positions are partitioned by their
+    # (oh % sh, ow % sw) phase so each program only visits the taps whose
+    # back-projection lands on an input sample.  Taps are unrolled with
+    # static_range (a runtime loop around tl.dot costs ~44us per iteration
+    # on this backend), and the back-projection is folded into one scalar
+    # offset per tap so the tap body needs no vector division.
     pid_nhw = tl.program_id(0)
     pid_co = tl.program_id(1)
     pid_subgrid = tl.program_id(2)
+    residue_h = pid_subgrid // stride_width
+    residue_w = pid_subgrid % stride_width
 
-    output_residue_h = pid_subgrid // stride_width
-    output_residue_w = pid_subgrid % stride_width
     compact_height: tl.constexpr = (output_height + stride_height - 1) // stride_height
     compact_width: tl.constexpr = (output_width + stride_width - 1) // stride_width
+    compact_plane: tl.constexpr = compact_height * compact_width
 
     compact_offsets = pid_nhw * BLOCK_NHW + tl.arange(0, BLOCK_NHW)
-    compact_plane: tl.constexpr = compact_height * compact_width
     compact_nh = compact_offsets // compact_width
     compact_h = compact_nh % compact_height
     compact_w = compact_offsets % compact_width
     n = compact_offsets // compact_plane
-    oh = compact_h * stride_height + output_residue_h
-    ow = compact_w * stride_width + output_residue_w
-    co_offsets = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
 
-    accum = tl.zeros((BLOCK_NHW, BLOCK_CO), dtype=tl.float32)
-    ci_blocks: tl.constexpr = tl.cdiv(input_channels, BLOCK_CI)
-    height_residue = (output_residue_h + padding_height) % stride_height
-    width_residue = (output_residue_w + padding_width) % stride_width
-    for kh in range(weight_height):
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    valid_co = co < output_channels
+
+    acc = tl.zeros((BLOCK_NHW, BLOCK_CO), dtype=tl.float32)
+
+    height_residue = (residue_h + padding_height) % stride_height
+    width_residue = (residue_w + padding_width) % stride_width
+    height_limit = (output_height - residue_h + stride_height - 1) // stride_height
+    width_limit = (output_width - residue_w + stride_width - 1) // stride_width
+    base_valid = (
+        (n < batch_size) & (compact_h < height_limit) & (compact_w < width_limit)
+    )
+
+    for kh in tl.static_range(0, weight_height):
         if kh % stride_height == height_residue:
-            ih_unstrided = oh + padding_height - kh
-            ih = ih_unstrided // stride_height
-            valid_h = (ih_unstrided >= 0) & (ih < input_height)
-            for kw in range(weight_width):
+            ih_offset = (residue_h + padding_height - kh) // stride_height
+            valid_h = (
+                base_valid
+                & (compact_h >= -ih_offset)
+                & (compact_h < input_height - ih_offset)
+            )
+            ih = compact_h + ih_offset
+            for kw in tl.static_range(0, weight_width):
                 if kw % stride_width == width_residue:
-                    iw_unstrided = ow + padding_width - kw
-                    iw = iw_unstrided // stride_width
-                    valid_hw = (
-                        (n < batch_size)
-                        & valid_h
-                        & (iw_unstrided >= 0)
-                        & (iw < input_width)
-                        & (oh < output_height)
-                        & (ow < output_width)
+                    iw_offset = (residue_w + padding_width - kw) // stride_width
+                    valid = (
+                        valid_h
+                        & (compact_w >= -iw_offset)
+                        & (compact_w < input_width - iw_offset)
                     )
+                    iw = compact_w + iw_offset
+                    # ci loop stays a runtime loop on purpose: a fully
+                    # unrolled tap x ci chain allocates one DSM staging
+                    # buffer per dot instance and overflows the 917504B
+                    # budget (measured on CI=256), while the runtime loop
+                    # reuses a single buffer across iterations.
                     for ci_base in range(ci_blocks):
-                        ci_offsets = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
+                        ci = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
                         input_offsets = (
-                            n[:, None] * input_n_stride
-                            + ci_offsets[None, :] * input_c_stride
-                            + ih[:, None] * input_height_stride
-                            + iw[:, None] * input_width_stride
-                        )
+                            (n[:, None] * input_channels + ci[None, :]) * input_height
+                            + ih[:, None]
+                        ) * input_width + iw[:, None]
                         weight_offsets = (
-                            ci_offsets[:, None] * weight_ci_stride
-                            + co_offsets[None, :] * weight_co_stride
-                            + kh * weight_height_stride
-                            + kw * weight_width_stride
-                        )
-                        input_mask = valid_hw[:, None] & (
-                            ci_offsets[None, :] < input_channels
-                        )
-                        weight_mask = (ci_offsets[:, None] < input_channels) & (
-                            co_offsets[None, :] < output_channels
-                        )
+                            (ci[:, None] * output_channels + co[None, :])
+                            * weight_height
+                            + kh
+                        ) * weight_width + kw
+                        input_mask = valid[:, None] & (ci[None, :] < input_channels)
+                        weight_mask = (ci[:, None] < input_channels) & valid_co[None, :]
                         input_block = tl.load(
-                            input_pointer + input_offsets, mask=input_mask, other=0.0
+                            input_pointer + input_offsets,
+                            mask=input_mask,
+                            other=0.0,
                         )
                         weight_block = tl.load(
-                            weight_pointer + weight_offsets, mask=weight_mask, other=0.0
+                            weight_pointer + weight_offsets,
+                            mask=weight_mask,
+                            other=0.0,
                         )
-                        accum += tl.dot(
-                            input_block,
-                            weight_block,
-                            input_precision=_DOT_PRECISION,
-                        )
+                        if upcast_fp32:
+                            acc += tl.dot(
+                                input_block.to(tl.float32),
+                                weight_block.to(tl.float32),
+                                input_precision=_DOT_PRECISION,
+                            )
+                        else:
+                            acc += tl.dot(
+                                input_block,
+                                weight_block,
+                                input_precision=_DOT_PRECISION,
+                            )
 
-    output_offsets = (
-        n[:, None] * output_n_stride
-        + co_offsets[None, :] * output_c_stride
-        + oh[:, None] * output_height_stride
-        + ow[:, None] * output_width_stride
+    oh = compact_h * stride_height + residue_h
+    ow = compact_w * stride_width + residue_w
+    output_offsets = (n[:, None] * output_channels + co[None, :]) * (
+        output_height * output_width
     )
-    output_mask = (
-        (n[:, None] < batch_size)
-        & (oh[:, None] < output_height)
-        & (ow[:, None] < output_width)
-        & (co_offsets[None, :] < output_channels)
+    output_offsets = output_offsets + oh[:, None] * output_width + ow[:, None]
+    output_mask = base_valid[:, None] & valid_co[None, :]
+    tl.store(
+        output_pointer + output_offsets,
+        acc.to(output_pointer.dtype.element_ty),
+        mask=output_mask,
     )
-    tl.store(output_pointer + output_offsets, accum, mask=output_mask)
 
 
 @libentry()
 @triton.jit
-def _conv_transpose2d_stride2_pad1_3x3_kernel(
+def _conv_transpose2d_tiled_dot_transposed(
     input_pointer,
     weight_pointer,
     output_pointer,
     batch_size: tl.constexpr,
+    input_channels: tl.constexpr,
     input_height: tl.constexpr,
     input_width: tl.constexpr,
     output_channels: tl.constexpr,
     output_height: tl.constexpr,
     output_width: tl.constexpr,
-    compact_height: tl.constexpr,
-    compact_width: tl.constexpr,
-    input_n_stride: tl.constexpr,
-    input_c_stride: tl.constexpr,
-    input_height_stride: tl.constexpr,
-    input_width_stride: tl.constexpr,
-    weight_ci_stride: tl.constexpr,
-    weight_co_stride: tl.constexpr,
-    weight_height_stride: tl.constexpr,
-    weight_width_stride: tl.constexpr,
-    output_n_stride: tl.constexpr,
-    output_c_stride: tl.constexpr,
-    output_height_stride: tl.constexpr,
-    output_width_stride: tl.constexpr,
-    input_channels: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    stride_height: tl.constexpr,
+    stride_width: tl.constexpr,
+    padding_height: tl.constexpr,
+    padding_width: tl.constexpr,
+    upcast_fp32: tl.constexpr,
+    ci_blocks: tl.constexpr,
     BLOCK_NHW: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
 ):
-    pid_raw = tl.program_id(0)
-    phase = pid_raw % 4
-    pid_nhw = pid_raw // 4
+    # Same residue-phase tiling as _conv_transpose2d_tiled_dot, but the dot is
+    # computed transposed: acc[co, nhw] = dot(W[co, ci], X[ci, nhw]).
+    #
+    # NCHW memory makes the channel axis a strided axis (stride H*W) while the
+    # compact spatial axis is unit-stride.  Owning BLOCK_NHW in the *fast* axis
+    # of both the loaded tile and the accumulator turns the input tile into a
+    # coalesced (BLOCK_CI, BLOCK_NHW) read instead of a (BLOCK_NHW, BLOCK_CI)
+    # strided gather, which is what the non-transposed variant pays for on every
+    # tap.  Measured on the benchmark matrix this is 1.2x-2.7x faster on
+    # fp16/bf16 and is never slower than the non-transposed variant on fp32.
+    pid_nhw = tl.program_id(0)
     pid_co = tl.program_id(1)
+    pid_subgrid = tl.program_id(2)
+    residue_h = pid_subgrid // stride_width
+    residue_w = pid_subgrid % stride_width
 
-    residue_h = phase // 2
-    residue_w = phase % 2
-    compact_offsets = pid_nhw * BLOCK_NHW + tl.arange(0, BLOCK_NHW)
+    compact_height: tl.constexpr = (output_height + stride_height - 1) // stride_height
+    compact_width: tl.constexpr = (output_width + stride_width - 1) // stride_width
     compact_plane: tl.constexpr = compact_height * compact_width
+
+    compact_offsets = pid_nhw * BLOCK_NHW + tl.arange(0, BLOCK_NHW)
     compact_nh = compact_offsets // compact_width
     compact_h = compact_nh % compact_height
     compact_w = compact_offsets % compact_width
     n = compact_offsets // compact_plane
-    oh = compact_h * 2 + residue_h
-    ow = compact_w * 2 + residue_w
-    co_offsets = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
 
-    accum = tl.zeros((BLOCK_NHW, BLOCK_CO), dtype=tl.float32)
-    ci_blocks: tl.constexpr = tl.cdiv(input_channels, BLOCK_CI)
-    height_residue = (residue_h + 1) % 2
-    width_residue = (residue_w + 1) % 2
-    for kh_slot in range(2):
-        kh = height_residue + kh_slot * 2
-        valid_kh = kh < 3
-        ih_unstrided = oh + 1 - kh
-        ih = ih_unstrided // 2
-        valid_h = valid_kh & (ih_unstrided >= 0) & (ih < input_height)
-        for kw_slot in range(2):
-            kw = width_residue + kw_slot * 2
-            valid_kw = kw < 3
-            iw_unstrided = ow + 1 - kw
-            iw = iw_unstrided // 2
-            valid_hw = (
-                (n < batch_size)
-                & valid_h
-                & valid_kw
-                & (iw_unstrided >= 0)
-                & (iw < input_width)
-                & (oh < output_height)
-                & (ow < output_width)
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    valid_co = co < output_channels
+
+    acc = tl.zeros((BLOCK_CO, BLOCK_NHW), dtype=tl.float32)
+
+    height_residue = (residue_h + padding_height) % stride_height
+    width_residue = (residue_w + padding_width) % stride_width
+    height_limit = (output_height - residue_h + stride_height - 1) // stride_height
+    width_limit = (output_width - residue_w + stride_width - 1) // stride_width
+    base_valid = (
+        (n < batch_size) & (compact_h < height_limit) & (compact_w < width_limit)
+    )
+
+    for kh in tl.static_range(0, weight_height):
+        if kh % stride_height == height_residue:
+            ih_offset = (residue_h + padding_height - kh) // stride_height
+            valid_h = (
+                base_valid
+                & (compact_h >= -ih_offset)
+                & (compact_h < input_height - ih_offset)
             )
-            for ci_base in range(ci_blocks):
-                ci_offsets = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
-                input_offsets = (
-                    n[:, None] * input_n_stride
-                    + ci_offsets[None, :] * input_c_stride
-                    + ih[:, None] * input_height_stride
-                    + iw[:, None] * input_width_stride
-                )
-                weight_offsets = (
-                    ci_offsets[:, None] * weight_ci_stride
-                    + co_offsets[None, :] * weight_co_stride
-                    + kh * weight_height_stride
-                    + kw * weight_width_stride
-                )
-                input_mask = valid_hw[:, None] & (ci_offsets[None, :] < input_channels)
-                weight_mask = (
-                    (ci_offsets[:, None] < input_channels)
-                    & (co_offsets[None, :] < output_channels)
-                    & valid_kh
-                    & valid_kw
-                )
-                input_block = tl.load(
-                    input_pointer + input_offsets, mask=input_mask, other=0.0
-                )
-                weight_block = tl.load(
-                    weight_pointer + weight_offsets, mask=weight_mask, other=0.0
-                )
-                accum += tl.dot(
-                    input_block,
-                    weight_block,
-                    input_precision=_DOT_PRECISION,
-                )
+            ih = compact_h + ih_offset
+            for kw in tl.static_range(0, weight_width):
+                if kw % stride_width == width_residue:
+                    iw_offset = (residue_w + padding_width - kw) // stride_width
+                    valid = (
+                        valid_h
+                        & (compact_w >= -iw_offset)
+                        & (compact_w < input_width - iw_offset)
+                    )
+                    iw = compact_w + iw_offset
+                    for ci_base in range(ci_blocks):
+                        ci = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
+                        input_offsets = (
+                            (n[None, :] * input_channels + ci[:, None]) * input_height
+                            + ih[None, :]
+                        ) * input_width + iw[None, :]
+                        weight_offsets = (
+                            (ci[None, :] * output_channels + co[:, None])
+                            * weight_height
+                            + kh
+                        ) * weight_width + kw
+                        input_mask = valid[None, :] & (ci[:, None] < input_channels)
+                        weight_mask = (ci[None, :] < input_channels) & valid_co[:, None]
+                        input_block = tl.load(
+                            input_pointer + input_offsets,
+                            mask=input_mask,
+                            other=0.0,
+                        )
+                        weight_block = tl.load(
+                            weight_pointer + weight_offsets,
+                            mask=weight_mask,
+                            other=0.0,
+                        )
+                        if upcast_fp32:
+                            acc += tl.dot(
+                                weight_block.to(tl.float32),
+                                input_block.to(tl.float32),
+                                input_precision=_DOT_PRECISION,
+                            )
+                        else:
+                            acc += tl.dot(
+                                weight_block,
+                                input_block,
+                                input_precision=_DOT_PRECISION,
+                            )
 
-    output_offsets = (
-        n[:, None] * output_n_stride
-        + co_offsets[None, :] * output_c_stride
-        + oh[:, None] * output_height_stride
-        + ow[:, None] * output_width_stride
+    oh = compact_h * stride_height + residue_h
+    ow = compact_w * stride_width + residue_w
+    output_offsets = (n[None, :] * output_channels + co[:, None]) * (
+        output_height * output_width
     )
-    output_mask = (
-        (n[:, None] < batch_size)
-        & (oh[:, None] < output_height)
-        & (ow[:, None] < output_width)
-        & (co_offsets[None, :] < output_channels)
+    output_offsets = output_offsets + oh[None, :] * output_width + ow[None, :]
+    output_mask = valid_co[:, None] & base_valid[None, :]
+    tl.store(
+        output_pointer + output_offsets,
+        acc.to(output_pointer.dtype.element_ty),
+        mask=output_mask,
     )
-    tl.store(output_pointer + output_offsets, accum, mask=output_mask)
 
 
 @libentry()
@@ -1339,7 +1302,7 @@ def conv_transpose2d(
     groups=1,
     dilation=1,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CONV_TRANSPOSE2D")
+    logger.debug("GEMS_ENFLAME CONV_TRANSPOSE2D")
 
     stride_h, stride_w = _pair(stride)
     padding_h, padding_w = _pair(padding)
@@ -1390,22 +1353,6 @@ def _conv_transpose2d_4d_dispatch(
     dilation_h,
     dilation_w,
 ):
-    if _can_use_stride2_pad1_3x3_direct(
-        input,
-        weight,
-        bias,
-        stride_h,
-        stride_w,
-        padding_h,
-        padding_w,
-        output_padding_h,
-        output_padding_w,
-        groups,
-        dilation_h,
-        dilation_w,
-    ):
-        return _conv_transpose2d_stride2_pad1_3x3(input, weight)
-
     direct_tiled_family_params = _direct_tiled_family_params(
         input,
         weight,
@@ -1514,167 +1461,113 @@ def _conv_transpose2d_4d_dispatch(
     )
 
 
-def _select_stride2_pad1_3x3_schedule(input_dtype, input_channels, output_channels):
-    block_nhw = 64
-    block_ci = 32
-    block_co = 32
-    num_warps = 4
-
-    if input_dtype is torch.float32:
-        block_ci = 16
-        block_co = 16
-    elif input_channels <= 32 and output_channels >= 64:
-        block_nhw = 128
-        block_ci = 16
-        block_co = 64
-    elif input_channels >= 64 and output_channels <= 32:
-        block_nhw = 64
-        block_ci = 32
-        block_co = 32
-        num_warps = 8
-    elif input_dtype is torch.bfloat16 and input_channels >= 128:
-        block_nhw = 128
-        block_ci = 16
-        block_co = 16
-        num_warps = 8
-
-    return block_nhw, block_ci, block_co, num_warps
+def _next_pow2(value):
+    out = 1
+    while out < value:
+        out *= 2
+    return out
 
 
-def _conv_transpose2d_stride2_pad1_3x3(input, weight):
-    batch, input_channels, input_height, input_width = input.shape
-    _, output_channels, _weight_height, _weight_width = weight.shape
-    output_height = input_height * 2 - 1
-    output_width = input_width * 2 - 1
-    output = torch.empty(
-        (batch, output_channels, output_height, output_width),
-        device=input.device,
-        dtype=input.dtype,
-    )
-    if output.numel() == 0:
-        return output
-
-    block_nhw, block_ci, block_co, num_warps = _select_stride2_pad1_3x3_schedule(
-        input.dtype,
-        input_channels,
-        output_channels,
-    )
-    compact_height = (output_height + 1) // 2
-    compact_width = (output_width + 1) // 2
-    grid = (
-        triton.cdiv(batch * compact_height * compact_width, block_nhw) * 4,
-        triton.cdiv(output_channels, block_co),
-    )
-    _conv_transpose2d_stride2_pad1_3x3_kernel[grid](
-        input,
-        weight,
-        output,
-        batch,
-        input_height,
-        input_width,
-        output_channels,
-        output_height,
-        output_width,
-        compact_height,
-        compact_width,
-        *input.stride(),
-        *weight.stride(),
-        *output.stride(),
-        input_channels,
-        BLOCK_NHW=block_nhw,
-        BLOCK_CI=block_ci,
-        BLOCK_CO=block_co,
-        num_warps=num_warps,
-    )
-    return output
-
-
-def _select_conv_transpose2d_direct_schedule(
+def _select_conv_transpose2d_tiled_schedule(
     input_dtype,
     input_channels,
     output_channels,
     weight_height,
     weight_width,
     stride_h,
-    output_padding_h,
 ):
-    block_nhw, block_ci, block_co, num_warps = _DIRECT_TILED_DEFAULT_SCHEDULE
+    """Pick (BLOCK_NHW, BLOCK_CI, BLOCK_CO, num_warps) for the tiled dot kernel.
 
-    if input_dtype is torch.bfloat16:
-        if stride_h >= 3:
-            block_nhw = 128
-            block_ci = 16
-            block_co = 16
-            num_warps = 8
-        elif input_channels >= 128:
-            block_nhw = 256
-            block_ci = 16
-            block_co = 16
-            num_warps = 8
-        elif weight_height >= 5 or weight_width >= 5:
-            block_nhw = 128
-            block_ci = 16
-        elif input_channels >= 64 and output_channels <= 32:
-            block_ci = 64
-            if stride_h == 1:
-                num_warps = 8
-    elif input_dtype is torch.float16:
-        if stride_h >= 3:
-            block_nhw = 128
-            block_ci = 16
-            block_co = 16
-            num_warps = 8
-        elif weight_height >= 5 or weight_width >= 5:
-            block_nhw = 128
-            block_ci = 16
-        elif input_channels >= 64 and output_channels <= 32:
-            block_ci = 64
-            if stride_h == 1:
-                num_warps = 8
-    elif input_dtype is torch.float32 and (weight_height >= 5 or weight_width >= 5):
-        block_ci = 16
-    elif input_channels >= 64 and output_channels <= 32:
-        block_ci = 64
-        if stride_h == 1:
-            num_warps = 8
-    if (
-        stride_h == 1
-        and weight_height <= 3
-        and weight_width <= 3
-        and input_channels >= 64
-        and output_channels <= 64
-    ):
-        block_nhw = 256
-        block_ci = 16
-        block_co = 32
-        num_warps = 8
-    elif (
-        stride_h == 2
-        and weight_height <= 3
-        and weight_width <= 3
-        and input_channels <= 32
-        and output_channels >= 64
-    ):
-        block_nhw = 128
-        block_ci = 16
-        block_co = 64
-        num_warps = 4
-    elif (
-        stride_h == 2
-        and weight_height <= 3
-        and weight_width <= 3
-        and input_channels >= 64
-        and output_channels <= 32
-    ):
-        block_nhw = 32
-        block_ci = 16
-        block_co = 32
-        num_warps = 8
-    if output_padding_h:
-        block_nhw = min(block_nhw, 128)
-        block_ci = min(block_ci, 32)
-
+    Arms are measured on GCU400 over the benchmark shape matrix (12-case
+    sweep x 3 dtypes plus domain-edge DSM probes); the sibling
+    slow_conv_transpose2d measurements bootstrap the starting point.  The
+    static_range tap unroll allocates one DSM staging set per tap, so
+    heavy-tap kernels (>= 17 taps, e.g. 5x5) must use narrow (BLOCK_CI,
+    BLOCK_CO) tiles to stay under the 917504B DSM limit (measured: lowp
+    ~36KB/tap at (.,32,32); k25 at (64,16,64) fails at 1339392B while
+    (128,16,16) compiles).  BLOCK_CI widening (ci_blocks <= 4) is only
+    applied for light-tap kernels where the per-tap budget has room.
+    """
+    taps = weight_height * weight_width
+    if input_dtype is torch.float32:
+        if taps >= 17:
+            block_nhw, block_ci, block_co, num_warps = 128, 16, 16, 4
+        elif stride_h == 1:
+            block_nhw, block_ci, block_co, num_warps = 32, 32, 32, 4
+        elif output_channels >= 64:
+            block_nhw, block_ci, block_co, num_warps = 64, 16, 64, 4
+        else:
+            block_nhw, block_ci, block_co, num_warps = 128, 16, 32, 4
+    else:
+        if taps >= 17:
+            block_nhw, block_ci, block_co, num_warps = 128, 16, 16, 4
+        elif stride_h == 1:
+            # Re-measured 2026-11-22 on (1,64,32,32,co=32,3x3,s1,p1): the
+            # 128-wide NHW tile with a 32-wide CI block beats the previous
+            # (64,64,32) arm 0.164ms vs 0.264ms (1.6x), i.e. a wider NHW tile
+            # pays off while the deep CI block only adds DSM staging.
+            block_nhw, block_ci, block_co, num_warps = 128, 32, 32, 4
+        elif output_channels >= 64:
+            block_nhw, block_ci, block_co, num_warps = 128, 16, 64, 8
+        else:
+            block_nhw, block_ci, block_co, num_warps = 128, 16, 32, 4
+    if taps <= 9:
+        if input_channels > 128:
+            # fp32 tiles pay ~4x the per-element DSM cost of the upcast
+            # lowp path, so their widening stops at 32 (measured:
+            # (128,64,32) at 9 taps needs 942080B and fails).
+            block_ci = max(block_ci, 32 if input_dtype is torch.float32 else 64)
+            if block_co > 32:
+                # (BLOCK_CI=64, BLOCK_CO=64) at 9 taps needs 1056768B of
+                # DSM (over the 917504B limit); 851968B is measured safe
+                # with BLOCK_CO=32, so trade the channel-block tile down.
+                block_co = 32
+        elif input_channels > 64:
+            block_ci = max(block_ci, 32)
+    block_co = min(block_co, _next_pow2(output_channels))
     return block_nhw, block_ci, block_co, num_warps
+
+
+_TILED_LAUNCH_CACHE = {}
+
+
+def _select_conv_transpose2d_transposed_schedule(
+    input_dtype,
+    input_channels,
+    output_channels,
+    weight_height,
+    weight_width,
+    stride_h,
+):
+    """Pick (BLOCK_NHW, BLOCK_CI, BLOCK_CO, num_warps) for the transposed dot.
+
+    A wide BLOCK_NHW is the whole point of this variant (it is the unit-stride
+    axis of both the loaded tile and the accumulator); 128 keeps the input tile
+    at 32*128 fp32 = 16KB, so a 3x3 transposed conv (9 taps) needs ~216KB of
+    DSM staging in total, well under the 917504B budget.  BLOCK_CI=32 already
+    covers the channel counts of the benchmark matrix in a single K step, and
+    widening it only costs DSM.  BLOCK_CO follows the output channel count
+    (measured: CO=64 wants BLOCK_CO=64, CO=32 wants BLOCK_CO=32).
+    """
+    block_nhw, block_ci, num_warps = 128, 32, 8
+    output_channels_pow2 = _next_pow2(output_channels)
+    block_co = 64 if output_channels_pow2 >= 64 else 32
+    block_co = min(block_co, output_channels_pow2)
+    return block_nhw, block_ci, block_co, num_warps
+
+
+def _tiled_launch_hooks_active():
+    """True when profiling/trace launch hooks are installed and must run."""
+    for hook in (
+        triton.knobs.runtime.launch_enter_hook,
+        triton.knobs.runtime.launch_exit_hook,
+    ):
+        if hook is None:
+            continue
+        calls = getattr(hook, "calls", None)
+        if calls is None or len(calls) > 0:
+            return True
+    return False
 
 
 def _conv_transpose2d_direct(
@@ -1710,51 +1603,169 @@ def _conv_transpose2d_direct(
         device=input.device,
         dtype=input.dtype,
     )
+    if output.numel() == 0:
+        return output
+
+    # A 3x3 tap set (taps <= 9) fits the transposed-dot variant inside the DSM
+    # budget; heavier tap sets keep the narrow-tile non-transposed kernel that
+    # was tuned for them.  The wide BLOCK_NHW also needs enough output to fill
+    # the machine: on tiny outputs (1x32x32x32, 32K elements) it measures 1.25x
+    # slower on fp16 and 1.8x slower on fp32 than the narrow non-transposed
+    # schedule, which puts 32 CTAs on the same work.
+    use_transposed_dot = weight_height * weight_width <= 9 and output.numel() >= 65536
+    if use_transposed_dot:
+        (
+            block_nhw,
+            block_ci,
+            block_co,
+            num_warps,
+        ) = _select_conv_transpose2d_transposed_schedule(
+            input.dtype,
+            input_channels,
+            output_channels,
+            weight_height,
+            weight_width,
+            stride_h,
+        )
+        tiled_dot_kernel = _conv_transpose2d_tiled_dot_transposed
+    else:
+        (
+            block_nhw,
+            block_ci,
+            block_co,
+            num_warps,
+        ) = _select_conv_transpose2d_tiled_schedule(
+            input.dtype,
+            input_channels,
+            output_channels,
+            weight_height,
+            weight_width,
+            stride_h,
+        )
+        tiled_dot_kernel = _conv_transpose2d_tiled_dot
+    # Degenerate spatial extents trip an illegal shared-memory access inside
+    # tl.dot at low warp counts on this backend; eight warps avoids it.
+    if (output_height <= 1 or output_width <= 1) and num_warps < 8:
+        num_warps = 8
     compact_height = triton.cdiv(output_height, stride_h)
     compact_width = triton.cdiv(output_width, stride_w)
     max_sub_spatial = batch * compact_height * compact_width
-    n_subgrids = stride_h * stride_w
-
-    block_nhw, block_ci, block_co, num_warps = _select_conv_transpose2d_direct_schedule(
-        input.dtype,
-        input_channels,
-        output_channels,
-        weight_height,
-        weight_width,
-        stride_h,
-        output_padding_h,
-    )
-
     grid = (
         triton.cdiv(max_sub_spatial, block_nhw),
         triton.cdiv(output_channels, block_co),
-        n_subgrids,
+        stride_h * stride_w,
     )
-    _conv_transpose2d_direct_kernel[grid](
+
+    # Every parameter of this kernel is a constexpr, so a compiled kernel is
+    # fully determined by the (device, dtype, geometry, tile) tuple below and
+    # only the three tensor pointers are runtime arguments.  Bypassing the
+    # per-call JIT binding (measured at ~25us of the ~43us host cost) is the
+    # difference between 0.4x and 1x against the native op on the small
+    # benchmark shapes, so cache the compiled kernel and launch it directly
+    # while no launch hook (profiling/trace tooling) is installed.  Pointer
+    # alignment participates in Triton's specialization and is keyed too.
+    fast_key = None
+    if not _tiled_launch_hooks_active():
+        fast_key = (
+            input.get_device(),
+            input.dtype,
+            batch,
+            input_channels,
+            input_height,
+            input_width,
+            output_channels,
+            output_height,
+            output_width,
+            weight_height,
+            weight_width,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+            block_nhw,
+            block_ci,
+            block_co,
+            num_warps,
+            use_transposed_dot,
+            (input.data_ptr() | weight.data_ptr()) & 15,
+        )
+        entry = _TILED_LAUNCH_CACHE.get(fast_key)
+        if entry is not None:
+            kernel, grid0, grid1, grid2, static_tail = entry
+            stream = torch.gcu.current_stream(fast_key[0]).gcu_stream
+            kernel.run(
+                grid0,
+                grid1,
+                grid2,
+                stream,
+                kernel.function,
+                kernel.packed_metadata,
+                None,
+                None,
+                None,
+                input,
+                weight,
+                output,
+                *static_tail,
+            )
+            return output
+    ci_blocks = triton.cdiv(input_channels, block_ci)
+    kernel, _ = tiled_dot_kernel[grid](
         input,
         weight,
         output,
         batch,
+        input_channels,
         input_height,
         input_width,
         output_channels,
         output_height,
         output_width,
-        *input.stride(),
-        *weight.stride(),
-        *output.stride(),
-        input_channels,
         weight_height,
         weight_width,
         stride_h,
         stride_w,
         padding_h,
         padding_w,
+        upcast_fp32=_TILED_UPCAST_LOWP and input.dtype in _TRITON_DIRECT_LOWP_DTYPES,
+        ci_blocks=ci_blocks,
         BLOCK_NHW=block_nhw,
         BLOCK_CI=block_ci,
         BLOCK_CO=block_co,
         num_warps=num_warps,
+        num_stages=2,
     )
+    if fast_key is not None:
+        # Triton 3.6's GCU launcher still parses every constexpr argument
+        # at each launch, so the direct path has to replay them; they are
+        # ignored by the compiled binary.
+        static_tail = (
+            batch,
+            input_channels,
+            input_height,
+            input_width,
+            output_channels,
+            output_height,
+            output_width,
+            weight_height,
+            weight_width,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+            input.dtype in _TRITON_DIRECT_LOWP_DTYPES,
+            ci_blocks,
+            block_nhw,
+            block_ci,
+            block_co,
+        )
+        _TILED_LAUNCH_CACHE[fast_key] = (
+            kernel,
+            grid[0],
+            grid[1],
+            grid[2],
+            static_tail,
+        )
     return output
 
 

@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # Each entry lists the lengths of the 1-D input vectors, so the output has
@@ -46,6 +48,10 @@ class CartesianProdBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cartesian_prod
 def test_cartesian_prod():
     bench = CartesianProdBenchmark(

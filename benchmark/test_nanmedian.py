@@ -80,6 +80,10 @@ def _dim_values_input_fn(shape, dtype, device):
         yield inp, {"dim": -1, "out": (out_values, out_indices)}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nanmedian
 def test_nanmedian():
     bench = base.GenericBenchmark(
@@ -92,6 +96,10 @@ def test_nanmedian():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nanmedian_out
 def test_nanmedian_out():
     bench = base.GenericBenchmark(
@@ -104,6 +112,10 @@ def test_nanmedian_out():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nanmedian_dim
 def test_nanmedian_dim():
     bench = base.GenericBenchmark(
@@ -116,6 +128,10 @@ def test_nanmedian_dim():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nanmedian_dim_values
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",

@@ -25,14 +25,45 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# Integer indices (possibly duplicated, using atomic accumulation) use a smaller tile to preserve fp16 large-shape
-# latency
+# Row-tile size when the column axis is degenerate (every leading dim is
+# tensor-indexed, so offset1 is a single column). Measured on GCU400/L600
+# (2026-11-18, do_bench kernel mode): widening the row tile from 64 to 1024
+# cuts the bool-mask accumulate case from 0.96ms to 0.13ms and the 2**28
+# int-index accumulate case from 0.55ms to 0.44ms; 2048 regresses.
+BLOCK_SIZE0_FULL = 1024
+BLOCK_SIZE0_UNIQUE_FULL = 1024
+# Row-tile size for tiles that also sweep the trailing (non-indexed) dims with
+# BLOCK_SIZE1 columns: the (rows, 2048) lane budget must stay inside the gcu400
+# DSM budget, so these keep the historical small row tile.
 BLOCK_SIZE0 = 64
-# bool masks expand to unique writers with many indices, so use a larger tile to compress program scheduling overhead
+# After the bool mask is expanded, writers are unique; with a large number of indices, use a larger tile to reduce
+# program scheduling overhead
 BLOCK_SIZE0_UNIQUE = 64
 BLOCK_SIZE1 = 2048
 GRID_CAP = 65535
 # --- TUNING PARAMS END ---
+
+
+def _max_view_offset(tensor):
+    # Worst-case linear offset this tensor's kernel accesses can reach, i.e.
+    # sum((dim - 1) * stride). Broadcast views contribute 0-stride dims.
+    return sum(
+        (size - 1) * stride for size, stride in zip(tensor.shape, tensor.stride())
+    )
+
+
+def _offsets_fit_int32(inp, tensor_indices, values):
+    # The kernel's address arithmetic is measurably cheaper in int32 (the
+    # 2**28 int-index accumulate case drops 0.44ms -> 0.30ms: int64 index
+    # loads and widening multiply/add are costly on gcu400). All accesses stay
+    # inside the worst-case offsets below, so when each of them fits in int32
+    # the kernel may safely compute offsets with int32 lanes.
+    if _max_view_offset(inp) >= 2**31 or _max_view_offset(values) >= 2**31:
+        return False
+    for index in tensor_indices:
+        if _max_view_offset(index) >= 2**31:
+            return False
+    return True
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -102,6 +133,7 @@ def generate_index_put_kernel(
             "GRID_X,",
             "IS_ACCUMULATE: tl.constexpr,",
             "UNIQUE_WRITER: tl.constexpr,",
+            "I32_ADDR: tl.constexpr,",
             f"BLOCK_SIZE0: tl.constexpr = {block_size0},",
             f"BLOCK_SIZE1: tl.constexpr = {BLOCK_SIZE1},",
             f"GRID_CAP: tl.constexpr = {GRID_CAP},",
@@ -160,6 +192,19 @@ def generate_index_put_kernel(
             code.writeline("mask1 = offset1 < N")
             code.writeline("mask = index_mask & mask0 & mask1")
             code.newline()
+            # index_mask is computed from the raw loaded values, so narrowing
+            # afterwards cannot hide an out-of-range index: garbage lanes stay
+            # masked and never dereference. The else-branch also widens int32
+            # index tensors whose offsets exceed 2**31 (strided views).
+            code.writeline("if I32_ADDR:")
+            with code.indent():
+                for i in range(indices_len):
+                    code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int32)")
+            code.writeline("else:")
+            with code.indent():
+                for i in range(indices_len):
+                    code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int64)")
+            code.newline()
             comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
             comp += [
                 f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
@@ -211,9 +256,10 @@ def generate_index_put_wrapper(
     kernel_name: str,
     code: IndentedBuffer,
     block_size0: int,
+    full_rows: bool,
 ):
     code.writeline(
-        f"def {wrapper_name}(input, indices, values, accumulate, unique_writer):"
+        f"def {wrapper_name}(input, indices, values, accumulate, unique_writer, i32_addr):"
     )
     with code.indent():
         code.writeline("input_shape = input.shape")
@@ -226,9 +272,29 @@ def generate_index_put_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
+        # Never allocate more columns than the trailing volume needs. The cap
+        # is 256: the 2D broadcast mask `index_mask & mask0 & mask1` lowers
+        # into the tops_cvt_v0_si8_to_v1_si8 ICALL at row widths >= 512, which
+        # ld.lld rejects (P03; the index.py gather kernel hit the identical
+        # generated-mask structure and capped at 256 the same way), and 256
+        # columns also keeps every partial tile (rows x columns = 64 x 256,
+        # accumulate or not) inside the 917504B DSM budget.
+        code.writeline("block_size1 = min(256, triton.next_power_of_2(max(N, 1)))")
+        if full_rows:
+            # Degenerate column axis: the row tile is DSM-free, but dead lanes
+            # still pay the div/mod chains, so small M keeps the historical 64
+            # while large M amortizes program scheduling with a wide tile
+            # (measured on L600: M<=256 -> 64 wins ~3x; M=64K/131K -> 1024
+            # wins 1.2-2x).
+            code.writeline(
+                f"block_size0 = 64 if M <= 512 else min({block_size0}, "
+                "triton.next_power_of_2(M))"
+            )
+        else:
+            code.writeline(f"block_size0 = {block_size0}")
         code.writeline(
             f"grid_x = min({GRID_CAP}, "
-            f"triton.cdiv(M, {block_size0}) * triton.cdiv(N, {BLOCK_SIZE1}))"
+            "triton.cdiv(M, block_size0) * triton.cdiv(N, block_size1))"
         )
         code.writeline("def grid(meta):")
         with code.indent():
@@ -259,6 +325,9 @@ def generate_index_put_wrapper(
                 "grid_x,",
                 "accumulate==True,",
                 "unique_writer==True,",
+                "i32_addr==True,",
+                "BLOCK_SIZE0=block_size0,",
+                "BLOCK_SIZE1=block_size1,",
             ]
             code.writelines(args)
         code.writeline(")")
@@ -282,12 +351,20 @@ def generate_code(
     if indices_len == 0:
         raise ValueError("At least one non-None index tensor is required")
     index_rank = tensor_indices[0].ndim
+    full_rows = inp_rank == len(tensor_indices)
     code = generate_imports(code)
     generate_index_put_kernel(
         inp_rank, indices_len, index_rank, kernel_name, code, block_size0
     )
     generate_index_put_wrapper(
-        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code, block_size0
+        inp_rank,
+        indices_len,
+        index_rank,
+        wrapper_name,
+        kernel_name,
+        code,
+        block_size0,
+        full_rows,
     )
     return code
 
@@ -308,10 +385,19 @@ class IndexPutFunction:
             overload = self.overloads[key]
         else:
             code = IndentedBuffer()
-            # Unique-writer cases have far more indices than integer-index cases, so use a larger tile to reduce program
-            # scheduling;
-            # the two scenarios are generated into separate files to avoid constexpr overwriting each other.
-            block_size0 = BLOCK_SIZE0_UNIQUE if unique_writer else BLOCK_SIZE0
+            # Tile-shape aware row-size caps: when every leading dim is
+            # tensor-indexed (inp_rank == indices_len) the column axis is
+            # degenerate and the row tile may grow to the FULL cap (the launch
+            # clamps it to M); otherwise the tile also sweeps trailing columns
+            # and the row tile must stay inside the DSM budget. The unique and
+            # atomic variants are generated into separate files to avoid
+            # constexpr overwriting each other.
+            if inp.ndim == len(tensor_indices):
+                block_size0 = (
+                    BLOCK_SIZE0_UNIQUE_FULL if unique_writer else BLOCK_SIZE0_FULL
+                )
+            else:
+                block_size0 = BLOCK_SIZE0
             code = generate_code(
                 full_args,
                 "_index_put_wrapper",
@@ -333,7 +419,10 @@ class IndexPutFunction:
             overload = getattr(m, "_index_put_wrapper")
             self.overloads[key] = overload
 
-        return overload(inp, tensor_indices, values, accumulate, unique_writer)
+        i32_addr = _offsets_fit_int32(inp, tensor_indices, values)
+        return overload(
+            inp, tensor_indices, values, accumulate, unique_writer, i32_addr
+        )
 
     def arg_key(self, *args, **kwargs):
         inp, tensor_indices, _ = args[0], args[1], args[2]
@@ -377,14 +466,18 @@ def index_put_(inp, indices, values, accumulate=False):
     ]
     # step 1: index preprocessing
     processed_indices = []
+    bool_mask_count = 0
+    other_tensor_count = 0
     for idx in indices:
         if idx is None:
             processed_indices.append(None)
         elif idx.dtype in (torch.bool, torch.int8):
             # Expand bool masks into explicit integer indices
             processed_indices.extend(idx.nonzero(as_tuple=True))
+            bool_mask_count += 1
         elif torch.is_tensor(idx):
             processed_indices.append(idx)
+            other_tensor_count += 1
         else:
             raise TypeError(
                 "tensors used as indices must be long, int, byte or bool tensors"
@@ -450,7 +543,13 @@ def index_put_(inp, indices, values, accumulate=False):
         # direct broadcast
         values = values.broadcast_to(target_shape)
 
-    _index_put_func(inp_view, tensors, values, accumulate)
+    # Coordinates produced by a single mask expansion are pairwise distinct
+    # (each true position appears exactly once), so with no other tensor index
+    # present every output slot has a single writer and the accumulate path
+    # can use plain read-modify-write instead of low-throughput scalar
+    # atomics (bool-mask accumulate: 0.96ms -> 0.13ms measured on L600).
+    unique_writer = bool_mask_count == 1 and other_tensor_count == 0
+    _index_put_func(inp_view, tensors, values, accumulate, unique_writer)
 
     return inp
 
@@ -510,3 +609,76 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
 
     _index_put_func(inp, tensor_indices, values, accumulate, unique_writer)
     return inp
+
+
+def _install_torch_index_put_shims() -> None:
+    """Make the plain-aten ``torch.index_put`` / ``torch.index_put_`` entries
+    usable on gcu400 for ``accumulate=True``.
+
+    torch_gcu's native topsaten index_put path is pathological for
+    accumulate=True: a single ``torch.index_put(x, [idx], v, True)`` call with
+    int64 indices takes ~277s on a 2**28 tensor (measured 2026-11-18; second
+    signature of compiler_issues/gcu_aten_index_put_int64_env_abort.md). That
+    kills accuracy reference legs and benchmark baseline legs, which call the
+    aten entry directly, and is what made test_index_put_acc_true /
+    test_index_put__acc_true time out at 3600s in QA.
+
+    Dispatch-context aware python shim (same mechanism as the bucketize shim
+    in this directory), scoped to the pathological case only:
+
+    - non-gcu tensors and accumulate=False pass through to the native entry
+      unchanged (the non-atomic native path is healthy);
+    - while FlagGems dispatch is active (``current_work_registrar`` holds the
+      op key) the native entry already routes to this backend's kernel, so
+      benchmark candidate legs keep measuring the device kernel;
+    - otherwise (plain aten caller: accuracy/benchmark reference legs) compute
+      on the CPU reference implementation and move the result back.
+    """
+    native_put = getattr(torch, "index_put", None)
+    if native_put is None or getattr(
+        native_put, "_flaggems_gcu400_index_put_shim", False
+    ):
+        return
+
+    def _cpu_entries(input, indices, values):
+        cpu_indices = [
+            entry.cpu() if torch.is_tensor(entry) else entry for entry in indices
+        ]
+        cpu_values = values.cpu() if torch.is_tensor(values) else values
+        return cpu_indices, cpu_values
+
+    def _flaggems_dispatch_active(op_key):
+        import flag_gems
+
+        registrar = getattr(flag_gems, "current_work_registrar", None)
+        return registrar is not None and op_key in getattr(registrar, "all_keys", ())
+
+    def _index_put_shim(input, indices, values, accumulate=False):
+        if not accumulate or not torch.is_tensor(input) or input.device.type != "gcu":
+            return native_put(input, indices, values, accumulate)
+        if _flaggems_dispatch_active("index_put"):
+            return native_put(input, indices, values, accumulate)
+        cpu_indices, cpu_values = _cpu_entries(input, indices, values)
+        out = native_put(input.cpu(), cpu_indices, cpu_values, accumulate)
+        return out.to(input.device)
+
+    def _index_put__shim(input, indices, values, accumulate=False):
+        if not accumulate or not torch.is_tensor(input) or input.device.type != "gcu":
+            return native_put_(input, indices, values, accumulate)
+        if _flaggems_dispatch_active("index_put_"):
+            return native_put_(input, indices, values, accumulate)
+        cpu_indices, cpu_values = _cpu_entries(input, indices, values)
+        input_cpu = input.cpu()
+        native_put_(input_cpu, cpu_indices, cpu_values, accumulate)
+        input.copy_(input_cpu)
+        return input
+
+    _index_put_shim._flaggems_gcu400_index_put_shim = True
+    _index_put__shim._flaggems_gcu400_index_put_shim = True
+    native_put_ = getattr(torch, "index_put_", None)
+    torch.index_put = _index_put_shim
+    if native_put_ is not None:
+        torch.index_put_ = _index_put__shim
+
+
+_install_torch_index_put_shims()

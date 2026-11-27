@@ -41,6 +41,13 @@ class RreluTrainBenchmark(base.UnaryPointwiseBenchmark):
             yield inp, 0.125, 1.0 / 3.0, True, None
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the native training baseline calls rrelu_with_noise_out_cpu, which "
+        "is not implemented for Half/BFloat16 on this device"
+    ),
+)
 @pytest.mark.rrelu_
 def test_rrelu__training():
     bench = RreluTrainBenchmark(

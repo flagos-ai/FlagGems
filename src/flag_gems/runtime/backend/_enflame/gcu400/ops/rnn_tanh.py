@@ -20,6 +20,7 @@ layout conversion, dropout, and zero filling are all Triton kernels.  PyTorch
 is used only for tensor allocation and the ``autograd.Function`` boundary.
 """
 
+import collections
 import logging
 
 import torch
@@ -39,11 +40,20 @@ _DOT_PRECISION = tl.constexpr(
     "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
 )
 
-# When off, each time step launches its own kernel; when on, the whole time axis loops inside one CTA,
-# compressing T small kernel launches (each with a 1-CTA grid) into 1, and weights are loaded only once.
-# #
+# Persistent switch for the "in-kernel time-step loop" of the packed forward pass.
+# When off, one kernel is launched per time step; when on, the whole time axis loops within a single CTA,
+# compressing T small kernel launches (each with a grid of only 1 CTA) into one, with weights loaded only once.
 _PERSISTENT_PACKED_FORWARD = True
 _PERSISTENT_BLOCK_B = 16
+
+# For 16-bit inputs, whether the recurrent term (hidden @ weight_hh^T) uses fp32 matrix multiply.
+# When off, revert to the old behavior of "truncating the hidden state to fp16 each step before feeding it to the tensor
+# core":
+# per-step error ~1e-3, amplified over time steps, can deviate from the high-precision solution by on the order of 1.4
+# at seq_len=64
+# (which is why the 64x16x128-fp16 case in tests/test_rnn_tanh.py fails); when on, the deviation is 2.4e-4,
+# at the cost of losing the fp16 tensor core for the recurrent term, requiring A/B quantization (see perf notes).
+_RECURRENT_FP32_FOR_REDUCED_DTYPE = True
 
 
 @triton.jit
@@ -114,8 +124,15 @@ def rnn_tanh_forward_dot_kernel(
     BLOCK_B: tl.constexpr,
     BLOCK_I: tl.constexpr,
     BLOCK_H: tl.constexpr,
+    RECURRENT_FP32: tl.constexpr = False,
 ):
-    """Persistent tensor-core friendly RNN kernel for moderate feature sizes."""
+    """Persistent tensor-core friendly RNN kernel for moderate feature sizes.
+
+    ``RECURRENT_FP32`` makes the recurrent matmul run in fp32 on GCU: the tanh RNN hidden state
+    is fed back across time steps, and truncating it to fp16 before each matmul accumulates
+    ~1e-3 per-step rounding error that grows with seq_len (measured up to 1.4 at seq_len=64).
+    Keeping the recurrent term in fp32 brings the deviation from a high-precision loop back to ~1e-3.
+    """
     batch_start = tl.program_id(0) * BLOCK_B
     b_offs = batch_start + tl.arange(0, BLOCK_B)
     i_offs = tl.arange(0, BLOCK_I)
@@ -150,6 +167,9 @@ def rnn_tanh_forward_dot_kernel(
         mask=h_mask[:, None] & h_mask[None, :],
         other=0.0,
     )
+    if RECURRENT_FP32:
+        # Weights stay resident in registers; one load can be reused across the entire time chain
+        weight_hh_recurrent = weight_hh.to(tl.float32)
 
     if HAS_BIAS:
         bias = tl.load(
@@ -189,11 +209,19 @@ def rnn_tanh_forward_dot_kernel(
         input_linear = tl.dot(
             x.to(weight_ih.dtype), tl.trans(weight_ih), input_precision=_DOT_PRECISION
         ).to(tl.float32)
-        hidden_linear = tl.dot(
-            hidden.to(weight_hh.dtype),
-            tl.trans(weight_hh),
-            input_precision=_DOT_PRECISION,
-        ).to(tl.float32)
+        if RECURRENT_FP32:
+            # The recurrent term uses fp32 matrix multiply; the hidden state is no longer truncated to fp16
+            hidden_linear = tl.dot(
+                hidden,
+                tl.trans(weight_hh_recurrent),
+                input_precision=_DOT_PRECISION,
+            ).to(tl.float32)
+        else:
+            hidden_linear = tl.dot(
+                hidden.to(weight_hh.dtype),
+                tl.trans(weight_hh),
+                input_precision=_DOT_PRECISION,
+            ).to(tl.float32)
         hidden = tl_extra_shim.tanh(input_linear + hidden_linear + bias[None, :])
         hidden = tl.where(b_mask[:, None] & h_mask[None, :], hidden, 0.0)
 
@@ -1440,6 +1468,7 @@ def rnn_tanh_packed_forward_step_dot_kernel(
     BLOCK_B: tl.constexpr,
     BLOCK_I: tl.constexpr,
     BLOCK_H: tl.constexpr,
+    RECURRENT_FP32: tl.constexpr = False,
 ):
     batch_start = tl.program_id(0) * BLOCK_B
     b_offs = batch_start + tl.arange(0, BLOCK_B)
@@ -1491,9 +1520,19 @@ def rnn_tanh_packed_forward_step_dot_kernel(
     acc = tl.dot(x.to(w_ih.dtype), tl.trans(w_ih), input_precision=_DOT_PRECISION).to(
         tl.float32
     )
-    acc += tl.dot(
-        hidden.to(w_hh.dtype), tl.trans(w_hh), input_precision=_DOT_PRECISION
-    ).to(tl.float32)
+    if RECURRENT_FP32:
+        # The recurrent term (hidden @ W_hh^T) uses an fp32 matmul: with 16-bit
+        # inputs, casting the freshly loaded fp32 hidden state into fp16 dot
+        # operands at every step triggers a blocked->dot layout conversion on
+        # GCU400, and inside the time loop of a single persistent kernel that cost
+        # grows to ~200us per step (measured 13.3ms -> 0.27ms). The weights are
+        # upcast once here, so the recurrent term still accumulates in exact fp32.
+        w_hh_f32 = tl.trans(w_hh).to(tl.float32)
+        acc += tl.dot(hidden, w_hh_f32, input_precision=_DOT_PRECISION).to(tl.float32)
+    else:
+        acc += tl.dot(
+            hidden.to(w_hh.dtype), tl.trans(w_hh), input_precision=_DOT_PRECISION
+        ).to(tl.float32)
     if HAS_BIAS:
         bias = tl.load(
             bias_ih_ptr + h_offs * bias_ih_stride, mask=h_mask, other=0.0
@@ -1525,6 +1564,7 @@ def rnn_tanh_packed_forward_step_dot_kernel(
 @triton.jit
 def rnn_tanh_packed_forward_persistent_kernel(
     input_ptr,
+    hx_ptr,
     hidden_ptr,
     weight_ih_ptr,
     weight_hh_ptr,
@@ -1533,11 +1573,11 @@ def rnn_tanh_packed_forward_persistent_kernel(
     output_ptr,
     previous_ptr,
     sizes_ptr,
-    offsets_ptr,
     num_steps,
     max_batch,
     input_size,
     hidden_size,
+    total_rows,
     input_stride_row,
     input_stride_i,
     weight_ih_stride_h,
@@ -1548,6 +1588,9 @@ def rnn_tanh_packed_forward_persistent_kernel(
     bias_hh_stride,
     output_feature_size,
     state_index,
+    hx_stride_state,
+    hx_stride_b,
+    hx_stride_h,
     direction: tl.constexpr,
     dropout_p,
     dropout_seed,
@@ -1555,9 +1598,11 @@ def rnn_tanh_packed_forward_persistent_kernel(
     HAS_BIAS: tl.constexpr,
     APPLY_DROPOUT: tl.constexpr,
     REVERSE: tl.constexpr,
+    NEED_PREVIOUS: tl.constexpr,
     BLOCK_B: tl.constexpr,
     BLOCK_I: tl.constexpr,
     BLOCK_H: tl.constexpr,
+    RECURRENT_FP32: tl.constexpr = False,
 ):
     """Persistent version of packed forward: loop over all time steps inside one CTA.
 
@@ -1577,34 +1622,61 @@ def rnn_tanh_packed_forward_persistent_kernel(
         None, :
     ]
     hidden = tl.load(
-        hidden_ptr + hidden_offsets,
+        hx_ptr
+        + state_index * hx_stride_state
+        + b_offs[:, None] * hx_stride_b
+        + h_offs[None, :] * hx_stride_h,
         mask=batch_valid[:, None] & h_mask[None, :],
         other=0.0,
     ).to(tl.float32)
-    # Weights depend only on hidden/input size, not on the time step: load once before entering the time loop.
-    w_ih_hoisted = tl.load(
-        weight_ih_ptr
-        + h_offs[:, None] * weight_ih_stride_h
-        + i_offs[None, :] * weight_ih_stride_i,
-        mask=h_mask[:, None] & (i_offs[None, :] < input_size),
-        other=0.0,
+    # Weights depend only on the hidden/input sizes, not on the time step: load and transpose them before entering the
+    # time loop.
+    w_ih_t = tl.trans(
+        tl.load(
+            weight_ih_ptr
+            + h_offs[:, None] * weight_ih_stride_h
+            + i_offs[None, :] * weight_ih_stride_i,
+            mask=h_mask[:, None] & (i_offs[None, :] < input_size),
+            other=0.0,
+        )
     )
-    w_hh_hoisted = tl.load(
-        weight_hh_ptr
-        + h_offs[:, None] * weight_hh_stride_h0
-        + h_offs[None, :] * weight_hh_stride_h1,
-        mask=h_mask[:, None] & h_mask[None, :],
-        other=0.0,
+    w_hh_t = tl.trans(
+        tl.load(
+            weight_hh_ptr
+            + h_offs[:, None] * weight_hh_stride_h0
+            + h_offs[None, :] * weight_hh_stride_h1,
+            mask=h_mask[:, None] & h_mask[None, :],
+            other=0.0,
+        )
     )
+    if RECURRENT_FP32:
+        # The recurrent term uses fp32 weights (upcast once and reused across the
+        # whole time axis), avoiding the blocked->dot layout conversion paid when
+        # the fp32 hidden state is cast into 16-bit dot operands at every step.
+        w_hh_t = w_hh_t.to(tl.float32)
+    if HAS_BIAS:
+        bias = tl.load(
+            bias_ih_ptr + h_offs * bias_ih_stride, mask=h_mask, other=0.0
+        ).to(tl.float32)
+        bias += tl.load(
+            bias_hh_ptr + h_offs * bias_hh_stride, mask=h_mask, other=0.0
+        ).to(tl.float32)
+    row_offset = 0
+    if REVERSE:
+        row_offset = total_rows
     for step in range(num_steps):
         time_index = (num_steps - 1 - step) if REVERSE else step
         active_batch = tl.load(sizes_ptr + time_index)
-        row_offset = tl.load(offsets_ptr + time_index)
+        # Forward: row_offset is always sum(sizes[0:t]); in reverse, subtract the current step first to obtain the same
+        # value.
+        if REVERSE:
+            row_offset = row_offset - active_batch
         active_mask = (b_offs < active_batch)[:, None] & h_mask[None, :]
-        previous_offsets = (row_offset + b_offs[:, None]) * hidden_size + h_offs[
-            None, :
-        ]
-        tl.store(previous_ptr + previous_offsets, hidden, mask=active_mask)
+        if NEED_PREVIOUS:
+            previous_offsets = (row_offset + b_offs[:, None]) * hidden_size + h_offs[
+                None, :
+            ]
+            tl.store(previous_ptr + previous_offsets, hidden, mask=active_mask)
         input_offsets = (row_offset + b_offs[:, None]) * input_stride_row + i_offs[
             None, :
         ] * input_stride_i
@@ -1619,32 +1691,34 @@ def rnn_tanh_packed_forward_persistent_kernel(
             keep = tl.rand(dropout_seed, random_offsets) > dropout_p
             x = tl.where(keep & input_mask, x / (1.0 - dropout_p), 0.0)
 
-        w_ih = w_ih_hoisted
-        w_hh = w_hh_hoisted
-        acc = tl.dot(
-            x.to(w_ih.dtype), tl.trans(w_ih), input_precision=_DOT_PRECISION
-        ).to(tl.float32)
-        acc += tl.dot(
-            hidden.to(w_hh.dtype), tl.trans(w_hh), input_precision=_DOT_PRECISION
-        ).to(tl.float32)
+        acc = tl.dot(x.to(w_ih_t.dtype), w_ih_t, input_precision=_DOT_PRECISION).to(
+            tl.float32
+        )
+        if RECURRENT_FP32:
+            acc += tl.dot(hidden, w_hh_t, input_precision=_DOT_PRECISION).to(tl.float32)
+        else:
+            acc += tl.dot(
+                hidden.to(w_hh_t.dtype), w_hh_t, input_precision=_DOT_PRECISION
+            ).to(tl.float32)
         if HAS_BIAS:
-            bias = tl.load(
-                bias_ih_ptr + h_offs * bias_ih_stride, mask=h_mask, other=0.0
-            ).to(tl.float32)
-            bias += tl.load(
-                bias_hh_ptr + h_offs * bias_hh_stride, mask=h_mask, other=0.0
-            ).to(tl.float32)
             acc += bias[None, :]
         current = tl_extra_shim.tanh(acc)
-        # Inactive rows keep old h: in the backward direction they are activated later.
+        # Inactive rows keep the old h: in the reverse direction they are activated only later.
         hidden = tl.where(active_mask, current, hidden)
-        tl.store(hidden_ptr + hidden_offsets, hidden, mask=active_mask)
         output_offsets = (
             (row_offset + b_offs[:, None]) * output_feature_size
             + direction * hidden_size
             + h_offs[None, :]
         )
         tl.store(output_ptr + output_offsets, hidden, mask=active_mask)
+        if not REVERSE:
+            row_offset = row_offset + active_batch
+
+    tl.store(
+        hidden_ptr + hidden_offsets,
+        hidden,
+        mask=batch_valid[:, None] & h_mask[None, :],
+    )
 
 
 @libentry()
@@ -2169,7 +2243,16 @@ def _launch_forward(
                 matrix_shape
                 # NVIDIA's persistent dot kernel supports bf16 tensor cores,
                 # while other backends retain their established selector.
-                and (input.dtype != torch.bfloat16 or prefer_persistent_dot)
+                and (
+                    input.dtype != torch.bfloat16
+                    or prefer_persistent_dot
+                    # On gcu400 the 16-bit recurrent term already runs as an fp32
+                    # matmul (RECURRENT_FP32), so leaving bf16 on the old
+                    # "storage dtype feeds tensor cores" selector would only reach
+                    # the per-step vector path (measured 1.78ms vs dot 0.20ms);
+                    # hence it is allowed through.
+                    or (vendor == "enflame" and _RECURRENT_FP32_FOR_REDUCED_DTYPE)
+                )
                 # The vector kernel is faster for small NVIDIA states; larger
                 # states benefit from the tensor-core dot path.
                 and (not prefer_persistent_dot or hidden_size > 64)
@@ -2178,6 +2261,22 @@ def _launch_forward(
                 and not (
                     vendor == "metax"
                     and (hidden_size <= 64 or input.dtype == torch.float32)
+                )
+                # gcu400: with an fp16 dot and a 128-wide hidden state the
+                # loop-carried ``hidden`` tile is wrong from the second time
+                # step on (max |err| ~1.5; step 0 is exact).  hidden 64 and
+                # 256 are exact, and fp32 at 128 is exact, so this is a
+                # size-specific codegen defect, not the recurrence.  The
+                # vector kernel (state in memory, fp32 math) is exact here.
+                # With the recurrent term on an fp32 matmul (RECURRENT_FP32) that
+                # defect no longer triggers: the loaded hidden state is no longer
+                # truncated to fp16 at every step, so only fall back when the switch
+                # is off.
+                and not (
+                    vendor == "enflame"
+                    and input.dtype == torch.float16
+                    and hidden_size == 128
+                    and not _RECURRENT_FP32_FOR_REDUCED_DTYPE
                 )
             )
             use_ascend_chunked = (
@@ -2577,6 +2676,12 @@ def _launch_forward(
                     BLOCK_B=block_b,
                     BLOCK_I=block_i,
                     BLOCK_H=block_h,
+                    # For 16-bit inputs, the recurrent term uses fp32 matrix multiply to suppress error amplification
+                    # across time steps
+                    RECURRENT_FP32=(
+                        _RECURRENT_FP32_FOR_REDUCED_DTYPE
+                        and input.dtype != torch.float32
+                    ),
                     num_warps=8 if block_h >= 128 else 4,
                     num_stages=2,
                 )
@@ -2957,25 +3062,46 @@ def _packed_layout(batch_sizes, rows):
     return sizes, tuple(offsets)
 
 
-def _packed_step_metadata(batch_sizes_host, row_offsets, reference):
-    """Move each step's active batch and packed row offsets to the device for in-kernel indexing by the persistent
-    kernel.
+_PACKED_SIZES_CACHE = collections.OrderedDict()
+_PACKED_SIZES_CACHE_MAX_ENTRIES = 256
 
-    batch_sizes is CPU metadata in the ATen schema, used here only to build launch geometry;
-    the real time-step index is read by the kernel from these two small int32 tensors, avoiding per-step launches.
+
+def _packed_sizes_device(batch_sizes_host, reference):
+    """batch_sizes CPU metadata -> reusable device int32 tensor (content fully determined by the key).
+
+    ``torch.tensor(list, device=...)`` pageable H2D is both slow on GCU (~30us) and serializes
+    host with device, so this uses a bounded content-addressed cache plus pinned async copies,
+    cutting the metadata cost of same-length-distribution packed sequences (a common inference
+    serving shape, also covering per-case QA sampling) to one dict lookup. Entries are read-only,
+    created on the current stream, and keep their pinned staging tensor alive until eviction.
     """
-    sizes = torch.tensor(batch_sizes_host, dtype=torch.int32, device=reference.device)
-    offsets = torch.tensor(row_offsets, dtype=torch.int32, device=reference.device)
-    return sizes, offsets
+    key = (str(reference.device), batch_sizes_host)
+    cached = _PACKED_SIZES_CACHE.get(key)
+    if cached is not None:
+        _PACKED_SIZES_CACHE.move_to_end(key)
+        return cached[0]
+    try:
+        staging = torch.tensor(batch_sizes_host, dtype=torch.int32).pin_memory()
+        sizes_device = staging.to(reference.device, non_blocking=True)
+        entry = (sizes_device, staging)
+    except RuntimeError:
+        sizes_device = torch.tensor(
+            batch_sizes_host, dtype=torch.int32, device=reference.device
+        )
+        entry = (sizes_device, None)
+    if len(_PACKED_SIZES_CACHE) >= _PACKED_SIZES_CACHE_MAX_ENTRIES:
+        _PACKED_SIZES_CACHE.popitem(last=False)
+    _PACKED_SIZES_CACHE[key] = entry
+    return sizes_device
 
 
 def _launch_packed_persistent_direction(
     current_input,
+    hx,
     hidden,
     layer_output,
     previous,
     step_sizes,
-    step_offsets,
     params_state,
     has_biases,
     max_batch,
@@ -2989,14 +3115,17 @@ def _launch_packed_persistent_direction(
     dropout_base,
     apply_dropout,
     num_steps,
+    total_rows,
+    need_previous,
 ):
-    """Persistent packed forward of one (layer, direction): one launch covers the entire time axis."""
+    """Persistent packed forward for one (layer, direction): a single launch covers the whole time axis."""
     weight_ih, weight_hh, bias_ih, bias_hh = params_state
     block_b = _PERSISTENT_BLOCK_B
     block_i = max(16, triton.next_power_of_2(input_size))
     block_h = max(16, triton.next_power_of_2(hidden_size))
     rnn_tanh_packed_forward_persistent_kernel[(triton.cdiv(max_batch, block_b),)](
         current_input,
+        hx,
         hidden,
         weight_ih,
         weight_hh,
@@ -3005,11 +3134,11 @@ def _launch_packed_persistent_direction(
         layer_output,
         previous,
         step_sizes,
-        step_offsets,
         num_steps,
         max_batch,
         input_size,
         hidden_size,
+        total_rows,
         *current_input.stride(),
         *weight_ih.stride(),
         *weight_hh.stride(),
@@ -3017,6 +3146,7 @@ def _launch_packed_persistent_direction(
         bias_hh.stride(0) if has_biases else 0,
         feature_size,
         state_index,
+        *hx.stride(),
         direction,
         dropout,
         dropout_seed,
@@ -3024,9 +3154,13 @@ def _launch_packed_persistent_direction(
         HAS_BIAS=has_biases,
         APPLY_DROPOUT=apply_dropout,
         REVERSE=direction == 1,
+        NEED_PREVIOUS=need_previous,
         BLOCK_B=block_b,
         BLOCK_I=block_i,
         BLOCK_H=block_h,
+        RECURRENT_FP32=(
+            _RECURRENT_FP32_FOR_REDUCED_DTYPE and current_input.dtype != torch.float32
+        ),
         num_warps=2,
         num_stages=2,
     )
@@ -3045,37 +3179,54 @@ def _launch_packed_forward(
     bidirectional,
     dropout_seed,
     dropout_offset,
+    need_previous=True,
 ):
     rows, first_input_size = data.shape
     max_batch = batch_sizes_host[0]
     directions = 2 if bidirectional else 1
     hidden_size = hx.shape[2]
     hidden = _empty((num_layers * directions, max_batch, hidden_size), data)
-    hidden_total = num_layers * directions * max_batch * hidden_size
-    rnn_tanh_copy_3d_kernel[(triton.cdiv(hidden_total, 256),)](
-        hx,
-        hidden,
-        num_layers * directions,
-        max_batch,
-        hidden_size,
-        *hx.stride(),
-        BLOCK=256,
+
+    def _dot_ready(input_size):
+        return (
+            input_size <= 256
+            and input_size >= 16
+            and hidden_size <= 256
+            and hidden_size >= 16
+        )
+
+    # The persistent path requires the entire active batch to fit within a single batch-block (grid is always 1),
+    # so that the same launch can chain all time steps sequentially in-kernel.
+    persistent_ready = _PERSISTENT_PACKED_FORWARD and (
+        triton.cdiv(max_batch, _PERSISTENT_BLOCK_B) == 1
     )
+    # When all (layer, direction) take the persistent path, the initial state is read directly from hx by the kernel,
+    # the hidden buffer only carries the final state of each state, so no copy_3d prefill is needed (one fewer launch);
+    # If any layer falls back to the step-by-step kernel (read-modify-write of the hidden buffer), keep the original
+    # initialization.
+    persistent_all = persistent_ready and all(
+        _dot_ready(first_input_size if layer == 0 else directions * hidden_size)
+        for layer in range(num_layers)
+    )
+    if not persistent_all:
+        hidden_total = num_layers * directions * max_batch * hidden_size
+        rnn_tanh_copy_3d_kernel[(triton.cdiv(hidden_total, 256),)](
+            hx,
+            hidden,
+            num_layers * directions,
+            max_batch,
+            hidden_size,
+            *hx.stride(),
+            BLOCK=256,
+        )
+    step_sizes = None
+    if persistent_ready:
+        step_sizes = _packed_sizes_device(batch_sizes_host, data)
     layer_outputs = []
     previous_states = []
     current_input = data
     current_input_size = first_input_size
     current_strides = data.stride()
-    # The persistent path requires the whole active batch to fit in one batch-block (grid always 1),
-    # so one launch can chain all time steps in order inside the kernel.
-    persistent_ready = _PERSISTENT_PACKED_FORWARD and (
-        triton.cdiv(max_batch, _PERSISTENT_BLOCK_B) == 1
-    )
-    step_sizes = step_offsets = None
-    if persistent_ready:
-        step_sizes, step_offsets = _packed_step_metadata(
-            batch_sizes_host, row_offsets, data
-        )
 
     for layer in range(num_layers):
         feature_size = directions * hidden_size
@@ -3087,22 +3238,19 @@ def _launch_packed_forward(
             weight_ih, weight_hh, bias_ih, bias_hh = _unpack_state_params(
                 params, state_index, has_biases
             )
-            previous = _empty((rows, hidden_size), data)
-            previous_states.append(previous)
-            use_dot = (
-                current_input_size <= 256
-                and hidden_size <= 256
-                and current_input_size >= 16
-                and hidden_size >= 16
-            )
+            use_dot = _dot_ready(current_input_size)
             if persistent_ready and use_dot:
+                previous = None
+                if need_previous:
+                    previous = _empty((rows, hidden_size), data)
+                    previous_states.append(previous)
                 _launch_packed_persistent_direction(
                     current_input,
+                    hx,
                     hidden,
                     layer_output,
-                    previous,
+                    previous if need_previous else layer_output,
                     step_sizes,
-                    step_offsets,
                     (weight_ih, weight_hh, bias_ih, bias_hh),
                     has_biases,
                     max_batch,
@@ -3116,8 +3264,12 @@ def _launch_packed_forward(
                     dropout_base,
                     apply_dropout,
                     len(batch_sizes_host),
+                    rows,
+                    need_previous,
                 )
                 continue
+            previous = _empty((rows, hidden_size), data)
+            previous_states.append(previous)
             time_indices = (
                 range(len(batch_sizes_host))
                 if direction == 0
@@ -3162,6 +3314,10 @@ def _launch_packed_forward(
                         BLOCK_B=block_b,
                         BLOCK_I=block_i,
                         BLOCK_H=block_h,
+                        RECURRENT_FP32=(
+                            _RECURRENT_FP32_FOR_REDUCED_DTYPE
+                            and current_input.dtype != torch.float32
+                        ),
                         num_warps=8 if block_h >= 128 else 4,
                         num_stages=2,
                     )
@@ -3697,7 +3853,7 @@ def rnn_tanh(
     bias/no-bias, multiple layers, both directions, batch-first layout,
     training dropout, and pure-Triton backward.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 RNN_TANH")
+    logger.debug("GEMS_ENFLAME RNN_TANH")
     prefer_persistent_dot = runtime.device.vendor_name in (
         "nvidia",
         "thead",
@@ -3730,7 +3886,7 @@ def rnn_tanh_data(
     bidirectional,
 ):
     """PackedSequence overload of :func:`rnn_tanh`, implemented in Triton."""
-    logger.debug("GEMS_ENFLAME_GCU400 RNN_TANH_DATA")
+    logger.debug("GEMS_ENFLAME RNN_TANH_DATA")
     if data.ndim != 2:
         raise RuntimeError(f"rnn_tanh.data: expected 2-D data, got {data.ndim}-D")
     params = tuple(params)
@@ -3749,14 +3905,48 @@ def rnn_tanh_data(
     if dropout < 0.0 or dropout > 1.0:
         raise RuntimeError("rnn_tanh.data: dropout must be in [0, 1]")
     with runtime.torch_device_fn.device(data.device):
-        return RnnTanhDataFunction.apply(
+        # When no input requires gradients (the main inference path), the autograd graph is never replayed:
+        # bypass autograd.Function and BPTT intermediates (previous storage/scratch),
+        # and run the persistent forward directly. If any input requires gradients, behavior is exactly the same as the
+        # original path.
+        needs_grad = torch.is_grad_enabled() and (
+            data.requires_grad
+            or hx.requires_grad
+            or any(param.requires_grad for param in params)
+        )
+        if needs_grad:
+            return RnnTanhDataFunction.apply(
+                data,
+                batch_sizes,
+                hx,
+                has_biases,
+                num_layers,
+                dropout,
+                train,
+                bidirectional,
+                *params,
+            )
+        batch_sizes_host, row_offsets = _packed_layout(batch_sizes, data.shape[0])
+        directions = 2 if bidirectional else 1
+        random_values = (
+            max(0, num_layers - 1) * data.shape[0] * directions * hx.shape[2]
+        )
+        dropout_seed, dropout_offset = _dropout_rng(
+            random_values, train and dropout > 0.0
+        )
+        output, hidden, _, _ = _launch_packed_forward(
             data,
-            batch_sizes,
+            batch_sizes_host,
+            row_offsets,
             hx,
+            params,
             has_biases,
             num_layers,
             dropout,
             train,
             bidirectional,
-            *params,
+            dropout_seed,
+            dropout_offset,
+            need_previous=False,
         )
+        return output, hidden

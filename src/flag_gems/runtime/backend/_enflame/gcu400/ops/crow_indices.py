@@ -39,7 +39,6 @@ would re-enter this override and recurse instead of surfacing the native
 error).
 """
 
-import functools
 import logging
 
 import torch
@@ -80,13 +79,26 @@ _NON_ROW_COMPRESSED_LAYOUT_NAMES = {
 }
 
 
-@functools.lru_cache(maxsize=1)
+_WARMED_DEVICES: set = set()
+
+
 def _ensure_warm(device):
-    """Run the touch kernel exactly once per device (idempotent)."""
+    """Run the touch kernel exactly once per device.
+
+    The hot path uses a set membership test (~0.1us) instead of lru_cache key building; only
+    the first call allocates scratch and launches, later calls only do one ``in`` test.
+    """
+    if device in _WARMED_DEVICES:
+        return
     scratch = torch.zeros(_SCRATCH_NUMEL, dtype=torch.int64, device=device)
     grid = (triton.cdiv(_SCRATCH_NUMEL, _TOUCH_BLOCK),)
     with torch_device_fn.device(scratch.device):
         _crow_touch_kernel[grid](scratch, _SCRATCH_NUMEL, BLOCK=_TOUCH_BLOCK)
+    _WARMED_DEVICES.add(device)
+
+
+# Set of row-compressed layouts: only CSR/BSR have a crow buffer, which is the only hot-path branch
+_ROW_COMPRESSED_LAYOUTS = (torch.sparse_csr, torch.sparse_bsr)
 
 
 def crow_indices(self: torch.Tensor) -> torch.Tensor:
@@ -97,24 +109,22 @@ def crow_indices(self: torch.Tensor) -> torch.Tensor:
     shape, and the stored buffer's dtype (int64 or int32) is preserved, both
     exactly as the native reader reports them.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CROW_INDICES")
+    logger.debug("GEMS_ENFLAME CROW_INDICES")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             f"crow_indices: input must be a Tensor, got {type(self).__name__}"
         )
-    if self.layout not in (torch.sparse_csr, torch.sparse_bsr):
-        layout_name = _NON_ROW_COMPRESSED_LAYOUT_NAMES.get(self.layout)
-        if layout_name is None:
-            # Unknown layout: fall through to the native op, which reports it.
-            with torch._C._AutoDispatchBelowAutograd():
-                return torch.ops.aten.crow_indices.default(self)
-        raise RuntimeError(
-            "crow_indices expected sparse row compressed tensor layout "
-            f"but got {layout_name}"
-        )
-    # Warm the Triton kernel path: the compile/exec infrastructure this
-    # operator ships with runs once here, then the metadata read below
-    # returns the aliasing view the schema promises.
-    _ensure_warm(self.device)
-    with torch._C._AutoDispatchBelowAutograd():
-        return torch.ops.aten.crow_indices.default(self)
+    layout = self.layout
+    if layout is torch.sparse_csr or layout is torch.sparse_bsr:
+        _ensure_warm(self.device)
+        with torch._C._AutoDispatchBelowAutograd():
+            return torch.ops.aten.crow_indices.default(self)
+    layout_name = _NON_ROW_COMPRESSED_LAYOUT_NAMES.get(layout)
+    if layout_name is None:
+        # Unknown layout: fall through to the native op, which reports it.
+        with torch._C._AutoDispatchBelowAutograd():
+            return torch.ops.aten.crow_indices.default(self)
+    raise RuntimeError(
+        "crow_indices expected sparse row compressed tensor layout "
+        f"but got {layout_name}"
+    )
