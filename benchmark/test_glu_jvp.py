@@ -21,6 +21,11 @@ import flag_gems
 
 from . import base, consts
 
+_ASCEND_LOW_PRECISION_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend glu_jvp baseline falls back to CPU without FP16/BF16 support",
+)
+
 
 class GluJvpBenchmark(base.Benchmark):
     # glu_jvp needs glu = F.glu(x, dim), so the narrowed dim extent must be
@@ -45,7 +50,20 @@ class GluJvpBenchmark(base.Benchmark):
 
 
 @pytest.mark.glu_jvp
-@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in consts.FLOAT_DTYPES
+    ],
+)
 def test_glu_jvp(dtype):
     bench = GluJvpBenchmark(
         op_name="glu_jvp",
