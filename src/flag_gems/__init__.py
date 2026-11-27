@@ -2298,7 +2298,7 @@ _FULL_CONFIG = (
     ("silu_backward", silu_backward),
     ("sin", sin),
     ("sin_", sin_),
-    ("sinc", sinc),
+    ("sinc", sinc, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("sinc_", sinc_),
     ("sinh", sinh),
     ("sinh_", sinh_),

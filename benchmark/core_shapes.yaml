@@ -832,6 +832,14 @@ tril_out_sliced:
     - [512, 32, 32]
   shape_desc: "(B), M, N"
 
+sinc_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 GenericBenchmarkExcluse3D:
   shapes:
     - [1048576] # 1024 * 1024
