@@ -57,7 +57,7 @@ def _unsafe_masked_index_kernel(
 
 
 def _unsafe_masked_index(self, mask, indices, fill):
-    logger.debug("GEMS_ENFLAME_GCU400 _UNSAFE_MASKED_INDEX")
+    logger.debug("GEMS_ENFLAME _UNSAFE_MASKED_INDEX")
 
     # Validate inputs
     if not indices or indices[0] is None:

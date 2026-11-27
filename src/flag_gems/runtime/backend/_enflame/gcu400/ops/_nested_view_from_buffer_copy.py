@@ -27,16 +27,38 @@ def _nested_view_from_buffer_copy(
     offsets: torch.Tensor,
 ):
     """Low-level operation that creates a nested tensor from a flat buffer
-    given sizes, strides and offsets of each component."""
+    given sizes, strides and offsets of each component.
 
-    from flag_gems.runtime.backend._metax.ops._nested_view_from_buffer_copy import (
-        _nested_view_from_buffer_copy as _metax_nested_view_from_buffer_copy,
-    )
+    gcu400 has no native ``_nested_view_from_buffer_copy``; build the nested
+    tensor component by component (the same strategy the Metax backend uses).
+    The metadata is read back once per tensor instead of importing the Metax
+    implementation: importing ``flag_gems.runtime.backend._metax.ops`` executes
+    that package's ``__init__``, which currently fails on an unrelated symbol
+    (``_thnn_fused_lstm_cell_backward_impl``), so the cross-backend import made
+    the first call raise ImportError.
 
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_VIEW_FROM_BUFFER_COPY")
-    return _metax_nested_view_from_buffer_copy(
-        self, nested_size, nested_strides, offsets
-    )
+    ``torch.nested.nested_tensor`` already copies every component into the
+    fresh nested storage (a single concatenate kernel on GCU, verified to
+    honour storage_offset/strides: values match the ATen reference and the
+    result never aliases the buffer), so the historical per-component
+    ``.clone()`` only added a second, redundant device copy per component.
+    """
+    logger.debug("GEMS_ENFLAME _NESTED_VIEW_FROM_BUFFER_COPY")
+
+    # Metadata only: contiguous() keeps the D2H copy exact, tolist() avoids one
+    # device sync per component.
+    sizes = nested_size.reshape(-1).contiguous().cpu().tolist()
+    strides = nested_strides.reshape(-1).contiguous().cpu().tolist()
+    offs = offsets.reshape(-1).contiguous().cpu().tolist()
+
+    components = []
+    for size_i, stride_i, offset_i in zip(sizes, strides, offs):
+        # as_strided view only; nested_tensor() copies it into the new storage.
+        components.append(
+            self.as_strided((int(size_i),), (int(stride_i),), int(offset_i))
+        )
+
+    return torch.nested.nested_tensor(components)
 
 
 __all__ = ["_nested_view_from_buffer_copy"]

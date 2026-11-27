@@ -19,8 +19,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime  # noqa: F401
 from flag_gems.ops.neg import neg
 from flag_gems.ops.zeros_like import zeros_like
+from flag_gems.runtime import device as runtime_device
+from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
@@ -81,6 +84,88 @@ def _ldexp_pow2(x, exponent):
     second = tl.maximum(tl.minimum(rest_after_first, 127), -126)
     third = rest_after_first - second
     return x * _pow2_scale(first) * _pow2_scale(second) * _pow2_scale(third)
+
+
+_DEVICE_NAME = runtime_device.name
+
+# Fixed Grid (48 CTAs) + grid-stride (mul.py family): the generic
+# pointwise_dynamic path with the default enflame config (12 CTAs, BLOCK 4096)
+# tops out around 144 GB/s on 3-stream workloads, while the fixed-grid flat
+# kernel reaches ~2.1-2.6 TB/s.
+_GRID_SIZE = 48
+_HUGE_STREAM_ELEMENTS = 1 << 25
+_FLAT_INT32_LIMIT = 1 << 31
+
+
+def _pick_ldexp_launch(n_elements, element_size):
+    """(BLOCK_SIZE, num_warps) for the contiguous flat kernel.
+
+    Mirrors the tensor-by-tensor ``mul`` config space: at BLOCK 32768 the
+    kernel keeps at most three int32/fp32 tile vectors alive (3 * 128 KB,
+    within the validated 384 KB on-chip budget).  Measured on GCU400
+    (do_bench median): num_warps 2 dominates everywhere below the
+    huge-stream band (nw1 -8%, nw4 -25% at 16M fp32), BLOCK 32768 wins once
+    the stream fills 48 CTAs, and huge streams (>= 32M elements) inherit the
+    mul num_warps=1 verdict.  Shorter streams run a smaller tile so a short
+    shape still occupies the full grid: 2-byte types take BLOCK 8192
+    (interleaved do_bench: -5..-22% vs BLOCK 16384 across the band, 4/4
+    rounds stable) while 4-byte types keep BLOCK 16384 (8192 loses by
+    4-45% at >= 256K fp32 elements).  Tiny inputs stay on BLOCK 1024 at the
+    launch floor.
+    """
+    if n_elements <= 4096:
+        return 1024, 4
+    if n_elements >= _HUGE_STREAM_ELEMENTS:
+        # 2026-11-19 rescan of the huge-stream tier on this op (not the plain
+        # 2-stream `mul` body): num_warps=1 is *not* right here because the
+        # three-scale-factor chain is arithmetic-heavy and 48 CTAs x 1 warp
+        # leaves too few resident warps to hide it.  do_bench medians at 2^26:
+        # 16-bit 812 (nw1) -> 919 GB/s (nw2); fp32 1145 (nw1) -> 1362 GB/s (nw2);
+        # nw4 regresses again (751 / 1045 GB/s).  Same verdict at 2^29.
+        return 32768, 2
+    if n_elements < _GRID_SIZE * 32768:
+        return (8192, 2) if element_size <= 2 else (16384, 2)
+    return 32768, 2
+
+
+@triton.jit
+def _ldexp_flat_kernel(
+    x_ptr,
+    e_ptr,
+    out_ptr,
+    n_elements,
+    WRAP_EXPONENT: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+):
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        e = tl.load(e_ptr + offsets, mask=mask)
+        # Integral exponents follow the ATen semantics selected by torch
+        # version: >= 2.11 wraps the value to the low 32 bits (measured on
+        # CPU ATen: ldexp(1, 2**31) == 0, ldexp(1, 2**32+5) == 32), older
+        # versions clamp to the int32 range.  Identical to
+        # ``ldexp_integral_func`` below.
+        if WRAP_EXPONENT:
+            exponent = e.to(tl.int32)
+        else:
+            exponent = tl.maximum(tl.minimum(e, 2147483647), -2147483648).to(tl.int32)
+        # x * 2**exponent via three in-range scale factors: the product is
+        # (((x*2^first)*2^second)*2^third), but each scale is consumed as
+        # soon as it is built so at most three int32/fp32 tile vectors stay
+        # alive at once (DSM budget at BLOCK 32768: 3 * 128 KB).
+        exponent = tl.maximum(tl.minimum(exponent, 381), -378)
+        first = tl.maximum(tl.minimum(exponent, 127), -126)
+        rest = exponent - first
+        result = x.to(tl.float32) * _pow2_scale(first)
+        second = tl.maximum(tl.minimum(rest, 127), -126)
+        rest = rest - second
+        result = result * _pow2_scale(second)
+        result = result * _pow2_scale(rest)
+        tl.store(out_ptr + offsets, result.to(out_ptr.dtype.element_ty), mask=mask)
 
 
 @pointwise_dynamic(
@@ -288,6 +373,58 @@ def _complex_ldexp(self, other, result_dtype):
     return result
 
 
+def _fast_contiguous_ldexp(self, other, out, result_dtype):
+    """Same-shape, same-device, contiguous integral-exponent fast path.
+
+    Returns the output tensor, or ``None`` when the generic strided
+    implementation must handle the call (broadcast, non-contiguous inputs,
+    non-float operands, mismatched/strided ``out``, empty streams, or sizes
+    beyond the int32 flat-offset domain).
+    """
+    if self.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        return None
+    if result_dtype is not self.dtype:
+        return None
+    if other.is_floating_point() or other.is_complex():
+        return None
+    if self.device.type != _DEVICE_NAME or other.device != self.device:
+        return None
+    if self.shape != other.shape:
+        return None
+    if not (self.is_contiguous() and other.is_contiguous()):
+        return None
+    n_elements = self.numel()
+    if n_elements == 0 or n_elements >= _FLAT_INT32_LIMIT:
+        return None
+    if out is None:
+        output = torch.empty(self.shape, dtype=result_dtype, device=self.device)
+    else:
+        if (
+            out.shape != self.shape
+            or out.dtype is not result_dtype
+            or out.device != self.device
+            or not out.is_contiguous()
+        ):
+            return None
+        output = out
+    block_size, num_warps = _pick_ldexp_launch(n_elements, self.element_size())
+    tiles = (n_elements + block_size - 1) // block_size
+    grid = (_GRID_SIZE if tiles > _GRID_SIZE else tiles,)
+    with torch_device_fn.device(output.device):
+        _ldexp_flat_kernel[grid](
+            self,
+            other,
+            output,
+            n_elements,
+            WRAP_EXPONENT=_WRAP_INTEGER_EXPONENT,
+            BLOCK_SIZE=block_size,
+            GRID_SIZE=grid[0],
+            num_warps=num_warps,
+            num_stages=4,
+        )
+    return output
+
+
 def _ldexp_impl(self, other, out=None):
     result_dtype = _result_dtype(self, other)
     if out is not None:
@@ -306,12 +443,21 @@ def _ldexp_impl(self, other, out=None):
         out.resize_(result.shape)
         return _copy_result(out, result)
 
-    # On GCU400 pointwise_dynamic misaligns the tail indices of a non-contiguous operand when the two inputs have
-    # different strides
-    # (measured (7,19)/stride(1,7) broadcast with (19,) reads wrong source elements in the last 3 columns, 18 elements
-    # total;
-    # identical strides are correct), so non-contiguous operands are materialized contiguous here.
-    # Elementwise semantics and result layout are unchanged; only non-contiguous inputs pay one extra copy.
+    # Same-shape contiguous integral-exponent fast path (the flat kernel
+    # reaches ~2.1-2.6 TB/s vs ~144 GB/s for the generic pointwise_dynamic
+    # path on this backend).  Anything the gate rejects keeps the generic
+    # strided implementation below.
+    fast_result = _fast_contiguous_ldexp(self, other, out, result_dtype)
+    if fast_result is not None:
+        return fast_result
+
+    # On GCU400, pointwise_dynamic misindexes the tail of a non-contiguous operand when the two inputs have mismatched
+    # strides
+    # (measured: when broadcasting (7,19)/stride(1,7) with (19,), the last 3 columns — 18 elements in total — read
+    # wrong source elements; identical input strides are correct). Therefore the non-contiguous operand is materialized
+    # as a contiguous
+    # tensor here. Elementwise semantics and the result layout are unchanged; non-contiguous inputs just incur one extra
+    # copy.
     if not self.is_contiguous():
         self = self.contiguous()
     if not other.is_contiguous():
@@ -341,10 +487,14 @@ def _ldexp_impl(self, other, out=None):
 
 
 def ldexp(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 LDEXP")
+    logger.debug("GEMS_ENFLAME LDEXP")
     return _ldexp_impl(self, other)
 
 
 def ldexp_out(self, other, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 LDEXP_OUT")
+    logger.debug("GEMS_ENFLAME LDEXP_OUT")
     return _ldexp_impl(self, other, out)
+
+
+# Module-level handle keeps the Library (and its kernels) alive for the
+# process; the registration itself must never break the flag_gems import.

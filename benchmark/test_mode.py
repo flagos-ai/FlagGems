@@ -60,6 +60,13 @@ def _input_fn(shape, dtype, device):
     yield inp, {"dim": -1},
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the native torch.mode baseline aborts the GCU process on the "
+        "core shapes (no output before the abort), so there is no native baseline"
+    ),
+)
 @pytest.mark.mode
 @pytest.mark.skip_native(
     vendors=["ascend"],

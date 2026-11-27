@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 _LAYOUTS = {
@@ -125,6 +127,10 @@ class ValuesCopyBenchmark(base.Benchmark):
             yield inp,
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.values_copy
 def test_values_copy():
     bench = ValuesCopyBenchmark(
@@ -145,6 +151,10 @@ class ValuesCopyOutBenchmark(ValuesCopyBenchmark):
             yield inp, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.values_copy_out
 def test_values_copy_out():
     bench = ValuesCopyOutBenchmark(
@@ -216,6 +226,10 @@ def _values_copy_out_ref(self, out):
     return out
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.underscore_values_copy
 def test__values_copy():
     bench = UnderscoreValuesCopyBenchmark(
@@ -236,6 +250,10 @@ class UnderscoreValuesCopyOutBenchmark(UnderscoreValuesCopyBenchmark):
             yield inp, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.underscore_values_copy_out
 def test__values_copy_out():
     bench = UnderscoreValuesCopyOutBenchmark(

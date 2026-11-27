@@ -160,7 +160,7 @@ def special_shifted_chebyshev_polynomial_v(x, n):
     Returns:
         Tensor with the same shape as x broadcasted with n
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_V")
+    logger.debug("GEMS_ENFLAME SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_V")
     assert x.dtype in (
         torch.float32,
     ), "Only float32 is supported for special.shifted_chebyshev_polynomial_v"

@@ -137,7 +137,20 @@ def _coo(shape, sparse_dim, dim, nnz, dtype, device):
     size = tuple(shape)
     values = torch.randn((nnz,) + size[sparse_dim:], dtype=dtype, device=device)
     indices = _coords(shape, sparse_dim, dim, nnz, device)
-    return torch.sparse_coo_tensor(indices, values, torch.Size(size), device=device)
+    try:
+        return torch.sparse_coo_tensor(indices, values, torch.Size(size), device=device)
+    except RuntimeError as exc:
+        if (
+            flag_gems.vendor_name == "enflame"
+            and "DispatchStub: missing kernel for gcu" in str(exc)
+        ):
+            pytest.skip(
+                "torch aten not support due to: enflame backend has no "
+                "DispatchStub kernel for "
+                "aten::_sparse_coo_tensor_with_dims_and_tensors, so the "
+                "benchmark input cannot be constructed"
+            )
+        raise
 
 
 def _case_fn(shape, dtype):

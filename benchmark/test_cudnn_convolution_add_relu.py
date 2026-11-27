@@ -140,7 +140,19 @@ def _input_fn(case, dtype, device) -> Generator:
     yield (inp, weight, z, 1.0, bias, stride, padding, dilation, groups)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for "
+        "aten::cudnn_convolution_add_relu; its CPU fallback raises "
+        "NotImplementedError, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_convolution_add_relu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The native fused operator requires cuDNN",
+)
 def test_cudnn_convolution_add_relu():
     torch.backends.cudnn.allow_tf32 = False
     bench = CudnnConvAddReluBenchmark(
@@ -153,7 +165,19 @@ def test_cudnn_convolution_add_relu():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for "
+        "aten::cudnn_convolution_add_relu.out; its CPU fallback raises "
+        "NotImplementedError, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_convolution_add_relu_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="The native fused operator requires cuDNN",
+)
 def test_cudnn_convolution_add_relu_out():
     torch.backends.cudnn.allow_tf32 = False
     bench = CudnnConvAddReluBenchmark(

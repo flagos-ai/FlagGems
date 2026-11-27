@@ -22,14 +22,97 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# One program covers BLOCK complex elements (2 * BLOCK reals); a wide block
-# keeps the grid small and lets Triton saturate HBM on the streaming copy
-# while leaving enough programs for the launch-bound small cases.
-_BLOCK_SIZE = 1024
-# Leading (batch) dimensions are decomposed with a fixed number of slots so
-# the kernel always receives its full argument sets; higher-rank inputs are
-# rejected by the wrapper.
-_MAX_LEAD_RANK = 5
+# Payload of one program. The real/imag pair of a complex element is stored
+# adjacently and the destination is contiguous, so a dense run of reals is
+# copied as one coalesced vector pass. The streaming throughput of that pass is
+# bounded by the tile a program keeps resident, not by the vector width: 16 KiB
+# tiles reach ~0.6 TB/s while 512 KiB tiles reach the ~3 TB/s of the DTE-backed
+# aten copy (measured on a 1 GiB fp32 payload). 512 KiB stays below the 917504
+# byte DSM budget of a program, and the block is additionally clamped to the
+# row length so small inputs do not reserve a huge tile.
+_TILE_BYTES = 524288
+_MIN_BLOCK_SIZE = 1024
+# The generic gather path keeps the block width that the 2-D masked load path
+# was verified with; it is only used for layouts whose rows cannot be merged.
+_STRIDED_BLOCK_SIZE = 1024
+# GCU allows grid.x up to 65535 but only 255 blocks on each of grid.y/grid.z,
+# far below what a large tensor needs, so the flat program count is folded into
+# (grid.x, grid.y) and the kernel recovers a program id as x + y * grid_x.
+_MAX_GRID_X = 65535
+_MAX_GRID_Y = 255
+# Total programs are additionally bounded by x * y; anything larger falls back
+# to the generic gather path, which splits its own work across the same axes.
+_MAX_LAUNCH = _MAX_GRID_X * _MAX_GRID_Y
+
+
+def _launch_grid(n_blocks):
+    """Fold a flat program count into (grid_x, grid_y, 1) with minimal waste."""
+    grid_y = triton.cdiv(n_blocks, _MAX_GRID_X)
+    grid_x = triton.cdiv(n_blocks, grid_y)
+    if grid_x > _MAX_GRID_X:
+        # ``n_blocks`` sits just above a multiple of grid.x (e.g. 65536 blocks
+        # with a 65535-wide axis): rounding the row up keeps every block
+        # covered, the padded programs are dropped by the kernel's block mask.
+        grid_x = _MAX_GRID_X
+        grid_y = triton.cdiv(n_blocks, grid_x)
+    return (grid_x, grid_y, 1)
+
+
+def _merge_real_rows(shape, strides):
+    """Split a ``(..., 2)`` layout into (n_rows, row_len, src_row_stride).
+
+    Trailing dimensions whose stride equals the dense run accumulated so far
+    are merged, so ``row_len`` is the number of contiguous real elements that
+    can be copied as one flat stream and ``src_row_stride`` is the row pitch in
+    real elements. Returns ``None`` when the remaining leading dimensions do not
+    form their own dense row-major layout, i.e. when the move is not a set of
+    uniformly strided dense rows and the generic gather kernel is required.
+    """
+    row_len = shape[-1]
+    last = len(shape) - 2
+    while last >= 0 and strides[last] == row_len:
+        row_len *= shape[last]
+        last -= 1
+    for dim in range(last - 1, -1, -1):
+        if strides[dim] != strides[dim + 1] * shape[dim + 1]:
+            return None
+    n_rows = 1
+    for dim in range(0, last + 1):
+        n_rows *= shape[dim]
+    src_row_stride = strides[last] if last >= 0 else row_len
+    return n_rows, row_len, src_row_stride
+
+
+@triton.jit
+def _view_as_complex_copy_rows_kernel(
+    src_ptr,
+    dst_ptr,
+    total_blocks,
+    blocks_per_row,
+    row_len,
+    src_row_stride,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Copy dense real rows of ``row_len`` elements each.
+
+    Every source row is a contiguous run of reals (the trailing dimensions,
+    including the size-2 real/imag pair, were merged on the host) and the
+    destination is contiguous with the same row length, so one program copies
+    one dense slice. The flat program id is split into a row index and a block
+    index inside that row; a fully contiguous input degenerates to a single row
+    with ``row_len == numel``, i.e. one flat pass. ``total_blocks`` masks out
+    the padding programs left over by the grid folding.
+    """
+    pid = (tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)).to(
+        tl.int64
+    )
+    row = pid // blocks_per_row
+    block = pid - row * blocks_per_row
+    offset = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = (offset < row_len) & (pid < total_blocks)
+    values = tl.load(src_ptr + row * src_row_stride + offset, mask=mask)
+    tl.store(dst_ptr + row * row_len + offset, values, mask=mask)
+
 
 _COMPLEX_DTYPE = {
     torch.float16: torch.complex32,
@@ -38,33 +121,10 @@ _COMPLEX_DTYPE = {
 }
 _COMPLEX_TO_REAL = {complex: real for real, complex in _COMPLEX_DTYPE.items()}
 
-
-@triton.jit
-def _view_as_complex_copy_contig_kernel(
-    src_ptr,
-    dst_ptr,
-    n_complex,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Copy a contiguous ``(..., 2)`` real buffer into complex storage.
-
-    ``src_ptr`` and ``dst_ptr`` point at the same number of reals: the input
-    is a contiguous real tensor whose last dimension has size 2 and the
-    destination is the real view of a contiguous complex tensor. Complex
-    element ``i`` therefore occupies the adjacent real slots ``2 * i`` and
-    ``2 * i + 1``, so one linear pass over the real stream is both exact and
-    fully coalesced.
-    """
-    pid = tl.program_id(axis=0)
-    i = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = i < n_complex
-    i = i.to(tl.int64)
-
-    lane = tl.arange(0, 2)
-    offsets = i[:, None] * 2 + lane[None, :]
-    mask2 = mask[:, None]
-    values = tl.load(src_ptr + offsets, mask=mask2)
-    tl.store(dst_ptr + offsets, values, mask=mask2)
+# Leading (batch) dimensions are decomposed with a fixed number of slots so the
+# generic gather kernel always receives its full argument sets; higher-rank
+# inputs that need that path are rejected by the wrapper.
+_MAX_LEAD_RANK = 5
 
 
 @triton.jit
@@ -104,7 +164,7 @@ def _view_as_complex_copy_strided_kernel(
     buffer); the tight two-step ``div``/``sub`` decomposition beats the generic
     static loop by ~40% on that layout.
     """
-    pid = tl.program_id(axis=0)
+    pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
     i = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = i < n_complex
     i = i.to(tl.int64)
@@ -143,7 +203,7 @@ def view_as_complex_copy(self: torch.Tensor) -> torch.Tensor:
     inputs, a wrong last-dimension size or stride, and unsupported dtypes
     (bfloat16 and every non-float type).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 VIEW_AS_COMPLEX_COPY")
+    logger.debug("GEMS_ENFLAME VIEW_AS_COMPLEX_COPY")
 
     if self.dim() == 0:
         raise RuntimeError("Input tensor must have one or more dimensions")
@@ -173,15 +233,49 @@ def view_as_complex_copy(self: torch.Tensor) -> torch.Tensor:
     if n_complex == 0:
         return out
 
-    out_real = torch.view_as_real(out)
+    # float64 is copied in 32-bit lanes: the GCU compiler aborts the whole
+    # process on *any* float64 Triton kernel (the vectorization pass asserts on
+    # the emulated double type) and the 64-bit integer lane faults at runtime,
+    # while 32-bit is the backend's native width. float64/complex128 -> int32
+    # keeps the byte count (4 int32 per real, 8 per complex), so the move stays
+    # bit-exact.
+    if self.dtype == torch.float64:
+        src_view = self.view(torch.int32)
+        dst_view = out.view(torch.int32)
+    else:
+        src_view = self
+        dst_view = torch.view_as_real(out)
+    # Dense runs of reals (everything from the last dimension down to the first
+    # non-dense one) are copied as flat rows; only the residual layouts that
+    # cannot be expressed as uniformly strided dense rows fall back to the
+    # generic index-decomposing gather.
+    layout = _merge_real_rows(tuple(src_view.shape), tuple(src_view.stride()))
     with torch_device_fn.device(self.device):
-        grid = lambda meta: (triton.cdiv(n_complex, meta["BLOCK_SIZE"]),)
-        if self.is_contiguous():
-            _view_as_complex_copy_contig_kernel[grid](
-                self,
-                out_real,
-                n_complex,
-                BLOCK_SIZE=_BLOCK_SIZE,
+        if layout is not None:
+            n_rows, row_len, src_row_stride = layout
+            # The block is derived from the element width so that every program
+            # moves the same ~16 KiB of payload regardless of the dtype; work
+            # that does not fit one grid row is folded by _launch_grid instead
+            # of widening the tile further.
+            block_size = max(_MIN_BLOCK_SIZE, _TILE_BYTES // src_view.element_size())
+            # Never reserve more lanes than the row can use: the tile is a
+            # per-program DSM allocation, so a long row keeps the full payload
+            # while a short row only pays for its own length. Splitting a
+            # short row further was measured *slower* (a 16 KiB row per
+            # program beat four 4 KiB programs per row by 3x on a 268 MB
+            # strided-row payload), so the row length stays the hard cap.
+            block_size = min(block_size, triton.next_power_of_2(row_len))
+            blocks_per_row = triton.cdiv(row_len, block_size)
+            total_blocks = n_rows * blocks_per_row
+        if layout is not None and total_blocks <= _MAX_LAUNCH:
+            _view_as_complex_copy_rows_kernel[_launch_grid(total_blocks)](
+                src_view,
+                dst_view,
+                total_blocks,
+                blocks_per_row,
+                row_len,
+                src_row_stride,
+                BLOCK_SIZE=block_size,
             )
         else:
             rank = self.dim() - 1
@@ -190,16 +284,17 @@ def view_as_complex_copy(self: torch.Tensor) -> torch.Tensor:
                     f"view_as_complex_copy supports at most {_MAX_LEAD_RANK + 1} "
                     f"dimensions, got {self.dim()}"
                 )
-            lead_dims = list(self.shape[:-1]) + [1] * (_MAX_LEAD_RANK - rank)
-            lead_strides = list(self.stride()[:-1]) + [0] * (_MAX_LEAD_RANK - rank)
+            lead_dims = list(src_view.shape[:-1]) + [1] * (_MAX_LEAD_RANK - rank)
+            lead_strides = list(src_view.stride()[:-1]) + [0] * (_MAX_LEAD_RANK - rank)
+            grid = _launch_grid(triton.cdiv(n_complex, _STRIDED_BLOCK_SIZE))
             _view_as_complex_copy_strided_kernel[grid](
-                self,
-                out_real,
+                src_view,
+                dst_view,
                 *lead_dims,
                 *lead_strides,
                 n_complex,
                 RANK=rank,
-                BLOCK_SIZE=_BLOCK_SIZE,
+                BLOCK_SIZE=_STRIDED_BLOCK_SIZE,
             )
     return out
 

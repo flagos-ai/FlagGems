@@ -656,7 +656,7 @@ def _adaptive_avg_pool3d_backward(
     input: torch.Tensor,
 ):
     """Gradient of adaptive_avg_pool3d backward."""
-    logger.debug("GEMS_ENFLAME_GCU400 _ADAPTIVE_AVG_POOL3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME _ADAPTIVE_AVG_POOL3D_BACKWARD")
 
     if grad_output.numel() == 0:
         return torch.zeros(
@@ -686,7 +686,7 @@ def adaptive_avg_pool3d_backward_grad_input(
     result is written into the caller-provided ``grad_input`` buffer, which
     is also returned.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ADAPTIVE_AVG_POOL3D_BACKWARD_GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME ADAPTIVE_AVG_POOL3D_BACKWARD_GRAD_INPUT")
 
     if grad_output.numel() == 0 or input.numel() == 0:
         return grad_input.zero_()

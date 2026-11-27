@@ -19,9 +19,15 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.linalg_lu_factor import _linalg_lu_factor_impl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+# Use the GCU400-specialized factorization (fast batched kernel / panel cascade /
+# batch-safe blocked fallback) instead of the portable panel-blocked path used by
+# `flag_gems.ops.linalg_lu_factor`: identical (LU, pivots) contract, but measured on
+# this board at 0.52 vs 1.24 ms for 64x64, 3.6 vs 6.7 ms for 256x256 and 12.5 vs
+# 16.9 ms for 512x512 (the public path re-JITs a fresh panel shape per step).
+from .linalg_lu_factor import _linalg_lu_factor_impl
 
 logger = logging.getLogger(__name__)
 
@@ -127,5 +133,5 @@ def _lu_with_info_impl(input, pivot=True, check_errors=True):
 
 
 def _lu_with_info(input, pivot=True, check_errors=True):
-    logger.debug("GEMS_ENFLAME_GCU400 _LU_WITH_INFO")
+    logger.debug("GEMS_ENFLAME _LU_WITH_INFO")
     return _lu_with_info_impl(input, pivot, check_errors)
