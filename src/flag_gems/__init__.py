@@ -1990,7 +1990,16 @@ _FULL_CONFIG = (
     ("multiply.Tensor", multiply),
     ("multiply_.Scalar", multiply_),
     ("multiply_.Tensor", multiply_),
-    ("mv", mv),
+    (
+        "mv",
+        mv,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("mvlgamma", mvlgamma),
     ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),

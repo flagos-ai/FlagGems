@@ -107,3 +107,16 @@ def test_mv():
         dtypes=consts.FP16_BF16_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.mv_backward
+def test_mv_backward():
+    bench = MvBenchmark(
+        op_name="mv_backward",
+        input_fn=mv_input_fn,
+        torch_op=torch.Tensor.mv,
+        gems_op=flag_gems.mv,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
