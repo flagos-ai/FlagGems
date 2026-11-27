@@ -32,6 +32,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _reference_input(tensor):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.cpu()
+    return utils.to_reference(tensor)
+
+
 gems_device = flag_gems.device
 
 # The native thnn_conv2d routes float32 through an im2col + GEMM path whose
@@ -129,10 +136,10 @@ def _native(inp, weight, kernel, bias, stride, padding):
 
 def _reference(inp, weight, kernel, bias, stride, padding):
     return _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         kernel,
-        utils.to_reference(bias),
+        _reference_input(bias),
         stride,
         padding,
     )
@@ -145,16 +152,17 @@ def test_thnn_conv2d(shape, out_channels, dtype):
     inp, weight, bias = _conv_operands(shape, out_channels, dtype, 3)
 
     ref_out = _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         (3, 3),
-        utils.to_reference(bias),
+        _reference_input(bias),
         [1, 1],
         [1, 1],
     )
     res_out = flag_gems.thnn_conv2d(inp, weight, (3, 3), bias, [1, 1], [1, 1])
 
     assert res_out.shape == ref_out.shape
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_conv_atol(dtype))
 
 
@@ -171,16 +179,17 @@ def test_thnn_conv2d_kernel_padding_stride(kernel, padding, stride, dtype):
     bias = torch.randn(5, dtype=dtype, device=gems_device)
 
     ref_out = _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         kernel,
-        utils.to_reference(bias),
+        _reference_input(bias),
         stride,
         padding,
     )
     res_out = flag_gems.thnn_conv2d(inp, weight, kernel, bias, stride, padding)
 
     assert res_out.shape == ref_out.shape
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_conv_atol(dtype))
 
 
@@ -190,8 +199,8 @@ def test_thnn_conv2d_without_bias(dtype):
     inp, weight, _ = _conv_operands((2, 3, 16, 16), 4, dtype, 3)
 
     ref_out = _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         (3, 3),
         None,
         [1, 1],
@@ -199,6 +208,7 @@ def test_thnn_conv2d_without_bias(dtype):
     )
     res_out = flag_gems.thnn_conv2d(inp, weight, (3, 3), None, [1, 1], [1, 1])
 
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_conv_atol(dtype))
 
 
@@ -211,8 +221,8 @@ def test_thnn_conv2d_default_bias(dtype):
     # Both sides use the schema defaults: bias None, stride [1, 1],
     # padding [0, 0].
     ref_out = _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         (3, 3),
         None,
         [1, 1],
@@ -220,6 +230,7 @@ def test_thnn_conv2d_default_bias(dtype):
     )
     res_out = flag_gems.thnn_conv2d(inp, weight, (3, 3))
 
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_conv_atol(dtype))
 
 
@@ -230,10 +241,10 @@ def test_thnn_conv2d_int_kernel_and_defaults(dtype):
     inp, weight, bias = _conv_operands((2, 3, 16, 16), 4, dtype, 3)
 
     ref_out = _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         3,
-        utils.to_reference(bias),
+        _reference_input(bias),
         [1, 1],
         [0, 0],
     )
@@ -241,6 +252,7 @@ def test_thnn_conv2d_int_kernel_and_defaults(dtype):
     # (stride 1, padding 0); the reference call above mirrors those defaults.
     res_out = flag_gems.thnn_conv2d(inp, weight, 3, bias)
 
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_conv_atol(dtype))
 
 
@@ -258,10 +270,10 @@ def test_thnn_conv2d_empty(shape, out_channels, dtype):
     if shape[0] == 0:
         # The native operator accepts an empty batch and returns the same plane.
         ref_out = _native(
-            utils.to_reference(inp),
-            utils.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             (3, 3),
-            utils.to_reference(bias),
+            _reference_input(bias),
             [1, 1],
             [1, 1],
         )
@@ -287,15 +299,16 @@ def test_thnn_conv2d_noncontiguous_input(dtype):
     bias = torch.randn(4, dtype=dtype, device=gems_device)
 
     ref_out = _native(
-        utils.to_reference(inp),
-        utils.to_reference(weight),
+        _reference_input(inp),
+        _reference_input(weight),
         (3, 3),
-        utils.to_reference(bias),
+        _reference_input(bias),
         [1, 1],
         [1, 1],
     )
     res_out = flag_gems.thnn_conv2d(inp, weight, (3, 3), bias, [1, 1], [1, 1])
 
+    assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_conv_atol(dtype))
 
 
@@ -308,9 +321,9 @@ def test_thnn_conv2d_does_not_mutate_operands(dtype):
     # candidate result to the reference side and asserts the reference is
     # already there, which a CUDA-side clone would violate in quick-cpu mode.
     before = (
-        utils.to_reference(inp.clone()),
-        utils.to_reference(weight.clone()),
-        utils.to_reference(bias.clone()),
+        _reference_input(inp.clone()),
+        _reference_input(weight.clone()),
+        _reference_input(bias.clone()),
     )
 
     res_out = flag_gems.thnn_conv2d(inp, weight, (3, 3), bias, [1, 1], [1, 1])

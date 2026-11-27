@@ -67,6 +67,10 @@ class SparseResizeBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.sparse_resize_
 def test_sparse_resize_(monkeypatch):
     # COO resize is dominated by host metadata work; use the framework's

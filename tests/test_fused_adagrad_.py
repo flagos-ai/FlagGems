@@ -85,9 +85,10 @@ def _native_reference(params, grads, state_sums, steps, **kwargs):
 
 def _assert_close(got, expected, dtype):
     atol = TOLS[dtype]
-    utils.gems_assert_close(
-        utils.to_reference(got), utils.to_reference(expected), dtype, atol=atol
-    )
+    assert got.device == expected.device
+    assert got.dtype == expected.dtype == dtype
+    assert got.shape == expected.shape
+    utils.gems_assert_close(got, utils.to_reference(expected, False), dtype, atol=atol)
 
 
 def _assert_grads_unchanged(grads, originals):

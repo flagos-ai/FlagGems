@@ -119,6 +119,14 @@ class FusedGRUCellBackwardOutBenchmark(base.Benchmark):
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no native _thnn_fused_gru_cell_backward kernel; its "
+        "PrivateUse1 entry is a CPU fallback and stock PyTorch has no CPU "
+        "kernel, so the baseline raises NotImplementedError"
+    ),
+)
 def test_thnn_fused_gru_cell_backward():
     bench = FusedGRUCellBackwardBenchmark(
         op_name="thnn_fused_gru_cell_backward",
@@ -129,6 +137,13 @@ def test_thnn_fused_gru_cell_backward():
 
 
 @pytest.mark.thnn_fused_gru_cell_backward_out
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the out baseline calls aten::_thnn_fused_gru_cell_backward, which "
+        "has no CPU kernel behind torch_gcu's PrivateUse1 fallback"
+    ),
+)
 def test_thnn_fused_gru_cell_backward_out():
     bench = FusedGRUCellBackwardOutBenchmark(
         op_name="thnn_fused_gru_cell_backward_out",

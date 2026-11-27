@@ -44,7 +44,7 @@ def test_feature_dropout(shape, p, dtype):
     assert res_out.device == inp.device
     batch_size, num_channels = shape[0], shape[1]
     scale = 1.0 / (1.0 - p)
-    # MetaX and Hygon native dropout may round the gain before multiplying.
+    # MetaX, Hygon and MUSA native dropout can round the gain before multiplying.
     use_cpu_scale = flag_gems.vendor_name == "hygon" and dtype in (
         torch.float16,
         torch.bfloat16,
@@ -55,7 +55,7 @@ def test_feature_dropout(shape, p, dtype):
     check_out = res_out.cpu() if use_cpu_scale else res_out
     rounded_scale = (
         check_inp.new_tensor(scale)
-        if flag_gems.vendor_name in ("metax", "hygon")
+        if flag_gems.vendor_name in ("metax", "hygon", "mthreads")
         else None
     )
     inp_reshaped = check_inp.view(batch_size, num_channels, -1)

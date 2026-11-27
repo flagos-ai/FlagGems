@@ -433,6 +433,16 @@ def test_chain_matmul_rejects_mismatched_dims():
 )
 def test_chain_matmul_rejects_int_dtype():
     inp = [torch.ones((2, 2), dtype=torch.int32, device=flag_gems.device)] * 2
+    if flag_gems.vendor_name == "enflame":
+        # Only this backend needs the candidate check first: aten's integer path
+        # lands on a GCU kernel that trips a device-side check and aborts the
+        # whole process instead of raising, so the expected RuntimeError cannot
+        # be observed afterwards. Every other vendor keeps the original order.
+        with pytest.raises((TypeError, ValueError, RuntimeError)):
+            flag_gems.chain_matmul(inp)
+        pytest.skip(
+            "aten::chain_matmul with int32 inputs aborts the process on enflame"
+        )
     # On the accelerator the integer addmm is not implemented.
     with pytest.raises(RuntimeError):
         torch.ops.aten.chain_matmul(inp)

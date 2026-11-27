@@ -113,7 +113,10 @@ def test_scaled_dot_product_fused_attention_overrideable_backward(
     has_attn_bias,
     dtype,
 ):
-    if is_causal and has_attn_bias:
+    if is_causal and has_attn_bias and flag_gems.vendor_name != "enflame":
+        # The enflame backend computes the bias gradient only inside the causal
+        # band and pre-zeroes the masked entries, so this combination is
+        # verified there; other vendors keep the historical skip.
         pytest.skip("causal + attn_bias: skip")
 
     scale = float(1.0 / math.sqrt(head_size))

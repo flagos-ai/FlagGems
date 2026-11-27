@@ -21,6 +21,7 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
 
 # view_as_real_copy consumes a complex tensor and produces the real tensor one
 # size down: complex32 -> float16, complex64 -> float32, complex128 -> float64.
@@ -225,11 +226,23 @@ def test_accuracy_view_as_real_copy_1d_strided(dtype):
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
 def test_accuracy_view_as_real_copy_independent_storage(dtype):
+    if IS_ENFLAME and dtype == torch.complex32:
+        # Missing backend capability, not an operator defect: GCU has no ComplexHalf
+        # kernel for aten add, so the ``inp.add_(1.0)`` below makes topsatenAdd report
+        # BAD_PARAM and abort the process (torch_gcu gcu_utils.cpp "Check failed: 0"),
+        # while add_ on complex64/complex128 is fine. To keep the coverage on the other
+        # dtypes, skip only the enflame + complex32 combination.
+        pytest.skip(
+            "enflame: aten::add has no ComplexHalf kernel on GCU "
+            "(topsatenAdd BAD_PARAM aborts the process)"
+        )
     inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.view_as_real_copy(inp)
     ref = utils.to_reference(res_out.clone())
 
-    if IS_KUNLUNXIN:
+    if IS_KUNLUNXIN or (
+        flag_gems.vendor_name == "mthreads" and dtype == torch.complex32
+    ):
         inp.real.add_(1.0)
     else:
         inp.add_(1.0)

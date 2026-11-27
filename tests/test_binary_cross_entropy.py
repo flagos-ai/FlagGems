@@ -31,11 +31,20 @@ def test_binary_cross_entropy(shape, dtype, reduction):
 
     ref_inp = utils.to_reference(inp, True)
     ref_target = utils.to_reference(target, True)
+    musa_empty_mean = (
+        flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean"
+    )
+    if musa_empty_mean:
+        # MUSA returns zero for an empty mean instead of NaN.
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
 
     ref_out = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, reduction=reduction
     )
     res_out = flag_gems.binary_cross_entropy(inp, target, reduction=reduction)
+    if musa_empty_mean:
+        assert res_out.device == inp.device
+        res_out = res_out.cpu()
 
     if reduction == "none":
         # Elementwise comparison, no reduction error to account for
@@ -70,6 +79,16 @@ def test_binary_cross_entropy_weight(shape, dtype, reduction):
     ref_inp = utils.to_reference(inp, True)
     ref_target = utils.to_reference(target, True)
     ref_weight = utils.to_reference(weight, True)
+    musa_empty_mean = (
+        flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean"
+    )
+    if musa_empty_mean:
+        # MUSA returns zero for an empty mean instead of NaN.
+        ref_inp, ref_target, ref_weight = (
+            ref_inp.cpu(),
+            ref_target.cpu(),
+            ref_weight.cpu(),
+        )
 
     ref_out = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, weight=ref_weight, reduction=reduction
@@ -77,6 +96,9 @@ def test_binary_cross_entropy_weight(shape, dtype, reduction):
     res_out = flag_gems.binary_cross_entropy(
         inp, target, weight=weight, reduction=reduction
     )
+    if musa_empty_mean:
+        assert res_out.device == inp.device
+        res_out = res_out.cpu()
 
     if reduction == "none":
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -115,6 +137,13 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, with_weight):
     ref_target = utils.to_reference(target, True)
     ref_weight = utils.to_reference(weight, True) if with_weight else None
 
+    musa_empty_mean = (
+        flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean"
+    )
+    if musa_empty_mean:
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
+        if ref_weight is not None:
+            ref_weight = ref_weight.cpu()
     ref_out = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, weight=ref_weight, reduction=reduction
     )
@@ -134,18 +163,23 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, with_weight):
     # and the result must actually live in the caller-provided buffer.
     assert returned is out, "out variant must return the provided out tensor"
 
+    if musa_empty_mean:
+        assert out.device == inp.device
+        observed = out.cpu()
+    else:
+        observed = out
     if reduction == "none":
-        utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+        utils.gems_assert_close(observed, ref_out, dtype, equal_nan=True)
     elif reduction == "sum":
         utils.gems_assert_close(
-            out,
+            observed,
             ref_out,
             dtype,
             equal_nan=True,
             reduce_dim=inp.numel(),
         )
     else:
-        utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+        utils.gems_assert_close(observed, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.binary_cross_entropy

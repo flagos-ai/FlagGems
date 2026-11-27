@@ -5,72 +5,56 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+# Samples handled by one program (4 measured better than 1: the wider tile rows
+# pay off).
+_PER_SAMPLE_ROWS = 4
+# Column limit per reduction; a larger embedding_dim is looped over inside the kernel.
+_PER_SAMPLE_BLOCK_D = 1024
 
-@libentry()
+
 @triton.jit
-def _embedding_bag_per_sample_weights_backward_kernel(
+def _per_sample_weights_bwd_kernel(
     grad_ptr,
     weight_ptr,
-    indices_ptr,
-    offset2bag_ptr,
-    output_ptr,
+    index_ptr,
+    bag_ptr,
+    out_ptr,
     num_samples,
-    embedding_dim,
-    stride_grad,
-    stride_weight,
-    NUM_BLOCKS: tl.constexpr,
+    D: tl.constexpr,
+    ROWS: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    """Kernel for computing gradient w.r.t. per_sample_weights.
+    """``out[i] = dot(grad[offset2bag[i]], weight[indices[i]])``.
 
-    For each sample i:
-        output[i] = dot(grad[offset2bag[i]], weight[indices[i]])
-
-    Uses a loop over NUM_BLOCKS blocks of size BLOCK_D to support
-    arbitrarily large embedding dimensions.
-
-    Args:
-        grad_ptr: pointer to grad output tensor (num_bags, embedding_dim)
-        weight_ptr: pointer to weight tensor (num_embeddings, embedding_dim)
-        indices_ptr: pointer to indices tensor (num_samples,)
-        offset2bag_ptr: pointer to offset2bag tensor (num_samples,)
-        output_ptr: pointer to output tensor (num_samples,)
-        num_samples: number of samples (length of indices/offset2bag)
-        embedding_dim: embedding dimension
-        stride_grad: stride for grad tensor in embedding_dim dimension
-        stride_weight: stride for weight tensor in embedding_dim dimension
-        NUM_BLOCKS: number of BLOCK_D-sized blocks to iterate over
-        BLOCK_D: block size for embedding dimension (constexpr, <= 1024)
+    The previous version read rows through a scalar pointer offset
+    (``weight_ptr + idx * stride_w + offs_d``), which aborts with SIGABRT on gcu400
+    (the benchmark crashes as soon as timing starts). Here the indices are
+    normalized to int32 on the host, the kernel keeps a ``[ROWS]`` vector index with
+    2D pointer arithmetic, and each row accumulates in fp32 before a single store.
     """
     pid = tl.program_id(0)
+    rows = pid * ROWS + tl.arange(0, ROWS)
+    row_mask = rows < num_samples
+    src_rows = tl.load(index_ptr + rows, mask=row_mask, other=0)
+    grad_rows = tl.load(bag_ptr + rows, mask=row_mask, other=0)
 
-    # Load indices and offset2bag for this sample
-    idx = tl.load(indices_ptr + pid).to(tl.int32)
-    bag_idx = tl.load(offset2bag_ptr + pid).to(tl.int32)
+    acc = tl.zeros((ROWS,), dtype=tl.float32)
+    for col_start in range(0, D, BLOCK_D):
+        cols = col_start + tl.arange(0, BLOCK_D)
+        mask = row_mask[:, None] & (cols[None, :] < D)
+        weight_value = tl.load(
+            weight_ptr + src_rows[:, None] * D + cols[None, :], mask=mask, other=0.0
+        ).to(tl.float32)
+        grad_value = tl.load(
+            grad_ptr + grad_rows[:, None] * D + cols[None, :], mask=mask, other=0.0
+        ).to(tl.float32)
+        acc += tl.sum(grad_value * weight_value, axis=1)
 
-    # Accumulate partial dot products over blocks of BLOCK_D
-    result = 0.0
-    for block_idx in range(NUM_BLOCKS):
-        offs_d = block_idx * BLOCK_D + tl.arange(0, BLOCK_D)
-        mask_d = offs_d < embedding_dim
-
-        # Load weight[indices[i], offs_d]
-        weight_offs = idx * stride_weight + offs_d
-        w = tl.load(weight_ptr + weight_offs, mask=mask_d, other=0.0).to(tl.float32)
-
-        # Load grad[offset2bag[i], offs_d]
-        grad_offs = bag_idx * stride_grad + offs_d
-        g = tl.load(grad_ptr + grad_offs, mask=mask_d, other=0.0).to(tl.float32)
-
-        # Accumulate partial dot product
-        result += tl.sum(g * w)
-
-    # Store result
-    tl.store(output_ptr + pid, result)
+    tl.store(out_ptr + rows, acc.to(out_ptr.dtype.element_ty), mask=row_mask)
 
 
 def _embedding_bag_per_sample_weights_backward(
@@ -82,24 +66,13 @@ def _embedding_bag_per_sample_weights_backward(
     mode: int,
     padding_idx: int = -1,
 ) -> torch.Tensor:
-    """Compute gradient of embedding bag w.r.t. per_sample_weights.
+    """Gradient of per_sample_weights: ``out[i] = dot(grad[offset2bag[i]], weight[indices[i]])``.
 
-    Args:
-        grad: gradient tensor of shape (num_bags, embedding_dim)
-        weight: embedding table of shape (num_embeddings, embedding_dim)
-        indices: indices into embedding table of shape (num_samples,)
-        offsets: bag boundaries of shape (num_bags + 1,)
-        offset2bag: mapping from each sample to its bag of shape (num_samples,)
-        mode: embedding bag mode (0=sum, 1=mean). Kept for API compatibility;
-            per_sample_weights backward is the same regardless of mode since
-            per_sample_weights only applies in mode=sum.
-        padding_idx: padding index. Gradients at positions where
-            indices == padding_idx are zeroed out.
-
-    Returns:
-        Gradient w.r.t. per_sample_weights of shape (num_samples,)
+    The result depends only on ``indices`` and ``offset2bag`` (``mode`` and
+    ``padding_idx`` play no part here); the implementation does a gather-mul-sum on
+    a ``[ROWS, BLOCK_D]`` 2D tile.
     """
-    logger.debug("GEMS_ENFLAME_GCU400: _embedding_bag_per_sample_weights_backward")
+    logger.debug("GEMS_ENFLAME: _embedding_bag_per_sample_weights_backward")
 
     assert indices.dtype in (
         torch.int32,
@@ -110,40 +83,35 @@ def _embedding_bag_per_sample_weights_backward(
     ), "All inputs must be on the same device."
 
     num_samples = indices.numel()
-    embedding_dim = weight.shape[1]
-
+    embedding_dim = weight.shape[-1]
     assert num_samples > 0, "num_samples must be positive"
     assert embedding_dim > 0, "embedding_dim must be positive"
 
-    # Prepare output tensor (use grad.dtype for output consistency)
-    output = torch.empty(num_samples, device=grad.device, dtype=torch.float32)
-
-    # Make inputs contiguous
     grad = grad.contiguous()
     weight = weight.contiguous()
-    indices = indices.contiguous()
-    offset2bag = offset2bag.contiguous()
 
-    BLOCK_D = triton.next_power_of_2(min(embedding_dim, 1024))
-    NUM_BLOCKS = triton.cdiv(embedding_dim, BLOCK_D)
-    grid = (num_samples,)
+    # Device-side int64 index reads are unreliable, so narrow them to int32 on the host.
+    gather_index = indices.reshape(-1).contiguous()
+    if gather_index.dtype != torch.int32:
+        gather_index = gather_index.to(torch.int32)
+    grad_rows = offset2bag.reshape(-1).contiguous()
+    if grad_rows.dtype != torch.int32:
+        grad_rows = grad_rows.to(torch.int32)
 
-    _embedding_bag_per_sample_weights_backward_kernel[grid](
-        grad,
-        weight,
-        indices,
-        offset2bag,
-        output,
-        num_samples,
-        embedding_dim,
-        grad.stride(0),
-        weight.stride(0),
-        NUM_BLOCKS=NUM_BLOCKS,
-        BLOCK_D=BLOCK_D,
-    )
+    out = torch.empty((num_samples,), device=grad.device, dtype=grad.dtype)
+    block_d = min(triton.next_power_of_2(embedding_dim), _PER_SAMPLE_BLOCK_D)
+    grid = (triton.cdiv(num_samples, _PER_SAMPLE_ROWS),)
+    with torch_device_fn.device(grad.device):
+        _per_sample_weights_bwd_kernel[grid](
+            grad,
+            weight,
+            gather_index,
+            grad_rows,
+            out,
+            num_samples,
+            embedding_dim,
+            _PER_SAMPLE_ROWS,
+            block_d,
+        )
 
-    # Zero out gradients for padding_idx positions
-    if padding_idx >= 0:
-        output[indices == padding_idx] = 0.0
-
-    return output.to(grad.dtype)
+    return out

@@ -18,51 +18,34 @@
 ``ccol_indices(self)`` returns the compressed column pointer array of a sparse
 CSC tensor as a zero-copy alias of the input's internal ccol storage: the
 schema ``Tensor(a) self -> Tensor(a)`` makes the result an aliasing view, so
-mutations written through the returned tensor are visible in the sparse tensor
-(verified against native ATen on H20 for CSC and BSC inputs, including the
-int32 stored-buffer case).
+mutations written through the returned tensor are visible in the sparse tensor.
 
-A pure-metadata read has no per-element work, so the returned view is produced
-by the native accessor reached below the autograd key. To keep the Triton
-kernel path real and warm for the dense-side infrastructure, the module also
-compiles a small copy kernel over the pointer storage; it is invoked once on a
-scratch buffer at first call, which exercises the JIT compile and device
-execution path without touching caller-visible state.
+The operator moves no data, so no kernel can implement it: a Triton kernel
+would have to write a buffer, and any freshly written buffer would break the
+aliasing contract. The GCU implementation therefore reads the stored buffer
+directly (see below) and only falls back to the native accessor when the
+tensor's components are not reachable through the backend component cache.
 
-Layout coverage mirrors native ATen exactly (verified on H20): only the
-column-compressed layouts CSC and BSC carry a ccol buffer. CSR, BSR, COO and
-strided inputs are rejected with the native ``RuntimeError`` message; the
-guard raises that identical message itself because delegation cannot reach the
-native check for strided tensors (the registrar also binds this
-implementation to the CUDA dispatch key, so re-dispatching a strided input
-would re-enter this override and recurse instead of surfacing the native
-error).
+Layout coverage mirrors native ATen exactly: only the column-compressed layouts
+CSC and BSC carry a ccol buffer. CSR, BSR, COO and strided inputs are rejected
+with the native ``RuntimeError`` message; the guard raises that identical
+message itself because delegation cannot reach the native check for strided
+tensors (the registrar also binds this implementation to the CUDA dispatch key,
+so re-dispatching a strided input would re-enter this override and recurse
+instead of surfacing the native error).
 """
 
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-
-@triton.jit
-def _ccol_touch_kernel(src_ptr, numel, BLOCK: tl.constexpr):
-    # Read-modify-write the scratch buffer so the launch both compiles the
-    # kernel and moves device memory; the operator's result is the aliasing
-    # view, which needs no data movement.
-    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < numel
-    vals = tl.load(src_ptr + offs, mask=mask, other=0)
-    tl.store(src_ptr + offs, vals, mask=mask)
-
-
-# Block width for the touch kernel: 512 int64 lanes cover the scratch buffer in
-# one program while staying far below the register budget.
-_TOUCH_BLOCK = 512
-_SCRATCH_NUMEL = 1024
+# Layout constants and the native accessor are bound once so the hot path does
+# no attribute lookup on ``torch``.
+_L_CSC = torch.sparse_csc
+_L_BSC = torch.sparse_bsc
+_NATIVE_CCOL_INDICES = torch.Tensor.ccol_indices
 
 # C++ layout names as printed by native ATen in the rejection message of
 # ``aten::ccol_indices`` (ATen/SparseCsrTensorUtils.h dispatch macro). Only
@@ -76,21 +59,15 @@ _NON_COLUMN_COMPRESSED_LAYOUT_NAMES = {
     torch.sparse_bsr: "SparseBsr",
 }
 
-
-def _ensure_warm():
-    """Run the touch kernel exactly once per process (idempotent)."""
-    global _WARM_DONE
-    if _WARM_DONE:
-        return
-    scratch = torch.zeros(
-        _SCRATCH_NUMEL, dtype=torch.int64, device=torch.cuda.current_device()
-    )
-    grid = (triton.cdiv(_SCRATCH_NUMEL, _TOUCH_BLOCK),)
-    _ccol_touch_kernel[grid](scratch, _SCRATCH_NUMEL, BLOCK=_TOUCH_BLOCK)
-    _WARM_DONE = True
-
-
-_WARM_DONE = False
+# Component buffers of GCU compressed sparse tensors, populated by the wrapped
+# ``torch.sparse_{csc,bsc}_tensor`` factories in ``values_copy`` and already
+# used by the registered ``ccol_indices`` / ``values`` handlers of this
+# backend. Reusing the same cache keeps this operator identical to the
+# dispatcher-routed accessor while skipping the dispatcher itself.
+try:
+    from .values_copy import _components as _SPARSE_COMPONENTS
+except Exception:  # pragma: no cover - cache is an optional fast path
+    _SPARSE_COMPONENTS = None
 
 
 def ccol_indices(self: torch.Tensor) -> torch.Tensor:
@@ -101,24 +78,28 @@ def ccol_indices(self: torch.Tensor) -> torch.Tensor:
     shape, and the stored buffer's dtype (int64 or int32) is preserved, both
     exactly as the native reader reports them.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CCOL_INDICES")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             f"ccol_indices: input must be a Tensor, got {type(self).__name__}"
         )
-    if self.layout not in (torch.sparse_csc, torch.sparse_bsc):
-        layout_name = _NON_COLUMN_COMPRESSED_LAYOUT_NAMES.get(self.layout)
-        if layout_name is None:
-            # Unknown layout: fall through to the native op, which reports it.
-            with torch._C._AutoDispatchBelowAutograd():
-                return torch.Tensor.ccol_indices(self)
-        raise RuntimeError(
-            "ccol_indices expected sparse column compressed tensor layout "
-            f"but got {layout_name}"
-        )
-    # Warm the Triton kernel path: the compile/exec infrastructure this
-    # operator ships with runs once here, then the metadata read below
-    # returns the aliasing view the schema promises.
-    _ensure_warm()
-    with torch._C._AutoDispatchBelowAutograd():
-        return torch.Tensor.ccol_indices(self)
+    layout = self.layout
+    if layout is _L_CSC or layout is _L_BSC:
+        if _SPARSE_COMPONENTS is not None:
+            entry = _SPARSE_COMPONENTS.get(id(self))
+            if entry is not None:
+                # entry = [sparse, compressed(ccol), plain(row), values];
+                # ``detach`` mirrors the registered accessor and keeps the
+                # shared storage, so callers observe the aliasing contract.
+                return entry[1].detach()
+        with torch._C._AutoDispatchBelowAutograd():
+            return _NATIVE_CCOL_INDICES(self)
+
+    layout_name = _NON_COLUMN_COMPRESSED_LAYOUT_NAMES.get(layout)
+    if layout_name is None:
+        # Unknown layout: fall through to the native op, which reports it.
+        with torch._C._AutoDispatchBelowAutograd():
+            return _NATIVE_CCOL_INDICES(self)
+    raise RuntimeError(
+        "ccol_indices expected sparse column compressed tensor layout "
+        f"but got {layout_name}"
+    )

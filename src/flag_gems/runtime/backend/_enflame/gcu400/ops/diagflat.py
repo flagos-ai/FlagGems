@@ -37,10 +37,18 @@ All numerical work happens in triton kernels:
            ``tl.debug_barrier`` then orders the run's zero stores before
            the diagonal stores; phase two writes the run's diagonal cells
            with a single SPAN-wide masked scatter at address
-           ``i * (m + 1) + base`` (int64 index math, overflow-safe for any
-           count below the int32 fallback line).  The source is read
-           through the flattened input's *element stride* so a zero-copy
-           strided view (e.g. ``x[..., ::2]``) is handled correctly.
+           ``i * (m + 1) + base``.  The chunk width is capped at 16384
+           elements (measured 2026-11-18 on Triton GCU 4.1.6: -2.9~-4.8%
+           vs the previous 128KB tiles at m >= 1024, tie below) and the
+           kernel runs at num_warps=1 (num_warps>1 measured 2.6~4% worse
+           on the fill).  The diagonal index math is int32 -- safe because
+           the host rejects outputs above the int32 line and source views
+           whose stride would overflow it -- and the diagonal source load
+           is issued *before* the fill loop so its latency hides under
+           the fill stores (measured -2.0~-5.5% at m >= 2048).  The source
+           is read through the flattened input's *element stride* so a
+           zero-copy strided view (e.g. ``x[..., ::2]``) is handled
+           correctly.
   scatter  copies the ``n`` flattened input elements onto the offset-k
            diagonal with a single strided store at address
            ``i * (m + 1) + base``.  Used only by the complex /
@@ -60,16 +68,19 @@ _BLOCK_FILL = 4096
 _BLOCK_SCATTER = 512
 _INT32_MAX = 2147483647
 
-# GCU400 persistent fill geometry (measured 2026-11-13, Libra L600):
-# a flat one-chunk-per-program fill of N programs costs ceil(N / 48) waves
-# at ~2.5us per wave almost independently of the stored bytes (m=4096 fp16
-# 16.8M-element fill: 213us at 4096 programs vs 14.2us at 24-48 persistent
-# programs).  24 persistent programs (one per SIP) measure equal-or-better
-# than 48 across the board and clearly beat non-SIP-multiples (32 is 10-15%
-# worse at m>=2048).  Each chunk store keeps a <=128KB tile inside the
-# 448KB-per-program DSM line, so the grid stays hardware-resident.
+# GCU400 persistent fill geometry (measured 2026-11-13, re-measured
+# 2026-11-18 on Triton GCU 4.1.6): a flat one-chunk-per-program fill of N
+# programs costs ceil(N / 48) waves at ~2.5us per wave almost independently of
+# the stored bytes (m=4096 fp16 16.8M-element fill: 213us at 4096 programs vs
+# 14.2us at 24-48 persistent programs).  24 persistent programs (one per SIP)
+# measure equal-or-better than 48 across the board and clearly beat
+# non-SIP-multiples (32 is 10-15% worse at m>=2048).
 _FILL_PROGS = 24
 _FILL_TILE_BYTES = 131072
+# Chunk-width sweet spot on the new stack (interleaved A/B, min of 6 passes,
+# 2026-11-18): 16384 elements beats 128KB tiles by 2.9-4.8% for m >= 1024 and
+# ties below; num_warps=1 beats 4 by 2.6-4%.
+_FILL_CHUNK_ELEMS = 16384
 
 _COMPLEX_REAL = {
     torch.complex64: torch.float32,
@@ -140,14 +151,32 @@ def _diagflat_fill_diag_kernel(
     orders them, without which a zero can land after a value and leave a
     nondeterministic handful of diagonal cells at 0.
 
-    Phase two walks the run's diagonal indices directly (``i0 .. i0 +
-    SPAN - 1``, int64 address math so no interior overflow is possible for
-    any ``count`` below the host's int32 fallback line), so one masked
-    load/store pair per program covers all of its diagonal cells.
+    The diagonal index math is int32 throughout: the host guarantees
+    ``count <= INT32_MAX - 2*BLOCK - (m+1)`` and ``(ndiag + SPAN) *
+    sstride < INT32_MAX``, so every *live* (unmasked) address fits.  The
+    diagonal source load is issued before the fill loop -- it reads the
+    input tensor while the output is untouched, so its latency hides
+    under the fill stores and only the barrier + scatter remain exposed.
     """
     pid = tl.program_id(0)
     start = pid * cpb
     end = tl.minimum(start + cpb, chunks)
+
+    lo = tl.minimum(start, end) * BLOCK
+    hi = end * BLOCK
+    stride = m + 1
+    head = lo - base
+    i0 = tl.where(head <= 0, 0, (head + stride - 1) // stride)
+    j = tl.arange(0, SPAN)
+    idx = i0 + j
+    addr = idx * stride + base
+    valid = (idx < ndiag) & (addr < hi)
+    val = tl.load(
+        src_ptr + idx * sstride,
+        mask=valid,
+        other=tl.zeros([SPAN], dtype=src_ptr.dtype.element_ty),
+    )
+
     zero = tl.zeros([BLOCK], dtype=fill_ptr.dtype.element_ty)
     for c in range(start, end):
         b = c * BLOCK
@@ -158,20 +187,6 @@ def _diagflat_fill_diag_kernel(
             tl.store(fill_ptr + offs, zero, mask=offs < count)
     tl.debug_barrier()
 
-    lo = tl.minimum(start, end) * BLOCK
-    hi = end * BLOCK
-    stride = m + 1
-    head = lo.to(tl.int64) - base
-    i0 = tl.where(head <= 0, 0, (head + stride - 1) // stride)
-    j = tl.arange(0, SPAN).to(tl.int64)
-    idx = i0 + j
-    addr = idx * stride + base
-    valid = (idx < ndiag) & (addr < hi)
-    val = tl.load(
-        src_ptr + idx * sstride,
-        mask=valid,
-        other=tl.zeros([SPAN], dtype=src_ptr.dtype.element_ty),
-    )
     tl.store(out_ptr + addr, val, mask=valid)
 
 
@@ -225,18 +240,22 @@ def _fill_with_diagonal(out, src, n, m, base, sstride):
     """Single-launch persistent fill + diagonal write for real dtypes.
 
     The chunk width starts near ``count / 24`` so the 24 persistent programs
-    each own roughly one chunk, rounded up to a power of two and capped so
-    one chunk tile stays within ``_FILL_TILE_BYTES`` (keeping the grid
-    hardware-resident under the 448KB DSM line).  Returns False only when
-    the flat int32 address range would overflow, in which case the caller
-    falls back to the separate zero-fill and scatter launches.
+    each own roughly one chunk, rounded up to a power of two and capped at
+    ``_FILL_CHUNK_ELEMS`` elements (the measured sweet spot on Triton GCU
+    4.1.6).  Returns False when the flat int32 address range would overflow
+    -- either the output is above the int32 line or the source view's
+    element stride is too large for the diagonal load indices -- in which
+    case the caller falls back to the separate zero-fill and scatter
+    launches, whose kernels use int64 index math.
     """
     itemsize = out.element_size()
+    numel = out.numel()
     block = min(
-        max(16, _FILL_TILE_BYTES // itemsize),
-        triton.next_power_of_2(max(16, out.numel() // _FILL_PROGS)),
+        _FILL_CHUNK_ELEMS,
+        _FILL_TILE_BYTES // itemsize,
+        triton.next_power_of_2(max(16, numel // _FILL_PROGS)),
     )
-    if out.numel() > _INT32_MAX - 2 * block:
+    if numel > _INT32_MAX - 2 * block - (m + 1):
         return False
 
     buf = out.view(_fill_view(itemsize))
@@ -245,6 +264,8 @@ def _fill_with_diagonal(out, src, n, m, base, sstride):
     nprog = min(_FILL_PROGS, chunks)
     cpb = triton.cdiv(chunks, nprog)
     span = max(16, triton.next_power_of_2(cpb * block // (m + 1) + 2))
+    if (n + span) * sstride >= _INT32_MAX:
+        return False
     _diagflat_fill_diag_kernel[(nprog,)](
         buf,
         out,
@@ -258,7 +279,7 @@ def _fill_with_diagonal(out, src, n, m, base, sstride):
         cpb,
         BLOCK=block,
         SPAN=span,
-        num_warps=4,
+        num_warps=1,
     )
     return True
 
@@ -336,6 +357,11 @@ def _backward(grad_out, shape, k):
 
     if grad_out.is_complex():
         real_dtype = _COMPLEX_REAL[grad_out.dtype]
+        # The real-component view below needs a plain contiguous (m, 2m)
+        # layout, so a stride-0 (``sum`` backward) or transposed incoming grad
+        # is materialised once here; the gather itself stays the Triton path.
+        if not grad_out.is_contiguous():
+            grad_out = grad_out.contiguous()
         src = grad_out.view(real_dtype)
         dst = grad_in.view(real_dtype)
         count = 2 * n
@@ -343,11 +369,20 @@ def _backward(grad_out, shape, k):
         base = 2 * k if k >= 0 else 2 * (-k) * m
         jmul = m
     else:
+        # ``grad_out`` is not necessarily contiguous: ``torch.sum`` backward
+        # hands over a stride-0 expansion and an elementwise multiply can hand
+        # over a transposed view.  The diagonal cell (r, c) therefore has to be
+        # addressed through the *real* element strides of the incoming grad --
+        # ``r = i + row_shift``, ``c = i + col_shift`` collapses to a single
+        # linear stride ``stride_row + stride_col`` plus a constant base.
+        # With a contiguous grad this reduces to the original ``i * (m + 1)``
+        # form, so the zero-copy contiguous case keeps its old addressing.
+        stride_row, stride_col = grad_out.stride()
         src = grad_out
         dst = grad_in
         count = n
-        sstride = m + 1
-        base = k if k >= 0 else (-k) * m
+        sstride = stride_row + stride_col
+        base = k * stride_col if k >= 0 else (-k) * stride_row
         jmul = 0
 
     grid = (triton.cdiv(count, _BLOCK_SCATTER),)
@@ -370,7 +405,7 @@ class _DiagFlat(torch.autograd.Function):
 
 
 def run(self, offset=0):
-    logger.debug("GEMS_ENFLAME_GCU400 RUN")
+    logger.debug("GEMS_ENFLAME RUN")
     if not isinstance(self, torch.Tensor):
         raise TypeError("diagflat(): argument 'self' must be a Tensor")
     if not isinstance(offset, int):

@@ -14,3 +14,13 @@
 
 src/flag_gems/runtime/backend/_iluvatar/**/* diff=nodiff
 src/flag_gems/runtime/backend/_metax/**/* diff=nodiff
+
+# Semantic merge driver: set-union + re-sort to avoid spurious conflicts when
+# two branches insert entries in the same alphabetical neighbourhood.
+# One-time setup per clone (team members run this once):
+#   git config merge.flaggems-sort.driver \
+#       "python tools/git_merge_driver.py %O %A %B %L %P"
+#   git config merge.flaggems-sort.name "FlagGems sorted-list merge driver"
+conf/operators.yaml                      merge=flaggems-sort
+src/flag_gems/__init__.py                merge=flaggems-sort
+src/flag_gems/ops/__init__.py            merge=flaggems-sort

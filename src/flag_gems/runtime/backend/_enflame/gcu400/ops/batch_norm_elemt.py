@@ -110,7 +110,7 @@ def batch_norm_elemt(input, weight, bias, mean, invstd, eps=0.0):
     """
     # The kernel is platform-agnostic, so check that every operand lives on the
     # same device rather than asserting a specific backend.
-    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_ELEMT")
+    logger.debug("GEMS_ENFLAME BATCH_NORM_ELEMT")
     for name, t in (
         ("weight", weight),
         ("bias", bias),

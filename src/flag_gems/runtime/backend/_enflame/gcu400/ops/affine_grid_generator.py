@@ -131,7 +131,7 @@ def affine_grid_generator_kernel(
 def affine_grid_generator(
     theta: torch.Tensor, size: torch.Size, align_corners: bool
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 AFFINE_GRID_GENERATOR")
+    logger.debug("GEMS_ENFLAME AFFINE_GRID_GENERATOR")
 
     assert len(size) == 4, f"size must be 4D [N, C, H, W], got {len(size)} dims"
     N, C, H, W = size

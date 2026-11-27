@@ -77,7 +77,7 @@ UNROLL = 4
 
 
 def geometric_(self, p=0.5, *, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 GEOMETRIC_")
+    logger.debug("GEMS_ENFLAME GEOMETRIC_")
     N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
@@ -91,7 +91,7 @@ def geometric_(self, p=0.5, *, generator=None):
 
 
 def geometric(self, p=0.5, *, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 GEOMETRIC")
+    logger.debug("GEMS_ENFLAME GEOMETRIC")
     out = torch.empty_like(self)
     N = volume(out.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
