@@ -1,0 +1,23 @@
+{
+  "api_version": "v6.0",
+  "name": "_conj",
+  "requires_triton_kernel": false,
+  "description": "Derived from runtime schema aten::_conj(Tensor(a) self) -> Tensor(a). Return a conjugate view sharing storage with self by toggling the conjugate bit, without materializing conjugated data or mutating self. Repeated conjugation restores the original logical values. Master tests exercise complex dtype values over three shapes, but do not explicitly assert alias/conjugate-bit metadata. Native metadata-view semantics require no arithmetic kernel; this Definition intentionally sets requires_triton_kernel=false. This is the private _conj key, distinct from public conj and physical/copy conjugation operators.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}
