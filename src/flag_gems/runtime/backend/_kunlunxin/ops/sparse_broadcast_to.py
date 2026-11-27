@@ -349,7 +349,9 @@ def sparse_broadcast_to(self, size):
     # stored values and the operand's own index buffer is reused (native
     # behaviour).
     if F == 1:
-        return torch.sparse_coo_tensor(
+        # Metadata-only assembly: the indices are the operand's own buffer and
+        # the values are a zero-copy broadcast view, so no device kernel runs.
+        return torch.sparse_coo_tensor(  # allow-torch-compute
             self._indices(),
             self._values().expand((nnz,) + tuple(tgt_dense)),
             tuple(tgt),
@@ -447,4 +449,7 @@ def sparse_broadcast_to(self, size):
                 )
 
     out_flag = _out_coalesced(self.is_coalesced(), sp, dn, sp_new, ext)
-    return torch.sparse_coo_tensor(out_idx, out_val, tuple(tgt), is_coalesced=out_flag)
+    # Metadata-only assembly of the already-computed indices/values.
+    return torch.sparse_coo_tensor(  # allow-torch-compute
+        out_idx, out_val, tuple(tgt), is_coalesced=out_flag
+    )
