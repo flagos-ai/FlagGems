@@ -30,6 +30,9 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
+from flag_gems.ops.sparse_coo_tensor_with_dims_and_tensors import (
+    HAS_NATIVE_SPARSE_COO_CONSTRUCTOR as _HAS_NATIVE_SPARSE_COO_CONSTRUCTOR,
+)
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -683,13 +686,13 @@ _FULL_CONFIG = (
     (
         "_sparse_coo_tensor_with_dims_and_tensors",
         sparse_coo_tensor_with_dims_and_tensors,
-        None,
+        lambda: _HAS_NATIVE_SPARSE_COO_CONSTRUCTOR,
         (SPARSE_DISPATCH_KEY,),
     ),
     (
         "_sparse_coo_tensor_with_dims_and_tensors.out",
         sparse_coo_tensor_with_dims_and_tensors_out,
-        None,
+        lambda: _HAS_NATIVE_SPARSE_COO_CONSTRUCTOR,
         (SPARSE_DISPATCH_KEY,),
     ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
