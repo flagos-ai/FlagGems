@@ -186,3 +186,74 @@ def test_cholesky_solve_out():
         dtypes=dtypes,
     )
     bench.run()
+
+
+# (B shape, upper): the last dim is the number of right-hand sides.
+_CHOLESKY_SOLVE_BACKWARD_SHAPES = [
+    ((32, 32), False),
+    ((64, 16), False),
+    ((64, 16), True),
+    ((8, 128, 32), False),
+]
+
+
+def cholesky_solve_backward_torch_op(B, L, upper):
+    # The VJP of ``cholesky_solve`` w.r.t. its right-hand side is A^-T grad,
+    # and A is symmetric, so it is A^-1 * ones -- two triangular solves with
+    # the factor and its transpose. Solving it explicitly keeps the reference
+    # path inside cuBLAS: ATen's own ``cholesky_solve_backward`` dispatches a
+    # *batched* ``cholesky_solve``, which lands in MAGMA's batched TRSM
+    # (``magma_spotrs_batched``) and aborts the whole process under CUDA Graph
+    # capture. That abort is a hard crash, not a catchable exception, so the
+    # harness cannot fall back and every candidate reads as RUNTIME_ERROR no
+    # matter how correct its kernel is. Verified numerically equal to
+    # ``torch.autograd.grad`` in float64.
+    ones = torch.ones_like(B)
+    if upper:
+        # A = U^T U, so A^-1 = U^-1 U^-T.
+        y = torch.linalg.solve_triangular(L.transpose(-1, -2), ones, upper=False)
+        return torch.linalg.solve_triangular(L, y, upper=True)
+    # A = L L^T, so A^-1 = L^-T L^-1.
+    y = torch.linalg.solve_triangular(L, ones, upper=False)
+    return torch.linalg.solve_triangular(L.transpose(-1, -2), y, upper=True)
+
+
+def cholesky_solve_backward_case_fn(case, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"B": list(case[0])},
+        params={"upper": case[1]},
+        builder_args=(case,),
+    )
+
+
+def cholesky_solve_backward_build_inputs_fn(plan, dtype, device):
+    shape, upper = plan.builder_args[0]
+    n = shape[-2]
+    L = torch.randn((*shape[:-2], n, n), dtype=dtype, device=device)
+    L = (L @ L.transpose(-1, -2)).tril()
+    L.diagonal(dim1=-2, dim2=-1).add_(1.0)
+    if upper:
+        L = L.transpose(-1, -2).contiguous()
+    B = torch.randn(shape, dtype=dtype, device=device)
+    B = B.requires_grad_(True)
+    return B, L, upper
+
+
+class CholeskySolveBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = _CHOLESKY_SOLVE_BACKWARD_SHAPES
+        self.shape_desc = "(B shape, upper)"
+
+
+@pytest.mark.cholesky_solve_backward
+def test_cholesky_solve_backward():
+    bench = CholeskySolveBackwardBenchmark(
+        case_fn=cholesky_solve_backward_case_fn,
+        build_inputs_fn=cholesky_solve_backward_build_inputs_fn,
+        op_name="cholesky_solve_backward",
+        torch_op=cholesky_solve_backward_torch_op,
+        # CUDA's cholesky only supports fp32/fp64; fp16/bf16 raise
+        # "cholesky_cuda_potrs not implemented", so they cannot be benchmarked.
+        dtypes=[torch.float32],
+    )
+    bench.run()

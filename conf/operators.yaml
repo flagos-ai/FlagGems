@@ -3461,6 +3461,19 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: cholesky_solve_backward
+  description: The backward computation of `cholesky_solve()`, computing the gradient
+    of the solution with respect to the right-hand side. Exercised through the autograd
+    of the forward operator.
+  for:
+  - cholesky_solve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: cholesky_solve_helper
   description: 'Solves a positive-definite linear system using its lower- or upper-triangular
 

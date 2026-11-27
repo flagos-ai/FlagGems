@@ -689,6 +689,7 @@ from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky import cholesky
 from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
+from flag_gems.ops.cholesky_solve_backward import cholesky_solve_backward
 from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
 from flag_gems.ops.choose_qparams_per_tensor import choose_qparams_per_tensor
 from flag_gems.ops.clamp import (
@@ -2454,6 +2455,7 @@ __all__ = [
     "cholesky",
     "cholesky_inverse",
     "cholesky_solve",
+    "cholesky_solve_backward",
     "cholesky_solve_out",
     "choose_qparams_optimized",
     "choose_qparams_per_tensor",

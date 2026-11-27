@@ -776,3 +776,25 @@ def test_cholesky_solve_invalid_inputs():
     B_bad_dtype = torch.randn(2, 1, dtype=torch.float16, device=flag_gems.device)
     with pytest.raises(AssertionError, match="same dtype"):
         _solve_with_gems(B_bad_dtype, L_square)
+
+
+@pytest.mark.cholesky_solve_backward
+@pytest.mark.parametrize("shape", [(4, 4, 3), (2, 8, 8, 5), (6, 1)])
+@pytest.mark.parametrize("dtype", _REAL_DTYPES)
+@pytest.mark.parametrize("upper", [False, True])
+def test_cholesky_solve_backward(shape, dtype, upper):
+    # The VJP solves with the transposed factor, so the reference is ATen's
+    # autograd over the forward rather than a hand-written formula.
+    _, L, rhs = _make_cholesky_solve_inputs(shape, dtype)
+    ref_L = utils.to_reference(L.detach()).requires_grad_()
+    ref_rhs = utils.to_reference(rhs.detach()).requires_grad_(True)
+
+    ref_out = _reference_cholesky_solve(ref_rhs, ref_L, upper=upper)
+    out_grad = torch.randn(ref_out.shape, dtype=ref_out.dtype, device=ref_out.device)
+    (ref_rhs_grad,) = torch.autograd.grad(ref_out, ref_rhs, out_grad)
+
+    res_rhs_grad = flag_gems.cholesky_solve_backward(
+        utils.to_reference(out_grad.detach()), rhs, L, upper
+    )
+
+    utils.gems_assert_close(res_rhs_grad, ref_rhs_grad, dtype)
