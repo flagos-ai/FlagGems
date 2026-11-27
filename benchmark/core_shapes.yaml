@@ -307,6 +307,17 @@ softmax_backward_data:
     - [64, 512, 512]
     - [1024, 1024, 1024]
 
+nan_to_num_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 pointwise input shape
+
 smooth_l1_loss:
   shapes:
     - [262144]

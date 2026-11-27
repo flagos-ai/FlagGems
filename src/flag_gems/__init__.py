@@ -1993,7 +1993,7 @@ _FULL_CONFIG = (
     ("mv", mv),
     ("mvlgamma", mvlgamma),
     ("mvlgamma_", mvlgamma_),
-    ("nan_to_num", nan_to_num),
+    ("nan_to_num", nan_to_num, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("nan_to_num_", nan_to_num_),
     ("nanmean", nanmean),
     ("nanmean.out", nanmean_out),
