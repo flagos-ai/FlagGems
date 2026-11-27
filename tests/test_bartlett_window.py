@@ -34,18 +34,25 @@ else:
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_bartlett_window(window_length, periodic, dtype):
     device = "cpu" if cfg.TO_CPU else flag_gems.device
+    expected_device = torch.empty(0, device=device).device
     res_out = flag_gems.bartlett_window(
         window_length, periodic=periodic, dtype=dtype, device=device
     )
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == expected_device
+    assert res_out.dtype == dtype
+    assert tuple(res_out.shape) == (window_length,)
+    reference_device = "cpu" if flag_gems.vendor_name == "enflame" else device
     # Compare against the float64 window: torch's low-precision path accumulates
     # in the output dtype and drifts by 1-2 ULP, so it is not a tight reference.
     ref_out = utils.to_reference(
         torch.bartlett_window(
-            window_length, periodic=periodic, dtype=torch.float64, device=device
+            window_length, periodic=periodic, dtype=torch.float64, device=reference_device
         ),
         True,
     ).to(dtype)
+    comparison_out = res_out.cpu() if reference_device == "cpu" else res_out
     if window_length > 1:
-        utils.gems_assert_close(res_out, ref_out, dtype)
+        utils.gems_assert_close(comparison_out, ref_out, dtype)
     else:
-        utils.gems_assert_equal(res_out, ref_out)
+        utils.gems_assert_equal(comparison_out, ref_out)
