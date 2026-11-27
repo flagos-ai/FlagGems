@@ -1502,7 +1502,7 @@ from flag_gems.ops.segment_reduce import (
 )
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_copy import select_copy
-from flag_gems.ops.select_scatter import select_scatter
+from flag_gems.ops.select_scatter import select_scatter, select_scatter_backward
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
 from flag_gems.ops.set_ import (
@@ -3295,6 +3295,7 @@ __all__ = [
     "select_backward",
     "select_copy",
     "select_scatter",
+    "select_scatter_backward",
     "selu",
     "selu_",
     "set_default",

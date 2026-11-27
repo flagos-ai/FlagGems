@@ -2276,7 +2276,7 @@ _FULL_CONFIG = (
     ("segment_reduce.out", segment_reduce_out),
     ("select_backward", select_backward),
     ("select_copy.int", select_copy),
-    ("select_scatter", select_scatter),
+    ("select_scatter", select_scatter, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("selu", selu),
     ("selu_", selu_),
     ("set_", set_default),
