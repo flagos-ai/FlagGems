@@ -19509,6 +19509,17 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: slice_scatter_backward
+  description: First-order backward of slice_scatter, using saved forward state.
+  for:
+  - slice_scatter
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
 

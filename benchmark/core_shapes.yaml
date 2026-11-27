@@ -1139,6 +1139,18 @@ unsafe_index:
     - [[32, 32], [[2, 8]]]
     - [[512, 512, 512], [[2, 128], [2, 128], [2, 128]]]
 
+slice_scatter_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 FlashMLABenchmark:
   shapes:
     - [1024]

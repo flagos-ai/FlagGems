@@ -1522,7 +1522,7 @@ from flag_gems.ops.sinc import sinc, sinc_
 from flag_gems.ops.sinh import sinh, sinh_
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
-from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.slice_scatter import slice_scatter, slice_scatter_backward
 from flag_gems.ops.slogdet import slogdet
 from flag_gems.ops.slow_conv_dilated2d import (
     slow_conv_dilated2d,
@@ -3325,6 +3325,7 @@ __all__ = [
     "slice_copy",
     "slice_copy_out",
     "slice_scatter",
+    "slice_scatter_backward",
     "slogdet",
     "slow_conv_dilated2d",
     "slow_conv_dilated2d_out",
