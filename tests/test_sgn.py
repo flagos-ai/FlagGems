@@ -308,7 +308,8 @@ def test_sgn_backward_zero_complex():
     grad = _make_input((17,), torch.complex64)
     result = flag_gems.sgn(inp)
     res_grad = flag_gems.sgn_backward(inp, grad, result)
-    utils.gems_assert_equal(res_grad, torch.zeros_like(res_grad))
+    expected = torch.zeros_like(utils.to_reference(inp))
+    utils.gems_assert_equal(res_grad, expected)
 
 
 @pytest.mark.sgn_backward
