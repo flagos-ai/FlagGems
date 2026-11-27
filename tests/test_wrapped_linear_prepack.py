@@ -19,7 +19,6 @@ import flag_gems
 from flag_gems.ops._wrapped_linear_prepack import (
     _PACK_MAGIC,
     _PACK_VERSION,
-    _wrapped_linear_prepack,
     unpack_linear_weight,
 )
 
@@ -49,7 +48,7 @@ def test_wrapped_linear_prepack(shape, noncontiguous):
         ref_weight, float(scale), int(zero_point), torch.qint8
     ).int_repr()
 
-    packed = _wrapped_linear_prepack(weight, scale, zero_point, bias)
+    packed = flag_gems._wrapped_linear_prepack(weight, scale, zero_point, bias)
     actual_weight, metadata, actual_bias = unpack_linear_weight(packed, N, K)
 
     utils.gems_assert_equal(actual_weight, ref_quantized)
@@ -70,7 +69,7 @@ def test_wrapped_linear_prepack_rounds_ties_to_even_and_clamps():
     scale = torch.tensor(0.5, device=flag_gems.device)
     zero_point = torch.tensor(-3, device=flag_gems.device)
 
-    packed = _wrapped_linear_prepack(weight, scale, zero_point, bias)
+    packed = flag_gems._wrapped_linear_prepack(weight, scale, zero_point, bias)
     actual_weight, _, _ = unpack_linear_weight(packed, 1)
     ref_weight = torch.quantize_per_tensor(
         utils.to_reference(weight), 0.5, -3, torch.qint8
@@ -86,6 +85,10 @@ def test_wrapped_linear_prepack_rejects_invalid_shapes():
     scale_tensor = torch.tensor(0.1, device=flag_gems.device)
     zero_point_tensor = torch.tensor(0, device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        _wrapped_linear_prepack(weight, scale_tensor.expand(2), zero_point_tensor, bias)
+        flag_gems._wrapped_linear_prepack(
+            weight, scale_tensor.expand(2), zero_point_tensor, bias
+        )
     with pytest.raises(RuntimeError):
-        _wrapped_linear_prepack(weight, scale_tensor, zero_point_tensor, bias[:3])
+        flag_gems._wrapped_linear_prepack(
+            weight, scale_tensor, zero_point_tensor, bias[:3]
+        )
