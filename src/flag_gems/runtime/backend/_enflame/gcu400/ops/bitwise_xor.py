@@ -99,6 +99,50 @@ def bitwise_xor_bool_int_flat_kernel(x_ptr, out_ptr, y, N_total, BLOCK: tl.const
         tl.store(out32 + off, v, mask=mask)
 
 
+# 2026-11-16 round-3 follow-up: 1-byte lanes widened 4x into int32 words.  XOR is
+# lane-width agnostic (bitwise, no carries), so four adjacent bool/int8/uint8
+# elements can ride one int32 lane with the scalar pre-replicated on the host.
+# In the 2^24..2^28 element band the byte-lane stream is element-rate bound and
+# the widened word stream measured 3-5% faster (kernel-mode probe, tensor
+# 24.11->23.36us @2^24, 281.2->268.2us @2^28; in-place tracks the same; scalar
+# 18.59->15.87us @2^24 best at 8192/nw4, >=2^26 best at 32768/nw2), while the
+# 2-byte lanes are already byte-bound (int16 widening 0%, denied) and both lane
+# widths hit the same DRAM floor outside the band (2^29/2^30 ties, <=2^22 ties),
+# so the widened path is dispatched only inside the measured band.
+@libentry()
+@triton.jit(do_not_specialize=["N_lanes"])
+def bitwise_xor_wide_kernel(x_ptr, y_ptr, out_ptr, N_lanes, BLOCK: tl.constexpr):
+    x32 = x_ptr.to(tl.pointer_type(tl.int32))
+    y32 = y_ptr.to(tl.pointer_type(tl.int32))
+    o32 = out_ptr.to(tl.pointer_type(tl.int32))
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N_lanes + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_lanes
+        x = tl.load(x32 + off, mask=mask)
+        y = tl.load(y32 + off, mask=mask)
+        tl.store(o32 + off, x ^ y, mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N_lanes", "y"])
+def bitwise_xor_scalar_wide_kernel(x_ptr, out_ptr, y, N_lanes, BLOCK: tl.constexpr):
+    x32 = x_ptr.to(tl.pointer_type(tl.int32))
+    o32 = out_ptr.to(tl.pointer_type(tl.int32))
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N_lanes + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_lanes
+        x = tl.load(x32 + off, mask=mask)
+        tl.store(o32 + off, x ^ y, mask=mask)
+
+
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def bitwise_xor_func(x, y):
@@ -124,6 +168,12 @@ def bitwise_xor_func_scalar(x, y):
 # mid probes favored nw4 tiles in isolation, but the official-bench A/B
 # regressed 8-28% there, so int16 (and 1-byte lanes) keep the historical
 # ladder everywhere except the >2^28 scalar nw4 flip.
+# 2026-11-18: the grid cap dropped from 2*NUM_SIPS to 1*NUM_SIPS after a
+# 10-variant sweep on the weakest benchmark shapes (int8 2^24-wide cases and
+# mid-band int32): one persistent program per SIP is 2-3% faster than two and
+# lifts every studied case to parity or above the torch baseline, which sits on
+# the same DRAM floor.  Bigger caps only re-read the schedule.
+_PERSISTENT_GRID_CAP = NUM_SIPS
 _MID_STREAM_MAX = 1 << 24
 
 
@@ -167,6 +217,54 @@ def _lane_view(t):
     return t.view(torch.int8) if t.dtype == torch.bool else t
 
 
+# 2026-11-16 widened-lane band (probe crossover 2^20/2^22/2^24-2^30): the int32
+# word stream beats the byte-lane stream only for 2^24..2^28 tensor elements
+# (scalar 2^20..2^28); outside the band both hit the same DRAM floor and the
+# per-element ladder stays.  n must be word-divisible, else per-element path.
+_WIDE_MAX = 1 << 28
+_WIDE_TENSOR_MIN = 1 << 24
+_WIDE_SCALAR_MIN = 1 << 20
+_WIDE_TENSOR_CONFIG = (32768, 2)
+
+
+def _tensor_wide_config(n_total, itemsize):
+    if itemsize != 1 or not (_WIDE_TENSOR_MIN <= n_total <= _WIDE_MAX) or n_total & 3:
+        return None
+    block, num_warps = _WIDE_TENSOR_CONFIG
+    n_lanes = n_total >> 2
+    return (
+        block,
+        (min(triton.cdiv(n_lanes, block), _PERSISTENT_GRID_CAP),),
+        num_warps,
+        n_lanes,
+    )
+
+
+def _scalar_wide_config(n_total, itemsize):
+    if itemsize != 1 or not (_WIDE_SCALAR_MIN <= n_total <= _WIDE_MAX) or n_total & 3:
+        return None
+    n_lanes = n_total >> 2
+    if n_total <= (1 << 25):
+        block, num_warps = 8192, 4
+    else:
+        block, num_warps = 32768, 2
+    return (
+        block,
+        (min(triton.cdiv(n_lanes, block), _PERSISTENT_GRID_CAP),),
+        num_warps,
+        n_lanes,
+    )
+
+
+def _wide_scalar_word(dtype, scalar):
+    # Replicate the wrapped lane byte 4x into one int32 word: XOR-ing the word
+    # XORs each byte lane with the scalar byte, byte-for-byte identical to the
+    # per-element path.
+    v = _scalar_lane_value(dtype, scalar) & 0xFF
+    word = v | (v << 8) | (v << 16) | (v << 24)
+    return word - (1 << 32) if word >= (1 << 31) else word
+
+
 def _launch_flat(kern, grid, args, block, num_warps=2):
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic host-level flake on shared nodes); retrying the
@@ -200,14 +298,14 @@ def _tensor_config(n_total, itemsize):
     block, num_warps = _tensor_block_nw(n_total, itemsize)
     if triton.cdiv(n_total, block) * block > _INT32_MAX:
         return None
-    return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),), num_warps
+    return block, (min(triton.cdiv(n_total, block), _PERSISTENT_GRID_CAP),), num_warps
 
 
 def _scalar_config(n_total, itemsize):
     block, num_warps = _scalar_block_nw(n_total, itemsize)
     if triton.cdiv(n_total, block) * block > _INT32_MAX:
         return None
-    return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),), num_warps
+    return block, (min(triton.cdiv(n_total, block), _PERSISTENT_GRID_CAP),), num_warps
 
 
 def _scalar_lane_value(dtype, scalar):
@@ -263,6 +361,22 @@ def _xor_scalar_impl(tensor, scalar, out=None):
             num_warps,
         )
     else:
+        wide = _scalar_wide_config(n_total, tensor.element_size())
+        if wide is not None:
+            block, grid, num_warps, n_lanes = wide
+            _launch_flat(
+                bitwise_xor_scalar_wide_kernel,
+                grid,
+                (
+                    x_lanes,
+                    _lane_view(out),
+                    _wide_scalar_word(tensor.dtype, scalar),
+                    n_lanes,
+                ),
+                block,
+                num_warps,
+            )
+            return out
         _launch_flat(
             bitwise_xor_scalar_flat_kernel,
             grid,
@@ -291,6 +405,17 @@ def bitwise_xor_tensor(A, B):
         n_total = out.numel()
         if n_total == 0:
             return out
+        wide = _tensor_wide_config(n_total, A.element_size())
+        if wide is not None:
+            block, grid, num_warps, n_lanes = wide
+            _launch_flat(
+                bitwise_xor_wide_kernel,
+                grid,
+                (_lane_view(A), _lane_view(B), _lane_view(out), n_lanes),
+                block,
+                num_warps,
+            )
+            return out
         config = _tensor_config(n_total, A.element_size())
         if config is not None:
             block, grid, num_warps = config
@@ -317,6 +442,17 @@ def bitwise_xor_tensor_(A, B):
     ):
         n_total = A.numel()
         if n_total == 0:
+            return A
+        wide = _tensor_wide_config(n_total, A.element_size())
+        if wide is not None:
+            block, grid, num_warps, n_lanes = wide
+            _launch_flat(
+                bitwise_xor_wide_kernel,
+                grid,
+                (_lane_view(A), _lane_view(B), _lane_view(A), n_lanes),
+                block,
+                num_warps,
+            )
             return A
         config = _tensor_config(n_total, A.element_size())
         if config is not None:

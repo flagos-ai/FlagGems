@@ -322,6 +322,13 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu aten::_embedding_bag_dense_backward raises "
+        "'index out of range in self' on GCU tensors, so there is no native baseline"
+    ),
+)
 @pytest.mark.embedding_bag_dense_backward
 @pytest.mark.underscore_embedding_bag_dense_backward
 @pytest.mark.skip_native(

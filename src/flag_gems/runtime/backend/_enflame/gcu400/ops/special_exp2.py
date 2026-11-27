@@ -108,7 +108,7 @@ def _launch_flat(inp, out):
 
 
 def special_exp2(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_EXP2")
+    logger.debug("GEMS_ENFLAME SPECIAL_EXP2")
     if A.dtype not in _FLOAT_DTYPES or not A.is_contiguous() or A.numel() >= (1 << 31):
         return exp2(A)
     out = torch.empty_like(A)

@@ -19,12 +19,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 from flag_gems.utils import dim_compress, libentry, pointwise_dynamic
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -39,33 +38,37 @@ def nanmean_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
+    # Persistent partial pass (2026-11-17 probe, gcu400): grid-stride tiles,
+    # per-tile immediate dual 1D trees.  Count tree input is 16-bit (2B/elem)
+    # with fp32 accumulation -- the i32 count tree measured ~15x slower on
+    # (1024,1024,512) fp16 (9.84ms vs 0.96ms row analogue).  fp32 partials.
     if tl.constexpr(out.dtype.element_ty == tl.float32):
         value_dtype = tl.float32
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float32
     elif tl.constexpr(out.dtype.element_ty == tl.float16):
         value_dtype = tl.float16
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float16
     elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
         value_dtype = tl.bfloat16
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float16
     else:
         value_dtype = tl.float32
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float32
 
-    pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-
-    x = tl.load(inp_ptrs, mask=mask, other=0.0).to(value_dtype)
-    is_nan = x != x
-    valid = mask & (~is_nan)
-    x = tl.where(valid, x, 0.0)
-
-    sum_val = tl.sum(x, axis=0, dtype=acc_dtype)
-    cnt_val = tl.sum(valid.to(acc_dtype), axis=0)
-    tl.store(mid_sum + pid, sum_val)
-    tl.store(mid_cnt + pid, cnt_val)
+    pid = tl.program_id(0)
+    num_prog = tl.num_programs(0)
+    num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, num_prog):
+        offset = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        # masked load without other: on gcu400, fp32 masked load + other on large tiles
+        # silently returns wrong values (compiler_issues bucket); masked lanes are backed up by valid = mask & (x==x).
+        x = tl.load(inp + offset, mask=mask).to(value_dtype)
+        valid = mask & (x == x)
+        x0 = tl.where(valid, x, tl.zeros([BLOCK_SIZE], dtype=x.dtype))
+        vh = valid.to(cnt_in_dtype)
+        tl.store(mid_sum + tile_id, tl.sum(x0, axis=0, dtype=tl.float32))
+        tl.store(mid_cnt + tile_id, tl.sum(vh, axis=0, dtype=tl.float32))
 
 
 @libentry()
@@ -107,38 +110,36 @@ def nanmean_global_single_kernel(
 ):
     if tl.constexpr(out.dtype.element_ty == tl.float32):
         value_dtype = tl.float32
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float32
     elif tl.constexpr(out.dtype.element_ty == tl.float16):
         value_dtype = tl.float16
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float16
     elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
         value_dtype = tl.bfloat16
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float16
     else:
         value_dtype = tl.float32
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float32
 
-    _sum = tl.zeros((), dtype=acc_dtype)
-    _cnt = tl.zeros((), dtype=acc_dtype)
+    _sum = tl.zeros((), dtype=tl.float32)
+    _cnt = tl.zeros((), dtype=tl.float32)
 
     for start in range(0, M, BLOCK_SIZE):
         idx = start + tl.arange(0, BLOCK_SIZE)
         mask = idx < M
-        x = tl.load(inp + idx, mask=mask, other=0.0).to(value_dtype)
-        is_nan = x != x
-        valid = mask & (~is_nan)
-        x = tl.where(valid, x, 0.0)
-        _sum += tl.sum(x, axis=0, dtype=acc_dtype)
-        _cnt += tl.sum(valid.to(acc_dtype), axis=0)
+        # masked load without other: masked lanes are backed up by valid = mask & (x==x) (see
+        # the nanmean_kernel_1 comment, avoiding the gcu400 masked-load+other large-tile wrong-value issue).
+        x = tl.load(inp + idx, mask=mask).to(value_dtype)
+        valid = mask & (x == x)
+        x0 = tl.where(valid, x, tl.zeros([BLOCK_SIZE], dtype=x.dtype))
+        vh = valid.to(cnt_in_dtype)
+        _sum += tl.sum(x0, axis=0, dtype=tl.float32)
+        _cnt += tl.sum(vh, axis=0, dtype=tl.float32)
 
     tl.store(out, _sum / _cnt)
 
 
-def _compute_dtype(dtype):
-    return torch.float32 if dtype == torch.float32 else torch.float32
-
-
-def _nanmean_global(inp, *, dtype=None):
+def _nanmean_global(inp, *, dtype=None, out_flat=None):
     if dtype is None:
         dtype = inp.dtype
 
@@ -146,7 +147,10 @@ def _nanmean_global(inp, *, dtype=None):
         inp = inp.contiguous()
     M = inp.numel()
 
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    if out_flat is not None:
+        out = out_flat
+    else:
+        out = torch.empty([], dtype=dtype, device=inp.device)
 
     if M == 0:
         out.fill_(float("nan"))
@@ -154,118 +158,97 @@ def _nanmean_global(inp, *, dtype=None):
 
     if M <= 32768:
         with torch_device_fn.device(inp.device):
-            nanmean_global_single_kernel[(1,)](inp, out, M, BLOCK_SIZE=4096)
+            nanmean_global_single_kernel[(1,)](
+                inp, out, M, BLOCK_SIZE=max(16, triton.next_power_of_2(M))
+            )
         return out
 
-    compute_dtype = _compute_dtype(dtype)
-    block_size = max(triton.next_power_of_2(math.ceil(math.sqrt(M))), 4096)
+    # Partial + merge (2026-11-17 probe, gcu400): block 64K elem (2B) / 32K (4B),
+    # grid capped at 48 persistent programs, nw4; merge single-program nw1.
+    # Old sqrt-split (grid = cdiv(M, 4096) one-tile programs + 32K-wide merge)
+    # measured 0.254ms on (4096,4096) fp16 vs 0.065ms here (-74%).
+    element_size = inp.element_size()
+    block_size = 65536 if element_size == 2 else 32768
+    block_size = min(triton.next_power_of_2(M), block_size)
     mid_size = triton.cdiv(M, block_size)
-    mid_sum = torch.empty(mid_size, dtype=compute_dtype, device=inp.device)
-    mid_cnt = torch.empty(mid_size, dtype=compute_dtype, device=inp.device)
+    mid_sum = torch.empty(mid_size, dtype=torch.float32, device=inp.device)
+    mid_cnt = torch.empty(mid_size, dtype=torch.float32, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        nanmean_kernel_1[(mid_size, 1, 1)](inp, mid_sum, mid_cnt, out, M, block_size)
+        nanmean_kernel_1[(min(mid_size, NANMEAN_MAX_GRID), 1, 1)](
+            inp, mid_sum, mid_cnt, out, M, block_size, num_warps=4
+        )
         block_mid = triton.next_power_of_2(mid_size)
-        nanmean_kernel_2[(1,)](mid_sum, mid_cnt, out, mid_size, BLOCK_SIZE=block_mid)
+        nanmean_kernel_2[(1,)](
+            mid_sum, mid_cnt, out, mid_size, BLOCK_SIZE=block_mid, num_warps=1
+        )
 
     return out
 
 
-def _dim_block_n(args):
-    tile_budget = 4096
-    tile_n = min(args["N"], tile_budget // args["BLOCK_K"])
-    return max(1, triton.next_power_of_2(tile_n))
-
-
-def _dim_block_k(M, K):
-    num_sms = torch_device_fn.get_device_properties(
-        torch_device_fn.current_device()
-    ).multi_processor_count
-    target_waves = 4 if M <= 4 else 2
-    target_blocks = target_waves * num_sms
-    ideal = max(1, triton.cdiv(M * K, target_blocks))
-    return min(8192, triton.next_power_of_2(K), triton.next_power_of_2(ideal))
-
-
-# Tile / grid parameters from the same source as gcu400 sum.py's row reduction.
-# Grid cap 48 (4 waves x 12 SIP): row reduction opens grid by row count and hits GCU's
-# grid.x hard limit (65535) when M > 65535 * BLOCK_M; persistent traversal keeps grid <= 48.
+# Tile/grid parameters of the same origin as gcu400 sum/mean.py row reduction (calibrated by probes on 2026-11-17).
+# grid cap 48 (GCU400 has 48 SPs): persistent strided loop, always <= 48.
 NANMEAN_MAX_GRID = 48
-# Byte budget of the row-reduction tile. nanmean keeps an extra valid mask and where temporaries per block
-# (measured 32x4096 tile needs 1.4MB DSM > 917504B limit), so take 1/4 of sum's budget,
-# giving a ~366KB tile buffer peak with comfortable headroom.
-NANMEAN_INNER_TILE_BYTES = 65536
-# Single-block reduction width cap; fp32 cross-lane reduction is cheaper, so allow doubling (same as sum.py).
-NANMEAN_MAX_REDUCE_WIDTH = 16384
+# Row-reduction tile byte budget: fp16 64KB / fp32 128KB (probes measured 64x512 fp16 nw4
+# (1024,1024,512) optimal at 0.96ms; a 128KB tile is worse at 1.20ms). Per tile, the nan mechanism
+# additionally keeps two 2B copies x0/vh plus where intermediates, with peak DSM ~5.2x the tile bytes,
+# so a 64KB tile => ~333KB < the 448KB threshold for two concurrent programs per SP.
+NANMEAN_ROW_TILE_BYTES_2B = 65536
+NANMEAN_ROW_TILE_BYTES_4B = 131072
+NANMEAN_ROW_MAX_WIDTH = 4096
+# Task kernel (non-last-dimension reduction) column-width cap 512 (same as mean.py: the axis reduction tree has a known
+# slow path for contiguous dimension <=256); when B*cdiv(N,bn) is below 32, shrink bn down to 128 to
+# increase parallel tasks (measured on (4096,4096) dim=0: bn128/bm256/nw1 is optimal at 0.073ms).
+NANMEAN_TASK_MAX_WIDTH = 512
+NANMEAN_TASK_MIN_WIDTH = 128
+NANMEAN_TASK_MIN_TASKS = 32
 
 
-def _inner_blocks(element_size, M, N):
-    """Row-reduction tile selection: tile byte budget + batch row cap (same pattern as sum.py)."""
-    max_width = (
-        NANMEAN_MAX_REDUCE_WIDTH * 2 if element_size >= 4 else NANMEAN_MAX_REDUCE_WIDTH
+def _row_params(element_size, M, N):
+    """Row-reduction hyperparameters: bn = min(np2(N), 4096), bm from the byte budget and 48-way spreading."""
+    block_n = min(triton.next_power_of_2(N), NANMEAN_ROW_MAX_WIDTH)
+    tile_budget = (
+        NANMEAN_ROW_TILE_BYTES_4B if element_size >= 4 else NANMEAN_ROW_TILE_BYTES_2B
     )
-    block_n = min(triton.next_power_of_2(N), max_width)
+    tile_rows = max(1024, tile_budget // element_size) // block_n
     batch_rows = triton.next_power_of_2(triton.cdiv(M, NANMEAN_MAX_GRID))
-    block_m = NANMEAN_INNER_TILE_BYTES // element_size // block_n
-    block_m = max(1, min(block_m, batch_rows))
-    return block_m, block_n
-
-
-@libentry()
-@triton.heuristics(
-    values={
-        "BLOCK_N": lambda args: max(
-            1, triton.next_power_of_2(min(args["N"], 4096 // args["BLOCK_K"]))
-        )
-    }
-)
-@triton.jit
-def nanmean_dim_non_inner_kernel(
-    inp,
-    out,
-    M,
-    N,
-    K,
-    BLOCK_K: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    if tl.constexpr(out.dtype.element_ty == tl.float32):
-        value_dtype = tl.float32
-        acc_dtype = tl.float32
-    elif tl.constexpr(out.dtype.element_ty == tl.float16):
-        value_dtype = tl.float16
-        acc_dtype = tl.float32
-    elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
-        value_dtype = tl.bfloat16
-        acc_dtype = tl.float32
+    block_m = max(1, min(tile_rows, batch_rows))
+    grid = min(NANMEAN_MAX_GRID, triton.cdiv(M, block_m))
+    lanes = block_m * block_n
+    if lanes * element_size >= 16384:
+        num_warps = 4
+    elif lanes >= 2048:
+        num_warps = 2
     else:
-        value_dtype = tl.float32
-        acc_dtype = tl.float32
+        num_warps = 1
+    return block_m, block_n, grid, num_warps
 
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
-    k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)[None, :]
-    k_mask = k < K
 
-    sum_acc = tl.zeros([BLOCK_N, BLOCK_K], dtype=acc_dtype)
-    count_acc = tl.zeros([BLOCK_N, BLOCK_K], dtype=tl.int32)
-
-    for start_n in range(0, N, BLOCK_N):
-        n = start_n + tl.arange(0, BLOCK_N)[:, None]
-        mask = (n < N) & k_mask
-        offsets = pid_m * N * K + n * K + k
-        val = tl.load(inp + offsets, mask=mask, other=0.0).to(value_dtype)
-        valid = mask & (val == val)
-        val = tl.where(valid, val, 0.0)
-        sum_acc += val
-        count_acc += valid.to(tl.int32)
-
-    result = tl.sum(sum_acc, axis=0, dtype=acc_dtype) / tl.sum(count_acc, axis=0)
-    tl.store(out + pid_m * K + k, result[None, :], mask=k_mask)
+def _task_params(element_size, B, M, N):
+    """Non-last-dim reduction hyperparameters: a task is (batch, column tile), the grid strides over tasks."""
+    block_n = min(triton.next_power_of_2(N), NANMEAN_TASK_MAX_WIDTH)
+    while (
+        block_n > NANMEAN_TASK_MIN_WIDTH
+        and B * triton.cdiv(N, block_n) < NANMEAN_TASK_MIN_TASKS
+    ):
+        block_n //= 2
+    if block_n >= 512:
+        block_m_cap = 64
+    else:
+        block_m_cap = 256 if element_size <= 2 else 128
+    block_m = max(1, min(triton.next_power_of_2(M), block_m_cap))
+    if block_n >= 512:
+        num_warps = 4
+    elif block_n >= 256:
+        num_warps = 2
+    else:
+        num_warps = 1
+    grid = min(NANMEAN_MAX_GRID, B * triton.cdiv(N, block_n))
+    return block_m, block_n, grid, num_warps
 
 
 @libentry()
-@triton.jit(do_not_specialize=["M", "N"])
+@triton.jit
 def nanmean_dim_inner_kernel(
     inp,
     out,
@@ -273,50 +256,136 @@ def nanmean_dim_inner_kernel(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
+    EVEN: tl.constexpr,
 ):
-    """Row reduction when the reduced dim is innermost: persistent row-tile traversal, grid capped at NANMEAN_MAX_GRID.
+    """Row reduction with the reduced dim innermost: persistent row-tile walk, grid <= 48.
 
-    GCU's grid.x hard limit is 65535: with many rows (e.g. (1024,1024,512) along dim=-1 gives
-    M=1048576), opening grid by row count directly raises OutOfResources. Use a fixed number of
-    programs each looping over row tiles, matching gcu400 sum.py's sum_dim_inner_kernel
-    (per-block immediate row reduction, accumulator only [BLOCK_M]).
+    2026-11-17 probe calibration (gcu400, official do_bench):
+    - the count tree takes a 16-bit (fp16) input with dtype=fp32 accumulation -- an i32 count tree
+      on (1024,1024,512) fp16 measured 9.84ms vs 0.96ms for this recipe (~10x) and was the main
+      pathology of the old implementation;
+    - tl.sum(x, axis, dtype=tl.float32) keeps the tree input at 2B per element, avoiding a 4B
+      copy materialized by .to(f32);
+    - EVEN (M%bm==0 and N%bn==0) takes the mask/other-free hot path (merged loads) and every bench
+      shape hits it; non-divisible shapes take the masked tail path.
     """
     if tl.constexpr(out.dtype.element_ty == tl.float32):
         value_dtype = tl.float32
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float32
     elif tl.constexpr(out.dtype.element_ty == tl.float16):
         value_dtype = tl.float16
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float16
     elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
         value_dtype = tl.bfloat16
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float16
     else:
         value_dtype = tl.float32
-        acc_dtype = tl.float32
+        cnt_in_dtype = tl.float32
 
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tile = (M + BLOCK_M - 1) // BLOCK_M
-    for tile_id in tl.range(pid, num_tile, step, num_stages=num_stages):
+    for tile_id in tl.range(pid, num_tile, step):
         rows = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
         row_mask = rows < M
-        sum_acc = tl.zeros([BLOCK_M], dtype=acc_dtype)
-        count_acc = tl.zeros([BLOCK_M], dtype=tl.int32)
+        sum_acc = tl.zeros([BLOCK_M], dtype=tl.float32)
+        cnt_acc = tl.zeros([BLOCK_M], dtype=tl.float32)
 
         for start_n in tl.range(0, N, BLOCK_N):
             cols = start_n + tl.arange(0, BLOCK_N)
-            mask = row_mask[:, None] & (cols[None, :] < N)
-            val = tl.load(
-                inp + rows[:, None] * N + cols[None, :], mask=mask, other=0.0
-            ).to(value_dtype)
-            valid = mask & (val == val)
-            val = tl.where(valid, val, 0.0)
-            sum_acc += tl.sum(val.to(acc_dtype), axis=1)
-            count_acc += tl.sum(valid.to(tl.int32), axis=1)
+            if EVEN:
+                val = tl.load(inp + rows[:, None] * N + cols[None, :]).to(value_dtype)
+                valid = val == val
+            else:
+                mask = row_mask[:, None] & (cols[None, :] < N)
+                val = tl.load(inp + rows[:, None] * N + cols[None, :], mask=mask).to(
+                    value_dtype
+                )
+                valid = mask & (val == val)
+            x0 = tl.where(valid, val, tl.zeros([BLOCK_M, BLOCK_N], dtype=val.dtype))
+            vh = valid.to(cnt_in_dtype)
+            sum_acc += tl.sum(x0, axis=1, dtype=tl.float32)
+            cnt_acc += tl.sum(vh, axis=1, dtype=tl.float32)
 
-        result = sum_acc / count_acc
-        tl.store(out + rows, result.to(out.dtype.element_ty), row_mask)
+        result = sum_acc / cnt_acc
+        if EVEN:
+            tl.store(out + rows, result.to(out.dtype.element_ty))
+        else:
+            tl.store(out + rows, result.to(out.dtype.element_ty), row_mask)
+
+
+@libentry()
+@triton.jit
+def nanmean_dim_task_kernel(
+    inp,
+    out,
+    B,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Non-last-dim single-dim reduction: a task is (batch, column tile), reducing axis=0 per M chunk.
+
+    Replaces the old non_inner kernel ((BLOCK_N, BLOCK_K) kept 2-D resident with grid=(M, .);
+    on (1024,1024,512) dim=0 was 2.81ms / dim=1 6.51ms -> 0.80/0.79ms with this recipe).
+    B == 1 is the leading-dim reduction; a middle dim goes through the (B, M, N) three-way split.
+    """
+    if tl.constexpr(out.dtype.element_ty == tl.float32):
+        value_dtype = tl.float32
+        cnt_in_dtype = tl.float32
+    elif tl.constexpr(out.dtype.element_ty == tl.float16):
+        value_dtype = tl.float16
+        cnt_in_dtype = tl.float16
+    elif tl.constexpr(out.dtype.element_ty == tl.bfloat16):
+        value_dtype = tl.bfloat16
+        cnt_in_dtype = tl.float16
+    else:
+        value_dtype = tl.float32
+        cnt_in_dtype = tl.float32
+
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_k_tile = (N + BLOCK_N - 1) // BLOCK_N
+    num_task = B * num_k_tile
+    for task_id in tl.range(pid, num_task, step):
+        b_index = task_id // num_k_tile
+        k_tile = task_id % num_k_tile
+        n_offset = k_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        n_mask = n_offset < N
+        base = b_index * M * N
+        sum_acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+        cnt_acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+
+        for i_start in tl.range(0, M, BLOCK_M):
+            m_offset = i_start + tl.arange(0, BLOCK_M)
+            if EVEN:
+                val = tl.load(
+                    inp + base + m_offset[:, None] * N + n_offset[None, :]
+                ).to(value_dtype)
+                valid = val == val
+            else:
+                mask = (m_offset[:, None] < M) & n_mask[None, :]
+                val = tl.load(
+                    inp + base + m_offset[:, None] * N + n_offset[None, :],
+                    mask=mask,
+                ).to(value_dtype)
+                valid = mask & (val == val)
+            x0 = tl.where(valid, val, tl.zeros([BLOCK_M, BLOCK_N], dtype=val.dtype))
+            vh = valid.to(cnt_in_dtype)
+            sum_acc += tl.sum(x0, axis=0, dtype=tl.float32)
+            cnt_acc += tl.sum(vh, axis=0, dtype=tl.float32)
+
+        out_ptrs = out + b_index * N + n_offset
+        if EVEN:
+            tl.store(out_ptrs, (sum_acc / cnt_acc).to(out.dtype.element_ty))
+        else:
+            tl.store(
+                out_ptrs,
+                (sum_acc / cnt_acc).to(out.dtype.element_ty),
+                n_mask,
+            )
 
 
 def _normalize_dims(dim, ndim):
@@ -355,26 +424,71 @@ def _squeeze_dims(result, dims):
     return result
 
 
-def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEAN_DIM")
+def _launch_row(inp, out_flat, M, N, dtype):
+    element_size = inp.element_size()
+    block_m, block_n, grid, num_warps = _row_params(element_size, M, N)
+    even = (M % block_m == 0) and (N % block_n == 0)
+    with torch_device_fn.device(inp.device):
+        nanmean_dim_inner_kernel[(grid,)](
+            inp,
+            out_flat,
+            M,
+            N,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            EVEN=even,
+            num_warps=num_warps,
+        )
+
+
+def _launch_task(inp, out_flat, B, M, N, dtype):
+    element_size = inp.element_size()
+    block_m, block_n, grid, num_warps = _task_params(element_size, B, M, N)
+    even = (M % block_m == 0) and (N % block_n == 0)
+    if not even:
+        # gcu400 backend bug: on the task kernel's masked path, when tile lanes >= 16384
+        # it silently returns wrong values (reproduces with old/new kernel bodies, with or without other; triggered by
+        # both
+        # m-tail and n-tail masks; the EVEN path with 32768 lanes is fine). Cap tile lanes on the masked path
+        # at 8192 to avoid this (verified correct on (129,257) with bm64/bn128). All bench shapes
+        # divide evenly and take the EVEN path, so they are unaffected.
+        while block_m > 1 and block_m * block_n > 8192:
+            block_m //= 2
+        grid = min(NANMEAN_MAX_GRID, B * triton.cdiv(N, block_n))
+    with torch_device_fn.device(inp.device):
+        nanmean_dim_task_kernel[(grid,)](
+            inp,
+            out_flat,
+            B,
+            M,
+            N,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            EVEN=even,
+            num_warps=num_warps,
+        )
+
+
+def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None, out_flat=None):
+    logger.debug("GEMS_ENFLAME NANMEAN_DIM")
     if dtype is None:
         dtype = inp.dtype
 
     dims = _normalize_dims(dim, inp.ndim)
 
     if inp.ndim == 0:
-        return _nanmean_global(inp, dtype=dtype)
+        return _nanmean_global(inp, dtype=dtype, out_flat=out_flat)
 
     # dim=[] -> reduce all
     if len(dims) == 0:
-        result = _nanmean_global(inp, dtype=dtype)
+        result = _nanmean_global(inp, dtype=dtype, out_flat=out_flat)
         if keepdim:
             result = result.reshape([1] * inp.ndim)
         return result
 
     # full-dimensional reduction -> delegate to global
     if len(dims) == inp.ndim:
-        result = _nanmean_global(inp, dtype=dtype)
+        result = _nanmean_global(inp, dtype=dtype, out_flat=out_flat)
         if keepdim:
             result = result.reshape([1] * inp.ndim)
         return result
@@ -397,28 +511,48 @@ def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
         dim = dims[0]
         if not inp.is_contiguous():
             inp = inp.contiguous()
-        M = math.prod(shape[:dim])
-        K = inp.numel() // (M * N)
+        if dim == inp.ndim - 1:
+            # last-dim reduction: row kernel over (M, N)
+            M = inp.numel() // N
+            if out_flat is None:
+                out_flat = torch.empty(M, dtype=dtype, device=inp.device)
+            _launch_row(inp, out_flat, M, N, dtype)
+        elif dim == 0:
+            # first-dim reduction: task kernel with B == 1
+            M = inp.shape[0]
+            N_cols = inp.numel() // M
+            if out_flat is None:
+                out_flat = torch.empty(N_cols, dtype=dtype, device=inp.device)
+            _launch_task(inp, out_flat, 1, M, N_cols, dtype)
+        else:
+            # middle-dim reduction: task kernel over (B, M, N)
+            B = 1
+            for i in range(dim):
+                B *= inp.shape[i]
+            M = inp.shape[dim]
+            N_cols = 1
+            for i in range(dim + 1, inp.ndim):
+                N_cols *= inp.shape[i]
+            if B <= N_cols * 128:
+                if out_flat is None:
+                    out_flat = torch.empty(B * N_cols, dtype=dtype, device=inp.device)
+                _launch_task(inp, out_flat, B, M, N_cols, dtype)
+            else:
+                in_reshape = inp.reshape(B, M, N_cols)
+                inp_new = dim_compress(in_reshape, {0, 2})
+                M_new = inp_new.shape[0]
+                N_new = inp_new.numel() // M_new
+                if out_flat is None:
+                    out_flat = torch.empty(N_new, dtype=dtype, device=inp.device)
+                _launch_task(inp_new, out_flat, 1, M_new, N_new, dtype)
     else:
         inp = dim_compress(inp, dims)
         M = inp.numel() // N
-        K = 1
+        if out_flat is None:
+            out_flat = torch.empty(M, dtype=dtype, device=inp.device)
+        _launch_row(inp, out_flat, M, N, dtype)
 
-    out = torch.empty(M * K, dtype=dtype, device=inp.device)
-
-    with torch_device_fn.device(inp.device):
-        if K > 1:
-            block_k = _dim_block_k(M, K)
-            grid = (M, triton.cdiv(K, block_k))
-            nanmean_dim_non_inner_kernel[grid](inp, out, M, N, K, BLOCK_K=block_k)
-        else:
-            block_m, block_n = _inner_blocks(inp.element_size(), M, N)
-            grid = (min(NANMEAN_MAX_GRID, triton.cdiv(M, block_m)),)
-            nanmean_dim_inner_kernel[grid](
-                inp, out, M, N, BLOCK_M=block_m, BLOCK_N=block_n, num_warps=2
-            )
-
-    out = out.reshape(shape)
+    out = out_flat.reshape(shape)
     return out if keepdim else _squeeze_dims(out, dims)
 
 
@@ -557,8 +691,22 @@ class _NanmeanAutograd(torch.autograd.Function):
         return result, None, None, None
 
 
-def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEAN")
+def _nanmean_output_shape(inp, dim, keepdim):
+    """Mirrors nanmean()'s output-shape decision (pure host metadata, never touches device data)."""
+    ndim = inp.ndim
+    dims = _normalize_dims(dim, ndim)
+    if ndim == 0 or len(dims) == 0 or len(dims) == ndim:
+        return [1] * ndim if keepdim else []
+    shape = list(inp.shape)
+    for d in dims:
+        shape[d] = 1
+    if not keepdim:
+        shape = [s for i, s in enumerate(shape) if i not in dims]
+    return shape
+
+
+def nanmean(inp, dim=None, keepdim=False, *, dtype=None, out_flat=None):
+    logger.debug("GEMS_ENFLAME NANMEAN")
     if not (inp.is_floating_point() or inp.is_complex()):
         raise NotImplementedError(
             "nanmean(): expected input to have floating point or complex dtype but got "
@@ -575,15 +723,15 @@ def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
     if inp.is_complex() or complex_output:
         return _complex_mean(inp, dim, keepdim, dtype or inp.dtype)
     if dim is None:
-        result = _nanmean_global(inp, dtype=dtype)
+        result = _nanmean_global(inp, dtype=dtype, out_flat=out_flat)
         if keepdim:
             result = result.reshape([1] * inp.ndim)
         return result
-    return nanmean_dim(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+    return nanmean_dim(inp, dim=dim, keepdim=keepdim, dtype=dtype, out_flat=out_flat)
 
 
 def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 NANMEAN_OUT")
+    logger.debug("GEMS_ENFLAME NANMEAN_OUT")
     if out is None:
         raise RuntimeError("nanmean(): missing required out tensor")
     if torch.is_grad_enabled() and (inp.requires_grad or out.requires_grad):
@@ -599,6 +747,28 @@ def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             "nanmean: provided dtype must match dtype of result. Got "
             f"{out.dtype} and {dtype}."
         )
+    # Fast path: use a real, contiguous out directly as the kernel target, saving the result buffer + one copy_
+    # extra kernel launch ((64,64) tiny shape ~8.5us -> ~6us). Complex/non-contiguous/empty inputs
+    # use the original copy path.
+    if (
+        out.is_contiguous()
+        and not inp.is_complex()
+        and not (dtype is not None and dtype.is_complex)
+        and not inp.requires_grad
+        and inp.is_floating_point()
+    ):
+        # Validate arguments in the same order as nanmean() to keep exception behavior consistent
+        expected = _nanmean_output_shape(inp, dim, keepdim)
+        if list(out.shape) != expected:
+            out.resize_(expected)
+        result = nanmean(
+            inp, dim=dim, keepdim=keepdim, dtype=dtype or out.dtype, out_flat=out
+        )
+        if result is not out:
+            if out.shape != result.shape:
+                out.resize_(result.shape)
+            copy_(out, result)
+        return out
     result = nanmean(inp, dim=dim, keepdim=keepdim, dtype=dtype or out.dtype)
     if out.shape != result.shape:
         out.resize_(result.shape)
@@ -611,44 +781,5 @@ def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     return out
 
 
-def _install_aten_kernels():
-    """Route bare aten::nanmean / aten::nanmean.out calls on GCU onto this kernel.
-
-    torch_gcu's native nanmean segfaults (SIGSEGV, no Python exception) for
-    plain fp32 tensors on every path probed (scalar reduce, dim reduce,
-    dim+out), and aborts on complex64 ("can't handle ComplexDouble" ->
-    Check failed -> SIGABRT).  The accuracy suite's reference legs (bare
-    ``torch.nanmean(gcu_tensor)``) and the benchmark's native-baseline legs
-    therefore die before the FlagGems op is even called.  Registering both
-    overloads on the backend dispatch key makes those calls land on this
-    kernel, which is exactly what production already sees inside
-    ``flag_gems.use_gems()`` (the same two overloads are in _FULL_CONFIG).
-
-    Idempotent: a later ``use_gems()``/``enable()`` cycle re-attempts the same
-    registration through the general registrar and is skipped with a warning.
-    """
-    try:
-        dispatch_key = runtime.device.dispatch_key
-        library = torch.library.Library("aten", "IMPL")
-        for op_name, kernel in (
-            ("nanmean", nanmean),
-            ("nanmean.out", nanmean_out),
-        ):
-            try:
-                library.impl(op_name, kernel, dispatch_key)
-            except RuntimeError as error:
-                logger.warning(
-                    "nanmean: aten registration %s@%s skipped: %s",
-                    op_name,
-                    dispatch_key,
-                    error,
-                )
-        return library
-    except Exception as error:
-        logger.warning("nanmean: aten registration unavailable: %s", error)
-        return None
-
-
 # Module-level handle keeps the Library (and its kernels) alive for the
 # process; the registration itself must never break the flag_gems import.
-_NANMEAN_ATEN_LIBRARY = _install_aten_kernels()

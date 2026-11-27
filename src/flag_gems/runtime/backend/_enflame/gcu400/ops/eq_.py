@@ -36,21 +36,45 @@ semantics (0.0/1.0 written into the float self tensor).
 * small (< 2**16) / non-contiguous / broadcast / non-float inputs fall back
   to the ``pointwise_dynamic`` kernels from ``.eq``.
 
-In-place-validated tiers (do_bench kernel-mode median, w1000/r100,
-2026-11-13; the in-place store is itemsize-wide vs the 1-byte bool store
-out-of-place, which shifts the optimum toward the 48-CTA persistent strided
-form on the larger shapes):
+In-place-validated tiers (do_bench kernel-mode median, w1000/r100; the
+2026-11-13 tiers plus the 2026-11-18 re-tune, which moves the tensor arms
+and the f16/bf16 scalar mid band to DSM dual-program (loads <= 256KB per
+program) x num_warps=2 forms -- an interaction win: each single-variable
+change alone loses. The in-place store is itemsize-wide vs the 1-byte bool
+store out-of-place, which keeps the 48-CTA persistent strided form dominant
+on the large shapes):
 
   tensor n < 2**16              -> generic pointwise (launch-overhead floor)
-  tensor f32 n >= 2**16         -> strided 48xB=65536 nw4 (best at 2^22..2^30)
-  tensor f16/bf16 < 2**22       -> flat BLOCK=65536 nw4
-  tensor f16/bf16 <= 48*2**17   -> flat BLOCK=131072 nw4 (grid-exact, <=48 tiles)
-  tensor f16/bf16 larger        -> strided 48xB=131072 nw4 (beats flat & loop)
+  tensor f32 [2**16, 2**21)     -> flat BLOCK=32768 nw2 (2^17 0.995x / 2^18
+                                   1.074x / 2^20 0.995x vs old strided
+                                   0.67-0.87x)
+  tensor f32 n >= 2**21         -> strided 48xB=32768 nw2 (2^21 1.001x /
+                                   2^22 1.011x / 2^24 1.043x / 2^26 1.058x;
+                                   2^28-2^30 tie the old 64k/nw4 form at
+                                   the ~3.0TB/s roofline)
+  tensor f16/bf16 < 2**22       -> flat BLOCK=65536 nw4 (2^20 1.290x, beats
+                                   the new strided form and flat-131k)
+  tensor f16/bf16 n >= 2**22   -> strided 48xB=65536 nw2 (2^22 1.002x /
+                                   2^24 1.041x / 2^26 1.060x / 2^28 1.063x /
+                                   2^30 1.055x -- beats flat-131k and the
+                                   old strided-131k/nw4 on every point)
   scalar n < 2**16              -> flat BLOCK=next_pow2(n) nw4
   scalar 2**16..2**22           -> flat BLOCK=65536 nw4
-  scalar f16/bf16 2**22..2**28  -> flat BLOCK=131072 nw4
-  scalar f16/bf16 n >= 2**28    -> flat BLOCK=262144 nw4 (roofline ~3 TB/s)
-  scalar f32 n >= 2**22         -> strided 48xB=65536 nw4
+  scalar f16/bf16 2**22..2**28  -> strided 48xB=65536 nw2 (2^22 1.078x /
+                                   2^24 1.072x / 2^26 1.077x vs flat-131k
+                                   1.043-1.067x)
+  scalar f16/bf16 n >= 2**28    -> flat BLOCK=262144 nw4 (roofline ~3 TB/s;
+                                   strided-64k ties within noise, prod kept)
+  scalar f32 n >= 2**22         -> strided 48xB=65536 nw4 (unchanged: best at
+                                   every band point incl. 2^26/2^30)
+
+The in-place tiers keep the masked arm everywhere (``EVEN=False``): the
+2026-11-16 re-measure showed the maskless EVEN arm that helps the
+out-of-place kernels regresses in-place mid shapes (eq_ f16/bf16 2^24
++4.1..4.8%, eq_scalar_ f16/bf16 2^24 +4.4..9.9% -- the store writes back
+through the same pointer the loads read, and dropping the store predicate
+degrades the emitted access pattern), so the in-place tiers stay on the
+masked form the 2026-11-13 tuning was measured on.
 """
 
 import logging
@@ -77,10 +101,10 @@ from .eq import (
 
 logger = logging.getLogger(__name__)
 
-# 48 persistent CTAs x 131072-element tiles: at or below this element count
-# the strided form is identical to a grid-exact flat launch, so the plain
-# flat kernel (no loop machinery) is used instead.
-_F16_STRIDED_MIN_N = _NPROGS * 131072
+# fp32 tensor boundary between the flat-32k launch and the persistent
+# strided-48x32k form (2026-11-18 probes: flat wins 2^16..2^20, strided wins
+# from 2^21 up).
+_F32_MID_N = 2**21
 
 
 def _eq_inplace_run(A, B):
@@ -89,29 +113,53 @@ def _eq_inplace_run(A, B):
     if n < _SMALL_N:
         return False
     if A.dtype == torch.float32:
+        # 2026-11-18 re-tune: DSM dual-program (2 loads x 4B x 32768 = 256KB
+        # <= 448KB/program) combined with num_warps=2 wins the whole fp32
+        # range over the previous strided 48x65536/nw4 (524KB, single
+        # program/SP). Flat 32k below 2^21 (launch-floor band: 2^17 0.995x /
+        # 2^18 1.074x / 2^20 0.995x vs old 0.67-0.87x; flat wins there because
+        # the strided loop only spans 2-32 tiles), persistent strided above
+        # (2^21 1.001x / 2^22 1.011x / 2^24 1.043x / 2^26 1.058x; 2^28-2^30
+        # tie with the old form at the ~3.0TB/s roofline).
+        block = 32768
+        if n > _INT32_SAFE_LIMIT - block:
+            return False
+        if n >= _F32_MID_N:
+            _launch_with_retry(
+                lambda: _eq_cmp_strided_kernel[(_NPROGS,)](
+                    A, B, A, n, BLOCK=block, EVEN=False, num_warps=2
+                )
+            )
+        else:
+            _launch_with_retry(
+                lambda: _eq_cmp_kernel[(triton.cdiv(n, block),)](
+                    A, B, A, n, BLOCK=block, EVEN=False, num_warps=2
+                )
+            )
+        return True
+    if n >= _MID_N:
+        # f16/bf16 >= 2^22: strided 48x65536 nw2 -- DSM dual-program
+        # (2 x 2B x 65536 = 256KB) x nw2. Beats the previous flat-131072 /
+        # strided-48x131072/nw4 tiers on every band point (2^22 1.002x /
+        # 2^24 1.041x / 2^26 1.060x / 2^28 1.063x / 2^30 1.055x); the win is
+        # the interaction -- single-variable probes all lose (64k+nw4
+        # 0.929x, 131k+nw2 1.000x, flat131k 0.939x, st1/st2/st3 neutral).
         if n > _INT32_SAFE_LIMIT - 65536:
             return False
         _launch_with_retry(
             lambda: _eq_cmp_strided_kernel[(_NPROGS,)](
-                A, B, A, n, BLOCK=65536, num_warps=4
+                A, B, A, n, BLOCK=65536, EVEN=False, num_warps=2
             )
         )
         return True
-    if n > _F16_STRIDED_MIN_N:
-        if n > _INT32_SAFE_LIMIT - 131072:
-            return False
-        _launch_with_retry(
-            lambda: _eq_cmp_strided_kernel[(_NPROGS,)](
-                A, B, A, n, BLOCK=131072, num_warps=4
-            )
-        )
-        return True
-    block = 131072 if n >= _MID_N else 65536
+    # [2^16, 2^22) keeps the 2026-11-13 flat launch (2^20: 1.290x, beats
+    # strided-64k-nw2 1.196x and flat-131k 1.192x).
+    block = 65536
     if n > _INT32_SAFE_LIMIT - block:
         return False
     _launch_with_retry(
         lambda: _eq_cmp_kernel[(triton.cdiv(n, block),)](
-            A, B, A, n, BLOCK=block, num_warps=4
+            A, B, A, n, BLOCK=block, EVEN=False, num_warps=4
         )
     )
     return True
@@ -148,13 +196,28 @@ def eq_scalar_(A, B):
                         return eq_func_scalar(A, B, out0=A)
                     _launch_with_retry(
                         lambda: _eq_cmp_scalar_strided_kernel[(_NPROGS,)](
-                            A, A, n, y, BLOCK=65536, num_warps=4
+                            A, A, n, y, BLOCK=65536, EVEN=False, num_warps=4
                         )
                     )
                     return A
+                # f16/bf16: [2^22, 2^28) strided 48x65536 nw2 (2026-11-18:
+                # beats flat-131072/nw4 on the whole band -- 2^22 1.078x /
+                # 2^24 1.072x / 2^26 1.077x vs flat 1.043-1.067x; single load
+                # x 2B x 65536 = 128KB, dual-program 48-way); the giant band
+                # keeps the flat 262144/nw4 launch (2^28 337.56 vs 336.77us,
+                # 2^30 1331.9 vs 1333.3us -- within noise, prod tier kept).
                 # DSM Required counts loads only (probe-verified in-place:
                 # BLOCK=262144 compiles, Required = itemsize * BLOCK = 512 KB)
-                block = 262144 if n >= _BIG_N else 131072
+                if n < _BIG_N:
+                    if n > _INT32_SAFE_LIMIT - 65536:
+                        return eq_func_scalar(A, B, out0=A)
+                    _launch_with_retry(
+                        lambda: _eq_cmp_scalar_strided_kernel[(_NPROGS,)](
+                            A, A, n, y, BLOCK=65536, EVEN=False, num_warps=2
+                        )
+                    )
+                    return A
+                block = 262144
             elif n >= _SMALL_N:
                 block = 65536
             else:
@@ -164,7 +227,7 @@ def eq_scalar_(A, B):
             if n <= _INT32_SAFE_LIMIT - block:
                 _launch_with_retry(
                     lambda: _eq_cmp_scalar_kernel[(triton.cdiv(n, block),)](
-                        A, A, n, y, BLOCK=block, num_warps=4
+                        A, A, n, y, BLOCK=block, EVEN=False, num_warps=4
                     )
                 )
                 return A

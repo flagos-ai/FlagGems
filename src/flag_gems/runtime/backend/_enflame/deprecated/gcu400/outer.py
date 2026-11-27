@@ -56,6 +56,9 @@ _DEVICE_NAME = runtime_device.name
 _GRID_CAP = 48
 _BLOCK_N_CAP = 8192
 _WIDE_ELEMS = 1 << 31
+# >= 6 groups per program at the grid cap, i.e. M >= 6 * 8 * _GRID_CAP.
+_SWAP_MIN_ROWS = 6 * 8 * _GRID_CAP
+_SWAP_MIN_COLS = 512
 
 
 @triton.jit
@@ -131,6 +134,67 @@ def outer_fwd_kernel(
                     tl.store(out_ptr + base + cols, xv * yv, mask=cm)
 
 
+@triton.jit
+def outer_fwd_swap_kernel(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    M,
+    N,
+    GRID,
+    BLOCK_N: tl.constexpr,
+    EVEN_COLS: tl.constexpr,
+    WIDE: tl.constexpr,
+):
+    # j0-outer variant: the shared y chunk is loaded once per column chunk
+    # (instead of once per row group) and stays live across the group loop.
+    # Dispatched only for single-chunk N with >= 6 groups per program.
+    pid = tl.program_id(0)
+    num_groups = tl.cdiv(M, 8)
+    for j0 in range(0, N, BLOCK_N):
+        cols = j0 + tl.arange(0, BLOCK_N)
+        if EVEN_COLS:
+            yv = tl.load(y_ptr + cols)
+        else:
+            cm = cols < N
+            yv = tl.load(y_ptr + cols, mask=cm, other=0.0)
+        for g in range(pid, num_groups, GRID):
+            r0 = g * 8
+            if r0 > M - 8:
+                r0 = M - 8
+            x0 = tl.load(x_ptr + r0 + 0)
+            x1 = tl.load(x_ptr + r0 + 1)
+            x2 = tl.load(x_ptr + r0 + 2)
+            x3 = tl.load(x_ptr + r0 + 3)
+            x4 = tl.load(x_ptr + r0 + 4)
+            x5 = tl.load(x_ptr + r0 + 5)
+            x6 = tl.load(x_ptr + r0 + 6)
+            x7 = tl.load(x_ptr + r0 + 7)
+            if WIDE:
+                base = r0.to(tl.int64) * N
+            else:
+                base = r0 * N
+            if EVEN_COLS:
+                tl.store(out_ptr + base + cols, x0 * yv)
+                tl.store(out_ptr + base + N + cols, x1 * yv)
+                tl.store(out_ptr + base + 2 * N + cols, x2 * yv)
+                tl.store(out_ptr + base + 3 * N + cols, x3 * yv)
+                tl.store(out_ptr + base + 4 * N + cols, x4 * yv)
+                tl.store(out_ptr + base + 5 * N + cols, x5 * yv)
+                tl.store(out_ptr + base + 6 * N + cols, x6 * yv)
+                tl.store(out_ptr + base + 7 * N + cols, x7 * yv)
+            else:
+                cm = cols < N
+                tl.store(out_ptr + base + cols, x0 * yv, mask=cm)
+                tl.store(out_ptr + base + N + cols, x1 * yv, mask=cm)
+                tl.store(out_ptr + base + 2 * N + cols, x2 * yv, mask=cm)
+                tl.store(out_ptr + base + 3 * N + cols, x3 * yv, mask=cm)
+                tl.store(out_ptr + base + 4 * N + cols, x4 * yv, mask=cm)
+                tl.store(out_ptr + base + 5 * N + cols, x5 * yv, mask=cm)
+                tl.store(out_ptr + base + 6 * N + cols, x6 * yv, mask=cm)
+                tl.store(out_ptr + base + 7 * N + cols, x7 * yv, mask=cm)
+
+
 def _fast_path_ok(inp, weight):
     if inp.ndim != 1 or weight.ndim != 1:
         return False
@@ -160,6 +224,29 @@ def _outer_launch(inp, weight):
         grid = M
         rows_per_prog = 1
     num_warps = 2 if BLOCK_N <= 4096 else 4
+    even_cols = N % BLOCK_N == 0
+    wide = M * N >= _WIDE_ELEMS
+    if (
+        rows_per_prog == 8
+        and M >= _SWAP_MIN_ROWS
+        and N >= _SWAP_MIN_COLS
+        and N <= BLOCK_N
+    ):
+        # Single column chunk and many row groups per program: hoist the y
+        # load out of the group loop (see the header notes for the probe data).
+        outer_fwd_swap_kernel[(grid,)](
+            inp,
+            weight,
+            out,
+            M,
+            N,
+            grid,
+            BLOCK_N=BLOCK_N,
+            EVEN_COLS=even_cols,
+            WIDE=wide,
+            num_warps=num_warps,
+        )
+        return out
     outer_fwd_kernel[(grid,)](
         inp,
         weight,
@@ -169,8 +256,8 @@ def _outer_launch(inp, weight):
         grid,
         BLOCK_N=BLOCK_N,
         ROWS_PER_PROG=rows_per_prog,
-        EVEN_COLS=(N % BLOCK_N == 0),
-        WIDE=(M * N >= _WIDE_ELEMS),
+        EVEN_COLS=even_cols,
+        WIDE=wide,
         num_warps=num_warps,
     )
     return out
@@ -210,7 +297,7 @@ class Outer(torch.autograd.Function):
 def outer(inp, weight):
     # Inference / no-grad calls skip the autograd.Function.apply context
     # build (same convention as the sibling gcu400 fused ops).
-    logger.debug("GEMS_ENFLAME_GCU400 OUTER")
+    logger.debug("GEMS_ENFLAME OUTER")
     if (
         not torch.is_grad_enabled() or not (inp.requires_grad or weight.requires_grad)
     ) and _fast_path_ok(inp, weight):

@@ -16,15 +16,27 @@
 
 """gcu400 matmuladd: the common matmul + bias kernel with broadcast-safe bias loads.
 
-The common ``flag_gems.fused.matmuladd`` loads the bias through a 2-D tile whose
-pointer is ``bias.broadcast_to(out.shape)``.  When the bias is 1-D (shape ``(N,)``)
-that view has stride 0 along M, and a masked 2-D ``tl.load`` from a stride-0
-source with more than one valid row aborts the device on gcu400 (the DMA
-slice_pad path faults; the process dies at the first ``synchronize`` with
-SIGABRT/SIGKILL).  This copy therefore loads broadcast biases as a 1-D row /
-column / scalar and broadcasts them in registers, keeping the plain 2-D load
-only for a fully materialized 2-D bias (non-zero strides on both dims, which is
-safe on this backend).
+``out = matmul(input, other) + bias`` is ``addmm(bias, input, other)`` with
+``beta = alpha = 1``, so the GEMM body is composition-reused from the sibling
+``gcu400/ops/addmm`` op (linalg_matmul precedent: a wrapper that re-implements
+the GEMM launch bypasses the sibling's hybrid dispatch and locks the op into
+the Triton GEMM structural ceiling).  The sibling carries the single-sourced
+dispatch line - saturated / long-K segments delegate to the captured native
+kernel (near 1.0x vs torch on this board), the rest run the tuned Triton
+addmm kernel - and every future addmm tuning is inherited for free.
+
+The local Triton kernel below stays as the fallback for the cases the sibling
+does not model: mixed dtypes among input / other / bias, and an explicit
+``out=`` tensor.  It keeps the broadcast-safe bias loads this copy was created
+for: the common ``flag_gems.fused.matmuladd`` loads the bias through a 2-D
+tile whose pointer is ``bias.broadcast_to(out.shape)``.  When the bias is 1-D
+(shape ``(N,)``) that view has stride 0 along M, and a masked 2-D ``tl.load``
+from a stride-0 source with more than one valid row aborts the device on
+gcu400 (the DMA slice_pad path faults; the process dies at the first
+``synchronize`` with SIGABRT/SIGKILL).  This copy therefore loads broadcast
+biases as a 1-D row / column / scalar and broadcasts them in registers,
+keeping the plain 2-D load only for a fully materialized 2-D bias (non-zero
+strides on both dims, which is safe on this backend).
 """
 
 import logging
@@ -36,6 +48,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._enflame.gcu400.ops.addmm import addmm as _gcu400_addmm
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -167,6 +180,20 @@ def _matmuladd(input, other, bias, out=None):
     assert broadcastable_to(
         bias.shape, (input.shape[0], other.shape[1])
     ), "Incompatible input shape"
+    # Fast path: composition-reuse the sibling addmm op (host rule 2).
+    # ``matmul(input, other) + bias`` is exactly ``addmm(bias, input, other)``
+    # with beta = alpha = 1 under the same right-aligned broadcast semantics,
+    # and the sibling owns the single-sourced hybrid dispatch (native
+    # delegation for the saturated / long-K segments, tuned Triton addmm
+    # kernel otherwise).  Mixed dtypes and out= keep the local fallback.
+    if (
+        out is None
+        and input.dim() == 2
+        and other.dim() == 2
+        and bias.dtype == input.dtype
+        and other.dtype == input.dtype
+    ):
+        return _gcu400_addmm(bias, input, other, beta=1, alpha=1)
     M, K = input.shape
     _, N = other.shape
     if out is None:
@@ -207,5 +234,5 @@ def matmuladd(input, other, bias):
     """
     Matrix multiplication with addition: output = matmul(input, other) + bias
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MATMULADD")
+    logger.debug("GEMS_ENFLAME MATMULADD")
     return _matmuladd(input, other, bias)

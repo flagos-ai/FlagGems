@@ -447,7 +447,7 @@ def _unrank_kernel(
 
 
 def combinations(self, r=2, with_replacement=False):
-    logger.debug("GEMS_ENFLAME_GCU400 COMBINATIONS")
+    logger.debug("GEMS_ENFLAME COMBINATIONS")
     if r < 0:
         raise RuntimeError("Expect a non-negative number, but got {}".format(r))
     if self.dim() != 1:

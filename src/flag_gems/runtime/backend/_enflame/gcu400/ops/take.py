@@ -24,9 +24,23 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 
+# GCU caps every grid dimension at 65535 programs, so the launch grid is
+# flattened into a 2D rectangle when the element count needs more blocks.
+MAX_GRID_X = 65535
+
+# Tile size trade-off measured on GCU400: a wide tile (more elements per
+# program, fewer programs) reaches ~220 GB/s on medium/large gathers, while a
+# narrow tile keeps enough parallelism for tiny gathers. Both are pure
+# bandwidth knobs, the kernel body is identical.
+SMALL_TILE = 1024
+LARGE_TILE = 4096
+SMALL_TILE_LIMIT = 32768
+
+
 @triton.jit
 def take_kernel(in_ptr, idx_ptr, out_ptr, n_index, in_numel, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
+    # Rebuild the linear block id from the 2D grid to keep address math linear.
+    pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     offs = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_index
@@ -55,15 +69,21 @@ def _launch_take(input, index, out_flat):
     # Feed the kernel native int64 indices; address math stays 64-bit and we
     # avoid an extra full-tensor dtype-conversion pass over the index.
     index_flat = index.contiguous().view(-1)
-    grid = lambda meta: (triton.cdiv(n_index, meta["BLOCK_SIZE"]),)  # noqa: E731
+
+    def grid(meta):
+        num_blocks = triton.cdiv(n_index, meta["BLOCK_SIZE"])
+        grid_x = min(num_blocks, MAX_GRID_X)
+        return (grid_x, triton.cdiv(num_blocks, MAX_GRID_X))
+
+    block_size = SMALL_TILE if n_index <= SMALL_TILE_LIMIT else LARGE_TILE
     with torch_device_fn.device(input.device):
         take_kernel[grid](
-            input_flat, index_flat, out_flat, n_index, in_numel, BLOCK_SIZE=1024
+            input_flat, index_flat, out_flat, n_index, in_numel, BLOCK_SIZE=block_size
         )
 
 
 def take(input, index):
-    logger.debug("GEMS_ENFLAME_GCU400 TAKE")
+    logger.debug("GEMS_ENFLAME TAKE")
     if input.device != index.device:
         raise RuntimeError("input and index must be on the same device")
     out_flat = torch.empty(index.numel(), device=input.device, dtype=input.dtype)
@@ -72,7 +92,7 @@ def take(input, index):
 
 
 def take_out(input, index, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 TAKE_OUT")
+    logger.debug("GEMS_ENFLAME TAKE_OUT")
     if not (input.device == index.device == out.device):
         raise RuntimeError("input, index and out must be on the same device")
     if out.dtype != input.dtype:

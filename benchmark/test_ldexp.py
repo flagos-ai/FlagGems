@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -40,6 +42,10 @@ def ldexp_input_fn(shape, dtype, device):
     yield self, other
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.ldexp
 def test_ldexp():
     bench = LdexpBenchmark(
@@ -58,6 +64,10 @@ def ldexp_out_input_fn(shape, dtype, device):
     yield self, other, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.ldexp_out
 def test_ldexp_out():
     bench = LdexpBenchmark(
