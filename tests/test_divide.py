@@ -51,7 +51,7 @@ def test_divide(shape, dtype, caplog, request):
             value.stride(),
             value.data_ptr(),
         ) == metadata
-        assert torch.equal(
+        utils.gems_assert_equal(
             value.detach().cpu().reshape(-1).view(torch.uint8),
             snapshot.detach().cpu().reshape(-1).view(torch.uint8),
         )
