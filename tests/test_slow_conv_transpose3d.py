@@ -32,6 +32,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 # (input_shape, weight_shape) pairs, weight is (C_in, C_out, kD, kH, kW).
 # Input volumes are kept at D=8, H=16, W=16 or smaller: 3D conv outputs scale
 # as D*H*W*kD*kH*kW*C_in*C_out, and larger volumes push the slow reference
@@ -61,12 +68,6 @@ def _atol(dtype):
     # reference computes in the storage dtype, so the low-precision cases need a
     # looser absolute tolerance than the fp32 default.
     return 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-
-
-def _reference_input(tensor, upcast=False):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
-    return utils.to_reference(tensor, upcast)
 
 
 @pytest.mark.slow_conv_transpose3d

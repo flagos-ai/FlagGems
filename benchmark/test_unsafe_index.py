@@ -58,6 +58,13 @@ def _input_fn(shapes, dtype, device):
     yield inp, indices
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_unsafe_index; its CPU "
+        "fallback aborts the process inside do_bench on the benchmark shapes"
+    ),
+)
 @pytest.mark.unsafe_index
 def test_unsafe_index():
     bench = UnsafeIndexBenchmark(

@@ -36,7 +36,8 @@ EXTENDED_DTYPES = [
         # torch_xmlir silently downcasts float64 to float32 on Kunlunxin, so
         # the fp64 path cannot be constructed there (same guard as test_inner).
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported,
+            flag_gems.vendor_name in ("kunlunxin", "enflame")
+            and not utils.fp64_is_supported,
             reason="float64 is downcast to float32 on this device",
         ),
     ),

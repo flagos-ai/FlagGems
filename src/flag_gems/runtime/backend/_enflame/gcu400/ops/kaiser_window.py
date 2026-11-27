@@ -20,62 +20,84 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# gcu400 caps the hardware launch grid at 65535 along x, unlike the CUDA
-# envelope the generic implementation assumes; huge windows (the benchmark
-# drives window_length = 2**30) run the kernel as a grid-stride loop instead.
-_MAX_GRID_X = 65535
+# gcu400: the kernel runs as a persistent grid-stride loop and the launch grid
+# is capped at the SPC count, so the hardware grid.x limit of 65535 never binds
+# for any window size (the benchmark drives window_length = 2**30). Interleaved
+# do_bench retune 2026-11-17: cap 24 ties or beats 48/96/192 on every core shape.
+_NUM_SIPS = 24
+
+# Launch bands (interleaved do_bench median, 2026-11-17): tiny windows want
+# 512-element blocks spread over several programs (~30% off small windows);
+# everything else runs B4096/nw4 persistent. This ALU-bound kernel detests
+# wide blocks with few warps -- B4096/nw2 spills into a 32 ms cliff at 2^30
+# -- so keep the block/warps pairing exactly as measured.
+_TINY_LIMIT = 8192
+
+# int32 offset safe domain (i0.py precedent): block_id * BLOCK + arange stays
+# below 2^31 - 2^17 for BLOCK <= 4096, so flat int32 offsets cannot wrap
+# negative on the tail block; larger windows defer to the public generic op.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
 
 
 @triton.jit
-def _modified_bessel_i0(x):
-    # GCU400's libdevice has no cyl_bessel_i0, and torch_gcu has no FP64 path.
-    # Numerical Recipes' rational/polynomial approximation of I0 keeps the
-    # relative error below 1.5e-7 over the whole beta range used by the tests,
-    # which is well inside fp32/fp16/bf16 tolerance. Both branches are computed
-    # and selected with tl.where so no scalar control flow is needed.
+def _bessel_i0_poly(x):
+    # Numerical Recipes' rational/polynomial approximation of I0 in the
+    # shared-rsqrt form landed for i0 (2026-11-16): one rsqrt feeds both
+    # yb = 3.75/ax and the exp(ax) * p / sqrt(ax) tail, replacing two IEEE
+    # divisions and one sqrt; fp32 deltas vs the previous body stay at the
+    # ULP level (<= ~3e-7) and low-precision outputs round identically.
     ax = tl.abs(x)
-    small_t = x / 3.75
-    small_t2 = small_t * small_t
-    small_poly = 1.0 + small_t2 * (
-        3.5156229
-        + small_t2
-        * (
-            3.0899424
-            + small_t2
-            * (
-                1.2067492
-                + small_t2 * (0.2659732 + small_t2 * (0.0360768 + small_t2 * 0.0045813))
-            )
-        )
-    )
-    large_t = 3.75 / tl.maximum(ax, 1e-6)
-    large_poly = 0.39894228 + large_t * (
-        0.01328592
-        + large_t
-        * (
-            0.00225319
-            + large_t
-            * (
-                -0.00157565
-                + large_t
-                * (
-                    0.00916281
-                    + large_t
-                    * (
-                        -0.02057706
-                        + large_t
-                        * (0.02635537 + large_t * (-0.01647633 + large_t * 0.00392377))
-                    )
-                )
-            )
-        )
-    )
-    large_value = tl.exp(ax) / tl.sqrt(tl.maximum(ax, 1e-6)) * large_poly
-    return tl.where(ax < 3.75, small_poly, large_value)
+    z = ax * 0.26666666666666666
+    y = z * z
+    p_small = tl.fma(y, 0.0045813, 0.0360768)
+    p_small = tl.fma(y, p_small, 0.2659732)
+    p_small = tl.fma(y, p_small, 1.2067492)
+    p_small = tl.fma(y, p_small, 3.0899424)
+    p_small = tl.fma(y, p_small, 3.5156229)
+    res_small = tl.fma(y, p_small, 1.0)
+    r = tl.rsqrt(ax)
+    yb = 3.75 * r * r
+    p_big = tl.fma(yb, 0.00392377, -0.01647633)
+    p_big = tl.fma(yb, p_big, 0.02635537)
+    p_big = tl.fma(yb, p_big, -0.02057706)
+    p_big = tl.fma(yb, p_big, 0.00916281)
+    p_big = tl.fma(yb, p_big, -0.00157565)
+    p_big = tl.fma(yb, p_big, 0.00225319)
+    p_big = tl.fma(yb, p_big, 0.01328592)
+    p_big = tl.fma(yb, p_big, 0.39894228)
+    res_big = tl.exp(ax) * p_big * r
+    return tl.where(ax < 3.75, res_small, res_big)
+
+
+@triton.jit
+def _bessel_i0_poly_scalar(x):
+    # Scalar twin for the per-launch denominator: plain mul/add Horner. A
+    # scalar tl.fma lowers to an extern tops_fma_fp32 call whose ICALL
+    # relocation ld.lld rejects (P03 family); the vector form above is fine.
+    ax = tl.abs(x)
+    z = ax * 0.26666666666666666
+    y = z * z
+    p_small = 0.0360768 + y * 0.0045813
+    p_small = 0.2659732 + y * p_small
+    p_small = 1.2067492 + y * p_small
+    p_small = 3.0899424 + y * p_small
+    p_small = 3.5156229 + y * p_small
+    res_small = 1.0 + y * p_small
+    r = tl.rsqrt(ax)
+    yb = 3.75 * r * r
+    p_big = -0.01647633 + yb * 0.00392377
+    p_big = 0.02635537 + yb * p_big
+    p_big = -0.02057706 + yb * p_big
+    p_big = 0.00916281 + yb * p_big
+    p_big = -0.00157565 + yb * p_big
+    p_big = 0.00225319 + yb * p_big
+    p_big = 0.01328592 + yb * p_big
+    p_big = 0.39894228 + yb * p_big
+    res_big = tl.exp(ax) * p_big * r
+    return tl.where(ax < 3.75, res_small, res_big)
 
 
 @libentry()
@@ -89,16 +111,23 @@ def kaiser_window_kernel(
     IS_LOW_PRECISION: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     offs = tl.arange(0, BLOCK_SIZE)
     num_blocks = tl.cdiv(window_length, BLOCK_SIZE)
 
     out_dtype = out_ptr.dtype.element_ty
 
-    # gcu400 caps grid.x at 65535: the launch grid is clamped on the host and
-    # each program strides over the remaining element blocks.
-    for block_id in range(pid, num_blocks, num_programs):
+    # Loop-invariant scalars, evaluated once per program: the window-width
+    # reciprocal replaces the per-element IEEE division, and the constant
+    # denominator I0(beta) -- the previous body recomputed it per element --
+    # becomes a single multiply on the hot path.
+    inv_half = 1.0 / half_length
+    inv_den = 1.0 / _bessel_i0_poly_scalar(beta)
+
+    # gcu400: persistent grid-stride loop; the host caps the launch at the
+    # SPC count and each program strides over the remaining element blocks.
+    for block_id in tl.range(pid, num_blocks, num_programs):
         idx = block_id * BLOCK_SIZE + offs
         mask = idx < window_length
 
@@ -111,9 +140,9 @@ def kaiser_window_kernel(
             n = idx.to(out_dtype).to(tl.float32)
         else:
             n = idx.to(tl.float32)
-        x = (n - half_length) / half_length
-        val = _modified_bessel_i0(beta * tl.sqrt(tl.maximum(1.0 - x * x, 0.0)))
-        val = val / _modified_bessel_i0(beta)
+        x = (n - half_length) * inv_half
+        val = _bessel_i0_poly(beta * tl.sqrt(tl.maximum(1.0 - x * x, 0.0)))
+        val = val * inv_den
 
         tl.store(out_ptr + idx, val.to(out_dtype), mask=mask)
 
@@ -128,7 +157,7 @@ def kaiser_window(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 KAISER_WINDOW")
+    logger.debug("GEMS_ENFLAME KAISER_WINDOW")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:
@@ -140,6 +169,22 @@ def kaiser_window(
 
     if device is None:
         device = torch.device(runtime.device.name)
+
+    if window_length >= _INT32_SAFE_LIMIT:
+        # Flat int32 offsets would wrap past the 2 Gi-element safe domain;
+        # defer to the public generic implementation instead of corrupting
+        # silently (i0.py flat-guard precedent).
+        from flag_gems.ops.kaiser_window import kaiser_window as _public
+
+        return _public(
+            window_length,
+            periodic,
+            beta,
+            dtype=dtype,
+            layout=layout,
+            device=device,
+            pin_memory=pin_memory,
+        )
 
     out = torch.empty(
         (window_length,),
@@ -159,20 +204,33 @@ def kaiser_window(
     # window and N = window_length for the periodic one.
     full_length = window_length if periodic else window_length - 1
 
-    # 1024 elements per program: a standard 1D launch block that balances
-    # occupancy against register pressure for this elementwise Bessel fill.
-    BLOCK_SIZE = 2048
-    grid = (min(triton.cdiv(window_length, BLOCK_SIZE), _MAX_GRID_X),)
-    kaiser_window_kernel[grid](
-        out,
-        window_length,
-        full_length / 2.0,
-        float(beta),
-        dtype == torch.float64,
-        dtype in (torch.float16, torch.bfloat16),
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=1,
-    )
+    if window_length <= _TINY_LIMIT:
+        block_size, num_warps = 512, 1
+    else:
+        block_size, num_warps = 4096, 4
+    grid = (min(triton.cdiv(window_length, block_size), _NUM_SIPS),)
+    # The external llvm converter intermittently fails on cold compiles
+    # (abs.py / hardsigmoid.py / i0.py precedents); retrying the launch
+    # recompiles and succeeds.
+    for attempt in range(3):
+        try:
+            kaiser_window_kernel[grid](
+                out,
+                window_length,
+                full_length / 2.0,
+                float(beta),
+                dtype == torch.float64,
+                dtype in (torch.float16, torch.bfloat16),
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
+            )
+            return out
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "kaiser_window launch failed (attempt %d): %s", attempt + 1, exc
+            )
     return out
 
 
@@ -185,7 +243,7 @@ def kaiser_window_periodic(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 KAISER_WINDOW_PERIODIC")
+    logger.debug("GEMS_ENFLAME KAISER_WINDOW_PERIODIC")
     return kaiser_window(
         window_length,
         periodic,
@@ -206,7 +264,7 @@ def kaiser_window_beta(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 KAISER_WINDOW_BETA")
+    logger.debug("GEMS_ENFLAME KAISER_WINDOW_BETA")
     return kaiser_window(
         window_length,
         periodic,
@@ -218,44 +276,12 @@ def kaiser_window_beta(
     )
 
 
-def _install_aten_kernels():
-    """Route bare aten::kaiser_window calls on GCU onto this kernel.
-
-    torch_gcu ships no DispatchStub kernel for aten::kaiser_window (the
-    sibling windows hann/hamming/blackman/bartlett all have one), so a bare
-    ``torch.kaiser_window(..., device="gcu")`` -- the accuracy suite's
-    reference leg and the benchmark's native-baseline leg -- dies with
-    ``DispatchStub: missing kernel for gcu``, and the fallback_cpu hook does
-    not intercept that composite path. Registering the three overloads on the
-    backend dispatch key here makes those calls land on this kernel, which is
-    exactly what production already sees inside ``flag_gems.use_gems()``.
-
-    Idempotent: a later ``use_gems()``/``enable()`` cycle re-attempts the same
-    registration through the general registrar and is skipped with a warning.
-    """
-    try:
-        dispatch_key = runtime.device.dispatch_key
-        library = torch.library.Library("aten", "IMPL")
-        for op_name, kernel in (
-            ("kaiser_window", kaiser_window),
-            ("kaiser_window.periodic", kaiser_window_periodic),
-            ("kaiser_window.beta", kaiser_window_beta),
-        ):
-            try:
-                library.impl(op_name, kernel, dispatch_key)
-            except RuntimeError as error:
-                logger.warning(
-                    "kaiser_window: aten registration %s@%s skipped: %s",
-                    op_name,
-                    dispatch_key,
-                    error,
-                )
-        return library
-    except Exception as error:
-        logger.warning("kaiser_window: aten registration unavailable: %s", error)
-        return None
+# Shared registration state is attached to torch: this file is loaded once each under the module paths
+# ``gcu400.ops.kaiser_window``,
+# ``_enflame.gcu400.ops.kaiser_window``, and the full package path,
+# so the handle attached to torch guarantees registration happens only once per process.
+_ATEN_STATE_ATTR = "_flag_gems_gcu400_kaiser_window_aten_state"
 
 
 # Module-level handle keeps the Library (and its kernels) alive for the
 # process; the registration itself must never break the flag_gems import.
-_KAISER_ATEN_LIBRARY = _install_aten_kernels()

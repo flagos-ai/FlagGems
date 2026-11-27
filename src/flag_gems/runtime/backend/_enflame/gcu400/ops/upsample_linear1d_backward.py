@@ -115,7 +115,7 @@ def upsample_linear1d_backward(
     align_corners: bool,
     scale_factors=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_LINEAR1D_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_LINEAR1D_BACKWARD")
 
     if len(input_size) == 3:
         n, c, in_w = input_size

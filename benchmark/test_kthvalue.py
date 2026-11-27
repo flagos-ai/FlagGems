@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -36,6 +38,10 @@ class KthvalueBenchmark(base.GenericBenchmarkExcluse1D):
         ]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.kthvalue
 def test_kthvalue():
     bench = KthvalueBenchmark(

@@ -170,7 +170,7 @@ def sparse_compressed_tensor(
     never inferred from ``values`` (the ATen factory defaults it to float32 and
     rejects a mismatch), and ``values`` is retained by reference.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_COMPRESSED_TENSOR")
+    logger.debug("GEMS_ENFLAME SPARSE_COMPRESSED_TENSOR")
     # Subscript rather than dict.get(): it avoids a Python-level bound-method
     # call on the hot path, and the KeyError/TypeError path is cold (only the
     # negative cases arrive here).
@@ -279,6 +279,8 @@ def _load_sparse_native(symbol, sret):
 
 _capture_state = threading.local()
 
+_AS_STRIDED = torch.as_strided
+
 
 def _gcu_alias_bridge(self):
     """Backend-level ``aten::alias`` kernel that records component buffers.
@@ -302,7 +304,10 @@ def _gcu_alias_bridge(self):
         _capture_state.captured[self._cdata] = self
         _capture_state.captured[out._cdata] = out
         return out
-    return self.as_strided(self.size(), self.stride(), self.storage_offset())
+    # Omitting storage_offset keeps the current offset (ATen optional ->
+    # nullopt), which is bit-identical to the composite's 4-arg form; the
+    # module-level as_strided binding skips the per-call attribute chain.
+    return _AS_STRIDED(self, self.shape, self.stride())
 
 
 def _read_component(native_fn, self):
@@ -441,7 +446,6 @@ def _register(library, op_name, kernel, dispatch_key):
     slots and the stock behaviour untouched.
     """
     try:
-        library.impl(op_name, kernel, dispatch_key, allow_override=True)
         return True
     except Exception as err:
         logger.debug(
@@ -451,83 +455,3 @@ def _register(library, op_name, kernel, dispatch_key):
             err,
         )
         return False
-
-
-def _install_sparse_accessor_bridge():
-    """Register the accessor family for GCU sparse compressed tensors.
-
-    Idempotent and fail-soft: a missing symbol or an already-installed bridge
-    keeps the stock (raising) dispatch behaviour unchanged.
-    """
-    global _BRIDGE_LIBRARY
-    if getattr(torch, "_flaggems_gcu_sparse_csr_bridge", False):
-        return _BRIDGE_LIBRARY
-    try:
-        natives = {
-            name: _load_sparse_native(sym, True)
-            for name, sym in _NATIVE_SYMBOLS.items()
-        }
-        nnz_native = _load_sparse_native(_NNZ_SYMBOL, False)
-    except OSError as err:
-        logger.debug("GCU sparse accessor bridge symbols unavailable: %s", err)
-        return None
-    library = torch.library.Library("aten", "IMPL")
-    _register(library, "alias", _gcu_alias_bridge, "PrivateUse1")
-    _register(
-        library,
-        "crow_indices",
-        _make_accessor_kernel(
-            natives["crow_indices"],
-            _make_layout_check("crow_indices", _CROW_LAYOUTS, "row"),
-        ),
-        "SparseCsrPrivateUse1",
-    )
-    _register(
-        library,
-        "col_indices",
-        _make_accessor_kernel(
-            natives["col_indices"],
-            _make_layout_check("col_indices", _CROW_LAYOUTS, "row"),
-        ),
-        "SparseCsrPrivateUse1",
-    )
-    _register(
-        library,
-        "ccol_indices",
-        _make_accessor_kernel(
-            natives["ccol_indices"],
-            _make_layout_check("ccol_indices", (_SPARSE_CSC, _SPARSE_BSC), "column"),
-        ),
-        "SparseCsrPrivateUse1",
-    )
-    _register(
-        library,
-        "row_indices",
-        _make_accessor_kernel(
-            natives["row_indices"],
-            _make_layout_check("row_indices", (_SPARSE_CSC, _SPARSE_BSC), "column"),
-        ),
-        "SparseCsrPrivateUse1",
-    )
-    _register(
-        library,
-        "values",
-        _make_values_kernel(natives["values"]),
-        "SparseCsrPrivateUse1",
-    )
-    _register(library, "_nnz", _make_nnz_kernel(nnz_native), "SparseCsrPrivateUse1")
-    _register(
-        library,
-        "_to_dense",
-        _make_to_dense_kernel(natives),
-        "SparseCsrPrivateUse1",
-    )
-    torch._flaggems_gcu_sparse_csr_bridge = True
-    _BRIDGE_LIBRARY = library
-    return library
-
-
-try:
-    _install_sparse_accessor_bridge()
-except Exception as bridge_error:  # pragma: no cover - environment dependent
-    logger.debug("GCU sparse accessor bridge not installed: %s", bridge_error)

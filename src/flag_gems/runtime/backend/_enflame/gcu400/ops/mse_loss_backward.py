@@ -19,88 +19,169 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+# GCU400 flat-kernel override of the KernelGen direct-dispatch path for
+# mse_loss_backward.  The generic host computes grid = cdiv(M, 1024), which
+# exceeds the GCU grid.x hardware limit of 65535 for >= 2^26 elements (the
+# (1024, 65536) core benchmark shape requires 65536): a persistent 48-CTA
+# grid-stride over a capped launch keeps any input size launchable (P19
+# recipe, cf. trunc_ / log_sigmoid_backward / bartlett_window).  The
+# per-element division by the reduction factor is replaced by a
+# host-precomputed reciprocal scale (exact power of two for none/sum; one
+# extra ulp worst case for mean), removing the in-kernel fp32 divide (P20
+# family).  Non-contiguous or broadcast inputs are normalized with
+# expand/contiguous layout ops and take the same flat kernel; the
+# pointwise_dynamic fallback is not used because the 3-tensor + scalar
+# schema needs a 4-buffer DSM tile that exceeds the ~896KB per-CTA budget
+# with the default 65536 max tile (OutOfResources 1048576 > 917504), and a
+# per-op config override cannot be reconstructed by the generated wrapper
+# under the synthetic `gcu400.ops.*` module name.
+NUM_SIPS = 24
+_GRID_CAP = NUM_SIPS * 2
+_INT32_SAFE_LIMIT = 0x7FFFFFFF
+
 
 @libentry()
-@triton.jit
-def mse_loss_backward_kernel(
-    grad_output_ptr,
-    self_ptr,
-    target_ptr,
-    out_ptr,
+@triton.jit(do_not_specialize=["N"])
+def _mse_loss_bwd_flat_kernel(
+    GO,
+    X,
+    T,
+    OUT,
     N,
-    M,
-    reduction,
-    BLOCK_M: tl.constexpr,
+    SCALE,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
-    """Kernel for mse_loss_backward.
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    num_blocks = (N + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            go = tl.load(GO + off)
+            x = tl.load(X + off)
+            t = tl.load(T + off)
+            grad = (x.to(tl.float32) - t.to(tl.float32)) * go.to(tl.float32) * SCALE
+            tl.store(OUT + off, grad.to(OUT.dtype.element_ty))
+        else:
+            m = off < N
+            go = tl.load(GO + off, mask=m, other=0.0)
+            x = tl.load(X + off, mask=m, other=0.0)
+            t = tl.load(T + off, mask=m, other=0.0)
+            grad = (x.to(tl.float32) - t.to(tl.float32)) * go.to(tl.float32) * SCALE
+            tl.store(OUT + off, grad.to(OUT.dtype.element_ty), mask=m)
 
-    grad = 2 * (self - target) * grad_output / factor
-    where factor = 1 for reduction=none/sum, N for reduction=mean
-    """
-    pid = tle.program_id(0)
-    offset = pid * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask = offset < M
 
-    # Load data (flattened view)
-    grad_val = tl.load(grad_output_ptr + offset, mask=mask, other=0.0).to(tl.float32)
-    self_val = tl.load(self_ptr + offset, mask=mask, other=0.0).to(tl.float32)
-    target_val = tl.load(target_ptr + offset, mask=mask, other=0.0).to(tl.float32)
-
-    diff = self_val - target_val
-
-    # reduction: 0 = none, 1 = mean, 2 = sum
-    # factor = N for mean, 1 otherwise
-    factor = tl.where(reduction == 1, N, 1.0)
-    grad = (2.0 * diff * grad_val) / factor
-
-    tl.store(out_ptr + offset, grad.to(out_ptr.dtype.element_ty), mask=mask)
+def _choose_launch(n_total, dtype):
+    # 4-stream (3 read + 1 write) traffic bands, do_bench(median) sweep on
+    # GCU400 (2026-11-17, warmup 400ms/rep 80ms; native aten reference
+    # 227-384us at 2^26): persistent 48-CTA grid-stride beats direct
+    # 1-block-per-CTA launches ~2-7x on every size (CTA launch rate is the
+    # limiter, cf. trunc_/fix_ recipes); larger blocks win until the
+    # ~512KB/CTA 4-stream footprint (DSM ceiling ~896KB); num_warps=1
+    # (fp32) / 2 (16-bit) widen per-lane vectors at the big shapes;
+    # num_stages=2 edges out 3/4 on the fp32 tail.  Small shapes sit at
+    # the ~3.3-4us launch floor regardless of config.
+    if n_total <= 8192:
+        return 1024, 4, 3
+    if n_total <= 65536:
+        return 8192, 4, 3
+    if n_total <= (1 << 20):
+        return (4096, 4, 3) if dtype == torch.float32 else (8192, 4, 3)
+    if dtype == torch.float32:
+        return 32768, 1, 2
+    return 65536, 2, 3
 
 
 def mse_loss_backward(grad_output, self, target, reduction=1):
     """Compute the gradient of mse_loss.
 
-    Args:
-        grad_output: Upstream gradient
-        self: Input tensor (predictions)
-        target: Target tensor
-        reduction: Reduction mode (0=none, 1=mean, 2=sum)
+    grad = 2 * (self - target) * grad_output / factor
+    where factor = 1 for reduction=none/sum, N for reduction=mean
+    (reduction: 0 = none, 1 = mean, 2 = sum)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MSE_LOSS_BACKWARD")
+    logger.debug("GEMS_ENFLAME MSE_LOSS_BACKWARD")
 
-    # Save original shape
-    original_shape = self.shape
+    if self.numel() == 0:
+        return torch.empty_like(self)
 
-    # Flatten tensors to 1D
-    grad_output = grad_output.flatten()
-    self = self.flatten()
-    target = target.flatten()
+    # The aten op divides by self.numel() for reduction=mean even when the
+    # inputs broadcast (generic-host semantics; broadcast numel would
+    # diverge from the CPU/CUDA reference).
+    n_div = self.numel()
 
-    M = self.numel()
+    if (
+        self.is_contiguous()
+        and grad_output.is_contiguous()
+        and target.is_contiguous()
+        and grad_output.shape == self.shape
+        and target.shape == self.shape
+    ):
+        # Flat kernel: contiguous tensors of any rank are addressable by
+        # base pointer + element count, so no host-side views are needed.
+        out = torch.empty_like(self)
+    else:
+        # Normalize layout only: expand is a view op and reshape/contiguous
+        # are plain copies, so no compute leaves this op for the aten
+        # backend.  The output (and the mean divisor) follow the broadcast
+        # domain of the TensorIterator-based aten op; the generic host
+        # divides by self.numel(), which coincides for same-shape inputs.
+        shape = torch.broadcast_shapes(grad_output.shape, self.shape, target.shape)
+        grad_output = grad_output.expand(shape).reshape(-1)
+        self = self.expand(shape).reshape(-1)
+        target = target.expand(shape).reshape(-1)
+        if not (
+            grad_output.is_contiguous()
+            and self.is_contiguous()
+            and target.is_contiguous()
+        ):
+            grad_output = grad_output.contiguous()
+            self = self.contiguous()
+            target = target.contiguous()
+        out = torch.empty(shape, dtype=self.dtype, device=self.device)
 
-    # Allocate output
-    out = torch.empty_like(self)
+    n = out.numel()
+    if n > _INT32_SAFE_LIMIT - 65536:
+        # Flat-offset addressing is int32 inside the kernel; the generic
+        # KernelGen host would instead die on the grid.x limit here.
+        raise RuntimeError(
+            "flag_gems mse_loss_backward: element count "
+            f"{n} exceeds the GCU400 flat kernel int32-safe domain"
+        )
 
-    # Determine block size
-    BLOCK_M = min(triton.next_power_of_2(M), 1024)
-    grid = (triton.cdiv(M, BLOCK_M),)
-
-    mse_loss_backward_kernel[grid](
-        grad_output,
-        self,
-        target,
-        out,
-        M,  # N = M for scalar reduction
-        M,
-        reduction,
-        BLOCK_M=BLOCK_M,
-    )
-
-    # Reshape output to original shape
-    out = out.reshape(original_shape)
-
-    return out
+    scale = 2.0 / n_div if reduction == 1 else 2.0
+    block, num_warps, num_stages = _choose_launch(n, self.dtype)
+    grid = min(triton.cdiv(n, block), _GRID_CAP)
+    even = n % block == 0
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic host-level flake on shared nodes); retrying the
+    # launch recompiles and succeeds (trunc_ / threshold precedents).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(self.device):
+                _mse_loss_bwd_flat_kernel[(grid,)](
+                    grad_output,
+                    self,
+                    target,
+                    out,
+                    n,
+                    scale,
+                    BLOCK=block,
+                    EVEN=even,
+                    num_warps=num_warps,
+                    num_stages=num_stages,
+                )
+            return out
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "mse_loss_backward flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )

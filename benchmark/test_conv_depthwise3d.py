@@ -55,6 +55,13 @@ def _input_fn(shape, dtype, device):
     )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::conv_depthwise3d and the "
+        "operator has no CPU implementation, so there is no native baseline"
+    ),
+)
 @pytest.mark.conv_depthwise3d
 def test_conv_depthwise3d():
     torch.backends.cudnn.allow_tf32 = False

@@ -37,6 +37,14 @@ class ScatterReduceInplaceBenchmark(base.GenericBenchmark2DOnly):
 
 
 @pytest.mark.scatter_reduce_
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu topsatenScatterReduce has no native baseline for non-mean "
+        "scatter_reduce reductions and aborts the process, so only the Triton "
+        "candidate is timed"
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

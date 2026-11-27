@@ -407,7 +407,7 @@ if (
 
 
 def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 PAIRWISE_DISTANCE")
+    logger.debug("GEMS_ENFLAME PAIRWISE_DISTANCE")
     if x1.shape != x2.shape:
         x1, x2 = torch.broadcast_tensors(x1, x2)
     if not x1.is_contiguous():

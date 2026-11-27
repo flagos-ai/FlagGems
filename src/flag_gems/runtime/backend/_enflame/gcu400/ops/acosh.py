@@ -65,8 +65,9 @@ def acosh_func(x):
     # Domain: [1, inf), returns NaN for x < 1 (except x=1 returns 0)
     x_f32 = x.to(tl.float32)
     sqrt_term = tl.sqrt(x_f32 * x_f32 - 1.0)
-    result = tl.log(x_f32 + sqrt_term)
-    return result.to(x.dtype)
+    # INT_TO_FLOAT promotes integer/bool inputs to an fp32 *output*, so the
+    # result must stay fp32: casting back to x.dtype truncates acosh(2) to 1.
+    return tl.log(x_f32 + sqrt_term)
 
 
 def _choose_block(N_total, dtype):
@@ -131,6 +132,12 @@ def acosh(A):
 
 def acosh_(A):
     logger.debug("GEMS_ENFLAME ACOSH_")
+    # ATen rejects in-place acosh on integer/bool inputs (the float result
+    # cannot be cast back into the output buffer), matching the generic op.
+    if not A.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{A.dtype}"
+        )
     if A.dtype not in (torch.float16, torch.bfloat16, torch.float32):
         acosh_func(A, out0=A)
         return A

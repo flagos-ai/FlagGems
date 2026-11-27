@@ -504,10 +504,10 @@ def _run(input, grid, grad_output, out0=None, out1=None):
 
 
 def cudnn_grid_sampler_backward(input, grid, grad_output):
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_GRID_SAMPLER_BACKWARD")
+    logger.debug("GEMS_ENFLAME CUDNN_GRID_SAMPLER_BACKWARD")
     return _run(input, grid, grad_output)
 
 
 def cudnn_grid_sampler_backward_out(input, grid, grad_output, out0, out1):
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_GRID_SAMPLER_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME CUDNN_GRID_SAMPLER_BACKWARD_OUT")
     return _run(input, grid, grad_output, out0=out0, out1=out1)

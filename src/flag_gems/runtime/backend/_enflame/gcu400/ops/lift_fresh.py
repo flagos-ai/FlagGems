@@ -16,64 +16,36 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
-
-import flag_gems
 
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
-def _copy_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(in_ptr + offsets, mask=mask)
-    tl.store(out_ptr + offsets, x, mask=mask)
-
-
-def lift_fresh(*args, **kwargs):
+def lift_fresh(x: torch.Tensor):
     """Implements aten::lift_fresh(Tensor self) -> Tensor.
 
-    lift_fresh returns a fresh tensor holding the same values as the input.
-    It is materialized here as an on-device Triton copy so the returned tensor
-    is an independent allocation rather than an aliasing view.
+    gcu400 retune (2026-11-17): pass-through identity, matching the native
+    CompositeExplicitAutograd implementation exactly (verified on GCU:
+    ``torch.ops.aten.lift_fresh(t) is t``).
+
+    The previous KernelGen materialization copied the input with a 1-D
+    ``cdiv(n, BLOCK)`` grid, which aborts on the core benchmark shapes
+    (``triton.runtime.errors.OutOfResources: out of resource: grid.x,
+    Required: 1048576, Hardware limit: 65535`` for the 2**30-element cases).
+    Beyond the grid limit, the copy was also semantically heavier than the
+    ATen contract: the ``lift_fresh(Tensor(a) self) -> Tensor(a)`` schema
+    permits aliasing and every native backend (CPU, GCU CompositeExplicit,
+    and the sibling FlagGems vendors: kunlunxin returns ``x`` unchanged,
+    mthreads returns ``self``) is a zero-copy identity. lift_fresh lifts a
+    fresh (newly allocated) tensor into functional form; no data movement is
+    required, and functionalization alias tracking expects the output to
+    alias the input.
+
+    The identity path launches no kernel, so the core-benchmark native
+    baseline (a flat ~2.2 us dispatcher-floor identity, shape-independent)
+    is met on every shape instead of being ~600x off at 2**30 elements; it
+    also removes the old host-side ``.contiguous()``/``.clone()`` ATen
+    compute calls (complex-dtype branch) and all grid/int32-offset
+    constraints (following the gcu400 ``lift`` identity precedent).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LIFT_FRESH")
-    # Attempt to find the input tensor from args/kwargs
-    x = None
-    if len(args) > 0 and isinstance(args[0], torch.Tensor):
-        x = args[0]
-    elif "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
-        x = kwargs["self"]
-    else:
-        for v in list(args) + list(kwargs.values()):
-            if isinstance(v, torch.Tensor):
-                x = v
-                break
-    if x is None:
-        raise ValueError("lift_fresh expects a Tensor argument")
-
-    if x.device.type != flag_gems.device:
-        raise ValueError(
-            f"lift_fresh Triton kernel requires a {flag_gems.device} tensor"
-        )
-
-    x_contig = x.contiguous()
-
-    # Triton cannot canonicalize complex pointer types on some backends;
-    # clone() is a functionally equivalent copy that avoids the triton kernel.
-    if x_contig.is_complex():
-        return x_contig.clone()
-
-    out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
-
-    n_elements = x_contig.numel()
-    # BLOCK_SIZE=1024 mirrors the sibling lift_fresh_copy kernel; the op is a
-    # memory-bandwidth-bound copy, so a fixed block matches its performance.
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    _copy_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=1024)
-
-    return out.view_as(x_contig)
+    logger.debug("GEMS_ENFLAME LIFT_FRESH")
+    return x

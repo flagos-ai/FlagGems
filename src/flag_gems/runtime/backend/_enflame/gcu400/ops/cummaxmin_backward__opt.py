@@ -100,7 +100,7 @@ def _cmb_inner_kernel(
 
 
 def cummaxmin_backward(grad_output, input, indices, dim):
-    logger.debug("GEMS_ENFLAME_GCU400 CUMMAXMIN_BACKWARD")
+    logger.debug("GEMS_ENFLAME CUMMAXMIN_BACKWARD")
     ndim = grad_output.ndim
     if dim < 0:
         dim += ndim

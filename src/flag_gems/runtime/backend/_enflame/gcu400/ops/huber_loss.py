@@ -320,7 +320,7 @@ def _huber_loss_compute(input, target, reduction, delta, result_dtype):
 
 
 def huber_loss(self: torch.Tensor, target: torch.Tensor, reduction=1, delta=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 HUBER_LOSS")
+    logger.debug("GEMS_ENFLAME HUBER_LOSS")
     reduction = _normalize_reduction(reduction)
     result_dtype = torch.result_type(self, target)
     return _huber_loss_compute(self, target, reduction, delta, result_dtype)
@@ -334,7 +334,7 @@ def huber_loss_out(
     *,
     out: torch.Tensor,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 HUBER_LOSS_OUT")
+    logger.debug("GEMS_ENFLAME HUBER_LOSS_OUT")
     reduction = _normalize_reduction(reduction)
     val = _huber_loss_compute(self, target, reduction, delta, out.dtype)
     if reduction == 0:

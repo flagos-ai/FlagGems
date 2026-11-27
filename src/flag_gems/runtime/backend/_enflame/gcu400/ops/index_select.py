@@ -76,6 +76,7 @@ def index_select_contiguous_kernel(
     index_len,
     total_p,
     BLOCK_I: tl.constexpr,
+    BLOCK_J: tl.constexpr,
     GRID_X: tl.constexpr,
     OUTER_ONE: tl.constexpr,
 ):
@@ -84,6 +85,14 @@ def index_select_contiguous_kernel(
     # grid.x is fixed at GRID_X with a stride loop covering all (o, j) pairs; full expansion
     # (grid.x=total_p) measured 0.66~0.92x worse (too many CTAs, scheduling overhead),
     # so a fixed grid better matches the GCU compute unit count.
+    #
+    # One program handles BLOCK_J gathered rows at once when the row is short: a single-row program moves
+    # only `inner` elements (512 B for inner == 256), so the gather was latency-bound on short transfers
+    # and paid one index load per row. Grouping rows into a [BLOCK_J, BLOCK_I] tile multiplies the transfer
+    # size per program and amortizes the index load. For a long row the tile only adds mask arithmetic on top
+    # of an already DMA-sized transfer, so BLOCK_J == 1 keeps the original 1-D body verbatim (measured
+    # 2026-11-22, end-to-end benchmark): grouping a 65536-element row cost 0.0166 -> 0.0621 ms, while
+    #   (10000, 256) idx 1000 fp16: 0.0137 ms -> 0.0119 ms with BLOCK_J=8.
     pid_x = tl.program_id(0)
     pid_i = tl.program_id(1)
     num_prog_i = tl.num_programs(1)
@@ -94,19 +103,36 @@ def index_select_contiguous_kernel(
     for bi in range(pid_i, inner_blocks, num_prog_i):
         i_offs = bi * BLOCK_I + tl.arange(0, BLOCK_I)
         i_mask = i_offs < inner
-        for p in range(pid_x, total_p, GRID_X):
-            if OUTER_ONE:
-                # With dim == 0, outer is always 1 and p is j, so integer division / modulo is avoided
-                o = 0
-                j = p
-            else:
-                o = p // index_len
-                j = p % index_len
-            idx = tl.load(index + j).to(tl.int32)
-            in_off = (o * N + idx) * inner + i_offs
-            out_off = p * inner + i_offs
-            val = tl.load(inp + in_off, mask=i_mask, other=0)
-            tl.store(out + out_off, val, mask=i_mask)
+        if BLOCK_J == 1:
+            for p in range(pid_x, total_p, GRID_X):
+                if OUTER_ONE:
+                    # With dim == 0, outer is always 1 and p is j, so integer division / modulo is avoided
+                    o = 0
+                    j = p
+                else:
+                    o = p // index_len
+                    j = p % index_len
+                idx = tl.load(index + j).to(tl.int32)
+                in_off = (o * N + idx) * inner + i_offs
+                out_off = p * inner + i_offs
+                val = tl.load(inp + in_off, mask=i_mask, other=0)
+                tl.store(out + out_off, val, mask=i_mask)
+        else:
+            for base_p in range(pid_x, tl.cdiv(total_p, BLOCK_J), GRID_X):
+                p = base_p * BLOCK_J + tl.arange(0, BLOCK_J)
+                p_mask = p < total_p
+                if OUTER_ONE:
+                    o = p * 0
+                    j = p
+                else:
+                    o = p // index_len
+                    j = p % index_len
+                idx = tl.load(index + j, mask=p_mask, other=0).to(tl.int32)
+                in_off = (o * N + idx)[:, None] * inner + i_offs[None, :]
+                out_off = p[:, None] * inner + i_offs[None, :]
+                tile_mask = p_mask[:, None] & i_mask[None, :]
+                val = tl.load(inp + in_off, mask=tile_mask, other=0)
+                tl.store(out + out_off, val, mask=tile_mask)
 
 
 def make_contiguous_with_correct_stride(tensor):
@@ -149,10 +175,30 @@ def index_select(inp, dim, index):
         out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
         if not inp.is_contiguous():
             inp = inp.contiguous()
-        # grid.x is fixed to match the GCU compute unit count: full expansion (grid.x=total_p) measured
-        # 0.66x worse (too many CTAs, scheduling overhead); a fixed 48 with a stride loop is optimal.
-        grid_x = min(total_p, MAX_GRID_DIM)
-        block_i = min(triton.next_power_of_2(inner), 1024)
+        # One launch rule for the whole contiguous-gather family: BLOCK spans the largest contiguous run of a row
+        # (capped at 65536 elements), grid.x is pinned at 48 and a stride loop covers the p axis. That keeps the CTA
+        # count near the GCU400 compute-unit count while giving every CTA a DMA-sized contiguous chunk; the earlier
+        # "small BLOCK + more CTAs" shape paid a per-CTA gather-index load and short
+        # transfers on exactly the large-inner
+        # cases (measured 2026-11-21, do_bench median, core shapes):
+        #   (1024x65536, idx 102) fp16: B2048/gx96 181us -> B65536/nw8/gx48 15.5us (native 15.7us, 1.01x)
+        #   (4096x4096,  idx 409) fp32: B1024        35.2us -> B4096/nw2/gx48  10.9us (native 10.2us, 0.93x)
+        #   (4096x4096,  idx 409) fp16: B1024        34.3us -> B4096/nw2/gx48   8.9us (native  7.8us, 0.88x)
+        # Small/medium inner keeps the previous shape (block == whole row, gx=48, 2 warps) and measures unchanged.
+        block_i = min(triton.next_power_of_2(inner), 65536)
+        # Rows per program: only a short row (<= 512 B at fp16) gains from grouping, and only when
+        # there are enough rows to amortize the grouped index load.
+        if block_i <= 256 and total_p >= 256:
+            block_j = min(8, max(1, triton.next_power_of_2(total_p)))
+        else:
+            block_j = 1
+        grid_x = min(triton.cdiv(total_p, block_j), MAX_GRID_DIM)
+        if block_i <= 4096:
+            warps = 2
+        elif block_i <= 32768:
+            warps = 4
+        else:
+            warps = 8
         index_select_contiguous_kernel[
             (grid_x, min(triton.cdiv(inner, block_i), GCU_MAX_GRID_Y))
         ](
@@ -164,16 +210,14 @@ def index_select(inp, dim, index):
             index_len,
             total_p,
             block_i,
+            block_j,
             grid_x,
             outer == 1,
-            # Large inner (a single contiguous transfer >= 8192 elements) has higher throughput with 4 warps,
-            # while small/medium inner uses 2 warps for cheaper launch / occupancy (measured better than a single value
-            # for all paths).
-            num_warps=4 if inner >= 8192 else 2,
+            num_warps=warps,
         )
         return out
 
-    # with dim_compress (when dim == last it is an identity permute, no copy)
+    # with dim_compress (when dim == last this is an identity permute, no copy)
     inp = dim_compress(inp, dim)
     M = inp.numel() // N
     out_shape = list(inp.shape)

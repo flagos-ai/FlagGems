@@ -216,6 +216,11 @@ def greater_equal_(A, B):
     if N == 0:
         return A
 
+    # Normalise Python scalars to 0-dim tensors so the rest of the function
+    # can unconditionally call B.dtype, B.numel(), B.is_contiguous(), etc.
+    if not isinstance(B, torch.Tensor):
+        B = torch.full((), B, dtype=torch.result_type(A, B), device=A.device)
+
     code = _dtype_code(torch.promote_types(A.dtype, B.dtype))
     same_dtype = A.dtype == B.dtype
     nvc = _num_vectorcore()

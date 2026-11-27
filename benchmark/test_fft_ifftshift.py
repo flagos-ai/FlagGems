@@ -25,6 +25,15 @@ def _fft_ifftshift_input_fn(shape, cur_dtype, device):
     yield inp, {"dim": [-1]}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::fft_ifftshift lowers to topsaten roll, which rejects the 2**30 "
+        "element benchmark shape (roll total byte size exceeds the GCU400 DTE "
+        "tensor limit of 4GiB-1) and aborts the process, so no native baseline "
+        "can be measured"
+    ),
+)
 @pytest.mark.fft_ifftshift
 def test_fft_ifftshift():
     bench = base.GenericBenchmark(

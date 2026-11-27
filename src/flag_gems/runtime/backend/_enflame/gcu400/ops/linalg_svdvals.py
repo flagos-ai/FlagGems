@@ -18,7 +18,11 @@ import logging
 
 import torch
 
-from flag_gems.ops.svd import svd
+# gcu400: bind the enflame-local svd first (device-type gating plus GCU kernel fixes), matching
+# linalg_svd.py / _linalg_svd.py; the generic flag_gems.ops.svd is only the large-shape fallback
+# and the common file is left untouched.
+from flag_gems.ops.svd import svd as _generic_svd
+from flag_gems.runtime.backend._enflame.gcu400.ops.svd import svd as _gcu_svd
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +40,24 @@ def linalg_svdvals(A: torch.Tensor, driver: str = None) -> torch.Tensor:
     Returns:
         Singular values in descending order, shape (*, min(m, n)).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SVDVALS")
+    logger.debug("GEMS_ENFLAME LINALG_SVDVALS")
     # Only float32 is supported for SVD on CUDA
     assert A.dtype == torch.float32, f"Expected float32, got {A.dtype}"
     if not A.is_contiguous():
         A = A.contiguous()
 
+    # Take the backend-specific implementation first: compute_uv=False hits the
+    # _singular_values_only fast path (only S, no U/V), whose grid is already folded to one
+    # dimension for the GCU grid.y<=255 limit, so k up to 512 can launch.
     try:
-        # Use Triton-based SVD to compute singular values only.
-        # compute_uv=False avoids unnecessary U/V matrix computation
-        # and uses the dedicated singular-values-only kernels
-        # (_small_jacobi_svals, _rank2_svals, _blocked_jacobi_pair_svals).
-        result = svd(A, some=True, compute_uv=False)
-        return result.S
+        return _gcu_svd(A, some=True, compute_uv=False).S
+    except NotImplementedError:
+        pass
+
+    # The backend fast path only covers k<=512 and max(m,n)<=1024; larger shapes (e.g. 4096x4096,
+    # 1024x65536) fall back to the generic Triton implementation, still a kernel path, never native.
+    try:
+        return _generic_svd(A, some=True, compute_uv=False).S
     except NotImplementedError:
         # Fall back to native torch. Use getattr to bypass flag_gems dispatch
         # (which would re-intercept torch.linalg.svdvals → recursion).

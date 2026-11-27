@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # ``quantize_per_tensor`` only accepts float32 tensors, so the benchmark input is
@@ -37,6 +39,10 @@ def _input_fn_out(shape, dtype, device):
     yield inp, SCALE, ZERO_POINT, Q_DTYPE, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.quantize_per_tensor
 def test_quantize_per_tensor():
     bench = base.GenericBenchmarkExcluse1D(

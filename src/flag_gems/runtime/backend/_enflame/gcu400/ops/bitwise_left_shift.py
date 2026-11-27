@@ -44,11 +44,16 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+# 24 CTAs (1 program/SIP) + 2x larger blocks are the concurrency sweet spot for streaming kernels on this machine
+# (2026-11-16
+# recalibration with triton 3.6): after doubling BLOCK, DSM 786KB/CTA > 448KB, and the hardware automatically uses 1
+# program/SIP resident (24-way); deep DMA bursts beat 48-way shallow streams -- int16 1G +4.8%,
+# int16/int32 16M +5.0%/+4.2%, and int32 1G flat overtakes codegen. The previous 48-CTA sweet spot
+# was measured with the old BLOCK (65536/32768); after doubling BLOCK the sweet spot flipped.
 FLAT_SIPS = 24
-# Beyond this int32 scale the codegen bptr/DMA path is faster (measured 256M/1G: 1.047x/1.055x
-# vs flat32768w2 1.038x/1.045x), so fall back; int16 flat wins at all scales, so no threshold there.
-FLAT_INT32_MAX_NUMEL = 128 * 1024 * 1024
 FLAT_MIN_BLOCK = 256
+# Large-block streaming BLOCK: DSM = 3 streams x BLOCK x itemsize ≤ 917504B/SPC (doubling again would
+# go OOR; see the less_equal BLOCK 262144 case); for small N, shrink with next_pow2.
 FLAT_DTYPES = (torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64)
 FLAT_I64_BLOCK = 8192
 
@@ -149,22 +154,24 @@ def _lshift_use_flat(A, B):
         and A.dim() >= 1
         and A.numel() > 0
         and A.dtype in FLAT_DTYPES
-        and not (
-            A.element_size() == 4 and A.numel() >= FLAT_INT32_MAX_NUMEL
-        )  # Large int32 uses codegen bptr/DMA
     )
 
 
 def _lshift_flat_params(numel, itemsize):
     if itemsize <= 2:
-        block = 65536
+        block = 131072
     elif itemsize == 4:
-        block = 32768
+        block = 65536
     else:
         block = FLAT_I64_BLOCK
     if numel < block:
         block = max(triton.next_power_of_2(numel), FLAT_MIN_BLOCK)
-    num_warps = 2 if block >= 32768 else 4
+    # num_warps: for large cases at 24-way, nw{1,2,4,8} showed no measured difference (6 interleaved rounds), so choose
+    # 4
+    # to match the hard GCU constraint num_warps<=4; for tiny cases (single CTA ≤4096, launch-dominated), nw2 is faster
+    # by 3.1%/0.9% (i16/i32, median of 5 interleaved rounds on 2026-11-16) -- 8192 i32 with nw2 is instead 14% worse,
+    # so pin the threshold at 4096 and do not extrapolate.
+    num_warps = 2 if numel <= 4096 else 4
     grid = (1 if numel <= block else min(triton.cdiv(numel, block), FLAT_SIPS),)
     return block, num_warps, grid
 

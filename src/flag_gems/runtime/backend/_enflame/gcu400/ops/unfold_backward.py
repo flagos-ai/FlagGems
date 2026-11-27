@@ -58,7 +58,7 @@ def _unfold_backward_kernel(
 def unfold_backward(
     grad_in: torch.Tensor, input_sizes, dim: int, size: int, step: int
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UNFOLD_BACKWARD")
+    logger.debug("GEMS_ENFLAME UNFOLD_BACKWARD")
     if step <= 0:
         raise ValueError("step must be > 0")
 

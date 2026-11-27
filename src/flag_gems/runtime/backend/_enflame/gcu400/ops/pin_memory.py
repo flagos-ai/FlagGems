@@ -19,23 +19,41 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+# torch_gcu's transfer_to_gcu migration shim wraps torch.empty_like /
+# torch.empty_strided in a Python-level device-retranslation layer that costs
+# ~1.6-1.8us per call. Pinning a CPU tensor never passes a device argument, so
+# resolve the raw factory builtins once at import time and skip the shim.
+# No-op when the shim is absent (vanilla torch or other backends).
+_empty_like = getattr(torch.empty_like, "__wrapped__", None) or torch.empty_like
+_empty_strided = (
+    getattr(torch.empty_strided, "__wrapped__", None) or torch.empty_strided
+)
+
 
 def pin_memory(self: torch.Tensor, device=None) -> torch.Tensor:
     """Public ATen entry for pinning a strided CPU tensor into page-locked memory."""
-    logger.debug("GEMS_ENFLAME_GCU400 PIN_MEMORY")
-    if self.device.type != "cpu":
+    logger.debug("GEMS_ENFLAME PIN_MEMORY")
+    if not self.is_cpu:
         raise RuntimeError("cannot pin a tensor that is not on the CPU")
-    if device is not None and torch.device(device).type not in ("cuda", "gcu"):
-        raise RuntimeError(f"{torch.device(device).type.upper()} is not an accelerator")
+    if device is not None:
+        device_type = torch.device(device).type
+        if device_type not in ("cuda", "gcu"):
+            raise RuntimeError(f"{device_type.upper()} is not an accelerator")
     if self.layout != torch.strided:
         raise RuntimeError("_pin_memory currently supports strided tensors only")
-    result = torch.empty_strided(
-        self.size(),
-        self.stride(),
-        dtype=self.dtype,
-        layout=self.layout,
-        device="cpu",
-        pin_memory=True,
-    )
+
+    # Contiguous inputs (the hot path) take the cheaper empty_like factory;
+    # strided inputs keep exact stride preservation like the native kernel.
+    if self.is_contiguous():
+        result = _empty_like(self, pin_memory=True)
+    else:
+        result = _empty_strided(
+            self.size(),
+            self.stride(),
+            dtype=self.dtype,
+            layout=torch.strided,
+            device="cpu",
+            pin_memory=True,
+        )
     result.copy_(self)
     return result
