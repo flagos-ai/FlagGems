@@ -32,3 +32,24 @@ def test_isnan(shape, dtype):
     res_out = flag_gems.isnan(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.isnan_backward
+def test_isnan_backward_non_differentiable():
+    """``isnan`` outputs a bool tensor, so it has no gradient.
+
+    The backward form is undefined; this pins that the output matches the
+    native op and is non-differentiable, rather than fabricating a gradient
+    for a boolean result.
+    """
+    inp = torch.randn(1024, dtype=torch.float32, device=flag_gems.device)
+    inp[::3] = float("nan")
+    ref_inp = utils.to_reference(inp, False)
+
+    res_out = flag_gems.isnan(inp)
+    ref_out = torch.isnan(ref_inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.dtype == torch.bool
+    assert not res_out.requires_grad
+    assert res_out.grad_fn is None
