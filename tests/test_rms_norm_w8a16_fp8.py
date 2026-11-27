@@ -168,6 +168,10 @@ def test_rms_norm_w8a16_fp8_encodings(dtype, shape, group_size, strided):
     if flag_gems.vendor_name == "hygon" and dtype == torch.float16:
         # Hygon's native FP16 conversion canonicalizes signed zero.
         expected_sign = torch.zeros_like(result[:, zero], dtype=torch.bool)
+    elif flag_gems.vendor_name == "metax":
+        # Positive scales preserve the FP8 zero signs; MetaX's reference
+        # multiply can discard the sign of the 0x80 encoding.
+        expected_sign = (bits[zero] == 0x80).expand(result.shape[0], -1)
     else:
         expected_sign = torch.signbit(expected[zero]).expand(result.shape[0], -1)
     utils.gems_assert_equal(
