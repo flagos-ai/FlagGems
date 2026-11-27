@@ -128,3 +128,45 @@ def test_cumsum_out(shape, dtype):
     flag_gems.cumsum_out(inp, dim=dim, out=out)
 
     utils.gems_assert_close(out, ref_out_buf, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumsum
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia", reason="Generic NVIDIA cumsum regression"
+)
+@pytest.mark.parametrize(
+    "shape, value, dtype",
+    [
+        pytest.param((1024, 2), 3_000_000, None, id="single-block-overflow"),
+        pytest.param((4097, 2), 3_000_000, None, id="multi-block-overflow"),
+        pytest.param((4097, 2), 1_000_000, None, id="inter-block-prefix"),
+        pytest.param((4097, 2), 1, None, id="small-values"),
+        pytest.param((4097, 2), 3_000_000, torch.int64, id="explicit-int64"),
+        pytest.param((4097, 2), 3_000_000, torch.int32, id="explicit-int32"),
+        pytest.param((4097,), 3_000_000, None, id="row-scan"),
+    ],
+)
+def test_cumsum_integer_accumulation(shape, value, dtype):
+    cpu_inp = torch.full(shape, value, dtype=torch.int32)
+    expected = torch.cumsum(cpu_inp, dim=0, dtype=dtype)
+
+    actual = flag_gems.cumsum(cpu_inp.to(flag_gems.device), dim=0, dtype=dtype)
+
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.cumsum_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia", reason="Generic NVIDIA cumsum regression"
+)
+@pytest.mark.parametrize("out_dtype", [torch.int64, torch.int32])
+def test_cumsum_out_integer_accumulation(out_dtype):
+    cpu_inp = torch.full((4097, 2), 3_000_000, dtype=torch.int32)
+    expected = torch.empty_like(cpu_inp, dtype=out_dtype)
+    torch.cumsum(cpu_inp, dim=0, out=expected)
+    out = torch.empty_like(expected, device=flag_gems.device)
+
+    actual = flag_gems.cumsum_out(cpu_inp.to(flag_gems.device), dim=0, out=out)
+
+    assert actual is out
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
