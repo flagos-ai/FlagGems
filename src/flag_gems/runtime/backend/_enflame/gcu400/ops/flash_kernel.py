@@ -90,7 +90,7 @@ def apply_dropout(
     p_dropout_uint8: tl.constexpr,
     is_dropout: tl.constexpr,
     encode_dropout_in_sign_bit: tl.constexpr,
-    NUM_HEADS: tl.constexpr,
+    NUM_HEADS,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -200,7 +200,7 @@ def softmax_rescale(
     S,
     row_max,
     row_sum,
-    softmax_scale_log2e: tl.constexpr,
+    softmax_scale_log2e,
     is_border: tl.constexpr,
     # is_init: tl.constexpr
 ):
@@ -1336,6 +1336,17 @@ def load_from_page(
         "seqlen_q_rounded",
         "seqlen_k_rounded",
         "total_q",
+        # Scalar metadata that only feeds address arithmetic. Specialising it
+        # (equal_to_1 / divisible_by_16) used to key one extra device kernel per
+        # head-count and softcap combination, which dominated cold compile time.
+        "h",
+        "hk",
+        "h_hk_ratio",
+        "softcap",
+        "scale_softmax",
+        "scale_softmax_log2",
+        "alibi_slopes_batch_stride",
+        "page_table_batch_stride",
     ]
 )
 def flash_varlen_fwd_kernel(
@@ -1366,9 +1377,9 @@ def flash_varlen_fwd_kernel(
     # sizes
     b,
     bk,
-    h: tl.constexpr,
-    hk: tl.constexpr,
-    h_hk_ratio: tl.constexpr,
+    h,
+    hk,
+    h_hk_ratio,
     seqlen_q,
     seqlen_k,
     seqlen_q_rounded,
@@ -1377,9 +1388,9 @@ def flash_varlen_fwd_kernel(
     d_rounded: tl.constexpr,
     # scaling factors
     is_softcap: tl.constexpr,
-    softcap: tl.constexpr,
-    scale_softmax: tl.constexpr,
-    scale_softmax_log2: tl.constexpr,
+    softcap,
+    scale_softmax,
+    scale_softmax_log2,
     # dropout
     is_dropout: tl.constexpr,
     p_dropout: tl.constexpr,
@@ -1397,11 +1408,11 @@ def flash_varlen_fwd_kernel(
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
-    alibi_slopes_batch_stride: tl.constexpr,
+    alibi_slopes_batch_stride,
     # block table
     total_q,
     page_table_ptr,
-    page_table_batch_stride: tl.constexpr,
+    page_table_batch_stride,
     block_size: tl.constexpr,
     k_page_stride,
     # kernel params

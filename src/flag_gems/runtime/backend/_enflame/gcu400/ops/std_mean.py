@@ -1524,8 +1524,11 @@ def _run_global(
     is_complex,
 ):
     if is_complex:
-        inp_ptr = torch.view_as_real(inp).reshape(-1)
-        mean_ptr = torch.view_as_real(out_mean).reshape(-1)
+        # Metadata-only views: the kernels consume the interleaved real storage.
+        inp_ptr = torch.view_as_real(inp).reshape(-1)  # allow-torch-compute: pure view
+        mean_ptr = torch.view_as_real(out_mean).reshape(
+            -1
+        )  # allow-torch-compute: pure view
     else:
         inp_ptr = inp
         mean_ptr = out_mean
@@ -1671,7 +1674,9 @@ def _run_reduction(
     is_complex,
 ):
     if is_complex:
-        mean_ptr = torch.view_as_real(out_mean).reshape(-1)
+        mean_ptr = torch.view_as_real(out_mean).reshape(
+            -1
+        )  # allow-torch-compute: pure view
     else:
         mean_ptr = out_mean
 
@@ -1686,9 +1691,13 @@ def _run_reduction(
         M = math.prod(shape[:dim])
         K = math.prod(shape[dim + 1 :])
         contiguous = inp.contiguous()
-        inp_ptr = (
-            torch.view_as_real(contiguous).reshape(-1) if is_complex else contiguous
-        )
+        if is_complex:
+            # Metadata-only view over the freshly materialized contiguous copy.
+            inp_ptr = torch.view_as_real(contiguous).reshape(
+                -1
+            )  # allow-torch-compute: pure view
+        else:
+            inp_ptr = contiguous
         if K > 1:
             block_k = min(triton.next_power_of_2(K), _NON_INNER_BLOCK_SIZE)
             kernel = (
@@ -1847,9 +1856,13 @@ def _run_reduction(
     # materialization path only for unusually high-rank reductions.
     if len(batch_dims) > _MAX_STRIDED_NDIM or len(dims) > _MAX_STRIDED_NDIM:
         compressed = dim_compress(inp, dims)
-        inp_ptr = (
-            torch.view_as_real(compressed).reshape(-1) if is_complex else compressed
-        )
+        if is_complex:
+            # Metadata-only view; dim_compress already materialized a copy.
+            inp_ptr = torch.view_as_real(compressed).reshape(
+                -1
+            )  # allow-torch-compute: pure view
+        else:
+            inp_ptr = compressed
         kernel = _std_mean_row_complex_kernel if is_complex else _std_mean_row_kernel
         kernel[(M,)](
             inp_ptr,
@@ -1867,7 +1880,9 @@ def _run_reduction(
 
     # Keep the original storage view here: reshaping a non-contiguous complex
     # tensor would materialize a copy and invalidate the strides passed below.
-    inp_ptr = torch.view_as_real(inp) if is_complex else inp
+    inp_ptr = (
+        torch.view_as_real(inp) if is_complex else inp
+    )  # allow-torch-compute: pure view
     batch_metadata = _fixed_strided_metadata(batch_shape, batch_strides)
     reduce_metadata = _fixed_strided_metadata(reduce_shape, reduce_strides)
     use_int64_index = not can_use_int32_index(inp)
@@ -1956,9 +1971,13 @@ def _std_mean_impl(
         if M == 0:
             pass
         elif N == 0:
-            mean_ptr = (
-                torch.view_as_real(out_mean).reshape(-1) if is_complex else out_mean
-            )
+            if is_complex:
+                # Metadata-only view used by the NaN fill kernel.
+                mean_ptr = torch.view_as_real(out_mean).reshape(
+                    -1
+                )  # allow-torch-compute: pure view
+            else:
+                mean_ptr = out_mean
             _std_mean_nan_kernel[(triton.cdiv(M, _BLOCK_SIZE),)](
                 out_std, M, BLOCK_SIZE=_BLOCK_SIZE
             )

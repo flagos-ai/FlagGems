@@ -197,6 +197,17 @@ def normal_(self, mean=0, std=1, *, generator=None):
     N = volume(shape)
     if N == 0:
         return self
+    # normal_fused_kernel addresses the output linearly (out_ptr + off), so a
+    # strided in-place target cannot be filled directly: the samples would be
+    # scattered over the whole storage, overwriting elements outside the view
+    # and leaving the view with only part of the stream.  Fill a contiguous
+    # staging buffer instead and copy it back; the contiguous fast path still
+    # writes in place with no extra buffer or copy.
+    staging = (
+        self
+        if self.is_contiguous()
+        else torch.empty(shape, device=device, dtype=self.dtype)
+    )
     BLOCK, grid, num_warps = _launch_config(N, num_warps=4, big_num_warps=2)
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(
@@ -204,7 +215,7 @@ def normal_(self, mean=0, std=1, *, generator=None):
     )
     with torch_device_fn.device(device):
         normal_fused_kernel[grid](
-            self,
+            staging,
             N,
             float(std),
             float(mean),
@@ -213,6 +224,8 @@ def normal_(self, mean=0, std=1, *, generator=None):
             BLOCK=BLOCK,
             num_warps=num_warps,
         )
+    if staging is not self:
+        self.copy_(staging)
     return self
 
 

@@ -1177,6 +1177,22 @@ def _efficient_attn_bwd_gems(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch_gcu registers no kernel for aten::_efficient_attention_forward, "
+        "so the backward saved state (out, lse) cannot be built and no case of "
+        "this benchmark can be timed"
+    ),
+)
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for "
+        "aten::_efficient_attention_backward, so the native baseline leg cannot "
+        "run on this vendor"
+    ),
+)
 @pytest.mark.efficient_attention_backward
 def test_perf_efficient_attention_backward():
     bench = EfficientAttentionBackwardBenchmark(

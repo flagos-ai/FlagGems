@@ -860,8 +860,10 @@ def mha_varlan_fwd_opt(
             )
         else:
             is_dropout = False
-            # philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
-            philox_args = None
+            # Keep the same argument types as the non-opt entry point so both
+            # entry points hit one compiled kernel instead of two: a None
+            # placeholder would add it to the specialization key.
+            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
 
         p_dropout = 1 - p_dropout
         p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -874,8 +876,9 @@ def mha_varlan_fwd_opt(
                 device=q_device,
             )
         else:
-            # p = torch.empty((), device=q_device)
-            p = None
+            # Same placeholder tensor as the non-opt entry point: passing None
+            # here would key a separate specialization of the same kernel.
+            p = torch.empty((), device=q_device)
         if zero_tensors:
             out.zero_()
             lse.fill_(float("-inf"))
@@ -901,7 +904,7 @@ def mha_varlan_fwd_opt(
             o_batch_stride,  # o_batch_stride,
             cu_seqlens_q is not None,  # is_cu_seqlens_q,
             cu_seqlens_q,  # cu_seqlens_q_ptr,
-            cu_seqlens_k is not None,  # is_cu_seqlens_k,
+            seqused_k is None,  # is_cu_seqlens_k (same rule as the non-opt entry)
             cu_seqlens_k,  # cu_seqlens_k_ptr,
             seqused_k is not None,  # is_seqused_k,
             seqused_k,  # seqused_k_ptr,
