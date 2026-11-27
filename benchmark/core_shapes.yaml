@@ -474,6 +474,18 @@ addbmm_backward:
     - [8, 65, 127, 1025]
   shape_desc: "B, M, N, K"
 
+nll_loss_backward:
+  shapes:
+  - - 2
+    - 7
+  - - 64
+    - 128
+  - - 512
+    - 1024
+  - - 2048
+    - 1024
+  shape_desc: Frozen backward30 nll input shape
+
 linear:
   # Matched by op_name, which set_shapes() looks up before falling back to
   # the MRO class name, so this override leaves every other BlasBenchmark op
