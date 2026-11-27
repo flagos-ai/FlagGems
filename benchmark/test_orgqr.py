@@ -23,7 +23,8 @@ def test_orgqr():
     bench = OrgqrBenchmark(
         op_name="orgqr",
         torch_op=torch.orgqr,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32]
+        + ([torch.float64] if flag_gems.runtime.device.support_fp64 else []),
     )
     bench.set_gems(flag_gems.orgqr)
     bench.run()
@@ -40,7 +41,8 @@ def test_orgqr_out():
     bench = OrgqrBenchmark(
         op_name="orgqr_out",
         torch_op=torch_orgqr_out,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32]
+        + ([torch.float64] if flag_gems.runtime.device.support_fp64 else []),
     )
     bench.set_gems(gems_orgqr_out)
     bench.run()

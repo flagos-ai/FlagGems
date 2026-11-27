@@ -57,6 +57,10 @@ def _reference_orgqr(input, tau):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (dtype == torch.float64):
+        pytest.skip(
+            "Kunlunxin requested FP64 fixture and native output narrow to Float"
+        )
     use_empty_cpu_reference = flag_gems.vendor_name == "mthreads" and shape[-1] == 0
     if use_empty_cpu_reference:
         # The zero-column Q and reflector vector are empty, including without LAPACK.
@@ -99,6 +103,10 @@ def test_orgqr_invalid_shapes():
 @pytest.mark.orgqr
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_orgqr_complex_is_explicitly_unsupported(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (dtype == torch.complex128):
+        pytest.skip(
+            "Kunlunxin requested complex128 fixture and native output narrow to complex64"
+        )
     input, tau = make_reflectors((4, 3), dtype)
     assert torch.orgqr(input, tau).dtype == dtype
     with pytest.raises(RuntimeError, match="complex dtypes are not supported"):
@@ -117,6 +125,8 @@ def test_accuracy_orgqr_out(shape, dtype):
         tau = torch.empty((*shape[:-2], 0), dtype=dtype, device=input.device)
     else:
         input, tau = make_reflectors(shape, dtype)
+        if flag_gems.vendor_name == "kunlunxin" and input.dtype != dtype:
+            pytest.skip(f"Kunlunxin reflector fixture narrows {dtype} to {input.dtype}")
         ref_input = utils.to_reference(input)
         ref_tau = utils.to_reference(tau)
         ref_out = torch.empty(0, dtype=dtype, device=ref_input.device)
@@ -133,6 +143,8 @@ def test_accuracy_orgqr_out(shape, dtype):
 @pytest.mark.parametrize("layout", ["transposed_batch", "sliced_batch"])
 def test_orgqr_out_multiple_noncontiguous_batch_dimensions(dtype, layout):
     input, tau = make_reflectors((2, 3, 7, 5), dtype)
+    if flag_gems.vendor_name == "kunlunxin" and input.dtype != dtype:
+        pytest.skip(f"Kunlunxin reflector fixture narrows {dtype} to {input.dtype}")
     ref_input = utils.to_reference(input)
     ref_tau = utils.to_reference(tau)
 
@@ -216,12 +228,6 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
     assert result is alias_input
     utils.gems_assert_close(result, ref_alias, torch.float32)
 
-    wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
-    wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
-    result = flag_gems.orgqr_out(input, tau, out=wide_out)
-    ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
-    utils.gems_assert_close(result, ref, torch.float64)
-
     bad_out = torch.empty((7, 5), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.orgqr(input, tau, out=bad_out)
@@ -233,3 +239,57 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
         torch.orgqr(input, tau, out=cpu_out)
     with pytest.raises(RuntimeError):
         flag_gems.orgqr_out(input, tau, out=cpu_out)
+
+
+@pytest.mark.orgqr_out
+def test_orgqr_out_widen_dtype_contract():
+    input, tau = make_reflectors((7, 5), torch.float32)
+    ref_input = utils.to_reference(input)
+    ref_tau = utils.to_reference(tau)
+    wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin" and wide_out.dtype != torch.float64:
+        pytest.skip("Kunlunxin out factory narrows requested float64 to float32")
+    wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
+    result = flag_gems.orgqr_out(input, tau, out=wide_out)
+    ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
+    utils.gems_assert_close(result, ref, torch.float64)
+
+
+@pytest.mark.orgqr
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("n", [5, 32])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_orgqr_noncontiguous_batch(n, layout):
+    input, tau = make_reflectors((4, 3, n + 2, n), torch.float32)
+    if layout == "transpose":
+        input, tau = input.transpose(0, 1), tau.transpose(0, 1)
+    else:
+        input, tau = input[1::2], tau[1::2]
+    reference = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
+    result = flag_gems.orgqr(input, tau)
+    utils.gems_assert_close(result, reference, torch.float32)
+
+
+@pytest.mark.orgqr
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin validation regression"
+)
+@pytest.mark.parametrize("mismatch", ["dtype", "device"])
+def test_orgqr_rejects_mismatched_tau(mismatch):
+    inp = torch.empty((4, 3), device=flag_gems.device, dtype=torch.float32)
+    tau = torch.empty(
+        (3,),
+        device="cpu" if mismatch == "device" else inp.device,
+        dtype=torch.float16 if mismatch == "dtype" else inp.dtype,
+    )
+    with pytest.raises(RuntimeError, match="same dtype and device"):
+        flag_gems.orgqr(inp, tau)
+
+
+@pytest.mark.orgqr
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin tile limit")
+def test_orgqr_large_row_limit():
+    inp = torch.empty((2049, 1), device=flag_gems.device)
+    tau = torch.empty((1,), device=flag_gems.device)
+    with pytest.raises(NotImplementedError, match="limit 2048"):
+        flag_gems.orgqr(inp, tau)
