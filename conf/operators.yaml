@@ -22379,6 +22379,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: swiglu_backward_and_per_token_cast
+  description: Compute SwiGLU gradients and group-32 FP8 output gradients.
+  for:
+  - swiglu_backward_and_per_token_cast
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
