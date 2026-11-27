@@ -54,7 +54,11 @@ ATOL_DICT = {
 }
 
 try:
-    gpu_memory_available = torch.cuda.get_device_properties(0).total_memory
+    _mem_fn = getattr(flag_gems.runtime.torch_device_fn, "mem_get_info", None)
+    if _mem_fn is not None:
+        _, gpu_memory_available = _mem_fn()
+    else:
+        gpu_memory_available = 32 * 1024**3
 except Exception:
     gpu_memory_available = 32 * 1024**3
 
@@ -79,14 +83,13 @@ def assert_close(actual, expected, rtol=1e-4, atol=None, dtype=torch.float32):
     ), f"Results don't match: max diff={(actual - expected).abs().max().item()}"
 
 
-def create_tensor(shape, dtype, device="cuda"):
+def create_tensor(shape, dtype, device=flag_gems.device):
     """Create test tensor"""
     x = torch.randn(shape, dtype=dtype, device=device)
     return x
 
 
 # 1. Basic functionality tests - Nearest Neighbor Mode
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleNearest4D:
     """Test 4D nearest neighbor mode."""
 
@@ -102,7 +105,7 @@ class TestGridSampleNearest4D:
         grid_shape = (1, 32, 32, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)  # Keep in bounds
 
         y_gems = grid_sample(
@@ -126,7 +129,7 @@ class TestGridSampleNearest4D:
         grid_shape = (2, 64, 64, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)
 
         y_gems = grid_sample(
@@ -152,7 +155,7 @@ class TestGridSampleNearest4D:
         grid_shape = (1, 32, 32, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
 
         y_gems = grid_sample(
             x,
@@ -183,8 +186,8 @@ class TestGridSampleNearest4D:
         # Create a grid for upsampling (pixel coordinates)
         # Normalized grid for 2x upsampling
         h_out, w_out = 64, 64
-        grid_h = torch.linspace(-1, 1, h_out, device="cuda")
-        grid_w = torch.linspace(-1, 1, w_out, device="cuda")
+        grid_h = torch.linspace(-1, 1, h_out, device=flag_gems.device)
+        grid_w = torch.linspace(-1, 1, w_out, device=flag_gems.device)
         grid_y, grid_x = torch.meshgrid(grid_h, grid_w, indexing="ij")
         grid = torch.stack((grid_x, grid_y), dim=-1).unsqueeze(0)  # (1, 64, 64, 2)
 
@@ -206,7 +209,7 @@ class TestGridSampleNearest4D:
         grid_shape = (1, 32, 32, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)
 
         y_gems = grid_sample(
@@ -219,7 +222,6 @@ class TestGridSampleNearest4D:
         assert_close(y_gems, y_torch, dtype=dtype)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleEdgeCases:
     @pytest.mark.grid_sample
     def test_grid_out_of_bounds_zeros(self):
@@ -232,7 +234,7 @@ class TestGridSampleEdgeCases:
         x = create_tensor(input_shape, dtype)
         # Create grid with out-of-bounds values
         grid = (
-            torch.randn(grid_shape, dtype=dtype, device="cuda") * 3
+            torch.randn(grid_shape, dtype=dtype, device=flag_gems.device) * 3
         )  # Scale up to get OOB
 
         y_gems = grid_sample(
@@ -256,7 +258,7 @@ class TestGridSampleEdgeCases:
         grid_shape = (1, 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda") * 3
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device) * 3
 
         y_gems = grid_sample(
             x, grid, mode="nearest", padding_mode="border", align_corners=False
@@ -276,7 +278,7 @@ class TestGridSampleEdgeCases:
         grid_shape = (1, 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         # Insert some NaN values
         grid[0, 0, 0, 0] = float("nan")
         grid[0, 4, 4, 1] = float("nan")
@@ -299,7 +301,7 @@ class TestGridSampleEdgeCases:
         grid_shape = (1, 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)
 
         # Test with align_corners=True
@@ -332,8 +334,8 @@ class TestGridSampleEdgeCases:
         x = create_tensor(input_shape, dtype)
 
         # Create identity grid
-        grid_h = torch.linspace(-1, 1, H, device="cuda")
-        grid_w = torch.linspace(-1, 1, W, device="cuda")
+        grid_h = torch.linspace(-1, 1, H, device=flag_gems.device)
+        grid_w = torch.linspace(-1, 1, W, device=flag_gems.device)
         grid_y, grid_x = torch.meshgrid(grid_h, grid_w, indexing="ij")
         grid = torch.stack((grid_x, grid_y), dim=-1).unsqueeze(0)
 
@@ -349,15 +351,16 @@ class TestGridSampleEdgeCases:
         assert_close(y_gems, y_torch, dtype=dtype)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleValidation:
     @pytest.mark.grid_sample
     def test_invalid_input_dimensions(self):
         """Test: invalid input dimensions should raise error."""
 
         dtype = torch.float32
-        x = torch.randn(1, 3, 32, dtype=dtype, device="cuda")  # 3D tensor - invalid
-        grid = torch.randn(1, 32, 32, 2, dtype=dtype, device="cuda")
+        x = torch.randn(
+            1, 3, 32, dtype=dtype, device=flag_gems.device
+        )  # 3D tensor - invalid
+        grid = torch.randn(1, 32, 32, 2, dtype=dtype, device=flag_gems.device)
 
         with pytest.raises(ValueError, match="Input must be 4D or 5D"):
             grid_sample(x, grid, mode="nearest")
@@ -367,8 +370,8 @@ class TestGridSampleValidation:
         """Test: invalid mode should raise error."""
 
         dtype = torch.float32
-        x = torch.randn(1, 3, 32, 32, dtype=dtype, device="cuda")
-        grid = torch.randn(1, 32, 32, 2, dtype=dtype, device="cuda")
+        x = torch.randn(1, 3, 32, 32, dtype=dtype, device=flag_gems.device)
+        grid = torch.randn(1, 32, 32, 2, dtype=dtype, device=flag_gems.device)
 
         with pytest.raises(ValueError, match="Invalid mode"):
             grid_sample(x, grid, mode="invalid_mode")
@@ -378,8 +381,8 @@ class TestGridSampleValidation:
         """Test: invalid padding_mode should raise error."""
 
         dtype = torch.float32
-        x = torch.randn(1, 3, 32, 32, dtype=dtype, device="cuda")
-        grid = torch.randn(1, 32, 32, 2, dtype=dtype, device="cuda")
+        x = torch.randn(1, 3, 32, 32, dtype=dtype, device=flag_gems.device)
+        grid = torch.randn(1, 32, 32, 2, dtype=dtype, device=flag_gems.device)
 
         with pytest.raises(ValueError, match="Invalid padding_mode"):
             grid_sample(x, grid, padding_mode="invalid_padding")
@@ -389,8 +392,8 @@ class TestGridSampleValidation:
         """Test: 5D input does not support bicubic mode."""
 
         dtype = torch.float32
-        x = torch.randn(1, 3, 8, 8, 8, dtype=dtype, device="cuda")
-        grid = torch.randn(1, 8, 8, 8, 3, dtype=dtype, device="cuda")
+        x = torch.randn(1, 3, 8, 8, 8, dtype=dtype, device=flag_gems.device)
+        grid = torch.randn(1, 8, 8, 8, 3, dtype=dtype, device=flag_gems.device)
 
         with pytest.raises(
             ValueError, match="Bicubic interpolation only supports 4D input"
@@ -399,7 +402,6 @@ class TestGridSampleValidation:
 
 
 # TODO: Additional test classes to be implemented
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleBilinear4D:
     @pytest.mark.skipif(
         flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -414,7 +416,7 @@ class TestGridSampleBilinear4D:
         grid_shape = (shape[0], 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)
 
         y_gems = grid_sample(
@@ -439,7 +441,7 @@ class TestGridSampleBilinear4D:
         grid_shape = (shape[0], 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)
 
         y_gems = grid_sample(
@@ -465,7 +467,7 @@ class TestGridSampleBilinear4D:
         grid_shape = (1, 16, 16, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -1.0, 1.0)
 
         y_gems = grid_sample(
@@ -495,7 +497,7 @@ class TestGridSampleBilinear4D:
 
         x = create_tensor(input_shape, dtype)
         # Create upsampling grid
-        grid = torch.zeros(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.zeros(grid_shape, dtype=dtype, device=flag_gems.device)
         for i in range(16):
             for j in range(16):
                 grid[0, i, j, 0] = j / 7.5 - 1.0  # Map to [-1, 1]
@@ -520,7 +522,7 @@ class TestGridSampleBilinear4D:
 
         x = create_tensor(input_shape, dtype)
         # Create downsampling grid
-        grid = torch.zeros(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.zeros(grid_shape, dtype=dtype, device=flag_gems.device)
         for i in range(8):
             for j in range(8):
                 grid[0, i, j, 0] = j / 3.5 - 1.0  # Map to [-1, 1]
@@ -536,7 +538,6 @@ class TestGridSampleBilinear4D:
         assert_close(y_gems, y_torch, dtype=dtype)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleBicubic4D:
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(2, 3, 16, 16)])
@@ -550,7 +551,7 @@ class TestGridSampleBicubic4D:
         grid_shape = (shape[0], 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         # Keep grid away from boundaries to avoid edge cases
         grid = torch.clamp(grid, -0.5, 0.5)
 
@@ -574,7 +575,7 @@ class TestGridSampleBicubic4D:
         grid_shape = (1, 8, 8, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         # Keep grid away from boundaries
         grid = torch.clamp(grid, -0.5, 0.5)
 
@@ -597,7 +598,6 @@ class TestGridSampleBicubic4D:
         assert_close(y_gems, y_torch, atol=3.0e-6, dtype=dtype)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSample5D:
     """Test 5D input support."""
 
@@ -614,7 +614,7 @@ class TestGridSample5D:
         grid_shape = (shape[0], 4, 4, 4, 3)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.5, 0.5)
 
         y_gems = grid_sample(
@@ -643,7 +643,7 @@ class TestGridSample5D:
         grid_shape = (1, 4, 4, 4, 3)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.5, 0.5)
 
         y_gems = grid_sample(
@@ -661,7 +661,7 @@ class TestGridSample5D:
 
         dtype = torch.float32
         x = create_tensor((1, 2, 8, 8, 8), dtype)
-        grid = torch.randn((1, 4, 4, 4, 3), dtype=dtype, device="cuda")
+        grid = torch.randn((1, 4, 4, 4, 3), dtype=dtype, device=flag_gems.device)
 
         with pytest.raises(
             ValueError, match="Bicubic interpolation only supports 4D input"
@@ -672,7 +672,6 @@ class TestGridSample5D:
 
 
 # Extreme size tests
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
 class TestGridSampleExtremeSizes:
     """
     Test extreme input sizes to meet competition requirement 4.1.4.
@@ -698,7 +697,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 1, 1, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
 
         y_gems = grid_sample(
             x, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
@@ -723,7 +722,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 2, 2, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
 
         y_gems = grid_sample(
             x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
@@ -748,7 +747,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 4, 4, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -775,7 +774,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 256, 256, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -803,7 +802,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 512, 512, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -833,7 +832,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 1024, 1024, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -865,7 +864,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 2048, 2048, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -896,7 +895,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 4096, 4096, 2)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -927,7 +926,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 64, 64, 64, 3)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
@@ -956,7 +955,7 @@ class TestGridSampleExtremeSizes:
         grid_shape = (1, 128, 128, 128, 3)
 
         x = create_tensor(input_shape, dtype)
-        grid = torch.randn(grid_shape, dtype=dtype, device="cuda")
+        grid = torch.randn(grid_shape, dtype=dtype, device=flag_gems.device)
         grid = torch.clamp(grid, -0.9, 0.9)
 
         y_gems = grid_sample(
