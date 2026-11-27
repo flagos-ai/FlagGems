@@ -63,7 +63,7 @@ def sparse_bsr_tensor_unsafe(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE BSR TENSOR UNSAFE")
+    logger.debug("GEMS_ENFLAME SPARSE BSR TENSOR UNSAFE")
 
     out_values = values
     if dtype is not None and out_values.dtype != dtype:

@@ -36,21 +36,30 @@ INT32_LIMIT = 2**31 - 1
 def any_global_kernel(
     inp_ptr,
     mid_ptr,
+    out_ptr,
     N_total,
     BLOCK: tl.constexpr,
+    WRITE_DIRECT: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
-    acc = tl.zeros([BLOCK], dtype=tl.int8)
+    # Fold each block into a scalar immediately: a BLOCK-wide accumulator keeps a
+    # multi-KB int8 tile live across the whole grid-stride loop and spills.
+    acc = tl.zeros([1], dtype=tl.int8)
     arange = tl.arange(0, BLOCK)
     num_blocks = (N_total + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
         mask = off < N_total
         val = tl.load(inp_ptr + off, mask=mask, other=0)
-        acc = acc | (val != 0).to(tl.int8)
+        acc = acc | tl.max((val != 0).to(tl.int8), axis=0).to(tl.int8)
     result = tl.max(acc, axis=0) > 0
-    tl.store(mid_ptr + pid, result)
+    # Single-program case writes the scalar result directly, so the tiny inputs
+    # need only one kernel launch instead of a launch plus a reduce pass.
+    if WRITE_DIRECT:
+        tl.store(out_ptr, result)
+    else:
+        tl.store(mid_ptr + pid, result)
 
 
 @libentry()
@@ -207,11 +216,17 @@ def _launch_global(inp):
     num_blocks = triton.cdiv(n_total, block)
     grid_size = min(num_blocks, MAX_GRID)
 
-    mid = torch.empty((grid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
+    if grid_size == 1:
+        with torch_device_fn.device(inp.device):
+            any_global_kernel[(1,)](inp, out, out, n_total, block, True, num_warps=4)
+        return out
 
+    mid = torch.empty((grid_size,), dtype=torch.bool, device=inp.device)
     with torch_device_fn.device(inp.device):
-        any_global_kernel[(grid_size,)](inp, mid, n_total, block, num_warps=4)
+        any_global_kernel[(grid_size,)](
+            inp, mid, out, n_total, block, False, num_warps=4
+        )
         block_mid = _np2(grid_size)
         any_reduce_kernel[(1,)](mid, out, grid_size, block_mid, num_warps=1)
     return out

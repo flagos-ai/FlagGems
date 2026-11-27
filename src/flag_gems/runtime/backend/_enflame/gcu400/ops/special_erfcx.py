@@ -31,6 +31,6 @@ def special_erfcx_func(x):
 
 
 def special_erfcx(x):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFCX")
+    logger.debug("GEMS_ENFLAME SPECIAL_ERFCX")
     assert x.dtype == torch.float32, "special_erfcx only supports float32"
     return special_erfcx_func(x)

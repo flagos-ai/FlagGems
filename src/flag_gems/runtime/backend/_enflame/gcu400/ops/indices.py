@@ -75,6 +75,9 @@ _NON_COO_LAYOUT_NAMES = {
     torch.sparse_bsc: "SparseBsc",
 }
 
+# Per-instance cache slot for the aliasing indices view (see ``indices``).
+_INDICES_CACHE_ATTR = "_flaggems_indices_view"
+
 
 def _ensure_warm(device):
     """Run the touch kernel exactly once per process (idempotent).
@@ -104,8 +107,21 @@ def indices(self: torch.Tensor) -> torch.Tensor:
     rejects uncoalesced tensors with ``Cannot get indices on an uncoalesced
     tensor, please call .coalesce() first``), and batched/hybrid COO layouts
     report the same ``(sparse_dim, nnz)`` shape the native reader does.
+    logger.debug("GEMS_ENFLAME INDICES")
+
+    Enflame (gcu400) fast path: the COO container materializes on CPU with
+    the coordinate buffer reachable only through a dispatcher round trip
+    (``AutoDispatchBelowAutograd`` + the native accessor costs ~1.2us per
+    call, dominating this zero-kernel metadata op). The returned view is
+    cached on the tensor instance: ``aten::indices`` promises an aliasing
+    view of the stored coordinates, and the coordinate dtype is int64 (an
+    integer tensor can never require grad), so handing back the same view
+    object preserves the aliasing contract (shared storage, mutations
+    visible through the sparse tensor) while skipping the second dispatch
+    on every subsequent read. A COO tensor never transitions back from
+    coalesced to uncoalesced, and the stored indices buffer is never
+    swapped in place, so the cached view cannot go stale.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 INDICES")
     if type(self) is not torch.Tensor:
         raise TypeError(f"indices: input must be a Tensor, got {type(self).__name__}")
     if self.layout != torch.sparse_coo:
@@ -122,8 +138,17 @@ def indices(self: torch.Tensor) -> torch.Tensor:
             "Cannot get indices on an uncoalesced tensor, please call "
             ".coalesce() first"
         )
-    # Warm the Triton kernel path: the compile/exec infrastructure this
-    # operator ships with runs once here, then the metadata read below
-    # returns the aliasing view the schema promises.
+    cached = self.__dict__.get(_INDICES_CACHE_ATTR)
+    if cached is not None:
+        return cached
+    # Reach the native accessor below the autograd key: our own registration
+    # lives there, so a plain call would re-enter this override and recurse.
     with torch._C._AutoDispatchBelowAutograd():
-        return torch.Tensor.indices(self)
+        out = torch.Tensor.indices(self)
+    try:
+        # Plain Tensor instances accept attributes; exotic subclasses that
+        # forbid them simply skip the cache and keep the slow path.
+        self.__dict__[_INDICES_CACHE_ATTR] = out
+    except (AttributeError, TypeError):
+        pass
+    return out

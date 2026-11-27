@@ -215,6 +215,10 @@ class QuantizedBatchNormBenchmark(base.Benchmark):
             base.emit_record_logger(result.to_json())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.quantized_batch_norm
 def test_quantized_batch_norm():
     bench = QuantizedBatchNormBenchmark(
@@ -223,6 +227,10 @@ def test_quantized_batch_norm():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.quantized_batch_norm_out
 def test_quantized_batch_norm_out():
     bench = QuantizedBatchNormBenchmark(

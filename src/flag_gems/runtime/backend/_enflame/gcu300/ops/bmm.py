@@ -56,90 +56,70 @@ def bmm_kernel(
     MAX_GRID_DIM: tl.constexpr,
     num_warps: tl.constexpr,
 ):
-    pid_bmn = tl.program_id(0)
+    pid = tl.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
-    grid_num = tl.cdiv(MAX_GRID_DIM, num_warps)
-    for pid in tl.range(pid_bmn, Batch * grid_m * grid_n, grid_num):
-        pid_b = pid // (grid_m * grid_n)
-        pid_m = (pid % (grid_m * grid_n)) // grid_n
-        pid_n = pid % grid_n
+    tiles_per_batch = grid_m * grid_n
 
-        A = A_in + pid_b * M * K
-        B = B_in + pid_b * K * N
-        Out = O_in + pid_b * M * N
+    pid_b = pid // tiles_per_batch
+    pid_mn = pid % tiles_per_batch
+    pid_m = pid_mn // grid_n
+    pid_n = pid_mn % grid_n
 
-        L_block_ptr = tl.make_block_ptr(
-            base=A,
-            shape=(M, K),
-            strides=(stride_am, stride_ak),
-            offsets=(pid_m * BLOCK_M, 0),
-            block_shape=(BLOCK_M, BLOCK_K),
-            order=(1, 0),
-        )
-        R_block_ptr = tl.make_block_ptr(
-            base=B,
-            shape=(K, N),
-            strides=(stride_bk, stride_bn),
-            offsets=(0, pid_n * BLOCK_N),
-            block_shape=(BLOCK_K, BLOCK_N),
-            order=(1, 0),
-        )
-        O_block_ptr = tl.make_block_ptr(
-            base=Out,
-            shape=(M, N),
-            strides=(stride_cm, stride_cn),
-            offsets=(pid_m * BLOCK_M, pid_n * BLOCK_N),
-            block_shape=(BLOCK_M, BLOCK_N),
-            order=(1, 0),
-        )
+    A = A_in + pid_b * stride_ab
+    B = B_in + pid_b * stride_bb
+    Out = O_in + pid_b * stride_cb
 
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-        for k in range(0, tl.cdiv(K, BLOCK_K)):
-            a = tl.load(
-                L_block_ptr,
-                boundary_check=(
-                    0,
-                    1,
-                ),
-                padding_option="zero",
-            )
-            b = tl.load(
-                R_block_ptr,
-                boundary_check=(
-                    0,
-                    1,
-                ),
-                padding_option="zero",
-            )
-            acc += tl.dot(a, b, out_dtype=tl.float32)
-            L_block_ptr = tl.advance(L_block_ptr, (0, BLOCK_K))
-            R_block_ptr = tl.advance(R_block_ptr, (BLOCK_K, 0))
-        c = acc.to(Out.dtype.element_ty)
-        tl.store(
-            O_block_ptr,
-            c,
-            boundary_check=(
-                0,
-                1,
-            ),
+    offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = A + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = B + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        k_remaining = K - k * BLOCK_K
+        a = tl.load(
+            a_ptrs,
+            mask=(offs_am[:, None] < M) & (offs_k[None, :] < k_remaining),
+            other=0.0,
         )
+        b = tl.load(
+            b_ptrs,
+            mask=(offs_k[:, None] < k_remaining) & (offs_bn[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(a, b, out_dtype=tl.float32)
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+
+    offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    c_ptrs = Out + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
+    c = acc.to(Out.dtype.element_ty)
+    tl.store(
+        c_ptrs,
+        c,
+        mask=(offs_cm[:, None] < M) & (offs_cn[None, :] < N),
+    )
 
 
 def bmm(A, B):
     logger.debug("GEMS_ENFLAME BMM")
+    assert A.shape[0] == B.shape[0], "Batch dim mismatch"
+    assert A.shape[2] == B.shape[1], "K dim mismatch"
     Batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
     out = torch.empty((Batch, M, N), dtype=A.dtype, device=A.device)
+    if Batch == 0 or M == 0 or N == 0:
+        return out
+    if K == 0:
+        return torch.zeros_like(out)
 
-    MAX_GRID_DIM = 24
     grid = lambda META: (
-        min(
-            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        ),
+        Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(A.device):
         bmm_kernel[grid](
@@ -159,7 +139,7 @@ def bmm(A, B):
             out.stride(0),
             out.stride(1),
             out.stride(2),
-            MAX_GRID_DIM=MAX_GRID_DIM,
+            MAX_GRID_DIM=24,
         )
     return out
 
@@ -173,12 +153,13 @@ def bmm_out(A, B, out):
 
     A = A.contiguous()
     B = B.contiguous()
-    MAX_GRID_DIM = 24
+    if Batch == 0 or M == 0 or N == 0:
+        return out
+    if K == 0:
+        out.zero_()
+        return out
     grid = lambda META: (
-        min(
-            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        ),
+        Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(A.device):
         bmm_kernel[grid](
@@ -198,6 +179,6 @@ def bmm_out(A, B, out):
             out.stride(0),
             out.stride(1),
             out.stride(2),
-            MAX_GRID_DIM=MAX_GRID_DIM,
+            MAX_GRID_DIM=24,
         )
     return out

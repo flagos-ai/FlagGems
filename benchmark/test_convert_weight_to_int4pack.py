@@ -70,11 +70,18 @@ class ConvertWeightBenchmark(base.Benchmark):
         gems_args = list(gems_input)
         metric.shape_detail = self.record_shapes(*gems_args)
         try:
-            if "latency_base" in self.to_bench_metrics:
+            # Honor the skip_native marker: on vendors whose torch stack has no
+            # PrivateUse1 kernel for aten::_convert_weight_to_int4pack the native
+            # baseline cannot be timed, so only the gems leg is measured.
+            if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *base_args)
             if "latency" in self.to_bench_metrics:
                 metric.latency = self.get_latency(self.gems_op, *gems_args)
-            if "speedup" in self.to_bench_metrics:
+            if (
+                "speedup" in self.to_bench_metrics
+                and metric.latency_base is not None
+                and metric.latency is not None
+            ):
                 metric.speedup = metric.latency_base / metric.latency
         except (RuntimeError, Exception) as e:
             metric.error_msg = str(e)
@@ -154,18 +161,33 @@ class ConvertWeightBenchmark(base.Benchmark):
                 metrics.append(metric)
                 gc.collect()
 
-            result = BenchmarkResult(
-                level=Config.bench_level.value,
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode=Config.mode.value,
-                result=metrics,
-            )
-            print(result)
-            update_result(self.op_name, asdict(result))
-            emit_record_logger(result.to_json())
+            if flag_gems.vendor_name == "enflame":
+                # On enflame the native leg is skipped by the skip_native
+                # marker, so the record must carry that reason. The framework
+                # helper emits the dict payload and attaches the reason; the
+                # manual payload below leaves it unset and the report parser
+                # then dies on a null speedup.
+                self._emit_result(dtype, metrics)
+            else:
+                result = BenchmarkResult(
+                    level=Config.bench_level.value,
+                    op_name=self.op_name,
+                    dtype=str(dtype),
+                    mode=Config.mode.value,
+                    result=metrics,
+                )
+                print(result)
+                update_result(self.op_name, asdict(result))
+                emit_record_logger(result.to_json())
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_convert_weight_to_int4pack; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.convert_weight_to_int4pack
 def test_convert_weight_to_int4pack():
     # torch_op is the native aten op (the baseline Caeruleann asked for);

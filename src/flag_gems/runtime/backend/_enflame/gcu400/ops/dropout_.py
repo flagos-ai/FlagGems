@@ -91,7 +91,7 @@ def dropout_(input, p=0.5, train=True):
     ``input`` in place and returning it. When ``train`` is ``False`` or
     ``p == 0`` it is a no-op; when ``p == 1`` every element is zeroed.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 DROPOUT_")
+    logger.debug("GEMS_ENFLAME DROPOUT_")
     if not train or p == 0.0:
         return input
     if p == 1.0:

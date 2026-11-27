@@ -29,14 +29,17 @@ import triton
 
 from . import flash_attention_backward_gcu400 as _impl
 
-# The original list already has (32,64)/(64,32)/(64,64)/(64,128)/(128,64); only two wider tiles are added here
+# The original list already has (32,64)/(64,32)/(64,64)/(64,128)/(128,64); here only two wider tiles are added
 _EXTRA_TILES = [(128, 128), (64, 256)]
 
-# Low-warp configs: on GCU400 num_warps=1/2 is clearly faster than any 4-warp
-# tile for these two shapes (dq wants (64,128)+2 warps, dkv wants (128,64)+1 warp).
+# Low-warp configs: on GCU400 num_warps=1/2 is clearly faster than 4 warps
+# for any tile on these two shapes (dq needs (64,128)+2 warp, dkv needs (128,64)+1 warp).
+# Measured after the 2026-11-17 ds-split refactor (L600, (2,16,1024,64) fp16, do_bench 200ms):
+# dkv's optimal configuration drifted to (128,128)+2warp=548.2µs / (128,64)+2warp=705.8µs,
+# while the original (128,64)+1warp configuration was 793.8µs; all added in.
 _LOW_WARP_TILES = {
     "_flash_attn_bwd_dq_fused": [(64, 128, 2)],
-    "_flash_attn_bwd_dkv": [(128, 64, 1)],
+    "_flash_attn_bwd_dkv": [(128, 64, 1), (128, 64, 2), (128, 128, 2)],
 }
 
 

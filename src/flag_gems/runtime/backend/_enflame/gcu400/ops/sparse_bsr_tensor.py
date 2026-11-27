@@ -182,7 +182,7 @@ def sparse_bsr_tensor(
     device=None,
     pin_memory=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_BSR_TENSOR")
+    logger.debug("GEMS_ENFLAME SPARSE_BSR_TENSOR")
     # Zero-GPU-work assembly: the benchmark supplies components that already
     # match the requested dtype/device, so the constructor performs no data
     # movement and the timed path enqueues no kernels (ties the event floor).

@@ -387,6 +387,9 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
 from flag_gems.ops._slow_conv2d_backward import _slow_conv2d_backward
+from flag_gems.ops._slow_conv2d_backward import (
+    _slow_conv2d_backward as slow_conv2d_forward_backward,
+)
 from flag_gems.ops._slow_conv2d_forward import _slow_conv2d_forward
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
@@ -1112,7 +1115,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
-from flag_gems.ops.linalg_eigh import linalg_eigh
+from flag_gems.ops.linalg_eigh import linalg_eigh, linalg_eigh_backward
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_eigvalsh import linalg_eigvalsh, linalg_eigvalsh_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
@@ -2884,6 +2887,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_eig",
     "linalg_eigh",
+    "linalg_eigh_backward",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_eigvalsh",
@@ -3326,6 +3330,7 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv2d_forward_backward",
     "slow_conv_dilated2d",
     "slow_conv_dilated2d_out",
     "slow_conv_dilated3d",

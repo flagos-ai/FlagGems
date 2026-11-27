@@ -17,7 +17,7 @@ import logging
 
 import torch
 
-from flag_gems.ops.mul import mul
+from .mul import mul
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,18 @@ def multiply(A, B):
     """Out-of-place multiply operation (multiply).
 
     This is an alias for mul that follows the PyTorch multiply API.
+
+    The generic ``flag_gems.ops.multiply`` binds the *generic* ``mul`` at
+    import time, so it never reaches this backend's optimized ``mul``: the
+    generic ``mul_kernel`` launches one program per BLOCK_SIZE elements with
+    an unbounded 1D grid, and GCU caps grid.x at 65535 -- the benchmark's
+    1024**3 shapes then fail launch with ``OutOfResources: out of resource:
+    grid.x``. Overriding ``multiply`` here routes tensor-tensor and
+    tensor-scalar calls to the gcu400 ``mul`` (fixed 48-CTA grid-stride
+    kernel with contiguous fast paths), the same pattern already used by
+    this backend's ``multiply_``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MULTIPLY")
+    logger.debug("GEMS_ENFLAME MULTIPLY")
     if not isinstance(A, torch.Tensor):
         raise ValueError("Unreachable.")
     return mul(A, B)

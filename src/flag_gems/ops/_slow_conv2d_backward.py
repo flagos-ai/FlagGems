@@ -507,6 +507,25 @@ def _slow_conv2d_backward(
     is64 = dt == torch.float64
     acc_dtype = torch.float64 if is64 else torch.float32
 
+    # Tensor-core fast path for the dtypes tl.dot can consume. fp64 keeps the
+    # scalar-accumulation kernels below: Triton does not expose an fp64 dot, and
+    # the fp64 path is already exact to ~1e-14 relative, so there is nothing to
+    # buy by reshaping it.
+    if dt in (torch.float16, torch.bfloat16, torch.float32):
+        return _slow_conv2d_backward_dot(
+            grad_output,
+            self,
+            weight,
+            kh,
+            kw,
+            sh,
+            sw,
+            ph,
+            pw,
+            (mi, mw, mb),
+            (oi, ow, ob),
+        )
+
     gi = gw = gb = None
     if mi:
         gi = oi if oi is not None else torch.empty((N, CI, H, W), dtype=dt, device=dev)
@@ -718,6 +737,663 @@ def _slow_conv2d_backward(
             BLOCK_CI=BLOCK_CI,
             BLOCK_HW=BLOCK_HW,
             num_warps=gi_warps,
+        )
+
+    return (gi, gw, gb)
+
+
+# --------------------------------------------------------------------------- #
+# Tensor-core backward path (fp16 / bf16 / fp32)
+#
+# The scalar-accumulation kernels above predicate every single tap, which costs
+# one FMA per (ci, tap, co) and leaves the Hopper tensor cores idle. Both
+# gradients of a groups=1 convolution are implicit GEMMs, so the kernels below
+# express each tap as a small tl.dot and let the MMA pipeline do the reduction:
+#
+#   grad_input  = sum over (kh, kw) of  w[:, :, kh, kw]^T @ gO_shifted
+#   grad_weight = gO[C_out, N*Ho*Wo] @ im2col(self)
+#
+# Epilogue rounding is preserved exactly: tl.dot accumulates in fp32 and only
+# the single final store narrows to the operand dtype, so fp16/bf16 results are
+# bitwise-equal to ATen while fp32 stays inside its 1e-4 tolerance band.
+#
+# fp32 uses input_precision="tf32x3": the repository harness disables TF32, and
+# tf32x3 recovers fp32-level accuracy from three TF32 products, whereas "ieee"
+# compiles to the slow FP32 FMA path and regressed every fp32 case.
+#
+# fp64 is deliberately not routed here. Triton has no fp64 tl.dot (verified on
+# this H800 with a 16x16x16 dot: CompilationError), so fp64 keeps the exact
+# scalar path above.
+# --------------------------------------------------------------------------- #
+# grad_input: dgrad as KH*KW small GEMMs, one per tap.
+# Each program owns a (BLOCK_CI, BLOCK_HW) tile of one image, and every tap
+# contributes w[:, :, kh, kw]^T @ gO_shifted, so the reduction over C_out runs on
+# tl.dot instead of a scalar loop.
+# --------------------------------------------------------------------------- #
+@triton.jit
+def _gi_dot_kernel(
+    go_ptr,
+    w_ptr,
+    gi_ptr,
+    CO,
+    CI,
+    HO,
+    WO,
+    H,
+    W,
+    SGO_N: tl.constexpr,
+    SGO_CO: tl.constexpr,
+    SGO_HO: tl.constexpr,
+    SGO_WO: tl.constexpr,
+    SW_CO: tl.constexpr,
+    SW_CI: tl.constexpr,
+    SW_KH: tl.constexpr,
+    SW_KW: tl.constexpr,
+    SGI_N: tl.constexpr,
+    SGI_CI: tl.constexpr,
+    SGI_H: tl.constexpr,
+    SGI_W: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    PREC: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_HW: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_hw = tl.program_id(0)
+    pid_ci = tl.program_id(1)
+    n = tl.program_id(2)
+
+    HW = H * W
+    hw = pid_hw * BLOCK_HW + tl.arange(0, BLOCK_HW)
+    mhw = hw < HW
+    ih = hw // W
+    iw = hw - ih * W
+
+    ci = pid_ci * BLOCK_CI + tl.arange(0, BLOCK_CI)
+    mci = ci < CI
+    co = tl.arange(0, BLOCK_CO)
+    mco = co < CO
+
+    # A *dynamic* tap loop rather than tl.static_range(KH) x tl.static_range(KW):
+    # fully unrolling the 9 tap bodies keeps nine address/mask vectors live at
+    # once, which pinned this kernel at the 255-register ceiling with a
+    # per-thread local-memory spill frame and left no room for staging. A real
+    # range carries one tap body, so the compiler can multi-buffer the loads.
+    acc = tl.zeros((BLOCK_CI, BLOCK_HW), dtype=tl.float32)
+    for t in tl.range(0, KH * KW, num_stages=2):
+        kh = t // KW
+        kw = t - kh * KW
+        hh = ih + PH - kh
+        oh = hh // SH
+        okh = (hh >= 0) & (hh - oh * SH == 0) & (oh < HO)
+        ww = iw + PW - kw
+        ow = ww // SW
+        okw = (ww >= 0) & (ww - ow * SW == 0) & (ow < WO)
+        # Taps that land outside the output plane are excluded entirely
+        # (masked load), so they contribute an exact zero.
+        ok = mhw & okh & okw
+        a = tl.load(
+            w_ptr + co[None, :] * SW_CO + ci[:, None] * SW_CI + kh * SW_KH + kw * SW_KW,
+            mask=mci[:, None] & mco[None, :],
+            other=0.0,
+        )
+        b = tl.load(
+            go_ptr
+            + n * SGO_N
+            + co[:, None] * SGO_CO
+            + tl.maximum(oh, 0)[None, :] * SGO_HO
+            + tl.maximum(ow, 0)[None, :] * SGO_WO,
+            mask=mco[:, None] & ok[None, :],
+            other=0.0,
+        )
+        acc = tl.dot(a, b, acc, input_precision=PREC)
+
+    off = n * SGI_N + ci[:, None] * SGI_CI + ih[None, :] * SGI_H + iw[None, :] * SGI_W
+    tl.store(
+        gi_ptr + off,
+        acc.to(gi_ptr.dtype.element_ty),
+        mask=mci[:, None] & mhw[None, :],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# grad_weight: implicit GEMM, [C_out, C_in*kh*kw] = gO[C_out, N*Ho*Wo] @ im2col(x).
+# The output is small, so the (n, ho, wo) reduction axis is split across programs.
+# --------------------------------------------------------------------------- #
+@triton.jit
+def _gw_dot_kernel(
+    go_ptr,
+    x_ptr,
+    part_ptr,
+    gbp_ptr,
+    CO,
+    CI,
+    N,
+    HO,
+    WO,
+    H,
+    W,
+    SGO_N: tl.constexpr,
+    SGO_CO: tl.constexpr,
+    SGO_HO: tl.constexpr,
+    SGO_WO: tl.constexpr,
+    SX_N: tl.constexpr,
+    SX_CI: tl.constexpr,
+    SX_H: tl.constexpr,
+    SX_W: tl.constexpr,
+    SP_PID: tl.constexpr,
+    SP_CO: tl.constexpr,
+    SGB_PID: tl.constexpr,
+    HAS_B: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    PREC: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_k = tl.program_id(2)
+
+    co = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    mco = co < CO
+    KK = KH * KW
+    CIKK = CI * KK
+    jj = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mj = jj < CIKK
+    cij = jj // KK
+    rem = jj - cij * KK
+    khj = rem // KW
+    kwj = rem - khj * KW
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    gb_acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    HW = HO * WO
+    K = N * HW
+    k_begin = (K * pid_k) // tl.num_programs(2)
+    k_end = (K * (pid_k + 1)) // tl.num_programs(2)
+    for k0 in range(k_begin, k_end, BLOCK_K):
+        kk = k0 + tl.arange(0, BLOCK_K)
+        mk = kk < k_end
+        n = kk // HW
+        r = kk - n * HW
+        ho = r // WO
+        wo = r - ho * WO
+        a = tl.load(
+            go_ptr
+            + n[None, :] * SGO_N
+            + co[:, None] * SGO_CO
+            + ho[None, :] * SGO_HO
+            + wo[None, :] * SGO_WO,
+            mask=mco[:, None] & mk[None, :],
+            other=0.0,
+        )
+        ih = ho[:, None] * SH - PH + khj[None, :]
+        iw = wo[:, None] * SW - PW + kwj[None, :]
+        ok = mk[:, None] & mj[None, :] & (ih >= 0) & (ih < H) & (iw >= 0) & (iw < W)
+        b = tl.load(
+            x_ptr
+            + n[:, None] * SX_N
+            + cij[None, :] * SX_CI
+            + tl.maximum(ih, 0) * SX_H
+            + tl.maximum(iw, 0) * SX_W,
+            mask=ok,
+            other=0.0,
+        )
+        acc = tl.dot(a, b, acc, input_precision=PREC)
+        # grad_bias is a pure reduction of grad_output, and `a` is exactly the
+        # gO tile this program already holds, so the whole (n, ho, wo) reduction
+        # rides along here for free instead of launching its own two kernels.
+        # Only pid_n == 0 accumulates: the pid_k axis already partitions K, so
+        # every (n, ho, wo) index is counted exactly once across all writers.
+        if HAS_B:
+            if pid_n == 0:
+                gb_acc += tl.sum(a.to(tl.float32), axis=1)
+
+    tl.store(
+        part_ptr + pid_k * SP_PID + co[:, None] * SP_CO + jj[None, :],
+        acc,
+        mask=mco[:, None] & mj[None, :],
+    )
+    if HAS_B:
+        if pid_n == 0:
+            tl.store(
+                gbp_ptr + pid_k * SGB_PID + co,
+                gb_acc,
+                mask=mco,
+            )
+
+
+@triton.jit
+def _gw_dot_reduce_kernel(
+    part_ptr,
+    gw_ptr,
+    gbp_ptr,
+    gb_ptr,
+    CO,
+    CIKK,
+    SPLIT_K,
+    SP_PID: tl.constexpr,
+    SP_CO: tl.constexpr,
+    SGW_CO: tl.constexpr,
+    SGW_CI: tl.constexpr,
+    SGW_KH: tl.constexpr,
+    SGW_KW: tl.constexpr,
+    SGB_PID: tl.constexpr,
+    HAS_B: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+):
+    co = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    mco = co < CO
+    jj = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    mj = jj < CIKK
+    ss = tl.arange(0, BLOCK_S)
+    ms = ss < SPLIT_K
+
+    v = tl.load(
+        part_ptr
+        + ss[:, None, None] * SP_PID
+        + co[None, :, None] * SP_CO
+        + jj[None, None, :],
+        mask=ms[:, None, None] & mco[None, :, None] & mj[None, None, :],
+        other=0.0,
+    )
+    acc = tl.sum(v, axis=0)
+
+    KK = KH * KW
+    cij = jj // KK
+    rem = jj - cij * KK
+    khj = rem // KW
+    kwj = rem - khj * KW
+    off = (
+        co[:, None] * SGW_CO
+        + cij[None, :] * SGW_CI
+        + khj[None, :] * SGW_KH
+        + kwj[None, :] * SGW_KW
+    )
+    tl.store(
+        gw_ptr + off,
+        acc.to(gw_ptr.dtype.element_ty),
+        mask=mco[:, None] & mj[None, :],
+    )
+
+    # Finalize the grad_bias partials produced by _gw_dot_kernel. Only the
+    # pid_n == 0 program owns gb, so exactly one program performs this.
+    if HAS_B:
+        if tl.program_id(1) == 0:
+            bp = tl.load(
+                gbp_ptr + ss[:, None] * SGB_PID + co[None, :],
+                mask=ms[:, None] & mco[None, :],
+                other=0.0,
+            )
+            gb_acc = tl.sum(bp, axis=0)
+            tl.store(gb_ptr + co, gb_acc.to(gb_ptr.dtype.element_ty), mask=mco)
+
+
+# --------------------------------------------------------------------------- #
+# grad_bias: two-stage reduction over the flattened (n, ho, wo) axis.
+# A single CTA per C_out would leave the device idle whenever C_out is small, so
+# the reduction axis is split first and then summed.
+# --------------------------------------------------------------------------- #
+@triton.jit
+def _gb_dot_part_kernel(
+    go_ptr,
+    part_ptr,
+    CO,
+    N,
+    HO,
+    WO,
+    SGO_N: tl.constexpr,
+    SGO_CO: tl.constexpr,
+    SGO_HO: tl.constexpr,
+    SGO_WO: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_co = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    mco = co < CO
+    K = N * HO * WO
+    HW = HO * WO
+    k_begin = (K * pid_k) // tl.num_programs(1)
+    k_end = (K * (pid_k + 1)) // tl.num_programs(1)
+    acc = tl.zeros((BLOCK_CO,), dtype=tl.float32)
+    for k0 in range(k_begin, k_end, BLOCK_K):
+        kk = k0 + tl.arange(0, BLOCK_K)
+        mk = kk < k_end
+        n = kk // HW
+        r = kk - n * HW
+        ho = r // WO
+        wo = r - ho * WO
+        off = (
+            n * SGO_N
+            + co[:, None] * SGO_CO
+            + ho[None, :] * SGO_HO
+            + wo[None, :] * SGO_WO
+        )
+        v = tl.load(go_ptr + off, mask=mco[:, None] & mk[None, :], other=0.0)
+        acc += tl.sum(v.to(tl.float32), axis=1)
+    tl.store(part_ptr + pid_k * CO + co, acc, mask=mco)
+
+
+@triton.jit
+def _gb_dot_reduce_kernel(
+    part_ptr,
+    gb_ptr,
+    NPART: tl.constexpr,
+    CO,
+    BLOCK_CO: tl.constexpr,
+    BLOCK_P: tl.constexpr,
+):
+    co = tl.program_id(0) * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    mco = co < CO
+    acc = tl.zeros((BLOCK_CO,), dtype=tl.float32)
+    for p0 in range(0, NPART, BLOCK_P):
+        pp = p0 + tl.arange(0, BLOCK_P)
+        mp = pp < NPART
+        v = tl.load(
+            part_ptr + pp[:, None] * CO + co[None, :],
+            mask=mp[:, None] & mco[None, :],
+            other=0.0,
+        )
+        acc += tl.sum(v, axis=0)
+    tl.store(gb_ptr + co, acc.to(gb_ptr.dtype.element_ty), mask=mco)
+
+
+def _slow_conv2d_backward_dot(
+    grad_output,
+    self,
+    weight,
+    kh,
+    kw,
+    sh,
+    sw,
+    ph,
+    pw,
+    mask,
+    outs,
+):
+    """Tensor-core backward for fp16/bf16/fp32 (groups=1, dilation=1).
+
+    ``mask`` is the resolved (grad_input, grad_weight, grad_bias) request and
+    ``outs`` the matching preallocated tensors from the out= call forms.
+    """
+    mask_i, mask_w, mask_b = mask
+    oi, ow, ob = outs
+
+    n, ci, h, w = self.shape
+    co = weight.shape[0]
+    ho = (h + 2 * ph - kh) // sh + 1
+    wo = (w + 2 * pw - kw) // sw + 1
+    # fp32 operands: the reference ATen SGEMM path is run with TF32 disabled by
+    # the repository harness, so `tf32x3` (which decomposes into three TF32
+    # products and recovers fp32-level accuracy) is the fast accurate choice.
+    # fp16/bf16 already accumulate in fp32 natively.
+    prec = "tf32x3" if self.dtype == torch.float32 else "ieee"
+    acc_dtype = torch.float32
+
+    gi = gw = gb = None
+
+    # (mask_w=False, mask_b=True) never enters the grad_weight branch, which is
+    # where the fused bias partials are produced, so grad_bias is finished here
+    # by its own reduction. Without this, a bias-only request silently returned
+    # None for fp16/bf16 (the fused path is gated on mask_w).
+    if mask_b and not mask_w:
+        gb = (
+            ob
+            if ob is not None
+            else torch.empty((co,), dtype=self.dtype, device=self.device)
+        )
+        block_co = 64
+        nsplit = 32
+        part = torch.empty((nsplit, co), dtype=acc_dtype, device=self.device)
+        _gb_dot_part_kernel[(triton.cdiv(co, block_co), nsplit)](
+            grad_output,
+            part,
+            co,
+            n,
+            ho,
+            wo,
+            grad_output.stride(0),
+            grad_output.stride(1),
+            grad_output.stride(2),
+            grad_output.stride(3),
+            BLOCK_CO=block_co,
+            BLOCK_K=256,
+            num_warps=4,
+        )
+        _gb_dot_reduce_kernel[(triton.cdiv(co, block_co),)](
+            part,
+            gb,
+            nsplit,
+            co,
+            BLOCK_CO=block_co,
+            BLOCK_P=32,
+            num_warps=4,
+        )
+
+    # Fuse the grad_bias reduction into the grad_weight kernel only where it is
+    # free. It pays on fp16/bf16, whose dot operands are consumed directly, but
+    # costs on the tf32x3 fp32 path: there the dot repacks its operands into
+    # wgmma shared-memory layouts, so reading the A tile back for a cross-lane
+    # tl.sum once per K iteration forces a layout conversion every iteration -
+    # a per-iteration cost against a fixed two-launch saving, which is why the
+    # long-K fp32 cases regressed (56x56 1.2145 -> 1.5932 ms) while the short-K
+    # ones did not. So fp32 keeps the standalone reduction.
+    fuse_b = mask_b and prec != "tf32x3"
+
+    if mask_w:
+        gw = (
+            ow
+            if ow is not None
+            else torch.empty((co, ci, kh, kw), dtype=self.dtype, device=self.device)
+        )
+        gb = (
+            torch.empty((co,), dtype=self.dtype, device=self.device) if fuse_b else None
+        )
+        cikk = ci * kh * kw
+        block_m = 32 if co >= 32 else 16
+        block_n = 32
+        block_k = 32
+        grid_mn = triton.cdiv(co, block_m) * triton.cdiv(cikk, block_n)
+        k_total = n * ho * wo
+        split_k = max(1, -(-156 // grid_mn))
+        split_k = min(split_k, max(1, k_total // block_k))
+        part = (
+            torch.empty((split_k, co, cikk), dtype=acc_dtype, device=self.device)
+            if split_k > 1
+            else gw
+        )
+        # fp32 partials for the fused grad_bias: one row per split-K program.
+        gbp = (
+            torch.empty((split_k, co), dtype=acc_dtype, device=self.device)
+            if fuse_b
+            else gw
+        )
+        _gw_dot_kernel[(triton.cdiv(co, block_m), triton.cdiv(cikk, block_n), split_k)](
+            grad_output,
+            self,
+            part,
+            gbp,
+            co,
+            ci,
+            n,
+            ho,
+            wo,
+            h,
+            w,
+            grad_output.stride(0),
+            grad_output.stride(1),
+            grad_output.stride(2),
+            grad_output.stride(3),
+            self.stride(0),
+            self.stride(1),
+            self.stride(2),
+            self.stride(3),
+            co * cikk,
+            cikk,
+            co,
+            fuse_b,
+            KH=kh,
+            KW=kw,
+            SH=sh,
+            SW=sw,
+            PH=ph,
+            PW=pw,
+            PREC=prec,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            BLOCK_K=block_k,
+            num_warps=4,
+        )
+        if split_k > 1:
+            # gb_ptr is never touched when fuse_b is False (HAS_B gates every
+            # access), but a real tensor is passed so no None binds to a pointer.
+            _gw_dot_reduce_kernel[
+                (triton.cdiv(co, block_m), triton.cdiv(cikk, block_n))
+            ](
+                part,
+                gw,
+                gbp,
+                gb if fuse_b else gw,
+                co,
+                cikk,
+                split_k,
+                co * cikk,
+                cikk,
+                gw.stride(0),
+                gw.stride(1),
+                gw.stride(2),
+                gw.stride(3),
+                co,
+                fuse_b,
+                KH=kh,
+                KW=kw,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                BLOCK_S=_next_pow2(split_k),
+                num_warps=4,
+            )
+        elif fuse_b:
+            # split_k == 1 means _gw_dot_kernel wrote gbp's single row in fp32 and no
+            # reduce launch happens, so finish grad_bias with a tiny reduction.
+            _gb_dot_reduce_kernel[(1,)](
+                gbp,
+                gb,
+                1,
+                co,
+                BLOCK_CO=_next_pow2(co),
+                BLOCK_P=1,
+                num_warps=4,
+            )
+
+    if mask_i:
+        gi = (
+            oi
+            if oi is not None
+            else torch.empty((n, ci, h, w), dtype=self.dtype, device=self.device)
+        )
+        # BLOCK_CI controls how many times each gO tap tile is re-read: the
+        # gO slice [co, hw] is loaded separately by every ci-block, so a
+        # BLOCK_CI smaller than C_in multiplies the dominant read by
+        # ceil(C_in/BLOCK_CI). Covering C_in when it is <= 128 removes that
+        # amplification outright; the C_out tile stays a single shot.
+        block_ci = min(max(16, _next_pow2(ci)), 128)
+        block_hw = 64
+        block_co = max(16, _next_pow2(co))
+        _gi_dot_kernel[(triton.cdiv(h * w, block_hw), triton.cdiv(ci, block_ci), n)](
+            grad_output,
+            weight,
+            gi,
+            co,
+            ci,
+            ho,
+            wo,
+            h,
+            w,
+            grad_output.stride(0),
+            grad_output.stride(1),
+            grad_output.stride(2),
+            grad_output.stride(3),
+            weight.stride(0),
+            weight.stride(1),
+            weight.stride(2),
+            weight.stride(3),
+            gi.stride(0),
+            gi.stride(1),
+            gi.stride(2),
+            gi.stride(3),
+            KH=kh,
+            KW=kw,
+            SH=sh,
+            SW=sw,
+            PH=ph,
+            PW=pw,
+            PREC=prec,
+            BLOCK_CI=block_ci,
+            BLOCK_HW=block_hw,
+            BLOCK_CO=block_co,
+            # The tf32x3 fp32 path compiles to ~3 warp_group_dot groups per tap
+            # (27 hard-waited MMA groups per CTA) plus a repack of the operands,
+            # and round 4 IR measured it at the 255-register ceiling with a
+            # 336 B/thread spill frame - exactly where the fp16 sibling is
+            # spill-free at 233 registers. Doubling the warps halves the
+            # per-thread share of the accumulator and staging at unchanged CTA
+            # residency, and gives 16 warps rather than 8 to hide those waits.
+            # fp16/bf16 already compile clean, so they keep 4 warps.
+            num_warps=8 if prec == "tf32x3" else 4,
+        )
+
+    if mask_b and not fuse_b:
+        # grad_bias not fused (either grad_weight was not requested, or this is
+        # the tf32x3 fp32 path where the fusion costs more than it saves): use
+        # the standalone two-stage reduction.
+        gb = (
+            ob
+            if ob is not None
+            else torch.empty((co,), dtype=self.dtype, device=self.device)
+        )
+        block_co = 64
+        nsplit = 32
+        part = torch.empty((nsplit, co), dtype=acc_dtype, device=self.device)
+        _gb_dot_part_kernel[(triton.cdiv(co, block_co), nsplit)](
+            grad_output,
+            part,
+            co,
+            n,
+            ho,
+            wo,
+            grad_output.stride(0),
+            grad_output.stride(1),
+            grad_output.stride(2),
+            grad_output.stride(3),
+            BLOCK_CO=block_co,
+            BLOCK_K=256,
+            num_warps=4,
+        )
+        _gb_dot_reduce_kernel[(triton.cdiv(co, block_co),)](
+            part,
+            gb,
+            nsplit,
+            co,
+            BLOCK_CO=block_co,
+            BLOCK_P=32,
+            num_warps=4,
         )
 
     return (gi, gw, gb)

@@ -47,6 +47,10 @@ class NestedTensorFromTensorListBenchmark(base.Benchmark):
         return 0.0
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.nested_tensor_from_tensor_list
 @pytest.mark.parametrize(
     "dtype",

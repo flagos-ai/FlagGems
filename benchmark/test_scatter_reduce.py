@@ -91,6 +91,13 @@ def gather_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::scatter_reduce aborts on GCU, so no native baseline can be timed; "
+        "the candidate latency is still measured"
+    ),
+)
 @pytest.mark.scatter_reduce
 def test_scatter_reduce_optest():
     """Report every functional scatter_reduce case under the optest operator ID."""
@@ -105,6 +112,14 @@ def test_scatter_reduce_optest():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::scatter_reduce.two aborts on GCU: topsop CheckArgs rejects the "
+        "int64 index that TORCH_GCU_ENABLE_INT64_AND_UINT64=1 keeps as int64, "
+        "so no native baseline can be timed"
+    ),
+)
 @pytest.mark.scatter_reduce_two
 def test_scatter_reduce():
     """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
@@ -118,6 +133,11 @@ def test_scatter_reduce():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
+@pytest.mark.scatter_reduce_
 @pytest.mark.scatter_reduce_two_
 def test_scatter_reduce_():
     """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
@@ -132,6 +152,10 @@ def test_scatter_reduce_():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.scatter_reduce_two_out
 def test_scatter_reduce_out():
     """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""

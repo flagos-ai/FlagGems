@@ -26,6 +26,16 @@ else:
 
 random.seed(42)
 
+
+def _skip_unsupported_enflame_config(config):
+    """enflame/GCU does not support the 256-expert DeepSeek shape yet; the device sync aborts."""
+    if flag_gems.vendor_name == "enflame" and config[1] >= 256:
+        pytest.skip(
+            "enflame/GCU does not support the 256-expert fused experts case yet",
+            allow_module_level=False,
+        )
+
+
 FUSED_MOE_CONFIGS = [
     # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
     (1, 8, 128, 256, 2),
@@ -86,6 +96,7 @@ def torch_fused_moe_reference(
 )
 def test_inplace_fused_experts_accuracy(config, dtype):
     """Test inplace_fused_experts writes correct results into hidden_states."""
+    _skip_unsupported_enflame_config(config)
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
@@ -135,6 +146,7 @@ def test_inplace_fused_experts_accuracy(config, dtype):
 )
 def test_inplace_fused_experts_matches_outplace(config, dtype):
     """Test that inplace_fused_experts produces the same result as outplace_fused_experts."""
+    _skip_unsupported_enflame_config(config)
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
