@@ -211,6 +211,7 @@ def _tle_row_copy(source, out_view, outer, seg, row, col_off):
 def _dstack_forward(tensors, out=None, **kwargs):
     """``aten::dstack(Tensor[] tensors) -> Tensor``, plus the ``out=`` overload."""
     del kwargs
+    logger.debug("GEMS_KUNLUNXIN DSTACK")
     items = [tensors] if isinstance(tensors, torch.Tensor) else list(tensors)
     if len(items) == 0:
         raise RuntimeError("dstack expects a non-empty TensorList")
