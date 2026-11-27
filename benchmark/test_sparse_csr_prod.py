@@ -46,6 +46,15 @@ class SparseCsrProdBenchmark(base.Benchmark):
             yield (sp, [0], True, {"dtype": cur_dtype})
 
 
+@pytest.mark.skip_native(
+    vendors="enflame",
+    reason=(
+        "torch_gcu has no SparseCSR GCU backend, so the native baseline "
+        "aten::_sparse_csr_prod.dim_dtype fails with 'Could not run ... with "
+        "arguments from the SparseCsrgcu backend' and cannot be timed; the "
+        "FlagGems latency is still measured and reported without a speedup"
+    ),
+)
 @pytest.mark.sparse_csr_prod
 def test_sparse_csr_prod():
     bench = SparseCsrProdBenchmark(

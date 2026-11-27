@@ -49,7 +49,7 @@ def logical_not_(A):
             if _fake_i64_words(A):
                 config = _flat_config(n_total, 4)
                 if config is not None:
-                    block, grid = config
+                    block, grid, _ = config
                     _launch_flat(
                         logical_not_i64_word_inplace_kernel,
                         grid,
@@ -60,25 +60,27 @@ def logical_not_(A):
             return logical_not_func(A, out0=A)
         if A.dtype == torch.bool and n_total % 4 == 0 and A.data_ptr() % 4 == 0:
             n_words = n_total // 4
-            config = _flat_config(n_words, 4)
+            config = _flat_config(n_words, 4, packed=True)
             if config is not None:
-                block, grid = config
+                block, grid, even = config
                 _launch_flat(
                     logical_not_bool_packed_inplace_kernel,
                     grid,
                     (A, n_words),
                     block,
+                    even,
                 )
                 return A
         config = _flat_config(n_total, A.element_size())
         if config is not None:
-            block, grid = config
+            block, grid, even = config
             lanes = _lane_view(A)
             _launch_flat(
                 logical_not_flat_kernel,
                 grid,
                 (lanes, lanes, n_total),
                 block,
+                even,
             )
             return A
     return logical_not_func(A, out0=A)

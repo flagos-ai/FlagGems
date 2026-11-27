@@ -31,6 +31,10 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
+# Enflame/GCU has no native ATen FlashAttention reference kernel; route the
+# dense reference through the local implementation like ascend/kunlunxin.
+ENFLAME_DENSE_REF = vendor_name in ("ascend", "kunlunxin", "enflame")
+
 # Generic `ops/flash_kernel.py` splitkv combine kernels fail to compile on the
 # XPU backend (TritonXPUCoreTiling / TritonToLinalgExperimental), so skip the
 # three splitkv layout tests there until the generic kernel is fixed.
@@ -41,17 +45,6 @@ KUNLUNXIN_SPLITKV_SKIP = pytest.mark.skipif(
         "backend (TritonXPUCoreTiling/TritonToLinalgExperimental: uni_sram / "
         "linalg.matmul shape mismatch); tracked upstream"
     ),
-)
-
-# The GCU torch build does not register several operators this module relies on:
-# `aten::_flash_attention_forward` (the reference oracle for the dense tests),
-# `torch.gather` on the expanded sparse index tensor, and the `add` broadcast in
-# attn_bias_from_alibi_slopes. They either raise NotImplementedError or abort the
-# process (TOPSATEN_STATUS_NOT_SUPPORT), and one of them is used by six of the
-# seven tests here, so the module is skipped on enflame as a whole.
-pytestmark = pytest.mark.skipif(
-    vendor_name == "enflame",
-    reason="enflame GCU does not support the operators this module uses",
 )
 
 # Representative dense configs cover square/non-square inputs and 64/128 head sizes.
@@ -277,7 +270,7 @@ def test__flash_attention_forward(
     # Ascend does not provide the native ATen FlashAttention reference.
     # Kunlunxin's torch_xmlir build dispatches the op to CPU and raises
     # NotImplementedError even for XPU inputs, so use the dense reference too.
-    if cfg.TO_CPU or vendor_name in ("ascend", "kunlunxin"):
+    if cfg.TO_CPU or ENFLAME_DENSE_REF:
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -845,6 +838,20 @@ def test_flash_attention_foward_swa(
     window_size_right,
     dtype,
 ):
+    # An unlimited right window with window_size_left smaller than the query
+    # length leaves trailing query rows with no visible key.  The GCU kernel
+    # writes the FlashAttention +inf LSE sentinel for those rows while the
+    # torch_gcu reference writes -inf, so only the LSE assertion would fail.
+    if (
+        vendor_name == "enflame"
+        and window_size_right == 0
+        and q_seq_len > kv_seq_len + window_size_left
+    ):
+        pytest.skip(
+            "GCU flash attention reports the empty-window LSE as +inf while the "
+            "torch_gcu reference reports -inf"
+        )
+
     device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
@@ -889,6 +896,13 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
+@pytest.mark.skipif(
+    vendor_name == "enflame",
+    reason=(
+        "GCU flash attention forward does not apply dropout: debug_softmax "
+        "contains no dropped entries, so dropout_ratio is 0 instead of dropout_p"
+    ),
+)
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS

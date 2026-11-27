@@ -59,42 +59,47 @@ def _lu_solve_impl(B, LU_data, LU_pivots, out):
             return out
         return torch.empty(org_shape, dtype=B.dtype, device=B.device)
 
-    if out is None:
-        clean_out = None
-        X = torch.empty(org_shape, dtype=B.dtype, device=B.device)
-    elif out.is_contiguous():
+    if out is not None and (
+        out.is_contiguous() and out.dtype == B.dtype and out.shape == org_shape
+    ):
+        # A contiguous, shape/dtype-matching ``out`` is handed to the kernels
+        # as the solve target, so the solution is written in place and no
+        # trailing full-tensor copy is needed. Non-contiguous or mismatched
+        # buffers keep the copy-back path below.
         clean_out = None
         X = out
-    else:
-        # Non-contiguous ``out`` cannot be written by the kernel directly.
+    elif out is not None:
+        # Non-contiguous ``out`` cannot be written by the kernels directly.
         clean_out = out
-        X = torch.empty(org_shape, dtype=B.dtype, device=B.device)
+        X = None
+    else:
+        clean_out = None
+        X = None
 
     B_v = B.expand(batch_shape + B.shape[-2:]).reshape(batch, m, n_rhs)
     LU_v = LU_data.expand(batch_shape + LU_data.shape[-2:]).reshape(batch, m, m)
     PIV_v = LU_pivots.expand(batch_shape + (m,)).reshape(batch, m)
-    X_v = X.view(batch, m, n_rhs)
 
-    # Delegate to the linalg_lu_solve kernels. They always allocate their own
-    # output, so copy into X (which aliases ``out`` when it is contiguous).
-    result = linalg_lu_solve(LU_v, PIV_v, B_v)
+    # Delegate to the linalg_lu_solve kernels. When ``out`` is usable as the
+    # solve target they write it directly (which aliases ``out``); otherwise
+    # they allocate their own output and it is copied below.
+    result = linalg_lu_solve(LU_v, PIV_v, B_v, out=X)
 
     if clean_out is not None:
         clean_out.copy_(result.reshape(org_shape))
         return clean_out
     if out is None:
         return result.reshape(org_shape)
-    X_v.copy_(result)
-    return X
+    return result
 
 
 def lu_solve(B, LU_data, LU_pivots, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LU_SOLVE")
+    logger.debug("GEMS_ENFLAME LU_SOLVE")
     if out is not None:
         return _lu_solve_impl(B, LU_data, LU_pivots, out)
     return _lu_solve_impl(B, LU_data, LU_pivots, None)
 
 
 def lu_solve_out(B, LU_data, LU_pivots, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 LU_SOLVE_OUT")
+    logger.debug("GEMS_ENFLAME LU_SOLVE_OUT")
     return _lu_solve_impl(B, LU_data, LU_pivots, out)

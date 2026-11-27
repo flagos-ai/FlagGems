@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-import flag_gems.fused as fused
+import flag_gems.deprecated as deprecated
 
 from .. import base, utils
 
@@ -93,7 +93,7 @@ def test_topk_softmax(monkeypatch):
     bench = TopKSoftmaxBenchmark(
         op_name="topk_softmax",
         torch_op=vllm_topk_softmax,
-        gems_op=fused.topk_softmax,
+        gems_op=deprecated.topk_softmax,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
 

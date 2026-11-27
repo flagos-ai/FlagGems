@@ -274,11 +274,22 @@ def test_accuracy_logsumexp(shape, dtype, dim, keepdim):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim], atol=5e-3)
 
 
+def _skip_if_aten_multidim_logsumexp_aborts():
+    # The reference side of this case is a raw aten call on the device
+    # (`torch.logsumexp(x, (0, 1))`, 9-D input). On this backend that aten
+    # entry aborts the whole process (SIGABRT) for a multi-axis reduction, so
+    # the vendor-neutral duplicate-dim assertion above runs on every vendor and
+    # only the aten comparison is skipped here.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip("enflame: aten::logsumexp aborts for a multi-axis reduction")
+
+
 @pytest.mark.logsumexp_backward
 def test_logsumexp_backward_high_rank_and_duplicate_dims():
     x = torch.randn((2,) * 9, device=flag_gems.device, requires_grad=True)
     with pytest.raises(RuntimeError, match="appears multiple times"):
         flag_gems.logsumexp(x, (0, -9))
+    _skip_if_aten_multidim_logsumexp_aborts()
     ref = torch.logsumexp(x, (0, 1))
     result = flag_gems.logsumexp(x, (0, 1))
     grad = torch.randn_like(ref)

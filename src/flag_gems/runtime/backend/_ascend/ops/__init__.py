@@ -101,6 +101,7 @@ from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .cross import cross
+from .cross_out import cross_out
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
@@ -130,10 +131,15 @@ from .euclidean_dist import euclidean_dist
 from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
+from .fake_quantize_per_tensor_affine_cachemask_out import (
+    fake_quantize_per_tensor_affine_cachemask,
+    fake_quantize_per_tensor_affine_cachemask_out,
+)
 from .feature_dropout import feature_dropout
 from .fft_ifftshift import fft_ifftshift
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .fill_diagonal_ import fill_diagonal_
+from .fix import fix
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flash_attention_backward import flash_attention_backward
 from .flip import flip
@@ -239,6 +245,8 @@ from .hamming_window import (
 from .hardshrink import hardshrink
 from .hardshrink_out import hardshrink_out
 from .hardsigmoid_backward import hardsigmoid_backward
+from .hardswish import hardswish
+from .hardswish_out import hardswish_out
 from .hardtanh_backward import hardtanh_backward
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
@@ -294,6 +302,7 @@ from .linear import linear
 from .linspace import linspace
 from .log1p import log1p
 from .log2 import log2
+from .log2_ import log2_
 from .log_ import log_
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
@@ -331,6 +340,7 @@ from .multi_margin_loss import (
 )
 from .multinomial import multinomial
 from .mv import mv
+from .nan_to_num_ import nan_to_num_
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
@@ -361,6 +371,7 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .prod import prod, prod_dim
+from .rad2deg_ import rad2deg_
 from .randperm import randperm
 from .relu6_ import relu6_
 from .renorm import renorm
@@ -375,6 +386,7 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
+from .round_out import round_out
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
 from .scatter_add import scatter_add, scatter_add_
@@ -400,12 +412,14 @@ from .special_expit import special_expit
 from .special_expm1 import special_expm1
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
+from .special_round_out import special_round_out
 from .special_xlogy import special_xlogy
 from .special_xlogy_ import special_xlogy_
 from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .subtract import subtract
+from .subtract_ import subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .take import take, take_out
@@ -451,6 +465,7 @@ from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy import xlogy, xlogy_out, xlogy_tensor_scalar, xlogy_tensor_scalar_out
 from .xlogy_ import xlogy_
+from .xlogy_scalar_tensor import xlogy_scalar_tensor
 from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -553,6 +568,7 @@ __all__ = [
     "cosine_embedding_loss",
     "count_nonzero",
     "cross",
+    "cross_out",
     "cudnn_convolution",
     "cummax",
     "cummin",
@@ -580,6 +596,8 @@ __all__ = [
     "expand_copy",
     "exponential",
     "exponential_",
+    "fake_quantize_per_tensor_affine_cachemask",
+    "fake_quantize_per_tensor_affine_cachemask_out",
     "feature_dropout",
     "fft_ifftshift",
     "fill_diagonal_",
@@ -587,6 +605,7 @@ __all__ = [
     "fill_scalar_",
     "fill_tensor",
     "fill_tensor_",
+    "fix",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
@@ -696,6 +715,8 @@ __all__ = [
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid_backward",
+    "hardswish",
+    "hardswish_out",
     "hardtanh_backward",
     "hinge_embedding_loss",
     "histc",
@@ -763,6 +784,7 @@ __all__ = [
     "linspace",
     "log1p",
     "log2",
+    "log2_",
     "log_",
     "log_normal",
     "log_sigmoid_backward",
@@ -813,6 +835,7 @@ __all__ = [
     "multi_margin_loss_backward_out",
     "multinomial",
     "mv",
+    "nan_to_num_",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
@@ -851,6 +874,7 @@ __all__ = [
     "pow_tensor_tensor_",
     "prod",
     "prod_dim",
+    "rad2deg_",
     "randperm",
     "relu6_",
     "renorm",
@@ -866,6 +890,7 @@ __all__ = [
     "rms_norm_w8a16_int8",
     "rnn_tanh",
     "rnn_tanh_data",
+    "round_out",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scaled_dot_product_attention",
@@ -904,12 +929,14 @@ __all__ = [
     "special_expm1",
     "special_log1p_out",
     "special_logit_out",
+    "special_round_out",
     "special_xlogy",
     "special_xlogy_",
     "square_",
     "squeeze_copy",
     "stack",
     "subtract",
+    "subtract_",
     "sum",
     "sum_dim",
     "sum_dim_out",
@@ -957,6 +984,7 @@ __all__ = [
     "xlogy",
     "xlogy_",
     "xlogy_out",
+    "xlogy_scalar_tensor",
     "xlogy_tensor_scalar",
     "xlogy_tensor_scalar_out",
     "zero",

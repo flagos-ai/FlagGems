@@ -762,6 +762,12 @@ def test__sparse_sum_backward_stored_offsets(dtype, row):
 @pytest.mark.parametrize("row", tu.selected_cases(_OUT_ROWS, quick=[]))
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__sparse_sum_backward_out(dtype, row):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "torch_gcu defect (aten out=): aten::_sparse_sum_backward.out only rewrites the stored "
+            "count to the resulting nnz and leaves the indices/values components empty, so the "
+            "reference buffer is untrustworthy; all 8 cases of this function fail because of it"
+        )
     shape, sparse_dim, dims, nnz = row
     inp = _sparse_self(shape, sparse_dim, dtype, ["-1", "1"], nnz)
     grad = _make_grad(inp, shape, sparse_dim, dims, dtype, ["-1", "1"])

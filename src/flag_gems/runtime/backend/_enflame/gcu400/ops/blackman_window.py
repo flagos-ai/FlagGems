@@ -34,38 +34,49 @@ def blackman_window_kernel(
     out_ptr,
     window_length,
     scale,
+    num_progs,
     LOW_PRECISION: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
+    """Persistent window fill: the grid is folded below the 65535-program hard
+    limit (P19), so window lengths above 65535 * BLOCK_SIZE still run."""
     pid = ext.program_id(0)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < window_length
-
     dtype = out_ptr.dtype.element_ty
 
-    if LOW_PRECISION:
-        # Mirror torch's computation op-by-op. torch evaluates each elementary
-        # op (arange, mul, cos, ...) in the output dtype, rounding the result of
-        # every step. tl.cos requires fp32, so we compute in fp32 but round back
-        # to the output dtype after each step to reproduce torch's results
-        # bit-for-bit (observable for float16 / bfloat16).
-        n = idx.to(dtype).to(tl.float32)  # arange in output dtype
-        x = (n * scale).to(dtype).to(tl.float32)  # x = n * (pi / (N - 1))
-        c2 = tl.cos((x * 2.0).to(dtype).to(tl.float32)).to(dtype).to(tl.float32)
-        c4 = tl.cos((x * 4.0).to(dtype).to(tl.float32)).to(dtype).to(tl.float32)
-        t4 = (c4 * 0.08).to(dtype).to(tl.float32)
-        t2 = (c2 * 0.5).to(dtype).to(tl.float32)
-        term = (t4 - t2).to(dtype).to(tl.float32)
-        val = (term + 0.42).to(dtype)
-    else:
-        # fp32 / fp64: compute directly in the native dtype (tl.cos supports
-        # both), keeping full precision.
-        n = idx.to(dtype)
-        x = n * scale
-        val = 0.08 * tl.cos(x * 4.0) - 0.5 * tl.cos(x * 2.0) + 0.42
-        val = val.to(dtype)
+    for base in range(pid * BLOCK_SIZE, window_length, num_progs * BLOCK_SIZE):
+        idx = base + tl.arange(0, BLOCK_SIZE)
+        # Only the last tile needs a mask; full tiles use the unmasked store.
+        full_tile = base + BLOCK_SIZE <= window_length
 
-    tl.store(out_ptr + idx, val, mask=mask)
+        if LOW_PRECISION:
+            # Mirror torch's computation op-by-op. torch evaluates each elementary
+            # op (arange, mul, cos, ...) in the output dtype, rounding the result of
+            # every step. tl.cos requires fp32, so we compute in fp32 but round back
+            # to the output dtype after each step to reproduce torch's results
+            # bit-for-bit (observable for float16 / bfloat16).
+            n = idx.to(dtype).to(tl.float32)  # arange in output dtype
+            x = (n * scale).to(dtype).to(tl.float32)  # x = n * (pi / (N - 1))
+            c2 = tl.cos((x * 2.0).to(dtype).to(tl.float32)).to(dtype).to(tl.float32)
+            c4 = tl.cos((x * 4.0).to(dtype).to(tl.float32)).to(dtype).to(tl.float32)
+            t4 = (c4 * 0.08).to(dtype).to(tl.float32)
+            t2 = (c2 * 0.5).to(dtype).to(tl.float32)
+            term = (t4 - t2).to(dtype).to(tl.float32)
+            val = (term + 0.42).to(dtype)
+            if full_tile:
+                tl.store(out_ptr + idx, val)
+            else:
+                tl.store(out_ptr + idx, val, mask=idx < window_length)
+        else:
+            # fp32 / fp64: one cos only, via cos(4x) = 2*cos(2x)^2 - 1 (the
+            # second transcendental is the dominant cost at GB-scale windows).
+            n = idx.to(dtype)
+            x = n * scale
+            c2 = tl.cos(x * 2.0)
+            val = (0.08 * (2.0 * c2 * c2 - 1.0) - 0.5 * c2 + 0.42).to(dtype)
+            if full_tile:
+                tl.store(out_ptr + idx, val)
+            else:
+                tl.store(out_ptr + idx, val, mask=idx < window_length)
 
 
 def blackman_window(
@@ -77,7 +88,7 @@ def blackman_window(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BLACKMAN_WINDOW")
+    logger.debug("GEMS_ENFLAME BLACKMAN_WINDOW")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:
@@ -108,12 +119,14 @@ def blackman_window(
     scale = math.pi / (full_length - 1)
 
     low_precision = dtype in (torch.float16, torch.bfloat16)
-    # 1024 elements per program: a standard 1D launch block that balances
-    # occupancy and register pressure for this elementwise window fill.
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(window_length, BLOCK_SIZE),)
-    blackman_window_kernel[grid](
-        out, window_length, scale, low_precision, BLOCK_SIZE=BLOCK_SIZE
+    # 2048 elements per program measured fastest for this elementwise fill
+    # (16M fp32 elements: 1034us vs 2077us at 1024; 1e9 fp32: 26ms, 15.6ms
+    # with the single-cos form).
+    BLOCK_SIZE = 2048
+    # Fold the grid below the 65535-program hardware limit (P19).
+    num_progs = min(triton.cdiv(window_length, BLOCK_SIZE), 65535)
+    blackman_window_kernel[(num_progs,)](
+        out, window_length, scale, num_progs, low_precision, BLOCK_SIZE=BLOCK_SIZE
     )
     return out
 
@@ -127,7 +140,7 @@ def blackman_window_periodic(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BLACKMAN_WINDOW_PERIODIC")
+    logger.debug("GEMS_ENFLAME BLACKMAN_WINDOW_PERIODIC")
     return blackman_window(
         window_length,
         periodic,

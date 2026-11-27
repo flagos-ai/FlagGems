@@ -90,11 +90,68 @@ def histc_kernel_local(
     )
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
+def histc_kernel_dot(
+    inp_ptr,
+    out_ptr,
+    N_total,
+    bins,
+    min_val,
+    max_val,
+    inv_bin_width,
+    BLOCK: tl.constexpr,
+    NBINS: tl.constexpr,
+):
+    # GCU400: tl.histogram lowers to a ~30ns/element serialized update, which
+    # dominates large inputs. Counting via a one-hot compare reduced with
+    # tl.dot runs the reduction on the MMA path instead:
+    #   count[b] = sum_e (key_e == b)  ->  ones[16, BLOCK] @ onehot[BLOCK, NBINS]
+    # int8 operands halve the one-hot materialization/staging bytes vs fp16
+    # (measured 12-14% faster; the int32 accumulator is exact for any count).
+    # All 16 accumulator rows are identical (ones is constant); tl.max extracts
+    # one row without a 2D tl.sum reduction, which is pathologically slow on
+    # this backend. Keys outside [0, bins) and NaN/out-of-range loads are
+    # mapped to NBINS - 1, which the final bin_range < bins mask discards.
+    # num_warps=1 is required for the dot path (measured 1.7x faster than
+    # num_warps=2 at N >= 16M); tl.sum-based one-hot variants regress 2-5x.
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    bin_range = tl.arange(0, NBINS)
+    ones = tl.full((16, BLOCK), 1, dtype=tl.int8)
+    acc = tl.zeros((16, NBINS), dtype=tl.int32)
+    for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
+        inp_val = tl.load(inp_ptr + off, mask=mask, other=float("nan")).to(tl.float32)
+        bin_idx = ((inp_val - min_val) * inv_bin_width).to(tl.int32)
+        in_range = (inp_val >= min_val) & (inp_val <= max_val)
+        bin_idx = tl.minimum(bin_idx, bins - 1)
+        key = tl.where(mask & in_range, bin_idx, NBINS - 1)
+        onehot = (key[:, None] == bin_range[None, :]).to(tl.int8)
+        acc = tl.dot(ones, onehot, acc, out_dtype=tl.int32)
+    hist = tl.max(acc, axis=0)
+    tl.atomic_add(
+        out_ptr + bin_range,
+        hist.to(out_ptr.dtype.element_ty),
+        mask=bin_range < bins,
+        sem="relaxed",
+    )
+
+
 def _next_pow2(x):
     n = 1
     while n < x:
         n *= 2
     return n
+
+
+# Above this element count the tl.dot one-hot kernel beats tl.histogram
+# (measured on GCU400/Libra: crossover lies between 65K and 1M elements;
+# 1M 434us vs 719us, 16M 2.58ms vs 9.84ms, 64M 9.42ms vs 39.1ms).
+_DOT_MIN_N = 262144
+_DOT_BLOCK = 512
 
 
 def histc(inp, bins=100, min=0, max=0):
@@ -119,7 +176,22 @@ def histc(inp, bins=100, min=0, max=0):
         return out
 
     NBINS = _next_pow2(bins + 1)
-    if NBINS <= 2048:
+    if 16 <= NBINS <= 128 and N > _DOT_MIN_N:
+        grid = builtins.min((N + _DOT_BLOCK - 1) // _DOT_BLOCK, NUM_SIPS * 2)
+        with torch_device_fn.device(inp.device):
+            histc_kernel_dot[(grid,)](
+                inp,
+                out,
+                N,
+                bins,
+                min_val,
+                max_val,
+                bins / (max_val - min_val),
+                BLOCK=_DOT_BLOCK,
+                NBINS=NBINS,
+                num_warps=1,
+            )
+    elif NBINS <= 2048:
         if N <= 8192:
             BLOCK = 1024
         elif N <= 98304:

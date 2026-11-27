@@ -46,27 +46,6 @@ _FORWARD_RESCUE_FLAG = "_flag_gems_gcu400_log_sigmoid_forward_rescue_registered"
 _FORWARD_RESCUE_LIBRARY = None
 
 
-def _ensure_log_sigmoid_forward_rescue():
-    global _FORWARD_RESCUE_LIBRARY
-    if getattr(torch, _FORWARD_RESCUE_FLAG, False):
-        return
-    from .log_sigmoid_forward import log_sigmoid_forward as _forward_impl
-
-    _FORWARD_RESCUE_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _FORWARD_RESCUE_LIBRARY.impl(
-            "log_sigmoid_forward", _forward_impl, "PrivateUse1"
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "log_sigmoid_forward PrivateUse1 rescue registration skipped: %s", error
-        )
-    setattr(torch, _FORWARD_RESCUE_FLAG, True)
-
-
-_ensure_log_sigmoid_forward_rescue()
-
-
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def log_sigmoid_backward_kernel(grad_output, self):
@@ -156,7 +135,7 @@ def _launch_contiguous_kernel(grad_output, self, buffer, grad_input):
 
 
 def log_sigmoid_backward(grad_output, self, buffer):
-    logger.debug("GEMS_ENFLAME_GCU400 LOG_SIGMOID_BACKWARD")
+    logger.debug("GEMS_ENFLAME LOG_SIGMOID_BACKWARD")
 
     if (
         buffer.shape == self.shape
@@ -169,7 +148,7 @@ def log_sigmoid_backward(grad_output, self, buffer):
 
 
 def log_sigmoid_backward_out(grad_output, self, buffer, *, grad_input):
-    logger.debug("GEMS_ENFLAME_GCU400 LOG_SIGMOID_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME LOG_SIGMOID_BACKWARD_OUT")
 
     if _can_use_contiguous_kernel(grad_output, self, grad_input):
         return _launch_contiguous_kernel(grad_output, self, buffer, grad_input)
