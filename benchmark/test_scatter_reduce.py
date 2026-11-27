@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+import math
+
 import pytest
 import torch
 
@@ -40,7 +43,40 @@ def scatter_reduce_more_shapes(shapes):
     ]
 
 
-class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
+class ScatterReduceBenchmark(base.GenericBenchmark2DOnly):
+    def get_latency(self, op, *args, **kwargs):
+        measure = super().get_latency
+        if (
+            flag_gems.vendor_name != "ascend"
+            or base.Config.mode != consts.BenchMode.KERNEL
+        ):
+            return measure(op, *args, **kwargs)
+        try:
+            latency = measure(op, *args, **kwargs)
+            # FlagTree can count CANN's zero-duration task-id rollover marker
+            # (PLACE_HOLDER_SQE) as an extra task and invalidate the sample.
+            if math.isinf(latency):
+                logging.getLogger(__name__).warning(
+                    "Ascend profiler returned infinite latency. Repeating the sample."
+                )
+                latency = measure(op, *args, **kwargs)
+            if not math.isfinite(latency) or latency <= 0:
+                raise RuntimeError(f"Invalid Ascend scatter kernel latency: {latency}")
+            return latency
+        except RuntimeError:
+            logging.getLogger(__name__).error(
+                "%s failed for shape=%s dtype=%s dim=%s reduce=%s include_self=%s",
+                self.op_name,
+                tuple(args[0].shape),
+                args[0].dtype,
+                args[1],
+                kwargs["reduce"],
+                kwargs.get("include_self", True),
+            )
+            raise
+
+
+class TensorSelectBenchmark(ScatterReduceBenchmark):
     """Benchmark scatter-style ATen operators with tensor index inputs."""
 
     def set_more_metrics(self):
@@ -51,7 +87,7 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return scatter_reduce_more_shapes(super().set_more_shapes())
 
 
-class ScatterReduceInplaceBenchmark(base.GenericBenchmark2DOnly):
+class ScatterReduceInplaceBenchmark(ScatterReduceBenchmark):
     def set_more_shapes(self):
         generic_shapes = super().set_more_shapes()
         scatter_shapes = scatter_reduce_more_shapes(generic_shapes)
