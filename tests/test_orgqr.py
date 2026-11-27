@@ -216,11 +216,14 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
     assert result is alias_input
     utils.gems_assert_close(result, ref_alias, torch.float32)
 
-    wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
-    wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
-    result = flag_gems.orgqr_out(input, tau, out=wide_out)
-    ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
-    utils.gems_assert_close(result, ref, torch.float64)
+    if utils.fp64_is_supported:
+        # Without fp64 the allocation below would silently fall back to fp32 and
+        # the dtype contract could not be checked at all.
+        wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
+        wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
+        result = flag_gems.orgqr_out(input, tau, out=wide_out)
+        ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
+        utils.gems_assert_close(result, ref, torch.float64)
 
     bad_out = torch.empty((7, 5), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
