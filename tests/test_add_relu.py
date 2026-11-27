@@ -34,7 +34,7 @@ def test_add_relu(shape, dtype):
         assert (value.device, value.dtype, tuple(value.shape)) == abi[:3]
         assert value.stride() == abi[3]
         assert value.data_ptr() == abi[4]
-        assert torch.equal(
+        utils.gems_assert_equal(
             value.detach().cpu().reshape(-1).view(torch.uint8),
             original.detach().cpu().reshape(-1).view(torch.uint8),
         )
