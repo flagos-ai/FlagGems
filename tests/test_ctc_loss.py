@@ -836,14 +836,30 @@ def test_ctc_loss_invalid_blank_raises(path, blank):
     input_lengths = torch.tensor([6, 6], device=flag_gems.device, dtype=torch.long)
     target_lengths = torch.tensor([2, 2], device=flag_gems.device, dtype=torch.long)
 
-    with pytest.raises(RuntimeError):
-        F.ctc_loss(
-            utils.to_reference(log_probs),
-            utils.to_reference(targets),
-            utils.to_reference(input_lengths),
-            utils.to_reference(target_lengths),
-            blank=blank,
-        )
+    # torch native F.ctc_loss on kunlunxin dispatches to the xdnn kernel,
+    # which asserts on blank < 0 but silently accepts blank >= classes
+    # (reference-side defect; the CI-safe oracle below was built for exactly
+    # this class of on-device reference bugs). The vendored aten::_ctc_loss
+    # validates both, so exercise the oracle instead.
+    if flag_gems.vendor_name == "kunlunxin":
+        with pytest.raises(RuntimeError):
+            torch.ops.aten._ctc_loss(
+                utils.to_reference(log_probs),
+                utils.to_reference(targets),
+                utils.to_reference(input_lengths),
+                utils.to_reference(target_lengths),
+                blank,
+                False,
+            )
+    else:
+        with pytest.raises(RuntimeError):
+            F.ctc_loss(
+                utils.to_reference(log_probs),
+                utils.to_reference(targets),
+                utils.to_reference(input_lengths),
+                utils.to_reference(target_lengths),
+                blank=blank,
+            )
     with pytest.raises(RuntimeError):
         _call_ctc_loss(
             path,
