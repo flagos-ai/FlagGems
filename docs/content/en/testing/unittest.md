@@ -25,7 +25,29 @@ weight: 20
 *FlagGems* uses `pytest` for operator accuracy testing and performance benchmarking.
 It  leverages Triton's `triton.testing.do_bench` for kernel-level performance evaluation.
 
-## 1. Accuracy tests for operators
+## Reproducible collection and dispatch checks
+
+To record exact pytest node IDs and fail immediately if discovery returns no tests:
+
+```shell
+python tools/repro_dispatch.py tests/test_index_put.py --output-dir /tmp/flag-gems-index-put
+```
+
+Collection is the default and does not execute tests. The output contains
+`collection.log` and `nodeids.txt`. On a supported device, `--execute --quick`
+then runs those same nodes first with native ATen dispatch and then with
+`flag_gems.use_gems()` enabled, both in one Python process. Per-node setup,
+call, teardown, skip and failure outcomes are recorded in `results.json`:
+
+```shell
+python tools/repro_dispatch.py tests/test_index_put.py --execute --quick \
+    --output-dir /tmp/flag-gems-index-put
+```
+
+The runner does not alter operator or test sources. Run it only for test cases
+appropriate to the installed backend; this procedure does not require NPU
+execution.
+
 
 To run unit tests on a specific backend like CUDA:
 

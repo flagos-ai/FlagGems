@@ -174,13 +174,8 @@ def test_nanmean_zero_sized_free_dimensions(shape, dim, keepdim):
     "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason=(
-        "aten defect: torch_gcu has no complex nanmean datapath and aborts the "
-        "process, while the CPU fallback raises 'nansum_cpu not implemented for "
-        "ComplexFloat', so no aten reference exists for a real-to-complex "
-        "nanmean"
-    ),
+    flag_gems.vendor_name in ("ascend", "enflame"),
+    reason="Ascend and Enflame native nanmean does not support complex output dtypes",
 )
 def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
@@ -306,10 +301,10 @@ def test_nanmean_out_rejects_device_mismatch():
 
 @pytest.mark.nanmean
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="torch_gcu has no complex nanmean datapath",
+    flag_gems.vendor_name in ("ascend", "enflame"),
+    reason="Ascend and Enflame native nanmean do not support complex inputs",
 )
-def test_nanmean_complex_and_autograd():
+def test_nanmean_complex_input():
     inp = torch.tensor(
         [complex(float("nan"), 1), complex(2, float("nan")), 3 + 4j],
         dtype=torch.complex64,
@@ -325,6 +320,9 @@ def test_nanmean_complex_and_autograd():
         reference = torch.nanmean(inp)
     torch.testing.assert_close(result, reference, equal_nan=True)
 
+
+@pytest.mark.nanmean
+def test_nanmean_complex_and_autograd():
     grad_inp = torch.tensor(
         [1.0, float("nan"), 3.0], device=flag_gems.device, requires_grad=True
     )
@@ -365,7 +363,8 @@ def test_nanmean_out_rejects_autograd():
 
 @pytest.mark.nanmean
 @pytest.mark.skipif(
-    cfg.TO_CPU, reason="native CPU nanmean does not support complex inputs"
+    cfg.TO_CPU or flag_gems.vendor_name == "ascend",
+    reason="CPU/Ascend native nanmean does not support complex inputs",
 )
 @pytest.mark.parametrize(
     "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]

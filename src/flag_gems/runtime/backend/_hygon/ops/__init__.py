@@ -104,20 +104,46 @@ from ._foreach_floor_ import _foreach_floor_ as _foreach_floor_
 from ._foreach_frac import _foreach_frac as _foreach_frac
 from ._foreach_frac_ import _foreach_frac_ as _foreach_frac_
 from ._foreach_log import _foreach_log as _foreach_log
+from ._foreach_log1p import _foreach_log1p as _foreach_log1p
+from ._foreach_log1p_ import _foreach_log1p_ as _foreach_log1p_
+from ._foreach_log2 import _foreach_log2 as _foreach_log2
+from ._foreach_log2_ import _foreach_log2_ as _foreach_log2_
 from ._foreach_log10 import _foreach_log10 as _foreach_log10
 from ._foreach_log10_ import _foreach_log10_ as _foreach_log10_
 from ._foreach_max import _foreach_max as _foreach_max
+from ._foreach_maximum__List import _foreach_maximum__List as _foreach_maximum__List
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_maximum_List import _foreach_maximum_List as _foreach_maximum_List
+from ._foreach_maximum_Scalar import _foreach_maximum_Scalar as _foreach_maximum_Scalar
+from ._foreach_maximum_ScalarList import (
+    _foreach_maximum_ScalarList as _foreach_maximum_ScalarList,
+)
+from ._foreach_minimum__List import _foreach_minimum__List as _foreach_minimum__List
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_minimum__ScalarList import (
+    _foreach_minimum__ScalarList as _foreach_minimum__ScalarList,
+)
+from ._foreach_minimum_List import _foreach_minimum_List as _foreach_minimum_List
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar as _foreach_minimum_Scalar
+from ._foreach_minimum_ScalarList import (
+    _foreach_minimum_ScalarList as _foreach_minimum_ScalarList,
+)
 from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__Scalar import _foreach_mul__Scalar
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_mul__Tensor import _foreach_mul__Tensor as _foreach_mul__Tensor
+from ._foreach_mul_List import _foreach_mul_List as _foreach_mul_List
+from ._foreach_mul_Scalar import _foreach_mul_Scalar as _foreach_mul_Scalar
+from ._foreach_mul_ScalarList import _foreach_mul_ScalarList as _foreach_mul_ScalarList
+from ._foreach_mul_Tensor import _foreach_mul_Tensor as _foreach_mul_Tensor
 from ._foreach_neg import _foreach_neg as _foreach_neg
+from ._foreach_neg_ import _foreach_neg_ as _foreach_neg_
+from ._foreach_norm import _foreach_norm as _foreach_norm
 from ._foreach_pow__Scalar import _foreach_pow__Scalar
 from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_pow_List import _foreach_pow_List as _foreach_pow_List
+from ._foreach_pow_Scalar import _foreach_pow_Scalar as _foreach_pow_Scalar
 from ._foreach_pow_ScalarAndTensor import (
     _foreach_pow_ScalarAndTensor as _foreach_pow_ScalarAndTensor,
 )
@@ -131,10 +157,22 @@ from ._foreach_sigmoid_ import _foreach_sigmoid_ as _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
 from ._foreach_sin import _foreach_sin as _foreach_sin
 from ._foreach_sin_ import _foreach_sin_ as _foreach_sin_
+from ._foreach_sqrt import _foreach_sqrt as _foreach_sqrt
+from ._foreach_sqrt_ import _foreach_sqrt_ as _foreach_sqrt_
+from ._foreach_sub__List import _foreach_sub__List as _foreach_sub__List
+from ._foreach_sub__Scalar import _foreach_sub__Scalar as _foreach_sub__Scalar
 from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
+from ._foreach_sub_List import _foreach_sub_List as _foreach_sub_List
+from ._foreach_sub_Scalar import _foreach_sub_Scalar as _foreach_sub_Scalar
+from ._foreach_sub_ScalarList import _foreach_sub_ScalarList as _foreach_sub_ScalarList
 from ._foreach_tan import _foreach_tan as _foreach_tan
+from ._foreach_tan_ import _foreach_tan_ as _foreach_tan_
+from ._foreach_tanh import _foreach_tanh as _foreach_tanh
+from ._foreach_tanh_ import _foreach_tanh_ as _foreach_tanh_
+from ._foreach_trunc import _foreach_trunc as _foreach_trunc
+from ._foreach_trunc_ import _foreach_trunc_ as _foreach_trunc_
 from ._fused_rms_norm_backward import (
     _fused_rms_norm_backward as _fused_rms_norm_backward,
 )
@@ -464,18 +502,38 @@ __all__ = [
     "_foreach_log",
     "_foreach_log10",
     "_foreach_log10_",
+    "_foreach_log1p",
+    "_foreach_log1p_",
+    "_foreach_log2",
+    "_foreach_log2_",
     "_foreach_max",
+    "_foreach_maximum__List",
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_maximum_List",
+    "_foreach_maximum_Scalar",
+    "_foreach_maximum_ScalarList",
+    "_foreach_minimum__List",
     "_foreach_minimum__Scalar",
+    "_foreach_minimum__ScalarList",
+    "_foreach_minimum_List",
     "_foreach_minimum_Scalar",
+    "_foreach_minimum_ScalarList",
     "_foreach_mul__List",
     "_foreach_mul__Scalar",
     "_foreach_mul__ScalarList",
+    "_foreach_mul__Tensor",
+    "_foreach_mul_List",
+    "_foreach_mul_Scalar",
+    "_foreach_mul_ScalarList",
+    "_foreach_mul_Tensor",
     "_foreach_neg",
+    "_foreach_neg_",
+    "_foreach_norm",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
+    "_foreach_pow_List",
+    "_foreach_pow_Scalar",
     "_foreach_pow_ScalarAndTensor",
     "_foreach_pow_ScalarList",
     "_foreach_reciprocal",
@@ -487,8 +545,20 @@ __all__ = [
     "_foreach_sign_",
     "_foreach_sin",
     "_foreach_sin_",
+    "_foreach_sqrt",
+    "_foreach_sqrt_",
+    "_foreach_sub__List",
+    "_foreach_sub__Scalar",
     "_foreach_sub__ScalarList",
+    "_foreach_sub_List",
+    "_foreach_sub_Scalar",
+    "_foreach_sub_ScalarList",
     "_foreach_tan",
+    "_foreach_tan_",
+    "_foreach_tanh",
+    "_foreach_tanh_",
+    "_foreach_trunc",
+    "_foreach_trunc_",
     "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
