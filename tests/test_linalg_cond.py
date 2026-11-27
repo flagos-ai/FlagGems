@@ -21,6 +21,65 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _missing_cpu_lapack(inp):
+    """MUSA CPU builds can lack LAPACK, so linear-algebra references fall back
+    to NumPy. This mirrors the MUSA reference pattern used on master
+    (tests/test_inverse.py, test_linalg_lu_solve.py, test_det.py)."""
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    )
+
+
+def _reference_input(inp, upcast=False):
+    # On MUSA the reference is taken on CPU; other vendors keep the existing
+    # device/--ref cpu behaviour.
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _assert_target_abi(actual, reference, inp):
+    if isinstance(actual, (tuple, list)):
+        assert isinstance(reference, (tuple, list)) and len(actual) == len(reference)
+        for value, expected in zip(actual, reference):
+            _assert_target_abi(value, expected, inp)
+        return
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == reference.shape
+    assert actual.untyped_storage()._cdata != inp.untyped_storage()._cdata
+
+
+def _for_comparison(actual, reference, inp):
+    # Inspect the requested target ABI before CPU observation/value comparison.
+    _assert_target_abi(actual, reference, inp)
+    return actual.cpu() if flag_gems.vendor_name == "mthreads" else actual
+
+
+def _reference_cond(inp, p=None):
+    if _missing_cpu_lapack(inp):
+        import numpy as np
+
+        array = inp.detach().numpy()
+        if p == "nuc":
+            value = np.linalg.norm(array, ord="nuc", axis=(-2, -1)) * np.linalg.norm(
+                np.linalg.inv(array), ord="nuc", axis=(-2, -1)
+            )
+        else:
+            value = np.linalg.cond(array, p=p)
+        return _from_numpy(value)
+    return torch.linalg.cond(inp, p=p)
+
+
 # Matrix shapes for linalg_cond tests
 LINALG_COND_SHAPES = [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)]
 LINALG_COND_SHAPES_SVD = [(2, 3), (4, 4), (4, 6), (8, 8), (16, 16)]
@@ -58,13 +117,15 @@ def _make_moderate_cond_matrix(shape, dtype, device):
 def test_linalg_cond(shape, dtype):
     # Test with p=None (2-norm via Jacobi SVD)
     A = _make_moderate_cond_matrix(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.cond(ref_A)
-    res_out = torch.linalg.cond(A)
+    ref_out = _reference_cond(ref_A)
+    res_out = flag_gems.linalg_cond(A)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond
@@ -74,13 +135,15 @@ def test_linalg_cond(shape, dtype):
 def test_linalg_cond_with_p(shape, dtype, p):
     # Test with various p values that require square matrices
     A = _make_moderate_cond_matrix(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.cond(ref_A, p=p)
-    res_out = torch.linalg.cond(A, p=p)
+    ref_out = _reference_cond(ref_A, p=p)
+    res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond
@@ -95,10 +158,12 @@ def test_linalg_cond_svd(shape, dtype, p):
     k = min(m, n)
     eye_k = torch.eye(k, dtype=dtype, device=flag_gems.device)
     A[..., :k, :k] = A[..., :k, :k] + k * eye_k
-    ref_A = utils.to_reference(A)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.cond(ref_A, p=p)
-    res_out = torch.linalg.cond(A, p=p)
+    ref_out = _reference_cond(ref_A, p=p)
+    res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
