@@ -19,6 +19,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ._tq_mx_cube import launch_mx_cube
+
 
 # --------------------------------------------------------------------------- #
 # Path A: streamed matrix-vector kernel for decode-shaped (M == 1) inputs
@@ -476,28 +478,27 @@ def _tq_mx_kernel(
     s2p_ptr,
     bias_ptr,
     out_ptr,
-    M,
-    N,
-    K,
-    sx1_b,
-    sx1_m,
-    sx2_b,
-    so_b,
-    so_m,
-    so_n,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    sx1_b: tl.constexpr,
+    sx1_m: tl.constexpr,
+    sx2_b: tl.constexpr,
+    so_b: tl.constexpr,
+    so_m: tl.constexpr,
+    so_n: tl.constexpr,
     BM: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
+    DIRECT_ACT_SCALE: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     DT_OUT: tl.constexpr,
     EVEN: tl.constexpr,
 ):
-    """One hardware scaled fp8 MMA per BK slab; both operands are read straight from
-    their physical layouts and both e8m0 tiles are slab-contiguous (see pack kernels).
-    """
-    pid_n = tl.program_id(0)
-    pid_m = tl.program_id(1)
-    b = tl.program_id(2)
+    """Compute block-scaled FP8 tiles with packed weight scales."""
+    b = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_m = tl.program_id(2)
 
     rm = pid_m * BM + tl.arange(0, BM)
     rn = pid_n * BN + tl.arange(0, BN)
@@ -517,7 +518,18 @@ def _tq_mx_kernel(
             pk = b * nj + j
             a = tl.load(x1b + rm[:, None] * sx1_m + (k0 + rk)[None, :])
             w = tl.load(x2b + (k0 + rk)[:, None] * N + rn[None, :])
-            asc = tl.load(s1p_ptr + pk * mpb + rm[:, None] * (BK // 32) + rq[None, :])
+            if DIRECT_ACT_SCALE:
+                asc = tl.load(
+                    s1p_ptr
+                    + b * (sx1_b // 32)
+                    + rm[:, None] * (sx1_m // 32)
+                    + j * (BK // 32)
+                    + rq[None, :]
+                )
+            else:
+                asc = tl.load(
+                    s1p_ptr + pk * mpb + rm[:, None] * (BK // 32) + rq[None, :]
+                )
             bsc = tl.load(s2p_ptr + pk * npb + rn[:, None] * (BK // 32) + rq[None, :])
             acc = tl.dot_scaled(a, asc, "e4m3", w, bsc, "e4m3", acc)
     else:
@@ -655,6 +667,18 @@ def _launch(
     so_b, so_m, so_n = ost[py[0]], ost[py[1]], ost[py[2]]
     dt_code = _DT_CODE[dtype]
     has_bias = bias is not None and bias.numel() > 0
+
+    # The block kernel consumes packed E8M0 pairs in their original layout.
+    # Each work item owns complete K and directly writes an MBN output tile.
+    if (
+        (M == 1 or M % 128 == 0)
+        and N % 256 == 0
+        and K % 512 == 0
+        and max(M, B, K, N) < 2**31
+        and all(t.data_ptr() % 32 == 0 for t in (x1, x2, x1_scale, x2_scale))
+        and launch_mx_cube(x1, x2, x1_scale, x2_scale, out)
+    ):
+        return out
 
     # ---------------- Path A: decode-shaped streamed mat-vec -----------------
     use_matvec = (
@@ -800,7 +824,12 @@ def _launch(
         njp = 1
         while njp < nj:
             njp *= 2
-        s1p = torch.empty((B, nj, M, pb), dtype=torch.int8, device=x1.device)
+        direct_act_scale = M % 128 == 0 and N % 256 == 0 and K % 256 == 0
+        s1p = (
+            s1_bytes
+            if direct_act_scale
+            else torch.empty((B, nj, M, pb), dtype=torch.int8, device=x1.device)
+        )
         s2p = torch.empty((B, nj, N, pb), dtype=torch.int8, device=x1.device)
         # The bulk repack needs the packed word forms to be affine in their own layout:
         # s1's 8 bytes per slab are one int64 word, s2's are four int16 words.
@@ -819,7 +848,7 @@ def _launch(
             and ss2_k % 2 == 0
             and x2_scale.is_contiguous()
         )
-        if s1_bulk:
+        if not direct_act_scale and s1_bulk:
             _tq_pack_s1_bulk[(triton.cdiv(M, 128), B)](
                 s1_bytes.reshape(M, B, nj * pb).view(torch.int64),
                 s1p.view(torch.int64),
@@ -831,7 +860,7 @@ def _launch(
                 NJP=njp,
                 EVEN=(M % 128 == 0),
             )
-        else:
+        elif not direct_act_scale:
             _tq_pack_s1_kernel[(triton.cdiv(M, 128), nj, B)](
                 s1_bytes,
                 s1p,
@@ -869,7 +898,7 @@ def _launch(
                 BNP=128,
                 PB=pb,
             )
-        _mx_grid = (triton.cdiv(N, BN), triton.cdiv(M, BM), B)
+        _mx_grid = (B, triton.cdiv(N, BN), triton.cdiv(M, BM))
         _tq_mx_kernel[_mx_grid](
             x1,
             x2,
@@ -889,6 +918,8 @@ def _launch(
             BM=BM,
             BN=BN,
             BK=BK,
+            DIRECT_ACT_SCALE=direct_act_scale,
+            num_stages=2,
             HAS_BIAS=has_bias,
             DT_OUT=dt_code,
             EVEN=(M % BM == 0 and N % BN == 0),

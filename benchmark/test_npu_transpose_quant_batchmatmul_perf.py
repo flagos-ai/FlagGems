@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
+
 import pytest
 import torch
 
@@ -61,7 +63,11 @@ class A5Benchmark(base.GenericBenchmark):
     or not torch.npu.get_device_name().startswith("Ascend950"),
     reason="Atlas A5 specialization",
 )
-def test_npu_transpose_quant_batchmatmul_perf():
+@pytest.mark.parametrize("implementation", ["auto", "triton"])
+def test_npu_transpose_quant_batchmatmul_perf(implementation, monkeypatch):
+    if implementation == "triton":
+        op_module = sys.modules[flag_gems.npu_transpose_quant_batchmatmul.__module__]
+        monkeypatch.setattr(op_module, "launch_mx_cube", lambda *args: False)
     bench = A5Benchmark(
         op_name="npu_transpose_quant_batchmatmul",
         input_fn=_input_fn,

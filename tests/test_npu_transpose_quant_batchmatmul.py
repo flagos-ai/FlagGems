@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
+
 import pytest
 import torch
 
@@ -53,7 +55,11 @@ def _inputs(shape, dtype, device):
 
 
 @pytest.mark.parametrize("shape", [(1, 8, 4096, 1024), (1024, 8, 4096, 1024)])
-def test_npu_transpose_quant_batchmatmul_native(shape):
+@pytest.mark.parametrize("implementation", ["auto", "triton"])
+def test_npu_transpose_quant_batchmatmul_native(shape, implementation, monkeypatch):
+    if implementation == "triton":
+        op_module = sys.modules[flag_gems.npu_transpose_quant_batchmatmul.__module__]
+        monkeypatch.setattr(op_module, "launch_mx_cube", lambda *args: False)
     args, kwargs = _inputs(shape, torch.bfloat16, flag_gems.device)
     reference = _reference()
     expected = reference(*args, **kwargs)
