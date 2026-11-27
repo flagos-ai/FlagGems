@@ -35,7 +35,7 @@ _SUPPORTED_CONJ_FP8_DTYPES = CONJ_FP8_DTYPES if utils.fp8_is_supported else ()
 # complex support can abort the process rather than raise.
 _SUPPORTED_CONJ_COMPLEX_DTYPES = (
     [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
-    if utils.complex_is_supported and flag_gems.vendor_name != "ascend"
+    if utils.complex_is_supported
     else []
 )
 
@@ -446,11 +446,7 @@ def test__conj_physical_out_resizes(dtype):
 
 @pytest.mark.underscore_conj_physical_out
 @pytest.mark.skipif(
-    not utils.complex_is_supported or flag_gems.vendor_name == "ascend",
-    reason=(
-        "device does not support complex dtypes or NPU normal_ "
-        "rejects complex64 (aclnnInplaceNormal unsupported for DT_COMPLEX64)"
-    ),
+    not utils.complex_is_supported, reason="device does not support complex dtypes"
 )
 def test__conj_physical_out_rejects_wrong_dtype():
     """Mismatched ``out`` dtype raises with ATen's exact message."""
