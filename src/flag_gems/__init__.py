@@ -1156,6 +1156,10 @@ _FULL_CONFIG = (
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("batch_norm_stats", batch_norm_stats),
     ("batch_norm_update_stats", batch_norm_update_stats),
+    (
+        "batch_norm_with_update_backward",
+        batch_norm_with_update_backward,
+    ),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bilinear", bilinear),
