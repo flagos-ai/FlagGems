@@ -95,7 +95,7 @@ def _assert_matches_reference(res, ref, *, size, dtype, axis, scales, zero_point
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame dose not support quantized tensor completely",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
 )
 @pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("shape", _SHAPES)
@@ -138,7 +138,7 @@ def test_empty_per_channel_affine_quantized(shape, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame dose not support quantized tensor completely",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
 )
 @pytest.mark.empty_per_channel_affine_quantized
 @pytest.mark.parametrize("axis", [0, 1, -1])
@@ -173,7 +173,7 @@ def test_empty_per_channel_affine_quantized_axis(axis):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame dose not support quantized tensor completely",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
 )
 @pytest.mark.empty_per_channel_affine_quantized
 def test_empty_per_channel_affine_quantized_float_zero_points():
@@ -228,7 +228,7 @@ def test_empty_per_channel_affine_quantized_device_default_cpu():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame dose not support quantized tensor completely",
+    reason="GCU400: fp64 cases are skipped; quantized scales/zero_points need fp64 device tensors",
 )
 @pytest.mark.empty_per_channel_affine_quantized
 def test_empty_per_channel_affine_quantized_memory_format():

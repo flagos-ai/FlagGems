@@ -25,6 +25,28 @@ from flag_gems.utils.random_utils import set_philox_state
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+# enflame GCU: `aten::_cudnn_attention_backward` has no PrivateUse1 kernel, so
+# cases that use it as the reference skip individually. The input-validation
+# cases only need the forward (whose aten operator is implemented for GCU) and
+# still run there.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+ATEN_REFERENCE_SKIP_REASON = (
+    "enflame GCU has no kernel registered for this aten operator: "
+    "aten::_cudnn_attention_backward is CUDA-only, there is no PrivateUse1 "
+    "kernel to use as reference"
+)
+
+
+def _skip_without_aten_reference():
+    """Skip cases whose reference is the CUDA-only aten backward."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
+
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()
@@ -110,6 +132,7 @@ def test_cudnn_attention_backward(
         pytest.skip(
             "_cudnn_attention_backward is CUDA-only, " "cannot run in quick-cpu mode"
         )
+    _skip_without_aten_reference()
     if is_causal and has_attn_bias:
         pytest.skip("causal + attn_bias combination: skip")
 
@@ -303,6 +326,7 @@ def test_cudnn_attention_backward_dropout_pos_rejected(dtype):
 def test_cudnn_attention_backward_dropout_neg_degrades_to_zero(dtype):
     """dropout_p < 0 is treated as no-dropout and matches the ATen
     dropout_p=0.0 reference."""
+    _skip_without_aten_reference()
     if TO_CPU:
         pytest.skip(
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
@@ -423,6 +447,7 @@ def test_cudnn_attention_backward_scale(dtype, softmax_scale):
         pytest.skip(
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
+    _skip_without_aten_reference()
     if softmax_scale == 0.0 and torch.cuda.is_available():
         major, minor = torch.cuda.get_device_capability()
         if (major, minor) == (8, 0):
@@ -558,6 +583,7 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, batch, bias_shape):
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
 
+    _skip_without_aten_reference()
     num_head, q_seq_len, kv_seq_len, head_size = 2, 64, 64, 64
     scale = float(1.0 / math.sqrt(head_size))
 
@@ -716,6 +742,7 @@ def test_cudnn_attention_backward_dual_dim_bias(
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
 
+    _skip_without_aten_reference()
     q_seq_len, kv_seq_len = 64, 96
     num_head = 2 * gqa_group_size
     num_kv_head = num_head // gqa_group_size
@@ -1031,6 +1058,7 @@ def test_cudnn_attention_backward_value_head_dim(dtype, head_size, value_head_si
             "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
         )
 
+    _skip_without_aten_reference()
     batch, num_head, q_seq_len, kv_seq_len = 1, 2, 128, 128
     scale = float(1.0 / math.sqrt(head_size))
 

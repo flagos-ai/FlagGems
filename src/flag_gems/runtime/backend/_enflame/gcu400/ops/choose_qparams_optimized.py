@@ -368,7 +368,7 @@ def run(input, numel, n_bins, ratio, bit_width):
 
 
 def choose_qparams_optimized(input, numel, n_bins, ratio, bit_width):
-    logger.debug("GEMS_ENFLAME_GCU400 CHOOSE_QPARAMS_OPTIMIZED")
+    logger.debug("GEMS_ENFLAME CHOOSE_QPARAMS_OPTIMIZED")
 
     # The aten reference is float32-only; reject other dtypes explicitly.
     assert input.dtype == torch.float32, (

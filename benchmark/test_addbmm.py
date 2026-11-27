@@ -34,6 +34,14 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
 
 @pytest.mark.addbmm
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::addbmm; the CPU fallback "
+        "is about four orders of magnitude slower than the device path, so the "
+        "native baseline cannot be timed"
+    ),
+)
 def test_addbmm():
     bench = base.BlasBenchmark(
         op_name="addbmm",

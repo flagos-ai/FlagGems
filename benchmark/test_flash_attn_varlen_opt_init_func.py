@@ -327,6 +327,14 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2887: Not working")
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2888: RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="#2889: TypeError")
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "vllm.vllm_flash_attn requires the CUDA flash attention extensions "
+        "(_vllm_fa2_C / _vllm_fa3_C), which the enflame GCU backend does not "
+        "provide, so the native flash attention baseline cannot be executed"
+    ),
+)
 @pytest.mark.skipif(
     not HAS_VLLM_FA2,
     reason="vllm flash-attn kernels are not registered (torch.ops._vllm_fa2_C.varlen_fwd)",

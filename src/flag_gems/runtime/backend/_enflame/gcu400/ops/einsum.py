@@ -30,7 +30,21 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 _ORIGINAL_EINSUM = torch.einsum
-_DOT_BLOCK = 1024
+_DOT_SINGLE_MAX = 4096
+_DOT_BLOCK = 4096
+_TRACE_SINGLE_MAX = 1024
+_TRACE_BLOCK = 256
+_GEMM_MM_MAX_DIM = 512
+_FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
+
+
+@triton.jit
+def _einsum_dot_single(x_ptr, y_ptr, out_ptr, N, BLOCK: tl.constexpr):
+    offsets = tl.arange(0, BLOCK)
+    mask = offsets < N
+    xv = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    yv = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    tl.store(out_ptr, tl.sum(xv * yv))
 
 
 @triton.jit
@@ -45,34 +59,109 @@ def _einsum_dot_partial(x_ptr, y_ptr, partial_ptr, N, BLOCK: tl.constexpr):
 
 
 @triton.jit
-def _einsum_dot_final(partial_ptr, out_ptr, M, BLOCK_M: tl.constexpr):
+def _einsum_reduce_final(partial_ptr, out_ptr, M, BLOCK_M: tl.constexpr):
     offsets = tl.arange(0, BLOCK_M)
     vals = tl.load(partial_ptr + offsets, mask=offsets < M, other=0.0)
     tl.store(out_ptr, tl.sum(vals))
 
 
+@triton.jit
+def _einsum_trace_single(a_ptr, out_ptr, N, STRIDE, BLOCK: tl.constexpr):
+    # The diagonal element a[i, i] has stride stride(0)+stride(1); the upper bound of N is guarded on the host
+    offsets = tl.arange(0, BLOCK)
+    vals = tl.load(a_ptr + offsets * STRIDE, mask=offsets < N, other=0.0).to(tl.float32)
+    tl.store(out_ptr, tl.sum(vals))
+
+
+@triton.jit
+def _einsum_trace_partial(a_ptr, partial_ptr, N, STRIDE, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    vals = tl.load(a_ptr + offsets * STRIDE, mask=offsets < N, other=0.0).to(tl.float32)
+    tl.store(partial_ptr + pid, tl.sum(vals))
+
+
 def _einsum_dot(x, y):
-    # Deferred import avoids circular dependencies during flag_gems initialization; two-stage tiled reduction decouples
-    # DSM from N
+    # Deferred import avoids a circular dependency during flag_gems initialization; fp32 partial sums match einsum
+    # reduction semantics
     from flag_gems.runtime import torch_device_fn
 
     num_elements = x.numel()
-    block = min(_DOT_BLOCK, triton.next_power_of_2(num_elements))
-    num_partials = triton.cdiv(num_elements, block)
-    partial = torch.empty((num_partials,), dtype=torch.float32, device=x.device)
     out = torch.empty((), dtype=x.dtype, device=x.device)
     with torch_device_fn.device(x.device):
-        _einsum_dot_partial[(num_partials,)](
-            x, y, partial, num_elements, BLOCK=block, num_warps=8
-        )
-        _einsum_dot_final[(1,)](
-            partial,
-            out,
-            num_partials,
-            BLOCK_M=triton.next_power_of_2(num_partials),
-            num_warps=4,
-        )
+        if num_elements <= _DOT_SINGLE_MAX:
+            _einsum_dot_single[(1,)](
+                x,
+                y,
+                out,
+                num_elements,
+                BLOCK=triton.next_power_of_2(num_elements),
+                num_warps=4,
+            )
+        else:
+            num_partials = triton.cdiv(num_elements, _DOT_BLOCK)
+            partial = torch.empty((num_partials,), dtype=torch.float32, device=x.device)
+            _einsum_dot_partial[(num_partials,)](
+                x, y, partial, num_elements, BLOCK=_DOT_BLOCK, num_warps=8
+            )
+            _einsum_reduce_final[(1,)](
+                partial,
+                out,
+                num_partials,
+                BLOCK_M=triton.next_power_of_2(num_partials),
+                num_warps=4,
+            )
     return out
+
+
+def _einsum_trace(a):
+    from flag_gems.runtime import torch_device_fn
+
+    n = a.shape[0]
+    stride = a.stride(0) + a.stride(1)
+    out = torch.empty((), dtype=a.dtype, device=a.device)
+    with torch_device_fn.device(a.device):
+        if n <= _TRACE_SINGLE_MAX:
+            _einsum_trace_single[(1,)](
+                a, out, n, stride, BLOCK=triton.next_power_of_2(n), num_warps=4
+            )
+        else:
+            num_partials = triton.cdiv(n, _TRACE_BLOCK)
+            partial = torch.empty((num_partials,), dtype=torch.float32, device=a.device)
+            _einsum_trace_partial[(num_partials,)](
+                a, partial, n, stride, BLOCK=_TRACE_BLOCK, num_warps=4
+            )
+            _einsum_reduce_final[(1,)](
+                partial,
+                out,
+                num_partials,
+                BLOCK_M=triton.next_power_of_2(num_partials),
+                num_warps=2,
+            )
+    return out
+
+
+def _einsum_gemm_2d(a, b):
+    # The FlagGems mm kernel is faster than bmm on small GEMMs and vice versa on large ones (L600 parameter sweep);
+    # large shapes go through the bmm kernel via a [None] view, and the result takes a [0] view to restore 2D semantics
+    if a.dim() == 2 and b.dim() == 2:
+        if max(a.shape[0], a.shape[1], b.shape[1]) <= _GEMM_MM_MAX_DIM:
+            return torch.matmul(a, b)
+        return torch.matmul(a[None], b[None])[0]
+    return torch.matmul(a, b)
+
+
+def _einsum_gemm_batched(a, b):
+    # Batched GEMM with b==1 folds into a 2D mm (small shapes); b>1 or non-square batches keep bmm
+    if (
+        a.dim() == 3
+        and b.dim() == 3
+        and a.shape[0] == 1
+        and b.shape[0] == 1
+        and max(a.shape[1], a.shape[2], b.shape[2]) <= _GEMM_MM_MAX_DIM
+    ):
+        return torch.matmul(a[0], b[0])[None]
+    return torch.matmul(a, b)
 
 
 def _gems_is_active():
@@ -88,16 +177,52 @@ def _gems_is_active():
 def _dispatch(equation, operands):
     eq = equation.replace(" ", "")
     if eq == "i,i->":
-        return _einsum_dot(operands[0], operands[1])
+        x, y = operands[0], operands[1]
+        if (
+            x.dim() == 1
+            and y.dim() == 1
+            and x.numel() == y.numel()
+            and 0 < x.numel() < 2**31
+            and x.dtype == y.dtype
+            and x.dtype in _FLOAT_DTYPES
+        ):
+            # A 1D view may carry a stride; the native aten path crashes on GCU with a DSM overflow for such inputs,
+            # so here, following the same precedent as enflame fused outer, we make it contiguous before entering the
+            # dedicated kernel
+            if not x.is_contiguous():
+                x = x.contiguous()
+            if not y.is_contiguous():
+                y = y.contiguous()
+            return _einsum_dot(x, y)
+        if x.dim() == 1 and y.dim() == 1 and x.numel() == y.numel():
+            # int / mixed dtype: native einsum crashes at compile time on GCU for this shape,
+            # so we use the FlagGems mul+sum combination (same promotion semantics as aten)
+            return (x * y).sum()
+        return _ORIGINAL_EINSUM(equation, *operands)
+    if eq == "ii->":
+        a = operands[0]
+        n = a.shape[0] if a.dim() == 2 else 0
+        if (
+            a.dim() == 2
+            and a.shape[0] == a.shape[1]
+            and a.dtype in _FLOAT_DTYPES
+            and 0 < n < 2**16
+            and n * (n + 1) < 2**31
+            and a.is_contiguous()
+        ):
+            return _einsum_trace(a)
+        return torch.diagonal(operands[0]).sum()
     if eq == "i,j->ij":
-        # Call enflame's row-streaming Triton kernel directly, avoiding aten's broadcast-mul path
+        # Directly call enflame's row-streaming Triton kernel, avoiding the aten broadcasting mul path
         import flag_gems
 
         return flag_gems.outer(operands[0], operands[1])
-    if eq in ("ij,jk->ik", "bij,bjk->bik", "...ij,...jk->...ik"):
+    if eq == "ij,jk->ik":
+        return _einsum_gemm_2d(operands[0], operands[1])
+    if eq == "bij,bjk->bik":
+        return _einsum_gemm_batched(operands[0], operands[1])
+    if eq == "...ij,...jk->...ik":
         return torch.matmul(operands[0], operands[1])
-    if eq == "ii->":
-        return torch.diagonal(operands[0]).sum()
     if eq == "ii->i":
         return torch.diagonal(operands[0])
     if eq == "ij->ji":

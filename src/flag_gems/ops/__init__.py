@@ -312,6 +312,7 @@ from flag_gems.ops._native_batch_norm_legit_functional import (
 )
 from flag_gems.ops._native_batch_norm_legit_no_training import (
     _native_batch_norm_legit_no_training,
+    native_batch_norm_legit_no_training_backward,
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
@@ -390,6 +391,9 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
 from flag_gems.ops._slow_conv2d_backward import _slow_conv2d_backward
+from flag_gems.ops._slow_conv2d_backward import (
+    _slow_conv2d_backward as slow_conv2d_forward_backward,
+)
 from flag_gems.ops._slow_conv2d_forward import _slow_conv2d_forward
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
@@ -863,7 +867,6 @@ from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
-from flag_gems.ops.expand import expand, expand_
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential import exponential
@@ -915,7 +918,6 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_efficient_attention_backward,
     scaled_dot_product_flash_attention_backward,
 )
-from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flatten_dense_tensors import flatten_dense_tensors
 from flag_gems.ops.flip import flip
 from flag_gems.ops.fliplr import fliplr
@@ -950,7 +952,6 @@ from flag_gems.ops.frexp import frexp
 from flag_gems.ops.frobenius_norm import frobenius_norm
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
-from flag_gems.ops.functional_assert_async import _functional_assert_async
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
@@ -1033,7 +1034,6 @@ from flag_gems.ops.hinge_embedding_loss import hinge_embedding_loss
 from flag_gems.ops.histc import histc
 from flag_gems.ops.histogram import histogram_bin_ct, histogram_bins_tensor
 from flag_gems.ops.histogramdd import histogramdd
-from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hspmm import hspmm
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
@@ -1119,7 +1119,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
-from flag_gems.ops.linalg_eigh import linalg_eigh
+from flag_gems.ops.linalg_eigh import linalg_eigh, linalg_eigh_backward
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_eigvalsh import linalg_eigvalsh, linalg_eigvalsh_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
@@ -1475,7 +1475,6 @@ from flag_gems.ops.rnn_tanh_cell import rnn_tanh_cell
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
-from flag_gems.ops.row_indices import row_indices
 from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
 from flag_gems.ops.rrelu import rrelu
@@ -1748,7 +1747,6 @@ from flag_gems.ops.topk import topk
 from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
-from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_ import transpose_
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapezoid import trapezoid_x
@@ -1762,7 +1760,6 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.true_divide import true_divide, true_divide_tensor
 from flag_gems.ops.true_divide_ import true_divide_, true_divide_tensor_
 from flag_gems.ops.trunc_ import trunc, trunc_
-from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.underscore_sobol_engine_draw import underscore_sobol_engine_draw
 from flag_gems.ops.unflatten_dense_tensors import unflatten_dense_tensors
@@ -1776,8 +1773,6 @@ from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unique_dim_consecutive import unique_dim_consecutive
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
-from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
-from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -1825,7 +1820,6 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.version import version
-from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_as_complex_copy import view_as_complex_copy
 from flag_gems.ops.view_as_real_copy import view_as_real_copy
 from flag_gems.ops.view_copy import view_copy
@@ -2079,7 +2073,6 @@ __all__ = [
     "_foreach_trunc_",
     "_foreach_zero",
     "_foreach_zero_",
-    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
@@ -2629,8 +2622,6 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
-    "expand",
-    "expand_",
     "expand_copy",
     "expm1",
     "expm1_",
@@ -2668,7 +2659,6 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
-    "flatten",
     "flatten_dense_tensors",
     "flip",
     "fliplr",
@@ -2793,7 +2783,6 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
-    "hsplit",
     "hspmm",
     "hstack",
     "huber_loss",
@@ -2902,6 +2891,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_eig",
     "linalg_eigh",
+    "linalg_eigh_backward",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_eigvalsh",
@@ -3097,6 +3087,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_no_training_backward",
     "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
@@ -3270,7 +3261,6 @@ __all__ = [
     "round_",
     "round_out",
     "router_gemm",
-    "row_indices",
     "row_indices_copy",
     "row_indices_copy_out",
     "row_stack",
@@ -3346,6 +3336,7 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv2d_forward_backward",
     "slow_conv_dilated2d",
     "slow_conv_dilated2d_out",
     "slow_conv_dilated3d",
@@ -3553,7 +3544,6 @@ __all__ = [
     "topk_w8a16_fp8",
     "trace",
     "trace_backward",
-    "transpose",
     "transpose_",
     "transpose_copy",
     "trapezoid_x",
@@ -3575,7 +3565,6 @@ __all__ = [
     "true_divide_tensor_",
     "trunc",
     "trunc_",
-    "unbind",
     "unbind_copy",
     "underscore_sobol_engine_draw",
     "unflatten_dense_tensors",
@@ -3589,9 +3578,6 @@ __all__ = [
     "unique_dim_consecutive",
     "unsafe_index",
     "unsafe_index_put",
-    "unsafe_split_with_sizes",
-    "unsqueeze",
-    "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_bicubic2d_backward",
     "upsample_bicubic2d_backward_grad_input",
@@ -3625,7 +3611,6 @@ __all__ = [
     "vdot",
     "vector_norm",
     "version",
-    "view_as_complex",
     "view_as_complex_copy",
     "view_as_real_copy",
     "view_copy",

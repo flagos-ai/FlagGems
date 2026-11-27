@@ -49,9 +49,30 @@ def test_is_any_true(n, kind):
     utils.gems_assert_equal(inp, utils.to_reference(snapshot))
 
 
+# enflame GCU caps tensor rank at 8: building a rank-9/12 bool tensor on the
+# device aborts (TOPSATEN_STATUS_BAD_PARAM) before the kernel is reached, so the
+# two high-rank cases are skipped on that backend only.
+_HIGH_RANK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame GCU supports at most 8 tensor dimensions; torch.zeros on a "
+        "rank>8 tensor aborts with TOPSATEN_STATUS_BAD_PARAM before the kernel "
+        "is reached"
+    ),
+)
+
+
 @pytest.mark.is_any_true
 @pytest.mark.underscore_is_any_true
-@pytest.mark.parametrize("rank", [2, 8, 9, 12])
+@pytest.mark.parametrize(
+    "rank",
+    [
+        2,
+        8,
+        pytest.param(9, marks=_HIGH_RANK_SKIP),
+        pytest.param(12, marks=_HIGH_RANK_SKIP),
+    ],
+)
 def test_is_any_true_arbitrary_rank(rank):
     use_cpu_reference = flag_gems.vendor_name == "mthreads" and rank == 12
     input_device = "cpu" if use_cpu_reference else flag_gems.device
@@ -65,8 +86,7 @@ def test_is_any_true_arbitrary_rank(rank):
         ref_inp = utils.to_reference(inp)
     reference = torch.ops.aten._is_any_true.default(ref_inp)
     result = flag_gems._is_any_true(inp)
-    if use_cpu_reference:
-        assert result.device == inp.device
+    assert result.device == inp.device
     utils.gems_assert_equal(result, reference)
 
 
@@ -77,8 +97,10 @@ def test_is_any_true_scalar_and_expand():
         torch.tensor(False, device=flag_gems.device),
         torch.tensor(True, device=flag_gems.device).expand(17, 19),
     ):
+        result = flag_gems._is_any_true(inp)
+        assert result.device == inp.device
         utils.gems_assert_equal(
-            flag_gems._is_any_true(inp),
+            result,
             torch.ops.aten._is_any_true.default(utils.to_reference(inp)),
         )
 

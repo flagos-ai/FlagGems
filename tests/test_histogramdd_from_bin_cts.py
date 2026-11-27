@@ -613,10 +613,6 @@ def test_histogramdd_from_bin_cts_out_resize(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts_out
-@pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="needs a real fp64 out tensor; fp64 is downcast to fp32 on this backend",
-)
 def test_histogramdd_from_bin_cts_out_dtype_mismatch():
     """A dtype mismatch raises rather than being silently cast or re-bound."""
     inp = _make_input((64, 2), torch.float32, flag_gems.device)

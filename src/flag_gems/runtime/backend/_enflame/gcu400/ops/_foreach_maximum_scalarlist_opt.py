@@ -14,27 +14,29 @@
 
 """GCU400-specific foreach ScalarList maximum-family operators.
 
-``_foreach_maximum.ScalarList`` and ``_foreach_maximum_.ScalarList`` use a 2D grid for the list
-in the common codegen executor, and GCU400's ``grid.y <= 255`` throws ``OutOfResources``
-on 16x(1024x1024), so the benchmark produces no readings. This file packs
-input addresses, element counts and each float32 scalar bit pattern into one int64 metadata array,
-and uses a 1D fixed-grid ``@triton.jit`` kernel to process the whole list in one launch.
-
-The in-place overload's metadata is fully read-only and contains no tensor data, so it can safely be cached
-by ``(device, address, numel, scalar bit pattern)``, removing repeated synchronous H2D copies;
-out-of-place output addresses differ per allocation and are passed in a separate small table, so the static table still
-hits the cache.
-This file and the clamp_min version each hold independent tuning parameters and metadata caches,
-so iterating one operator does not affect the other; non-float, non-contiguous and scalar-count-mismatch shapes
-fall back to the common executor, with dtype policy and exception semantics unchanged.
+The in-place overload metadata is fully read-only and holds no tensor data, so it can be cached
+safely by ``(device, address, numel, scalar bit pattern)``, removing repeated synchronous H2D;
+out-of-place uses ``PACK_OUTPUTS``: allocate the whole output buffer contiguously once and put
+each tensor's element offset into static metadata (cached with the input), while the output base
+address travels as a kernel scalar argument at launch (zero H2D); the 16 output views are built
+with a single ``torch.as_strided`` (the narrow+view double-dispatch host chain is visible inside
+the do_bench timing window). The launch goes through the ``_launch_fused_max`` replay cache
+(mirroring ``_foreach_binary``'s ``_launch_ternary_flat``): on a steady-state hit it skips
+Triton's Python dispatch, and a launch hook (topsprof etc.) or any exception falls back
+automatically. This file and the clamp_min version keep separate tuning parameters and metadata
+caches so iterations on the two operators do not interfere; non-float, non-contiguous and
+scalar-count-mismatch shapes fall back to the shared executor, dtype policy and errors unchanged.
 """
 
 import logging
 import struct
+from typing import Any, Dict, List
 
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver as _triton_driver
 
 from flag_gems.ops._foreach_binary import _apply_scalar
 from flag_gems.utils import libentry
@@ -54,8 +56,8 @@ logger = logging.getLogger(__name__)
 # Compile-time / launch-time config, adjusted per optimization round; semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
-NUM_WARPS = 8
-NUM_STAGES = 2
+NUM_WARPS = 4
+NUM_STAGES = 1
 FP32_PROMOTE = 0
 FUSED_LAUNCH = 1
 FALLBACK_TO_PUBLIC = 0
@@ -144,6 +146,143 @@ def _get_cached_meta(values, device):
     return cached
 
 
+# Steady-state launch replay, mirroring ``_foreach_binary._launch_ternary_flat``: all arguments except the two
+# metadata tables and the output base address are constexpr; ``(device, NT, dtype,
+# promote, block, has_out, pack_out, elem_bytes, grid, alignment bits)`` uniquely determines the
+# compiled variant, and replay only swaps in runtime buffers and scalars. The precondition for a hit is that there is no
+# launch hook
+# (tools such as topsprof install hooks and automatically fall back to normal dispatch); any exception from the memo or
+# dict
+# evicts the cache and falls back, and no device-visible state is cached.
+_LAUNCH_CACHE: Dict[Any, Any] = {}
+_LAUNCH_LAST: List[Any] = [None] * 8
+
+
+def _launch_fused_max(
+    grid,
+    meta,
+    out_ptr_meta,
+    out_base,
+    nt,
+    dt,
+    promote,
+    block,
+    has_out,
+    pack_out,
+    elem_bytes,
+):
+    """Cached launcher for ``fused_max_scalarlist_kernel[grid](...)``."""
+    runtime = knobs.runtime
+    last = _LAUNCH_LAST
+    spec = (grid, nt, dt, promote, block, has_out, pack_out, elem_bytes)
+    if (
+        last[0] is meta
+        and last[1] is out_ptr_meta
+        and last[2] is dt
+        and last[4] == spec
+        and not (out_base & 15)
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            last[5](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                last[6],
+                last[7],
+                None,
+                None,
+                None,
+                meta,
+                out_ptr_meta,
+                out_base,
+                nt,
+                dt,
+                promote,
+                block,
+                has_out,
+                pack_out,
+                elem_bytes,
+            )
+            return
+        except Exception:
+            last[0] = None
+    key = (
+        fused_max_scalarlist_kernel,
+        meta.device,
+        nt,
+        dt,
+        promote,
+        block,
+        has_out,
+        pack_out,
+        elem_bytes,
+        grid,
+        not (meta.data_ptr() & 15),
+        not (out_base & 15),
+    )
+    entry = _LAUNCH_CACHE.get(key)
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                out_ptr_meta,
+                out_base,
+                nt,
+                dt,
+                promote,
+                block,
+                has_out,
+                pack_out,
+                elem_bytes,
+            )
+            last[0] = meta
+            last[1] = out_ptr_meta
+            last[2] = dt
+            last[4] = spec
+            last[5], last[6], last[7] = entry
+            return
+        except Exception:
+            _LAUNCH_CACHE.pop(key, None)
+            last[0] = None
+    compiled = fused_max_scalarlist_kernel[grid](
+        meta,
+        out_ptr_meta,
+        out_base,
+        nt,
+        dt,
+        promote,
+        block,
+        has_out,
+        pack_out,
+        elem_bytes,
+        num_warps=NUM_WARPS,
+        num_stages=NUM_STAGES,
+    )
+    if compiled is not None:
+        kernel = compiled[0] if isinstance(compiled, tuple) else compiled
+        _LAUNCH_CACHE[key] = (
+            kernel.run,
+            kernel.function,
+            kernel.packed_metadata,
+        )
+
+
 def _run_max_scalarlist(self, scalars, inplace):
     """Single-H2D fast path; unsupported shapes return FALLBACK to the common executor."""
     if not can_use_flat(self, scalars, MODE_SCALAR_LIST):
@@ -175,7 +314,11 @@ def _run_max_scalarlist(self, scalars, inplace):
         pack_out = 0
     elif PACK_OUTPUTS:
         # One contiguous allocation replaces 16 empty_like calls; outputs are independent views on the same buffer,
-        # with non-overlapping segments, so in-place edits to one output do not affect the others.
+        # with no overlap between segments, so in-place modification of one output by the user does not affect the
+        # others. The views are
+        # constructed once with as_strided (narrow+view requires two dispatches; for 16 tensors the
+        # host chain is visible within the do_bench timing window, and the sibling _foreach_scalarlist_opt measured
+        # on the order of 66µs -> 19µs).
         flat_output = torch.empty(
             running_offset, dtype=self[0].dtype, device=self[0].device
         )
@@ -183,7 +326,9 @@ def _run_max_scalarlist(self, scalars, inplace):
         element_offset = 0
         for tensor in self:
             outputs.append(
-                flat_output.narrow(0, element_offset, tensor.numel()).view(tensor.shape)
+                torch.as_strided(
+                    flat_output, tensor.shape, tensor.stride(), element_offset
+                )
             )
             element_offset += tensor.numel()
         if PACK_OUTPUTS == 1:
@@ -209,9 +354,15 @@ def _run_max_scalarlist(self, scalars, inplace):
         has_out = 1
         pack_out = 0
 
-    blocks_per_tensor = triton.cdiv(max(tensor.numel() for tensor in self), BLOCK_SIZE)
-    grid_size = max(1, min(FIXED_GRID, num_tensors * blocks_per_tensor))
-    fused_max_scalarlist_kernel[(grid_size,)](
+    # The grid is linearly expanded as (tensor, part) and must always be an integer multiple of NT: the kernel uses
+    # ``pid % NT / pid // NT`` to decompose it and strides by ``cdiv(num_programs, NT)`` to fetch tiles,
+    # while a non-divisible ``min(cap, NT*tiles)`` causes the trailing ``grid % NT`` tensors to miss odd
+    # tiles (a red-line precedent for the family; see _foreach_binary._flat_grid).
+    blocks_per_tensor = triton.cdiv(max(numels), BLOCK_SIZE)
+    parts = min(-(-FIXED_GRID // num_tensors), blocks_per_tensor)
+    grid = (num_tensors * parts,)
+    _launch_fused_max(
+        grid,
         meta,
         out_ptr_meta,
         out_base,
@@ -222,8 +373,6 @@ def _run_max_scalarlist(self, scalars, inplace):
         has_out,
         pack_out,
         self[0].element_size(),
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
     )
     return None if inplace else outputs
 

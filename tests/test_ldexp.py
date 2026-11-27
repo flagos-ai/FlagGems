@@ -26,8 +26,9 @@ from .accuracy_utils import _SKIP_FP64
 # never construct their own reference.  Gate them on that backend only; other
 # vendors keep their previous behaviour.
 _skip_if_kunlunxin_no_fp64 = pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
-    reason="Kunlunxin does not support FP64",
+    flag_gems.vendor_name in ("kunlunxin", "enflame")
+    and not flag_gems.runtime.device.support_fp64,
+    reason="Kunlunxin and Enflame does not support FP64",
 )
 
 # Kunlunxin's eager ldexp is the implementation this backend override
@@ -35,7 +36,7 @@ _skip_if_kunlunxin_no_fp64 = pytest.mark.skipif(
 # extreme integral exponents, and its real->complex / fp16 ``out=`` overloads
 # are missing or write garbage.  Compute the reference on CPU there (the same
 # path ``--ref cpu`` takes); other vendors keep their on-device reference.
-_cpu_reference = flag_gems.vendor_name == "kunlunxin"
+_cpu_reference = flag_gems.vendor_name in ("kunlunxin", "enflame")
 
 
 def _to_reference(inp, upcast=False):

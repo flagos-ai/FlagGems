@@ -56,24 +56,32 @@ _TILE_BT = 256
 _TILE_WARPS = 4
 _LEGACY_BLOCK = 1024
 
-# Wide-channel path (int64 view, 8-byte lanes) tiers (probe calibrated 2026-11-13):
-#   lanes <= _WIDE_SMALL_LANES: exact lane-based tiling, single grid=(1, P) launch;
-#   lanes  > _WIDE_LARGE_LANES: 32768-lane large blocks + grid cap + block stride loop;
-#   in between: keep the element path (too few large-block programs at medium sizes, element path is not worse).
+# Wide-channel path (int64 view, 8-byte lanes) buckets (calibrated by probes on 2026-11-13):
+#   lanes <= _WIDE_SMALL_LANES: chunk exactly by lane count, single launch with grid=(1, P);
+#   lanes  > _WIDE_LARGE_LANES: gs48 fixed grid + strided loop + software pipelining;
+#   in between: keep the elementwise path (at mid sizes one large chunk yields too few programs; the elementwise path is
+# no worse).
 _WIDE_SMALL_LANES = 8192
 _WIDE_LARGE_LANES = 65536
-_WIDE_BLOCK = 32768
-_WIDE_GRID_CAP = 256
 _WIDE_SMALL_WARPS = 4
-_WIDE_LARGE_WARPS = 8
 
-# The external /opt/triton_gcu converter occasionally SIGSEGVs on cold compilation (compiler_problems/P02),
-# probabilistically, leaving no cache entry; a retry succeeds. Deterministic failures are re-raised unchanged after
+# gs48 params for large-shape wide channels (calibrated with sibling row_stack probes on 2026-11-16, each item adopted
+# after A/B testing):
+#   BLOCK 8192 lanes (64KB/chunk) × num_stages 4 in flight = 256KB DSM <= 448KB
+#   budget for two programs, preserving 48-way concurrency; fixing the grid at 48 removes the wave-quantization tax of a
+# cdiv-wide 2D grid
+#   (384 programs / 48 slots = 8 waves, ~2-5%).
+_GS48_BLOCK = 8192
+_GS48_STAGES = 4
+_GS48_GRID = 48
+
+# The external /opt/triton_gcu converter occasionally SIGSEGVs on cold compilation (compiler_problems/P02);
+# it is probabilistic, leaves no cache entry, and passes on retry; deterministic failures are rethrown unchanged after
 # retries are exhausted.
-# As in row_stack: wrap only the wide-channel launch.
+# Same precedent as row_stack: wrap only the wide-channel launch.
 _TOOLCHAIN_COMPILE_RETRIES = 3
 
-# GCU400 resource limits: grid.y must not exceed 255, and 2D tile bytes must stay within the DSM budget.
+# GCU400 resource limits: grid.y must not exceed 255, and the byte size of a 2D tile must not exceed the DSM budget.
 _MAX_GRID_Y = 255
 _DSM_LIMIT_BYTES = 900000
 _MAX_POINTERS = 4
@@ -250,6 +258,55 @@ def _stack_wide_copy_kernel(
 
 
 @triton.jit
+def _stack_gs48_kernel(
+    out_ptr,
+    in_ptr_a,
+    in_ptr_b,
+    in_ptr_c,
+    in_ptr_d,
+    num_lanes,
+    batch_base,
+    nx,
+    nt,
+    BLOCK: tl.constexpr,
+    NSPC: tl.constexpr,
+    NSTG: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Wide-channel path for large shapes: a fixed 48 grid stride-copies every (chunk, tensor) block.
+
+    A wide 2D grid of ``cdiv(lanes, BLOCK) x nt`` over 48 slots pays an 8-wave scheduling
+    quantization tax; pinning ``NSPC`` programs with a stride loop removes it, and
+    ``tl.range(num_stages=NSTG)`` soft pipelining keeps NSTG 64KB chunk loads in flight
+    (DSM 256KB <= 448KB two-program budget keeps 48-way concurrency). tensor-major decoding
+    (``tid = wid // nx``) puts neighbouring blocks of one program on the same source tensor,
+    giving better stream locality than chunk-major; ``EVEN`` specializes the divisible case.
+    """
+    pid = tl.program_id(0)
+    total = nx * nt
+    for wid in tl.range(pid, total, NSPC, num_stages=NSTG):
+        tid = wid // nx
+        chunk = wid % nx
+        if tid == 0:
+            source_ptr = in_ptr_a
+        elif tid == 1:
+            source_ptr = in_ptr_b
+        elif tid == 2:
+            source_ptr = in_ptr_c
+        else:
+            source_ptr = in_ptr_d
+        output_base = (batch_base + tid) * num_lanes
+        idx = chunk * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            data = tl.load(source_ptr + idx)
+            tl.store(out_ptr + output_base + idx, data)
+        else:
+            mask = idx < num_lanes
+            data = tl.load(source_ptr + idx, mask=mask)
+            tl.store(out_ptr + output_base + idx, data, mask=mask)
+
+
+@triton.jit
 def _stack_stride_copy_kernel(
     out_ptr,
     in_ptr,
@@ -371,48 +428,66 @@ def _launch_with_toolchain_retry(kernel, grid, args, launch_kwargs):
 
 
 def _launch_wide(tensors, out, num_lanes) -> None:
-    """Wide-channel path: int64 view moves 8-byte lanes, one launch per 4 inputs."""
+    """Wide-channel path: the int64 view moves 8-byte lanes, one launch per 4 inputs."""
+    out_lanes = out.view(-1).view(torch.int64)
     if num_lanes <= _WIDE_SMALL_LANES:
         block_lanes = _next_power_of_two(num_lanes)
-        grid_cap = 1
         num_warps = _WIDE_SMALL_WARPS
     else:
-        block_lanes = _WIDE_BLOCK
-        grid_cap = _WIDE_GRID_CAP
-        num_warps = _WIDE_LARGE_WARPS
-    grid_x = min(triton.cdiv(num_lanes, block_lanes), grid_cap)
-    chunks_per_program = triton.cdiv(num_lanes, block_lanes * grid_x)
-    masked = (num_lanes % block_lanes != 0) or chunks_per_program > 1
-    launch_kwargs = {
-        "BLOCK_X": block_lanes,
-        "MASKED": masked,
-        "num_warps": num_warps,
-    }
-    out_lanes = out.view(-1).view(torch.int64)
+        num_warps = 8 if tensors[0].element_size() == 4 else 4
     for batch_base in range(0, len(tensors), _MAX_POINTERS):
         batch = tensors[batch_base : batch_base + _MAX_POINTERS]
         batch_size = len(batch)
         padded_pointers = list(batch) + [batch[0]] * (_MAX_POINTERS - batch_size)
         source_lanes = [t.view(-1).view(torch.int64) for t in padded_pointers]
-        _launch_with_toolchain_retry(
-            _stack_wide_copy_kernel,
-            (grid_x, batch_size),
-            (
-                out_lanes,
-                source_lanes[0],
-                source_lanes[1],
-                source_lanes[2],
-                source_lanes[3],
-                num_lanes,
-                batch_base,
-                chunks_per_program,
-            ),
-            launch_kwargs,
-        )
+        if num_lanes <= _WIDE_SMALL_LANES:
+            _launch_with_toolchain_retry(
+                _stack_wide_copy_kernel,
+                (1, batch_size),
+                (
+                    out_lanes,
+                    source_lanes[0],
+                    source_lanes[1],
+                    source_lanes[2],
+                    source_lanes[3],
+                    num_lanes,
+                    batch_base,
+                    1,
+                ),
+                {
+                    "BLOCK_X": block_lanes,
+                    "MASKED": num_lanes % block_lanes != 0,
+                    "num_warps": num_warps,
+                },
+            )
+        else:
+            chunks_per_tensor = triton.cdiv(num_lanes, _GS48_BLOCK)
+            _launch_with_toolchain_retry(
+                _stack_gs48_kernel,
+                (_GS48_GRID,),
+                (
+                    out_lanes,
+                    source_lanes[0],
+                    source_lanes[1],
+                    source_lanes[2],
+                    source_lanes[3],
+                    num_lanes,
+                    batch_base,
+                    chunks_per_tensor,
+                    batch_size,
+                ),
+                {
+                    "BLOCK": _GS48_BLOCK,
+                    "NSPC": _GS48_GRID,
+                    "NSTG": _GS48_STAGES,
+                    "EVEN": num_lanes % _GS48_BLOCK == 0,
+                    "num_warps": num_warps,
+                },
+            )
 
 
 def _launch_flat(tensors, out, num_elements) -> None:
-    """Contiguous-block path: byte-aligned dtypes <= 4 bytes use the int64 wide channel, otherwise element tiling."""
+    """Contiguous-block path: byte-aligned dtypes <= 4 bytes use the int64 wide channel, else element tiling."""
     itemsize = tensors[0].element_size()
     total_bytes = num_elements * itemsize
     if itemsize <= 4 and total_bytes % 8 == 0:
@@ -485,7 +560,7 @@ def _launch_tile(tensors, out, outer, seg, element_size) -> bool:
 def _stack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _STACK")
+    logger.debug("GEMS_ENFLAME _STACK")
 
     if len(tensors) == 0:
         raise RuntimeError("stack expected a non-empty TensorList")

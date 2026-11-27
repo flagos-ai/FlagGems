@@ -19,40 +19,168 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# --- TUNING PARAMS START ---
+# Widest inner (contiguous trailing) tile handled by one program.
+MAX_INNER_BLOCK = 1024
+# Widest output-row tile handled by one program when the trailing axis is scalar.
+MAX_ROW_BLOCK = 128
+# Elements of the 2-D gather tile kept in flight by one program.
+MAX_TILE_ELEMS = 16384
+# grid.x hard limit on this backend.
+GRID_X_LIMIT = 65535
+# The gather kernels re-read ``grad`` once per output row (or per row tile), so
+# they are only used while the output has few rows along ``dim``; beyond this the
+# single-pass atomic scatter kernel is cheaper.
+GATHER_MAX_OUT_ROWS = 512
+# --- TUNING PARAMS END ---
+
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("index_select_backward"),
-    key=["index_len"],
-    restore_value=["out_ptr"],
-)
 @triton.jit
-def index_select_backward_kernel(
-    out_ptr,
+def _isb_gather_inner_kernel(
     grad_ptr,
     index_ptr,
-    feat_size,
+    out_ptr,
     index_len,
-    dim_size_out,
-    BLOCK: tl.constexpr,
+    inner,
+    out_rows,
+    inner_blocks,
+    BLOCK_I: tl.constexpr,
+    BLOCK_L: tl.constexpr,
 ):
-    fid = tl.program_id(0)
-    pid = tl.program_id(1)
+    """Deterministic, atomic-free accumulation, vectorised along the trailing axis:
 
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < index_len
+        out[o, d, n] = sum_i (index[i] == d) * grad[o, i, n]
 
-    idx = tl.load(index_ptr + offs, mask=mask, other=0)
-    grad_offs = fid * index_len + offs
-    g = tl.load(grad_ptr + grad_offs, mask=mask, other=0.0)
+    One program owns one (outer, d, inner-block) triple, so every output element
+    is written exactly once: no zero-initialised buffer, no atomics and no dtype
+    round trip are needed.
+    """
+    item = tl.program_id(0)
+    inner_block = item % inner_blocks
+    row_and_outer = item // inner_blocks
+    out_row = row_and_outer % out_rows
+    outer = row_and_outer // out_rows
 
-    out_offs = fid * dim_size_out + idx
-    tl.atomic_add(out_ptr + out_offs, g, mask=mask)
+    offs = inner_block * BLOCK_I + tl.arange(0, BLOCK_I)
+    mask_inner = offs < inner
+    acc = tl.zeros((BLOCK_I,), dtype=tl.float32)
+    grad_base = grad_ptr + outer.to(tl.int64) * index_len * inner
+    for start in range(0, index_len, BLOCK_L):
+        pos = start + tl.arange(0, BLOCK_L)
+        mask_pos = pos < index_len
+        # Ids are compared in int32: 64-bit element compare is emulated on this
+        # backend and dominates the kernel otherwise.  Row ids always fit in int32.
+        ids = tl.load(index_ptr + pos, mask=mask_pos, other=-1).to(tl.int32)
+        hit = (ids == out_row.to(tl.int32)) & mask_pos
+        gathered = tl.load(
+            grad_base + pos[:, None] * inner + offs[None, :],
+            mask=mask_pos[:, None] & mask_inner[None, :],
+            other=0.0,
+        )
+        acc += tl.sum(tl.where(hit[:, None], gathered.to(tl.float32), 0.0), 0)
+    out_base = out_ptr + (outer.to(tl.int64) * out_rows + out_row) * inner
+    tl.store(out_base + offs, acc.to(out_ptr.dtype.element_ty), mask=mask_inner)
+
+
+@libentry()
+@triton.jit
+def _isb_gather_rows_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    index_len,
+    out_rows,
+    row_blocks,
+    BLOCK_D: tl.constexpr,
+    BLOCK_L: tl.constexpr,
+):
+    """Specialisation for a scalar trailing axis (``inner == 1``).
+
+    The output rows themselves become the vectorised axis, so one program covers
+    ``BLOCK_D`` output rows and reads ``grad`` only once per row tile.  A (BLOCK_L,
+    1) tile would instead be scalarised by the compiler and cost ~20x more.
+    """
+    item = tl.program_id(0)
+    outer = item // row_blocks
+    out_row = (item % row_blocks) * BLOCK_D + tl.arange(0, BLOCK_D)
+    mask_row = out_row < out_rows
+    acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
+    grad_base = grad_ptr + outer.to(tl.int64) * index_len
+    for start in range(0, index_len, BLOCK_L):
+        pos = start + tl.arange(0, BLOCK_L)
+        mask_pos = pos < index_len
+        # Compare ids as int32: the (BLOCK_L, BLOCK_D) compare is emulated for
+        # int64 on this backend and otherwise dominates the whole kernel.
+        ids = tl.load(index_ptr + pos, mask=mask_pos, other=-1).to(tl.int32)
+        values = tl.load(grad_base + pos, mask=mask_pos, other=0.0)
+        hit = (ids[:, None] == out_row[None, :]) & mask_pos[:, None]
+        acc += tl.sum(tl.where(hit, values[:, None].to(tl.float32), 0.0), 0)
+    out_base = out_ptr + outer.to(tl.int64) * out_rows
+    tl.store(out_base + out_row, acc.to(out_ptr.dtype.element_ty), mask=mask_row)
+
+
+@libentry()
+@triton.jit
+def _isb_scatter_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    index_len,
+    inner,
+    out_rows,
+    BLOCK_L: tl.constexpr,
+    BLOCK_I: tl.constexpr,
+):
+    """Single-pass fallback for a large ``dim``: atomically accumulate one
+    (outer, index-block, inner-block) tile of ``grad`` into ``out``.
+
+    All id/offset arithmetic stays in int32: widening the 2-D id tile to int64
+    trips the backend lowering (``invalid memref element type`` / device Sip
+    error), and an int32 element offset is enough for any tensor that fits in one
+    program's address range here.
+    """
+    inner_block = tl.program_id(0)
+    index_block = tl.program_id(1)
+    outer = tl.program_id(2)
+
+    offs_i = inner_block * BLOCK_I + tl.arange(0, BLOCK_I)
+    mask_i = offs_i < inner
+    pos = index_block * BLOCK_L + tl.arange(0, BLOCK_L)
+    mask_pos = pos < index_len
+
+    ids = tl.load(index_ptr + pos, mask=mask_pos, other=0)
+    outer_base = outer * out_rows * inner
+    grad_base = grad_ptr + outer * index_len * inner
+    tile = tl.load(
+        grad_base + pos[:, None] * inner + offs_i[None, :],
+        mask=mask_pos[:, None] & mask_i[None, :],
+        other=0.0,
+    )
+    # The id offsets are broadcast to 2-D before touching the pointer: expanding a
+    # 1-D pointer tile with ``[:, None]`` afterwards makes the backend lowering
+    # fail with "invalid memref element type".
+    out_base = out_ptr + outer_base + ids[:, None] * inner
+    tl.atomic_add(
+        out_base + offs_i[None, :],
+        tile,
+        mask=mask_pos[:, None] & mask_i[None, :],
+    )
+
+
+def _outer_inner_extents(self_sizes, dim):
+    """Return (outer, inner) of the ``(outer, dim, inner)`` split of self_sizes."""
+    outer = 1
+    for size in self_sizes[:dim]:
+        outer *= size
+    inner = 1
+    for size in self_sizes[dim + 1 :]:
+        inner *= size
+    return outer, inner
 
 
 def index_select_backward(grad, self_sizes, dim, index):
@@ -68,60 +196,98 @@ def index_select_backward(grad, self_sizes, dim, index):
 
     Returns the gradient w.r.t. the original `self`, of shape `self_sizes`.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 INDEX_SELECT_BACKWARD")
+    logger.debug("GEMS_ENFLAME INDEX_SELECT_BACKWARD")
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
-
-    index = index.to(torch.int64)
-    index_len = index.numel()
+    # Row ids are always normalised to int32 before entering the kernels.  On this
+    # backend an int64 tensor is physically backed by a packed int32 buffer, so a
+    # tl.load through an int64 pointer walks 8 bytes per id and reads misaligned
+    # garbage (e.g. ids [1, 3, 5] are seen as [1, 5, 0]).  Row ids also never
+    # exceed the int32 range, which is what the kernels compare against anyway.
+    index = index.reshape(-1)
+    if index.dtype != torch.int32:
+        index = index.to(torch.int32)
+    if not index.is_contiguous():
+        index = index.contiguous()
 
     dim = dim if dim >= 0 else dim + len(self_sizes)
-    dim_size_out = self_sizes[dim]
+    out_rows = self_sizes[dim]
+    index_len = index.numel()
 
+    grad = grad.contiguous() if not grad.is_contiguous() else grad
+    outer, inner = _outer_inner_extents(self_sizes, dim)
+    if outer == 0 or inner == 0 or out_rows == 0 or index_len == 0:
+        return torch.zeros(self_sizes, dtype=grad.dtype, device=grad.device)
+
+    gather_work = None
+    if out_rows <= GATHER_MAX_OUT_ROWS:
+        if inner == 1:
+            block_d = min(triton.next_power_of_2(out_rows), MAX_ROW_BLOCK)
+            row_blocks = triton.cdiv(out_rows, block_d)
+            block_l = min(
+                triton.next_power_of_2(index_len),
+                max(1, MAX_TILE_ELEMS // block_d),
+            )
+            gather_work = outer * row_blocks
+            if gather_work <= GRID_X_LIMIT:
+                # Every output element is written by the kernel: no zero fill needed.
+                out = torch.empty(self_sizes, dtype=grad.dtype, device=grad.device)
+                _isb_gather_rows_kernel[(gather_work,)](
+                    grad,
+                    index,
+                    out,
+                    index_len,
+                    out_rows,
+                    row_blocks,
+                    BLOCK_D=block_d,
+                    BLOCK_L=block_l,
+                )
+                return out
+        else:
+            block_i = min(triton.next_power_of_2(inner), MAX_INNER_BLOCK)
+            block_l = triton.next_power_of_2(index_len)
+            block_l = min(block_l, max(1, MAX_TILE_ELEMS // block_i))
+            inner_blocks = triton.cdiv(inner, block_i)
+            gather_work = outer * out_rows * inner_blocks
+            if gather_work <= GRID_X_LIMIT:
+                out = torch.empty(self_sizes, dtype=grad.dtype, device=grad.device)
+                _isb_gather_inner_kernel[(gather_work,)](
+                    grad,
+                    index,
+                    out,
+                    index_len,
+                    inner,
+                    out_rows,
+                    inner_blocks,
+                    BLOCK_I=block_i,
+                    BLOCK_L=block_l,
+                )
+                return out
+
+    # Large ``dim`` (or too many programs for one grid): one pass over ``grad``
+    # with atomic accumulation.  fp16/bf16 accumulate in fp32 because the backend
+    # atomic has no low-precision form.
     orig_dtype = grad.dtype
-    if grad.dtype in (torch.float16, torch.bfloat16):
+    low_precision = orig_dtype in (torch.float16, torch.bfloat16)
+    if low_precision:
         grad = grad.to(torch.float32)
-
     out = torch.zeros(self_sizes, dtype=grad.dtype, device=grad.device)
 
-    # Move the target dim to the last position via dim_compress
-    grad_compressed = dim_compress(grad, dim)
-    out_compressed = dim_compress(out, dim)
-
-    compressed_shape = list(out_compressed.shape)
-
-    # Flatten all non-last dimensions into feat_size
-    grad_flat = grad_compressed.reshape(-1, index_len)
-    out_flat = out_compressed.reshape(-1, dim_size_out)
-
-    feat_size = grad_flat.shape[0]
-
-    grid = lambda meta: (
-        feat_size,
-        triton.cdiv(index_len, meta["BLOCK"]),
-    )
-
-    index_select_backward_kernel[grid](
-        out_flat,
-        grad_flat,
+    block_i = min(triton.next_power_of_2(inner), MAX_INNER_BLOCK)
+    block_l = min(triton.next_power_of_2(index_len), max(1, MAX_TILE_ELEMS // block_i))
+    _isb_scatter_kernel[
+        (triton.cdiv(inner, block_i), triton.cdiv(index_len, block_l), outer)
+    ](
+        grad,
         index,
-        feat_size,
+        out,
         index_len,
-        dim_size_out,
+        inner,
+        out_rows,
+        BLOCK_L=block_l,
+        BLOCK_I=block_i,
     )
-
-    # Reshape to compressed shape, then permute back to original dim order
-    out_flat = out_flat.reshape(compressed_shape)
-
-    if dim != grad.ndim - 1:
-        ndim_compressed = out_flat.ndim
-        order = [i for i in range(ndim_compressed - 1)]
-        order.insert(dim, ndim_compressed - 1)
-        out = out_flat.permute(order).contiguous()
-    else:
-        out = out_flat
-
-    if orig_dtype in (torch.float16, torch.bfloat16):
+    if low_precision:
         return out.to(orig_dtype)
     return out

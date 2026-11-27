@@ -20,10 +20,27 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
 _pow = tl_extra_shim.pow
 
 logger = logging.getLogger(__name__)
+
+# gcu400: the branchy body (20-step digamma recurrence plus the Taylor / Rice /
+# rational branches) is miscompiled once a tile holds >= 512 lanes: every
+# element comes out wrong, while n <= 256 is exact.  Capping the pointwise
+# tile at 256 keeps the generated kernel correct at every size tested.
+# The 48-CTA grid cap is kept: measured against 8192/65535 CTAs it is the
+# fastest for both the 16.7M shapes (fp16 52 ms vs 142 ms, fp32 24 ms vs 36 ms)
+# and the 1G shapes, i.e. the kernel is limited by the per-lane math, not by
+# occupancy.
+_CFG = CodeGenConfig(
+    max_tile_size=256,
+    max_grid_size=(48, 1, 1),
+    max_num_warps_per_cta=4,
+    prefer_block_pointer=True,
+    prefer_1d_tile=False,
+)
 
 
 @triton.jit
@@ -55,14 +72,13 @@ def _digamma_one(alpha):
 
 
 @triton.jit
-def _standard_gamma_grad_one(alpha, x):
-    # Reparameterized gradient -(d/dalpha cdf(x; alpha)) / pdf(x; alpha)
-    # for x drawn from a standard Gamma(alpha). Ported from ATen's
-    # ``standard_gamma_grad_one`` (Distributions.h). ``alpha`` and ``x`` carry
-    # the compute dtype (fp32 or fp64), so all arithmetic below stays in that
-    # precision.
-
-    # --- Branch 1: Taylor series expansion for small x (x < 0.8). ---
+def _small_x_branch(alpha, x):
+    # Branch 1: Taylor series for small x (x < 0.8), i.e. ATen's series1 /
+    # series2 expansion of the CDF. Dividing gamma_cdf_alpha by gamma_pdf
+    # cancels pow(x, alpha) analytically:
+    #   -x * exp(x) * ((log x - digamma(alpha)) * series1 - series2)
+    # which removes two generic pow() calls and stays well behaved for the tiny
+    # x where the explicit form would divide 0 by 0.
     numer = tl.full(alpha.shape, 1.0, alpha.dtype)
     denom = alpha
     series1 = numer / denom
@@ -72,16 +88,15 @@ def _standard_gamma_grad_one(alpha, x):
         denom = denom + 1.0
         series1 = series1 + numer / denom
         series2 = series2 + numer / (denom * denom)
-    pow_x_alpha = _pow(x, alpha)
-    gamma_pdf = _pow(x, alpha - 1.0) * tl.exp(-x)
-    gamma_cdf = pow_x_alpha * series1
-    gamma_cdf_alpha = (
-        tl.log(x) - _digamma_one(alpha)
-    ) * gamma_cdf - pow_x_alpha * series2
-    small = -gamma_cdf_alpha / gamma_pdf
-    small = tl.where(small != small, 0.0, small)
+    bracket = (tl.log(x) - _digamma_one(alpha)) * series1 - series2
+    out = -x * tl.exp(x) * bracket
+    # x -> 0 makes log(x) -inf; ATen maps the resulting NaN to 0.
+    return tl.where(out != out, 0.0, out)
 
-    # --- Branch 2: Rice saddle point expansion for large alpha (alpha > 8). ---
+
+@triton.jit
+def _large_alpha_branch(alpha, x, USE_RSQRT: tl.constexpr):
+    # Branch 2: Rice saddle point expansion for large alpha (alpha > 8).
     # Sub-case 2a: near the mode (0.9 alpha <= x <= 1.1 alpha).
     numer_1 = 1.0 + 24.0 * alpha * (1.0 + 12.0 * alpha)
     numer_2 = (
@@ -96,8 +111,15 @@ def _standard_gamma_grad_one(alpha, x):
     # Sub-case 2b: away from the mode.
     denom_b = tl.sqrt(8.0 * alpha)
     term2 = denom_b / (alpha - x)
-    neg_three_halves = tl.full(alpha.shape, -1.5, alpha.dtype)
-    term3 = _pow(x - alpha - alpha * tl.log(x / alpha), neg_three_halves)
+    # The base is strictly positive (log t < t - 1). Two spellings of
+    # base**-1.5 are kept because the gcu400 backend vectorises them
+    # differently per dtype (see _standard_gamma_grad_one).
+    base = x - alpha - alpha * tl.log(x / alpha)
+    if USE_RSQRT:
+        inv_sqrt_base = tl.rsqrt(base)
+        term3 = inv_sqrt_base * inv_sqrt_base * inv_sqrt_base
+    else:
+        term3 = _pow(base, tl.full(alpha.shape, -1.5, alpha.dtype))
     term23 = tl.where(x < alpha, term2 - term3, term2 + term3)
     term1 = tl.log(x / alpha) * term23 - tl.sqrt(2.0 / alpha) * (alpha + x) / (
         (alpha - x) * (alpha - x)
@@ -106,9 +128,12 @@ def _standard_gamma_grad_one(alpha, x):
     away = -stirling * (x * term1) / denom_b
 
     is_near = (0.9 * alpha <= x) & (x <= 1.1 * alpha)
-    large = tl.where(is_near, near_mode, away)
+    return tl.where(is_near, near_mode, away)
 
-    # --- Branch 3: bivariate rational approximation (default). ---
+
+@triton.jit
+def _rational_branch(alpha, x):
+    # Branch 3: bivariate rational approximation (ATen's default branch).
     u = tl.log(x / alpha)
     v = tl.log(alpha)
     # coef_v[i] = coef_uv[0][i] + u * (coef_uv[1][i] + u * coef_uv[2][i])
@@ -122,14 +147,63 @@ def _standard_gamma_grad_one(alpha, x):
     cv7 = 0.0014179084 + u * (-0.00058392623 + u * (-1.5247877e-07))
     p = cv0 + v * (cv1 + v * (cv2 + v * cv3))
     q = cv4 + v * (cv5 + v * (cv6 + v * cv7))
-    rational = tl.exp(p / q)
+    return tl.exp(p / q)
 
-    # Select the branch matching ATen's control flow.
-    result = tl.where(x < 0.8, small, tl.where(alpha > 8.0, large, rational))
+
+@triton.jit
+def _standard_gamma_grad_seq(alpha, x):
+    # Reparameterized gradient -(d/dalpha cdf(x; alpha)) / pdf(x; alpha) for x
+    # drawn from a standard Gamma(alpha); ported from ATen's
+    # ``standard_gamma_grad_one`` (Distributions.h).
+    #
+    # Every branch is evaluated for every lane (the tile is SIMD), so the only
+    # cost lever left is how the three branch values are combined. Two merges
+    # are kept because gcu400 codegen reacts strongly to the merge shape.
+    # Measured at 268M elements: this sequential merge with the rsqrt form runs
+    # fp16/bf16 in ~0.85 s where the nested merge takes ~2.4 s, while fp32 is
+    # the other way round (~0.38 s nested vs ~0.78 s here). Hence 16-bit inputs
+    # use this one and fp32/fp64 the nested one. The math is identical; only
+    # the generated code differs.
+    result = _rational_branch(alpha, x)
+    result = tl.where(alpha > 8.0, _large_alpha_branch(alpha, x, True), result)
+    result = tl.where(x < 0.8, _small_x_branch(alpha, x), result)
     return result
 
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def _standard_gamma_grad_nested(alpha, x):
+    # The small-x series is repeated here instead of calling _small_x_branch:
+    # on gcu400 a call boundary around that branch makes the fp32 kernel 7x
+    # slower (294 ms vs 38 ms per 16.7M elements), the same math inline does
+    # not. Branches are materialised into named values before the merge, which
+    # is what keeps the fp32 path vectorised.
+    numer = tl.full(alpha.shape, 1.0, alpha.dtype)
+    denom = alpha
+    series1 = numer / denom
+    series2 = numer / (denom * denom)
+    for i in range(1, 6):
+        numer = numer * (-x / i)
+        denom = denom + 1.0
+        series1 = series1 + numer / denom
+        series2 = series2 + numer / (denom * denom)
+    small = -x * tl.exp(x) * ((tl.log(x) - _digamma_one(alpha)) * series1 - series2)
+    small = tl.where(small != small, 0.0, small)
+    return tl.where(
+        x < 0.8,
+        small,
+        tl.where(
+            alpha > 8.0,
+            _large_alpha_branch(alpha, x, False),
+            _rational_branch(alpha, x),
+        ),
+    )
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=_CFG,
+)
 @triton.jit
 def _standard_gamma_grad_func(self_grad, output):
     # Preserve double precision for fp64 inputs; otherwise compute in fp32
@@ -137,14 +211,16 @@ def _standard_gamma_grad_func(self_grad, output):
     if self_grad.dtype.is_fp64():
         alpha = self_grad
         x = output.to(tl.float64)
-    else:
-        alpha = self_grad.to(tl.float32)
-        x = output.to(tl.float32)
-    return _standard_gamma_grad_one(alpha, x).to(self_grad.dtype)
+        return _standard_gamma_grad_nested(alpha, x).to(self_grad.dtype)
+    alpha = self_grad.to(tl.float32)
+    x = output.to(tl.float32)
+    if self_grad.dtype.is_fp16() or self_grad.dtype.is_bf16():
+        return _standard_gamma_grad_seq(alpha, x).to(self_grad.dtype)
+    return _standard_gamma_grad_nested(alpha, x).to(self_grad.dtype)
 
 
 def standard_gamma_grad(self_grad, output):
-    logger.debug("GEMS_ENFLAME_GCU400 STANDARD_GAMMA_GRAD")
+    logger.debug("GEMS_ENFLAME STANDARD_GAMMA_GRAD")
     # Match the native _standard_gamma_grad dtype contract: both inputs must be
     # floating point and share the same dtype (no promotion of mixed or integer
     # inputs).
