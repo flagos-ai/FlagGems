@@ -36,9 +36,8 @@ def test_norm_scalar(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.norm(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.norm(inp)
+    ref_out = torch.ops.aten.norm.Scalar(ref_inp)
+    res_out = flag_gems.norm_scalar(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
