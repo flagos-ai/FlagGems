@@ -132,7 +132,7 @@ def _affine_grid_bwd_2d_partial_kernel(
 
     offs = tl.arange(0, BLOCK_P)
     c = offs % 2
-    sg = (1.0 - 2.0 * c.to(acc_dtype))
+    sg = 1.0 - 2.0 * c.to(acc_dtype)
     wx_f = (offs // 2).to(acc_dtype)
 
     ax = tl.zeros([BLOCK_P], dtype=acc_dtype)
@@ -206,6 +206,7 @@ def _affine_grid_bwd_2d_partial_kernel(
         tl.store(base + 3, s_g1x.to(part_ty))
         tl.store(base + 4, s_g1y.to(part_ty))
         tl.store(base + 5, s_g1.to(part_ty))
+
 
 @libentry()
 @triton.jit

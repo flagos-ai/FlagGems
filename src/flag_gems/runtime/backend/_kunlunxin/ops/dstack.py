@@ -52,7 +52,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from _kunlunxin.utils.tle_copy import tle_copy, tle_dma_available
 
 logger = logging.getLogger(__name__)
