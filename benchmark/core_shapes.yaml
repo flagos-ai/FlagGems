@@ -801,6 +801,14 @@ GenericBenchmarkExcluse1D:
     - [64, 512, 512]
     - [1024, 1024, 1024]
 
+sign_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 tril:
   shapes:
     - [64, 64]
