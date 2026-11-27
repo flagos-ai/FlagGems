@@ -625,7 +625,10 @@ def test_mm_backward(M, N, K, dtype, b_column_major, grad_mode):
 @pytest.mark.mm_backward
 @requires_hopper_mm_backward
 @pytest.mark.parametrize(
-    "M, N, K", BACKWARD_MNK_SHAPES + BACKWARD_DEGENERATE_MNK_SHAPES
+    "M, N, K",
+    BACKWARD_MNK_SHAPES
+    + BACKWARD_DEGENERATE_MNK_SHAPES
+    + ([] if QUICK_MODE else [(129, 257, 513), (768, 1025, 384)]),
 )
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 @pytest.mark.parametrize(

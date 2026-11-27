@@ -3091,18 +3091,20 @@ _GROUP_M = 8
 
 
 def _tile_shape(dtype, rows, cols):
-    """Fused-kernel tile, from the measured per-shape sweep on H800.
+    """Fused-kernel tile, including the small/medium-output sweep on H20.
 
     Narrow tiles for narrow problems (a 128-wide tile on a 15-row matrix is
     mostly padding), wider tiles once there is enough work to fill the GPU.
     """
     narrow = rows <= 512 and cols <= 512
     if dtype == torch.float32:
-        if narrow:
-            return 32, 32, 32, 4, 3
+        if rows <= 1024 and cols <= 1024:
+            return 64, 32, 32, 4, 3
         return 128, 64, 32, 4, 3
     if narrow:
-        return 64, 64, 64, 4, 3
+        return 64, 32, 32, 4, 3
+    if rows <= 2048 and cols <= 2048:
+        return 64, 64, 32, 4, 3
     if rows * cols <= 4_000_000:
         return 128, 128, 64, 8, 4
     return 128, 256, 64, 8, 3
@@ -3189,6 +3191,13 @@ def mm_backward(grad_output, a, b, needs_input_grad):
     if not need_a and not need_b:
         return None, None
 
+    # The tuned GEMMs allocate their own outputs. Dispatch before allocating
+    # fused-kernel buffers, but keep empty contractions on the zero-fill path.
+    if m != 0 and n != 0 and k != 0 and not _needs_fused_launch(a.dtype, m, n, k):
+        grad_a = _tuned_mm(grad_output, b.transpose(0, 1)) if need_a else None
+        grad_b = _tuned_mm(a.transpose(0, 1), grad_output) if need_b else None
+        return grad_a, grad_b
+
     # A zero-length output dimension is empty and a contraction over no terms
     # is zero; both are answered by allocation, without a kernel launch.
     grad_a = None
@@ -3208,13 +3217,7 @@ def mm_backward(grad_output, a, b, needs_input_grad):
     if m == 0 or k == 0 or n == 0:
         return grad_a, grad_b
 
-    if _needs_fused_launch(a.dtype, m, n, k):
-        _fused_mm_backward(grad_output, a, b, grad_a, grad_b, need_a, need_b)
-    else:
-        if need_a:
-            grad_a = _tuned_mm(grad_output, b.transpose(0, 1))
-        if need_b:
-            grad_b = _tuned_mm(a.transpose(0, 1), grad_output)
+    _fused_mm_backward(grad_output, a, b, grad_a, grad_b, need_a, need_b)
     return grad_a, grad_b
 
 
