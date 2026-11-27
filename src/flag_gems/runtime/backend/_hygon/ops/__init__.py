@@ -47,6 +47,7 @@ from ._foreach_addcmul__ScalarList import (
 from ._foreach_addcmul__Tensor import (
     _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
 )
+from ._foreach_asin_ import _foreach_asin_ as _foreach_asin_
 from ._foreach_atan import _foreach_atan as _foreach_atan
 from ._foreach_atan_ import _foreach_atan_ as _foreach_atan_
 from ._foreach_ceil import _foreach_ceil as _foreach_ceil
@@ -418,6 +419,7 @@ __all__ = [
     "_foreach_addcmul__Scalar",
     "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
+    "_foreach_asin_",
     "_foreach_atan",
     "_foreach_atan_",
     "_foreach_ceil",
