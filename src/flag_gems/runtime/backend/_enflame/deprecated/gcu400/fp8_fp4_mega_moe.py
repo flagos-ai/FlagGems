@@ -309,7 +309,7 @@ def fp8_fp4_mega_moe(
       * l2_weights: [num_experts, hidden, intermediate // 2]
       * l2_scales : [num_experts, hidden, intermediate // 32]
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_MEGA_MOE")
+    logger.debug("GEMS_ENFLAME FP8_FP4_MEGA_MOE")
     if x_fp8.ndim != 2:
         raise ValueError("x_fp8 must be [num_tokens, hidden]")
     if topk_idx.shape != topk_weights.shape:
@@ -469,7 +469,7 @@ def fp8_fp4_mega_moe_torch_ref(
     l2_scales: torch.Tensor,
     activation_clamp: float | None = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_MEGA_MOE_TORCH_REF")
+    logger.debug("GEMS_ENFLAME FP8_FP4_MEGA_MOE_TORCH_REF")
     x = x_fp8.float() * _expand_scale_torch(x_scale, x_fp8.shape[-1])
     l1 = _unpack_fp4_e2m1_torch(l1_weights) * _expand_scale_torch(
         l1_scales, l1_weights.shape[-1] * 2

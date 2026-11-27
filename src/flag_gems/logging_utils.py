@@ -75,16 +75,34 @@ def setup_flaggems_logging(path=None, record=True, once=False):
     formatter = logging.Formatter("[%(levelname)s] %(name)s.%(funcName)s: %(message)s")
     handler.setFormatter(formatter)
 
+    # Remember the pre-existing propagate flag once, on the *first* setup
+    # call, so a later teardown restores whatever the caller had before any
+    # setup_flaggems_logging() ever ran -- not just "True". Without this,
+    # nested/repeated setup+teardown pairs (e.g. one test's use_gems() inside
+    # another's) would stomp on each other's restore value.
+    if not hasattr(logger, "_flaggems_prev_propagate"):
+        logger._flaggems_prev_propagate = logger.propagate
     logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
     logger.propagate = False
 
 
 def teardown_flaggems_logging(logger: logging.Logger | None = None):
-    """Remove file handlers for the flag_gems logger (used on context exit)."""
+    """Remove file handlers for the flag_gems logger (used on context exit).
+
+    Also restores ``propagate`` to its value from before the matching
+    ``setup_flaggems_logging(record=True)`` call. Leaving it permanently
+    False (as this did previously) silently breaks every later
+    ``caplog``-based assertion on a ``flag_gems.*`` logger for the rest of
+    the process, since pytest's capture handler is attached to the root
+    logger and relies on propagation to see records.
+    """
 
     logger = logger or logging.getLogger("flag_gems")
     _remove_file_handlers(logger)
+    if hasattr(logger, "_flaggems_prev_propagate"):
+        logger.propagate = logger._flaggems_prev_propagate
+        del logger._flaggems_prev_propagate
 
 
 # Precision check data file writer

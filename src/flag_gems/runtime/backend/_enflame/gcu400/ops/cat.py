@@ -110,7 +110,7 @@ def cat_copy_func_kernel_4(
     post_idx = idx % dim_prod_post
 
     out_idx = (
-        pre_idx * dim_size_out * dim_prod_post
+        pre_idx.to(tl.int64) * dim_size_out * dim_prod_post
         + (dim_idx + dim_offset) * dim_prod_post
         + post_idx
     )

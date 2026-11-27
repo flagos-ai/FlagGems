@@ -98,8 +98,19 @@ def _small_ops_det(A):
 
 
 def _ref_det(A):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and A.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        matrix = A.numpy()
+        return torch.from_numpy(np.asarray(np.linalg.det(matrix), dtype=matrix.dtype))
     if A.device.type == "npu":
         return _small_ops_det(A)
+    if A.device.type != "cpu":
+        return torch.det(A)
     # MKL's threaded LAPACK path hits a SLASWP parameter error and hangs on
     # batched det in this environment; single-threaded MKL is correct and fast.
     prev = torch.get_num_threads()
@@ -215,8 +226,13 @@ def test_det_empty(dtype):
     for shape in [(0, 0), (3, 0, 0)]:
         A = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
-        ref_A = utils.to_reference(A)
-        ref_out = _ref_det(ref_A)
+        if flag_gems.vendor_name == "mthreads":
+            # There are no values to reduce. The determinant is the empty product.
+            ref_out = torch.ones(
+                shape[:-2], dtype=dtype, device=utils.to_reference(A).device
+            )
+        else:
+            ref_out = _ref_det(utils.to_reference(A))
 
         res_out = flag_gems.det(A)
 

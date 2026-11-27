@@ -27,54 +27,6 @@ _SPARSE_COO_FALLBACK_FLAG = "_flag_gems_gcu400_sparse_coo_fallback_registered"
 _SPARSE_COO_LIBRARY = None
 
 
-def ensure_sparse_coo_gcu_fallback():
-    """Idempotently register a SparsePrivateUse1 sparse COO constructor for sparse metadata operators."""
-    global _SPARSE_COO_LIBRARY
-    if getattr(torch, _SPARSE_COO_FALLBACK_FLAG, False):
-        return
-
-    def build_cpu_sparse_coo(
-        sparse_dim,
-        dense_dim,
-        size,
-        indices,
-        values,
-        *,
-        dtype=None,
-        layout=None,
-        device=None,
-        pin_memory=False,
-        is_coalesced=None,
-    ):
-        # sparse_dim / dense_dim / size are implied by the shapes of indices and values;
-        # device is fixed to CPU and layout to sparse_coo; other arguments match the aten schema.
-        cpu_indices = indices.detach().to("cpu")
-        cpu_values = values.detach().to("cpu")
-        if dtype is not None:
-            cpu_values = cpu_values.to(dtype)
-        options = {}
-        if is_coalesced is not None:
-            options["is_coalesced"] = is_coalesced
-        return torch.sparse_coo_tensor(cpu_indices, cpu_values, tuple(size), **options)
-
-    _SPARSE_COO_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _SPARSE_COO_LIBRARY.impl(
-            "_sparse_coo_tensor_with_dims_and_tensors",
-            build_cpu_sparse_coo,
-            "SparsePrivateUse1",
-        )
-    except RuntimeError as error:
-        logger.warning("sparse COO gcu400 fallback registration skipped: %s", error)
-    setattr(torch, _SPARSE_COO_FALLBACK_FLAG, True)
-
-
-ensure_sparse_coo_gcu_fallback()
-
-
-_COO_LAYOUT = torch.sparse_coo
-
-
 def _dimI(self: torch.Tensor) -> int:
     """Return the number of sparse dimensions of a sparse COO tensor ``self``.
 
@@ -102,10 +54,25 @@ def _dimI(self: torch.Tensor) -> int:
       ``NotImplementedError`` ("Could not run 'aten::_dimI' ... from the
       'CUDA'/'SparseCsrCUDA' backend"). Mirror that contract here instead of
       guessing a formula.
+    logger.debug("GEMS_ENFLAME _DIMI")
+
+    Host-path notes (gcu400 hot-body form; do not regress):
+    - The gate is ``self.is_sparse`` (ATen defines it as ``layout() ==
+      kSparse``), so it accepts exactly the COO layout and every other layout
+      keeps raising, identical to a ``self.layout is torch.sparse_coo`` gate;
+      it reads the cached bool straight from TensorImpl and is a few ns
+      cheaper per call than the bound-layout enum comparison.
+    - ``_indices().shape[0]`` is already a plain Python int, so no ``int()``
+      wrapper is needed. ``self.sparse_dim()`` is NOT used here: this backend
+      registers a SparseCPU Python trampoline for it (~1.6us/call), while
+      ``aten::_indices`` has no such trampoline and stays a native read.
+    - There is deliberately no per-call ``logger.debug`` trace line: this
+      op's whole cost is host-side metadata access (~0.2us) and a disabled
+      debug call would be its single largest component (dense_dim/dimV/dim
+      precedent on the enflame side).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _DIMI")
-    if self.layout is torch.sparse_coo:
-        return int(self._indices().shape[0])
+    if self.is_sparse:
+        return self._indices().shape[0]
     raise NotImplementedError(
         f"Could not run 'aten::_dimI' with arguments from the '{self.layout}' "
         "layout; aten::_dimI is only registered for the Sparse (COO) backends"

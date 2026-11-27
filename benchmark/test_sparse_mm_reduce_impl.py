@@ -59,7 +59,12 @@ class _TorchSparseMmReduceImpl:
     """
 
     def __call__(self, self_sparse, other, reduce="sum"):
-        move = other.device.type == "cuda"
+        # CUDA needs the CPU round-trip in the community version. On enflame/GCU,
+        # the op also has no device kernel, so extend the same path to non-CPU
+        # devices only for that vendor.
+        move = other.device.type == "cuda" or (
+            flag_gems.vendor_name == "enflame" and other.device.type != "cpu"
+        )
         if move:
             self_sparse = self_sparse.cpu()
             other = other.cpu()

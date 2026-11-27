@@ -51,14 +51,15 @@ def _launch_retry(launch):
 
 _BLOCK_SIZE = 4096
 _NON_INNER_BLOCK_SIZE = 64
-# Scale cap for direct single-CTA computation: medium N (including the 64k tier) is taken by one kernel, cheaper in
-# fixed
-# overhead than two "map+finish" launches; beyond that use the cross-CTA partial path to avoid single-CTA bandwidth
-# saturation.
+# Size limit for direct single-CTA computation: for medium N (including the 64k case), finishing in one kernel is
+# cheaper than the "map+finish"
+# two-launch approach in fixed overhead; beyond that, still use the cross-CTA partial-sum path to avoid single-CTA
+# bandwidth saturation.
 _GLOBAL_SINGLE_CTA_LIMIT = 65536
 _MAX_GLOBAL_PROGRAMS = 512
-# At large N each program gets more tiles, and 512 programs make each CTA hold too many resident tiles,
-# lowering effective bandwidth; measured 256 is faster for N >= 2M, so switch the program cap by scale.
+# For large N, each program gets more tiles; 512 programs would leave too many resident tiles per CTA,
+# actually reducing effective bandwidth; measurements show the 256 setting is faster for N >= 2M, so the program-count
+# cap is switched by size.
 _MAX_GLOBAL_WIDE_PROGRAMS = 256
 _GLOBAL_WIDE_GRID_MIN_ELEMS = 1 << 21
 _MAX_STRIDED_NDIM = 8
@@ -1523,8 +1524,11 @@ def _run_global(
     is_complex,
 ):
     if is_complex:
-        inp_ptr = torch.view_as_real(inp).reshape(-1)
-        mean_ptr = torch.view_as_real(out_mean).reshape(-1)
+        # Metadata-only views: the kernels consume the interleaved real storage.
+        inp_ptr = torch.view_as_real(inp).reshape(-1)  # allow-torch-compute: pure view
+        mean_ptr = torch.view_as_real(out_mean).reshape(
+            -1
+        )  # allow-torch-compute: pure view
     else:
         inp_ptr = inp
         mean_ptr = out_mean
@@ -1670,7 +1674,9 @@ def _run_reduction(
     is_complex,
 ):
     if is_complex:
-        mean_ptr = torch.view_as_real(out_mean).reshape(-1)
+        mean_ptr = torch.view_as_real(out_mean).reshape(
+            -1
+        )  # allow-torch-compute: pure view
     else:
         mean_ptr = out_mean
 
@@ -1685,9 +1691,13 @@ def _run_reduction(
         M = math.prod(shape[:dim])
         K = math.prod(shape[dim + 1 :])
         contiguous = inp.contiguous()
-        inp_ptr = (
-            torch.view_as_real(contiguous).reshape(-1) if is_complex else contiguous
-        )
+        if is_complex:
+            # Metadata-only view over the freshly materialized contiguous copy.
+            inp_ptr = torch.view_as_real(contiguous).reshape(
+                -1
+            )  # allow-torch-compute: pure view
+        else:
+            inp_ptr = contiguous
         if K > 1:
             block_k = min(triton.next_power_of_2(K), _NON_INNER_BLOCK_SIZE)
             kernel = (
@@ -1846,9 +1856,13 @@ def _run_reduction(
     # materialization path only for unusually high-rank reductions.
     if len(batch_dims) > _MAX_STRIDED_NDIM or len(dims) > _MAX_STRIDED_NDIM:
         compressed = dim_compress(inp, dims)
-        inp_ptr = (
-            torch.view_as_real(compressed).reshape(-1) if is_complex else compressed
-        )
+        if is_complex:
+            # Metadata-only view; dim_compress already materialized a copy.
+            inp_ptr = torch.view_as_real(compressed).reshape(
+                -1
+            )  # allow-torch-compute: pure view
+        else:
+            inp_ptr = compressed
         kernel = _std_mean_row_complex_kernel if is_complex else _std_mean_row_kernel
         kernel[(M,)](
             inp_ptr,
@@ -1866,7 +1880,9 @@ def _run_reduction(
 
     # Keep the original storage view here: reshaping a non-contiguous complex
     # tensor would materialize a copy and invalidate the strides passed below.
-    inp_ptr = torch.view_as_real(inp) if is_complex else inp
+    inp_ptr = (
+        torch.view_as_real(inp) if is_complex else inp
+    )  # allow-torch-compute: pure view
     batch_metadata = _fixed_strided_metadata(batch_shape, batch_strides)
     reduce_metadata = _fixed_strided_metadata(reduce_shape, reduce_strides)
     use_int64_index = not can_use_int32_index(inp)
@@ -1955,9 +1971,13 @@ def _std_mean_impl(
         if M == 0:
             pass
         elif N == 0:
-            mean_ptr = (
-                torch.view_as_real(out_mean).reshape(-1) if is_complex else out_mean
-            )
+            if is_complex:
+                # Metadata-only view used by the NaN fill kernel.
+                mean_ptr = torch.view_as_real(out_mean).reshape(
+                    -1
+                )  # allow-torch-compute: pure view
+            else:
+                mean_ptr = out_mean
             _std_mean_nan_kernel[(triton.cdiv(M, _BLOCK_SIZE),)](
                 out_std, M, BLOCK_SIZE=_BLOCK_SIZE
             )
@@ -2002,22 +2022,22 @@ def _std_mean_impl(
 
 
 def std_mean(inp, unbiased=True):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN")
+    logger.debug("GEMS_ENFLAME STD_MEAN")
     return _std_mean_impl(inp, None, 1.0 if unbiased else 0.0, False)
 
 
 def std_mean_dim(inp, dim, unbiased=True, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.DIM")
+    logger.debug("GEMS_ENFLAME STD_MEAN.DIM")
     return _std_mean_impl(inp, dim, 1.0 if unbiased else 0.0, keepdim)
 
 
 def std_mean_correction(inp, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.CORRECTION")
+    logger.debug("GEMS_ENFLAME STD_MEAN.CORRECTION")
     return _std_mean_impl(inp, dim, correction, keepdim)
 
 
 def std_mean_names_dim(inp, dim, unbiased=True, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.NAMES_DIM")
+    logger.debug("GEMS_ENFLAME STD_MEAN.NAMES_DIM")
     return _std_mean_impl(
         inp,
         dim,
@@ -2028,7 +2048,7 @@ def std_mean_names_dim(inp, dim, unbiased=True, keepdim=False):
 
 
 def std_mean_correction_names(inp, dim, *, correction=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.CORRECTION_NAMES")
+    logger.debug("GEMS_ENFLAME STD_MEAN.CORRECTION_NAMES")
     return _std_mean_impl(
         inp,
         dim,
@@ -2047,7 +2067,7 @@ def std_mean_correction_out(
     out0,
     out1,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 STD_MEAN.CORRECTION_OUT")
+    logger.debug("GEMS_ENFLAME STD_MEAN.CORRECTION_OUT")
     return _std_mean_impl(
         inp,
         dim,
@@ -2178,7 +2198,13 @@ def _gcu_tensor_update_names(self, names, inplace):
 
 # Like the public std_mean binding above, the vendor module can execute twice
 # under two module names; the class-level flag keeps torch.Tensor patched once.
-if not getattr(torch.Tensor, "_flaggems_gcu_update_names_bridge", False):
-    _ORIG_TENSOR_UPDATE_NAMES = torch.Tensor._update_names
+# Some torch builds expose no ``_update_names`` binding at all, and importing
+# this module must never fail on those builds, so the bridge is installed only
+# when the original binding actually exists.
+_ORIG_TENSOR_UPDATE_NAMES = getattr(torch.Tensor, "_update_names", None)
+
+if _ORIG_TENSOR_UPDATE_NAMES is not None and not getattr(
+    torch.Tensor, "_flaggems_gcu_update_names_bridge", False
+):
     torch.Tensor._update_names = _gcu_tensor_update_names
     torch.Tensor._flaggems_gcu_update_names_bridge = True

@@ -51,6 +51,20 @@ def _inputs(case):
     return raw @ raw.transpose(-1, -2) + 3.0 * eye
 
 
+def _reference_inv(inp):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        # The MUSA PyTorch distribution builds CPU ATen without LAPACK.
+        import numpy as np
+
+        values = inp.detach().resolve_conj().resolve_neg().numpy()
+        return torch.from_numpy(np.linalg.inv(values))
+    return torch.ops.aten.linalg_inv.default(inp)
+
+
 @pytest.mark.linalg_inv
 @pytest.mark.parametrize("case", CASES)
 def test_linalg_inv(case):
@@ -58,7 +72,7 @@ def test_linalg_inv(case):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
     inputs = _inputs(case)
-    ref = torch.ops.aten.linalg_inv.default(utils.to_reference(inputs, True))
+    ref = _reference_inv(utils.to_reference(inputs, True))
     res = flag_gems.linalg_inv(inputs)
     utils.gems_assert_close(res, ref.to(dtype), dtype, reduce_dim=case[1] * case[1])
 
@@ -81,7 +95,7 @@ def _well_conditioned(n, batch=(), dtype=torch.float32):
 def test_linalg_inv_empty(shape):
     """Zero-sized inputs invert to zero-sized outputs without a launch."""
     inp = torch.zeros(shape, dtype=torch.float32, device=DEVICE)
-    ref = torch.ops.aten.linalg_inv.default(utils.to_reference(inp, True))
+    ref = _reference_inv(utils.to_reference(inp, True))
     res = flag_gems.linalg_inv(inp)
     assert res.shape == ref.shape
     assert res.dtype == inp.dtype
@@ -93,7 +107,7 @@ def test_linalg_inv_noncontiguous():
     base = _well_conditioned(5, batch=(2,))
     view = base.transpose(-1, -2)
     assert not view.is_contiguous()
-    ref = torch.ops.aten.linalg_inv.default(utils.to_reference(view, True))
+    ref = _reference_inv(utils.to_reference(view, True))
     res = flag_gems.linalg_inv(view)
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=25)
 
@@ -115,7 +129,7 @@ def test_linalg_inv_round_trip(n):
 def test_linalg_inv_row_swap_pivoting():
     """A zero leading pivot forces a row interchange, which must still invert."""
     inp = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32, device=DEVICE)
-    ref = torch.ops.aten.linalg_inv.default(utils.to_reference(inp, True))
+    ref = _reference_inv(utils.to_reference(inp, True))
     res = flag_gems.linalg_inv(inp)
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=2)
 
@@ -137,7 +151,7 @@ def test_linalg_inv_batch_independence():
 def test_linalg_inv_binds_single_argument():
     """``aten::linalg_inv`` takes only ``A``, so the wrapper must too."""
     inp = _well_conditioned(4)
-    ref = torch.ops.aten.linalg_inv.default(utils.to_reference(inp, True))
+    ref = _reference_inv(utils.to_reference(inp, True))
     res = flag_gems.linalg_inv(A=inp)
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=16)
 
@@ -218,7 +232,7 @@ def test_linalg_inv_fp64_preserved():
     inp = _well_conditioned(4, dtype=torch.float64)
     res = flag_gems.linalg_inv(inp)
     assert res.dtype == torch.float64
-    ref = torch.ops.aten.linalg_inv.default(utils.to_reference(inp, True))
+    ref = _reference_inv(utils.to_reference(inp, True))
     utils.gems_assert_close(res, ref, torch.float64, reduce_dim=16)
 
 

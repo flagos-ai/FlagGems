@@ -23,6 +23,74 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["rrelu_with_noise_functional"]
+
+NUM_SLOTS = 48
+_INT32_SAFE = (1 << 31) - (1 << 17)
+_FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
+@triton.jit(do_not_specialize=["N_total", "lower", "upper"])
+def _rrelufwd_kernel(
+    X,
+    NZ,
+    OUT,
+    N_total,
+    lower,
+    upper,
+    TRAINING: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    EXACT: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    slope = (lower + upper) * 0.5
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK_SIZE + arange
+        if EXACT:
+            x = tl.load(X + off)
+            x_f = x.to(tl.float32)
+            if TRAINING:
+                nz = tl.load(NZ + off)
+                val = tl.where(x_f >= 0.0, x_f, x_f * nz.to(tl.float32))
+            else:
+                val = tl.where(x_f >= 0.0, x_f, x_f * slope)
+            tl.store(OUT + off, val.to(x.dtype))
+        else:
+            mask = off < N_total
+            x = tl.load(X + off, mask=mask, other=0.0)
+            x_f = x.to(tl.float32)
+            if TRAINING:
+                nz = tl.load(NZ + off, mask=mask, other=0.0)
+                val = tl.where(x_f >= 0.0, x_f, x_f * nz.to(tl.float32))
+            else:
+                val = tl.where(x_f >= 0.0, x_f, x_f * slope)
+            tl.store(OUT + off, val.to(x.dtype), mask=mask)
+
+
+def _choose_block_and_warps(n, itemsize):
+    # Small shapes hit the launch floor: half-width exact tile with dual CTA (xlogy tiny band convention).
+    if n <= 4096:
+        return max(triton.next_power_of_2(n) // 2, 256), 2
+    if n <= 65536:
+        return 2048, 4
+    if n <= (1 << 21):
+        return 8192, 4
+    # Large-tier BLOCK/num_warps recalibration (2026-11-19, do_bench median, best of two runs):
+    # 16-bit at 2**29 B65536/nw4 = 1145us (2.81TB/s) vs the former B65536/nw2 = 1535us
+    # (1.34x); 16-bit mid tier <=2**27 still favors B32768/nw2 (2**22: 17.5 vs 19.3us).
+    if itemsize == 2:
+        if n >= (1 << 28):
+            return 65536, 4
+        return 32768, 2
+    # fp32 large tier B32768/nw4 (2**28: 1142us = 2.82TB/s, former B32768/nw2 = 1444us, 1.26x);
+    # mid tier <=2**25 stays on nw2 (2**24: 76.8 vs 77.8us).
+    if n <= (1 << 25):
+        return 32768, 2
+    return 32768, 4
+
 
 @pointwise_dynamic(
     is_tensor=[True, True, False, False],
@@ -33,7 +101,7 @@ logger = logging.getLogger(__name__)
     ],
 )
 @triton.jit
-def rrelu_with_noise_forward(self, noise, lower, upper):
+def _rrelu_with_noise_forward_generic(self, noise, lower, upper):
     # RReLU: if x >= 0: out = x, else: out = x * noise
     # noise is pre-generated uniform random in [lower, upper]
     out = tl.where(self >= 0, self, self * noise)
@@ -48,7 +116,7 @@ def rrelu_with_noise_functional(
     training=False,
     generator=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 RRELU_WITH_NOISE_FUNCTIONAL")
+    logger.debug("GEMS_ENFLAME RRELU_WITH_NOISE_FUNCTIONAL")
     return _rrelu_with_noise_impl(self, noise, lower, upper, training, generator)
 
 
@@ -56,11 +124,43 @@ def _rrelu_with_noise_impl(self, noise, lower, upper, training, generator):
     assert noise.shape == self.shape, "noise tensor must have the same shape as self"
     assert generator is None, "generator is not supported in FlagGems"
 
+    n = self.numel()
+    if (
+        0 < n < _INT32_SAFE
+        and self.dtype in _FAST_DTYPES
+        and self.is_contiguous()
+        and noise.is_contiguous()
+    ):
+        out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+        block, num_warps = _choose_block_and_warps(n, self.element_size())
+        grid = min(triton.cdiv(n, block), NUM_SLOTS)
+        exact = n % block == 0
+        # P02: the external llvm converter occasionally fails on cold compilation (converterResult=-2 family),
+        # retrying the launch to trigger recompilation recovers (precedent: xlogy/add/sinh).
+        for attempt in range(3):
+            try:
+                _rrelufwd_kernel[(grid,)](
+                    self,
+                    noise,
+                    out,
+                    n,
+                    float(lower),
+                    float(upper),
+                    TRAINING=bool(training),
+                    BLOCK_SIZE=block,
+                    EXACT=exact,
+                    num_warps=num_warps,
+                    num_stages=1,
+                )
+                return out, noise
+            except Exception:
+                if attempt == 2:
+                    raise
     if not training:
         slope = (lower + upper) * 0.5
         noise_tmp = torch.full_like(self, slope)
-        output = rrelu_with_noise_forward(self, noise_tmp, lower, upper)
+        output = _rrelu_with_noise_forward_generic(self, noise_tmp, lower, upper)
         return output[0], noise
     else:
-        output = rrelu_with_noise_forward(self, noise, lower, upper)
+        output = _rrelu_with_noise_forward_generic(self, noise, lower, upper)
         return output

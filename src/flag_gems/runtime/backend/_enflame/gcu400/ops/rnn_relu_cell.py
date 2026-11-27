@@ -37,15 +37,44 @@ For fp32 and fp64 inputs none of those roundings is observable, so the whole
 path is exact in the input precision.
 """
 
+import contextlib
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
+try:  # FlagTree exposes the AABS knobs only on recent builds
+    from triton.knobs import autotuning as _autotuning_knobs
+except ImportError:  # pragma: no cover - older triton / flagtree builds
+    _autotuning_knobs = None
+
 from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _fixed_block_sizes():
+    """Keep the hand-tuned block sizes for this launch.
+
+    FlagTree's AABS may shrink a ``tl.load`` driven BLOCK to
+    ``next_power_of_2(shape)`` *at launch time*, while the grid has already been
+    derived from the configured BLOCK.  A shrunken BLOCK_H leaves the tail
+    columns of the output outside every tile, so they are never written and the
+    kernel returns stale data (seen as an intermittent mismatch on
+    ``hidden_size=65``).  Disabling the adjustment for this launch keeps grid
+    and tile consistent.
+    """
+    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
+        yield
+        return
+    previous = _autotuning_knobs.adjust_block_size
+    _autotuning_knobs.adjust_block_size = False
+    try:
+        yield
+    finally:
+        _autotuning_knobs.adjust_block_size = previous
 
 
 @triton.jit
@@ -91,50 +120,43 @@ def _rnn_relu_cell_kernel(
     offs_b = tl.program_id(0) * BLOCK_B + tl.arange(0, BLOCK_B)
     offs_n = tl.program_id(1) * BLOCK_H + tl.arange(0, BLOCK_H)
     b_mask = offs_b < B
-    n_mask = offs_n < H
+
+    # ``I`` and ``H`` are the *padded* extents (multiples of BLOCK_K/BLOCK_H),
+    # so the reduction and hidden lanes never need masking.  Masked vector
+    # accesses whose predicate is true for only part of a vector are silently
+    # dropped by the GCU backend, which used to lose the last hidden column
+    # whenever ``hidden_size`` was not a tile multiple (e.g. 65).  Only whole
+    # batch rows are masked here, which keeps every vector access either fully
+    # valid or fully masked.
 
     # ---- linear(input, w_ih, b_ih): (B, I) @ (I, H) ----------------------
     acc_i = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     for k0 in range(0, I, BLOCK_K):
         offs_k = k0 + tl.arange(0, BLOCK_K)
-        k_mask = offs_k < I
         x = tl.load(
             x_ptr + offs_b[:, None] * s_xb + offs_k[None, :] * s_xk,
-            mask=b_mask[:, None] & k_mask[None, :],
+            mask=b_mask[:, None],
             other=0.0,
         )
-        w = tl.load(
-            w_ih_ptr + offs_n[None, :] * s_wi_n + offs_k[:, None] * s_wi_k,
-            mask=k_mask[:, None] & n_mask[None, :],
-            other=0.0,
-        )
+        w = tl.load(w_ih_ptr + offs_n[None, :] * s_wi_n + offs_k[:, None] * s_wi_k)
         acc_i = tl.dot(x, w, acc_i, input_precision="ieee", out_dtype=ACC_DTYPE)
     if HAS_BIH:
-        acc_i += tl.load(b_ih_ptr + offs_n, mask=n_mask, other=0.0).to(ACC_DTYPE)[
-            None, :
-        ]
+        acc_i += tl.load(b_ih_ptr + offs_n).to(ACC_DTYPE)[None, :]
     gate_i = _round(acc_i, ROUND_DTYPE, ACC_DTYPE)
 
     # ---- linear(hx, w_hh, b_hh): (B, H) @ (H, H) -------------------------
     acc_h = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     for k0 in range(0, H, BLOCK_K):
         offs_k = k0 + tl.arange(0, BLOCK_K)
-        k_mask = offs_k < H
         hx = tl.load(
             h_ptr + offs_b[:, None] * s_hb + offs_k[None, :] * s_hk,
-            mask=b_mask[:, None] & k_mask[None, :],
+            mask=b_mask[:, None],
             other=0.0,
         )
-        w = tl.load(
-            w_hh_ptr + offs_n[None, :] * s_wh_n + offs_k[:, None] * s_wh_k,
-            mask=k_mask[:, None] & n_mask[None, :],
-            other=0.0,
-        )
+        w = tl.load(w_hh_ptr + offs_n[None, :] * s_wh_n + offs_k[:, None] * s_wh_k)
         acc_h = tl.dot(hx, w, acc_h, input_precision="ieee", out_dtype=ACC_DTYPE)
     if HAS_BHH:
-        acc_h += tl.load(b_hh_ptr + offs_n, mask=n_mask, other=0.0).to(ACC_DTYPE)[
-            None, :
-        ]
+        acc_h += tl.load(b_hh_ptr + offs_n).to(ACC_DTYPE)[None, :]
     gate_h = _round(acc_h, ROUND_DTYPE, ACC_DTYPE)
 
     hy = tl.maximum(_round(gate_i + gate_h, ROUND_DTYPE, ACC_DTYPE), 0.0)
@@ -142,19 +164,60 @@ def _rnn_relu_cell_kernel(
     tl.store(
         out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
         hy.to(out_ptr.dtype.element_ty),
-        mask=b_mask[:, None] & n_mask[None, :],
+        mask=b_mask[:, None],
     )
+
+
+def _pad_2d(tensor, rows, cols):
+    """Zero pad ``tensor`` to ``(rows, cols)``; returns it untouched if aligned."""
+    if tensor.shape[0] == rows and tensor.shape[1] == cols:
+        return tensor
+    padded = torch.zeros((rows, cols), dtype=tensor.dtype, device=tensor.device)
+    padded[: tensor.shape[0], : tensor.shape[1]] = tensor
+    return padded
+
+
+def _pad_1d(tensor, length):
+    """Zero pad ``tensor`` to ``length``; returns it untouched if aligned."""
+    if tensor.shape[0] == length:
+        return tensor
+    padded = torch.zeros((length,), dtype=tensor.dtype, device=tensor.device)
+    padded[: tensor.shape[0]] = tensor
+    return padded
 
 
 def _block(value, limit):
     """Smallest power of two at least ``value``, clamped to [16, limit].
 
-    16 is ``tl.dot``'s minimum tile extent. The upper clamps are small on
-    purpose: the kernel keeps two accumulator tiles live at once, so a wider
-    tile buys no extra reuse and only costs registers and occupancy. Capping
-    the tile instead lets a wide layer spread over more blocks.
+    16 is ``tl.dot``'s minimum tile extent.  The upper clamp trades register
+    footprint against dot efficiency: two accumulator tiles stay live at once,
+    so the tile must stay small enough to fit the register file, but a tile
+    that is too narrow turns every ``tl.dot`` into a rank-deficient MMA on GCU.
     """
     return max(16, min(limit, triton.next_power_of_2(max(int(value), 1))))
+
+
+def _k_tile(input_size, hidden_size, limit=128):
+    """Largest power of two in [8, limit] dividing both reduction extents.
+
+    A reduction tile that divides both ``input_size`` and ``hidden_size`` lets
+    the kernel run on the caller's tensors unchanged, so the zero padding in
+    :func:`_pad_2d` disappears.  That matters because each pad copy is a full
+    extra kernel launch: with ``input_size = 8`` the old rule always forced a
+    ``BLOCK_K = 16`` tile and the two pad copies made a 1.5 us cell cost 111 us
+    on GCU400 (measured), while the factor aligned tile brings it back to 12 us.
+
+    Returns ``None`` when no such tile exists (e.g. ``input_size = 129``); the
+    caller then falls back to the masked-free padded path.
+    """
+    input_size = max(int(input_size), 1)
+    hidden_size = max(int(hidden_size), 1)
+    tile = limit
+    while tile >= 8:
+        if input_size % tile == 0 and hidden_size % tile == 0:
+            return tile
+        tile //= 2
+    return None
 
 
 def _check_cell_args(name, input, hx, w_ih, w_hh, b_ih, b_hh, gates):
@@ -243,7 +306,7 @@ def rnn_relu_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     Returns:
         The new hidden state of shape ``(batch, hidden_size)``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 RNN_RELU_CELL")
+    logger.debug("GEMS_ENFLAME RNN_RELU_CELL")
     _check_cell_args("rnn_relu_cell", input, hx, w_ih, w_hh, b_ih, b_hh, 1)
 
     batch, input_size = input.shape
@@ -252,41 +315,85 @@ def rnn_relu_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     if batch == 0 or hidden_size == 0:
         return out
 
-    block_b = _block(batch, 16)
-    block_h = _block(hidden_size, 32)
-    block_k = _block(max(input_size, hidden_size), 64)
+    # Tile shape comes from a GCU400 sweep over (BLOCK_B, BLOCK_H, BLOCK_K,
+    # num_warps, num_stages) on every benchmarked cell size:
+    #   32x128x128/w4 for small and medium cells (batch <= 64),
+    #   64x128x128/w4 for large cells (batch = 128, hidden >= 512),
+    # where the wide BLOCK_H amortises the weight-tile loads across both dots
+    # and the wide BLOCK_K keeps the reduction inside one tl.dot.  Narrower
+    # tiles (16x32) make each tl.dot a rank-deficient MMA and cost up to 3x on
+    # the large cells.
+    block_h = _block(hidden_size, 128)
+    # BLOCK_B is capped at 32 on every cell: with the full-K reduction tile the
+    # big cell (batch 128, hidden 512) is parallelism limited, and halving the
+    # batch tile doubles the grid (2x4 -> 4x4 programs) for 4% less time
+    # (measured 27.96 -> 26.74 us, bf16 and fp16 alike).
+    block_b = _block(batch, 32)
+    # Prefer a reduction tile that divides both extents so that no operand has
+    # to be zero padded (each pad copy is an extra kernel launch on GCU).
+    block_k = _k_tile(input_size, hidden_size)
+    if block_k is None:
+        block_k = _block(max(input_size, hidden_size), 64)
+    # A reduction tile that covers the whole K on the bigger cells halves the
+    # number of dots; that only pays off with four warps, because the two live
+    # accumulator tiles already saturate two warps.  Tiny cells (<= 64x64 per
+    # tile) measure the same at two and four warps, and one warp is 7x slower
+    # on them (measured 64 us vs 9.6 us for a 1x8x16 cell).
+    num_warps = 4 if block_h * block_k >= 128 * 128 else 2
 
-    _rnn_relu_cell_kernel[
-        (triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))
-    ](
-        input,
-        hx,
-        w_ih,
-        w_hh,
-        b_ih if b_ih is not None else input,
-        b_hh if b_hh is not None else input,
-        out,
-        batch,
-        input_size,
-        hidden_size,
-        input.stride(0),
-        input.stride(1),
-        hx.stride(0),
-        hx.stride(1),
-        w_ih.stride(0),
-        w_ih.stride(1),
-        w_hh.stride(0),
-        w_hh.stride(1),
-        out.stride(0),
-        out.stride(1),
-        HAS_BIH=b_ih is not None,
-        HAS_BHH=b_hh is not None,
-        ACC_DTYPE=_ACC_DTYPE[input.dtype],
-        ROUND_DTYPE=_ROUND_DTYPE[input.dtype],
-        BLOCK_B=block_b,
-        BLOCK_H=block_h,
-        BLOCK_K=block_k,
-        num_warps=4,
-        num_stages=3,
-    )
+    # Operands are zero padded to tile multiples so that the kernel can run
+    # without hidden-lane masks (see the note in the kernel body).  For the
+    # tile-aligned shapes this is a no-op and no copy is made.
+    pad_h = triton.cdiv(hidden_size, block_h) * block_h
+    pad_i = triton.cdiv(input_size, block_k) * block_k
+    x_arg = _pad_2d(input, batch, pad_i)
+    h_arg = _pad_2d(hx, batch, pad_h)
+    w_i_arg = _pad_2d(w_ih, pad_h, pad_i)
+    w_h_arg = _pad_2d(w_hh, pad_h, pad_h)
+    if b_ih is not None:
+        b_i_arg = _pad_1d(b_ih, pad_h)
+    else:
+        b_i_arg = w_i_arg
+    if b_hh is not None:
+        b_h_arg = _pad_1d(b_hh, pad_h)
+    else:
+        b_h_arg = w_h_arg
+    work = out
+    if pad_h != hidden_size:
+        work = torch.empty((batch, pad_h), dtype=input.dtype, device=input.device)
+
+    with _fixed_block_sizes():
+        _rnn_relu_cell_kernel[(triton.cdiv(batch, block_b), pad_h // block_h)](
+            x_arg,
+            h_arg,
+            w_i_arg,
+            w_h_arg,
+            b_i_arg,
+            b_h_arg,
+            work,
+            batch,
+            pad_i,
+            pad_h,
+            x_arg.stride(0),
+            x_arg.stride(1),
+            h_arg.stride(0),
+            h_arg.stride(1),
+            w_i_arg.stride(0),
+            w_i_arg.stride(1),
+            w_h_arg.stride(0),
+            w_h_arg.stride(1),
+            work.stride(0),
+            work.stride(1),
+            HAS_BIH=b_ih is not None,
+            HAS_BHH=b_hh is not None,
+            ACC_DTYPE=_ACC_DTYPE[input.dtype],
+            ROUND_DTYPE=_ROUND_DTYPE[input.dtype],
+            BLOCK_B=block_b,
+            BLOCK_H=block_h,
+            BLOCK_K=block_k,
+            num_warps=num_warps,
+            num_stages=1,
+        )
+    if work is not out:
+        out.copy_(work[:, :hidden_size])
     return out

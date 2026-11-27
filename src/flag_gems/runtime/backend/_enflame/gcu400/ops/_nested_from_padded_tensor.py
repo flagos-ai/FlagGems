@@ -20,16 +20,41 @@ import torch
 import triton
 import triton.language as tl
 
-# Share the same offsets-to-sum_S cache with the common implementation: the upper framework and correctness cases
-# read this dict from flag_gems.ops._nested_from_padded_tensor to validate version-invalidation behavior.
-# A separate backend-owned dict would make "the cache the caller sees" differ from "the cache actually used",
-# breaking cache invalidation assertions. The cache is still invalidated by offsets._version,
-# and inference tensors without a version counter take the always-correct synchronous path.
-from flag_gems.ops._nested_from_padded_tensor import _SUM_S_CACHE
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+try:  # Constructing the jagged NestedTensor directly saves one aten dispatch (measured ~36us/call)
+    from torch.nested._internal.nested_tensor import NestedTensor as _NestedTensor
+except (
+    Exception
+):  # pragma: no cover - fall back when older torch lacks this internal class
+    _NestedTensor = None
+
+# Share the same offsets→sum_S cache as the public implementation: the upstream framework and correctness tests
+# read that dict from flag_gems.ops._nested_from_padded_tensor to verify version-invalidation behavior.
+# If the backend builds its own separate dict, the "cache seen by the caller" and the "cache actually used" would
+# diverge,
+# making cache invalidation assertions fail. The cache still uses offsets._version as the invalidation basis,
+# and takes the always-correct synchronous path when an inference tensor has no version counter.
+from flag_gems.ops._nested_from_padded_tensor import _SUM_S_CACHE
+
 logger = logging.getLogger(__name__)
+
+# GCU400 topology: 4 DIE × 6 SIP × 8 sub-thread; a fixed grid cap of 48 programs is enough
+# to fill all SPs; a pure copy is memory-bound, and knowledge-base measurements show num_warps=4 is optimal (warps=1
+# regresses).
+_NUM_SPC = 48
+_NUM_WARPS = 4
+# Upper bound on elements moved per transfer (measured inflection point, see Step 4 notes; also satisfies the DSM
+# budget).
+_MAX_TILE_ELEMS = 8192
+# Lower bound for small shapes, to avoid an overly small tl.arange making DMA startup overhead dominate.
+_MIN_TILE_ELEMS = 256
+
+
+def _next_pow2(value):
+    """Smallest power of two >= ``value`` (``tl.arange`` requires a power of two)."""
+    return 1 << (value - 1).bit_length()
 
 
 def _resolve_sum_s(offsets):
@@ -49,6 +74,43 @@ def _resolve_sum_s(offsets):
     return S
 
 
+@triton.jit
+def _pack_row_body(
+    padded,
+    offsets,
+    output,
+    work_id,
+    T: tl.constexpr,
+    IB: tl.constexpr,
+    IN: tl.constexpr,
+    S,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Copies the ``length * IN`` contiguous segment of one work item ``(b, ib)`` into values.
+
+    ``work_id`` encodes both the outer batch index ``b`` and the middle-dim index ``ib``, so the
+    source base ``work_id * T * IN`` is still a row-major contiguous segment; the destination base
+    is computed as ``values[ib, offsets[b] + 0:length]``. ``BLOCK_SIZE`` is already sized to the
+    full row width, so normally the inner loop runs exactly once.
+    """
+    b = work_id // IB
+    ib = work_id % IB
+
+    start = tl.load(offsets + b)
+    end = tl.load(offsets + b + 1)
+    length = end - start
+
+    total = length * IN
+    src_base = work_id * T * IN
+    dst_base = (ib * S + start) * IN
+
+    for i in tl.range(0, total, BLOCK_SIZE):
+        offs = i + tl.arange(0, BLOCK_SIZE)
+        mask = offs < total
+        val = tl.load(padded + src_base + offs, mask=mask)
+        tl.store(output + dst_base + offs, val, mask=mask)
+
+
 @libentry()
 @triton.jit
 def _nested_from_padded_tensor_kernel(
@@ -59,7 +121,9 @@ def _nested_from_padded_tensor_kernel(
     IB: tl.constexpr,
     IN: tl.constexpr,
     S,
+    WORK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    NUM_PROG: tl.constexpr,
 ):
     """Pack a padded tensor into the flat `values` of a nested tensor.
 
@@ -67,27 +131,20 @@ def _nested_from_padded_tensor_kernel(
     outermost batch dimension, ``T`` is the padded ragged dimension, ``IB`` is
     the product of the intermediate batch dimensions (between the outer batch
     dim and the ragged dim) and ``IN`` is the product of the inner dimensions
-    following the ragged dim.  One program handles a single ``(b, ib)`` pair and
-    copies the ``length * IN`` contiguous real elements from
-    ``padded[b, ib, 0:length]`` to ``output[ib, offsets[b] + 0:length]``.
+    following the ragged dim.  One work item ``(b, ib)`` copies the
+    ``length * IN`` contiguous real elements from ``padded[b, ib, 0:length]`` to
+    ``output[ib, offsets[b] + 0:length]``.
+
+    Grid is fixed at ``min(NUM_PROG, WORK)`` and each program walks several ``(b, ib)`` items with
+    a work stride loop (first lever: a fixed grid keeps all 48 SPs busy, avoiding a too-small
+    grid for small batches and idle programs for large ones). ``BLOCK_SIZE`` is the power of two
+    covering a whole ``T * IN`` row (host-side ``_MAX_TILE_ELEMS`` caps it), so each transfer is
+    close to one large DMA instead of many 2KB DMAs.
     """
     pid = tle.program_id(axis=0)
-    b = pid // IB
-    ib = pid % IB
 
-    start = tl.load(offsets + b)
-    end = tl.load(offsets + b + 1)
-    length = end - start
-
-    total = length * IN
-    src_base = pid * T * IN
-    dst_base = (ib * S + start) * IN
-
-    for i in tl.range(0, total, BLOCK_SIZE):
-        offs = i + tl.arange(0, BLOCK_SIZE)
-        mask = offs < total
-        val = tl.load(padded + src_base + offs, mask=mask)
-        tl.store(output + dst_base + offs, val, mask=mask)
+    for work_id in tl.range(pid, WORK, NUM_PROG):
+        _pack_row_body(padded, offsets, output, work_id, T, IB, IN, S, BLOCK_SIZE)
 
 
 def _nested_from_padded_tensor(
@@ -105,9 +162,13 @@ def _nested_from_padded_tensor(
     flat values buffer) is performed by a Triton kernel, then the resulting
     values buffer is wrapped into a nested tensor view together with ``offsets``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_FROM_PADDED_TENSOR")
+    logger.debug("GEMS_ENFLAME _NESTED_FROM_PADDED_TENSOR")
 
-    padded = padded.contiguous()
+    # Materialize only for non-contiguous inputs: for contiguous inputs .contiguous() is a no-op, but it still incurs
+    # Python dispatch overhead on every call (~2us/call); after the null check, reuse directly with zero semantic
+    # change.
+    if not padded.is_contiguous():
+        padded = padded.contiguous()
     shape = padded.shape
 
     B = shape[0]
@@ -137,8 +198,18 @@ def _nested_from_padded_tensor(
     values_shape[ragged_idx - 1] = S
     values = torch.empty(values_shape, dtype=padded.dtype, device=padded.device)
 
-    grid = lambda meta: (B * IB,)
-    _nested_from_padded_tensor_kernel[grid](
+    # Tile selection (second lever): each work item copies a contiguous segment with ``length * IN <= T * IN``,
+    # so choose a power of 2 covering a whole row as the single-transfer width, merging multiple 2KB small DMAs into one
+    # contiguous
+    # transfer of at most 16KB. The 8192-element cap is the measured inflection point for fp16/fp32 (beyond it DSM usage
+    # grows and
+    # fp32 actually slows down); small shapes are floored at 256 elements to avoid an overly small tl.arange.
+    row_elems = T * IN
+    block_size = min(_next_pow2(max(row_elems, _MIN_TILE_ELEMS)), _MAX_TILE_ELEMS)
+    work = B * IB
+    num_prog = min(_NUM_SPC, work)
+
+    _nested_from_padded_tensor_kernel[(num_prog,)](
         padded,
         offsets,
         values,
@@ -146,13 +217,25 @@ def _nested_from_padded_tensor(
         IB,
         IN,
         S,
-        # BLOCK_SIZE is the per-program vectorization width (elements per
-        # loop iteration), not the thread count; warp count comes from the
-        # kernel launch (num_warps). 1024 elements per iteration saturates
-        # memory bandwidth for this elementwise un-padding copy, so no
-        # autotune is needed.
-        BLOCK_SIZE=1024,
+        work,
+        BLOCK_SIZE=block_size,
+        NUM_PROG=num_prog,
+        num_warps=_NUM_WARPS,
     )
+
+    # Fast path: when values/offsets are ready, construct the jagged NestedTensor wrapper directly, saving one
+    # aten round-trip through `_nested_view_from_jagged` (measured 133.7us -> 97.5us). With
+    # min/max_seqlen hints, still use aten (direct construction cannot carry the hint and would change
+    # the observable caching behavior of `.min_seqlen()`); fall back unchanged if construction fails.
+    if _NestedTensor is not None and min_seqlen is None and max_seqlen is None:
+        try:
+            return _NestedTensor(values, offsets, _ragged_idx=ragged_idx)
+        except Exception:
+            logger.debug(
+                "GEMS _NESTED_FROM_PADDED_TENSOR: direct NestedTensor build failed, "
+                "falling back to _nested_view_from_jagged",
+                exc_info=True,
+            )
 
     return torch._nested_view_from_jagged(
         values, offsets, dummy, None, ragged_idx, min_seqlen, max_seqlen

@@ -21,6 +21,15 @@
 #                     of length * dim_prod_post elements in both tensors:
 #                     per-(row, block) segment copy, index math once per
 #                     program instead of once per element.
+# The dim == 0 path uses a size/itemsize-tuned launch ladder (probed on
+# GCU400 / Triton GCU 4.1.6, interleaved do_bench w1000/r100):
+#   - small/mid sizes: exact-grid flat kernel, blocks sized so the grid
+#     stays within one 48-CTA wave (multi-wave flat grids pay a per-CTA
+#     dispatch tax that scales with program count);
+#   - large sizes: 48-program grid-stride persistent kernel; an int64
+#     word-lane arm (4/2 elements per lane for 2/4-byte dtypes) covers
+#     the mid-large ramp band where wide lanes track the DRAM roof
+#     better; element lanes win at the largest sizes.
 import logging
 
 import torch
@@ -30,6 +39,10 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 _GRID_X_LIMIT = 65535
+_PERSIST_CAP = 48
+_FLAT_BAND_MAX = 48 * 16384  # largest n where a flat band keeps grid <= 48
+_BIG_BAND_MAX = 1 << 24
+_WORD_BLOCK = 8192
 
 
 @triton.jit
@@ -57,6 +70,32 @@ def narrow_copy_flat_kernel(
         mask = offsets < total_elements
         val = tl.load(inp_ptr + src_offset + offsets, mask=mask)
         tl.store(out_ptr + offsets, val, mask=mask)
+
+
+@triton.jit
+def narrow_copy_persist_kernel(
+    out_ptr,
+    inp_ptr,
+    total_elements,
+    src_offset,
+    I64: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if I64:
+        pid = pid.to(tl.int64)
+    nprog = tl.num_programs(0)
+    num_tiles = tl.cdiv(total_elements, BLOCK_SIZE)
+    for tid in tl.range(pid, num_tiles, nprog):
+        offsets = tid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        if EVEN:
+            val = tl.load(inp_ptr + src_offset + offsets)
+            tl.store(out_ptr + offsets, val)
+        else:
+            mask = offsets < total_elements
+            val = tl.load(inp_ptr + src_offset + offsets, mask=mask)
+            tl.store(out_ptr + offsets, val, mask=mask)
 
 
 @triton.jit
@@ -107,8 +146,112 @@ def _launch_grid(num_programs):
     return (grid0, grid1), True
 
 
+def _word64_plan(n, src_offset, itemsize, inp_numel):
+    """int64 word-lane plan for the ramp band, or None when inapplicable.
+
+    Views both tensors as int64 words so each lane moves 8 bytes (4
+    elements for 2-byte dtypes, 2 for 4-byte). Requires a byte-aligned
+    copy region and an int32-safe word index space.
+    """
+    if itemsize not in (2, 4):
+        return None
+    if (n * itemsize) % 8 != 0 or (src_offset * itemsize) % 8 != 0:
+        return None
+    if (inp_numel * itemsize) % 8 != 0:
+        return None
+    n_words = n * itemsize // 8
+    w_off = src_offset * itemsize // 8
+    if w_off + n_words + _WORD_BLOCK >= 2**31:
+        return None
+    return n_words, w_off
+
+
+def _launch_dim0(out, inp, n, src_offset, inp_numel):
+    itemsize = inp.element_size()
+    i64 = inp_numel >= 2**31
+
+    if n <= _FLAT_BAND_MAX:
+        # Exact-grid flat bands: block chosen so the grid stays <= 48.
+        if itemsize <= 2:
+            if n <= 4096:
+                block, nw = 2048, 4
+            elif n <= 65536:
+                block, nw = 8192, 4
+            else:
+                block, nw = 16384, 4
+        else:
+            if n <= 4096:
+                block, nw = 2048, 4
+            elif n <= 65536:
+                block, nw = 4096, 2
+            else:
+                block, nw = 8192, 4
+        num_programs = triton.cdiv(n, block)
+        if num_programs <= _PERSIST_CAP:
+            narrow_copy_flat_kernel[(num_programs,)](
+                out,
+                inp,
+                n,
+                src_offset,
+                GRID0=_GRID_X_LIMIT,
+                SPLIT_GRID=False,
+                I64=i64,
+                BLOCK_SIZE=block,
+                EVEN=n % block == 0,
+                num_warps=nw,
+            )
+            return
+        # Fall through: block too small for this n, use persistent form.
+
+    if n <= _BIG_BAND_MAX:
+        plan = _word64_plan(n, src_offset, itemsize, inp_numel)
+        if plan is not None:
+            n_words, w_off = plan
+            try:
+                src_w = inp.view(torch.int64)
+                out_w = out.view(torch.int64)
+            except (RuntimeError, TypeError, NotImplementedError):
+                src_w = None
+            if src_w is not None:
+                grid = (min(_PERSIST_CAP, triton.cdiv(n_words, _WORD_BLOCK)),)
+                narrow_copy_persist_kernel[grid](
+                    out_w,
+                    src_w,
+                    n_words,
+                    w_off,
+                    I64=False,
+                    BLOCK_SIZE=_WORD_BLOCK,
+                    EVEN=n_words % _WORD_BLOCK == 0,
+                    num_warps=8,
+                )
+                return
+        # Element-lane fallback for the ramp band.
+        if itemsize <= 2:
+            block, nw = 16384, 4
+        else:
+            block, nw = 32768, 2
+    else:
+        # Largest band: element lanes at the DRAM roof.
+        if itemsize <= 2:
+            block, nw = 65536, 2
+        else:
+            block, nw = 65536, 4
+
+    grid = (min(_PERSIST_CAP, triton.cdiv(n, block)),)
+    narrow_copy_persist_kernel[grid](
+        out,
+        inp,
+        n,
+        src_offset,
+        I64=i64,
+        BLOCK_SIZE=block,
+        EVEN=n % block == 0,
+        num_warps=nw,
+    )
+
+
 def narrow_copy(inp, dim, start, length):
-    logger.debug("GEMS_ENFLAME_GCU400 NARROW_COPY")
+    logger.debug("GEMS_ENFLAME NARROW_COPY")
     assert (
         dim >= -inp.ndim and dim < inp.ndim
     ), f"Invalid dim: {dim} for tensor with {inp.ndim} dimensions"
@@ -146,21 +289,7 @@ def narrow_copy(inp, dim, start, length):
     if dim == 0:
         # The whole narrowed slice is one contiguous block of the input.
         src_offset = start * dim_prod_post
-        block_size = _pick_block(total_elements)
-        num_programs = triton.cdiv(total_elements, block_size)
-        grid, split = _launch_grid(num_programs)
-        narrow_copy_flat_kernel[grid](
-            out,
-            inp,
-            total_elements,
-            src_offset,
-            GRID0=_GRID_X_LIMIT,
-            SPLIT_GRID=split,
-            I64=i64,
-            BLOCK_SIZE=block_size,
-            EVEN=total_elements % block_size == 0,
-            num_warps=4,
-        )
+        _launch_dim0(out, inp, total_elements, src_offset, inp.numel())
     else:
         # Per outer-index ("row") contiguous segment copy.
         row_elems = length * dim_prod_post

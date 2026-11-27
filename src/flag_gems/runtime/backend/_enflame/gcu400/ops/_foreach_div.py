@@ -22,47 +22,39 @@ non-contiguous or broadcast shapes still delegate to the common executor to keep
 
 import logging
 
-from flag_gems.ops._foreach_binary import _apply_scalar
-
-from ._foreach_flat import FALLBACK, MODE_SCALAR_LIST, OP_DIV, run_binary
+from ._foreach_binary import _apply_list, _apply_scalar, _apply_tensor
 
 logger = logging.getLogger(__name__)
 
-# --- TUNING PARAMS START ---
-# Generated per round by the optimization driver script; all compile-time / launch-time config, semantics unchanged.
-FIXED_GRID = 48
-BLOCK_SIZE = 8192
-NUM_WARPS = 4
-NUM_STAGES = 2
-USE_DEVICE_CONTEXT = 0
-FP32_PROMOTE = 1
-FUSED_LAUNCH = 1
-FALLBACK_TO_PUBLIC = 0
-# --- TUNING PARAMS END ---
+
+def _foreach_div_List(self, other):
+    return _apply_list("div", self, other, False)
+
+
+def _foreach_div_Scalar(self, scalar):
+    return _apply_scalar("div", self, scalar, False)
+
+
+def _foreach_div_ScalarList(self, scalars):
+    return _apply_scalar("div", self, scalars, False)
+
+
+def _foreach_div_Tensor(self, other):
+    return _apply_tensor("div", self, other, False)
+
+
+def _foreach_div__List(self, other):
+    return _apply_list("div", self, other, True)
+
+
+def _foreach_div__Scalar(self, scalar):
+    return _apply_scalar("div", self, scalar, True)
 
 
 def _foreach_div__ScalarList(self, scalars):
     logger.debug("GEMS_GCU400 _FOREACH_DIV__SCALARLIST")
+    return _apply_scalar("div", self, scalars, True)
 
-    def fallback():
-        return _apply_scalar("div", self, scalars, inplace=True)
 
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
-        self,
-        scalars,
-        OP_DIV,
-        MODE_SCALAR_LIST,
-        True,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
-    )
-    if result is FALLBACK:
-        return fallback()
-    return result
+def _foreach_div__Tensor(self, other):
+    return _apply_tensor("div", self, other, True)

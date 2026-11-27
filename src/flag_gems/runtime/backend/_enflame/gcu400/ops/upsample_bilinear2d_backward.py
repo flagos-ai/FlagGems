@@ -380,68 +380,74 @@ def _upsample_bilinear2d_backward_exact2x_kernel(
     ACC: tl.constexpr,
     INDEX64: tl.constexpr,
     CHANNELS_LAST: tl.constexpr,
+    PROGRAMS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    if INDEX64:
-        offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    else:
-        offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    valid = offsets < N * C * IH * IW
-    if CHANNELS_LAST:
-        c = offsets % C
-        x = offsets // C % IW
-        y = offsets // (C * IW) % IH
-        n = offsets // (C * IW * IH)
-    else:
-        x = offsets % IW
-        y = offsets // IW % IH
-        c = offsets // (IW * IH) % C
-        n = offsets // (IW * IH * C)
-    source = GradOutput + n * GS0 + c * GS1
-    if DOWN:
-        value = tl.load(source + (y // 2) * GS2 + (x // 2) * GS3, valid, other=0)
-        result = value.to(ACC) * 0.25
-    else:
-        result = tl.full((BLOCK,), 0.0, ACC)
-        # Four quarter-pixel taps contribute in the interior. The extra -2
-        # candidate preserves the clamped first output's zero-weight update.
-        for dy in tl.static_range(-2, 3):
-            oy = 2 * y + dy
-            if dy == -2:
-                wy = tl.full((BLOCK,), 0.0, ACC)
-                match_y = y == 1
-            elif dy == 0:
-                wy = tl.where(y == 0, 1.0, 0.75).to(ACC)
-                match_y = oy < OH
-            elif dy == 1:
-                wy = tl.where(y == IH - 1, 1.0, 0.75).to(ACC)
-                match_y = oy < OH
-            else:
-                wy = tl.full((BLOCK,), 0.25, ACC)
-                match_y = (oy >= 0) & (oy < OH)
-            for dx in tl.static_range(-2, 3):
-                ox = 2 * x + dx
-                if dx == -2:
-                    wx = tl.full((BLOCK,), 0.0, ACC)
-                    match_x = x == 1
-                elif dx == 0:
-                    wx = tl.where(x == 0, 1.0, 0.75).to(ACC)
-                    match_x = ox < OW
-                elif dx == 1:
-                    wx = tl.where(x == IW - 1, 1.0, 0.75).to(ACC)
-                    match_x = ox < OW
+    # Persistent tile loop: keeps the grid inside one 48-program dispatch wave.
+    for tile in range(tl.cdiv(N * C * IH * IW, PROGRAMS * BLOCK)):
+        block_id = tl.program_id(0) + tile * PROGRAMS
+        if INDEX64:
+            offsets = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            offsets = block_id * BLOCK + tl.arange(0, BLOCK)
+        valid = offsets < N * C * IH * IW
+        if CHANNELS_LAST:
+            c = offsets % C
+            x = offsets // C % IW
+            y = offsets // (C * IW) % IH
+            n = offsets // (C * IW * IH)
+        else:
+            x = offsets % IW
+            y = offsets // IW % IH
+            c = offsets // (IW * IH) % C
+            n = offsets // (IW * IH * C)
+        source = GradOutput + n * GS0 + c * GS1
+        if DOWN:
+            value = tl.load(source + (y // 2) * GS2 + (x // 2) * GS3, valid, other=0)
+            result = value.to(ACC) * 0.25
+        else:
+            result = tl.full((BLOCK,), 0.0, ACC)
+            # Four quarter-pixel taps contribute in the interior. The extra -2
+            # candidate preserves the clamped first output's zero-weight update.
+            for dy in tl.static_range(-2, 3):
+                oy = 2 * y + dy
+                if dy == -2:
+                    wy = tl.full((BLOCK,), 0.0, ACC)
+                    match_y = y == 1
+                elif dy == 0:
+                    wy = tl.where(y == 0, 1.0, 0.75).to(ACC)
+                    match_y = oy < OH
+                elif dy == 1:
+                    wy = tl.where(y == IH - 1, 1.0, 0.75).to(ACC)
+                    match_y = oy < OH
                 else:
-                    wx = tl.full((BLOCK,), 0.25, ACC)
-                    match_x = (ox >= 0) & (ox < OW)
-                active = valid & match_y & match_x
-                value = tl.load(source + oy * GS2 + ox * GS3, active, other=0).to(ACC)
-                contribution = (wy * wx) * value
-                if (IH == 1 and dy == 0) or (IW == 1 and dx == 0):
-                    contribution = tl.where(
-                        _bilinear_backward_isinf(value), float("nan"), contribution
+                    wy = tl.full((BLOCK,), 0.25, ACC)
+                    match_y = (oy >= 0) & (oy < OH)
+                for dx in tl.static_range(-2, 3):
+                    ox = 2 * x + dx
+                    if dx == -2:
+                        wx = tl.full((BLOCK,), 0.0, ACC)
+                        match_x = x == 1
+                    elif dx == 0:
+                        wx = tl.where(x == 0, 1.0, 0.75).to(ACC)
+                        match_x = ox < OW
+                    elif dx == 1:
+                        wx = tl.where(x == IW - 1, 1.0, 0.75).to(ACC)
+                        match_x = ox < OW
+                    else:
+                        wx = tl.full((BLOCK,), 0.25, ACC)
+                        match_x = (ox >= 0) & (ox < OW)
+                    active = valid & match_y & match_x
+                    value = tl.load(source + oy * GS2 + ox * GS3, active, other=0).to(
+                        ACC
                     )
-                result += tl.where(active, contribution, 0.0)
-    tl.store(GradInput + n * IS0 + c * IS1 + y * IS2 + x * IS3, result, valid)
+                    contribution = (wy * wx) * value
+                    if (IH == 1 and dy == 0) or (IW == 1 and dx == 0):
+                        contribution = tl.where(
+                            _bilinear_backward_isinf(value), float("nan"), contribution
+                        )
+                    result += tl.where(active, contribution, 0.0)
+        tl.store(GradInput + n * IS0 + c * IS1 + y * IS2 + x * IS3, result, valid)
 
 
 @libentry()
@@ -645,65 +651,72 @@ def _upsample_bilinear2d_backward_unrolled_kernel(
     KW: tl.constexpr,
     INDEX64: tl.constexpr,
     CHANNELS_LAST: tl.constexpr,
+    PROGRAMS: tl.constexpr,
     BLOCK: tl.constexpr,
     ACC: tl.constexpr,
 ):
-    if INDEX64:
-        offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    else:
-        offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    valid = offsets < N * C * IH * IW
-    if CHANNELS_LAST:
-        c = offsets % C
-        x = offsets // C % IW
-        y = offsets // (C * IW) % IH
-        n = offsets // (C * IW * IH)
-    else:
-        x = offsets % IW
-        y = offsets // IW % IH
-        c = offsets // (IW * IH) % C
-        n = offsets // (IW * IH * C)
-    shift: tl.constexpr = 0.0 if ALIGN_CORNERS else 0.5
-    if SH == 0.0 or IH == 1:
-        start_y = tl.full((BLOCK,), 0, offsets.dtype)
-    else:
-        start_y = tl.maximum(
-            tl.floor((y.to(ACC) - 1.0 + shift) * tl.full((), 1.0 / SH, ACC) - shift).to(
-                offsets.dtype
-            ),
-            0,
-        )
-    if SW == 0.0 or IW == 1:
-        start_x = tl.full((BLOCK,), 0, offsets.dtype)
-    else:
-        start_x = tl.maximum(
-            tl.floor((x.to(ACC) - 1.0 + shift) * tl.full((), 1.0 / SW, ACC) - shift).to(
-                offsets.dtype
-            ),
-            0,
-        )
-    source = GradOutput + n * GS0 + c * GS1
-    result = tl.full((BLOCK,), 0.0, ACC)
-    # Bounded unrolling lets common width/height coordinate expressions be reused.
-    for dy in tl.static_range(KH):
-        oy = start_y + dy
-        wy, match_y, zero_y = _bilinear_backward_weight(
-            oy, y, IH, SH, ALIGN_CORNERS, ACC
-        )
-        for dx in tl.static_range(KW):
-            ox = start_x + dx
-            wx, match_x, zero_x = _bilinear_backward_weight(
-                ox, x, IW, SW, ALIGN_CORNERS, ACC
+    # GCU400 dispatches waves of 48 programs; the persistent tile loop keeps
+    # larger inputs off the per-wave dispatch tax while static_range keeps
+    # every tap gather in one unrolled issue block (dynamic loops serialize
+    # computed-address loads on this backend).
+    for tile in range(tl.cdiv(N * C * IH * IW, PROGRAMS * BLOCK)):
+        block_id = tl.program_id(0) + tile * PROGRAMS
+        if INDEX64:
+            offsets = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            offsets = block_id * BLOCK + tl.arange(0, BLOCK)
+        valid = offsets < N * C * IH * IW
+        if CHANNELS_LAST:
+            c = offsets % C
+            x = offsets // C % IW
+            y = offsets // (C * IW) % IH
+            n = offsets // (C * IW * IH)
+        else:
+            x = offsets % IW
+            y = offsets // IW % IH
+            c = offsets // (IW * IH) % C
+            n = offsets // (IW * IH * C)
+        shift: tl.constexpr = 0.0 if ALIGN_CORNERS else 0.5
+        if SH == 0.0 or IH == 1:
+            start_y = tl.full((BLOCK,), 0, offsets.dtype)
+        else:
+            start_y = tl.maximum(
+                tl.floor(
+                    (y.to(ACC) - 1.0 + shift) * tl.full((), 1.0 / SH, ACC) - shift
+                ).to(offsets.dtype),
+                0,
             )
-            active = valid & (oy < OH) & (ox < OW) & match_y & match_x
-            value = tl.load(source + oy * GS2 + ox * GS3, active, other=0.0).to(ACC)
-            contribution = tl.where(
-                (zero_y | zero_x) & _bilinear_backward_isinf(value),
-                float("nan"),
-                (wy * wx) * value,
+        if SW == 0.0 or IW == 1:
+            start_x = tl.full((BLOCK,), 0, offsets.dtype)
+        else:
+            start_x = tl.maximum(
+                tl.floor(
+                    (x.to(ACC) - 1.0 + shift) * tl.full((), 1.0 / SW, ACC) - shift
+                ).to(offsets.dtype),
+                0,
             )
-            result += tl.where(active, contribution, 0.0)
-    tl.store(GradInput + n * IS0 + c * IS1 + y * IS2 + x * IS3, result, valid)
+        source = GradOutput + n * GS0 + c * GS1
+        result = tl.full((BLOCK,), 0.0, ACC)
+        # Bounded unrolling lets common width/height coordinate expressions be reused.
+        for dy in tl.static_range(KH):
+            oy = start_y + dy
+            wy, match_y, zero_y = _bilinear_backward_weight(
+                oy, y, IH, SH, ALIGN_CORNERS, ACC
+            )
+            for dx in tl.static_range(KW):
+                ox = start_x + dx
+                wx, match_x, zero_x = _bilinear_backward_weight(
+                    ox, x, IW, SW, ALIGN_CORNERS, ACC
+                )
+                active = valid & (oy < OH) & (ox < OW) & match_y & match_x
+                value = tl.load(source + oy * GS2 + ox * GS3, active, other=0.0).to(ACC)
+                contribution = tl.where(
+                    (zero_y | zero_x) & _bilinear_backward_isinf(value),
+                    float("nan"),
+                    (wy * wx) * value,
+                )
+                result += tl.where(active, contribution, 0.0)
+        tl.store(GradInput + n * IS0 + c * IS1 + y * IS2 + x * IS3, result, valid)
 
 
 @libentry()
@@ -730,73 +743,81 @@ def _upsample_bilinear2d_backward_disjoint_kernel(
     ALIGN_CORNERS: tl.constexpr,
     FP64: tl.constexpr,
     INDEX64: tl.constexpr,
+    PROGRAMS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    if INDEX64:
-        offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    else:
-        offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    valid = offsets < N * C * OH * OW
-    ox = offsets % OW
-    oy = offsets // OW % OH
-    c = offsets // (OW * OH) % C
-    n = offsets // (OW * OH * C)
-    if FP64:
-        acc_dtype: tl.constexpr = tl.float64
-    else:
-        acc_dtype: tl.constexpr = tl.float32
-    scale_h = tl.full((), SH, acc_dtype)
-    scale_w = tl.full((), SW, acc_dtype)
-    if ALIGN_CORNERS:
-        ry = oy.to(acc_dtype) * scale_h
-        rx = ox.to(acc_dtype) * scale_w
-    else:
-        ry = tl.maximum((oy.to(acc_dtype) + 0.5) * scale_h - 0.5, 0.0)
-        rx = tl.maximum((ox.to(acc_dtype) + 0.5) * scale_w - 0.5, 0.0)
-    y0 = tl.minimum(ry.to(offsets.dtype), IH - 1)
-    x0 = tl.minimum(rx.to(offsets.dtype), IW - 1)
-    y1 = tl.minimum(y0 + 1, IH - 1)
-    x1 = tl.minimum(x0 + 1, IW - 1)
-    hy1 = ry - y0.to(acc_dtype)
-    wx1 = rx - x0.to(acc_dtype)
-    hy0 = tl.where(y1 == y0, 1.0, 1.0 - hy1)
-    wx0 = tl.where(x1 == x0, 1.0, 1.0 - wx1)
-    value = tl.load(
-        GradOutput + n * GS0 + c * GS1 + oy * GS2 + ox * GS3, valid, other=0
-    ).to(acc_dtype)
-    if FP64:
-        hy1_bits = hy1.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
-        wx1_bits = wx1.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
-        hy1_zero, hy1_one = hy1_bits == 0, hy1_bits == 0x3FF0000000000000
-        wx1_zero, wx1_one = wx1_bits == 0, wx1_bits == 0x3FF0000000000000
-    else:
-        # Classify the duplicate taps from `ry`/`rx`, not from the residual:
-        # GCU400 contracts `ry - y0` into the FMA that produced `ry`, so an
-        # exact tap reports 2^-17 instead of 0 and the "0 * Inf -> NaN" case is
-        # lost (257x257 -> 97x113 with an Inf at the last output pixel).  The
-        # comparisons against `ry` are exact and `y0 + 1` is representable for
-        # every in-range integer `y0`, so they agree with ATen without
-        # depending on how the multiply rounds.
-        y0_f = y0.to(acc_dtype)
-        x0_f = x0.to(acc_dtype)
-        hy1_zero, hy1_one = ry == y0_f, ry >= y0_f + 1.0
-        wx1_zero, wx1_one = rx == x0_f, rx >= x0_f + 1.0
-    zero_duplicate = ((y0 == y1) & (hy1_zero | hy1_one)) | (
-        (x0 == x1) & (wx1_zero | wx1_one)
-    )
-    value = tl.where(
-        zero_duplicate & _bilinear_backward_isinf(value), float("nan"), value
-    )
-    destination = GradInput + n * IS0 + c * IS1
-    # Successive output pixels are at least two input pixels apart on both axes.
-    tl.store(destination + y0 * IS2 + x0 * IS3, (hy0 * wx0) * value, valid)
-    tl.store(destination + y0 * IS2 + x1 * IS3, (hy0 * wx1) * value, valid & (x1 != x0))
-    tl.store(destination + y1 * IS2 + x0 * IS3, (hy1 * wx0) * value, valid & (y1 != y0))
-    tl.store(
-        destination + y1 * IS2 + x1 * IS3,
-        (hy1 * wx1) * value,
-        valid & (y1 != y0) & (x1 != x0),
-    )
+    # Persistent tile loop: keeps the grid inside one 48-program dispatch wave.
+    for tile in range(tl.cdiv(N * C * OH * OW, PROGRAMS * BLOCK)):
+        block_id = tl.program_id(0) + tile * PROGRAMS
+        if INDEX64:
+            offsets = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            offsets = block_id * BLOCK + tl.arange(0, BLOCK)
+        valid = offsets < N * C * OH * OW
+        ox = offsets % OW
+        oy = offsets // OW % OH
+        c = offsets // (OW * OH) % C
+        n = offsets // (OW * OH * C)
+        if FP64:
+            acc_dtype: tl.constexpr = tl.float64
+        else:
+            acc_dtype: tl.constexpr = tl.float32
+        scale_h = tl.full((), SH, acc_dtype)
+        scale_w = tl.full((), SW, acc_dtype)
+        if ALIGN_CORNERS:
+            ry = oy.to(acc_dtype) * scale_h
+            rx = ox.to(acc_dtype) * scale_w
+        else:
+            ry = tl.maximum((oy.to(acc_dtype) + 0.5) * scale_h - 0.5, 0.0)
+            rx = tl.maximum((ox.to(acc_dtype) + 0.5) * scale_w - 0.5, 0.0)
+        y0 = tl.minimum(ry.to(offsets.dtype), IH - 1)
+        x0 = tl.minimum(rx.to(offsets.dtype), IW - 1)
+        y1 = tl.minimum(y0 + 1, IH - 1)
+        x1 = tl.minimum(x0 + 1, IW - 1)
+        hy1 = ry - y0.to(acc_dtype)
+        wx1 = rx - x0.to(acc_dtype)
+        hy0 = tl.where(y1 == y0, 1.0, 1.0 - hy1)
+        wx0 = tl.where(x1 == x0, 1.0, 1.0 - wx1)
+        value = tl.load(
+            GradOutput + n * GS0 + c * GS1 + oy * GS2 + ox * GS3, valid, other=0
+        ).to(acc_dtype)
+        if FP64:
+            hy1_bits = hy1.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
+            wx1_bits = wx1.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
+            hy1_zero, hy1_one = hy1_bits == 0, hy1_bits == 0x3FF0000000000000
+            wx1_zero, wx1_one = wx1_bits == 0, wx1_bits == 0x3FF0000000000000
+        else:
+            # Classify the duplicate taps from `ry`/`rx`, not from the residual:
+            # GCU400 contracts `ry - y0` into the FMA that produced `ry`, so an
+            # exact tap reports 2^-17 instead of 0 and the "0 * Inf -> NaN" case is
+            # lost (257x257 -> 97x113 with an Inf at the last output pixel).  The
+            # comparisons against `ry` are exact and `y0 + 1` is representable for
+            # every in-range integer `y0`, so they agree with ATen without
+            # depending on how the multiply rounds.
+            y0_f = y0.to(acc_dtype)
+            x0_f = x0.to(acc_dtype)
+            hy1_zero, hy1_one = ry == y0_f, ry >= y0_f + 1.0
+            wx1_zero, wx1_one = rx == x0_f, rx >= x0_f + 1.0
+        zero_duplicate = ((y0 == y1) & (hy1_zero | hy1_one)) | (
+            (x0 == x1) & (wx1_zero | wx1_one)
+        )
+        value = tl.where(
+            zero_duplicate & _bilinear_backward_isinf(value), float("nan"), value
+        )
+        destination = GradInput + n * IS0 + c * IS1
+        # Successive output pixels are at least two input pixels apart on both axes.
+        tl.store(destination + y0 * IS2 + x0 * IS3, (hy0 * wx0) * value, valid)
+        tl.store(
+            destination + y0 * IS2 + x1 * IS3, (hy0 * wx1) * value, valid & (x1 != x0)
+        )
+        tl.store(
+            destination + y1 * IS2 + x0 * IS3, (hy1 * wx0) * value, valid & (y1 != y0)
+        )
+        tl.store(
+            destination + y1 * IS2 + x1 * IS3,
+            (hy1 * wx1) * value,
+            valid & (y1 != y0) & (x1 != x0),
+        )
 
 
 @libentry()
@@ -996,7 +1017,7 @@ def upsample_bilinear2d_backward(
     *,
     grad_input=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BILINEAR2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_BILINEAR2D_BACKWARD")
     if len(output_size) != 2 or len(input_size) != 4:
         raise RuntimeError(
             "output_size must have 2 elements and input_size must have 4 elements"
@@ -1057,6 +1078,25 @@ def upsample_bilinear2d_backward(
     if n == 0 or c == 0:
         return grad_input
 
+    if grad_output.dtype == torch.float64 and not runtime_device.support_fp64:
+        # gcu400 has no fp64 arithmetic: Triton f64 ops fail to legalize
+        # (PassManager) and a pure f64 load/store aborts the process
+        # (compiler_problems P04).  Native aten already substitutes Float for
+        # Double here, so mirror that: compute value-level in fp32 and widen
+        # the outputs, like upsample_bicubic2d_backward / cudnn_grid_sampler.
+        staged = upsample_bilinear2d_backward(
+            grad_output.to(torch.float32),
+            output_size,
+            input_size,
+            align_corners,
+            scales_h,
+            scales_w,
+        )
+        if grad_input is None:
+            return staged.to(torch.float64)
+        grad_input.copy_(staged)
+        return grad_input
+
     copy = ih == oh and iw == ow
     # Verified CANN 8.5.0/9.0.0 nonidentity backward uses size ratios. Identity keeps
     # the explicit copy contract, including when scales were supplied.
@@ -1093,7 +1133,13 @@ def upsample_bilinear2d_backward(
         tail_w = ow - max(0, math.floor((iw - 2 + shift) / sw - shift))
         kw = min(ow, max(kw, tail_w))
     is_ascend = runtime_device.vendor_name == "ascend"
+    is_enflame = runtime_device.vendor_name == "enflame"
     block = 1024 if is_ascend else 128
+    if is_enflame:
+        # GCU400 dispatches 48 programs (2 per SP) per wave; larger grids only
+        # add the per-wave dispatch tax, and wider tiles amortize the per-op
+        # cost of the computed-address tap loads.
+        block = 1024
     last_h = (oh - 1) * sh if align_corners else (oh - 0.5) * sh - 0.5
     last_w = (ow - 1) * sw if align_corners else (ow - 0.5) * sw - 0.5
     disjoint = (oh == 1 or sh >= 2.0) and (ow == 1 or sw >= 2.0)
@@ -1318,9 +1364,13 @@ def upsample_bilinear2d_backward(
             )
             return grad_input
         if exact_down or (exact_up and not is_ascend):
-            _upsample_bilinear2d_backward_exact2x_kernel[
-                (triton.cdiv(n * c * ih * iw, block),)
-            ](
+            # The 25-tap UP body prefers narrower tiles (smaller live set per
+            # program); the single-load DOWN body keeps the wider tile.
+            exact_block = 1024 if exact_down else (512 if is_enflame else block)
+            programs = triton.cdiv(n * c * ih * iw, exact_block)
+            if is_enflame:
+                programs = min(programs, 48)
+            _upsample_bilinear2d_backward_exact2x_kernel[(programs,)](
                 grad_output,
                 grad_input,
                 n,
@@ -1335,7 +1385,8 @@ def upsample_bilinear2d_backward(
                 tl.float64 if grad_output.dtype == torch.float64 else tl.float32,
                 index64,
                 strides[1] == 1,
-                block,
+                programs,
+                exact_block,
                 enable_fp_fusion=False,
             )
             return grad_input
@@ -1367,7 +1418,46 @@ def upsample_bilinear2d_backward(
                 kw,
                 index64,
                 strides[1] == 1,
+                triton.cdiv(n * c * ih * iw, 128),
                 128,
+                tl.float64 if grad_output.dtype == torch.float64 else tl.float32,
+                enable_fp_fusion=False,
+            )
+            return grad_input
+        if (
+            is_enflame
+            and grad_output.dtype != torch.float64
+            and not copy
+            and not disjoint
+            and kh * kw <= 64
+        ):
+            # GCU400: dynamic-range tap loops serialize every computed-address
+            # gather (no software pipelining for this loop form), while the
+            # static_range unroll lets the tap loads share one issue block.
+            # The fp32 accumulated path is the production route; fp64 was
+            # downgraded above.
+            programs = triton.cdiv(n * c * ih * iw, block)
+            programs = min(programs, 48)
+            _upsample_bilinear2d_backward_unrolled_kernel[(programs,)](
+                grad_output,
+                grad_input,
+                n,
+                c,
+                ih,
+                iw,
+                oh,
+                ow,
+                *gs,
+                *strides,
+                sh,
+                sw,
+                align_corners,
+                kh,
+                kw,
+                index64,
+                strides[1] == 1,
+                programs,
+                block,
                 tl.float64 if grad_output.dtype == torch.float64 else tl.float32,
                 enable_fp_fusion=False,
             )
@@ -1567,6 +1657,8 @@ def upsample_bilinear2d_backward(
                 grad_output.device.index
             )
             programs = min(programs, properties.get("num_vectorcore", 40))
+        if is_enflame:
+            programs = min(programs, 48)
         _upsample_bilinear2d_backward_kernel[(programs,)](
             grad_output,
             grad_input,
@@ -1593,9 +1685,10 @@ def upsample_bilinear2d_backward(
             enable_fp_fusion=False,
         )
         if disjoint:
-            _upsample_bilinear2d_backward_disjoint_kernel[
-                (triton.cdiv(n * c * oh * ow, block),)
-            ](
+            programs = triton.cdiv(n * c * oh * ow, block)
+            if is_enflame:
+                programs = min(programs, 48)
+            _upsample_bilinear2d_backward_disjoint_kernel[(programs,)](
                 grad_output,
                 grad_input,
                 n,
@@ -1611,6 +1704,7 @@ def upsample_bilinear2d_backward(
                 align_corners,
                 grad_output.dtype == torch.float64,
                 index64,
+                programs,
                 block,
                 enable_fp_fusion=False,
             )
@@ -1627,7 +1721,7 @@ def upsample_bilinear2d_backward_grad_input(
     *,
     grad_input,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BILINEAR2D_BACKWARD_GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_BILINEAR2D_BACKWARD_GRAD_INPUT")
     return upsample_bilinear2d_backward(
         grad_output,
         output_size,

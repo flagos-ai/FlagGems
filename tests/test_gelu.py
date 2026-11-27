@@ -23,6 +23,7 @@ import flag_gems
 from flag_gems.testing import RESOLUTION
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def _reference_input(x):
@@ -34,12 +35,14 @@ def _reference_input(x):
     bfloat16, 2.0e-3 for float16 and 4.7e-4 for float32, all of which exceed
     this file's 1e-4 atol, so the kernel would be reported as failing while
     being the more accurate of the two. CPU float32 gelu is exact to ~5e-7,
-    which keeps the check meaningful in both reference modes. Keep the
-    reference on CPU so Ascend does not downcast float64; ``gems_assert_close``
-    moves the result to CPU for comparison.
+    which keeps the check meaningful in both reference modes.
     """
-    dtype = torch.float64 if flag_gems.vendor_name == "ascend" else torch.float32
-    return x.detach().cpu().to(dtype)
+    return x.detach().cpu().to(torch.float32)
+
+
+def _place_reference(ref, like):
+    """Put a CPU reference where ``gems_assert_close`` expects it."""
+    return ref if cfg.TO_CPU else ref.to(like.device)
 
 
 @pytest.mark.gelu

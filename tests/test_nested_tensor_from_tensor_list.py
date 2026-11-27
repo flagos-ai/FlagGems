@@ -71,6 +71,13 @@ def test_nested_tensor_from_tensor_list(shapes, dtype):
 
 
 @pytest.mark.nested_tensor_from_tensor_list
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_nested_tensor_from_tensor_list"
+    ),
+)
 def test_dispatch_reaches_gems_impl():
     # Calling the wrapper directly only proves the wrapper runs; this case
     # proves the dispatcher path. Enabling the operator via

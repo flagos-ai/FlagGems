@@ -30,12 +30,33 @@ try:
 except ImportError:
     DEEPGEMM_AVAILABLE = False
 
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
+
+
+def _num_sms():
+    """Number of partitions used by the schedule.
+
+    DeepGEMM reports the SM count of the current NVIDIA device; on a backend
+    without DeepGEMM the same quantity is taken from the device properties.
+    """
+    if DEEPGEMM_AVAILABLE:
+        return get_num_sms()
+    return torch.cuda.get_device_properties(
+        torch.cuda.current_device()
+    ).multi_processor_count
+
+
+def _native_reference(*args, **kwargs):
+    raise NotImplementedError(
+        "vLLM DeepGEMM is not installed, so the native schedule cannot run"
+    )
+
 
 class GetPagedMqaLogitsMetadataBenchmark(base.Benchmark):
     def __init__(self, op_name, torch_op, dtypes):
         super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
 
-    def set_shapes(self):
+    def set_shapes(self, shape_file_path=None):
         # (batch_size, next_n)
         self.shapes = [
             (4, 1),
@@ -59,7 +80,7 @@ class GetPagedMqaLogitsMetadataBenchmark(base.Benchmark):
     def _input_fn(self, config, dtype):
         _ = dtype
         batch_size, next_n = config
-        device = flag_gems.device
+        device = self.device
 
         avg_ctx_len = 2048
         context_lens = torch.randint(
@@ -75,20 +96,29 @@ class GetPagedMqaLogitsMetadataBenchmark(base.Benchmark):
                 context_lens.unsqueeze(1).expand(batch_size, next_n).contiguous()
             )
 
-        num_sms = get_num_sms()
+        num_sms = _num_sms()
 
         yield (context_lens, 64, num_sms)
 
 
 @pytest.mark.get_paged_mqa_logits_metadata
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "vLLM DeepGEMM only provides an NVIDIA CUDA kernel, so "
+        "deep_gemm.get_paged_mqa_logits_metadata has no native baseline on enflame"
+    ),
+)
 @pytest.mark.skipif(
-    not DEEPGEMM_AVAILABLE,
+    not DEEPGEMM_AVAILABLE and not IS_ENFLAME,
     reason="requires vLLM with DeepGEMM and NVIDIA Hopper architecture or newer",
 )
 def test_get_paged_mqa_logits_metadata():
     bench = GetPagedMqaLogitsMetadataBenchmark(
         op_name="get_paged_mqa_logits_metadata",
-        torch_op=get_paged_mqa_logits_metadata,
+        torch_op=(
+            get_paged_mqa_logits_metadata if DEEPGEMM_AVAILABLE else _native_reference
+        ),
         dtypes=[torch.int32],
     )
 

@@ -73,7 +73,7 @@ def full_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FULL_LIKE")
+    logger.debug("GEMS_ENFLAME FULL_LIKE")
     dt = x.dtype if dtype is None else dtype
     dev = x.device if device is None else torch.device(device)
     if (

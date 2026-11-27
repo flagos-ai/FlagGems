@@ -41,18 +41,34 @@ Enflame (gcu400) adaptations:
   shims in sparse_sampled_addmm.py and the per-instance accessors in
   sparse_coo_tensor.py; drop all of it once torch_gcu grows a Sparsegcu axis.
 - The host wrapper moves the COO member tensors to ``mat``'s device (a plain
-  data movement) and launches the Triton kernels there; the result is
-  assembled through the platform factory, which materializes the output COO
-  on CPU exactly like every input COO on this platform.
+  data movement) and launches the Triton kernels there. On this platform the
+  members arrive CPU-resident on every call, so the device copies are cached
+  keyed on the source members (address, version counter, shape/dtype): repeat
+  calls with the same sparse operand skip the pageable H2D round trips. The
+  row-boundary ranking composes the FlagGems ``cumsum`` op (a plain FlagGems
+  kernel composition), not an aten compute call. The result COO is assembled
+  through the platform factory, which materializes the output on CPU exactly
+  like every input COO on this platform: the device-side outputs are staged
+  through pinned host buffers (the factory's direct D2H of device tensors
+  goes through the slow pageable path), synchronized, then handed to the
+  factory.
+- The main matmul kernel is rewritten for the GCU memory system. The generic
+  kernel gathers a ``(BLOCK_NNZ, BLOCK_N)`` tile of ``B`` with one row index
+  per nonzeros element, which the GCU compiler lowers to element-wise
+  emissions. The rewrite streams the row's COO entries one at a time and
+  loads each ``B[k]`` slice as one contiguous ``BLOCK_N`` vector (the affine
+  access the tile gather cannot express), with an ``UNROLL`` knob that groups
+  the scalar ``k``/``v`` loads of consecutive entries ahead of their dependent
+  vector loads to break the load-to-load dependency chain.
 """
 
 import logging
+from collections import OrderedDict
 
 import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -164,19 +180,77 @@ def _install_gcu_coo_origin_shims():
 _install_gcu_coo_origin_shims()
 
 
+# ---------------------------------------------------------------------------
+# Cached device copies of the (CPU-materialized) COO members.
+#
+# On this platform every COO operand arrives with CPU-resident members (no
+# Sparsegcu kernels), so each call would otherwise pay the pageable H2D round
+# trips for ``indices`` and ``values`` on top of the kernel work. The cache
+# keys on the source members' identity: data pointer, version counter, and
+# shape/dtype. Holding strong references to the sources keeps their addresses
+# from being recycled while an entry is cached, and the version counter
+# invalidates the entry on any in-place mutation of the members. LRU eviction
+# bounds the retained memory (the device copies plus the pinned sources).
+# Misses fall back to the plain per-call copies, so a cache overrun can never
+# change behavior, only the copy count.
+# ---------------------------------------------------------------------------
+_MEMBER_CACHE_LIMIT_BYTES = 256 * 1024 * 1024
+_MEMBER_CACHE_LIMIT_ENTRIES = 16
+_member_cache = OrderedDict()
+
+
+def _cached_device_members(indices, values, device):
+    """Return device copies of the COO members, cached on the sources."""
+    key = (
+        str(device),
+        indices.data_ptr(),
+        values.data_ptr(),
+        indices._version,
+        values._version,
+        tuple(indices.shape),
+        indices.dtype,
+        tuple(values.shape),
+        values.dtype,
+    )
+    hit = _member_cache.get(key)
+    if hit is not None:
+        _member_cache.move_to_end(key)
+        return hit[2], hit[3]
+    indices_dev = indices.to(device).contiguous()
+    values_dev = values.to(device).contiguous()
+    nbytes = (
+        indices.element_size() * indices.numel()
+        + values.element_size() * values.numel()
+    )
+    _member_cache[key] = (indices, values, indices_dev, values_dev, nbytes)
+    total = nbytes + sum(entry[4] for entry in _member_cache.values())
+    while _member_cache and (
+        len(_member_cache) > _MEMBER_CACHE_LIMIT_ENTRIES
+        or total > _MEMBER_CACHE_LIMIT_BYTES
+    ):
+        _, evicted = _member_cache.popitem(last=False)
+        total -= evicted[4]
+    return indices_dev, values_dev
+
+
 # Tuning configs for the COO SpMM kernel. Each program owns one structural
 # output row (a row present in the sparse input) and a tile of output columns.
 # It streams that row's nonzeros straight out of the COO arrays, so the working
 # set scales with ``nnz`` rather than with the dense ``M * K``. The COO output
 # (indices + values) is written directly, avoiding a re-sparsify pass.
+# ``UNROLL`` groups the scalar k/v loads of ``UNROLL`` consecutive entries
+# ahead of their dependent B-row vector loads; the grouped form wins for wider
+# BLOCK_N tiles where the per-entry load-to-load chain dominates.
 SMM_CONFIGS = [
-    triton.Config({"BLOCK_N": 32, "BLOCK_NNZ": 32}, num_stages=3, num_warps=2),
-    triton.Config({"BLOCK_N": 64, "BLOCK_NNZ": 32}, num_stages=3, num_warps=4),
-    triton.Config({"BLOCK_N": 64, "BLOCK_NNZ": 64}, num_stages=3, num_warps=4),
-    triton.Config({"BLOCK_N": 128, "BLOCK_NNZ": 32}, num_stages=3, num_warps=4),
-    triton.Config({"BLOCK_N": 128, "BLOCK_NNZ": 64}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_N": 256, "BLOCK_NNZ": 32}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_N": 256, "BLOCK_NNZ": 64}, num_stages=4, num_warps=8),
+    triton.Config({"BLOCK_N": 64, "UNROLL": 1}, num_stages=3, num_warps=4),
+    triton.Config({"BLOCK_N": 64, "UNROLL": 2}, num_stages=2, num_warps=2),
+    triton.Config({"BLOCK_N": 128, "UNROLL": 1}, num_stages=3, num_warps=4),
+    triton.Config({"BLOCK_N": 128, "UNROLL": 4}, num_stages=2, num_warps=2),
+    triton.Config({"BLOCK_N": 256, "UNROLL": 1}, num_stages=3, num_warps=2),
+    triton.Config({"BLOCK_N": 256, "UNROLL": 4}, num_stages=2, num_warps=2),
+    triton.Config({"BLOCK_N": 512, "UNROLL": 1}, num_stages=2, num_warps=2),
+    triton.Config({"BLOCK_N": 512, "UNROLL": 2}, num_stages=2, num_warps=2),
+    triton.Config({"BLOCK_N": 512, "UNROLL": 4}, num_stages=2, num_warps=2),
 ]
 
 
@@ -260,12 +334,12 @@ def smm_coo_kernel(
     out_row_idx,
     out_col_idx,
     out_values,
-    nrows,
     N,
     stride_bk,
     stride_bn,
+    CONTIG_N: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    BLOCK_NNZ: tl.constexpr,
+    UNROLL: tl.constexpr,
 ):
     """Sparse(COO) x dense matmul, reading the sparse operand as COO.
 
@@ -275,12 +349,24 @@ def smm_coo_kernel(
         out[i, n] = sum over the COO entries (r_i, k, v) of row r_i  of
                     v * B[k, n]
 
-    The row's entries are streamed in ``BLOCK_NNZ`` chunks from
+    The row's entries are streamed one at a time from
     ``[row_starts[i], row_starts[i + 1])``, so the memory touched is
-    proportional to that row's nonzero count -- never to ``M * K``. The
-    reduction is a masked broadcast-multiply-accumulate rather than ``tl.dot``,
-    because the contracted extent here is a row's nnz (typically small and
-    irregular), not a dense ``K``.
+    proportional to that row's nonzero count -- never to ``M * K``. Each entry
+    contributes one multiply-add of its scalar value against the entry's
+    ``B[k]`` row slice, loaded as a single ``BLOCK_N`` vector: with
+    ``CONTIG_N`` the slice is stride-1 in memory, so the load is an affine
+    contiguous vector access (the generic kernel's ``(BLOCK_NNZ, BLOCK_N)``
+    tile gather carries one row index per nonzeros element, which the GCU
+    compiler lowers to element-wise emissions). The contracted extent is a
+    row's nnz (typically small and irregular), not a dense ``K``, so the
+    reduction stays a broadcast-multiply-accumulate rather than ``tl.dot``.
+
+    ``UNROLL`` groups the scalar ``k``/``v`` loads of ``UNROLL`` consecutive
+    entries ahead of their dependent ``B`` vector loads: the per-entry
+    load-to-load chain (k needed before the B slice address is known) is the
+    latency floor of the streaming loop, and the grouping lets ``UNROLL``
+    independent chains be in flight at once. Masked-off tail entries load
+    ``k = 0`` with ``v = 0`` and contribute nothing.
 
     The COO output is written directly at flat position ``i * N + n``, which is
     the row-major layout ``torch.smm`` produces over ascending structural rows.
@@ -296,19 +382,80 @@ def smm_coo_kernel(
     seg_end = tl.load(row_starts + i + 1)
 
     acc = tl.zeros((BLOCK_N,), dtype=tl.float32)
-    for base in range(seg_start, seg_end, BLOCK_NNZ):
-        e = base + tl.arange(0, BLOCK_NNZ)
-        e_mask = e < seg_end
-        k = tl.load(col_indices + e, mask=e_mask, other=0)
-        v = tl.load(values + e, mask=e_mask, other=0.0).to(tl.float32)
-
-        # (BLOCK_NNZ, BLOCK_N) tile of B, gathered on the k axis.
-        b = tl.load(
-            B + k[:, None] * stride_bk + n_off[None, :] * stride_bn,
-            mask=e_mask[:, None] & n_mask[None, :],
-            other=0.0,
-        ).to(tl.float32)
-        acc += tl.sum(v[:, None] * b, axis=0)
+    if UNROLL == 1:
+        for e in range(seg_start, seg_end):
+            k = tl.load(col_indices + e)
+            v = tl.load(values + e).to(tl.float32)
+            if CONTIG_N:
+                b = tl.load(B + k * stride_bk + n_off, mask=n_mask, other=0.0)
+            else:
+                b = tl.load(
+                    B + k * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+            acc += v * b.to(tl.float32)
+    elif UNROLL == 2:
+        for base in range(seg_start, seg_end, 2):
+            e0 = base
+            e1 = base + 1
+            m0 = e0 < seg_end
+            m1 = e1 < seg_end
+            k0 = tl.load(col_indices + e0, mask=m0, other=0)
+            v0 = tl.load(values + e0, mask=m0, other=0.0).to(tl.float32)
+            k1 = tl.load(col_indices + e1, mask=m1, other=0)
+            v1 = tl.load(values + e1, mask=m1, other=0.0).to(tl.float32)
+            if CONTIG_N:
+                b0 = tl.load(B + k0 * stride_bk + n_off, mask=n_mask, other=0.0)
+                b1 = tl.load(B + k1 * stride_bk + n_off, mask=n_mask, other=0.0)
+            else:
+                b0 = tl.load(
+                    B + k0 * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+                b1 = tl.load(
+                    B + k1 * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+            acc += v0 * b0.to(tl.float32) + v1 * b1.to(tl.float32)
+    else:
+        for base in range(seg_start, seg_end, 4):
+            e0 = base
+            e1 = base + 1
+            e2 = base + 2
+            e3 = base + 3
+            m0 = e0 < seg_end
+            m1 = e1 < seg_end
+            m2 = e2 < seg_end
+            m3 = e3 < seg_end
+            k0 = tl.load(col_indices + e0, mask=m0, other=0)
+            v0 = tl.load(values + e0, mask=m0, other=0.0).to(tl.float32)
+            k1 = tl.load(col_indices + e1, mask=m1, other=0)
+            v1 = tl.load(values + e1, mask=m1, other=0.0).to(tl.float32)
+            k2 = tl.load(col_indices + e2, mask=m2, other=0)
+            v2 = tl.load(values + e2, mask=m2, other=0.0).to(tl.float32)
+            k3 = tl.load(col_indices + e3, mask=m3, other=0)
+            v3 = tl.load(values + e3, mask=m3, other=0.0).to(tl.float32)
+            if CONTIG_N:
+                b0 = tl.load(B + k0 * stride_bk + n_off, mask=n_mask, other=0.0)
+                b1 = tl.load(B + k1 * stride_bk + n_off, mask=n_mask, other=0.0)
+                b2 = tl.load(B + k2 * stride_bk + n_off, mask=n_mask, other=0.0)
+                b3 = tl.load(B + k3 * stride_bk + n_off, mask=n_mask, other=0.0)
+            else:
+                b0 = tl.load(
+                    B + k0 * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+                b1 = tl.load(
+                    B + k1 * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+                b2 = tl.load(
+                    B + k2 * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+                b3 = tl.load(
+                    B + k3 * stride_bk + n_off * stride_bn, mask=n_mask, other=0.0
+                )
+            acc += (
+                v0 * b0.to(tl.float32)
+                + v1 * b1.to(tl.float32)
+                + v2 * b2.to(tl.float32)
+                + v3 * b3.to(tl.float32)
+            )
 
     # ``out_row_idx`` and ``out_col_idx`` are the two rows of the (2, nnz_out)
     # index tensor, passed separately so the flat position needs no ``nrows``
@@ -329,7 +476,7 @@ def smm(self, mat):
     product and writes the COO output (indices + values) directly, avoiding
     any separate dense-to-sparse conversion pass.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SMM")
+    logger.debug("GEMS_ENFLAME SMM")
 
     if not self.is_sparse:
         raise RuntimeError("tensor.sspaddmm(...) can only be called on sparse tensors")
@@ -391,22 +538,32 @@ def smm(self, mat):
         return torch.sparse_coo_tensor(out_indices, out_values, size=(M, N))
 
     indices = self._indices()
+    values = self._values()
     # The members may sit on the CPU (platform materialization of a device
     # workload) or already on the device (factory alias views); a plain move
     # covers both -- ``to`` is a no-op that returns self on the target device.
-    row_indices = indices[0].to(device).contiguous()
-    col_indices = indices[1].to(device).contiguous()
-    values = self._values().to(device).contiguous()
+    # The whole (2, nnz) index pair moves as one buffer (half the H2D round
+    # trips of moving the two rows separately) and both device copies are
+    # cached on the source members, so repeat calls with the same sparse
+    # operand skip the pageable copies entirely.
+    indices_dev, values_dev = _cached_device_members(indices, values, device)
+    row_indices = indices_dev[0]
+    col_indices = indices_dev[1]
 
     # Build the per-row COO segments. ``is_start`` flags row boundaries, its
     # inclusive cumsum ranks them, and the compaction writes the row ids plus
-    # the segment offsets. Only the cumsum runs as a host-side torch call; the
-    # marking and compaction are device kernels.
+    # the segment offsets. The ranking composes the FlagGems cumsum op (an
+    # integer scan in this op's own device pipeline); the only thing that
+    # leaves the device is the scalar boundary count readback, which the host
+    # needs to size the output.
     is_start = torch.empty((nnz,), dtype=torch.int32, device=device)
     grid_nnz = lambda META: (triton.cdiv(nnz, META["BLOCK"]),)
     with torch_device_fn.device(device):
         smm_mark_row_starts_kernel[grid_nnz](row_indices, is_start, nnz, BLOCK=1024)
-        rank = flag_gems.cumsum(is_start, 0, dtype=torch.int64)
+        import flag_gems
+
+        rank_dtype = torch.int64 if nnz >= 2**31 else torch.int32
+        rank = flag_gems.cumsum(is_start, 0, dtype=rank_dtype)
         nrows = int(rank[-1].item())
         row_ids = torch.empty((nrows,), dtype=torch.int64, device=device)
         row_starts = torch.empty((nrows + 1,), dtype=torch.int64, device=device)
@@ -429,23 +586,35 @@ def smm(self, mat):
         grid = lambda META: (nrows, triton.cdiv(N, META["BLOCK_N"]))
         smm_coo_kernel[grid](
             col_indices,
-            values,
+            values_dev,
             row_ids,
             row_starts,
             mat,
             out_indices[0],
             out_indices[1],
             out_values,
-            nrows,
             N,
             mat.stride(0),
             mat.stride(1),
+            CONTIG_N=mat.stride(1) == 1,
         )
+
+        # The platform factory materializes the result on CPU. Handing it the
+        # device outputs directly drives its D2H through the slow pageable
+        # path, so stage the outputs through pinned host buffers (async DMA),
+        # synchronize, and hand the filled buffers to the factory -- it
+        # zero-copies them into the COO, so each call needs its own buffers
+        # (the previous result keeps its pair alive through its references).
+        host_indices = torch.empty((2, nnz_out), dtype=torch.int64, pin_memory=True)
+        host_values = torch.empty((nnz_out,), dtype=torch.float32, pin_memory=True)
+        host_indices.copy_(out_indices, non_blocking=True)
+        host_values.copy_(out_values, non_blocking=True)
+        torch_device_fn.synchronize()
 
     # Rows are ascending and each contributes its columns in ascending order, so
     # the output is already in coalesced order; declaring it avoids a re-sort.
-    # The platform factory materializes the result on CPU (copying the device
-    # outputs D2H), which is where every COO tensor on this platform lives.
+    # The result is a COO on the CPU, which is where every COO tensor on this
+    # platform lives.
     return torch.sparse_coo_tensor(
-        out_indices, out_values, size=(M, N), is_coalesced=True
+        host_indices, host_values, size=(M, N), is_coalesced=True
     )

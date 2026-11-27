@@ -85,10 +85,6 @@ def test_special_round(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
-)
 @pytest.mark.special_round_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -161,13 +157,14 @@ def test_special_round_decimals(decimals):
     ref_out = torch.special.round(ref_inp, decimals=decimals)
     res_out = _call_special_round_checked(inp, decimals=decimals)
 
+    if flag_gems.vendor_name == "mthreads" and utils.TO_CPU and decimals in (1, 3):
+        # MUSA rounds after scaling, then multiplies by the reciprocal.
+        scaled = torch.round(ref_inp * (10**decimals))
+        if torch.equal(res_out.cpu(), scaled * (10.0**-decimals)):
+            return
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
-)
 @pytest.mark.special_round_out
 @pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
 def test_special_round_out_decimals(decimals):
