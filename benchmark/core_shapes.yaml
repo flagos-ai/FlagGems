@@ -1169,6 +1169,18 @@ RWKVSparsityBenchmark:
   shapes:
     - [1]
 
+scatter_add_backward:
+  shapes:
+  - - 4
+    - 16
+  - - 16
+    - 32
+  - - 64
+    - 64
+  - - 128
+    - 128
+  shape_desc: Fixed accepted backward input shape
+
 FusedRecurrentGatedDeltaRuleBenchmark:
   shapes:
     - [1]
