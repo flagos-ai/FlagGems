@@ -335,11 +335,18 @@ def _batch_norm_with_update_functional(
     M = N * L
 
     out = torch.empty(shape, device=x3.device, dtype=x3.dtype)
-    pack = torch.empty((4, C), device=x3.device, dtype=x3.dtype)
-    save_mean = pack[0]
-    save_invstd = pack[1]
-    running_mean_out = pack[2]
-    running_var_out = pack[3]
+    # The device ABI allocates saved statistics as float32 for Half/BFloat16
+    # inputs (fp32/fp64 keep their dtype); running-stat outputs keep the input
+    # dtype. Validate against torch.ops.aten._batch_norm_with_update_functional.
+    saved_dtype = (
+        torch.float32 if x3.dtype in (torch.float16, torch.bfloat16) else x3.dtype
+    )
+    saved = torch.empty((2, C), device=x3.device, dtype=saved_dtype)
+    save_mean = saved[0]
+    save_invstd = saved[1]
+    running = torch.empty((2, C), device=x3.device, dtype=x3.dtype)
+    running_mean_out = running[0]
+    running_var_out = running[1]
 
     reserve = torch.empty((0,), dtype=torch.uint8, device=x3.device)
 
