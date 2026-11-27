@@ -49,6 +49,10 @@ class FftRfftBenchmark(base.Benchmark):
             }
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.fft_rfft
 def test_fft_rfft():
     bench = FftRfftBenchmark(

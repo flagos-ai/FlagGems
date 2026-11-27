@@ -49,10 +49,17 @@ def test_binomial_out():
         out = torch.empty_like(count)
         return torch.ops.aten.binomial.out(count, prob, out=out)
 
+    # Ascend's native out overload uses a CPU fallback without Half/BFloat16.
+    dtypes = [
+        dtype
+        for dtype in consts.FLOAT_DTYPES
+        if flag_gems.vendor_name != "ascend"
+        or dtype not in (torch.float16, torch.bfloat16)
+    ]
     bench = base.GenericBenchmark2DOnly(
         op_name="binomial_out",
         torch_op=out_op,
         input_fn=_input_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()

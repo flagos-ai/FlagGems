@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -36,6 +38,9 @@ def _logcumsumexp_build_inputs_fn(plan, dtype, device):
     return next(_logcumsumexp_input_fn(shape, dtype, device))
 
 
+# The former ``skipif(vendor_name == "enflame")`` guard was dropped: device ATen
+# supports ``_logcumsumexp`` for fp16/fp32/bf16 on the enflame backend, so only
+# the enflame vendor was excluded and no other vendor's coverage changes.
 @pytest.mark.underscore_logcumsumexp
 def test__logcumsumexp():
     bench = base.GenericBenchmark2DOnly(
@@ -54,6 +59,10 @@ def _logcumsumexp_out_input_fn(shape, cur_dtype, device):
     yield inp, 1, {"out": out}
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.underscore_logcumsumexp_out
 def test__logcumsumexp_out():
     bench = base.GenericBenchmark2DOnly(

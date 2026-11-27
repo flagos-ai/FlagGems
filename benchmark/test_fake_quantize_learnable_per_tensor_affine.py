@@ -29,6 +29,14 @@ def fake_quantize_learnable_per_tensor_affine_input_fn(shape, cur_dtype, device)
     yield inp, scale, zero_point, QUANT_MIN, QUANT_MAX
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::_fake_quantize_learnable_per_tensor_affine has no GCU kernel; "
+        "the op falls back to CPU (DtoH/HtoD memcpy only), so there is no "
+        "device baseline to time"
+    ),
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 def test_fake_quantize_learnable_per_tensor_affine():
     bench = base.GenericBenchmark(

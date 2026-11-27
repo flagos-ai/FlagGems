@@ -421,12 +421,12 @@ def _matrix_exp_square_kernel(
 
 
 def linalg_matrix_exp(A):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_EXP")
+    logger.debug("GEMS_ENFLAME LINALG_MATRIX_EXP")
     return _linalg_matrix_exp_impl(A)
 
 
 def linalg_matrix_exp_out(A, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_EXP_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_MATRIX_EXP_OUT")
     if out is None:
         raise TypeError("linalg_matrix_exp(): out must be provided for out variant")
     if out.dtype != A.dtype:

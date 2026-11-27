@@ -24,6 +24,14 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+_NUM_SPC = 48
+_SMALL_NUMEL = 131072
+_FLAT_COPY_BLOCK = 8192
+_TILE_MAX = 128
+_TILE_WARPS = 1
+_PAIR_TILES = 128
+_PAIR_TILES_WIDE = 64
+
 
 @triton.autotune(configs=runtime.get_tuned_config("rot90"), key=["n_elements"])
 @triton.jit
@@ -119,8 +127,234 @@ def rot90_kernel_2d(
     tl.store(out_ptr + offsets, x, mask=mask)
 
 
+@triton.jit
+def _rot90_flat_copy_kernel(
+    in_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    # k=0: identity permutation, contiguous on both sides.
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    num_tiles = tl.cdiv(n_elements, BLOCK)
+    for tile in range(pid, num_tiles, num_ctas):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            v = tl.load(in_ptr + offs)
+            tl.store(out_ptr + offs, v)
+        else:
+            m = offs < n_elements
+            v = tl.load(in_ptr + offs, mask=m)
+            tl.store(out_ptr + offs, v, mask=m)
+
+
+@triton.jit
+def _rot90_k1_tile_kernel(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    num_c_tiles,
+    num_tiles,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    U: tl.constexpr,
+):
+    # out[i, j] = in[j, N-1-i], out shape [N, M].  DMA-form load via a 2D
+    # block pointer with positive strides (N, 1); the raw store absorbs the
+    # row reversal with a -M stride on dim0 while its fast dim ascends.
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    ir = tl.arange(0, BLOCK_R)
+    ic = tl.arange(0, BLOCK_C)
+    t_last = num_tiles - 1
+    GU = num_ctas * U
+    for t0 in range(pid * U, num_tiles, GU):
+        ta = tl.minimum(t0, t_last)
+        rta = ta // num_c_tiles
+        cta = ta - rta * num_c_tiles
+        r0a = tl.minimum(rta * BLOCK_R, N - BLOCK_R)
+        c0a = tl.minimum(cta * BLOCK_C, M - BLOCK_C)
+        src_a = tl.make_block_ptr(
+            in_ptr,
+            (M, N),
+            (N, 1),
+            (c0a, N - BLOCK_R - r0a),
+            (BLOCK_C, BLOCK_R),
+            (1, 0),
+        )
+        va = tl.load(src_a)
+        if U == 2:
+            tb = tl.minimum(t0 + 1, t_last)
+            rtb = tb // num_c_tiles
+            ctb = tb - rtb * num_c_tiles
+            r0b = tl.minimum(rtb * BLOCK_R, N - BLOCK_R)
+            c0b = tl.minimum(ctb * BLOCK_C, M - BLOCK_C)
+            src_b = tl.make_block_ptr(
+                in_ptr,
+                (M, N),
+                (N, 1),
+                (c0b, N - BLOCK_R - r0b),
+                (BLOCK_C, BLOCK_R),
+                (1, 0),
+            )
+            vb = tl.load(src_b)
+        tl.store(
+            out_ptr + (r0a + BLOCK_R - 1 - ir)[:, None] * M + (c0a + ic)[None, :],
+            tl.trans(va),
+        )
+        if U == 2:
+            tl.store(
+                out_ptr + (r0b + BLOCK_R - 1 - ir)[:, None] * M + (c0b + ic)[None, :],
+                tl.trans(vb),
+            )
+
+
+@triton.jit
+def _rot90_k2_tile_kernel(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    num_c_tiles,
+    num_tiles,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    U: tl.constexpr,
+):
+    # out[i, j] = in[M-1-i, N-1-j], out shape [M, N].  Descending fast-dim
+    # raw load + ascending raw store, same orientation, no transpose.
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    ir = tl.arange(0, BLOCK_R)
+    ic = tl.arange(0, BLOCK_C)
+    t_last = num_tiles - 1
+    GU = num_ctas * U
+    for t0 in range(pid * U, num_tiles, GU):
+        ta = tl.minimum(t0, t_last)
+        rta = ta // num_c_tiles
+        cta = ta - rta * num_c_tiles
+        r0a = tl.minimum(rta * BLOCK_R, M - BLOCK_R)
+        c0a = tl.minimum(cta * BLOCK_C, N - BLOCK_C)
+        va = tl.load(
+            in_ptr + (M - 1 - (r0a + ir))[:, None] * N + (N - 1 - (c0a + ic))[None, :]
+        )
+        if U == 2:
+            tb = tl.minimum(t0 + 1, t_last)
+            rtb = tb // num_c_tiles
+            ctb = tb - rtb * num_c_tiles
+            r0b = tl.minimum(rtb * BLOCK_R, M - BLOCK_R)
+            c0b = tl.minimum(ctb * BLOCK_C, N - BLOCK_C)
+            vb = tl.load(
+                in_ptr
+                + (M - 1 - (r0b + ir))[:, None] * N
+                + (N - 1 - (c0b + ic))[None, :]
+            )
+        tl.store(out_ptr + (r0a + ir)[:, None] * N + (c0a + ic)[None, :], va)
+        if U == 2:
+            tl.store(out_ptr + (r0b + ir)[:, None] * N + (c0b + ic)[None, :], vb)
+
+
+@triton.jit
+def _rot90_k3_tile_kernel(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    num_c_tiles,
+    num_tiles,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    U: tl.constexpr,
+):
+    # out[i, j] = in[M-1-j, i], out shape [N, M].  Raw load [BLOCK_C,
+    # BLOCK_R] with an ascending fast dim, tl.trans, then a positive-stride
+    # block-pointer store.
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    ir = tl.arange(0, BLOCK_R)
+    ic = tl.arange(0, BLOCK_C)
+    t_last = num_tiles - 1
+    GU = num_ctas * U
+    for t0 in range(pid * U, num_tiles, GU):
+        ta = tl.minimum(t0, t_last)
+        rta = ta // num_c_tiles
+        cta = ta - rta * num_c_tiles
+        r0a = tl.minimum(rta * BLOCK_R, N - BLOCK_R)
+        c0a = tl.minimum(cta * BLOCK_C, M - BLOCK_C)
+        va = tl.load(in_ptr + (M - 1 - (c0a + ic))[:, None] * N + (r0a + ir)[None, :])
+        if U == 2:
+            tb = tl.minimum(t0 + 1, t_last)
+            rtb = tb // num_c_tiles
+            ctb = tb - rtb * num_c_tiles
+            r0b = tl.minimum(rtb * BLOCK_R, N - BLOCK_R)
+            c0b = tl.minimum(ctb * BLOCK_C, M - BLOCK_C)
+            vb = tl.load(
+                in_ptr + (M - 1 - (c0b + ic))[:, None] * N + (r0b + ir)[None, :]
+            )
+        dst_a = tl.make_block_ptr(
+            out_ptr, (N, M), (M, 1), (r0a, c0a), (BLOCK_R, BLOCK_C), (1, 0)
+        )
+        tl.store(dst_a, tl.trans(va))
+        if U == 2:
+            dst_b = tl.make_block_ptr(
+                out_ptr, (N, M), (M, 1), (r0b, c0b), (BLOCK_R, BLOCK_C), (1, 0)
+            )
+            tl.store(dst_b, tl.trans(vb))
+
+
+def _prev_pow2(value):
+    block = _TILE_MAX
+    while block > value:
+        block //= 2
+    return block
+
+
+def _launch_tiled(inp, out, k_norm, M, N):
+    if k_norm == 2:
+        r_dim, c_dim = M, N
+    else:
+        r_dim, c_dim = N, M
+    block_r = min(_TILE_MAX, _prev_pow2(r_dim))
+    block_c = min(_TILE_MAX, _prev_pow2(c_dim))
+    num_r_tiles = triton.cdiv(r_dim, block_r)
+    num_c_tiles = triton.cdiv(c_dim, block_c)
+    num_tiles = num_r_tiles * num_c_tiles
+    # pair tiles per program only where it won the sweep: 2048^2-class
+    # grids, and 1024^2-class grids for 4-byte dtypes (fp32); anywhere else
+    # the halved grid costs more than the pairing saves
+    if num_tiles >= _PAIR_TILES or (
+        num_tiles >= _PAIR_TILES_WIDE and inp.element_size() == 4
+    ):
+        unroll = 2
+    else:
+        unroll = 1
+    grid = (min(_NUM_SPC, triton.cdiv(num_tiles, unroll)),)
+    if k_norm == 1:
+        kernel = _rot90_k1_tile_kernel
+    elif k_norm == 2:
+        kernel = _rot90_k2_tile_kernel
+    else:
+        kernel = _rot90_k3_tile_kernel
+    with torch_device_fn.device(inp.device):
+        kernel[grid](
+            inp,
+            out,
+            M,
+            N,
+            num_c_tiles,
+            num_tiles,
+            BLOCK_R=block_r,
+            BLOCK_C=block_c,
+            U=unroll,
+            num_warps=_TILE_WARPS,
+        )
+
+
 def rot90_2d(inp, k, dims, out):
-    """Handle the case when dims = [0, 1] using optimized Triton kernel."""
+    """Handle the case when dims = [0, 1] with size-dispatched kernels."""
     M = inp.shape[dims[0]]
     N = inp.shape[dims[1]]
     n_elements = out.numel()
@@ -130,16 +364,25 @@ def rot90_2d(inp, k, dims, out):
     # Normalize k to 0, 1, 2, 3
     k_norm = ((k % 4) + 4) % 4
 
-    grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
-    with torch_device_fn.device(inp.device):
-        rot90_kernel_2d[grid](
-            inp,
-            out,
-            n_elements,
-            M,
-            N,
-            k_norm,
-        )
+    if k_norm == 0:
+        grid = (min(_NUM_SPC, triton.cdiv(n_elements, _FLAT_COPY_BLOCK)),)
+        with torch_device_fn.device(inp.device):
+            _rot90_flat_copy_kernel[grid](
+                inp,
+                out,
+                n_elements,
+                BLOCK=_FLAT_COPY_BLOCK,
+                EVEN=n_elements % _FLAT_COPY_BLOCK == 0,
+                num_warps=4,
+            )
+        return
+
+    if n_elements <= _SMALL_NUMEL:
+        grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
+        with torch_device_fn.device(inp.device):
+            rot90_kernel_2d[grid](inp, out, n_elements, M, N, k_norm)
+    else:
+        _launch_tiled(inp, out, k_norm, M, N)
 
 
 def rot90(input, k=1, dims=[0, 1]):
@@ -154,7 +397,7 @@ def rot90(input, k=1, dims=[0, 1]):
     Returns:
         Rotated tensor
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ROT90")
+    logger.debug("GEMS_ENFLAME ROT90")
     x = input
     if not x.is_contiguous():
         x = x.contiguous()

@@ -34,5 +34,5 @@ def ndtr_func(x):
 
 
 def special_ndtr(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_NDTR")
+    logger.debug("GEMS_ENFLAME SPECIAL_NDTR")
     return ndtr_func(A)

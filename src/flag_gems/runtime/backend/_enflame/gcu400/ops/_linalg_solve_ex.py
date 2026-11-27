@@ -26,7 +26,6 @@ import triton.language as tl
 
 import flag_gems
 from flag_gems import runtime
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +75,24 @@ def _install_complex_eye_shim():
     torch.eye = _complex_safe_eye
 
 
+def _reset_fp32_matmul_precision_state():
+    """Make the legacy and new fp32 matmul-precision views consistent again.
+
+    torch_gcu's matmul entry points probe the fp32 matmul precision through an
+    empty backend name, which raises ``RuntimeError`` ("... checking the matmul
+    precision without a specific backend name ...") once the process has mixed
+    the legacy (``torch.set_float32_matmul_precision`` / ``allow_tf32``) and the
+    new (``fp32_precision``) APIs -- which happens whenever a test module pins
+    both while another module already set the legacy flag.  Re-issuing the
+    legacy setter clears the mixed state and restores IEEE operands, the policy
+    the composed linalg paths expect.
+    """
+    try:
+        torch.set_float32_matmul_precision("highest")
+    except (AttributeError, RuntimeError):
+        pass
+
+
 def _install_complex_matmul_shim():
     # torch_gcu P21 workaround: topsaten matmul aborts for complex dtypes.
     # Only the operator form (`a @ b` -> Tensor.__matmul__) is shimmed; the
@@ -92,10 +109,48 @@ def _install_complex_matmul_shim():
             and isinstance(other, torch.Tensor)
         ):
             return current(self.cpu(), other.cpu()).to(self.device)
-        return current(self, other)
+        try:
+            return current(self, other)
+        except RuntimeError as error:
+            # See _reset_fp32_matmul_precision_state: the vendor GEMM rejects a
+            # process that mixed the two matmul-precision APIs, so recover the
+            # IEEE state once and retry the untouched call.
+            if "matmul precision" not in str(error):
+                raise
+            _reset_fp32_matmul_precision_state()
+            return current(self, other)
 
     _complex_safe_matmul._flaggems_gcu_complex_safe = True
     torch.Tensor.__matmul__ = _complex_safe_matmul
+
+
+def _install_complex_triangular_shim():
+    # torch_gcu P21 workaround: topsaten tril/triu abort the process for complex
+    # dtypes instead of raising (TOPSOP failure), and complex triangular masks
+    # appear in test input construction.  Only gcu complex calls are computed on
+    # CPU and copied back; every other call shape passes through untouched.
+    for name in ("tril", "triu"):
+        current = getattr(torch, name)
+        if getattr(current, "_flaggems_gcu_complex_safe", False):
+            continue
+
+        def _complex_safe_triangular(*args, _current=current, **kwargs):
+            input_tensor = args[0] if args else kwargs.get("input")
+            if not (
+                isinstance(input_tensor, torch.Tensor)
+                and input_tensor.is_complex()
+                and input_tensor.device.type == "gcu"
+            ):
+                return _current(*args, **kwargs)
+            out = kwargs.pop("out", None)
+            result = _current(input_tensor.cpu(), *args[1:], **kwargs)
+            if out is not None:
+                out.copy_(result)
+                return out
+            return result.to(input_tensor.device)
+
+        _complex_safe_triangular._flaggems_gcu_complex_safe = True
+        setattr(torch, name, _complex_safe_triangular)
 
 
 def _install_solve_ex_packet_shim():
@@ -133,10 +188,10 @@ def _install_solve_ex_packet_shim():
 
 _install_complex_eye_shim()
 _install_complex_matmul_shim()
+_install_complex_triangular_shim()
 _install_solve_ex_packet_shim()
 
 
-@libentry()
 @triton.jit
 def _linalg_solve_ex_kernel(
     A,
@@ -193,6 +248,7 @@ def _linalg_solve_ex_kernel(
     x_base = X + batch_idx * x_batch_stride
 
     # Copy A to the LU workspace (vectorized over columns)
+    row_idx = tl.arange(0, BLOCK_N)
     i = 0
     while i < n:
         row = tl.load(a_base + i * a_row_stride + a_cols, mask=a_col_mask, other=0.0)
@@ -211,16 +267,27 @@ def _linalg_solve_ex_kernel(
     info_val = 0
     k = 0
     while k < n:
-        # Find pivot: argmax |LU[k:n, k]|, keeping the first on ties as LAPACK does
-        max_val = tl.abs(tl.load(lu_base + k * lu_row_stride + k))
-        pivot_row = k
-        i = k + 1
-        while i < n:
-            val = tl.abs(tl.load(lu_base + i * lu_row_stride + k))
-            if val > max_val:
-                max_val = val
-                pivot_row = i
-            i += 1
+        # Find pivot: argmax |LU[k:n, k]|, keeping the first on ties as LAPACK
+        # does. The column is fetched as one masked vector and reduced, which
+        # replaces the chain of dependent scalar loads.
+        col_mask = (row_idx >= k) & (row_idx < n)
+        # Rows outside [k, n) are forced to -1 *after* the abs, so they can never
+        # tie with a real |value| >= 0 and steal the pivot when the column is all
+        # zeros (which is exactly what a singular matrix produces).
+        col_k = tl.abs(
+            tl.load(lu_base + row_idx * lu_row_stride + k, mask=col_mask, other=0.0)
+        )
+        col_k = tl.where(col_mask, col_k, -1.0)
+        # NaN entries (already singular) must not win the argmax, otherwise the
+        # comparison below never matches and the pivot index escapes the range.
+        col_k = tl.where(col_k == col_k, col_k, -1.0)
+        # One reduction per step is the floor here: returning the index together
+        # with the maximum (tl.max(return_indices=True)) is measurably slower on
+        # gcu400, so keep the max + first-match pair.
+        max_val = tl.max(col_k)
+        pivot_row = tl.min(tl.where(col_k == max_val, row_idx, BLOCK_N))
+        # Fallback to the diagonal when nothing matched (all-NaN column).
+        pivot_row = tl.where(max_val >= 0.0, pivot_row, k)
         tl.store(piv_base + k, pivot_row + 1)
 
         # Swap rows k and pivot_row - vectorized
@@ -239,6 +306,22 @@ def _linalg_solve_ex_kernel(
                 luk_row,
                 mask=a_col_mask,
             )
+            if LEFT:
+                # Apply P^T to the right-hand side while the pivot is still in a
+                # scalar register: this replaces the later replay pass over
+                # pivots and saves one full walk over X.
+                xk = tl.load(
+                    x_base + k * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
+                )
+                xp = tl.load(
+                    x_base + pivot_row * x_row_stride + x_offsets,
+                    mask=b_col_mask,
+                    other=0.0,
+                )
+                tl.store(x_base + k * x_row_stride + x_offsets, xp, mask=b_col_mask)
+                tl.store(
+                    x_base + pivot_row * x_row_stride + x_offsets, xk, mask=b_col_mask
+                )
 
         akk = tl.load(lu_base + k * lu_row_stride + k)
 
@@ -251,84 +334,133 @@ def _linalg_solve_ex_kernel(
             lu_base + k * lu_row_stride + a_cols, mask=a_col_mask, other=0.0
         )
 
-        # Trailing column mask (only update columns > k)
-        trail_mask = (a_cols > k) & a_col_mask
-
-        # Compute L factors and update the trailing submatrix
-        i = k + 1
-        while i < n:
-            aik = tl.load(lu_base + i * lu_row_stride + k)
-            lik = aik / akk
-            tl.store(lu_base + i * lu_row_stride + k, lik)
-            # Vectorized: LU[i, j] -= lik * LU[k, j] for j > k
-            ai_row = tl.load(
-                lu_base + i * lu_row_stride + a_cols, mask=trail_mask, other=0.0
-            )
-            ai_row = ai_row - lik * ak_row
-            tl.store(lu_base + i * lu_row_stride + a_cols, ai_row, mask=trail_mask)
-            i += 1
+        # Compute L factors and update the trailing submatrix as one 2-D tile:
+        # the rows k+1..n-1 are loaded, scaled by the column-k multipliers and
+        # written back once, replacing the per-row load/store chain.
+        trail_rows = k + 1 + row_idx
+        trail_row_mask = trail_rows < n
+        trail_ptrs = lu_base + trail_rows[:, None] * lu_row_stride + a_cols[None, :]
+        trail_mask = trail_row_mask[:, None] & a_col_mask[None, :]
+        trail = tl.load(trail_ptrs, mask=trail_mask, other=0.0)
+        lik = tl.load(lu_base + trail_rows * lu_row_stride + k, mask=trail_row_mask)
+        lik = lik / akk
+        update_mask = trail_mask & (a_cols[None, :] > k)
+        trail = tl.where(update_mask, trail - lik[:, None] * ak_row[None, :], trail)
+        # Column k now carries the multipliers, so fold them into the same
+        # tile store instead of leaving the stale pre-pivot values behind.
+        trail = tl.where(trail_mask & (a_cols[None, :] == k), lik[:, None], trail)
+        tl.store(trail_ptrs, trail, mask=trail_mask)
         k += 1
 
     # Write info
     tl.store(INFO + batch_idx, info_val)
 
     if LEFT:
-        # Apply P^T to the right-hand side by replaying the swaps in order.
-        k = 0
-        while k < n:
-            pivot_row = tl.load(piv_base + k) - 1
-            if pivot_row != k:
-                xk = tl.load(
-                    x_base + k * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
-                )
-                xp = tl.load(
-                    x_base + pivot_row * x_row_stride + x_offsets,
-                    mask=b_col_mask,
+        # P^T has already been applied to X inside the factorization loop.
+        # Step 2 + 3: triangular solves.  For the small tiles used here the
+        # j-loop is fully unrolled so that every already-final x_j load is an
+        # independent address the scheduler can issue in parallel; only the fma
+        # chain stays serial.  Larger tiles keep the compact dynamic loop to
+        # avoid a 32x32 unrolled body.
+        if BLOCK_N <= 16:
+            # Fully unrolled substitutions.  Out-of-range rows are neutralised
+            # with masks instead of `if` guards: the block is written so that
+            # every iteration executes unconditionally, which keeps the generated
+            # code branch free and stays correct when BLOCK_N > n.
+            for i in tl.static_range(1, BLOCK_N):
+                live = i < n
+                xi = tl.load(
+                    x_base + i * x_row_stride + x_offsets,
+                    mask=b_col_mask & live,
                     other=0.0,
                 )
-                tl.store(x_base + k * x_row_stride + x_offsets, xp, mask=b_col_mask)
+                for j in tl.static_range(0, BLOCK_N):
+                    if j < i:
+                        lij = tl.load(
+                            lu_base + i * lu_row_stride + j,
+                            mask=live & (j < n),
+                            other=0.0,
+                        )
+                        xj = tl.load(
+                            x_base + j * x_row_stride + x_offsets,
+                            mask=b_col_mask & (j < n),
+                            other=0.0,
+                        )
+                        xi = xi - lij * xj
                 tl.store(
-                    x_base + pivot_row * x_row_stride + x_offsets,
-                    xk,
-                    mask=b_col_mask,
+                    x_base + i * x_row_stride + x_offsets,
+                    xi,
+                    mask=b_col_mask & live,
                 )
-            k += 1
+            for i in tl.static_range(0, BLOCK_N):
+                # Walk rows n-1..0 so the already-solved x_j are final.
+                row_i = BLOCK_N - 1 - i
+                live = row_i < n
+                xi = tl.load(
+                    x_base + row_i * x_row_stride + x_offsets,
+                    mask=b_col_mask & live,
+                    other=0.0,
+                )
+                for j in tl.static_range(0, BLOCK_N):
+                    if j > row_i:
+                        uij = tl.load(
+                            lu_base + row_i * lu_row_stride + j,
+                            mask=live & (j < n),
+                            other=0.0,
+                        )
+                        xj = tl.load(
+                            x_base + j * x_row_stride + x_offsets,
+                            mask=b_col_mask & (j < n),
+                            other=0.0,
+                        )
+                        xi = xi - uij * xj
+                uii = tl.load(
+                    lu_base + row_i * lu_row_stride + row_i, mask=live, other=1.0
+                )
+                xi = xi / uii
+                tl.store(
+                    x_base + row_i * x_row_stride + x_offsets,
+                    xi,
+                    mask=b_col_mask & live,
+                )
+        else:
+            i = 1
+            while i < n:
+                xi = tl.load(
+                    x_base + i * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
+                )
+                j = 0
+                while j < i:
+                    lij = tl.load(lu_base + i * lu_row_stride + j)
+                    xj = tl.load(
+                        x_base + j * x_row_stride + x_offsets,
+                        mask=b_col_mask,
+                        other=0.0,
+                    )
+                    xi = xi - lij * xj
+                    j += 1
+                tl.store(x_base + i * x_row_stride + x_offsets, xi, mask=b_col_mask)
+                i += 1
 
-        # Step 2: forward substitution L y = P^T b (L is unit lower)
-        i = 1
-        while i < n:
-            xi = tl.load(
-                x_base + i * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
-            )
-            j = 0
-            while j < i:
-                lij = tl.load(lu_base + i * lu_row_stride + j)
-                xj = tl.load(
-                    x_base + j * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
+            i = n - 1
+            while i >= 0:
+                xi = tl.load(
+                    x_base + i * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
                 )
-                xi = xi - lij * xj
-                j += 1
-            tl.store(x_base + i * x_row_stride + x_offsets, xi, mask=b_col_mask)
-            i += 1
-
-        # Step 3: backward substitution U x = y
-        i = n - 1
-        while i >= 0:
-            xi = tl.load(
-                x_base + i * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
-            )
-            j = i + 1
-            while j < n:
-                uij = tl.load(lu_base + i * lu_row_stride + j)
-                xj = tl.load(
-                    x_base + j * x_row_stride + x_offsets, mask=b_col_mask, other=0.0
-                )
-                xi = xi - uij * xj
-                j += 1
-            uii = tl.load(lu_base + i * lu_row_stride + i)
-            xi = xi / uii
-            tl.store(x_base + i * x_row_stride + x_offsets, xi, mask=b_col_mask)
-            i -= 1
+                j = i + 1
+                while j < n:
+                    uij = tl.load(lu_base + i * lu_row_stride + j)
+                    xj = tl.load(
+                        x_base + j * x_row_stride + x_offsets,
+                        mask=b_col_mask,
+                        other=0.0,
+                    )
+                    xi = xi - uij * xj
+                    j += 1
+                uii = tl.load(lu_base + i * lu_row_stride + i)
+                xi = xi / uii
+                tl.store(x_base + i * x_row_stride + x_offsets, xi, mask=b_col_mask)
+                i -= 1
     else:
         # XA = B becomes U^T (L^T X^T) = B^T, so the forward pass walks U
         # transposed (non-unit diagonal) and the backward pass L transposed
@@ -505,7 +637,7 @@ def _linalg_solve_ex(A, B, *, left=True, check_errors=False):
         - pivots: (*, n) int32 LAPACK-style 1-based row pivots of A
         - info: (*,) int32 tensor, 0 = success, >0 = singular at that pivot
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_SOLVE_EX")
+    logger.debug("GEMS_ENFLAME _LINALG_SOLVE_EX")
     vector_rhs, B_mat = _check_solve_ex_args(A, B, left)
 
     n = A.shape[-1]
@@ -537,9 +669,24 @@ def _linalg_solve_ex(A, B, *, left=True, check_errors=False):
     # The factorization only depends on A, but running it over the broadcast
     # batch keeps everything in one kernel launch; the repeated LU/pivots/info
     # rows are then narrowed back to A's own batch shape below.
-    A_work = A.expand(batch_shape + (n, n)).reshape(batch, n, n).contiguous()
-    B_work = B_mat.expand(batch_shape + (rows, cols)).reshape(batch, rows, cols)
-    B_work = B_work.contiguous()
+    # No batch broadcast and already dense 3-D: the kernel only reads A and B
+    # (it writes into LU/X), so the expand/reshape/contiguous chain can be
+    # skipped instead of paying three dispatches per call.  Any other rank
+    # (plain 2-D matrices, or >3-D batch shapes) still goes through the flatten
+    # path, which is what gives the kernel its 3-D strides.
+    if A.ndim == 3 and A.shape == batch_shape + (n, n) and A.is_contiguous():
+        A_work = A
+    else:
+        A_work = A.expand(batch_shape + (n, n)).reshape(batch, n, n).contiguous()
+    if (
+        B_mat.ndim == 3
+        and B_mat.shape == batch_shape + (rows, cols)
+        and B_mat.is_contiguous()
+    ):
+        B_work = B_mat
+    else:
+        B_work = B_mat.expand(batch_shape + (rows, cols)).reshape(batch, rows, cols)
+        B_work = B_work.contiguous()
 
     LU = torch.empty_like(A_work)
     X = torch.empty_like(B_work)
@@ -549,45 +696,51 @@ def _linalg_solve_ex(A, B, *, left=True, check_errors=False):
     # nrhs counts the vectorized right-hand side columns: B's own columns for
     # AX = B, and its rows for XA = B, where the kernel walks B transposed.
     nrhs = cols if left else rows
+    # One .stride() call per tensor instead of one per dimension.
+    a_strides = A_work.stride()
+    lu_strides = LU.stride()
+    b_strides = B_work.stride()
+    x_strides = X.stride()
     if left:
-        b_row_stride, b_col_stride = B_work.stride(1), B_work.stride(2)
-        x_row_stride, x_col_stride = X.stride(1), X.stride(2)
+        b_row_stride, b_col_stride = b_strides[1], b_strides[2]
+        x_row_stride, x_col_stride = x_strides[1], x_strides[2]
     else:
-        b_row_stride, b_col_stride = B_work.stride(2), B_work.stride(1)
-        x_row_stride, x_col_stride = X.stride(2), X.stride(1)
+        b_row_stride, b_col_stride = b_strides[2], b_strides[1]
+        x_row_stride, x_col_stride = x_strides[2], x_strides[1]
 
     # BLOCK_N covers all n columns of A, BLOCK_K all nrhs columns (powers of 2)
     block_n = max(triton.next_power_of_2(n), 4)
     block_k = max(triton.next_power_of_2(nrhs), 4)
 
-    with torch.no_grad():
-        # Fixed launch config: one program per batch element walks the
-        # factorization serially, so extra warps have nothing to do.
-        _linalg_solve_ex_kernel[(batch,)](
-            A_work,
-            LU,
-            pivots,
-            info,
-            B_work,
-            X,
-            n,
-            nrhs,
-            A_work.stride(0),
-            A_work.stride(1),
-            LU.stride(0),
-            LU.stride(1),
-            pivots.stride(0),
-            B_work.stride(0),
-            b_row_stride,
-            b_col_stride,
-            X.stride(0),
-            x_row_stride,
-            x_col_stride,
-            BLOCK_N=block_n,
-            BLOCK_K=block_k,
-            LEFT=left,
-            num_warps=1,
-        )
+    # Fixed launch config: one program per batch element walks the
+    # factorization serially, so extra warps have nothing to do. A triton launch
+    # is never autograd-tracked, so the surrounding torch.no_grad() only cost
+    # two context-manager round trips per call.
+    _linalg_solve_ex_kernel[(batch,)](
+        A_work,
+        LU,
+        pivots,
+        info,
+        B_work,
+        X,
+        n,
+        nrhs,
+        a_strides[0],
+        a_strides[1],
+        lu_strides[0],
+        lu_strides[1],
+        pivots.stride(0),
+        b_strides[0],
+        b_row_stride,
+        b_col_stride,
+        x_strides[0],
+        x_row_stride,
+        x_col_stride,
+        BLOCK_N=block_n,
+        BLOCK_K=block_k,
+        LEFT=left,
+        num_warps=1,
+    )
 
     if check_errors and bool((info != 0).any()):
         _raise_singular(info)

@@ -43,6 +43,12 @@ GCU400 adaptation
 * Destinations of rank > 6 (6+ sparse batch dimensions; unreachable in
   practice) keep the generic flat-stride decode loop over an int64 layout
   buffer, preserving the operator's full generality.
+* The flat path is launch-bound below ~64KB: every launch costs ~3.3us of
+  device time regardless of the payload, so a single launch configuration is
+  suboptimal at both ends of the range. The block/warp pair is therefore picked
+  from a byte-size tier table measured on GCU400 (see ``_FLAT_PLAN``), and the
+  bounds mask is dropped when the element count is an exact multiple of the
+  block so the kernel body carries no compare/select at all.
 """
 
 import logging
@@ -55,12 +61,25 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# Launch-bound copy: a 2048-lane block with 8 warps measured fastest across
-# the buffer sizes typical of sparse index arrays (1k-64k elements) -- fatter
-# blocks keep winning on GCU400 down to 32 CTAs at 64k lanes (4.1us vs 5.5us
-# at BLOCK=1024), while smaller blocks lose steadily (BLOCK=256: 15us).
-_FLAT_BLOCK = 2048
-_FLAT_WARPS = 8
+# DEBUG is off in production; resolving the level once keeps the per-call cost
+# of this launch-bound operator as low as possible.
+_DEBUG_ENABLED = logger.isEnabledFor(logging.DEBUG)
+
+# Flat-copy launch plan, keyed on the destination byte size (inclusive upper
+# bound; ``None`` = no upper bound):
+#   (max_payload_bytes, BLOCK, num_warps, bypass_l1)
+# Measured with triton.testing.do_bench (median, GCU400, int32/int64 sources):
+# below 8KB a single 1024-lane CTA wins (3.26us vs 3.40us at 4096 lanes); the
+# 16-128KB band is flat across 2048/4096 lanes (3.46-5.03us) and needs no wider
+# block; 256KB+ wants 4096 lanes. Bypassing L1 (``.cg``) only pays off once the
+# payload no longer fits the small working set: at 64KB it costs 11%
+# (4.97us vs 4.42us), while at 256KB+ it is neutral (6.89us vs 6.93us) and
+# keeps the streaming read from evicting useful lines.
+_FLAT_PLAN = (
+    (8192, 1024, 4, False),
+    (131072, 4096, 8, False),
+    (None, 4096, 8, True),
+)
 _SCATTER_BLOCK = 1024
 _SCATTER_WARPS = 4
 _INT32_LIMIT = 2**31
@@ -74,16 +93,32 @@ _COL_COMPRESSED_LAYOUTS = (torch.sparse_csc, torch.sparse_bsc)
 
 
 @triton.jit
-def _row_indices_copy_flat_kernel(src_ptr, dst_ptr, n_elements, BLOCK: tl.constexpr):
+def _row_indices_copy_flat_kernel(
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    MASKED: tl.constexpr,
+    BYPASS_L1: tl.constexpr,
+):
     # The source buffer is always stored row-major contiguous (plain and
     # batched CSC/BSC alike), so a flat unit-stride read is exact regardless
     # of rank, and a contiguous destination makes the address decode the
-    # identity.  The source is read exactly once, so its load bypasses L1.
+    # identity.  The source is read exactly once, so large payloads load it
+    # past L1 while small ones keep the cache (measured: bypassing L1 costs 11%
+    # at 64KB and is neutral above 256KB).
+    # ``MASKED`` is a compile-time constant: buffers whose element count is an
+    # exact multiple of BLOCK skip the compare/select entirely.
     pid = tl.program_id(axis=0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n_elements
-    vals = tl.load(src_ptr + offs, mask=mask, cache_modifier=".cg")
-    tl.store(dst_ptr + offs, vals, mask=mask)
+    cache_modifier: tl.constexpr = ".cg" if BYPASS_L1 else ""
+    if MASKED:
+        mask = offs < n_elements
+        vals = tl.load(src_ptr + offs, mask=mask, cache_modifier=cache_modifier)
+        tl.store(dst_ptr + offs, vals, mask=mask)
+    else:
+        vals = tl.load(src_ptr + offs, cache_modifier=cache_modifier)
+        tl.store(dst_ptr + offs, vals)
 
 
 @triton.jit
@@ -206,11 +241,33 @@ def _row_indices_source(self: torch.Tensor) -> torch.Tensor:
     return self.row_indices()
 
 
+def _flat_launch_plan(n_elements, element_size):
+    """Return (BLOCK, num_warps, bypass_l1) for a flat copy of ``n_elements``.
+
+    The plan is keyed on the payload size in bytes, because the kernel is
+    launch-bound below ~64KB and bandwidth-bound above it, so the block/warp
+    pair that wins at one end of the range loses at the other, and only large
+    payloads benefit from streaming past L1.
+    """
+    payload_bytes = n_elements * element_size
+    for max_bytes, block, warps, bypass_l1 in _FLAT_PLAN:
+        if max_bytes is None or payload_bytes <= max_bytes:
+            return block, warps, bypass_l1
+    return _FLAT_PLAN[-1][1], _FLAT_PLAN[-1][2], _FLAT_PLAN[-1][3]
+
+
 def _launch_flat(src, dst, n_elements):
-    grid = ((n_elements + _FLAT_BLOCK - 1) // _FLAT_BLOCK,)
+    block, warps, bypass_l1 = _flat_launch_plan(n_elements, src.element_size())
+    grid = ((n_elements + block - 1) // block,)
     with torch_device_fn.device(src.device):
         _row_indices_copy_flat_kernel[grid](
-            src, dst, n_elements, BLOCK=_FLAT_BLOCK, num_warps=_FLAT_WARPS
+            src,
+            dst,
+            n_elements,
+            BLOCK=block,
+            MASKED=n_elements % block != 0,
+            BYPASS_L1=bypass_l1,
+            num_warps=warps,
         )
 
 
@@ -320,10 +377,12 @@ def _row_indices_copy_impl(self: torch.Tensor, *, out=None):
 
 
 def row_indices_copy(self: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 ROW_INDICES_COPY")
+    if _DEBUG_ENABLED:
+        logger.debug("GEMS_ENFLAME ROW_INDICES_COPY")
     return _row_indices_copy_impl(self)
 
 
 def row_indices_copy_out(self: torch.Tensor, *, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 ROW_INDICES_COPY_OUT")
+    if _DEBUG_ENABLED:
+        logger.debug("GEMS_ENFLAME ROW_INDICES_COPY_OUT")
     return _row_indices_copy_impl(self, out=out)

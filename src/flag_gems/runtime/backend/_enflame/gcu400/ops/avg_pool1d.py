@@ -16,7 +16,11 @@ import logging
 
 import torch
 
-from flag_gems.ops.avg_pool2d import avg_pool2d
+# Import the gcu400 override, not flag_gems.ops.avg_pool2d: the generic
+# kernel's 2-D launch asks for grid.x = 65536 on the benchmark shapes, one
+# over the gcu400 hardware limit, while the override compresses grid.x to 48
+# and walks the (n, c) planes in a pid-stride loop.
+from .avg_pool2d import avg_pool2d
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,7 @@ def avg_pool1d(
 
     Implemented by reshaping to 2D and calling avg_pool2d with kernel_size=(1, kernel_size).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 AVG_POOL1D")
+    logger.debug("GEMS_ENFLAME AVG_POOL1D")
 
     # Input shape: (N, C, L) -> reshape to (N, C, 1, L)
     assert input.ndim == 3, f"avg_pool1d expects 3D input, got {input.ndim}D"

@@ -360,7 +360,7 @@ def _out_coalesced(src_flag, sp, dn, sp_new, ext):
 # Entry point
 # ---------------------------------------------------------------------------
 def sparse_broadcast_to(self, size):
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE BROADCAST TO")
+    logger.debug("GEMS_ENFLAME SPARSE BROADCAST TO")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise NotImplementedError(
             "aten::_sparse_broadcast_to: only sparse COO operands are supported"
