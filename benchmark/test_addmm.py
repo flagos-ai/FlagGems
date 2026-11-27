@@ -133,6 +133,13 @@ def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0)
     flag_gems.vendor_name in ("ascend", "mthreads"),
     reason="Issue #5385: Native torch.addmm benchmark does not support out_dtype.",
 )
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::addmm.dtype; its CPU "
+        "fallback raises NotImplementedError, so there is no native baseline"
+    ),
+)
 def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
@@ -165,6 +172,13 @@ def _input_fn_dtype_out(b, m, n, k, dtype, device, b_column_major):
 @pytest.mark.skipif(
     flag_gems.vendor_name in ("ascend", "mthreads"),
     reason="Issue #5385: Native torch.addmm benchmark does not support out_dtype.",
+)
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::addmm.dtype_out; its CPU "
+        "fallback raises NotImplementedError, so there is no native baseline"
+    ),
 )
 def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(

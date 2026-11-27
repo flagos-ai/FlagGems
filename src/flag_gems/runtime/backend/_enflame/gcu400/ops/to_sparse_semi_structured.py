@@ -45,6 +45,39 @@
 # Both outputs are compared with rtol=0/atol=0 and dtype equality, so retained
 # values are moved with select trees (never an add) and -0.0 / NaN bit patterns
 # survive verbatim.
+#
+# ---------------------------------------------------------------------------
+# GCU400 optimized fast path (2026-11-19)
+# ---------------------------------------------------------------------------
+#
+# ATen-key registration is owned by the generic `_FULL_CONFIG` entry; this
+# backend file adds no extra registration. The pre-optimization
+# implementation kept in ``_to_sparse_semi_structured_baseline`` is the
+# fallback for inputs the optimized int64-word kernel does not cover.
+#
+# Optimized kernel (``_to_sss_i64_kernel``), for row-major inputs whose element
+# stride is 1 and whose meta width is even (every other input falls back to the
+# baseline implementation below):
+#   * The input is viewed as int64 words on the host (``dense.view(torch.int64)``;
+#     one word == one KSPARSE group for 16/32-bit elements, two groups for int8),
+#     so every load is a fully coalesced 64-bit access instead of the four
+#     strided per-slot loads the baseline needs to dodge the gcu400
+#     reshape/split de-interleave miscompile.
+#   * Slot values are extracted as raw bit fields (mask/shift, zero-extended to
+#     uint32) and selected with where trees, so retained values (including
+#     -0.0-as-pruned, NaN and denormal bits) survive verbatim; a slot counts as
+#     pruned when its bit pattern is 0 or the negative-zero pattern of its width.
+#   * The packed payload is emitted one int32 per int64 word (the two retained
+#     fields of the group), stored through an int32 view -- again fully coalesced.
+#   * The metadata reuses the codes already computed for the payload (no second
+#     pass over memory): per-word nibbles are pre-shifted by their position
+#     inside the meta word and folded with one small ``tl.sum`` over the
+#     4-word axis; the ColumnMajorInterleaved<2> reorder is applied to the
+#     *store address* exactly like the baseline formula, from a register tile
+#     whose lanes are already the tile's own (swizzle-closed) permutation.
+#   * Grid tuning measured on L600 / Triton GCU 4.1.6: num_warps=2 everywhere;
+#     NW=32 int64 words per program for small tensors (<= 32768 total words),
+#     NW=128 for large ones.
 
 import logging
 
@@ -58,6 +91,10 @@ _BLOCK_R = 32
 _GATHER_R = 8
 _GATHER_C = 512
 _META_W = 128
+_FAST_NW_SMALL = 32
+_FAST_NW_LARGE = 128
+_FAST_NW_SWITCH_WORDS = 32768
+_FAST_NUM_WARPS = 2
 
 
 @triton.jit
@@ -100,8 +137,6 @@ def _to_sss_kernel(
         mask=load_mask,
         other=0,
     )
-    Vr = tl.reshape(V, (BLOCK_R, NGRP, KSPARSE))
-
     # A group participates in the validity check only when its whole metadata
     # element is inside the tensor (BLOCK_C is a multiple of PER_META and
     # ncols % PER_META == 0, so groups are never partially in range).
@@ -109,11 +144,22 @@ def _to_sss_kernel(
     inrange = rmask[:, None] & (pid_c * BLOCK_C + gidx * KSPARSE < ncols)[None, :]
 
     if KSPARSE == 4:
-        # slots (0,2) and (1,3) split apart; then unwrap to the four scalars so
-        # the value gather is a pure tl.where tree (bit exact, no fp add).
-        va, vb = tl.split(tl.reshape(Vr, (BLOCK_R, NGRP, 2, 2)))
-        v0, v2 = tl.split(va)
-        v1, v3 = tl.split(vb)
+        # Direct per-slot loads.  gcu400 miscompiles the
+        # reshape -> split -> split de-interleave of a (BR, NGRP, 4) tile: the
+        # fourth slot reads garbage (standalone probe: v3 = [5,13,69,77] where
+        # [3,7,11,15] is expected), so every valid 2:4 fp16/bf16/int8 input was
+        # rejected as pattern-invalid.  Four strided loads give exact values
+        # and keep the value gather a pure tl.where tree (bit exact, no add).
+        base = dense_ptr + rows[:, None] * stride0
+        gcol = (pid_c * BLOCK_C + gidx * KSPARSE)[None, :]
+        c0c = gcol
+        c1c = gcol + 1
+        c2c = gcol + 2
+        c3c = gcol + 3
+        v0 = tl.load(base + c0c * stride1, mask=inrange & (c0c < ncols), other=0)
+        v1 = tl.load(base + c1c * stride1, mask=inrange & (c1c < ncols), other=0)
+        v2 = tl.load(base + c2c * stride1, mask=inrange & (c2c < ncols), other=0)
+        v3 = tl.load(base + c3c * stride1, mask=inrange & (c3c < ncols), other=0)
         n0 = v0 != 0
         n1 = v1 != 0
         n2 = v2 != 0
@@ -130,6 +176,7 @@ def _to_sss_kernel(
         pl = tl.reshape(tl.join(val0, val1), (BLOCK_R, BLOCK_C // 2))
         q = c0 | (c1 << 2)  # (BLOCK_R, NGRP)
     else:
+        Vr = tl.reshape(V, (BLOCK_R, NGRP, KSPARSE))
         v0, v1 = tl.split(tl.reshape(Vr, (BLOCK_R, NGRP, 1, 2)))
         v0 = tl.reshape(v0, (BLOCK_R, NGRP))
         v1 = tl.reshape(v1, (BLOCK_R, NGRP))
@@ -152,36 +199,15 @@ def _to_sss_kernel(
     tl.store(packed_ptr + poff, pl, mask=pmask)
 
     # ---- metadata node word: NG nibbles, low nibble first ----
-    # q holds one 4-bit field per group.  The word is assembled by an explicit
-    # reshape/split chain (each split peels the even/odd positions of the last
-    # axis) instead of a reduction over the group axis, and the fields are
-    # widened to uint32 before shifting so the top nibble of the int8 case
-    # never touches signed overflow.
-    qu = tl.reshape(q.to(tl.uint32), (BLOCK_R, BLOCK_META, NG))
-    if NG == 4:
-        qa, qb = tl.split(tl.reshape(qu, (BLOCK_R, BLOCK_META, 2, 2)))
-        q0, q2 = tl.split(qa)
-        q1, q3b = tl.split(qb)
-        w = q0 | (q1 << 4) | (q2 << 8) | (q3b << 12)
-    else:
-        # NG == 8: two reshape/split levels peel the even/odd group positions.
-        qa, qb = tl.split(tl.reshape(qu, (BLOCK_R, BLOCK_META, 4, 2)))
-        q_e0, q_e1 = tl.split(tl.reshape(qa, (BLOCK_R, BLOCK_META, 2, 2)))
-        q_o0, q_o1 = tl.split(tl.reshape(qb, (BLOCK_R, BLOCK_META, 2, 2)))
-        q0, q4 = tl.split(q_e0)
-        q2, q6 = tl.split(q_e1)
-        q1, q5 = tl.split(q_o0)
-        q3c, q7 = tl.split(q_o1)
-        w = (
-            q0
-            | (q1 << 4)
-            | (q2 << 8)
-            | (q3c << 12)
-            | (q4 << 16)
-            | (q5 << 20)
-            | (q6 << 24)
-            | (q7 << 28)
-        )
+    # Assemble by shifting and summing over the group axis: the four-bit fields
+    # are disjoint, so the sum equals the OR.  This avoids the reshape/split
+    # chains gcu400 miscompiles (same family as the value de-interleave above;
+    # the int8 NG == 8 chain produced wrong metadata), and the fields are
+    # widened to uint32 before shifting so the top nibble never touches signed
+    # overflow.
+    qq = tl.reshape(q.to(tl.uint32), (BLOCK_R, BLOCK_META, NG))
+    shifts = (4 * tl.arange(0, NG)).to(tl.uint32)
+    w = tl.sum(qq << shifts[None, None, :], axis=2)
 
     # ---- ColumnMajorInterleaved<2> reorder (cutlass::reorder_meta) ----
     m = rows[:, None]
@@ -348,8 +374,14 @@ def _compact_order(strides):
     return 0 < strides[0] < strides[1]
 
 
-def to_sparse_semi_structured(dense):
-    logger.debug("GEMS_ENFLAME_GCU400 TO_SPARSE_SEMI_STRUCTURED")
+def _to_sparse_semi_structured_baseline(dense):
+    """Pre-optimization implementation, used as the fallback kernel.
+
+    Used directly by the public entry point for every input the optimized
+    int64-word kernel does not cover (compact-order buffers, element stride
+    != 1, odd meta width).
+    """
+    logger.debug("GEMS_ENFLAMETO_SPARSE_SEMI_STRUCTURED BASELINE")
     if not isinstance(dense, torch.Tensor):
         raise RuntimeError(
             "_to_sparse_semi_structured: dense argument must be a Tensor"
@@ -490,3 +522,241 @@ def to_sparse_semi_structured(dense):
             "{} sparsity pattern".format("1:2" if ksparse == 2 else "2:4")
         )
     return packed, meta
+
+
+@triton.jit
+def _group_q(
+    lo32, hi32, ELEM_BITS: tl.constexpr, KSPARSE: tl.constexpr, NEG0: tl.constexpr
+):
+    """Slot codes/values of the group whose slots live in (lo32[, hi32]).
+
+    ELEM_BITS==8:  the four slots are the four bytes of lo32 (KSPARSE==4).
+    ELEM_BITS==16: slots are the 16-bit lanes of (lo32, hi32), KSPARSE==4.
+    ELEM_BITS==32: slots are (lo32, hi32), KSPARSE==2.
+    Returns (q, cnt, v0, v1): the 4-bit slot code, the nonzero count, and the
+    two retained fields as zero-extended uint32 bit patterns (bit-exact).
+    """
+    if ELEM_BITS == 16:
+        s0 = lo32 & 0xFFFF
+        s1 = (lo32 >> 16) & 0xFFFF
+        s2 = hi32 & 0xFFFF
+        s3 = (hi32 >> 16) & 0xFFFF
+    elif ELEM_BITS == 8:
+        s0 = lo32 & 0xFF
+        s1 = (lo32 >> 8) & 0xFF
+        s2 = (lo32 >> 16) & 0xFF
+        s3 = (lo32 >> 24) & 0xFF
+    else:
+        s0 = lo32
+        s1 = hi32
+        s2 = s0
+        s3 = s1
+    n0 = (s0 != 0) & (s0 != NEG0)
+    n1 = (s1 != 0) & (s1 != NEG0)
+    if KSPARSE == 4:
+        n2 = (s2 != 0) & (s2 != NEG0)
+        n3 = (s3 != 0) & (s3 != NEG0)
+        cnt = n0.to(tl.int32) + n1.to(tl.int32) + n2.to(tl.int32) + n3.to(tl.int32)
+        c0 = tl.where(n0, 0, tl.where(n1, 1, tl.where(n2, 2, 3)))
+        c1 = tl.where(
+            n0 & (c0 != 0),
+            0,
+            tl.where(n1 & (c0 != 1), 1, tl.where(n2 & (c0 != 2), 2, 3)),
+        )
+        v0 = tl.where(c0 == 0, s0, tl.where(c0 == 1, s1, tl.where(c0 == 2, s2, s3)))
+        v1 = tl.where(c1 == 0, s0, tl.where(c1 == 1, s1, tl.where(c1 == 2, s2, s3)))
+        q = c0 | (c1 << 2)
+    else:
+        cnt = n0.to(tl.int32) + n1.to(tl.int32)
+        c0 = tl.where(n0, 0, 1)
+        v0 = tl.where(c0 == 0, s0, s1)
+        v1 = v0
+        q = (2 * c0) | ((2 * c0 + 1) << 2)
+    return q, cnt, v0, v1
+
+
+@triton.jit
+def _to_sss_i64_kernel(
+    g_ptr,
+    packed_ptr,
+    meta_ptr,
+    flag_ptr,
+    nrows,
+    words_per_row,
+    wstride0,
+    meta_nrows,
+    meta_ncols,
+    BLOCK_R: tl.constexpr,
+    NW: tl.constexpr,
+    KSPARSE: tl.constexpr,
+    GROUP: tl.constexpr,
+    INTERWEAVE: tl.constexpr,
+    META_I32: tl.constexpr,
+    ELEM_BITS: tl.constexpr,
+):
+    """Optimized int64-word kernel for row-major inputs (see module docstring)."""
+    WPM: tl.constexpr = 4  # int64 words per meta word
+    GPW: tl.constexpr = 64 // (KSPARSE * ELEM_BITS)  # groups per int64 word
+    NG: tl.constexpr = WPM * GPW  # groups per meta word
+    BM: tl.constexpr = (NW * GPW) // NG  # meta words per row-tile
+
+    pid_r = tl.program_id(0)
+    pid_c = tl.program_id(1)
+
+    if ELEM_BITS == 16:
+        NEG0: tl.constexpr = 0x8000
+    elif ELEM_BITS == 32:
+        NEG0: tl.constexpr = 0x80000000
+    else:
+        NEG0: tl.constexpr = 0x100  # int8 has no negative zero; never matches
+
+    # ---- pass A: packed payload + validity flag (input order) ----
+    rows = pid_r * BLOCK_R + tl.arange(0, BLOCK_R)
+    widx = pid_c * NW + tl.arange(0, NW)
+    rmask = rows < nrows
+    wmask = rmask[:, None] & (widx < words_per_row)[None, :]
+
+    G = tl.load(g_ptr + rows[:, None] * wstride0 + widx[None, :], mask=wmask, other=0)
+    Gu = G.to(tl.uint64, bitcast=True)
+    lo32 = (Gu & 0xFFFFFFFF).to(tl.uint32)
+    hi32 = (Gu >> 32).to(tl.uint32)
+
+    qa, cnta, va0, va1 = _group_q(lo32, hi32, ELEM_BITS, KSPARSE, NEG0)
+    if GPW == 1:
+        if ELEM_BITS == 16:
+            P = va0 | (va1 << 16)
+        else:
+            P = va0
+        bad = (cnta != (KSPARSE // 2)) & wmask
+    else:
+        qb, cntb, vb0, vb1 = _group_q(hi32, lo32, 8, 4, 0x100)
+        P = va0 | (va1 << 8) | (vb0 << 16) | (vb1 << 24)
+        bad = ((cnta != 2) | (cntb != 2)) & wmask
+
+    if tl.max(tl.reshape(bad.to(tl.int32), (BLOCK_R * NW,)), axis=0) > 0:
+        tl.atomic_or(flag_ptr, 1)
+
+    tl.store(
+        packed_ptr + rows[:, None] * words_per_row + widx[None, :],
+        P.to(tl.int32, bitcast=True),
+        mask=wmask,
+    )
+
+    # ---- pass B: metadata from the codes already in registers ----
+    # The ColumnMajorInterleaved<2> permutation maps the (BLOCK_R, BM) tile
+    # onto itself (the row swizzle stays inside the GROUP block and the
+    # parity swap exchanges adjacent column pairs), so the tile lanes only
+    # need the reordered store address, never a data shuffle.
+    rl = tl.arange(0, BLOCK_R)
+    dr0l = (rl // GROUP) * GROUP + ((rl % GROUP) % 8) * INTERWEAVE + (rl % GROUP) // 8
+    kl = tl.arange(0, BM)
+    dr0t = tl.broadcast_to(dr0l[:, None], (BLOCK_R, BM))
+    klt = tl.broadcast_to(kl[None, :], (BLOCK_R, BM))
+    b = (dr0t ^ klt) & 1
+    drowl = dr0t ^ b
+    dcoll = klt ^ b
+
+    if GPW == 1:
+        contrib = qa.to(tl.uint32) << (4 * (widx % WPM))[None, :]
+    else:
+        contrib = (qa.to(tl.uint32) << (8 * (widx % WPM))[None, :]) | (
+            qb.to(tl.uint32) << (8 * (widx % WPM) + 4)[None, :]
+        )
+    wword = tl.sum(tl.reshape(contrib, (BLOCK_R, BM, WPM)), axis=2)
+
+    drow = pid_r * BLOCK_R + drowl
+    dcol = dcoll + pid_c * BM
+    flat = (dcol // 2) * (2 * meta_nrows) + drow * 2 + (dcol & 1)
+    smask = tl.broadcast_to(rmask[:, None], (BLOCK_R, BM)) & (dcol < meta_ncols)
+    if META_I32:
+        tl.store(meta_ptr + flat, wword.to(tl.int32, bitcast=True), mask=smask)
+    else:
+        tl.store(
+            meta_ptr + flat, wword.to(tl.uint16).to(tl.int16, bitcast=True), mask=smask
+        )
+
+
+def _to_sss_fast(dense):
+    """Launch the optimized int64-word kernel; returns None when inapplicable.
+
+    Every rejection here falls through to ``_to_sparse_semi_structured_baseline``
+    which re-validates and raises the reference's error messages, so no input
+    class loses its semantics.  Pattern-invalid inputs raise from this path
+    with the reference's message (never silently fall back).
+    """
+    if not isinstance(dense, torch.Tensor) or dense.dim() != 2:
+        return None
+    dt = dense.dtype
+    if dt == torch.int8:
+        per_meta, ksparse, meta_dtype, row_align = 32, 4, torch.int32, 16
+        group, interweave, meta_i32, elem_bits = 16, 2, True, 8
+    elif dt == torch.float16 or dt == torch.bfloat16:
+        per_meta, ksparse, meta_dtype, row_align = 16, 4, torch.int16, 32
+        group, interweave, meta_i32, elem_bits = 32, 4, False, 16
+    elif dt == torch.float32:
+        per_meta, ksparse, meta_dtype, row_align = 8, 2, torch.int16, 32
+        group, interweave, meta_i32, elem_bits = 32, 4, False, 32
+    else:
+        return None
+    nrows, ncols = dense.shape
+    if nrows == 0 or ncols == 0:
+        return None
+    if nrows % row_align != 0 or ncols % per_meta != 0:
+        return None
+    if (ncols // per_meta) % 2 != 0:
+        # Odd meta width: keep the reference's exact store semantics verbatim.
+        return None
+    strides = dense.stride()
+    if strides[1] != 1 or _compact_order(strides):
+        return None
+    try:
+        xi64 = dense.view(torch.int64)
+    except (RuntimeError, ValueError):
+        return None
+
+    words_per_row = xi64.shape[1]
+    meta_ncols = ncols // per_meta
+    packed = torch.empty((nrows, ncols // 2), dtype=dt, device=dense.device)
+    pi32 = packed.view(torch.int32)
+    meta = torch.empty((nrows, meta_ncols), dtype=meta_dtype, device=dense.device)
+    flag = torch.zeros(1, dtype=torch.int32, device=dense.device)
+
+    nw = (
+        _FAST_NW_SMALL
+        if nrows * words_per_row <= _FAST_NW_SWITCH_WORDS
+        else _FAST_NW_LARGE
+    )
+    grid = (triton.cdiv(nrows, _BLOCK_R), triton.cdiv(words_per_row, nw))
+    _to_sss_i64_kernel[grid](
+        xi64,
+        pi32,
+        meta,
+        flag,
+        nrows,
+        words_per_row,
+        xi64.stride(0),
+        nrows,
+        meta_ncols,
+        BLOCK_R=_BLOCK_R,
+        NW=nw,
+        KSPARSE=ksparse,
+        GROUP=group,
+        INTERWEAVE=interweave,
+        META_I32=meta_i32,
+        ELEM_BITS=elem_bits,
+        num_warps=_FAST_NUM_WARPS,
+    )
+    if flag.item() != 0:
+        raise RuntimeError(
+            "_to_sparse_semi_structured: dense argument does not match "
+            "{} sparsity pattern".format("1:2" if ksparse == 2 else "2:4")
+        )
+    return packed, meta
+
+
+def to_sparse_semi_structured(dense):
+    logger.debug("GEMS_ENFLAME_GCU400 TO_SPARSE_SEMI_STRUCTURED")
+    result = _to_sss_fast(dense)
+    if result is not None:
+        return result
+    return _to_sparse_semi_structured_baseline(dense)

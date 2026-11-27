@@ -34,5 +34,5 @@ logger = logging.getLogger(__name__)
 
 
 def __ilshift__(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 __ILSHIFT__")
+    logger.debug("GEMS_ENFLAME __ILSHIFT__")
     return bitwise_left_shift_(self, other)

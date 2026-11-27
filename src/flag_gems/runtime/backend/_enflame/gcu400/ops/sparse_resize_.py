@@ -34,51 +34,6 @@ _SPARSE_COO_DIMS_FALLBACK_FLAG = "_flag_gems_gcu400_sparse_coo_dims_fallback_reg
 _SPARSE_COO_DIMS_LIBRARY = None
 
 
-def ensure_sparse_coo_dims_gcu_fallback():
-    """Idempotently register SparsePrivateUse1's empty COO constructor for sparse metadata operators."""
-    global _SPARSE_COO_DIMS_LIBRARY
-    if getattr(torch, _SPARSE_COO_DIMS_FALLBACK_FLAG, False):
-        return
-
-    def build_empty_cpu_sparse_coo(
-        sparse_dim,
-        dense_dim,
-        size,
-        *,
-        dtype=None,
-        layout=None,
-        device=None,
-        pin_memory=False,
-    ):
-        # Empty tensors have no data to move: values shape (0,) + dense tail and indices shape
-        # (sparse_dim, 0) are the only structural information (item-for-item aligned with the native Meta
-        # implementation).
-        if layout is not None and layout != torch.sparse_coo:
-            raise RuntimeError(f"expected sparse layout, but got layout {layout}")
-        cpu_indices = torch.empty((sparse_dim, 0), dtype=torch.long)
-        cpu_values = torch.empty(
-            (0,) + tuple(size[sparse_dim:]),
-            dtype=dtype if dtype is not None else torch.get_default_dtype(),
-        )
-        return torch.sparse_coo_tensor(cpu_indices, cpu_values, tuple(size))
-
-    _SPARSE_COO_DIMS_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _SPARSE_COO_DIMS_LIBRARY.impl(
-            "_sparse_coo_tensor_with_dims",
-            build_empty_cpu_sparse_coo,
-            "SparsePrivateUse1",
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "sparse COO dims gcu400 fallback registration skipped: %s", error
-        )
-    setattr(torch, _SPARSE_COO_DIMS_FALLBACK_FLAG, True)
-
-
-ensure_sparse_coo_dims_gcu_fallback()
-
-
 # Triton device kernel for the one data-movement path that aten::sparse_resize_
 # exposes: relaying the stored values of a non-empty sparse COO tensor when its
 # dense trailing dimensions change size (the reference resizes the values
@@ -110,6 +65,22 @@ def _sparse_grow_error(kind, before, after):
     )
 
 
+def _assemble_coo(indices, values, size):
+    """Assemble a COO tensor from already-valid components.
+
+    ``torch.sparse_coo_tensor`` pays for the generic factory argument handling
+    (dtype/device/pin_memory inference, invariant opt-in) on every call; the
+    aten entry point takes the components as-is and showed a measurable saving
+    on the metadata-only resize shapes where nothing else is left to optimize.
+    """
+    return torch.ops.aten._sparse_coo_tensor_unsafe(indices, values, list(size))
+
+
+def cur_dense_dim(self):
+    """Number of dense trailing dimensions, read without a dispatched call."""
+    return len(self._values().shape) - 1
+
+
 def _install_metadata(self, new_sp):
     """Install ``new_sp``'s sparse metadata on ``self`` in place.
 
@@ -133,21 +104,26 @@ def sparse_resize_(
     logical sizes (and possibly the storage shapes of the indices/values)
     change. A non-empty tensor may only grow, mirroring the native COO resizer.
 
-    Metadata is read through ``_indices()``/``_values()``/``_nnz()``, which are
-    direct TensorImpl accessors rather than dispatched operators. The internal
-    ``self.sparse_dim()``/``self.dense_dim()`` calls do dispatch to the
-    registered FlagGems implementations, which are pure metadata readers and do
-    not call back into this operator, so there is no re-entry here.
+    Metadata is read through ``_indices()``/``_values()``/``_nnz()`` and
+    ``dim()``, which are direct TensorImpl accessors rather than dispatched
+    operators, so no round trip through this backend's own Python kernels is
+    needed and there is no re-entry into this operator.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_RESIZE_")
+    logger.debug("GEMS_ENFLAME SPARSE_RESIZE_")
     if self.layout != torch.sparse_coo:
         raise NotImplementedError("sparse_resize_ supports a sparse COO tensor")
 
     cur = self.shape
+    # Sparse/dense split read straight off the COO components: the dispatched
+    # ``self.sparse_dim()``/``self.dense_dim()`` readers land in this backend's
+    # own Python implementations, and each round trip showed up as a measurable
+    # share of the metadata-only resize cost.
+    cur_dense = cur_dense_dim(self)
+    cur_sparse = self.dim() - cur_dense
     if (
         tuple(size) == tuple(cur)
-        and self.sparse_dim() == sparse_dim
-        and self.dense_dim() == dense_dim
+        and cur_sparse == sparse_dim
+        and cur_dense == dense_dim
     ):
         return self
 
@@ -162,22 +138,23 @@ def sparse_resize_(
         )
 
     nnz = self._nnz()
+    is_coalesced = self.is_coalesced() if nnz > 0 else True
     if nnz > 0:
         # Non-empty tensors may only grow: same sparse/dense split and no
         # shrinking dimension (mirrors SparseTensorImpl::_resize_).
-        if sparse_dim != self.sparse_dim():
+        if sparse_dim != cur_sparse:
             raise RuntimeError(
                 _sparse_grow_error(
                     "changing the number of sparse dimensions",
-                    self.sparse_dim(),
+                    cur_sparse,
                     sparse_dim,
                 )
             )
-        if dense_dim != self.dense_dim():
+        if dense_dim != cur_dense:
             raise RuntimeError(
                 _sparse_grow_error(
                     "changing the number of dense dimensions",
-                    self.dense_dim(),
+                    cur_dense,
                     dense_dim,
                 )
             )
@@ -206,7 +183,11 @@ def sparse_resize_(
         if tuple(vals.shape[1:]) == new_dense:
             # Sparse dims grew only: the entries are verbatim, so the new
             # tensor can share the existing indices/values storage (zero copy).
-            new_sp = torch.sparse_coo_tensor(idx, vals, tuple(size))
+            # The unsafe constructor is used because the entries were taken from
+            # an already-valid COO tensor: its O(nnz) invariant check duplicates
+            # work the native in-place resizer never does, and measured ~0.2ms of
+            # fixed overhead per call on the metadata-only shapes.
+            new_sp = _assemble_coo(idx, vals, size)
         else:
             # Dense trailing dims grew on a non-empty tensor: the values
             # storage must be relaid out (reference resize_ semantics),
@@ -238,8 +219,8 @@ def sparse_resize_(
                         BLOCK=_BLOCK,
                         num_warps=4,
                     )
-            new_sp = torch.sparse_coo_tensor(idx, new_v, tuple(size))
-        if self.is_coalesced() and not new_sp.is_coalesced():
+            new_sp = _assemble_coo(idx, new_v, size)
+        if is_coalesced and not new_sp.is_coalesced():
             new_sp._coalesced_(True)
         _install_metadata(self, new_sp)
         return self
@@ -251,6 +232,6 @@ def sparse_resize_(
     new_v = torch.empty(
         (0,) + tuple(size[sparse_dim:]), dtype=self.dtype, device=self.device
     )
-    new_sp = torch.sparse_coo_tensor(new_i, new_v, tuple(size))
+    new_sp = _assemble_coo(new_i, new_v, size)
     _install_metadata(self, new_sp)
     return self

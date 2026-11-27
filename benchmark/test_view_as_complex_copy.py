@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # (input_shape, row_strided) tuples. Every shape ends with the required size-2
@@ -35,7 +37,13 @@ VIEW_AS_COMPLEX_COPY_SHAPES = [
 # the standard float dtype set and float64 is added in its place. The line
 # below documents the deliberate restriction; the base class validates it.
 BENCH_DTYPES = [d for d in consts.FLOAT_DTYPES if d != torch.bfloat16]
-if torch.float64 not in BENCH_DTYPES:
+if torch.float64 not in BENCH_DTYPES and (
+    flag_gems.vendor_name != "enflame" or flag_gems.runtime.device.support_fp64
+):
+    # float64 -> complex128 needs an fp64 datapath.  gcu400 has none: the
+    # native op faults the device (KMD: Sip exception) once the timing loop
+    # repeats the launch, so the dtype is dropped there only.  Vendors with an
+    # fp64 datapath keep the upstream dtype list.
     BENCH_DTYPES.append(torch.float64)
 
 

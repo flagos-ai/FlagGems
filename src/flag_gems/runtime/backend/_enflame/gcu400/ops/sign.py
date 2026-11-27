@@ -309,93 +309,16 @@ def _sign_impl(x: torch.Tensor, out: torch.Tensor):
 
 
 def sign(x: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SIGN")
+    logger.debug("GEMS_ENFLAME SIGN")
     out = torch.empty_like(x)
     return _sign_impl(x, out)
 
 
 def sign_out(x: torch.Tensor, *, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SIGN_OUT")
+    logger.debug("GEMS_ENFLAME SIGN_OUT")
     return _sign_impl(x, out)
 
 
 def sign_(x: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SIGN_")
+    logger.debug("GEMS_ENFLAME SIGN_")
     return _sign_impl(x, x)
-
-
-# ---------------------------------------------------------------------------
-# Native torch.sign guard (torch_gcu topsaten runtime defects, P21 family)
-#
-# Probe matrix (jobs j20261111163337_77c8bcfe / j20261112035154_db634ae0,
-# gcu400/L600, torch_gcu 2.11.0, both with and without
-# TORCH_GCU_ENABLE_INT64_AND_UINT64=1): native torch.sign aborts the whole
-# process for int64 and bool GCU tensors --
-#   * int64: TOPSATEN_STATUS_NOT_SUPPORT CHECK abort (op_aten_unary.h:347
-#     error=3 -> gcu_utils.cpp:74 "Check failed: 0" -> SIGABRT, core dump);
-#   * bool: same signature (topsatenSign dump shows dtype: Bool).
-# fp32/fp16/bf16/int8/uint8/int16/int32 stay native-correct.  The accuracy
-# gate's reference leg calls torch.sign directly on GCU tensors
-# (tests/test_sign.py:70), so a bool reference call kills the gate process
-# before the FlagGems candidate is judged (exit 134).  Route exactly the
-# broken dtypes through the FlagGems kernel (bit-exact vs the CPU
-# reference for every probed dtype and layout); every other call passes
-# through to the captured native callables untouched (same narrow-shim
-# family as the sgn / svd guards).  Benchmark note: the native baseline
-# leg for the guarded dtypes therefore measures the FlagGems kernel (there
-# is no working native implementation to compare against); tests/test_sign
-# covers them independently via --ref cpu.
-_GUARDED_DEVICE_TYPES = ("gcu",)
-_GUARDED_DTYPES = (
-    torch.int64,
-    torch.bool,
-)
-
-
-def _needs_native_sign_guard(t):
-    return (
-        isinstance(t, torch.Tensor)
-        and t.device.type in _GUARDED_DEVICE_TYPES
-        and t.dtype in _GUARDED_DTYPES
-    )
-
-
-def _install_native_sign_guard():
-    # The backend loader imports this file under several module names, so the
-    # module body (and this installer) runs more than once; the marker check
-    # keeps the first install authoritative and later runs a no-op.
-    native_sign = torch.sign
-    if getattr(native_sign, "_flaggems_gcu_sign_guard", False):
-        return
-    native_tensor_sign = torch.Tensor.sign
-    native_tensor_sign_ = torch.Tensor.sign_
-
-    def _sign_guard(x, *, out=None):
-        if _needs_native_sign_guard(x):
-            if out is None:
-                return sign(x)
-            return sign_out(x, out=out)
-        if out is None:
-            return native_sign(x)
-        return native_sign(x, out=out)
-
-    def _tensor_sign_guard(self):
-        if _needs_native_sign_guard(self):
-            return sign(self)
-        return native_tensor_sign(self)
-
-    def _tensor_sign_guard_(self):
-        # In-place via the out-of-place kernel keeps non-contiguous, bool and
-        # fake-int64 inputs correct without touching aten::sign_.
-        if _needs_native_sign_guard(self):
-            return sign_out(self, out=self)
-        return native_tensor_sign_(self)
-
-    for guard in (_sign_guard, _tensor_sign_guard, _tensor_sign_guard_):
-        guard._flaggems_gcu_sign_guard = True
-    torch.sign = _sign_guard
-    torch.Tensor.sign = _tensor_sign_guard
-    torch.Tensor.sign_ = _tensor_sign_guard_
-
-
-_install_native_sign_guard()

@@ -171,6 +171,9 @@ def test_trapz_complex(shape, dtype, dim):
     if dim >= len(shape) or dim < -len(shape):
         pytest.skip("Invalid dim for shape")
 
+    if flag_gems.vendor_name == "ascend" and dtype == torch.complex32:
+        pytest.skip("Ascend does not support casting complex inputs to complex32")
+
     real = torch.randn(shape, device=flag_gems.device)
     imag = torch.randn(shape, device=flag_gems.device)
     inp = torch.complex(real, imag).to(dtype)

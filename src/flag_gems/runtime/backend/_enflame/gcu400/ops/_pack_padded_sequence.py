@@ -27,8 +27,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger(__name__)
 
 # the vectorized host construction.
@@ -167,7 +165,7 @@ def _pack_copy_kernel_table(
 
 
 def _pack_padded_sequence(input, lengths, batch_first):
-    logger.debug("GEMS_ENFLAME_GCU400 _PACK_PADDED_SEQUENCE")
+    logger.debug("GEMS_ENFLAME _PACK_PADDED_SEQUENCE")
 
     if batch_first:
         batch_size = input.shape[0]
@@ -195,7 +193,10 @@ def _pack_padded_sequence(input, lengths, batch_first):
     steps = torch.arange(max_len, dtype=torch.int64).unsqueeze(1)
     active = lengths_cpu.unsqueeze(0) > steps
     batch_sizes = active.sum(dim=1)
-    cumsum = flag_gems.cumsum(batch_sizes, dim=0)
+    # batch_sizes is host-resident int64 metadata, so it must use torch.cumsum:
+    # flag_gems.cumsum would treat the CPU tensor as a device tensor and launch
+    # a Triton kernel on it, which fails on the host metadata path.
+    cumsum = torch.cumsum(batch_sizes, dim=0)
 
     data = torch.empty(total_len, *feat_shape, dtype=input.dtype, device=input.device)
 
@@ -243,9 +244,9 @@ def _pack_padded_sequence(input, lengths, batch_first):
                 time_index = torch.repeat_interleave(step_ids, batch_sizes)
                 run_starts = torch.repeat_interleave(cumsum - batch_sizes, batch_sizes)
                 batch_index = torch.arange(total_len, dtype=torch.int64) - run_starts
-                meta_cpu = flag_gems.stack(
-                    (time_index, batch_index), dim=1
-                ).contiguous()
+                # Same as above: the index table is assembled on the host, so
+                # the device-side flag_gems.stack cannot be used here.
+                meta_cpu = torch.stack((time_index, batch_index), dim=1).contiguous()
             meta = meta_cpu.to(input.device, non_blocking=bool(NON_BLOCKING))
             if GRID_MODE:
                 grid = (total_len * num_feat_blocks,)

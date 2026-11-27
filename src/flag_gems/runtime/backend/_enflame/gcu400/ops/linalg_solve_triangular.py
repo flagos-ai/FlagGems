@@ -536,8 +536,408 @@ def _kslice_trsm_kernel_notle(
         tl.debug_barrier()
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# GCU400 fp32 fast path (2026-11-16): Neumann-series kernels, num_warps=1.
+#
+# Microbenchmarks on L600 (1 CTA, warm): a cross-lane tl.sum reduction costs
+# ~1-2us on this backend, so every serial per-row substitution loop (the old
+# small-diag paths, 3.5-5.4us per row once the per-row barrier + tile
+# reload is counted) is reduction/barrier-bound, not bandwidth-bound.  A
+# whole-block Neumann solve costs 1.38/2.02/4.84us for BN=16/32/64 at
+# num_warps=1 (num_warps=4 is 3-5x slower; BN=128 with nw=4 exceeds a
+# backend resource limit and aborts).  The fp32 solve is therefore dots-only
+# and out-of-place (kernels read B and write X; the host no longer clones B
+# nor fills an INV scratch nor copies to out), one launch for n<=384 and
+# two (block-inverse precompute + walk) above that, where the per-k-slice
+# CTAs would otherwise each redo the k-independent Neumann chain per block.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@libentry()
+@triton.jit
+def _tri_neumann_1blk(
+    A_ptr,
+    B_ptr,
+    X_ptr,
+    N,
+    K,
+    stride_a,
+    stride_b,
+    stride_x,
+    stride_ab,
+    stride_bb,
+    stride_xb,
+    BN: tl.constexpr,
+    KS: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+):
+    """Single-block Neumann solve for N <= BN <= 64.  Grid: (batch, k-slices)."""
+    pid_batch = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+    if col_start >= K:
+        return
+
+    A = A_ptr + pid_batch * stride_ab
+    Bs = B_ptr + pid_batch * stride_bb
+    X = X_ptr + pid_batch * stride_xb
+
+    # Natural (ascending) rows for both triangles: A = D (I + M) with M
+    # strictly lower OR strictly upper, and the nilpotent Neumann identity
+    # (I + M)^-1 = (I - M)(I + M^2)(I + M^4)...  holds for either orientation,
+    # so no solve-order remap is needed (descending address vectors degrade
+    # the load lowering on this backend).
+    rows = tl.arange(0, BN)
+    row1 = rows
+    r2 = row1[:, None]
+    c2 = row1[None, :]
+    in_blk = (rows[:, None] < N) & (rows[None, :] < N)
+
+    a_blk = tl.load(A + r2 * stride_a + c2, mask=in_blk, other=0.0)
+    if UNIT:
+        dinv = tl.full((BN,), 1.0, dtype=a_blk.dtype)
+    else:
+        dinv = 1.0 / tl.load(A + row1 * stride_a + row1, mask=rows < N, other=1.0)
+    if UPPER:
+        M = tl.where(c2 > r2, a_blk, 0.0) * dinv[:, None]
+    else:
+        M = tl.where(c2 < r2, a_blk, 0.0) * dinv[:, None]
+
+    kcols = col_start + tl.arange(0, KS)
+    col_mask = kcols < K
+    rmask2d = (rows[:, None] < N) & col_mask[None, :]
+    x = tl.load(Bs + r2 * stride_b + kcols[None, :], mask=rmask2d, other=0.0)
+    x = x * dinv[:, None]
+
+    # (I + M)^-1 = (I - M)(I + M^2)(I + M^4)...  exactly, applied to x.
+    M2 = tl.dot(M, M, allow_tf32=False)
+    M4 = tl.dot(M2, M2, allow_tf32=False)
+    M8 = tl.dot(M4, M4, allow_tf32=False)
+    x = x - tl.dot(M, x, allow_tf32=False)
+    x = x + tl.dot(M2, x, allow_tf32=False)
+    x = x + tl.dot(M4, x, allow_tf32=False)
+    x = x + tl.dot(M8, x, allow_tf32=False)
+    if BN >= 32:
+        M16 = tl.dot(M8, M8, allow_tf32=False)
+        x = x + tl.dot(M16, x, allow_tf32=False)
+    if BN >= 64:
+        M32 = tl.dot(M16, M16, allow_tf32=False)
+        x = x + tl.dot(M32, x, allow_tf32=False)
+    tl.store(X + r2 * stride_x + kcols[None, :], x, mask=rmask2d)
+
+
+@libentry()
+@triton.jit
+def _tri_walk_neumann(
+    A_ptr,
+    B_ptr,
+    X_ptr,
+    N,
+    K,
+    stride_a,
+    stride_b,
+    stride_x,
+    stride_ab,
+    stride_bb,
+    stride_xb,
+    BLOCK: tl.constexpr,
+    KS: tl.constexpr,
+    BM: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+):
+    """Multi-block Neumann walk.  Grid: (batch, k-slices).  Reads B, writes X."""
+    pid_batch = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+    if col_start >= K:
+        return
+
+    A = A_ptr + pid_batch * stride_ab
+    Bs = B_ptr + pid_batch * stride_bb
+    X = X_ptr + pid_batch * stride_xb
+
+    kcols = col_start + tl.arange(0, KS)
+    col_offs = kcols
+    col_mask = col_offs < K
+    cm2 = col_mask[None, :]
+
+    # Out-of-place without a prologue copy: the first-processed block reads
+    # its inputs from B, every later read (accumulated values) hits X.  A
+    # fully-masked-out load issues no traffic, so the two-source select is
+    # instruction overhead only, once per block.
+    num_blocks = tl.cdiv(N, BLOCK)
+    rows = tl.arange(0, BLOCK)
+    rr = tl.arange(0, BM)
+
+    for block_idx in range(num_blocks):
+        if not UPPER:
+            bk = block_idx
+        else:
+            bk = num_blocks - 1 - block_idx
+        blk_start = bk * BLOCK
+        blk_end = tl.minimum(blk_start + BLOCK, N)
+        blk_sz = blk_end - blk_start
+
+        # ═══════ Diag: Neumann solve of this block's slice ═══════
+        # Natural ascending rows for both triangles (see _tri_neumann_1blk);
+        # only the M mask orientation flips.  Block ORDER still walks
+        # bottom-up for UPPER (bk = num_blocks-1-block_idx).
+        row1 = blk_start + rows
+        r2 = row1[:, None]
+        c2 = row1[None, :]
+        in_blk = (rows[:, None] < blk_sz) & (rows[None, :] < blk_sz)
+        a_blk = tl.load(A + r2 * stride_a + c2, mask=in_blk, other=0.0)
+        if UNIT:
+            dinv = tl.full((BLOCK,), 1.0, dtype=a_blk.dtype)
+        else:
+            dinv = 1.0 / tl.load(
+                A + row1 * stride_a + row1, mask=rows < blk_sz, other=1.0
+            )
+        if UPPER:
+            M = tl.where(c2 > r2, a_blk, 0.0) * dinv[:, None]
+        else:
+            M = tl.where(c2 < r2, a_blk, 0.0) * dinv[:, None]
+        rmask2d = (rows[:, None] < blk_sz) & cm2
+        first = block_idx == 0
+        x0 = tl.load(
+            Bs + r2 * stride_b + col_offs[None, :], mask=rmask2d & first, other=0.0
+        ) + tl.load(
+            X + r2 * stride_x + col_offs[None, :],
+            mask=rmask2d & (first == 0),
+            other=0.0,
+        )
+        x = x0 * dinv[:, None]
+        M2 = tl.dot(M, M, allow_tf32=False)
+        M4 = tl.dot(M2, M2, allow_tf32=False)
+        M8 = tl.dot(M4, M4, allow_tf32=False)
+        M16 = tl.dot(M8, M8, allow_tf32=False)
+        x = x - tl.dot(M, x, allow_tf32=False)
+        x = x + tl.dot(M2, x, allow_tf32=False)
+        x = x + tl.dot(M4, x, allow_tf32=False)
+        x = x + tl.dot(M8, x, allow_tf32=False)
+        x = x + tl.dot(M16, x, allow_tf32=False)
+        if BLOCK >= 64:
+            M32 = tl.dot(M16, M16, allow_tf32=False)
+            x = x + tl.dot(M32, x, allow_tf32=False)
+        tl.store(X + r2 * stride_x + col_offs[None, :], x, mask=rmask2d)
+        # No barrier here: the solved rows are never re-read by this CTA (the
+        # update consumes the register-resident x and touches disjoint rows).
+
+        # ═══════ Update: X[rest, slice] -= A[rest, blk] @ X[blk, slice] ═══════
+        # x_panel is the register tile computed above.  A columns and the
+        # b_curr accumulation use NATURAL block coordinates.
+        need_update = tl.where(UPPER, bk > 0, blk_end < N)
+        if need_update:
+            M_REM = tl.where(UPPER, blk_start, N - blk_end)
+            rem_s = tl.where(UPPER, 0, blk_end)
+            bound = tl.where(UPPER, blk_start, N)
+            blk_nat = blk_start + rows
+            x_panel = x
+            for m_start in range(0, M_REM, BM):
+                rm = rem_s + m_start + rr
+                mask_m = (rm < bound)[:, None] & cm2
+                a_sub = tl.load(
+                    A + rm[:, None] * stride_a + blk_nat[None, :],
+                    mask=(rm < bound)[:, None] & (rows[None, :] < blk_sz),
+                    other=0.0,
+                )
+                acc = tl.dot(a_sub, x_panel, allow_tf32=False)
+                b_curr = tl.load(
+                    Bs + rm[:, None] * stride_b + col_offs[None, :],
+                    mask=mask_m & first,
+                    other=0.0,
+                ) + tl.load(
+                    X + rm[:, None] * stride_x + col_offs[None, :],
+                    mask=mask_m & (first == 0),
+                    other=0.0,
+                )
+                tl.store(
+                    X + rm[:, None] * stride_x + col_offs[None, :],
+                    b_curr - acc,
+                    mask=mask_m,
+                )
+            # This block's update must be visible to the next block's diag load
+            tl.debug_barrier()
+
+
+@libentry()
+@triton.jit
+def _tri_ainv_build(
+    A_ptr,
+    AINV_ptr,
+    N,
+    stride_a,
+    stride_ab,
+    BLOCK: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+):
+    """K1: per-diagonal-block inverse, computed once (k-independent).
+
+    Grid: (batch, blocks).  Stores Ainv tiles in solve-order coordinates at
+    AINV[(batch * NUM_BLOCKS + blk) * BLOCK * BLOCK].
+    """
+    pid_batch = tl.program_id(0)
+    pid_blk = tl.program_id(1)
+    A = A_ptr + pid_batch * stride_ab
+
+    blk_start = pid_blk * BLOCK
+    blk_end = tl.minimum(blk_start + BLOCK, N)
+    blk_sz = blk_end - blk_start
+
+    # Natural ascending coordinates for both triangles (see
+    # _tri_neumann_1blk); the M mask orientation carries the upper/lower
+    # distinction.
+    rows = tl.arange(0, BLOCK)
+    row1 = blk_start + rows
+    r2 = row1[:, None]
+    c2 = row1[None, :]
+    in_blk = (rows[:, None] < blk_sz) & (rows[None, :] < blk_sz)
+
+    a_blk = tl.load(A + r2 * stride_a + c2, mask=in_blk, other=0.0)
+    if UNIT:
+        dinv = tl.full((BLOCK,), 1.0, dtype=a_blk.dtype)
+    else:
+        dinv = 1.0 / tl.load(A + row1 * stride_a + row1, mask=rows < blk_sz, other=1.0)
+    if UPPER:
+        M = tl.where(c2 > r2, a_blk, 0.0) * dinv[:, None]
+    else:
+        M = tl.where(c2 < r2, a_blk, 0.0) * dinv[:, None]
+
+    # P = (I + M)^-1 = (I - M)(I + M^2)(I + M^4)...  applied to I (factors
+    # commute, so left-to-right application to I is exact).
+    P = tl.where(rows[:, None] == rows[None, :], 1.0, 0.0)
+    M2 = tl.dot(M, M, allow_tf32=False)
+    M4 = tl.dot(M2, M2, allow_tf32=False)
+    M8 = tl.dot(M4, M4, allow_tf32=False)
+    P = P - tl.dot(M, P, allow_tf32=False)
+    P = P + tl.dot(M2, P, allow_tf32=False)
+    P = P + tl.dot(M4, P, allow_tf32=False)
+    P = P + tl.dot(M8, P, allow_tf32=False)
+    if BLOCK >= 32:
+        M16 = tl.dot(M8, M8, allow_tf32=False)
+        P = P + tl.dot(M16, P, allow_tf32=False)
+    if BLOCK >= 64:
+        M32 = tl.dot(M16, M16, allow_tf32=False)
+        P = P + tl.dot(M32, P, allow_tf32=False)
+    # A = D (I + M)  =>  A^-1 = (I + M)^-1 D^-1 = P with columns scaled by D^-1
+    Ainv = P * dinv[None, :]
+    base = (pid_batch * NUM_BLOCKS + pid_blk) * BLOCK * BLOCK
+    tl.store(AINV_ptr + base + rows[:, None] * BLOCK + rows[None, :], Ainv)
+
+
+@libentry()
+@triton.jit
+def _tri_walk_ainv(
+    A_ptr,
+    B_ptr,
+    X_ptr,
+    AINV_ptr,
+    N,
+    K,
+    stride_a,
+    stride_b,
+    stride_x,
+    stride_ab,
+    stride_bb,
+    stride_xb,
+    BLOCK: tl.constexpr,
+    KS: tl.constexpr,
+    BM: tl.constexpr,
+    UPPER: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+):
+    """K2: multi-block walk with precomputed block inverses.  Grid: (batch, k-slices)."""
+    pid_batch = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+    if col_start >= K:
+        return
+
+    A = A_ptr + pid_batch * stride_ab
+    Bs = B_ptr + pid_batch * stride_bb
+    X = X_ptr + pid_batch * stride_xb
+
+    kcols = col_start + tl.arange(0, KS)
+    col_offs = kcols
+    col_mask = col_offs < K
+    cm2 = col_mask[None, :]
+
+    # Out-of-place without a prologue copy (see _tri_walk_neumann).
+    num_blocks = tl.cdiv(N, BLOCK)
+    rows = tl.arange(0, BLOCK)
+    rr = tl.arange(0, BM)
+    ainv_base = AINV_ptr + pid_batch * NUM_BLOCKS * BLOCK * BLOCK
+
+    for block_idx in range(num_blocks):
+        if not UPPER:
+            bk = block_idx
+        else:
+            bk = num_blocks - 1 - block_idx
+        blk_start = bk * BLOCK
+        blk_end = tl.minimum(blk_start + BLOCK, N)
+        blk_sz = blk_end - blk_start
+        row1 = blk_start + rows
+        r2 = row1[:, None]
+
+        # ═══════ Diag: one dot with the precomputed inverse ═══════
+        ainv = tl.load(
+            ainv_base + bk * BLOCK * BLOCK + rows[:, None] * BLOCK + rows[None, :]
+        )
+        rmask2d = (rows[:, None] < blk_sz) & cm2
+        first = block_idx == 0
+        x0 = tl.load(
+            Bs + r2 * stride_b + col_offs[None, :], mask=rmask2d & first, other=0.0
+        ) + tl.load(
+            X + r2 * stride_x + col_offs[None, :],
+            mask=rmask2d & (first == 0),
+            other=0.0,
+        )
+        x = tl.dot(ainv, x0, allow_tf32=False)
+        tl.store(X + r2 * stride_x + col_offs[None, :], x, mask=rmask2d)
+        # No barrier: solved rows are never re-read by this CTA.
+
+        # ═══════ Update ═══════
+        # Panel comes from the register tile; A columns and b_curr use
+        # NATURAL block coordinates.
+        need_update = tl.where(UPPER, bk > 0, blk_end < N)
+        if need_update:
+            M_REM = tl.where(UPPER, blk_start, N - blk_end)
+            rem_s = tl.where(UPPER, 0, blk_end)
+            bound = tl.where(UPPER, blk_start, N)
+            blk_nat = blk_start + rows
+            x_panel = x
+            for m_start in range(0, M_REM, BM):
+                rm = rem_s + m_start + rr
+                mask_m = (rm < bound)[:, None] & cm2
+                a_sub = tl.load(
+                    A + rm[:, None] * stride_a + blk_nat[None, :],
+                    mask=(rm < bound)[:, None] & (rows[None, :] < blk_sz),
+                    other=0.0,
+                )
+                acc = tl.dot(a_sub, x_panel, allow_tf32=False)
+                b_curr = tl.load(
+                    Bs + rm[:, None] * stride_b + col_offs[None, :],
+                    mask=mask_m & first,
+                    other=0.0,
+                ) + tl.load(
+                    X + rm[:, None] * stride_x + col_offs[None, :],
+                    mask=mask_m & (first == 0),
+                    other=0.0,
+                )
+                tl.store(
+                    X + rm[:, None] * stride_x + col_offs[None, :],
+                    b_curr - acc,
+                    mask=mask_m,
+                )
+            tl.debug_barrier()
+
+
 def linalg_solve_triangular(A, B, *, upper, left=True, unitriangular=False, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SOLVE_TRIANGULAR")
+    logger.debug("GEMS_ENFLAME LINALG_SOLVE_TRIANGULAR")
     if A.dtype not in (torch.float32, torch.float64):
         raise ValueError("linalg_solve_triangular only supports float32 and float64")
     if B.dtype != A.dtype:
@@ -572,45 +972,31 @@ def linalg_solve_triangular(A, B, *, upper, left=True, unitriangular=False, out=
             return out
         return result
 
-    A = A.contiguous()
-    B = B.contiguous()
+    if not A.is_contiguous():
+        A = A.contiguous()
+    if not B.is_contiguous():
+        B = B.contiguous()
     n, k = A.shape[-1], B.shape[-1]
     dtype = A.dtype
     is_fp64 = dtype == torch.float64
     orig_shape = B.shape
 
-    if A.ndim > 2:
-        batch = 1
-        for d in A.shape[:-2]:
-            batch *= d
+    batch = 1
+    for d in A.shape[:-2]:
+        batch *= d
+
+    if is_fp64:
+        # Legacy serial-substitution path (Neumann fp64 dots are ~2.5x slower;
+        # gcu400 silicon has no fp64 arithmetic at all, so this branch only
+        # matters on backends where fp64 triton works).
         A_view = A.reshape(batch, n, n)
         B_view = B.clone().reshape(batch, n, k)
-    else:
-        batch = 1
-        A_view = A.unsqueeze(0)
-        B_view = B.clone().unsqueeze(0)
+        stride_a_n = A_view.stride(1)
+        stride_b_k = B_view.stride(1)
 
-    stride_a_n = A_view.stride(1)
-    stride_b_k = B_view.stride(1)
-
-    # Fast path: N <= 16
-    if n <= 16:
-        BLOCK_K = 32 if k <= 32 else 64
-        num_k_tiles = (k + BLOCK_K - 1) // BLOCK_K
-        if HAS_TLE:
-            _small_diag_kernel[(batch, num_k_tiles)](
-                A_view,
-                B_view,
-                n,
-                k,
-                BLOCK_K,
-                upper,
-                unitriangular,
-                is_fp64,
-                stride_a_n,
-                stride_b_k,
-            )
-        else:
+        if n <= 16:
+            BLOCK_K = 32 if k <= 32 else 64
+            num_k_tiles = (k + BLOCK_K - 1) // BLOCK_K
             inv = torch.zeros(
                 batch * num_k_tiles * 16, dtype=dtype, device=A_view.device
             )
@@ -627,79 +1013,151 @@ def linalg_solve_triangular(A, B, *, upper, left=True, unitriangular=False, out=
                 stride_a_n,
                 stride_b_k,
             )
+        else:
+            upd_bm = 128
+            BLOCK_SIZE = 64 if n >= 512 else 32
+            K_SLICE = 16 if n >= 512 else 8
+            num_kslices = (k + K_SLICE - 1) // K_SLICE
+            small_diag = n <= 64
+            for b in range(batch):
+                _kslice_trsm_kernel_notle[(num_kslices,)](
+                    A_view[b],
+                    B_view[b],
+                    n,
+                    k,
+                    stride_a_n,
+                    stride_b_k,
+                    BLOCK_SIZE,
+                    K_SLICE,
+                    upd_bm,
+                    is_fp64,
+                    small_diag,
+                    upper,
+                    unitriangular,
+                    num_warps=4,
+                )
         B_view = B_view.reshape(orig_shape)
         if out is not None:
             out.copy_(B_view)
             return out
         return B_view
 
-    # K-slice barrier-free kernel for N > 32: one CTA per column slice,
-    # intra-CTA sync only (tl.debug_barrier), no cross-CTA barrier, fully
-    # portable across backends.
-    upd_bm = 128
-    if HAS_TLE:
-        # NVIDIA: keep 32/8 -- ks16+bs64 measured catastrophic there
-        # (0.37-0.44x), ks8/bs32 is near-optimal for every (n, k).
-        BLOCK_SIZE = 32
-        K_SLICE = 8
+    # ── fp32 fast path: out-of-place Neumann kernels, num_warps=1 ──
+    if out is not None and out.shape == orig_shape and out.is_contiguous():
+        X = out
+        copy_back = False
     else:
-        # Hygon sweep (2026-08-25): larger tiles win decisively at n>=512
-        # (n=512 k=256: 0.88->1.19, n=512 k=8: 0.76->1.01, n=1024 k=8:
-        # 0.44->0.58, n=2048 k=8: 0.24->0.33); all configs tie for n<512.
-        BLOCK_SIZE = 64 if n >= 512 else 32
-        K_SLICE = 16 if n >= 512 else 8
-    num_kslices = (k + K_SLICE - 1) // K_SLICE
-    # Serial diag for fp64 (Neumann costs 9 fp64 dots ~2.5x slower) and for
-    # n<=64 fp32 (Hygon FMA-emulated dot makes tiny-block Neumann ~3x slower
-    # than the serial row loop).
-    small_diag = n <= 64
-    if HAS_TLE:
-        for b in range(batch):
-            _kslice_trsm_kernel[(num_kslices,)](
-                A_view[b],
-                B_view[b],
-                n,
-                k,
-                stride_a_n,
-                stride_b_k,
-                BLOCK_SIZE,
-                K_SLICE,
-                upd_bm,
-                is_fp64,
-                upper,
-                unitriangular,
-                num_warps=4,
-            )
-    else:
-        for b in range(batch):
-            _kslice_trsm_kernel_notle[(num_kslices,)](
-                A_view[b],
-                B_view[b],
-                n,
-                k,
-                stride_a_n,
-                stride_b_k,
-                BLOCK_SIZE,
-                K_SLICE,
-                upd_bm,
-                is_fp64,
-                small_diag,
-                upper,
-                unitriangular,
-                num_warps=4,
-            )
+        X = torch.empty_like(B)
+        copy_back = out is not None
 
-    B_view = B_view.reshape(orig_shape)
-    if out is not None:
-        out.copy_(B_view)
+    stride_a = n
+    stride_b = k
+    stride_x = k
+    stride_ab = n * n
+    stride_bb = n * k
+    stride_xb = n * k
+
+    # k-slices ride grid.y (hardware limit 255; batch rides grid.x, limit
+    # 65535).  Widen the slice instead of overflowing the axis.
+    KS = 16
+    while (k + KS - 1) // KS > 255:
+        KS *= 2
+    num_k = (k + KS - 1) // KS
+    if n <= 64:
+        BN = 16 if n <= 16 else (32 if n <= 32 else 64)
+        _tri_neumann_1blk[(batch, num_k)](
+            A,
+            B,
+            X,
+            n,
+            k,
+            stride_a,
+            stride_b,
+            stride_x,
+            stride_ab,
+            stride_bb,
+            stride_xb,
+            BN,
+            KS,
+            upper,
+            unitriangular,
+            num_warps=1,
+        )
+    elif n <= 192:
+        # Walk with BLOCK=64: for n<=192 the 3-or-fewer-block chain beats the
+        # Ainv split (K1's [128]-inverse chain alone costs ~24us).
+        _tri_walk_neumann[(batch, num_k)](
+            A,
+            B,
+            X,
+            n,
+            k,
+            stride_a,
+            stride_b,
+            stride_x,
+            stride_ab,
+            stride_bb,
+            stride_xb,
+            64,
+            KS,
+            128,
+            upper,
+            unitriangular,
+            num_warps=1,
+        )
+    else:
+        # Ainv path: B=128/BM=256 measured best on L600 (K2's block-stall
+        # chain halves vs B=64; BM=256 beats both 128 and 512).  K1 builds
+        # the k-independent block inverses once; K2 walks blocks with one
+        # diag dot each.
+        BLOCK = 128
+        num_blocks = (n + BLOCK - 1) // BLOCK
+        ainv = torch.empty(
+            batch * num_blocks * BLOCK * BLOCK, dtype=dtype, device=A.device
+        )
+        _tri_ainv_build[(batch, num_blocks)](
+            A,
+            ainv,
+            n,
+            stride_a,
+            stride_ab,
+            BLOCK,
+            upper,
+            unitriangular,
+            num_blocks,
+            num_warps=1,
+        )
+        _tri_walk_ainv[(batch, num_k)](
+            A,
+            B,
+            X,
+            ainv,
+            n,
+            k,
+            stride_a,
+            stride_b,
+            stride_x,
+            stride_ab,
+            stride_bb,
+            stride_xb,
+            BLOCK,
+            KS,
+            256,
+            upper,
+            num_blocks,
+            num_warps=1,
+        )
+
+    if copy_back:
+        out.copy_(X)
         return out
-    return B_view
+    return X
 
 
 def linalg_solve_triangular_out(
     A, B, *, upper, left=True, unitriangular=False, out=None
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SOLVE_TRIANGULAR_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_SOLVE_TRIANGULAR_OUT")
     return linalg_solve_triangular(
         A, B, upper=upper, left=left, unitriangular=unitriangular, out=out
     )

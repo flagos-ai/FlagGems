@@ -224,7 +224,7 @@ def _fliplr_pack_L(esize, W):
 
 
 def fliplr(self: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 FLIPLR")
+    logger.debug("GEMS_ENFLAME FLIPLR")
 
     if self.ndim < 2:
         raise RuntimeError("Input must be >= 2-d.")

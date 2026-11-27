@@ -21,6 +21,9 @@ from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+# enflame GCU has no aten kernel for this op (not on CPU either), so the
+# reference comes from the same combined-statistics formula used for kunlunxin.
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
 
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].
@@ -75,7 +78,7 @@ def test_batch_norm_gather_stats_with_counts(shape, dtype, num_segments):
         (num_segments,), count_per_segment, dtype=torch.float32, device=flag_gems.device
     )
 
-    if IS_KUNLUNXIN:
+    if IS_KUNLUNXIN or IS_ENFLAME:
         ref_out = _combined_stats_with_counts(mean, invstd, counts, 1e-5)
         res_out = flag_gems.batch_norm_gather_stats_with_counts(
             input_t,

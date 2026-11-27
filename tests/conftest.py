@@ -58,6 +58,11 @@ REPORT_FILE = "accuracy_result.json"
 
 def pytest_addoption(parser):
     parser.addoption(
+        "--repro-dispatch-report",
+        default=None,
+        help="JSON file for same-process native/FlagGems dispatch reproduction",
+    )
+    parser.addoption(
         "--ref",
         action="store",
         default=device,
@@ -203,6 +208,25 @@ def pytest_runtest_teardown(item, nextitem):
 
 
 def pytest_sessionfinish(session, exitstatus):
+    report_path = session.config.getoption("--repro-dispatch-report")
+    if report_path:
+        existing = (
+            json.loads(open(report_path).read()) if os.path.exists(report_path) else {}
+        )
+        mode = os.environ.get("FLAGGEMS_REPRO_MODE", "native")
+        existing[mode] = {
+            "exit_status": int(exitstatus),
+            "nodes": {
+                nodeid: {
+                    key: value
+                    for key, value in result.items()
+                    if key in ("result", "reason")
+                }
+                for nodeid, result in TEST_RESULTS.items()
+            },
+        }
+        with open(report_path, "w") as report:
+            json.dump(existing, report, indent=2, sort_keys=True, default=str)
     if RECORD_LOG:
         logging.info(json.dumps(RUNTEST_INFO, indent=2))
 
@@ -377,6 +401,47 @@ def _skip_unavailable_integral_foreach_reference(items):
         )
 
 
+def _skip_unavailable_compressed_backward_reference(items):
+    """Skip compressed-layout to_dense_backward cases that have no reference.
+
+    For a CSR/CSC/BSR/BSC operand, ``aten::to_dense_backward`` needs a kernel for
+    the SparseCsr device backend (to read ``sparse_dim``) and the masked branch
+    needs ``aten::sparse_mask``.  Neither is registered on this platform, so
+    both the expected and the actual value of these four cases are
+    unobtainable; the check below probes the operator instead of hardcoding a
+    vendor name.
+    """
+    import torch
+
+    targets = [
+        item
+        for item in items
+        if getattr(item, "originalname", item.name)
+        == "test_to_dense_backward_sparse_compressed"
+    ]
+    if not targets:
+        return
+
+    grad = torch.zeros(2, 2, device=flag_gems.device)
+    probe = torch.zeros(2, 2, device=flag_gems.device).to_sparse_csr()
+    try:
+        torch.ops.aten.to_dense_backward(grad, probe, True)
+    except (RuntimeError, NotImplementedError):
+        available = False
+    else:
+        available = True
+    if available:
+        return
+
+    for item in targets:
+        item.add_marker(
+            pytest.mark.skip(
+                reason="compressed sparse to_dense_backward has no device "
+                "reference on this platform"
+            )
+        )
+
+
 def _adjust_enflame_foreach_items(items):
     """Make marker-selected foreach tests exercise the vendor path on gcu300.
 
@@ -430,6 +495,7 @@ def pytest_collection_modifyitems(session, config, items):
         _skip_unavailable_integral_foreach_reference(items)
     if flag_gems.vendor_name == "enflame":
         _adjust_enflame_foreach_items(items)
+        _skip_unavailable_compressed_backward_reference(items)
 
     if first_parameter_only:
         # Group items by test function (module + class + function name)

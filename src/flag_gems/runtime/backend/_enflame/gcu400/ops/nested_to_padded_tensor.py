@@ -35,14 +35,15 @@ def _nested_to_padded_tensor_kernel(
     trailing_prod,  # product of trailing dims (elements per row)
     ndim,  # number of dims per component
     stride_out_b,  # stride of batch dim in output (in elements)
+    padding,  # padding scalar (only used by the FUSE_PADDING path)
     BLOCK_SIZE: tl.constexpr,
+    FUSE_PADDING: tl.constexpr,
 ):
     """Copy each ragged component into its padded slot of the output.
 
-    Grid is (batch, num_chunks). Program (b, c) copies chunk c of the valid
-    (non-padding) region of component b from the flat values buffer into the
-    output. Padding positions are pre-filled on the host, so this kernel only
-    writes the valid elements and skips chunks that lie entirely in padding.
+    Grid is (batch, num_chunks). With ``FUSE_PADDING=True`` the padded region is written
+    in one pass (values for valid slots, padding elsewhere), dropping the host ``torch.full``;
+    otherwise only valid elements are written and the host pre-fills the padding.
     """
     pid_b = tle.program_id(axis=0)
     pid_c = tle.program_id(axis=1)
@@ -52,19 +53,25 @@ def _nested_to_padded_tensor_kernel(
 
     valid_elements = rows_b * trailing_prod
     chunk_start = pid_c * BLOCK_SIZE
-
-    # Early exit if this chunk is entirely within the padding region.
-    if chunk_start >= valid_elements:
-        return
-
     offs = chunk_start + tl.arange(0, BLOCK_SIZE)
-    mask = offs < valid_elements
-
-    src_off = offset_b + offs
     dst_off = pid_b * stride_out_b + offs
 
-    vals = tl.load(values + src_off, mask=mask)
-    tl.store(output + dst_off, vals, mask=mask)
+    if FUSE_PADDING:
+        # Fill the whole padded region in one pass: valid elements come from values, all other positions are written
+        # with padding,
+        # eliminating the host-side torch.full block prefill (equivalent to one fewer full write pass).
+        mask = offs < stride_out_b
+        vals = tl.load(
+            values + offset_b + offs, mask=mask & (offs < valid_elements), other=padding
+        )
+        tl.store(output + dst_off, vals, mask=mask)
+    else:
+        # Early exit if this chunk is entirely within the padding region.
+        if chunk_start >= valid_elements:
+            return
+        mask = offs < valid_elements
+        vals = tl.load(values + offset_b + offs, mask=mask)
+        tl.store(output + dst_off, vals, mask=mask)
 
 
 def nested_to_padded_tensor(self, padding, output_size=None):
@@ -80,7 +87,7 @@ def nested_to_padded_tensor(self, padding, output_size=None):
     Returns:
         Dense padded tensor.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 NESTED_TO_PADDED_TENSOR")
+    logger.debug("GEMS_ENFLAME NESTED_TO_PADDED_TENSOR")
 
     # self._nested_tensor_size() is a CPU int64 tensor (aten contract), so the
     # per-component row counts and the padded shape are read straight off it.
@@ -108,16 +115,27 @@ def nested_to_padded_tensor(self, padding, output_size=None):
     sizes = sizes_cpu.to(values.device)
     offsets = self._nested_tensor_storage_offsets().to(values.device)
 
-    # Allocate the padded output and pre-fill every position with `padding`;
-    # the kernel then overwrites only the valid (non-padding) elements.
-    out = torch.full(
-        out_shape, float(padding), dtype=values.dtype, device=values.device
-    )
+    # Floating-point dtypes use the fused path: the kernel fills the whole padded region in one pass (valid elements +
+    # padding),
+    # eliminating the whole-block torch.full prefill; integer dtypes keep the host prefill, because tl.store
+    # rounds float padding while aten/torch.full truncates, so semantics would be inconsistent.
+    fuse_padding = values.dtype.is_floating_point
+    if fuse_padding:
+        out = torch.empty(out_shape, dtype=values.dtype, device=values.device)
+    else:
+        out = torch.full(
+            out_shape, float(padding), dtype=values.dtype, device=values.device
+        )
 
     # BLOCK_SIZE=1024 balances occupancy and memory throughput for the
     # contiguous per-component copies of typical trailing-dim sizes.
     BLOCK_SIZE = 1024
-    max_chunks = (max_rows * trailing_prod + BLOCK_SIZE - 1) // BLOCK_SIZE
+    if fuse_padding:
+        # The fused path must fill the whole padded region, so the chunk count is computed from the stride of each
+        # batch.
+        max_chunks = (out.stride(0) + BLOCK_SIZE - 1) // BLOCK_SIZE
+    else:
+        max_chunks = (max_rows * trailing_prod + BLOCK_SIZE - 1) // BLOCK_SIZE
     grid = (batch, max_chunks)
 
     _nested_to_padded_tensor_kernel[grid](
@@ -128,7 +146,9 @@ def nested_to_padded_tensor(self, padding, output_size=None):
         trailing_prod,
         ndim,
         out.stride(0),
+        float(padding),
         BLOCK_SIZE=BLOCK_SIZE,
+        FUSE_PADDING=fuse_padding,
     )
 
     return out

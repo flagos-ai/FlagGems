@@ -234,7 +234,7 @@ def batch_norm_impl_index(
     tensor is empty and impl_index is 0 since this fallback path does not use
     cuDNN or MIOpen.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_IMPL_INDEX")
+    logger.debug("GEMS_ENFLAME _BATCH_NORM_IMPL_INDEX")
 
     input_3d = make_3d_for_bn(input)
 

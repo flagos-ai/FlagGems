@@ -50,32 +50,52 @@ from ._foreach_atan_ import _foreach_atan_
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max__List import _foreach_clamp_max__List
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max__ScalarList import _foreach_clamp_max__ScalarList
 from ._foreach_clamp_max_List import _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
 from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
 from ._foreach_clamp_min__List import _foreach_clamp_min__List
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_clamp_min_List import _foreach_clamp_min_List
+from ._foreach_clamp_min_Scalar import _foreach_clamp_min_Scalar
+from ._foreach_clamp_min_ScalarList import _foreach_clamp_min_ScalarList
+from ._foreach_copy_ import _foreach_copy_
 from ._foreach_cos import _foreach_cos
 from ._foreach_cosh_ import _foreach_cosh_
+from ._foreach_div__List import _foreach_div__List
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._foreach_div__Tensor import _foreach_div__Tensor
+from ._foreach_div_List import _foreach_div_List
+from ._foreach_div_Scalar import _foreach_div_Scalar
+from ._foreach_div_ScalarList import _foreach_div_ScalarList
+from ._foreach_div_Tensor import _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf
 from ._foreach_erf_ import _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_exp import _foreach_exp
 from ._foreach_exp_ import _foreach_exp_
+from ._foreach_floor import _foreach_floor
+from ._foreach_floor_ import _foreach_floor_
 from ._foreach_frac import _foreach_frac
 from ._foreach_frac_ import _foreach_frac_
+from ._foreach_log import _foreach_log
 from ._foreach_log1p_ import _foreach_log1p_
 from ._foreach_log2 import _foreach_log2
 from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10 import _foreach_log10
 from ._foreach_log10_ import _foreach_log10_
+from ._foreach_maximum__List import _foreach_maximum__List
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_maximum_List import _foreach_maximum_List
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
+from ._foreach_maximum_ScalarList import _foreach_maximum_ScalarList
+from ._foreach_minimum__List import _foreach_minimum__List
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum__ScalarList import _foreach_minimum__ScalarList
+from ._foreach_minimum_List import _foreach_minimum_List
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._foreach_mul__List import _foreach_mul__List
@@ -329,32 +349,52 @@ __all__ = [
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max__ScalarList",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
     "_foreach_clamp_max_ScalarList",
     "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
     "_foreach_clamp_min__ScalarList",
+    "_foreach_clamp_min_List",
+    "_foreach_clamp_min_Scalar",
+    "_foreach_clamp_min_ScalarList",
+    "_foreach_copy_",
     "_foreach_cos",
     "_foreach_cosh_",
+    "_foreach_div__List",
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
+    "_foreach_div_List",
+    "_foreach_div_Scalar",
+    "_foreach_div_ScalarList",
+    "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc_",
     "_foreach_exp",
     "_foreach_exp_",
+    "_foreach_floor",
+    "_foreach_floor_",
     "_foreach_frac",
     "_foreach_frac_",
+    "_foreach_log",
+    "_foreach_log10",
     "_foreach_log10_",
     "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
+    "_foreach_maximum__List",
     "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_maximum_List",
     "_foreach_maximum_Scalar",
+    "_foreach_maximum_ScalarList",
+    "_foreach_minimum__List",
     "_foreach_minimum__Scalar",
     "_foreach_minimum__ScalarList",
+    "_foreach_minimum_List",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
     "_foreach_mul__List",

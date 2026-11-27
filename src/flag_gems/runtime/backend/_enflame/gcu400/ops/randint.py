@@ -30,12 +30,22 @@ _RANDINT_BLOCK_SIZE = 4096
 _RANDINT_UNROLL = 4
 _RANDINT_MAX_GRID_X = 65535
 _RANDINT_NUM_WARPS = 4
-# 32-bit modulo is much cheaper than 64-bit division; enable when high < 2**32, otherwise keep the 64-bit path.
+# 32-bit modulo is much cheaper than 64-bit division; enable it when high < 2**32, otherwise keep the original 64-bit
+# path.
 _RANDINT_U32_HIGH_LIMIT = 1 << 32
+# fast16 fast path: for 0 < high < 2**16, use Lemire multiply-high reduction ((r >> 16) * high) >> 16
+# instead of u32 software division (on GCU, `%` has no magic-number strength reduction and is measured to be the largest
+# ALU cost).
+# Range/uniformity: v = floor((r>>16) * high / 2**16) and r % high are both
+# a uniform mapping that "maps 2^32 (here its upper 16-bit slice) evenly onto [0, high)", bias <= 1.
+# The philox counter advance cdiv(N, 4) is exactly the same as the original implementation.
+_RANDINT_FAST16_HIGH_LIMIT = 1 << 16
+# int8 packing requires each value < 2**8, otherwise it spills across bytes and corrupts neighboring lanes.
+_RANDINT_PACK4_VALUE_LIMIT = 1 << 8
 
 
 @libentry()
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "high"])
 def randint_kernel(
     out_ptr,
     N,
@@ -86,6 +96,144 @@ def randint_kernel(
         tl.store(out_ptr + off3, r3_mod, mask=off3 < N)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "high"])
+def randint_fast16_kernel(
+    out_ptr,
+    N,
+    high,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    # 0 < high < 2**16 (host-side guard): v = ((r >> 16) * high) >> 16,
+    # eliminating u32 `%` software division; the rest of the counter layout is exactly the same as randint_kernel.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0_base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    high_val = high.to(tl.uint32)
+
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    total_blocks = (N + BLOCK * 4 - 1) // (BLOCK * 4)
+    for block_idx in range(pid, total_blocks, num_programs):
+        i = block_idx * BLOCK + tl.arange(0, BLOCK)
+        c0 = c0_base + i
+        z = c0 * 0
+        r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, z, z)
+
+        v0 = ((r0 >> 16) * high_val >> 16).to(out_ptr.dtype.element_ty)
+        v1 = ((r1 >> 16) * high_val >> 16).to(out_ptr.dtype.element_ty)
+        v2 = ((r2 >> 16) * high_val >> 16).to(out_ptr.dtype.element_ty)
+        v3 = ((r3 >> 16) * high_val >> 16).to(out_ptr.dtype.element_ty)
+
+        start = block_idx * BLOCK * 4
+        off0 = start + tl.arange(0, BLOCK)
+        off1 = off0 + BLOCK
+        off2 = off1 + BLOCK
+        off3 = off2 + BLOCK
+
+        tl.store(out_ptr + off0, v0, mask=off0 < N)
+        tl.store(out_ptr + off1, v1, mask=off1 < N)
+        tl.store(out_ptr + off2, v2, mask=off2 < N)
+        tl.store(out_ptr + off3, v3, mask=off3 < N)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "NW", "high"])
+def randint_fast16_pack2_kernel(
+    words_ptr,
+    NW,
+    high,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    # 16-bit dtype packing: the 4 outputs v0..v3 (< 2**16) of one philox call are combined into two
+    # u32 words, with stores going through 32-bit lanes (GCU 16-bit store throughput is ~3x worse).
+    # NW = N // 2 words; the counter advance is still N / 4 philox calls.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0_base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    high_val = high.to(tl.uint32)
+
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    total_blocks = (NW + BLOCK * 2 - 1) // (BLOCK * 2)
+    for block_idx in range(pid, total_blocks, num_programs):
+        i = block_idx * BLOCK + tl.arange(0, BLOCK)
+        c0 = c0_base + i
+        z = c0 * 0
+        r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, z, z)
+
+        v0 = (r0 >> 16) * high_val >> 16
+        v1 = (r1 >> 16) * high_val >> 16
+        v2 = (r2 >> 16) * high_val >> 16
+        v3 = (r3 >> 16) * high_val >> 16
+        w0 = v0 | (v1 << 16)
+        w1 = v2 | (v3 << 16)
+
+        start = block_idx * BLOCK * 2
+        off0 = start + tl.arange(0, BLOCK)
+        off1 = off0 + BLOCK
+
+        tl.store(words_ptr + off0, w0, mask=off0 < NW)
+        tl.store(words_ptr + off1, w1, mask=off1 < NW)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "NW", "high"])
+def randint_fast16_pack4_kernel(
+    words_ptr,
+    NW,
+    high,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    # 8-bit dtype packing: the 4 outputs of one philox call are combined into one u32 word.
+    # NW = N // 4; host guard high < 2**8.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0_base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    high_val = high.to(tl.uint32)
+
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    total_blocks = (NW + BLOCK - 1) // BLOCK
+    for block_idx in range(pid, total_blocks, num_programs):
+        i = block_idx * BLOCK + tl.arange(0, BLOCK)
+        c0 = c0_base + i
+        z = c0 * 0
+        r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, z, z)
+
+        v0 = (r0 >> 16) * high_val >> 16
+        v1 = (r1 >> 16) * high_val >> 16
+        v2 = (r2 >> 16) * high_val >> 16
+        v3 = (r3 >> 16) * high_val >> 16
+        w = v0 | (v1 << 8) | (v2 << 16) | (v3 << 24)
+
+        off0 = block_idx * BLOCK + tl.arange(0, BLOCK)
+        tl.store(words_ptr + off0, w, mask=off0 < NW)
+
+
+def _fast16_launch_config(work):
+    # Choose BLOCK / num_warps in buckets by work (number of words or elements) (measured on L600/GCU400):
+    #   philox+fast16 is an ALU-bound workload; for the large bucket BLOCK=16384 with a single warp is optimal (-45% vs
+    # B4096/w4);
+    #   for the small bucket, trade more grid count for parallelism to lower the launch floor.
+    if work <= 4096:
+        return 512, 1
+    if work <= 16384:
+        return 1024, 1
+    if work <= 524288:
+        return 4096, 1
+    return 16384, 1
+
+
 def randint(
     high,
     size,
@@ -115,30 +263,81 @@ def randint(
     for s in size:
         N *= s
 
-    BLOCK_SIZE = _RANDINT_BLOCK_SIZE
-    UNROLL = _RANDINT_UNROLL
-    MAX_GRID_X = _RANDINT_MAX_GRID_X
-    grid = (min(triton.cdiv(N, BLOCK_SIZE * UNROLL), MAX_GRID_X),)
-    increment = triton.cdiv(N, UNROLL)
-    use_u32 = isinstance(high, int) and 0 < high < _RANDINT_U32_HIGH_LIMIT
-
     result = torch.empty(size, device=device, dtype=dtype, pin_memory=pin_memory)
 
+    increment = triton.cdiv(N, 4)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
 
-    with torch_device_fn.device(device):
-        randint_kernel[grid](
-            result,
-            N,
-            high,
-            philox_seed,
-            philox_offset,
-            BLOCK_SIZE,
-            USE_U32=use_u32,
-            num_warps=_RANDINT_NUM_WARPS,
-        )
+    if isinstance(high, int) and 0 < high < _RANDINT_FAST16_HIGH_LIMIT:
+        itemsize = dtype.itemsize
+        if itemsize == 2 and N % 2 == 0 and dtype in (torch.int16, torch.uint16):
+            words = result.view(-1).view(torch.int32)
+            num_words = N // 2
+            block, num_warps = _fast16_launch_config(num_words)
+            grid = (min(triton.cdiv(num_words, block * 2), _RANDINT_MAX_GRID_X),)
+            with torch_device_fn.device(device):
+                randint_fast16_pack2_kernel[grid](
+                    words,
+                    num_words,
+                    high,
+                    philox_seed,
+                    philox_offset,
+                    block,
+                    num_warps=num_warps,
+                )
+        elif (
+            itemsize == 1
+            and N % 4 == 0
+            and high < _RANDINT_PACK4_VALUE_LIMIT
+            and dtype in (torch.int8, torch.uint8)
+        ):
+            words = result.view(-1).view(torch.int32)
+            num_words = N // 4
+            block, num_warps = _fast16_launch_config(num_words)
+            grid = (min(triton.cdiv(num_words, block), _RANDINT_MAX_GRID_X),)
+            with torch_device_fn.device(device):
+                randint_fast16_pack4_kernel[grid](
+                    words,
+                    num_words,
+                    high,
+                    philox_seed,
+                    philox_offset,
+                    block,
+                    num_warps=num_warps,
+                )
+        else:
+            block, num_warps = _fast16_launch_config(N)
+            grid = (min(triton.cdiv(N, block * 4), _RANDINT_MAX_GRID_X),)
+            with torch_device_fn.device(device):
+                randint_fast16_kernel[grid](
+                    result,
+                    N,
+                    high,
+                    philox_seed,
+                    philox_offset,
+                    block,
+                    num_warps=num_warps,
+                )
+    else:
+        BLOCK_SIZE = _RANDINT_BLOCK_SIZE
+        UNROLL = _RANDINT_UNROLL
+        MAX_GRID_X = _RANDINT_MAX_GRID_X
+        grid = (min(triton.cdiv(N, BLOCK_SIZE * UNROLL), MAX_GRID_X),)
+        use_u32 = isinstance(high, int) and 0 < high < _RANDINT_U32_HIGH_LIMIT
+
+        with torch_device_fn.device(device):
+            randint_kernel[grid](
+                result,
+                N,
+                high,
+                philox_seed,
+                philox_offset,
+                BLOCK_SIZE,
+                USE_U32=use_u32,
+                num_warps=_RANDINT_NUM_WARPS,
+            )
 
     if out is not None:
         out.copy_(result)

@@ -250,6 +250,12 @@ def test_quantized_max_pool2d_4d_output_is_channels_last(dtype):
         host, dev = make_pair((2, 4, 16, 32))
         host_v, dev_v = view(host), view(dev)
         if name != "nchw":
+            if flag_gems.vendor_name == "enflame":
+                # torch_gcu has no strided quantized-view kernel: a transpose
+                # or slice of a quantized GCU tensor comes back as a contiguous
+                # copy, so the non-contiguous input this case is about cannot
+                # be built.  The contiguous ("nchw") case still runs.
+                continue
             assert not dev_v.is_contiguous()
 
         res_out = flag_gems.quantized_max_pool2d(dev_v, (2, 2))
@@ -358,6 +364,12 @@ def test_quantized_max_pool2d_3d_output_stays_contiguous(dtype):
         res_inp = _make_quant_tensor(shape, dtype, 0.05, zero_point)
         if shape == (3, 20, 16):
             res_inp = res_inp.transpose(1, 2)
+            if flag_gems.vendor_name == "enflame":
+                # A quantized transpose is materialised contiguously on GCU
+                # (no strided quantized-view kernel), so the non-contiguous
+                # input this case is about cannot be built; the contiguous
+                # shape above still runs.
+                continue
             assert not res_inp.is_contiguous()
 
         res_out = flag_gems.quantized_max_pool2d(res_inp, (2, 2))

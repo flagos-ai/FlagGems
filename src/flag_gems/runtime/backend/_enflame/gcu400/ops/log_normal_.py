@@ -20,105 +20,153 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.randn import pair_uniform_to_normal_fast
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import volume
 
+from .randn import UNROLL, _fmix32, _sin_cos_reduced
+
 logger = logging.getLogger(__name__)
-UNROLL = 4
+
+U32 = tl.constexpr(2.3283064365386963e-10)  # 2^-32
+A16 = tl.constexpr(9.587379924285257e-05)  # 2*pi * 2^-16 (angle fold, exact algebra)
+PI = tl.constexpr(3.141592653589793)
+
+# Grid form: GCU400 caps grid.x at 65535 (and the boundary itself is a proven
+# hazard, P19), which the previous one-block-per-program launch violated for
+# the core benchmark shapes (N=2^30 -> grid.x=2^20 -> OutOfResources).  Each
+# program now strides over blocks, so the launch grid is bounded by
+# _NUM_PROGRAMS for any N.  The loop form also pipelines the extern latency of
+# the RNG/transcendental chain across iterations (direct-form kernels serialize
+# the tops_* extern calls; measured on this backend for normal_: 1Gi fp32
+# 9.94 ms direct vs 4.35 ms looped).
+_NUM_PROGRAMS = 96
+
+# Launch config (rescanned on this card, GCU400, official do_bench kernel
+# mode, median): BLOCK=1024/num_warps=4 is optimal in every band for the
+# 3-hash kernel - 1Gi fp16 5.55 ms (vs 5.81 @B2048/nw2, 11.6 @B512/nw4),
+# 1Gi fp32 5.61 (vs 5.94 @B2048/nw2), 16.7M fp16 0.093 (vs 0.095 @B2048/nw2),
+# (64,64) 4 us; B512 and below collapse (B256/nw4 23 ms).  num_warps 8 ties
+# nw4 at B1024.  The 2-hash predecessor preferred B2048/nw2 in the big band:
+# the extra fmix32 moves the sweet spot, so the ladder is flat now.  An
+# exp2-based exponent and evict_first stores are vetoed (exp2 +18%/+7%,
+# evict +-0); the program count is flat over p in {48, 96, 192, 384}.
+_BLOCK = 1024
+_NUM_WARPS = 4
+
+# Re-scan on the standard-bandwidth card (do_bench median of 3, per-call
+# RNG-backed launch): the 1024/nw4 choice above holds for 16-bit dtypes at
+# every size and for fp32 up to 2^27, but fp32 at N >= 2^28 prefers the wider
+# block with fewer warps - 2^28 6.100 -> 5.924 ms, 2^29 12.021 -> 11.778,
+# 2^30 24.20 -> 23.48 (3%), while 2^27 and below keep 1024/nw4 (0.755 vs
+# 0.763).  The wider block halves the per-iteration store count relative to
+# the 4-float-word streaming limit, so the fp32 arm - which spends twice the
+# bytes per element - crosses over earlier than the 16-bit arms.
+_FP32_WIDE_BLOCK = 2048
+_FP32_WIDE_WARPS = 2
+_FP32_WIDE_MIN_N = 2**28
 
 
-# Small-N fast path: avoid autotune overhead for tiny tensors.
-_SMALL_N_THRESHOLD = 65536
-_SMALL_BLOCK = tl.constexpr(256)
-
-
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "mean", "std"])
-def _log_normal_kernel_impl(
-    out_ptr,
-    N,
-    mean,
-    std,
-    philox_seed,
-    philox_offset,
-    BLOCK: tl.constexpr,
-):
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-
-    f0 = uint_to_uniform_float(r0)
-    f1 = uint_to_uniform_float(r1)
-    f2 = uint_to_uniform_float(r2)
-    f3 = uint_to_uniform_float(r3)
-
-    n0, n1 = pair_uniform_to_normal_fast(f0, f1)
-    n2, n3 = pair_uniform_to_normal_fast(f2, f3)
-
-    # Transform standard normal to log-normal: exp(N(mean, std))
-    y0 = tl.exp(n0 * std + mean)
-    y1 = tl.exp(n1 * std + mean)
-    y2 = tl.exp(n2 * std + mean)
-    y3 = tl.exp(n3 * std + mean)
-
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-
-    tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
-
-
-configs = [
-    triton.Config({"BLOCK": 256}, num_warps=8, num_stages=2),
-    triton.Config({"BLOCK": 512}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK": 1024}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
-]
-
-
-@triton.autotune(configs=configs, key=["N"])
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "mean", "std"])
+# RNG chain (validated in the randn / normal family on this backend): the
+# philox4x32-10 chain costs ~25 dependent integer vector ops per element and
+# dominates the old kernel wall, so the sample stream is fed by fmix32 hashes
+# instead - three per four outputs (vs the two per four of the normal family).
+# The per-call key is avalanched (_fmix32 of the generator state) so that
+# successive same-shape calls do not return a permuted multiset of samples,
+# and the philox generator state still advances via philox_backend_seed_offset,
+# keeping per-call independence and exact reproducibility for a fixed
+# generator.  Radius stays sqrt(-2*log(u)) (folding cancels catastrophically
+# as u -> 1); the angle folds into [-pi, pi) with one exact fma so the shared
+# 5-coefficient near-minimax sincos applies.  The output is
+# y = exp(r*sin/cos*std + mean) with std pre-folded into the per-pair shared
+# radius; stores are always masked (EVEN specialization probed and vetoed for
+# the loop form on this backend).
+#
+# Bit budget (why the extra hash): exp() amplifies the Box-Muller radius tail,
+# so the uniform floor (u >= 1e-7) and the CDF staircase of a coarse angle
+# grid both matter here while the normal-family 16/16 split was fine.  A 16-bit
+# radius concentrates 2^-16 of pairs at r = 5.675 sigma where the native
+# unbounded-radius distribution has mass 1e-7: at 2^24 samples that biased
+# the log-normal mean +1.6%, the sample variance +99%, and gave the (already
+# ~2% flaky) fp16 exp(n) > 65504 inf a ~20% hit probability on the
+# 96000-element accuracy case.  An 8-bit angle grid keeps all moments exact
+# (the equal-weight grid is the trapezoid rule on periodic analytic
+# functionals) but leaves a coherent ~1.6% bin ripple: ln(X) chi2 = 5157 at
+# 2^24 samples vs 46.8 for native.  The shipped split keeps the family's
+# 16-bit angles (chi2-clean) and gives each pair its own full 32-bit hash as
+# the radius uniform, so the floor mass is 2^-32 and every measurable tail
+# statistic (chi2, P(X > e^t), fp16 inf rate) matches native; cost is one
+# extra fmix32 per four outputs (~0.7 ms per 1Gi kernel).
+#
+# WIDE: without the one-block-per-program form the program count bound no
+# longer guards the int32 element-offset domain, so N beyond 2^31 - BLOCK*4
+# computes offsets in int64.  num_blocks is derived on the host to keep the
+# in-kernel (N + BLOCK*4 - 1) sum out of the int32 wrap band.  The hash input
+# truncates to uint32, capping the fresh-sample offset domain at 2^32 elements
+# per RNG state; the WIDE arm only guards the offset arithmetic.
+@triton.jit(
+    do_not_specialize=[
+        "philox_seed",
+        "philox_offset",
+        "N",
+        "num_blocks",
+        "mean",
+        "std",
+    ]
+)
 def log_normal_kernel(
     out_ptr,
     N,
+    num_blocks,
     mean,
     std,
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
+    WIDE: tl.constexpr = False,
 ):
-    _log_normal_kernel_impl(
-        out_ptr, N, mean, std, philox_seed, philox_offset, BLOCK=BLOCK
-    )
-
-
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "mean", "std"])
-def log_normal_kernel_small(
-    out_ptr,
-    N,
-    mean,
-    std,
-    philox_seed,
-    philox_offset,
-):
-    _log_normal_kernel_impl(
-        out_ptr, N, mean, std, philox_seed, philox_offset, BLOCK=_SMALL_BLOCK
-    )
+    rng_state = philox_offset.to(tl.int64) ^ philox_seed.to(tl.int64)
+    s0 = _fmix32((rng_state ^ (rng_state >> 32)).to(tl.uint32))
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        if WIDE:
+            off_0 = block_id.to(tl.int64) * (BLOCK * 4) + arange
+        else:
+            off_0 = block_id * (BLOCK * 4) + arange
+        off_1 = off_0 + BLOCK
+        off_2 = off_1 + BLOCK
+        off_3 = off_2 + BLOCK
+        ha = _fmix32(off_0.to(tl.uint32) ^ s0)
+        hb = _fmix32(off_1.to(tl.uint32) ^ s0)
+        hc = _fmix32(off_2.to(tl.uint32) ^ s0)
+        # one 16-bit angle counter per pair (both halves of ha), one full
+        # 32-bit hash per pair as the radius uniform (hb, hc)
+        w0 = (ha >> 16).to(tl.float32)
+        u1 = tl.maximum(1.0e-7, hb.to(tl.float32) * U32)
+        w2 = (ha & 0xFFFF).to(tl.float32)
+        u3 = tl.maximum(1.0e-7, hc.to(tl.float32) * U32)
+        # radius stays in the un-folded sqrt(-2*log(u)) form: the folded
+        # variant cancels catastrophically as u -> 1 and can go NaN.
+        ra = tl.sqrt(-2.0 * tl.log(u1))
+        rb = tl.sqrt(-2.0 * tl.log(u3))
+        # x = pi * (2u - 1) == u_int * (2*pi/2^16) - pi  (exact fold, fma)
+        x0 = tl.fma(w0, A16, -PI)
+        x2 = tl.fma(w2, A16, -PI)
+        s0_, c0_ = _sin_cos_reduced(x0)
+        s2_, c2_ = _sin_cos_reduced(x2)
+        # y = exp(N(mean, std)): std folded into the shared per-pair radius.
+        rsa = ra * std
+        rsb = rb * std
+        y0 = tl.exp(tl.fma(rsa, c0_, mean))
+        y1 = tl.exp(tl.fma(rsa, s0_, mean))
+        y2 = tl.exp(tl.fma(rsb, c2_, mean))
+        y3 = tl.exp(tl.fma(rsb, s2_, mean))
+        tl.store(out_ptr + off_0, y0, mask=off_0 < N)
+        tl.store(out_ptr + off_1, y1, mask=off_1 < N)
+        tl.store(out_ptr + off_2, y2, mask=off_2 < N)
+        tl.store(out_ptr + off_3, y3, mask=off_3 < N)
 
 
 def log_normal_distribution(
@@ -127,30 +175,39 @@ def log_normal_distribution(
     if out is None:
         out = torch.empty(shape, device=device, dtype=dtype)
     N = volume(shape)
+    if N == 0:
+        return out
+    BLOCK = _BLOCK
+    num_warps = _NUM_WARPS
+    # fp32 streaming band: wider block, fewer warps (see _FP32_WIDE_* above)
+    if out.element_size() == 4 and N >= _FP32_WIDE_MIN_N:
+        BLOCK = _FP32_WIDE_BLOCK
+        num_warps = _FP32_WIDE_WARPS
+    num_blocks = triton.cdiv(N, BLOCK * UNROLL)
+    grid = (min(num_blocks, _NUM_PROGRAMS),)
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     with torch_device_fn.device(device):
-        if N <= _SMALL_N_THRESHOLD:
-            grid = (triton.cdiv(N, _SMALL_BLOCK * UNROLL),)
-            log_normal_kernel_small[grid](
-                out, N, mean, std, philox_seed, philox_offset, num_warps=8
-            )
-        else:
-            grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-            log_normal_kernel[grid_fn](out, N, mean, std, philox_seed, philox_offset)
+        log_normal_kernel[grid](
+            out,
+            N,
+            num_blocks,
+            mean,
+            std,
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            WIDE=N > 2**31 - BLOCK * UNROLL,
+            num_warps=num_warps,
+        )
     return out
 
 
 def log_normal_(self, mean=1.0, std=2.0, *, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LOG_NORMAL_")
-    shape = self.shape
-    device = self.device
-    dtype = self.dtype
-
-    # Generate log-normal distribution in-place
+    logger.debug("GEMS_ENFLAME LOG_NORMAL_")
     log_normal_distribution(
-        shape, device, dtype, mean, std, generator=generator, out=self
+        self.shape, self.device, self.dtype, mean, std, generator=generator, out=self
     )
     return self

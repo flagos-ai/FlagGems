@@ -29,6 +29,8 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.fft_intf import fft_frames
 
+from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+
 # The enflame arch ops tree is imported under a top-level module name (e.g.
 # "gcu400.ops.stft"), which places __name__ outside the "flag_gems" logger
 # hierarchy. Recording (setup_flaggems_logging) attaches its handler to the
@@ -228,6 +230,125 @@ def _fused_fft_kernel(
             r, i = tl.where(lower, ur + tr, ur - tr), tl.where(lower, ui + ti, ui - ti)
     tl.store(Y + 2 * (row * F + lane), r * SCALE, lane < F)
     tl.store(Y + 2 * (row * F + lane) + 1, i * SCALE, lane < F)
+
+
+# Fuse framing, windowing, and the whole transform into one kernel launch on
+# GCU. The aten-backed FFT engine costs ~190-630us of host/device time for the
+# small frame batches STFT produces, dwarfing every other stage; a direct
+# [freq, n] twiddle-matrix DFT is O(freq*n) work per frame but only a few
+# microseconds at these sizes and avoids any gather/permute butterfly, which
+# the GCU compiler materializes through DSM round trips (vetoed shape family).
+# Transforms too large for the direct form fall back to the aten FFT engine.
+_DFT_MAX_N = 4096
+_DFT_MAX_WORK = 1 << 27
+_DFT_CACHE_LIMIT = 8
+_DFT_TABLES_CACHE = OrderedDict()
+_DFT_TABLES_LOCK = threading.RLock()
+
+
+@triton.jit
+def _dft_table_kernel(TC, TS, N, NP, TOTAL, BLOCK: tl.constexpr):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    f, k = i // NP, i % NP
+    angle = ((f * k) % N).to(tl.float32) * (6.283185307179586 / N)
+    tl.store(TC + i, tl.cos(angle), i < TOTAL)
+    tl.store(TS + i, tl.sin(angle), i < TOTAL)
+
+
+@triton.jit
+def _gcu_dft_kernel(
+    X,
+    W,
+    TC,
+    TS,
+    Y,
+    T: tl.constexpr,
+    N: tl.constexpr,
+    L: tl.constexpr,
+    H: tl.constexpr,
+    WIN: tl.constexpr,
+    PAD: tl.constexpr,
+    XS0: tl.constexpr,
+    XS1: tl.constexpr,
+    WS: tl.constexpr,
+    XC: tl.constexpr,
+    WC: tl.constexpr,
+    XCONJ: tl.constexpr,
+    WCONJ: tl.constexpr,
+    XNEG: tl.constexpr,
+    WNEG: tl.constexpr,
+    HAS_W: tl.constexpr,
+    MODE: tl.constexpr,
+    INDEX64: tl.constexpr,
+    SCALE: tl.constexpr,
+    FP64: tl.constexpr,
+    F: tl.constexpr,
+    NP: tl.constexpr,
+    BF: tl.constexpr,
+    KB: tl.constexpr,
+):
+    dtype: tl.constexpr = tl.float64 if FP64 else tl.float32
+    row = tl.program_id(0)
+    if INDEX64:
+        row = row.to(tl.int64)
+    b, t = row // T, row % T
+    f = tl.program_id(1) * BF + tl.arange(0, BF)
+    fmask = f < F
+    acc_re = tl.full((BF,), 0, dtype)
+    acc_im = tl.full((BF,), 0, dtype)
+    for k0 in range(0, NP, KB):
+        k = k0 + tl.arange(0, KB)
+        p, valid = _pad_index(t * H + k - PAD, L, MODE)
+        if L == 0:
+            xr, xi = tl.full((KB,), 0, dtype), tl.full((KB,), 0, dtype)
+        else:
+            xr, xi = _load_pair(X, b * XS0 + p * XS1, (k < N) & valid, XC, XCONJ, XNEG)
+            xr, xi = xr.to(dtype), xi.to(dtype)
+        w = k - (N - WIN) // 2
+        wm = (w >= 0) & (w < WIN)
+        if HAS_W:
+            wr, wi = _load_pair(W, w * WS, wm, WC, WCONJ, WNEG)
+            wr, wi = wr.to(dtype), wi.to(dtype)
+        else:
+            wr, wi = wm.to(dtype), tl.full((KB,), 0, dtype)
+        if not HAS_W and WIN == N:
+            vr, vi = xr, xi
+        elif not XC and not WC:
+            vr, vi = xr * wr, xi
+        else:
+            vr, vi = xr * wr - xi * wi, xr * wi + xi * wr
+        c = tl.load(TC + f[:, None] * NP + k[None, :])
+        s = tl.load(TS + f[:, None] * NP + k[None, :])
+        acc_re += tl.sum(vr[None, :] * c + vi[None, :] * s, axis=1)
+        acc_im += tl.sum(vi[None, :] * c - vr[None, :] * s, axis=1)
+    tl.store(Y + 2 * (row * F + f), acc_re * SCALE, fmask)
+    tl.store(Y + 2 * (row * F + f) + 1, acc_im * SCALE, fmask)
+
+
+def _dft_tables(n, freq, n_pad, input_device):
+    key = (input_device.index, n, freq, n_pad)
+    with _DFT_TABLES_LOCK:
+        entry = _DFT_TABLES_CACHE.get(key)
+        if entry is None:
+            # Pad the freq dimension to the largest supported block factor and
+            # the k dimension to the launch's k-chunk so the hot twiddle tile
+            # loads run without masks; padded lanes read finite values that are
+            # multiplied by zero (masked x loads).
+            freq_pad = ((freq + 63) // 64) * 64
+            total = freq_pad * n_pad
+            cos_table = torch.empty((total,), device=input_device, dtype=torch.float32)
+            sin_table = torch.empty((total,), device=input_device, dtype=torch.float32)
+            with torch_device_fn.device(input_device):
+                _dft_table_kernel[(triton.cdiv(total, 1024),)](
+                    cos_table, sin_table, n, n_pad, total, 1024
+                )
+            entry = (cos_table, sin_table)
+            _DFT_TABLES_CACHE[key] = entry
+            if len(_DFT_TABLES_CACHE) > _DFT_CACHE_LIMIT:
+                _DFT_TABLES_CACHE.popitem(last=False)
+        else:
+            _DFT_TABLES_CACHE.move_to_end(key)
+        return entry
 
 
 @libentry()
@@ -640,6 +761,47 @@ class _Stft(torch.autograd.Function):
                         num_warps=4,
                     )
             return out
+        if (
+            plan.dtype in (torch.float32, torch.complex64)
+            and 0 < rows <= 65535
+            and plan.n <= _DFT_MAX_N
+            and rows * plan.freq * plan.n <= _DFT_MAX_WORK
+        ):
+            # Direct twiddle-matrix DFT: one kernel for framing + window +
+            # transform. Bounded by rows*freq*n so the quadratic form stays
+            # cheaper than the aten FFT engine's fixed cost.
+            out = torch.empty(
+                (x.shape[0], plan.frames, plan.freq),
+                device=x.device,
+                dtype=complex_dtype,
+            )
+            if rows:
+                xp, _ = _storage(x)
+                wp, _ = _storage(w)
+                op, _ = _storage(out)
+                bf = min(64, triton.next_power_of_2(plan.freq))
+                kb = min(256, triton.next_power_of_2(plan.n))
+                n_pad = ((plan.n + kb - 1) // kb) * kb
+                cos_table, sin_table = _dft_tables(plan.n, plan.freq, n_pad, x.device)
+                with torch_device_fn.device(x.device):
+                    # The (BF, KB) product tile ends in tl.sum(axis=1); the
+                    # narrow-tile multi-warp reduction family silently
+                    # miscomputes for KB <= 1024 with num_warps >= 2 on GCU,
+                    # so this kernel pins num_warps=1 (compiler_traps).
+                    _gcu_dft_kernel[(rows, triton.cdiv(plan.freq, bf))](
+                        xp if x.shape[1] else None,
+                        wp,
+                        cos_table,
+                        sin_table,
+                        op,
+                        **_frame_args(x, w, plan),
+                        F=plan.freq,
+                        NP=n_pad,
+                        BF=bf,
+                        KB=kb,
+                        num_warps=1,
+                    )
+            return out
         # cuFFT's half butterflies accumulate rounding error at every stage.
         # Promote the internal frame/FFT, then round only the final spectrum.
         frame_dtype = {
@@ -909,7 +1071,7 @@ def stft_center(
     return_complex=None,
     align_to_window=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 STFT.CENTER")
+    logger.debug("GEMS_ENFLAME STFT.CENTER")
     if window is None:
         _warn_once(
             "window",
@@ -1024,7 +1186,7 @@ def stft(
     return_complex=None,
     align_to_window=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 STFT")
+    logger.debug("GEMS_ENFLAME STFT")
     return stft_center(
         self,
         n_fft,
@@ -1038,3 +1200,111 @@ def stft(
         return_complex,
         align_to_window,
     )
+
+
+# gcu400 native topsaten reflection_pad1d hard-CHECKs with
+# TOPSATEN_STATUS_NOT_SUPPORT and aborts the process (rc=134) whenever the
+# composite aten::stft.center(..., pad_mode="reflect") reference/baseline
+# decomposes into at::_ops::reflection_pad1d_out::call (P21 family; the same
+# import-time aten takeover pattern as index_reduce/kthvalue in this tree).
+# Route aten-dispatched reflection_pad1d* calls to the enflame FlagGems
+# kernels so native STFT center runs stay executable; allow_override=True
+# replaces whatever is registered and the registrar's later duplicate
+# registration is absorbed as a warning. The Triton launcher rejects
+# complex64 pointers, so complex input takes a dedicated pair-view kernel.
+_STFT_ATEN_PAD_FLAG = "_flag_gems_gcu400_stft_reflection_pad1d_registered"
+_STFT_ATEN_PAD_LIBRARY = None
+
+
+@triton.jit
+def _reflect1d_c64_kernel(XR, OR, R, L, PL, LP, BLOCK: tl.constexpr):
+    wid = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    r, m = wid // LP, wid % LP
+    s = m - PL
+    s = tl.where(s < 0, -s, s)
+    s = tl.where(s >= L, 2 * L - 2 - s, s)
+    inb = wid < R * LP
+    re = tl.load(XR + r * (2 * L) + 2 * s, mask=inb, other=0.0)
+    im = tl.load(XR + r * (2 * L) + 2 * s + 1, mask=inb, other=0.0)
+    off = r * (2 * LP) + 2 * m
+    tl.store(OR + off, re, mask=inb)
+    tl.store(OR + off + 1, im, mask=inb)
+
+
+def _validate_reflect1d_padding(input, padding):
+    if not isinstance(padding, (list, tuple)) or len(padding) != 2:
+        raise ValueError(
+            "padding must be a sequence of length 2: (pad_left, pad_right)"
+        )
+    pad_left, pad_right = int(padding[0]), int(padding[1])
+    if pad_left < 0 or pad_right < 0:
+        raise ValueError("padding values must be >= 0")
+    if input.dim() < 1:
+        raise ValueError("input must have at least 1 dimension")
+    width = int(input.shape[-1])
+    if pad_left > 0 or pad_right > 0:
+        if width < 2:
+            raise ValueError(
+                "input width must be at least 2 for reflection padding "
+                "when padding > 0"
+            )
+        if pad_left >= width or pad_right >= width:
+            raise ValueError(
+                "padding values must be less than the input width "
+                "for reflection padding"
+            )
+    return pad_left, pad_right
+
+
+def _reflection_pad1d_complex(input, padding, out=None):
+    if input.dtype != torch.complex64:
+        raise NotImplementedError(
+            f"reflection_pad1d does not support {input.dtype} on this backend"
+        )
+    pad_left, pad_right = _validate_reflect1d_padding(input, padding)
+    if not input.is_contiguous():
+        input = input.contiguous()
+    width = int(input.shape[-1])
+    width_out = width + pad_left + pad_right
+    leading = input.shape[:-1]
+    rows = int(torch.numel(input) // max(width, 1)) if input.numel() else 0
+    if out is None:
+        out = torch.empty((*leading, width_out), device=input.device, dtype=input.dtype)
+    else:
+        expected = (*leading, width_out)
+        if tuple(out.shape) != expected or out.dtype != input.dtype:
+            raise ValueError(
+                f"out tensor has shape {tuple(out.shape)} dtype {out.dtype}, "
+                f"expected {expected} dtype {input.dtype}"
+            )
+        if out.device != input.device:
+            raise ValueError("out must be on the same device as input")
+        if not out.is_contiguous():
+            staging = torch.empty(expected, device=input.device, dtype=input.dtype)
+            _reflection_pad1d_complex(input, padding, staging)
+            out.copy_(staging)
+            return out
+    if rows * width_out * 2 >= (1 << 31):
+        raise NotImplementedError(
+            "reflection_pad1d complex output exceeds 32-bit indexing"
+        )
+    if rows:
+        xr = torch.view_as_real(input)
+        orr = torch.view_as_real(out)
+        with torch_device_fn.device(input.device):
+            _reflect1d_c64_kernel[(triton.cdiv(rows * width_out, 1024),)](
+                xr, orr, rows, width, pad_left, width_out, 1024
+            )
+    return out
+
+
+def _stft_reflection_pad1d(input, padding):
+    if input.is_complex():
+        return _reflection_pad1d_complex(input, padding)
+    return reflection_pad1d(input, padding)
+
+
+def _stft_reflection_pad1d_out(input, padding, out):
+    if input.is_complex():
+        return _reflection_pad1d_complex(input, padding, out)
+    return reflection_pad1d_out(input, padding, out)

@@ -19,175 +19,151 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry
+import flag_gems  # noqa: F401
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+_TILE_TARGET_LANES = 2048
+_MAX_TILE_LANES = 8192
+_NUM_SPC = 48
 
-@libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("reflection_pad2d_backward"),
-    key=["in_h", "in_w"],
-)
+
 @triton.jit
-def reflection_pad2d_backward_kernel(
+def reflection_pad2d_backward_rowtile_kernel(
     grad_output_ptr,
     grad_input_ptr,
-    # Shapes
+    # Total input rows over all (n, c) images: N * C * H
+    total_rows,
+    # Input spatial dims
     in_h,
     in_w,
+    # grad_output spatial dims (as passed by the caller)
     out_h,
     out_w,
-    # Strides for grad_output
-    out_stride_n,
-    out_stride_c,
-    out_stride_h,
-    out_stride_w,
-    # Strides for grad_input
-    in_stride_n,
-    in_stride_c,
-    in_stride_h,
-    in_stride_w,
-    # Number of channels
-    num_c,
-    # Padding
+    # Padding: left, right, top, bottom
     pad_left,
     pad_right,
     pad_top,
     pad_bottom,
     # Block sizes
-    BLOCK_H: tl.constexpr,
     BLOCK_W: tl.constexpr,
+    RB: tl.constexpr,
+    HAS_H: tl.constexpr,
+    HAS_W: tl.constexpr,
+    # Whether a row tile can be free of fold rows at all: tiles spanning a
+    # whole image (RB >= in_h) always contain its fold rows, so the tile
+    # reduction below would be dead weight.
+    FOLD_SKIP: tl.constexpr,
 ):
-    # Program ID: (n * c, h_blocks * w_blocks)
-    pid_nc = tl.program_id(0)
-    pid_hw = tl.program_id(1)
-
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
     num_w_blocks = tl.cdiv(in_w, BLOCK_W)
-    h_block_idx = pid_hw // num_w_blocks
-    w_block_idx = pid_hw % num_w_blocks
-    n_idx = pid_nc // num_c
-    c_idx = pid_nc % num_c
+    total_tiles = tl.cdiv(total_rows, RB) * num_w_blocks
+    row_offs = tl.arange(0, RB)
+    col_offs = tl.arange(0, BLOCK_W)
+    for tile in range(pid, total_tiles, num_programs):
+        rb = tile // num_w_blocks
+        cb = tile - rb * num_w_blocks
+        rows = rb * RB + row_offs
+        row_ok = rows < total_rows
+        img = rows // in_h
+        h = rows - img * in_h
+        cols = cb * BLOCK_W + col_offs
+        col_ok = cols < in_w
+        mask2d = row_ok[:, None] & col_ok[None, :]
+        # out-plane base row of this image; center source row base address
+        # (element offset, + pad_left folded in as the center column offset)
+        c_base = (img * out_h + h + pad_top) * out_w + pad_left
+        acc = tl.zeros((RB, BLOCK_W), dtype=tl.float32)
+        acc += tl.load(
+            grad_output_ptr + c_base[:, None] + cols[None, :],
+            mask=mask2d,
+            other=0.0,
+        )
+        if HAS_W:
+            # left fold: in[w] += out[c_row, pad_left - w] for 0 < w <= pad_left
+            # right fold: in[w] += out[c_row, 2*W - 2 + pad_left - w]
+            # for W - 1 - pad_right <= w < W - 1
+            lcol = col_ok & (cols > 0) & (cols <= pad_left)
+            rcol = col_ok & (cols >= in_w - 1 - pad_right) & (cols < in_w - 1)
+            rshift = 2 * in_w - 2 - cols
+            lmask = row_ok[:, None] & lcol[None, :]
+            rmask = row_ok[:, None] & rcol[None, :]
+            acc += tl.load(
+                grad_output_ptr + c_base[:, None] - cols[None, :],
+                mask=lmask,
+                other=0.0,
+            )
+            acc += tl.load(
+                grad_output_ptr + c_base[:, None] + rshift[None, :],
+                mask=rmask,
+                other=0.0,
+            )
+        if HAS_H:
+            # top fold rows: in[h] += out[pad_top - h, .] for 0 < h <= pad_top
+            # bottom fold rows: in[h] += out[2*H - 2 - h + pad_top, .]
+            # for H - 1 - pad_bottom <= h < H - 1
+            top_h = row_ok & (h > 0) & (h <= pad_top)
+            bot_h = row_ok & (h >= in_h - 1 - pad_bottom) & (h < in_h - 1)
+            # Masked loads pay a per-lane predicate tax even when the mask is
+            # fully dead, and fold rows are only pad_top + pad_bottom - 1 of
+            # in_h rows per image: skip the 6 row-dependent loads entirely for
+            # row tiles that contain no fold rows (scalar-uniform branch).
+            # FOLD_SKIP (host: RB < in_h) gates the tile reduction; otherwise
+            # every tile spans a whole image and always has fold rows.
+            if FOLD_SKIP:
+                has_fold_rows = tl.max((top_h | bot_h).to(tl.int32), axis=0) > 0
+            else:
+                has_fold_rows = True
+            if has_fold_rows:
+                t_base = (img * out_h + pad_top - h) * out_w + pad_left
+                b_base = (img * out_h + 2 * in_h - 2 - h + pad_top) * out_w + pad_left
+                acc += tl.load(
+                    grad_output_ptr + t_base[:, None] + cols[None, :],
+                    mask=top_h[:, None] & mask2d,
+                    other=0.0,
+                )
+                acc += tl.load(
+                    grad_output_ptr + b_base[:, None] + cols[None, :],
+                    mask=bot_h[:, None] & mask2d,
+                    other=0.0,
+                )
+                if HAS_W:
+                    # corner folds combine a fold source row with a fold column band
+                    acc += tl.load(
+                        grad_output_ptr + t_base[:, None] - cols[None, :],
+                        mask=top_h[:, None] & lcol[None, :],
+                        other=0.0,
+                    )
+                    acc += tl.load(
+                        grad_output_ptr + t_base[:, None] + rshift[None, :],
+                        mask=top_h[:, None] & rcol[None, :],
+                        other=0.0,
+                    )
+                    acc += tl.load(
+                        grad_output_ptr + b_base[:, None] - cols[None, :],
+                        mask=bot_h[:, None] & lcol[None, :],
+                        other=0.0,
+                    )
+                    acc += tl.load(
+                        grad_output_ptr + b_base[:, None] + rshift[None, :],
+                        mask=bot_h[:, None] & rcol[None, :],
+                        other=0.0,
+                    )
+        in_addr = rows[:, None] * in_w + cols[None, :]
+        tl.store(
+            grad_input_ptr + in_addr,
+            acc.to(grad_input_ptr.type.element_ty),
+            mask=mask2d,
+        )
 
-    # Input position offsets within this block
-    h_in_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_in_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
 
-    # Initialize gradient accumulator
-    grad_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-
-    # Base pointer for grad_output for this (n, c)
-    grad_out_base = grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
-
-    # For each input position, we need to find all output positions that map to it
-    # In forward pass:
-    #   output[out_h, out_w] = input[reflect(out_h - pad_top), reflect(out_w - pad_left)]
-    # In backward:
-    #   grad_input[h_in, w_in] = sum of grad_output[out_h, out_w]
-    #     for all (out_h, out_w) that map to (h_in, w_in)
-
-    # The output positions that map to input position h_in are:
-    # 1. Direct: out_h = h_in + pad_top
-    # 2. Top reflection: out_h = pad_top - h_in (if h_in > 0 and h_in <= pad_top)
-    # 3. Bottom reflection: out_h = 2*in_h - 2 - h_in + pad_top (if h_in >= in_h - pad_bottom - 1 and h_in < in_h - 1)
-
-    # We iterate through all possible output h positions that could map to our input h positions
-    # There are at most 3 output rows per input row (center, top reflection, bottom reflection)
-
-    # Process height positions
-    h_in_2d = h_in_offsets[:, None]
-    w_in_2d = w_in_offsets[None, :]
-
-    # Create 2D masks for valid input positions
-    h_valid = h_in_offsets < in_h
-    w_valid = w_in_offsets < in_w
-    valid_mask = h_valid[:, None] & w_valid[None, :]
-
-    # For each input h_in, there are up to 3 output h positions:
-    # h_out_center = h_in + pad_top (always valid)
-    # h_out_top = pad_top - h_in (valid if h_in > 0 and h_in <= pad_top)
-    # h_out_bottom = 2*in_h - 2 - h_in + pad_top (valid if h_in >= in_h - 1 - pad_bottom and h_in < in_h - 1)
-
-    # Similarly for width
-
-    # Center position (always contributes)
-    h_out_center = h_in_2d + pad_top
-    w_out_center = w_in_2d + pad_left
-
-    # Load center contribution
-    center_offset = h_out_center * out_stride_h + w_out_center * out_stride_w
-    center_val = tl.load(grad_out_base + center_offset, mask=valid_mask, other=0.0)
-    grad_acc += center_val
-
-    # Top reflection contribution
-    # Valid if h_in > 0 and h_in <= pad_top
-    h_out_top = pad_top - h_in_2d
-    top_h_valid = (h_in_2d > 0) & (h_in_2d <= pad_top)
-    top_mask = top_h_valid & valid_mask
-    top_offset = h_out_top * out_stride_h + w_out_center * out_stride_w
-    top_val = tl.load(grad_out_base + top_offset, mask=top_mask, other=0.0)
-    grad_acc += top_val
-
-    # Bottom reflection contribution
-    # Valid if h_in >= in_h - 1 - pad_bottom and h_in < in_h - 1
-    h_out_bottom = 2 * in_h - 2 - h_in_2d + pad_top
-    bottom_h_valid = (h_in_2d >= in_h - 1 - pad_bottom) & (h_in_2d < in_h - 1)
-    bottom_mask = bottom_h_valid & valid_mask
-    bottom_offset = h_out_bottom * out_stride_h + w_out_center * out_stride_w
-    bottom_val = tl.load(grad_out_base + bottom_offset, mask=bottom_mask, other=0.0)
-    grad_acc += bottom_val
-
-    # Left reflection contribution (with center height)
-    w_out_left = pad_left - w_in_2d
-    left_w_valid = (w_in_2d > 0) & (w_in_2d <= pad_left)
-    left_mask = left_w_valid & valid_mask
-    left_offset = h_out_center * out_stride_h + w_out_left * out_stride_w
-    left_val = tl.load(grad_out_base + left_offset, mask=left_mask, other=0.0)
-    grad_acc += left_val
-
-    # Right reflection contribution (with center height)
-    w_out_right = 2 * in_w - 2 - w_in_2d + pad_left
-    right_w_valid = (w_in_2d >= in_w - 1 - pad_right) & (w_in_2d < in_w - 1)
-    right_mask = right_w_valid & valid_mask
-    right_offset = h_out_center * out_stride_h + w_out_right * out_stride_w
-    right_val = tl.load(grad_out_base + right_offset, mask=right_mask, other=0.0)
-    grad_acc += right_val
-
-    # Corner contributions: top-left
-    tl_mask = top_h_valid & left_w_valid & valid_mask
-    tl_offset = h_out_top * out_stride_h + w_out_left * out_stride_w
-    tl_val = tl.load(grad_out_base + tl_offset, mask=tl_mask, other=0.0)
-    grad_acc += tl_val
-
-    # Corner contributions: top-right
-    tr_mask = top_h_valid & right_w_valid & valid_mask
-    tr_offset = h_out_top * out_stride_h + w_out_right * out_stride_w
-    tr_val = tl.load(grad_out_base + tr_offset, mask=tr_mask, other=0.0)
-    grad_acc += tr_val
-
-    # Corner contributions: bottom-left
-    bl_mask = bottom_h_valid & left_w_valid & valid_mask
-    bl_offset = h_out_bottom * out_stride_h + w_out_left * out_stride_w
-    bl_val = tl.load(grad_out_base + bl_offset, mask=bl_mask, other=0.0)
-    grad_acc += bl_val
-
-    # Corner contributions: bottom-right
-    br_mask = bottom_h_valid & right_w_valid & valid_mask
-    br_offset = h_out_bottom * out_stride_h + w_out_right * out_stride_w
-    br_val = tl.load(grad_out_base + br_offset, mask=br_mask, other=0.0)
-    grad_acc += br_val
-
-    # Store result
-    grad_in_base = grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-    store_offset = (
-        h_in_offsets[:, None] * in_stride_h + w_in_offsets[None, :] * in_stride_w
-    )
-    tl.store(
-        grad_in_base + store_offset,
-        grad_acc.to(grad_input_ptr.type.element_ty),
-        mask=valid_mask,
-    )
+def _next_pow2(n, cap):
+    p = 1
+    while p < n and p < cap:
+        p *= 2
+    return p
 
 
 def reflection_pad2d_backward(grad_output, self, padding):
@@ -202,19 +178,16 @@ def reflection_pad2d_backward(grad_output, self, padding):
     Returns:
         Gradient of loss w.r.t. input, shape (N, C, H, W)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME REFLECTION_PAD2D_BACKWARD")
 
     grad_output = grad_output.contiguous()
 
-    # Parse padding
     if len(padding) != 4:
         raise ValueError("padding must be a sequence of 4 elements")
 
     pad_left, pad_right, pad_top, pad_bottom = [int(p) for p in padding]
 
-    # Get shapes
     if grad_output.dim() == 3:
-        # (C, H, W) format
         num_c, out_h, out_w = grad_output.shape
         in_h = self.shape[-2]
         in_w = self.shape[-1]
@@ -240,33 +213,55 @@ def reflection_pad2d_backward(grad_output, self, padding):
             return grad_input.squeeze(0)
         return grad_input
 
-    # Launch kernel
-    grid = lambda meta: (
-        batch_size * num_c,
-        triton.cdiv(in_h, meta["BLOCK_H"]) * triton.cdiv(in_w, meta["BLOCK_W"]),
-    )
+    total_rows = batch_size * num_c * in_h
+    # Whole rows per load when they fit; otherwise column chunks of a row.
+    BLOCK_W = _next_pow2(in_w, 8192)
+    RB = _next_pow2(max(1, _TILE_TARGET_LANES // BLOCK_W), _MAX_TILE_LANES // BLOCK_W)
+    num_w_blocks = triton.cdiv(in_w, BLOCK_W)
+    # Keep >= 48 tiles when the row space allows it (load balance across
+    # SPCs); shrinking RB halves the tile but keeps the lanes cap intact.
+    while RB > 1 and triton.cdiv(total_rows, RB) * num_w_blocks < _NUM_SPC:
+        RB //= 2
+    total_tiles = triton.cdiv(total_rows, RB) * num_w_blocks
+    grid = (min(_NUM_SPC, max(1, total_tiles)),)
+    # Wide rows (BLOCK_W >= 256) prefer two warps; narrow-row tiles run best
+    # single-warp (2026-11-17 sweep: nw1 beats nw2/nw4 up to 4.7x on
+    # narrow-row tiles, 4096/8192-lane tiles lose 5-6x).
+    num_warps = 2 if BLOCK_W >= 256 else 1
 
-    reflection_pad2d_backward_kernel[grid](
-        grad_output,
-        grad_input,
-        in_h,
-        in_w,
-        out_h,
-        out_w,
-        grad_output.stride(0),
-        grad_output.stride(1),
-        grad_output.stride(2),
-        grad_output.stride(3),
-        grad_input.stride(0),
-        grad_input.stride(1),
-        grad_input.stride(2),
-        grad_input.stride(3),
-        num_c,
-        pad_left,
-        pad_right,
-        pad_top,
-        pad_bottom,
-    )
+    def _launch():
+        reflection_pad2d_backward_rowtile_kernel[grid](
+            grad_output,
+            grad_input,
+            total_rows,
+            in_h,
+            in_w,
+            out_h,
+            out_w,
+            pad_left,
+            pad_right,
+            pad_top,
+            pad_bottom,
+            BLOCK_W=BLOCK_W,
+            RB=RB,
+            HAS_H=(pad_top + pad_bottom) > 0,
+            HAS_W=(pad_left + pad_right) > 0,
+            FOLD_SKIP=RB < in_h,
+            num_warps=num_warps,
+        )
+
+    # cold compiles hit the documented node-level toolchain flakiness
+    # (P02 family): a fresh-compile subprocess can die before producing a
+    # cache entry; retrying the launch re-enters compilation and succeeds
+    # (reflection_pad2d forward precedent). Zero cost on the warm path.
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(grad_input.device):
+                _launch()
+            break
+        except Exception:
+            if attempt == 2:
+                raise
 
     if squeeze_output:
         return grad_input.squeeze(0)

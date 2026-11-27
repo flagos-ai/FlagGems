@@ -44,23 +44,52 @@ exp2 = tl_extra_shim.exp2
 tanh = tl_extra_shim.tanh
 
 _PERSISTENT_HIDDEN_LIMIT = 256
-# Tile and warp config of projection / loop kernels. Module constants ease shape tiering
-# and batch config sweeps; defaults keep the original behavior.
+# Tile and warp configurations for the projection / recurrence kernels. Promoted to module constants to facilitate
+# bucketing by shape
+# and batch configuration sweeps; the default values preserve the original implementation.
 _PROJ_BLOCK_M_SMALL = 16
 _PROJ_BLOCK_M_LARGE = 32
 _PROJ_BLOCK_N_SMALL = 32
-_PROJ_BLOCK_N_LARGE = 64
+# 2026-11-15 paired A/B: when out_cols is divisible by 128, BLOCK_N=128 + BLOCK_K=64
+# reduces the projection segment of shape (64,32,128,256) from 2141→1928us (-10%); when not divisible, fall back to
+# 64/32,
+# otherwise the aligned fast path fails and it becomes slower instead.
+_PROJ_BLOCK_N_LARGE = 128
+_PROJ_BLOCK_N_FALLBACK = 64
 _PROJ_BLOCK_K = 32
+_PROJ_BLOCK_K_LARGE = 64
 _PROJ_NUM_WARPS = 4
 _RECURRENT_BLOCK_K = 32
-# 14 alternating A/B rounds: on GCU400, 2 warps' 3-case total latency median is 4.131 ms,
-# ~26% faster than the original 4 warps' 5.566 ms; BLOCK_K=128's 4.780 ms is next.
-# (Based on the old masked-load implementation; hyperparameters need re-sweeping after the unmasked fast path lands.)
-_RECURRENT_NUM_WARPS = 2
+# 14 rounds of alternating A/B retests: on GCU400 with 2 warps, the median total latency of 3 cases is 4.131 ms,
+# about 26% faster than the original 5.566 ms with 4 warps; BLOCK_K=128 at 4.780 ms comes next.
+# (This conclusion is based on the old masked-load implementation; hyperparameters need resweeping after the no-mask
+# fast path lands.)
+_RECURRENT_NUM_WARPS = 1
 _RECURRENT_NUM_STAGES = 3
 _PARAM_CACHE_LIMIT = 64
 _PARAM_CACHE = OrderedDict()
 _PARAM_CACHE_LOCK = threading.Lock()
+# For small shapes (seq_len=1, hidden=20), the fixed overhead of 3~4 torch.empty calls per invocation is already on the
+# same order as
+# the kernel itself; cache the purely placeholder 1-element scalar/state buffers and reuse them per device.
+_SCRATCH_CACHE = OrderedDict()
+_SCRATCH_CACHE_LIMIT = 8
+
+
+def _scratch_tensor(template, dtype, size=1):
+    key = (template.device.type, template.device.index, dtype, size)
+    with _PARAM_CACHE_LOCK:
+        cached = _SCRATCH_CACHE.get(key)
+        if cached is not None:
+            _SCRATCH_CACHE.move_to_end(key)
+            return cached
+    buffer = torch.empty(size, device=template.device, dtype=dtype)
+    with _PARAM_CACHE_LOCK:
+        _SCRATCH_CACHE[key] = buffer
+        _SCRATCH_CACHE.move_to_end(key)
+        while len(_SCRATCH_CACHE) > _SCRATCH_CACHE_LIMIT:
+            _SCRATCH_CACHE.popitem(last=False)
+    return buffer
 
 
 @dataclass(frozen=True)
@@ -323,19 +352,26 @@ def persistent_quantized_gru_kernel(
     # gather intrinsics on this backend and dominate the recurrent latency;
     # unmasked loads take the coalesced path.
     ALIGNED: tl.constexpr = (hidden_size == BLOCK_H) and (hidden_size % BLOCK_K == 0)
+    # In the single-chunk form (BLOCK_K == BLOCK_H), the recurrence state can reside entirely in registers:
+    # no need to write-back/read-back work_h at every step, nor to insert a barrier at the end of each step,
+    # which also makes the weight load loop-invariant across steps and thus hoistable out of the recurrence loop.
+    SINGLE_CHUNK: tl.constexpr = (hidden_size == BLOCK_H) and (BLOCK_K == BLOCK_H)
     b = tl.program_id(0)
     offs_h = tl.arange(0, BLOCK_H)
     safe_offs_h = tl.minimum(offs_h, hidden_size - 1)
     h_mask = (b < batch_size) & (offs_h < hidden_size)
     if ALIGNED:
         initial_h = tl.load(hx_ptr + b * hidden_size + offs_h).to(tl.float32)
-        tl.store(work_h_ptr + b * hidden_size + offs_h, initial_h)
+        if not SINGLE_CHUNK:
+            tl.store(work_h_ptr + b * hidden_size + offs_h, initial_h)
     else:
         initial_h = tl.load(
             hx_ptr + b * hidden_size + safe_offs_h, mask=h_mask, other=0.0
         ).to(tl.float32)
         tl.store(work_h_ptr + b * hidden_size + safe_offs_h, initial_h, mask=h_mask)
-    tl.debug_barrier()
+    if not SINGLE_CHUNK:
+        tl.debug_barrier()
+    h_state = initial_h
 
     if PACKED:
         length = tl.load(lengths_ptr + b)
@@ -396,7 +432,9 @@ def persistent_quantized_gru_kernel(
         else:
             row = safe_t * batch_size + b
 
-        if ALIGNED:
+        if SINGLE_CHUNK:
+            h_old = h_state
+        elif ALIGNED:
             h_old = tl.load(work_h_ptr + b * hidden_size + offs_h).to(tl.float32)
         else:
             h_old = tl.load(
@@ -415,7 +453,10 @@ def persistent_quantized_gru_kernel(
         for start_k in range(0, hidden_size, BLOCK_K):
             k = start_k + k_offsets
             if ALIGNED:
-                h_chunk = tl.load(work_h_ptr + b * hidden_size + k).to(tl.float32)
+                if SINGLE_CHUNK:
+                    h_chunk = h_old
+                else:
+                    h_chunk = tl.load(work_h_ptr + b * hidden_size + k).to(tl.float32)
                 qh = _round_to_int8(h_chunk / h_scale)
                 h_sum += tl.sum(qh.to(tl.int32), axis=0)
                 w_r = tl.load(weight_ptr + offs_h[None, :] * hidden_size + k[:, None])
@@ -499,7 +540,22 @@ def persistent_quantized_gru_kernel(
         update = _sigmoid(input_z + recurrent_z)
         new = tanh(input_n + reset * recurrent_n)
         h_new = (h_old - new) * update + new
-        if ALIGNED:
+        if SINGLE_CHUNK:
+            if PACKED:
+                tl.store(
+                    output_ptr + row * output_features + direction_offset + offs_h,
+                    h_new,
+                    mask=active,
+                )
+                # packed variable length: inactive time steps do not advance the state
+                h_state = tl.where(active, h_new, h_state)
+            else:
+                tl.store(
+                    output_ptr + row * output_features + direction_offset + offs_h,
+                    h_new,
+                )
+                h_state = h_new
+        elif ALIGNED:
             if PACKED:
                 tl.store(
                     output_ptr + row * output_features + direction_offset + offs_h,
@@ -524,12 +580,20 @@ def persistent_quantized_gru_kernel(
                 h_new,
                 mask=active & (offs_h < hidden_size),
             )
-        tl.debug_barrier()
+        if not SINGLE_CHUNK:
+            tl.debug_barrier()
 
-    final_h = tl.load(
-        work_h_ptr + b * hidden_size + safe_offs_h, mask=h_mask, other=0.0
-    )
-    tl.store(final_h_ptr + b * hidden_size + safe_offs_h, final_h, mask=h_mask)
+    if SINGLE_CHUNK:
+        tl.store(
+            final_h_ptr + b * hidden_size + safe_offs_h,
+            h_state,
+            mask=h_mask,
+        )
+    else:
+        final_h = tl.load(
+            work_h_ptr + b * hidden_size + safe_offs_h, mask=h_mask, other=0.0
+        )
+        tl.store(final_h_ptr + b * hidden_size + safe_offs_h, final_h, mask=h_mask)
 
 
 @libentry()
@@ -558,19 +622,26 @@ def persistent_fp_gru_kernel(
     # drop masks (per-element gathers on this backend) whenever every load in
     # the recurrent loop is provably in-bounds.
     ALIGNED: tl.constexpr = (hidden_size == BLOCK_H) and (hidden_size % BLOCK_K == 0)
+    # Consistent with the quantized recurrence kernel: the single-chunk form keeps the state in registers, removing the
+    # per-step
+    # work_h round-trip and barrier.
+    SINGLE_CHUNK: tl.constexpr = (hidden_size == BLOCK_H) and (BLOCK_K == BLOCK_H)
     b = tl.program_id(0)
     offs_h = tl.arange(0, BLOCK_H)
     safe_offs_h = tl.minimum(offs_h, hidden_size - 1)
     h_mask = (b < batch_size) & (offs_h < hidden_size)
     if ALIGNED:
         initial_h = tl.load(hx_ptr + b * hidden_size + offs_h).to(tl.float32)
-        tl.store(work_h_ptr + b * hidden_size + offs_h, initial_h)
+        if not SINGLE_CHUNK:
+            tl.store(work_h_ptr + b * hidden_size + offs_h, initial_h)
     else:
         initial_h = tl.load(
             hx_ptr + b * hidden_size + safe_offs_h, mask=h_mask, other=0.0
         ).to(tl.float32)
         tl.store(work_h_ptr + b * hidden_size + safe_offs_h, initial_h, mask=h_mask)
-    tl.debug_barrier()
+    if not SINGLE_CHUNK:
+        tl.debug_barrier()
+    h_state = initial_h
     if PACKED:
         length = tl.load(lengths_ptr + b)
     else:
@@ -601,7 +672,9 @@ def persistent_fp_gru_kernel(
             row = tl.load(time_offsets_ptr + safe_t, mask=active, other=0) + b
         else:
             row = safe_t * batch_size + b
-        if ALIGNED:
+        if SINGLE_CHUNK:
+            h_old = h_state
+        elif ALIGNED:
             h_old = tl.load(work_h_ptr + b * hidden_size + offs_h).to(tl.float32)
         else:
             h_old = tl.load(
@@ -616,7 +689,10 @@ def persistent_fp_gru_kernel(
         for start_k in range(0, hidden_size, BLOCK_K):
             k = start_k + k_offsets
             if ALIGNED:
-                h_chunk = tl.load(work_h_ptr + b * hidden_size + k).to(tl.float32)
+                if SINGLE_CHUNK:
+                    h_chunk = h_old
+                else:
+                    h_chunk = tl.load(work_h_ptr + b * hidden_size + k).to(tl.float32)
                 w_r = tl.load(
                     weight_ptr + offs_h[None, :] * hidden_size + k[:, None]
                 ).to(tl.float32)
@@ -693,7 +769,21 @@ def persistent_fp_gru_kernel(
         update = _sigmoid(input_z + recurrent_z)
         new = tanh(input_n + reset * recurrent_n)
         h_new = (h_old - new) * update + new
-        if ALIGNED:
+        if SINGLE_CHUNK:
+            if PACKED:
+                tl.store(
+                    output_ptr + row * output_features + direction_offset + offs_h,
+                    h_new,
+                    mask=active,
+                )
+                h_state = tl.where(active, h_new, h_state)
+            else:
+                tl.store(
+                    output_ptr + row * output_features + direction_offset + offs_h,
+                    h_new,
+                )
+                h_state = h_new
+        elif ALIGNED:
             if PACKED:
                 tl.store(
                     output_ptr + row * output_features + direction_offset + offs_h,
@@ -718,11 +808,15 @@ def persistent_fp_gru_kernel(
                 h_new,
                 mask=active & (offs_h < hidden_size),
             )
-        tl.debug_barrier()
-    final_h = tl.load(
-        work_h_ptr + b * hidden_size + safe_offs_h, mask=h_mask, other=0.0
-    )
-    tl.store(final_h_ptr + b * hidden_size + safe_offs_h, final_h, mask=h_mask)
+        if not SINGLE_CHUNK:
+            tl.debug_barrier()
+    if SINGLE_CHUNK:
+        tl.store(final_h_ptr + b * hidden_size + safe_offs_h, h_state, mask=h_mask)
+    else:
+        final_h = tl.load(
+            work_h_ptr + b * hidden_size + safe_offs_h, mask=h_mask, other=0.0
+        )
+        tl.store(final_h_ptr + b * hidden_size + safe_offs_h, final_h, mask=h_mask)
 
 
 @libentry()
@@ -1151,7 +1245,11 @@ def _project_input(
     gates = torch.empty((rows, out_cols), device=x.device, dtype=x.dtype)
     block_m = _PROJ_BLOCK_M_SMALL if rows < 64 else _PROJ_BLOCK_M_LARGE
     block_n = _PROJ_BLOCK_N_SMALL if out_cols < 128 else _PROJ_BLOCK_N_LARGE
-    block_k = _PROJ_BLOCK_K
+    if out_cols % block_n:
+        block_n = _PROJ_BLOCK_N_FALLBACK
+    block_k = (
+        _PROJ_BLOCK_K_LARGE if in_cols % _PROJ_BLOCK_K_LARGE == 0 else _PROJ_BLOCK_K
+    )
     # Fast path is only sound when every tile hits in-bounds rows/cols/k.
     aligned = rows % block_m == 0 and out_cols % block_n == 0 and in_cols % block_k == 0
     grid = (triton.cdiv(rows, block_m), triton.cdiv(out_cols, block_n))
@@ -1208,15 +1306,16 @@ def _copy_2d(src, dst, rows, cols, src_row_stride=None, dst_row_stride=None):
 
 
 def _recurrent_block_k(hidden_size):
-    # Post unmasked-load re-sweep (2026-11-11, GCU400, wall-clock over the full
-    # op): BLOCK_K=64 wins for hidden_size>=256 (2.211ms vs 3.73ms at BK=32),
-    # BLOCK_K=32 wins at hidden_size==128 (0.833ms vs 2.50ms at BK=64), and a
-    # single full-width chunk wins for small hidden sizes. warps/stages stay
-    # at the previously tuned 2/3 (differences within noise after the sweep).
+    # 2026-11-15 paired A/B resweep (existing calibrations invalidated after num_warps 2→1):
+    # at hidden=128, "full-width single chunk" BLOCK_K=128 gives 276us, BK=64 gives 465us,
+    # BK=32 gives 593us — the serial accumulation chain saved by a single chunk far outweighs the cost of a larger tile;
+    # at hidden=256, BK=64 is still optimal (2141us), BK=128 degrades to 2529us (the tile reaches
+    # 128x256 int32 = 128KB, hitting the materialization cliff), and BK=32 degrades to 3780us.
+    # Keep the full-width single chunk for small hidden.
     if hidden_size >= 256:
         return 64
-    if hidden_size == 128:
-        return 32
+    if hidden_size >= 128 and (hidden_size & (hidden_size - 1)) == 0:
+        return hidden_size
     return min(64, triton.next_power_of_2(hidden_size))
 
 
@@ -1235,17 +1334,22 @@ def _run_persistent_direction(
     time_offsets,
     lengths,
 ):
-    work_h = torch.empty((batch_size, hidden_size), device=hx.device, dtype=hx.dtype)
     block_h = triton.next_power_of_2(hidden_size)
     block_k = _recurrent_block_k(hidden_size)
-    common = (
-        gates,
-        hx,
-        prepared_hh.weight,
-    )
+    # The SINGLE_CHUNK check on the kernel side is consistent with this: once the state resides in registers, work_h is
+    # only a placeholder argument,
+    # no need to allocate by (batch, hidden).
+    if prepared_hh.quantized and block_h == hidden_size and block_k == block_h:
+        work_h = _scratch_tensor(hx, torch.float32)
+    else:
+        work_h = torch.empty(
+            (batch_size, hidden_size), device=hx.device, dtype=hx.dtype
+        )
     if prepared_hh.quantized:
         persistent_quantized_gru_kernel[(batch_size,)](
-            *common,
+            gates,
+            hx,
+            prepared_hh.weight,
             prepared_hh.scales,
             prepared_hh.zero_points,
             prepared_hh.bias,
@@ -1268,7 +1372,9 @@ def _run_persistent_direction(
         )
     else:
         persistent_fp_gru_kernel[(batch_size,)](
-            *common,
+            gates,
+            hx,
+            prepared_hh.weight,
             prepared_hh.bias,
             output,
             final_h,
@@ -1405,7 +1511,7 @@ def _run_quantized_gru(
     directions = 2 if bidirectional else 1
     hidden_size = hx.shape[2]
     all_hidden = torch.empty_like(hx)
-    dummy_metadata = hx.new_empty((1,), dtype=torch.int64)
+    dummy_metadata = _scratch_tensor(hx, torch.int64)
     if time_offsets is None:
         time_offsets = dummy_metadata
     if lengths is None:
@@ -1519,7 +1625,7 @@ def quantized_gru_input(
     bidirectional,
     batch_first,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_GRU.INPUT")
+    logger.debug("GEMS_ENFLAME QUANTIZED_GRU.INPUT")
     _validate_common(
         input, hx, params, has_biases, num_layers, dropout, train, bidirectional
     )
@@ -1563,7 +1669,7 @@ def quantized_gru_data(
     train,
     bidirectional,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_GRU.DATA")
+    logger.debug("GEMS_ENFLAME QUANTIZED_GRU.DATA")
     _validate_common(
         data, hx, params, has_biases, num_layers, dropout, train, bidirectional
     )

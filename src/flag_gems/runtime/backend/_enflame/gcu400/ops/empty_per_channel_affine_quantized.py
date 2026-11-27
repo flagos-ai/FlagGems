@@ -78,7 +78,7 @@ def _empty_per_channel_affine_quantized(
     Returns:
         torch.Tensor: Quantized tensor carrying the requested quantizer.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 EMPTY_PER_CHANNEL_AFFINE_QUANTIZED")
+    logger.debug("GEMS_ENFLAME EMPTY_PER_CHANNEL_AFFINE_QUANTIZED")
     return _NATIVE_FACTORY.redispatch(
         _NATIVE_FACTORY_KEY,
         size,

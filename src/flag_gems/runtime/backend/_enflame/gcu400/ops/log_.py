@@ -20,28 +20,105 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
 
+# Fixed Grid on GCU400 (48 CTAs). The generic kernel launches
+# cdiv(n_elements, BLOCK_SIZE) CTAs, which exceeds the 65535 grid.x hardware
+# limit for large inputs (e.g. 2**29 elements at BLOCK=1024 -> 524288 CTAs ->
+# OutOfResources, the QA-reported benchmark failure). Striding from a fixed
+# grid keeps every launch within the limit regardless of input size (same
+# form as the tracked log1p.py). In-place same-buffer safety: grid-stride
+# tiles are address-disjoint across programs, and within a program each
+# tile's loads precede its stores in program order, so software-pipelined
+# prefetch of tile i+1 never aliases tile i's stores.
+_GRID_SIZE = 48
 
+
+@libentry()
 @triton.jit
-def log_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def log_kernel_(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+    WIDE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        # WIDE: the fixed grid removes the dense-launch 65535*BLOCK bound on
+        # the element domain, so offsets past int32 (n_elements > 2^31-BLOCK)
+        # must be computed in int64 to avoid wrap-around stores (randn_like
+        # precedent, 2026-11-16). WIDE=False keeps the i32 fast path bitwise.
+        if WIDE:
+            offsets = tile_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        else:
+            offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.log(x.to(tl.float32)).to(x.dtype)
+        tl.store(y_ptr + offsets, y, mask=mask)
 
-    x = tl.load(x_ptr + offsets, mask=mask)
-    x_f32 = x.to(tl.float32)
-    y_f32 = tl.log(x_f32)
-    y = y_f32.to(x.dtype)
-    tl.store(x_ptr + offsets, y, mask=mask)
+
+def _config(n_elements, dtype):
+    """Returns (BLOCK_SIZE, GRID_SIZE, num_warps, NUM_STAGES), tiered by dtype x size.
+
+    Official bench kernel mode (do_bench median w1000/r100, GCU400/L600), three fresh sweeps
+    (see job j20261117175124 tmp/sweep*_log.json; tier boundaries start from the v2 tiers of the
+    log1p family, and this round re-swept the log_ core shape bands 4096 / 2^24 / 2^26 / 2^29,
+    reproducing both the native and cross-round drift bands):
+    - fp32: n>=2^26 uses BS131072/nw2/ST4 (2^29: 2.106ms, -23% vs BS8192; the copy floor is
+      1.334ms and the remainder is the tl.log extern call tax, P18); 4096<n<2^26 uses
+      BS4096/nw4/ST4 (2^24: 77.7us, -12% vs BS8192);
+    - fp16/bf16: n>=2^26 uses BS131072/nw2/ST1 (2^29: 748us, floor +12%; the 2^26 boundary
+      matches log1p); 4096<n<2^26 uses BS65536/nw2/ST1 (2^24: 32.9us); BS262144 measured 32%
+      worse and is rejected;
+    - n<=4096 uses BS=max(512, npo2(n//2)) to spread launch latency over more CTAs.
+    """
+    if dtype == torch.float32:
+        if n_elements >= (1 << 26):
+            BS, G, nw, ST = 131072, _GRID_SIZE, 2, 4
+        else:
+            BS, G, nw, ST = 4096, _GRID_SIZE, 4, 4
+    else:
+        BS = 131072 if n_elements >= (1 << 26) else 65536
+        G, nw, ST = _GRID_SIZE, 2, 1
+    if n_elements <= 4096:
+        BS = max(512, triton.next_power_of_2(n_elements // 2))
+        nw, ST = 2, 1
+    elif n_elements < BS:
+        BS = max(1024, triton.next_power_of_2(n_elements))
+    num_tile = triton.cdiv(n_elements, BS)
+    return BS, min(G, num_tile), nw, ST
+
+
+def _launch(x_view: torch.Tensor, y_view: torch.Tensor):
+    n_elements = y_view.numel()
+    if n_elements == 0:
+        return
+    BS, G, nw, ST = _config(n_elements, y_view.dtype)
+    grid = (G, 1, 1)
+    with torch_device_fn.device(y_view.device.index):
+        log_kernel_[grid](
+            x_view,
+            y_view,
+            n_elements,
+            BLOCK_SIZE=BS,
+            GRID_SIZE=G,
+            NUM_STAGES=ST,
+            WIDE=n_elements > (1 << 31) - BS,
+            num_warps=nw,
+        )
 
 
 def log_(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 LOG_")
+    logger.debug("GEMS_ENFLAME LOG_")
     x = args[0] if len(args) > 0 else kwargs.get("input", None)
 
     if x is None:
@@ -60,23 +137,17 @@ def log_(*args, **kwargs):
         # patched op while gems is active.
         raise TypeError(f"log_ does not support dtype {x.dtype}")
 
-    # Handle non-contiguous tensors by operating on a contiguous copy and copying back
-    if not x.is_contiguous():
-        y = x.contiguous()
-        n_elements = y.numel()
-        if n_elements == 0:
+    if x.is_contiguous():
+        if x.numel() == 0:
             return x
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        with torch_device_fn.device(y.device):
-            log_kernel_[grid](y, n_elements, BLOCK_SIZE=1024)
-        x.copy_(y)
+        _launch(x.view(-1), x.view(-1))
         return x
 
-    n_elements = x.numel()
-    if n_elements == 0:
+    # Handle non-contiguous tensors by operating on a contiguous copy and
+    # copying back
+    y = x.contiguous()
+    if y.numel() == 0:
         return x
-
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(x.device):
-        log_kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
+    _launch(y.view(-1), y.view(-1))
+    x.copy_(y)
     return x

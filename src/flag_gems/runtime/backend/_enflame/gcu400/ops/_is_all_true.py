@@ -33,19 +33,48 @@ def _reduce_all(a, b):
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
-def _is_all_true_stage1(inp, mid, n_elements, BLOCK: tl.constexpr):
+def _is_all_true_stage1(
+    inp,
+    mid,
+    n_elements,
+    CHECK: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    # Short-circuit AND reduction. Logical `and` is associative and False is
+    # absorbing, so a program may stop scanning as soon as it sees a False.
+    # Each program first folds its own CHECK-sized slice of the prefix
+    # [0, num_pids * CHECK): a False there skips the remaining loads entirely
+    # (mixed inputs exit after one small tile). The remainder past the prefix
+    # is scanned with BLOCK-sized grid-stride tiles accumulating into a vector
+    # and folding with ONE tree at the end, keeping the all-True worst case at
+    # vector-accumulator cost (no per-tile tree).
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
-    num_blocks = (n_elements + BLOCK - 1) // BLOCK
-    offs = tl.arange(0, BLOCK)
-    acc = tl.full([BLOCK], True, tl.int1)
-    for block_id in tl.range(pid, num_blocks, num_pids):
-        offsets = block_id * BLOCK + offs
-        mask = offsets < n_elements
-        v = tl.load(inp + offsets, mask=mask, other=1).to(tl.int1)
-        acc = acc & v
-    all_val = tl.reduce(acc, axis=0, combine_fn=_reduce_all)
-    tl.store(mid + pid, all_val)
+
+    coffs = pid * CHECK + tl.arange(0, CHECK)
+    cv = tl.load(inp + coffs, mask=coffs < n_elements, other=1).to(tl.int1)
+    alive = tl.reduce(cv, axis=0, combine_fn=_reduce_all).to(tl.int32)
+
+    if alive == 1:
+        start = num_pids * CHECK
+        rem = n_elements - start
+        num_blocks = (rem + BLOCK - 1) // BLOCK
+        offs = tl.arange(0, BLOCK)
+        acc = tl.full([BLOCK], True, tl.int1)
+        for block_id in tl.range(pid, num_blocks, num_pids):
+            offsets = start + block_id * BLOCK + offs
+            if EVEN:
+                v = tl.load(inp + offsets).to(tl.int1)
+            else:
+                v = tl.load(inp + offsets, mask=offsets < n_elements, other=1).to(
+                    tl.int1
+                )
+            acc = acc & v
+        all_val = tl.reduce(acc, axis=0, combine_fn=_reduce_all)
+        tl.store(mid + pid, all_val)
+    else:
+        tl.store(mid + pid, alive != 0)
 
 
 @libentry()
@@ -57,12 +86,6 @@ def _is_all_true_stage2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, all_val)
 
 
-def _choose_block(n_elements):
-    if n_elements <= 4096:
-        return triton.next_power_of_2(n_elements)
-    return 131072
-
-
 def _is_all_true(inp):
     logger.debug("GEMS_ENFLAME _IS_ALL_TRUE")
     assert inp.dtype == torch.bool, "Input tensor must be of type bool"
@@ -72,14 +95,19 @@ def _is_all_true(inp):
         return torch.tensor(True, dtype=torch.bool, device=inp.device)
 
     inp = inp if inp.is_contiguous() else inp.contiguous()
-    BLOCK = _choose_block(n_elements)
-    grid = min(triton.cdiv(n_elements, BLOCK), NUM_SIPS * 2)
+    CHECK = triton.next_power_of_2(n_elements) if n_elements <= 4096 else 8192
+    grid = min(triton.cdiv(n_elements, CHECK), NUM_SIPS * 2)
     mid = torch.empty((grid,), dtype=torch.bool, device=inp.device)
+    rem = n_elements - grid * CHECK
+    BLOCK = 131072
+    EVEN = rem > 0 and rem % BLOCK == 0
     out = torch.empty([], dtype=torch.bool, device=inp.device)
     BLOCK_MID = max(triton.next_power_of_2(grid), 1)
 
     with torch_device_fn.device(inp.device):
-        _is_all_true_stage1[(grid,)](inp, mid, n_elements, BLOCK=BLOCK, num_warps=4)
+        _is_all_true_stage1[(grid,)](
+            inp, mid, n_elements, CHECK=CHECK, BLOCK=BLOCK, EVEN=EVEN, num_warps=4
+        )
         if grid == 1:
             return mid.reshape([])
         _is_all_true_stage2[(1,)](mid, out, grid, BLOCK_MID=BLOCK_MID, num_warps=4)

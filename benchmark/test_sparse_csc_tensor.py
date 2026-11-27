@@ -53,6 +53,14 @@ class SparseCscTensorBenchmark(base.Benchmark):
 
 
 @pytest.mark.sparse_csc_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend has no SparseCSR "
+        "kernel for aten::_sparse_csc_tensor_unsafe, so the torch baseline "
+        "cannot be timed"
+    ),
+)
 def test_sparse_csc_tensor():
     bench = SparseCscTensorBenchmark(
         op_name="sparse_csc_tensor",

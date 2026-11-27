@@ -43,6 +43,11 @@ class SparseSemiStructuredApplyBenchmark(base.Benchmark):
             yield x, thread_masks
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="aten::_sparse_semi_structured_apply has no GCU kernel, "
+    "so there is no native baseline to compare against",
+)
 @pytest.mark.sparse_semi_structured_apply
 def test__sparse_semi_structured_apply():
     """Benchmark aten::_sparse_semi_structured_apply against the native ATen op."""

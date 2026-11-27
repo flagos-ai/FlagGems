@@ -113,6 +113,13 @@ OUT_MASKS = [
 ]
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the native aten::convolution_backward kernel aborts the process inside "
+        "do_bench on the benchmark shapes, so there is no native baseline"
+    ),
+)
 @pytest.mark.convolution_backward
 @pytest.mark.parametrize("dtype", DTYPE_CASES)
 def test_convolution_backward(dtype):
@@ -126,6 +133,13 @@ def test_convolution_backward(dtype):
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the native aten::convolution_backward kernel aborts the process inside "
+        "do_bench on the benchmark shapes, so there is no native baseline"
+    ),
+)
 @pytest.mark.convolution_backward_out
 @pytest.mark.parametrize("dtype", DTYPE_CASES)
 @pytest.mark.parametrize("mask", OUT_MASKS)

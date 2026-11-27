@@ -87,7 +87,17 @@ FP8_W8A8_BLOCK_SCALE_BMM_SHAPES = [
 
 
 def _is_fp8e4nv_supported():
-    if flag_gems.device != "cuda" or FP8_DTYPE is None:
+    if FP8_DTYPE is None:
+        return False
+    if flag_gems.vendor_name == "enflame":
+        # GCU has no CUDA capability query; probe whether the backend can
+        # allocate an fp8e4nv tensor instead.
+        try:
+            torch.zeros(1, dtype=FP8_DTYPE, device=flag_gems.device)
+        except Exception:
+            return False
+        return True
+    if flag_gems.device != "cuda":
         return False
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
