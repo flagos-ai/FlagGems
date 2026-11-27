@@ -780,6 +780,22 @@ group_norm:
     - [16, 16, 128]
   shape_desc: "N, C, *"
 
+silu_backward_out:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
+silu_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 1048576
+  - - 16777216
+  shape_desc: Fixed accepted backward input shape
+
 argmin:
   shapes:
     - [65536]
