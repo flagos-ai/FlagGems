@@ -65,6 +65,14 @@ def _reference_orgqr(input, tau):
     return _musa_orgqr_cpu_reference(input, tau)
 
 
+def _reference_orgqr_out(input, tau, out):
+    if flag_gems.vendor_name == "mthreads" and input.device.type == "cpu":
+        reference = _musa_orgqr_cpu_reference(input, tau)
+        out.resize_(reference.shape)
+        return out.copy_(reference.to(out.dtype))
+    return torch.orgqr(input, tau, out=out)
+
+
 @pytest.mark.orgqr
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
@@ -140,7 +148,7 @@ def test_accuracy_orgqr_out(shape, dtype):
         ref_input = utils.to_reference(input)
         ref_tau = utils.to_reference(tau)
         ref_out = torch.empty(0, dtype=dtype, device=ref_input.device)
-        assert torch.orgqr(ref_input, ref_tau, out=ref_out) is ref_out
+        assert _reference_orgqr_out(ref_input, ref_tau, ref_out) is ref_out
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
     result = flag_gems.orgqr_out(input, tau, out=out)
     assert result is out
@@ -172,7 +180,7 @@ def test_orgqr_out_multiple_noncontiguous_batch_dimensions(dtype, layout):
     with pytest.raises(RuntimeError):
         out.view(6, 7, 5)
 
-    reference = torch.orgqr(ref_input, ref_tau, out=ref_out)
+    reference = _reference_orgqr_out(ref_input, ref_tau, ref_out)
     result = flag_gems.orgqr_out(input, tau, out=out)
 
     assert result is out
@@ -200,7 +208,7 @@ def test_orgqr_out_casts_only_final_result(output_dtype, nonflattenable):
         out = torch.empty(matrix.shape, dtype=output_dtype, device=input.device)
         ref_out = torch.empty(matrix.shape, dtype=output_dtype, device=ref_input.device)
     original_pointer, original_stride = out.data_ptr(), out.stride()
-    reference = torch.orgqr(ref_input, ref_tau, out=ref_out)
+    reference = _reference_orgqr_out(ref_input, ref_tau, ref_out)
     result = flag_gems.orgqr_out(input, tau, out=out)
     assert result is out and result.data_ptr() == original_pointer
     assert result.stride() == original_stride
@@ -222,7 +230,7 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
     out = torch.empty((5, 7), device=flag_gems.device).T
     ref_out = torch.empty((5, 7), device=ref_input.device).T
     result = flag_gems.orgqr_out(input, tau, out=out)
-    ref = torch.orgqr(ref_input, ref_tau, out=ref_out)
+    ref = _reference_orgqr_out(ref_input, ref_tau, ref_out)
     assert result is out
     assert ref is ref_out
     assert not result.is_contiguous()
@@ -231,7 +239,7 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
     alias_input, alias_tau = make_reflectors((7, 5), torch.float32)
     ref_alias_input = utils.to_reference(alias_input).clone()
     ref_alias_tau = utils.to_reference(alias_tau)
-    ref_alias = torch.orgqr(ref_alias_input, ref_alias_tau, out=ref_alias_input)
+    ref_alias = _reference_orgqr_out(ref_alias_input, ref_alias_tau, ref_alias_input)
     result = flag_gems.orgqr_out(alias_input, alias_tau, out=alias_input)
     assert result is alias_input
     utils.gems_assert_close(result, ref_alias, torch.float32)
@@ -239,7 +247,7 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
     wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
     wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
     result = flag_gems.orgqr_out(input, tau, out=wide_out)
-    ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
+    ref = _reference_orgqr_out(ref_input, ref_tau, wide_ref)
     utils.gems_assert_close(result, ref, torch.float64)
 
     bad_out = torch.empty((7, 5), dtype=torch.int32, device=flag_gems.device)
