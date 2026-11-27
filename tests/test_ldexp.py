@@ -159,6 +159,15 @@ def test_ldexp(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+def _promotion_reference(inp, exponent):
+    if flag_gems.vendor_name == "iluvatar" and exponent.dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        return torch.ops.aten.ldexp.Tensor(inp.cpu(), exponent.cpu())
+    return torch.ops.aten.ldexp.Tensor(_to_reference(inp), _to_reference(exponent))
+
+
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
     "self_dtype,other_dtype,expected_dtype",
@@ -194,15 +203,15 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     else:
         other = torch.randint(-8, 9, shape, dtype=other_dtype, device=flag_gems.device)
 
-    ref_self = _to_reference(self)
-    ref_other = _to_reference(other)
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    ref_out = _promotion_reference(self, other)
 
     res_out = flag_gems.ldexp(self, other)
 
     assert ref_out.dtype == expected_dtype
     assert res_out.dtype == ref_out.dtype
-    utils.gems_assert_close(res_out, ref_out, expected_dtype)
+    assert res_out.device == self.device
+    compared = res_out.cpu() if ref_out.device.type == "cpu" else res_out
+    utils.gems_assert_close(compared, ref_out, expected_dtype)
 
 
 @pytest.mark.ldexp
@@ -224,15 +233,15 @@ def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
     other = torch.randn((), dtype=other_dtype, device=flag_gems.device)
-    ref_self = _to_reference(self)
-    ref_other = _to_reference(other)
 
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    ref_out = _promotion_reference(self, other)
     res_out = flag_gems.ldexp(self, other)
 
     assert ref_out.dtype == expected_dtype
     assert res_out.dtype == ref_out.dtype
-    utils.gems_assert_close(res_out, ref_out, expected_dtype)
+    assert res_out.device == self.device
+    compared = res_out.cpu() if ref_out.device.type == "cpu" else res_out
+    utils.gems_assert_close(compared, ref_out, expected_dtype)
 
 
 @pytest.mark.ldexp
@@ -266,13 +275,20 @@ def test_ldexp_special_values(dtype):
         dtype=dtype,
         device=flag_gems.device,
     )
-    ref_self = _to_reference(self, True)
-    ref_other = _to_reference(other, True)
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float32:
+        # The device exp2 path stays finite at the FP32 overflow boundary.
+        ref_out = torch.ops.aten.ldexp.Tensor(
+            self.cpu().double(), other.cpu().double()
+        ).to(dtype)
+    else:
+        ref_self = _to_reference(self, True)
+        ref_other = _to_reference(other, True)
+        ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    assert res_out.device == self.device
+    compared = res_out.cpu() if ref_out.device.type == "cpu" else res_out
+    utils.gems_assert_close(compared, ref_out, dtype, equal_nan=True)
     res_cpu = res_out.cpu()
     ref_cpu = ref_out.cpu()
     valid = ~(torch.isnan(res_cpu) | torch.isnan(ref_cpu))
@@ -297,6 +313,100 @@ def test_ldexp_complex():
     res_out = flag_gems.ldexp(self, other)
 
     utils.gems_assert_close(res_out, ref_out, torch.complex64)
+
+
+def _ldexp_out_reference(inp, exponent):
+    if flag_gems.vendor_name == "enflame":
+        # The native GCU Out reference is unavailable; both reference modes
+        # use genuine CPU same-dtype math without changing global ref selection.
+        lhs = inp.to(device="cpu")
+        rhs = exponent.to(device="cpu")
+        assert lhs.dtype == inp.dtype and rhs.dtype == exponent.dtype
+    else:
+        lhs = utils.to_reference(inp, True)
+        rhs = utils.to_reference(exponent, False)
+    return torch.ops.aten.ldexp.Tensor(lhs, rhs)
+
+
+def _ldexp_out_metadata(tensor):
+    storage = tensor.untyped_storage()
+    metadata = (
+        tensor.device,
+        tensor.dtype,
+        tuple(tensor.shape),
+        tensor.stride(),
+        tensor.storage_offset(),
+        storage._cdata,
+        tensor.data_ptr(),
+        storage.nbytes(),
+        tensor.requires_grad,
+        tensor.is_conj(),
+        tensor.is_neg(),
+    )
+    return metadata
+
+
+def _ldexp_out_snapshot(tensor):
+    metadata = _ldexp_out_metadata(tensor)
+    # These original cases use finite Float3 values and small integer exponents.
+    # Use logical CPU values, avoiding unsafe raw reads of vendor Long storage.
+    host = tensor.detach().cpu()
+    assert host.dtype == tensor.dtype and host.shape == tensor.shape
+    contents = host.contiguous().reshape(-1).view(torch.uint8).clone()
+    return metadata, contents
+
+
+def _ldexp_out_assert_unchanged(tensor, before):
+    after = _ldexp_out_snapshot(tensor)
+    assert after[0] == before[0], "candidate changed original input metadata"
+    assert torch.equal(after[1], before[1]), "candidate changed original input values"
+
+
+def _call_ldexp_out_checked(inp, exponent, out):
+    if flag_gems.vendor_name != "enflame":
+        return flag_gems.ldexp_out(inp, exponent, out=out)
+    lhs = _ldexp_out_snapshot(inp)
+    rhs = _ldexp_out_snapshot(exponent)
+    out_metadata = _ldexp_out_metadata(out)
+    try:
+        result = flag_gems.ldexp_out(inp, exponent, out=out)
+    finally:
+        _ldexp_out_assert_unchanged(inp, lhs)
+        _ldexp_out_assert_unchanged(exponent, rhs)
+    assert isinstance(result, torch.Tensor) and result is out
+    # Validate original target ABI before numerical CPU comparisons.
+    after_out = _ldexp_out_metadata(result)
+    # Out promises the original object, pointer/layout/capacity and public ABI;
+    # a zero-byte output need not retain an internal StorageImpl identity.
+    assert after_out[:5] == out_metadata[:5]
+    assert after_out[6:] == out_metadata[6:]
+    return result
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.parametrize("shape", [*utils.POINTWISE_SHAPES, (2, 0, 3)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_out(shape, dtype):
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    exponent = torch.randint(-8, 9, shape, dtype=torch.int32, device=inp.device)
+    inp_before, exponent_before = inp.clone(), exponent.clone()
+    reference = _ldexp_out_reference(inp, exponent)
+    out = torch.empty_like(inp)
+    pointer = out.data_ptr()
+    result = _call_ldexp_out_checked(inp, exponent, out)
+    assert result is out and result.data_ptr() == pointer
+    assert result.device == inp.device and result.dtype == dtype
+    assert result.shape == reference.shape
+    compared = result.to(device="cpu") if flag_gems.vendor_name == "enflame" else result
+    utils.gems_assert_close(compared, reference, dtype)
+    assert inp.device == inp_before.device and inp.dtype == inp_before.dtype
+    assert (
+        exponent.device == exponent_before.device
+        and exponent.dtype == exponent_before.dtype
+    )
+    utils.gems_assert_equal(inp, utils.to_reference(inp_before, False))
+    utils.gems_assert_equal(exponent, utils.to_reference(exponent_before, False))
 
 
 @pytest.mark.ldexp_out
@@ -414,3 +524,22 @@ def test_ldexp_out_rejects_invalid_dtype():
     out = torch.empty((17,), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ldexp_out(self, other, out=out)
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_out_broadcast_noncontiguous(dtype):
+    torch.manual_seed(0)
+    inp = torch.randn((19, 7), dtype=dtype, device=flag_gems.device).T
+    exponent = torch.randint(-4, 5, (19,), dtype=torch.int64, device=inp.device)
+    reference = _ldexp_out_reference(inp, exponent)
+    backing = torch.full((7, 38), 123, dtype=dtype, device=inp.device)
+    out = backing[:, ::2]
+    pointer, stride = out.data_ptr(), out.stride()
+    result = _call_ldexp_out_checked(inp, exponent, out)
+    assert result is out and result.data_ptr() == pointer and result.stride() == stride
+    assert result.device == inp.device and result.dtype == dtype
+    assert result.shape == reference.shape
+    compared = result.to(device="cpu") if flag_gems.vendor_name == "enflame" else result
+    utils.gems_assert_close(compared, reference, dtype)
+    assert torch.equal(backing[:, 1::2].cpu(), torch.full((7, 19), 123, dtype=dtype))
