@@ -213,6 +213,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
 )
 from ._slow_conv2d_forward import _slow_conv2d_forward  # noqa: F401
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
     _thnn_differentiable_gru_cell_backward,
@@ -235,6 +236,9 @@ from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backwa
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from ._weight_norm_differentiable_backward import (  # noqa: F401
     weight_norm_differentiable_backward,
+)
+from ._wrapped_quantized_linear_prepacked import (  # noqa: F401
+    _wrapped_quantized_linear_prepacked,
 )
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
@@ -397,6 +401,10 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_csr_to_coo import (  # noqa: F401
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from .copy import copy, copy_
 from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
@@ -552,6 +560,7 @@ from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .gru_cell import gru_cell
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
@@ -1285,6 +1294,7 @@ __all__ = [
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_slow_conv2d_forward",
+    "_sparse_semi_structured_linear",
     "_thnn_fused_gru_cell",
     "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
@@ -1303,6 +1313,7 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
+    "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
     "absolute",
@@ -1609,7 +1620,9 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru",
     "gru_cell",
+    "gru_data",
     "gt",
     "gt_scalar",
     "gt_scalar_",

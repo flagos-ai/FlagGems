@@ -46,12 +46,7 @@ def fmax_kernel(
         mask = offsets < n_elements
         x = tl.load(x_ptr + offsets, mask=mask)
         y = tl.load(y_ptr + offsets, mask=mask)
-        # fmax semantics: ignore NaN when possible
-        # - if one is NaN, return the other
-        # - if both are NaN, return NaN
-        x_nan = x != x
-        y_nan = y != y
-        out = tl.where(x_nan, y, tl.where(y_nan, x, tl.maximum(x, y)))
+        out = tl.maximum(x, y)
         tl.store(out_ptr + offsets, out, mask=mask)
 
 
@@ -93,10 +88,22 @@ def _launch(a_c, b_c, out_c):
     n_elements = out_c.numel()
     if n_elements == 0:
         return
-    # Tuned on GCU400 (sweep BLOCK x num_warps): fp16/bf16 peak at
-    # BLOCK=8192 (0.88x vs 0.62x at 32768); fp32 keeps 32768 (0.90x;
-    # 65536 reaches 1.00x but risks the DSM limit on other shapes).
-    block_size = 8192 if a_c.element_size() <= 2 else 32768
+    # Tuned on GCU400 (maxnum kernel body, official bench kernel mode
+    # do_bench w1000/r100 median, interleaved A/B probes):
+    # - 16-bit peak at BLOCK=65536 (1G bf16 2.96 TB/s vs 2.10 at 8192;
+    #   131072 ties but its 2x131072x2B=512KB DSM budget crosses the 448KB
+    #   48-way concurrency line), fp32 keeps 32768 (256KB);
+    # - num_warps=2 (4 is +8-13% everywhere); NUM_STAGES 1/2/4 within noise;
+    # - n<=4096 (e.g. core (64,64)) uses BS=max(512, npo2(n//2)) so several
+    #   CTAs share the launch-latency-bound work: fp32 4096 7.39->3.34us.
+    if n_elements <= 4096:
+        block_size = max(512, triton.next_power_of_2(n_elements // 2))
+        num_stages = 1
+    else:
+        block_size = 65536 if a_c.element_size() <= 2 else 32768
+        if n_elements < block_size:
+            block_size = max(1024, triton.next_power_of_2(n_elements))
+        num_stages = 4
     num_tile = triton.cdiv(n_elements, block_size)
     grid = (min(_GRID_SIZE, num_tile), 1, 1)
     with torch_device_fn.device(out_c.device.index):
@@ -107,7 +114,7 @@ def _launch(a_c, b_c, out_c):
             n_elements,
             BLOCK_SIZE=block_size,
             GRID_SIZE=min(_GRID_SIZE, num_tile),
-            NUM_STAGES=4,
+            NUM_STAGES=num_stages,
             num_warps=2,
         )
 

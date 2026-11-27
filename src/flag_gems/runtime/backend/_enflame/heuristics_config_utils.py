@@ -74,6 +74,13 @@ def gather_heur_block_n(args):
     return min(2048, triton.next_power_of_2(args["N"]))
 
 
+def gather_block_quantized_heur_block_size_n(args):
+    # 块量化 gather 的 tile 宽度：按真实遍历长度取 2 的幂。
+    # indices 路径下 wrapper 传的 N 恒为 0（kernel 不使用），真实长度在 index_len。
+    n = args.get("index_len", None) or args["N"]
+    return max(64, min(8192, triton.next_power_of_2(max(int(n), 1))))
+
+
 def index_select_heur_block_m(args):
     return min(16, triton.next_power_of_2(triton.cdiv(32768, args["N"])))
 
@@ -395,6 +402,9 @@ HEURISTICS_CONFIGS = {
     "gather": {
         "BLOCK_M": gather_heur_block_m,
         "BLOCK_N": gather_heur_block_n,
+    },
+    "gather_block_quantized": {
+        "BLOCK_SIZE_N": gather_block_quantized_heur_block_size_n,
     },
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,

@@ -30,6 +30,7 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeImplicitAutograd
 )
 _NATIVE_UNPACK_DUAL = torch.ops.aten._unpack_dual.default
+_REDISPATCH = _NATIVE_UNPACK_DUAL.redispatch
 
 
 def _unpack_dual(dual: torch.Tensor, level: int) -> tuple:
@@ -95,6 +96,20 @@ def _unpack_dual(dual: torch.Tensor, level: int) -> tuple:
 
     Only the default overload exists for this operator (no ``.out`` variant),
     and the schema marks the primal output as aliasing (``Tensor(a)``).
+    logger.debug("GEMS_ENFLAME _UNPACK_DUAL")
+
+    Enflame-local hot-path deviation (gcu400 copy): the operator has no
+    device kernel, so its whole cost is host-side dispatch -- the one
+    ``redispatch`` into the native composite is ~3.4us and is the structural
+    floor. The Python wrapper around it is the only optimizable slack, so this
+    copy drops the per-call ``logger.debug`` trace line and resolves
+    ``redispatch`` once at import time (``_REDISPATCH``); interleaved timeit
+    (GCU400, torch 2.11) shows the per-call logging line alone costs
+    ~0.15us of the ~3.55us total, i.e. the dominant removable overhead
+    (~4%), while default-arg vs module-level binding makes no measurable
+    difference. The generic copy keeps the conventional trace line for
+    op-list recording (``record=True`` mode); on this backend the operator
+    is therefore absent from that diagnostic trace, matching the established
+    no-trace host-op precedent of ``alias`` and ``_coalesced_``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _UNPACK_DUAL")
-    return _NATIVE_UNPACK_DUAL.redispatch(_FALLBACK_KEYSET, dual, level)
+    return _REDISPATCH(_FALLBACK_KEYSET, dual, level)

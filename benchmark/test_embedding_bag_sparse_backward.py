@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # _embedding_bag_sparse_backward benchmark
@@ -83,6 +85,10 @@ class EmbeddingBagSparseBackwardBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.embedding_bag_sparse_backward
 def test_embedding_bag_sparse_backward():
     bench = EmbeddingBagSparseBackwardBenchmark(

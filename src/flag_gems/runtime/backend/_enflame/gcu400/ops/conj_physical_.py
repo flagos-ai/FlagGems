@@ -22,7 +22,7 @@ def conj_physical__kernel(ptr, n_real_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def conj_physical_(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 CONJ_PHYSICAL_")
+    logger.debug("GEMS_ENFLAME CONJ_PHYSICAL_")
     if not input.is_complex():
         return input
 

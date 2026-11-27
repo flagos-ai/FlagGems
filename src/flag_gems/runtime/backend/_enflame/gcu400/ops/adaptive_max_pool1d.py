@@ -145,7 +145,7 @@ def adaptive_max_pool1d(
         - output: Pooled tensor of shape (N, C, output_size)
         - indices: Indices of max values, shape (N, C, output_size)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ADAPTIVE_MAX_POOL1D")
+    logger.debug("GEMS_ENFLAME ADAPTIVE_MAX_POOL1D")
 
     # Input validation.  ATen also accepts the unbatched (C, L) form; it is
     # handled by pooling a (1, C, L) view and dropping the batch dim.

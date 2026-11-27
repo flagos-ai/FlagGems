@@ -61,7 +61,19 @@ def test_sparse_coo_tensor_infer_size(nnz, sparse_dim, dense_shape, dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize(
-    "index_dtype", [torch.int64, torch.int32, torch.float32, torch.complex64]
+    "index_dtype",
+    [
+        torch.int64,
+        torch.int32,
+        torch.float32,
+        pytest.param(
+            torch.complex64,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "enflame",
+                reason="enflame: device cast to complex64 aborts (topsatenCopy)",
+            ),
+        ),
+    ],
 )
 @pytest.mark.parametrize(
     "dtype", [None, pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16]
@@ -126,6 +138,13 @@ def test_sparse_coo_tensor_coalesced(coalesced):
 
 
 @pytest.mark.sparse_coo_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::sparse_coo_tensor"
+    ),
+)
 def test_sparse_coo_tensor_dispatch():
     indices, values = _components()
     ref = torch.sparse_coo_tensor(indices, values)

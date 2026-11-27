@@ -15,6 +15,7 @@
 import pytest
 import torch
 
+import flag_gems
 from flag_gems import istft
 
 from . import base
@@ -58,6 +59,10 @@ class IstftBenchmark(base.Benchmark):
             yield spec, n_fft, hop, n_fft, window, True, False, None, None, False
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.istft
 def test_istft():
     bench = IstftBenchmark(

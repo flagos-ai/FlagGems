@@ -40,10 +40,25 @@ def _make_input(shape, dtype, *, positive=False):
 
 
 def _assert_result(result, reference):
-    assert result.dtype == torch.float64
-    utils.gems_assert_close(
-        result, reference, torch.float64, equal_nan=True, atol=1e-12
-    )
+    # Kunlunxin (XPU) maps torch.float64 tensors to float32 storage, and the
+    # float_power kernel computes in fp32 (no fp64 exp/log in libdevice-xpu3),
+    # so the result comes back as float32 with fp32-level precision. Verify at
+    # fp32 tolerance there; keep the strict fp64 check on other backends.
+    if flag_gems.vendor_name == "kunlunxin":
+        assert result.dtype == torch.float32
+        utils.gems_assert_close(result, reference, torch.float32, equal_nan=True)
+    elif flag_gems.vendor_name == "enflame":
+        # gcu400 has no fp64 datapath (torch_gcu stores a "float64" as fp32),
+        # so the values only carry fp32 precision; the dtype tag stays
+        # float64, hence the explicit .float() casts for the fp32 comparison.
+        utils.gems_assert_close(
+            result.float(), reference.float(), torch.float32, equal_nan=True
+        )
+    else:
+        assert result.dtype == torch.float64
+        utils.gems_assert_close(
+            result, reference, torch.float64, equal_nan=True, atol=1e-12
+        )
 
 
 @pytest.mark.float_power_tensor_tensor

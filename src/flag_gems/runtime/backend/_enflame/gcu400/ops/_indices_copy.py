@@ -30,11 +30,26 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# Tunable constants replaced per optimization round; keep a single kernel definition to avoid cold recompilation from
-# repeated specialization.
-FLAT_BLOCK_SIZE = 2048
-FLAT_NUM_WARPS = 4
-FLAT_FIXED_GRID = 0
+# The Flat contiguous path selects hyperparameters by numel (gcu400 measurements, do_bench cold L2, min-of-3 median,
+# in-process A/B, see job j20261116231457_b35a15ba probe2/probe3):
+#   numel <= 65536   : BLOCK=2048, w4 — 3.0-4.1us for 16..65536 elements, within the noise band of
+#                      the full sweep optimum (±0.3us on the shared board), so keep the original config;
+#   numel <= 393216  : BLOCK=8192, w8 — keeps CTA count <= 48 for one wave; 131072 elements
+#                      5.76->4.63us (-20%), 262144 9.54->5.61us (-41%),
+#                      393216 12.21->6.36us (-48%), and 4.63us is already faster than native
+#                      d2d copy at 4.66us;
+#   numel >  393216  : fixed grid=48 + BLOCK=8192, w8 strided loop — plain grid
+#                      degrades by wave quantization beyond 48 CTAs (with BLOCK=2048, 524288 elements
+#                      at 256 CTAs ≈ 5.3 waves, 16.0us; 1048576 elements, 29.5us); fix48
+#                      gives 7.06us for 524288 elements (-56%) and 10.94us for 1048576 elements
+#                      (-63%), both faster than native d2d.
+_SMALL_NUMEL = 65536
+_SMALL_BLOCK = 2048
+_SMALL_WARPS = 4
+_LARGE_NUMEL = 393216
+_LARGE_BLOCK = 8192
+_LARGE_WARPS = 8
+_FLAT_FIXED_GRID = 48
 TWO_D_BLOCK_SIZE = 4096
 TWO_D_NUM_WARPS = 2
 REBIND_OUT_TO_SOURCE_DEVICE = True
@@ -100,7 +115,13 @@ def _indices_copy_impl(self, out=None, *, caller_out=False):
     if nnz == 0:
         return out
 
-    gcu_device = _current_gcu_device()
+    # When the source is already on GCU, reuse its device directly (avoids a current_device query and is
+    # more accurate for sources on a non-current device); only CPU sources need the H2D target device determined.
+    gcu_device = (
+        plain_indices.device
+        if plain_indices.device.type == "gcu"
+        else _current_gcu_device()
+    )
     source = (
         plain_indices
         if plain_indices.device.type == "gcu"
@@ -116,9 +137,20 @@ def _indices_copy_impl(self, out=None, *, caller_out=False):
     with torch_device_fn.device(gcu_device):
         if source.is_contiguous():
             numel = sparse_dim * nnz
-            block_size = FLAT_BLOCK_SIZE
-            if FLAT_FIXED_GRID > 0:
-                grid = (min(FLAT_FIXED_GRID, triton.cdiv(numel, block_size)),)
+            # Select (BLOCK, warps, FIXED_GRID) by numel tiers: thresholds and per-tier measurements
+            # are documented in the file-header comment. For the fix tier, grid=min(48, tiles); for the others, tiles.
+            if numel <= _SMALL_NUMEL:
+                block_size, num_warps, fixed_grid = _SMALL_BLOCK, _SMALL_WARPS, 0
+            elif numel <= _LARGE_NUMEL:
+                block_size, num_warps, fixed_grid = _LARGE_BLOCK, _LARGE_WARPS, 0
+            else:
+                block_size, num_warps, fixed_grid = (
+                    _LARGE_BLOCK,
+                    _LARGE_WARPS,
+                    _FLAT_FIXED_GRID,
+                )
+            if fixed_grid > 0:
+                grid = (min(fixed_grid, triton.cdiv(numel, block_size)),)
             else:
                 grid = (triton.cdiv(numel, block_size),)
             _indices_copy_flat[grid](
@@ -126,8 +158,8 @@ def _indices_copy_impl(self, out=None, *, caller_out=False):
                 destination,
                 numel,
                 BLOCK=block_size,
-                FIXED_GRID=FLAT_FIXED_GRID,
-                num_warps=FLAT_NUM_WARPS,
+                FIXED_GRID=fixed_grid,
+                num_warps=num_warps,
             )
         else:
             stride_row, stride_col = source.stride()
@@ -144,11 +176,12 @@ def _indices_copy_impl(self, out=None, *, caller_out=False):
             )
 
     if destination is not out:
-        out.copy_(destination.to(out.device))
+        # Write directly with cross-device copy_, avoiding one full extra copy through an intermediate CPU buffer.
+        out.copy_(destination)
     elif caller_out and out.device != plain_indices.device:
-        # Environment difference between CPU sparse indices and a GCU out: keep the same out object, rebind its storage.
-        # set_ rejects cross-device assignment (measured RuntimeError); assigning to .data switches device in place
-        # while preserving object identity.
+        # Environment difference for CPU sparse indices + GCU out: keep the same out object and rebind its storage.
+        # set_ forbids cross-device operation (measured RuntimeError), while data assignment can switch devices in place
+        # and preserve object identity.
         if REBIND_OUT_TO_SOURCE_DEVICE:
             out.data = destination.to(plain_indices.device)
     return out
@@ -156,9 +189,9 @@ def _indices_copy_impl(self, out=None, *, caller_out=False):
 
 def _indices_copy(self: torch.Tensor) -> torch.Tensor:
     """``aten::_indices_copy``: return an independent copy of the index buffer."""
-    logger.debug("GEMS_ENFLAME_GCU400 _INDICES_COPY")
+    logger.debug("GEMS_ENFLAME _INDICES_COPY")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
-        raise RuntimeError(
+        raise NotImplementedError(
             "_indices_copy only supports sparse coordinate (coo) tensors, "
             f"but got layout {getattr(self, 'layout', None)}"
         )
@@ -167,9 +200,9 @@ def _indices_copy(self: torch.Tensor) -> torch.Tensor:
 
 def _indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::_indices_copy.out``: write the index buffer into the caller-provided ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 _INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME _INDICES_COPY_OUT")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
-        raise RuntimeError(
+        raise NotImplementedError(
             "_indices_copy only supports sparse coordinate (coo) tensors, "
             f"but got layout {getattr(self, 'layout', None)}"
         )
@@ -181,4 +214,9 @@ def _indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     sparse_dim, nnz = self._indices().shape
     if tuple(out.shape) != (sparse_dim, nnz):
         out.resize_((sparse_dim, nnz))
+    if not out.is_contiguous():
+        tmp = torch.empty((sparse_dim, nnz), dtype=torch.int64, device=out.device)
+        _indices_copy_impl(self, out=tmp)
+        out.copy_(tmp)
+        return out
     return _indices_copy_impl(self, out=out, caller_out=True)

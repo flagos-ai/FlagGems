@@ -2333,25 +2333,842 @@ def cholesky_solve_single_rhs_kernel(
         tl.store(X_ptr + B_base + i * stride_B, sum_val * inv_diag)
 
 
-def _get_blocked_tile_config(dtype):
+# ══════════════════════════════════════════════════════════════════════════
+# GCU400 fp32 fused Neumann fast path (2026-11-18).
+#
+# cholesky_solve is two triangular solves sharing one factor: solve T*Y = B
+# then T^T * X = Y, where T is the lower factor L (or U^T for the upper
+# orientation).  Writing T = D(I + M) with M strictly lower and nilpotent,
+#
+#     X = D^-1 * (I + M)^-T * (I + M)^-1 * D^-1 * B,
+#
+# and the finite Neumann product (I - M)(I + M^2)(I + M^4)... replaces the
+# serial per-row substitution chains (the blocked kernels above spend ~32
+# gather steps per diagonal block; a whole-block Neumann solve is a short
+# chain of ieee tl.dot's at num_warps=1 -- see the linalg_solve_triangular
+# and triangular_solve precedents).  N <= 64 fits one register tile.  Larger
+# multiple-of-64 systems precompute per-block inverses in a parallel K1 pass
+# and walk the blocks with one diag dot each in K2.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@libentry()
+@triton.jit
+def _chol_neumann_1blk_kernel(
+    L_ptr,
+    B_ptr,
+    X_ptr,
+    N,
+    K,
+    stride_l,
+    stride_b,
+    batch_stride_l,
+    batch_stride_b,
+    BN: tl.constexpr,
+    KS: tl.constexpr,
+    UPPER: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    """Fused two-phase Neumann cholesky solve for N <= BN <= 64.
+
+    Grid: (batch, k-slices).  Both substitution phases collapse into finite
+    Neumann products over one register-resident factor tile; X = D^-1 * n^T
+    * n * D^-1 * B with n = (I + M)^-1 and M = D^-1 * strictly_lower(T).
+    """
+    pid_b = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+
+    L = L_ptr + pid_b * batch_stride_l
+    Bs = B_ptr + pid_b * batch_stride_b
+    X = X_ptr + pid_b * batch_stride_b
+
+    rows = tl.arange(0, BN)
+    r2 = rows[:, None]
+    c2 = rows[None, :]
+    if EVEN_N:
+        t_blk = tl.load(L + r2 * stride_l + c2)
+        diag = tl.load(L + rows * stride_l + rows)
+    else:
+        # Clamp masked lanes' addresses in-bounds: this backend's masked
+        # loads do not honor `other` for out-of-bounds lanes.
+        in_blk = (r2 < N) & (c2 < N)
+        t_blk = tl.load(
+            L + tl.where(in_blk, r2 * stride_l + c2, 0),
+            mask=in_blk,
+            other=0.0,
+        )
+        in_d = rows < N
+        diag = tl.load(
+            L + tl.where(in_d, rows * stride_l + rows, 0), mask=in_d, other=1.0
+        )
+    if UPPER:
+        # The factor tile in memory is the upper factor U; both phases solve
+        # with T = U^T (single transpose, shared by the whole tile).
+        t_blk = tl.trans(t_blk)
+    dinv = 1.0 / diag
+    m_fac = tl.where(c2 < r2, t_blk, 0.0) * dinv[:, None]
+
+    # n_mat = (I + M)^-1 = (I - M)(I + M^2)(I + M^4)..., exact for nilpotent M.
+    n_mat = tl.where(r2 == c2, 1.0, 0.0)
+    n_mat = n_mat - tl.dot(m_fac, n_mat, input_precision="ieee")
+    m2 = tl.dot(m_fac, m_fac, input_precision="ieee")
+    n_mat = n_mat + tl.dot(m2, n_mat, input_precision="ieee")
+    m4 = tl.dot(m2, m2, input_precision="ieee")
+    n_mat = n_mat + tl.dot(m4, n_mat, input_precision="ieee")
+    m8 = tl.dot(m4, m4, input_precision="ieee")
+    n_mat = n_mat + tl.dot(m8, n_mat, input_precision="ieee")
+    if BN >= 32:
+        m16 = tl.dot(m8, m8, input_precision="ieee")
+        n_mat = n_mat + tl.dot(m16, n_mat, input_precision="ieee")
+    if BN >= 64:
+        m32 = tl.dot(m16, m16, input_precision="ieee")
+        n_mat = n_mat + tl.dot(m32, n_mat, input_precision="ieee")
+
+    kcols = col_start + tl.arange(0, KS)
+    if EVEN_K:
+        if EVEN_N:
+            x_tile = tl.load(Bs + r2 * stride_b + kcols[None, :])
+        else:
+            rmask = rows[:, None] < N
+            x_tile = tl.load(
+                Bs + tl.where(rmask, r2 * stride_b + kcols[None, :], 0),
+                mask=rmask,
+                other=0.0,
+            )
+    else:
+        cmask = kcols < K
+        mask2d = (rows[:, None] < N) & cmask[None, :]
+        x_tile = tl.load(
+            Bs + tl.where(mask2d, r2 * stride_b + kcols[None, :], 0),
+            mask=mask2d,
+            other=0.0,
+        )
+    # Forward: Y = n * D^-1 * B; backward: X = D^-1 * n^T * Y.
+    y_tile = tl.dot(n_mat, x_tile * dinv[:, None], input_precision="ieee")
+    w_tile = tl.dot(tl.trans(n_mat), y_tile, input_precision="ieee")
+    out_tile = w_tile * dinv[:, None]
+    if EVEN_K:
+        if EVEN_N:
+            tl.store(X + r2 * stride_b + kcols[None, :], out_tile)
+        else:
+            rmask = rows[:, None] < N
+            tl.store(X + r2 * stride_b + kcols[None, :], out_tile, mask=rmask)
+    else:
+        tl.store(X + r2 * stride_b + kcols[None, :], out_tile, mask=mask2d)
+
+
+@libentry()
+@triton.jit
+def _chol_ainv_build_kernel(
+    L_ptr,
+    BINV_ptr,
+    N,
+    stride_l,
+    batch_stride_l,
+    BLK: tl.constexpr,
+    NB: tl.constexpr,
+    UPPER: tl.constexpr,
+):
+    """K1: per-diagonal-block inverses of T, computed once (k-independent).
+
+    Grid: (batch, NB).  N % BLK == 0 is enforced by the dispatcher, so every
+    tile access is exact and unmasked.  Stores Binv = (I + M)^-1 D^-1 and its
+    transpose at BINV[(batch * NB + blk) * 2 * BLK * BLK + {0, BLK*BLK}], so
+    K2 consumes both orientations through natural row-major loads.
+    """
+    pid_b = tl.program_id(0)
+    pid_blk = tl.program_id(1)
+    L = L_ptr + pid_b * batch_stride_l
+
+    rows = tl.arange(0, BLK)
+    r2 = rows[:, None]
+    c2 = rows[None, :]
+    row1 = pid_blk * BLK + rows
+    t_blk = tl.load(L + row1[:, None] * stride_l + row1[None, :])
+    if UPPER:
+        t_blk = tl.trans(t_blk)
+    diag = tl.load(L + row1 * stride_l + row1)
+    dinv = 1.0 / diag
+    m_fac = tl.where(c2 < r2, t_blk, 0.0) * dinv[:, None]
+
+    n_mat = tl.where(r2 == c2, 1.0, 0.0)
+    n_mat = n_mat - tl.dot(m_fac, n_mat, input_precision="ieee")
+    m2 = tl.dot(m_fac, m_fac, input_precision="ieee")
+    n_mat = n_mat + tl.dot(m2, n_mat, input_precision="ieee")
+    m4 = tl.dot(m2, m2, input_precision="ieee")
+    n_mat = n_mat + tl.dot(m4, n_mat, input_precision="ieee")
+    m8 = tl.dot(m4, m4, input_precision="ieee")
+    n_mat = n_mat + tl.dot(m8, n_mat, input_precision="ieee")
+    if BLK >= 32:
+        m16 = tl.dot(m8, m8, input_precision="ieee")
+        n_mat = n_mat + tl.dot(m16, n_mat, input_precision="ieee")
+    if BLK >= 64:
+        m32 = tl.dot(m16, m16, input_precision="ieee")
+        n_mat = n_mat + tl.dot(m32, n_mat, input_precision="ieee")
+    # T^-1 = (I + M)^-1 D^-1: column scale by the reciprocal diagonal.
+    binv = n_mat * dinv[None, :]
+
+    base = (pid_b * NB + pid_blk) * 2 * BLK * BLK
+    tl.store(BINV_ptr + base + r2 * BLK + c2, binv)
+    tl.store(BINV_ptr + base + BLK * BLK + r2 * BLK + c2, tl.trans(binv))
+
+
+@libentry()
+@triton.jit
+def _chol_ainv_walk_kernel(
+    L_ptr,
+    B_ptr,
+    X_ptr,
+    BINV_ptr,
+    N,
+    K,
+    stride_l,
+    stride_b,
+    batch_stride_l,
+    batch_stride_b,
+    BLK: tl.constexpr,
+    KS: tl.constexpr,
+    BM: tl.constexpr,
+    NB: tl.constexpr,
+    NUM_K: tl.constexpr,
+    UPPER: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    """K2: two-phase block walk with precomputed diagonal-block inverses.
+
+    Grid: (batch, k-slices).  Forward blocks ascend (solve T * Y = B, one
+    Binv diag dot per block) and backward blocks descend (solve T^T * X = Y,
+    one transposed-Binv diag dot per block); trailing/leading panel updates
+    stay dot-based and accumulate in place in X, reading B only from the
+    first block.  BM == BLK keeps every update tile exact (N % BLK == 0).
+    The dispatcher guarantees K % KS == 0, so every access is mask-exact.
+
+    Panel addressing mirrors with the orientation: with T = L the panels
+    are T[m, k] = L[m, k] (forward) and T[k, m] (backward, transposed load);
+    with T = U^T they swap -- T[m, k] = U[k, m] and T[k, m] = U[m, k].
+    """
+    pid_b = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+    L = L_ptr + pid_b * batch_stride_l
+    Bs = B_ptr + pid_b * batch_stride_b
+    X = X_ptr + pid_b * batch_stride_b
+    binv_batch = BINV_ptr + pid_b * NB * 2 * BLK * BLK
+
+    if NUM_K == 1:
+        # Constant kcols fold the address vectors of every load/store below;
+        # runtime column offsets otherwise keep accesses on the predicated
+        # slow path.
+        kcols = tl.arange(0, KS)
+    else:
+        kcols = col_start + tl.arange(0, KS)
+    if EVEN_K:
+        cmask = tl.full((KS,), 1, tl.int1)
+    else:
+        cmask = kcols < K
+    cm2 = cmask[None, :]
+    rows = tl.arange(0, BLK)
+    rr = tl.arange(0, BM)
+
+    # Forward phase: T * Y = B.
+    for blk in tl.static_range(NB):
+        row1 = blk * BLK
+        r2 = (row1 + rows)[:, None]
+        binv = tl.load(
+            binv_batch + blk * 2 * BLK * BLK + rows[:, None] * BLK + rows[None, :]
+        )
+        # rhs comes from B for the first processed block, from the X
+        # accumulation afterwards (a fully-masked load issues no traffic).
+        if blk == 0:
+            rhs = tl.load(Bs + r2 * stride_b + kcols[None, :], mask=cm2, other=0.0)
+        else:
+            rhs = tl.load(X + r2 * stride_b + kcols[None, :], mask=cm2, other=0.0)
+        y = tl.dot(binv, rhs, input_precision="ieee")
+        tl.store(X + r2 * stride_b + kcols[None, :], y, mask=cm2)
+        for m_start in range(row1 + BLK, N, BM):
+            rm = m_start + rr
+            if UPPER:
+                # T[m, k] = U[k, m]: natural [BLK, BM] load, one transpose.
+                a_nat = tl.load(L + (row1 + rows)[:, None] * stride_l + rm[None, :])
+                acc = tl.dot(tl.trans(a_nat), y, input_precision="ieee")
+            else:
+                a_nat = tl.load(L + rm[:, None] * stride_l + (row1 + rows)[None, :])
+                acc = tl.dot(a_nat, y, input_precision="ieee")
+            if blk == 0:
+                b_curr = tl.load(
+                    Bs + rm[:, None] * stride_b + kcols[None, :], mask=cm2, other=0.0
+                )
+            else:
+                b_curr = tl.load(
+                    X + rm[:, None] * stride_b + kcols[None, :], mask=cm2, other=0.0
+                )
+            tl.store(
+                X + rm[:, None] * stride_b + kcols[None, :], b_curr - acc, mask=cm2
+            )
+        # This block's update must be visible to the next block's diag load.
+        tl.debug_barrier()
+
+    # Backward phase: T^T * X = Y.
+    for kk in tl.static_range(NB):
+        blk = NB - 1 - kk
+        row1 = blk * BLK
+        r2 = (row1 + rows)[:, None]
+        rhs = tl.load(X + r2 * stride_b + kcols[None, :], mask=cm2, other=0.0)
+        binv_t = tl.load(
+            binv_batch + (blk * 2 + 1) * BLK * BLK + rows[:, None] * BLK + rows[None, :]
+        )
+        xk = tl.dot(binv_t, rhs, input_precision="ieee")
+        tl.store(X + r2 * stride_b + kcols[None, :], xk, mask=cm2)
+        for m_start in range(0, row1, BM):
+            rm = m_start + rr
+            # (T^T)[m, blk] = T[blk, m]: lower loads L[k, m] transposed, upper
+            # loads U[m, k] directly (the orientation mirror of the forward
+            # panels above).
+            if UPPER:
+                a_nat = tl.load(L + rm[:, None] * stride_l + (row1 + rows)[None, :])
+                acc = tl.dot(a_nat, xk, input_precision="ieee")
+            else:
+                a_nat = tl.load(L + (row1 + rows)[:, None] * stride_l + rm[None, :])
+                acc = tl.dot(tl.trans(a_nat), xk, input_precision="ieee")
+            x_curr = tl.load(
+                X + rm[:, None] * stride_b + kcols[None, :], mask=cm2, other=0.0
+            )
+            tl.store(
+                X + rm[:, None] * stride_b + kcols[None, :], x_curr - acc, mask=cm2
+            )
+        tl.debug_barrier()
+
+
+@libentry()
+@triton.jit
+def _chol_complex_neumann_1blk_kernel(
+    L_ptr,
+    B_ptr,
+    X_ptr,
+    N,
+    K,
+    batch_stride_L,
+    batch_stride_B,
+    stride_L_row,
+    stride_L_col,
+    stride_B_row,
+    stride_B_col,
+    BN: tl.constexpr,
+    KS: tl.constexpr,
+    UPPER: tl.constexpr,
+    STORAGE_CONJ: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    """Fused two-phase complex Neumann cholesky solve for N <= BN <= 64.
+
+    Complex arithmetic is split into interleaved real/imaginary tiles so
+    every complex product lowers to four ieee fp32 tl.dot's.  X = D^-1 *
+    n^H * n * D^-1 * B with n = (I + M)^-1, M = D^-1 * strictly_lower(T)
+    and T = the lower first-phase factor (L, or U^H for upper orientation).
+    """
+    pid_b = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+
+    L = L_ptr + pid_b * batch_stride_L
+    Bs = B_ptr + pid_b * batch_stride_B
+    X = X_ptr + pid_b * batch_stride_B
+
+    rows = tl.arange(0, BN)
+    r2 = rows[:, None]
+    c2 = rows[None, :]
+    if EVEN_N:
+        t_off = r2 * stride_L_row + c2 * stride_L_col
+        tr = tl.load(L + t_off)
+        ti = tl.load(L + t_off + 1)
+    else:
+        in_blk = (r2 < N) & (c2 < N)
+        t_off = tl.where(in_blk, r2 * stride_L_row + c2 * stride_L_col, 0)
+        tr = tl.load(L + t_off, mask=in_blk, other=0.0)
+        ti = tl.load(L + t_off + 1, mask=in_blk, other=0.0)
+    if STORAGE_CONJ:
+        ti = -ti
+    if UPPER:
+        # T = F^H: transpose and conjugate the upper factor tile.
+        tr = tl.trans(tr)
+        ti = -tl.trans(ti)
+    in_d = rows < N
+    diag = tl.load(
+        L + tl.where(in_d, rows * (stride_L_row + stride_L_col), 0),
+        mask=in_d,
+        other=1.0,
+    )
+    dinv = 1.0 / diag
+    low = c2 < r2
+    mr = tl.where(low, tr, 0.0) * dinv[:, None]
+    mi = tl.where(low, ti, 0.0) * dinv[:, None]
+
+    # n = (I + M)^-1 = (I - M)(I + M^2)(I + M^4)..., complex.
+    nr = tl.where(r2 == c2, 1.0, 0.0)
+    ni = nr * 0.0
+    pr = tl.dot(mr, nr, input_precision="ieee") - tl.dot(mi, ni, input_precision="ieee")
+    pi = tl.dot(mr, ni, input_precision="ieee") + tl.dot(mi, nr, input_precision="ieee")
+    nr -= pr
+    ni -= pi
+    m2r = tl.dot(mr, mr, input_precision="ieee") - tl.dot(
+        mi, mi, input_precision="ieee"
+    )
+    m2i = tl.dot(mr, mi, input_precision="ieee") + tl.dot(
+        mi, mr, input_precision="ieee"
+    )
+    pr = tl.dot(m2r, nr, input_precision="ieee") - tl.dot(
+        m2i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m2r, ni, input_precision="ieee") + tl.dot(
+        m2i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    m4r = tl.dot(m2r, m2r, input_precision="ieee") - tl.dot(
+        m2i, m2i, input_precision="ieee"
+    )
+    m4i = tl.dot(m2r, m2i, input_precision="ieee") + tl.dot(
+        m2i, m2r, input_precision="ieee"
+    )
+    pr = tl.dot(m4r, nr, input_precision="ieee") - tl.dot(
+        m4i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m4r, ni, input_precision="ieee") + tl.dot(
+        m4i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    m8r = tl.dot(m4r, m4r, input_precision="ieee") - tl.dot(
+        m4i, m4i, input_precision="ieee"
+    )
+    m8i = tl.dot(m4r, m4i, input_precision="ieee") + tl.dot(
+        m4i, m4r, input_precision="ieee"
+    )
+    pr = tl.dot(m8r, nr, input_precision="ieee") - tl.dot(
+        m8i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m8r, ni, input_precision="ieee") + tl.dot(
+        m8i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    if BN >= 32:
+        m16r = tl.dot(m8r, m8r, input_precision="ieee") - tl.dot(
+            m8i, m8i, input_precision="ieee"
+        )
+        m16i = tl.dot(m8r, m8i, input_precision="ieee") + tl.dot(
+            m8i, m8r, input_precision="ieee"
+        )
+        pr = tl.dot(m16r, nr, input_precision="ieee") - tl.dot(
+            m16i, ni, input_precision="ieee"
+        )
+        pi = tl.dot(m16r, ni, input_precision="ieee") + tl.dot(
+            m16i, nr, input_precision="ieee"
+        )
+        nr += pr
+        ni += pi
+    if BN >= 64:
+        m32r = tl.dot(m16r, m16r, input_precision="ieee") - tl.dot(
+            m16i, m16i, input_precision="ieee"
+        )
+        m32i = tl.dot(m16r, m16i, input_precision="ieee") + tl.dot(
+            m16i, m16r, input_precision="ieee"
+        )
+        pr = tl.dot(m32r, nr, input_precision="ieee") - tl.dot(
+            m32i, ni, input_precision="ieee"
+        )
+        pi = tl.dot(m32r, ni, input_precision="ieee") + tl.dot(
+            m32i, nr, input_precision="ieee"
+        )
+        nr += pr
+        ni += pi
+
+    kcols = col_start + tl.arange(0, KS)
+    b_off = r2 * stride_B_row + kcols[None, :] * stride_B_col
+    if EVEN_K:
+        if EVEN_N:
+            xr = tl.load(Bs + b_off)
+            xi = tl.load(Bs + b_off + 1)
+        else:
+            rmask = rows[:, None] < N
+            xr = tl.load(Bs + tl.where(rmask, b_off, 0), mask=rmask, other=0.0)
+            xi = tl.load(Bs + tl.where(rmask, b_off, 0) + 1, mask=rmask, other=0.0)
+    else:
+        cmask = kcols < K
+        mask2d = (rows[:, None] < N) & cmask[None, :]
+        xr = tl.load(Bs + tl.where(mask2d, b_off, 0), mask=mask2d, other=0.0)
+        xi = tl.load(Bs + tl.where(mask2d, b_off, 0) + 1, mask=mask2d, other=0.0)
+    zr = xr * dinv[:, None]
+    zi = xi * dinv[:, None]
+    # Forward: Y = n * D^-1 * B; backward: X = D^-1 * n^H * Y.
+    yr = tl.dot(nr, zr, input_precision="ieee") - tl.dot(ni, zi, input_precision="ieee")
+    yi = tl.dot(nr, zi, input_precision="ieee") + tl.dot(ni, zr, input_precision="ieee")
+    nhr = tl.trans(nr)
+    nhi = -tl.trans(ni)
+    wr = tl.dot(nhr, yr, input_precision="ieee") - tl.dot(
+        nhi, yi, input_precision="ieee"
+    )
+    wi = tl.dot(nhr, yi, input_precision="ieee") + tl.dot(
+        nhi, yr, input_precision="ieee"
+    )
+    outr = wr * dinv[:, None]
+    outi = wi * dinv[:, None]
+    if EVEN_K:
+        if EVEN_N:
+            tl.store(X + b_off, outr)
+            tl.store(X + b_off + 1, outi)
+        else:
+            rmask = rows[:, None] < N
+            tl.store(X + b_off, outr, mask=rmask)
+            tl.store(X + b_off + 1, outi, mask=rmask)
+    else:
+        tl.store(X + b_off, outr, mask=mask2d)
+        tl.store(X + b_off + 1, outi, mask=mask2d)
+
+
+@libentry()
+@triton.jit
+def _chol_complex_ainv_build_kernel(
+    L_ptr,
+    BINV_ptr,
+    N,
+    batch_stride_L,
+    stride_L_row,
+    stride_L_col,
+    BLK: tl.constexpr,
+    NB: tl.constexpr,
+    UPPER: tl.constexpr,
+    STORAGE_CONJ: tl.constexpr,
+):
+    """K1: complex per-diagonal-block inverses of T (k-independent).
+
+    Grid: (batch, NB); N % BLK == 0 enforced by the dispatcher.  BINV holds
+    two interleaved [BLK, BLK] complex halves per block: Binv = (I+M)^-1
+    D^-1 and Binv^H, both in natural row-major so K2 never transposes.
+    """
+    pid_b = tl.program_id(0)
+    pid_blk = tl.program_id(1)
+    L = L_ptr + pid_b * batch_stride_L
+
+    rows = tl.arange(0, BLK)
+    r2 = rows[:, None]
+    c2 = rows[None, :]
+    row1 = pid_blk * BLK + rows
+    t_off = row1[:, None] * stride_L_row + row1[None, :] * stride_L_col
+    tr = tl.load(L + t_off)
+    ti = tl.load(L + t_off + 1)
+    if STORAGE_CONJ:
+        ti = -ti
+    if UPPER:
+        tr = tl.trans(tr)
+        ti = -tl.trans(ti)
+    diag = tl.load(L + row1 * (stride_L_row + stride_L_col))
+    dinv = 1.0 / diag
+    low = c2 < r2
+    mr = tl.where(low, tr, 0.0) * dinv[:, None]
+    mi = tl.where(low, ti, 0.0) * dinv[:, None]
+
+    nr = tl.where(r2 == c2, 1.0, 0.0)
+    ni = nr * 0.0
+    pr = tl.dot(mr, nr, input_precision="ieee") - tl.dot(mi, ni, input_precision="ieee")
+    pi = tl.dot(mr, ni, input_precision="ieee") + tl.dot(mi, nr, input_precision="ieee")
+    nr -= pr
+    ni -= pi
+    m2r = tl.dot(mr, mr, input_precision="ieee") - tl.dot(
+        mi, mi, input_precision="ieee"
+    )
+    m2i = tl.dot(mr, mi, input_precision="ieee") + tl.dot(
+        mi, mr, input_precision="ieee"
+    )
+    pr = tl.dot(m2r, nr, input_precision="ieee") - tl.dot(
+        m2i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m2r, ni, input_precision="ieee") + tl.dot(
+        m2i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    m4r = tl.dot(m2r, m2r, input_precision="ieee") - tl.dot(
+        m2i, m2i, input_precision="ieee"
+    )
+    m4i = tl.dot(m2r, m2i, input_precision="ieee") + tl.dot(
+        m2i, m2r, input_precision="ieee"
+    )
+    pr = tl.dot(m4r, nr, input_precision="ieee") - tl.dot(
+        m4i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m4r, ni, input_precision="ieee") + tl.dot(
+        m4i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    m8r = tl.dot(m4r, m4r, input_precision="ieee") - tl.dot(
+        m4i, m4i, input_precision="ieee"
+    )
+    m8i = tl.dot(m4r, m4i, input_precision="ieee") + tl.dot(
+        m4i, m4r, input_precision="ieee"
+    )
+    pr = tl.dot(m8r, nr, input_precision="ieee") - tl.dot(
+        m8i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m8r, ni, input_precision="ieee") + tl.dot(
+        m8i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    m16r = tl.dot(m8r, m8r, input_precision="ieee") - tl.dot(
+        m8i, m8i, input_precision="ieee"
+    )
+    m16i = tl.dot(m8r, m8i, input_precision="ieee") + tl.dot(
+        m8i, m8r, input_precision="ieee"
+    )
+    pr = tl.dot(m16r, nr, input_precision="ieee") - tl.dot(
+        m16i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m16r, ni, input_precision="ieee") + tl.dot(
+        m16i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    m32r = tl.dot(m16r, m16r, input_precision="ieee") - tl.dot(
+        m16i, m16i, input_precision="ieee"
+    )
+    m32i = tl.dot(m16r, m16i, input_precision="ieee") + tl.dot(
+        m16i, m16r, input_precision="ieee"
+    )
+    pr = tl.dot(m32r, nr, input_precision="ieee") - tl.dot(
+        m32i, ni, input_precision="ieee"
+    )
+    pi = tl.dot(m32r, ni, input_precision="ieee") + tl.dot(
+        m32i, nr, input_precision="ieee"
+    )
+    nr += pr
+    ni += pi
+    # T^-1 = (I + M)^-1 D^-1: complex tile, real column scale.
+    br = nr * dinv[None, :]
+    bi = ni * dinv[None, :]
+
+    tile = 2 * BLK * BLK
+    base = (pid_b * NB + pid_blk) * 2 * tile
+    o = rows[:, None] * (2 * BLK) + rows[None, :] * 2
+    tl.store(BINV_ptr + base + o, br)
+    tl.store(BINV_ptr + base + o + 1, bi)
+    # Binv^H = conj(T^-1)^T stored naturally.
+    tl.store(BINV_ptr + base + tile + o, tl.trans(br))
+    tl.store(BINV_ptr + base + tile + o + 1, -tl.trans(bi))
+
+
+@libentry()
+@triton.jit
+def _chol_complex_ainv_walk_kernel(
+    L_ptr,
+    B_ptr,
+    X_ptr,
+    BINV_ptr,
+    N,
+    K,
+    batch_stride_L,
+    batch_stride_B,
+    stride_L_row,
+    stride_L_col,
+    stride_B_row,
+    stride_B_col,
+    BLK: tl.constexpr,
+    KS: tl.constexpr,
+    BM: tl.constexpr,
+    NB: tl.constexpr,
+    NUM_K: tl.constexpr,
+    UPPER: tl.constexpr,
+    STORAGE_CONJ: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    """K2: complex two-phase block walk with precomputed block inverses.
+
+    Mirrors _chol_ainv_walk_kernel with complex (interleaved) tiles: each
+    diag solve and panel update is four ieee dots.  Backward updates use
+    (T[k, m])^H panels: natural load plus one register transpose/conjugate.
+    The dispatcher guarantees K % KS == 0.
+    """
+    pid_b = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    col_start = pid_k * KS
+    L = L_ptr + pid_b * batch_stride_L
+    Bs = B_ptr + pid_b * batch_stride_B
+    X = X_ptr + pid_b * batch_stride_B
+    binv_batch = BINV_ptr + pid_b * NB * 2 * 2 * BLK * BLK
+
+    if NUM_K == 1:
+        kcols = tl.arange(0, KS)
+    else:
+        kcols = col_start + tl.arange(0, KS)
+    if EVEN_K:
+        cmask = tl.full((KS,), 1, tl.int1)
+    else:
+        cmask = kcols < K
+    cm2 = cmask[None, :]
+    rows = tl.arange(0, BLK)
+    rr = tl.arange(0, BM)
+    tile = 2 * BLK * BLK
+
+    # Forward phase: T * Y = B.
+    for blk in tl.static_range(NB):
+        row1 = blk * BLK
+        r2 = (row1 + rows)[:, None]
+        boff = r2 * stride_B_row + kcols[None, :] * stride_B_col
+        bbase = (
+            binv_batch + blk * 2 * tile + rows[:, None] * (2 * BLK) + rows[None, :] * 2
+        )
+        br = tl.load(bbase)
+        bi = tl.load(bbase + 1)
+        if blk == 0:
+            rhs_r = tl.load(Bs + boff, mask=cm2, other=0.0)
+            rhs_i = tl.load(Bs + boff + 1, mask=cm2, other=0.0)
+        else:
+            rhs_r = tl.load(X + boff, mask=cm2, other=0.0)
+            rhs_i = tl.load(X + boff + 1, mask=cm2, other=0.0)
+        yr = tl.dot(br, rhs_r, input_precision="ieee") - tl.dot(
+            bi, rhs_i, input_precision="ieee"
+        )
+        yi = tl.dot(br, rhs_i, input_precision="ieee") + tl.dot(
+            bi, rhs_r, input_precision="ieee"
+        )
+        tl.store(X + boff, yr, mask=cm2)
+        tl.store(X + boff + 1, yi, mask=cm2)
+        for m_start in range(row1 + BLK, N, BM):
+            rm = m_start + rr
+            # Panel T[m, k]: lower = F[m, k] natural; upper = conj(F[k, m])
+            # loaded natural then transposed/conjugated.
+            if UPPER:
+                a_off = (row1 + rows)[:, None] * stride_L_row + rm[
+                    None, :
+                ] * stride_L_col
+                ar = tl.load(L + a_off)
+                ai = tl.load(L + a_off + 1)
+                if STORAGE_CONJ:
+                    ai = -ai
+                ar = tl.trans(ar)
+                ai = -tl.trans(ai)
+            else:
+                a_off = (
+                    rm[:, None] * stride_L_row + (row1 + rows)[None, :] * stride_L_col
+                )
+                ar = tl.load(L + a_off)
+                ai = tl.load(L + a_off + 1)
+                if STORAGE_CONJ:
+                    ai = -ai
+            ur = tl.dot(ar, yr, input_precision="ieee") - tl.dot(
+                ai, yi, input_precision="ieee"
+            )
+            ui = tl.dot(ar, yi, input_precision="ieee") + tl.dot(
+                ai, yr, input_precision="ieee"
+            )
+            m_off = rm[:, None] * stride_B_row + kcols[None, :] * stride_B_col
+            if blk == 0:
+                cr = tl.load(Bs + m_off, mask=cm2, other=0.0)
+                ci = tl.load(Bs + m_off + 1, mask=cm2, other=0.0)
+            else:
+                cr = tl.load(X + m_off, mask=cm2, other=0.0)
+                ci = tl.load(X + m_off + 1, mask=cm2, other=0.0)
+            tl.store(X + m_off, cr - ur, mask=cm2)
+            tl.store(X + m_off + 1, ci - ui, mask=cm2)
+        tl.debug_barrier()
+
+    # Backward phase: T^H * X = Y.
+    for kk in tl.static_range(NB):
+        blk = NB - 1 - kk
+        row1 = blk * BLK
+        r2 = (row1 + rows)[:, None]
+        boff = r2 * stride_B_row + kcols[None, :] * stride_B_col
+        rhs_r = tl.load(X + boff, mask=cm2, other=0.0)
+        rhs_i = tl.load(X + boff + 1, mask=cm2, other=0.0)
+        hbase = (
+            binv_batch
+            + (blk * 2 + 1) * tile
+            + rows[:, None] * (2 * BLK)
+            + rows[None, :] * 2
+        )
+        hr = tl.load(hbase)
+        hi = tl.load(hbase + 1)
+        xkr = tl.dot(hr, rhs_r, input_precision="ieee") - tl.dot(
+            hi, rhs_i, input_precision="ieee"
+        )
+        xki = tl.dot(hr, rhs_i, input_precision="ieee") + tl.dot(
+            hi, rhs_r, input_precision="ieee"
+        )
+        tl.store(X + boff, xkr, mask=cm2)
+        tl.store(X + boff + 1, xki, mask=cm2)
+        for m_start in range(0, row1, BM):
+            rm = m_start + rr
+            # Panel (T^H)[m, blk] = conj(T[blk, m]): lower loads F[k, m]
+            # transposed/conjugated; upper = F[m, k] natural (T^H = F).
+            if UPPER:
+                a_off = (
+                    rm[:, None] * stride_L_row + (row1 + rows)[None, :] * stride_L_col
+                )
+                ar = tl.load(L + a_off)
+                ai = tl.load(L + a_off + 1)
+                if STORAGE_CONJ:
+                    ai = -ai
+            else:
+                a_off = (row1 + rows)[:, None] * stride_L_row + rm[
+                    None, :
+                ] * stride_L_col
+                ar = tl.load(L + a_off)
+                ai = tl.load(L + a_off + 1)
+                if STORAGE_CONJ:
+                    ai = -ai
+                ar = tl.trans(ar)
+                ai = -tl.trans(ai)
+            ur = tl.dot(ar, xkr, input_precision="ieee") - tl.dot(
+                ai, xki, input_precision="ieee"
+            )
+            ui = tl.dot(ar, xki, input_precision="ieee") + tl.dot(
+                ai, xkr, input_precision="ieee"
+            )
+            m_off = rm[:, None] * stride_B_row + kcols[None, :] * stride_B_col
+            cr = tl.load(X + m_off, mask=cm2, other=0.0)
+            ci = tl.load(X + m_off + 1, mask=cm2, other=0.0)
+            tl.store(X + m_off, cr - ur, mask=cm2)
+            tl.store(X + m_off + 1, ci - ui, mask=cm2)
+        tl.debug_barrier()
+
+
+def _get_blocked_tile_config(dtype, nrhs, batch_size=1):
     """Return dtype-specific tile sizes for blocked kernels.
 
-    fp32 uses 32x32 panels with BLOCK_RHS=4. A narrow RHS tile launches more
-    CTAs (grid = batch x ceil(nrhs/BLOCK_RHS)), which matters because the
-    triangular solve is dominated by the serial per-row diagonal-block work
-    rather than RHS width. On H20 (78 SMs) a single wide-RHS CTA badly
-    underutilizes the device, so splitting the RHS dimension parallelizes the
-    panel updates across SMs at the cost of cheaply re-deriving the diagonal
-    factor per tile -- a uniform 10-20% win for both single and batched fp32
-    solves. fp64 keeps BLOCK_RHS=8: its tl.dot lacks tensor-core acceleration,
-    so narrow tiles only add serial-loop overhead (measured 2-3x slower at 4).
-    fp64 uses 16x32 panels with BLOCK_RHS=8, which won every tested H20
-    lower/upper case across N, nrhs, and batch size.
+    GCU400 measured conclusions (single-variable A/B, same wrapper end-to-end setup):
+
+    - A 32x32 panel is always optimal; enlarging BLOCK_K/BLOCK_M only slows things down (at N=256
+      BLOCK_M=128 is 4x slower: the tl.dot width of each row-wise edge update overwhelms registers).
+    - BLOCK_RHS is the real master switch and its direction depends on nrhs / batch: the grid is
+      (batch, ceil(nrhs/BLOCK_RHS)) and every CTA re-walks the whole factor triangle, so a narrow
+      block trades repeated traversal for parallelism. With a single batch and small nrhs the
+      parallelism gain far outweighs the repetition cost (N=256/nrhs=4: 0.83ms->0.58ms,
+      nrhs=8: 0.83ms→0.60ms, nrhs=16: 0.84ms→0.62ms, N=128/nrhs=16:
+      0.38ms->0.27ms); with a single batch and large nrhs the repetition becomes the main cost and
+      the block must widen (nrhs=128: 1.73ms->0.98ms, N=128/nrhs=128: 0.79ms->0.45ms).
+    - But when the batch already provides parallelism, narrowing RHS multiplies the CTA count by
+      batch x ceil(nrhs/RHS): batch=32/nrhs=16 goes 1.11ms -> 2.57ms and batch=8/nrhs=16 goes
+      0.79ms -> 1.57ms. Narrow blocks are therefore enabled only for a single batch; multiple
+      batches keep BLOCK_RHS=4.
+
+    fp64 keeps 16x32 / BLOCK_RHS=8 unchanged (the fp64 path is not used on GCU400 yet).
     """
     if dtype == torch.float64:
         blk_k, blk_m, blk_rhs = 16, 32, 8
     else:
-        blk_k, blk_m, blk_rhs = 32, 32, 4
+        blk_k, blk_m = 32, 32
+        if batch_size > 1:
+            blk_rhs = 4
+        elif nrhs >= 128:
+            blk_rhs = 8
+        elif nrhs <= 16:
+            blk_rhs = 1
+        else:
+            blk_rhs = 4
     return {"BLOCK_K": blk_k, "BLOCK_M": blk_m, "BLOCK_RHS": blk_rhs}
 
 
@@ -2388,9 +3205,12 @@ def _get_single_rhs_blocked_launch_config(dtype, N):
             "num_stages": 1,
         }
     if N >= 128:
+        # GCU400 re-test: raising BLOCK_M from 32 to 128 changes N=128 single-batch from 0.2157ms→0.2025ms and
+        # batch 8 from 0.2262ms→0.2125ms; N=256 already used BLOCK_M=128 (0.4219ms is optimal,
+        # while BLOCK_M=32 is 0.4681ms). BLOCK_K=16/64 are both slower, so keep 32.
         return {
             "BLOCK_K": 32,
-            "BLOCK_M": 32,
+            "BLOCK_M": 128,
             "num_warps": 1,
             "num_stages": 1,
         }
@@ -2440,10 +3260,21 @@ def _get_complex_blocked_launch_config(dtype, N, nrhs):
             "num_warps": 1,
             "num_stages": 1,
         }
+    # complex64: BLOCK_RHS=4 is a pathological configuration for N>=128. GCU400 measurements show
+    # (single-batch) at N=128, RHS=4 gives nrhs=16: 2.76ms and nrhs=32: 2.53ms,
+    # and nrhs=128: 5.94ms; after switching to RHS=2 (nrhs<64) or RHS=8 (nrhs>=64),
+    # these drop to 0.68ms / 0.74ms / 0.99ms (3.7x / 3.4x / 6.0x); for batch 8,
+    # (128,16) also drops from 6.47ms to 2.34ms. At N=64, RHS=4 is still reasonable
+    # (with batch=32/nrhs=16, RHS=2 is instead 1.75x slower because the CTA count is amplified by batch),
+    # so only change N>=128 cases and keep the original value for N=64.
+    if N >= 128:
+        block_rhs = 8 if nrhs >= 64 else 2
+    else:
+        block_rhs = 4
     return {
         "BLOCK_K": 32,
         "BLOCK_M": 64 if N >= 256 else 32,
-        "BLOCK_RHS": 4,
+        "BLOCK_RHS": block_rhs,
         "num_warps": 1,
         "num_stages": 2,
     }
@@ -2532,7 +3363,90 @@ def _cholesky_solve_complex(B, L, upper, batch_shape, N, nrhs, X=None):
     X_real = torch.view_as_real(X).reshape(-1, N, nrhs, 2)
 
     with torch.no_grad():
-        if (N <= 32 and nrhs <= 8) or (N < 64 and nrhs == 1):
+        if B.dtype == torch.complex64 and N <= 64:
+            # complex64 single-block fused Neumann solve.
+            block_n = 16 if N <= 16 else (32 if N <= 32 else 64)
+            ks = 16
+            num_k = (nrhs + ks - 1) // ks
+            while num_k > 255:
+                ks *= 2
+                num_k = (nrhs + ks - 1) // ks
+            _chol_complex_neumann_1blk_kernel[(batch_size, num_k)](
+                L_real,
+                B_real,
+                X_real,
+                N,
+                nrhs,
+                L_real.stride(0),
+                B_real.stride(0),
+                L_real.stride(1),
+                L_real.stride(2),
+                B_real.stride(1),
+                B_real.stride(2),
+                BN=block_n,
+                KS=ks,
+                UPPER=effective_upper,
+                STORAGE_CONJ=storage_conj,
+                EVEN_N=(N == block_n),
+                EVEN_K=(nrhs % ks == 0),
+                num_warps=1,
+            )
+        elif (
+            B.dtype == torch.complex64
+            and N % 64 == 0
+            and N <= 512
+            and nrhs % 16 == 0
+            and nrhs >= 16
+        ):
+            # complex64 two-launch block-inverse walk (K % KS == 0 exact).
+            num_blk = N // 64
+            ks = 16
+            num_k = (nrhs + ks - 1) // ks
+            while num_k > 255:
+                ks *= 2
+                num_k = (nrhs + ks - 1) // ks
+            binv = torch.empty(
+                (batch_size * num_blk * 4 * 64 * 64,),
+                dtype=B_real.dtype,
+                device=B_real.device,
+            )
+            _chol_complex_ainv_build_kernel[(batch_size, num_blk)](
+                L_real,
+                binv,
+                N,
+                L_real.stride(0),
+                L_real.stride(1),
+                L_real.stride(2),
+                BLK=64,
+                NB=num_blk,
+                UPPER=effective_upper,
+                STORAGE_CONJ=storage_conj,
+                num_warps=1,
+            )
+            _chol_complex_ainv_walk_kernel[(batch_size, num_k)](
+                L_real,
+                B_real,
+                X_real,
+                binv,
+                N,
+                nrhs,
+                L_real.stride(0),
+                B_real.stride(0),
+                L_real.stride(1),
+                L_real.stride(2),
+                B_real.stride(1),
+                B_real.stride(2),
+                BLK=64,
+                KS=ks,
+                BM=64,
+                NB=num_blk,
+                NUM_K=num_k,
+                UPPER=effective_upper,
+                STORAGE_CONJ=storage_conj,
+                EVEN_K=(nrhs % ks == 0),
+                num_warps=1,
+            )
+        elif (N <= 32 and nrhs <= 8) or (N < 64 and nrhs == 1):
             block_n = triton.next_power_of_2(N)
             block_rhs = triton.next_power_of_2(nrhs)
             # gcu400 lowers tl.gather only for a single warp (see the module
@@ -2679,7 +3593,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     Returns:
         X: solution tensor of shape (*, N, nrhs)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY_SOLVE")
+    logger.debug("GEMS_ENFLAME CHOLESKY_SOLVE")
     assert L.dtype in (
         torch.float32,
         torch.float64,
@@ -2772,8 +3686,86 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     dtype_flag = 0 if B.dtype == torch.float32 else 1
 
     with torch.no_grad():
-        if _can_use_blocked_path(N, nrhs):
-            tile = _get_blocked_tile_config(B.dtype)
+        if dtype_flag == 0 and N <= 64:
+            # fp32 single-block fused Neumann solve (register-resident tile).
+            block_n = 16 if N <= 16 else (32 if N <= 32 else 64)
+            ks = 16
+            num_k = (nrhs + ks - 1) // ks
+            while num_k > 255:
+                ks *= 2
+                num_k = (nrhs + ks - 1) // ks
+            _chol_neumann_1blk_kernel[(batch_size, num_k)](
+                L_kernel,
+                B_kernel,
+                X_kernel,
+                N,
+                nrhs,
+                stride_L,
+                stride_B,
+                batch_stride_L,
+                batch_stride_B,
+                BN=block_n,
+                KS=ks,
+                UPPER=effective_upper,
+                EVEN_N=(N == block_n),
+                EVEN_K=(nrhs % ks == 0),
+                num_warps=1,
+            )
+        elif (
+            dtype_flag == 0
+            and N % 64 == 0
+            and N <= 512
+            and nrhs % 16 == 0
+            and nrhs >= 16
+        ):
+            # fp32 two-launch block-inverse walk: K1 builds every diagonal
+            # block inverse in parallel, K2 walks both substitution phases
+            # with one diag dot per block.  K % KS == 0 keeps every k-slice
+            # exact (no ragged column masks, no stride-1 specialization).
+            num_blk = N // 64
+            ks = 16
+            num_k = (nrhs + ks - 1) // ks
+            while num_k > 255:
+                ks *= 2
+                num_k = (nrhs + ks - 1) // ks
+            binv = torch.empty(
+                (batch_size * num_blk * 2 * 64 * 64,),
+                dtype=B.dtype,
+                device=B.device,
+            )
+            _chol_ainv_build_kernel[(batch_size, num_blk)](
+                L_kernel,
+                binv,
+                N,
+                stride_L,
+                batch_stride_L,
+                BLK=64,
+                NB=num_blk,
+                UPPER=effective_upper,
+                num_warps=1,
+            )
+            _chol_ainv_walk_kernel[(batch_size, num_k)](
+                L_kernel,
+                B_kernel,
+                X_kernel,
+                binv,
+                N,
+                nrhs,
+                stride_L,
+                stride_B,
+                batch_stride_L,
+                batch_stride_B,
+                BLK=64,
+                KS=ks,
+                BM=64,
+                NB=num_blk,
+                NUM_K=num_k,
+                UPPER=effective_upper,
+                EVEN_K=(nrhs % ks == 0),
+                num_warps=1,
+            )
+        elif _can_use_blocked_path(N, nrhs):
+            tile = _get_blocked_tile_config(B.dtype, nrhs, batch_size)
             warp = _get_blocked_warp_config(B.dtype)
             grid = (batch_size, triton.cdiv(nrhs, tile["BLOCK_RHS"]))
             if effective_upper:
@@ -2924,7 +3916,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
 
 def cholesky_solve_out(B, L, upper=False, *, out):
     """Out variant with direct writes for the common compatible case."""
-    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY_SOLVE_OUT")
+    logger.debug("GEMS_ENFLAME CHOLESKY_SOLVE_OUT")
     _check_cholesky_solve_out(B, out)
     if _can_write_cholesky_solve_out_direct(B, L, out):
         return cholesky_solve(B, L, upper=upper, _out=out)

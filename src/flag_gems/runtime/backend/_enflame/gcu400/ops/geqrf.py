@@ -20,16 +20,29 @@ shape with R in and above the diagonal and the Householder reflector tails
 packed in the strict lower triangle of the first ``k = min(m, n)`` columns,
 ``tau`` holds the scalar factors with shape ``(*, k)``.
 
-Two paths (mirroring the KernelGen SimpleOpt best candidate, round 8):
+Two paths on top of the production blocked-Householder machinery of
+``linalg_qr`` (its larft WY factor build and the multi-CTA panel fallback
+are reused directly), with geqrf's own kernels for the pieces the packed
+LAPACK output needs:
 
-* **small path**: the whole matrix lives in one register tile per program --
-  a single launch factors, packs and stores (fastest for small and batched
-  matrices, where cuSOLVER's launch overhead dominates).
-* **large path**: A is transposed into a column-major working buffer W (every
-  column access contiguous), then blocked Householder: each 32-column panel is
-  factored by a single-program kernel, and the panel reflectors are applied to
-  the trailing columns by one program per (batch, trailing column).  ``a`` is
-  returned as the transpose view of W (zero-copy, strided like LAPACK output).
+* **small path**: a single-program kernel loads the whole matrix into one
+  TRANSPOSED ``[cols, rows]`` register/SRAM tile, runs the unblocked
+  reflector chain with lane-local trailing-update reductions, and stores the
+  packed ``(a, tau)`` pair directly (one launch; fastest for small and
+  batched matrices where native launch overhead dominates).
+* **large path**: A is copied into the row-major output buffer ``a`` by a
+  strided copy kernel (no aten copy on the host); each 32-column panel is
+  then factored in place by a single-CTA transposed-tile kernel (R in the
+  upper triangle, packed tails in the strict lower -- geqrf's output
+  contract); the panel reflectors are applied to the trailing block by
+  geqrf's own larfb (two ``tl.dot`` GEMM passes around a transposed-tile
+  forward substitution for the WY factor).  Panels taller than the SRAM
+  tile budget fall back to linalg_qr's multi-CTA kernel, whose reflector
+  tails are packed back from ``V`` by one small store-only kernel.
+
+All launches are 1-D (or P19-guarded): gcu400 caps grid.x at 65535 and
+grid.y at 255, and the KernelGen baseline died on the 1024x1024 benchmark
+shape with ``out of resource: grid.y, Required: 256``.
 
 tau=0 (no reflection, e.g. 1x1 columns) follows LAPACK dlarfg.
 """
@@ -42,133 +55,57 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from .linalg_qr import (
+    _MCTA_NC_MAX,
+    _MCTA_RM,
+    _MCTA_RM_FP64,
+    _PANEL_IB,
+    _launch_geqrt_mcta,
+    _launch_larft,
+)
+
 logger = logging.getLogger(__name__)
 
-# Small-path register budget: the single-program kernel keeps a
-# (next_pow2(m), next_pow2(n)) tile live, so cap it at one 64 KiB register
-# file worth of elements.
+# Small-path tile budget: the single-program kernel keeps a
+# (next_pow2(m), next_pow2(n)) tile live; 64 KiB worth of elements matches the
+# register/SRAM tile budget calibrated in linalg_qr (TSQR local / geqrt panels).
 _SMALL_ELEMS_BYTES = 65536
-# Blocked-panel width for the large path.
-_PANEL_NB = 32
-# Trailing-update / panel tile: rows per program in the column-major buffer.
+# The chain kernel's trailing update reduces along the row axis; keep the
+# column tile at the width linalg_qr's fused kernel was calibrated for.
+_SMALL_MAX_N = 128
+# Copy / pack tile (rows x cols) for the large-path helper kernels.
 _TILE = 64
+# gcu400 grid.x hardware cap (P19): 1-D helper grids are clamped to this and
+# the kernels grid-stride over the remaining tiles.
+_MAX_GRID_X = 65535
+# SRAM-resident panel cap for geqrf's own dispatch: _geqrf_panel_kernel keeps
+# a (next_pow2(M), IBN) transposed tile live, so with IBN = 32 columns
+# M <= 2048 keeps the fp32 tile within the gcu400 per-program DSM budget
+# (~256 KB of ~448 KB).  This is deliberately wider than linalg_qr's 512 cap:
+# the multi-CTA panel kernel it falls back to synchronises through an atomic
+# spin barrier per reflector, which measures ~3 ms per panel on this chip --
+# an order of magnitude slower than the single-CTA chain even at BM=1024
+# (transposed orientation: 356 us).  Panels taller than the cap (m > 2048)
+# still take the multi-CTA path, so the pack pass below survives for that
+# case.
+_SRAM_MAX_M_FP32 = 2048
+_SRAM_MAX_M_FP64 = 1024
+# num_warps for the transposed-tile panel kernel (swept 1/2/4 on gcu400:
+# no measurable difference -- the reflector chain is latency-bound).
+_PANEL_WARPS = 4
+# Trailing-update (larfb) tile: row chunk RM and column tiles TN for the
+# two GEMM loops and the transposed-tile triangular solve (swept on gcu400;
+# RM=256 best everywhere, TN splits by panel height).
+_LARFB_RM = 256
+_LARFB_TN_SMALL = 16
+_LARFB_TN_LARGE = 32
+_LARFB_TN_SPLIT = 512
+_LARFB_WARPS = 4
 
 
 @libentry()
 @triton.jit
-def _geqrf_transpose_kernel(
-    A_ptr,
-    w_ptr,
-    m,
-    n,
-    sAb,
-    sAm,
-    sAn,
-    sWb,
-    BM: tl.constexpr,
-    BN: tl.constexpr,
-):
-    # Copy a (BM, BN) tile of A into the column-major working buffer W
-    # (column c of W at offset c * m, contiguous over rows).
-    pb = tl.program_id(0)
-    pt = tl.program_id(1)
-    nt = tl.cdiv(n, BN)
-    tc = pt % nt
-    tr = pt // nt
-    rows = tr * BM + tl.arange(0, BM)
-    cols = tc * BN + tl.arange(0, BN)
-    rmask = rows < m
-    cmask = cols < n
-    tile = tl.load(
-        A_ptr + pb * sAb + rows[:, None] * sAm + cols[None, :] * sAn,
-        mask=rmask[:, None] & cmask[None, :],
-        other=0.0,
-    )
-    tl.store(
-        w_ptr + pb * sWb + cols[:, None] * m + rows[None, :],
-        tl.trans(tile),
-        mask=cmask[:, None] & rmask[None, :],
-    )
-
-
-@libentry()
-@triton.jit
-def _geqrf_panel_factor_kernel(
-    w_ptr,
-    tau_ptr,
-    m,
-    k,
-    j0,
-    jend,
-    sWb,
-    BLOCK_M: tl.constexpr,
-):
-    # Factor panel columns j0..jend-1 of the column-major buffer W in one
-    # program per batch element: column c first absorbs reflectors j0..c-1,
-    # then is factorized (dlarfg) and packed in place.
-    b = tl.program_id(0)
-    base = b * sWb
-    rows = tl.arange(0, BLOCK_M)
-    rmask = rows < m
-    for c in range(j0, jend):
-        col = tl.load(w_ptr + base + c * m + rows, mask=rmask, other=0.0)
-        for r in range(j0, c):
-            ref = tl.load(
-                w_ptr + base + r * m + rows, mask=(rows > r) & rmask, other=0.0
-            )
-            v = tl.where(rows == r, 1.0, ref)
-            tau_r = tl.load(tau_ptr + b * k + r)
-            dot = tl.sum(v * col)
-            col = col - tau_r * dot * v
-        alpha = tl.sum(tl.where(rows == c, col, 0.0))
-        x2 = tl.sum(tl.where(rows > c, col * col, 0.0))
-        normx = tl.sqrt(alpha * alpha + x2)
-        safe = x2 > 0.0
-        sgn = tl.where(alpha >= 0.0, 1.0, -1.0)
-        beta = tl.where(safe, -sgn * normx, alpha)
-        vb0 = tl.where(safe, alpha - beta, 1.0)
-        tau_c = tl.where(safe, (beta - alpha) / beta, 0.0)
-        out = tl.where(rows == c, beta, tl.where(rows > c, col / vb0, col))
-        tl.store(w_ptr + base + c * m + rows, out, mask=rmask)
-        tl.store(tau_ptr + b * k + c, tau_c)
-
-
-@libentry()
-@triton.jit
-def _geqrf_panel_apply_kernel(
-    w_ptr,
-    tau_ptr,
-    m,
-    n,
-    k,
-    j0,
-    jend,
-    sWb,
-    BLOCK_M: tl.constexpr,
-):
-    # Apply the panel of reflectors j0..jend-1 to trailing columns
-    # jend..n-1, one program per (batch, trailing column).
-    pid = tl.program_id(0)
-    ncol = n - jend
-    b = pid // ncol
-    cc = pid - b * ncol
-    c = jend + cc
-    rows = tl.arange(0, BLOCK_M)
-    rmask = rows < m
-    base = b * sWb
-    col = tl.load(w_ptr + base + c * m + rows, mask=rmask, other=0.0)
-    for r in range(j0, jend):
-        ref = tl.load(w_ptr + base + r * m + rows, mask=(rows > r) & rmask, other=0.0)
-        v = tl.where(rows == r, 1.0, ref)
-        tau_r = tl.load(tau_ptr + b * k + r)
-        dot = tl.sum(v * col)
-        col = col - tau_r * dot * v
-    tl.store(w_ptr + base + c * m + rows, col, mask=rmask)
-
-
-@libentry()
-@triton.jit
-def _geqrf_small_kernel(
+def _geqrf_fused_kernel(
     A_ptr,
     a_ptr,
     tau_ptr,
@@ -178,38 +115,458 @@ def _geqrf_small_kernel(
     sAb,
     sAm,
     sAn,
+    sOb,
+    sOm,
+    sOn,
+    sTauB,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # Whole QR of one small matrix in a single program, matrix in registers.
-    b = tl.program_id(0)
-    rows = tl.arange(0, BLOCK_M)[:, None]
-    cols = tl.arange(0, BLOCK_N)[None, :]
-    lmask = (rows < m) & (cols < n)
-    A2 = tl.load(A_ptr + b * sAb + rows * sAm + cols * sAn, mask=lmask, other=0.0)
-    r1 = tl.arange(0, BLOCK_M)
-    c1 = tl.arange(0, BLOCK_N)
+    # Whole QR of one small matrix in a single program: the matrix lives in a
+    # register/SRAM tile, the unblocked reflector chain runs in place, and
+    # the packed LAPACK pair (R on and above the diagonal, reflector tails in
+    # the strict lower triangle, tau) is stored once at the end.
+    pid = tl.program_id(0)
+    Ab = A_ptr + pid * sAb
+    dt = Ab.dtype.element_ty
+    zero = tl.full((), 0.0, dtype=dt)
+    one = tl.full((), 1.0, dtype=dt)
+
+    rows = tl.arange(0, BLOCK_M)
+    cols = tl.arange(0, BLOCK_N)
+    rmask = rows < m
+    cmask = cols < n
+    lmask = rmask[None, :] & cmask[:, None]
+    # T[c, r] = A[r, c]: TRANSPOSED tile, rows on the last axis, so the
+    # per-reflector trailing-update reduction runs lane-local (same
+    # orientation trick as the panel kernel / orgqr's serial chain)
+    T = tl.load(Ab + rows[None, :] * sAm + cols[:, None] * sAn, mask=lmask, other=zero)
+
+    # tau accumulates in registers and is flushed with ONE vector store after
+    # the loop (0-d scalar stores are unreliable on some vendor backends)
+    tau_arr = tl.zeros([BLOCK_N], dtype=dt)
     for j in range(k):
-        colj = tl.sum(tl.where(cols == j, A2, 0.0), axis=1)  # (BLOCK_M,)
-        alpha = tl.sum(tl.where(r1 == j, colj, 0.0))
-        x2 = tl.sum(tl.where(r1 > j, colj * colj, 0.0))
-        normx = tl.sqrt(alpha * alpha + x2)
-        safe = x2 > 0.0
-        sgn = tl.where(alpha >= 0.0, 1.0, -1.0)
-        beta = tl.where(safe, -sgn * normx, alpha)
-        vb0 = tl.where(safe, alpha - beta, 1.0)
-        tauj = tl.where(safe, (beta - alpha) / beta, 0.0)
-        rpack = tl.where(r1 > j, colj / vb0, 0.0)
-        v = tl.where(r1 == j, 1.0, rpack)
-        dot = tl.sum(v[:, None] * A2, axis=0)  # (BLOCK_N,)
-        t = tauj * dot
-        upd = A2 - v[:, None] * t[None, :]
-        cond = (r1[:, None] >= j) & (c1[None, :] > j)
-        A2 = tl.where(cond, upd, A2)
-        A2 = tl.where((r1[:, None] > j) & (c1[None, :] == j), rpack[:, None], A2)
-        A2 = tl.where((r1[:, None] == j) & (c1[None, :] == j), beta, A2)
-        tl.store(tau_ptr + b * k + j, tauj)
-    tl.store(a_ptr + b * sAb + rows * sAm + cols * sAn, A2, mask=lmask)
+        # current column = row j of the transposed tile
+        col_j = tl.sum(tl.where(cols[:, None] == j, T, zero), axis=0)
+        alpha = tl.sum(tl.where(rows == j, col_j, zero))
+        xnorm_sq = tl.sum(tl.where(rows > j, col_j * col_j, zero))
+        norm = tl.sqrt(alpha * alpha + xnorm_sq)
+        beta = tl.where(alpha >= zero, -norm, norm)
+        reflect = xnorm_sq > zero
+        beta_eff = tl.where(reflect, beta, alpha)
+        tau = tl.where(reflect, (beta - alpha) / beta, zero)
+        denom = alpha - beta
+        # guard 0/0: without a reflection the tail quotient would go NaN
+        # before the reflect mask discards it -- and it is stored into the
+        # strict lower triangle, so the NaN would leak into the packed output
+        v_tail = tl.where(reflect, col_j / denom, zero)
+        tau_arr = tl.where(cols == j, tau, tau_arr)
+
+        # R diagonal and the packed reflector tail, in tile
+        T = tl.where((cols[:, None] == j) & (rows[None, :] == j), beta_eff, T)
+        T = tl.where((cols[:, None] == j) & (rows[None, :] > j), v_tail[None, :], T)
+
+        # trailing update of columns > j (w is masked so the finished columns
+        # and the just-packed column j stay untouched); the reduction runs
+        # along the last axis -- lane-local in this orientation
+        vj = tl.where(
+            reflect,
+            tl.where(rows > j, v_tail, tl.where(rows == j, one, zero)),
+            tl.where(rows == j, one, zero),
+        )
+        w = tau * tl.sum(vj[None, :] * T, axis=1)
+        w = tl.where((cols > j) & cmask, w, zero)
+        T = T - vj[None, :] * w[:, None]
+
+    # store back in row-major orientation with an explicit transpose: small
+    # transposed-orientation 2D stores have a documented silent-miscompile
+    # window on gcu400 (see orgqr), the row-major store avoids it
+    tl.store(
+        a_ptr + pid * sOb + rows[:, None] * sOm + cols[None, :] * sOn,
+        tl.trans(T),
+        mask=rmask[:, None] & cmask[None, :],
+    )
+    tl.store(tau_ptr + pid * sTauB + cols, tau_arr, mask=cols < k)
+
+
+@libentry()
+@triton.jit
+def _geqrf_panel_kernel(
+    W,
+    V,
+    TAU,
+    M,
+    ib,
+    kk,
+    sWb,
+    sWm,
+    sWn,
+    sVb,
+    sVm,
+    sVn,
+    sTauB,
+    sTauN,
+    BM: tl.constexpr,
+    IBN: tl.constexpr,
+):
+    # Single-CTA unblocked QR of one IB-wide panel, rows kk..kk+M-1, held in a
+    # TRANSPOSED [IBN, BM] register/SRAM tile (rows on the last axis).  The
+    # per-reflector reductions then run along the last axis -- lane-local --
+    # which is the same orientation trick that made the serial Householder
+    # chain in orgqr ~8x faster on gcu400 (the [BM, IBN] layout pays a
+    # cross-lane conversion for every reduction).  The strict lower triangle
+    # of the panel is left packed with the reflector tails (geqrf's output
+    # contract), the explicit unit vectors also go to the V buffer for the
+    # larft/larfb consumers.
+    pid = tl.program_id(0)
+    Wb = W + pid * sWb
+    Vb = V + pid * sVb
+    TAUb = TAU + pid * sTauB
+    dt = Wb.dtype.element_ty
+    zero = tl.full((), 0.0, dtype=dt)
+    one = tl.full((), 1.0, dtype=dt)
+
+    cn = tl.arange(0, IBN)
+    rm = tl.arange(0, BM)
+    rmask = rm < M
+    cmask = cn < ib
+    rows_g = kk + rm
+    cols_g = kk + cn
+
+    # T[c, r] = W[kk+r, kk+c]
+    T = tl.load(
+        Wb + rows_g[None, :] * sWm + cols_g[:, None] * sWn,
+        mask=cmask[:, None] & rmask[None, :],
+        other=zero,
+    )
+    # tau accumulates in registers, flushed with ONE vector store after the
+    # loop (0-d scalar stores are unreliable on some vendor backends)
+    tau_arr = tl.zeros([IBN], dtype=dt)
+    for j in range(ib):
+        # current column = row j of the transposed tile
+        col_j = tl.sum(tl.where(cn[:, None] == j, T, zero), axis=0)
+        alpha = tl.sum(tl.where(rm == j, col_j, zero))
+        xnorm_sq = tl.sum(tl.where(rm > j, col_j * col_j, zero))
+        norm = tl.sqrt(alpha * alpha + xnorm_sq)
+        beta = tl.where(alpha >= zero, -norm, norm)
+        reflect = xnorm_sq > zero
+        beta_eff = tl.where(reflect, beta, alpha)
+        tau = tl.where(reflect, (beta - alpha) / beta, zero)
+        denom = alpha - beta
+        # guard 0/0: without a reflection the tail quotient would go NaN
+        # before the reflect mask discards it
+        v_tail = tl.where(reflect, col_j / denom, zero)
+        tau_arr = tl.where(cn == j, tau, tau_arr)
+
+        # R diagonal and the packed reflector tail, in tile
+        T = tl.where((cn[:, None] == j) & (rm[None, :] == j), beta_eff, T)
+        T = tl.where((cn[:, None] == j) & (rm[None, :] > j), v_tail[None, :], T)
+
+        # explicit Householder vector, kept in registers (batched V store
+        # after the loop; per-reflector (BM,) stores measured slower)
+        vj = tl.where(rm > j, v_tail, tl.where(rm == j, one, zero))
+        vj = tl.where(reflect, vj, tl.where(rm == j, one, zero))
+
+        # trailing update of columns > j (w masked so the finished columns
+        # and the just-packed column j stay untouched); the reduction runs
+        # along the last axis -- lane-local in this orientation
+        w = tau * tl.sum(vj[None, :] * T, axis=1)
+        w = tl.where((cn > j) & cmask, w, zero)
+        T = T - vj[None, :] * w[:, None]
+
+    tl.store(TAUb + (kk + cn) * sTauN, tau_arr, mask=cmask)
+    # explicit Householder vectors rebuilt from the packed tile, flushed with
+    # ONE row-major store (tails below the diagonal, unit on it)
+    Vexp = tl.where(
+        rm[None, :] > cn[:, None],
+        T,
+        tl.where(rm[None, :] == cn[:, None], one, zero),
+    )
+    tl.store(
+        Vb + rows_g[:, None] * sVm + cols_g[None, :] * sVn,
+        tl.trans(Vexp),
+        mask=rmask[:, None] & cmask[None, :],
+    )
+    # store back in row-major orientation with an explicit transpose: small
+    # transposed-orientation 2D stores have a documented silent-miscompile
+    # window on gcu400 (see orgqr), the row-major store avoids it
+    tl.store(
+        Wb + rows_g[:, None] * sWm + cols_g[None, :] * sWn,
+        tl.trans(T),
+        mask=rmask[:, None] & cmask[None, :],
+    )
+
+
+@libentry()
+@triton.jit
+def _geqrf_larfb_kernel(
+    V,
+    TOUT,
+    C,
+    M,
+    ib,
+    P,
+    sVb,
+    sVm,
+    sVn,
+    sTb,
+    sTm,
+    sTn,
+    sCb,
+    sCm,
+    sCn,
+    RM: tl.constexpr,
+    IBN: tl.constexpr,
+    TN: tl.constexpr,
+):
+    # Apply the block reflector H = I - V T V^H on the left of C
+    # (DLARFB trailing update): C <- C - V Y with Y = T^H W1, W1 = V^H C.
+    # On gcu400 T is stored as M = T^{-1} (the Neumann-inversion of the WY
+    # factor diverges on this chip), so Y comes from a forward substitution on
+    # M.  The substitution's per-step row selections run along the LAST axis
+    # of transposed small tiles -- lane-local, the same orientation trick as
+    # the panel kernel (the [rows-first] orientation pays a cross-lane
+    # conversion per step, which dominates the serial solve).
+    pid_b = tl.program_id(0)
+    pid_p = tl.program_id(1)
+    Vb = V + pid_b * sVb
+    Tb = TOUT + pid_b * sTb
+    Cb = C + pid_b * sCb
+    dt = Cb.dtype.element_ty
+    zero = tl.full((), 0.0, dtype=dt)
+    one = tl.full((), 1.0, dtype=dt)
+    ci = tl.arange(0, IBN)
+    pi = pid_p * TN + tl.arange(0, TN)
+    pmask = pi < P
+    num_tiles = tl.cdiv(M, RM)
+
+    # ---- W1 = V^H C[:, p-tile] ------------------------------------------
+    W1 = tl.zeros((IBN, TN), dtype=dt)
+    for t in range(num_tiles):
+        rows = t * RM + tl.arange(0, RM)
+        rmask = rows < M
+        Vt = tl.load(
+            Vb + rows[:, None] * sVm + ci[None, :] * sVn,
+            mask=rmask[:, None] & (ci[None, :] < ib),
+            other=zero,
+        )
+        Ct = tl.load(
+            Cb + rows[:, None] * sCm + pi[None, :] * sCn,
+            mask=rmask[:, None] & pmask[None, :],
+            other=zero,
+        )
+        W1 += tl.dot(tl.trans(Vt), Ct, allow_tf32=False)
+    W1 = tl.where(ci[:, None] < ib, W1, zero)
+
+    # ---- forward substitution on M = T^{-1} (upper triangular) ----------
+    # The trailing update needs Y = T^H W1 = (M^H)^{-1} W1, i.e. a forward
+    # substitution along M's COLUMNS:
+    #   row i:  Y[i, :] = (W1[i, :] - sum_{k<i} M[k, i] * Y[k, :]) / M[i, i]
+    # M's diagonal holds +inf where tau == 0 -> that Y row is exactly zero.
+    # All per-step selections run along the LAST axis of the transposed small
+    # tiles (lane-local); the column-i extraction of M masks along columns of
+    # Msram directly.
+    Msram = tl.load(
+        Tb + ci[:, None] * sTm + ci[None, :] * sTn,
+        mask=(ci[:, None] < ib) & (ci[None, :] < ib),
+        other=zero,
+    )
+    W1t = tl.trans(W1)  # (TN, IBN): column i of W1t = row i of W1
+    Yt = tl.zeros((TN, IBN), dtype=dt)
+    for i in range(IBN):
+        if i < ib:
+            Mcol = tl.sum(tl.where(ci[None, :] == i, Msram, zero), axis=1)
+            W1row = tl.sum(tl.where(ci[None, :] == i, W1t, zero), axis=1)
+            Mii = tl.sum(tl.where(ci == i, Mcol, zero))
+            contrib = tl.sum(
+                tl.where(ci[None, :] < i, Mcol[None, :] * Yt, zero), axis=1
+            )
+            # *reciprocal: zero-tau -> Mii=+inf -> exact zero row
+            Yrow = (W1row - contrib) * (one / Mii)
+            Yt = tl.where(ci[None, :] == i, Yrow[:, None], Yt)
+    Y = tl.where(ci[:, None] < ib, tl.trans(Yt), zero)
+
+    # ---- C[:, p-tile] -= V Y --------------------------------------------
+    for t in range(num_tiles):
+        rows = t * RM + tl.arange(0, RM)
+        rmask = rows < M
+        Vt = tl.load(
+            Vb + rows[:, None] * sVm + ci[None, :] * sVn,
+            mask=rmask[:, None] & (ci[None, :] < ib),
+            other=zero,
+        )
+        Ct = tl.load(
+            Cb + rows[:, None] * sCm + pi[None, :] * sCn,
+            mask=rmask[:, None] & pmask[None, :],
+            other=zero,
+        )
+        Ct = Ct - tl.dot(Vt, Y, allow_tf32=False)
+        tl.store(
+            Cb + rows[:, None] * sCm + pi[None, :] * sCn,
+            Ct,
+            mask=rmask[:, None] & pmask[None, :],
+        )
+
+
+@libentry()
+@triton.jit
+def _geqrf_copy_kernel(
+    A_ptr,
+    W_ptr,
+    m,
+    n,
+    total,
+    sAb,
+    sAm,
+    sAn,
+    sWb,
+    sWm,
+    sWn,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+):
+    # Strided A -> row-major W copy (large-path prologue).  1-D grid with a
+    # grid-stride loop: gcu400 caps grid.y at 255 (P19), and the former 2-D
+    # (B, tiles) launch of the KernelGen baseline died on 1024x1024 with
+    # "out of resource: grid.y, Required: 256, Hardware limit: 255".
+    pid = tl.program_id(0)
+    npids = tl.num_programs(0)
+    ntn = tl.cdiv(n, BN)
+    tiles_per_b = tl.cdiv(m, BM) * ntn
+    for t in tl.range(pid, total, npids):
+        b = t // tiles_per_b
+        rem = t - b * tiles_per_b
+        tr = rem // ntn
+        tc = rem - tr * ntn
+        rows = tr * BM + tl.arange(0, BM)
+        cols = tc * BN + tl.arange(0, BN)
+        rmask = rows < m
+        cmask = cols < n
+        lmask = rmask[:, None] & cmask[None, :]
+        tile = tl.load(
+            A_ptr + b * sAb + rows[:, None] * sAm + cols[None, :] * sAn,
+            mask=lmask,
+            other=0.0,
+        )
+        tl.store(
+            W_ptr + b * sWb + rows[:, None] * sWm + cols[None, :] * sWn,
+            tile,
+            mask=lmask,
+        )
+
+
+@libentry()
+@triton.jit
+def _geqrf_pack_lower_kernel(
+    V_ptr,
+    A_ptr,
+    m,
+    kpack,
+    total,
+    sVb,
+    sVm,
+    sVn,
+    sAb,
+    sAm,
+    sAn,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+):
+    # Pack the reflector tails of the multi-CTA (tall) panels from V into the
+    # strict lower triangle of the packed output `a` (store-only: the upper
+    # triangle holds R and must not be touched).  Every packed position
+    # (row > col) was written by the panel's geqrt kernel, so V is fully
+    # initialised in the region this kernel reads.  1-D grid + grid-stride
+    # (P19).
+    pid = tl.program_id(0)
+    npids = tl.num_programs(0)
+    ntn = tl.cdiv(kpack, BN)
+    tiles_per_b = tl.cdiv(m, BM) * ntn
+    for t in tl.range(pid, total, npids):
+        b = t // tiles_per_b
+        rem = t - b * tiles_per_b
+        tr = rem // ntn
+        tc = rem - tr * ntn
+        rows = tr * BM + tl.arange(0, BM)
+        cols = tc * BN + tl.arange(0, BN)
+        rmask = rows < m
+        cmask = cols < kpack
+        lmask = rmask[:, None] & cmask[None, :] & (rows[:, None] > cols[None, :])
+        v = tl.load(
+            V_ptr + b * sVb + rows[:, None] * sVm + cols[None, :] * sVn,
+            mask=lmask,
+            other=0.0,
+        )
+        tl.store(
+            A_ptr + b * sAb + rows[:, None] * sAm + cols[None, :] * sAn,
+            v,
+            mask=lmask,
+        )
+
+
+def _launch_panel(W, V, tau, m, k, kk, ib_active, B, num_warps=4):
+    """Single-CTA transposed-tile panel factorisation (geqrf's own kernel)."""
+    M = m - kk
+    sWb, sWm, sWn = W.stride()
+    sVb, sVm, sVn = V.stride()
+    sTauB, sTauN = tau.stride()
+    _geqrf_panel_kernel[(B,)](
+        W,
+        V,
+        tau,
+        M,
+        ib_active,
+        kk,
+        sWb,
+        sWm,
+        sWn,
+        sVb,
+        sVm,
+        sVn,
+        sTauB,
+        sTauN,
+        BM=triton.next_power_of_2(M),
+        IBN=max(16, triton.next_power_of_2(ib_active)),
+        num_warps=num_warps,
+    )
+
+
+def _launch_trailing(V, Tp, C, m_rows, p, ib, B):
+    """Apply the block reflector (geqrf's own larfb: transposed-tile solve)."""
+    sVb, sVm, sVn = V.stride()
+    sTb, sTm, sTn = Tp.stride()
+    sCb, sCm, sCn = C.stride()
+    ibn = max(16, triton.next_power_of_2(ib))
+    # swept on gcu400: RM=256 wins at every panel height; TN=32 halves the
+    # trailing GEMM time on tall panels while TN=16 is marginally better on
+    # short ones
+    tn = _LARFB_TN_LARGE if m_rows > _LARFB_TN_SPLIT else _LARFB_TN_SMALL
+    # gcu400 caps grid.y at 255 (P19): widen the column tile until the grid
+    # fits instead of launching an invalid grid
+    if (p + tn - 1) // tn > 255:
+        tn = max(tn, triton.next_power_of_2(triton.cdiv(p, 255)))
+    grid_p = (p + tn - 1) // tn
+    _geqrf_larfb_kernel[(B, grid_p)](
+        V,
+        Tp,
+        C,
+        m_rows,
+        ib,
+        p,
+        sVb,
+        sVm,
+        sVn,
+        sTb,
+        sTm,
+        sTn,
+        sCb,
+        sCm,
+        sCn,
+        RM=_LARFB_RM,
+        IBN=ibn,
+        TN=tn,
+        num_warps=_LARFB_WARPS,
+    )
 
 
 def geqrf(A):
@@ -223,7 +580,7 @@ def geqrf(A):
         Householder vectors packed below the diagonal of the first
         k = min(m, n) columns; ``tau`` is (..., k).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 GEQRF")
+    logger.debug("GEMS_ENFLAME GEQRF")
     if A.dim() < 2:
         raise RuntimeError("geqrf: input must have at least 2 dimensions")
     if A.dtype not in (torch.float32, torch.float64):
@@ -238,9 +595,12 @@ def geqrf(A):
     B = 1
     for d in shape[:-2]:
         B *= d
-    tau = torch.empty((*shape[:-2], k), dtype=A.dtype, device=A.device)
+    tau = torch.empty((B, k), dtype=A.dtype, device=A.device)
     if B == 0 or k == 0:
-        return torch.empty_like(A), tau
+        return torch.empty_like(A), tau.reshape(*shape[:-2], k)
+    # Batch dims are flattened with the per-matrix stride of the innermost
+    # batch dimension; exact for contiguous batch dims (torch's convention),
+    # the same envelope as the KernelGen baseline.
     sAb = A.stride(-3) if A.dim() > 2 else m * n
     sAm = A.stride(-2)
     sAn = A.stride(-1)
@@ -248,37 +608,127 @@ def geqrf(A):
     BM = triton.next_power_of_2(m)
     BN = triton.next_power_of_2(n)
     small_elems = _SMALL_ELEMS_BYTES // A.element_size()
-    if BM * BN <= small_elems:
-        a = torch.empty_like(A)
+    if n <= _SMALL_MAX_N and B <= _MAX_GRID_X and BM * BN <= small_elems:
+        # ---- small path: single-launch packed QR ---------------------------
+        a = torch.empty((B, m, n), dtype=A.dtype, device=A.device)
         nw = 8 if BM * BN >= 8192 else (4 if BM * BN >= 2048 else 2)
-        _geqrf_small_kernel[(B,)](
-            A, a, tau, m, n, k, sAb, sAm, sAn, BM, BN, num_warps=nw
+        _geqrf_fused_kernel[(B,)](
+            A,
+            a,
+            tau,
+            m,
+            n,
+            k,
+            sAb,
+            sAm,
+            sAn,
+            m * n,
+            n,
+            1,
+            k,
+            BM,
+            BN,
+            num_warps=nw,
         )
-        return a, tau
+        return a.reshape(*shape[:-2], m, n), tau.reshape(*shape[:-2], k)
 
-    # Large path: factorize in a column-major working buffer W so every
-    # column access is contiguous; blocked panel factorization + panel
-    # application; return the transposed view as `a` (LAPACK-style strided
-    # output, matching torch's cuSOLVER layout).
-    w = torch.empty((B, n, m), dtype=A.dtype, device=A.device)
-    sWb = n * m
-    nt = triton.cdiv(m, _TILE) * triton.cdiv(n, _TILE)
-    _geqrf_transpose_kernel[(B, nt)](
-        A, w, m, n, sAb, sAm, sAn, sWb, _TILE, _TILE, num_warps=4
+    # ---- large path: blocked Householder QR in the row-major output buffer -
+    a = torch.empty((B, m, n), dtype=A.dtype, device=A.device)
+    ntiles = triton.cdiv(m, _TILE) * triton.cdiv(n, _TILE)
+    total = B * ntiles
+    _geqrf_copy_kernel[(min(total, _MAX_GRID_X),)](
+        A,
+        a,
+        m,
+        n,
+        total,
+        sAb,
+        sAm,
+        sAn,
+        m * n,
+        n,
+        1,
+        _TILE,
+        _TILE,
+        num_warps=4,
     )
-    nw = 8 if BM >= 1024 else 4
-    j = 0
-    while j < k:
-        jend = j + _PANEL_NB if j + _PANEL_NB < k else k
-        _geqrf_panel_factor_kernel[(B,)](w, tau, m, k, j, jend, sWb, BM, num_warps=nw)
-        if jend < n:
-            ntrail = n - jend
-            _geqrf_panel_apply_kernel[(B * ntrail,)](
-                w, tau, m, n, k, j, jend, sWb, BM, num_warps=nw
+    V = torch.empty((B, m, k), dtype=A.dtype, device=A.device)
+    Tbuf = torch.empty((B, k, k), dtype=A.dtype, device=A.device)
+
+    # geqrf's own panel loop over the shared linalg_qr kernels: SRAM-resident
+    # single-CTA panels up to the (wider) cap above, multi-CTA spin-barrier
+    # panels beyond it, then larft + larfb per panel for the trailing update.
+    ib = _PANEL_IB
+    P = (k + ib - 1) // ib
+    sram_max_m = _SRAM_MAX_M_FP32 if A.element_size() == 4 else _SRAM_MAX_M_FP64
+    needs_mcta = any(
+        triton.next_power_of_2(m - kk) > sram_max_m for kk in range(0, k, ib)
+    )
+    if needs_mcta:
+        # multi-CTA scratch (one slot per (panel, column), used once per call)
+        alpha_buf = torch.zeros(B, P, ib, dtype=A.dtype, device=A.device)
+        xnorm_buf = torch.zeros(B, P, ib, dtype=A.dtype, device=A.device)
+        w_sum = torch.zeros(B, P, ib, ib, dtype=A.dtype, device=A.device)
+        rowj_buf = torch.zeros(B, P, ib, ib, dtype=A.dtype, device=A.device)
+        ctr = torch.zeros(B, P, ib, dtype=torch.int32, device=A.device)
+    k_mcta = 0
+    for p, kk in enumerate(range(0, k, ib)):
+        ib_active = min(ib, k - kk)
+        M = m - kk
+        if triton.next_power_of_2(M) <= sram_max_m:
+            _launch_panel(a, V, tau, m, k, kk, ib_active, B, num_warps=_PANEL_WARPS)
+        else:
+            rm = _MCTA_RM if A.element_size() == 4 else _MCTA_RM_FP64
+            if rm * _MCTA_NC_MAX < M:
+                rm = triton.next_power_of_2((M + _MCTA_NC_MAX - 1) // _MCTA_NC_MAX)
+            _launch_geqrt_mcta(
+                a,
+                V,
+                tau,
+                alpha_buf,
+                xnorm_buf,
+                w_sum,
+                rowj_buf,
+                ctr,
+                m,
+                k,
+                kk,
+                ib_active,
+                p,
+                _MCTA_NC_MAX,
+                B,
+                rm=rm,
             )
-        j = jend
-    if A.dim() == 2:
-        a = w[0].transpose(-1, -2)
-    else:
-        a = w.transpose(-1, -2)
-    return a, tau
+            k_mcta = min(k, kk + ib_active)
+        if kk + ib_active < n:
+            Vp = V[:, kk:m, kk : kk + ib_active]
+            taup = tau[:, kk : kk + ib_active]
+            Tp = Tbuf[:, kk : kk + ib_active, kk : kk + ib_active]
+            _launch_larft(Vp, taup, Tp, m, kk, ib_active, B)
+            C = a[:, kk:m, kk + ib_active : n]
+            _launch_trailing(Vp, Tp, C, m - kk, n - (kk + ib_active), ib_active, B)
+
+    # Multi-CTA panels leave only R in `a` (the tails live in V); pack those
+    # tails in.  The SRAM panels already packed theirs in place.  The mcta
+    # panels form a prefix (M = m - kk decreases), so the packed range is
+    # exactly the columns factored by the multi-CTA path.
+    if k_mcta > 0:
+        ptiles = triton.cdiv(m, _TILE) * triton.cdiv(k_mcta, _TILE)
+        ptotal = B * ptiles
+        _geqrf_pack_lower_kernel[(min(ptotal, _MAX_GRID_X),)](
+            V,
+            a,
+            m,
+            k_mcta,
+            ptotal,
+            m * k,
+            k,
+            1,
+            m * n,
+            n,
+            1,
+            _TILE,
+            _TILE,
+            num_warps=4,
+        )
+    return a.reshape(*shape[:-2], m, n), tau.reshape(*shape[:-2], k)

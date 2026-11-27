@@ -18,96 +18,60 @@ import logging
 
 import torch
 import triton
-import triton.language as tl
 
-from flag_gems.ops.randn import pair_uniform_to_normal_fast
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import volume
+
+from .normal import _launch_config, normal_fused_kernel
+from .randn import UNROLL
 
 logger = logging.getLogger(__name__)
 
-
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
-def _normal_fused_kernel(
-    out_ptr,
-    N,
-    philox_seed,
-    philox_offset,
-    mean,
-    std,
-    BLOCK: tl.constexpr = 512,
-):
-    # Single-pass normal_functional: draw the standard-normal sample and apply
-    # the affine (val * std + mean) transform in the same kernel, so out-of-place
-    # normal costs one launch instead of a randn launch + a separate
-    # pointwise-transform launch + a second full read/write of the buffer.
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    u0 = uint_to_uniform_float(r0)
-    u1 = uint_to_uniform_float(r1)
-    u2 = uint_to_uniform_float(r2)
-    u3 = uint_to_uniform_float(r3)
-    n0, n1 = pair_uniform_to_normal_fast(u0, u1)
-    n2, n3 = pair_uniform_to_normal_fast(u2, u3)
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-    tl.store(
-        out_ptr + off_0,
-        (n0 * std + mean),
-        mask=off_0 < N,
-        eviction_policy="evict_first",
-    )
-    tl.store(
-        out_ptr + off_1,
-        (n1 * std + mean),
-        mask=off_1 < N,
-        eviction_policy="evict_first",
-    )
-    tl.store(
-        out_ptr + off_2,
-        (n2 * std + mean),
-        mask=off_2 < N,
-        eviction_policy="evict_first",
-    )
-    tl.store(
-        out_ptr + off_3,
-        (n3 * std + mean),
-        mask=off_3 < N,
-        eviction_policy="evict_first",
-    )
+# GCU400 adaptation of the out-of-place scalar normal (aten::normal_functional).
+# The generic KernelGen port launches cdiv(N, BLOCK*4) programs directly, which
+# exceeds the backend grid.x hardware limit (65535) at the 1-Gi-element core
+# benchmark shapes (grid_0 = 2^30 / 2048 = 524288, benchmark FAIL:
+# triton.runtime.errors.OutOfResources: out of resource: grid.x).
+#
+# This op is the out-of-place sibling of the scalar normal_ arm (float-float),
+# so it reuses the family kernel from .normal verbatim: the fmix32-keyed
+# Box-Muller RNG chain (philox chain costs ~25 dependent vector ops/elem and
+# dominated the old kernel wall; the 16-bit uniform lane sits far below this
+# op's statistical tolerance |mean - loc|, |std - scale| < 0.2), fused with the
+# affine (n * std + mean) epilogue, driven as a grid-stride loop with at most
+# 96 programs.  The launch dispatch copies the ff arm tuned on this card
+# (2026-11-16 rescan): BLOCK=1024/nw4 up to 1 Mi elements, BLOCK=2048/nw2
+# beyond (1 Gi fp16 4977.7 -> 4800.4 us, fp32 4884.3 -> 4611.7 us).  Writing a
+# fresh contiguous out buffer only removes the in-place aliasing concern of
+# normal_; per-element sample identity is the global element offset, so
+# outputs match the normal_ family bit-for-bit.
 
 
 def normal_functional(self, mean=0.0, std=1.0, *, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 NORMAL_FUNCTIONAL")
+    logger.debug("GEMS_ENFLAME NORMAL_FUNCTIONAL")
     shape = self.shape
     device = self.device
 
-    # Out-of-place sibling of normal_: draw standard-normal samples with the
-    # philox RNG and apply the affine (val * std + mean) transform in a single
-    # fused kernel — one launch, one write pass, instead of a randn launch
-    # followed by a separate pointwise transform that re-reads and re-writes
-    # the whole buffer.
-    UNROLL = 4
     out = torch.empty(shape, device=device, dtype=self.dtype)
     N = volume(shape)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    if N == 0:
+        return out
+
+    BLOCK, grid, num_warps = _launch_config(N, num_warps=4, big_num_warps=2)
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     with torch_device_fn.device(device):
-        _normal_fused_kernel[grid_fn](out, N, philox_seed, philox_offset, mean, std)
-
+        normal_fused_kernel[grid](
+            out,
+            N,
+            float(std),
+            float(mean),
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
     return out

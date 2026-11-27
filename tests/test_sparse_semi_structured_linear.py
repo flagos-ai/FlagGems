@@ -35,7 +35,7 @@ def _probe_native_cutlass():
     Returns ``(available, reason)``.
     """
     # Only probe on a real NVIDIA device. Out-of-tree backends redirect
-    # torch.cuda.* to their own runtime (the vendor's transfer_to_gcu makes
+    # torch.cuda.* to their own runtime (torch_gcu's transfer_to_gcu makes
     # torch.cuda.is_available() return True and sends device="cuda" to the
     # accelerator), and the probe below then runs on hardware the CUTLASS path
     # was never meant for. On enflame gcu300 to_sparse_semi_structured aborts
@@ -72,9 +72,11 @@ def _probe_native_cutlass():
 # ``_pytorch_ref``.
 NATIVE_AVAILABLE, _NATIVE_UNAVAILABLE_REASON = _probe_native_cutlass()
 
-# The gems kernel supports fp16 / bf16 on all backends; the pure-PyTorch
-# reference is dtype-agnostic, so these run everywhere.
-FLOAT_DTYPES = [torch.float16, torch.bfloat16]
+# The gems kernel supports fp16 / bf16 on all backends, and fp32 as well: the
+# generic op accumulates in fp32 and the kunlunxin override drives fp32 through
+# its 4-itemsize word gate plus an ieee-precision dot. The pure-PyTorch
+# reference is dtype-agnostic, so all three run everywhere.
+FLOAT_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
 
 if QUICK_MODE:
     SPARSE_LINEAR_SHAPES = [(16, 32)]
@@ -388,3 +390,60 @@ def test_sparse_semi_structured_linear_non_contiguous_weight(dtype):
 
     _assert_close(res_nc, ref_out, dtype, atol=_atol_for(dtype))
     _maybe_cross_check_native(res_nc, input, w_contig, choice, dtype=dtype)
+
+
+@pytest.mark.sparse_semi_structured_linear
+@pytest.mark.parametrize("M", [8, 32])  # 8 -> tiles None -> _finish; 32 -> fast path
+@pytest.mark.parametrize(
+    "dtype, out_dtype",
+    [(torch.float16, torch.float32), (torch.bfloat16, torch.float16)],
+)
+def test_sparse_semi_structured_linear_out_dtype(M, dtype, out_dtype):
+    """out_dtype casts the fp32-accumulated result to the requested dtype.
+
+    ``M`` selects the two out-dtype cast sites: ``M=32`` runs the fast
+    NT-GEMM path whose output is allocated at ``output_dtype``, while ``M=8``
+    has no >=16 power-of-two tile so it falls through to the backend ``mm``
+    kernel and ``_finish``'s cast branch.
+    """
+    K = N = 64
+    torch.manual_seed(12345)
+    input = torch.randn(M, K, dtype=dtype, device=flag_gems.device)
+    weight, choice = _build_2_4_weight(N, K, dtype, flag_gems.device)
+    meta = choice.to(torch.int8)
+
+    ref_out = _pytorch_ref(input, weight, choice, out_dtype=out_dtype)
+    res_out = flag_gems._sparse_semi_structured_linear(
+        input, weight, meta, out_dtype=out_dtype
+    )
+
+    # assert_close requires the comparison dtype to match res.dtype, i.e. the
+    # output dtype; tolerance is governed by the coarser input dtype.
+    _assert_close(res_out, ref_out, out_dtype, atol=_atol_for(dtype))
+
+
+@pytest.mark.sparse_semi_structured_linear
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_sparse_semi_structured_linear_strided_weight(dtype):
+    """A genuinely strided weight (transpose also non-contiguous) reaches the
+    arbitrary-strided fallback kernel and must match the contiguous result."""
+    M, K, N = 16, 64, 64
+    torch.manual_seed(12345)
+    input = torch.randn(M, K, dtype=dtype, device=flag_gems.device)
+    w_contig, choice = _build_2_4_weight(N, K, dtype, flag_gems.device)
+
+    # Embed the contiguous weight into a doubled buffer and take a step-2 column
+    # slice: a non-contiguous (N, K) view whose transpose is also non-contiguous,
+    # so it takes the arbitrary-strided fallback (not the transposed-storage
+    # path exercised by test_sparse_semi_structured_linear_non_contiguous_weight).
+    buf = torch.zeros(N, 2 * K, dtype=dtype, device=flag_gems.device)
+    buf[:, ::2] = w_contig
+    w_strided = buf[:, ::2]
+    assert not w_strided.is_contiguous()
+    assert not w_strided.t().is_contiguous()
+    meta = choice.to(torch.int8)
+
+    ref_out = _pytorch_ref(input, w_contig, choice)
+    res_out = flag_gems._sparse_semi_structured_linear(input, w_strided, meta)
+
+    _assert_close(res_out, ref_out, dtype, atol=_atol_for(dtype))

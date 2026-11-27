@@ -60,6 +60,26 @@ signature changes below shrink the host path without touching the arithmetic:
 A fused single-kernel variant with a device-side arrival barrier was measured
 twice (rounds 3 and 6) and is slower than this two-kernel form at every grid
 size tried, so the finalize stays its own launch.
+
+Round-7 attribution (topsprof + event-window probes, official bench regime):
+the bench times a window that opens when the pre-iteration 256 MB L2-flush
+memset retires, so the Python launch path (~22 us) hides under that ~171 us
+shadow and the window reduces to partial + finalize exec, the sync-exit fixed
+cost and the post-sync read tail. Three changes address exactly that window:
+the device-wide torch.gcu.synchronize() (~16.3 us idle exit) is replaced by a
+current-stream synchronize (~4.6 us) - both kernels were launched on the
+caller's current stream, so the pinned write is fenced just as tightly; the
+contiguous pass dispatches to a mask-free kernel whenever
+n % (num_programs * BLOCK) == 0, dropping the per-element mask selects that
+the round-1..6 parameter scans never removed; and fp16 input compares in the fp16 domain
+(comparisons never round, so the fp32-reduced reference order is preserved
+bit-exactly). bf16 keeps the fp32 accumulator: tl.minimum promotes bf16 to
+fp32, so a bf16 accumulator cannot stay loop-carried. The streaming pass
+itself is pinned at ~440 GB/s by read contention with the harness's own
+256 MB memset drain (load-only floor 36.6 us for 16 MB vs 39.9 us full);
+grid/BLOCK/mapping re-structures (slab-contiguous per program, num_stages
+pipelining, BLOCK 4096..8192, nw 2..8, grid 32..128) all land within noise
+of that floor or regress, so the two-kernel round-robin shape is kept.
 """
 
 import logging
@@ -68,6 +88,8 @@ import math
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems import runtime  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +182,42 @@ def _partial_minmax_kernel(
         vmax = tl.maximum(vmax, tl.where(mask, x, float("-inf")))
     tl.store(scratch_ptr + pid, tl.min(vmin, axis=0))
     tl.store(scratch_ptr + MAXP + pid, tl.max(vmax, axis=0))
+    tl.store(scratch_ptr + 2 * MAXP + pid, tl.max(vnan, axis=0))
+
+
+@triton.jit
+def _partial_minmax_kernel_even(
+    x_ptr,
+    scratch_ptr,
+    n_elements,
+    MAXP: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ACC_DT: tl.constexpr,
+):
+    """Mask-free min/max/NaN partials for n % (num_programs * BLOCK) == 0.
+
+    Every program runs full, tail-free blocks, so the per-element mask and the
+    two where-selects of the masked kernel are dead weight; dropping them cuts
+    the per-element ALU on the bandwidth-bound streaming pass. fp16 inputs
+    additionally compare in the fp16 domain (comparisons never round, so the
+    fp32-reduced reference order is preserved bit-exactly) which removes the
+    per-element cvt; the partials are widened back to fp32 on store.
+    """
+    pid = tl.program_id(0)
+    n_prog = tl.num_programs(0)
+    step = n_prog * BLOCK
+    vmin = tl.full((BLOCK,), float("inf"), ACC_DT)
+    vmax = tl.full((BLOCK,), float("-inf"), ACC_DT)
+    vnan = tl.zeros((BLOCK,), tl.float32)
+    for start in range(pid * BLOCK, n_elements, step):
+        offs = start + tl.arange(0, BLOCK)
+        x = tl.load(x_ptr + offs)
+        xf = x.to(ACC_DT)
+        vnan = tl.maximum(vnan, (x != x).to(tl.float32))
+        vmin = tl.minimum(vmin, xf)
+        vmax = tl.maximum(vmax, xf)
+    tl.store(scratch_ptr + pid, tl.min(vmin, axis=0).to(tl.float32))
+    tl.store(scratch_ptr + MAXP + pid, tl.max(vmax, axis=0).to(tl.float32))
     tl.store(scratch_ptr + 2 * MAXP + pid, tl.max(vnan, axis=0))
 
 
@@ -280,7 +338,7 @@ def _quant_params_from_extrema(fmin, fmax, nan_any, qmax):
 
 
 def choose_qparams_per_tensor(self, reduce_range=False):
-    logger.debug("GEMS_ENFLAME_GCU400 CHOOSE_QPARAMS_PER_TENSOR")
+    logger.debug("GEMS_ENFLAME CHOOSE_QPARAMS_PER_TENSOR")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "_choose_qparams_per_tensor expects a Tensor input, got "
@@ -307,14 +365,30 @@ def choose_qparams_per_tensor(self, reduce_range=False):
     if self.is_contiguous() and self.dtype != torch.float64:
         block = _BLOCK
         n_prog = min((n + block - 1) // block, _MAX_PROGS)
-        _partial_minmax_kernel[(n_prog,)](
-            self,
-            scratch,
-            n,
-            MAXP=_MAX_PROGS,
-            BLOCK=block,
-            num_warps=_NUM_WARPS,
-        )
+        if n % (n_prog * block) == 0:
+            # Every program runs full tail-free blocks: the masked loads and
+            # the two where-selects are dead weight on this pass, so dispatch
+            # the mask-free kernel. fp16 compares in its own domain (never
+            # rounds), which drops the per-element cvt as well.
+            acc_dt = tl.float16 if self.dtype == torch.float16 else tl.float32
+            _partial_minmax_kernel_even[(n_prog,)](
+                self,
+                scratch,
+                n,
+                MAXP=_MAX_PROGS,
+                BLOCK=block,
+                ACC_DT=acc_dt,
+                num_warps=_NUM_WARPS,
+            )
+        else:
+            _partial_minmax_kernel[(n_prog,)](
+                self,
+                scratch,
+                n,
+                MAXP=_MAX_PROGS,
+                BLOCK=block,
+                num_warps=_NUM_WARPS,
+            )
     else:
         block = _STRIDED_BLOCK
         n_prog = min((n + block - 1) // block, _MAX_PROGS)
@@ -343,9 +417,17 @@ def choose_qparams_per_tensor(self, reduce_range=False):
         num_warps=_FIN_WARPS,
     )
 
-    # The three folded scalars are in host-visible memory; synchronise before
-    # reading, then derive scale / zero_point in float64 on the host because
-    # GCU400 has no legal device-side fp64 libdevice calls.
-    torch.gcu.synchronize()
+    # The three folded scalars are in host-visible memory. A stream-scoped sync
+    # fences the pinned write just as tightly as the device-wide call - both
+    # kernels were enqueued on the caller's current stream - but its fixed exit
+    # cost measured ~4.6 us against ~16.3 us for torch.gcu.synchronize(), and
+    # it does not wait behind unrelated streams. Then derive scale / zero_point
+    # in float64 on the host because GCU400 has no legal device-side fp64
+    # libdevice calls.
+    torch.gcu.current_stream().synchronize()
     fmin, fmax, nan_any = host_out.tolist()
     return _quant_params_from_extrema(float(fmin), float(fmax), float(nan_any), qmax)
+
+
+# Module-level handle keeps the Library (and its kernels) alive for the
+# process; the registration itself must never break the flag_gems import.

@@ -1656,7 +1656,7 @@ _FULL_CONFIG = (
         "i0",
         i0,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("i0.out", i0_out),
     ("i0_", i0_),
@@ -1731,13 +1731,13 @@ _FULL_CONFIG = (
         "lerp.Scalar",
         lerp_scalar,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     (
         "lerp.Tensor",
         lerp_tensor,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
@@ -2797,7 +2797,12 @@ class use_gems:
         del self.exclude
         del self.include
         del self.registrar
-        del current_work_registrar
+        # Reset to None instead of `del`: the module-level name must keep
+        # existing, otherwise `flag_gems.current_work_registrar` raises
+        # AttributeError after the first use_gems() exit. Callers and backends
+        # only check `is not None`, and tests save/restore this attribute
+        # around only_enable(), which requires it to stay readable.
+        current_work_registrar = None
         if self.record:
             teardown_flaggems_logging()
 
@@ -2830,7 +2835,9 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "linalg_eigh_backward",
     "maximum_backward",
     "only_enable",
+    "slow_conv2d_forward_backward",
     "use_gems",
 ]
