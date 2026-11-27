@@ -261,6 +261,28 @@ float_power_:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+bernoulli_tensor_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
+bernoulli_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 trunc:
   shapes:
     - [4096, 4096]
