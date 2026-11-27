@@ -1,3 +1,5 @@
+"""Accuracy tests for the in-place AMP scale update."""
+
 import pytest
 import torch
 
@@ -23,6 +25,8 @@ GROWTH_INTERVAL = 5
 SCALE_TRACKER_FOUNDINF_CASES = [
     # Growth branch: tracker + 1 == growth_interval -> scale grows, tracker reset.
     (1024.0, 4, 0.0),
+    # Overflow on growth must preserve the old scale and reset the tracker.
+    (2.0**127, 4, 0.0),
     # Increment branch: tracker + 1 < growth_interval -> tracker increments.
     (1024.0, 0, 0.0),
     (1024.0, 2, 0.0),
@@ -52,7 +56,7 @@ def _make_inputs(scale_val, tracker_val, found_inf_val):
 @pytest.mark.parametrize(
     "scale_val,tracker_val,found_inf_val", SCALE_TRACKER_FOUNDINF_CASES
 )
-def test_amp_update_scale_(scale_val, tracker_val, found_inf_val):
+def test_amp_update_scale_(scale_val, tracker_val, found_inf_val, caplog):
     """Compare the GEMS implementation against PyTorch for the AMP scale update."""
     # Reference
     ref_scale = utils.to_reference(
@@ -77,13 +81,20 @@ def test_amp_update_scale_(scale_val, tracker_val, found_inf_val):
     res_scale, res_tracker, res_found_inf = _make_inputs(
         scale_val, tracker_val, found_inf_val
     )
-    res_out = flag_gems._amp_update_scale_(
-        res_scale,
-        res_tracker,
-        res_found_inf,
-        GROWTH_FACTOR,
-        BACKOFF_FACTOR,
-        GROWTH_INTERVAL,
+    gems_op = flag_gems._amp_update_scale_
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        res_out = gems_op(
+            res_scale,
+            res_tracker,
+            res_found_inf,
+            GROWTH_FACTOR,
+            BACKOFF_FACTOR,
+            GROWTH_INTERVAL,
+        )
+    prefix = utils.gems_log_prefix(gems_op)
+    assert any(
+        message.startswith(prefix) and message.endswith(" _AMP_UPDATE_SCALE_")
+        for message in caplog.messages
     )
 
     # The return value is the (in-place updated) scale tensor itself.

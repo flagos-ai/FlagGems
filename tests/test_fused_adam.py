@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Accuracy and state update tests for fused Adam."""
+
 import pytest
 import torch
 
@@ -164,3 +166,112 @@ def test_fused_adam_(shape, dtype):
     gems_out = utils.to_reference(param)
     ref_out = utils.to_reference(ref_param)
     utils.gems_assert_close(gems_out, ref_out, dtype)
+
+
+def _assert_fused_adam_log(caplog, op, name):
+    prefix = utils.gems_log_prefix(op)
+    assert any(
+        message.startswith(prefix) and message.endswith(f" {name}")
+        for message in caplog.messages
+    )
+
+
+@pytest.mark.fused_adam_
+def test_fused_adam_amsgrad_history(caplog):
+    param = torch.ones(4, dtype=torch.float32, device=flag_gems.device)
+    exp_avg, exp_avg_sq, max_exp_avg_sq = (torch.zeros_like(param) for _ in range(3))
+    ref_param = torch.nn.Parameter(utils.to_reference(param.clone()))
+    ref_opt = torch.optim.Adam([ref_param], amsgrad=True, foreach=False, fused=False)
+    gems_op = flag_gems._fused_adam_
+
+    for step, value in enumerate((4.0, 1.0, 1.0), start=1):
+        grad = torch.full_like(param, value)
+        state_step = torch.tensor(float(step), device=param.device)
+        ref_param.grad = torch.full_like(ref_param, value)
+        ref_opt.step()
+
+        caplog.clear()
+        with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+            gems_op(
+                [param],
+                [grad],
+                [exp_avg],
+                [exp_avg_sq],
+                [max_exp_avg_sq],
+                [state_step],
+                amsgrad=True,
+            )
+        _assert_fused_adam_log(caplog, gems_op, "FUSED_ADAM_")
+        utils.gems_assert_close(param, ref_param.detach(), param.dtype, atol=1e-6)
+        utils.gems_assert_close(
+            max_exp_avg_sq,
+            ref_opt.state[ref_param]["max_exp_avg_sq"],
+            param.dtype,
+            atol=1e-7,
+        )
+
+
+@pytest.mark.fused_adam_
+@pytest.mark.parametrize("found_inf_value", [0.0, 1.0], ids=["unscale", "skip"])
+def test_fused_adam_grad_scale(found_inf_value, caplog):
+    param = torch.ones(4, dtype=torch.float32, device=flag_gems.device)
+    grad = torch.full_like(param, 16.0)
+    exp_avg, exp_avg_sq = torch.zeros_like(param), torch.zeros_like(param)
+    state_step = torch.tensor(1.0, device=param.device)
+    grad_scale = torch.tensor(16.0, device=param.device)
+    found_inf = torch.tensor(found_inf_value, device=param.device)
+    inputs = (param, grad, exp_avg, exp_avg_sq)
+    ref = [utils.to_reference(t.clone()) for t in inputs]
+    kwargs = dict(
+        lr=0.001,
+        beta1=0.9,
+        beta2=0.999,
+        weight_decay=0.0,
+        eps=1e-8,
+        amsgrad=False,
+        maximize=True,
+    )
+    torch._fused_adam_(
+        *([t] for t in ref),
+        [],
+        [utils.to_reference(state_step)],
+        **kwargs,
+        grad_scale=utils.to_reference(grad_scale),
+        found_inf=utils.to_reference(found_inf),
+    )
+
+    gems_op = flag_gems._fused_adam_
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        gems_op(
+            *([t] for t in inputs),
+            [],
+            [state_step],
+            **kwargs,
+            grad_scale=grad_scale,
+            found_inf=found_inf,
+        )
+    _assert_fused_adam_log(caplog, gems_op, "FUSED_ADAM_")
+    utils.gems_assert_equal(grad, ref[1])
+    for result, expected in zip(inputs, ref):
+        utils.gems_assert_close(result, expected, param.dtype, atol=1e-7)
+
+
+@pytest.mark.fused_adam
+def test_fused_adam_preserves_inputs_with_grad_scale(caplog):
+    param = torch.ones(4, dtype=torch.float32, device=flag_gems.device)
+    grad = torch.full_like(param, 16.0)
+    exp_avg, exp_avg_sq = torch.zeros_like(param), torch.zeros_like(param)
+    inputs = (param, grad, exp_avg, exp_avg_sq)
+    original = [utils.to_reference(t.clone()) for t in inputs]
+    state_step = torch.tensor(1.0, device=param.device)
+    grad_scale = torch.tensor(16.0, device=param.device)
+    gems_op = flag_gems._fused_adam
+
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        outputs = gems_op(
+            *([t] for t in inputs), [], [state_step], grad_scale=grad_scale
+        )
+    _assert_fused_adam_log(caplog, gems_op, "FUSED_ADAM")
+    utils.gems_assert_equal(outputs[1][0], utils.to_reference(torch.ones_like(grad)))
+    for tensor, before in zip(inputs, original):
+        utils.gems_assert_equal(tensor, before)
