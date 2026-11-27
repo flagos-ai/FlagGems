@@ -166,6 +166,17 @@ linalg_qr_out:
     - [4, 1024, 1024]
   shape_desc: "(*B), M, N"
 
+atan2_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
 segment_reduce: &segment_reduce_shapes
   shapes:
     - [1048576]

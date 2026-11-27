@@ -1129,7 +1129,7 @@ _FULL_CONFIG = (
     ("asinh.out", asinh_out),
     ("asinh_", asinh_),
     ("atan", atan),
-    ("atan2", atan2),
+    ("atan2", atan2, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("atan2.out", atan2_out),
     ("atan2_", atan2_),
     ("atan_", atan_),

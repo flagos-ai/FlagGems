@@ -2110,6 +2110,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atan2_backward
+  description: First-order autograd rule for atan2 implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - atan2
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: atan2_out
   description: 'A variant of `atan2` that allows the output to be saved into `out`.
 
