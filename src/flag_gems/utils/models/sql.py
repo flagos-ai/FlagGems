@@ -14,6 +14,8 @@
 
 import os
 import sqlite3
+import time
+from contextlib import closing
 from hashlib import md5
 from itertools import chain
 from typing import (
@@ -52,6 +54,52 @@ else:
     Base = sqlalchemy.orm.declarative_base()
 
 
+_SQLITE_INIT_TIMEOUT = 2.0
+_SQLITE_LOCK_RETRY_INTERVAL = 0.05
+
+
+def _sqlite_is_busy(error: sqlite3.OperationalError) -> bool:
+    code = getattr(error, "sqlite_errorcode", None)
+    if code is None:
+        # Python 3.10 does not expose SQLite result codes on exceptions.
+        return str(error) == "database is locked"
+    return (code & 0xFF) == sqlite3.SQLITE_BUSY
+
+
+def _configure_sqlite_connection(dbapi_conn, _connection_record):
+    with closing(dbapi_conn.cursor()) as cursor:
+        busy_timeout = cursor.execute("PRAGMA busy_timeout").fetchone()[0]
+        # Use one deadline across all initialization statements.
+        # Normal cache reads and writes keep the connection timeout.
+        cursor.execute("PRAGMA busy_timeout=0")
+        try:
+            deadline = time.monotonic() + _SQLITE_INIT_TIMEOUT
+            while True:
+                try:
+                    mode = cursor.execute("PRAGMA journal_mode").fetchone()[0]
+                    # In-memory and temporary databases have no main filename.
+                    if (
+                        mode != "wal"
+                        and cursor.execute("PRAGMA database_list").fetchone()[2]
+                    ):
+                        mode = cursor.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+                        if mode != "wal":
+                            raise sqlite3.OperationalError(
+                                f"Could not enable SQLite WAL mode (journal_mode={mode})"
+                            )
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+                    return
+                except sqlite3.OperationalError as error:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not _sqlite_is_busy(error):
+                        raise
+                    time.sleep(min(_SQLITE_LOCK_RETRY_INTERVAL, remaining))
+                    if time.monotonic() >= deadline:
+                        raise
+        finally:
+            cursor.execute(f"PRAGMA busy_timeout={busy_timeout}")
+
+
 class SQLPersistantModel(PersistantModel):
     key_count_limit = 64 if "sqlite" in os.getenv("FLAGGEMS_DB_URL", "sqlite") else 32
 
@@ -72,24 +120,9 @@ class SQLPersistantModel(PersistantModel):
 
         # Enable WAL mode for SQLite to allow concurrent reads and writes
         if "sqlite" in db_url:
-
-            @sqlalchemy.event.listens_for(self.engine, "connect")
-            def set_sqlite_pragma(dbapi_conn, connection_record):
-                cursor = dbapi_conn.cursor()
-                try:
-                    cursor.execute("PRAGMA journal_mode=WAL")
-                except sqlite3.OperationalError:
-                    # Switching a database into WAL mode needs an exclusive
-                    # lock that SQLite will not wait for (busy_timeout does not
-                    # apply here).  When multiple processes cold-start at the
-                    # same time and race to flip the journal mode, only one
-                    # wins and the others get "database is locked".  The WAL
-                    # switch is persisted in the file header once it succeeds,
-                    # so the losing connections still read/write in WAL mode
-                    # afterwards — safe to ignore this race.
-                    pass
-                cursor.execute("PRAGMA synchronous=NORMAL")
-                cursor.close()
+            sqlalchemy.event.listen(
+                self.engine, "connect", _configure_sqlite_connection
+            )
 
         self.sql_model_pool: Dict[str, Type[Base]] = {}
 

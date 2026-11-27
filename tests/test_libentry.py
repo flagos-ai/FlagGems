@@ -44,6 +44,8 @@ from flag_gems.utils.libentry import (
 )
 
 libentry_mod = importlib.import_module("flag_gems.utils.libentry")
+
+
 cost_model_mod = importlib.import_module("flag_gems.flagtune.inference.cost_model")
 flagtune_runtime_mod = importlib.import_module("flag_gems.runtime.flagtune")
 _REAL_ENSURE_PROPOSER = cost_model_mod.ensure_proposer
@@ -73,6 +75,47 @@ def isolate_cost_model_state(monkeypatch):
     )
 
 
+def test_entry_explicit_constexpr_value_is_in_do_not_specialize_key():
+    # Triton still specializes explicit constexpr objects on a parameter with
+    # do_not_specialize. Different values must not hit LibEntry's old binary.
+    entry = SimpleNamespace(divisibility=16)
+
+    def key(value):
+        return libentry_mod.LibEntry.key(entry, [], [value], [])
+
+    assert key(tl.constexpr(16)) != key(tl.constexpr(32))
+    assert key(tl.constexpr(32)) == key(tl.constexpr(32))
+    assert key(tl.constexpr(True)) != key(tl.constexpr(1))
+    assert key(16) == key(32)
+    assert key(tl.constexpr(16)) != key(16)
+
+
+def test_entry_explicit_constexpr_dispatch_separates_constants(monkeypatch):
+    @triton.jit(do_not_specialize=["scale"])
+    def kernel(output, scale):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled = []
+
+    class Compiled:
+        def __getitem__(self, grid):
+            return lambda *args: None
+
+    def compile_kernel(*args, **kwargs):
+        result = Compiled()
+        compiled.append(result)
+        return result
+
+    monkeypatch.setattr(kernel, "run", compile_kernel)
+    first, _ = entry.run(7, tl.constexpr(16), grid=(1,))
+    second, _ = entry.run(7, tl.constexpr(32), grid=(1,))
+    again, _ = entry.run(7, tl.constexpr(16), grid=(1,))
+    assert first is again and first is not second
+    assert len(compiled) == len(entry._cpu_cache) == 2
+
+
 def test_libentry_uses_platform_appropriate_lock():
     if sys.platform == "darwin":
         expected_lock_type = type(threading.Lock())
@@ -98,6 +141,7 @@ def test_flagtune_environment_controls_operator_selection(monkeypatch):
     """Apply global and per-operator selection using each operator's capability."""
     monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
     monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
     monkeypatch.setenv("USE_FLAGTUNE", "0")
 
     assert flagtune_runtime_mod.flagtune_enabled("mm") is False
@@ -709,6 +753,7 @@ class ResolvedDescriptor:
 
 @pytest.fixture
 def descriptor_module(monkeypatch):
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
     monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
@@ -729,6 +774,7 @@ def test_descriptor_cache_key_uses_resolved_type(descriptor_module):
 
 
 def test_descriptor_cache_key_without_descriptor_module(monkeypatch):
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", None)
     monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     value = object()
@@ -2040,6 +2086,37 @@ def test_cost_model_protocol_stays_explicit():
         "benchmark_retries"
         in inspect.signature(LibTuner.use_benchmark_protocol).parameters
     )
+
+
+def test_replay_refinement_remeasures_close_configs_without_reusing_screen():
+    screen = object()
+    long_replay = object()
+    tuner = SimpleNamespace(
+        do_bench=screen,
+        _replay_final=SimpleNamespace(benchmark=long_replay),
+        seen_tuned_metas={"screened": (1.0, 1.0, 1.0)},
+    )
+    screened_metas = tuner.seen_tuned_metas
+    timings = {
+        "first": (1.0, 1.0, 1.0),
+        "close": (1.02, 1.02, 1.02),
+        "slow": (1.04, 1.04, 1.04),
+    }
+    calls = []
+
+    def bench(*args, config, **kwargs):
+        assert tuner.do_bench is long_replay
+        assert "screened" not in tuner.seen_tuned_metas
+        calls.append(config)
+        latency = 1.1 if config == "first" else 1.0
+        return (latency, latency, latency)
+
+    tuner._bench = bench
+    assert LibTuner._refine_replay(tuner, "first", timings, (), {}) == "close"
+    assert calls == ["first", "close"]
+    assert tuner.do_bench is screen
+    assert tuner.seen_tuned_metas is screened_metas
+    assert timings["close"] == (1.02, 1.02, 1.02)
 
 
 def test_replay_fallback_reuses_event_config_cache_namespace(monkeypatch):

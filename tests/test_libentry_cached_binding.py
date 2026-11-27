@@ -58,6 +58,7 @@ def entry(monkeypatch, request):
         inspect._empty,
         inspect._empty,
     )
+    e._cache_miss_fallback = None
     e.signature = inspect.Signature(
         [
             inspect.Parameter(n, inspect.Parameter.POSITIONAL_OR_KEYWORD)
