@@ -430,6 +430,35 @@ def test_slice_copy_out(shape, dtype):
         utils.gems_assert_equal(res_r, ref_out)
 
 
+def _slice_input(shape, dtype, device=None):
+    if not dtype.is_complex:
+        return _make_input(shape, dtype, device)
+    device = device or flag_gems.device
+    # Construct complex payloads on CPU: some accelerators cannot cast
+    # complex64 to complex32 even though they can transfer/store the dtype.
+    real = torch.randn(shape, device="cpu", dtype=torch.float32)
+    imag = torch.randn(shape, device="cpu", dtype=torch.float32)
+    value = torch.complex(real, imag).to(dtype)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        result = value.view(torch.uint8).to(device).view(dtype).reshape(shape)
+    else:
+        result = value.to(device)
+    assert result.dtype == dtype
+    return result
+
+
+def _complex_cpu_values(inp):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and inp.dtype == torch.complex128
+        and inp.device.type != "cpu"
+    ):
+        return (
+            inp.contiguous().view(torch.uint8).cpu().view(inp.dtype).reshape(inp.shape)
+        )
+    return inp.cpu()
+
+
 @pytest.mark.slice_copy_out
 @pytest.mark.parametrize("dtype", _ALL_NON_COMPLEX_DTYPES + _COMPLEX_DTYPES)
 def test_slice_copy_out_vs_aten_all_dtypes(dtype):
@@ -451,7 +480,17 @@ def test_slice_copy_out_vs_aten_all_dtypes(dtype):
         torch.complex128,
     ):
         pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
-    inp = _make_input((5, 9), dtype)
+    inp = (
+        _slice_input((5, 9), dtype)
+        if flag_gems.vendor_name == "ascend" and dtype == torch.complex32
+        else _make_input((5, 9), dtype)
+    )
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.complex32
+    ):
+        pytest.skip("Ascend native complex32 slice_copy out is unsupported")
     ref_inp = utils.to_reference(inp)
     for dim, start, end, step in [(0, 1, 5, 2), (1, 2, 8, 3), (1, 0, 9, 1)]:
         target = list(inp.shape)
@@ -461,7 +500,16 @@ def test_slice_copy_out_vs_aten_all_dtypes(dtype):
         _aten_slice_copy_out(ref_inp, dim, start, end, step, ref_out)
         r = flag_gems.slice_copy_out(inp, dim, start, end, step, out=res_out)
         assert r is res_out
-        _assert_bitwise_equal(res_out, ref_out)
+        assert res_out.device == inp.device
+        assert res_out.dtype == ref_out.dtype
+        assert res_out.shape == ref_out.shape
+        if dtype.is_complex:
+            assert torch.equal(
+                _complex_cpu_values(res_out).to(torch.complex128),
+                _complex_cpu_values(ref_out).to(torch.complex128),
+            )
+        else:
+            _assert_bitwise_equal(res_out, ref_out)
 
 
 @pytest.mark.slice_copy_out
