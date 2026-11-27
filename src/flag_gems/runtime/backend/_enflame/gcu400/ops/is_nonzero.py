@@ -19,15 +19,13 @@ import torch
 import triton
 import triton.language as tl  # noqa: F401
 
-from flag_gems.utils import pointwise_dynamic
-
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
-def is_nonzero_func(x):
-    return x != 0
+def _is_nonzero_kernel(X, OUT):
+    v = tl.load(X)
+    tl.store(OUT, v != 0)
 
 
 def is_nonzero(A: torch.Tensor) -> bool:
@@ -39,10 +37,10 @@ def is_nonzero(A: torch.Tensor) -> bool:
     Returns:
         bool: True if the element is non-zero, False otherwise.
     """
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("GEMS_ENFLAME_GCU400 ISNONZERO")
+    logger.debug("GEMS_ENFLAME ISNONZERO")
     num_elements = A.numel()
     if num_elements != 1:
         raise RuntimeError("bool value of Tensor with more than one value is ambiguous")
-    nonzero_kernel = is_nonzero_func
-    return nonzero_kernel(A).item()
+    out = torch.empty(1, dtype=torch.bool, device=A.device)
+    _is_nonzero_kernel[(1,)](A, out, num_warps=1)
+    return out.item()

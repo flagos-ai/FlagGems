@@ -18,19 +18,24 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
 
 # DTE hardware register bitwidth limit: each tile dimension must fit in 24 bits.
 DTE_DIM_MAX = (1 << 24) - 1
-# Program cap of the reduction kernel, tuned for GCU400's SIP count.
-MEAN_GRID_CAP = 24
-# libtuner 2D tile area range, controlling compile config count and register pressure.
-MEAN_TILE_MIN = 2048
-MEAN_TILE_MAX = 128 * 1024
+# GCU400 has 48 compute units: a fixed grid cap plus an in-kernel strided loop keeps the SPs saturated.
+MAX_GRID = 48
+# Per-tile byte budget and column-width cap for row reduction (last dimension). Measured on (4096,4096), BLOCK_N=8192
+# is about 2x slower than 4096 (an overly wide contiguous dimension is counterproductive); 4096 and 2048 are on par.
+ROW_TILE_BYTES = 131072
+ROW_MAX_WIDTH = 4096
+# Contiguous-dimension width cap for non-last-dimension reduction (task kernel): the axis reduction tree has a known
+# slow path for contiguous dimension <=256 (same pathology as sum/prod), so pin it at 512; larger widths bring no
+# benefit.
+TASK_MAX_WIDTH = 512
 
 
 @libentry()
@@ -83,7 +88,7 @@ def _mean_dtype(inp, dtype):
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 MEAN")
+    logger.debug("GEMS_ENFLAME MEAN")
     if not inp.is_contiguous():
         inp = inp.contiguous()
     M = inp.numel()
@@ -92,18 +97,17 @@ def mean(inp, *, dtype=None):
     if M == 0:
         return torch.full([], float("nan"), dtype=dtype, device=inp.device)
 
-    block_size = 32 * 64
-    if M < 24 * 16 * 1024:
-        block_size = 16 * 1024
-    elif M >= 24 * 32 * 1024 and M < 24 * 64 * 1024:
-        block_size = 32 * 1024
-    elif M >= 24 * 64 * 1024:
-        block_size = 64 * 1024
+    # 1D streaming partials + merge, same recipe as sum's global path (measured 2026-11-17):
+    # grid 48 + nw4; tile of 131072 elements for 2-byte types, 65536 for the rest. Compared with the old parameters
+    # (grid 24 / nw1 / tile<=64K), 1Mi is ~10% faster and 256Mi ~44% faster.
+    # num_stages measured no different from 1 in the deep-loop regime (256Mi, 40+ tiles per program).
+    element_size = inp.element_size()
+    block_size = min(
+        triton.next_power_of_2(M),
+        131072 if element_size == 2 else 65536,
+    )
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
-    num_stages = 1
-    if mid_size > 4 * 24:
-        num_stages = 3
     # Cross-block partial sums accumulate in fp32 for 16-bit inputs: an fp16
     # partial sum overflows to inf once the running sum passes 65504
     # (measured: 96000 fp16 values around 3.0 -> torch.mean returns inf).
@@ -112,115 +116,40 @@ def mean(inp, *, dtype=None):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(min(triton.cdiv(M, block_size), MEAN_GRID_CAP), 1, 1)](
-            inp, mid, M, block_size, num_stages=num_stages, num_warps=1
+        mean_kernel_1[(min(mid_size, MAX_GRID), 1, 1)](
+            inp, mid, M, block_size, num_warps=4
         )
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid, num_warps=1)
     return out
 
 
-def keep(conf):
-    BLOCK_M = conf.kwargs["BLOCK_M"]
-    BLOCK_N = conf.kwargs["BLOCK_N"]
-    if BLOCK_M * BLOCK_N < MEAN_TILE_MIN:
-        return False
-    if BLOCK_M * BLOCK_N >= MEAN_TILE_MAX:
-        return False
-    return True
-
-
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
-def mean_kernel_dim_low(
-    inp,
-    Mean,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
-    # Map the program id to the row of X it should compute.
+def mean_kernel_dim_low(inp, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+    """Last-dim reduction: each tile covers BLOCK_M rows and accumulates over BLOCK_N column blocks.
+
+    Each block runs an axis=1 tree reduction immediately after loading, so the only live register
+    across column blocks is acc[BLOCK_M] (the old version kept the whole (BLOCK_M, BLOCK_N) tile
+    live, which was a main cause of bandwidth loss on large shapes).
+    """
+    pid = tl.program_id(0)
     step = tl.num_programs(0)
-    pid_m = tl.program_id(0)
     num_tile = (M + BLOCK_M - 1) // BLOCK_M
-    for tile_id in tl.range(pid_m, num_tile, step):
+    for tile_id in tl.range(pid, num_tile, step):
         m_offset = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
-        # # Compute mean
-        # _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        n_offset_0 = tl.arange(0, BLOCK_N)
-        offset_0 = m_offset[:, None] * N + n_offset_0[None, :]
-        # set mask
-        mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
-        inp_ptrs_0 = inp + offset_0
-        _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
-        if N > BLOCK_N:
-            for i in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
-                n_offset = i + tl.arange(0, BLOCK_N)
-                offset = m_offset[:, None] * N + n_offset[None, :]
-                # set mask
-                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
-                inp_ptrs = inp + offset
-                a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
-                _mean = a + _mean
-        _mean /= N
-        mean_row = tl.sum(_mean, axis=1)
-        Mean_ptr = Mean + m_offset
-        mask_m = m_offset < M
-        tl.store(Mean_ptr, mean_row, mask_m)
+        row_mask = m_offset < M
+        n_offset = tl.arange(0, BLOCK_N)
+        acc = tl.zeros([BLOCK_M], dtype=tl.float32)
+        for col_start in tl.range(0, N, BLOCK_N):
+            cols = col_start + n_offset
+            mask = row_mask[:, None] & (cols[None, :] < N)
+            inp_ptrs = inp + m_offset[:, None] * N + cols[None, :]
+            x = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
+            acc += tl.sum(x, axis=1)
+        tl.store(Mean + m_offset, acc / N, row_mask)
 
 
 @libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
-@triton.jit
-def mean_kernel_dim_high(
-    inp,
-    Mean,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
-    # Map the program id to the row of X it should compute.
-    pid_n = tl.program_id(0)
-    step = tl.num_programs(0)
-    num_tile = (N + BLOCK_N - 1) // BLOCK_N
-    for tile_id_n in tl.range(pid_n, num_tile, step):
-        n_offset = tile_id_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        m_offset_0 = tl.arange(0, BLOCK_M)
-        offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
-        inp_ptrs_0 = inp + offset_0
-        _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
-        if M > BLOCK_M:
-            for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
-                m_offset = i + tl.arange(0, BLOCK_M)
-                offset = m_offset[:, None] * N + n_offset[None, :]
-                # set mask
-                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
-                inp_ptrs = inp + offset
-                a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
-                _mean += a
-        _mean /= M
-        mean_col = tl.sum(_mean, axis=0)
-        Mean_ptr = Mean + n_offset
-        n_mask = n_offset < N
-        tl.store(Mean_ptr, mean_col, n_mask)
-
-
-@libentry()
-@libtuner(
-    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
-    key=["M", "N"],
-)
 @triton.jit
 def mean_kernel_dim_mid(
     inpIn,
@@ -230,57 +159,98 @@ def mean_kernel_dim_mid(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
 ):
-    # Map the program id to the row of X it should compute.
-    pid_b = tl.program_id(1)
-    pid_n = tl.program_id(0)
-    step = tl.num_programs(1)
-    for tile_id_b in tl.range(pid_b, B, step):
-        b_offset = tile_id_b * M * N
-        inp = inpIn + b_offset
-        out_value = out_value_in + tile_id_b * N
-        n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        m_offset_0 = tl.arange(0, BLOCK_M)
-        offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
-        inp_ptrs_0 = inp + offset_0
-        _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
-        if M > BLOCK_M:
-            for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
-                m_offset = i + tl.arange(0, BLOCK_M)
-                offset = m_offset[:, None] * N + n_offset[None, :]
-                # set mask
-                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
-                inp_ptrs = inp + offset
-                a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
-                _mean += a
-        _mean /= M
-        mean = tl.sum(_mean, axis=0)
-        out_value_ptrs = out_value + n_offset
+    """Reduces the M dim of (B, M, N) (leading-dim when B == 1; replaces the old dim_high kernel).
+
+    A task is (batch, column tile) and the grid strides over B * cdiv(N, BLOCK_N) tasks; each task
+    keeps acc[BLOCK_N] live, splits M into BLOCK_M chunks and tree-reduces along axis=0 per chunk.
+    The old version pinned grid to 24 and looped serially over batch; on (1024,1024,512) 16-bit it
+    814 -> 441 us (-46%).
+    """
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_k_tile = (N + BLOCK_N - 1) // BLOCK_N
+    num_task = B * num_k_tile
+    for task_id in tl.range(pid, num_task, step):
+        b_index = task_id // num_k_tile
+        k_tile = task_id % num_k_tile
+        n_offset = k_tile * BLOCK_N + tl.arange(0, BLOCK_N)
         n_mask = n_offset < N
-        tl.store(out_value_ptrs, mean, n_mask)
+        base = b_index * M * N
+        acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+        for i_start in tl.range(0, M, BLOCK_M):
+            m_offset = i_start + tl.arange(0, BLOCK_M)
+            mask = (m_offset[:, None] < M) & n_mask[None, :]
+            inp_ptrs = inpIn + base + m_offset[:, None] * N + n_offset[None, :]
+            x = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
+            acc += tl.sum(x, axis=0)
+        out_ptrs = out_value_in + b_index * N + n_offset
+        tl.store(out_ptrs, acc / M, n_mask)
+
+
+def _row_params(inp, M, N):
+    """Row-reduction hyperparameters: column width pinned to min(np2(N), 4096), rows
+    from the byte budget and 48-way spreading.
+
+    Measured (2026-11-17, official do_bench median w1000/r100):
+    (4096,4096) fp16 58.9 -> 22.4us, fp32 66.0 -> 34.7us;
+    (1024,1024) fp16 9.2 -> 6.3us; (64,64) sits on the same ~4.8us launch floor as the old version.
+    """
+    element_size = inp.element_size()
+    block_n = min(triton.next_power_of_2(N), ROW_MAX_WIDTH)
+    tile_rows = max(1024, ROW_TILE_BYTES // element_size) // block_n
+    batch_rows = triton.next_power_of_2(triton.cdiv(M, MAX_GRID))
+    block_m = max(1, min(tile_rows, batch_rows))
+    grid = min(MAX_GRID, triton.cdiv(M, block_m))
+    # Tiny tiles (lane count <=512) are faster with a single warp (same criterion as sum).
+    num_warps = 1 if block_m * block_n <= 512 else 2
+    return block_m, block_n, grid, num_warps
+
+
+def _task_params(inp, B, M, N):
+    """Non-last-dim reduction hyperparameters: contiguous dim pinned to min(np2(N), 512), nw tiered by dtype.
+
+    Measured (2026-11-17): 16-bit br128/nw4 is best (br64 regresses 56%); fp32 br256/nw4 is best;
+    (64,512,512) fp32 35.6us, (1024,1024,512) fp32 761us.
+    DSM: an fp32 256x512 tile is 512KiB < the 917504 cap (512x512 goes OOR, do not enlarge).
+    """
+    element_size = inp.element_size()
+    block_n = min(triton.next_power_of_2(N), TASK_MAX_WIDTH)
+    block_m_cap = 256 if element_size >= 4 else 128
+    block_m = max(1, min(triton.next_power_of_2(M), block_m_cap))
+    num_warps = 4 if block_n >= 512 else 1
+    grid = min(MAX_GRID, B * triton.cdiv(N, block_n))
+    return block_m, block_n, grid, num_warps
 
 
 def _launch_kernel_dim_low(inp, out, M, N):
     """Reduce along rows (last-dim reduction): each row has N elements, M rows."""
-    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), MEAN_GRID_CAP),)
+    block_m, block_n, grid, num_warps = _row_params(inp, M, N)
     with torch_device_fn.device(inp.device):
-        mean_kernel_dim_low[grid](inp, out, M, N)
+        mean_kernel_dim_low[(grid,)](
+            inp, out, M, N, BLOCK_M=block_m, BLOCK_N=block_n, num_warps=num_warps
+        )
 
 
 def _launch_kernel_dim_high(inp, out, M, N):
-    """Reduce along columns (first-dim reduction): M rows reduced to 1, N columns."""
-    grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), MEAN_GRID_CAP),)
+    """Reduce along columns (first-dim reduction): M rows reduced to 1, N columns.
+
+    Reuses the (B, M, N) task kernel with B == 1: a task is then a column tile of N.
+    """
+    block_m, block_n, grid, num_warps = _task_params(inp, 1, M, N)
     with torch_device_fn.device(inp.device):
-        mean_kernel_dim_high[grid](inp, out, M, N)
+        mean_kernel_dim_mid[(grid,)](
+            inp, out, 1, M, N, BLOCK_M=block_m, BLOCK_N=block_n, num_warps=num_warps
+        )
 
 
 def _launch_kernel_dim_mid(inp, out, B, M, N):
     """Reduce middle dim: B batches, M reduction length, N columns per batch."""
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, MEAN_GRID_CAP), 1)
+    block_m, block_n, grid, num_warps = _task_params(inp, B, M, N)
     with torch_device_fn.device(inp.device):
-        mean_kernel_dim_mid[grid](inp, out, B, M, N)
+        mean_kernel_dim_mid[(grid,)](
+            inp, out, B, M, N, BLOCK_M=block_m, BLOCK_N=block_n, num_warps=num_warps
+        )
 
 
 def _safe_launch_dim_low(inp, out, M, N, device):
@@ -310,7 +280,7 @@ def _safe_launch_dim_low(inp, out, M, N, device):
 
 
 def _safe_launch_dim_high(inp, out, M, N, device):
-    """Launch mean_kernel_dim_high ensuring N <= DTE_DIM_MAX.
+    """Launch first-dim reduction ensuring N <= DTE_DIM_MAX.
 
     The kernel accesses memory as m_offset * N + n_offset, so N is the inner
     stride dimension seen by DTE and must not exceed DTE_DIM_MAX.
@@ -533,46 +503,11 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
             return out
 
 
-def _install_aten_kernels():
-    """Route bare aten::mean / aten::mean.dim calls on GCU onto this kernel.
-
-    torch_gcu's native ``topsatenMean`` aborts the whole process on 0-element
-    tensors (``op_aten_mean.cc``: ``mean compute err: 2`` ->
-    ``TOPSATEN_STATUS_BAD_PARAM`` -> uncaught ``std::runtime_error`` -> SIGABRT,
-    no Python exception), via both the scalar ``mean`` path and the
-    ``mean.dim -> mean_out -> fill_`` path.  The accuracy suite's reference
-    leg (bare ``torch.mean(empty_gcu_tensor)``) and the benchmark's
-    native-baseline leg therefore die before the FlagGems op is even called.
-    Registering the two overloads on the backend dispatch key here makes those
-    calls land on this kernel, which is exactly what production already sees
-    inside ``flag_gems.use_gems()``; the empty-tensor case is short-circuited
-    to the aten NaN semantics on the host without launching any kernel.
-
-    Idempotent: a later ``use_gems()``/``enable()`` cycle re-attempts the same
-    registration through the general registrar and is skipped with a warning.
-    """
-    try:
-        dispatch_key = runtime.device.dispatch_key
-        library = torch.library.Library("aten", "IMPL")
-        for op_name, kernel in (
-            ("mean", mean),
-            ("mean.dim", mean_dim),
-        ):
-            try:
-                library.impl(op_name, kernel, dispatch_key)
-            except RuntimeError as error:
-                logger.warning(
-                    "mean: aten registration %s@%s skipped: %s",
-                    op_name,
-                    dispatch_key,
-                    error,
-                )
-        return library
-    except Exception as error:
-        logger.warning("mean: aten registration unavailable: %s", error)
-        return None
+# Shared registration state is attached to torch: this file is loaded once each under ``gcu400.ops.mean``,
+# ``_enflame.gcu400.ops.mean``, and ``flag_gems.runtime.backend....mean`` — three
+# module paths; the handle attached to torch ensures registration happens only once per process.
+_ATEN_STATE_ATTR = "_flag_gems_gcu400_mean_aten_state"
 
 
 # Module-level handle keeps the Library (and its kernels) alive for the
 # process; the registration itself must never break the flag_gems import.
-_MEAN_ATEN_LIBRARY = _install_aten_kernels()

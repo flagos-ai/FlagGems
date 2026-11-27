@@ -88,7 +88,10 @@ _DKV_CONFIGS = [
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # STORE_DS is part of the key: the split and recompute paths have
+    # different tile/warp landscapes, and the tuned config must not leak
+    # from one mode to the other.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "STORE_DS"],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -140,6 +143,12 @@ def _flash_attn_bwd_dq_fused(
     stride_bn,
     seqlen_q,
     seqlen_k,
+    DS,
+    stride_dsb,
+    stride_dsh,
+    stride_dsm,
+    stride_dsn,
+    STORE_DS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     HEAD_DIM: tl.constexpr,
@@ -256,7 +265,8 @@ def _flash_attn_bwd_dq_fused(
             s = s - alibi_slope * tl.abs(dist).to(tl.float32)
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
-        p = tl.exp(s - Li[:, None])
+        # exp2 with a folded log2(e): same value as tl.exp, cheaper on GCU.
+        p = tl.math.exp2((s - Li[:, None]) * 1.4426950408889634)
         dp = tl.dot(do, tl.trans(v)).to(tl.float32)
 
         if IS_DROPOUT:
@@ -274,6 +284,20 @@ def _flash_attn_bwd_dq_fused(
 
         ds = p * (dp - Di[:, None]) * sm_scale
         dq = dq + tl.dot(ds.to(q.dtype), k)
+
+        if STORE_DS:
+            # Materialize the fp16-rounded ds tile so the dkv kernel can reuse
+            # it instead of recomputing the dp dot; the stored value is
+            # bit-identical to what the dkv kernel's own cast produced.
+            ds_base = batch_idx * stride_dsb + head_q_idx * stride_dsh
+            tl.store(
+                DS
+                + ds_base
+                + offs_m[:, None] * stride_dsm
+                + offs_n_c[None, :] * stride_dsn,
+                ds.to(DS.dtype.element_ty),
+                mask=mask_m[:, None] & mask_n[None, :],
+            )
 
         if DO_BIAS_GRAD:
             ds_bias = p * (dp - Di[:, None])
@@ -296,7 +320,8 @@ def _flash_attn_bwd_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # LOAD_DS is part of the key (see the dq note above).
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "LOAD_DS"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -345,6 +370,11 @@ def _flash_attn_bwd_dkv(
     stride_bn,
     seqlen_q,
     seqlen_k,
+    DS,
+    stride_dsb,
+    stride_dsh,
+    stride_dsm,
+    stride_dsn,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     HEAD_DIM: tl.constexpr,
@@ -353,6 +383,8 @@ def _flash_attn_bwd_dkv(
     HAS_WINDOW: tl.constexpr,
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
+    GROUP_ONE: tl.constexpr,
+    LOAD_DS: tl.constexpr,
 ):
     start_n = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -438,12 +470,24 @@ def _flash_attn_bwd_dkv(
         )
         return
 
+    # Hoist the transposed K/V materialization out of the M loop: they are
+    # loop-invariant, and tl.trans is not hoisted automatically on GCU400.
+    kT = tl.trans(k)
+    vT = tl.trans(v)
+
     total_iters = group_size * valid_tiles_m
 
     for linear in range(total_iters):
-        gq_offset = linear // valid_tiles_m
-        tile_m = global_m_min + linear % valid_tiles_m
-        head_q_idx = head_k_idx * group_size + gq_offset
+        if GROUP_ONE:
+            # group_size == 1 (H_q == H_k): the linear index decomposition
+            # degenerates; skip the per-iteration integer div/mod, which is
+            # expensive on GCU.
+            tile_m = global_m_min + linear
+            head_q_idx = head_k_idx
+        else:
+            gq_offset = linear // valid_tiles_m
+            tile_m = global_m_min + linear % valid_tiles_m
+            head_q_idx = head_k_idx * group_size + gq_offset
 
         q_base = batch_idx * stride_qb + head_q_idx * stride_qh
         o_base = batch_idx * stride_ob + head_q_idx * stride_oh
@@ -463,9 +507,8 @@ def _flash_attn_bwd_dkv(
             other=0.0,
         )
         Li = tl.load(L + ld_base + offs_m_c, mask=mask_m, other=0.0)
-        Di = tl.load(D + ld_base + offs_m_c, mask=mask_m, other=0.0)
 
-        s = tl.dot(q, tl.trans(k)) * sm_scale
+        s = tl.dot(q, kT) * sm_scale
 
         if HAS_BIAS:
             bb = batch_idx * stride_bb + head_q_idx * stride_bh
@@ -490,8 +533,8 @@ def _flash_attn_bwd_dkv(
             s = s - alibi_slope * tl.abs(dist).to(tl.float32)
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
-        p = tl.exp(s - Li[:, None])
-        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        # exp2 with a folded log2(e): same value as tl.exp, cheaper on GCU.
+        p = tl.math.exp2((s - Li[:, None]) * 1.4426950408889634)
 
         if IS_DROPOUT:
             rng_off = (
@@ -503,11 +546,29 @@ def _flash_attn_bwd_dkv(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
             p = tl.where(drop_mask, p * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
-        dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
+        if LOAD_DS:
+            # Reuse the ds tile the dq kernel materialized (fp16-rounded, so
+            # bit-identical to the in-kernel cast this branch replaces) and
+            # skip the dp dot entirely.
+            ds_base = batch_idx * stride_dsb + head_q_idx * stride_dsh
+            ds = tl.load(
+                DS
+                + ds_base
+                + offs_m_c[:, None] * stride_dsm
+                + offs_n[None, :] * stride_dsn,
+                mask=mask_s,
+                other=0.0,
+            )
+            dk = dk + tl.dot(tl.trans(ds), q)
+        else:
+            dp = tl.dot(do, vT).to(tl.float32)
+            if IS_DROPOUT:
+                dp = tl.where(drop_mask, dp * drop_scale, 0.0)
+            Di = tl.load(D + ld_base + offs_m_c, mask=mask_m, other=0.0)
+            ds = p * (dp - Di[:, None]) * sm_scale
+            dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
         dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
 
     tl.store(
@@ -1022,9 +1083,10 @@ def flash_attn_backward(
     softmax_scale=None,
     attn_bias=None,
     bias_requires_grad=False,
+    bhsd_layout=False,
 ):
     if is_dropout and dropout_p > 0.0 and rng_state is None:
-        raise ValueError("rng_state must be provided when dropout is enabled")
+        raise ValueError("rng_state is required when dropout is enabled")
 
     is_varlen = (cu_seq_q is not None) and (cu_seq_k is not None)
 
@@ -1034,12 +1096,17 @@ def flash_attn_backward(
         Batch = cu_seq_q.shape[0] - 1
         SeqLen_q = max_seqlen_q
         SeqLen_k = max_seqlen_k
+    elif bhsd_layout:
+        # BHSD-native dense layout: (batch, head, seq, dim). The kernels are
+        # fully strided, so the tensors enter without the BSHD permute-copy.
+        Batch, H_q, SeqLen_q, Head_Dim = Q.shape
+        _, H_k, SeqLen_k, _ = K.shape
     else:
         Batch, SeqLen_q, H_q, Head_Dim = Q.shape
         _, SeqLen_k, H_k, _ = K.shape
 
     if H_q % H_k != 0:
-        raise ValueError(f"H_q ({H_q}) must be an integer multiple of H_k ({H_k})")
+        raise ValueError(f"H_q ({H_q}) must be a multiple of H_k ({H_k})")
     group_size = H_q // H_k
     scale = softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Head_Dim))
 
@@ -1065,11 +1132,27 @@ def flash_attn_backward(
     has_bias = attn_bias is not None
     do_bias_grad = has_bias and bias_requires_grad
 
-    Q = Q.contiguous()
-    K = K.contiguous()
-    V = V.contiguous()
-    Out = Out.contiguous()
-    dOut = dOut.contiguous()
+    if bhsd_layout and not is_varlen:
+        # Strides in kernel order (batch, seq, head, dim) for BHSD tensors.
+        q_sb, q_sm, q_sh, q_sd = Q.stride(0), Q.stride(2), Q.stride(1), Q.stride(3)
+        k_sb, k_sm, k_sh, k_sd = K.stride(0), K.stride(2), K.stride(1), K.stride(3)
+        v_sb, v_sm, v_sh, v_sd = V.stride(0), V.stride(2), V.stride(1), V.stride(3)
+        o_sb, o_sm, o_sh, o_sd = (
+            Out.stride(0),
+            Out.stride(2),
+            Out.stride(1),
+            Out.stride(3),
+        )
+    else:
+        Q = Q.contiguous()
+        K = K.contiguous()
+        V = V.contiguous()
+        Out = Out.contiguous()
+        dOut = dOut.contiguous()
+        q_sb, q_sm, q_sh, q_sd = Q.stride()
+        k_sb, k_sm, k_sh, k_sd = K.stride()
+        v_sb, v_sm, v_sh, v_sd = V.stride()
+        o_sb, o_sm, o_sh, o_sd = Out.stride()
     L = L.contiguous()
     if has_bias:
         attn_bias = attn_bias.contiguous()
@@ -1082,6 +1165,37 @@ def flash_attn_backward(
     if do_bias_grad:
         dBias = torch.empty_like(attn_bias)
     dbias_ptr = dBias if do_bias_grad else Q
+    if is_varlen:
+        # varlen kernels keep the standalone recompute design
+        DS = Q
+        ds_sb = ds_sh = ds_sm = ds_sn = 0
+        use_ds_split = False
+    else:
+        # Materialized ds buffer: the dq kernel stores each fp16-rounded ds
+        # tile, the dkv kernel reloads it instead of recomputing the dp dot.
+        # Empirical gate (GCU400 L600, do_bench w1000/r100): the trade is a
+        # clear win at HEAD_DIM >= 128 (dp dot is the expensive pass), and at
+        # HEAD_DIM == 64 only while the sequence fits in ~1024 -- past that
+        # the O(seq^2) ds store/load traffic plus the large-buffer alloc
+        # outweigh the dot saving ((2,16,2048,64): 4343->4269us parity but
+        # (1,8,4096,64) +3.5%; both stay on the recompute path). Causal
+        # regresses badly with the split at every head dim ((4,16,1024,64,c1):
+        # 1996->3466us, +74%; (2,16,1024,128,c1): 1711->1902us, +11%) -- the
+        # triangle halves the dot saving while the full-rectangle ds buffer
+        # still pays the whole alloc/store/load bill -- so causal always
+        # recomputes. Both kernel paths are bit-identical; the gate only
+        # picks the cheaper one.
+        use_ds_split = (not is_causal) and (
+            Head_Dim >= 128 or (Head_Dim >= 64 and max(SeqLen_q, SeqLen_k) <= 1024)
+        )
+        if use_ds_split:
+            DS = torch.empty(
+                (Batch, H_q, SeqLen_q, SeqLen_k), dtype=Q.dtype, device=Q.device
+            )
+            ds_sb, ds_sh, ds_sm, ds_sn = DS.stride()
+        else:
+            DS = Q
+            ds_sb = ds_sh = ds_sm = ds_sn = 0
 
     if is_varlen:
         D = torch.empty(Total_Q, H_q, device=Q.device, dtype=torch.float32)
@@ -1223,22 +1337,22 @@ def flash_attn_backward(
                 drop_stride_b,
                 drop_stride_h,
                 drop_stride_m,
-                Q.stride(0),
-                Q.stride(1),
-                Q.stride(2),
-                Q.stride(3),
-                K.stride(0),
-                K.stride(1),
-                K.stride(2),
-                K.stride(3),
-                V.stride(0),
-                V.stride(1),
-                V.stride(2),
-                V.stride(3),
-                Out.stride(0),
-                Out.stride(1),
-                Out.stride(2),
-                Out.stride(3),
+                q_sb,
+                q_sm,
+                q_sh,
+                q_sd,
+                k_sb,
+                k_sm,
+                k_sh,
+                k_sd,
+                v_sb,
+                v_sm,
+                v_sh,
+                v_sd,
+                o_sb,
+                o_sm,
+                o_sh,
+                o_sd,
                 L.stride(0),
                 L.stride(1),
                 D.stride(0),
@@ -1249,6 +1363,12 @@ def flash_attn_backward(
                 sb_n,
                 SeqLen_q,
                 SeqLen_k,
+                DS,
+                ds_sb,
+                ds_sh,
+                ds_sm,
+                ds_sn,
+                STORE_DS=use_ds_split,
                 HEAD_DIM=Head_Dim,
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
@@ -1281,22 +1401,22 @@ def flash_attn_backward(
                 drop_stride_b,
                 drop_stride_h,
                 drop_stride_m,
-                Q.stride(0),
-                Q.stride(1),
-                Q.stride(2),
-                Q.stride(3),
-                K.stride(0),
-                K.stride(1),
-                K.stride(2),
-                K.stride(3),
-                V.stride(0),
-                V.stride(1),
-                V.stride(2),
-                V.stride(3),
-                Out.stride(0),
-                Out.stride(1),
-                Out.stride(2),
-                Out.stride(3),
+                q_sb,
+                q_sm,
+                q_sh,
+                q_sd,
+                k_sb,
+                k_sm,
+                k_sh,
+                k_sd,
+                v_sb,
+                v_sm,
+                v_sh,
+                v_sd,
+                o_sb,
+                o_sm,
+                o_sh,
+                o_sd,
                 L.stride(0),
                 L.stride(1),
                 sb_b,
@@ -1305,12 +1425,19 @@ def flash_attn_backward(
                 sb_n,
                 SeqLen_q,
                 SeqLen_k,
+                DS,
+                ds_sb,
+                ds_sh,
+                ds_sm,
+                ds_sn,
                 HEAD_DIM=Head_Dim,
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
+                GROUP_ONE=group_size == 1,
+                LOAD_DS=use_ds_split,
             )
 
     return dQ, dK, dV, dBias
@@ -1336,7 +1463,7 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_rng_state(rng_state) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
@@ -1381,7 +1508,7 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
@@ -1425,7 +1552,7 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
     query_bshd = query.permute(0, 2, 1, 3).contiguous()
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
@@ -1486,7 +1613,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1543,52 +1670,90 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
-
-    grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()
-    query_bshd = query.permute(0, 2, 1, 3).contiguous()
-    key_bshd = key.permute(0, 2, 1, 3).contiguous()
-    value_bshd = value.permute(0, 2, 1, 3).contiguous()
-    out_bshd = out.permute(0, 2, 1, 3).contiguous()
 
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     bias_req_grad = need_dbias and (attn_bias is not None)
 
-    dQ_bshd, dK_bshd, dV_bshd, dBias = flash_attn_backward(
-        grad_out_bshd,
-        query_bshd,
-        key_bshd,
-        value_bshd,
-        out_bshd,
-        logsumexp,
-        cu_seq_q=None,
-        cu_seq_k=None,
-        max_seqlen_q=0,
-        max_seqlen_k=0,
-        is_dropout=is_dropout,
-        dropout_p=dropout_p,
-        rng_state=rng_tuple,
-        is_causal=is_causal,
-        softmax_scale=scale,
-        attn_bias=attn_bias,
-        bias_requires_grad=bias_req_grad,
+    # Zero-copy fast path: the backward kernels are fully strided, so plain
+    # BHSD tensors can enter directly, skipping the five BSHD permute-copies
+    # and the three gradient copies back (8 full-tensor copies per call, the
+    # dense (seq, dim) head planes even make the tile loads more coalesced).
+    # dOut must share Out's layout: the kernels index dOut through Out's
+    # strides. Anything unusual falls back to the copied BSHD path.
+    use_bhsd = (
+        grad_out_.is_contiguous()
+        and query.is_contiguous()
+        and key.is_contiguous()
+        and value.is_contiguous()
+        and out.is_contiguous()
+        and grad_out_.shape == out.shape
+        and grad_out_.dtype == out.dtype
     )
+    if use_bhsd:
+        dQ_bhsd, dK_bhsd, dV_bhsd, dBias = flash_attn_backward(
+            grad_out_,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cu_seq_q=None,
+            cu_seq_k=None,
+            max_seqlen_q=0,
+            max_seqlen_k=0,
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            softmax_scale=scale,
+            attn_bias=attn_bias,
+            bias_requires_grad=bias_req_grad,
+            bhsd_layout=True,
+        )
+    else:
+        grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()
+        query_bshd = query.permute(0, 2, 1, 3).contiguous()
+        key_bshd = key.permute(0, 2, 1, 3).contiguous()
+        value_bshd = value.permute(0, 2, 1, 3).contiguous()
+        out_bshd = out.permute(0, 2, 1, 3).contiguous()
 
-    # GCU400-specific: only transpose the gradients that are needed, skipping whole-block copies that would be
-    # overwritten by zeros_like
-    if need_dq:
-        dQ_bhsd = dQ_bshd.permute(0, 2, 1, 3).contiguous()
-    else:
+        dQ_bshd, dK_bshd, dV_bshd, dBias = flash_attn_backward(
+            grad_out_bshd,
+            query_bshd,
+            key_bshd,
+            value_bshd,
+            out_bshd,
+            logsumexp,
+            cu_seq_q=None,
+            cu_seq_k=None,
+            max_seqlen_q=0,
+            max_seqlen_k=0,
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            softmax_scale=scale,
+            attn_bias=attn_bias,
+            bias_requires_grad=bias_req_grad,
+        )
+
+        # GCU400 specialization: transpose the layout only for the gradients that are needed, saving the full copy that
+        # would be overwritten by zeros_like later
+        if need_dq:
+            dQ_bhsd = dQ_bshd.permute(0, 2, 1, 3).contiguous()
+        if need_dk:
+            dK_bhsd = dK_bshd.permute(0, 2, 1, 3).contiguous()
+        if need_dv:
+            dV_bhsd = dV_bshd.permute(0, 2, 1, 3).contiguous()
+
+    if not need_dq:
         dQ_bhsd = torch.zeros_like(query)
-    if need_dk:
-        dK_bhsd = dK_bshd.permute(0, 2, 1, 3).contiguous()
-    else:
+    if not need_dk:
         dK_bhsd = torch.zeros_like(key)
-    if need_dv:
-        dV_bhsd = dV_bshd.permute(0, 2, 1, 3).contiguous()
-    else:
+    if not need_dv:
         dV_bhsd = torch.zeros_like(value)
     if not need_dbias:
         dBias = None

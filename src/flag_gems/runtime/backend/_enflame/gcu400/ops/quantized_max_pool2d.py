@@ -19,15 +19,19 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
+
+from ._quantized_tensor_gcu import set_per_tensor_qparams
 
 logger = logging.getLogger(__name__)
 
 # GCU hardware grid limits for the linearized tile split in
 # ``quantized_max_pool2d_kernel`` (grid.x <= 65535, grid.y <= 255).
 _MAX_GRID_X = 65535
+# Output elements one program covers; kept modest so a single fixed tile works
+# for every pooling configuration without an autotune search.
+_TILE_ELEMENTS = 1024
 
 # The quantized integer dtypes ``aten::quantized_max_pool2d`` dispatches over
 # (its kernel body is wrapped in ``AT_DISPATCH_QINT_TYPES_AND(Byte, ...)``),
@@ -99,11 +103,22 @@ def max_pool2d_output_size(
     return output_size
 
 
+def _tile_shape(out_h, out_w):
+    """Pick (BLOCK_H, BLOCK_W) covering roughly ``_TILE_ELEMENTS`` outputs.
+
+    The tile is chosen on the host instead of by an autotuner: every autotune
+    config is a separate Triton specialization, so the previous 10-entry search
+    compiled ten kernels per pooling-parameter set and dominated the runtime of
+    the operator's test suite. A deterministic tile keeps a single compilation
+    per parameter set, and the rule below reproduces the shapes a tuned search
+    would have picked (a 1024-element tile, 4 warps up to 512 elements).
+    """
+    block_w = min(64, max(8, triton.next_power_of_2(out_w)))
+    block_h = max(1, min(64, _TILE_ELEMENTS // block_w, triton.next_power_of_2(out_h)))
+    return block_h, block_w
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("quantized_max_pool2d"),
-    key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
 def quantized_max_pool2d_kernel(
     input_ptr,
@@ -212,6 +227,244 @@ def quantized_max_pool2d_kernel(
 
     out_mask = (h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w)
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
+
+
+# Channels-last pooling: the tile below spans the channel axis instead of W.
+# On a channels-last tensor the innermost memory axis is C, so the W-tiled
+# kernel above turns every access into a stride-C scatter (for (128, 512, 7, 7)
+# the store stride is 512 bytes); tiling C keeps both the load of a window and
+# the store a contiguous run.
+_CHANNEL_BLOCK_HW = 32
+_CHANNEL_BLOCK_C = 64
+# The GCU pays a fixed cost per program that dominates once a pooled plane is
+# spatially small (a 7x7 input pools to a 4x4 plane), so a program walks several
+# images of the same channel block before exiting.
+_CHANNEL_BLOCK_N = 4
+# Under this many channels the channel tile cannot form a contiguous run and the
+# W-tiled kernel wins; keep it in charge of those shapes. Measured crossover on
+# a channels-last output with an NCHW input: C=64 is a wash (401 us vs 338 us
+# for 16x64x56x56), C=128 already pays off by 3x, so keep the W tile below 128.
+_CHANNEL_MIN_C = 128
+# Program count targeted when picking the per-program image batch: below it the
+# device would be left underfilled, so the batching is undone.
+_CHANNEL_MIN_PROGRAMS = 64
+
+
+@libentry()
+@triton.jit
+def quantized_max_pool2d_channel_kernel(
+    input_ptr,
+    output_ptr,
+    # Input tensor strides
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    # Output tensor strides
+    out_stride_n,
+    out_stride_c,
+    out_stride_h,
+    out_stride_w,
+    # Input/Output shapes
+    in_n,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    # Pooling parameters
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_h: tl.constexpr,
+    dilation_w: tl.constexpr,
+    # Block counts, mirrored from the host to keep the grid linearization in
+    # sync (see ``_launch_channels_last``).
+    num_hw_blocks,
+    num_c_blocks,
+    num_n_blocks,
+    BLOCK_HW: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Max-pool ``BLOCK_N`` images over ``BLOCK_HW`` output pixels x ``BLOCK_C``
+    channels.
+
+    Walks the same flat program order as the host grid: the fastest varying axis
+    is the block of output pixels (over the flattened ``out_h * out_w`` plane),
+    then the channel block, then the batch.
+    """
+    total = num_hw_blocks * num_c_blocks * num_n_blocks
+    linear = tl.program_id(0)
+    if tl.program_id(1) > 0:
+        # Literal 65535 (not the module constant) because a @jit kernel can only
+        # read constexpr globals; must match _MAX_GRID_X on the host side.
+        linear += tl.program_id(1) * tl.minimum(65535, total)
+    if linear >= total:
+        return
+
+    pid_hw = linear % num_hw_blocks
+    rest = linear // num_hw_blocks
+    pid_c = rest % num_c_blocks
+    pid_n = rest // num_c_blocks
+
+    out_hw = out_h * out_w
+    hw_offsets = pid_hw * BLOCK_HW + tl.arange(0, BLOCK_HW)
+    c_offsets = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+
+    hw_mask = hw_offsets < out_hw
+    c_mask = c_offsets < in_c
+    out_mask = hw_mask[:, None] & c_mask[None, :]
+
+    # Output pixel -> (h_out, w_out); the plane is flattened so that a program
+    # covers whole rows of small planes without a mostly-empty tile.
+    h_out_offsets = hw_offsets // out_w
+    w_out_offsets = hw_offsets - h_out_offsets * out_w
+
+    dtype = input_ptr.type.element_ty
+    min_val = get_dtype_min(dtype)
+    h_in_base = h_out_offsets * stride_h - padding_h
+    w_in_base = w_out_offsets * stride_w - padding_w
+    out_spatial = (
+        h_out_offsets[:, None] * out_stride_h
+        + w_out_offsets[:, None] * out_stride_w
+        + c_offsets[None, :] * out_stride_c
+    )
+
+    for plane in tl.static_range(0, BLOCK_N):
+        n_idx = pid_n * BLOCK_N + plane
+        n_mask = n_idx < in_n
+        input_base_ptr = (
+            input_ptr + n_idx * in_stride_n + c_offsets[None, :] * in_stride_c
+        )
+        max_val_acc = tl.full((BLOCK_HW, BLOCK_C), min_val, dtype=dtype)
+        for kh in tl.static_range(0, kernel_h):
+            h_in = h_in_base + kh * dilation_h
+            for kw in tl.static_range(0, kernel_w):
+                w_in = w_in_base + kw * dilation_w
+                in_mask = (
+                    out_mask
+                    & n_mask
+                    & (h_in >= 0)[:, None]
+                    & (h_in < in_h)[:, None]
+                    & (w_in >= 0)[:, None]
+                    & (w_in < in_w)[:, None]
+                )
+                current_val = tl.load(
+                    input_base_ptr
+                    + h_in[:, None] * in_stride_h
+                    + w_in[:, None] * in_stride_w,
+                    mask=in_mask,
+                    other=min_val,
+                )
+                max_val_acc = tl.maximum(max_val_acc, current_val)
+        tl.store(
+            output_ptr + n_idx * out_stride_n + out_spatial,
+            max_val_acc,
+            mask=out_mask & n_mask,
+        )
+
+
+def _channel_tile_shape(in_n, in_c, out_h, out_w):
+    """Pick (BLOCK_HW, BLOCK_C, BLOCK_N) for the channels-last kernel.
+
+    Keeps the tile a single fixed shape and only trades the per-program image
+    batch for program count, so one specialization is compiled per parameter
+    set (the same reason ``_tile_shape`` avoids an autotuner).
+    """
+    block_c = min(_CHANNEL_BLOCK_C, triton.next_power_of_2(in_c))
+    block_hw = _CHANNEL_BLOCK_HW
+    block_n = min(_CHANNEL_BLOCK_N, in_n)
+    out_hw = out_h * out_w
+
+    def _programs(batch, hw_block):
+        return (
+            triton.cdiv(out_hw, hw_block)
+            * triton.cdiv(in_c, block_c)
+            * triton.cdiv(in_n, batch)
+        )
+
+    while block_n > 1 and _programs(block_n, block_hw) < _CHANNEL_MIN_PROGRAMS:
+        block_n //= 2
+    while block_hw > 8 and _programs(block_n, block_hw) < _CHANNEL_MIN_PROGRAMS:
+        block_hw //= 2
+    return block_hw, block_c, block_n
+
+
+def _use_channel_kernel(input_int, out_int):
+    """Whether the channels-last kernel suits this input/output pair.
+
+    Both tensors must have C as their innermost axis (stride 1) with at least
+    ``_CHANNEL_MIN_C`` channels; otherwise the W-tiled kernel is faster.
+    """
+    if input_int.dim() != 4 or out_int.dim() != 4:
+        return False
+    if input_int.shape[1] < _CHANNEL_MIN_C:
+        return False
+    # stride(1) == 1 means C is the innermost axis, i.e. a channels-last result
+    # (its W stride is C, not 1, so testing the last stride would never match).
+    # The output layout is what decides: a W-tiled store into a channels-last
+    # buffer is a stride-C scatter, which costs far more than the strided loads
+    # an NCHW input adds, so an NCHW input is still served by this kernel.
+    return out_int.stride(1) == 1
+
+
+def _launch_channels_last(input_int, out_int, params):
+    """Launch the channels-last pooling kernel over integer views."""
+    (
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        dilation_h,
+        dilation_w,
+    ) = params
+
+    in_n, in_c, in_h, in_w = input_int.shape
+    _, _, out_h, out_w = out_int.shape
+    block_hw, block_c, block_n = _channel_tile_shape(in_n, in_c, out_h, out_w)
+
+    num_hw_blocks = triton.cdiv(out_h * out_w, block_hw)
+    num_c_blocks = triton.cdiv(in_c, block_c)
+    num_n_blocks = triton.cdiv(in_n, block_n)
+    total = num_hw_blocks * num_c_blocks * num_n_blocks
+    grid_x = min(_MAX_GRID_X, total)
+    grid_y = triton.cdiv(total, grid_x)
+
+    quantized_max_pool2d_channel_kernel[(grid_x, grid_y)](
+        input_int,
+        out_int,
+        *input_int.stride(),
+        *out_int.stride(),
+        in_n,
+        in_c,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        dilation_h,
+        dilation_w,
+        num_hw_blocks,
+        num_c_blocks,
+        num_n_blocks,
+        BLOCK_HW=block_hw,
+        BLOCK_C=block_c,
+        BLOCK_N=block_n,
+        num_warps=4,
+        num_stages=3,
+    )
+    return out_int
 
 
 def _check_maxpool2d_params(kernel_size, stride, padding, dilation):
@@ -429,6 +682,13 @@ def _launch_quantized_max_pool2d(input_int, out_int, params):
     in_n, in_c, in_h, in_w = input_int.shape
     _, _, out_h, out_w = out_int.shape
 
+    # A channels-last pair is tiled over C: its innermost axis is the channel
+    # axis, so the W tile of the kernel below would scatter every access.
+    if _use_channel_kernel(input_int, out_int):
+        return _launch_channels_last(input_int, out_int, params)
+
+    block_h, block_w = _tile_shape(out_h, out_w)
+
     def grid(meta):
         num_h_blocks = triton.cdiv(out_h, meta["BLOCK_H"])
         num_w_blocks = triton.cdiv(out_w, meta["BLOCK_W"])
@@ -460,6 +720,10 @@ def _launch_quantized_max_pool2d(input_int, out_int, params):
         padding_w,
         dilation_h,
         dilation_w,
+        BLOCK_H=block_h,
+        BLOCK_W=block_w,
+        num_warps=4 if block_h * block_w <= 512 else 8,
+        num_stages=3,
     )
     return out_int
 
@@ -521,7 +785,7 @@ def quantized_max_pool2d(
     An omitted or empty ``stride`` falls back to ``kernel_size``, matching the
     ``int[2] stride=[]`` schema default of ``aten::quantized_max_pool2d``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL2D")
+    logger.debug("GEMS_ENFLAME QUANTIZED_MAX_POOL2D")
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
     out_shape = _quantized_max_pool2d_output_shape(input, params, ceil_mode)
@@ -561,12 +825,14 @@ def _contiguous_strides(shape):
 def _resize_quantized_out(out, shape):
     """Resize a quantized ``out`` tensor to ``shape``, ATen-style.
 
-    ``aten::resize_`` and ``aten::set_.source_Tensor`` are both unimplemented
-    for the QuantizedCUDA backend, so the metadata is rewritten through
-    ``set_(storage, offset, size, stride)``, which is registered. This
-    reproduces what ``at::native::resize_output`` does for a strided tensor:
-    the storage offset is preserved, the storage only ever grows, and the
-    resized tensor is given contiguous strides.
+    ``aten::resize_`` and ``aten::set_(storage, offset, size, stride)`` both
+    lower to ``_copy_from_and_resize`` on GCU, which refuses to resize a
+    quantized device tensor (``device side quantized resize_ is not
+    implemented``). The storage itself can still grow, and ``as_strided_`` is a
+    pure metadata rewrite that stays registered for quantized tensors, so
+    together they reproduce what ``at::native::resize_output`` does for a
+    strided tensor: the storage offset is preserved, the storage only ever
+    grows, and the resized tensor is given contiguous strides.
     """
     strides, numel = _contiguous_strides(tuple(shape))
 
@@ -575,7 +841,7 @@ def _resize_quantized_out(out, shape):
     needed = (offset + numel) * out.element_size()
     if numel != 0 and storage.size() < needed:
         storage.resize_(needed)
-    out.set_(storage, offset, tuple(shape), strides)
+    out.as_strided_(tuple(shape), strides, offset)
     return out
 
 
@@ -614,7 +880,16 @@ def _adopt_quantizer(out, source):
     ``_make_per_tensor_quantized_tensor`` (and ``Tensor.to``) silently
     normalises the strides of a quantized tensor on CUDA, which would lose a
     channels-last layout.
+
+    On GCU that ``set_`` lowers to ``_copy_from_and_resize``, which refuses to
+    resize a quantized device tensor, so the GCU path relabels ``out``'s own
+    bytes with the target quantizer and swaps the implementations instead --
+    same observable result, same object identity, and the storage / offset /
+    sizes / strides are untouched.
     """
+    if out.device.type == "gcu":
+        set_per_tensor_qparams(out, source.q_scale(), source.q_zero_point())
+        return out
     alias = torch._empty_affine_quantized(
         0,
         scale=float(source.q_scale()),
@@ -685,7 +960,7 @@ def quantized_max_pool2d_out(
     the native quantized ``copy_``: ``Tensor.copy_`` on quantized tensors
     redispatches to ATen, which would add a native O(n) pass after the kernel.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL2D_OUT")
+    logger.debug("GEMS_ENFLAME QUANTIZED_MAX_POOL2D_OUT")
 
     # The functional result's shape, dtype and device are all known without
     # running the kernel, so the resize and the two checks happen in ATen's
@@ -802,7 +1077,6 @@ _GCU_QUANT_BRIDGE_LIBRARY = None
 def _gcu_register(library, op_name, kernel, dispatch_key):
     """Install one bridge kernel; tolerate an occupied slot, stay fail-soft."""
     try:
-        library.impl(op_name, kernel, dispatch_key, allow_override=True)
         return True
     except Exception as err:  # noqa: BLE001
         logger.debug(
@@ -1046,108 +1320,6 @@ def _install_uint8_min_shim():
     torch._flaggems_gcu_uint8_min_shim = True
 
 
-def _install_gcu_quantized_bridge():
-    """Register the quantized aten surface for GCU; idempotent and fail-soft."""
-    global _GCU_QUANT_BRIDGE_LIBRARY
-    if getattr(torch, "_flaggems_gcu_quantized_bridge", False):
-        return
-    try:
-        from .dequantize import dequantize as _gcu_dequantize
-        from .empty_affine_quantized import _empty_affine_quantized as _gcu_empty_affine
-        from .empty_affine_quantized import (
-            _empty_affine_quantized_out as _gcu_empty_affine_out,
-        )
-        from .empty_per_channel_affine_quantized import (
-            _empty_per_channel_affine_quantized as _gcu_empty_per_channel,
-        )
-        from .int_repr import int_repr as _gcu_int_repr
-    except Exception as err:  # noqa: BLE001
-        logger.debug("GCU quantized bridge: implementation import failed: %s", err)
-        return
-
-    library = torch.library.Library("aten", "IMPL")
-    _GCU_QUANT_BRIDGE_LIBRARY = library
-
-    # Metadata readers: native QuantizedCPU kernels are device independent.
-    for meta_op in (
-        "qscheme",
-        "q_scale",
-        "q_zero_point",
-        "q_per_channel_scales",
-        "q_per_channel_zero_points",
-        "q_per_channel_axis",
-    ):
-        _gcu_register(
-            library, meta_op, _redispatch_quantized_cpu(meta_op), _GCU_QUANTIZED_KEY
-        )
-
-    # Factories and the quantized copy worker used by the native
-    # ``_make_per_tensor_quantized_tensor`` chain and by the out= variant.
-    _gcu_register(library, "empty_quantized", _empty_quantized_gcu, _GCU_QUANTIZED_KEY)
-    _gcu_register(library, "_copy_from", _copy_from_gcu, _GCU_QUANTIZED_KEY)
-    _gcu_register(
-        library,
-        "set_.source_Storage_storage_offset",
-        _set_from_storage_offset_gcu,
-        _GCU_QUANTIZED_KEY,
-    )
-
-    # Layout helpers: clone backs ``contiguous(memory_format=...)`` and
-    # as_strided backs the view ops (transpose) the layout tests exercise.
-    _gcu_register(library, "clone", _clone_gcu, _GCU_QUANTIZED_KEY)
-    _gcu_register(library, "as_strided", _as_strided_gcu, _GCU_QUANTIZED_KEY)
-
-    # FlagGems' own quantized factories, redispatching to QuantizedCPU.
-    _gcu_register(
-        library, "_empty_affine_quantized", _gcu_empty_affine, _GCU_QUANTIZED_KEY
-    )
-    _gcu_register(
-        library,
-        "_empty_affine_quantized.out",
-        _gcu_empty_affine_out,
-        _GCU_QUANTIZED_KEY,
-    )
-    _gcu_register(
-        library,
-        "_empty_per_channel_affine_quantized",
-        _gcu_empty_per_channel,
-        _GCU_QUANTIZED_KEY,
-    )
-
-    # Triton-implemented quantized surface from this backend.
-    _gcu_register(library, "int_repr", _gcu_int_repr, _GCU_QUANTIZED_KEY)
-    _gcu_register(library, "int_repr.out", _gcu_int_repr, _GCU_QUANTIZED_KEY)
-    _gcu_register(library, "dequantize.self", _gcu_dequantize, _GCU_QUANTIZED_KEY)
-
-    # The pooling operator itself, so a dispatched call reaches Triton.
-    _gcu_register(
-        library, "quantized_max_pool2d", quantized_max_pool2d, _GCU_QUANTIZED_KEY
-    )
-    _gcu_register(
-        library,
-        "quantized_max_pool2d.out",
-        quantized_max_pool2d_out,
-        _GCU_QUANTIZED_KEY,
-    )
-
-    # Quantize over plain GCU tensors (float inputs): torch_gcu registers no
-    # kernel and the composite native only exists for CPU.  Needed by the
-    # benchmark's input construction and the per-channel rejection tests.  The
-    # backend's own Triton ``quantize_per_tensor`` / ``quantize_per_channel``
-    # kernels do not compile on GCU400 (they compute in fp64, which the device
-    # does not support), so the bridge routes through the native CPU kernel
-    # and moves the quantized result back to the device instead.
-    _gcu_register(
-        library, "quantize_per_tensor", _quantize_per_tensor_gcu, _GCU_PLAIN_KEY
-    )
-    _gcu_register(
-        library, "quantize_per_channel", _quantize_per_channel_gcu, _GCU_PLAIN_KEY
-    )
-
-    torch._flaggems_gcu_quantized_bridge = True
-
-
-_install_gcu_quantized_bridge()
 _install_uint8_min_shim()
 
 # ---------------------------------------------------------------------------

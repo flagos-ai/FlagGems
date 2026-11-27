@@ -83,10 +83,6 @@ def _make_csr(lead, rows, nnz, dtype, seed=0):
     )
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="sparse index conversion accuracy issue",
-)
 @pytest.mark.convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("lead,rows,nnz", BLOCK_CASES)
 @pytest.mark.parametrize("dtype", INDEX_DTYPES)
@@ -136,10 +132,6 @@ def test_convert_indices_from_csr_to_coo_empty():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="sparse index conversion accuracy issue",
-)
 @pytest.mark.convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("layout", ["offset_view", "batch_strided"])
 def test_convert_indices_from_csr_to_coo_strided_inputs(layout):

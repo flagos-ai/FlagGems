@@ -127,7 +127,7 @@ def log_normal_kernel_small(
 
 
 def log_normal(x, mean=1.0, std=2.0, *, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LOG_NORMAL")
+    logger.debug("GEMS_ENFLAME LOG_NORMAL")
     dtype = x.dtype
     device = x.device
     assert dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)

@@ -58,8 +58,229 @@ def _native_channel_shuffle_kernel(
     tl.store(o_ptr + offs, val, mask=mask)
 
 
+@triton.jit
+def _native_channel_shuffle_flat_pow2_kernel(
+    x_ptr,
+    o_ptr,
+    n_elements,
+    LOG2_SN: tl.constexpr,
+    LOG2_SC: tl.constexpr,
+    LOG2_CPG: tl.constexpr,
+    GROUPS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    # Flat linear-index kernel for power-of-two (C, HW, cpg). The permutation
+    # only touches the channel index, so the flat offset decodes to
+    # (n, c, hw) with compile-time shifts; the div/mod chain lowers to
+    # shift/mask ops that hide behind the load latency. This walks the input
+    # linearly and computes the permuted output address (scatter form),
+    # which is the inverse permutation of the gather form and yields the
+    # same result while keeping both streams linear.
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    n = offsets >> LOG2_SN
+    rem = offsets & ((1 << LOG2_SN) - 1)
+    c = rem >> LOG2_SC
+    hw = rem & ((1 << LOG2_SC) - 1)
+    k = c & ((1 << LOG2_CPG) - 1)
+    g = c >> LOG2_CPG
+    new_c = k * GROUPS + g
+    out_index = (n << LOG2_SN) | (new_c << LOG2_SC) | hw
+    if EVEN:
+        val = tl.load(x_ptr + offsets)
+        tl.store(o_ptr + out_index, val)
+    else:
+        mask = offsets < n_elements
+        val = tl.load(x_ptr + offsets, mask=mask)
+        tl.store(o_ptr + out_index, val, mask=mask)
+
+
+@triton.jit
+def _native_channel_shuffle_flat_pow2_pair_kernel(
+    x_ptr,
+    o_ptr,
+    n_pairs,
+    LOG2_SN: tl.constexpr,
+    LOG2_SC: tl.constexpr,
+    LOG2_CPG: tl.constexpr,
+    GROUPS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    # Half-precision flat kernel with two elements packed per int32 lane.
+    # With an even HW, row boundaries sit at even flat offsets, so a pair
+    # of neighbouring spatial elements stays inside one channel-plane row
+    # and the pair maps to a pair of neighbours after the permutation. The
+    # index decode runs in element space (e = 2 * pair) and the store
+    # address is out_e >> 1.
+    pid = tl.program_id(axis=0)
+    pairs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    e = pairs * 2
+    n = e >> LOG2_SN
+    rem = e & ((1 << LOG2_SN) - 1)
+    c = rem >> LOG2_SC
+    hw = rem & ((1 << LOG2_SC) - 1)
+    k = c & ((1 << LOG2_CPG) - 1)
+    g = c >> LOG2_CPG
+    new_c = k * GROUPS + g
+    out_e = (n << LOG2_SN) | (new_c << LOG2_SC) | hw
+    if EVEN:
+        val = tl.load(x_ptr + pairs)
+        tl.store(o_ptr + (out_e >> 1), val)
+    else:
+        mask = pairs < n_pairs
+        val = tl.load(x_ptr + pairs, mask=mask)
+        tl.store(o_ptr + (out_e >> 1), val, mask=mask)
+
+
+@triton.jit
+def _native_channel_shuffle_tile_kernel(
+    x_ptr,
+    o_ptr,
+    C,
+    HW,
+    cpg,
+    groups,
+    n_sb,
+    BLOCK_C: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    # Channel-plane tile kernel for large tensors: the channel permutation is
+    # evaluated once per BLOCK_C lanes (vector division amortized over the
+    # spatial tile), and each row segment stays contiguous for load/store.
+    pid0 = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    b = pid0 // n_sb
+    pid_s = pid0 - b * n_sb
+    c = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+    s = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)
+    k = c % cpg
+    g = c // cpg
+    new_c = k * groups + g
+    base = b * (C * HW)
+    offs = base + c[:, None] * HW + s[None, :]
+    offs_o = base + new_c[:, None] * HW + s[None, :]
+    if EVEN:
+        val = tl.load(x_ptr + offs)
+        tl.store(o_ptr + offs_o, val)
+    else:
+        m = (c < C)[:, None] & (s < HW)[None, :]
+        val = tl.load(x_ptr + offs, mask=m)
+        tl.store(o_ptr + offs_o, val, mask=m)
+
+
+def _is_pow2(v):
+    return v > 0 and (v & (v - 1)) == 0
+
+
+def _log2(v):
+    return v.bit_length() - 1
+
+
+def _next_pow2(v):
+    p = 1
+    while p < v:
+        p *= 2
+    return p
+
+
+# The op is launch/latency bound below this size; the flat kernels win there.
+_SMALL_NUMEL = 32768
+# Flat kernels stop winning around 2 MB of tensor data (1 MB unpaired).
+_FLAT_MAX_BYTES = 2 * 1024 * 1024
+# grid.y hardware limit on GCU400.
+_MAX_GRID_Y = 255
+
+
+def _flat_block(units):
+    # Keep the grid at roughly 16 programs: measured optimum for the
+    # launch-latency vs bytes-in-flight tradeoff on GCU400.
+    block = _next_pow2(triton.cdiv(units, 16))
+    return max(256, min(block, 32768))
+
+
+def _launch_flat(x, out, numel, C, HW, cpg, groups, elem_size):
+    # Pair two half-precision elements per int32 lane; HW even keeps every
+    # pair inside one channel-plane row (row boundaries are even flat
+    # offsets), so pairs stay adjacent in the permuted output.
+    if elem_size == 2 and HW % 2 == 0:
+        x_k = x.view(-1).view(torch.int32)
+        out_k = out.view(-1).view(torch.int32)
+        units = numel // 2
+        block = _flat_block(units)
+        grid = (triton.cdiv(units, block),)
+        even = units % block == 0
+        _native_channel_shuffle_flat_pow2_pair_kernel[grid](
+            x_k,
+            out_k,
+            units,
+            LOG2_SN=_log2(C * HW),
+            LOG2_SC=_log2(HW),
+            LOG2_CPG=_log2(cpg),
+            GROUPS=groups,
+            BLOCK_SIZE=block,
+            EVEN=even,
+            num_warps=4 if block >= 4096 else 1,
+        )
+    else:
+        block = _flat_block(numel)
+        grid = (triton.cdiv(numel, block),)
+        even = numel % block == 0
+        _native_channel_shuffle_flat_pow2_kernel[grid](
+            x,
+            out,
+            numel,
+            LOG2_SN=_log2(C * HW),
+            LOG2_SC=_log2(HW),
+            LOG2_CPG=_log2(cpg),
+            GROUPS=groups,
+            BLOCK_SIZE=block,
+            EVEN=even,
+            num_warps=4 if block >= 4096 else 1,
+        )
+
+
+def _launch_tile(x, out, numel, C, HW, cpg, groups, batch, elem_size):
+    if elem_size == 2 and HW % 2 == 0:
+        x_k = x.view(-1).view(torch.int32)
+        out_k = out.view(-1).view(torch.int32)
+        hw = HW // 2
+    else:
+        x_k = x
+        out_k = out
+        hw = HW
+    block_s = min(2048, _next_pow2(hw))
+    block_c = max(1, 32768 // block_s)
+    while triton.cdiv(C, block_c) > _MAX_GRID_Y:
+        block_c *= 2
+    while (
+        block_c > 1
+        and block_c * block_s > 4096
+        and batch * triton.cdiv(hw, block_s) * triton.cdiv(C, block_c) < 64
+    ):
+        block_c //= 2
+    n_sb = triton.cdiv(hw, block_s)
+    grid = (batch * n_sb, triton.cdiv(C, block_c))
+    even = C % block_c == 0 and hw % block_s == 0
+    _native_channel_shuffle_tile_kernel[grid](
+        x_k,
+        out_k,
+        C,
+        hw,
+        cpg,
+        groups,
+        n_sb,
+        BLOCK_C=block_c,
+        BLOCK_S=block_s,
+        EVEN=even,
+        num_warps=4,
+    )
+
+
 def native_channel_shuffle(input: torch.Tensor, groups: int) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 NATIVE_CHANNEL_SHUFFLE")
+    logger.debug("GEMS_ENFLAME NATIVE_CHANNEL_SHUFFLE")
     x = input
     if not x.is_contiguous():
         x = x.contiguous()
@@ -85,19 +306,32 @@ def native_channel_shuffle(input: torch.Tensor, groups: int) -> torch.Tensor:
         return out
 
     cpg = C // g
+    # Leading dims fold into the batch index; the channel permutation only
+    # touches the channel axis.
+    batch = numel // (C * HW)
+    elem_size = x.element_size()
+    pairable = elem_size == 2 and HW % 2 == 0
+    n_bytes = numel * elem_size
+    flat_limit = _FLAT_MAX_BYTES if pairable else _FLAT_MAX_BYTES // 2
+    # The flat shift kernels decode the linear index with compile-time
+    # shift/mask ops, so they require power-of-two C, HW and cpg.
+    pow2_dims = _is_pow2(C) and _is_pow2(HW) and _is_pow2(cpg)
 
-    # BLOCK size determined by SimpleOpt as optimal for this memory-bound shuffle
-    BLOCK = 1024
-    grid = lambda META: (triton.cdiv(numel, META["BLOCK"]),)
     with torch_device_fn.device(x.device):
-        _native_channel_shuffle_kernel[grid](
-            x,
-            out,
-            numel,
-            C,
-            HW,
-            cpg,
-            g,
-            BLOCK=BLOCK,
-        )
+        if pow2_dims and n_bytes <= flat_limit:
+            _launch_flat(x, out, numel, C, HW, cpg, g, elem_size)
+        elif numel > _SMALL_NUMEL:
+            _launch_tile(x, out, numel, C, HW, cpg, g, batch, elem_size)
+        else:
+            grid = (triton.cdiv(numel, 1024),)
+            _native_channel_shuffle_kernel[grid](
+                x,
+                out,
+                numel,
+                C,
+                HW,
+                cpg,
+                g,
+                BLOCK=1024,
+            )
     return out

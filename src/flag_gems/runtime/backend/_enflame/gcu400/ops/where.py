@@ -81,13 +81,19 @@ def where_self_out(condition, self, other, out=None):
     # for single-element pointwise kernels, the compiler emits
     # `extract_vector_elt (v16i32 = bitcast v512i1)` for the boundary-check
     # mask, which the backend cannot select ("LLVM ERROR: Cannot select").
-    # Avoid launching the triton kernel altogether: compute the single value
-    # on host and write it back through the aten cross-device copy path.
+    # The triton kernel is therefore skipped for the single-element case.
+    #
+    # The fallback must stay entirely on device: reading the three scalars back
+    # with `.item()` issues a device sync, which is illegal while a CUDA graph
+    # is being captured (`GCU error: (topsStreamSynchronize(stream)) = this
+    # operation is disallowed while the stream is in capture mode`).  A
+    # `copy_` + in-place `masked_scatter_` selects exactly the same value with
+    # no host readback: start from ``other`` and overwrite it with ``self``
+    # wherever the condition is true.
     if out.numel() == 1:
-        c_val = bool(c.reshape(()).item())
-        a_val = a.reshape(()).item()
-        b_val = b.reshape(()).item()
-        out.copy_(torch.tensor(a_val if c_val else b_val, dtype=out.dtype))
+        shape = out.shape
+        out.copy_(b.reshape(shape))
+        out.masked_scatter_(c.reshape(shape), a.reshape(shape))
         return out
 
     ndim = max(c.ndim, a.ndim, b.ndim)

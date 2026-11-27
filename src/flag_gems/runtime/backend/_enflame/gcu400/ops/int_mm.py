@@ -18,15 +18,173 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
 _GROUP_M = 8
 _IO_BLOCK_SIZE = 256
 _MAX_DOT_K_WITHOUT_INT32_OVERFLOW = 131071
+_INT32_ELEMENT_LIMIT = 2**31
+_GRID_LIMIT = 65535
+
+_INT_MM_CONFIGS = [
+    # decode / tiny-M arm (M = token batch)
+    triton.Config(
+        {"BLOCK_M": 16, "BLOCK_N": 128, "BLOCK_K": 512, "GROUP_M": _GROUP_M},
+        num_warps=2,
+        num_stages=2,
+    ),
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 512, "GROUP_M": _GROUP_M},
+        num_warps=2,
+        num_stages=2,
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 512, "GROUP_M": _GROUP_M},
+        num_warps=2,
+        num_stages=2,
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 512, "GROUP_M": _GROUP_M},
+        num_warps=2,
+        num_stages=2,
+    ),
+    # dominant winner on every M >= 64 shape swept
+    triton.Config(
+        {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 512, "GROUP_M": _GROUP_M},
+        num_warps=2,
+        num_stages=2,
+    ),
+    # large-shape variant (won 4096^3 by ~3%)
+    triton.Config(
+        {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 512, "GROUP_M": _GROUP_M},
+        num_warps=2,
+        num_stages=3,
+    ),
+    # universal safety net: smallest grid, generic tile
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64, "GROUP_M": _GROUP_M},
+        num_warps=4,
+        num_stages=2,
+    ),
+]
+
+
+def _int_mm_heur_even_k(args):
+    return args["K"] % args["BLOCK_K"] == 0
+
+
+def _int_mm_heur_full_even(args):
+    return (
+        args["K"] % args["BLOCK_K"] == 0
+        and args["M"] % args["BLOCK_M"] == 0
+        and args["N"] % args["BLOCK_N"] == 0
+    )
+
+
+def _int_mm_config_prune(configs, named_args, **kwargs):
+    # Keep only configs whose 1D grid fits the 65535 program hard limit; the
+    # host pre-check guarantees the (64,64,64) safety net survives, so this
+    # list is never empty on the fast path.
+    M = named_args["M"]
+    N = named_args["N"]
+    kept = [
+        config
+        for config in configs
+        if triton.cdiv(M, config.kwargs["BLOCK_M"])
+        * triton.cdiv(N, config.kwargs["BLOCK_N"])
+        <= _GRID_LIMIT
+    ]
+    return kept
+
+
+@libentry()
+@libtuner(
+    configs=_INT_MM_CONFIGS,
+    key=["M", "N", "K"],
+    strategy=["align32", "align32", "align32"],
+    prune_configs_by={"early_config_prune": _int_mm_config_prune},
+    warmup=5,
+    rep=10,
+    disable_aabs=True,
+)
+@triton.heuristics(
+    {
+        "EVEN_K": _int_mm_heur_even_k,
+        "FULL_EVEN": _int_mm_heur_full_even,
+    }
+)
+@triton.jit
+def _int_mm_dot_i32_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_om,
+    stride_on,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    FULL_EVEN: tl.constexpr,
+):
+    # Fast path: i32 addressing only (the host guarantees every in-bounds
+    # linear offset stays below 2**31 and every stride is non-negative).
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
+    # Dynamic K loop: the int32 tl.dot accumulator is not affected by the
+    # fp32 loop-carried-dot miscompile (A/B-measured equal to static unroll).
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        if FULL_EVEN:
+            a = tl.load(a_ptrs)
+            b = tl.load(b_ptrs)
+        elif EVEN_K:
+            a = tl.load(a_ptrs, mask=(offs_m[:, None] < M), other=0)
+            b = tl.load(b_ptrs, mask=(offs_n[None, :] < N), other=0)
+        else:
+            k_remaining = K - k * BLOCK_K
+            a = tl.load(
+                a_ptrs,
+                mask=(offs_m[:, None] < M) & (offs_k[None, :] < k_remaining),
+                other=0,
+            )
+            b = tl.load(
+                b_ptrs,
+                mask=(offs_k[:, None] < k_remaining) & (offs_n[None, :] < N),
+                other=0,
+            )
+        acc += tl.dot(a, b, out_dtype=tl.int32)
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+
+    out_ptrs = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
+    if FULL_EVEN:
+        tl.store(out_ptrs, acc)
+    else:
+        tl.store(out_ptrs, acc, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))
 
 
 @libentry()
@@ -221,28 +379,49 @@ def _prepare_inputs(self, mat2):
     return self, mat2
 
 
-def _launch_dot(
-    self,
-    mat2,
-    out,
-    M,
-    N,
-    K,
-    *,
-    block_m=64,
-    block_n=64,
-    block_k=64,
-    group_m=_GROUP_M,
-    num_warps=None,
-    num_stages=None,
-    explicit_out_dtype=False,
-    **compiler_options,
-):
-    grid = (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
-    if num_warps is not None:
-        compiler_options["num_warps"] = num_warps
-    if num_stages is not None:
-        compiler_options["num_stages"] = num_stages
+def _extent_i32_safe(tensor, outer, inner):
+    # Exact linear-extent guard for the i32 fast kernel: non-negative
+    # strides and max in-bounds element offset below 2**31.
+    stride_outer = tensor.stride(0)
+    stride_inner = tensor.stride(1)
+    if stride_outer < 0 or stride_inner < 0:
+        return False
+    extent = (outer - 1) * stride_outer + (inner - 1) * stride_inner + 1
+    return extent < _INT32_ELEMENT_LIMIT
+
+
+def _launch_dot(self, mat2, out, M, N, K):
+    if (
+        _extent_i32_safe(self, M, K)
+        and _extent_i32_safe(mat2, K, N)
+        and _extent_i32_safe(out, M, N)
+        # the (64,64,64) safety-net config must fit the grid hard limit so
+        # the tuner's pruned config list is never empty on this path
+        and triton.cdiv(M, 64) * triton.cdiv(N, 64) <= _GRID_LIMIT
+    ):
+        grid = lambda META: (
+            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        )
+        _int_mm_dot_i32_kernel[grid](
+            self,
+            mat2,
+            out,
+            M,
+            N,
+            K,
+            self.stride(0),
+            self.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            out.stride(0),
+            out.stride(1),
+        )
+    else:
+        _launch_dot_i64(self, mat2, out, M, N, K)
+
+
+def _launch_dot_i64(self, mat2, out, M, N, K):
+    grid = (triton.cdiv(M, 64) * triton.cdiv(N, 64),)
     _int_mm_dot_kernel[grid](
         self,
         mat2,
@@ -256,20 +435,19 @@ def _launch_dot(
         mat2.stride(1),
         out.stride(0),
         out.stride(1),
-        BLOCK_M=block_m,
-        BLOCK_N=block_n,
-        BLOCK_K=block_k,
-        GROUP_M=group_m,
-        EVEN_M=M % block_m == 0,
-        EVEN_N=N % block_n == 0,
-        EVEN_K=K % block_k == 0,
-        EXPLICIT_OUT_DTYPE=explicit_out_dtype,
-        **compiler_options,
+        BLOCK_M=64,
+        BLOCK_N=64,
+        BLOCK_K=64,
+        GROUP_M=_GROUP_M,
+        EVEN_M=M % 64 == 0,
+        EVEN_N=N % 64 == 0,
+        EVEN_K=K % 64 == 0,
+        EXPLICIT_OUT_DTYPE=True,
     )
 
 
-def _launch_outer(self, mat2, out, M, N, K, *, block_n=64):
-    _int_mm_outer_kernel[(M * triton.cdiv(N, block_n),)](
+def _launch_outer(self, mat2, out, M, N, K):
+    _int_mm_outer_kernel[(M * triton.cdiv(N, 64),)](
         self,
         mat2,
         out,
@@ -282,7 +460,7 @@ def _launch_outer(self, mat2, out, M, N, K, *, block_n=64):
         mat2.stride(1),
         out.stride(0),
         out.stride(1),
-        BLOCK_N=block_n,
+        BLOCK_N=64,
     )
 
 
@@ -305,93 +483,7 @@ def _copy_output(src, out, M, N):
     )
 
 
-def _launch_conservative(self, mat2, out, M, N, K):
-    if K > _MAX_DOT_K_WITHOUT_INT32_OVERFLOW:
-        _launch_outer(self, mat2, out, M, N, K)
-    else:
-        _launch_dot(self, mat2, out, M, N, K, explicit_out_dtype=True)
-
-
-def _launch_nvidia(self, mat2, out, M, N, K):
-    if K > _MAX_DOT_K_WITHOUT_INT32_OVERFLOW:
-        _launch_outer(self, mat2, out, M, N, K)
-    elif M <= 32:
-        _launch_dot(
-            self,
-            mat2,
-            out,
-            M,
-            N,
-            K,
-            block_m=32,
-            block_n=64 if N >= 64 else 32,
-            block_k=32,
-            num_warps=4,
-            num_stages=3,
-            explicit_out_dtype=True,
-        )
-    elif M <= 128:
-        _launch_dot(
-            self,
-            mat2,
-            out,
-            M,
-            N,
-            K,
-            block_m=64,
-            block_n=64 if N >= 64 else 32,
-            block_k=32,
-            num_warps=4,
-            num_stages=4,
-            explicit_out_dtype=True,
-        )
-    else:
-        _launch_dot(
-            self,
-            mat2,
-            out,
-            M,
-            N,
-            K,
-            block_m=128,
-            block_n=128 if N >= 128 else 64,
-            block_k=32,
-            num_warps=8,
-            num_stages=4,
-            explicit_out_dtype=True,
-        )
-
-
-def _launch_iluvatar(self, mat2, out, M, N, K):
-    if M <= 32:
-        _launch_dot(self, mat2, out, M, N, K, block_k=32)
-    elif M <= 64:
-        _launch_dot(self, mat2, out, M, N, K)
-    else:
-        _launch_dot(
-            self,
-            mat2,
-            out,
-            M,
-            N,
-            K,
-            block_m=128,
-            block_n=128,
-            block_k=64,
-            num_warps=8,
-        )
-
-
-# Backend identity is process-stable, so resolve the launcher once at import.
-_BACKEND_LAUNCHER = {
-    "ascend": _launch_conservative,
-    "iluvatar": _launch_iluvatar,
-    "metax": _launch_conservative,
-    "nvidia": _launch_nvidia,
-}.get(runtime.device.vendor_name, _launch_conservative)
-
-
-def _int_mm_impl(self, mat2, launcher, out=None):
+def _int_mm_impl(self, mat2, out=None):
     _check_inputs(self, mat2)
     M, K = self.shape
     N = mat2.shape[1]
@@ -413,20 +505,26 @@ def _int_mm_impl(self, mat2, launcher, out=None):
             _zero_output(kernel_out, M * N)
         else:
             kernel_self, kernel_mat2 = _prepare_inputs(self, mat2)
-            launcher(kernel_self, kernel_mat2, kernel_out, M, N, K)
+            if K > _MAX_DOT_K_WITHOUT_INT32_OVERFLOW:
+                _launch_outer(kernel_self, kernel_mat2, kernel_out, M, N, K)
+            else:
+                _launch_dot(kernel_self, kernel_mat2, kernel_out, M, N, K)
         if kernel_out is not out:
             _copy_output(kernel_out, out, M, N)
     return out
 
 
 def int_mm(self, mat2):
-    logger.debug("GEMS_ENFLAME_GCU400 INT_MM")
-    return _int_mm_impl(self, mat2, _BACKEND_LAUNCHER)
+    logger.debug("GEMS_ENFLAME INT_MM")
+    return _int_mm_impl(self, mat2)
 
 
 def int_mm_out(self, mat2, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 INT_MM_OUT")
-    return _int_mm_impl(self, mat2, _BACKEND_LAUNCHER, out=out)
+    # Each entry point announces itself: tests/test_int_mm.py::test_int_mm_out_gems_route
+    # asserts that the out variant logs "...INT_MM_OUT" (the tag used to be
+    # emitted by int_mm, so the out entry point looked unrouted).
+    logger.debug("GEMS_ENFLAME INT_MM_OUT")
+    return _int_mm_impl(self, mat2, out=out)
 
 
 __all__ = ["int_mm", "int_mm_out"]

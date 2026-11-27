@@ -140,7 +140,7 @@ def unique_dim_consecutive(
     ``unique_dim`` no sorting is performed; unlike ``unique_consecutive`` the
     ``dim`` argument is mandatory (mirroring the aten signature).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNIQUE_DIM_CONSECUTIVE")
+    logger.debug("GEMS_ENFLAME UNIQUE_DIM_CONSECUTIVE")
 
     ndim = input.ndim
     if ndim == 0:

@@ -18,7 +18,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -196,7 +195,24 @@ def _choose_block_and_warps(N_total, itemsize):
         return 2048, 4
     if N_total <= (1 << 21):
         return 8192, 4
-    return 131072 // itemsize, 2
+    if itemsize == 2:
+        # fp16 / bf16 stream bands (2026-11-16 sweep, see module comment):
+        # 2^22/2^23 prefer 16384/nw4, 2^24 prefers 65536/nw2, >=2^25 prefers
+        # nw1 — but BLOCK 65536 already carries nw2 for the 2^24 band and the
+        # backend cache key drops num_warps, so the big band moves to
+        # 32768/nw1 (within 1% of the 65536/nw1 optimum at 1Gi).
+        if N_total <= (1 << 23):
+            return 16384, 4
+        if N_total <= (1 << 24):
+            return 65536, 2
+        return 32768, 1
+    # fp32 (also the fp32 pair views of complex64 operands): 2^24-2^25 prefer
+    # 65536/nw2 (2 x 256KB load tiles), >=2^28 prefer 16384/nw1 which reaches
+    # the 1R1W copy floor at 1Gi-2Gi (2.99TB/s).  Boundary at 2^27 keeps every
+    # measured segment on its winning side.
+    if N_total <= (1 << 27):
+        return 65536, 2
+    return 16384, 1
 
 
 def _add_flat_applicable(A, B):
@@ -217,7 +233,8 @@ def _launch_add_flat(A, B, out, alpha):
     if N_total == 0:
         return out
     BLOCK, num_warps = _choose_block_and_warps(N_total, A.element_size())
-    grid_size = min(-(-N_total // BLOCK), NUM_SIPS * 2)
+    # Keep all 48 SPs busy: with 32-way, a 1Gi large shape has only 2/3 of SPs running and bandwidth drops to 2.07TB/s
+    grid_size = min(-(-N_total // BLOCK), NUM_SIPS * 3)
     exact = N_total % BLOCK == 0
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic; converterResult=-2 family, see P02); retrying the
@@ -288,7 +305,7 @@ _COMPLEX_FLOAT_VIEW = {
 
 
 def _real_to_pair(t):
-    return flag_gems.stack((t, torch.zeros_like(t)), dim=-1)
+    return torch.stack((t, torch.zeros_like(t)), dim=-1)
 
 
 def _pair_add(Ar, Br, alpha):

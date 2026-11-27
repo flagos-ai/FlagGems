@@ -23,6 +23,7 @@ from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 logger = logging.getLogger(__name__)
 
 _LASTDIM_W_TARGET_BYTES = 131072  # 2R1W flat streaming sweet spot: ~128KB per tile
+_DSM_BUDGET_BYTES = 229376  # DSM window: tiles above it lose 2-programs/SP
 _NUM_PROGS = 48
 _INT32_MAX = 2**31 - 1
 
@@ -107,10 +108,63 @@ def _is_pow2(n):
     return n > 0 and (n & (n - 1)) == 0
 
 
+@triton.jit
+def _select_scatter_chunk_kernel(
+    out_ptr,
+    inp_ptr,
+    src_ptr,
+    num_lines,
+    index,
+    L: tl.constexpr,
+    LB: tl.constexpr,
+):
+    # For rows wider than the per-program DSM concurrency window (only
+    # reachable when the row tile exceeds ~224KB, e.g. fp32 x 65536 where the
+    # K=1 tile is 256KB): split each row into pow2 chunks of LB lanes and fold
+    # the select into the copy stream — one load, one where, one store. The
+    # chunk partition is exact (no tail, no clamp) and every lane stores
+    # exactly once, so there is no patch store, no WAW window and no barrier;
+    # tiles stay inside the DSM window so the scheduler keeps two programs
+    # per SP (measured 2.86 -> 3.08 TB/s on (1024, 65536) fp32).
+    pid = tl.program_id(0)
+    num_progs = tl.num_programs(0)
+    CPR: tl.constexpr = L // LB
+    total_chunks = num_lines * CPR
+    for chunk_id in tl.range(pid, total_chunks, num_progs):
+        row = chunk_id // CPR
+        c0 = (chunk_id % CPR) * LB
+        offs = row * L + c0 + tl.arange(0, LB)
+        cols = c0 + tl.arange(0, LB)
+        inp_data = tl.load(inp_ptr + offs)
+        src_val = tl.load(src_ptr + row)
+        sel = cols == index
+        result = tl.where(sel, src_val, inp_data)
+        tl.store(out_ptr + offs, result)
+
+
 def _launch_lastdim(out, inp, src, dim_size, index, total_elements):
     line_len = dim_size
     num_lines = total_elements // line_len
     itemsize = inp.element_size()
+    # Rows whose minimum tile (K=1, one full row) exceeds the DSM concurrency
+    # window must be chunked; the plain path would run at half the SP
+    # concurrency. LB is a power of two <= 224KB/itemsize, and line_len is a
+    # power of two (fast-path guard), so L % LB == 0 always holds.
+    lb_cap = _DSM_BUDGET_BYTES // itemsize
+    if lb_cap < line_len:
+        lb = 1 << (lb_cap.bit_length() - 1)
+        total_chunks = num_lines * (line_len // lb)
+        _select_scatter_chunk_kernel[(min(_NUM_PROGS, total_chunks),)](
+            out,
+            inp,
+            src,
+            num_lines,
+            index,
+            L=line_len,
+            LB=lb,
+            num_warps=2,
+        )
+        return
     w_target = _LASTDIM_W_TARGET_BYTES // itemsize
     k_cap = w_target // line_len
     if k_cap < 1:

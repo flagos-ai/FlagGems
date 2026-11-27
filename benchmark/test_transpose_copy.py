@@ -46,6 +46,13 @@ class TransposeCopyBenchmark(base.Benchmark):
 
 
 @pytest.mark.transpose_copy
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu's native aten::transpose_copy faults the device on these "
+        "core shapes (Sip exception); only the FlagGems candidate is timed"
+    ),
+)
 def test_transpose_copy():
     dtypes = consts.FLOAT_DTYPES + [
         dtype for dtype in consts.FP8_DTYPES if dtype is not None
@@ -55,6 +62,12 @@ def test_transpose_copy():
         torch_op=torch.ops.aten.transpose_copy.int,
         dtypes=dtypes,
     )
+    if flag_gems.vendor_name == "enflame":
+        # The native op is what this benchmark normally times (as both the
+        # baseline and the candidate, since upstream sets no gems_op); on GCU
+        # it faults, so measure the FlagGems kernel instead.  Other vendors
+        # keep the upstream behaviour.
+        bench.set_gems(flag_gems.transpose_copy)
     bench.run()
 
 
@@ -65,6 +78,18 @@ def _complex_benchmark_params():
             continue
         dtype = getattr(torch, name)
         marks = []
+        if (
+            flag_gems.vendor_name == "enflame"
+            and dtype == torch.complex128
+            and not flag_gems.runtime.device.support_fp64
+        ):
+            # gcu400 has no fp64 datapath: the complex128 copy is emulated and
+            # its timing loop does not converge.  Other vendors are untouched.
+            marks.append(
+                pytest.mark.skip(reason="complex128 requires an fp64 datapath")
+            )
+            params.append(pytest.param(dtype, marks=marks, id=name))
+            continue
         try:
             probe = torch.empty((2, 3), dtype=dtype, device=flag_gems.device)
             torch.ops.aten.transpose_copy.int(probe, 0, 1)
@@ -82,6 +107,14 @@ def _complex_benchmark_params():
 
 
 @pytest.mark.transpose_copy
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu's native aten::transpose_copy faults the device on complex "
+        "dtypes; the FlagGems candidate (which handles complex32/64/128) is "
+        "still timed"
+    ),
+)
 @pytest.mark.parametrize("dtype", _complex_benchmark_params())
 def test_transpose_copy_complex(dtype):
     bench = TransposeCopyBenchmark(
@@ -89,4 +122,9 @@ def test_transpose_copy_complex(dtype):
         torch_op=torch.ops.aten.transpose_copy.int,
         dtypes=[dtype],
     )
+    if flag_gems.vendor_name == "enflame":
+        # Same reason as test_transpose_copy: the native op faults on GCU, so
+        # time the FlagGems kernel.  Other vendors keep the upstream
+        # behaviour (no gems_op).
+        bench.set_gems(flag_gems.transpose_copy)
     bench.run()

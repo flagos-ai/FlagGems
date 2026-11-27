@@ -19,8 +19,7 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-_AS_STRIDED = torch.Tensor.as_strided
-_STORAGE_OFFSET = torch.Tensor.storage_offset
+_AS_STRIDED = torch.as_strided
 
 
 def alias(self: torch.Tensor) -> torch.Tensor:
@@ -35,8 +34,8 @@ def alias(self: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A new tensor view sharing storage with ``self``.
     """
-    # as_strided with same shape/strides/offset creates an alias view
-    logger.debug("GEMS_ENFLAME_GCU400 ALIAS")
-    shape = self.shape
-    stride = self.stride()
-    return _AS_STRIDED(self, shape, stride, _STORAGE_OFFSET(self))
+    logger.debug("GEMS_ENFLAME ALIAS")
+    # as_strided with same shape/strides creates an alias view; omitting
+    # storage_offset lets ATen keep the current offset (optional -> nullopt),
+    # which is bit-identical to aten::alias's as_strided decomposition.
+    return _AS_STRIDED(self, self.shape, self.stride())

@@ -366,7 +366,7 @@ def _thnn_differentiable_gru_cell_backward(
     hidden_bias: torch.Tensor = None,
 ):
     """Compute the five differentiable GRU-cell backward outputs."""
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_DIFFERENTIABLE_GRU_CELL_BACKWARD")
+    logger.debug("GEMS_ENFLAME _THNN_DIFFERENTIABLE_GRU_CELL_BACKWARD")
     _validate_inputs(grad_hy, input_gates, hidden_gates, hx)
 
     batch_size, hidden_size = hx.shape

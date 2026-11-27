@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
     """Allocate the out_dtype output and hand it to addmm_dtype_out."""
-    logger.debug("GEMS_ENFLAME_GCU400 ADDMM_DTYPE")
+    logger.debug("GEMS_ENFLAME ADDMM_DTYPE")
     out = torch.empty(
         (mat1.shape[0], mat2.shape[1]),
         device=mat1.device,
@@ -49,7 +49,7 @@ def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
 
 def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     """Validation matches the common implementation; dispatch to static tiered kernels by shape / memory layout."""
-    logger.debug("GEMS_ENFLAME_GCU400 ADDMM_DTYPE_OUT")
+    logger.debug("GEMS_ENFLAME ADDMM_DTYPE_OUT")
     if mat1.dtype != mat2.dtype:
         raise RuntimeError(
             f"mat1 and mat2 must have the same dtype, but got {mat1.dtype} and {mat2.dtype}"

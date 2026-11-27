@@ -163,7 +163,7 @@ def indexer_k_quant_and_cache(
     quant_block_size,
     scale_fmt,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 INDEXER_K_QUANT_AND_CACHE")
+    logger.debug("GEMS_ENFLAME INDEXER_K_QUANT_AND_CACHE")
     num_blocks = kv_cache.shape[0]
     head_dim = k.shape[-1]
     num_tokens = slot_mapping.shape[0]
@@ -207,7 +207,7 @@ def indexer_k_quant_and_cache(
 # Route the fused package entry point to this backend specialization.
 # ``flag_gems.deprecated.__init__`` imports the generic module before the backend
 # registrar loads this file, so the SpecOpRegistrar top-level namespace swap
-# cannot reach ``from flag_gems.deprecated import indexer_k_quant_and_cache``
+# cannot reach ``from flag_gems.fused import indexer_k_quant_and_cache``
 # (the route the accuracy test and the benchmark bind). Rebind the live
 # entry points of the already-imported generic module/package, the same
 # mechanism as ``std_mean`` / ``slow_conv_dilated2d`` / bin_topk in this

@@ -174,6 +174,10 @@ class CudnnRnnBenchmark(base.GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.cudnn_rnn
 def test_cudnn_rnn_benchmark():

@@ -78,7 +78,7 @@ def feature_alpha_dropout_inplace_apply_kernel(
 
 
 def feature_alpha_dropout_(input, p=0.5, train=True):
-    logger.debug("GEMS_ENFLAME_GCU400 FEATURE_ALPHA_DROPOUT_")
+    logger.debug("GEMS_ENFLAME FEATURE_ALPHA_DROPOUT_")
 
     if not (0.0 <= p <= 1.0):
         raise RuntimeError(

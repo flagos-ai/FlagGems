@@ -19,6 +19,17 @@ import flag_gems
 
 from . import base
 
+# Every input pair needs device-side int64 torch.tril, which aborts on enflame
+# GCU (TOPSATEN_STATUS_BAD_PARAM) before the timed kernel runs, so the case
+# cannot be timed and the whole module is skipped on that backend only.
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten int64 tril aborts on GCU (TOPSATEN_STATUS_BAD_PARAM); the ltm "
+        "input cannot be built on the device, so the baseline cannot be timed"
+    ),
+)
+
 # (dimension, MAXBIT) shapes; the operator scrambles one (MAXBIT, MAXBIT) block
 # per dimension, so the runtime scales with the dimension count.
 SOBOL_SCRAMBLE_SHAPES = [

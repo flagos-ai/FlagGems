@@ -19,6 +19,17 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# aten::_thnn_fused_lstm_cell_backward_impl only ships a CUDA kernel: GCU
+# (PrivateUse1) has no kernel for it and there is no CPU kernel either, so the
+# reference leg cannot be produced for any reference device. Only that
+# reference-dependent accuracy case is skipped for enflame; the shape/dtype
+# contract case below stays runnable on GCU.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+ATEN_REFERENCE_SKIP_REASON = (
+    "torch aten not support due to: aten::_thnn_fused_lstm_cell_backward_impl is "
+    "CUDA-only (no CPU / PrivateUse1 kernel), so the reference leg cannot run"
+)
+
 # LSTM cell backward test shapes
 LSTM_SHAPES = [
     (1, 4),  # batch=1, hidden=4
@@ -53,6 +64,10 @@ def _cpu_reference(grad_hy, grad_cy, cx, cy, workspace):
     return grad_gates, grad_cx, grad_bias
 
 
+@pytest.mark.skipif(
+    ATEN_REFERENCE_UNSUPPORTED and not utils.TO_CPU,
+    reason=ATEN_REFERENCE_SKIP_REASON,
+)
 @pytest.mark.thnn_fused_lstm_cell_backward_impl
 @pytest.mark.parametrize("shape", LSTM_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
