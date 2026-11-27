@@ -113,6 +113,10 @@ def test_amin_backward_ties(dtype):
 
 
 @pytest.mark.amin_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="AminFunction grad_fn name is a CUDA-specific implementation detail",
+)
 def test_amin_backward_registered_dispatch():
     dtype = utils.FLOAT_DTYPES[0]
     inp = torch.randn(
@@ -156,6 +160,10 @@ def test_amin_backward_noncontiguous_and_nan():
 
 
 @pytest.mark.amin_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="ProfilerActivity.CUDA is only available on NVIDIA hardware",
+)
 def test_amin_backward_single_kernel():
     from torch.profiler import ProfilerActivity, profile
 

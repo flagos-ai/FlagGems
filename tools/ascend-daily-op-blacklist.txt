@@ -100,6 +100,8 @@ tests/test_fused_marlin_moe.py  # Torch not compiled with CUDA enabled
 tests/test_concat_and_cache_mla.py  # Torch not compiled with CUDA enabled
 tests/test_slice_copy.py  # aten::_copy_from not on CPU
 tests/test_cudnn_rnn_flatten_weight.py  # aten::_cudnn_rnn_flatten_weight not on CPU
+tests/test__sparse_semi_structured_apply_dense.py  # aten::_sparse_semi_structured_apply_dense CUDA-only; not on CPU reference either
+tests/test_diag_embed_backward.py  # NPU 507035: AclrtSynchronizeStreamWithTimeout stream sync error
 
 # --- BF16 accuracy / deeper kernel bugs ---
 tests/test_addcmul.py  # expected dtype Float but got dtype BFloat16

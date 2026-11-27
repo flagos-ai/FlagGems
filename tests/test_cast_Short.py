@@ -85,6 +85,8 @@ def test_cast_Short(shape, dtype, non_blocking):
 def test_cast_Short_strided(dtype, layout):
     if dtype.is_complex and flag_gems.vendor_name in _DEVICE_ATEN_COMPLEX_ABORTS:
         pytest.skip("device aten _cast_Short aborts on complex input")
+    if layout == "channels_last" and flag_gems.vendor_name == "ascend":
+        pytest.skip("NPU contiguous operator only supports contiguous memory format")
     x = make_input((4, 5, 6, 7), dtype)
     if layout == "transpose":
         x = x.transpose(0, 3)
