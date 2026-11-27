@@ -230,7 +230,7 @@ def _launch(y, x, out):
         )
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_)
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def _arctan2_kernel(input, other):
     # Generic fallback (broadcast / non-contiguous inputs).
@@ -254,6 +254,7 @@ def _use_fast_path(input, other):
         and other.is_contiguous()
         and input.shape == other.shape
         and input.dtype == other.dtype
+        and input.dtype.is_floating_point
     )
 
 
@@ -268,6 +269,8 @@ def arctan2(input, other):
 
 def arctan2_(input, other):
     logger.debug("GEMS_KUNLUNXIN ARCTAN2_")
+    if not input.dtype.is_floating_point:
+        raise RuntimeError("arctan2_ requires a floating-point input tensor")
     if _use_fast_path(input, other):
         # Both operands are read before the lane is stored, so out aliasing
         # input is safe (including the degenerate x.arctan2_(x) case).

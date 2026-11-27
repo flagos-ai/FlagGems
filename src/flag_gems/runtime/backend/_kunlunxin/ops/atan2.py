@@ -195,6 +195,14 @@ def _launch_impl(x, y, out):
 
 def atan2(input, other):
     logger.debug("GEMS_KUNLUNXIN ATAN2")
+    if (
+        input.shape != other.shape
+        or input.dtype != other.dtype
+        or not input.dtype.is_floating_point
+    ):
+        from .arctan2 import _arctan2_kernel
+
+        return _arctan2_kernel(input, other)
     input = input.contiguous()
     other = other.contiguous()
     out = torch.empty_like(input)
@@ -219,6 +227,21 @@ def atan2_(input, other):
 
 def atan2_out(input, other, out):
     logger.debug("GEMS_KUNLUNXIN ATAN2_OUT")
+    if not out.dtype.is_floating_point:
+        raise RuntimeError("atan2 requires a floating-point output tensor")
+    if out.device != input.device or other.device != input.device:
+        raise RuntimeError("inputs and output must be on the same device")
+    if (
+        input.shape != other.shape
+        or input.dtype != other.dtype
+        or not input.dtype.is_floating_point
+    ):
+        from .arctan2 import _arctan2_kernel
+
+        _arctan2_kernel(input, other, out0=out)
+        return out
+    if out.shape != input.shape:
+        out.resize_(input.shape)
     input = input.contiguous()
     other = other.contiguous()
     if out.is_contiguous() and out.dtype == input.dtype and out.shape == input.shape:

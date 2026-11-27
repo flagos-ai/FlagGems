@@ -163,9 +163,16 @@ def asin(x, *, out=None):
     logger.debug("GEMS_KUNLUNXIN ASIN")
     xc = x.contiguous()
     if out is None:
-        out = torch.empty_like(xc)
+        dtype = xc.dtype if xc.dtype.is_floating_point else torch.get_default_dtype()
+        out = torch.empty_like(xc, dtype=dtype)
         _launch(xc, out)
         return out
+    if not out.dtype.is_floating_point:
+        raise RuntimeError("asin requires a floating-point output tensor")
+    if out.device != x.device:
+        raise RuntimeError("input and output must be on the same device")
+    if out.shape != x.shape:
+        out.resize_(x.shape)
     oc = out.contiguous()
     _launch(xc, oc)
     if oc.data_ptr() != out.data_ptr():
