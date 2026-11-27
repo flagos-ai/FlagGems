@@ -12754,7 +12754,7 @@ ops:
   kind:
   - Math
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: linalg_svdvals
   description: Computes the singular values of a matrix.
   for:
