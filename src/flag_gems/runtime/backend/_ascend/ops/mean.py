@@ -48,6 +48,8 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
+    if M == 0:
+        return torch.full([], float("nan"), dtype=dtype, device=inp.device)
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     block_size = min(block_size, 2048)
     out = torch.zeros([], dtype=torch.float32, device=inp.device)
@@ -106,6 +108,11 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         N *= shape[i]
         shape[i] = 1
     M = x.numel() // N
+    if N == 0:
+        out = torch.full(shape, float("nan"), dtype=dtype, device=x.device)
+        if not keepdim:
+            out = out.squeeze(dim)
+        return out
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 

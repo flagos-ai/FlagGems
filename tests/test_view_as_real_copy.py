@@ -229,7 +229,9 @@ def test_accuracy_view_as_real_copy_independent_storage(dtype):
     res_out = flag_gems.view_as_real_copy(inp)
     ref = utils.to_reference(res_out.clone())
 
-    if IS_KUNLUNXIN:
+    if IS_KUNLUNXIN or (
+        flag_gems.vendor_name == "mthreads" and dtype == torch.complex32
+    ):
         inp.real.add_(1.0)
     else:
         inp.add_(1.0)
