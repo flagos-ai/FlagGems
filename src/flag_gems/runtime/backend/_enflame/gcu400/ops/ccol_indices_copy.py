@@ -48,6 +48,33 @@ _NON_COL_COMPRESSED_LAYOUT_NAMES = {
     torch.sparse_bsr: "SparseBsr",
 }
 
+# Component buffers of GCU compressed sparse tensors (populated by the wrapped
+# ``torch.sparse_{csc,bsc}_tensor`` factories in ``values_copy``). Reading the
+# entry directly costs a dict lookup, while the dispatcher-routed accessor
+# ``self.ccol_indices()`` costs ~9us per call on this backend.
+try:
+    from .values_copy import _components as _SPARSE_COMPONENTS
+except Exception:  # pragma: no cover - cache is an optional fast path
+    _SPARSE_COMPONENTS = None
+
+# Cached launch handles: (kernel, grid_x, block, device_index, per-arg
+# signature) -> (run, function, packed_metadata, needs_device_guard).
+_LAUNCH_CACHE = {}
+_LAUNCH_CACHE_MAX = 1024
+
+# Cached per-dim size/stride metadata for the ND-strided gather kernel, keyed
+# by (shape, strides, device_index) so repeat calls reuse one device buffer
+# instead of re-uploading it.
+_META_CACHE = {}
+_META_CACHE_MAX = 256
+
+try:
+    _get_current_stream = torch._C._accelerator_getStream
+except AttributeError:  # pragma: no cover - older torch without the unified API
+
+    def _get_current_stream(device_index):
+        return torch.cuda.current_stream(device_index)
+
 
 @triton.jit
 def _ccol_copy_kernel(src_ptr, dst_ptr, n_elem, BLOCK: tl.constexpr):
@@ -90,12 +117,128 @@ def _ccol_copy_strided_nd_kernel(
     tl.store(dst_ptr + offs, v, mask=mask)
 
 
+def _cached_meta(src: torch.Tensor, shape, strides) -> torch.Tensor:
+    """Return the (size, stride) metadata buffer for the ND-strided kernel.
+
+    Reused across calls with the same geometry, so a repeat launch neither
+    allocates nor uploads it again.
+    """
+    key = (tuple(shape), tuple(strides), src.device.index)
+    meta = _META_CACHE.get(key)
+    if meta is None:
+        meta = torch.tensor(
+            [v for s, st in zip(shape, strides) for v in (s, st)],
+            dtype=torch.int64,
+            device=src.device,
+        )
+        if len(_META_CACHE) >= _META_CACHE_MAX:
+            _META_CACHE.clear()
+        _META_CACHE[key] = meta
+    return meta
+
+
+def _build_launch(kernel, grid_x, args, block, device):
+    """Compile ``kernel`` once and cache the pieces the launcher needs.
+
+    ``needs_device_guard`` records whether the input lived on a device that was
+    not current at compile time; such entries keep the device guard on every
+    launch instead of paying for it in the common single-device case. The
+    ambient device must be sampled *before* entering the context, otherwise the
+    comparison always sees the guarded device and never enables the guard.
+    """
+    ambient_device = torch.cuda.current_device()
+    with torch_device_fn.device(device):
+        compiled = kernel[(grid_x,)](*args, BLOCK=block, num_warps=_NUM_WARPS)
+    needs_device_guard = ambient_device != device.index
+    return (
+        compiled.run,
+        compiled.function,
+        compiled.packed_metadata,
+        needs_device_guard,
+    )
+
+
+def _launch(kernel, grid_x: int, src, dst, scalars: tuple, block: int, device) -> None:
+    """Launch ``kernel`` through its cached ``CompiledKernel`` handle.
+
+    The cache key carries every fact Triton specialises a kernel on — the
+    kernel, the grid, the ``BLOCK`` constexpr, the device and, per argument, the
+    dtype plus the 16-byte alignment of pointers or the exact scalar value — so
+    a cache hit is a kernel compiled for exactly these arguments and never a
+    handle that assumes a different alignment or a different scalar constant.
+
+    The launcher receives raw ``data_ptr`` addresses: the pointer conversion is
+    already needed for the cache key, and the ints are ~1.3us cheaper per launch
+    than the tensor objects (whose references the caller keeps alive for the
+    duration of the launch).
+    """
+    src_ptr = src.data_ptr()
+    dst_ptr = dst.data_ptr()
+    device_index = device.index
+    key = (
+        kernel,
+        grid_x,
+        block,
+        device_index,
+        src.dtype,
+        src_ptr & 15,
+        dst.dtype,
+        dst_ptr & 15,
+        *scalars,
+    )
+    entry = _LAUNCH_CACHE.get(key)
+    if entry is None:
+        entry = _build_launch(kernel, grid_x, (src, dst) + scalars, block, device)
+        if len(_LAUNCH_CACHE) >= _LAUNCH_CACHE_MAX:
+            _LAUNCH_CACHE.clear()
+        _LAUNCH_CACHE[key] = entry
+    run, function, packed_metadata, needs_device_guard = entry
+    stream = _get_current_stream(device_index).native_handle
+    if needs_device_guard:
+        with torch_device_fn.device(device):
+            run(
+                grid_x,
+                1,
+                1,
+                stream,
+                function,
+                packed_metadata,
+                None,
+                None,
+                None,
+                src_ptr,
+                dst_ptr,
+                *scalars,
+                block,
+            )
+    else:
+        run(
+            grid_x,
+            1,
+            1,
+            stream,
+            function,
+            packed_metadata,
+            None,
+            None,
+            None,
+            src_ptr,
+            dst_ptr,
+            *scalars,
+            block,
+        )
+
+
 def _select_src(self: torch.Tensor) -> torch.Tensor:
     """Layout dispatch shared by both overloads.
 
     Returns the ``ccol_indices()`` metadata view for CSC/BSC inputs, raises the
     native rejection message for the other compressed/strided layouts, and
     delegates to the native operator for anything else.
+
+    For CSC/BSC inputs built through the wrapped sparse constructors the view is
+    taken straight from the backend component cache; every other case goes
+    through ``self.ccol_indices()``.
 
     The explicit guard is required by the native contract, not optional
     defensive code: once this implementation is registered on the backend
@@ -108,10 +251,17 @@ def _select_src(self: torch.Tensor) -> torch.Tensor:
     exact native behaviour (verified: strided/CSR/BSR raise RuntimeError, COO
     raises NotImplementedError on this build).
     """
-    if self.layout == _L_CSC or self.layout == _L_BSC:
+    layout = self.layout
+    if layout is _L_CSC or layout is _L_BSC:
+        if _SPARSE_COMPONENTS is not None:
+            entry = _SPARSE_COMPONENTS.get(id(self))
+            if entry is not None:
+                # entry = [sparse, compressed(ccol), plain(row), values].
+                # Read-only view for the copy kernels; no detach needed here.
+                return entry[1]
         return self.ccol_indices()
-    if self.layout in _NON_COL_COMPRESSED_LAYOUT_NAMES:
-        layout_name = _NON_COL_COMPRESSED_LAYOUT_NAMES[self.layout]
+    layout_name = _NON_COL_COMPRESSED_LAYOUT_NAMES.get(layout)
+    if layout_name is not None:
         raise RuntimeError(
             "ccol_indices expected sparse column compressed tensor layout "
             f"but got {layout_name}"
@@ -141,30 +291,37 @@ def _launch_ccol_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
     n = src.numel()
     if n == 0:
         return
-    grid = (triton.cdiv(n, _BLOCK),)
+    grid_x = (n + _BLOCK - 1) // _BLOCK
+    device = src.device
     if src.is_contiguous():
-        with torch_device_fn.device(src.device):
-            _ccol_copy_kernel[grid](src, dst, n, BLOCK=_BLOCK, num_warps=_NUM_WARPS)
+        _launch(_ccol_copy_kernel, grid_x, src, dst, (n,), _BLOCK, device)
     elif src.dim() == 1:
-        with torch_device_fn.device(src.device):
-            _ccol_copy_strided_kernel[grid](
-                src, dst, n, src.stride(0), BLOCK=_BLOCK, num_warps=_NUM_WARPS
-            )
+        _launch(
+            _ccol_copy_strided_kernel,
+            grid_x,
+            src,
+            dst,
+            (n, src.stride(0)),
+            _BLOCK,
+            device,
+        )
     else:
         # Multi-dim non-contiguous ccol buffer: gather through per-dim
         # size/stride metadata (built host-side, uploaded in one H2D copy).
         # Native ATen handles these inputs, so the branch is part of the
         # contract (review: this closes the previously disclosed divergence).
-        shape = [int(v) for v in src.shape]
-        strides = [int(v) for v in src.stride()]
-        meta = torch.tensor(
-            [v for s, st in zip(shape, strides) for v in (s, st)],
-            dtype=torch.int64,
-            device=src.device,
-        )
-        with torch_device_fn.device(src.device):
-            _ccol_copy_strided_nd_kernel[grid](
-                src, dst, n, meta, ndim=len(shape), BLOCK=_BLOCK, num_warps=_NUM_WARPS
+        shape = src.shape
+        strides = src.stride()
+        meta = _cached_meta(src, shape, strides)
+        with torch_device_fn.device(device):
+            _ccol_copy_strided_nd_kernel[(grid_x,)](
+                src,
+                dst,
+                n,
+                meta,
+                ndim=len(shape),
+                BLOCK=_BLOCK,
+                num_warps=_NUM_WARPS,
             )
 
 
@@ -200,7 +357,7 @@ def ccol_indices_copy(self: torch.Tensor) -> torch.Tensor:
     metadata; native accepts those inputs, so they are implemented rather than
     rejected.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CCOL_INDICES_COPY")
+    logger.debug("GEMS_ENFLAME CCOL_INDICES_COPY")
     src = _select_src(self)
     out = torch.empty_like(src)
     _launch_ccol_copy(src, out)
@@ -219,7 +376,7 @@ def ccol_indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Ten
     staging buffer, matching the native behaviour of writing element-wise
     through the out strides.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CCOL_INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME CCOL_INDICES_COPY_OUT")
     src = _select_src(self)
     if out.dtype != src.dtype:
         raise RuntimeError(

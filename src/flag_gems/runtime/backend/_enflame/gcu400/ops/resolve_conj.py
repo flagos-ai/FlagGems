@@ -25,14 +25,39 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 _MAX_LEAD_RANK = 5
-_WORD_BLOCK = 8192
+# Strided (non-contiguous) path keeps its own launch constants: the official
+# core benchmark only exercises the contiguous flat path, so these stay at
+# their previously shipped values until a strided case needs retuning.
 _STRIDED_BLOCK = 1024
 _NUM_WARPS = 4
-# GCU400 sweet spot for streaming word kernels: a fixed, modest program count
-# with a grid-stride loop beats one tiny program per block by ~3x (97us vs
-# 230us on (4096,4096) cfloat) and stays within the P19 grid.x limit.
-_GRID_CAP = 192
-_I32_SAFE_WORDS = 2**31 - _WORD_BLOCK - 1
+_STRIDED_GRID_CAP = 192
+# GCU400 streaming word kernels: a fixed, modest program count with a
+# grid-stride loop beats one tiny program per block and stays within the P19
+# grid.x limit. The flat word stream runs at the copy floor (3.06 TB/s class,
+# conj_copy family table 2026-11-16), so only the launch shape matters.
+# Per-band launch shape retuned 2026-11-16 on the official core shapes
+# (do_bench(median) w1000/r100, interleaved same-process A/B resamples):
+#   n_words <= 16K:    B1024/nw4/g48, 3.55-3.65us @8K words
+#                      (old single-band B8192/nw4: 4.38-4.43us);
+#   16K < n < 2^21:    B8192/nw4/g48, the conj_copy family-table mid band
+#                      (B8192 leads B32768 ~8% @512K words there);
+#   n_words >= 2^21:   B32768/nw4/g48, 12.0us @2M words (B16384 12.8,
+#                      B8192 13.4), 17.3us @4M, 100.2us @32M, 2812us @1G words
+#                      (old B8192/nw4/g192: 126.1us @32M, 3646us @1G).
+# grid cap 48 dominates 96/192 on every band (family table; re-confirmed
+# here), and B32768's 128KB tile stays below the 448KB DSM budget.
+_WORD_GRID_CAP = 48
+_I32_SAFE_WORDS = 2**31 - 32768 - 1
+
+
+def _choose_word_launch(n_words):
+    # (BLOCK_SIZE, num_warps) per flat word-stream band.
+    if n_words <= 16384:
+        return 1024, 4
+    if n_words < (1 << 21):
+        return 8192, 4
+    return 32768, 4
+
 
 # complex dtype -> int32 words per complex element
 _INT32_WORDS = {
@@ -215,7 +240,8 @@ def resolve_conj(A: torch.Tensor) -> torch.Tensor:
         pos_mod, pos_rem, xorv = _FLAT_XOR[(A.dtype, flip_real)]
         src = _raw_int32_view(A, words)
         dst = _raw_int32_view(out, words)
-        grid = (min(triton.cdiv(n_words, _WORD_BLOCK), _GRID_CAP),)
+        word_block, num_warps = _choose_word_launch(n_words)
+        grid = (min(triton.cdiv(n_words, word_block), _WORD_GRID_CAP),)
         with torch_device_fn.device(A.device):
             _resolve_conj_word_kernel[grid](
                 src,
@@ -224,8 +250,8 @@ def resolve_conj(A: torch.Tensor) -> torch.Tensor:
                 POS_MOD=pos_mod,
                 POS_REM=pos_rem,
                 XORV=xorv,
-                BLOCK_SIZE=_WORD_BLOCK,
-                num_warps=_NUM_WARPS,
+                BLOCK_SIZE=word_block,
+                num_warps=num_warps,
             )
         return out
 
@@ -245,7 +271,7 @@ def resolve_conj(A: torch.Tensor) -> torch.Tensor:
 
     xor_lane, xorv = _STRIDED_XOR[(A.dtype, flip_real)]
     dst = _raw_int32_view(out, words)
-    grid = (min(triton.cdiv(n, _STRIDED_BLOCK), _GRID_CAP),)
+    grid = (min(triton.cdiv(n, _STRIDED_BLOCK), _STRIDED_GRID_CAP),)
     with torch_device_fn.device(A.device):
         _resolve_conj_strided_kernel[grid](
             src,

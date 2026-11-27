@@ -19,10 +19,21 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.tensorview import (
+    HAS_TENSORVIEW,
+    has_no_duplicates,
+    tensorview_call,
+    tile_fits_ub,
+    tile_rows_for_ub,
+)
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
+if HAS_TENSORVIEW:
+    import triton.experimental.tle as tle_exp
+    from triton.experimental.tle import tile_load, tile_store
 
 
 @libentry()
@@ -412,7 +423,7 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     return True
 
 
-def index_add(inp, dim, index, src, alpha=1):
+def _index_add_generic(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_ASCEND INDEX_ADD")
 
     inp = inp.contiguous()
@@ -469,7 +480,7 @@ def index_add(inp, dim, index, src, alpha=1):
         return out
 
 
-def index_add_(inp, dim, index, src, alpha=1):
+def _index_add__generic(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_ASCEND INDEX_ADD_")
 
     index = index.contiguous()
@@ -553,3 +564,195 @@ def index_add_(inp, dim, index, src, alpha=1):
             inp.copy_(out_contig)
 
     return inp
+
+
+# ---------------------------------------------------------------------------
+# TensorView fast path
+#
+# Along dim 0 an index names a whole contiguous row, so the accumulate becomes
+# read-modify-write on a GatherScatterView: the addressed rows come in as one
+# block DMA per tile, the source rows come in through a PartitionView, and the
+# sum goes back out through the same sparse view.
+#
+# Restricted to unique indices. Two tiles holding the same row would each read
+# it before either writes back, so one update would be lost -- the generic
+# kernel does not have this problem because it accumulates through a different
+# decomposition. torch.index_add explicitly permits repeated indices, and the
+# test suite exercises them, so the check is load-bearing rather than cautious.
+#
+# Also restricted to rows of at least one write granule, and skipped entirely
+# under graph capture; both are explained at the checks in _tv_eligible.
+# ---------------------------------------------------------------------------
+TV_BLOCK_M = 32
+
+# Smallest row the scatter can write without disturbing its neighbour. Rows
+# below this share a write granule with the next row, which breaks the
+# read-modify-write above.
+_SCATTER_GRANULE_BYTES = 32
+
+if HAS_TENSORVIEW:
+
+    @triton.jit
+    def index_add_tv_kernel(
+        out,
+        src,
+        index,
+        num_indices,
+        num_rows,
+        alpha,
+        WIDTH: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_WIDTH: tl.constexpr,
+    ):
+        tile = tl.program_id(0)
+        offsets = tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        rows = tl.load(index + offsets, mask=offsets < num_indices, other=-1).to(
+            tl.int32
+        )
+
+        out_view = tle_exp.make_gather_scatter_view(
+            out,
+            shape=[num_rows, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_M, BLOCK_WIDTH],
+            sparse_dim=[0],
+            bounds_check=True,
+        )
+        src_view = tle_exp.make_partition_view(
+            src,
+            shape=[num_indices, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_M, BLOCK_WIDTH],
+        )
+        current = tile_load(
+            out_view, index=(rows, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        update = tile_load(
+            src_view, index=(tile, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+
+        tile_store(
+            out_view,
+            value=(current + alpha * update).to(out.dtype.element_ty),
+            index=(rows, 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+
+    def _launch_index_add_tv(out, index, src, alpha, block_m=None):
+        src = src.contiguous()
+        num_rows = out.shape[0]
+        # The destination view is built with bounds_check=True, which *defines*
+        # an out-of-range row as "skip this row". That is what lets the tail of
+        # the index tile carry -1, but it would also turn an invalid index into
+        # a silently dropped update, where the generic path raises. Assert here,
+        # before the launch, so an in-place call leaves its input unchanged --
+        # the same contract and the same message the generic path gives.
+        _assert_index_in_bounds(index, num_rows)
+        # Trailing dimensions collapse into one contiguous row.
+        width = _volume(out.shape[1:]) if out.dim() > 1 else 1
+        if block_m is None:
+            # The current and update tiles are both live as fp32.
+            block_m = tile_rows_for_ub(triton.next_power_of_2(width) * 4, 2, TV_BLOCK_M)
+        num_indices = index.numel()
+        grid = (triton.cdiv(num_indices, block_m),)
+        with torch_device_fn.device(out.device):
+            index_add_tv_kernel[grid](
+                out,
+                src,
+                index,
+                num_indices,
+                num_rows,
+                alpha,
+                WIDTH=width,
+                BLOCK_M=block_m,
+                BLOCK_WIDTH=triton.next_power_of_2(width),
+            )
+        return out
+
+    def _index_add_tensorview(inp, dim, index, src, alpha=1):
+        logger.debug("GEMS_ASCEND INDEX_ADD(TENSORVIEW)")
+        out = inp.contiguous().clone()
+        return _launch_index_add_tv(out, index.contiguous(), src, alpha)
+
+    def _index_add__tensorview(inp, dim, index, src, alpha=1):
+        logger.debug("GEMS_ASCEND INDEX_ADD_(TENSORVIEW)")
+        if inp.is_contiguous():
+            return _launch_index_add_tv(inp, index.contiguous(), src, alpha)
+        work = inp.contiguous()
+        _launch_index_add_tv(work, index.contiguous(), src, alpha)
+        inp.copy_(work)
+        return inp
+
+    def _tv_eligible(inp, dim, index, src):
+        if inp.numel() == 0 or index.numel() == 0:
+            return False
+        if dim % max(inp.ndim, 1) != 0:
+            return False
+        # This gate reads the index values, so its answer is only valid for the
+        # indices it saw. A captured graph replays with whatever the index
+        # buffer holds at replay time, which may well repeat a row the capture
+        # decided was unique. has_no_duplicates would also have to synchronize,
+        # which capture does not allow. The generic kernel masks every index on
+        # each execution, so it stays correct across replays; take it.
+        if inp.device.type != "cpu":
+            with torch_device_fn.device(inp.device):
+                if torch_device_fn.is_current_stream_capturing():
+                    return False
+        # bfloat16 goes through an fp32 staging buffer in the generic path to
+        # keep the accumulate accurate; leave that alone.
+        if inp.dtype == torch.bfloat16 or src.dtype != inp.dtype:
+            return False
+        if index.numel() != src.shape[0]:
+            return False
+        # The trailing dimensions collapse into one row, so a wide tail makes a
+        # row too wide to stage and UB overflow is a compile error. Same
+        # row_bytes and live_tiles the launch uses.
+        width = _volume(inp.shape[1:]) if inp.dim() > 1 else 1
+        if not tile_fits_ub(triton.next_power_of_2(width) * 4, 2):
+            return False
+        # A row narrower than one write granule cannot be scattered on its own:
+        # two destination rows share a granule, and the read-modify-write below
+        # then loses one of the two updates. Measured on this part, writing rows
+        # at index [100..107] through a GatherScatterView: 16 B rows lose an
+        # update at both fp16 and fp32, 24 B and wider never do. The loss needs
+        # the destinations to be close -- a gap of 4 rows or more is clean at
+        # 16 B -- but the gate cannot depend on the index values, so it requires
+        # a full granule. Narrow rows go to the generic kernel, which
+        # accumulates through a different decomposition and does not share this
+        # constraint.
+        if width * inp.element_size() < _SCATTER_GRANULE_BYTES:
+            return False
+        # Repeated indices lose updates on this path, see the note above.
+        return has_no_duplicates(index, inp.shape[0])
+
+    def index_add(inp, dim, index, src, alpha=1):
+        if not _tv_eligible(inp, dim, index, src):
+            return _index_add_generic(inp, dim, index, src, alpha)
+        return tensorview_call(
+            "INDEX_ADD",
+            _index_add_tensorview,
+            _index_add_generic,
+            inp,
+            dim,
+            index,
+            src,
+            alpha,
+        )
+
+    def index_add_(inp, dim, index, src, alpha=1):
+        if not _tv_eligible(inp, dim, index, src):
+            return _index_add__generic(inp, dim, index, src, alpha)
+        return tensorview_call(
+            "INDEX_ADD_",
+            _index_add__tensorview,
+            _index_add__generic,
+            inp,
+            dim,
+            index,
+            src,
+            alpha,
+        )
+
+else:
+    index_add = _index_add_generic
+    index_add_ = _index_add__generic

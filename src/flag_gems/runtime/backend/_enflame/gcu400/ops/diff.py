@@ -18,7 +18,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
@@ -102,13 +101,63 @@ def diff_kernel_2d(
     tl.store(out_ptr + out_offsets, next_block - in_block, mask_in)
 
 
+# GCU400 flat-path configs (2026-11-16 sweep, do_bench median w1000/r100, L600 48SP):
+# the flat kernel streams the whole (M, N) tensor as one contiguous 2R+1W flow and
+# reaches 2.76-3.27 TB/s raw (fp16 (8,4096,4096) 277us, fp32 492us) vs 2.15 TB/s for
+# the 2D tiled form above (375/746us); aten's binary_tensor_slice_kernel<SUB> sits at
+# 315/631us. Winners by regime: fp16/bf16 large -> B=131072 nw2; fp32 large ->
+# B=65536 nw2; long-row (1024,65536) -> B=65536 nw2 ns2; mid/small -> B=4096..16384
+# nw4. OOR configs (B=131072 with fp32/int64 DSM) are skipped by the tuner.
+_GCU400_DIFF_FLAT_CONFIGS = [
+    triton.Config({"BLOCK": 1024, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 2048, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 4096, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 8192, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 16384, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 32768, "NS": 1}, num_warps=2),
+    triton.Config({"BLOCK": 32768, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 65536, "NS": 1}, num_warps=2),
+    triton.Config({"BLOCK": 65536, "NS": 1}, num_warps=4),
+    triton.Config({"BLOCK": 65536, "NS": 2}, num_warps=2),
+    triton.Config({"BLOCK": 131072, "NS": 1}, num_warps=2),
+    triton.Config({"BLOCK": 131072, "NS": 1}, num_warps=4),
+]
+
+_GCU400_FLAT_GRID_CAP = 48
+# i32 safe domain with headroom for the loop-variable overshoot: the last
+# failing tl.range condition check can reach TOTAL + 48*BLOCK (<= 2^23) and the
+# final tile's arange can reach TOTAL + BLOCK - 2 before the mask clamps, so
+# keep 2^23 elements of slack below 2^31 to rule out signed wraparound.
+_FLAT_INT32_LIMIT = 0x7F7FFFFF
+
+
+@libentry()
+@libtuner(
+    configs=_GCU400_DIFF_FLAT_CONFIGS,
+    key=["TOTAL"],
+)
+@triton.jit
+def diff_kernel_flat(in_ptr, out_ptr, TOTAL, BLOCK: tl.constexpr, NS: tl.constexpr):
+    # Flat difference over the whole tensor: out[j] = in[j + 1] - in[j] for
+    # j < TOTAL. Row-crossing lanes land in the caller's padded dummy column
+    # and the loads never go past in[TOTAL] (TOTAL = numel - 1).
+    pid = tle.program_id(0)
+    nprog = tle.num_programs(0)
+    for j in tl.range(pid * BLOCK, TOTAL, nprog * BLOCK, num_stages=NS):
+        offs = j + tl.arange(0, BLOCK)
+        msk = offs < TOTAL
+        cur = tl.load(in_ptr + offs, msk)
+        nxt = tl.load(in_ptr + offs + 1, msk)
+        tl.store(out_ptr + offs, nxt - cur, msk)
+
+
 def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 DIFF")
+    logger.debug("GEMS_ENFLAME DIFF")
 
     if prepend is not None:
-        input = flag_gems.cat([prepend, input], dim=dim)
+        input = torch.cat([prepend, input], dim=dim)
     if append is not None:
-        input = flag_gems.cat([input, append], dim=dim)
+        input = torch.cat([input, append], dim=dim)
 
     if n <= 0:
         return input
@@ -124,8 +173,78 @@ def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
     input = dim_compress(input, dim)
     N = reduce_len
     M = input.numel() // N
+    total = M * N
 
     is_1d = len(shape) == 1
+
+    # GCU400 flat fast path: stream the whole tensor as one contiguous flow
+    # (probe 2026-11-16: 2.76-3.27 TB/s raw vs 2.15 TB/s for the 2D tiled form).
+    # Multi-row outputs are allocated at the input's row width N and returned
+    # as a [..., :N-n] view; the trailing dummy column absorbs the row-crossing
+    # lanes so flat index j maps to the same (row, col) in src and dst.
+    if not is_1d and total <= _FLAT_INT32_LIMIT:
+
+        def _launch_flat(src, dst, total_out):
+            if total_out <= 0:
+                return
+            grid = lambda meta: (
+                min(_GCU400_FLAT_GRID_CAP, triton.cdiv(total_out, meta["BLOCK"])),
+            )
+            with torch_device_fn.device(src.device):
+                diff_kernel_flat[grid](src, dst, total_out)
+
+        if M == 1:
+            # Single row: the flat layout is exact, so keep the real
+            # (contiguous) post-diff shape [..., N-n] without padding.
+            out_shape = list(input.shape)
+            out_shape[-1] = N - n
+            output = torch.empty(out_shape, device=input.device, dtype=input.dtype)
+            if n == 1:
+                _launch_flat(input, output, N - 1)
+                return torch.moveaxis(output, -1, dim)
+            scratch_a_shape = list(input.shape)
+            scratch_a_shape[-1] = N - 1
+            scratch_a = torch.empty(
+                scratch_a_shape, device=input.device, dtype=input.dtype
+            )
+            if n >= 3:
+                scratch_b_shape = list(input.shape)
+                scratch_b_shape[-1] = N - 2
+                scratch_b = torch.empty(
+                    scratch_b_shape, device=input.device, dtype=input.dtype
+                )
+            _launch_flat(input, scratch_a, N - 1)
+            src, src_width = scratch_a, N - 1
+            for k in range(1, n):
+                if k == n - 1:
+                    dst = output
+                elif k % 2 == 1:
+                    dst = scratch_b
+                else:
+                    dst = scratch_a
+                _launch_flat(src, dst, src_width - 1)
+                src, src_width = dst, src_width - 1
+            return torch.moveaxis(output, -1, dim)
+
+        output = torch.empty_like(input)
+        if n == 1:
+            _launch_flat(input, output, total - 1)
+            return torch.moveaxis(output[..., : N - 1], -1, dim)
+        scratch_a = torch.empty_like(input)
+        if n >= 3:
+            scratch_b = torch.empty_like(input)
+        _launch_flat(input, scratch_a, total - 1)
+        src = scratch_a
+        for k in range(1, n):
+            if k == n - 1:
+                dst = output
+            elif k % 2 == 1:
+                dst = scratch_b
+            else:
+                dst = scratch_a
+            _launch_flat(src, dst, total - 1)
+            src = dst
+        return torch.moveaxis(output[..., : N - n], -1, dim)
 
     def _launch(src, dst, in_stride_m, out_stride_m, n_bound):
         if is_1d:

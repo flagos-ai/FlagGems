@@ -26,6 +26,13 @@ if QUICK_MODE:
     SHAPES = [(2, 17)]
 
 
+# aten::_thnn_fused_gru_cell_backward (and its _out overload) only ships a CUDA
+# kernel, so GCU (PrivateUse1) has no aten reference for it. This file therefore
+# never relies on that op alone: _manual_reference recomputes the same gradients
+# with plain CPU tensor math, exactly the layout recorded in the workspace, which
+# keeps the accuracy cases runnable on backends without the aten kernel.
+
+
 def _make_workspace(batch_size, hidden_size, dtype):
     input_gates = torch.randn(
         batch_size, 3 * hidden_size, device=flag_gems.device, dtype=dtype

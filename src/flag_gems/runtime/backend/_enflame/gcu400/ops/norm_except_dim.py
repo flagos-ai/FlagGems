@@ -193,7 +193,7 @@ def _finalize_kernel(out_ptr, D, POW, IS_P2: tl.constexpr, BLOCK: tl.constexpr):
 
 
 def norm_except_dim(v, pow=2, dim=0):
-    logger.debug("GEMS_ENFLAME_GCU400 NORM_EXCEPT_DIM")
+    logger.debug("GEMS_ENFLAME NORM_EXCEPT_DIM")
 
     assert v.dtype in (
         torch.float16,

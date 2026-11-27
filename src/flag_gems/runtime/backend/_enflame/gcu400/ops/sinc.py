@@ -16,12 +16,51 @@
 import logging
 import math
 
+import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# The fast-path kernel indexes with int32 offsets; larger tensors (or any
+# non-contiguous / non-float16/32/bfloat16 input) fall back to the generic
+# pointwise path below, which handles arbitrary strides and dtypes.
+_SINC_FAST_PATH_MAX_NUMEL = 2**31 - 1
+
+
+@triton.jit
+def sinc_contiguous_kernel(x_ptr, y_ptr, numel, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < numel
+    x = tl.load(x_ptr + offs, mask=mask)
+    xf = x.to(tl.float32)
+    px = math.pi * xf
+    y = tl.where(xf == 0.0, 1.0, tl.sin(px) / px)
+    tl.store(y_ptr + offs, y.to(y_ptr.type.element_ty), mask=mask)
+
+
+def _sinc_fast_path_block(numel):
+    # Device-swept sweet spots (GCU400, nw=2): 256 for launch-bound small
+    # tensors, then 4096 / 32768 / 65536 as the sin pipeline saturates.
+    if numel < 8192:
+        return 256
+    if numel < 1024 * 1024:
+        return 4096
+    if numel < 16 * 1024 * 1024:
+        return 32768
+    return 65536
+
+
+def _sinc_fast_path_allowed(A):
+    return (
+        A.is_contiguous()
+        and A.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and 0 < A.numel() <= _SINC_FAST_PATH_MAX_NUMEL
+    )
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -32,11 +71,26 @@ def sinc_func(x):
 
 
 def sinc(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SINC")
+    logger.debug("GEMS_ENFLAME SINC")
+    if _sinc_fast_path_allowed(A):
+        out = torch.empty_like(A)
+        numel = A.numel()
+        block = _sinc_fast_path_block(numel)
+        grid = (triton.cdiv(numel, block),)
+        with torch_device_fn.device(A.device):
+            sinc_contiguous_kernel[grid](A, out, numel, BLOCK=block, num_warps=2)
+        return out
     return sinc_func(A)
 
 
 def sinc_(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SINC_")
+    logger.debug("GEMS_ENFLAME SINC_")
+    if _sinc_fast_path_allowed(A):
+        numel = A.numel()
+        block = _sinc_fast_path_block(numel)
+        grid = (triton.cdiv(numel, block),)
+        with torch_device_fn.device(A.device):
+            sinc_contiguous_kernel[grid](A, A, numel, BLOCK=block, num_warps=2)
+        return A
     sinc_func(A, out0=A)
     return A

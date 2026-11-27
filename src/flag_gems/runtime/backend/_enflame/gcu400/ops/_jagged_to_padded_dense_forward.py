@@ -24,6 +24,17 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+# Fixed-grid cap: GCU400 exposes 48 SPs; beyond that, extra CTAs only queue
+# (~55ns/CTA issue tax) and tiny per-CTA work cannot amortize it.
+_JAGGED_MAX_PROGRAMS = 48
+# Lane budget per row-block iteration (DSM headroom for the two live tiles).
+_JAGGED_MAX_COL_BLOCK = 2048
+# Dispatch band for the two-rows-per-unit kernel (measured on GCU400):
+# row-loop arm wins at small batch and at >= 384 float32 rows; the row-pair
+# arm wins in between and for 16-bit values at >= 384 rows.
+_JAGGED_UNROLL2_MIN_BATCH = 64
+_JAGGED_UNROLL2_MAX_BATCH = 384
+
 
 @libentry()
 @triton.jit
@@ -34,9 +45,11 @@ def _jagged_to_padded_dense_forward_kernel(
     padding_value: tl.constexpr,
     batch_size: tl.constexpr,
     max_length: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    COL_BLOCK: tl.constexpr,
+    num_progs,
 ):
-    """Kernel for converting jagged tensor to padded dense tensor.
+    """Row-loop kernel: each program walks a strided set of rows and writes
+    every output element exactly once (masked gather + tl.where padding).
 
     Args:
         values: 1D tensor containing concatenated variable-length sequences
@@ -45,40 +58,90 @@ def _jagged_to_padded_dense_forward_kernel(
         padding_value: scalar value for padding
         batch_size: number of sequences
         max_length: maximum length of each sequence
+        COL_BLOCK: column tile width (power of two, capped on host)
+        num_progs: grid size used for the row stride
+
+    Index math is int32: values numel and output numel are assumed < 2**31.
     """
-    pid = tle.program_id(axis=0)
-    batch_idx = pid
+    pid = tle.program_id(axis=0).to(tl.int32)
+    cols = tl.arange(0, COL_BLOCK)
+    for row in tl.range(pid, batch_size, num_progs):
+        seq_start = tl.load(offsets + row).to(tl.int32)
+        seq_end = tl.load(offsets + row + 1).to(tl.int32)
+        seq_length = seq_end - seq_start
+        row_offset = row * max_length
+        for j in tl.range(0, max_length, COL_BLOCK):
+            col = j + cols
+            in_seq = col < seq_length
+            values_vec = tl.load(values + seq_start + col, mask=in_seq)
+            out = tl.where(in_seq, values_vec, padding_value)
+            tl.store(output + row_offset + col, out, mask=col < max_length)
 
-    if batch_idx >= batch_size:
-        return
 
-    # Get the start and end offset for this sequence
-    seq_start = tl.load(offsets + batch_idx)
-    seq_end = tl.load(offsets + batch_idx + 1)
+@libentry()
+@triton.jit
+def _jagged_to_padded_dense_forward_kernel_rows2(
+    values,
+    offsets,
+    output,
+    padding_value: tl.constexpr,
+    batch_size: tl.constexpr,
+    max_length: tl.constexpr,
+    COL_BLOCK: tl.constexpr,
+    num_progs,
+):
+    """Row-pair kernel: two consecutive rows per unit. Adjacent rows share
+    boundary loads (offsets[i + 1] ends row i and starts row i + 1) and both
+    row gathers are issued back to back so their latencies overlap.
 
-    # Calculate the actual sequence length
-    seq_length = seq_end - seq_start
+    Boundary indices are clamped to batch_size, keeping every offsets load
+    in-bounds for odd tails; rows past the end store nothing.
 
-    # Compute the row offset in the output
-    row_offset = batch_idx * max_length
+    Args:
+        values: 1D tensor containing concatenated variable-length sequences
+        offsets: 1D tensor of start positions for each sequence
+        output: 2D output tensor of shape (batch_size, max_length)
+        padding_value: scalar value for padding
+        batch_size: number of sequences
+        max_length: maximum length of each sequence
+        COL_BLOCK: column tile width (power of two, capped on host)
+        num_progs: grid size used for the unit stride
 
-    # Fill with padding value (vectorized per block)
-    for j in tl.range(0, max_length, BLOCK_SIZE):
-        out_offsets = row_offset + j + tl.arange(0, BLOCK_SIZE)
-        out_mask = (j + tl.arange(0, BLOCK_SIZE)) < max_length
-        tl.store(output + out_offsets, padding_value, mask=out_mask)
+    Index math is int32: values numel and output numel are assumed < 2**31.
+    """
+    pid = tle.program_id(axis=0).to(tl.int32)
+    cols = tl.arange(0, COL_BLOCK)
+    num_units = (batch_size + 1) // 2
+    for unit in tl.range(pid, num_units, num_progs):
+        row0 = unit * 2
+        row1 = row0 + 1
+        b0 = tl.load(offsets + tl.minimum(row0, batch_size)).to(tl.int32)
+        b1 = tl.load(offsets + tl.minimum(row1, batch_size)).to(tl.int32)
+        b2 = tl.load(offsets + tl.minimum(row1 + 1, batch_size)).to(tl.int32)
+        len0 = b1 - b0
+        len1 = b2 - b1
+        row0_valid = row0 < batch_size
+        row1_valid = row1 < batch_size
+        row0_offset = row0 * max_length
+        row1_offset = row1 * max_length
+        for j in tl.range(0, max_length, COL_BLOCK):
+            col = j + cols
+            col_mask = col < max_length
+            in0 = col < len0
+            in1 = col < len1
+            v0 = tl.load(values + b0 + col, mask=in0)
+            v1 = tl.load(values + b1 + col, mask=in1)
+            o0 = tl.where(in0, v0, padding_value)
+            o1 = tl.where(in1, v1, padding_value)
+            tl.store(output + row0_offset + col, o0, mask=row0_valid & col_mask)
+            tl.store(output + row1_offset + col, o1, mask=row1_valid & col_mask)
 
-    # Copy actual values (vectorized per block)
-    for j in tl.range(0, seq_length, BLOCK_SIZE):
-        offsets_vec = seq_start + j + tl.arange(0, BLOCK_SIZE)
-        mask = offsets_vec < seq_end
 
-        values_vec = tl.load(values + offsets_vec, mask=mask, other=padding_value)
-
-        out_offsets = row_offset + j + tl.arange(0, BLOCK_SIZE)
-        out_mask = (j + tl.arange(0, BLOCK_SIZE)) < seq_length
-
-        tl.store(output + out_offsets, values_vec, mask=out_mask)
+def _next_pow2_capped(n, cap):
+    block = 1
+    while block < n and block < cap:
+        block *= 2
+    return block
 
 
 def _jagged_to_padded_dense_forward(values, offsets, max_lengths, padding_value=0.0):
@@ -93,7 +156,7 @@ def _jagged_to_padded_dense_forward(values, offsets, max_lengths, padding_value=
     Returns:
         Padded dense tensor
     """
-    logger.debug("GEMS_ENFLAME_GCU400 JAGGED_TO_PADDED_DENSE_FORWARD")
+    logger.debug("GEMS_ENFLAME JAGGED_TO_PADDED_DENSE_FORWARD")
 
     # Currently only supports single batch dimension
     if not isinstance(offsets, (list, tuple)):
@@ -116,16 +179,39 @@ def _jagged_to_padded_dense_forward(values, offsets, max_lengths, padding_value=
     output_shape = (batch_size, max_length)
     output = torch.empty(output_shape, dtype=values.dtype, device=values.device)
 
-    grid = lambda meta: (batch_size,)
-    _jagged_to_padded_dense_forward_kernel[grid](
-        values,
-        offsets_0,
-        output,
-        padding_value,
-        batch_size,
-        max_length,
-        # BLOCK_SIZE=128 balances occupancy and memory efficiency for typical sequence lengths
-        BLOCK_SIZE=128,
-    )
+    col_block = _next_pow2_capped(max_length, _JAGGED_MAX_COL_BLOCK)
+    use_rows2 = _JAGGED_UNROLL2_MIN_BATCH < batch_size < _JAGGED_UNROLL2_MAX_BATCH
+    if batch_size >= _JAGGED_UNROLL2_MAX_BATCH and values.dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        use_rows2 = True
+    if use_rows2:
+        num_units = (batch_size + 1) // 2
+        grid = (min(num_units, _JAGGED_MAX_PROGRAMS),)
+        _jagged_to_padded_dense_forward_kernel_rows2[grid](
+            values,
+            offsets_0,
+            output,
+            padding_value,
+            batch_size,
+            max_length,
+            COL_BLOCK=col_block,
+            num_progs=grid[0],
+            num_warps=2,
+        )
+    else:
+        grid = (min(batch_size, _JAGGED_MAX_PROGRAMS),)
+        _jagged_to_padded_dense_forward_kernel[grid](
+            values,
+            offsets_0,
+            output,
+            padding_value,
+            batch_size,
+            max_length,
+            COL_BLOCK=col_block,
+            num_progs=grid[0],
+            num_warps=2,
+        )
 
     return output

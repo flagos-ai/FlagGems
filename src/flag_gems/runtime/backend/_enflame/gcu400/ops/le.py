@@ -1,3 +1,12 @@
+import logging
+
+import triton
+import triton.language as tl  # noqa: F401
+
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+
 # Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +21,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
-import triton
-
-from flag_gems.utils.codegen_config_utils import CodeGenConfig
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
 
 # Copyright 2026 FlagOS Contributors
 #

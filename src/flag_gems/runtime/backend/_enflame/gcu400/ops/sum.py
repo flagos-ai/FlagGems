@@ -39,31 +39,37 @@ logger = logging.getLogger(__name__)
 _min = builtins.min
 _max = builtins.max
 
-# GCU400 has 48 compute units; a fixed grid + in-kernel stride keeps SPs saturated.
+# GCU400 has 48 compute units; a fixed grid plus in-kernel striding keeps the SPs fully utilized.
 MAX_GRID = 48
 
-# Global sum: 65536 elements (fp16 128 KiB / fp32 256 KiB) measured best bandwidth.
+# Global reduction: 4-byte types achieve the best bandwidth with 65536 elements (fp32 256 KiB).
 GLOBAL_TILE_ELEMS = 65536
 
-# Byte budget of one row-reduction tile: sum has one read pass, so the tile can be 256 KiB.
+# Streaming tile for 2-byte types: 131072 elements (fp16/bf16 256 KiB). Measured (2026-11-16)
+# With grid 48 + nw4, it is 10~11% faster than 65536 elements + 96 ways across the entire 32MiB~2GiB range.
+GLOBAL_TILE_ELEMS_2B = 131072
+
+# Byte budget for a single tile in row reduction: sum has only one read pass, so the tile can be as large as 256 KiB.
 INNER_TILE_BYTES = 131072
 
-# Byte budget of one tile for non-row reduction (K > 1).
+# Byte budget for a single tile in non-row reduction (K > 1).
 NON_INNER_TILE_BYTES = 131072
 
-# 2D block tiling for global sum is enabled only at medium scale: for larger data 1D streaming's contiguous
-# access is better (measured 2 GiB: 1D 1.66x vs 2D 1.46x), for smaller data launch overhead dominates.
+# 2D block tiling for 2D global reduction is enabled only at medium sizes: at larger data sizes, the contiguous
+# access of 1D streaming is more cost-effective (measured at 2 GiB: 1D 1.66x vs 2D 1.46x), while at smaller sizes launch
+# overhead dominates.
 GLOBAL_2D_MIN_BYTES = 64 * 1024 * 1024
 GLOBAL_2D_MAX_BYTES = 512 * 1024 * 1024
 
-# Reduction width cap of 2D global sum (measured optimum for both fp16/fp32).
+# Upper limit on reduction width for 2D global reduction (fp16/fp32 measurements are both optimal near this value).
 GLOBAL_2D_WIDTH = 8192
 
-# In-row reduction width cap: cross-lane reduction cost grows with width,
-# measured bandwidth drops beyond 16384.
+# Upper limit on intra-row reduction width: cross-lane reduction cost grows with width,
+# measurements show bandwidth drops beyond 16384.
 MAX_REDUCE_WIDTH = 16384
 
-# When rows are few but rows are long, row reduction has only 1 tile, so split once more along N across 48 programs.
+# When there are very few rows but extremely long rows, row reduction has only 1 tile, so it must be split once more
+# along the N dimension to distribute across 48 programs.
 ROW_SPLIT_MAX_ROWS = 8
 ROW_SPLIT_MIN_N = 65536
 
@@ -410,15 +416,19 @@ def _launch_global_sum(inp, out, n_elem):
             )
             return
 
-        # 1D streaming: 2-byte types get 2x grid and 2 warps (measured saturating 2.4 TB/s);
-        # 4-byte types and small scales fall back to 1 warp - the former is not bandwidth bound, the latter is
-        # launch-overhead bound, so extra warps only slow things down.
-        grid_cap = MAX_GRID * 2 if element_size == 2 else MAX_GRID
-        grid = _min(grid_cap, triton.cdiv(n_elem, block))
+        # 1D streaming: 2-byte types use 2x tile + 48 ways (fp16/bf16 measured 32MiB~2GiB
+        # across the full range it is 10~11% faster than 65536 elements + 96 ways); 4-byte types keep the 65536-element
+        # tile.
+        # Small sizes are dominated by launch overhead and are insensitive to either configuration.
+        block = _min(
+            triton.next_power_of_2(n_elem),
+            GLOBAL_TILE_ELEMS_2B if element_size == 2 else GLOBAL_TILE_ELEMS,
+        )
+        grid = _min(MAX_GRID, triton.cdiv(n_elem, block))
 
-        # Each program atomically accumulates its partial into the pre-zeroed Out, single launch, no temporary
-        # buffer. Partials accumulate in fp32 (including fp16/bf16 inputs), and only the final atomic
-        # merge lands in Out's dtype.
+        # Each program atomically accumulates its partial directly into the pre-zeroed Out, single launch, no temporary
+        # buffer. partials are accumulated in fp32 (even for fp16/bf16 inputs), and only the final atomic
+        # merge lands on the dtype of Out.
         out.zero_()
         sum_global_direct_kernel[(grid,)](
             inp,
@@ -505,15 +515,24 @@ def _launch_dim_sum(inp, out, M, N, K):
                 BLOCK_M=block_m,
                 BLOCK_N=block_n,
                 num_stages=1,
-                num_warps=2,
+                num_warps=1 if block_m * block_n <= 512 else 2,
             )
             return
 
-        # Tail-block width: prefer large (longer memory segments), but too few tasks make 48 compute units
-        # idle in a tail effect, so fall back by 2x grid count.
+        # Tail-block width: prefer a larger value (longer memory access segments). For 4-byte types, when task count is
+        # insufficient, fall back to 2x the grid count
+        # to avoid the tail effect idling the 48 compute units; 16-bit is not halved — the axis=0 tree
+        # reduction has a known slow path when the contiguous dimension width is <=256 (same pathology family as prod).
         block_k = _min(triton.next_power_of_2(K), 512)
-        while block_k > 16 and M * triton.cdiv(K, block_k) < 2 * MAX_GRID:
-            block_k //= 2
+        if element_size == 2:
+            # For 16-bit when the tree width is sufficient, raise nw to 4: measured (1024,1024,512) fp16
+            # 616 -> 440us (-28%), (64,512,512) 31.9 -> 26.0us. When K < 512
+            # the tree is too narrow for the fast path, so keep the original nw=1 setting.
+            num_warps = 4 if block_k >= 512 else 1
+        else:
+            while block_k > 16 and M * triton.cdiv(K, block_k) < 2 * MAX_GRID:
+                block_k //= 2
+            num_warps = 1
         block_i = _min(
             triton.next_power_of_2(N),
             _tile_elems(element_size, NON_INNER_TILE_BYTES) // block_k,
@@ -530,7 +549,7 @@ def _launch_dim_sum(inp, out, M, N, K):
             BLOCK_I=block_i,
             BLOCK_K=block_k,
             num_stages=1,
-            num_warps=1,
+            num_warps=num_warps,
         )
 
 

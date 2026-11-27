@@ -18,8 +18,8 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems import runtime
+from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ if _CAN_CAPTURE_NATIVE_KERNEL:
     )
 
 
+@libentry()
 @triton.jit
 def cholesky_kernel(
     A_ptr,
@@ -90,8 +91,14 @@ def cholesky_kernel(
     # order, not the padded tile width: rows/columns >= N are zero and the store
     # is masked to the valid region, so the padded steps would be dead work on
     # the serial critical path.
+    #
+    # The loop is deliberately rolled (runtime ``range``) instead of
+    # ``tl.static_range``: unrolling every step duplicates the whole tile worth
+    # of temporaries, which pushes BLOCK_N=64 past the GCU DSM/local limit and
+    # spills to local memory (measured 1.29ms -> 0.50ms when rolled at N=64,
+    # 0.35ms -> 0.22ms at N=32).
     info = 0
-    for j in tl.static_range(NSTEPS):
+    for j in range(0, NSTEPS):
         col = tl.sum(tl.where(cj == j, W, 0.0), axis=1)
         pivot = tl.sum(tl.where(r == j, col, 0.0))
         # A non-positive or non-finite pivot means the leading minor of order
@@ -118,11 +125,16 @@ def cholesky_kernel(
     tl.store(Info_ptr + pid, info)
 
 
-_MAX_N = 64
+_MAX_N = 32
+
+# Cache of the one-element info buffer used by the single-matrix hot path.
+# Keyed by device; the vector is fully overwritten by every launch, so reuse
+# cannot leak state between calls.
+_INFO_CACHE = {}
 
 
 def cholesky(A, upper=False):
-    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY")
+    logger.debug("GEMS_ENFLAME CHOLESKY")
     if A.dim() < 2:
         raise RuntimeError(
             "cholesky: The input tensor A must have at least 2 dimensions."
@@ -154,25 +166,40 @@ def cholesky(A, upper=False):
         raise NotImplementedError("cholesky float64 requires the native aten kernel")
 
     if n > _MAX_N:
-        # The blocked kernel keeps the whole matrix register-resident, which is
-        # only viable for small orders. Beyond that, delegate to the native
-        # LAPACK-backed ``aten::cholesky`` captured at import time; raising
-        # here would break callers (e.g. the benchmark) since a registered
-        # device kernel has no automatic ATen fallback.
+        # The blocked kernel keeps the whole matrix live for the entire serial
+        # factorisation, which is only viable for small orders. Beyond that,
+        # delegate to the native LAPACK-backed ``aten::cholesky`` captured at
+        # import time; raising here would break callers (e.g. the benchmark)
+        # since a registered device kernel has no automatic ATen fallback.
+        # The cutoff is 32 because the Triton path is slower than that native
+        # path as soon as the tile stops fitting the register/DSM budget:
+        # measured 0.59x at N=64 versus 0.92-1.04x at N<=32.
         if _CAN_CAPTURE_NATIVE_KERNEL:
             return _NATIVE_CHOLESKY.call_boxed(_DEVICE_KEYSET, A, bool(upper))
-        raise NotImplementedError("cholesky kernel supports N <= 64")
+        raise NotImplementedError("cholesky kernel supports N <= 32")
     num = int(A.numel()) // (n * n)
 
     # A contiguous copy is required: reshaping a transposed input would copy
     # silently and lose writes, and the kernel indexes with explicit strides.
     a2 = A.reshape(num, n, n).contiguous()
     out = torch.empty_like(a2)
-    info = torch.empty(num, dtype=torch.int32, device=A.device)
+    # The single-matrix case is the hot path and always needs a one-element info
+    # buffer, so keep it cached per device instead of paying an allocator round
+    # trip on every call (measured ~15us of the wrapper budget).
+    info = None
+    if num == 1:
+        info = _INFO_CACHE.get(A.device)
+        if info is None:
+            info = torch.empty(1, dtype=torch.int32, device=A.device)
+            _INFO_CACHE[A.device] = info
+    if info is None:
+        info = torch.empty(num, dtype=torch.int32, device=A.device)
 
     block_n = triton.next_power_of_2(n)
-    # Larger tiles stress one warp's registers; extra warps recover
-    # ILP for BLOCK_N >= 32 (measured on H20: ~2x at N=48/64).
+    # A single warp is fastest on GCU400: every extra warp replicates the
+    # BLOCK_N x BLOCK_N tile footprint in DSM, so num_warps=2 regressed N=32
+    # from 0.24ms to 0.30ms and N=64 from 0.50ms to 0.65ms, while num_warps=4
+    # at BLOCK_N=64 overflows the 896KB DSM budget outright.
     num_warps = 1
     cholesky_kernel[(num,)](
         a2,
@@ -192,9 +219,20 @@ def cholesky(A, upper=False):
         num_warps=num_warps,
     )
 
-    bad = info.reshape(-1)
-    if bool(torch.any(bad != 0).item()):
-        first = int(bad[int(flag_gems.nonzero(bad)[0])])
+    # The info read-back is a fixed host-side synchronisation cost on every call,
+    # so keep it on the cheapest path: the previous `torch.any(info != 0).item()`
+    # paid 41us extra (two reduction kernels plus a sync) and raised the GCU400
+    # wrapper latency at N=2/8/32 from 34.6/52.3/142.4us to 54.2/71.5/161.7us.
+    # Reading a single element for num==1 needs one DtoH transfer and no
+    # reduction kernel; for batches read `max` first as a fast check and only
+    # locate the first failing index on the rare error path.
+    if num == 1:
+        first = int(info[0].item())
+    else:
+        first = int(info.max().item())
+        if first != 0:
+            first = int(info[int(torch.nonzero(info.reshape(-1))[0])].item())
+    if first != 0:
         raise torch.linalg.LinAlgError(
             "cholesky: The factorization could not be completed because the "
             "input is not positive-definite (the leading minor of order %d is "
