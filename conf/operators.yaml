@@ -12031,7 +12031,7 @@ ops:
   kind:
   - Math
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: linalg_det_out
   description: 'A variant of linalg_det that writes the determinant to the provided
     out tensor.
