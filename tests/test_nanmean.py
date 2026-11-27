@@ -31,7 +31,17 @@ def test_nanmean(shape, dtype):
     inp = _nan_input(shape, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.nanmean(ref_inp)
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and ref_inp.device.type != "cpu"
+        and dtype == torch.float16
+        and shape == (200, 40999, 3)
+    ):
+        # At this size native MUSA FP16 overflows or rounds the sum/count
+        # before division. Keep the original FP16 input and output.
+        ref_out = torch.nanmean(ref_inp, dtype=torch.float32).to(dtype)
+    else:
+        ref_out = torch.nanmean(ref_inp)
     res_out = flag_gems.nanmean(inp)
 
     utils.gems_assert_close(
