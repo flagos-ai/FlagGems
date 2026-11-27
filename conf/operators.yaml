@@ -15112,6 +15112,17 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: nansum_backward
+  description: Triton backward implementation and autograd contract for nansum.
+  for:
+  - nansum
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: nansum_out
   description: 'A variant of `nansum()` with the `out` argument.
 
