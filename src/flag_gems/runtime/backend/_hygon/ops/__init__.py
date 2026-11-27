@@ -137,6 +137,7 @@ from ._foreach_sub__ScalarList import (
     _foreach_sub__ScalarList as _foreach_sub__ScalarList,
 )
 from ._foreach_tan import _foreach_tan as _foreach_tan
+from ._foreach_tan_ import _foreach_tan_ as _foreach_tan_
 from ._fused_rms_norm_backward import (
     _fused_rms_norm_backward as _fused_rms_norm_backward,
 )
@@ -493,6 +494,7 @@ __all__ = [
     "_foreach_sqrt",
     "_foreach_sub__ScalarList",
     "_foreach_tan",
+    "_foreach_tan_",
     "_fused_rms_norm_backward",
     "_masked_scale",
     "_native_batch_norm_legit_no_training",
