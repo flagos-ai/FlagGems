@@ -495,6 +495,20 @@ def _should_use_fused_path(
     return total_elems <= _FUSE_THRESHOLD
 
 
+# A GCU launch is capped at 65535 programs on grid.x. Every kernel below maps
+# one program to one (nc, ih) row, so the NC axis is split into chunks whose
+# row count stays inside that cap (e.g. NC=131072 with H=128 needs 257 > 65535
+# rows and used to fail with OutOfResources).
+_GCU_GRID_X_LIMIT = 65535
+
+
+def _nc_chunk_size(h_extent):
+    """Leading-dim rows per launch: keeps ``nc_chunk * h_extent`` under the cap."""
+    if h_extent <= 0:
+        return 1
+    return max(1, _GCU_GRID_X_LIMIT // h_extent)
+
+
 def _upsample_bilinear2d_aa_backward(
     grad_output: torch.Tensor,
     output_size,  # [H_out, W_out]
@@ -503,7 +517,7 @@ def _upsample_bilinear2d_aa_backward(
     scales_h=None,
     scales_w=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BILINEAR2D_AA_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_BILINEAR2D_AA_BACKWARD")
     N, C, H_in, W_in = input_size
     H_out, W_out = output_size
 
@@ -578,30 +592,33 @@ def _upsample_bilinear2d_aa_backward(
         grad_in_flat = torch.empty(
             NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
         )
-        grid = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
-        _fused_backward_kernel[grid](
-            grad_out_flat,
-            grad_in_flat,
-            H_in,
-            H_out,
-            h_scale,
-            support_h,
-            invscale_h,
-            inv_h_scale,
-            W_in,
-            W_out,
-            w_scale,
-            support_w,
-            invscale_w,
-            inv_w_scale,
-            H_out * W_out,  # stride_go_nc
-            BLOCK_IW=BLOCK_IW,
-            MAX_OH=MAX_OH,
-            MAX_OW=MAX_OW,
-            MAX_KSIZE_H=MAX_KSIZE_H,
-            MAX_KSIZE_W=MAX_KSIZE_W,
-            num_warps=nw,
-        )
+        fused_nc_chunk = _nc_chunk_size(H_in)
+        for nc_start in range(0, NC, fused_nc_chunk):
+            nc_end = min(nc_start + fused_nc_chunk, NC)
+            grid = ((nc_end - nc_start) * H_in, triton.cdiv(W_in, BLOCK_IW))
+            _fused_backward_kernel[grid](
+                grad_out_flat[nc_start:nc_end],
+                grad_in_flat[nc_start:nc_end],
+                H_in,
+                H_out,
+                h_scale,
+                support_h,
+                invscale_h,
+                inv_h_scale,
+                W_in,
+                W_out,
+                w_scale,
+                support_w,
+                invscale_w,
+                inv_w_scale,
+                H_out * W_out,  # stride_go_nc
+                BLOCK_IW=BLOCK_IW,
+                MAX_OH=MAX_OH,
+                MAX_OW=MAX_OW,
+                MAX_KSIZE_H=MAX_KSIZE_H,
+                MAX_KSIZE_W=MAX_KSIZE_W,
+                num_warps=nw,
+            )
         return grad_in_flat.reshape(N, C, H_in, W_in)
 
     else:
@@ -659,42 +676,48 @@ def _upsample_bilinear2d_aa_backward(
         buf = torch.empty(
             NC, H_out, W_in, dtype=torch.float32, device=grad_output.device
         )
-        grid1 = (NC * H_out, triton.cdiv(W_in, BLOCK_IW))
-        _pass1_w_gather_nchw_kernel[grid1](
-            grad_out_flat,
-            buf,
-            wx,
-            wx_start,
-            W_in,
-            W_out,
-            support_w,
-            inv_w_scale,
-            BLOCK_IW=BLOCK_IW,
-            MAX_OW=MAX_OW,
-            MAX_KSIZE_W=MAX_KSIZE_W,
-            num_warps=nw,
-        )
+        pass1_nc_chunk = _nc_chunk_size(H_out)
+        for nc_start in range(0, NC, pass1_nc_chunk):
+            nc_end = min(nc_start + pass1_nc_chunk, NC)
+            grid1 = ((nc_end - nc_start) * H_out, triton.cdiv(W_in, BLOCK_IW))
+            _pass1_w_gather_nchw_kernel[grid1](
+                grad_out_flat[nc_start:nc_end],
+                buf[nc_start:nc_end],
+                wx,
+                wx_start,
+                W_in,
+                W_out,
+                support_w,
+                inv_w_scale,
+                BLOCK_IW=BLOCK_IW,
+                MAX_OW=MAX_OW,
+                MAX_KSIZE_W=MAX_KSIZE_W,
+                num_warps=nw,
+            )
 
         # Phase 2: H-gather -> grad_in [NC, H_in, W_in]
         grad_in_flat = torch.empty(
             NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
         )
-        grid2 = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
-        _pass2_h_gather_nchw_kernel[grid2](
-            buf,
-            grad_in_flat,
-            wy,
-            wy_start,
-            H_in,
-            W_in,
-            H_out,
-            support_h,
-            inv_h_scale,
-            H_out * W_in,  # stride_buf_hw
-            BLOCK_IW=BLOCK_IW,
-            MAX_OH=MAX_OH,
-            MAX_KSIZE_H=MAX_KSIZE_H,
-            num_warps=nw,
-        )
+        pass2_nc_chunk = _nc_chunk_size(H_in)
+        for nc_start in range(0, NC, pass2_nc_chunk):
+            nc_end = min(nc_start + pass2_nc_chunk, NC)
+            grid2 = ((nc_end - nc_start) * H_in, triton.cdiv(W_in, BLOCK_IW))
+            _pass2_h_gather_nchw_kernel[grid2](
+                buf[nc_start:nc_end],
+                grad_in_flat[nc_start:nc_end],
+                wy,
+                wy_start,
+                H_in,
+                W_in,
+                H_out,
+                support_h,
+                inv_h_scale,
+                H_out * W_in,  # stride_buf_hw
+                BLOCK_IW=BLOCK_IW,
+                MAX_OH=MAX_OH,
+                MAX_KSIZE_H=MAX_KSIZE_H,
+                num_warps=nw,
+            )
 
         return grad_in_flat.reshape(N, C, H_in, W_in)

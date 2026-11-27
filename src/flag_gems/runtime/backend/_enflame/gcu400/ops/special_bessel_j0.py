@@ -141,7 +141,7 @@ def _words_view(t):
 
 
 def special_bessel_j0(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_BESSEL_J0")
+    logger.debug("GEMS_ENFLAME SPECIAL_BESSEL_J0")
     if A.dtype not in (torch.float32, torch.float64):
         raise TypeError(
             f"special_bessel_j0: unsupported dtype {A.dtype}, only float32 and float64 are supported"

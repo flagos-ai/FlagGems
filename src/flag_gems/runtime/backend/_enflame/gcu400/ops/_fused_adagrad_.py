@@ -364,7 +364,7 @@ def _fused_adagrad_(
     Mirrors ``aten::_fused_adagrad_``: the ``params`` and ``state_sums`` tensors
     are updated in place and nothing is returned. ``grads`` is not modified.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_ADAGRAD_")
+    logger.debug("GEMS_ENFLAME FUSED_ADAGRAD_")
 
     _fused_adagrad_run(
         params,

@@ -137,7 +137,7 @@ def _triangular_solve(
     solver_coeff=False,
     copy_fn=_copy_matrix,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 TRIANGULAR_SOLVE_IMPL")
+    logger.debug("GEMS_ENFLAME TRIANGULAR_SOLVE_IMPL")
     global _warned
     if B.ndim < 2 or A.ndim < 2:
         raise RuntimeError("triangular_solve: A and B must have at least 2 dimensions")
@@ -856,7 +856,748 @@ def _copy_coefficient(dst, src):
             )
 
 
-def _solve_dense(A, B, *, upper, unitriangular, out=None, coefficient, original):
+def _copy_coefficient_batched(dst, src):
+    """Copy the full coefficient matrix for every batch element in one launch.
+
+    The 2-D tile copy lands when the destination is innermost-contiguous or
+    can be flipped into that form (the BLAS column-major outputs).  Exotic
+    destinations (e.g. sliced outputs) keep the address-clamped flat kernel.
+    """
+    if dst is None or src is None or not dst.numel() or not src.numel():
+        return
+    inner, outer = dst.stride(-1), dst.stride(-2)
+    if inner == 1 or (outer == 1 and inner != 1):
+        _copy_matrix(dst, src)
+    else:
+        _copy_coefficient(dst, src)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# fp32 fast path (2026-11-17): column-scaled Neumann kernels, num_warps=1.
+#
+# Same measured design as the gcu400 linalg_solve_triangular fast path
+# (whole-block Neumann solves as tl.dot chains; serial per-row substitution
+# is reduction/barrier-bound here, and tl.gather forces num_warps=1 anyway).
+# Deviations required by this op's contract:
+#   * A = (I + M) D with M[i, j] = A[i, j]/A[j, j] (COLUMN scaling), so
+#     X = D^{-1}(I + M)^{-1} B: the diagonal reciprocal multiplies the
+#     result, after the series' cancellation.  The row-scaled form
+#     (D^{-1} first) overflows to NaN on finite-inverses whose scaled RHS
+#     exceeds the exponent range before cancelling (n=33 test case).
+#   * X is written directly in the legacy BLAS column-major layout
+#     (X[r, c] at c*N + r), out-of-place: read B, write X.
+#   * UPPER uses natural ascending coordinates everywhere: only the strict
+#     mask orientation flips and the block ORDER reverses.  Descending
+#     address vectors degrade the load lowering on this backend, and the
+#     host-side flip mirror costs extra full-matrix copies.
+#   * The (I+M)^{-1} factor chain is complete up to M^(BLOCK-1) for every
+#     BLOCK, including the M^64 factor of the BLOCK=128 inverse builder.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@libentry()
+@triton.jit
+def _tri_solve_1blk(
+    A,
+    B,
+    X,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BATCH: tl.constexpr,
+    A_STRIDES: tl.constexpr,
+    B_STRIDES: tl.constexpr,
+    XB: tl.constexpr,
+    BN: tl.constexpr,
+    KS: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+):
+    """Whole-matrix Neumann solve for N <= BN <= 64.  Grid: (batch*k-slices,)."""
+    BATCH_COUNT: tl.constexpr = math.prod(BATCH.value)
+    A_SPAN: tl.constexpr = N * (A_STRIDES.value[-2] + A_STRIDES.value[-1]) + (
+        BATCH_COUNT * math.fsum(A_STRIDES.value)
+    )
+    B_SPAN: tl.constexpr = (
+        N * B_STRIDES.value[-2]
+        + K * B_STRIDES.value[-1]
+        + (BATCH_COUNT * math.fsum(B_STRIDES.value))
+    )
+    INDEX64: tl.constexpr = (
+        A_SPAN > 2147483647 or B_SPAN > 2147483647 or BATCH_COUNT * N * K > 2147483647
+    )
+    NUM_K: tl.constexpr = (K + KS - 1) // KS
+    EVEN_K: tl.constexpr = K % KS == 0
+    pid = tl.program_id(0)
+    # Fold the k-slice index into constants whenever the compiler can prove
+    # the column mask: with one slice kcols is a constant vector, and with
+    # full slices the mask is all-true.  Runtime column masks keep every
+    # load/store of the walk on the expensive predicated path (measured:
+    # same kernel 135 us runtime-masked vs 40 us constant-masked at n=128).
+    if NUM_K == 1:
+        kcols = tl.arange(0, KS)
+        cmask = kcols < K
+    elif EVEN_K:
+        kcols = (pid % NUM_K) * KS + tl.arange(0, KS)
+        cmask = tl.full((KS,), 1, tl.int1)
+    else:
+        kcols = (pid % NUM_K) * KS + tl.arange(0, KS)
+        cmask = kcols < K
+    flat_batch = pid // NUM_K
+    if INDEX64:
+        flat_batch = flat_batch.to(tl.int64)
+        kcols = kcols.to(tl.int64)
+    a_off = tl.full((), 0, tl.int64)
+    b_off = tl.full((), 0, tl.int64)
+    remainder = flat_batch
+    for dim in tl.static_range(len(BATCH) - 1, -1, -1):
+        coordinate = remainder % BATCH.value[dim]
+        remainder //= BATCH.value[dim]
+        a_off += coordinate * A_STRIDES.value[dim]
+        b_off += coordinate * B_STRIDES.value[dim]
+    A += a_off
+    B += b_off
+    X += flat_batch * XB
+    rows = tl.arange(0, BN)
+    if INDEX64:
+        rows = rows.to(tl.int64)
+    r2 = rows[:, None]
+    c2 = rows[None, :]
+    in_n = (rows[:, None] < N) & (rows[None, :] < N)
+    # gcu400's masked loads do not always honor `other` for lanes whose
+    # address falls outside the tensor: the DMA returns neighbor memory, and
+    # 0 * NaN inside the dots poisons valid outputs (measured: X[64, 2] read
+    # the NaN-prefilled output of the next allocation).  Clamp every masked
+    # lane's address to element 0, as _coefficient_copy_kernel does.
+    a_blk = tl.load(
+        A + tl.where(in_n, r2 * A_STRIDES.value[-2] + c2 * A_STRIDES.value[-1], 0),
+        mask=in_n,
+        other=0.0,
+    )
+    if UNIT:
+        dinv = tl.full((BN,), 1.0, a_blk.dtype)
+    else:
+        in_d = rows < N
+        dinv = 1.0 / tl.load(
+            A + tl.where(in_d, rows * (A_STRIDES.value[-2] + A_STRIDES.value[-1]), 0),
+            mask=in_d,
+            other=1.0,
+        )
+    if UPPER:
+        m = tl.where(c2 > r2, a_blk, 0.0) * dinv[None, :]
+    else:
+        m = tl.where(c2 < r2, a_blk, 0.0) * dinv[None, :]
+    rmask = (rows[:, None] < N) & cmask[None, :]
+    v = tl.load(
+        B
+        + tl.where(
+            rmask,
+            r2 * B_STRIDES.value[-2] + kcols[None, :] * B_STRIDES.value[-1],
+            0,
+        ),
+        mask=rmask,
+        other=0.0,
+    )
+    m2 = tl.dot(m, m, allow_tf32=False)
+    m4 = tl.dot(m2, m2, allow_tf32=False)
+    m8 = tl.dot(m4, m4, allow_tf32=False)
+    v = v - tl.dot(m, v, allow_tf32=False)
+    v = v + tl.dot(m2, v, allow_tf32=False)
+    v = v + tl.dot(m4, v, allow_tf32=False)
+    v = v + tl.dot(m8, v, allow_tf32=False)
+    if BN >= 32:
+        m16 = tl.dot(m8, m8, allow_tf32=False)
+        v = v + tl.dot(m16, v, allow_tf32=False)
+    if BN >= 64:
+        m32 = tl.dot(m16, m16, allow_tf32=False)
+        v = v + tl.dot(m32, v, allow_tf32=False)
+    # The solution buffer is column-major (X[r, c] at c*N + r): the tile's
+    # innermost lane must walk the contiguous row axis, or gcu400's masked
+    # 2-D store drops every lane but the first row (see _copy_matrix).
+    tl.store(
+        X + kcols[:, None] * N + rows[None, :],
+        tl.trans(v * dinv[:, None]),
+        mask=cmask[:, None] & (rows[None, :] < N),
+    )
+
+
+@libentry()
+@triton.jit
+def _tri_solve_walk(
+    A,
+    B,
+    X,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BATCH: tl.constexpr,
+    A_STRIDES: tl.constexpr,
+    B_STRIDES: tl.constexpr,
+    XB: tl.constexpr,
+    BLOCK: tl.constexpr,
+    KS: tl.constexpr,
+    BM: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+):
+    """Serial block walk with in-register Neumann solves, 64 < N <= 192.
+
+    Grid: (batch*k-slices,).  Out-of-place: the first processed block reads
+    B, later reads hit rows this CTA wrote to X (updates cover exactly the
+    next block's rows, in either walk direction).  No X initialization.
+    """
+    BATCH_COUNT: tl.constexpr = math.prod(BATCH.value)
+    A_SPAN: tl.constexpr = N * (A_STRIDES.value[-2] + A_STRIDES.value[-1]) + (
+        BATCH_COUNT * math.fsum(A_STRIDES.value)
+    )
+    B_SPAN: tl.constexpr = (
+        N * B_STRIDES.value[-2]
+        + K * B_STRIDES.value[-1]
+        + (BATCH_COUNT * math.fsum(B_STRIDES.value))
+    )
+    INDEX64: tl.constexpr = (
+        A_SPAN > 2147483647 or B_SPAN > 2147483647 or BATCH_COUNT * N * K > 2147483647
+    )
+    NUM_K: tl.constexpr = (K + KS - 1) // KS
+    NUM_BLOCKS: tl.constexpr = (N + BLOCK - 1) // BLOCK
+    EVEN_K: tl.constexpr = K % KS == 0
+    pid = tl.program_id(0)
+    # Constant-fold the column mask whenever provable (see _tri_solve_1blk):
+    # runtime column masks keep every load/store on the predicated path.
+    if NUM_K == 1:
+        kcols = tl.arange(0, KS)
+        cmask = kcols < K
+    elif EVEN_K:
+        kcols = (pid % NUM_K) * KS + tl.arange(0, KS)
+        cmask = tl.full((KS,), 1, tl.int1)
+    else:
+        kcols = (pid % NUM_K) * KS + tl.arange(0, KS)
+        cmask = kcols < K
+    flat_batch = pid // NUM_K
+    if INDEX64:
+        flat_batch = flat_batch.to(tl.int64)
+        kcols = kcols.to(tl.int64)
+    a_off = tl.full((), 0, tl.int64)
+    b_off = tl.full((), 0, tl.int64)
+    remainder = flat_batch
+    for dim in tl.static_range(len(BATCH) - 1, -1, -1):
+        coordinate = remainder % BATCH.value[dim]
+        remainder //= BATCH.value[dim]
+        a_off += coordinate * A_STRIDES.value[dim]
+        b_off += coordinate * B_STRIDES.value[dim]
+    A += a_off
+    B += b_off
+    X += flat_batch * XB
+    cm2 = cmask[None, :]
+    rows = tl.arange(0, BLOCK)
+    rr = tl.arange(0, BM)
+    if INDEX64:
+        rows = rows.to(tl.int64)
+        rr = rr.to(tl.int64)
+    # Static unroll: on this backend the dot chains inside a dynamic block
+    # loop lower ~2.5x slower than the same dots in straight-line code
+    # (measured n=128: 100.7 -> 40.3 us).  NUM_BLOCKS is constexpr, so every
+    # block-level scalar below folds at compile time.
+    for block_idx in tl.static_range(NUM_BLOCKS):
+        if not UPPER:
+            bk = block_idx
+        else:
+            bk = NUM_BLOCKS - 1 - block_idx
+        blk_start = bk * BLOCK
+        # Trace-time bounds.  min() and if-statements lower to tensor ops
+        # (tl.minimum / scf.if value merge) and deopt every static_range
+        # below; the ternary keeps everything constexpr.
+        blk_end = blk_start + BLOCK if blk_start + BLOCK < N else N
+        blk_sz = blk_end - blk_start
+        row1 = blk_start + rows
+        r2 = row1[:, None]
+        c2 = row1[None, :]
+        in_blk = (rows[:, None] < blk_sz) & (rows[None, :] < blk_sz)
+        # Clamp masked lanes' addresses in-bounds (see _tri_solve_1blk): a
+        # ragged tail block addresses rows/cols past A and past X/B.
+        a_blk = tl.load(
+            A
+            + tl.where(in_blk, r2 * A_STRIDES.value[-2] + c2 * A_STRIDES.value[-1], 0),
+            mask=in_blk,
+            other=0.0,
+        )
+        if UNIT:
+            dinv = tl.full((BLOCK,), 1.0, a_blk.dtype)
+        else:
+            in_d = rows < blk_sz
+            dinv = 1.0 / tl.load(
+                A
+                + tl.where(in_d, row1 * (A_STRIDES.value[-2] + A_STRIDES.value[-1]), 0),
+                mask=in_d,
+                other=1.0,
+            )
+        if UPPER:
+            m = tl.where(c2 > r2, a_blk, 0.0) * dinv[None, :]
+        else:
+            m = tl.where(c2 < r2, a_blk, 0.0) * dinv[None, :]
+        rmask = (rows[:, None] < blk_sz) & cm2
+        if block_idx == 0:
+            v = tl.load(
+                B
+                + tl.where(
+                    rmask,
+                    r2 * B_STRIDES.value[-2] + kcols[None, :] * B_STRIDES.value[-1],
+                    0,
+                ),
+                mask=rmask,
+                other=0.0,
+            )
+        else:
+            v = tl.load(
+                X + tl.where(rmask, r2 + kcols[None, :] * N, 0),
+                mask=rmask,
+                other=0.0,
+            )
+        m2 = tl.dot(m, m, allow_tf32=False)
+        m4 = tl.dot(m2, m2, allow_tf32=False)
+        m8 = tl.dot(m4, m4, allow_tf32=False)
+        m16 = tl.dot(m8, m8, allow_tf32=False)
+        v = v - tl.dot(m, v, allow_tf32=False)
+        v = v + tl.dot(m2, v, allow_tf32=False)
+        v = v + tl.dot(m4, v, allow_tf32=False)
+        v = v + tl.dot(m8, v, allow_tf32=False)
+        v = v + tl.dot(m16, v, allow_tf32=False)
+        if BLOCK >= 64:
+            m32 = tl.dot(m16, m16, allow_tf32=False)
+            v = v + tl.dot(m32, v, allow_tf32=False)
+        x = v * dinv[:, None]
+        # Column-major X: store with the contiguous row axis innermost (see
+        # _tri_solve_1blk).
+        tl.store(
+            X + kcols[:, None] * N + row1[None, :],
+            tl.trans(x),
+            mask=cmask[:, None] & (rows[None, :] < blk_sz),
+        )
+        if (bk > 0) if UPPER else (blk_end < N):
+            if UPPER:
+                m_rem = blk_start
+                rem_s = 0
+                bound = blk_start
+            else:
+                m_rem = N - blk_end
+                rem_s = blk_end
+                bound = N
+            blk_nat = blk_start + rows
+            x_panel = x
+            for m_start in range(0, m_rem, BM):
+                rm = rem_s + m_start + rr
+                in_m = rm < bound
+                in_a = in_m[:, None] & (rows[None, :] < blk_sz)
+                a_sub = tl.load(
+                    A
+                    + tl.where(
+                        in_a,
+                        rm[:, None] * A_STRIDES.value[-2]
+                        + blk_nat[None, :] * A_STRIDES.value[-1],
+                        0,
+                    ),
+                    mask=in_a,
+                    other=0.0,
+                )
+                acc = tl.dot(a_sub, x_panel, allow_tf32=False)
+                mask_m = in_m[:, None] & cm2
+                if block_idx == 0:
+                    b_curr = tl.load(
+                        B
+                        + tl.where(
+                            mask_m,
+                            rm[:, None] * B_STRIDES.value[-2]
+                            + kcols[None, :] * B_STRIDES.value[-1],
+                            0,
+                        ),
+                        mask=mask_m,
+                        other=0.0,
+                    )
+                else:
+                    b_curr = tl.load(
+                        X
+                        + tl.where(
+                            mask_m,
+                            rm[:, None] + kcols[None, :] * N,
+                            0,
+                        ),
+                        mask=mask_m,
+                        other=0.0,
+                    )
+                tl.store(
+                    X + kcols[:, None] * N + rm[None, :],
+                    tl.trans(b_curr - acc),
+                    mask=cmask[:, None] & in_m[None, :],
+                )
+            tl.debug_barrier()
+
+
+@libentry()
+@triton.jit
+def _tri_ainv_build(
+    A,
+    AINV,
+    N: tl.constexpr,
+    BATCH: tl.constexpr,
+    A_STRIDES: tl.constexpr,
+    BLOCK: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+):
+    """K1: per-diagonal-block inverse, computed once (k-independent).
+
+    Grid: (batch*blocks,).  Stores Ainv = D^{-1}(I + M)^{-1} tiles at
+    AINV[(batch * NUM_BLOCKS + blk) * BLOCK * BLOCK].
+    """
+    BATCH_COUNT: tl.constexpr = math.prod(BATCH.value)
+    A_SPAN: tl.constexpr = N * (A_STRIDES.value[-2] + A_STRIDES.value[-1]) + (
+        BATCH_COUNT * math.fsum(A_STRIDES.value)
+    )
+    INDEX64: tl.constexpr = (
+        A_SPAN > 2147483647
+        or BATCH_COUNT * N * N > 2147483647
+        or BATCH_COUNT * NUM_BLOCKS * BLOCK * BLOCK > 2147483647
+    )
+    pid = tl.program_id(0)
+    flat_batch = pid // NUM_BLOCKS
+    blk = pid % NUM_BLOCKS
+    if INDEX64:
+        flat_batch = flat_batch.to(tl.int64)
+    a_off = tl.full((), 0, tl.int64)
+    remainder = flat_batch
+    for dim in tl.static_range(len(BATCH) - 1, -1, -1):
+        coordinate = remainder % BATCH.value[dim]
+        remainder //= BATCH.value[dim]
+        a_off += coordinate * A_STRIDES.value[dim]
+    A += a_off
+    blk_start = blk * BLOCK
+    blk_end = tl.minimum(blk_start + BLOCK, N)
+    blk_sz = blk_end - blk_start
+    rows = tl.arange(0, BLOCK)
+    if INDEX64:
+        rows = rows.to(tl.int64)
+    row1 = blk_start + rows
+    r2 = row1[:, None]
+    c2 = row1[None, :]
+    # The host hands this kernel a zero-padded A (padded to a BLOCK multiple),
+    # so the whole square tile is in-bounds and the ragged tail block simply
+    # reads padding zeros.  An unmasked load is the only addressing form that
+    # stays exact at every tile size on this backend: masked loads and
+    # clamped-offset loads miscompile on square tiles >= 128x128 (measured:
+    # wrong elements / transposed triangle), while mask=/other= forms are only
+    # conditionally stable depending on the surrounding expression graph.
+    # Zero padding keeps every masked lane finite, so the dots below never
+    # meet 0 * NaN poison from out-of-bounds lanes.
+    a_blk = tl.load(
+        A + row1[:, None] * A_STRIDES.value[-2] + row1[None, :] * A_STRIDES.value[-1]
+    )
+    if UNIT:
+        dinv = tl.full((BLOCK,), 1.0, a_blk.dtype)
+    else:
+        in_d = rows < blk_sz
+        dinv = 1.0 / tl.load(
+            A + tl.where(in_d, row1 * (A_STRIDES.value[-2] + A_STRIDES.value[-1]), 0),
+            mask=in_d,
+            other=1.0,
+        )
+    if UPPER:
+        m = tl.where(c2 > r2, a_blk, 0.0) * dinv[None, :]
+    else:
+        m = tl.where(c2 < r2, a_blk, 0.0) * dinv[None, :]
+    p = tl.where(rows[:, None] == rows[None, :], 1.0, 0.0)
+    m2 = tl.dot(m, m, allow_tf32=False)
+    m4 = tl.dot(m2, m2, allow_tf32=False)
+    m8 = tl.dot(m4, m4, allow_tf32=False)
+    p = p - tl.dot(m, p, allow_tf32=False)
+    p = p + tl.dot(m2, p, allow_tf32=False)
+    p = p + tl.dot(m4, p, allow_tf32=False)
+    p = p + tl.dot(m8, p, allow_tf32=False)
+    if BLOCK >= 32:
+        m16 = tl.dot(m8, m8, allow_tf32=False)
+        p = p + tl.dot(m16, p, allow_tf32=False)
+    if BLOCK >= 64:
+        m32 = tl.dot(m16, m16, allow_tf32=False)
+        p = p + tl.dot(m32, p, allow_tf32=False)
+    if BLOCK >= 128:
+        m64 = tl.dot(m32, m32, allow_tf32=False)
+        p = p + tl.dot(m64, p, allow_tf32=False)
+    ainv = p * dinv[:, None]
+    base = (flat_batch * NUM_BLOCKS + blk) * (BLOCK * BLOCK)
+    tl.store(AINV + base + rows[:, None] * BLOCK + rows[None, :], ainv)
+
+
+@libentry()
+@triton.jit
+def _tri_solve_ainv(
+    A,
+    B,
+    X,
+    AINV,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BATCH: tl.constexpr,
+    A_STRIDES: tl.constexpr,
+    B_STRIDES: tl.constexpr,
+    XB: tl.constexpr,
+    BLOCK: tl.constexpr,
+    KS: tl.constexpr,
+    BM: tl.constexpr,
+    UPPER: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+):
+    """K2: block walk with precomputed inverses (one diag dot per block).
+
+    Grid: (batch*k-slices,).  Reads B, writes X out-of-place (see
+    _tri_solve_walk).  The update phase still needs the raw A columns.
+    """
+    BATCH_COUNT: tl.constexpr = math.prod(BATCH.value)
+    A_SPAN: tl.constexpr = N * (A_STRIDES.value[-2] + A_STRIDES.value[-1]) + (
+        BATCH_COUNT * math.fsum(A_STRIDES.value)
+    )
+    B_SPAN: tl.constexpr = (
+        N * B_STRIDES.value[-2]
+        + K * B_STRIDES.value[-1]
+        + (BATCH_COUNT * math.fsum(B_STRIDES.value))
+    )
+    INDEX64: tl.constexpr = (
+        A_SPAN > 2147483647
+        or B_SPAN > 2147483647
+        or BATCH_COUNT * N * K > 2147483647
+        or BATCH_COUNT * NUM_BLOCKS * BLOCK * BLOCK > 2147483647
+    )
+    NUM_K: tl.constexpr = (K + KS - 1) // KS
+    EVEN_K: tl.constexpr = K % KS == 0
+    pid = tl.program_id(0)
+    # Constant-fold the column mask whenever provable (see _tri_solve_1blk):
+    # runtime column masks keep every load/store on the predicated path.
+    if NUM_K == 1:
+        kcols = tl.arange(0, KS)
+        cmask = kcols < K
+    elif EVEN_K:
+        kcols = (pid % NUM_K) * KS + tl.arange(0, KS)
+        cmask = tl.full((KS,), 1, tl.int1)
+    else:
+        kcols = (pid % NUM_K) * KS + tl.arange(0, KS)
+        cmask = kcols < K
+    flat_batch = pid // NUM_K
+    if INDEX64:
+        flat_batch = flat_batch.to(tl.int64)
+        kcols = kcols.to(tl.int64)
+    a_off = tl.full((), 0, tl.int64)
+    b_off = tl.full((), 0, tl.int64)
+    remainder = flat_batch
+    for dim in tl.static_range(len(BATCH) - 1, -1, -1):
+        coordinate = remainder % BATCH.value[dim]
+        remainder //= BATCH.value[dim]
+        a_off += coordinate * A_STRIDES.value[dim]
+        b_off += coordinate * B_STRIDES.value[dim]
+    A += a_off
+    B += b_off
+    X += flat_batch * XB
+    AINV += flat_batch * NUM_BLOCKS * (BLOCK * BLOCK)
+    cm2 = cmask[None, :]
+    rows = tl.arange(0, BLOCK)
+    rr = tl.arange(0, BM)
+    if INDEX64:
+        rows = rows.to(tl.int64)
+        rr = rr.to(tl.int64)
+    # Static unroll (see _tri_solve_walk): the per-block dot chain lowers
+    # ~2.5x faster in straight-line code on this backend.
+    for block_idx in tl.static_range(NUM_BLOCKS):
+        if not UPPER:
+            bk = block_idx
+        else:
+            bk = NUM_BLOCKS - 1 - block_idx
+        blk_start = bk * BLOCK
+        # Trace-time bounds.  min() and if-statements lower to tensor ops
+        # (tl.minimum / scf.if value merge) and deopt every static_range
+        # below; the ternary keeps everything constexpr.
+        blk_end = blk_start + BLOCK if blk_start + BLOCK < N else N
+        blk_sz = blk_end - blk_start
+        row1 = blk_start + rows
+        r2 = row1[:, None]
+        ainv = tl.load(
+            AINV + bk * (BLOCK * BLOCK) + rows[:, None] * BLOCK + rows[None, :]
+        )
+        rmask = (rows[:, None] < blk_sz) & cm2
+        # Clamp masked lanes' addresses in-bounds (see _tri_solve_1blk).
+        if block_idx == 0:
+            v = tl.load(
+                B
+                + tl.where(
+                    rmask,
+                    r2 * B_STRIDES.value[-2] + kcols[None, :] * B_STRIDES.value[-1],
+                    0,
+                ),
+                mask=rmask,
+                other=0.0,
+            )
+        else:
+            v = tl.load(
+                X + tl.where(rmask, r2 + kcols[None, :] * N, 0),
+                mask=rmask,
+                other=0.0,
+            )
+        x = tl.dot(ainv, v, allow_tf32=False)
+        # Column-major X: store with the contiguous row axis innermost (see
+        # _tri_solve_1blk).
+        tl.store(
+            X + kcols[:, None] * N + row1[None, :],
+            tl.trans(x),
+            mask=cmask[:, None] & (rows[None, :] < blk_sz),
+        )
+        if (bk > 0) if UPPER else (blk_end < N):
+            if UPPER:
+                m_rem = blk_start
+                rem_s = 0
+                bound = blk_start
+            else:
+                m_rem = N - blk_end
+                rem_s = blk_end
+                bound = N
+            blk_nat = blk_start + rows
+            x_panel = x
+            for m_start in range(0, m_rem, BM):
+                rm = rem_s + m_start + rr
+                in_m = rm < bound
+                in_a = in_m[:, None] & (rows[None, :] < blk_sz)
+                a_sub = tl.load(
+                    A
+                    + tl.where(
+                        in_a,
+                        rm[:, None] * A_STRIDES.value[-2]
+                        + blk_nat[None, :] * A_STRIDES.value[-1],
+                        0,
+                    ),
+                    mask=in_a,
+                    other=0.0,
+                )
+                acc = tl.dot(a_sub, x_panel, allow_tf32=False)
+                mask_m = in_m[:, None] & cm2
+                if block_idx == 0:
+                    b_curr = tl.load(
+                        B
+                        + tl.where(
+                            mask_m,
+                            rm[:, None] * B_STRIDES.value[-2]
+                            + kcols[None, :] * B_STRIDES.value[-1],
+                            0,
+                        ),
+                        mask=mask_m,
+                        other=0.0,
+                    )
+                else:
+                    b_curr = tl.load(
+                        X
+                        + tl.where(
+                            mask_m,
+                            rm[:, None] + kcols[None, :] * N,
+                            0,
+                        ),
+                        mask=mask_m,
+                        other=0.0,
+                    )
+                tl.store(
+                    X + kcols[:, None] * N + rm[None, :],
+                    tl.trans(b_curr - acc),
+                    mask=cmask[:, None] & in_m[None, :],
+                )
+            tl.debug_barrier()
+
+
+def _solve_columns(
+    A, B, result, n, width, batch, batches, upper, unitriangular, ainv, xb
+):
+    # One flat grid per launch: batch rides the high digits, k-slices the low
+    # (gcu400 caps grid.y at 255, so the panel kernels used the same shape).
+    # Measured on this stack (Triton GCU 4.1.6): the inverse-walk kernel wants
+    # narrow k-slices (KS=8) and small update tiles (BM=64); wider update
+    # tiles (BM=256, the previous family default) spill at num_warps=1 and
+    # run 3x slower, and num_warps>1 regresses 4-9x.
+    ks = 8 if ainv is not None else 16
+    num_k = (width + ks - 1) // ks
+    if batches * num_k > _MAX_GRID_X:
+        # Solve wide systems in column chunks; each chunk's flat grid stays
+        # inside grid.x.  Slices keep the stride tuples, so kernels launch
+        # unchanged on the views (xb stays the full-width batch stride).
+        chunk = max(ks, (_MAX_GRID_X // max(batches, 1)) * ks)
+        for start in range(0, width, chunk):
+            end = min(start + chunk, width)
+            _solve_columns(
+                A,
+                B[..., start:end],
+                result[..., start:end],
+                n,
+                end - start,
+                batch,
+                batches,
+                upper,
+                unitriangular,
+                ainv,
+                xb,
+            )
+        return
+    grid = (batches * num_k,)
+    a_strides = tuple(A.stride())
+    b_strides = tuple(B.stride())
+    if n <= 64:
+        bn = 16 if n <= 16 else (32 if n <= 32 else 64)
+        _tri_solve_1blk[grid](
+            A,
+            B,
+            result,
+            n,
+            width,
+            batch,
+            a_strides,
+            b_strides,
+            xb,
+            bn,
+            ks,
+            upper,
+            unitriangular,
+            num_warps=1,
+        )
+    elif ainv is None:
+        _tri_solve_walk[grid](
+            A,
+            B,
+            result,
+            n,
+            width,
+            batch,
+            a_strides,
+            b_strides,
+            xb,
+            64,
+            ks,
+            128,
+            upper,
+            unitriangular,
+            num_warps=1,
+        )
+    else:
+        block = 128
+        _tri_solve_ainv[grid](
+            A,
+            B,
+            result,
+            ainv,
+            n,
+            width,
+            batch,
+            a_strides,
+            b_strides,
+            xb,
+            block,
+            ks,
+            64,
+            upper,
+            (n + block - 1) // block,
+            num_warps=1,
+        )
+
+
+def _solve_dense_legacy(A, B, *, upper, unitriangular, out=None, coefficient, original):
     if upper:
         # gcu400 masked loads with a reversed (negative-stride) index return
         # garbage in every lane but the first, so the kernels' mirror-index
@@ -1007,8 +1748,80 @@ def _solve_dense(A, B, *, upper, unitriangular, out=None, coefficient, original)
     return result
 
 
+def _solve_dense(A, B, *, upper, unitriangular, out=None, coefficient, original):
+    if B.dtype == torch.float64:
+        # gcu400 raises fp64 before reaching here; keep the verified legacy
+        # path for backends that report fp64 support.
+        return _solve_dense_legacy(
+            A,
+            B,
+            upper=upper,
+            unitriangular=unitriangular,
+            out=out,
+            coefficient=coefficient,
+            original=original,
+        )
+    n, k = B.shape[-2:]
+    batch = tuple(B.shape[:-2])
+    batches = math.prod(batch)
+    result = (
+        out
+        if out is not None
+        else torch.empty((*batch, k, n), dtype=B.dtype, device=B.device).mT
+    )
+    xb = n * k
+    ainv = None
+    if n > 192:
+        # Above the walk crossover the per-k-slice CTAs would each redo the
+        # k-independent Neumann chain per block; precompute the block inverses
+        # once (measured on this family: see linalg_solve_triangular).
+        block = 128
+        num_blocks = (n + block - 1) // block
+        # K1 reads each block as an unmasked square tile (the only addressing
+        # form that stays exact at 128x128 on this backend), so ragged orders
+        # get a zero-padded coefficient copy; full-block orders skip the copy.
+        a_build = A
+        if n % block:
+            padded = block * num_blocks
+            a_build = torch.zeros(
+                (*batch, padded, padded), dtype=A.dtype, device=A.device
+            )
+            _copy_matrix(a_build, A)
+        ainv = torch.empty(
+            batches * num_blocks * block * block, dtype=B.dtype, device=B.device
+        )
+        _tri_ainv_build[(batches * num_blocks,)](
+            a_build,
+            ainv,
+            n,
+            batch,
+            tuple(a_build.stride()),
+            block,
+            upper,
+            unitriangular,
+            num_blocks,
+            num_warps=1,
+        )
+    _solve_columns(
+        A,
+        B,
+        result,
+        n,
+        k,
+        batch,
+        batches,
+        upper,
+        unitriangular,
+        ainv,
+        xb,
+    )
+    if coefficient is not None and coefficient.numel():
+        _copy_coefficient_batched(coefficient, original)
+    return result
+
+
 def triangular_solve(B, A, upper=True, transpose=False, unitriangular=False):
-    logger.debug("GEMS_ENFLAME_GCU400 TRIANGULAR_SOLVE")
+    logger.debug("GEMS_ENFLAME TRIANGULAR_SOLVE")
     return _triangular_solve(
         B,
         A,
@@ -1024,7 +1837,7 @@ def triangular_solve(B, A, upper=True, transpose=False, unitriangular=False):
 def triangular_solve_out(
     B, A, upper=True, transpose=False, unitriangular=False, *, X, M
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 TRIANGULAR_SOLVE_OUT")
+    logger.debug("GEMS_ENFLAME TRIANGULAR_SOLVE_OUT")
     return _triangular_solve(
         B,
         A,

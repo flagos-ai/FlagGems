@@ -82,6 +82,14 @@ class QRGenericBenchmark(base.GenericBenchmark):
         return []
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::linalg_qr; the native baseline "
+        "falls through to a CPU fallback / inner Triton kernel that cannot run "
+        "on the device, so there is no native baseline"
+    ),
+)
 @pytest.mark.linalg_qr
 @pytest.mark.parametrize("mode", QR_MODES)
 def test_linalg_qr(mode):
@@ -95,6 +103,14 @@ def test_linalg_qr(mode):
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::linalg_qr; the native baseline "
+        "falls through to a CPU fallback / inner Triton kernel that cannot run "
+        "on the device, so there is no native baseline"
+    ),
+)
 @pytest.mark.linalg_qr_out
 @pytest.mark.parametrize("mode", QR_MODES)
 def test_linalg_qr_out(mode):

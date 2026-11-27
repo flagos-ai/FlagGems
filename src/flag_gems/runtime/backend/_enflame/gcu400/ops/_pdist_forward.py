@@ -232,7 +232,7 @@ def _pdist_forward(x, p=2.0):
     Returns:
         Output tensor of shape (N*(N-1)//2,) containing pairwise distances.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _PDIST_FORWARD")
+    logger.debug("GEMS_ENFLAME _PDIST_FORWARD")
 
     assert x.dtype in (
         torch.float32,

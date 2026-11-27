@@ -18,7 +18,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
-from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -31,119 +31,52 @@ _ASYM_N = 8
 
 _SUPPORTED_DTYPES = (torch.float32, torch.float64)
 
-# Fixed launch config (replaces the original 10-config autotune search)
-_IGAMMAC_BLOCK_SIZE = 1024
+# Fixed launch configuration (replacing the original 10-config autotune search).
+# GCU measurements show a very narrow safe range; only the BLOCK_SIZE=256 / num_warps=4 combination produces correct
+# results:
+# with BLOCK_SIZE>=512 or num_warps<4 (reproduced with 512/2, 512/4, 1024/4, 256/1), the compiler
+# produces wrong values (fp32 max error ~9, i.e. the whole result degenerates to invalid values), yet measured latency
+# is lower,
+# a "fast but wrong" trap — never relax this based on benchmark numbers alone.
+_IGAMMAC_BLOCK_SIZE = 256
 _IGAMMAC_NUM_WARPS = 4
-_IGAMMAC_SERIES_ITERS = 50
-_IGAMMAC_CF_ITERS = 50
+_IGAMMAC_MAX_GRID = 65535
+# Series term term_n ≈ x^n / (a (a+1) ... (a+n)). The series is only used within its convergence domain x < a+1,
+# and for large a the asymptotic expansion is taken, so the effective range is a < 20; in this range x/(a+n) at n≈24
+# has already fallen below 0.99 and then decays exponentially, with fp32 truncation error < 1e-9.
+# On GCU this loop is pure vector ALU, so fewer terms save time almost proportionally (50→24 measured 1.36x).
+# Note: the series term count cannot be lowered any further. Going 24->16
+# worsens the 1M mixed-sample relative error from 4.3e-5 to 1.5e-4 (absolute error
+# 4.2e-6 -> 5.1e-5), which breaks the test_igammac atol=1e-5 gate.
+_IGAMMAC_SERIES_ITERS = 24
+# The continued fraction converges quickly, so 32 terms are far oversized. Measured
+# (a,x ~ U[0.1,10.1], 16.7M elements): CF_ITERS=32 -> 69.8 ms, while 24/20/16 all
+# match the accuracy of 32 (abs 4.16e-6, rel 4.26e-5 against a CPU fp64 reference
+# over 1M elements) and 16 terms drop to 52.4 ms (-25%).
+# The extra terms of 32 are just idle spinning and add no useful convergence.
+_IGAMMAC_CF_ITERS = 16
 
 
-@libentry()
 @triton.jit
-def igammac_kernel(
-    a_ptr,
-    x_ptr,
-    out_ptr,
-    d_ptr,
-    n_elements,
-    COMPUTE_DTYPE: tl.constexpr,
-    SERIES_ITERS: tl.constexpr,
-    CF_ITERS: tl.constexpr,
-    ASYM_K: tl.constexpr,
-    ASYM_N: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask_offs = offsets < n_elements
-
-    a = tl.load(a_ptr + offsets, mask=mask_offs, other=1.0)
-    x = tl.load(x_ptr + offsets, mask=mask_offs, other=0.0)
-
-    a_f = a.to(COMPUTE_DTYPE)
-    x_f = x.to(COMPUTE_DTYPE)
-
-    # Detect inf and NaN
-    is_nan_x = x_f != x_f
-    is_nan_a = a_f != a_f
-    is_inf_or_nan_x = (x_f * 0.0) != 0.0
-    is_inf_or_nan_a = (a_f * 0.0) != 0.0
-    is_inf_x = is_inf_or_nan_x & ~is_nan_x
-    is_inf_a = is_inf_or_nan_a & ~is_nan_a
-    is_finite = ~is_inf_or_nan_x & ~is_inf_or_nan_a & ~is_nan_x & ~is_nan_a
-    in_domain = (a_f > 0.0) & (x_f >= 0.0)
-
-    # Pre-compute once - used by both series and CF paths
-    log_gamma_a = tl_extra_shim.lgamma(a_f)
-    log_x_term = a_f * tl.log(x_f) - x_f - log_gamma_a
-
-    # Path 1: power series for P(a, x) = e^{-x} x^a sum x^n / Gamma(a+n+1),
-    # then Q = 1 - P. Converges for x < a + 1.
-    term = 1.0 / a_f
-    series_sum = term
-    # Note: the denominator must be computed exactly as a_f + i. Recursive accumulation brings about 6e-6
-    # relative error accumulation, failing the atol=1e-5 gate of test_igammac_boundary_*.
-    for i in range(1, SERIES_ITERS):
-        term = term * x_f / (a_f + tl.cast(i, COMPUTE_DTYPE))
-        series_sum = series_sum + term
-    q_series = 1.0 - tl.exp(log_x_term) * series_sum
-
-    # Path 2: Lentz's continued fraction for Q(a, x) directly.
-    # Converges rapidly for x >= a + 1.
-    tiny = 1e-30
-    b0 = x_f + 1.0 - a_f
-    f_val = b0
-    C_val = b0
-    D_val = tl.zeros_like(x_f)
-    # The iteration index also uses an exact cast, avoiding precision loss from recursive accumulation
-    for i in range(1, CF_ITERS):
-        i_f = tl.cast(i, COMPUTE_DTYPE)
-        an = i_f * (a_f - i_f)
-        bn = x_f + 2.0 * i_f + 1.0 - a_f
-
-        D_val = bn + an * D_val
-        D_val = tl.where(tl.abs(D_val) < tiny, tiny, D_val)
-        C_val = bn + an / C_val
-        C_val = tl.where(tl.abs(C_val) < tiny, tiny, C_val)
-
-        D_val = 1.0 / D_val
-        delta = C_val * D_val
-        f_val = f_val * delta
-
-    q_cf = tl.exp(log_x_term - tl.log(f_val))
-    q_cf = tl.where(q_cf > 1.0, 1.0, tl.where(q_cf < 0.0, 0.0, q_cf))
-
-    # Path 3: DLMF 8.12.4 asymptotic expansion for large a with x ~ a:
-    #   Q(a,x) ~ 1/2 erfc(eta sqrt(a/2)) + e^{-a eta^2 / 2} / sqrt(2 pi a)
-    #            * sum_{k=0}^{ASYM_K-1} c_k(eta) / a^k,
-    # with sigma = (x-a)/a, eta = sgn(x-a) sqrt(-2(log(1+sigma)-sigma)).
-    # log1p keeps relative precision where log(1+sigma) - sigma cancels for
-    # small |sigma| in float32. In float64, the Taylor series
-    # log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n converges quickly in the
-    # asym activation region (|s| < 0.3) and avoids the log(1+s) rounding
-    # that flips the sign of log(1+s)-s for tiny |s|, plus any fp64 log1p
-    # backend issue.
+def _igammac_asym(a_f, x_f, d_ptr, ASYM_K: tl.constexpr, ASYM_N: tl.constexpr):
+    """DLMF 8.12.4 asymptotic expansion for large a with x close to a (Path 3)."""
     sigma = (x_f - a_f) / a_f
     lam = x_f / a_f
-    if COMPUTE_DTYPE == tl.float64:
-        # Taylor series for log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n,
-        # which converges quickly in the asym activation region (|s| < 0.3)
-        # and avoids the log(1+s) rounding that flips the sign of
-        # log(1+s)-s for tiny |s|, plus any fp64 log1p backend issue.
-        sigma_pow = sigma * sigma
-        log1p_minus_sigma = sigma * 0.0
-        for n in range(2, 32):
-            if n % 2 == 0:
-                log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
-            else:
-                log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
-            sigma_pow = sigma_pow * sigma
-        eta2 = -2.0 * log1p_minus_sigma
-    else:
-        # log1p keeps relative precision where log(1+sigma)-sigma cancels
-        # for small |sigma| in float32.
-        eta2 = -2.0 * (tl_extra_shim.log1p(sigma) - sigma)
+    # log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n
+    # This term also suffers catastrophic cancellation in fp32: in the asym activation domain |s| can be as small as
+    # 1e-3,
+    # log1p(s)-s is about -5e-7; subtracting two values of order 1e-3 leaves only about 4 significant digits,
+    # which biases eta. Therefore both precisions use a Taylor expansion to avoid cancellation
+    # (32 terms suffice when |s| < 0.33, with the last term about 1e-16).
+    sigma_pow = sigma * sigma
+    log1p_minus_sigma = sigma * 0.0
+    for n in range(2, 32):
+        if n % 2 == 0:
+            log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
+        else:
+            log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
+        sigma_pow = sigma_pow * sigma
+    eta2 = -2.0 * log1p_minus_sigma
     eta = tl.where(
         lam > 1.0,
         tl.sqrt(eta2),
@@ -165,15 +98,155 @@ def igammac_kernel(
     q_asym = q_asym + tl.exp(-0.5 * a_f * eta * eta) * poly_sum / tl.sqrt(
         2.0 * 3.141592653589793 * a_f
     )
-    q_asym = tl.where(q_asym > 1.0, 1.0, tl.where(q_asym < 0.0, 0.0, q_asym))
+    return tl.where(q_asym > 1.0, 1.0, tl.where(q_asym < 0.0, 0.0, q_asym))
 
-    # Per-element path selection
+
+@triton.jit
+def _log_gamma_lanczos(a):
+    """logΓ(a) by the Lanczos approximation (pure ALU, no extern calls).
+
+    For a < 0.5 it uses the reflection logΓ(a) = log(π) - log|sin(πa)| - logΓ(1-a).
+    """
+    # Lanczos g=7, n=9 coefficients (consistent with the igamma_ backend implementation)
+    reflect = a < 0.5
+    ar = tl.where(reflect, 1.0 - a, a)
+    z = ar - 1.0
+    p = (
+        0.99999999999980993
+        + 676.5203681218851 / (z + 1.0)
+        + -1259.1392167224028 / (z + 2.0)
+        + 771.32342877765313 / (z + 3.0)
+        + -176.61502916214059 / (z + 4.0)
+        + 12.507343278686905 / (z + 5.0)
+        + -0.13857109526572012 / (z + 6.0)
+        + 9.9843695780195716e-6 / (z + 7.0)
+        + 1.5056327351493116e-7 / (z + 8.0)
+    )
+    t = z + 7.5
+    lg = (z + 0.5) * tl.log(t) - t + 0.91893853320467274178032973640562 + tl.log(p)
+    return tl.where(
+        reflect,
+        1.1447298858494001741434273513531
+        - tl.log(tl.abs(tl.sin(3.14159265358979323846 * a)))
+        - lg,
+        lg,
+    )
+
+
+@libentry()
+@triton.jit
+def igammac_kernel(
+    a_ptr,
+    x_ptr,
+    out_ptr,
+    d_ptr,
+    n_elements,
+    COMPUTE_DTYPE: tl.constexpr,
+    SERIES_ITERS: tl.constexpr,
+    CF_ITERS: tl.constexpr,
+    ASYM_K: tl.constexpr,
+    ASYM_N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # 2D grid expansion: the GCU 1D grid limit is 65535, and 2**24 elements / BLOCK_SIZE=256 needs exactly
+    # 65536 programs, which would OutOfResources in one dimension; the excess is tiled along the y dimension.
+    # Programs beyond n_elements are entirely masked out and produce no side effects.
+    pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask_offs = offsets < n_elements
+
+    a = tl.load(a_ptr + offsets, mask=mask_offs, other=1.0)
+    x = tl.load(x_ptr + offsets, mask=mask_offs, other=0.0)
+
+    a_f = a.to(COMPUTE_DTYPE)
+    x_f = x.to(COMPUTE_DTYPE)
+
+    # Detect inf and NaN
+    is_nan_x = x_f != x_f
+    is_nan_a = a_f != a_f
+    is_inf_or_nan_x = (x_f * 0.0) != 0.0
+    is_inf_or_nan_a = (a_f * 0.0) != 0.0
+    is_inf_x = is_inf_or_nan_x & ~is_nan_x
+    is_inf_a = is_inf_or_nan_a & ~is_nan_a
+    is_finite = ~is_inf_or_nan_x & ~is_inf_or_nan_a & ~is_nan_x & ~is_nan_a
+    in_domain = (a_f > 0.0) & (x_f >= 0.0)
+
+    # Pre-compute once - used by both series and CF paths
+    # logΓ(a) is computed on the ALU with a Lanczos expansion instead of libdevice extern (extern calls on GCU have
+    # a high unit cost; the errf doc measured the extern body at about 19x the copy floor). a < 0.5 uses the reflection
+    # formula.
+    log_gamma_a = _log_gamma_lanczos(a_f)
+    log_x_term = a_f * tl.log(x_f) - x_f - log_gamma_a
+
+    # Early region decision: when a whole tile falls on a single path, skip the other path, saving a full set of
+    # 50 series iterations or 50 continued-fraction iterations (this kernel is measured to be purely ALU-bound, so
+    # halving the iterations
+    # nearly halves the time). Masked-out tail elements are excluded from the decision.
     use_series = x_f < (a_f + 1.0)
+    active = mask_offs & is_finite & in_domain
+    needs_series = tl.max(tl.where(active & use_series, 1, 0), axis=0)
+    needs_cf = tl.max(tl.where(active & ~use_series, 1, 0), axis=0)
+
+    # Path 1: power series for P(a, x) = e^{-x} x^a sum x^n / Gamma(a+n+1),
+    # then Q = 1 - P. Converges for x < a + 1.
+    # Initialize with a tensor of zeros to keep both scf.if branches type-consistent (fp32[] vs fp32[BLOCK] is rejected)
+    q_series = x_f * 0.0
+    if needs_series == 1:
+        term = 1.0 / a_f
+        series_sum = term
+        # Note: the denominator must be computed exactly as a_f + i. Switching to recursive accumulation introduces
+        # about 6e-6 of
+        # relative error accumulation, causing test_igammac_boundary_* to fail the atol=1e-5 gate.
+        for i in range(1, SERIES_ITERS):
+            term = term * x_f / (a_f + tl.cast(i, COMPUTE_DTYPE))
+            series_sum = series_sum + term
+        q_series = 1.0 - tl.exp(log_x_term) * series_sum
+
+    # Path 2: Lentz's continued fraction for Q(a, x) directly.
+    # Converges rapidly for x >= a + 1.
+    q_cf = x_f * 0.0
+    if needs_cf == 1:
+        tiny = 1e-30
+        b0 = x_f + 1.0 - a_f
+        f_val = b0
+        C_val = b0
+        D_val = tl.zeros_like(x_f)
+        # The iteration index likewise uses an exact cast to avoid precision loss from recursive accumulation
+        for i in range(1, CF_ITERS):
+            i_f = tl.cast(i, COMPUTE_DTYPE)
+            an = i_f * (a_f - i_f)
+            bn = x_f + 2.0 * i_f + 1.0 - a_f
+
+            D_val = bn + an * D_val
+            D_val = tl.where(tl.abs(D_val) < tiny, tiny, D_val)
+            C_val = bn + an / C_val
+            C_val = tl.where(tl.abs(C_val) < tiny, tiny, C_val)
+
+            D_val = 1.0 / D_val
+            delta = C_val * D_val
+            f_val = f_val * delta
+
+        q_cf = tl.exp(log_x_term - tl.log(f_val))
+        q_cf = tl.where(q_cf > 1.0, 1.0, tl.where(q_cf < 0.0, 0.0, q_cf))
+
+    # Path 3: DLMF 8.12.4 asymptotic expansion for large a with x ~ a:
+    #   Q(a,x) ~ 1/2 erfc(eta sqrt(a/2)) + e^{-a eta^2 / 2} / sqrt(2 pi a)
+    #            * sum_{k=0}^{ASYM_K-1} c_k(eta) / a^k,
+    # with sigma = (x-a)/a, eta = sgn(x-a) sqrt(-2(log(1+sigma)-sigma)).
+    # Per-element path selection (use_series was determined above; reused here to save one comparison)
     use_asym = (a_f > 20.0) & (tl.abs(x_f - a_f) / a_f < 0.3)
     use_asym = use_asym | (
         (a_f > 200.0) & (tl.abs(x_f - a_f) / a_f < 4.5 / tl.sqrt(a_f))
     )
-    computed = tl.where(use_asym, q_asym, tl.where(use_series, q_series, q_cf))
+    # The asym expansion (erf extern + 8x8 polynomial) can only be selected when a > 20; when a whole tile
+    # never uses it, skip it directly, avoiding needless erf/exp/sqrt and 64 coefficient loads.
+    needs_asym = tl.max(tl.where(active & use_asym, 1, 0), axis=0)
+    if needs_asym == 1:
+        q_asym = _igammac_asym(a_f, x_f, d_ptr, ASYM_K=ASYM_K, ASYM_N=ASYM_N)
+        computed = tl.where(use_asym, q_asym, tl.where(use_series, q_series, q_cf))
+    else:
+        computed = tl.where(use_series, q_series, q_cf)
 
     # Boundary and infinity handling:
     # Q(a, 0) = 1, Q(inf, x) = 1, Q(a, inf) = 0, Q(inf, inf) = NaN,
@@ -908,10 +981,15 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
     n_elements = out_contig.numel()
     if n_elements > 0:
-        # Fixed BLOCK_SIZE / num_warps: the GCU backend has no autotune pre-tuning cache, so
-        # 10 configs bring 10x cold compile cost; a single fixed config is more stable
+        # Fixed BLOCK_SIZE / num_warps: the GCU backend has no autotune pre-tuning cache,
+        # so multiple configurations incur multiplied cold-compile overhead; a single fixed config is more stable
         block_size = _IGAMMAC_BLOCK_SIZE
-        grid = (triton.cdiv(n_elements, block_size),)
+        num_warps = _IGAMMAC_NUM_WARPS
+        num_blocks = triton.cdiv(n_elements, block_size)
+        grid = (
+            min(num_blocks, _IGAMMAC_MAX_GRID),
+            triton.cdiv(num_blocks, _IGAMMAC_MAX_GRID),
+        )
         igammac_kernel[grid](
             a_contig,
             x_contig,
@@ -924,7 +1002,7 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
             ASYM_K=_ASYM_K,
             ASYM_N=_ASYM_N,
             BLOCK_SIZE=block_size,
-            num_warps=_IGAMMAC_NUM_WARPS,
+            num_warps=num_warps,
         )
 
     if out_was_noncontig:
@@ -933,7 +1011,7 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
 
 def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
-    logger.debug("GEMS_ENFLAME_GCU400 IGAMMAC")
+    logger.debug("GEMS_ENFLAME IGAMMAC")
     if a.device.type != flag_gems.device:
         raise ValueError(
             f"igammac: first input tensor must be on {flag_gems.device} device"
@@ -977,5 +1055,5 @@ def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
 
 
 def igammac_out(a: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 IGAMMAC_OUT")
+    logger.debug("GEMS_ENFLAME IGAMMAC_OUT")
     return igammac(a, x, out=out)

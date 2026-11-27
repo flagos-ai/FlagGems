@@ -65,6 +65,18 @@ def _stage_metadata(arrays, device, key):
     ``unbind`` keeps every view in one allocation so the kernel can read them
     without touching the allocator.
 
+    The staged image is transferred as *int32 words* rather than as int64.
+    torch_gcu replaces every Long tensor with Int on the host-to-device path, so
+    an int64 pointer word arrives truncated to its low 32 bits -- an address of
+    0x460231200000 lands as 0x31200000, and the kernel then dereferences an
+    address that is not the caller's tensor at all (observed as a silent no-op on
+    some shapes and a device SIP exception on others). Copying the same buffer
+    reinterpreted as int32 words is a plain 32-bit copy, so the eight bytes of
+    each address land unchanged and the kernel re-assembles them. Every array
+    therefore occupies ``2 * n`` int32 words, with word ``2 * i`` holding the low
+    half of element ``i`` (little-endian, which every host and device FlagGems
+    targets is).
+
     ``key`` identifies the caller's inputs; a repeat of the previous key reuses
     the previous device image without transferring anything. That also keeps a
     captured CUDA graph free of host-to-device copies on replay, since the
@@ -75,19 +87,36 @@ def _stage_metadata(arrays, device, key):
     if _metadata_cache is not None and _metadata_cache[0] == key:
         return _metadata_cache[1]
     flat_host = torch.as_tensor([v for arr in arrays for v in arr], dtype=torch.int64)
+    words_host = flat_host.view(torch.int32)
     try:
-        staging = torch.empty_like(flat_host, pin_memory=True)
+        staging = torch.empty_like(words_host, pin_memory=True)
     except (RuntimeError, TypeError):
         # Accelerators without pinned host memory (or a build that rejects it)
         # fall back to a direct copy; correctness is unaffected, only CUDA graph
         # capture of the metadata transfer is.
-        packed = flat_host.to(device)
+        packed = words_host.to(device)
     else:
-        staging.copy_(flat_host)
+        staging.copy_(words_host)
         packed = staging.to(device, non_blocking=True)
-    views = packed.view(len(arrays), n).unbind(0)
+    views = packed.view(len(arrays), 2 * n).unbind(0)
     _metadata_cache = (key, views)
     return views
+
+
+@triton.jit
+def _pointer_from_words(words, index, dtype: tl.constexpr):
+    """Re-assemble the 64-bit address of entry ``index`` from two int32 words.
+
+    ``words`` holds a staged metadata array as int32 halves (see
+    ``_stage_metadata``): entry ``index`` spans word ``2 * index`` (low half) and
+    word ``2 * index + 1`` (high half). Both halves are reinterpreted as unsigned
+    before shifting so a high half with bit 31 set is not sign-extended into the
+    assembled address.
+    """
+    low_word = tl.load(words + 2 * index).to(tl.uint32)
+    high_word = tl.load(words + 2 * index + 1).to(tl.uint32)
+    address = (high_word.to(tl.uint64) << 32) | low_word.to(tl.uint64)
+    return address.to(tl.pointer_type(dtype))
 
 
 @libentry()
@@ -137,21 +166,23 @@ def _fused_sgd_kernel(
         hi = n_tensors
         while hi - lo > 1:
             mid = (lo + hi) // 2
-            if tl.load(block_offset + mid) <= pid:
+            # Block offsets and element counts are non-negative and always fit in
+            # the low word of their staged entry, so they are read from it.
+            if tl.load(block_offset + 2 * mid) <= pid:
                 lo = mid
             else:
                 hi = mid
-        start = tl.load(block_offset + lo)
-        n = tl.load(numel + lo)
+        start = tl.load(block_offset + 2 * lo)
+        n = tl.load(numel + 2 * lo)
 
         offset = (pid - start) * BLOCK_SIZE
         offsets = offset + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n
 
         # All tensors in the list share one dtype (enforced on the host), so the
-        # raw address word can be reinterpreted with that element type.
-        param = tl.load(param_ptrs + lo).to(tl.pointer_type(OUT_DTYPE))
-        grad = tl.load(grad_ptrs + lo).to(tl.pointer_type(OUT_DTYPE))
+        # raw address can be reinterpreted with that element type.
+        param = _pointer_from_words(param_ptrs, lo, OUT_DTYPE)
+        grad = _pointer_from_words(grad_ptrs, lo, OUT_DTYPE)
 
         # Load param and grad (promoted to the accumulation dtype).
         param_load = tl.load(param + offsets, mask=mask, other=0.0).to(ACC_DTYPE)
@@ -170,7 +201,7 @@ def _fused_sgd_kernel(
             grad_load = grad_load + weight_decay * param_load
 
         if momentum > 0:
-            momentum_buf = tl.load(momentum_ptrs + lo).to(tl.pointer_type(OUT_DTYPE))
+            momentum_buf = _pointer_from_words(momentum_ptrs, lo, OUT_DTYPE)
             buf_load = tl.load(momentum_buf + offsets, mask=mask, other=0.0).to(
                 ACC_DTYPE
             )
@@ -226,7 +257,7 @@ def _fused_sgd_(
       update = b                              (otherwise)
     - param = param - lr * update
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_SGD_")
+    logger.debug("GEMS_ENFLAME FUSED_SGD_")
     _fused_sgd_impl(
         self,
         grads,
@@ -457,7 +488,7 @@ def _fused_sgd__tensor_lr(
     round-trip. Both overloads share one kernel, which always reads ``lr`` from a
     tensor.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_SGD__TENSOR_LR")
+    logger.debug("GEMS_ENFLAME FUSED_SGD__TENSOR_LR")
     _fused_sgd_impl(
         self,
         grads,

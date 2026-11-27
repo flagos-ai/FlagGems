@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.logcumsumexp import logcumsumexp_backward
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -59,6 +60,12 @@ def logcumsumexp_kernel(inp, out, M, N, BLOCK_SIZE: tl.constexpr):
 
 
 def logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
+    if inp.ndim == 0:
+        # A 0-dim tensor is the one-element special case of a scan over dim 0;
+        # the kernel works on a (1,) view and the result is reshaped back.
+        flat_out = None if out is None else out.reshape(1)
+        result = logcumsumexp_wrapper(inp.reshape(1), 0, dtype, flat_out)
+        return out if out is not None else result.reshape(())
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -67,6 +74,13 @@ def logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
     for i in range(dim):
         M *= shape[i]
     inp = inp.contiguous()
+    # An empty scan axis (or an empty tensor) has no work for the kernel and
+    # would divide by zero while deriving K.
+    if inp.numel() == 0:
+        if out is not None:
+            return out
+        out_dtype = dtype if dtype is not None else inp.dtype
+        return torch.empty(shape, dtype=out_dtype, device=inp.device)
     K = inp.numel() // M // N
 
     if dtype is None:
@@ -137,11 +151,43 @@ def logcumsumexp_kernel_3d(inp, out, M, N, K, BLOCK_SIZE: tl.constexpr):
     tl.store(out + row_offset + offsets, result, mask=mask)
 
 
+class LogcumsumexpFunction(torch.autograd.Function):
+    """Autograd wrapper for ``torch.logcumsumexp(inp, dim)`` on GCU400.
+
+    The forward keeps the backend reduction, and ``backward`` reuses the reverse
+    scan of ``flag_gems.ops.logcumsumexp``: it evaluates
+
+        gx_i = exp(x_i - y_i) * R_i,    R_i = g_i + exp(y_i - y_i+1) * R_i+1
+
+    as a reversed affine scan, which is the exact reverse-mode derivative and
+    stays stable because every carried factor is <= 1. ATen does not register a
+    ``logcumsumexp_backward`` operator on this backend, so carrying the formula
+    on the Python entry point is the only way to run it through Triton.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, dim, dtype):
+        inp = inp.contiguous()
+        out = logcumsumexp_wrapper(inp, dim, dtype)
+        ctx.save_for_backward(inp, out)
+        ctx.dim = dim
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[0]:
+            return None, None, None
+        inp, out = ctx.saved_tensors
+        return logcumsumexp_backward(grad_output, inp, out, ctx.dim), None, None
+
+
 def logcumsumexp(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGCUMSUMEXP")
+    logger.debug("GEMS_ENFLAME LOGCUMSUMEXP")
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return LogcumsumexpFunction.apply(inp, dim, dtype)
     return logcumsumexp_wrapper(inp, dim, dtype)
 
 
 def logcumsumexp_out(inp, dim=1, *, dtype=None, out):
-    logger.debug("GEMS_ENFLAME_GCU400 LOGCUMSUMEXP_OUT")
+    logger.debug("GEMS_ENFLAME LOGCUMSUMEXP_OUT")
     return logcumsumexp_wrapper(inp, dim, dtype, out)

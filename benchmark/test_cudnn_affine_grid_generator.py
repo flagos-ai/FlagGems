@@ -48,6 +48,13 @@ class CudnnAffineGridBenchmark(base.Benchmark):
         return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_affine_grid_generator "
+        "(the CPU-only build exposes no CPU kernel either), so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_affine_grid_generator
 def test_cudnn_affine_grid_generator():
     bench = CudnnAffineGridBenchmark(
@@ -68,6 +75,13 @@ class CudnnAffineGridOutBenchmark(CudnnAffineGridBenchmark):
             yield theta, N, C, H, W, {"out": out}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::cudnn_affine_grid_generator.out "
+        "(the CPU-only build exposes no CPU kernel either), so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_affine_grid_generator_out
 def test_cudnn_affine_grid_generator_out():
     bench = CudnnAffineGridOutBenchmark(

@@ -142,6 +142,10 @@ def test_vander_fp64():
 
 
 @pytest.mark.vander
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend torch.randn input construction does not support complex dtypes",
+)
 @pytest.mark.parametrize("increasing", [False, True])
 @pytest.mark.parametrize(
     "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]

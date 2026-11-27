@@ -36,15 +36,26 @@ def swapdims_(self: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     ATen in-place contract (version-counter bump, ``self`` returned, the
     leaf-requires-grad error and the IndexError for out-of-range dims) without
     a Triton kernel.
-    """
-    logger.debug("GEMS_ENFLAME_GCU400 SWAPDIMS_")
 
-    ndim = self.dim()
+    This op launches no kernel, so the whole cost is host-side dispatch. A
+    fast path serves non-negative, in-range dims directly: logging and the
+    aten-parity normalization/error machinery run only when a dim is negative
+    or out of range.
+    """
+    ndim = self.ndim
+    max_dim = ndim if ndim > 1 else 1
+
+    # Fast path: already-normalized in-range dims go straight to ATen's
+    # in-place metadata rename, skipping the debug log and the error-reporting
+    # machinery below.
+    if 0 <= dim0 < max_dim and 0 <= dim1 < max_dim:
+        return self.transpose_(dim0, dim1)
+
+    logger.debug("GEMS_ENFLAME SWAPDIMS_")
 
     # Normalize negative dims with aten's convention. A 0D tensor accepts only
     # 0 and -1 (both denote the sole axis), so clamp the accepted range to
     # [-1, 0] instead of the rank-based range used for higher ranks.
-    max_dim = max(ndim, 1)
     if dim0 < 0:
         dim0 += max_dim
     if dim1 < 0:
