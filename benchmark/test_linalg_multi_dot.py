@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .conftest import Config
 
@@ -48,16 +46,39 @@ class LinalgMultiDotBenchmark(base.Benchmark):
 
     def get_input_iter(self, cur_dtype):
         for dimensions in self.shapes:
-            tensors = [
-                torch.randn(
-                    dimensions[index],
-                    dimensions[index + 1],
-                    dtype=cur_dtype,
-                    device=self.device,
-                )
-                for index in range(len(dimensions) - 1)
-            ]
-            yield (tensors,)
+            yield from self._inputs_for_shape(dimensions, cur_dtype)
+
+    def _inputs_for_shape(self, dimensions, cur_dtype):
+        tensors = [
+            torch.randn(
+                dimensions[index],
+                dimensions[index + 1],
+                dtype=cur_dtype,
+                device=self.device,
+            )
+            for index in range(len(dimensions) - 1)
+        ]
+        yield (tensors,)
+
+    def get_case_iter(self, dtype):
+        for ordinal, dimensions in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "matrices": [
+                            (dimensions[i], dimensions[i + 1])
+                            for i in range(len(dimensions) - 1)
+                        ]
+                    },
+                    builder_args=(dimensions,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        return next(self._inputs_for_shape(shape, case.dtype))
 
 
 class LinalgMultiDotOutBenchmark(LinalgMultiDotBenchmark):
@@ -71,13 +92,22 @@ class LinalgMultiDotOutBenchmark(LinalgMultiDotBenchmark):
             )
             yield tensors, {"out": out}
 
+    def build_inputs(self, case):
+        (tensors,) = super().build_inputs(case)
+        out = torch.empty(
+            tensors[0].shape[0],
+            tensors[-1].shape[1],
+            dtype=case.dtype,
+            device=self.device,
+        )
+        return tensors, {"out": out}
+
 
 @pytest.mark.linalg_multi_dot
 def test_linalg_multi_dot_benchmark():
     bench = LinalgMultiDotBenchmark(
         op_name="linalg_multi_dot",
         torch_op=torch.ops.aten.linalg_multi_dot.default,
-        gems_op=flag_gems.linalg_multi_dot,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -88,7 +118,6 @@ def test_linalg_multi_dot_out_benchmark():
     bench = LinalgMultiDotOutBenchmark(
         op_name="linalg_multi_dot_out",
         torch_op=torch.ops.aten.linalg_multi_dot.out,
-        gems_op=flag_gems.linalg_multi_dot_out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
