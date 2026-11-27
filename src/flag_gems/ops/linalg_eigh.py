@@ -683,6 +683,29 @@ def linalg_eigh(A, UPLO="L", compute_v=True):
     """
     logger.debug("GEMS LINALG_EIGH")
 
+    # First-order autograd: wrap the real forward so the engine can reach the
+    # Triton backward below.  autograd.Function.forward runs with grad mode off,
+    # so the recursive call inside _EighBackward.forward does not re-enter this
+    # branch.  Complex inputs keep the plain forward: their eigenvector gradient
+    # is only defined up to a phase, which the explicit contract check reports.
+    if (
+        torch.is_grad_enabled()
+        and A.requires_grad
+        and (A.is_floating_point() or A.is_complex())
+    ):
+        if A.is_complex():
+            # Eigenvectors of a Hermitian matrix are defined only up to a phase
+            # e^{i phi}, so an eigenvector gradient is ill-defined for a general
+            # loss; native ATen rejects the same case at backward time. Report it
+            # here, while the caller can still see which input caused it.
+            raise NotImplementedError(
+                "linalg_eigh backward for complex input is not implemented: the "
+                "eigenvectors are defined only up to a complex phase, so a "
+                "general eigenvector gradient is ill-defined (native ATen raises "
+                "the same contract error at backward time)."
+            )
+        return _EighBackward.apply(A, UPLO, compute_v)
+
     if A.ndim < 2 or A.shape[-1] != A.shape[-2]:
         raise ValueError(f"Input matrix must be square, got shape {A.shape}")
 
@@ -773,3 +796,468 @@ def linalg_eigh(A, UPLO="L", compute_v=True):
             eigenvectors = eigenvectors.to(out_dtype)
 
     return eigenvalues, eigenvectors
+
+
+# ---------------------------------------------------------------------------
+# First-order autograd backward of the eigen-decomposition.
+#
+# ATen exposes no independent ``*_backward`` schema for eigh: the engine builds
+# ``LinalgEighBackward0`` from ``derivatives.yaml`` and runs
+# ``linalg_eig_backward(is_hermitian=true)``.  For ascending eigenvalues ``w``
+# and orthonormal eigenvectors ``v`` that backward is
+#
+#     grad_A = v (diag(grad_w) + F * (v^H grad_v - (v^H grad_v)^H) / 2) v^H
+#     F[i, j] = 1 / (w[j] - w[i]),  zero on the diagonal
+#
+# ``grad_A`` is Hermitian for every input, so UPLO only selects the triangle the
+# *forward* reads; it does not change the backward.  The ``1/(w[j]-w[i])``
+# factor is unbounded at repeated eigenvalues, exactly as in native ATen where
+# such inputs yield non-finite gradients instead of a defined value.
+# ---------------------------------------------------------------------------
+
+# Largest matrix order whose three n x n products still fit one program's
+# registers and shared memory, so the whole backward is a single launch.  Above
+# this the problem is tiled.  A 64x64 fp32 program spills its whole tile to
+# local memory and is *slower* than the tiled form (measured on H800: 32.5us
+# fused vs 17.0us tiled at n=64), so the crossover is well below the size that
+# merely compiles.  fp64 spills even earlier and the tiled fallback has a cliff
+# at small orders (n=24 fp64: 200.3us tiled at a 16 cutoff vs 58.1us fused at
+# 24), so its cutoff is where the two curves cross, measured per order.
+_EIGH_BWD_FUSED_MAX_N = {torch.float32: 32, torch.float64: 24}
+
+# Tile edge for the padded multi-launch path.  Padding the order up to a whole
+# multiple of the tile is required for correctness, not just speed (see the
+# kernels), so a smaller tile also wastes less padding.  16 is the smallest edge
+# ``tl.dot`` accepts and measured fastest for both dtypes here.
+_EIGH_BWD_TILE = {torch.float32: 16, torch.float64: 16}
+
+# warps per program.  fp64 tiles are register-bound and prefer fewer warps;
+# fp32 has enough parallelism to use four.
+_EIGH_BWD_NUM_WARPS = {torch.float32: 4, torch.float64: 2}
+
+# Whether the tiled path fuses the inner matrix into the first product.
+# Fusing saves one launch but recomputes the inner reduction once per output
+# row-block, turning O(n^3) work into O(n^4).  Measured on H800:
+#   fp32 n=64/96:  17.0 / 23.6 us fused  vs 35.3 / 35.2 us unfused
+#   fp64 n=64/96: 157.2 /334.0 us fused  vs 57.4 / 81.9 us unfused
+# so fp32 takes the fused form (launch-bound) and fp64 the three-launch form
+# (arithmetic-bound).  Both branches are exercised by the accuracy tests.
+_EIGH_BWD_FUSE_MIDDLE = {torch.float32: True, torch.float64: False}
+
+
+@libentry()
+@triton.jit
+def _eigh_bwd_fused_kernel(
+    V,
+    W,
+    GV,
+    GW,
+    GA,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    IS_F64: tl.constexpr,
+    HAS_GV: tl.constexpr,
+    HAS_GW: tl.constexpr,
+):
+    """Whole n x n backward in one program: ``grad_A = v Y v^T``.
+
+    ``Y`` is ``diag(grad_w)`` plus the gap-scaled skew projection of
+    ``v^T grad_v``.  Both products and ``Y`` stay register-resident, so one
+    launch produces the complete gradient for one batch element.
+    """
+    pid = tl.program_id(0)
+    r = tl.arange(0, BLOCK_N)
+    m = r < N
+    mask = m[:, None] & m[None, :]
+    off = r[:, None] * N + r[None, :]
+    acc = tl.float64 if IS_F64 else tl.float32
+
+    v = tl.load(V + pid * N * N + off, mask=mask, other=0.0).to(acc)
+    y = tl.zeros((BLOCK_N, BLOCK_N), dtype=acc)
+    if HAS_GW:
+        gw = tl.load(GW + pid * N + r, mask=m, other=0.0).to(acc)
+        y += tl.where(r[:, None] == r[None, :], gw[:, None], 0.0)
+    if HAS_GV:
+        w = tl.load(W + pid * N + r, mask=m, other=0.0).to(acc)
+        gv = tl.load(GV + pid * N * N + off, mask=mask, other=0.0).to(acc)
+        # (v^T grad_v - grad_v^T v) / 2 projects onto the tangent space of the
+        # orthonormal frame; that projection is what makes the map well defined.
+        mtx = tl.dot(tl.trans(v), gv, input_precision="ieee")
+        mtx = 0.5 * (mtx - tl.trans(mtx))
+        gap = w[None, :] - w[:, None]
+        f = tl.where(mask & (r[:, None] != r[None, :]), 1.0 / gap, 0.0)
+        y += f * mtx
+    tmp = tl.dot(v, y, input_precision="ieee")
+    ga = tl.dot(tmp, tl.trans(v), input_precision="ieee")
+    tl.store(GA + pid * N * N + off, ga, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _eigh_bwd_middle_kernel(
+    V,
+    GV,
+    W,
+    GW,
+    T,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+    IS_F64: tl.constexpr,
+    HAS_GV: tl.constexpr,
+    HAS_GW: tl.constexpr,
+):
+    """One ``(i, j)`` tile of ``T = V Y`` where ``Y`` is the eigh inner matrix.
+
+    ``Y = diag(grad_w) + F * (V^T gv - gv^T V) / 2`` cannot be produced as a
+    standalone n x n tile without an extra pass: the skew projection couples
+    ``(k, j)`` with ``(j, k)``.  Fusing it into the first product removes that
+    pass entirely -- the program accumulates ``T[i, j] = sum_k V[i, k] Y[k, j]``
+    and builds each ``Y[k-block, j-block]`` on the fly.
+
+    ``N`` is the padded order and a whole multiple of ``BLOCK``, so no tile is
+    partial: masked 2-D tiles silently drop their mask on this toolchain and
+    would overwrite their neighbour.
+    """
+    pid_b = tl.program_id(0)
+    pid_i = tl.program_id(1)
+    pid_j = tl.program_id(2)
+    ri = pid_i * BLOCK + tl.arange(0, BLOCK)
+    rj = pid_j * BLOCK + tl.arange(0, BLOCK)
+    rk = tl.arange(0, BLOCK)
+    acc = tl.float64 if IS_F64 else tl.float32
+    base = pid_b * N * N
+    out = tl.zeros((BLOCK, BLOCK), dtype=acc)
+    for k0 in range(0, N, BLOCK):
+        kk = k0 + rk
+        vik = tl.load(V + base + ri[:, None] * N + kk[None, :]).to(acc)
+        y = tl.zeros((BLOCK, BLOCK), dtype=acc)
+        if HAS_GV:
+            w_k = tl.load(W + pid_b * N + kk).to(acc)
+            w_j = tl.load(W + pid_b * N + rj).to(acc)
+            gap = w_j[None, :] - w_k[:, None]
+            # The (k, j) tile is off-diagonal unless its row and column indices
+            # coincide, so the reciprocal must be guarded before it is formed.
+            offdiag = kk[:, None] != rj[None, :]
+            f = tl.where(offdiag, 1.0 / tl.where(offdiag, gap, 1.0), 0.0)
+            x_kj = tl.zeros((BLOCK, BLOCK), dtype=acc)
+            x_jk = tl.zeros((BLOCK, BLOCK), dtype=acc)
+            for m0 in range(0, N, BLOCK):
+                rm = m0 + rk
+                v_mk = tl.load(V + base + rm[:, None] * N + kk[None, :]).to(acc)
+                v_mj = tl.load(V + base + rm[:, None] * N + rj[None, :]).to(acc)
+                g_mk = tl.load(GV + base + rm[:, None] * N + kk[None, :]).to(acc)
+                g_mj = tl.load(GV + base + rm[:, None] * N + rj[None, :]).to(acc)
+                x_kj += tl.dot(tl.trans(v_mk), g_mj, input_precision="ieee")
+                x_jk += tl.dot(tl.trans(v_mj), g_mk, input_precision="ieee")
+            y = 0.5 * f * (x_kj - tl.trans(x_jk))
+        if HAS_GW:
+            gwv = tl.load(GW + pid_b * N + kk).to(acc)
+            y += tl.where(kk[:, None] == rj[None, :], gwv[:, None], 0.0)
+        out += tl.dot(vik, y, input_precision="ieee")
+    tl.store(T + base + ri[:, None] * N + rj[None, :], out)
+
+
+@libentry()
+@triton.jit
+def _eigh_bwd_mm_kernel(
+    A,
+    B,
+    C,
+    N: tl.constexpr,
+    TRANS_A: tl.constexpr,
+    TRANS_B: tl.constexpr,
+    IS_F64: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Blocked ``C = op(A) op(B)`` for one batched n x n pair (large-n path).
+
+    ``N`` is the padded order and a whole multiple of ``BLOCK``, so every tile
+    is complete and no masking is needed (see ``_eigh_bwd_middle_kernel``).
+    """
+    pid_b = tl.program_id(0)
+    pid_i = tl.program_id(1)
+    pid_j = tl.program_id(2)
+    ri = pid_i * BLOCK + tl.arange(0, BLOCK)
+    rj = pid_j * BLOCK + tl.arange(0, BLOCK)
+    rk = tl.arange(0, BLOCK)
+    acc = tl.zeros((BLOCK, BLOCK), dtype=tl.float64 if IS_F64 else tl.float32)
+    base = pid_b * N * N
+    for k0 in range(0, N, BLOCK):
+        kk = k0 + rk
+        if TRANS_A:
+            a = tl.load(A + base + kk[None, :] * N + ri[:, None])
+        else:
+            a = tl.load(A + base + ri[:, None] * N + kk[None, :])
+        if TRANS_B:
+            b = tl.load(B + base + rj[None, :] * N + kk[:, None])
+        else:
+            b = tl.load(B + base + kk[:, None] * N + rj[None, :])
+        acc += tl.dot(a, b, input_precision="ieee")
+    tl.store(C + base + ri[:, None] * N + rj[None, :], acc)
+
+
+@libentry()
+@triton.jit
+def _eigh_bwd_inner_kernel(
+    V,
+    GV,
+    W,
+    GW,
+    Y,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+    IS_F64: tl.constexpr,
+    HAS_GV: tl.constexpr,
+    HAS_GW: tl.constexpr,
+):
+    """One tile of ``Y = diag(grad_w) + F * (V^T gv - gv^T V) / 2``.
+
+    A program owns the ``(i, j)`` output tile, but the skew projection needs
+    both ``X[i,j] = V_i^T gv_j`` and ``X[j,i] = V_j^T gv_i``; both products are
+    accumulated in registers over the full order, so one launch produces the
+    finished inner matrix.  ``N`` is the padded order and a whole multiple of
+    ``BLOCK``, so no tile is partial.
+    """
+    pid_b = tl.program_id(0)
+    pid_i = tl.program_id(1)
+    pid_j = tl.program_id(2)
+    ri = pid_i * BLOCK + tl.arange(0, BLOCK)
+    rj = pid_j * BLOCK + tl.arange(0, BLOCK)
+    rk = tl.arange(0, BLOCK)
+    acc = tl.float64 if IS_F64 else tl.float32
+    base = pid_b * N * N
+    y = tl.zeros((BLOCK, BLOCK), dtype=acc)
+    if HAS_GV:
+        x_ij = tl.zeros((BLOCK, BLOCK), dtype=acc)
+        x_ji = tl.zeros((BLOCK, BLOCK), dtype=acc)
+        for k0 in range(0, N, BLOCK):
+            kk = k0 + rk
+            vi = tl.load(V + base + kk[:, None] * N + ri[None, :]).to(acc)
+            vj = tl.load(V + base + kk[:, None] * N + rj[None, :]).to(acc)
+            gi = tl.load(GV + base + kk[:, None] * N + ri[None, :]).to(acc)
+            gj = tl.load(GV + base + kk[:, None] * N + rj[None, :]).to(acc)
+            x_ij += tl.dot(tl.trans(vi), gj, input_precision="ieee")
+            x_ji += tl.dot(tl.trans(vj), gi, input_precision="ieee")
+        w = tl.load(W + pid_b * N + ri).to(acc)
+        wt = tl.load(W + pid_b * N + rj).to(acc)
+        gap = wt[None, :] - w[:, None]
+        # The diagonal has no partner; give it a unit gap before the reciprocal
+        # so no 0/0 is formed, then let diag(grad_w) overwrite it below.
+        offdiag = ri[:, None] != rj[None, :]
+        f = tl.where(offdiag, 1.0 / tl.where(offdiag, gap, 1.0), 0.0)
+        y = 0.5 * f * (x_ij - tl.trans(x_ji))
+    if HAS_GW:
+        gw = tl.load(GW + pid_b * N + ri).to(acc)
+        y += tl.where(ri[:, None] == rj[None, :], gw[:, None], 0.0)
+    tl.store(Y + base + ri[:, None] * N + rj[None, :], y)
+
+
+def _eigh_bwd_pad(t, order):
+    """Place ``t`` in the leading block of a zero ``order`` x ``order`` matrix."""
+    n = t.shape[-1]
+    out = torch.zeros((*t.shape[:-2], order, order), dtype=t.dtype, device=t.device)
+    out[..., :n, :n] = t
+    return out
+
+
+def _as_3d(t, batch, n):
+    """View ``t`` as (batch, n, n) without a dispatcher call when possible.
+
+    ``grad_v`` may be an expanded or strided view (an invariant loss hands out
+    ``expand()``-ed gradients), so a guard is only a fast path: an arbitrary
+    stride still has to be materialised before the kernels index raw pointers.
+    """
+    if t.shape != (batch, n, n):
+        t = t.reshape(batch, n, n)
+    return t if t.is_contiguous() else t.contiguous()
+
+
+def _as_2d(t, batch, n):
+    """View ``t`` as (batch, n); the ``grad_w`` counterpart of :func:`_as_3d`."""
+    if t.shape != (batch, n):
+        t = t.reshape(batch, n)
+    return t if t.is_contiguous() else t.contiguous()
+
+
+def _eigh_backward_launch(grad_w, grad_v, w, v):
+    """Launch the backward kernels and return ``grad_A`` in ``v``'s dtype."""
+    n = v.shape[-1]
+    out_dtype = v.dtype
+    if n == 0:
+        return torch.empty_like(v)
+    batch = v.numel() // (n * n)
+    work = torch.float64 if out_dtype == torch.float64 else torch.float32
+    is_f64 = work == torch.float64
+    # Every normalisation below is guarded: on a CUDA tensor an unguarded
+    # ``contiguous()``/``to()``/``reshape()`` is a full dispatcher round trip
+    # (measured ~1.1us for reshape, ~0.4us for a same-dtype to()), and for the
+    # measured workloads all four inputs are already in their final layout.  A
+    # guard costs ~0.15us, so the guards pay for themselves at these sizes.
+    flat_v = v.reshape(batch, n, n) if v.shape != (batch, n, n) else v
+    flat_w = w.reshape(batch, n) if w.shape != (batch, n) else w
+    if n <= _EIGH_BWD_FUSED_MAX_N[work]:
+        grad_a = torch.empty((batch, n, n), dtype=work, device=v.device)
+        _eigh_bwd_fused_kernel[(batch,)](
+            flat_v,
+            flat_w,
+            _as_3d(grad_v, batch, n) if grad_v is not None else flat_v,
+            _as_2d(grad_w, batch, n) if grad_w is not None else flat_w,
+            grad_a,
+            N=n,
+            # tl.dot needs at least 16 rows and columns; the extra lanes are
+            # masked off in every load and store, so the padding is inert.
+            BLOCK_N=max(16, triton.next_power_of_2(n)),
+            IS_F64=is_f64,
+            HAS_GV=grad_v is not None,
+            HAS_GW=grad_w is not None,
+            num_warps=_EIGH_BWD_NUM_WARPS[work],
+        )
+        return grad_a.reshape(v.shape).to(out_dtype)
+
+    # Pad the order up to a whole number of tiles so no tile is partial: masked
+    # 2-D tiles silently drop their mask on this toolchain, so padding is a
+    # correctness requirement.  Pad by at most ``block - 1`` rows, which keeps
+    # the wasted work under one tile instead of doubling the problem.
+    block = _EIGH_BWD_TILE[work]
+    order = triton.cdiv(n, block) * block
+    # ``grad_w``/``grad_v`` may be expanded or strided views (an invariant loss
+    # hands out expand()ed eigenvalue gradients); the kernels index raw
+    # pointers, so materialize contiguous working-dtype buffers first.
+    work_v = flat_v if out_dtype == work else flat_v.to(work)
+    work_w = flat_w if out_dtype == work else flat_w.to(work)
+    grad_w_use = _as_2d(grad_w, batch, n) if grad_w is not None else None
+    grad_v_use = _as_3d(grad_v, batch, n) if grad_v is not None else None
+    if grad_w_use is not None and grad_w_use.dtype != work:
+        grad_w_use = grad_w_use.to(work)
+    if grad_v_use is not None and grad_v_use.dtype != work:
+        grad_v_use = grad_v_use.to(work)
+    if order != n:
+        work_v = _eigh_bwd_pad(work_v, order)
+        # The pads must be far from the spectrum and pairwise distinct: equal
+        # pad eigenvalues would make their own gap zero, and that reciprocal
+        # would leak non-finite values into the padded block.
+        hi = work_w.max(dim=-1, keepdim=True).values
+        span = hi - work_w.min(dim=-1, keepdim=True).values
+        step = (span + 1.0) * torch.arange(
+            1, order - n + 1, dtype=work, device=v.device
+        )
+        padded_w = torch.zeros((batch, order), dtype=work, device=v.device)
+        padded_w[:, :n] = work_w
+        padded_w[:, n:] = hi + 4.0 * span + 4.0 + step
+        work_w = padded_w
+        if grad_w_use is not None:
+            from flag_gems.ops.pad import pad
+
+            grad_w_use = pad(grad_w_use, (0, order - n))
+        if grad_v_use is not None:
+            grad_v_use = _eigh_bwd_pad(grad_v_use, order)
+
+    tiles = order // block
+    grid = (batch, tiles, tiles)
+    use_middle = _EIGH_BWD_FUSE_MIDDLE[work]
+    mid = torch.empty((batch, order, order), dtype=work, device=v.device)
+    if use_middle:
+        _eigh_bwd_middle_kernel[grid](
+            work_v,
+            grad_v_use if grad_v_use is not None else work_v,
+            work_w,
+            grad_w_use if grad_w_use is not None else work_w,
+            mid,
+            N=order,
+            BLOCK=block,
+            IS_F64=is_f64,
+            HAS_GV=grad_v_use is not None,
+            HAS_GW=grad_w_use is not None,
+        )
+    else:
+        inner = torch.empty_like(mid)
+        _eigh_bwd_inner_kernel[grid](
+            work_v,
+            grad_v_use if grad_v_use is not None else work_v,
+            work_w,
+            grad_w_use if grad_w_use is not None else work_w,
+            inner,
+            N=order,
+            BLOCK=block,
+            IS_F64=is_f64,
+            HAS_GV=grad_v_use is not None,
+            HAS_GW=grad_w_use is not None,
+        )
+        _eigh_bwd_mm_kernel[grid](
+            work_v,
+            inner,
+            mid,
+            order,
+            TRANS_A=False,
+            TRANS_B=False,
+            IS_F64=is_f64,
+            BLOCK=block,
+        )
+    grad_a = torch.empty_like(mid)
+    _eigh_bwd_mm_kernel[grid](
+        mid,
+        work_v,
+        grad_a,
+        order,
+        TRANS_A=False,
+        TRANS_B=True,
+        IS_F64=is_f64,
+        BLOCK=block,
+    )
+    if order != n:
+        grad_a = grad_a[:, :n, :n]
+    return grad_a.reshape(v.shape).to(out_dtype)
+
+
+class _EighBackward(torch.autograd.Function):
+    """Autograd entry that gives ``linalg_eigh`` its first-order gradient.
+
+    ``forward`` is the registered forward itself.  Re-entering ``linalg_eigh``
+    from here is safe: ``autograd.Function.forward`` runs with grad mode
+    disabled, so the guard in ``linalg_eigh`` falls through to the kernels.
+    """
+
+    @staticmethod
+    def forward(ctx, A, UPLO, compute_v):
+        eigenvalues, eigenvectors = linalg_eigh(A, UPLO=UPLO, compute_v=compute_v)
+        ctx.save_for_backward(eigenvalues, eigenvectors)
+        ctx.compute_v = compute_v
+        return eigenvalues, eigenvectors
+
+    @staticmethod
+    def backward(ctx, grad_w, grad_v):
+        w, v = ctx.saved_tensors
+        if not ctx.compute_v:
+            # Without eigenvectors there is no basis in which to express
+            # V diag(grad_w) V^H; native ATen fails on this path too.
+            raise NotImplementedError(
+                "linalg_eigh backward requires compute_v=True: the eigenvalue "
+                "gradient is V diag(grad_w) V^H and the forward returned no V."
+            )
+        if w.is_complex() or v.is_complex():
+            raise NotImplementedError(
+                "linalg_eigh backward for complex input is not implemented: the "
+                "eigenvectors are defined only up to a complex phase, so a "
+                "general eigenvector gradient is ill-defined (native ATen raises "
+                "the same contract error)."
+            )
+        if grad_v is not None and grad_v.numel() == 0:
+            grad_v = None
+        if grad_w is None and grad_v is None:
+            return None, None, None
+        return (
+            _eigh_backward_launch(grad_w, grad_v, w, v),
+            None,
+            None,
+        )
+
+
+def linalg_eigh_backward(grad_w, grad_v, w, v):
+    """Return the first-order matrix gradient from real eigenvalues and eigenvectors."""
+    if any(t is not None and t.is_complex() for t in (w, v, grad_w, grad_v)):
+        raise NotImplementedError("linalg_eigh_backward only supports real tensors")
+    if grad_v is not None and grad_v.numel() == 0:
+        grad_v = None
+    if grad_w is None and grad_v is None:
+        return None
+    return _eigh_backward_launch(grad_w, grad_v, w.contiguous(), v.contiguous())

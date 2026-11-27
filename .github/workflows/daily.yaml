@@ -31,10 +31,6 @@ permissions:
 on:
   workflow_dispatch:
 
-  schedule:
-    # Note that the time is in UTC, so we want this to start at 02:03+8:00
-    - cron: '3 18 * * *'
-
 jobs:
   prepare:
     # Trivial job: echoes a date used to tag downstream shard runs.
