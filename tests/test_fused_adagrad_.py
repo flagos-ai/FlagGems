@@ -55,6 +55,179 @@ def _deterministic_seed():
     torch.manual_seed(0)
 
 
+def _adagrad_dense(tensor):
+    if tensor.numel() <= 1:
+        return True
+    expected = 1
+    for stride, size in sorted(
+        (stride, size)
+        for size, stride in zip(tensor.shape, tensor.stride())
+        if size != 1
+    ):
+        if stride != expected:
+            return False
+        expected *= size
+    return True
+
+
+def _adagrad_validate(
+    params, grads, state_sums, state_steps, grad_scale=None, found_inf=None
+):
+    n = len(params)
+    for name, values in (
+        ("grads", grads),
+        ("state_sums", state_sums),
+        ("state_steps", state_steps),
+    ):
+        if len(values) != n:
+            raise RuntimeError(
+                f"_fused_adagrad_: {name} must have the same length as params"
+            )
+    if not n:
+        return
+    dtype, device = params[0].dtype, params[0].device
+    if dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        raise RuntimeError("_fused_adagrad_ requires floating point parameters")
+    for index, (param, grad, state_sum) in enumerate(zip(params, grads, state_sums)):
+        for tensor in (param, grad, state_sum):
+            if (
+                tensor.dtype != dtype
+                or tensor.device != device
+                or tensor.layout != torch.strided
+            ):
+                raise RuntimeError(
+                    "params, grads, and state_sums must have same dtype, device, and layout"
+                )
+            if not _adagrad_dense(tensor):
+                raise RuntimeError(
+                    "_fused_adagrad_ requires non-overlapping-and-dense tensors"
+                )
+        for other in (grad, state_sum):
+            if other.shape != param.shape:
+                raise RuntimeError(f"entry {index} does not match param shape")
+            if any(
+                size != 1 and left != right
+                for size, left, right in zip(
+                    param.shape, param.stride(), other.stride()
+                )
+            ):
+                raise RuntimeError(f"entry {index} strides do not match param strides")
+    for step in state_steps:
+        if step.dtype != torch.float32:
+            raise RuntimeError("state_steps must contain float32 scalar tensors")
+        if step.numel() != 1:
+            raise RuntimeError("state_steps must contain 1-element tensors")
+        if step.device != device:
+            raise RuntimeError("state_steps device is different from other tensors")
+    for name, option in (("grad_scale", grad_scale), ("found_inf", found_inf)):
+        if option is not None and (
+            option.dtype != torch.float32
+            or option.numel() != 1
+            or option.device != device
+        ):
+            raise RuntimeError(
+                f"{name} must be a float32 scalar on the original parameter device"
+            )
+
+
+def _adagrad_cpu_copy(tensor):
+    # Independent CPU storage with the original dense strides; no dtype promotion.
+    result = torch.empty_strided(
+        tuple(tensor.shape), tuple(tensor.stride()), dtype=tensor.dtype, device="cpu"
+    )
+    result.copy_(tensor.detach().cpu())
+    return result
+
+
+def _adagrad_cpu_native(params, grads, state_sums, state_steps, **kwargs):
+    # Validate every original target entry before any all-to-CPU conversion.
+    _adagrad_validate(
+        params,
+        grads,
+        state_sums,
+        state_steps,
+        kwargs.get("grad_scale"),
+        kwargs.get("found_inf"),
+    )
+    p, g, s, st = (
+        [_adagrad_cpu_copy(tensor) for tensor in values]
+        for values in (params, grads, state_sums, state_steps)
+    )
+    options = {
+        name: _adagrad_cpu_copy(value) if isinstance(value, torch.Tensor) else value
+        for name, value in kwargs.items()
+    }
+    result = torch._fused_adagrad_(p, g, s, st, **options)
+    assert result is None
+    for values, originals in ((p, params), (s, state_sums)):
+        for value, original in zip(values, originals):
+            assert value.device.type == "cpu" and value.dtype == original.dtype
+            assert value.shape == original.shape and value.stride() == original.stride()
+    return p, s
+
+
+def _adagrad_restore(value, original):
+    result = torch.empty_strided(
+        tuple(original.shape),
+        tuple(original.stride()),
+        dtype=original.dtype,
+        device=original.device,
+    )
+    result.copy_(value)
+    assert result.device == original.device and result.dtype == original.dtype
+    assert result.shape == original.shape and result.stride() == original.stride()
+    return result
+
+
+def _adagrad_cpu_apply(params, grads, state_sums, state_steps, **kwargs):
+    groups = (params, grads, state_sums, state_steps)
+    frozen = [
+        [
+            (
+                tensor,
+                tensor.data_ptr(),
+                tensor.device,
+                tensor.dtype,
+                tuple(tensor.shape),
+                tuple(tensor.stride()),
+                tensor.storage_offset(),
+            )
+            for tensor in group
+        ]
+        for group in groups
+    ]
+    p, s = _adagrad_cpu_native(params, grads, state_sums, state_steps, **kwargs)
+    # Validation and the complete CPU operation succeed before any target write.
+    for originals, values in ((params, p), (state_sums, s)):
+        for original, value in zip(originals, values):
+            original.copy_(value)
+    for group, originals in zip(groups, frozen):
+        assert len(group) == len(originals)
+        for tensor, (original, pointer, device, dtype, shape, stride, offset) in zip(
+            group, originals
+        ):
+            assert tensor is original and tensor.data_ptr() == pointer
+            assert (
+                tensor.device,
+                tensor.dtype,
+                tuple(tensor.shape),
+                tuple(tensor.stride()),
+                tensor.storage_offset(),
+            ) == (device, dtype, shape, stride, offset)
+    return None
+
+
+@pytest.fixture(autouse=True)
+def _adagrad_target_width(request):
+    dtype = getattr(getattr(request.node, "callspec", None), "params", {}).get("dtype")
+    if (
+        flag_gems.vendor_name == "enflame"
+        and dtype == torch.float64
+        and request.node.originalname != "test_fused_adagrad__empty"
+    ):
+        pytest.skip("Enflame target Float64 transfer loses genuine payload precision")
+
+
 def _native_reference(params, grads, state_sums, steps, **kwargs):
     """Run the native ``torch._fused_adagrad_`` on clones and return the results.
 
@@ -62,6 +235,17 @@ def _native_reference(params, grads, state_sums, steps, **kwargs):
     formula) keeps the test honest about ATen's exact semantics, including the
     corrected-lr expression and the ``found_inf`` comparison.
     """
+    if flag_gems.vendor_name in ("nvidia", "enflame"):
+        # CUDA has no kernel here; fully loaded GCU dispatch is CPU fallback.
+        # Select native CPU math before execution, then restore the true ABI.
+        p, s = _adagrad_cpu_native(params, grads, state_sums, steps, **kwargs)
+        return (
+            [_adagrad_restore(value, original) for value, original in zip(p, params)],
+            [
+                _adagrad_restore(value, original)
+                for value, original in zip(s, state_sums)
+            ],
+        )
     p = [t.clone() for t in params]
     g = [t.clone() for t in grads]
     s = [t.clone() for t in state_sums]
@@ -75,6 +259,8 @@ def _assert_close(got, expected, dtype):
     assert got.device == expected.device
     assert got.dtype == expected.dtype == dtype
     assert got.shape == expected.shape
+    if flag_gems.vendor_name in ("nvidia", "enflame"):
+        got, expected = got.cpu(), expected.cpu()
     utils.gems_assert_close(got, utils.to_reference(expected, False), dtype, atol=atol)
 
 
