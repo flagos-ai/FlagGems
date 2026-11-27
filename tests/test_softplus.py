@@ -70,9 +70,7 @@ def _checked_softplus_backward(grad, inp, beta, threshold):
         for value, (metadata, contents) in zip((grad, inp), snapshots):
             after_metadata, after_contents = _softplus_backward_snapshot(value)
             assert after_metadata == metadata, "candidate changed input metadata"
-            assert torch.equal(
-                after_contents, contents
-            ), "candidate changed input values"
+            utils.gems_assert_equal(after_contents, contents)
     assert isinstance(result, torch.Tensor)
     assert result.device == inp.device and result.dtype == inp.dtype
     assert result.shape == inp.shape
