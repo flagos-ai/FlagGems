@@ -12063,6 +12063,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: linalg_eigh_backward
+  description: The backward computation of `linalg_eigh()`, exercised through the
+    autograd of the forward operator. ATen registers no independent backward
+    schema for eigh, so `for` points at the forward schema that carries the
+    autograd node.
+  for:
+  - linalg_eigh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.5.0'
 - id: linalg_eigvals
   description: Computes the eigenvalues of a square matrix.
   for:
@@ -19561,6 +19575,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: 5.5.0
+- id: slow_conv2d_forward_backward
+  description: 'The backward computation of the slow reference 2-D convolution forward,
+    exercised through the autograd of the forward operator.
+
+    '
+  for:
+  - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5.0'
 - id: slow_conv_dilated2d
   description: Applies a 2D dilated convolution over an input signal composed of several
     input planes, using the slow (non-cuDNN) reference path. The operator takes `kernel_size`,

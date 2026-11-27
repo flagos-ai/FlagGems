@@ -41,6 +41,9 @@ from ._foreach_addcdiv__ScalarList import (
 )
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__ScalarList import (
+    _foreach_addcmul__ScalarList as _foreach_addcmul__ScalarList,
+)
 from ._foreach_addcmul__Tensor import (
     _foreach_addcmul__Tensor as _foreach_addcmul__Tensor,
 )
@@ -51,6 +54,9 @@ from ._foreach_clamp_max__List import (
     _foreach_clamp_max__List as _foreach_clamp_max__List,
 )
 from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max__ScalarList import (
+    _foreach_clamp_max__ScalarList as _foreach_clamp_max__ScalarList,
+)
 from ._foreach_clamp_max_List import _foreach_clamp_max_List as _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import (
     _foreach_clamp_max_Scalar as _foreach_clamp_max_Scalar,
@@ -85,6 +91,7 @@ from ._foreach_div_Scalar import _foreach_div_Scalar as _foreach_div_Scalar
 from ._foreach_div_ScalarList import _foreach_div_ScalarList as _foreach_div_ScalarList
 from ._foreach_div_Tensor import _foreach_div_Tensor as _foreach_div_Tensor
 from ._foreach_erf import _foreach_erf as _foreach_erf
+from ._foreach_erf_ import _foreach_erf_ as _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_ as _foreach_erfc_
 from ._foreach_exp import _foreach_exp as _foreach_exp
 from ._foreach_exp_ import _foreach_exp_ as _foreach_exp_
@@ -407,12 +414,14 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
     "_foreach_atan",
     "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
     "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max__ScalarList",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
     "_foreach_clamp_max_ScalarList",
@@ -433,6 +442,7 @@ __all__ = [
     "_foreach_div_ScalarList",
     "_foreach_div_Tensor",
     "_foreach_erf",
+    "_foreach_erf_",
     "_foreach_erfc_",
     "_foreach_exp",
     "_foreach_exp_",
