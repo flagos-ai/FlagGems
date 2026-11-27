@@ -66,7 +66,7 @@ def argmax_kernel_1(
     min_value = get_dtype_min(inp.type.element_ty)
     inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
     max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
-    max_index = max_index + pid * BLOCK_SIZE
+    max_index = tl.where(max_val != max_val, 0, max_index) + pid * BLOCK_SIZE
     mid_value_ptr = mid_value + pid
     max_index_ptr = mid_index + pid
     tl.store(mid_value_ptr, max_val)
@@ -82,8 +82,9 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     min_value = get_dtype_min(mid_value.type.element_ty)
     mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
     index_val = tl.argmax(mid_val, axis=0)
-    mid_index_ptrs = mid_index + index_val
-    out_val = tl.load(mid_index_ptrs)
+    maxv = tl.max(mid_val, axis=0)
+    index_val = tl.where(maxv != maxv, 0, index_val)
+    out_val = tl.load(mid_index + index_val, mask=index_val < mid_size, other=0)
     tl.store(out, out_val)
 
 
@@ -99,6 +100,8 @@ def argmax_stage1(
     NUM_CHUNKS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    CHUNK_START: tl.constexpr,
+    CHUNK_ID_BASE: tl.constexpr,
 ):
     # Stage 1 of the large-N path. Each program reduces one BLOCK_N-wide chunk
     # of a BLOCK_M row block and emits the chunk-local max value plus its
@@ -107,29 +110,32 @@ def argmax_stage1(
     pid_c = ext.program_id(1)
     pid_k = ext.program_id(2)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    chunk_start = pid_c * BLOCK_N
+    chunk_start = CHUNK_START + pid_c * BLOCK_N
+    chunk_id = CHUNK_ID_BASE + pid_c
     n_offset = chunk_start + tl.arange(0, BLOCK_N)
     dtype = inp.type.element_ty
     min_value = get_dtype_min(dtype)
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    # XPU's masked load can still expose real memory in the padded tail, which
-    # then wins the reduction and yields an out-of-range column.  Read an
-    # in-bounds column instead and mask the lanes in registers.
-    safe_m = tl.minimum(m_offset, M - 1)
-    safe_n = tl.minimum(n_offset, N - 1)
-    safe_offset = safe_m[:, None] * N * K + safe_n[None, :] * K + pid_k
-    vals = tl.load(inp + safe_offset)
-    vals = tl.where(mask, vals, min_value)
-    # A NaN poisons the XPU reduction and can make its index point at a
-    # masked lane, which turns into an out-of-range int64 (issue #9123).
-    # Rank NaN above every real value so the reduction index stays valid;
-    # an all-NaN row then ties on the first lane and yields 0, like torch.
-    vals = tl.where(vals != vals, get_dtype_max(dtype), vals)
+    # Every chunk is sized to divide N exactly (binary tail decomposition), so
+    # the column address stays affine and vectorized.  Keep the mask 2-D (not a
+    # broadcast row mask) so the XPU load stays on the vectorized path.
+    mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    vals = tl.load(inp + offset, mask=mask, other=min_value)
     lmax, largmax = tl.max(
         vals, axis=1, return_indices=True, return_indices_tie_break_left=True
     )
+    # Sanitize once per row/chunk instead of once per element: NaN must not
+    # poison the stage-2 compare, and the exact chunk sizing keeps the index
+    # in range.
+    nan_max = lmax != lmax
+    lmax = tl.where(nan_max, get_dtype_max(dtype), lmax)
+    # Native P800 returns 0 for an all-NaN row; when the tile max is NaN, point
+    # at the first lane of the earliest NaN chunk instead of the arbitrary
+    # tie-break index.
+    largmax = tl.where(nan_max, 0, largmax)
+    largmax = tl.minimum(largmax, BLOCK_N - 1)
     gidx = chunk_start + largmax
-    part_offset = m_offset * NUM_CHUNKS * K + pid_c * K + pid_k
+    part_offset = m_offset * NUM_CHUNKS * K + chunk_id * K + pid_k
     pmask = m_offset < M
     tl.store(part_val + part_offset, lmax, mask=pmask)
     tl.store(part_idx + part_offset, gidx, mask=pmask)
@@ -157,18 +163,20 @@ def argmax_stage2(
     dtype = part_val.type.element_ty
     min_value = get_dtype_min(dtype)
     mask = m_offset[:, None] < M and c_offset[None, :] < NUM_CHUNKS
+    # Clamp both axes: the last BLOCK_M row block can run past M, and an
+    # unmasked load with an unclamped row index reads past part_val.
+    safe_m = tl.minimum(m_offset, M - 1)
     safe_c = tl.minimum(c_offset, NUM_CHUNKS - 1)
-    offset = m_offset[:, None] * NUM_CHUNKS * K + safe_c[None, :] * K + pid_k
+    offset = safe_m[:, None] * NUM_CHUNKS * K + safe_c[None, :] * K + pid_k
     vals = tl.load(part_val + offset)
     vals = tl.where(mask, vals, min_value)
     _, best_c = tl.max(
         vals, axis=1, return_indices=True, return_indices_tie_break_left=True
     )
-    best_c = tl.minimum(tl.maximum(best_c, 0), NUM_CHUNKS - 1)
-    gather = m_offset * NUM_CHUNKS * K + best_c * K + pid_k
+    gather = safe_m * NUM_CHUNKS * K + best_c * K + pid_k
     pmask = m_offset < M
     res = tl.load(part_idx + gather, mask=pmask)
-    tl.store(out_index + m_offset * K + pid_k, res, mask=pmask)
+    tl.store(out_index + safe_m * K + pid_k, res, mask=pmask)
 
 
 @libentry()
@@ -201,10 +209,8 @@ def argmax_kernel_small_n(
     safe_n = tl.minimum(n_offset, N - 1)
     inp_vals = tl.load(inp + safe_m[:, None] * N * K + safe_n[None, :] * K + pid_k)
     inp_vals = tl.where(mask, inp_vals, dtype_min_value)
-    # Same NaN guard as stage 1: keep the index inside the valid lanes and let
-    # an all-NaN row tie on the first lane (index 0).  No-op for integer dtypes.
-    inp_vals = tl.where(inp_vals != inp_vals, get_dtype_max(tl_dtype), inp_vals)
-    _, result_index = tl.max(inp_vals, axis=1, return_indices=True)
+    max_val, result_index = tl.max(inp_vals, axis=1, return_indices=True)
+    result_index = tl.where(max_val != max_val, 0, result_index)
 
     out_index_ptrs = out_index + offset_index
 
@@ -437,9 +443,10 @@ def argmax_chunk_max(inp, cmax, N, NC, BLOCK: tl.constexpr):
     acc = tl.full([BLOCK], float("-inf"), tl.float32)
     for off in range(0, CHUNK, BLOCK):
         v = tl.load(base + off + tl.arange(0, BLOCK)).to(tl.float32)
-        v = tl.where(v != v, float("inf"), v)
         acc = tl.maximum(acc, v)
-    tl.store(cmax + row.to(tl.int64) * NC + ch, tl.max(acc, axis=0))
+    m = tl.max(acc, axis=0)
+    m = tl.where(m != m, float("inf"), m)
+    tl.store(cmax + row.to(tl.int64) * NC + ch, m)
 
 
 @libentry()
@@ -473,9 +480,10 @@ def argmax_chunk_idx(inp, win, maxv, out, N, CHUNK, BLOCK: tl.constexpr):
     acc = tl.full([BLOCK], 1 << 30, tl.int32)
     for off in range(0, CHUNK, BLOCK):
         v = tl.load(base + off + tl.arange(0, BLOCK)).to(tl.float32)
-        v = tl.where(v != v, float("inf"), v)
         acc = tl.minimum(acc, tl.where(v == m, off + tl.arange(0, BLOCK), 1 << 30))
-    tl.store(out + row, c * CHUNK + tl.min(acc, axis=0).to(tl.int64))
+    idx = tl.min(acc, axis=0)
+    idx = tl.where(idx == (1 << 30), 0, idx)
+    tl.store(out + row, c * CHUNK + idx.to(tl.int64))
 
 
 # ---------------------------------------------------------------------------
@@ -524,11 +532,14 @@ def argmax_return_idx(inp, out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constex
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         v = tl.load(p + cols).to(tl.float32)
-        # NaN must not be able to leave 1<<30 in the index accumulator.
-        v = tl.where(v != v, float("inf"), v)
         cm, ci = tl.max(
             v, axis=1, return_indices=True, return_indices_tie_break_left=True
         )
+        # Sanitize per row, not per element: a NaN tile must not leave 1<<30 in
+        # the index accumulator, and the index must stay inside the tile.
+        nan_tile = cm != cm
+        cm = tl.where(nan_tile, float("inf"), cm)
+        ci = tl.where(nan_tile, 0, ci)
         cm = cm[:, None]
         ci = ci[:, None] + off
         acci = tl.where(cm > accv, ci, acci)
@@ -611,11 +622,14 @@ def argmax_mri_vi(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         v = tl.load(p + cols).to(tl.float32)
-        # NaN must not be able to leave 1<<30 in the index accumulator.
-        v = tl.where(v != v, float("inf"), v)
         cm, ci = tl.max(
             v, axis=1, return_indices=True, return_indices_tie_break_left=True
         )
+        # Sanitize per row, not per element: a NaN tile must not leave 1<<30 in
+        # the index accumulator, and the index must stay inside the tile.
+        nan_tile = cm != cm
+        cm = tl.where(nan_tile, float("inf"), cm)
+        ci = tl.where(nan_tile, 0, ci)
         cm = cm[:, None]
         ci = ci[:, None] + off
         acci = tl.where(cm > accv, ci, acci)
@@ -744,9 +758,10 @@ def _argmax_flat_fast(inp, out, device):
 
 
 def _argmax_flat_legacy(inp, out, device):
-    """dim=None path for int dtypes / small inputs (unchanged from HEAD)."""
-    M = inp.numel()
-    dtype = inp.dtype
+    """The only dim=None path on this stack (see the dispatch comment above)."""
+    flat = inp.contiguous().reshape(-1)
+    M = flat.numel()
+    dtype = flat.dtype
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -755,7 +770,7 @@ def _argmax_flat_legacy(inp, out, device):
     mid_index = torch.empty((mid_size,), dtype=torch.int64, device=device)
     with torch_device_fn.device(device):
         argmax_kernel_1[(mid_size, 1, 1)](
-            inp,
+            flat,
             mid_value,
             mid_index,
             M,
@@ -1074,7 +1089,7 @@ def _argmax_simd(inp, out_index, dim, M, N, K):
     return True
 
 
-def argmax(inp, dim=None, keepdim=False, *, dtype=None):
+def _argmax_impl(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_KUNLUNXIN ARGMAX")
     if dim is None:
         M = inp.numel()
@@ -1088,17 +1103,10 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        if _is_fast_dtype(dtype) and (1 << 20) <= M <= (1 << 30):
-            _argmax_flat_mri(inp, out, inp.device)
-        elif (
-            _is_fast_dtype(dtype)
-            and M > 2 * 1024 * 1024
-            and M > _FULL_REDUCTION_BLOCK_SIZE
-            and M <= (1 << 30)
-        ):
-            _argmax_flat_fast(inp, out, inp.device)
-        else:
-            _argmax_flat_legacy(inp, out, inp.device)
+        # The flat MRI / packed-fast kernels currently trip a TritonXPU
+        # convert_layout / arith.cmpf miscompile on this stack.  Use the
+        # proven legacy flat reduction until those kernels are fixed.
+        _argmax_flat_legacy(inp, out, inp.device)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -1291,29 +1299,56 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 )
             return out_index
 
-        # Two-stage per-row reduction.
+        # Two-stage per-row reduction.  The reduce axis is split into full
+        # STAGE_BLOCK_N chunks plus a binary decomposition of the remainder
+        # (e.g. 1808 -> 1024 + 512 + 256 + 16).  Every chunk then covers an
+        # exact column range, so no masked tail load is needed.
         block_n = STAGE_BLOCK_N
         block_m = STAGE_BLOCK_M
-        num_chunks = triton.cdiv(N, block_n)
+        num_full = N // block_n
+        rem = N - num_full * block_n
+        tail_bits = [
+            1 << i for i in range(rem.bit_length() - 1, -1, -1) if rem & (1 << i)
+        ]
+        num_chunks = num_full + len(tail_bits)
         part_val = torch.empty(
             (M * num_chunks * K,), dtype=inp.dtype, device=inp.device
         )
         part_idx = torch.empty(
             (M * num_chunks * K,), dtype=torch.int64, device=inp.device
         )
-        grid1 = (triton.cdiv(M, block_m), num_chunks, K)
+        grid_m = triton.cdiv(M, block_m)
         with torch_device_fn.device(inp.device):
-            argmax_stage1[grid1](
-                inp,
-                part_val,
-                part_idx,
-                M,
-                N,
-                K,
-                num_chunks,
-                block_m,
-                block_n,
-            )
+            if num_full:
+                argmax_stage1[(grid_m, num_full, K)](
+                    inp,
+                    part_val,
+                    part_idx,
+                    M,
+                    N,
+                    K,
+                    num_chunks,
+                    block_m,
+                    block_n,
+                    0,
+                    0,
+                )
+            tail_start = num_full * block_n
+            for j, bit in enumerate(tail_bits):
+                argmax_stage1[(grid_m, 1, K)](
+                    inp,
+                    part_val,
+                    part_idx,
+                    M,
+                    N,
+                    K,
+                    num_chunks,
+                    block_m,
+                    bit,
+                    tail_start,
+                    num_full + j,
+                )
+                tail_start += bit
             # A single chunk already holds the whole reduce axis: stage 1 wrote
             # the final global argmax into part_idx (layout matches out_index),
             # so skip stage 2 entirely.
@@ -1333,3 +1368,17 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 block_c,
             )
         return out_index
+
+
+def argmax(inp, dim=None, keepdim=False, *, dtype=None):
+    """Argmax with a final in-range guarantee.
+
+    Some XPU reduction paths can leave a sentinel (1 << 30) or a padded column
+    in the index when the row is entirely non-finite.  Clamp the small output
+    tensor instead of adding per-element checks inside every kernel.
+    """
+    out = _argmax_impl(inp, dim, keepdim, dtype=dtype)
+    n = inp.numel() if dim is None else inp.shape[dim % inp.ndim]
+    if n > 0:
+        out.clamp_(0, n - 1)
+    return out
