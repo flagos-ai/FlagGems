@@ -31,12 +31,11 @@ _CPU_DEVICE = torch.device("cpu")
 
 @functools.lru_cache(maxsize=256)
 def _shape_template(shape: torch.Size) -> torch.Tensor:
-    """Memoize int64 template tensors by shape.
+    """Memoized int64 template tensor keyed by shape.
 
-    The tensor is only a source for ``clone()`` and is never returned directly to callers, so it cannot be modified
-    externally;
-    the entry count is "number of distinct shapes seen" (each only `rank` int64s), capped at 256 for
-    bounded memory, and LRU eviction just means one extra construction when a shape reappears.
+    The tensor only ever feeds ``clone()`` and is never handed to callers, so it cannot be
+    mutated outside; one entry per distinct shape (rank int64s each) with a cap of 256 keeps
+    memory bounded, and an LRU eviction just costs one extra construction.
     """
     return torch.tensor(shape, dtype=torch.int64, device=_CPU_DEVICE)
 
@@ -85,7 +84,7 @@ def shape_as_tensor(self: torch.Tensor) -> torch.Tensor:
     ``self.shape``, which is TensorImpl metadata.
     """
     if _DEBUG_ENABLED:
-        logger.debug("GEMS_ENFLAME_GCU400 _SHAPE_AS_TENSOR")
+        logger.debug("GEMS_ENFLAME _SHAPE_AS_TENSOR")
     # Native resolves the result device to CPU unconditionally (see above).
     # Use "memoized template + clone" instead of rebuilding each time: torch.tensor(...) kwargs parsing
     # and factory dispatch take ~70% of this op (measured 7.6us -> 2.4us, 3.2x);

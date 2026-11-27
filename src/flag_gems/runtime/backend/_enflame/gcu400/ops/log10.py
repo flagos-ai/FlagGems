@@ -101,8 +101,101 @@ def _launch_log10(input_tensor: torch.Tensor, output_tensor: torch.Tensor):
     return output_tensor
 
 
+@libentry()
+@triton.jit(do_not_specialize=["num_elements"])
+def _log10_backward_flat_kernel(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    num_elements,
+    BLOCK: tl.constexpr,
+):
+    """d/dx log10(x) = grad / (x * ln(10)).
+
+    ATen rounds the denominator to the input dtype before the division, so the
+    product is computed in fp32 and cast back; the division itself runs in fp32
+    and is rounded once at the store, which matches ATen's opmath behaviour for
+    fp16 / bf16 inputs.
+    """
+    program_id = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    for block_id in tl.range(program_id, tl.cdiv(num_elements, BLOCK), num_programs):
+        base_offset = tl.multiple_of(block_id * BLOCK, BLOCK)
+        element_offsets = base_offset + tl.arange(0, BLOCK)
+        valid_mask = element_offsets < num_elements
+        grad_values = tl.load(grad_ptr + element_offsets, mask=valid_mask, other=0)
+        input_values = tl.load(input_ptr + element_offsets, mask=valid_mask, other=1)
+        denominator = (input_values.to(tl.float32) * 2.302585092994046).to(
+            input_values.dtype
+        )
+        result_values = grad_values.to(tl.float32) / denominator.to(tl.float32)
+        tl.store(
+            output_ptr + element_offsets,
+            result_values.to(output_ptr.dtype.element_ty),
+            mask=valid_mask,
+        )
+
+
+def _log10_backward(grad_output: torch.Tensor, input_tensor: torch.Tensor):
+    """Return ``grad_output / (input_tensor * ln(10))`` in ``input_tensor`` dtype.
+
+    Element order is irrelevant for a pointwise operator, so the strided inputs
+    are linearised once and the flat kernel is used for the whole tensor.
+    """
+    contiguous_grad = (
+        grad_output if grad_output.is_contiguous() else grad_output.contiguous()
+    )
+    contiguous_input = (
+        input_tensor if input_tensor.is_contiguous() else input_tensor.contiguous()
+    )
+    grad_input = torch.empty_like(contiguous_input)
+    num_elements = contiguous_input.numel()
+    if num_elements:
+        block_size = BLOCK_SMALL if num_elements <= 1048576 else BLOCK_SIZE
+        grid_size = min(triton.cdiv(num_elements, block_size), NUM_PROGRAMS)
+        with torch_device_fn.device(contiguous_input.device):
+            _log10_backward_flat_kernel[(grid_size,)](
+                contiguous_grad,
+                contiguous_input,
+                grad_input,
+                num_elements,
+                BLOCK=block_size,
+                num_warps=NUM_WARPS,
+            )
+    return grad_input
+
+
+class _Log10Function(torch.autograd.Function):
+    """Autograd wrapper so ``torch.log10`` keeps a backward on GCU400.
+
+    The generic backend hands the backward to ``pointwise_dynamic`` codegen; the
+    GCU400 build uses the flat kernel above instead, and only keeps the autograd
+    plumbing (save the input, dispatch the flat backward).
+    """
+
+    @staticmethod
+    def forward(ctx, input_tensor):
+        ctx.save_for_backward(input_tensor)
+        contiguous_input = (
+            input_tensor if input_tensor.is_contiguous() else input_tensor.contiguous()
+        )
+        output = torch.empty(
+            contiguous_input.shape,
+            dtype=_output_dtype(input_tensor),
+            device=input_tensor.device,
+        )
+        return _launch_log10(contiguous_input, output)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (input_tensor,) = ctx.saved_tensors
+        return _log10_backward(grad_output, input_tensor)
+
+
 def log10(A):
     logger.debug("GEMS_ENFLAME LOG10")
+    if torch.is_grad_enabled() and A.requires_grad and A.is_floating_point():
+        return _Log10Function.apply(A)
     contiguous_input = A if A.is_contiguous() else A.contiguous()
     output = torch.empty(
         contiguous_input.shape, dtype=_output_dtype(A), device=A.device

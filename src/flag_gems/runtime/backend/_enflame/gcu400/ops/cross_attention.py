@@ -17,7 +17,7 @@
 import logging
 import math
 import numbers
-import types
+import types  # noqa: F401
 
 import torch
 import triton
@@ -236,12 +236,19 @@ def _select_gpu_tiling(
             bh = batch_size * query_heads
             pipeline_ns = 3
             if qk_dim == 32 and bh <= 8 and key_len >= 3000:
-                return 128, 64, 8, pipeline_ns
+                # GCU400 tile sweep on `[2,4,4001,32,4001]` (fp16): 64/128/4
+                # runs 3217us against 8293us for 128/64/8, so the H800
+                # 8-warp choice loses 2.6x here (8 warps exceed the GCU cap
+                # of 4 and BN=64 only reaches 50% MMA util for D=32).
+                return 64, 128, 4, pipeline_ns
             if qk_dim <= 16 and bh >= 16:
                 return 128, 128, 8, pipeline_ns
             if qk_dim <= 16 and bh <= 4:
                 return 64, 128, 4, pipeline_ns
-            return 128, 128, 4, pipeline_ns
+            # GCU400 tile sweep on `[1,4,1024,64,1024]` (bf16): 64/128/4
+            # runs 141us against 653us for the legacy 128/128/4 default, so
+            # the smaller M tile is what keeps enough Q programs resident.
+            return 64, 128, 4, pipeline_ns
         return 64, 128, 4, pipeline_ns
     if has_mask and key_len > 512:
         return 16, 64, 4, pipeline_ns
@@ -435,7 +442,7 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     GQA, and MQA are supported. Non-zero bool/uint8 mask entries are blocked.
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CROSS_ATTENTION")
+    logger.debug("GEMS_ENFLAME CROSS_ATTENTION")
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]
@@ -532,82 +539,43 @@ __all__ = ["cross_attention"]
 
 _SDPA_BRIDGE_FLAG = "_flag_gems_gcu400_sdpa_efficient_reference_arm"
 
+# Delegation probe cache: [registrar, implementation-or-None]. Keyed on the
+# registrar object so the (potentially long) all_ops membership scan runs once
+# per use_gems()/enable() session instead of per attention call.
+_flaggems_delegate_cache = [None, None]
 
-def _install_sdpa_efficient_reference_arm():
-    if getattr(torch, _SDPA_BRIDGE_FLAG, None) is not None:
-        return
-    if not hasattr(torch.library, "get_kernel"):
-        return
 
-    from flag_gems.runtime import device as _runtime_device
+def _flag_gems_efficient_impl():
+    """Return the FlagGems efficient-attention implementation, but only while
+    FlagGems actually owns the op (``use_gems()``/``enable()`` registered it).
 
-    dispatch_key = _runtime_device.dispatch_key
+    This bridge permanently holds the PrivateUse1 dispatcher slot for
+    ``aten::_scaled_dot_product_efficient_attention`` (see the comment block
+    above), so FlagGems's own registrar can never claim it -- its
+    ``lib.impl`` call is rejected with "already a kernel registered from
+    python". Delegating here restores the intended use_gems() semantics:
+    FlagGems kernel while enabled, native (plus the fully-blocked-row fix)
+    while disabled. ``current_work_registrar`` only exists while FlagGems ops
+    are registered, and ``all_ops`` records the op even when the dispatcher
+    rejected the duplicate registration.
+    """
     try:
-        native = torch.library.get_kernel(
-            torch.ops.aten._scaled_dot_product_efficient_attention.default,
-            dispatch_key,
-        )
-        keyset = torch._C.DispatchKeySet(getattr(torch._C.DispatchKey, dispatch_key))
+        import flag_gems
+    except ImportError:
+        return None
+    registrar = getattr(flag_gems, "current_work_registrar", None)
+    if registrar is None:
+        _flaggems_delegate_cache[0] = None
+        _flaggems_delegate_cache[1] = None
+        return None
+    if _flaggems_delegate_cache[0] is registrar:
+        return _flaggems_delegate_cache[1]
+    impl = None
+    try:
+        if "_scaled_dot_product_efficient_attention" in registrar.all_ops:
+            impl = flag_gems._scaled_dot_product_efficient_attention
     except Exception:
-        # No native kernel to delegate to (or unsupported torch build): keep
-        # the default dispatch untouched instead of installing a bridge that
-        # could never complete a call.
-        return
-    if native is None:
-        return
-
-    def _sdpa_efficient_gcu(
-        query,
-        key,
-        value,
-        attn_bias,
-        compute_log_sumexp,
-        dropout_p=0.0,
-        is_causal=False,
-        scale=None,
-    ):
-        result = native.call_boxed(
-            keyset,
-            query,
-            key,
-            value,
-            attn_bias,
-            compute_log_sumexp,
-            dropout_p,
-            is_causal,
-            scale=scale,
-        )
-        if attn_bias is not None:
-            output = result[0]
-            if attn_bias.dtype == torch.bool:
-                keep = attn_bias.any(dim=-1)
-            else:
-                keep = attn_bias != float("-inf")
-                keep = keep.any(dim=-1)
-            while keep.dim() < output.dim() - 1:
-                keep = keep.unsqueeze(0)
-            output.mul_(keep.unsqueeze(-1).to(dtype=output.dtype))
-        return result
-
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl(
-            "_scaled_dot_product_efficient_attention",
-            _sdpa_efficient_gcu,
-            dispatch_key,
-            allow_override=True,
-        )
-    except TypeError:
-        # Older torch builds have no allow_override parameter.
-        library.impl(
-            "_scaled_dot_product_efficient_attention", _sdpa_efficient_gcu, dispatch_key
-        )
-
-    setattr(
-        torch,
-        _SDPA_BRIDGE_FLAG,
-        types.SimpleNamespace(native=native, library=library),
-    )
-
-
-_install_sdpa_efficient_reference_arm()
+        impl = None
+    _flaggems_delegate_cache[0] = registrar
+    _flaggems_delegate_cache[1] = impl
+    return impl

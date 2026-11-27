@@ -459,7 +459,7 @@ def slow_conv_dilated3d(
     self, weight, kernel_size, bias=None, stride=1, padding=0, dilation=1
 ):
     """Direct 3-D dilated convolution (see the module docstring)."""
-    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_DILATED3D")
+    logger.debug("GEMS_ENFLAME SLOW_CONV_DILATED3D")
     return _slow_conv_dilated3d_impl(
         self, weight, kernel_size, bias, stride, padding, dilation, None
     )
@@ -469,7 +469,7 @@ def slow_conv_dilated3d_out(
     self, weight, kernel_size, bias=None, stride=1, padding=0, dilation=1, *, out
 ):
     """``aten::slow_conv_dilated3d.out``: writes into ``out`` and returns it."""
-    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_DILATED3D_OUT")
+    logger.debug("GEMS_ENFLAME SLOW_CONV_DILATED3D_OUT")
     return _slow_conv_dilated3d_impl(
         self, weight, kernel_size, bias, stride, padding, dilation, out
     )

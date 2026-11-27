@@ -30,8 +30,12 @@ def set_default(self: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: ``self`` (now empty).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SET_")
-    self.resize_(0)
+    logger.debug("GEMS_ENFLAME SET_")
+    # Delegate directly to aten::set_.source_Storage_storage_offset (NOT
+    # registered by FlagGems) instead of resize_: under use_gems the latter
+    # re-enters FlagGems' Python resize_ kernel (double dispatch) only to end
+    # at this same storage-offset set_ call.
+    self.set_(self.untyped_storage(), 0, (0,))
     return self
 
 
@@ -45,7 +49,7 @@ def set_source_tensor(self: torch.Tensor, source: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: ``self`` (modified in-place).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SET_SOURCE_TENSOR")
+    logger.debug("GEMS_ENFLAME SET_SOURCE_TENSOR")
     # Delegate to aten::set_.source_Storage_storage_offset (NOT registered
     # by FlagGems) to avoid recursive dispatch.
     self.set_(
@@ -76,8 +80,8 @@ def set_source_tensor_storage_offset(
     Returns:
         torch.Tensor: ``self`` (modified in-place).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SET_SOURCE_TENSOR_STORAGE_OFFSET")
-    if stride is None or len(stride) == 0:
+    logger.debug("GEMS_ENFLAME SET_SOURCE_TENSOR_STORAGE_OFFSET")
+    if not stride:
         stride = []
         acc = 1
         for s in reversed(size):

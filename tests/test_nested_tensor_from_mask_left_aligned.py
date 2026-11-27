@@ -52,10 +52,6 @@ def _make_mask(N, L, kind, device):
     return torch.randint(0, 2, (N, L), dtype=torch.bool, device=device)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="nested tensor not supported on this device",
-)
 @pytest.mark.nested_tensor_from_mask_left_aligned
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -76,10 +72,6 @@ def test_nested_tensor_from_mask_left_aligned(shape, dtype, kind):
     utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="nested tensor not supported on this device",
-)
 @pytest.mark.nested_tensor_from_mask_left_aligned
 @pytest.mark.parametrize("shape", [(0, 3), (4, 1)])
 def test_nested_tensor_from_mask_left_aligned_edge(shape):

@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -152,8 +152,15 @@ def _cast_char_flat_launch(x, out, n):
         cap = 65536 if itemsize <= 2 else 32768
         block = min(max(triton.next_power_of_2(n // 64), 16384), cap)
         nprog = min(48, n // block)
+        # Two-byte loads in the <=1M band are latency-limited and prefer 4
+        # warps (measured -10% at 2^18..2^20 for fp16/bf16/int16; uint8 and
+        # bool are neutral, so itemsize gates). From 2^21 up, and for
+        # 4-byte loads at every size, nw2 stays ahead. The BLOCK ladder
+        # differs between the bands, so each (dtype, BLOCK) specialization
+        # keeps a single num_warps under the libentry cache key.
+        num_warps = 4 if itemsize <= 2 and n <= (1 << 20) else 2
         _cast_char_gridstride[(nprog,)](
-            x, out, n, NPROG=nprog, BLOCK=block, num_warps=2
+            x, out, n, NPROG=nprog, BLOCK=block, num_warps=num_warps
         )
     else:
         block = 8192 if n > 8192 else triton.next_power_of_2(max(int(n), 16))
@@ -161,7 +168,7 @@ def _cast_char_flat_launch(x, out, n):
 
 
 def cast_Char(self, non_blocking=False):
-    logger.debug("GEMS_ENFLAME_GCU400 CAST_CHAR")
+    logger.debug("GEMS_ENFLAME CAST_CHAR")
     if self.dtype == torch.int8:
         return self
     if self.is_complex() and self.device.type == "gcu":
@@ -269,24 +276,3 @@ def _cast_char_device_impl(self, non_blocking=False):
     return torch.ops.aten._cast_Char.default.redispatch(
         _NATIVE_KEYSET, self, non_blocking=non_blocking
     )
-
-
-def _ensure_cast_char_key_registrations():
-    global _CAST_CHAR_LIBRARY
-    if getattr(torch, _CAST_CHAR_KEYS_FLAG, False):
-        return
-    _CAST_CHAR_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _CAST_CHAR_LIBRARY.impl(
-            "_cast_Char", _cast_char_device_impl, runtime.device.dispatch_key
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "_cast_Char: aten registration _cast_Char@%s skipped: %s",
-            runtime.device.dispatch_key,
-            error,
-        )
-    setattr(torch, _CAST_CHAR_KEYS_FLAG, True)
-
-
-_ensure_cast_char_key_registrations()

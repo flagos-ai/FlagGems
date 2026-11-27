@@ -301,7 +301,15 @@ def _fill_rows(target, pattern):
         # Active ids are the last k classes in descending order: a unique
         # non-prefix set that reaches class C-1, so an implementation assuming
         # the active ids are the prefix 0..k-1 computes a different loss.
-        target[:, :k] = torch.arange(classes - k, classes, device=target.device).flip(0)
+        if flag_gems.vendor_name == "enflame":
+            # aten::flip has no int64 kernel on the enflame GCU backend
+            # (topsatenFlip: data type not support), so the descending ids are
+            # built by subtraction there. Both branches yield the same ids.
+            target[:, :k] = classes - 1 - torch.arange(k, device=target.device)
+        else:
+            target[:, :k] = torch.arange(
+                classes - k, classes, device=target.device
+            ).flip(0)
     elif pattern == "ragged":
         # Row r keeps 1 + r % k active ids, so row lengths differ inside one
         # target and the per-row terminator search cannot be hoisted.

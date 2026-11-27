@@ -77,7 +77,7 @@ def _dim_arange(self: torch.Tensor, dim: int) -> torch.Tensor:
     Mirrors ``aten::_dim_arange``: only the size of ``self`` along ``dim`` is
     used; tensor values and strides are irrelevant. ``dim`` may be negative.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _DIM_ARANGE")
+    logger.debug("GEMS_ENFLAME _DIM_ARANGE")
     if self.dim() == 0:
         raise IndexError(
             "Dimension specified as {} but tensor has no dimensions".format(dim)

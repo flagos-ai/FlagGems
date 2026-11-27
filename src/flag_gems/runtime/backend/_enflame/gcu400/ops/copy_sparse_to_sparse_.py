@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
+from flag_gems.runtime.backend._enflame.gcu400.ops.values_copy import _coo_values_put
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +53,26 @@ def _copy_fused_nomask(si, di, ni, sv, dv, nv, split, BLOCK: tl.constexpr):
         tl.store(dv + offs, tl.load(sv + offs))
 
 
-# Small workloads are launch-bound (BLOCK=1024); large workloads get a
-# slightly higher-bandwidth values stream with BLOCK=2048.
-_BLOCK_SMALL = 1024
-_BLOCK_BIG = 2048
 _NW = 4
-_BIG_THRESH = 2_500_000
+# A GCU400 program costs much more than the elements it moves, so the fused copy
+# wants few wide programs: measured on nnz = 64 / 4 K / 64 K / 256 K / 1 M the
+# best tile is 1 K / 1 K / 16 K / 32 K / 32 K elements, i.e. a quarter of the
+# stream clamped to [1 K, 32 K]. That is up to 1.8x the ATen kernel and 11x the
+# old 1 K-wide tile at nnz = 1 M.
+_BLOCK_FUSED_MIN = 1024
+_BLOCK_FUSED_MAX = 32768
+
+
+def _fused_block(ni, nv):
+    stream = max(ni, nv)
+    block = _BLOCK_FUSED_MIN
+    while block < _BLOCK_FUSED_MAX and block * 4 < stream:
+        block *= 2
+    return block
 
 
 def copy_sparse_to_sparse_(self, src, non_blocking=False):
-    logger.debug("GEMS_ENFLAME_GCU400 COPY_SPARSE_TO_SPARSE_")
+    logger.debug("GEMS_ENFLAME COPY_SPARSE_TO_SPARSE_")
     if self.layout != torch.sparse_coo or src.layout != torch.sparse_coo:
         raise RuntimeError("copy_sparse_to_sparse_ expects sparse COO tensors")
     if self.device != src.device:
@@ -82,41 +93,61 @@ def copy_sparse_to_sparse_(self, src, non_blocking=False):
         or self.sparse_dim() != src.sparse_dim()
         or self.dense_dim() != src.dense_dim()
     ):
-        # One-time structural resize: copy into fresh buffers and install them
-        # into self via a metadata swap. Runs once per workload (dst starts as
-        # zeros_like(src), i.e. nnz=0), so it is not in the timed path.
-        new_i = torch.empty_like(s_idx)
-        new_v = torch.empty(s_val.shape, dtype=self.dtype, device=self.device)
+        # Structure differs: grow / retype ``self`` to match ``src`` and then copy.
+        if self._nnz() != 0 and any(
+            src.shape[dim] < self.shape[dim] for dim in range(self.dim())
+        ):
+            raise RuntimeError(
+                "shrinking the size of sparse dimensions (from %s to %s) on a "
+                "non-empty sparse tensor is not supported."
+                % (list(self.shape), list(src.shape))
+            )
+        # The growth cannot be done in place: torch_gcu drops ``resize_`` on the
+        # COO index/value buffers (measured: growing the indices from (2, 2) to
+        # (2, 3) leaves them at (2, 2)), so a resize-then-copy sequence silently
+        # keeps the old nnz. Copy into fresh buffers and install them through the
+        # sparse metadata slot instead, which preserves the destination Python
+        # object, its version counter and existing weak references.
+        new_idx = torch.empty_like(s_idx)
+        new_val = torch.empty(s_val.shape, dtype=self.dtype, device=s_val.device)
         ni = s_idx.numel()
         nv = s_val.numel()
         if not s_idx.is_contiguous() or not s_val.is_contiguous():
-            copy_(new_i, s_idx, non_blocking)
-            copy_(new_v, s_val, non_blocking)
+            copy_(new_idx, s_idx, non_blocking)
+            copy_(new_val, s_val, non_blocking)
         elif ni + nv > 0:
-            BLOCK = _BLOCK_BIG if ni + nv >= _BIG_THRESH else _BLOCK_SMALL
+            BLOCK = _fused_block(ni, nv)
             split = (ni + BLOCK - 1) // BLOCK
             _copy_fused[(split + (nv + BLOCK - 1) // BLOCK,)](
                 s_idx,
-                new_i,
+                new_idx,
                 ni,
                 s_val,
-                new_v,
+                new_val,
                 nv,
                 split,
                 BLOCK=BLOCK,
                 num_warps=_NW,
             )
-        new_sp = torch.sparse_coo_tensor(
-            new_i,
-            new_v,
+        # The device is taken from the freshly allocated buffers: on torch_gcu a
+        # sparse COO tensor reports cpu through ``.device``.
+        # The coalesced flag travels with the new metadata, so it must not be set
+        # again afterwards: the extra ``_coalesced_(False)`` call rebuilds the
+        # container and re-poisons the value lookup (see below).
+        rebuilt = torch.sparse_coo_tensor(
+            new_idx,
+            new_val,
             tuple(src.shape),
-            device=self.device,
             is_coalesced=src.is_coalesced(),
         )
-        # Replace sparse metadata while retaining the destination Python object,
-        # version counter, and weak references; swap_tensors rejects aliases.
-        self.data = new_sp
-        self._coalesced_(src.is_coalesced())
+        self.data = rebuilt
+        # GCU400 cannot materialize a sparse-COO TensorImpl: the container is a
+        # cpu tensor while the caller-visible values live in the process-wide
+        # cache of ``values_copy.py``, keyed by ``id(container)``. Replacing the
+        # data slot keeps ``id(self)`` alive, so that entry still points at the
+        # pre-grow buffer and ``_values()`` keeps reporting the old nnz. Re-point
+        # it at the freshly built device buffer.
+        _coo_values_put(self, new_val)
         return self
 
     d_idx = self._indices()
@@ -127,10 +158,10 @@ def copy_sparse_to_sparse_(self, src, non_blocking=False):
         copy_(d_idx, s_idx, non_blocking)
         copy_(d_val, s_val, non_blocking)
     elif ni + nv > 0:
-        BLOCK = _BLOCK_BIG if ni + nv >= _BIG_THRESH else _BLOCK_SMALL
+        BLOCK = _fused_block(ni, nv)
         split = (ni + BLOCK - 1) // BLOCK
         grid = (split + (nv + BLOCK - 1) // BLOCK,)
-        if BLOCK == _BLOCK_BIG and ni % BLOCK == 0 and nv % BLOCK == 0:
+        if BLOCK > _BLOCK_FUSED_MIN and ni % BLOCK == 0 and nv % BLOCK == 0:
             _copy_fused_nomask[grid](
                 s_idx,
                 d_idx,

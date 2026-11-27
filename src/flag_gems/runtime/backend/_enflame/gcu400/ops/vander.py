@@ -275,7 +275,7 @@ def vander_int_kernel(
 
 
 def vander(x, N=None, increasing=False):
-    logger.debug("GEMS_ENFLAME_GCU400 VANDER")
+    logger.debug("GEMS_ENFLAME VANDER")
 
     if x.ndim != 1:
         raise RuntimeError("x must be a one-dimensional tensor.")

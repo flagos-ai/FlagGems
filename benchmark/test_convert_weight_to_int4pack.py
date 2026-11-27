@@ -70,16 +70,55 @@ class ConvertWeightBenchmark(base.Benchmark):
         gems_args = list(gems_input)
         metric.shape_detail = self.record_shapes(*gems_args)
         try:
-            if "latency_base" in self.to_bench_metrics:
+            # Honor the skip_native marker: on vendors whose torch stack has no
+            # PrivateUse1 kernel for aten::_convert_weight_to_int4pack the native
+            # baseline cannot be timed, so only the gems leg is measured.
+            if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *base_args)
             if "latency" in self.to_bench_metrics:
                 metric.latency = self.get_latency(self.gems_op, *gems_args)
-            if "speedup" in self.to_bench_metrics:
+            if (
+                "speedup" in self.to_bench_metrics
+                and metric.latency_base is not None
+                and metric.latency is not None
+            ):
                 metric.speedup = metric.latency_base / metric.latency
         except (RuntimeError, Exception) as e:
             metric.error_msg = str(e)
             pytest.fail(str(e))
         return metric
+
+    def _run_kernel_check_paired(self):
+        """Record whether the native baseline launches a device kernel.
+
+        Mirrors ``Benchmark._run_kernel_check_legacy`` but consumes this
+        benchmark's paired inputs and profiles only the torch baseline with
+        its native input format, which is what --kernel-check validates.
+        """
+        executed = []
+        for shape in self.shapes:
+            for base_input, _gems_input in _convert_weight_input_fn(shape, self.device):
+                n, k_half = shape
+                inner_k_tiles = base_input[1]
+                case_id = f"{self.op_name}-kernel-check-{n}x{k_half}x{inner_k_tiles}"
+                record = {
+                    "operator": self.op_name,
+                    "nodeid": Config.current_nodeid,
+                    "case_id": case_id,
+                    "invoked_kernel": False,
+                    "status": "failed",
+                }
+                Config.kernel_check_records.append(record)
+                try:
+                    fn, _ = self._benchmark_callable(self.torch_op, *base_input)
+                    record["invoked_kernel"] = self._profile_invokes_kernel(fn)
+                except Exception as exc:
+                    record["error"] = str(exc)
+                    raise
+                record["status"] = "passed"
+                Config.executed_case_ids.add(case_id)
+                executed.append(case_id)
+        return executed
 
     def run(self):
         if Config.query:
@@ -94,6 +133,14 @@ class ConvertWeightBenchmark(base.Benchmark):
             return
 
         self.init_user_config()
+
+        # The timed loop below cannot serve --kernel-check: Benchmark.run()
+        # dispatches to _run_kernel_check_cases()/_run_kernel_check_legacy(),
+        # which feed one argument tuple to both operators, while this benchmark
+        # pairs a native uint8 input with a FlagGems int32 input.
+        if getattr(Config, "kernel_check", False):
+            return self._run_kernel_check_paired()
+
         for dtype in self.to_bench_dtypes:
             metrics = []
             input_iter = self.get_input_iter(dtype)
@@ -114,18 +161,33 @@ class ConvertWeightBenchmark(base.Benchmark):
                 metrics.append(metric)
                 gc.collect()
 
-            result = BenchmarkResult(
-                level=Config.bench_level.value,
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode=Config.mode.value,
-                result=metrics,
-            )
-            print(result)
-            update_result(self.op_name, asdict(result))
-            emit_record_logger(result.to_json())
+            if flag_gems.vendor_name == "enflame":
+                # On enflame the native leg is skipped by the skip_native
+                # marker, so the record must carry that reason. The framework
+                # helper emits the dict payload and attaches the reason; the
+                # manual payload below leaves it unset and the report parser
+                # then dies on a null speedup.
+                self._emit_result(dtype, metrics)
+            else:
+                result = BenchmarkResult(
+                    level=Config.bench_level.value,
+                    op_name=self.op_name,
+                    dtype=str(dtype),
+                    mode=Config.mode.value,
+                    result=metrics,
+                )
+                print(result)
+                update_result(self.op_name, asdict(result))
+                emit_record_logger(result.to_json())
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_convert_weight_to_int4pack; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.convert_weight_to_int4pack
 def test_convert_weight_to_int4pack():
     # torch_op is the native aten op (the baseline Caeruleann asked for);

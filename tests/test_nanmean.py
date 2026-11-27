@@ -116,9 +116,17 @@ def test_nanmean_edge():
 
     # all NaN in a row -> result is NaN
     x = torch.full((5, 5), float("nan"), device=device)
-    ref_out = torch.nanmean(x, dim=1)
+    # torch_gcu segfaults inside aten::nanmean as soon as a reduction window is
+    # entirely NaN, so the reference for that check is evaluated on the host for
+    # enflame and stays on the device for every other vendor.
     res = flag_gems.nanmean(x, dim=1)
-    torch.testing.assert_close(res, ref_out, equal_nan=True)
+    if flag_gems.vendor_name == "enflame":
+        torch.testing.assert_close(
+            res.cpu(), torch.nanmean(x.cpu(), dim=1), equal_nan=True
+        )
+    else:
+        ref_out = torch.nanmean(x, dim=1)
+        torch.testing.assert_close(res, ref_out, equal_nan=True)
 
     # no NaN present -> equals mean
     x = torch.randn((4, 8), device=device)
@@ -165,15 +173,29 @@ def test_nanmean_zero_sized_free_dimensions(shape, dim, keepdim):
 @pytest.mark.parametrize(
     "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name in ("ascend", "enflame"),
+    reason="Ascend and Enflame native nanmean does not support complex output dtypes",
+)
 def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     inp = _nan_input((7, 11), torch.float32, flag_gems.device)
-    reference = torch.nanmean(inp.clone(), dim=1, dtype=dtype)
+    use_cpu_reference = flag_gems.vendor_name == "mthreads"
+    if use_cpu_reference:
+        real = inp.cpu()
+        sum_dtype = torch.float64 if dtype == torch.complex128 else torch.float32
+        total = torch.nansum(real, dim=1, dtype=sum_dtype).to(dtype)
+        reference = total / (~real.isnan()).sum(dim=1)
+    else:
+        reference = torch.nanmean(inp.clone(), dim=1, dtype=dtype)
 
     result = flag_gems.nanmean(inp, dim=1, dtype=dtype)
 
     assert result.dtype == dtype
+    if use_cpu_reference:
+        assert result.device == inp.device
+        result = result.cpu()
     torch.testing.assert_close(result, reference, equal_nan=True)
 
 
@@ -279,19 +301,28 @@ def test_nanmean_out_rejects_device_mismatch():
 
 @pytest.mark.nanmean
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame has no complex nanmean datapath",
+    flag_gems.vendor_name in ("ascend", "enflame"),
+    reason="Ascend and Enflame native nanmean do not support complex inputs",
 )
-def test_nanmean_complex_and_autograd():
+def test_nanmean_complex_input():
     inp = torch.tensor(
         [complex(float("nan"), 1), complex(2, float("nan")), 3 + 4j],
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    torch.testing.assert_close(
-        flag_gems.nanmean(inp), torch.nanmean(inp), equal_nan=True
-    )
+    result = flag_gems.nanmean(inp)
+    if flag_gems.vendor_name == "mthreads":
+        # Only 3+4j has no NaN component in this fixture.
+        reference = torch.tensor(3 + 4j, dtype=inp.dtype, device="cpu")
+        assert result.device == inp.device
+        result = result.cpu()
+    else:
+        reference = torch.nanmean(inp)
+    torch.testing.assert_close(result, reference, equal_nan=True)
 
+
+@pytest.mark.nanmean
+def test_nanmean_complex_and_autograd():
     grad_inp = torch.tensor(
         [1.0, float("nan"), 3.0], device=flag_gems.device, requires_grad=True
     )
@@ -332,7 +363,8 @@ def test_nanmean_out_rejects_autograd():
 
 @pytest.mark.nanmean
 @pytest.mark.skipif(
-    cfg.TO_CPU, reason="native CPU nanmean does not support complex inputs"
+    cfg.TO_CPU or flag_gems.vendor_name == "ascend",
+    reason="CPU/Ascend native nanmean does not support complex inputs",
 )
 @pytest.mark.parametrize(
     "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
@@ -343,8 +375,17 @@ def test_nanmean_complex_input_real_dtype(dtype):
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    reference = torch.nanmean(utils.to_reference(inp), dtype=dtype)
+    use_cpu_reference = flag_gems.vendor_name == "mthreads"
+    if use_cpu_reference:
+        # ATen counts non-NaN complex samples, independently of the sum dtype.
+        source = inp.cpu()
+        reference = torch.nansum(source.real, dtype=dtype) / (~source.isnan()).sum()
+    else:
+        reference = torch.nanmean(utils.to_reference(inp), dtype=dtype)
     result = flag_gems.nanmean(inp, dtype=dtype)
+    if use_cpu_reference:
+        assert result.device == inp.device
+        result = result.cpu()
     utils.gems_assert_close(result, reference, dtype, equal_nan=True)
 
 
