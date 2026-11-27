@@ -3329,6 +3329,18 @@ ops:
   - Math
   stages:
   - stable: '5.0'
+- id: ceil_backward
+  description: First-order autograd rule for ceil implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - ceil
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: ceil_out
   description: A variant of `ceil()` with `out` specified.
   for:
