@@ -74,6 +74,14 @@ def digamma_(*args, **kwargs):
     x = args[0]
     if not isinstance(x, torch.Tensor):
         raise TypeError("digamma_ expects a torch.Tensor as the first argument")
+    if not x.is_floating_point():
+        # Native digamma_ computes a float result and refuses to cast it back into
+        # the integral/bool payload; without this guard the fp32 store would be
+        # silently truncated into an int buffer instead of raising.
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type "
+            + str(x.dtype).replace("torch.", "")
+        )
 
     BLOCK = 8192
     grid_size_fn = lambda n: min((n + BLOCK - 1) // BLOCK, NUM_SIPS * 2)

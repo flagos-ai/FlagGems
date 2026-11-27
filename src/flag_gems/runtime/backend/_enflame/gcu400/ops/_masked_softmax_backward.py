@@ -59,7 +59,7 @@ def _masked_softmax_backward_kernel(
 
 
 def _masked_softmax_backward(grad_output, output, mask, dim=None):
-    logger.debug("GEMS_ENFLAME_GCU400 _MASKED_SOFTMAX_BACKWARD")
+    logger.debug("GEMS_ENFLAME _MASKED_SOFTMAX_BACKWARD")
 
     output = output.contiguous()
     grad_output = grad_output.contiguous()

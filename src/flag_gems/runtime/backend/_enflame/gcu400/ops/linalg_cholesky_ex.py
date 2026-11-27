@@ -127,7 +127,7 @@ _MAX_N = 64
 def linalg_cholesky_ex(self, upper=False, check_errors=False):
     # ``aten::linalg_cholesky_ex`` defaults both flags, so they default here as
     # well; otherwise ``torch.linalg.cholesky_ex(A)`` cannot bind.
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_CHOLESKY_EX")
+    logger.debug("GEMS_ENFLAME LINALG_CHOLESKY_EX")
     a = self
     if a.dim() < 2:
         raise RuntimeError(

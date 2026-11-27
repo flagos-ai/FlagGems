@@ -46,5 +46,5 @@ def spherical_bessel_j0_func(x):
 
 
 def special_spherical_bessel_j0(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SPHERICAL_BESSEL_J0")
+    logger.debug("GEMS_ENFLAME SPECIAL_SPHERICAL_BESSEL_J0")
     return spherical_bessel_j0_func(A)

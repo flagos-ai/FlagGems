@@ -31,10 +31,13 @@ Equivalences used here (all exact in fp32 for the quant ranges used):
     round-half-to-even for negative p (it behaves like "round to a multiple of
     0.5", e.g. p=-22.398 -> -22.5), while the |p| form is exact.  Hence abs().
 
-The whole measured workload is launch bound (empty kernel ~= 11.2us +
-0.46us * grid.x on this vendor), so the tuning is entirely "finish the tensor
-with as few programs as possible": one program covers the tensor up to 128K
-elements, and num_warps is picked from the resulting grid.
+Tuning conclusion (aligned with the roofline probe): small tensors are launch bound, so 1024
+elements per program suffice; large ones are bandwidth/parallelism bound, where a pure copy
+kernel on 1M fp16 is best at 8192 elements per program, 2 warps and about 128 programs
+(26.8us). The old "one program covers the whole tensor (up to 128K elements)" form left a
+98K-element shape like (2,3,128,128) with a single serial program measuring 12.1us against
+a 6.0us copy floor. The block is now derived from numel, ``clamp(next_pow2(numel // 16), 1024, 8192)``,
+keeping the grid in the 8~128 range.
 """
 
 import logging
@@ -47,7 +50,8 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 _MAGIC_C = tl.constexpr(8388608.0)  # 2**23
-_BLOCK_MAX = 131072  # grid.x stays far below 65535 for any real tensor
+_BLOCK_MIN = 1024
+_BLOCK_MAX = 8192
 
 
 @triton.jit
@@ -87,20 +91,16 @@ def _f32(v):
     return _unpack("f", _pack("f", v))[0]
 
 
-def _num_warps(block, grid):
-    if block <= 16384:
-        return 2
-    if block <= 32768:
-        return 4
-    if grid <= 2:
-        return 8
-    if grid <= 4:
-        return 4
-    return 2
+def _pick_block(n_elements):
+    """Derives elements per program from numel: aim for 8~128 programs, capped at 8192 each."""
+    block = _BLOCK_MIN
+    while block * 2 <= n_elements // 16 and block * 2 <= _BLOCK_MAX:
+        block *= 2
+    return min(block, _BLOCK_MAX)
 
 
 def fake_quantize_per_tensor_affine(input, scale, zero_point, quant_min, quant_max):
-    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE")
+    logger.debug("GEMS_ENFLAME FAKE_QUANTIZE_PER_TENSOR_AFFINE")
 
     if type(scale) is not float:
         scale = scale.item() if isinstance(scale, torch.Tensor) else float(scale)
@@ -134,9 +134,7 @@ def fake_quantize_per_tensor_affine(input, scale, zero_point, quant_min, quant_m
     s32 = _f32(scale)
     inv = _f32(1.0 / s32)
 
-    block = 1 << max(10, (n - 1).bit_length())
-    if block > _BLOCK_MAX:
-        block = _BLOCK_MAX
+    block = _pick_block(n)
     grid = (triton.cdiv(n, block),)
 
     fake_quantize_per_tensor_affine_kernel[grid](
@@ -148,6 +146,6 @@ def fake_quantize_per_tensor_affine(input, scale, zero_point, quant_min, quant_m
         quant_min - zero_point + 0.0,
         quant_max - zero_point + 0.0,
         BLOCK=block,
-        num_warps=_num_warps(block, grid[0]),
+        num_warps=2,
     )
     return out

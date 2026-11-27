@@ -24,6 +24,11 @@ from ._atanh_autograd import unary_reference
 
 OPERATORS = ["atanh", "atanh_"]
 
+# Out-of-place aten::atanh keeps ATen's autograd on enflame: only the in-place
+# atanh_ variant claims the free AutogradPrivateUse1 slot, so the module-owner
+# node/backward assertions below cannot hold for the out-of-place form.
+_ATEN_AUTOGRAD_ONLY = {"atanh"}
+
 
 def build_case(name):
     def rand(shape):
@@ -55,9 +60,19 @@ def build_case(name):
 
 def marker(name):
     op = name[:-1] + "_backward_" if name.endswith("_") else name + "_backward"
-    return pytest.param(
-        name, marks=[getattr(pytest.mark, name), getattr(pytest.mark, op)]
-    )
+    marks = [getattr(pytest.mark, name), getattr(pytest.mark, op)]
+    if name in _ATEN_AUTOGRAD_ONLY:
+        marks.append(
+            pytest.mark.skipif(
+                flag_gems.vendor_name == "enflame",
+                reason="enflame GCU: aten::atanh out-of-place autograd is not "
+                "provided by FlagGems (only atanh_ claims the GCU autograd "
+                "slot), so the node stays ATen's AtanhBackward0 with its "
+                "aten::mul/aten::div backward; torch aten not supported by the "
+                "GCU kernels here",
+            )
+        )
+    return pytest.param(name, marks=marks)
 
 
 @pytest.mark.parametrize("name", [marker(name) for name in OPERATORS])

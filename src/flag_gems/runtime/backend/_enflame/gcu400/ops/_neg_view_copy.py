@@ -37,6 +37,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(__name__)
 
 _SUPPORTED = frozenset(
@@ -65,30 +67,44 @@ _WIDE_LIMIT = 1 << 31
 _MAX_RANK = 8
 _FIXED_GRID = 48
 _SMALL_GRID = 0
-_WARPS = 2
+_WARPS = 4
+# Tile width per element width: 2-byte dtypes saturate the HBM path at 16K
+# elements per CTA, 4-byte dtypes need 32K to reach the same occupancy.
+_BLOCK_2B = 16384
+_BLOCK_4B = 32768
+# Below this element count a single CTA already covers the whole tensor, so a
+# tile just wide enough for the tensor beats a wide masked tile (measured
+# 1.05x-1.53x on 256..64K element cases).
+_SMALL_NUMEL = 65536
 _DTYPE_TIERS = 1
 
 
 def _flat_launch(dtype, numel):
-    """Select (BLOCK, num_warps, grid, whether to use a stride loop) by dtype and element count.
+    """Picks (BLOCK, num_warps, grid, whether to stride-loop) from dtype and element count.
 
-    For large shapes the CTA count is fixed at _FIXED_GRID and a stride loop covers all elements;
-    for small shapes the CTA count is min(_FIXED_GRID, tile count), avoiding idle CTAs.
+    For large shapes the CTA count is pinned to _FIXED_GRID with a stride loop covering all
+    elements; for small ones it is min(_FIXED_GRID, tiles) to avoid launching idle CTAs.
     """
     if _DTYPE_TIERS:
-        # Probes show 4-byte dtypes are optimal at a 16K tile, while 2/1-byte dtypes are optimal at 8K.
-        block = 16384 if dtype.itemsize >= 4 else 8192
+        # Probes show 4-byte dtypes are optimal with a 32K tile + 4 warps, while 2/1-byte dtypes
+        # are optimal with a 16K tile + 4 warps (both are already close to the HBM bandwidth ceiling).
+        block = _BLOCK_4B if dtype.itemsize >= 4 else _BLOCK_2B
     else:
         elements = _BYTES_PER_PROGRAM // dtype.itemsize
         elements = max(_BLOCK_MIN, min(_BLOCK_MAX, elements))
         block = 1 << (elements.bit_length() - 1)
 
+    if 0 < numel <= _SMALL_NUMEL:
+        # A single CTA suffices: narrow the tile to the smallest power of 2 that covers numel, eliminating useless
+        # masked lanes (for small shapes, masking itself dominates total time).
+        block = min(block, max(_BLOCK_MIN, 1 << (numel - 1).bit_length()))
+
     tiles = (numel + block - 1) // block
     if numel >= _WIDE_LIMIT:
-        # Very large shapes need int64 offsets; keep the baseline single-tile path to avoid int32 overflow in stride
-        # indices.
+        # Very large shapes need int64 offsets; keep the baseline single-tile path to avoid strided indices overflowing
+        # int32.
         return block, _WARPS, (max(1, tiles),), False
-    # Small shapes (<= 64K elements) use a separate CTA-count tier to avoid idle CTAs.
+    # Small shapes (no more than 64K elements) use a separate CTA-count bucket to avoid idle CTAs.
     effective_grid = (
         _SMALL_GRID if (0 < _SMALL_GRID and numel <= 65536) else _FIXED_GRID
     )
@@ -101,6 +117,7 @@ def _flat_launch(dtype, numel):
     return block, _WARPS, (grid_n,), stride_loop
 
 
+@libentry()
 @triton.jit
 def _neg_flat_kernel(
     in_ptr,
@@ -114,10 +131,10 @@ def _neg_flat_kernel(
 ):
     """Flat contiguous negation with optional grid-stride loop.
 
-    With STRIDE_LOOP=1 the CTA count is fixed (typically 48), and each CTA
-    repeatedly processes consecutive tiles in steps of ``num_programs * BLOCK``; large
-    shapes then avoid tens of thousands of CTAs, improving both scheduling overhead and bandwidth utilization.
-    EVEN=1 means numel is an integer multiple of BLOCK, so all tiles are complete and masks can be omitted.
+    With STRIDE_LOOP=1 the CTA count is fixed (usually 48) and each CTA walks consecutive
+    tiles with a ``num_programs * BLOCK`` step; large shapes thus avoid tens of thousands of
+    CTAs, improving both scheduling overhead and bandwidth utilization. EVEN=1 means numel is
+    a multiple of BLOCK, so every tile is full and the mask is dropped.
     """
     pid = tl.program_id(0)
     if STRIDE_LOOP:
@@ -159,6 +176,7 @@ def _neg_flat_kernel(
                 tl.store(out_ptr + offs, -v, mask=m)
 
 
+@libentry()
 @triton.jit
 def _neg_strided_kernel(
     in_ptr,
@@ -332,21 +350,48 @@ def _launch_strided(src, dst, numel):
     )
 
 
+# On small shapes this op is entirely dominated by "fixed per-call overhead" (the kernel itself takes only a few
+# microseconds),
+# so cache the launch-planning result by (dtype, numel) to avoid repeating rounding/division math on every call.
+_LAUNCH_PLAN_CACHE = {}
+
+
+def _launch_plan(dtype, numel):
+    """Returns (grid, block, warps, even, is_float, wide, stride_loop), cached by (dtype, numel)."""
+    key = (dtype, numel)
+    plan = _LAUNCH_PLAN_CACHE.get(key)
+    if plan is None:
+        block, warps, grid, stride_loop = _flat_launch(dtype, numel)
+        plan = (
+            grid,
+            block,
+            warps,
+            numel % block == 0,
+            dtype.is_floating_point,
+            numel >= _WIDE_LIMIT,
+            stride_loop,
+        )
+        if len(_LAUNCH_PLAN_CACHE) < 4096:
+            _LAUNCH_PLAN_CACHE[key] = plan
+    return plan
+
+
 def _negate(src, dst):
     """Run the negate kernel from ``src`` into the pre-allocated ``dst``."""
     numel = src.numel()
     if numel == 0:
         return dst
     if src.is_contiguous() and dst.is_contiguous():
-        block, warps, grid, stride_loop = _flat_launch(src.dtype, numel)
-        even = numel % block == 0
+        grid, block, warps, even, is_float, wide, stride_loop = _launch_plan(
+            src.dtype, numel
+        )
         _neg_flat_kernel[grid](
             src,
             dst,
             numel,
-            IS_FLOAT=1 if src.dtype.is_floating_point else 0,
+            IS_FLOAT=1 if is_float else 0,
             EVEN=1 if even else 0,
-            WIDE=1 if numel >= _WIDE_LIMIT else 0,
+            WIDE=1 if wide else 0,
             BLOCK=block,
             STRIDE_LOOP=1 if stride_loop else 0,
             num_warps=warps,
@@ -382,7 +427,7 @@ def _neg_view_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Ten
     """
     if out is not None:
         return _neg_view_copy_out(self, out=out)
-    logger.debug("GEMS_ENFLAME_GCU400 _NEG_VIEW_COPY")
+    logger.debug("GEMS_ENFLAME _NEG_VIEW_COPY")
     if not isinstance(self, torch.Tensor):
         raise TypeError("_neg_view_copy expects a torch.Tensor input")
     if self.dtype not in _SUPPORTED:
@@ -396,7 +441,7 @@ def _neg_view_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Ten
 
 def _neg_view_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::_neg_view_copy.out``: write ``-self`` into ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 _NEG_VIEW_COPY_OUT")
+    logger.debug("GEMS_ENFLAME _NEG_VIEW_COPY_OUT")
     if not isinstance(self, torch.Tensor):
         raise TypeError("_neg_view_copy expects a torch.Tensor input")
     if self.dtype not in _SUPPORTED:

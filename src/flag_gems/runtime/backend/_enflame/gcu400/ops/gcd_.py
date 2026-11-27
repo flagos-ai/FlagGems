@@ -16,18 +16,139 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
-from flag_gems.ops.gcd import _launch_gcd, _materialize_inputs
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+from .gcd import _dtype_min, _materialize_inputs, gcd_kernel_i32, gcd_kernel_i64
 
 logger = logging.getLogger(__name__)
 
+# Fixed grid cap shared with this backend's gcd: grid-stride keeps any shape
+# launchable under the GCU400 grid.x limit of 65535.
+_GRID_CAP = 48
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
+def gcd_kernel_i16(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    DTYPE_MIN: tl.constexpr,
+    BLOCK: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
+    """Euclidean GCD kept in native int16 arithmetic end to end.
+
+    Same ATen-exact semantics as this backend's gcd kernels (per-dtype |x|
+    with the INT_MIN wraparound pinned by the DTYPE_MIN where-guard, signed
+    Euclid, no final abs), but 16-bit lanes keep the divider work half as
+    wide as the int32 kernel that the generic path promotes into.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    for block_id in tl.range(pid, (n_elements + BLOCK - 1) // BLOCK, num_pids):
+        offsets = block_id * BLOCK + arange
+        mask = offsets < n_elements
+
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0)
+        a = tl.where(x == DTYPE_MIN, x, tl.abs(x))
+        b = tl.where(y == DTYPE_MIN, y, tl.abs(y))
+
+        active = mask & (b != 0)
+        while tl.sum(active.to(tl.int32), axis=0) > 0:
+            for _ in tl.static_range(CHUNK):
+                r = a % tl.where(active, b, 1)
+                a = tl.where(active, b, a)
+                b = tl.where(active, r, b)
+                active = active & (b != 0)
+
+        tl.store(out_ptr + offsets, a.to(out_ptr.type.element_ty), mask=mask)
+
+
+def _inplace_meta(dtype):
+    """(kernel, BLOCK, CHUNK, num_warps) for the in-place gcd_ launch.
+
+    Probed on GCU400 with the benchmark's full-range randint inputs at
+    1024**3 elements (do_bench kernel mode, warmup 1000ms / rep 100ms,
+    median; native a.gcd_(b) anchor int16 97.6ms / int32 361.5ms):
+    the sibling gcd meta (BLOCK 4096 / CHUNK 16) was tuned on small-value
+    distributions where one CHUNK batch covers the whole loop; full-range
+    values need up to ~22 (int16) / ~31 (int32) Euclid steps per block, so
+    CHUNK=16 pads every lane to 32 modulos. CHUNK=2 cuts the padding to the
+    block max (int16 196.6 -> 54.3ms, int32 195.1 -> 52.1ms; CHUNK=1 gives
+    the reduction overhead back, CHUNK>=4 loses to batch padding). int16
+    gains another 14% by staying in 16-bit lanes (54.3 -> 47.5ms = 2.06x
+    native; int32 6.94x). BLOCK 2048/8192 and num_warps 2/8 are neutral to
+    worse. int64 keeps the sibling meta (not in the core bench set).
+    """
+    if dtype is torch.int16:
+        return gcd_kernel_i16, 4096, 2, 4
+    if dtype in (torch.int8, torch.int32):
+        return gcd_kernel_i32, 4096, 2, 4
+    if dtype is torch.int64:
+        return gcd_kernel_i64, 256, 4, 4
+    raise TypeError(f"unsupported dtype for gcd_: {dtype}")
+
+
+def _launch_inplace(lhs, rhs, out):
+    numel = out.numel()
+    if numel == 0:
+        return out
+    kernel, block, chunk, num_warps = _inplace_meta(out.dtype)
+    grid = (min((numel + block - 1) // block, _GRID_CAP),)
+    with torch_device_fn.device(out.device):
+        kernel[grid](
+            lhs,
+            rhs,
+            out,
+            numel,
+            DTYPE_MIN=_dtype_min(out.dtype),
+            BLOCK=block,
+            CHUNK=chunk,
+            num_warps=num_warps,
+        )
+    return out
+
 
 def gcd_(A: torch.Tensor, B: torch.Tensor):
-    """In-place GCD: A = gcd(A, B), reusing the optimized Binary GCD kernel."""
-    logger.debug("GEMS_ENFLAME_GCU400 GCD_")
+    """In-place GCD: A = gcd(A, B) on the backend-tuned capped-grid kernels.
+
+    The former body bound the *generic* ``flag_gems.ops.gcd`` launcher at
+    import time: one program per 512-element block with an unbounded 1D
+    grid, so the benchmark's 1024**3 shapes die at launch with
+    ``out of resource: grid.x, Required: 2097152, Hardware limit: 65535``
+    (GCU400 caps grid.x at 65535). This backend's kernels grid-stride under
+    a 48-CTA cap, so routing here fixes the launch and, on the
+    same-shape/same-dtype contiguous fast path, writes results straight
+    back into ``A`` -- one kernel launch, no scratch buffer, no trailing
+    full-tensor copy.
+    """
+    logger.debug("GEMS_ENFLAME GCD_")
+    numel = A.numel()
+    if (
+        numel > 0
+        and isinstance(B, torch.Tensor)
+        and A.dtype in (torch.int8, torch.int16, torch.int32, torch.int64)
+        and A.dtype is B.dtype
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+    ):
+        flat = A.reshape(-1)
+        _launch_inplace(flat, B.reshape(-1), flat)
+        return A
+
+    # Generic fallback: promote/broadcast inputs (mixed dtype or broadcast
+    # shapes), compute into a scratch buffer, then cast back in place.
     lhs, rhs, promoted_dtype = _materialize_inputs(A, B)
-    # Compute GCD into a flat buffer, then copy back in-place
     flat_out = torch.empty(lhs.numel(), dtype=promoted_dtype, device=A.device)
-    _launch_gcd(lhs.reshape(-1), rhs.reshape(-1), flat_out)
+    _launch_inplace(lhs.reshape(-1), rhs.reshape(-1), flat_out)
     A.copy_(flat_out.view(A.shape))
     return A

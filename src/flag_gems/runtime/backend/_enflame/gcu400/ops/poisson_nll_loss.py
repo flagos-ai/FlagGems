@@ -455,7 +455,7 @@ def _broadcast_metadata(input, target):
 
 
 def poisson_nll_loss(input, target, log_input, full, eps, reduction):
-    logger.debug("GEMS_ENFLAME_GCU400 POISSON_NLL_LOSS")
+    logger.debug("GEMS_ENFLAME POISSON_NLL_LOSS")
     if input.device != target.device:
         raise RuntimeError("input and target must be on the same device")
     if full and target.dtype == torch.bool:

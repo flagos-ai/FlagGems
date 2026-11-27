@@ -29,12 +29,19 @@ device = device.name
 # Flat fast path for large same-shape contiguous float tensors: skips the
 # block-pointer + grid-stride codegen path, which measured ~20-25% slower at
 # 16M-element shapes and ~5-10% slower at 1G elements on GCU400/L600.
-# Configs bench-validated (do_bench kernel median): fp16/bf16 (65536, w2) at
-# all sizes; fp32 (32768, w2) only in [2^23, 2^27) - beyond that the codegen
-# path is faster. Small shapes stay on the codegen path (already >= 1.3x
-# native), as do broadcast/strided/mixed-dtype/non-float cases.
-_FLAT_MIN_NUMEL = 1 << 23
-_FLAT_FP32_MAX_NUMEL = 1 << 27
+# Configs bench-validated (do_bench kernel median): fp16/bf16 (65536, w4);
+# fp32 (32768, w4). Re-test conclusions from 2026-11:
+#   - Small shapes (numel<=65536) originally stayed on the codegen path at only 0.33~0.39x (measured on 64x64:
+#     12.2~14.7us vs torch 4.8us); switching to a flat + next_pow2 single-CTA tile reduced this to
+#     3.8us (1.29x), the single biggest gain this round;
+#   - Large shapes, num_warps 2 -> 4: 1Gi fp16 2868us -> 2561us (0.92x -> 1.04x);
+#   - fp32: lift the 2^27 cap (1Gi also uses flat): 5259us -> 5145us;
+#   - grid cap: measurements show 48 (the SP count) is best; 32 gives 1Gi 3069us, 64 gives 3054us (two waves of CTAs);
+#   - tile 128KB(65536)/64KB(32768) is the sweet spot: 32768 drops to 56us@16.7M,
+#     131072 drops to 45.9us@16.7M (DSM over budget).
+# broadcast/strided/mixed-dtype/non-float cases still use the codegen path.
+_FLAT_MIN_NUMEL = 256
+_FLAT_FP32_MAX_NUMEL = 2**31 - 1
 _INT32_MAX = 2**31 - 1
 _FLAT_GRID_CAP = 48
 _FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -70,10 +77,14 @@ def _minimum_flat_kernel(
 def _minimum_flat(X, Y):
     numel = X.numel()
     out = torch.empty_like(X)
-    if X.dtype == torch.float32:
-        block, num_warps = 32768, 2
+    if numel <= 65536:
+        # Small shapes are launch-floor bound: a single CTA plus a tile that exactly covers numel,
+        # avoids a 65536-wide block doing 16x redundant branches and address computations on 4096 elements
+        block, num_warps = max(triton.next_power_of_2(numel), 256), 2
+    elif X.dtype == torch.float32:
+        block, num_warps = 32768, 4
     else:
-        block, num_warps = 65536, 2
+        block, num_warps = 65536, 4
     grid = (min(triton.cdiv(numel, block), _FLAT_GRID_CAP),)
     _minimum_flat_kernel[grid](
         X,

@@ -30,51 +30,53 @@ def special_modified_bessel_i1_kernel(
     x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
 ):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    num_pids = tl.num_programs(axis=0)
+    num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    x_f32 = x.to(tl.float32)
-    ax = tl.abs(x_f32)
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+        x_f32 = x.to(tl.float32)
+        ax = tl.abs(x_f32)
 
-    # Small region: |x| <= 3.75
-    # I1(x) = x * P(x^2) where P is a polynomial
-    y = x_f32 / 3.75
-    y2 = y * y
-    # Horner polynomial for small |x|
-    p = 0.00032411
-    p = 0.00301532 + y2 * p
-    p = 0.02658733 + y2 * p
-    p = 0.15084934 + y2 * p
-    p = 0.51498869 + y2 * p
-    p = 0.87890594 + y2 * p
-    p = 0.5 + y2 * p
-    ans_small = x_f32 * p
+        # Small region: |x| <= 3.75
+        # I1(x) = x * P(x^2) where P is a polynomial
+        y = x_f32 / 3.75
+        y2 = y * y
+        # Horner polynomial for small |x|
+        p = 0.00032411
+        p = 0.00301532 + y2 * p
+        p = 0.02658733 + y2 * p
+        p = 0.15084934 + y2 * p
+        p = 0.51498869 + y2 * p
+        p = 0.87890594 + y2 * p
+        p = 0.5 + y2 * p
+        ans_small = x_f32 * p
 
-    # Large region: |x| > 3.75
-    # Use asymptotic expansion: I1(x) ~ exp(|x|)/sqrt(|x|) * poly(3.75/|x|)
-    # Coefficients from Cephes
-    t = 3.75 / tl.maximum(ax, 1e-20)
-    q = -0.00420059
-    q = 0.01787654 + t * q
-    q = -0.02895312 + t * q
-    q = 0.02282967 + t * q
-    q = -0.01031555 + t * q
-    q = 0.00163801 + t * q
-    q = -0.00362018 + t * q
-    q = -0.03988024 + t * q
-    q = 0.39894228 + t * q
-    pref = tl.exp(ax) / tl.sqrt(tl.maximum(ax, 1e-20))
-    ans_large = pref * q
-    # I1 is odd: I1(-x) = -I1(x)
-    ans_large = tl.where(x_f32 < 0, -ans_large, ans_large)
+        # Large region: |x| > 3.75
+        # Use asymptotic expansion: I1(x) ~ exp(|x|)/sqrt(|x|) * poly(3.75/|x|)
+        # Coefficients from Cephes
+        t = 3.75 / tl.maximum(ax, 1e-20)
+        q = -0.00420059
+        q = 0.01787654 + t * q
+        q = -0.02895312 + t * q
+        q = 0.02282967 + t * q
+        q = -0.01031555 + t * q
+        q = 0.00163801 + t * q
+        q = -0.00362018 + t * q
+        q = -0.03988024 + t * q
+        q = 0.39894228 + t * q
+        pref = tl.exp(ax) / tl.sqrt(tl.maximum(ax, 1e-20))
+        ans_large = pref * q
+        # I1 is odd: I1(-x) = -I1(x)
+        ans_large = tl.where(x_f32 < 0, -ans_large, ans_large)
 
-    is_small = ax <= 3.75
-    ans = tl.where(is_small, ans_small, ans_large)
+        is_small = ax <= 3.75
+        ans = tl.where(is_small, ans_small, ans_large)
 
-    # Cast back to input dtype and store
-    tl.store(out_ptr + offsets, ans.to(x.dtype), mask=mask)
+        # Cast back to input dtype and store
+        tl.store(out_ptr + offsets, ans.to(x.dtype), mask=mask)
 
 
 def _launch_special_modified_bessel_i1(x: torch.Tensor, out: torch.Tensor):
@@ -93,12 +95,12 @@ def _launch_special_modified_bessel_i1(x: torch.Tensor, out: torch.Tensor):
     # BLOCK_SIZE=1024 balances occupancy and register pressure for this
     # memory-bound elementwise kernel on NVIDIA GPUs.
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     special_modified_bessel_i1_kernel[grid](x, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
 
 def special_modified_bessel_i1(self: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MODIFIED_BESSEL_I1")
+    logger.debug("GEMS_ENFLAME SPECIAL_MODIFIED_BESSEL_I1")
     x = self
     x_c = x.contiguous()
     out = torch.empty_like(x_c)
@@ -110,7 +112,7 @@ def special_modified_bessel_i1(self: torch.Tensor):
 
 
 def special_modified_bessel_i1_out(self: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MODIFIED_BESSEL_I1_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_MODIFIED_BESSEL_I1_OUT")
     x = self
     if out.dtype != x.dtype:
         raise TypeError("out dtype must match input dtype")

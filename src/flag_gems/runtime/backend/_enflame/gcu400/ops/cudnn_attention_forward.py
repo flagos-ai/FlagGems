@@ -18,11 +18,12 @@ import math
 import torch
 from packaging import version
 
-from flag_gems.ops.attention import scaled_dot_product_attention_forward
+from .attention import scaled_dot_product_attention_forward
 
 logger = logging.getLogger(__name__)
 
-# Constants are evaluated at module load, avoiding repeated version parsing and transcendental calls per invocation.
+# Constants are evaluated at module load time to avoid re-parsing the version number and transcendental functions on
+# every call.
 _LN2 = math.log(2)
 _TORCH_GE_29 = version.parse(torch.__version__.split("+")[0]).release[:2] >= (2, 9)
 _METADATA_CACHE = {}
@@ -66,7 +67,7 @@ def cudnn_attention_forward(
     used in earlier versions is eliminated.
     """
 
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_ATTENTION_FORWARD")
+    logger.debug("GEMS_ENFLAME CUDNN_ATTENTION_FORWARD")
     if dropout_p > 0.0:
         raise NotImplementedError(
             "cudnn_attention_forward: dropout > 0 is not yet supported"

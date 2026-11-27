@@ -46,5 +46,5 @@ def version(self: torch.Tensor) -> int:
       zero-nnz / uncoalesced), CSR/CSC/BSR/BSC and meta tensors all answer
       from the same counter.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 VERSION")
+    logger.debug("GEMS_ENFLAME VERSION")
     return self._version

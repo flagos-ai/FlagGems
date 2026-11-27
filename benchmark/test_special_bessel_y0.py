@@ -1,9 +1,14 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame", reason="enflame dose not support fp64"
+)
 @pytest.mark.special_bessel_y0
 def test_special_bessel_y0():
     class BesselY0Benchmark(base.UnaryPointwiseBenchmark):

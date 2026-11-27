@@ -19,11 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support sparse CSC tensors",
-)
-
 CSC_UNSAFE_DTYPES = utils.FLOAT_DTYPES
 
 

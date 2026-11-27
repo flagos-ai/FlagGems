@@ -501,7 +501,7 @@ def lstm(
     bidirectional=False,
     batch_first=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 LSTM")
+    logger.debug("GEMS_ENFLAME LSTM")
     _validate_args(input, hx, params, has_biases, num_layers, dropout, bidirectional)
 
     if batch_first:

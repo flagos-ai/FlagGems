@@ -69,6 +69,14 @@ class FakeQuantizeBenchmark(base.GenericBenchmark):
         return super().build_inputs(case)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::_fake_quantize_learnable_per_tensor_affine has no GCU kernel; "
+        "the op falls back to CPU (DtoH/HtoD memcpy only), so there is no "
+        "device baseline to time"
+    ),
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 def test_fake_quantize_learnable_per_tensor_affine():
     bench = FakeQuantizeBenchmark(

@@ -58,7 +58,7 @@ def _nested_view_from_jagged(
     Returns:
         torch.Tensor: A jagged-layout nested tensor that is a view of ``self``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_VIEW_FROM_JAGGED")
+    logger.debug("GEMS_ENFLAME _NESTED_VIEW_FROM_JAGGED")
 
     from torch.nested._internal.nested_tensor import NestedTensor
 

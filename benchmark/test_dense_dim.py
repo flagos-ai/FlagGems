@@ -41,6 +41,10 @@ class DenseDimBenchmark(base.Benchmark):
             yield (inp,)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.dense_dim
 def test_dense_dim():
     bench = DenseDimBenchmark(
