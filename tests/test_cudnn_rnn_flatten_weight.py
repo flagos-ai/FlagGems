@@ -300,6 +300,8 @@ def test_cudnn_rnn_flatten_weight_non_current_device():
         pytest.skip(
             "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
         )
+    if not torch.cuda.is_available():
+        pytest.skip("_cudnn_rnn_flatten_weight is CUDA-only")
     if torch.cuda.device_count() < 2:
         pytest.skip("needs at least two GPUs")
     args = (4, 8, 2, 6, 0, 1, True, False)
