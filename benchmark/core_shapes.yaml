@@ -1682,3 +1682,9 @@ binary_cross_entropy_with_logits_backward:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_transpose_quant_batchmatmul:
+  shapes:
+    - [1, 8, 4096, 1024]
+    - [1024, 8, 4096, 1024]
+  shape_desc: "tokens, batch, K, N"
