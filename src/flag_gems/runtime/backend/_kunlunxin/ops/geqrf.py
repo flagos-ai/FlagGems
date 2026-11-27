@@ -143,7 +143,7 @@ def _geqrf_factor_column_kernel(
 
 @libentry()
 @triton.jit
-def _geqrf_panel_apply_small_kernel(
+def _geqrf_panel_apply_kernel(
     w_ptr,
     tau_ptr,
     m,
@@ -154,10 +154,10 @@ def _geqrf_panel_apply_small_kernel(
     sWb,
     BLOCK: tl.constexpr,
 ):
-    # Small-block (BLOCK <= 64) variant of the panel apply: one program per
-    # (batch, trailing column).  The (BT, BLOCK) 2-D tile form fails
-    # TritonXPUUnrollControl at BLOCK=64, so the smallest matrices keep this
-    # 1-D form (identical semantics to the pre-BT implementation).
+    # Apply the panel of reflectors j0..jend-1 to trailing columns jend..n-1,
+    # one program per (batch, trailing column), with the reflector loop as the
+    # only dynamic loop so the tl.sum reductions stay legal on flagtree XPU
+    # (same rationale as _geqrf_factor_column_kernel).
     pid = tl.program_id(0)
     ncol = n - jend
     b = pid // ncol
@@ -177,55 +177,6 @@ def _geqrf_panel_apply_small_kernel(
         dot = tl.sum(v * colc)
         colc = colc - tau_r * dot * v
     tl.store(w_ptr + base + c * m + raddr, colc, mask=rmask)
-
-
-@libentry()
-@triton.jit
-def _geqrf_panel_apply_kernel(
-    w_ptr,
-    tau_ptr,
-    m,
-    n,
-    k,
-    j0,
-    jend,
-    sWb,
-    BLOCK: tl.constexpr,
-    BT: tl.constexpr,
-):
-    # Apply the panel of reflectors j0..jend-1 to trailing columns jend..n-1,
-    # one program per (batch, BT trailing columns), with the reflector loop as
-    # the only dynamic loop so the tl.sum reductions stay legal on flagtree
-    # XPU (same rationale as _geqrf_factor_column_kernel).  The register tile
-    # is (BT, BLOCK) -- trailing columns across rows -- so the per-reflector
-    # dot products are one axis-1 tl.sum over BLOCK (BLOCK % 8 == 0, the only
-    # 2D reduction shape this backend computes exactly), and the panel column
-    # `ref` is loaded once per iteration and shared by BT columns (the old
-    # one-column-per-program form re-loaded the whole panel per trailing
-    # column: profiling showed the panel re-read amplified the launch time).
-    pid = tl.program_id(0)
-    ncol = n - jend
-    ntile = (ncol + BT - 1) // BT
-    b = pid // ntile
-    tt = pid - b * ntile
-    base = b * sWb
-    rows = tl.arange(0, BLOCK)
-    rmask = rows < m
-    raddr = tl.minimum(rows, m - 1)
-    tcols = tt * BT + tl.arange(0, BT)
-    tmask = tcols < ncol
-    xmask = rmask[None, :] & tmask[:, None]
-    xptr = w_ptr + base + (jend + tcols)[:, None] * m + raddr[None, :]
-    xt = tl.load(xptr, mask=xmask, other=0.0)
-    xt = tl.where(xmask, xt, 0.0)
-    for r in range(j0, jend):
-        tau_r = tl.load(tau_ptr + b * k + r)
-        ref = tl.load(w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0)
-        ref = tl.where((rows > r) & rmask, ref, 0.0)
-        v = tl.where(rows == r, 1.0, ref)
-        dotv = tl.sum(v[None, :] * xt, axis=1)  # (BT,)
-        xt = xt - tau_r * dotv[:, None] * v[None, :]
-    tl.store(xptr, xt, mask=xmask)
 
 
 @libentry()
@@ -322,37 +273,21 @@ def geqrf(A):
     nt = triton.cdiv(m * n, _TILE)
     _geqrf_transpose_kernel[(B, nt)](A, w, m, n, sAb, sAm, sAn, sWb, _TILE, num_warps=4)
     nw = 8 if BM >= 1024 else 4
-    # Factor-column tile: 64 wide for the smallest matrices (this backend only
-    # accepts 1D tile widths <=64 or exactly 1024, and a 1024-lane column
-    # wastes 93% of the lanes at m<=64).  The apply kernel keeps the 1024-wide
-    # tile: profiling showed it is faster at 1024 than at 64 for the trailing
-    # update (per-launch 0.21 ms vs 0.32 ms on 64x64).
-    fblock = 64 if BM <= 64 else max(_MIN_COLUMN_BLOCK, BM)
+    # Full-column tile: at least 1024 wide (the apply kernel runs out of
+    # uni_sram at BLOCK=512 on flagtree), covering every test/benchmark m.
     block = max(_MIN_COLUMN_BLOCK, BM)
-    # Panel width: 16 is measurably faster for narrow single-matrix inputs
-    # (k <= 128: factor iterations halve without doubling the number of apply
-    # launches that dominate the 1024x1024 case); 32 stays best for large
-    # square matrices and batched inputs.
-    panel_nb = 16 if (k <= 128 and B == 1) else _PANEL_NB
     j = 0
     while j < k:
-        jend = j + panel_nb if j + panel_nb < k else k
+        jend = j + _PANEL_NB if j + _PANEL_NB < k else k
         for c in range(j, jend):
             _geqrf_factor_column_kernel[(B,)](
-                w, tau, m, k, j, c, sWb, fblock, num_warps=nw
+                w, tau, m, k, j, c, sWb, block, num_warps=nw
             )
         if jend < n:
             ntrail = n - jend
-            if block <= 64:
-                _geqrf_panel_apply_small_kernel[(B * ntrail,)](
-                    w, tau, m, n, k, j, jend, sWb, block, num_warps=nw
-                )
-            else:
-                _APPLY_BT = 4
-                napply = triton.cdiv(ntrail, _APPLY_BT)
-                _geqrf_panel_apply_kernel[(B * napply,)](
-                    w, tau, m, n, k, j, jend, sWb, block, _APPLY_BT, num_warps=nw
-                )
+            _geqrf_panel_apply_kernel[(B * ntrail,)](
+                w, tau, m, n, k, j, jend, sWb, block, num_warps=nw
+            )
         j = jend
     if A.dim() == 2:
         a = w[0].transpose(-1, -2)
