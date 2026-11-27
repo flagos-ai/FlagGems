@@ -137,10 +137,10 @@ class BenchmarkMetrics:
     base_latency_ms: Optional[float] = None
     base_scaling_factor: Optional[float] = None
     base_miss_reason: Optional[str] = None
-    # Which speedup source was actually used for this shape: "origin" (native
-    # gems-vs-torch), "nv_baseline" (compared_speedup from --base-data), or None
-    # when no speedup is available. Set by the benchmark logic based on
-    # --speedup-source preference and availability.
+    # Describes what `speedup` holds: "origin" when the native on-machine
+    # gems-vs-torch ratio was measured, or None when no reference ran here.
+    # `speedup` is never substituted with `compared_speedup`; preferring one
+    # ratio over the other is the consumer's job (optest relabels this field).
     speedup_source: Optional[str] = None
     # GPU time share from model profiling YAML (--model-profile).
     # Format: {"prefill": {"pct": 2.60, "calls": 4696}, "decode": {...}}
