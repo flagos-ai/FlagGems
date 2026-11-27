@@ -128,6 +128,9 @@ class _TrapzFn(torch.autograd.Function):
         y2 = yc.reshape(-1, N)
 
         tmp = _vendor_sum_dim(y2, [1], dtype=torch.float32)
+        print(f"[dbg] M={M} N={N} after reduce", flush=True)
+        torch.cuda.synchronize()
+        print("[dbg] sync after reduce OK", flush=True)
         # The epilogue is a plain contiguous elementwise kernel (see the kernel
         # comment), so its three inputs are staged into buffers padded to a
         # multiple of BLOCK: the two endpoint columns are gathered here by a
@@ -142,6 +145,8 @@ class _TrapzFn(torch.autograd.Function):
             first_p[:M].copy_(y2[:, 0])
             last_p = torch.empty(padded, dtype=y.dtype, device=y.device)
             last_p[:M].copy_(y2[:, N - 1])
+            torch.cuda.synchronize()
+            print("[dbg] sync after staging OK", flush=True)
             out_p = torch.empty(padded, dtype=y.dtype, device=y.device)
             _trapz_epilogue_kernel[(triton.cdiv(M, block),)](
                 tmp_p,
@@ -153,6 +158,8 @@ class _TrapzFn(torch.autograd.Function):
                 BLOCK=block,
                 buffer_size_limit=2048,
             )
+            torch.cuda.synchronize()
+            print("[dbg] sync after epilogue OK", flush=True)
         return out_p[:M].reshape(out_shape)
 
     @staticmethod
