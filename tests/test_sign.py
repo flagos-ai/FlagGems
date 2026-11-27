@@ -68,12 +68,6 @@ def _to_reference(inp):
         pytest.skip(
             "Enflame native sign does not support Bool (topsatenSign NOT_SUPPORT)"
         )
-    if (
-        flag_gems.vendor_name in ("ascend", "kunlunxin")
-        and not utils.TO_CPU
-        and inp.dtype in (torch.int8, torch.uint8, torch.int16)
-    ):
-        pytest.skip("backend native sign reference does not support int8/uint8/int16")
     return utils.to_reference(inp, False)
 
 
