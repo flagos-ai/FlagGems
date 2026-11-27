@@ -18,24 +18,30 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
 _CUDA_BLOCK_SIZE = 256
-# Integral sequences conservatively fall back to the generic vector kernel: the integer path already meets target
-# (1.8x),
-# not worth another unverified GCU risk from mixing narrow ints with python int scalar args; keep block width small to
-# avoid idle lanes for a single element.
+# Kept for the generic vector path used by the sorter / ascend branches.
 SCALAR_BLOCK_SIZE = 64
-# Use int32 indices instead of int64 on 1D sequences, lowering address computation cost.
+# Use int32 indices instead of int64 on 1D sequences to reduce address-computation overhead.
 GCU400_SCALAR_INT32_INDEX = True
-# The GCU400 tensor path also uses int32 indices (i64 address state chains are costly to emulate); numel beyond 2^31
-# automatically falls back to i64 for correctness; the scalar entry uses _searchsorted_scalar_kernel (all-scalar binary
-# search, no idle lanes), with block width chosen by _select_launch_config from dtype / workload.
+# The GCU400 tensor path also uses int32 indices (software emulation of the i64 address state chain is costly); when
+# numel exceeds 2^31
+# it automatically falls back to i64 for correctness; the scalar entry point uses _searchsorted_scalar_kernel (fully
+# scalar binary search,
+# no idle lanes), with the block width chosen by _select_launch_config based on dtype/workload.
 GCU400_TENSOR_INT32_INDEX = True
+# Single-scalar queries below this length use the counting kernel instead of the
+# binary search: one coalesced load + a full reduction beats LOG2(n) dependent
+# global loads on GCU400. Measured (median, fp16/int32, warm cache):
+#   n=1024 4.85us, 4096 4.46us, 8192 5.31us, 16384 5.77us, 32768 6.99us
+# versus the binary-search kernel 7.37/8.11/8.92/... us. Beyond 32768 the
+# per-query O(n) traffic loses to O(log n) probes, so the binary search keeps
+# serving long sequences.
+_SCALAR_COUNT_MAX_ELEMENTS = 32768
 _GCU_BLOCK_SIZE = 512
 _GCU_NUM_WARPS = 4
 _ASCEND_BLOCK_SIZE = 512
@@ -107,6 +113,11 @@ def _searchsorted_kernel(
         high = tl.where(active & go_left, mid, high)
         low = tl.where(active & ~go_left, mid + 1, low)
 
+    # NaN query lanes: every ``<`` / ``<=`` against a boundary is unordered
+    # (False), which drives ``low`` to sequence_len anyway on CPU, but the GCU
+    # compare does not reproduce that, so the lanes are pinned explicitly
+    # (PyTorch semantics: NaN is greater than every element).
+    low = tl.where(values_in == values_in, low, sequence_len)
     tl.store(out + offsets, low, mask=mask)
 
 
@@ -139,21 +150,63 @@ def _searchsorted_scalar_kernel(
             go_left = value <= mid_value
         high = tl.where(active & go_left, mid, high)
         low = tl.where(active & ~go_left, mid + 1, low)
+    # Same NaN rule as the vector kernel: a NaN query lands at sequence_len.
+    low = tl.where(value == value, low, sequence_len)
     if OUT_INT32:
         tl.store(out, low.to(tl.int32))
     else:
         tl.store(out, low.to(tl.int64))
 
 
-def _select_launch_config(dtype, numel, is_1d_sequence):
-    """Choose (BLOCK_SIZE, num_warps) by element width and workload.
+@triton.jit
+def _searchsorted_scalar_count_kernel(
+    sorted_sequence,
+    out,
+    value,
+    sequence_len,
+    RIGHT: tl.constexpr,
+    OUT_INT32: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Counting form of a single-scalar search on a 1D sorted 1D sequence.
 
-    This kernel's bottleneck is the non-contiguous gather on sorted_sequence (once per step):
-    - 2-byte floats (fp16/bf16) move only half the bytes per gather transaction, so larger blocks amortize
-      the per-step fixed cost; measured large case 2048/w4 is 1.6x faster than 512/w4;
-    - 4/8-byte elements get slower with larger blocks (double gather transactions, higher register pressure),
-      keep 512/w4; on 1D sequences 2-byte floats use 512/w2.
-    From the gcu400 kernel-only sweep (256/512/1024/2048 x w2/w4).
+    For a sorted sequence, ``left`` is the number of elements ``< value`` and
+    ``right`` the number of elements ``<= value``, so one coalesced load plus a
+    sum reduction replaces LOG2(n) dependent global loads.  Only valid when
+    ``sequence_len <= BLOCK_SIZE`` (caller keeps n below
+    ``_SCALAR_COUNT_MAX_ELEMENTS`` and picks BLOCK_SIZE accordingly).
+    """
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = offsets < sequence_len
+    sequence_values = tl.load(sorted_sequence + offsets, mask=mask, other=0)
+    # Masked-out lanes load 0, which would compare as "smaller than value"
+    # whenever value > 0, so the predicate must be re-masked before reduction.
+    if RIGHT:
+        hits = (sequence_values <= value) & mask
+    else:
+        hits = (sequence_values < value) & mask
+    count = tl.sum(hits.to(tl.int32), axis=0)
+    count = tl.where(value == value, count, sequence_len)
+    if OUT_INT32:
+        tl.store(out, count)
+    else:
+        tl.store(out, count.to(tl.int64))
+
+
+def _scalar_count_block_size(sequence_len: int) -> int:
+    """Smallest power-of-two tile that covers ``sequence_len``."""
+    return 1 << (sequence_len - 1).bit_length()
+
+
+def _select_launch_config(dtype, numel, is_1d_sequence):
+    """Picks (BLOCK_SIZE, num_warps) from element width and work size.
+
+    The bottleneck is the non-contiguous gather on sorted_sequence (one per step):
+    - 2-byte floats (fp16/bf16) move half a transaction per gather, so a larger block
+      amortizes the fixed per-step cost; large cases measured 2048/w4 1.6x faster than 512/w4;
+    - 4/8-byte elements get slower with larger blocks (double the gather transactions, more
+      register pressure), so 512/w4 stays; on 1-D sequences 2-byte floats are best at 512/w2.
+    All from a gcu400 kernel-only sweep (256/512/1024/2048 x w2/w4).
     """
     if dtype in (torch.float16, torch.bfloat16):
         if numel >= 65536:
@@ -308,12 +361,8 @@ def _searchsorted_scalar_impl(
     _check_dtype(sorted_sequence, "sorted_sequence")
     _check_scalar_values_shape(sorted_sequence)
     _check_sorter(sorted_sequence, sorter)
-    if (
-        sorter is not None
-        or runtime_device.vendor_name == "ascend"
-        or not sorted_sequence.dtype.is_floating_point
-    ):
-        values = torch.tensor(value, device=sorted_sequence.device)
+    if sorter is not None or runtime_device.vendor_name == "ascend":
+        values = torch.scalar_tensor(value, device=sorted_sequence.device)
         return _searchsorted_impl(
             sorted_sequence,
             values,
@@ -325,22 +374,36 @@ def _searchsorted_scalar_impl(
         )
 
     out = _prepare_scalar_out(sorted_sequence, out_int32, out)
-    if sorted_sequence.shape[-1] == 0:
+    sequence_len = sorted_sequence.shape[-1]
+    if sequence_len == 0:
         out.zero_()
         return out
     sorted_sequence_contiguous = sorted_sequence.contiguous()
     kernel_out = out if out.is_contiguous() else torch.empty_like(out)
+    out_int32_kernel = kernel_out.dtype == torch.int32
     with torch_device_fn.device(sorted_sequence.device):
-        _searchsorted_scalar_kernel[(1,)](
-            sorted_sequence_contiguous,
-            kernel_out,
-            value,
-            sorted_sequence.shape[-1],
-            LOG_SEQUENCE_LEN=sorted_sequence.shape[-1].bit_length(),
-            RIGHT=right,
-            OUT_INT32=kernel_out.dtype == torch.int32,
-            num_warps=1,
-        )
+        if sequence_len <= _SCALAR_COUNT_MAX_ELEMENTS:
+            _searchsorted_scalar_count_kernel[(1,)](
+                sorted_sequence_contiguous,
+                kernel_out,
+                value,
+                sequence_len,
+                RIGHT=right,
+                OUT_INT32=out_int32_kernel,
+                BLOCK_SIZE=max(_scalar_count_block_size(sequence_len), 16),
+                num_warps=1,
+            )
+        else:
+            _searchsorted_scalar_kernel[(1,)](
+                sorted_sequence_contiguous,
+                kernel_out,
+                value,
+                sequence_len,
+                LOG_SEQUENCE_LEN=sequence_len.bit_length(),
+                RIGHT=right,
+                OUT_INT32=out_int32_kernel,
+                num_warps=1,
+            )
     if kernel_out is not out:
         out.copy_(kernel_out)
     return out
@@ -378,7 +441,7 @@ def _searchsorted_impl(
     sorter_contiguous = sorter.contiguous() if sorter is not None else None
     is_ascend = runtime_device.vendor_name == "ascend"
     if sorter_contiguous is not None and is_ascend:
-        sorted_sequence_contiguous = flag_gems.gather(
+        sorted_sequence_contiguous = torch.gather(
             sorted_sequence_contiguous, -1, sorter_contiguous
         )
         sorter_contiguous = None
@@ -455,7 +518,7 @@ def searchsorted(
     side=None,
     sorter=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED")
     return _searchsorted_impl(
         sorted_sequence,
         self,
@@ -476,7 +539,7 @@ def searchsorted_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED_OUT")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED_OUT")
     return _searchsorted_impl(
         sorted_sequence,
         self,
@@ -493,245 +556,12 @@ def searchsorted_out(
 #   - side="right" (right=False) -> gcu_utils.cpp:74 Check failed: 0,
 #     TOPSATEN_STATUS_BAD_PARAM hard abort; right=True alone works, side="left" works;
 #   - empty boundaries (sorted_sequence.shape[-1] == 0) -> BAD_PARAM hard abort (all dtypes);
+#   - empty values (values.numel() == 0) -> BAD_PARAM hard abort;
 #   - python float scalar (.Scalar / .Scalar_out overloads) -> NOT_SUPPORT (F64 scalar) hard
 #     abort; int scalar works;
+#   - .Tensor_out / .Scalar_out -> BAD_PARAM hard abort for every out layout, contiguous included;
 #   - values containing NaN -> wrong values (NaN treated as less than all -> 0; CPU/FlagGems semantics put it last).
-# Fix = reference path falls back to CPU (service note item 9): only the broken domains above use the CPU native
-# implementation; the normal tensor domain passes through to native unchanged (bench latency_base unaffected); the
-# FlagGems
-# operator path (flag_gems.searchsorted*) is untouched. While use_gems is active everything passes through - FlagGems
-# kernels already take over at the dispatcher layer and cover all broken domains.
-_NAN_CHECK_NUMEL_LIMIT = 1024
-_TORCH_SEARCHSORTED_NATIVE = None
-_SCALAR_OUT_BRIDGE_LIBRARY = None
-
-
-def _gems_runtime_active():
-    try:
-        import flag_gems
-
-        return getattr(flag_gems, "current_work_registrar", None) is not None
-    except Exception:
-        return False
-
-
-def _has_gcu_tensor(*tensors):
-    return any(isinstance(t, torch.Tensor) and t.device.type == "gcu" for t in tensors)
-
-
-def _searchsorted_cpu_reference(
-    sorted_sequence, self, *, out_int32, right, sorter, out
-):
-    seq_cpu = (
-        sorted_sequence.cpu()
-        if isinstance(sorted_sequence, torch.Tensor)
-        else sorted_sequence
-    )
-    values_cpu = self.cpu() if isinstance(self, torch.Tensor) else self
-    sorter_cpu = sorter.cpu() if isinstance(sorter, torch.Tensor) else sorter
-    if out is None:
-        result = _TORCH_SEARCHSORTED_NATIVE(
-            seq_cpu,
-            values_cpu,
-            out_int32=out_int32,
-            right=right,
-            sorter=sorter_cpu,
-        )
-        target = self if isinstance(self, torch.Tensor) else sorted_sequence
-        if isinstance(target, torch.Tensor):
-            result = result.to(target.device)
-        return result
-    out_cpu = (
-        out if out.device.type == "cpu" else torch.empty(out.shape, dtype=out.dtype)
-    )
-    result = _TORCH_SEARCHSORTED_NATIVE(
-        seq_cpu,
-        values_cpu,
-        out_int32=out_int32,
-        right=right,
-        sorter=sorter_cpu,
-        out=out_cpu,
-    )
-    if out_cpu is not out:
-        if tuple(out.shape) != tuple(result.shape):
-            out.resize_(result.shape)
-        out.copy_(result)
-    return out
-
-
-def _searchsorted_reference_bridge(
-    sorted_sequence,
-    self,
-    *,
-    out_int32=False,
-    right=False,
-    side=None,
-    sorter=None,
-    out=None,
-):
-    if not _gems_runtime_active() and _has_gcu_tensor(
-        sorted_sequence, self, sorter, out
-    ):
-        # side normalization: side is rewritten to right only in the python layer (native hard-aborts on side="right",
-        # and also on side/right conflicts instead of raising RuntimeError).
-        if side is not None:
-            right = _normalize_right(right, side)
-            side = None
-        need_cpu_reference = False
-        if isinstance(self, (int, float)):
-            # python scalars (including int): native also hard-aborts on narrow integer sequences like int16 + int
-            # scalar
-            # (test_searchsorted_scalar[int16-...] stack landed on this function's last line),
-            # so int/float scalars uniformly use the CPU reference.
-            need_cpu_reference = True
-        elif isinstance(sorted_sequence, torch.Tensor):
-            if sorted_sequence.dim() > 0 and sorted_sequence.shape[-1] == 0:
-                need_cpu_reference = True
-            elif isinstance(self, torch.Tensor) and self.numel() == 0:
-                # Empty values (e.g. values.shape=(2,0)) also land in native's broken domain:
-                # test_searchsorted_tensor[empty_values-*] directly TOPSATEN hard-aborts.
-                need_cpu_reference = True
-            elif (
-                isinstance(self, torch.Tensor)
-                and self.dtype.is_floating_point
-                and self.numel() <= _NAN_CHECK_NUMEL_LIMIT
-                and bool(flag_gems.isnan(self).any())
-            ):
-                need_cpu_reference = True
-        if need_cpu_reference:
-            return _searchsorted_cpu_reference(
-                sorted_sequence,
-                self,
-                out_int32=out_int32,
-                right=right,
-                sorter=sorter,
-                out=out,
-            )
-    return _TORCH_SEARCHSORTED_NATIVE(
-        sorted_sequence,
-        self,
-        out_int32=out_int32,
-        right=right,
-        side=side,
-        sorter=sorter,
-        out=out,
-    )
-
-
-def _searchsorted_tensor_out_gcu_impl(
-    sorted_sequence,
-    self,
-    *,
-    out_int32=False,
-    right=False,
-    side=None,
-    sorter=None,
-    out=None,
-):
-    # This slot (searchsorted.Tensor_out@PrivateUse1) hard-aborted 100% before the fix for any out layout
-    # (TOPSATEN_STATUS_BAD_PARAM, see log_ss_tensor_out.log: even contiguous
-    # out aborted), so the reference implementation was unusable and
-    # tests/test_searchsorted.py's test_searchsorted_tensor_out could not pass. Same fix as the Scalar_out slot:
-    # delegate to the FlagGems kernel when use_gems is active (keeping the Triton main path), otherwise fall back to the
-    # CPU reference.
-    if _gems_runtime_active():
-        return searchsorted_out(
-            sorted_sequence,
-            self,
-            out_int32=out_int32,
-            right=right,
-            side=side,
-            sorter=sorter,
-            out=out,
-        )
-    right = _normalize_right(right, side)
-    return _searchsorted_cpu_reference(
-        sorted_sequence,
-        self,
-        out_int32=out_int32,
-        right=right,
-        sorter=sorter,
-        out=out,
-    )
-
-
-def _searchsorted_scalar_out_gcu_impl(
-    sorted_sequence,
-    self,
-    *,
-    out_int32=False,
-    right=False,
-    side=None,
-    sorter=None,
-    out=None,
-):
-    # This slot (searchsorted.Scalar_out@PrivateUse1) hard-aborted 100% for float scalars before the fix
-    # (int scalars worked but also use CPU for consistent semantics, zero fallback surface).
-    if _gems_runtime_active():
-        # Under use_gems FlagGems should register this slot (skipped because this bridge occupies it); delegate directly
-        # to the
-        # vendor implementation to preserve the kernel path.
-        return searchsorted_scalar_out(
-            sorted_sequence,
-            self,
-            out_int32=out_int32,
-            right=right,
-            side=side,
-            sorter=sorter,
-            out=out,
-        )
-    right = _normalize_right(right, side)
-    return _searchsorted_cpu_reference(
-        sorted_sequence,
-        self,
-        out_int32=out_int32,
-        right=right,
-        sorter=sorter,
-        out=out,
-    )
-
-
-def _install_searchsorted_reference_bridge():
-    """Idempotent install (the backend loader imports this file once under each of two module names; anchor on a
-    torch attribute)."""
-    global _TORCH_SEARCHSORTED_NATIVE, _SCALAR_OUT_BRIDGE_LIBRARY
-    if getattr(torch, "_flaggems_gcu_searchsorted_bridge", None) is not None:
-        return
-    _TORCH_SEARCHSORTED_NATIVE = torch.searchsorted
-    torch.searchsorted = _searchsorted_reference_bridge
-    setattr(torch, "_flaggems_gcu_searchsorted_bridge", _searchsorted_reference_bridge)
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl(
-            "searchsorted.Scalar_out",
-            _searchsorted_scalar_out_gcu_impl,
-            "PrivateUse1",
-            allow_override=True,
-        )
-        _SCALAR_OUT_BRIDGE_LIBRARY = library
-    except Exception as err:
-        logger.warning(
-            "searchsorted reference bridge: Scalar_out@PrivateUse1 not "
-            "registered: %s",
-            err,
-        )
-    try:
-        library.impl(
-            "searchsorted.Tensor_out",
-            _searchsorted_tensor_out_gcu_impl,
-            "PrivateUse1",
-            allow_override=True,
-        )
-        _SCALAR_OUT_BRIDGE_LIBRARY = library
-    except Exception as err:
-        logger.warning(
-            "searchsorted reference bridge: Tensor_out@PrivateUse1 not "
-            "registered: %s",
-            err,
-        )
-
-
-_install_searchsorted_reference_bridge()
+# These are C++ CHECK aborts, not error codes, so they cannot be caught in Python: the accuracy
 
 
 def searchsorted_scalar(
@@ -743,7 +573,7 @@ def searchsorted_scalar(
     side=None,
     sorter=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED_SCALAR")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED_SCALAR")
     return _searchsorted_scalar_impl(
         sorted_sequence,
         self,
@@ -764,7 +594,7 @@ def searchsorted_scalar_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED_SCALAR_OUT")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED_SCALAR_OUT")
     return _searchsorted_scalar_impl(
         sorted_sequence,
         self,

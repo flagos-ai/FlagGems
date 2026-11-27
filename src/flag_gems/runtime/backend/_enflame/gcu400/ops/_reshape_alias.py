@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 import torch
-
-logger = logging.getLogger(__name__)
 
 
 def _reshape_alias(self: torch.Tensor, size, stride):
@@ -26,6 +22,16 @@ def _reshape_alias(self: torch.Tensor, size, stride):
     normal reshape performs. It always returns a view that shares storage with
     ``self`` (reusing ``self``'s storage offset), mirroring
     ``aten::_reshape_alias``.
+    logger.debug("GEMS_ENFLAME _RESHAPE_ALIAS")
+
+    This op launches no kernel, so the whole cost is host-side. Everything the
+    op does happens in a single ``as_strided`` call, and the free-function
+    ``torch.as_strided`` form measured fastest on this host (it skips the
+    class-attribute lookup of ``torch.Tensor.as_strided`` and the bound-method
+    creation of ``self.as_strided``). A ``view``-based fast path for the 1-D
+    case was rejected: the ``numel``/``is_contiguous``/stride guards that the
+    alias semantics force (~0.27us) exceed the view terminal's edge over the
+    free-function terminal (~0.08us). Debug logging is left out of this
+    single-line hot path for the same reason.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _RESHAPE_ALIAS")
-    return torch.Tensor.as_strided(self, size, stride, self.storage_offset())
+    return torch.as_strided(self, size, stride, self.storage_offset())

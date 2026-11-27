@@ -38,7 +38,7 @@ def miopen_batch_norm_backward(
     Returns:
         Tuple of (grad_input, grad_weight, grad_bias).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MIOPEN_BATCH_NORM_BACKWARD")
+    logger.debug("GEMS_ENFLAME MIOPEN_BATCH_NORM_BACKWARD")
 
     save_invstd = save_var
 

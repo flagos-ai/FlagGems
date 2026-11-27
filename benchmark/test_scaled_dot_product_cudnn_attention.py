@@ -79,9 +79,13 @@ def gems_cudnn_attention(
     return result[0]  # Return only the output tensor
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.scaled_dot_product_cudnn_attention
 @pytest.mark.skipif(
-    flag_gems.device != "cuda",
+    flag_gems.device != "cuda" and not (flag_gems.vendor_name == "enflame"),
     reason="_scaled_dot_product_cudnn_attention is a CUDA-only operator (cuDNN)",
 )
 @pytest.mark.parametrize("is_causal", [True, False])

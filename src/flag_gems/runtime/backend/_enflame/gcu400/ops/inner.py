@@ -258,7 +258,7 @@ def inner(input: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
     * one 0-D       -> outer-product scaling (no contraction dimension)
     * otherwise     -> fused strided GEMM over the flattened operands
     """
-    logger.debug("GEMS_ENFLAME_GCU400 INNER")
+    logger.debug("GEMS_ENFLAME INNER")
 
     if input.dim() == 0 and other.dim() == 0:
         return (input * other).reshape(())

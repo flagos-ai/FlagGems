@@ -18,6 +18,12 @@ class SampleDirichletBenchmark(base.GenericBenchmark):
         self.shapes = [(1024, 16), (4096, 32), (16384, 64), (65536, 128)]
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no Half/BFloat16 dirichlet kernel; the CPU fallback raises NotImplementedError"
+    ),
+)
 @pytest.mark.sample_dirichlet
 def test_sample_dirichlet():
     bench = SampleDirichletBenchmark(

@@ -1,7 +1,11 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+
+fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
 # ormqr benchmark
@@ -34,6 +38,10 @@ class OrmqrBenchmark(base.GenericBenchmark2DOnly):
         return 2 * m * n * k
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.ormqr
 def test_ormqr():
     def ormqr_input_fn(shape, dtype, device):
@@ -50,6 +58,6 @@ def test_ormqr():
         op_name="ormqr",
         torch_op=torch.ormqr,
         # ormqr only supports float32 and float64 (LAPACK limitation, no half/bfloat16)
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32] + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()

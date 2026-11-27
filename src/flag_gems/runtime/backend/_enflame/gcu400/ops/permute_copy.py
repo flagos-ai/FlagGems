@@ -160,7 +160,7 @@ def permute_copy(x: torch.Tensor, dims):
     Wrapper for aten::permute_copy
     Creates and returns a copy of x with permuted dimensions.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 PERMUTE_COPY")
+    logger.debug("GEMS_ENFLAME PERMUTE_COPY")
     ndim = x.ndim
     if ndim == 0:
         # Scalar tensor - just return a copy
@@ -182,6 +182,34 @@ def permute_copy(x: torch.Tensor, dims):
     if list(dims) == list(range(ndim)):
         # Identity permutation: plain linear copy, no index arithmetic.
         src = x if x.is_contiguous() else x.contiguous()
+        # For 2-byte dtypes (fp16/bf16), move data through an 8-byte integer view: for the same 64KB copy,
+        # processing 2B elements one by one is about 12% slower than 8B elements (4.65us vs 4.13us, torch native
+        # 4.08us),
+        # the view merely reinterprets the dtype, does not change the byte contents, and needs no extra copying.
+        width_bytes = 8
+        src_wide = None
+        total_bytes = n_elements * src.element_size()
+        if src.element_size() < width_bytes and total_bytes % width_bytes == 0:
+            try:
+                src_wide = src.view(torch.int64)
+                out_wide = out.view(torch.int64)
+            except RuntimeError:
+                # fall back to element-wise copy when the trailing dimension does not meet the alignment requirement of
+                # the dtype view
+                src_wide = None
+        if src_wide is not None:
+            n_wide = src_wide.numel()
+            grid = (triton.cdiv(n_wide, 4096),)
+            with torch_device_fn.device(x.device):
+                _permute_copy_flat_kernel[grid](
+                    src_wide,
+                    out_wide,
+                    n_wide,
+                    BLOCK_SIZE=4096,
+                    num_warps=2,
+                )
+            return out
+
         grid = (triton.cdiv(n_elements, 4096),)
         with torch_device_fn.device(x.device):
             _permute_copy_flat_kernel[grid](

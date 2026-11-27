@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 _HEADER_BYTES = 16
 _PACK_MAGIC = 260821.0
 _PACK_VERSION = 1.0
+# GCU400 exposes 24 SIPs; one persistent program per SIP keeps the streaming
+# quantization pass fed without re-launching a program per tile.
+_PERSISTENT_GRID_CAP = 24
 
 
 @triton.jit
@@ -57,41 +60,57 @@ def _wrapped_linear_prepack_kernel(
     stride_bias,
     PACK_MAGIC: tl.constexpr,
     PACK_VERSION: tl.constexpr,
+    CONTIGUOUS_SOURCE: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    weight_mask = offsets < N * K
-    rows = offsets // K
-    cols = offsets % K
+    # Persistent grid: one program per SIP walking the weight with a
+    # grid-stride loop. The contiguous-source fast path addresses the weight
+    # linearly, which avoids the per-element `// K`/`% K` that dominated the old
+    # one-block-per-1024-elements schedule (integer division is very costly on
+    # GCU). Bias and metadata are written once by program 0.
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    offsets_in_block = tl.arange(0, BLOCK_SIZE)
 
     scale = tl.load(weight_scale).to(tl.float32)
     zero_point = tl.load(weight_zero_point).to(tl.float32)
-    values = tl.load(
-        weight + rows * stride_wn + cols * stride_wk,
-        mask=weight_mask,
-        other=0.0,
-    ).to(tl.float32)
-    quantized = _round_half_to_even(values / scale) + zero_point
-    quantized = tl.minimum(tl.maximum(quantized, -128.0), 127.0)
-    tl.store(packed_weight + offsets, quantized.to(tl.int8), mask=weight_mask)
 
-    bias_mask = offsets < N
-    bias_values = tl.load(bias + offsets * stride_bias, mask=bias_mask, other=0.0).to(
-        tl.float32
-    )
-    tl.store(packed_bias + offsets, bias_values, mask=bias_mask)
+    total = N * K
+    num_blocks = (total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_programs):
+        offsets = block_id * BLOCK_SIZE + offsets_in_block
+        weight_mask = offsets < total
+        if CONTIGUOUS_SOURCE:
+            source_offsets = offsets
+        else:
+            source_offsets = (offsets // K) * stride_wn + (offsets % K) * stride_wk
+        values = tl.load(weight + source_offsets, mask=weight_mask, other=0.0).to(
+            tl.float32
+        )
+        quantized = _round_half_to_even(values / scale) + zero_point
+        quantized = tl.minimum(tl.maximum(quantized, -128.0), 127.0)
+        tl.store(packed_weight + offsets, quantized.to(tl.int8), mask=weight_mask)
 
-    metadata_mask = offsets < 4
-    metadata_values = tl.where(
-        offsets == 0,
-        scale,
-        tl.where(
-            offsets == 1,
-            zero_point,
-            tl.where(offsets == 2, PACK_MAGIC, PACK_VERSION),
-        ),
-    )
-    tl.store(metadata + offsets, metadata_values, mask=metadata_mask)
+    if pid == 0:
+        for bias_start in tl.range(0, N, BLOCK_SIZE):
+            bias_offsets = bias_start + offsets_in_block
+            bias_mask = bias_offsets < N
+            bias_values = tl.load(
+                bias + bias_offsets * stride_bias, mask=bias_mask, other=0.0
+            ).to(tl.float32)
+            tl.store(packed_bias + bias_offsets, bias_values, mask=bias_mask)
+
+        metadata_mask = offsets_in_block < 4
+        metadata_values = tl.where(
+            offsets_in_block == 0,
+            scale,
+            tl.where(
+                offsets_in_block == 1,
+                zero_point,
+                tl.where(offsets_in_block == 2, PACK_MAGIC, PACK_VERSION),
+            ),
+        )
+        tl.store(metadata + offsets_in_block, metadata_values, mask=metadata_mask)
 
 
 @libentry()
@@ -157,7 +176,7 @@ def unpack_linear_weight(packed_weight, out_channel, in_channel=None):
 
 
 def _wrapped_linear_prepack(weight, weight_scale, weight_zero_point, bias):
-    logger.debug("GEMS_ENFLAME_GCU400 _WRAPPED_LINEAR_PREPACK")
+    logger.debug("GEMS_ENFLAME _WRAPPED_LINEAR_PREPACK")
     if weight.dtype != torch.float32:
         raise RuntimeError(f"Quantize only works on Float Tensor, got {weight.dtype}")
     if weight.ndim != 2:
@@ -196,7 +215,15 @@ def _wrapped_linear_prepack(weight, weight_scale, weight_zero_point, bias):
                 BLOCK_SIZE=block_size,
             )
         else:
-            grid = (triton.cdiv(max(N * K, N), block_size),)
+            total = N * K
+            if total >= 32768:
+                stream_block, stream_warps = 8192, 4
+            elif total >= 4096:
+                stream_block, stream_warps = 4096, 2
+            else:
+                # Tiny packings are pure launch overhead: single small block.
+                stream_block, stream_warps = max(triton.next_power_of_2(total), 2), 1
+            grid = (min(triton.cdiv(total, stream_block), _PERSISTENT_GRID_CAP),)
             _wrapped_linear_prepack_kernel[grid](
                 weight,
                 weight_scale,
@@ -212,6 +239,8 @@ def _wrapped_linear_prepack(weight, weight_scale, weight_zero_point, bias):
                 bias.stride(0),
                 PACK_MAGIC=_PACK_MAGIC,
                 PACK_VERSION=_PACK_VERSION,
-                BLOCK_SIZE=block_size,
+                CONTIGUOUS_SOURCE=weight.stride(0) == K and weight.stride(1) == 1,
+                BLOCK_SIZE=stream_block,
+                num_warps=stream_warps,
             )
     return packed

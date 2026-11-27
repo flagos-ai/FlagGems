@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.linalg_lu_factor import _lu_scale_col, linalg_lu_factor
+from flag_gems.ops.linalg_lu_factor import _lu_scale_col
 from flag_gems.ops.lu_unpack import (
     lu_unpack_l_kernel,
     lu_unpack_p_kernel_large,
@@ -14,6 +14,13 @@ from flag_gems.ops.lu_unpack import (
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+# Use the GCU400 factorization, not the generic one: the generic launcher maps
+# the batch onto grid.y, which the GCU launcher caps at 255, so any batched
+# input with more than 255 matrices died with ``out of resource: grid.y``
+# (e.g. the (1024, 512, 512) benchmark shape).  The sibling module keeps every
+# launch on a flat 1-D grid and chunks oversized batches itself.
+from .linalg_lu_factor import linalg_lu_factor
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +266,12 @@ def _linalg_lu_fused_impl(input, *, pivot=True, P=None, L=None, U=None):
 # ---------------------------------------------------------------------------
 
 
-def _lu_unpack_into(lu, pivots, P, L, U, pivot):
+# GCU launcher cap on grid.x (grid.y/grid.z are capped at 255).
+_UNPACK_MAX_GRID = 65535
+
+
+def _lu_unpack_launch(lu, pivots, P, L, U, pivot):
+    """Launch the unpack kernels for one batch chunk of ``_lu_unpack_into``."""
     batch_dims = lu.shape[:-2]
     m, n = lu.shape[-2], lu.shape[-1]
     k = min(m, n)
@@ -343,6 +355,41 @@ def _lu_unpack_into(lu, pivots, P, L, U, pivot):
         )
 
 
+def _lu_unpack_into(lu, pivots, P, L, U, pivot):
+    batch_dims = lu.shape[:-2]
+    m, n = lu.shape[-2], lu.shape[-1]
+    k = min(m, n)
+
+    batch_size = 1
+    for dim in batch_dims:
+        batch_size *= dim
+
+    # Each unpack kernel runs one program per (batch, row), so a big batch blows
+    # the GCU grid.x cap of 65535 (the (1024, 512, 512) benchmark shape needs
+    # 524288 programs).  Replay the launch over batch chunks instead; the
+    # chunked views keep the batch stride the kernels rely on.
+    batch_chunk = max(1, _UNPACK_MAX_GRID // max(m, 1))
+    if batch_size <= batch_chunk:
+        _lu_unpack_launch(lu, pivots, P, L, U, pivot)
+        return
+
+    lu_flat = lu.reshape(batch_size, m, n)
+    pivots_flat = pivots.reshape(batch_size, k)
+    p_flat = P.reshape(batch_size, m, m)
+    l_flat = L.reshape(batch_size, m, k)
+    u_flat = U.reshape(batch_size, k, n)
+    for start in range(0, batch_size, batch_chunk):
+        stop = min(start + batch_chunk, batch_size)
+        _lu_unpack_launch(
+            lu_flat[start:stop],
+            pivots_flat[start:stop],
+            p_flat[start:stop],
+            l_flat[start:stop],
+            u_flat[start:stop],
+            pivot,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Internal implementation
 #
@@ -403,7 +450,7 @@ def _linalg_lu_impl(input, *, pivot=True, P=None, L=None, U=None):
 
 
 def linalg_lu(input, *, pivot=True):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU")
+    logger.debug("GEMS_ENFLAME LINALG_LU")
     _linalg_lu_check(input, pivot)
     return _linalg_lu_impl(input, pivot=pivot)
 
@@ -423,7 +470,7 @@ def _resolve_linalg_lu_out_args(P, L, U, out):
 
 
 def linalg_lu_out(input, *, pivot=True, P=None, L=None, U=None, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_LU_OUT")
     _linalg_lu_check(input, pivot)
     p_out, l_out, u_out = _resolve_linalg_lu_out_args(P, L, U, out)
     return _linalg_lu_impl(input, pivot=pivot, P=p_out, L=l_out, U=u_out)

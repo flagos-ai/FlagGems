@@ -190,7 +190,7 @@ def linalg_householder_product(A, tau):
     Returns:
         Q: Orthogonal matrix of shape (..., m, n).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_HOUSEHOLDER_PRODUCT")
+    logger.debug("GEMS_ENFLAME LINALG_HOUSEHOLDER_PRODUCT")
     return run(A, tau)
 
 

@@ -46,6 +46,10 @@ class SparseBscTensorBenchmark(base.Benchmark):
             yield sp.ccol_indices(), sp.row_indices(), sp.values(), shape
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.sparse_bsc_tensor
 def test_sparse_bsc_tensor():
     bench = SparseBscTensorBenchmark(

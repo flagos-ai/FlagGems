@@ -28,20 +28,14 @@ def t_(inp: torch.Tensor) -> torch.Tensor:
     swaps the two dimensions (and their strides) in place, so the result is a
     transposed view over the original storage.
     """
-    # debug-only logger removed
-    logger.debug("GEMS_ENFLAME_GCU400 T_")
-    dim = inp.dim()
-    if dim < 2:
+    logger.debug("GEMS_ENFLAME T_")
+    ndim = inp.ndim
+    if ndim == 2:
+        # 2D tensor - swap dims 0/1 metadata in place (no data movement);
+        # equivalent to as_strided_ with swapped sizes/strides, exactly
+        # like the native aten::t_ operator (which itself is transpose_(0, 1)).
+        return inp.transpose_(0, 1)
+    if ndim < 2:
         # 0D scalar / 1D tensor - no-op, same as torch.Tensor.t_
         return inp
-    if dim > 2:
-        raise RuntimeError("t_ expects a tensor with <= 2 dimensions")
-
-    # 2D tensor - transpose in place by swapping shape and stride only.
-    # This works for both square and non-square matrices and preserves the
-    # underlying storage, producing a (generally non-contiguous) view exactly
-    # like the native aten::t_ operator.
-    M, N = inp.shape
-    s0, s1 = inp.stride()
-    inp.as_strided_([N, M], [s1, s0])
-    return inp
+    raise RuntimeError("t_ expects a tensor with <= 2 dimensions")

@@ -47,75 +47,140 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+# ===== Tuning constants (calibrated by A/B sweep for this op on 2026-11-17: g48→g384×nw1 monotonic, nw≥2 significantly
+# worse) =====
+# Upper limit on the number of programs along the plane axis (grid.x) (for the s1 band, 256 planes fully spread is best;
+# more brings no gain)
+GRID_CAP = 384
+TOTAL_CAP = (
+    192  # Total CTA limit for spreading h along axis 1 when planes do not fill SPC
+)
+SPC = 48  # Number of SPs on GCU400: only when the plane count is below this is it worth spreading h along axis 1
+MAX_GRID_X = 65535
+MAX_GRID_Y = 255
+ELEM_CAP = (
+    8192  # Upper limit of BLOCK_W (DSM guardrail; very wide rows use NCHUNK chunking)
+)
+WARPS = 1  # Among the 12 swept combinations, nw1 is best across the board (nw2/4 degrade by 1.2-2.3×)
+# =====================================================================================
+
 
 @triton.jit
-def _replication_pad3d_backward_kernel(
+def replication_pad3d_backward_kernel(
     grad_output_ptr,
     grad_input_ptr,
-    B,
-    D_in,
-    H_in,
-    W_in,
-    pad_left,
-    pad_top,
-    pad_front,
-    D_out,
-    H_out,
-    W_out,
+    PLANES,  # B * D_in
+    D,  # D_in
+    H,  # H_in
+    W,  # W_in
+    D_OUT,
+    H_OUT,
+    W_OUT,
+    GO_PLANE,  # Stride between adjacent (b, *) planes of grad_output (in elements)
+    GO_Z,  # z stride of grad_output
+    LEFT_N,  # Number of left-folded columns (already clamped <= W_OUT; 0 when PL<=0, the edge path is entirely skipped)
+    RIGHT_BASE,  # Starting column of right folding (already clamped >= 0)
+    RIGHT_N,  # Number of right-folded columns (= W_OUT - RIGHT_BASE; when PR<=0 the edge path is entirely skipped)
+    PL: tl.constexpr,
+    PR: tl.constexpr,
+    PT: tl.constexpr,
+    PF: tl.constexpr,
     BLOCK_W: tl.constexpr,
+    BLOCK_PAD: tl.constexpr,
+    NCHUNK: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    NEG_X: tl.constexpr,
 ):
-    """One program handles ``(pid_b, pid_dh, pid_w)`` where ``pid_dh`` is a
-    flattened ``(D_out, H_out)`` index and ``pid_w`` is a ``BLOCK_W``-tile
-    along the W_out axis.  Each loaded ``grad_output`` element is atomically
-    added to its clamped input voxel."""
-    pid_b = tl.program_id(axis=0)
-    pid_dh = tl.program_id(axis=1)
-    pid_w = tl.program_id(axis=2)
+    pid_p = tl.program_id(0)
+    num_p = tl.num_programs(0)
+    pid_h = tl.program_id(1)
+    num_h = tl.num_programs(1)
+    iw0 = tl.arange(0, BLOCK_W)
+    pw = tl.arange(0, BLOCK_PAD)
 
-    pid_d = pid_dh // H_out
-    pid_h = pid_dh % H_out
+    for plane in range(pid_p, PLANES, num_p):
+        b = plane // D
+        d = plane - b * D
+        # Closed interval of output z covered by this input slice (empty interval = all-zero gradients, see module
+        # docstring).
+        # For non-first/last slices, hi must be further clamped to D_OUT-1: when negative pad_back shrinks the output,
+        # d+PF can exceed the output upper bound.
+        z_lo = tl.where(d == 0, 0, tl.maximum(d + PF, 0))
+        z_hi = tl.where(d == D - 1, D_OUT - 1, tl.minimum(d + PF, D_OUT - 1))
+        go_b = grad_output_ptr + b.to(tl.int64) * GO_PLANE
+        for h in range(pid_h, H, num_h):
+            y_lo = tl.where(h == 0, 0, tl.maximum(h + PT, 0))
+            y_hi = tl.where(h == H - 1, H_OUT - 1, tl.minimum(h + PT, H_OUT - 1))
+            gi_row = grad_input_ptr + (plane.to(tl.int64) * H + h) * W
+            for chunk in tl.static_range(NCHUNK):
+                iw = chunk * BLOCK_W + iw0
+                iwv = iw < W
+                xvec = PL + iw
+                if NEG_X:
+                    m = iwv & (xvec >= 0) & (xvec < W_OUT)
+                else:
+                    m = iwv
+                total = tl.zeros([BLOCK_W], dtype=tl.float32)
+                left_acc = tl.zeros((), dtype=tl.float32)
+                right_acc = tl.zeros((), dtype=tl.float32)
+                # Border dimensions z/y use a dynamic loop over the "actual interval length": interior rows are loaded
+                # exactly once (no
+                # guard overhead), edge rows unroll by a factor of (PF+1)/(PT+1); empty intervals (cropping)
+                # are naturally safe with zero iterations. The sums of left/right pad columns are merged into the same
+                # (z, y) loop, and within a row the
+                # 3 loads share the zy base address.
+                for z in range(z_lo, z_hi + 1):
+                    z_off = z.to(tl.int64) * GO_Z
+                    for y in range(y_lo, y_hi + 1):
+                        zy_base = go_b + z_off + y.to(tl.int64) * W_OUT
+                        total += tl.load(zy_base + xvec, mask=m, other=0.0).to(
+                            tl.float32
+                        )
+                        # Edge loads must be guarded per chunk: when NCHUNK>1, left folding is added to chunk0,
+                        # right folding to the last chunk, avoiding double counting across chunks
+                        if PL > 0:
+                            if chunk == 0:
+                                left_acc += tl.sum(
+                                    tl.load(
+                                        zy_base + pw, mask=pw < LEFT_N, other=0.0
+                                    ).to(tl.float32)
+                                )
+                        if PR > 0:
+                            if chunk == NCHUNK - 1:
+                                right_acc += tl.sum(
+                                    tl.load(
+                                        zy_base + RIGHT_BASE + pw,
+                                        mask=pw < RIGHT_N,
+                                        other=0.0,
+                                    ).to(tl.float32)
+                                )
+                if PL > 0:
+                    if chunk == 0:
+                        total += tl.where(iw0 == 0, left_acc, 0.0)
+                if PR > 0:
+                    if chunk == NCHUNK - 1:
+                        total += tl.where(iw == W - 1, right_acc, 0.0)
+                tl.store(gi_row + iw, total.to(OUT_DTYPE), mask=iwv)
 
-    offs_w = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
-    mask_out = offs_w < W_out
 
-    base_out = pid_b * D_out * H_out * W_out + pid_d * H_out * W_out + pid_h * W_out
-    base_in = pid_b * D_in * H_in * W_in
-
-    grad = tl.load(grad_output_ptr + base_out + offs_w, mask=mask_out, other=0.0)
-    grad_f32 = grad.to(tl.float32)
-
-    z = pid_d - pad_front
-    d = tl.where(z < 0, 0, tl.where(z > D_in - 1, D_in - 1, z))
-
-    y = pid_h - pad_top
-    h = tl.where(y < 0, 0, tl.where(y > H_in - 1, H_in - 1, y))
-
-    x = offs_w.to(tl.int32) - pad_left
-    w = tl.where(x < 0, 0, tl.where(x > W_in - 1, W_in - 1, x))
-
-    tl.atomic_add(
-        grad_input_ptr + base_in + d * H_in * W_in + h * W_in + w,
-        grad_f32,
-        mask=mask_out,
-    )
+def _next_pow2(n):
+    value = 1
+    while value < n:
+        value *= 2
+    return value
 
 
-@triton.jit
-def _copy_rows_kernel(in_ptr, out_ptr, B, N, BLOCK_W: tl.constexpr):
-    """Generic ``BLOCK_W``-tile row copy used both for the ``pad == 0`` fast
-    path and for the final ``f32`` -> input-dtype cast."""
-    pid_b = tl.program_id(axis=0)
-    pid_w = tl.program_id(axis=1)
-
-    offs_w = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
-    mask = (offs_w < N) & (pid_b < B)
-
-    base = pid_b * N
-    vals = tl.load(in_ptr + base + offs_w, mask=mask, other=0)
-    tl.store(out_ptr + base + offs_w, vals, mask=mask)
+def _dtype_constexpr(dtype):
+    if dtype == torch.float16:
+        return tl.float16
+    if dtype == torch.bfloat16:
+        return tl.bfloat16
+    return tl.float32
 
 
-def _launch(grad_output: torch.Tensor, self: torch.Tensor, padding):
+def _launch(grad_output: torch.Tensor, self: torch.Tensor, padding) -> torch.Tensor:
+    if isinstance(padding, torch.Tensor):
+        padding = tuple(padding.tolist())
     if not isinstance(padding, (list, tuple)) or len(padding) != 6:
         raise ValueError(
             "padding must be a sequence of length 6: "
@@ -137,11 +202,10 @@ def _launch(grad_output: torch.Tensor, self: torch.Tensor, padding):
         )
 
     grad_output_c = grad_output.contiguous()
-    x = self.contiguous()
 
-    D_in = int(x.shape[-3])
-    H_in = int(x.shape[-2])
-    W_in = int(x.shape[-1])
+    D_in = int(self.shape[-3])
+    H_in = int(self.shape[-2])
+    W_in = int(self.shape[-1])
     if D_in <= 0 or H_in <= 0 or W_in <= 0:
         raise ValueError("input volumetric dims (D, H, W) must all be > 0")
 
@@ -160,58 +224,77 @@ def _launch(grad_output: torch.Tensor, self: torch.Tensor, padding):
         raise ValueError(
             f"grad_output spatial shape {actual} does not match expected {expected}."
         )
-    if tuple(grad_output_c.shape[:-3]) != tuple(x.shape[:-3]):
+    if tuple(grad_output_c.shape[:-3]) != tuple(self.shape[:-3]):
         raise ValueError("grad_output and self must have matching leading dimensions")
 
-    leading_shape = x.shape[:-3]
+    leading_shape = self.shape[:-3]
     B = int(math.prod(leading_shape)) if len(leading_shape) > 0 else 1
 
-    # Accumulate in float32 for safe atomic adds across dtypes.
-    grad_input_f32 = torch.zeros_like(x, dtype=torch.float32)
+    # gather writes directly in the final dtype: each input element is written exactly once, so empty is safe (no zeros
+    # pre-clear needed)
+    grad_input = torch.empty(self.shape, device=self.device, dtype=self.dtype)
+    if grad_input.numel() == 0:
+        return grad_input
 
-    all_zero = (pad_left | pad_right | pad_top | pad_bottom | pad_front | pad_back) == 0
-    if all_zero:
-        # Degenerate case: backward is a plain copy.
-        n_per_row = D_in * H_in * W_in
-        grid = (B, triton.cdiv(n_per_row, 256))
-        with torch_device_fn.device(x.device):
-            _copy_rows_kernel[grid](
-                grad_output_c, grad_input_f32, B, n_per_row, BLOCK_W=256
-            )
+    if pad_left > 0 or pad_right > 0:
+        # Clamping under extremely negative padding (see point 3 of the module docstring):
+        # - when pad_left > W_out (pad_right crops deeply), left folding only needs to cover up to W_out;
+        # - when W+pad_left < 0 (pad_left crops deeply), right folding starts at 0 with W_out columns in total.
+        left_n = min(pad_left, W_out) if pad_left > 0 else 0
+        right_base = max(0, W_in + pad_left)
+        right_n = (W_out - right_base) if pad_right > 0 else 0
+        block_pad = _next_pow2(max(left_n, right_n, 2))
     else:
-        # Grid: (B, D_out * H_out, ceil(W_out / BLOCK_W)).
-        grid = (B, D_out * H_out, triton.cdiv(W_out, 256))
-        with torch_device_fn.device(x.device):
-            _replication_pad3d_backward_kernel[grid](
-                grad_output_c,
-                grad_input_f32,
-                B,
-                D_in,
-                H_in,
-                W_in,
-                pad_left,
-                pad_top,
-                pad_front,
-                D_out,
-                H_out,
-                W_out,
-                BLOCK_W=256,
-            )
+        left_n = 0
+        right_base = 0
+        right_n = 0
+        block_pad = 2
+    block_w = min(max(_next_pow2(W_in), 16), ELEM_CAP)
+    nchunk = triton.cdiv(W_in, block_w)
 
-    if x.dtype == torch.float32:
-        casted = grad_input_f32
+    planes = B * D_in
+    grid0 = min(planes, GRID_CAP, MAX_GRID_X)
+    # When the plane count already fills SPC, no further h splitting (spreading h is measured -40% for the s0 band: the
+    # extra CTAs only pay a queuing tax);
+    # Only when planes do not fill the SPs, use axis 1 to spread the h dimension, avoiding a long serial run within a
+    # single program.
+    if grid0 < SPC:
+        grid1 = min(H_in, MAX_GRID_Y, max(1, TOTAL_CAP // grid0))
     else:
-        casted = torch.empty(x.shape, device=x.device, dtype=x.dtype)
-        n_per_row = D_in * H_in * W_in
-        grid = (B, triton.cdiv(n_per_row, 256))
-        with torch_device_fn.device(x.device):
-            _copy_rows_kernel[grid](grad_input_f32, casted, B, n_per_row, BLOCK_W=256)
+        grid1 = 1
 
-    return casted
+    with torch_device_fn.device(self.device):
+        replication_pad3d_backward_kernel[(grid0, grid1)](
+            grad_output_c,
+            grad_input,
+            planes,
+            D_in,
+            H_in,
+            W_in,
+            D_out,
+            H_out,
+            W_out,
+            D_out * H_out * W_out,
+            H_out * W_out,
+            left_n,
+            right_base,
+            right_n,
+            PL=pad_left,
+            PR=pad_right,
+            PT=pad_top,
+            PF=pad_front,
+            BLOCK_W=block_w,
+            BLOCK_PAD=block_pad,
+            NCHUNK=nchunk,
+            OUT_DTYPE=_dtype_constexpr(self.dtype),
+            NEG_X=(pad_left < 0 or pad_right < 0),
+            num_warps=WARPS,
+        )
+    return grad_input
 
 
 def replication_pad3d_backward(
     grad_output: torch.Tensor, self: torch.Tensor, padding
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 REPLICATION_PAD3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME REPLICATION_PAD3D_BACKWARD")
     return _launch(grad_output, self, padding)

@@ -85,6 +85,10 @@ def batch_norm_backward_elemt_input_fn(shape, dtype, device):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.batch_norm_backward_elemt
 def test_batch_norm_backward_elemt():
     bench = NormBenchmark(

@@ -324,7 +324,7 @@ def _batch_norm_with_update_functional(
     eps=1e-05,
 ):
     """Functional batch normalization with running stats update."""
-    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_WITH_UPDATE_FUNCTIONAL")
+    logger.debug("GEMS_ENFLAME _BATCH_NORM_WITH_UPDATE_FUNCTIONAL")
 
     x3 = make_3d_for_bn(input)
 

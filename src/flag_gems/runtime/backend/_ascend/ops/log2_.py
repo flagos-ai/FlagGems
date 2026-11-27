@@ -1,0 +1,421 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Ascend implementation imported from the tuned operator batch
+# host entry points below mirror the generic
+# flag_gems names so the backend registrar can pick them up.
+
+"""严格Triton原地log2，迁移已核验log10的分块及双块预取组织。
+数学改为ln(x)*log2(e)；小中输入使用较大块，大输入每program先读两块再写回。
+保留非连续/非对齐布局、特殊值、编译缓存与当前stream，须独立完成本算子评测。
+"""
+
+import torch
+import triton
+import triton.language as tl
+
+try:  # cheapest faithful current-stream query on this target
+    import torch_npu
+
+    _RAW_STREAM = getattr(torch_npu._C, "_npu_getCurrentRawStreamNoWait", None)
+except Exception:  # pragma: no cover
+    torch_npu = None
+    _RAW_STREAM = None
+
+_TILE_MAX = 32768  # largest tile this backend compiles for both dtypes
+_TILE_MIN = 1024
+_BLOCK_STRIDED = 512  # gather/scatter tiles materialise address vectors
+_MAX_DIMS = 8
+_GRID_CAP = 65535  # driver limit on the flattened coreDim
+_CORE_GRID = 40  # fallback: vector cores on this part (see _core_grid)
+_LOG2E = 1.4426950408889634
+
+_ENTRIES = {}
+_STREAM_GETTERS = {}
+_CORE_GRIDS = {}
+
+
+@triton.jit
+def _log2_flat(x_ptr, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(x_ptr + offs).to(tl.float32)
+    y = tl.log(x) * 1.4426950408889634
+    tl.store(x_ptr + offs, y.to(x_ptr.dtype.element_ty))
+
+
+@triton.jit
+def _log2_flat_masked(x_ptr, n, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    x = tl.load(x_ptr + offs, mask=mask, other=1.0).to(tl.float32)
+    y = tl.log(x) * 1.4426950408889634
+    tl.store(x_ptr + offs, y.to(x_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _log2_pair(x_ptr, SUB: tl.constexpr):
+    """Two independent halves per program, one tile per program, no mask.
+
+    The two loads are issued before either store (more memory in flight) and a
+    single 2*SUB tile is what both dtypes fit in the 192 KB UB.  Measured
+    fastest once the tensor streams from HBM; the loop-free body beats the
+    grid-stride one by ~3% on 16-bit data.
+    """
+    off0 = tl.program_id(0) * (2 * SUB) + tl.arange(0, SUB)
+    off1 = off0 + SUB
+    a = tl.load(x_ptr + off0).to(tl.float32)
+    b = tl.load(x_ptr + off1).to(tl.float32)
+    tl.store(x_ptr + off0, (tl.log(a) * 1.4426950408889634).to(x_ptr.dtype.element_ty))
+    tl.store(x_ptr + off1, (tl.log(b) * 1.4426950408889634).to(x_ptr.dtype.element_ty))
+
+
+@triton.jit
+def _log2_pair_loop(x_ptr, N: tl.constexpr, SUB: tl.constexpr):
+    """Same tile, grid-stride: one program per vector core.
+
+    Measured fastest while the whole tensor still fits in L2 (see _grid_cap).
+    Every start is a multiple of the tile and the tile divides N
+    (host-guarded), so no mask is needed.
+    """
+    lane = tl.arange(0, SUB)
+    step = tl.num_programs(0) * 2 * SUB
+    start = tl.program_id(0) * 2 * SUB
+    while start < N:
+        off0 = start + lane
+        off1 = off0 + SUB
+        a = tl.load(x_ptr + off0).to(tl.float32)
+        b = tl.load(x_ptr + off1).to(tl.float32)
+        tl.store(
+            x_ptr + off0, (tl.log(a) * 1.4426950408889634).to(x_ptr.dtype.element_ty)
+        )
+        tl.store(
+            x_ptr + off1, (tl.log(b) * 1.4426950408889634).to(x_ptr.dtype.element_ty)
+        )
+        start += step
+
+
+@triton.jit
+def _log2_pair_masked(x_ptr, N, SUB: tl.constexpr):
+    """Masked tail of the two-half form (numel not a multiple of the tile)."""
+    lane = tl.arange(0, SUB)
+    step = tl.num_programs(0) * 2 * SUB
+    start = tl.program_id(0) * 2 * SUB
+    while start < N:
+        off0 = start + lane
+        off1 = off0 + SUB
+        m0 = off0 < N
+        m1 = off1 < N
+        a = tl.load(x_ptr + off0, mask=m0, other=1.0).to(tl.float32)
+        b = tl.load(x_ptr + off1, mask=m1, other=1.0).to(tl.float32)
+        tl.store(
+            x_ptr + off0,
+            (tl.log(a) * 1.4426950408889634).to(x_ptr.dtype.element_ty),
+            mask=m0,
+        )
+        tl.store(
+            x_ptr + off1,
+            (tl.log(b) * 1.4426950408889634).to(x_ptr.dtype.element_ty),
+            mask=m1,
+        )
+        start += step
+
+
+@triton.jit
+def _log2_scaled(x_ptr, n, SCALE: tl.constexpr, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    idx = offs * SCALE
+    x = tl.load(x_ptr + idx, mask=mask, other=1.0).to(tl.float32)
+    y = tl.log(x) * 1.4426950408889634
+    tl.store(x_ptr + idx, y.to(x_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _log2_nd(
+    x_ptr,
+    n,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    t0,
+    t1,
+    t2,
+    t3,
+    t4,
+    t5,
+    t6,
+    t7,
+    NDIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    shapes = (s0, s1, s2, s3, s4, s5, s6, s7)
+    strides = (t0, t1, t2, t3, t4, t5, t6, t7)
+    rem = offs
+    off = tl.zeros((BLOCK,), dtype=tl.int32)
+    for i in tl.static_range(8):
+        if i < NDIM:
+            size = shapes[NDIM - 1 - i]
+            stride = strides[NDIM - 1 - i]
+            off += (rem % size) * stride
+            rem = rem // size
+    x = tl.load(x_ptr + off, mask=mask, other=1.0).to(tl.float32)
+    y = tl.log(x) * 1.4426950408889634
+    tl.store(x_ptr + off, y.to(x_ptr.dtype.element_ty), mask=mask)
+
+
+def _pick_tile(n):
+    """Elements per program: cover the input with as few tiles as UB allows."""
+    if n >= _TILE_MAX:
+        return _TILE_MAX
+    tile = _TILE_MIN
+    while tile < n:
+        tile <<= 1
+    return tile
+
+
+def _resolve_stream(device):
+    """Cheapest faithful current-stream accessor for this device, resolved once.
+
+    The getter itself is re-evaluated on every call, so a caller that switches
+    streams still launches on the stream that is current now.
+    """
+    getter = _STREAM_GETTERS.get(device)
+    if getter is not None:
+        return getter
+    getter = None
+    if _RAW_STREAM is not None:
+        try:
+            want = int(torch.npu.current_stream().npu_stream)
+            if int(_RAW_STREAM(device)) == want:
+                getter = lambda: _RAW_STREAM(device)
+        except Exception:
+            getter = None
+    if getter is None:
+        try:
+            from triton.runtime import driver as _driver
+
+            def getter(device=device):
+                return _driver.active.get_current_stream(device)
+
+        except Exception:  # pragma: no cover - last resort
+
+            def getter():
+                return torch.npu.current_stream().npu_stream
+
+    _STREAM_GETTERS[device] = getter
+    return getter
+
+
+def _core_grid(device):
+    """One program per vector core: measured best launch for the large shapes."""
+    grid = _CORE_GRIDS.get(device)
+    if grid is None:
+        grid = _CORE_GRID
+        try:
+            props = torch.npu.get_device_properties(device)
+            grid = int(getattr(props, "vector_core_num", _CORE_GRID)) or _CORE_GRID
+        except Exception:
+            pass
+        _CORE_GRIDS[device] = grid
+    return grid
+
+
+def _grid_cap(device, nbytes):
+    """Program cap for one launch.
+
+    While the whole tensor still fits in L2 the kernel is latency-bound and one
+    program per vector core wins; once it streams from HBM, one program per
+    tile wins.  Both bounds are measured on 910B4 (see the batch notes).
+    """
+    cap = _GRID_CAP
+    try:
+        props = torch.npu.get_device_properties(device)
+        l2 = int(getattr(props, "L2_cache_size", 0))
+    except Exception:
+        l2 = 0
+    if l2 and nbytes <= l2:
+        cap = min(_core_grid(device), _GRID_CAP)
+    return cap
+
+
+def _build_entry(A, n, key):
+    tile = _pick_tile(n)
+    masked = bool(n % tile)
+    if n < _TILE_MAX:
+        jitfn = _log2_flat_masked if masked else _log2_flat
+        grid = (triton.cdiv(n, tile),)
+        # Tail of the compiled launcher's positional argument list: every kernel
+        # parameter after the data pointer, constexprs included (the Ascend
+        # launcher builds one PyArg format unit per parameter).
+        tail = (n, tile) if masked else (tile,)
+        if masked:
+
+            def fallback(A, _f=jitfn, _g=grid, _n=n, _b=tile):
+                _f[_g](A, _n, BLOCK=_b)
+
+            warm = lambda: jitfn.warmup(A, n, BLOCK=tile, grid=(1,))
+        else:
+
+            def fallback(A, _f=jitfn, _g=grid, _b=tile):
+                _f[_g](A, BLOCK=_b)
+
+            warm = lambda: jitfn.warmup(A, BLOCK=tile, grid=(1,))
+    else:
+        # Two independent halves of SUB lanes: the tile that both dtypes fit in
+        # UB, and the fastest form measured from 16M to 1G elements.
+        sub = _TILE_MAX >> 1
+        tiles = triton.cdiv(n, _TILE_MAX)
+        cap = _grid_cap(key[2], n * A.element_size())
+        if masked:
+            # Rare (odd numel): the grid-stride form handles any tail.
+            jitfn = _log2_pair_masked
+            grid = (min(tiles, cap),)
+            tail = (n, sub)
+
+            def fallback(A, _f=jitfn, _g=grid, _n=n, _b=sub):
+                _f[_g](A, _n, SUB=_b)
+
+            warm = lambda: jitfn.warmup(A, n, SUB=sub, grid=(1,))
+        elif tiles <= cap:
+            # One tile per program: never a partial tile, never a loop.
+            jitfn = _log2_pair
+            grid = (tiles,)
+            tail = (sub,)
+
+            def fallback(A, _f=jitfn, _g=grid, _b=sub):
+                _f[_g](A, SUB=_b)
+
+            warm = lambda: jitfn.warmup(A, SUB=sub, grid=(1,))
+        else:
+            jitfn = _log2_pair_loop
+            grid = (cap,)
+            tail = (n, sub)
+
+            def fallback(A, _f=jitfn, _g=grid, _n=n, _b=sub):
+                _f[_g](A, _n, SUB=_b)
+
+            warm = lambda: jitfn.warmup(A, n, SUB=sub, grid=(1,))
+
+    entry = (None, None, None, grid[0], tail, None, fallback)
+    try:
+        ck = warm()
+        launcher = ck.run
+        if getattr(launcher, "compile_only", False) or getattr(
+            launcher, "enable_msprof_register_tensor", False
+        ):
+            pass
+        else:
+            md = launcher.metadata
+            if not (getattr(md, "debug_enabled", False) or getattr(md, "debug", False)):
+                entry = (
+                    launcher.launch,
+                    ck.function,
+                    ck.packed_metadata,
+                    grid[0],
+                    tail,
+                    _resolve_stream(key[2]),
+                    fallback,
+                )
+    except Exception:
+        entry = (None, None, None, grid[0], tail, None, fallback)
+    _ENTRIES[key] = entry
+    return entry
+
+
+def _launch_strided(A, n):
+    """Non-contiguous in-place path: real element strides, view object untouched."""
+    shape = A.shape
+    stride = A.stride()
+    dims = []  # (size, stride) inner -> outer, adjacent dims merged when compact
+    for d in range(len(shape) - 1, -1, -1):
+        s = shape[d]
+        if s == 1:
+            continue
+        st = stride[d]
+        if dims and st == dims[-1][0] * dims[-1][1]:
+            dims[-1] = (dims[-1][0] * s, dims[-1][1])
+        else:
+            dims.append((s, st))
+    dims.reverse()
+    if len(dims) <= 1:
+        scale = dims[0][1] if dims else 1
+        _log2_scaled[((n + _BLOCK_STRIDED - 1) // _BLOCK_STRIDED,)](
+            A, n, SCALE=scale, BLOCK=_BLOCK_STRIDED
+        )
+        return
+    if len(dims) > _MAX_DIMS:
+        # Extremely rare (>8 non-mergeable axes): peel the outermost axis.
+        for i in range(shape[0]):
+            sub = A.select(0, i)
+            m = sub.numel()
+            if m:
+                _launch_strided(sub, m)
+        return
+    sizes = [d[0] for d in dims] + [1] * (_MAX_DIMS - len(dims))
+    sts = [d[1] for d in dims] + [0] * (_MAX_DIMS - len(dims))
+    _log2_nd[((n + _BLOCK_STRIDED - 1) // _BLOCK_STRIDED,)](
+        A, n, *sizes, *sts, NDIM=len(dims), BLOCK=_BLOCK_STRIDED
+    )
+
+
+def _triton_run(A):
+    n = A.numel()
+    if n == 0:
+        return A
+    if not A.is_contiguous():
+        _launch_strided(A, n)
+        return A
+    pointer = A.data_ptr()
+    if pointer & 15:
+        _launch_strided(A, n)
+        return A
+    key = (A.dtype, n, A.get_device())
+    entry = _ENTRIES.get(key)
+    if entry is None:
+        entry = _build_entry(A, n, key)
+    launch = entry[0]
+    if launch is not None:
+        launch(
+            entry[3],
+            1,
+            1,
+            entry[5](),
+            entry[1],
+            entry[2],
+            None,
+            None,
+            None,
+            pointer,
+            *entry[4],
+        )
+    else:
+        entry[6](A)
+    return A
+
+
+run = _triton_run
+
+
+# --------------------------------------------------------------------------- #
+# FlagGems entry points
+# --------------------------------------------------------------------------- #
+def log2_(*args, **kwargs):
+    return run(*args, **kwargs)

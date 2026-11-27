@@ -54,7 +54,10 @@ COMPLEX_DTYPES = [torch.complex64] + (
 def test_accuracy_atleast_2d_complex(shape, dtype):
     # complex inputs: atleast_2d is a pure host-side reshape, so the
     # conjugate bit and imaginary part must survive the view unchanged.
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Ascend cannot run the complex normal_ kernel behind torch.randn.
+    inp = torch.testing.make_tensor(
+        shape, dtype=dtype, device=flag_gems.device, low=-1, high=1
+    )
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)

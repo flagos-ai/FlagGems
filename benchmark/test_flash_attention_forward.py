@@ -343,6 +343,10 @@ def _flash_attention_forward_input_fn(config, dtype, device):
         )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.underscore_flash_attention_forward
 def test__flash_attention_forward():
     bench = FlashAttentionForwardBenchmark(
@@ -355,6 +359,10 @@ def test__flash_attention_forward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon-specific FP32 path")
 @pytest.mark.underscore_flash_attention_forward
 def test_hygon_fp32_flash_attention_forward():
@@ -367,6 +375,10 @@ def test_hygon_fp32_flash_attention_forward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.skipif(utils.SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
