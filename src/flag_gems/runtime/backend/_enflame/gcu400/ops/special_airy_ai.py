@@ -347,12 +347,12 @@ def special_airy_ai_func(x):
 
 
 def special_airy_ai(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_AIRY_AI")
+    logger.debug("GEMS_ENFLAME SPECIAL_AIRY_AI")
     return special_airy_ai_func(A)
 
 
 def special_airy_ai_out(A, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_AIRY_AI_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_AIRY_AI_OUT")
     if out is None:
         return special_airy_ai_func(A)
     special_airy_ai_func(A, out0=out)

@@ -89,8 +89,15 @@ def test_replication_pad1d_backward(shape, padding, dtype):
         ref_grad = grad_output.cpu()
     else:
         ref_inp = utils.to_reference(inp)
-        padded_out = torch.ops.aten.replication_pad1d(inp, padding)
-        grad_output = torch.ones_like(padded_out)
+        if flag_gems.vendor_name == "enflame" and dtype.is_complex:
+            # The torch_gcu aten forward pass (topsatenReplicationPad1d) on
+            # complex inputs aborts the process, so the all-ones gradient is
+            # built from the known padded width instead.
+            grad_shape = (*shape[:-1], shape[-1] + sum(padding))
+            grad_output = torch.ones(grad_shape, dtype=dtype, device=inp.device)
+        else:
+            padded_out = torch.ops.aten.replication_pad1d(inp, padding)
+            grad_output = torch.ones_like(padded_out)
         ref_grad = utils.to_reference(grad_output)
 
     ref_out = torch.ops.aten.replication_pad1d_backward(ref_grad, ref_inp, padding)

@@ -26,17 +26,136 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
-_ONE_PASS_HEURISTICS = runtime.get_heuristic_config("post_layer_norm_residual")
+MAX_BLOCK_SIZE = 4096
+# gcu400 has 24 SIPs; 48 programs (2 waves) measured best for row-wise kernels
+# on L600 (transplanted from the verified skip_layer_norm row-batch kernel).
+OPTIMAL_GRID_SIZE = 48
+# Row-batch [ROWS_PER_CTA, BLOCK_SIZE] tile budget, same verified-safe domain
+# as the skip_layer_norm rows kernel on this backend: tile <= 16384 elements
+# with ROWS_PER_CTA <= 32 was verified correct across 225 configurations,
+# while R >= 32 with a 32768-element tile is a triton_gcu silent-miscompile
+# zone.
+_ROW_TILE_ELEM_MAX = 16384
+_ROWS_PER_CTA_CAP = 32
+
+
+def _rows_per_cta(m, n, element_bytes):
+    """Pick the row-batch factor R for the [R, BLOCK_SIZE] 2D-tile launch.
+
+    Sweep-measured optimum on gcu400: R tracks the largest power of two
+    <= M/32 (grid lands around 32 programs), small M batches 8 rows per
+    program, and every R is clamped to the largest power-of-two factor of
+    m so that M % R == 0 always holds: no tail body is ever needed, which
+    keeps the 2-D hot path branch-free and allows num_warps=2 (a
+    compiled-in 1-D tail degrades the whole 2-D path at num_warps >= 2
+    on this backend).
+
+    Non-power-of-two N pays a 2x-wide masked tile; 16-bit dtypes collapse
+    there at a 16384-element tile (measured N=513 fp16 R=16: 22.6us vs
+    R=8 15.0us) while fp32 keeps the full R (R=16 15.3us < R=8 18.7us),
+    so only 16-bit halves R.
+    """
+    block = min(triton.next_power_of_2(n), MAX_BLOCK_SIZE)
+    tile_cap = _ROW_TILE_ELEM_MAX // max(block, 1)
+    if m < 32:
+        rows = 1
+    elif m < 96:
+        rows = max(1, min(m & (-m), 8, tile_cap))
+    else:
+        rows = m // 32
+        rows = 1 << max(0, rows.bit_length() - 1)
+        rows = min(rows, _ROWS_PER_CTA_CAP, tile_cap)
+        rows = max(1, min(rows, m & (-m)))
+    if n != block and element_bytes < 4:
+        rows = max(1, rows // 2)
+    return rows
 
 
 @triton.jit
-def _prev_multiple_of(a, b):
-    return tl.cdiv(a, b) * b - b
+def _post_layer_norm_residual_rows_tile(
+    output_ptr,
+    input_ptr,
+    residual_ptr,
+    w,
+    b,
+    w_t,
+    b_t,
+    mean_ptr,
+    rstd_ptr,
+    row0,
+    N,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+    ROWS_PER_CTA: tl.constexpr,
+    EXACT: tl.constexpr,
+    TAIL1: tl.constexpr,
+    SAVE_STATS: tl.constexpr,
+):
+    """Full [ROWS_PER_CTA, BLOCK_SIZE] tile body; w/b are [1, BLOCK_SIZE].
+
+    TAIL1 covers N == BLOCK_SIZE + 1 rows: the [R, BLOCK_SIZE] main block is
+    unmasked and the single trailing column joins the per-row mean/variance
+    as a [R] vector, avoiding the 2x-wide masked tile of the generic path.
+    """
+    rows = row0 + tl.arange(0, ROWS_PER_CTA)
+    cols = tl.arange(0, BLOCK_SIZE)
+    x_ptrs = input_ptr + rows[:, None] * N + cols[None, :]
+    r_ptrs = residual_ptr + rows[:, None] * N + cols[None, :]
+    y_ptrs = output_ptr + rows[:, None] * N + cols[None, :]
+    if EXACT:
+        x = tl.load(x_ptrs).to(tl.float32)
+        r_val = tl.load(r_ptrs).to(tl.float32)
+        mean = tl.sum(x, axis=1) / N
+        d = x - mean[:, None]
+        var = tl.sum(d * d, axis=1) / N
+        rstd = tl.math.rsqrt(var + eps)
+        if SAVE_STATS:
+            tl.store(mean_ptr + rows, mean)
+            tl.store(rstd_ptr + rows, rstd)
+        y = w * (d * rstd[:, None]) + b
+        y = y + r_val
+        tl.store(y_ptrs, y.to(output_ptr.dtype.element_ty))
+    else:
+        if TAIL1:
+            t_off = rows * N + BLOCK_SIZE
+            x = tl.load(x_ptrs).to(tl.float32)
+            xt = tl.load(input_ptr + t_off).to(tl.float32)
+            r_val = tl.load(r_ptrs).to(tl.float32)
+            rt = tl.load(residual_ptr + t_off).to(tl.float32)
+            mean = (tl.sum(x, axis=1) + xt) / N
+            d = x - mean[:, None]
+            dt = xt - mean
+            var = (tl.sum(d * d, axis=1) + dt * dt) / N
+            rstd = tl.math.rsqrt(var + eps)
+            if SAVE_STATS:
+                tl.store(mean_ptr + rows, mean)
+                tl.store(rstd_ptr + rows, rstd)
+            y = w * (d * rstd[:, None]) + b
+            y = y + r_val
+            tl.store(y_ptrs, y.to(output_ptr.dtype.element_ty))
+            yt = w_t * (dt * rstd) + b_t
+            yt = yt + rt
+            tl.store(output_ptr + t_off, yt.to(output_ptr.dtype.element_ty))
+        else:
+            col_mask = cols < N
+            mask2d = col_mask[None, :]
+            x = tl.load(x_ptrs, mask=mask2d, other=0.0).to(tl.float32)
+            r_val = tl.load(r_ptrs, mask=mask2d, other=0.0).to(tl.float32)
+            mean = tl.sum(x, axis=1) / N
+            d = tl.where(mask2d, x - mean[:, None], 0.0)
+            var = tl.sum(d * d, axis=1) / N
+            rstd = tl.math.rsqrt(var + eps)
+            if SAVE_STATS:
+                tl.store(mean_ptr + rows, mean)
+                tl.store(rstd_ptr + rows, rstd)
+            y = w * (d * rstd[:, None]) + b
+            y = y + r_val
+            tl.store(y_ptrs, y.to(output_ptr.dtype.element_ty), mask=mask2d)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
-def post_layer_norm_residual_one_pass_kernel(
+def post_layer_norm_residual_rows_kernel(
     input_ptr,
     residual_ptr,
     output_ptr,
@@ -47,36 +166,70 @@ def post_layer_norm_residual_one_pass_kernel(
     M,
     N,
     eps,
-    TILE_M: tl.constexpr,
-    TILE_N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    ROWS_PER_CTA: tl.constexpr,
+    EXACT: tl.constexpr,
+    TAIL1: tl.constexpr,
     SAVE_STATS: tl.constexpr,
 ):
+    """Persistent row-batch kernel: each program normalizes ROWS_PER_CTA rows
+    per tile via a 2D [ROWS_PER_CTA, BLOCK_SIZE] tile, amortizing the
+    per-program fixed cost (load dispatch + reduction trees + weight/bias
+    loads) that dominates small-tile launches at large M.  Weight/bias are
+    loaded once per program as [1, BLOCK_SIZE] 2D tiles: 1-D-vector broadcast
+    operands are a verified miscompile window in this kernel family at
+    BLOCK 512/1024 with num_warps >= 2.
+    """
     pid = ext.program_id(0)
-    row_offsets = pid * TILE_M + tl.arange(0, TILE_M)
-    row_mask = row_offsets < M
-    col_offsets = tl.arange(0, TILE_N)[None, :]
-    col_mask = col_offsets < N
-    mask = row_mask[:, None] & col_mask
-    offsets = row_offsets[:, None] * N + col_offsets
+    num_programs = ext.num_programs(0)
+    num_tiles = tl.cdiv(M, ROWS_PER_CTA)
+    cols = tl.arange(0, BLOCK_SIZE)
+    if EXACT:
+        w = tl.load(weight_ptr + cols[None, :]).to(tl.float32)
+        b = tl.load(bias_ptr + cols[None, :]).to(tl.float32)
+    elif TAIL1:
+        w = tl.load(weight_ptr + cols[None, :]).to(tl.float32)
+        b = tl.load(bias_ptr + cols[None, :]).to(tl.float32)
+    else:
+        col_mask0 = cols < N
+        w = tl.load(weight_ptr + cols[None, :], mask=col_mask0[None, :], other=0.0).to(
+            tl.float32
+        )
+        b = tl.load(bias_ptr + cols[None, :], mask=col_mask0[None, :], other=0.0).to(
+            tl.float32
+        )
+    if TAIL1:
+        w_t = tl.load(weight_ptr + BLOCK_SIZE).to(tl.float32)
+        b_t = tl.load(bias_ptr + BLOCK_SIZE).to(tl.float32)
+    else:
+        w_t = w
+        b_t = b
+    for tile in tl.range(pid, num_tiles, num_programs, num_stages=2):
+        row0 = tile * ROWS_PER_CTA
+        _post_layer_norm_residual_rows_tile(
+            output_ptr,
+            input_ptr,
+            residual_ptr,
+            w,
+            b,
+            w_t,
+            b_t,
+            mean_ptr,
+            rstd_ptr,
+            row0,
+            N,
+            eps,
+            BLOCK_SIZE,
+            ROWS_PER_CTA,
+            EXACT,
+            TAIL1,
+            SAVE_STATS,
+        )
 
-    input = tl.load(input_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    mean = tl.sum(input, axis=1) / N
-    centered = tl.where(mask, input - mean[:, None], 0.0)
-    variance = tl.sum(centered * centered, axis=1) / N
-    rstd = tl.math.rsqrt(variance + eps)
 
-    if SAVE_STATS:
-        stats_offsets = row_offsets[:, None]
-        stats_mask = row_mask[:, None]
-        tl.store(mean_ptr + stats_offsets, mean[:, None], mask=stats_mask)
-        tl.store(rstd_ptr + stats_offsets, rstd[:, None], mask=stats_mask)
-
-    weight = tl.load(weight_ptr + col_offsets, mask=col_mask, other=0.0)
-    bias = tl.load(bias_ptr + col_offsets, mask=col_mask, other=0.0)
-    residual = tl.load(residual_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-
-    output = centered * rstd[:, None] * weight + bias + residual
-    tl.store(output_ptr + offsets, output, mask=mask)
+@triton.jit
+def _prev_multiple_of(a, b):
+    return tl.cdiv(a, b) * b - b
 
 
 @libentry()
@@ -233,11 +386,27 @@ def _post_layer_norm_residual_forward(
 
     with torch_device_fn.device(input.device):
         if N <= 4096:
-            heuristic_args = {"M": M, "N": N}
-            tile_m = _ONE_PASS_HEURISTICS["TILE_M"](heuristic_args)
-            tile_n = _ONE_PASS_HEURISTICS["TILE_N"](heuristic_args)
-            grid = (triton.cdiv(M, tile_m), 1, 1)
-            post_layer_norm_residual_one_pass_kernel[grid](
+            block_size = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
+            # N == 2^k + 1 rows carry a single trailing column past a clean
+            # 2^k main block.  Folding that column into the per-row [R]
+            # statistics vector beats the 2x-wide masked tile of the generic
+            # path for every dtype (measured on N=513: fp16 15.0->10.6us,
+            # fp32 15.6->12.7us).
+            tail1 = N > 2 and (N & (N - 1)) != 0 and ((N - 1) & (N - 2)) == 0
+            if tail1:
+                block_size = N - 1
+                rows_per_cta = _rows_per_cta(M, N - 1, input.element_size())
+            else:
+                rows_per_cta = _rows_per_cta(M, N, input.element_size())
+            num_tiles = triton.cdiv(M, rows_per_cta)
+            grid_size = min(num_tiles, OPTIMAL_GRID_SIZE)
+            # One row per program: a single warp is fastest for narrow rows
+            # (N <= 1024), wide rows need 4 warps; row-batch tiles use 2.
+            if rows_per_cta > 1:
+                num_warps = 2
+            else:
+                num_warps = 1 if N <= 1024 else 4
+            post_layer_norm_residual_rows_kernel[(grid_size, 1, 1)](
                 input,
                 residual,
                 output,
@@ -248,9 +417,12 @@ def _post_layer_norm_residual_forward(
                 M,
                 N,
                 eps,
-                TILE_M=tile_m,
-                TILE_N=tile_n,
+                BLOCK_SIZE=block_size,
+                ROWS_PER_CTA=rows_per_cta,
+                EXACT=(N == block_size),
+                TAIL1=tail1,
                 SAVE_STATS=save_stats,
+                num_warps=num_warps,
             )
         else:
             post_layer_norm_residual_loop_kernel[(M, 1, 1)](
@@ -355,7 +527,7 @@ def post_layer_norm_residual(
     https://github.com/NVIDIA/physicsnemo/blob/65ec388929884436051203bca9dfb912eabd4c18/physicsnemo/nn/module/gnn_layers/mesh_graph_mlp.py#L120-L171
     https://github.com/NVIDIA/physicsnemo/blob/65ec388929884436051203bca9dfb912eabd4c18/physicsnemo/nn/module/gnn_layers/mesh_node_block.py#L70-L91
     """
-    logger.debug("GEMS_ENFLAME_GCU400 POST_LAYER_NORM_RESIDUAL")
+    logger.debug("GEMS_ENFLAME POST_LAYER_NORM_RESIDUAL")
     normalized_shape = _normalize_shape(normalized_shape)
     _validate_inputs(input, residual, normalized_shape, weight, bias)
 

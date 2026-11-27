@@ -35,8 +35,13 @@ Each group therefore contributes an ``(m_g, k_g) x (k_g, n_g)`` GEMM whose
 result is scaled by the per-row ``scale_a`` and the per-column ``scale_b``
 before being stored into the slice of the output that group owns.
 
-All arithmetic happens in the Triton kernel below; the Python wrapper only
-validates arguments and does shape/stride bookkeeping.
+All arithmetic happens in the Triton kernels below; the Python wrapper only
+validates arguments and does shape/stride bookkeeping.  On GCU400 the fp8
+GEMM runs as a persistent kernel over a fixed 48-program grid with two
+launch variants: an autotuned even-K kernel (single-dimension load masks,
+deep K tiles, hardware fp8 MMA) and a ragged-K fallback whose contraction
+tail is split out of the main loop -- a K-tail branch left beside the even
+main loop degrades it by two orders of magnitude on this backend.
 """
 
 import logging
@@ -47,7 +52,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.device_info import get_sm_count
 
 logger = logging.getLogger(__name__)
 
@@ -85,36 +89,105 @@ _OUT_DTYPE_ERROR = (
 )
 _BIAS_ERROR = "Bias not supported yet"
 
+# GCU400 fixed persistent grid: 4 DIEs x 6 SIPs; 48 concurrent programs beat
+# 4/8/24/96 in every sweep (same finding as ops/group_mm.py).  Do NOT use
+# ``get_sm_count()`` here: torch_gcu reports ``multi_processor_count == 4``,
+# which starves the persistent kernel (measured 8x on the core shapes).
+_GCU_NUM_GRID = 48
 
+
+# Autotuned fp8 tiles for the even-K persistent kernel.  On the Triton GCU
+# 4.1.6 stack the fp8 ``tl.dot`` (lowered to tops_matmul_fp8e4m3fn) prefers
+# deep K tiles and num_warps=2; nw4/nw8 leave ~20-30% on the table at
+# BLOCK_K >= 128 (counter to the older c042-stack "fp8 nw2 is 2x slower"
+# finding -- re-measured on this stack, do not carry the old note over).
+# num_stages has no measurable effect on this backend (verified ns1..ns5).
 def get_autotune_config():
     return [
         triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32},
-            num_stages=3,
-            num_warps=4,
-        ),
-        triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64},
             num_stages=3,
-            num_warps=4,
+            num_warps=2,
         ),
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64},
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 256},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 256},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256},
+            num_stages=3,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128},
             num_stages=3,
             num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64},
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 256},
             num_stages=3,
             num_warps=4,
         ),
     ]
 
 
+def _prune_configs(configs, named_args, **kwargs):
+    """Keep only tiles whose K step divides K (the even kernel is launched
+    with the no-tail contract) and whose N/M tiles are not wider than the
+    operand itself.  The host routes K % 64 != 0 to the ragged kernel before
+    the tuner runs, so the BLOCK_K=64 entry always survives."""
+    K = named_args["K"]
+    N = named_args["N"]
+    M = named_args["M"]
+    fitting = [
+        config
+        for config in configs
+        if K % config.kwargs["BLOCK_K"] == 0
+        and config.kwargs["BLOCK_N"] <= N
+        and config.kwargs["BLOCK_M"] <= max(16, M)
+    ]
+    if not fitting:
+        # Every tile is wider than the operand (e.g. tiny N): fall back to
+        # any K-dividing config; the masked loads keep them correct.
+        fitting = [config for config in configs if K % config.kwargs["BLOCK_K"] == 0]
+    if not fitting:
+        raise NotImplementedError(
+            f"scaled_grouped_mm_v2: no even-K tile fits K={K}, N={N}, M={M}"
+        )
+    return fitting
+
+
 @libentry()
 @libtuner(
     configs=get_autotune_config(),
     key=["M", "N", "K", "MODE"],
+    prune_configs_by={"early_config_prune": _prune_configs},
     warmup=2,
     rep=4,
 )
@@ -144,55 +217,68 @@ def _scaled_grouped_mm_v2_kernel(
     MODE: tl.constexpr,
     SCALE_A_MODE: tl.constexpr,
     SCALE_B_MODE: tl.constexpr,
+    WIDE_IDX: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    """Persistent grouped GEMM.
+    """Persistent even-K grouped GEMM for GCU400.
 
-    ``m_size``/``n_size``/``k_size`` start out as the static extents handed in
-    through ``M``/``N``/``K`` and are replaced by the per-group extent for
-    whichever dimension ``offs`` slices.  Tiles are enumerated globally -- all
-    of group 0's tiles, then group 1's, ... -- so a jagged group contributes
-    exactly the tiles it owns; the programs then stride over that flat
-    enumeration.
+    The host only routes calls here whose contraction ``K`` is a multiple of
+    ``BLOCK_K`` (enforced by ``_prune_configs``) and whose mode is not
+    ``k_varying``; everything else goes to ``_scaled_grouped_mm_v2_ragged_kernel``.
+    Keeping every K-tail branch out of this kernel is a hard requirement on
+    this backend: a runtime-dead tail ``if`` left next to the K loop degrades
+    the whole main loop ~130x and doubles the DSM footprint (re-measured on
+    the Triton GCU 4.1.6 stack; same pathology as the vllm cutlass_scaled_mm
+    case).
+
+    Tiles are enumerated globally -- all of group 0's tiles, then group 1's,
+    ... -- and the ``_GCU_NUM_GRID`` programs stride over that flat
+    enumeration, so a jagged group contributes exactly the tiles it owns.
+    Loads carry single-dimension row/column masks only; a compound (row &
+    K-tail) mask inside a K loop miscompiles fp8 dot on GCU (silent NaN in
+    the last output column), which is why ragged K is a separate kernel.
     """
-    pid = tl.program_id(axis=0).to(tl.int64)
-    num_programs = tl.num_programs(axis=0).to(tl.int64)
+    tl.static_assert(MODE != _MODE_K_VARYING)
+
+    if WIDE_IDX:
+        idx_t = tl.int64
+    else:
+        idx_t = tl.int32
+
+    pid = tl.program_id(axis=0)
+    num_programs = tl.num_programs(axis=0)
     tile = pid
-    iterated_tiles = tl.full((), 0, dtype=tl.int64)
-    offset_end = tl.full((), 0, dtype=tl.int64)
+    iterated_tiles = 0
+    offset_end = 0
 
     for group_idx in tl.range(NUM_GROUPS):
-        m_start = tl.full((), 0, dtype=tl.int64)
-        n_start = tl.full((), 0, dtype=tl.int64)
-        k_start = tl.full((), 0, dtype=tl.int64)
-        m_size = M.to(tl.int64)
-        n_size = N.to(tl.int64)
-        k_size = K.to(tl.int64)
+        m_start = 0
+        n_start = 0
+        k_start = 0
+        m_size = M
+        n_size = N
+        k_size = K
 
         if MODE == _MODE_BATCH:
             scale_a_start = group_idx * stride_sag
             scale_b_start = group_idx * stride_sbg
         else:
             offset_start = offset_end
-            offset_end = tl.load(Offs + group_idx).to(tl.int64)
+            offset_end = tl.load(Offs + group_idx)
             group_size = offset_end - offset_start
             if MODE == _MODE_M_VARYING:
-                # ``mat_a`` is sliced along M, ``mat_b`` is per-group 3D.
                 m_start = offset_start
                 m_size = group_size
                 scale_a_start = offset_start
                 scale_b_start = group_idx * stride_sbg
             elif MODE == _MODE_N_VARYING:
-                # ``mat_b`` is sliced along N, ``mat_a`` is per-group 3D.
                 n_start = offset_start
                 n_size = group_size
                 scale_a_start = group_idx * stride_sag
                 scale_b_start = offset_start
             else:
-                # Both operands are sliced along K; the output gains a batch
-                # dimension and both scales are flat per-group buffers.
                 k_start = offset_start
                 k_size = group_size
                 scale_a_start = group_idx * stride_sag
@@ -212,58 +298,48 @@ def _scaled_grouped_mm_v2_kernel(
                 offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
                 offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
                 offs_k = tl.arange(0, BLOCK_K)
+                masks_m = offs_m < m_size
+                masks_n = offs_n < n_size
 
-                # A 2D operand has a single copy shared by every group, which
-                # the ``stride_ag``/``stride_bg`` of 0 collapse for us.  The
-                # contraction offset is added per k-tile below.
+                # 2D operands share one copy across groups; their group
+                # stride is 0 and collapses here.  Index arithmetic stays
+                # int32 unless the host flagged an overflow risk (WIDE_IDX),
+                # in which case only the products with strides widen.
                 a_ptrs = (
                     A
-                    + group_idx * stride_ag
-                    + (m_start + offs_m[:, None]) * stride_am
-                    + k_start * stride_ak
+                    + group_idx.to(idx_t) * stride_ag
+                    + (m_start + offs_m[:, None]).to(idx_t) * stride_am
+                    + (k_start + offs_k[None, :]).to(idx_t) * stride_ak
                 )
                 b_ptrs = (
                     B
-                    + group_idx * stride_bg
-                    + k_start * stride_bk
-                    + (n_start + offs_n[None, :]) * stride_bn
+                    + group_idx.to(idx_t) * stride_bg
+                    + (k_start + offs_k[:, None]).to(idx_t) * stride_bk
+                    + (n_start + offs_n[None, :]).to(idx_t) * stride_bn
                 )
 
                 acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-                for k_offset in range(0, k_size, BLOCK_K):
-                    group_offs_k = k_offset + offs_k
-                    a_mask = (offs_m[:, None] < m_size) & (
-                        group_offs_k[None, :] < k_size
-                    )
-                    b_mask = (group_offs_k[:, None] < k_size) & (
-                        offs_n[None, :] < n_size
-                    )
-                    a = tl.load(
-                        a_ptrs + group_offs_k[None, :] * stride_ak,
-                        mask=a_mask,
-                        other=0.0,
-                    )
-                    b = tl.load(
-                        b_ptrs + group_offs_k[:, None] * stride_bk,
-                        mask=b_mask,
-                        other=0.0,
-                    )
+                for _k in range(0, k_size, BLOCK_K):
+                    a = tl.load(a_ptrs, mask=masks_m[:, None], other=0.0)
+                    b = tl.load(b_ptrs, mask=masks_n[None, :], other=0.0)
                     acc += tl.dot(a, b, out_dtype=tl.float32)
+                    a_ptrs += BLOCK_K * stride_ak
+                    b_ptrs += BLOCK_K * stride_bk
 
                 if SCALE_A_MODE == _SCALE_TENSOR_WISE:
                     scale_a = tl.load(ScaleA).to(tl.float32)
                 else:
                     scale_a = tl.load(
-                        ScaleA + scale_a_start + offs_m,
-                        mask=offs_m < m_size,
+                        ScaleA + scale_a_start.to(idx_t) + offs_m,
+                        mask=masks_m,
                         other=0.0,
                     ).to(tl.float32)
                 if SCALE_B_MODE == _SCALE_TENSOR_WISE:
                     scale_b = tl.load(ScaleB).to(tl.float32)
                 else:
                     scale_b = tl.load(
-                        ScaleB + scale_b_start + offs_n,
-                        mask=offs_n < n_size,
+                        ScaleB + scale_b_start.to(idx_t) + offs_n,
+                        mask=masks_n,
                         other=0.0,
                     ).to(tl.float32)
 
@@ -272,18 +348,204 @@ def _scaled_grouped_mm_v2_kernel(
                 if MODE == _MODE_BATCH or MODE == _MODE_K_VARYING:
                     c_ptrs = (
                         C
-                        + group_idx * stride_cg
-                        + offs_m[:, None] * stride_cm
-                        + offs_n[None, :] * stride_cn
+                        + group_idx.to(idx_t) * stride_cg
+                        + offs_m[:, None].to(idx_t) * stride_cm
+                        + offs_n[None, :].to(idx_t) * stride_cn
                     )
                 else:
                     c_ptrs = (
                         C
-                        + (m_start + offs_m[:, None]) * stride_cm
-                        + (n_start + offs_n[None, :]) * stride_cn
+                        + (m_start + offs_m[:, None]).to(idx_t) * stride_cm
+                        + (n_start + offs_n[None, :]).to(idx_t) * stride_cn
                     )
-                c_mask = (offs_m[:, None] < m_size) & (offs_n[None, :] < n_size)
-                tl.store(c_ptrs, c, mask=c_mask)
+                tl.store(c_ptrs, c, mask=masks_m[:, None] & masks_n[None, :])
+
+                tile += num_programs
+
+        iterated_tiles = group_end
+
+
+@triton.jit
+def _scaled_grouped_mm_v2_ragged_kernel(
+    A,
+    B,
+    ScaleA,
+    ScaleB,
+    Offs,
+    C,
+    M,
+    N,
+    K,
+    NUM_GROUPS,
+    stride_ag,
+    stride_am,
+    stride_ak,
+    stride_bg,
+    stride_bk,
+    stride_bn,
+    stride_cg,
+    stride_cm,
+    stride_cn,
+    stride_sag,
+    stride_sbg,
+    MODE: tl.constexpr,
+    SCALE_A_MODE: tl.constexpr,
+    SCALE_B_MODE: tl.constexpr,
+    WIDE_IDX: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Correctness path for ragged contraction sizes.
+
+    Used when the contraction extent is not a multiple of any tuned
+    ``BLOCK_K`` (``m/n/batch`` modes) or always for ``k_varying``, where the
+    per-group K comes from ``offs`` and cannot be verified on the host.  The
+    even part of K walks a clean unmasked loop and a single masked iteration
+    handles the tail *after* the loop; a compound mask inside the K loop
+    miscompiles fp8 dot on GCU, and a tail branch inside the even kernel
+    slows its main loop ~130x, so the tail lives only in this kernel.  The
+    dot here converts the fp8 tiles to fp16 (exact for e4m3) before every
+    contraction: fp8 ``tl.dot`` miscompiles on partial-K tiles on this stack
+    regardless of where the tail predicate sits (see
+    compiler_issues/flaggems_enflame_scaled_mm_v2_fp8_dot_ktail_bk_ceiling.md).
+    """
+    if WIDE_IDX:
+        idx_t = tl.int64
+    else:
+        idx_t = tl.int32
+
+    pid = tl.program_id(axis=0)
+    num_programs = tl.num_programs(axis=0)
+    tile = pid
+    iterated_tiles = 0
+    offset_end = 0
+
+    for group_idx in tl.range(NUM_GROUPS):
+        m_start = 0
+        n_start = 0
+        k_start = 0
+        m_size = M
+        n_size = N
+        k_size = K
+
+        if MODE == _MODE_BATCH:
+            scale_a_start = group_idx * stride_sag
+            scale_b_start = group_idx * stride_sbg
+        else:
+            offset_start = offset_end
+            offset_end = tl.load(Offs + group_idx)
+            group_size = offset_end - offset_start
+            if MODE == _MODE_M_VARYING:
+                m_start = offset_start
+                m_size = group_size
+                scale_a_start = offset_start
+                scale_b_start = group_idx * stride_sbg
+            elif MODE == _MODE_N_VARYING:
+                n_start = offset_start
+                n_size = group_size
+                scale_a_start = group_idx * stride_sag
+                scale_b_start = offset_start
+            else:
+                k_start = offset_start
+                k_size = group_size
+                scale_a_start = group_idx * stride_sag
+                scale_b_start = group_idx * stride_sbg
+
+        num_m_tiles = tl.cdiv(m_size, BLOCK_M)
+        num_n_tiles = tl.cdiv(n_size, BLOCK_N)
+        group_end = iterated_tiles + num_m_tiles * num_n_tiles
+
+        if tile < group_end:
+            loop_count = (group_end - tile + num_programs - 1) // num_programs
+            for _ in tl.range(loop_count):
+                tile_in_group = tile - iterated_tiles
+                pid_m = tile_in_group % num_m_tiles
+                pid_n = tile_in_group // num_m_tiles
+
+                offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+                offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+                offs_k = tl.arange(0, BLOCK_K)
+                masks_m = offs_m < m_size
+                masks_n = offs_n < n_size
+
+                a_ptrs = (
+                    A
+                    + group_idx.to(idx_t) * stride_ag
+                    + (m_start + offs_m[:, None]).to(idx_t) * stride_am
+                    + (k_start + offs_k[None, :]).to(idx_t) * stride_ak
+                )
+                b_ptrs = (
+                    B
+                    + group_idx.to(idx_t) * stride_bg
+                    + (k_start + offs_k[:, None]).to(idx_t) * stride_bk
+                    + (n_start + offs_n[None, :]).to(idx_t) * stride_bn
+                )
+
+                acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+                # fp8 dot miscompiles when any K-tail predicate reaches it on
+                # this stack (see compiler_issues/
+                # flaggems_enflame_scaled_mm_v2_fp8_dot_ktail_bk_ceiling.md):
+                # the ragged path converts to fp16 -- exact for e4m3 -- so the
+                # dot never sees partial-K operands at all.
+                k_main = (k_size // BLOCK_K) * BLOCK_K
+                for _k in range(0, k_main, BLOCK_K):
+                    a = tl.load(a_ptrs, mask=masks_m[:, None], other=0.0)
+                    b = tl.load(b_ptrs, mask=masks_n[None, :], other=0.0)
+                    acc += tl.dot(
+                        a.to(tl.float16), b.to(tl.float16), out_dtype=tl.float32
+                    )
+                    a_ptrs += BLOCK_K * stride_ak
+                    b_ptrs += BLOCK_K * stride_bk
+                if k_main < k_size:
+                    k_mask = offs_k < (k_size - k_main)
+                    a = tl.load(
+                        a_ptrs,
+                        mask=masks_m[:, None] & k_mask[None, :],
+                        other=0.0,
+                    )
+                    b = tl.load(
+                        b_ptrs,
+                        mask=k_mask[:, None] & masks_n[None, :],
+                        other=0.0,
+                    )
+                    acc += tl.dot(
+                        a.to(tl.float16), b.to(tl.float16), out_dtype=tl.float32
+                    )
+
+                if SCALE_A_MODE == _SCALE_TENSOR_WISE:
+                    scale_a = tl.load(ScaleA).to(tl.float32)
+                else:
+                    scale_a = tl.load(
+                        ScaleA + scale_a_start.to(idx_t) + offs_m,
+                        mask=masks_m,
+                        other=0.0,
+                    ).to(tl.float32)
+                if SCALE_B_MODE == _SCALE_TENSOR_WISE:
+                    scale_b = tl.load(ScaleB).to(tl.float32)
+                else:
+                    scale_b = tl.load(
+                        ScaleB + scale_b_start.to(idx_t) + offs_n,
+                        mask=masks_n,
+                        other=0.0,
+                    ).to(tl.float32)
+
+                c = acc * scale_a[:, None] * scale_b[None, :]
+
+                if MODE == _MODE_BATCH or MODE == _MODE_K_VARYING:
+                    c_ptrs = (
+                        C
+                        + group_idx.to(idx_t) * stride_cg
+                        + offs_m[:, None].to(idx_t) * stride_cm
+                        + offs_n[None, :].to(idx_t) * stride_cn
+                    )
+                else:
+                    c_ptrs = (
+                        C
+                        + (m_start + offs_m[:, None]).to(idx_t) * stride_cm
+                        + (n_start + offs_n[None, :]).to(idx_t) * stride_cn
+                    )
+                tl.store(c_ptrs, c, mask=masks_m[:, None] & masks_n[None, :])
 
                 tile += num_programs
 
@@ -482,7 +744,7 @@ def _scaled_grouped_mm_v2(
     contraction_dim=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_GROUPED_MM_V2")
+    logger.debug("GEMS_ENFLAME _SCALED_GROUPED_MM_V2")
     if bias is not None:
         raise ValueError(_BIAS_ERROR)
     if contraction_dim:
@@ -573,36 +835,88 @@ def _scaled_grouped_mm_v2(
     else:
         offs = offs.contiguous()
 
-    grid = (get_sm_count(),)
+    # int32 addressing is safe only while every element offset stays below
+    # 2**31; large expert stacks can push B's flat offset over the line, so
+    # the kernels take an explicit width switch instead of risking wrap.
+    wide_idx = (
+        (stride_ag if not a_is_2d else 0) * num_groups + m_size * stride_am >= 2**31
+        or (stride_bg if not b_is_2d else 0) * num_groups + n_size * stride_bn >= 2**31
+        or stride_cg * num_groups + m_size * stride_cm + n_size * stride_cn >= 2**31
+        or (stride_sag if stride_sag else 0) * num_groups + m_size >= 2**31
+        or (stride_sbg if stride_sbg else 0) * num_groups + n_size >= 2**31
+    )
+
+    scale_a_mode = (
+        SCALE_TENSOR_WISE if recipe_a == RECIPE_TENSOR_WISE else SCALE_ROW_WISE
+    )
+    scale_b_mode = (
+        SCALE_TENSOR_WISE if recipe_b == RECIPE_TENSOR_WISE else SCALE_ROW_WISE
+    )
+
+    grid = (_GCU_NUM_GRID,)
     with torch_device_fn.device(mat_a.device):
-        _scaled_grouped_mm_v2_kernel[grid](
-            mat_a,
-            mat_b,
-            scale_a,
-            scale_b,
-            offs,
-            out,
-            m_size,
-            n_size,
-            k_size,
-            num_groups,
-            stride_ag,
-            stride_am,
-            stride_ak,
-            stride_bg,
-            stride_bk,
-            stride_bn,
-            stride_cg,
-            stride_cm,
-            stride_cn,
-            stride_sag,
-            stride_sbg,
-            MODE=mode,
-            SCALE_A_MODE=(
-                SCALE_TENSOR_WISE if recipe_a == RECIPE_TENSOR_WISE else SCALE_ROW_WISE
-            ),
-            SCALE_B_MODE=(
-                SCALE_TENSOR_WISE if recipe_b == RECIPE_TENSOR_WISE else SCALE_ROW_WISE
-            ),
-        )
+        if mode == MODE_K_VARYING or k_size % 64 != 0:
+            # Ragged contraction (or per-group K from ``offs``): correctness
+            # path with fp16-converted dot; the tuned kernel must stay free
+            # of any K-tail branch and of partial-K fp8 dot (miscompiles).
+            _scaled_grouped_mm_v2_ragged_kernel[grid](
+                mat_a,
+                mat_b,
+                scale_a,
+                scale_b,
+                offs,
+                out,
+                m_size,
+                n_size,
+                k_size,
+                num_groups,
+                stride_ag,
+                stride_am,
+                stride_ak,
+                stride_bg,
+                stride_bk,
+                stride_bn,
+                stride_cg,
+                stride_cm,
+                stride_cn,
+                stride_sag,
+                stride_sbg,
+                MODE=mode,
+                SCALE_A_MODE=scale_a_mode,
+                SCALE_B_MODE=scale_b_mode,
+                WIDE_IDX=wide_idx,
+                BLOCK_M=64,
+                BLOCK_N=128,
+                BLOCK_K=64,
+                num_warps=4,
+                num_stages=3,
+            )
+        else:
+            _scaled_grouped_mm_v2_kernel[grid](
+                mat_a,
+                mat_b,
+                scale_a,
+                scale_b,
+                offs,
+                out,
+                m_size,
+                n_size,
+                k_size,
+                num_groups,
+                stride_ag,
+                stride_am,
+                stride_ak,
+                stride_bg,
+                stride_bk,
+                stride_bn,
+                stride_cg,
+                stride_cm,
+                stride_cn,
+                stride_sag,
+                stride_sbg,
+                MODE=mode,
+                SCALE_A_MODE=scale_a_mode,
+                SCALE_B_MODE=scale_b_mode,
+                WIDE_IDX=wide_idx,
+            )
     return out

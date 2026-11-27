@@ -88,6 +88,37 @@ def log_softmax_kernel(
 
 @libentry()
 @triton.jit
+def log_softmax_fused_kernel(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Single-pass kernel for N <= BLOCK_N: the whole row stays in registers, 1 read + 1 write.
+
+    The generic kernel reads the input twice (once for max/sumexp, once to compute output); when N
+    fits in one tile a single pass suffices, cutting global accesses from 3 to 2.
+    """
+    pid = tl.program_id(0)
+    m_offset = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_offset = tl.arange(0, BLOCK_N)
+    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K
+    mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
+    inp = tl.load(input_ptr + offsets, mask=mask, other=float("-inf")).to(tl.float32)
+    row_max = tl.max(inp, 1)
+    # When an entire row is outside the mask, row_max is -inf and exp(-inf - (-inf)) produces NaN;
+    # replace such a row with 0 (there are no valid elements in it, and its output is masked out anyway).
+    row_max = tl.where(row_max == float("-inf"), 0.0, row_max)
+    row_sum = tl.sum(tl.exp(inp - row_max[:, None]), 1)
+    out = inp - (row_max + tl.log(row_sum))[:, None]
+    tl.store(output_ptr + offsets, out, mask=mask)
+
+
+@libentry()
+@triton.jit
 def log_softmax_backward_kernel(
     out_ptr,
     out_grad_ptr,
@@ -157,12 +188,37 @@ def log_softmax_backward_fused_kernel(
     tl.store(in_grad_ptr + offsets, in_grad, mask=mask)
 
 
-def log_softmax_out(self, dim, half_to_float=False, *, out):
-    """K=1 reuses the gcu400 online-softmax kernel writing directly to out; K>1 keeps the common non_inner.
+@libentry()
+@triton.jit
+def log_softmax_backward_n1_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    """Element-wise degenerate path for reduction width N == 1.
 
-    The common pointwise 2D tiled kernel is 2.3~4.5x slower than the gcu400 kernel at K=1
-    (4096^2 598.8us vs 173.3us); but for K>1 (non-inner dim reduction) the common non-inner
-    kernel is instead 7.6~14x faster, so dispatch by K rather than using one path everywhere.
+    Each row has one element and the softmax denominator is always 1, so
+        in_grad = out_grad - exp(out) * sum(out_grad) = out_grad * (1 - exp(out))
+    the result is exact element-wise. On such shapes the generic kernel runs the full reduction
+    per row (the grid's second dim degenerates to 1) and measured ~10x slower than aten.
+    """
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    out_grad = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    out = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    in_grad = out_grad * (1.0 - tl.exp(out))
+    tl.store(in_grad_ptr + offsets, in_grad, mask=mask)
+
+
+def log_softmax_out(self, dim, half_to_float=False, *, out):
+    """Reuses the gcu400 online-softmax kernel to write out directly when K=1; K>1 keeps non_inner.
+
+    The shared pointwise 2-D tiled kernel is 2.3~4.5x slower than the gcu400 kernel at K=1
+    (4096^2 598.8us vs 173.3us); but for K>1 (non-inner-dim reduction) the shared non-inner
+    kernel is 7.6~14x faster instead, so this tiers by K rather than making one blanket choice.
     """
     logger.debug("GEMS_ENFLAME LOG_SOFTMAX_OUT")
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
@@ -187,6 +243,25 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
         from flag_gems.ops.log_softmax import log_softmax_out as _public_out
 
         return _public_out(self, dim, half_to_float, out=out)
+
+    # When a row can reside entirely in registers, use a single-pass kernel: 2 global accesses instead of 3.
+    fused_launch = select_forward_fused_launch(N, inp.dtype)
+    if fused_launch is not None:
+        block_m, num_warps = fused_launch
+        kernel_out = out if out.is_contiguous() else torch.empty_like(inp, dtype=dtype)
+        grid = (triton.cdiv(M, block_m),)
+        with torch_device_fn.device(inp.device):
+            log_softmax_fused_kernel[grid](
+                kernel_out,
+                inp,
+                M,
+                N,
+                K,
+                BLOCK_M=block_m,
+                BLOCK_N=triton.next_power_of_2(N),
+                num_warps=num_warps,
+            )
+        return _copy_back_if_needed(out, kernel_out)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), min(48, K))
     with torch_device_fn.device(inp.device):
@@ -222,6 +297,25 @@ def log_softmax(self, dim, half_to_float=False):
         return _public(self, dim, half_to_float)
     out = torch.empty_like(inp, dtype=dtype)
 
+    # Same as log_softmax_out: when a row can reside entirely in registers, use a single-pass kernel, saving the second
+    # input read.
+    fused_launch = select_forward_fused_launch(N, inp.dtype)
+    if fused_launch is not None:
+        block_m, num_warps = fused_launch
+        grid = (triton.cdiv(M, block_m),)
+        with torch_device_fn.device(inp.device):
+            log_softmax_fused_kernel[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+                BLOCK_M=block_m,
+                BLOCK_N=triton.next_power_of_2(N),
+                num_warps=num_warps,
+            )
+        return out
+
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         min(48, K),
@@ -248,9 +342,37 @@ def select_fused_launch(N):
 
 
 def select_twopass_launch(N, dtype):
-    """Choose row/column tile and warp count for the two-pass kernel by reduction width and dtype."""
-    block_m = 8 if dtype == torch.float32 else 16
-    return block_m, min(triton.next_power_of_2(N), 8192), 4
+    """Picks the two-pass kernel row/column tile and warp count from reduction width and dtype."""
+    if dtype == torch.float32:
+        return 8, min(triton.next_power_of_2(N), 8192), 4
+    # A 16-row column tile of fp16/bf16 reaches 131072 elements at N > 8192 and the
+    # compiler spills straight into 320KB of local memory (localTotalSize=327680),
+    # measuring 0.684x at N=65536. Capping the column tile at 4096 and raising
+    # num_warps to 8 gives 0.751x; N <= 8192 keeps the original setting so the
+    # already validated small widths are unaffected.
+    cap = 4096 if N > 8192 else 8192
+    return 16, min(triton.next_power_of_2(N), cap), 8
+
+
+def select_forward_fused_launch(N, dtype):
+    """Row tile and warp count for the single-pass forward kernel; None means take the two-pass one.
+
+    The single-pass kernel keeps the whole row in registers, so the row count is derived backward
+    from a per-program element budget that depends on the dtype byte width (fp32 gets half of
+    fp16/bf16). Beyond the budget the tile spills to local memory and loses to the two-pass
+    kernel -- measured transitions at N > 512 for fp32 and N > 4096 for fp16/bf16, which return None.
+    """
+    block_n = triton.next_power_of_2(N)
+    if dtype == torch.float32:
+        if block_n > 512:
+            return None
+        element_budget = 8192
+    else:
+        if block_n > 4096:
+            return None
+        element_budget = 16384
+    block_m = max(1, min(128, element_budget // block_n))
+    return block_m, 8
 
 
 # === LAUNCH_CONFIG_END ===
@@ -278,18 +400,31 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
         raise RuntimeError(
             f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
         )
-    # Empty tensors have no reduction elements; return directly to avoid division by zero in K = numel // M // N.
+    # An empty tensor has no reduction elements; return directly to avoid division by zero in K = numel // M // N.
     if output.numel() == 0:
         return out
 
-    # The kernel computes offsets by contiguous layout: non-contiguous inputs become contiguous copies,
-    # non-contiguous out is written via a contiguous temporary then copied back; Triton remains the only compute path.
+    # The kernel computes offsets assuming a contiguous memory layout: non-contiguous inputs are converted to contiguous
+    # copies,
+    # and non-contiguous out is written to a contiguous temporary then copied back; Triton remains the only compute
+    # path.
     grad_output = grad_output.contiguous()
     output = output.contiguous()
     kernel_out = (
         out if out.is_contiguous() else torch.empty_like(output, dtype=input_dtype)
     )
     K = output.numel() // M // N
+
+    # N == 1: one element per row, result is out_grad * (1 - exp(out)), which can be computed exactly elementwise.
+    if N == 1:
+        n_elements = grad_output.numel()
+        block = 1024
+        grid = (triton.cdiv(n_elements, block),)
+        with torch_device_fn.device(out.device):
+            log_softmax_backward_n1_kernel[grid](
+                output, grad_output, kernel_out, n_elements, BLOCK=block, num_warps=4
+            )
+        return _copy_back_if_needed(out, kernel_out)
 
     # Single-pass fused path for rows that fit one tile (N <= 4096).
     # Saves one full grad_output read: 4 global accesses -> 3.

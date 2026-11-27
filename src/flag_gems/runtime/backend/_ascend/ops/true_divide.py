@@ -378,7 +378,9 @@ def run(self, other, out=None, **kwargs):
             _launch_strided(None, b, sv, None, out, shape, n)
         return out
 
-    raise TypeError("true_divide expects at least one Tensor argument")
+    # Both scalars: delegate to Python arithmetic and wrap in a tensor on CPU,
+    # matching the generic flag_gems.ops.div.true_divide scalar-scalar path.
+    return torch.tensor(a / b)
 
 
 def true_divide_tensor(*args, **kwargs):

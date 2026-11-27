@@ -271,5 +271,5 @@ class MarginRankingLossOp(torch.autograd.Function):
 
 def margin_ranking_loss(x1, x2, target, margin=0.0, reduction="mean"):
     """Compute loss = max(0, -target * (x1 - x2) + margin); signature matches the common implementation."""
-    logger.debug("GEMS_ENFLAME_GCU400 MARGIN_RANKING_LOSS")
+    logger.debug("GEMS_ENFLAME MARGIN_RANKING_LOSS")
     return MarginRankingLossOp.apply(x1, x2, target, margin, reduction)

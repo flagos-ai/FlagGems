@@ -15,7 +15,20 @@
 import pytest
 import torch
 
+import flag_gems  # noqa: F401
+
 from . import base
+
+# The native baseline arm calls aten::_thnn_fused_lstm_cell_backward_impl, which
+# only exists for CUDA: GCU (PrivateUse1) has no kernel for it, so the reference
+# latency cannot be measured here.  The candidate arm is still benchmarked.
+pytestmark = pytest.mark.skip_native(
+    vendors="enflame",
+    reason=(
+        "native baseline unavailable: aten::_thnn_fused_lstm_cell_backward_impl is "
+        "CUDA-only, no PrivateUse1 kernel on GCU"
+    ),
+)
 
 # Hardcoded shapes: LSTM cell backward requires (batch, hidden) shapes;
 # CI --level core overrides GenericBenchmark shapes,

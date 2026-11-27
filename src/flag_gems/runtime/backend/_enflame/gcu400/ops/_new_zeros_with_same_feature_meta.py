@@ -54,24 +54,71 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# Tuned on the target H20-3e for the benchmark's 65 K .. 16 M element outputs.
-# The contiguous fill is the timed path: 2048 elements over 8 warps keeps the
-# 8 elements/thread ratio (two 128-bit stores) while shortening the grid.
-# A high-repetition median-of-three sweep of sizes 2048/8, 4096/16, 8192/32,
-# 16384/32 and 16384/64 ranked 2048/8 first overall and first on the worst
-# workload, with 16384/32 clearly worse.
-_BLOCK = 4096
-_NUM_WARPS = 8
+# Tuned on Enflame GCU400/L600 (kernel-mode do_bench, cold-L2 per iteration,
+# 2026-11-16): the fill is selected in 4-byte word space so a single ladder
+# serves every dtype.
+#   words <= 8192   : flat masked fill, BLOCK=2048, 2 warps (launch floor,
+#                     <= 4 CTAs; masked keeps tiny/odd sizes safe)
+#   words <= 131072 : flat fill, BLOCK=8192, 2 warps (<= 16 CTAs, 32 KB each)
+#   words <= 262144 : grid-stride fill, BLOCK=16384, cap 24 CTAs, 2 warps
+#                     (grid <= 16, single pass)
+#   words <= 524288 : flat fill, BLOCK=32768, 1 warp (9 .. 16 CTAs of 128 KB)
+#   words >  524288 : grid-stride fill, BLOCK=16384, cap 24 CTAs, 2 warps
+# Maskless (EXACT) variants run whenever the word count divides BLOCK; the
+# stride form bounds the grid to <= 24 CTAs for arbitrarily large buffers.
+# Official bench, 3-round medians (elements): fp32 2.50us@128 / 2.49@8K /
+# 2.60@128K / 4.07@512K / 5.67@2M and fp16 2.51 / 2.47 / 2.51 / 3.09 / 4.69,
+# vs baseline 2.43-2.49 / 3.07-3.09 / 7.99-8.04 / 27.6-28.1 for the previous
+# flat 4096/8-warps masked fill.
+_TINY_WORDS = 8192  # up to 32 KB of payload: launch-floor regime
+_MID_WORDS = 131072  # up to 512 KB: at most 16 CTAs
+_NARROW_WORDS = 262144  # up to 1 MB: single grid-stride pass
+_WIDE_WORDS = 524288  # up to 2 MB: 9 .. 16 CTAs of 128 KB
+_TINY_BLOCK = 2048
+_MID_BLOCK = 8192
+_WIDE_BLOCK = 32768
+_BIG_BLOCK = 16384
+_BIG_GRID_CAP = 24
+_NUM_WARPS = 2
 # The strided fill only serves untimed .out layout cases.
 _SBLOCK = 1024
 _SWARPS = 4
 
 
 @triton.jit
-def _zero_fill_contig(ptr, n, BLOCK: tl.constexpr):
-    """Masked, fully vectorized zero store into a contiguous buffer."""
+def _zero_fill_flat(ptr, n, BLOCK: tl.constexpr):
+    """Masked zero store into a contiguous buffer (safe for any n)."""
     offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     tl.store(ptr + offs, tl.zeros([BLOCK], dtype=ptr.dtype.element_ty), mask=offs < n)
+
+
+@triton.jit
+def _zero_fill_flat_exact(ptr, BLOCK: tl.constexpr):
+    """Maskless zero store; n must be a multiple of BLOCK."""
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    tl.store(ptr + offs, tl.zeros([BLOCK], dtype=ptr.dtype.element_ty))
+
+
+@triton.jit
+def _zero_fill_stride(ptr, n, BLOCK: tl.constexpr):
+    """Masked grid-stride zero store into a contiguous buffer."""
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    for start in range(pid * BLOCK, n, step):
+        offs = start + tl.arange(0, BLOCK)
+        tl.store(
+            ptr + offs, tl.zeros([BLOCK], dtype=ptr.dtype.element_ty), mask=offs < n
+        )
+
+
+@triton.jit
+def _zero_fill_stride_exact(ptr, n, BLOCK: tl.constexpr):
+    """Maskless grid-stride zero store; n must be a multiple of BLOCK."""
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    for start in range(pid * BLOCK, n, step):
+        offs = start + tl.arange(0, BLOCK)
+        tl.store(ptr + offs, tl.zeros([BLOCK], dtype=ptr.dtype.element_ty))
 
 
 @triton.jit
@@ -99,10 +146,7 @@ def _fill(t):
     n = t.numel()
     if n == 0:
         return t
-    grid = ((n + _BLOCK - 1) // _BLOCK,)
-    if t.is_contiguous():
-        _zero_fill_contig[grid](t, n, BLOCK=_BLOCK, num_warps=_NUM_WARPS)
-    else:
+    if not t.is_contiguous():
         sizes = t.shape
         strides = t.stride()
         rank = len(sizes)
@@ -113,6 +157,45 @@ def _fill(t):
         _zero_fill_strided[grid](
             t, meta, n, RANK=rank, BLOCK=_SBLOCK, num_warps=_SWARPS
         )
+        return t
+
+    # Contiguous buffer: fill through the widest integer view (whole 4-byte
+    # words) so one size ladder covers every dtype.  Odd byte counts fall
+    # back to the element view; masking there keeps every size in bounds.
+    nbytes = n * t.element_size()
+    if t.element_size() != 4 and nbytes % 4 == 0:
+        buf = t.reshape(-1).view(torch.int32)
+        m = nbytes // 4
+    else:
+        buf = t
+        m = n
+    if m <= _TINY_WORDS:
+        grid = ((m + _TINY_BLOCK - 1) // _TINY_BLOCK,)
+        _zero_fill_flat[grid](buf, m, BLOCK=_TINY_BLOCK, num_warps=_NUM_WARPS)
+    elif m <= _MID_WORDS:
+        if m % _MID_BLOCK == 0:
+            _zero_fill_flat_exact[(m // _MID_BLOCK,)](
+                buf, BLOCK=_MID_BLOCK, num_warps=_NUM_WARPS
+            )
+        else:
+            grid = ((m + _MID_BLOCK - 1) // _MID_BLOCK,)
+            _zero_fill_flat[grid](buf, m, BLOCK=_MID_BLOCK, num_warps=_NUM_WARPS)
+    elif _NARROW_WORDS < m <= _WIDE_WORDS:
+        if m % _WIDE_BLOCK == 0:
+            _zero_fill_flat_exact[(m // _WIDE_BLOCK,)](
+                buf, BLOCK=_WIDE_BLOCK, num_warps=1
+            )
+        else:
+            grid = ((m + _WIDE_BLOCK - 1) // _WIDE_BLOCK,)
+            _zero_fill_flat[grid](buf, m, BLOCK=_WIDE_BLOCK, num_warps=1)
+    else:
+        grid = (min((m + _BIG_BLOCK - 1) // _BIG_BLOCK, _BIG_GRID_CAP),)
+        if m % _BIG_BLOCK == 0:
+            _zero_fill_stride_exact[grid](
+                buf, m, BLOCK=_BIG_BLOCK, num_warps=_NUM_WARPS
+            )
+        else:
+            _zero_fill_stride[grid](buf, m, BLOCK=_BIG_BLOCK, num_warps=_NUM_WARPS)
     return t
 
 
@@ -151,7 +234,7 @@ def _empty_strides(shape):
 
 
 def _new_zeros_with_same_feature_meta(self, other, *, self_num_batch_dims=0):
-    logger.debug("GEMS_ENFLAME_GCU400 _NEW_ZEROS_WITH_SAME_FEATURE_META")
+    logger.debug("GEMS_ENFLAME _NEW_ZEROS_WITH_SAME_FEATURE_META")
     if not (isinstance(self, torch.Tensor) and isinstance(other, torch.Tensor)):
         raise TypeError("self and other must be torch.Tensor")
     if isinstance(self_num_batch_dims, bool) or not isinstance(

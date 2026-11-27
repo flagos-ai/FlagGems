@@ -105,6 +105,10 @@ _ASCEND_NATIVE_FALLBACK = pytest.mark.skipif(
 )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.multi_margin_loss
 @_ASCEND_NATIVE_FALLBACK
 @pytest.mark.parametrize("p", [1, 2])
@@ -123,6 +127,10 @@ def test_multi_margin_loss(p, weighted, reduction):
     benchmark.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.multi_margin_loss_out
 @_ASCEND_NATIVE_FALLBACK
 @pytest.mark.parametrize("p", [1, 2])
@@ -141,6 +149,10 @@ def test_multi_margin_loss_out(p, weighted, reduction):
     benchmark.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.multi_margin_loss_backward
 @_ASCEND_NATIVE_FALLBACK
 @pytest.mark.parametrize("p", [1, 2])
@@ -159,6 +171,10 @@ def test_multi_margin_loss_backward(p, weighted, reduction):
     benchmark.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.multi_margin_loss_backward_out
 @_ASCEND_NATIVE_FALLBACK
 @pytest.mark.parametrize("p", [1, 2])

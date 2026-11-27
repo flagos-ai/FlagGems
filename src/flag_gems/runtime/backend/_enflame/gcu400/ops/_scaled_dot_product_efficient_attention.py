@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.ops.attention import scaled_dot_product_attention_forward
 
 from .attention import _attn_fwd_nomax, _nomax_launch_config
@@ -385,7 +385,7 @@ def _scaled_dot_product_efficient_attention(
         philox_seed: random seed for dropout (placeholder until dropout is supported)
         philox_offset: random offset for dropout (placeholder until dropout is supported)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
+    logger.debug("GEMS_ENFLAME SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
 
     assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
 
@@ -587,7 +587,7 @@ def _efficient_attention_forward(
     logsumexp contract is (B, H, Sq) in the natural-log base, which the
     efficient forward already emits.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _EFFICIENT_ATTENTION_FORWARD")
+    logger.debug("GEMS_ENFLAME _EFFICIENT_ATTENTION_FORWARD")
 
     if cu_seqlens_q is not None or cu_seqlens_k is not None:
         raise NotImplementedError(
@@ -643,25 +643,3 @@ def _efficient_attention_forward(
 # ---------------------------------------------------------------------------
 _EFF_ATTN_FWD_KEY_FLAG = "_flag_gems_gcu400_eff_attn_fwd_key_registered"
 _EFF_ATTN_FWD_LIBRARY = None
-
-
-def _ensure_eff_attn_fwd_key_registration():
-    global _EFF_ATTN_FWD_LIBRARY
-    if getattr(torch, _EFF_ATTN_FWD_KEY_FLAG, False):
-        return
-    _EFF_ATTN_FWD_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _EFF_ATTN_FWD_LIBRARY.impl(
-            "_efficient_attention_forward",
-            _efficient_attention_forward,
-            runtime.device.dispatch_key,
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "_efficient_attention_forward device-key registration skipped: %s",
-            error,
-        )
-    setattr(torch, _EFF_ATTN_FWD_KEY_FLAG, True)
-
-
-_ensure_eff_attn_fwd_key_registration()

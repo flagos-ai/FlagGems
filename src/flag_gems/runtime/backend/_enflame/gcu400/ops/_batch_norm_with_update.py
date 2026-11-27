@@ -246,7 +246,7 @@ def _batch_norm_with_update(
     (output, save_mean, save_invstd, reserve). running_mean and running_var
     are updated in place.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_WITH_UPDATE")
+    logger.debug("GEMS_ENFLAME _BATCH_NORM_WITH_UPDATE")
 
     input_3d = make_3d_for_bn(input)
 

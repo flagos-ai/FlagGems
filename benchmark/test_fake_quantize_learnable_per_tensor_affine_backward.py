@@ -59,6 +59,14 @@ class _FakeQuantizeLearnablePerTensorAffineBackwardBenchmark(base.Benchmark):
         return io * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::_fake_quantize_learnable_per_tensor_affine_backward has no GCU "
+        "kernel; the op falls back to CPU (DtoH/HtoD memcpy only), so there is "
+        "no device baseline to time"
+    ),
+)
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 def test_fake_quantize_learnable_per_tensor_affine_backward():
     bench = _FakeQuantizeLearnablePerTensorAffineBackwardBenchmark(

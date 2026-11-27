@@ -45,7 +45,7 @@ def linalg_eigvals(A):
     decomposes towards the eigenvalue kernels, so this entry makes the routing
     explicit instead of depending on the decomposition staying in place.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGVALS")
+    logger.debug("GEMS_ENFLAME LINALG_EIGVALS")
     return _linalg_eigvals(A)
 
 
@@ -57,7 +57,7 @@ def linalg_eigvals_out(A, *, out):
     FlagGems. All validation (dtype castability, ``out`` resizing) is left to
     the native op.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGVALS_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_EIGVALS_OUT")
     if _CAN_CAPTURE_NATIVE_KERNEL:
         return _NATIVE_EIGVALS_OUT.call_boxed(
             torch._C.DispatchKeySet(

@@ -310,6 +310,13 @@ def test_dim_arg_validation():
 
 
 @pytest.mark.dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::dim"
+    ),
+)
 def test_dim_with_registration_active():
     # Mirror what GeneralOpRegistrar does for the _FULL_CONFIG entry: register
     # the submitted implementation on the device key (plus the sparse keys the

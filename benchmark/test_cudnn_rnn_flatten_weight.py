@@ -14,6 +14,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # (input_size, hidden_size, num_layers)
@@ -99,6 +101,13 @@ class CudnnRnnFlattenWeightBenchmark(base.Benchmark):
                         )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_cudnn_rnn_flatten_weight; its CPU "
+        "fallback cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_rnn_flatten_weight
 def test_cudnn_rnn_flatten_weight():
     bench = CudnnRnnFlattenWeightBenchmark(
@@ -118,13 +127,30 @@ class CudnnRnnFlattenWeightOutBenchmark(CudnnRnnFlattenWeightBenchmark):
             weights = args[0]
             # The flat buffer size is fixed by the layout, so ask the reference
             # implementation once (outside the timed region) for the length.
-            size = torch.ops.aten._cudnn_rnn_flatten_weight(
-                [w.clone() for w in weights], *args[1:]
-            ).numel()
+            try:
+                size = torch.ops.aten._cudnn_rnn_flatten_weight(
+                    [w.clone() for w in weights], *args[1:]
+                ).numel()
+            except (NotImplementedError, RuntimeError):
+                # torch_gcu has no PrivateUse1 kernel for that aten operator, so
+                # the layout probe only works through the FlagGems override.
+                if base.vendor_name != "enflame":
+                    raise
+                with flag_gems.use_gems():
+                    size = torch.ops.aten._cudnn_rnn_flatten_weight(
+                        [w.clone() for w in weights], *args[1:]
+                    ).numel()
             out = torch.empty(size, dtype=weights[0].dtype, device=self.device)
             yield args + ({"out": out},)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_cudnn_rnn_flatten_weight.out; its "
+        "CPU fallback cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.cudnn_rnn_flatten_weight_out
 def test_cudnn_rnn_flatten_weight_out():
     bench = CudnnRnnFlattenWeightOutBenchmark(

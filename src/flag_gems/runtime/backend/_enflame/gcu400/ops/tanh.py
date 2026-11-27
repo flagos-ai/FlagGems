@@ -29,8 +29,14 @@ NUM_SIPS = 24
 INT32_MAX = torch.iinfo(torch.int32).max
 
 
+# tanh via 2*sigmoid(2x)-1: tl.sigmoid lowers to a native sigmoid instruction
+# while the previous (exp(2x)-1)/(exp(2x)+1) form pays a full fp32 division in
+# the hot loop (536M fp16: 1950.7us -> 931.9us at identical config 65536/nw4/g96,
+# -> 833us at the final nw2 config; do_bench kernel mode, GCU400/L600).  The
+# sigmoid form is also overflow-free for |x| > 44 where exp(2x) saturates to
+# inf and (inf-1)/(inf+1) yields NaN.
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["N_total"])
 def tanh_flat_kernel(
     x_ptr,
     out_ptr,
@@ -46,8 +52,7 @@ def tanh_flat_kernel(
         off = block_id * BLOCK + arange
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        e2x = tl.exp(2.0 * x)
-        out = (e2x - 1.0) / (e2x + 1.0)
+        out = 2.0 * tl.sigmoid(2.0 * x) - 1.0
         tl.store(out_ptr + off, out, mask=mask)
 
 
@@ -106,12 +111,21 @@ def _choose_block_backward(N_total, itemsize):
     return 65536
 
 
-def _choose_block(N_total):
+def _choose_block(N_total, itemsize):
+    # do_bench(median) sweep, kernel mode, tanh = 2*sigmoid(2x)-1, GCU400/L600:
+    #   tiny shapes want the exact next_pow2 tile (fp16 N=4096 3.47us vs 4.37 @8192);
+    #   2-byte large shapes peak at 131072 (fp16 536M 821-847us vs 833-844 @65536);
+    #   4-byte mid shapes peak at 32768 (fp32 16.7M 49.1us vs 49.3us @65536)
+    #   while 4-byte 536M prefers 65536 (1359us vs 1413 @131072).
+    if N_total <= 8192:
+        return max(256, triton.next_power_of_2(N_total))
     if N_total <= 65536:
         return 8192
     if N_total <= 524288:
         return 32768
-    return 65536
+    if itemsize <= 2:
+        return 131072 if N_total > (1 << 28) else 65536
+    return 32768 if N_total <= (1 << 25) else 65536
 
 
 def tanh(self):
@@ -119,12 +133,12 @@ def tanh(self):
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
+    if N_total == 0:
+        return out
 
-    BLOCK = _choose_block(N_total)
+    BLOCK = _choose_block(N_total, inp.element_size())
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
-
-    nw = 2 if N_total <= 134217728 else 4
+    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
 
     with torch_device_fn.device(inp.device):
         tanh_flat_kernel[(grid_size,)](
@@ -132,7 +146,7 @@ def tanh(self):
             out,
             N_total,
             BLOCK=BLOCK,
-            num_warps=nw,
+            num_warps=2,
         )
 
     return out
@@ -180,20 +194,28 @@ def tanh_(A):
     logger.debug("GEMS_ENFLAME TANH_")
     inp = A.contiguous()
     N_total = inp.numel()
+    # Empty tensors have no launchable CTA; return early to avoid a 0-CTA grid.
+    if N_total == 0:
+        return A
+    # The kernel writes a contiguous buffer by linear offset; the contiguous
+    # copy of a non-contiguous input has a different layout, so write a temp
+    # buffer and copy back along the original strides to keep in-place
+    # semantics (same pattern as sigmoid_).
+    output = A if inp.data_ptr() == A.data_ptr() else torch.empty_like(inp)
 
-    BLOCK = _choose_block(N_total)
+    BLOCK = _choose_block(N_total, inp.element_size())
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
-
-    nw = 2 if N_total <= 134217728 else 4
+    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
 
     with torch_device_fn.device(inp.device):
         tanh_flat_kernel[(grid_size,)](
             inp,
-            A,
+            output,
             N_total,
             BLOCK=BLOCK,
-            num_warps=nw,
+            num_warps=2,
         )
+    if output is not A:
+        A.copy_(output)
 
     return A

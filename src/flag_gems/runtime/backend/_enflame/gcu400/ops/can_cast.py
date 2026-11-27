@@ -111,7 +111,7 @@ def can_cast(from_, to) -> bool:
     the module docstring for why this is a category test and why no Triton
     kernel exists.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CAN_CAST")
+    logger.debug("GEMS_ENFLAME CAN_CAST")
     try:
         return _CAN_CAST[(from_, to)]
     except KeyError:

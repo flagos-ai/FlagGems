@@ -37,6 +37,11 @@ _RNN_ACCELERATOR_AVAILABLE = not cfg.TO_CPU and (
         and hasattr(torch, "musa")
         and torch.musa.is_available()
     )
+    # enflame GCU: the backend ships its own pure-Triton implementations of rnn_tanh.input/.data, and the GCU aten
+    # rnn_tanh reference is usable (measured max deviation from the Triton results on fp32/fp16 is on the order of
+    # 1e-7/1e-3),
+    # so gcu is included among the available backends to avoid unconditionally skipping the whole test file.
+    or flag_gems.vendor_name == "enflame"
 )
 
 
