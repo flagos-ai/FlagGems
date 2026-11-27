@@ -104,3 +104,37 @@ def test__aminmax_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class AminmaxGlobalStrideControlBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(32, 64), (256, 1024)]
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize(
+    "layout", ["contiguous", "transpose", "stride2", "offset", "expand"]
+)
+def test_aminmax_global_stride_control(layout):
+    def input_fn(shape, dtype, device):
+        # Fully initialized storage, including holes. The uniform values make
+        # both the historical flat read and logical read correct: this is a
+        # regression/copy-cost control, never a speedup over an incorrect result.
+        storage = torch.ones(shape, dtype=dtype, device=device)
+        inp = {
+            "contiguous": storage,
+            "transpose": storage.t(),
+            "stride2": storage[:, 1::2],
+            "offset": storage[1:-1, 2:-2],
+            "expand": storage[:1].expand(shape),
+        }[layout]
+        yield inp, {"dim": None, "keepdim": False}
+
+    bench = AminmaxGlobalStrideControlBenchmark(
+        input_fn=input_fn,
+        op_name="aminmax",
+        torch_op=torch.aminmax,
+        gems_op=flag_gems.aminmax,
+        dtypes=[torch.float32, torch.int64],
+    )
+    bench.run()
