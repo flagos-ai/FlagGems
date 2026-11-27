@@ -21,6 +21,26 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+channel_shuffle_backward:
+  shapes:
+  - - 2
+    - 6
+    - 8
+    - 8
+  - - 8
+    - 32
+    - 32
+    - 32
+  - - 16
+    - 64
+    - 64
+    - 64
+  - - 4
+    - 96
+    - 128
+    - 128
+  shape_desc: backward input shape
+
 mul_backward:
   <<: *single_dim_shapes
 

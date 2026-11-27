@@ -3424,6 +3424,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: channel_shuffle_backward
+  description: First-order autograd rule for channel_shuffle implemented with Triton
+    kernels or zero-copy gradient views.
+  for:
+  - channel_shuffle
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: cholesky
   description: Computes the Cholesky decomposition of a symmetric positive-definite
     matrix or for batches of symmetric positive-definite matrices.

@@ -1238,7 +1238,12 @@ _FULL_CONFIG = (
     ("chain_matmul", chain_matmul),
     ("chain_matmul.out", chain_matmul_out),
     ("chalf", chalf),
-    ("channel_shuffle", channel_shuffle),
+    (
+        "channel_shuffle",
+        channel_shuffle,
+        None,
+        (f"Autograd{backend_info.dispatch_key}",),
+    ),
     ("cholesky", cholesky),
     ("cholesky_inverse", cholesky_inverse),
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
