@@ -59,3 +59,19 @@ def test_equal_integer_precision(dtype, strided):
     res_out = flag_gems.equal(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.equal
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("strided", [False, True])
+def test_equal_integer_precision_original_matrix(dtype, strided):
+    if dtype == torch.int64 and not utils.int64_is_supported:
+        pytest.skip("INT64 is not supported on this backend")
+    inp = torch.tensor([2**24, 2**24 + 1], dtype=dtype, device=flag_gems.device)
+    other = torch.tensor([2**24 + 1, 2**24 + 1], dtype=dtype, device=flag_gems.device)
+    if strided:
+        storage = torch.empty(5, dtype=dtype, device=flag_gems.device)
+        storage[1::2].copy_(inp)
+        inp = storage[1::2]
+    assert flag_gems.equal(inp, other) == torch.equal(inp.cpu(), other.cpu())
+    assert flag_gems.equal(inp, inp)

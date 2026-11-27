@@ -41,6 +41,22 @@ def eq_func(x, y):
         return x.to(tl.int64) == y.to(tl.int64)
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+)
+@triton.jit
+def eq_func_zero_dim(x, y, cast_left):
+    # A zero-dimensional integer tensor is weakly promoted against a
+    # non-scalar integer tensor. Cast inside the kernel, not on the host.
+    if cast_left:
+        lhs = x.to(y.dtype).to(tl.int64)
+        rhs = y.to(tl.int64)
+    else:
+        lhs = x.to(tl.int64)
+        rhs = y.to(x.dtype).to(tl.int64)
+    return lhs == rhs
+
+
 def eq(A, B):
     if A.device != B.device:
         if A.device.type == device:
@@ -48,6 +64,18 @@ def eq(A, B):
         else:
             A = A.to(B.device)
     logger.debug("GEMS EQ")
+    if (
+        A.dtype != B.dtype
+        and (A.ndim == 0) != (B.ndim == 0)
+        and not A.dtype.is_floating_point
+        and not B.dtype.is_floating_point
+        and not A.dtype.is_complex
+        and not B.dtype.is_complex
+    ):
+        cast_left = A.ndim == 0
+        strong = B if cast_left else A
+        if strong.dtype != torch.bool:
+            return eq_func_zero_dim(A, B, cast_left)
     return eq_func(A, B)
 
 
@@ -61,11 +89,16 @@ def eq_func_scalar(x, y):
         if x.dtype.is_fp64() or y.dtype.is_fp64():
             return x.to(tl.float64) == y.to(tl.float64)
         return x.to(tl.float32) == y.to(tl.float32)
-    return x.to(tl.int64) == y.to(tl.int64)
+    if x.dtype == tl.int1:
+        return x.to(tl.int64) == y.to(tl.int64)
+    return x.to(tl.int64) == y.to(x.dtype).to(tl.int64)
 
 
 def eq_scalar(A, B):
     logger.debug("GEMS EQ_SCALAR")
+    # Normalize the scalar launch signature across successive bool/int calls.
+    if isinstance(B, bool):
+        B = int(B)
     return eq_func_scalar(A, B)
 
 
