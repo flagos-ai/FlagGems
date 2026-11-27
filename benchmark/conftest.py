@@ -884,6 +884,7 @@ def pytest_sessionfinish(session, exitstatus):
             op
             for op, records in by_operator.items()
             if not any(r.get("invoked_kernel") for r in records)
+            and not any(r.get("status") == "exempt" for r in records)
         )
         if no_kernel_ops and session.exitstatus == pytest.ExitCode.OK:
             import sys

@@ -95,6 +95,15 @@ def get_iter_count(fn):
 class Benchmark:
     device: str = device
     aggregate_results_by_dtype = False
+    # Some quantized operators have no native device kernel (PyTorch registers
+    # them for QuantizedCPU only), so their benchmark baseline necessarily runs
+    # on the host. Benchmarks in that situation set this flag so --kernel-check
+    # verifies the candidate instead of the CPU-only baseline.
+    cpu_only_baseline = False
+    # Set by benchmarks whose operator has no device kernel at all (pure
+    # host-side view/metadata ops). --kernel-check records an exempt entry
+    # instead of failing; it never fabricates an invoked kernel.
+    kernel_check_exempt = False
     DEFAULT_METRICS = consts.DEFAULT_METRICS
     DEFAULT_DTYPES = consts.FLOAT_DTYPES
     DEFAULT_SHAPES = consts.DEFAULT_SHAPES
@@ -898,6 +907,19 @@ class Benchmark:
                 "device kernel; latency_base would not reflect real execution"
             )
 
+    def _kernel_check_subject(self):
+        """Callable that --kernel-check must observe launching a device kernel.
+
+        The native baseline is the default subject. A benchmark that declares
+        ``cpu_only_baseline`` compares against a host-only upstream kernel
+        (there is no native device kernel at all), so the FlagGems candidate is
+        the only path that can launch one; profiling the baseline there would
+        fail by construction.
+        """
+        if self.cpu_only_baseline and self.gems_op is not None:
+            return self.gems_op, "candidate"
+        return self.torch_op, "baseline"
+
     def _run_kernel_check_cases(self, case_ids=None):
         """Check that the baseline invokes at least one device kernel.
 
@@ -909,7 +931,23 @@ class Benchmark:
         Legacy benchmarks (those using ``input_fn`` / ``get_input_iter`` rather
         than the case-based API) are also supported: the first input from the
         first dtype is profiled once and recorded as a single synthetic case.
+
+        A benchmark that declares ``kernel_check_exempt`` records an exempt
+        entry: its operator has no device kernel on any path, so there is
+        nothing to profile and no failure to report.
         """
+        if self.kernel_check_exempt:
+            record = {
+                "operator": self.op_name,
+                "nodeid": Config.current_nodeid,
+                "case_id": f"{self.op_name}-exempt",
+                "invoked_kernel": False,
+                "status": "exempt",
+            }
+            Config.kernel_check_records.append(record)
+            Config.available_case_ids.add(record["case_id"])
+            Config.executed_case_ids.add(record["case_id"])
+            return [record["case_id"]]
         if not self.supports_cases():
             return self._run_kernel_check_legacy()
         cases = self._collect_cases()
@@ -931,7 +969,9 @@ class Benchmark:
             Config.kernel_check_records.append(record)
             try:
                 args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
-                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                subject, subject_kind = self._kernel_check_subject()
+                record["subject"] = subject_kind
+                fn, _ = self._benchmark_callable(subject, *args, **kwargs)
                 record["invoked_kernel"] = self._profile_invokes_kernel(fn)
             except Exception as exc:
                 record["error"] = str(exc)
@@ -969,7 +1009,9 @@ class Benchmark:
                 input_iter = self.get_input_iter(dtype)
                 input_data = next(input_iter)
                 args, kwargs = self.unpack_to_args_kwargs(input_data)
-                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                subject, subject_kind = self._kernel_check_subject()
+                record["subject"] = subject_kind
+                fn, _ = self._benchmark_callable(subject, *args, **kwargs)
                 record["invoked_kernel"] = self._profile_invokes_kernel(fn)
             except Exception as exc:
                 record["error"] = str(exc)
@@ -984,8 +1026,12 @@ class Benchmark:
             Config.available_case_ids.add(case_id)
             Config.executed_case_ids.add(case_id)
             executed.append(case_id)
-            # One dtype is enough to determine kernel behaviour; stop early.
-            break
+            # Stop at the first dtype that launches a device kernel. Some
+            # operators (for example conj_physical) are no-ops for real dtypes
+            # and only launch on complex inputs; stopping after the first dtype
+            # would report them as having no device kernel.
+            if record["invoked_kernel"]:
+                break
         return executed
 
     def _measure_input(self, input, case_id=None, dtype=None):
