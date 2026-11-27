@@ -37,6 +37,7 @@ def _to_ref(inp):
         return inp.cpu()
     return tu.to_reference(inp)
 
+
 # Measured on this NVIDIA target: the default half_to_float=False form has native
 # kernels for float32/float64 only, the .int dtype= form converts
 # int8/uint8/int32/int64/bfloat16/fp8 inputs to float32/float64, and float16 fails
