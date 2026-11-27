@@ -12,17 +12,102 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Generator
+
 import pytest
 import torch
 
 from . import base, consts
 
 
-@pytest.mark.lshift
+class LshiftBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        # Representative vector, matrix, and three-dimensional pointwise inputs.
+        self.shapes = [(1024,), (1024, 1024), (16, 512, 256)]
+        self.shape_desc = "SHAPE"
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            value = torch.randint(0, 100, shape, dtype=cur_dtype, device=self.device)
+            shift = torch.randint(0, 8, shape, dtype=cur_dtype, device=self.device)
+            yield value, shift
+
+
+class LshiftScalarBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1024,), (1024, 1024), (16, 512, 256)]
+        self.shape_desc = "SHAPE"
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            value = torch.randint(0, 100, shape, dtype=cur_dtype, device=self.device)
+            yield value, 3
+
+
+class LshiftOutBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1024,), (1024, 1024), (16, 512, 256)]
+        self.shape_desc = "SHAPE"
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        # The ``.Tensor_out`` overload requires the ``out`` tensor to be passed
+        # as a keyword argument; yield it as a dict so the benchmark harness
+        # forwards it via kwargs.
+        for shape in self.shapes:
+            value = torch.randint(0, 100, shape, dtype=cur_dtype, device=self.device)
+            shift = torch.randint(0, 8, shape, dtype=cur_dtype, device=self.device)
+            out = torch.empty_like(value)
+            yield value, shift, {"out": out}
+
+
+class LshiftScalarOutBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1024,), (1024, 1024), (16, 512, 256)]
+        self.shape_desc = "SHAPE"
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        # The ``.Scalar_out`` overload also requires the ``out`` keyword arg.
+        for shape in self.shapes:
+            value = torch.randint(0, 100, shape, dtype=cur_dtype, device=self.device)
+            out = torch.empty_like(value)
+            yield value, 3, {"out": out}
+
+
+@pytest.mark.lshift_tensor
 def test_lshift():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="lshift",
-        torch_op=torch.bitwise_left_shift,
-        dtypes=consts.INT_DTYPES,
+    bench = LshiftBenchmark(
+        op_name="lshift_tensor",
+        torch_op=torch.ops.aten.__lshift__.Tensor,
+        dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lshift_scalar
+def test_lshift_scalar():
+    bench = LshiftScalarBenchmark(
+        op_name="lshift_scalar",
+        torch_op=torch.ops.aten.__lshift__.Scalar,
+        dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lshift_tensor_out
+def test_lshift_tensor_out():
+    bench = LshiftOutBenchmark(
+        op_name="lshift_tensor_out",
+        torch_op=torch.ops.aten.__lshift__.Tensor_out,
+        dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lshift_scalar_out
+def test_lshift_scalar_out():
+    bench = LshiftScalarOutBenchmark(
+        op_name="lshift_scalar_out",
+        torch_op=torch.ops.aten.__lshift__.Scalar_out,
+        dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
     )
     bench.run()

@@ -562,9 +562,19 @@ def test_rrelu_with_noise_inplace_output_strides(training):
             torch.zeros_like(inp, memory_format=torch.contiguous_format)
         )
 
-        ref_out = torch.ops.aten.rrelu_with_noise_(
-            utils.to_reference(inp.clone()), ref_noise, lower, upper, training
-        )
+        if flag_gems.vendor_name == "kunlunxin":
+            _ref_in = torch.empty_strided(
+                inp.shape, inp.stride(), dtype=inp.dtype, device="cpu"
+            )
+            _ref_in.copy_(utils.to_reference(inp).cpu())
+            ref_noise = ref_noise.cpu()
+            ref_out = torch.ops.aten.rrelu_with_noise_(
+                _ref_in, ref_noise, lower, upper, training
+            )
+        else:
+            ref_out = torch.ops.aten.rrelu_with_noise_(
+                utils.to_reference(inp.clone()), ref_noise, lower, upper, training
+            )
 
         result = flag_gems.rrelu_with_noise_(inp, noise, lower, upper, training)
 

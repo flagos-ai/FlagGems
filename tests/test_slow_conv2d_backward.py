@@ -64,6 +64,12 @@ SHAPES = [
 ]
 
 
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 @pytest.mark.slow_conv2d_backward
 @pytest.mark.parametrize("shape,weight_shape,kernel_size,stride,padding", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -76,9 +82,9 @@ def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding,
         (shape[0], weight_shape[0], ho, wo), dtype=dtype, device=flag_gems.device
     )
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_grad_output = utils.to_reference(grad_output, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_grad_output = _reference_input(grad_output, True)
 
     gi, gw, gb = flag_gems.ops._slow_conv2d_backward(
         grad_output,
@@ -106,6 +112,7 @@ def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding,
     # gems_assert_close scales its default atol=1e-4 by reduce_dim and applies
     # rtol=RESOLUTION[dtype] on top, so the effective check is
     # |res - ref| <= 1e-4 * reduce_dim + rtol * |ref|.
+    assert gi.device == gw.device == gb.device == inp.device
     utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=kernel_size[0])
     utils.gems_assert_close(gw, ref_gw, dtype, reduce_dim=weight_shape[0])
     utils.gems_assert_close(gb, ref_gb, dtype, reduce_dim=shape[0])
@@ -131,9 +138,9 @@ def test_slow_conv2d_backward_dispatches_to_gems(caplog):
         device=flag_gems.device,
     )
     ref_gi, ref_gw, ref_gb = torch.ops.aten._slow_conv2d_backward.output_mask(
-        utils.to_reference(grad_output, True),
-        utils.to_reference(inp, True),
-        utils.to_reference(weight, True),
+        _reference_input(grad_output, True),
+        _reference_input(inp, True),
+        _reference_input(weight, True),
         kernel_size,
         stride,
         padding,
@@ -144,8 +151,9 @@ def test_slow_conv2d_backward_dispatches_to_gems(caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops._slow_conv2d_backward"):
         # Tests must not call use_gems(); only_enable is the sanctioned
         # registration API and reaches the same registrar.
-        flag_gems.only_enable(include=["_slow_conv2d_backward"])
+        previous_registrar = flag_gems.current_work_registrar
         try:
+            flag_gems.only_enable(include=["_slow_conv2d_backward"])
             gi, gw, gb = torch.ops.aten._slow_conv2d_backward.output_mask(
                 grad_output,
                 inp,
@@ -156,9 +164,106 @@ def test_slow_conv2d_backward_dispatches_to_gems(caplog):
                 [True, True, True],
             )
         finally:
-            flag_gems.enable()
+            flag_gems.current_work_registrar = previous_registrar
+            flag_gems.teardown_flaggems_logging()
 
     assert "GEMS _SLOW_CONV2D_BACKWARD" in caplog.text
+    assert gi.device == gw.device == gb.device == inp.device
     utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=kernel_size[0])
     utils.gems_assert_close(gw, ref_gw, dtype, reduce_dim=weight_shape[0])
     utils.gems_assert_close(gb, ref_gb, dtype, reduce_dim=shape[0])
+
+
+# The tensor-core path serves fp16/bf16/fp32 and leaves fp64 on the exact
+# scalar-accumulation kernels (Triton has no fp64 tl.dot). These regressions pin
+# the two properties that path changed: every output_mask combination must still
+# materialize exactly the requested gradients, and fp64 must keep its exactness.
+_MASK_COMBINATIONS = [
+    [True, False, False],
+    [False, True, False],
+    [False, False, True],
+    [True, True, False],
+    [False, True, True],
+    [True, False, True],
+    [True, True, True],
+]
+
+
+@pytest.mark.slow_conv2d_forward_backward
+@pytest.mark.parametrize("output_mask", _MASK_COMBINATIONS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_slow_conv2d_backward_output_mask_combinations(output_mask, dtype):
+    """Each mask entry must produce its gradient and None elsewhere.
+
+    ``[False, False, True]`` is the regression for the fused-bias path: grad_bias
+    used to ride on the grad_weight launch, so a bias-only request silently
+    returned None for fp16/bf16.
+    """
+    shape, weight_shape = (2, 3, 8, 8), (5, 3, 3, 3)
+    kernel_size, stride, padding = [3, 3], [1, 1], [1, 1]
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    ho = (shape[2] + 2 * padding[0] - kernel_size[0]) // stride[0] + 1
+    wo = (shape[3] + 2 * padding[1] - kernel_size[1]) // stride[1] + 1
+    grad_output = torch.randn(
+        (shape[0], weight_shape[0], ho, wo), dtype=dtype, device=flag_gems.device
+    )
+
+    ref_grad_output = utils.to_reference(grad_output, True)
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+
+    res = flag_gems.ops._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, output_mask
+    )
+    ref = torch.ops.aten._slow_conv2d_backward.output_mask(
+        ref_grad_output,
+        ref_inp,
+        ref_weight,
+        kernel_size,
+        stride,
+        padding,
+        output_mask,
+    )
+
+    assert [r is not None for r in res] == output_mask
+    assert [r is not None for r in ref] == output_mask
+    reduce_dims = (kernel_size[0], weight_shape[0], shape[0])
+    for index, (got, expected) in enumerate(zip(res, ref)):
+        if not output_mask[index]:
+            assert got is None
+            continue
+        utils.gems_assert_close(got, expected, dtype, reduce_dim=reduce_dims[index])
+
+
+@pytest.mark.slow_conv2d_forward_backward
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="device does not support fp64")
+def test_slow_conv2d_backward_float64_exact():
+    """fp64 stays on the exact scalar path (no fp64 tl.dot exists)."""
+    shape, weight_shape = (2, 3, 8, 8), (5, 3, 3, 3)
+    kernel_size, stride, padding = [3, 3], [1, 1], [1, 1]
+    inp = torch.randn(shape, dtype=torch.float64, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=torch.float64, device=flag_gems.device)
+    grad_output = torch.randn(
+        (shape[0], weight_shape[0], 8, 8), dtype=torch.float64, device=flag_gems.device
+    )
+
+    res = flag_gems.ops._slow_conv2d_backward(
+        grad_output, inp, weight, kernel_size, stride, padding, [True, True, True]
+    )
+    # The reference lives where `--ref cpu` puts it, so build it from the
+    # repository's to_reference helper instead of reusing the device tensors.
+    ref = torch.ops.aten._slow_conv2d_backward.output_mask(
+        utils.to_reference(grad_output, True),
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        kernel_size,
+        stride,
+        padding,
+        [True, True, True],
+    )
+    for got, expected in zip(res, ref):
+        assert got.dtype == torch.float64
+        utils.gems_assert_close(
+            got, expected, torch.float64, reduce_dim=kernel_size[0], atol=1e-12
+        )
