@@ -15159,13 +15159,12 @@ ops:
   stages:
   - alpha: '5.4'
 - id: native_batch_norm_backward
-  description: Alias entry named after the aten symbol `native_batch_norm_backward`;
-    the backward version of `batch_norm()` (same semantics as the `batch_norm_backward`
-    entry).
+  description: Alias entry named after the aten symbol `native_batch_norm_backward`; the backward version of `batch_norm()` (same semantics as the `batch_norm_backward` entry).
   for:
   - native_batch_norm_backward
   labels:
   - aten
+  - KernelGen
   kind:
   - NeuralNetwork
   stages:
