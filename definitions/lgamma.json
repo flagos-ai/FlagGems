@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "lgamma",
+  "requires_triton_kernel": true,
+  "description": "Computes the logarithm of the absolute value of the Gamma function elementwise on A. Returns a newly allocated tensor without mutating the input. Derived from the existing flag_gems.lgamma(A) callable; original pytest owns dtype, shape and numerical assertions.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
