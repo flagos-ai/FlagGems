@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .accuracy_utils import _SKIP_FP64
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 CASES = [
     ((1, 1, 2, 3, 4), (4, 6, 8), (None, None, None)),
     ((2, 3, 4, 5, 6), (6, 8, 3), (None, None, None)),
@@ -75,9 +77,14 @@ def test_upsample_nearest_exact3d_backward_uint8():
         dtype=torch.uint8,
         device=flag_gems.device,
     )
-    ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
-        grad_output, output_size, input_size
-    )
+    if IS_KUNLUNXIN:
+        ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
+            grad_output.float(), output_size, input_size
+        ).to(torch.uint8)
+    else:
+        ref = torch.ops.aten._upsample_nearest_exact3d_backward.default(
+            grad_output, output_size, input_size
+        )
     result = flag_gems._upsample_nearest_exact3d_backward(
         grad_output, output_size, input_size
     )
