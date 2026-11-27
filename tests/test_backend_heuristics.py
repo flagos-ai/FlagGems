@@ -40,3 +40,14 @@ def test_mthreads_softmax_non_inner_uses_mthreads_heuristic():
     tile_k = configs["softmax_non_inner"]["TILE_K"]
 
     assert tile_k.__module__ == "_mthreads.heuristics_config_utils"
+
+
+def test_ascend_random_heuristics_power_of_two():
+    configs = backend.get_heuristic_config("ascend")
+    for op_name in ("rand", "randn", "uniform"):
+        block_fn = configs[op_name]["BLOCK"]
+        for n in (1, 512, 513, 1024, 1_000_000, 1073741824, 2**31):
+            block = block_fn({"N": n})
+            assert (
+                block > 0 and (block & (block - 1)) == 0
+            ), f"{op_name} returned non-power-of-two BLOCK={block} for N={n}"
