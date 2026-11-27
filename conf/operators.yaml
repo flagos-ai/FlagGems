@@ -4043,6 +4043,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: conv_depthwise3d_backward
+  description: The backward computation of `conv_depthwise3d()`, computing the gradient
+    with respect to the input tensor. Exercised through the autograd of the forward
+    operator.
+  for:
+  - conv_depthwise3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: conv_tbc
   description: Applies a 1D convolution over an input with time-batch-channel (T,
     B, C) layout.
