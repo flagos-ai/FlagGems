@@ -19,6 +19,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice
 
 from flag_gems.runtime import torch_device_fn
 
@@ -72,22 +73,24 @@ def round_kernel(
         elif IS_BF16:
             x_fp32 = tl.cast(x, tl.float32)
             out = tl.cast(round_half_to_even_impl(x_fp32), tl.bfloat16)
-    else:
-        # For non-zero decimals, use scaling approach
-        scale = 10.0**decimals
-        if IS_FP32:
-            x_scaled = x * scale
-            out = round_half_to_even_impl(x_scaled) / scale
-        elif IS_FP16:
-            x_fp32 = tl.cast(x, tl.float32)
-            x_scaled = x_fp32 * scale
-            out = tl.cast(round_half_to_even_impl(x_scaled) / scale, tl.float16)
-        elif IS_BF16:
-            x_fp32 = tl.cast(x, tl.float32)
-            x_scaled = x_fp32 * scale
-            out = tl.cast(round_half_to_even_impl(x_scaled) / scale, tl.bfloat16)
+    elif IS_FP32 or (IS_FP16 or IS_BF16):
+        # Match ATen CUDA's rounding of the scale and scaled input to x.dtype.
+        if decimals < 0:
+            scale = tl.full((), 10.0 ** (-decimals), tl.float32)
         else:
-            out = x
+            scale = tl.full((), 10.0**decimals, tl.float32)
+        scale = scale.to(x.dtype).to(tl.float32)
+        if decimals < 0:
+            scaled = tl.div_rn(x.to(tl.float32), scale)
+        else:
+            scaled = x.to(tl.float32) * scale
+        rounded = libdevice.rint(scaled.to(x.dtype).to(tl.float32))
+        if decimals < 0:
+            out = (rounded * scale).to(x.dtype)
+        else:
+            out = tl.div_rn(rounded, scale).to(x.dtype)
+    else:
+        out = x
 
     tl.store(out_ptr + offsets, out, mask=mask)
 
