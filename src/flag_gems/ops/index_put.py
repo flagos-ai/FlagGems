@@ -108,79 +108,91 @@ def generate_index_put_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid0 = ext.program_id(axis=0)")
-        code.writeline("pid1 = ext.program_id(axis=1)")
-        # Address arithmetic must stay in int64. With int32 indices,
-        # `index * input_stride` can exceed 2**31 on large strided tensors and
-        # wrap before it reaches the store, silently redirecting the write to a
-        # wrapped address. Casting only the final pointer offset is too late,
-        # so the program offsets are widened before the coordinates derived
-        # from them. See Issue #6411.
+        # Flatten the 2-D tile space into one grid axis. Several backends cap
+        # grid.x at 65535; each program walks the remaining tiles in strides.
+        code.writeline("num_n_tiles = tl.cdiv(N, BLOCK_SIZE1)")
+        code.writeline("num_tiles = tl.cdiv(M, BLOCK_SIZE0) * num_n_tiles")
         code.writeline(
-            "offset0 = pid0.to(tl.int64) * BLOCK_SIZE0 + "
-            "tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
+            "for tile in range(ext.program_id(axis=0), num_tiles, ext.num_programs(axis=0)):"
         )
-        if inp_rank == indices_len:
-            code.writeline(
-                "offset1 = pid1.to(tl.int64) * 1 + "
-                "tl.arange(0, 1).to(tl.int64)[None, :]"
-            )
-        else:
-            code.writeline(
-                "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + "
-                "tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"
-            )
-        code.newline()
-        code.writeline("cur_idx = offset0")
-        for i in range(index_rank - 1, -1, -1):
-            code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
-            code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
-        code.newline()
-        code.writeline("cur_idx = offset1")
-        for i in range(inp_rank - 1, indices_len - 1, -1):
-            code.writeline(f"input_idx{i} = cur_idx % input_shape{i}")
-            code.writeline(f"cur_idx = cur_idx // input_shape{i}")
-        code.newline()
-        code.writeline("mask0 = offset0 < M")
-        for i in range(indices_len):
-            comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
-            # The index tensor may be int32; widen the loaded index before it is
-            # multiplied by input_stride so the product cannot wrap.
-            code.writeline(
-                f"cur_index{i} = tl.load("
-                f"indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0"
-                ").to(tl.int64)"
-            )
-        code.newline()
-        index_mask = [
-            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
-            for i in range(indices_len)
-        ]
-        code.writeline(f"index_mask = {' & '.join(index_mask)}")
-        code.writeline("mask1 = offset1 < N")
-        code.writeline("mask = index_mask & mask0 & mask1")
-        code.newline()
-        comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
-        comp += [
-            f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
-        ]
-        code.writeline(f"input_offset = {' + '.join(comp)}")
-        comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
-        comp += [
-            f"input_idx{indices_len + i} * values_stride{index_rank + i}"
-            for i in range(inp_rank - indices_len)
-        ]
-        code.writeline(f"values_offset = {' + '.join(comp)}")
-        code.newline()
-        code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
-        code.writeline("if IS_ACCUMULATE:")
         with code.indent():
+            code.writeline("pid0 = tile // num_n_tiles")
+            code.writeline("pid1 = tile % num_n_tiles")
+            # Address arithmetic must stay in int64. With int32 indices,
+            # `index * input_stride` can exceed 2**31 on large strided tensors and
+            # wrap before it reaches the store, silently redirecting the write to a
+            # wrapped address. Casting only the final pointer offset is too late,
+            # so the program offsets are widened before the coordinates derived
+            # from them. See Issue #6411.
             code.writeline(
-                "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
+                "offset0 = pid0.to(tl.int64) * BLOCK_SIZE0 + "
+                "tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
             )
-        code.writeline("else:")
-        with code.indent():
-            code.writeline("tl.store(input_ptr + input_offset, cur_value, mask=mask)")
+            if inp_rank == indices_len:
+                code.writeline(
+                    "offset1 = pid1.to(tl.int64) * 1 + "
+                    "tl.arange(0, 1).to(tl.int64)[None, :]"
+                )
+            else:
+                code.writeline(
+                    "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + "
+                    "tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"
+                )
+            code.newline()
+            code.writeline("cur_idx = offset0")
+            for i in range(index_rank - 1, -1, -1):
+                code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
+                code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
+            code.newline()
+            code.writeline("cur_idx = offset1")
+            for i in range(inp_rank - 1, indices_len - 1, -1):
+                code.writeline(f"input_idx{i} = cur_idx % input_shape{i}")
+                code.writeline(f"cur_idx = cur_idx // input_shape{i}")
+            code.newline()
+            code.writeline("mask0 = offset0 < M")
+            for i in range(indices_len):
+                comp = [
+                    f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)
+                ]
+                # The index tensor may be int32; widen the loaded index before it is
+                # multiplied by input_stride so the product cannot wrap.
+                code.writeline(
+                    f"cur_index{i} = tl.load("
+                    f"indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0"
+                    ").to(tl.int64)"
+                )
+            code.newline()
+            index_mask = [
+                f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+                for i in range(indices_len)
+            ]
+            code.writeline(f"index_mask = {' & '.join(index_mask)}")
+            code.writeline("mask1 = offset1 < N")
+            code.writeline("mask = index_mask & mask0 & mask1")
+            code.newline()
+            comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+            comp += [
+                f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
+            ]
+            code.writeline(f"input_offset = {' + '.join(comp)}")
+            comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
+            comp += [
+                f"input_idx{indices_len + i} * values_stride{index_rank + i}"
+                for i in range(inp_rank - indices_len)
+            ]
+            code.writeline(f"values_offset = {' + '.join(comp)}")
+            code.newline()
+            code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
+            code.writeline("if IS_ACCUMULATE:")
+            with code.indent():
+                code.writeline(
+                    "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
+                )
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(
+                    "tl.store(input_ptr + input_offset, cur_value, mask=mask)"
+                )
 
     code.newline()
     code.newline()
@@ -209,8 +221,10 @@ def generate_index_put_wrapper(
         code.newline()
         code.writeline("grid = lambda meta: (")
         with code.indent():
-            code.writeline("triton.cdiv(M, meta['BLOCK_SIZE0']), ")
-            code.writeline("triton.cdiv(N, meta['BLOCK_SIZE1']), ")
+            code.writeline(
+                "min(triton.cdiv(M, meta['BLOCK_SIZE0']) * "
+                "triton.cdiv(N, meta['BLOCK_SIZE1']), 65535),"
+            )
         code.writeline(")")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
