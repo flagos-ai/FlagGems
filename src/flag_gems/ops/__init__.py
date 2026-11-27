@@ -703,6 +703,7 @@ from flag_gems.ops.col_indices import col_indices
 from flag_gems.ops.col_indices_copy import col_indices_copy, col_indices_copy_out
 from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.combinations import combinations
+from flag_gems.ops.complex_backward import complex_backward
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj import conj
@@ -2471,6 +2472,7 @@ __all__ = [
     "column_stack",
     "column_stack_out",
     "combinations",
+    "complex_backward",
     "concat",
     "concatenate",
     "conj",
