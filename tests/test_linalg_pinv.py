@@ -22,6 +22,69 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _missing_cpu_lapack(inp):
+    """MUSA CPU builds can lack LAPACK, so linear-algebra references fall back
+    to NumPy. This mirrors the MUSA reference pattern used on master
+    (tests/test_inverse.py, test_linalg_lu_solve.py, test_det.py)."""
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    )
+
+
+def _reference_input(inp, upcast=False):
+    # On MUSA the reference is taken on CPU; other vendors keep the existing
+    # device/--ref cpu behaviour.
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _assert_target_abi(actual, reference, inp):
+    if isinstance(actual, (tuple, list)):
+        assert isinstance(reference, (tuple, list)) and len(actual) == len(reference)
+        for value, expected in zip(actual, reference):
+            _assert_target_abi(value, expected, inp)
+        return
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == reference.shape
+    assert actual.untyped_storage()._cdata != inp.untyped_storage()._cdata
+
+
+def _for_comparison(actual, reference, inp):
+    # Inspect the requested target ABI before CPU observation/value comparison.
+    _assert_target_abi(actual, reference, inp)
+    return actual.cpu() if flag_gems.vendor_name == "mthreads" else actual
+
+
+def _reference_qr(inp):
+    if _missing_cpu_lapack(inp):
+        import numpy as np
+
+        return tuple(_from_numpy(x) for x in np.linalg.qr(inp.detach().numpy()))
+    return torch.linalg.qr(inp)
+
+
+def _reference_pinv(inp):
+    if _missing_cpu_lapack(inp):
+        import numpy as np
+
+        array = inp.detach().numpy()
+        # torch.linalg.pinv's original default cutoff is dtype/geometry
+        # dependent; keep the test-repair rtol semantics.
+        rtol = max(array.shape[-2:]) * np.finfo(array.dtype).eps
+        return _from_numpy(np.linalg.pinv(array, rcond=rtol))
+    return torch.linalg.pinv(inp)
+
+
 @pytest.fixture(autouse=True)
 def _ieee_fp32_matmul():
     # The blocked Jacobi path rebuilds pinv with a native fp32 matmul.  Runners
@@ -90,8 +153,8 @@ def _well_conditioned(m, n, dtype, seed=0):
     g = torch.Generator(device="cpu").manual_seed(seed)
     k = min(m, n)
     # Orthonormal factors via QR of fixed-seed gaussians.
-    u, _ = torch.linalg.qr(torch.randn(m, k, generator=g))
-    v, _ = torch.linalg.qr(torch.randn(n, k, generator=g))
+    u, _ = _reference_qr(torch.randn(m, k, generator=g))
+    v, _ = _reference_qr(torch.randn(n, k, generator=g))
     s = torch.linspace(2.0, 1.0, k)
     A = (u * s) @ v.T
     return A.to(dtype).to(flag_gems.device)
@@ -103,10 +166,10 @@ def _well_conditioned(m, n, dtype, seed=0):
 def test_linalg_pinv(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -117,10 +180,10 @@ def test_linalg_pinv_batched(shape, dtype):
     batch = 4
     # Distinct seeds so the batch elements are not identical matrices.
     A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -129,10 +192,10 @@ def test_linalg_pinv_batched(shape, dtype):
 def test_linalg_pinv_large(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -143,10 +206,10 @@ def test_linalg_pinv_large_batched(shape, dtype):
     batch = 2
     # Distinct seeds so the batch elements are not identical matrices.
     A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -155,12 +218,12 @@ def test_linalg_pinv_large_batched(shape, dtype):
 def test_linalg_pinv_out(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     out = torch.empty((n, m), dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.linalg_pinv_out(A, out=out)
     assert res_out is out
-    utils.gems_assert_close(out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -180,14 +243,14 @@ def test_linalg_pinv_out_resizes_and_warns(shape, dtype):
     # matching ATen's out= contract.
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     out = torch.empty((1, 1), dtype=dtype, device=flag_gems.device)
     with pytest.warns(UserWarning, match="resized"):
         res_out = flag_gems.linalg_pinv_out(A, out=out)
     assert res_out is out
     assert out.shape == (n, m)
-    utils.gems_assert_close(out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -209,11 +272,11 @@ def test_linalg_pinv_out_noncontiguous(shape, dtype):
     # The kernel result must be copied into a same-shaped non-contiguous out.
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     holder = torch.empty((n, m * 2), dtype=dtype, device=flag_gems.device)
     out = holder[:, ::2]
     assert not out.is_contiguous()
     res_out = flag_gems.linalg_pinv_out(A, out=out)
     assert res_out is out
-    utils.gems_assert_close(out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(out, ref_out, A), ref_out, dtype)
