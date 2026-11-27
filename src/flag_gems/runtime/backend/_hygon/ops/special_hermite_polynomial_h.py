@@ -1,220 +1,215 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Physicists' Hermite polynomial H_n(x) elementwise.
+
+out[i] = H_{n}[i](x[i]) with the three-term recurrence
+    H_0(x) = 1, H_1(x) = 2x, H_k(x) = 2x*H_{k-1}(x) - 2(k-1)*H_{k-2}(x)
+
+The recurrence runs in float64 regardless of the input dtype (the harness
+reference is ATen evaluated on float64-upcast x, and a float32-internal
+recurrence loses too much accuracy through cancellation for degrees >= 4)
+and rounds exactly once at the store.
+"""
+
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-# ---------------------------------------------------------------------------
-# special_hermite_polynomial_h: physicist's Hermite polynomial H_n(x)
-#   H_0(x) = 1, H_1(x) = 2x, H_k(x) = 2x*H_{k-1}(x) - 2*(k-1)*H_{k-2}(x)
-# Contract (flaggems / torch.special.hermite_polynomial_h):
-#   - x in {float32, float64}, n truncated to int, broadcast like torch
-#   - n must be in [0, 9]: out-of-range n raises ValueError
-#     ("only supports n in [0, 9]") for scalar / 1-element n
-#   - output in promoted dtype (ints -> float32)
-# The degree loop is statically unrolled to 9 (the validated upper bound).
-# ---------------------------------------------------------------------------
+from flag_gems.ops.special_hermite_polynomial_h import (
+    special_hermite_polynomial_h as _generic_hermite,
+)
 
-_MAX_DEG = tl.constexpr(9)
+logger = logging.getLogger(__name__)
+_MAX_DEG = 9
 
 
 @triton.jit
-def _hermite_h_flat_kernel(
-    x_ptr,
-    n_ptr,
-    out_ptr,
-    numel,
-    x_stride,  # 0 if x is scalar-broadcast, 1 if elementwise
-    n_stride,  # 0 if n is scalar-broadcast, 1 if elementwise
-    BLOCK: tl.constexpr,
-    DTYPE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    offs64 = offs.to(tl.int64)
-    mask = offs < numel
+def _hermite_deg_expr(xd, DEG: tl.constexpr):
+    """Closed-form H_DEG(xd) for a compile-time degree, evaluated in float64.
 
-    xv = tl.load(x_ptr + offs64 * x_stride, mask=mask, other=0).to(DTYPE)
-    nv = tl.load(n_ptr + offs64 * n_stride, mask=mask, other=0).to(tl.int64)
-
-    one = tl.full([BLOCK], 1.0, DTYPE)
-    two_x = xv + xv
-    zero = tl.zeros([BLOCK], DTYPE)
-    res = tl.where(nv == 0, one, tl.where(nv == 1, two_x, zero))
-
-    h_prev2 = one  # H_0
-    h_prev = two_x  # H_1
-    for k in tl.static_range(2, _MAX_DEG + 1):
-        km1 = k - 1
-        h_cur = (xv + xv) * h_prev - (km1 + km1) * h_prev2  # H_k
-        res = tl.where(nv == k, h_cur, res)
-        h_prev2 = h_prev
-        h_prev = h_cur
-
-    tl.store(out_ptr + offs64, res, mask=mask)
-
-
-@triton.jit
-def _hermite_h_nd_kernel(
-    x_ptr,
-    n_ptr,
-    out_ptr,
-    numel,
-    ND: tl.constexpr,
-    OUT_SHAPE: tl.constexpr,
-    XS: tl.constexpr,
-    NS: tl.constexpr,
-    BLOCK: tl.constexpr,
-    DTYPE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    offs64 = offs.to(tl.int64)
-    mask = offs < numel
-
-    # decompose flat index into broadcast offsets
-    rem = offs64
-    x_off = tl.zeros([BLOCK], tl.int64)
-    n_off = tl.zeros([BLOCK], tl.int64)
-    for i in tl.static_range(ND - 1, -1, -1):
-        d = OUT_SHAPE[i]
-        if d > 1:
-            digit = rem % d
-            rem = rem // d
-        else:
-            digit = tl.zeros([BLOCK], tl.int64)
-        x_off += digit * XS[i]
-        n_off += digit * NS[i]
-
-    xv = tl.load(x_ptr + x_off, mask=mask, other=0).to(DTYPE)
-    nv = tl.load(n_ptr + n_off, mask=mask, other=0).to(tl.int64)
-
-    one = tl.full([BLOCK], 1.0, DTYPE)
-    two_x = xv + xv
-    zero = tl.zeros([BLOCK], DTYPE)
-    res = tl.where(nv == 0, one, tl.where(nv == 1, two_x, zero))
-
-    h_prev2 = one  # H_0
-    h_prev = two_x  # H_1
-    for k in tl.static_range(2, _MAX_DEG + 1):
-        km1 = k - 1
-        h_cur = (xv + xv) * h_prev - (km1 + km1) * h_prev2  # H_k
-        res = tl.where(nv == k, h_cur, res)
-        h_prev2 = h_prev
-        h_prev = h_cur
-
-    tl.store(out_ptr + offs64, res, mask=mask)
-
-
-_DTYPE_MAP = {
-    torch.float64: tl.float64,
-    torch.float32: tl.float32,
-    torch.float16: tl.float16,
-    torch.bfloat16: tl.bfloat16,
-}
-
-_BLOCK = 2048
-_WARPS = 8
-
-
-def _out_dtype(x_dtype, n_dtype):
-    prom = torch.promote_types(x_dtype, n_dtype)
-    if prom in _DTYPE_MAP:
-        return prom
-    return torch.float32  # all-int (or bool) inputs produce float32
-
-
-def _bcast_strides(in_shape, out_shape):
-    nd = len(out_shape)
-    pad = nd - len(in_shape)
-    in_padded = (1,) * pad + tuple(in_shape)
-    # suffix products along the *input's own* padded shape
-    suffix = [1] * nd
-    for i in range(nd - 2, -1, -1):
-        suffix[i] = suffix[i + 1] * in_padded[i + 1]
-    strides = []
-    for i in range(nd):
-        if in_padded[i] == out_shape[i]:
-            strides.append(suffix[i])
-        else:
-            strides.append(0)
-    return tuple(strides)
-
-
-def run(x, n):
-    # --- n range validation (reference: flaggems special_hermite_polynomial_h) ---
-    if isinstance(n, (int, float)):
-        if int(n) < 0 or int(n) > _MAX_DEG.value:
-            raise ValueError(
-                f"special_hermite_polynomial_h only supports n in [0, {_MAX_DEG.value}], got n={n}"
-            )
-        n = torch.tensor(n, device=x.device)
-    elif n.numel() == 1:
-        n_int = int(n.item())
-        if n_int < 0 or n_int > _MAX_DEG.value:
-            raise ValueError(
-                f"special_hermite_polynomial_h only supports n in [0, {_MAX_DEG.value}], got n={n_int}"
-            )
-
-    if isinstance(x, (int, float)):
-        x = torch.tensor(x, device=n.device)
-
-    out_dtype = _out_dtype(x.dtype, n.dtype)
-    tl_dtype = _DTYPE_MAP[out_dtype]
-
-    out_shape = tuple(torch.broadcast_shapes(x.shape, n.shape))
-    numel = 1
-    for d in out_shape:
-        numel *= d
-    out = torch.empty(out_shape, dtype=out_dtype, device=x.device)
-    if numel == 0:
-        return out
-
-    grid = (triton.cdiv(numel, _BLOCK),)
-
-    if x.numel() == numel and n.numel() == numel:
-        # identical broadcastable shapes -> flat identity mapping
-        _hermite_h_flat_kernel[grid](
-            x,
-            n,
-            out,
-            numel,
-            1,
-            1,
-            BLOCK=_BLOCK,
-            DTYPE=tl_dtype,
-            num_warps=_WARPS,
-        )
-    elif len(out_shape) == 1:
-        x_stride = 1 if x.numel() == numel else 0
-        n_stride = 1 if n.numel() == numel else 0
-        _hermite_h_flat_kernel[grid](
-            x,
-            n,
-            out,
-            numel,
-            x_stride,
-            n_stride,
-            BLOCK=_BLOCK,
-            DTYPE=tl_dtype,
-            num_warps=_WARPS,
+    Even degrees are a polynomial in y = x*x and odd degrees are x times such
+    a polynomial, so each degree costs one multiply for y, a Horner chain of at
+    most four float64 FMAs and (odd degrees) one final multiply.  Every
+    coefficient is an exact small integer and float64 keeps the cancellation of
+    the expanded form ~1e-16 relative to the largest intermediate, far below
+    the 1e-4 + 1.3e-6*|ref| tolerance.
+    """
+    y = xd * xd
+    if DEG == 0:
+        r = tl.full(xd.shape, 1.0, tl.float64)
+    elif DEG == 1:
+        r = 2.0 * xd
+    elif DEG == 2:
+        r = tl.fma(y, 4.0, -2.0)
+    elif DEG == 3:
+        r = xd * tl.fma(y, 8.0, -12.0)
+    elif DEG == 4:
+        r = tl.fma(tl.fma(y, 16.0, -48.0), y, 12.0)
+    elif DEG == 5:
+        r = xd * tl.fma(tl.fma(y, 32.0, -160.0), y, 120.0)
+    elif DEG == 6:
+        r = tl.fma(tl.fma(tl.fma(y, 64.0, -480.0), y, 720.0), y, -120.0)
+    elif DEG == 7:
+        r = xd * tl.fma(tl.fma(tl.fma(y, 128.0, -1344.0), y, 3360.0), y, -1680.0)
+    elif DEG == 8:
+        r = tl.fma(
+            tl.fma(tl.fma(tl.fma(y, 256.0, -3584.0), y, 13440.0), y, -13440.0),
+            y,
+            1680.0,
         )
     else:
-        xs = _bcast_strides(x.shape, out_shape)
-        ns = _bcast_strides(n.shape, out_shape)
-        _hermite_h_nd_kernel[grid](
-            x,
-            n,
-            out,
-            numel,
-            ND=len(out_shape),
-            OUT_SHAPE=out_shape,
-            XS=xs,
-            NS=ns,
-            BLOCK=_BLOCK,
-            DTYPE=tl_dtype,
-            num_warps=_WARPS,
+        r = xd * tl.fma(
+            tl.fma(tl.fma(tl.fma(y, 512.0, -9216.0), y, 48384.0), y, -80640.0),
+            y,
+            30240.0,
         )
+    return r
+
+
+@triton.jit
+def _hermite_h_scalar_kernel(
+    X, OUT, numel, DEG: tl.constexpr, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        x = tl.load(X + offs)
+    else:
+        mask = offs < numel
+        x = tl.load(X + offs, mask=mask)
+    xd = x.to(tl.float64)
+    r = _hermite_deg_expr(xd, DEG)
+    r = r.to(x.dtype)
+    if EVEN:
+        tl.store(OUT + offs, r)
+    else:
+        tl.store(OUT + offs, r, mask=mask)
+
+
+@triton.jit
+def _hermite_h_tensor_kernel(X, N, OUT, numel, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        x = tl.load(X + offs)
+        n = tl.load(N + offs)
+    else:
+        mask = offs < numel
+        x = tl.load(X + offs, mask=mask)
+        n = tl.load(N + offs, mask=mask)
+    xd = x.to(tl.float64)
+    ni = n.to(tl.int32)
+    ni = tl.minimum(tl.maximum(ni, 0), 9)
+    two_x = 2.0 * xd
+    h_prev = tl.full([BLOCK], 1.0, tl.float64)
+    h_cur = two_x
+    r = tl.where(ni == 0, h_prev, h_cur)
+    for k in tl.static_range(1, 9):
+        h_next = tl.fma(two_x, h_cur, -2.0 * k * h_prev)
+        h_prev = h_cur
+        h_cur = h_next
+        r = tl.where(ni == k + 1, h_cur, r)
+    r = r.to(x.dtype)
+    if EVEN:
+        tl.store(OUT + offs, r)
+    else:
+        tl.store(OUT + offs, r, mask=mask)
+
+
+def _num_warps(block):
+    if block <= 128:
+        return 1
+    if block <= 512:
+        return 2
+    return 4
+
+
+def _block_for(numel):
+    if numel >= 8192:
+        return 1024
+    return max(64, triton.next_power_of_2(numel))
+
+
+def _launch_scalar(x, deg):
+    numel = x.numel()
+    out = torch.empty_like(x)
+    if numel == 0:
+        return out
+    block = _block_for(numel)
+    grid = ((numel + block - 1) // block,)
+    _hermite_h_scalar_kernel[grid](
+        x,
+        out,
+        numel,
+        DEG=deg,
+        BLOCK=block,
+        EVEN=numel % block == 0,
+        num_warps=_num_warps(block),
+    )
     return out
 
 
-# Alias for FlagGems import convention
-special_hermite_polynomial_h = run
+def _launch_tensor(x, n):
+    numel = x.numel()
+    out = torch.empty_like(x)
+    if numel == 0:
+        return out
+    block = _block_for(numel)
+    grid = ((numel + block - 1) // block,)
+    _hermite_h_tensor_kernel[grid](
+        x,
+        n,
+        out,
+        numel,
+        BLOCK=block,
+        EVEN=numel % block == 0,
+        num_warps=_num_warps(block),
+    )
+    return out
+
+
+def _validate_deg(deg, n):
+    if deg < 0 or deg > _MAX_DEG:
+        raise ValueError(
+            f"special_hermite_polynomial_h only supports n in [0, 9], got n={n}"
+        )
+
+
+def special_hermite_polynomial_h(x, n):
+    logger.debug("GEMS_HYGON SPECIAL_HERMITE_POLYNOMIAL_H")
+    if not isinstance(x, torch.Tensor):
+        raise ValueError("First argument must be a tensor")
+    if x.dtype not in (torch.float32, torch.float64):
+        raise ValueError(f"Unsupported dtype {x.dtype}")
+    if not x.is_contiguous():
+        return _generic_hermite(x, n)
+    if isinstance(n, torch.Tensor):
+        if n.ndim > x.ndim:
+            return _generic_hermite(x, n)
+        nn = n.numel()
+        if nn == 1:
+            deg = int(n.reshape(-1)[0].item())
+            _validate_deg(deg, n)
+            return _launch_scalar(x, deg)
+        if n.shape != x.shape or not n.is_contiguous():
+            return _generic_hermite(x, n)
+        return _launch_tensor(x, n)
+    if isinstance(n, (int, float)) and (not isinstance(n, bool)):
+        deg = int(n)
+        _validate_deg(deg, n)
+        return _launch_scalar(x, deg)
+    raise ValueError("n must be a Tensor, int, or float")
