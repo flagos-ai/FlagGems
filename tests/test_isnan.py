@@ -44,9 +44,10 @@ def test_isnan_backward_non_differentiable():
     """
     inp = torch.randn(1024, dtype=torch.float32, device=flag_gems.device)
     inp[::3] = float("nan")
+    ref_inp = utils.to_reference(inp, False)
 
     res_out = flag_gems.isnan(inp)
-    ref_out = torch.isnan(inp)
+    ref_out = torch.isnan(ref_inp)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.dtype == torch.bool
