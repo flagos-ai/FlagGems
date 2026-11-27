@@ -153,3 +153,104 @@ def test_sparse_addmm_out(monkeypatch):
     )
 
     bench.run()
+
+
+class SparseAddmmBackwardBenchmark(SparseAddmmBenchmark):
+    """Time only the ``_sparse_addmm`` backward.
+
+    ``Benchmark.get_latency`` builds the forward once and then times
+    ``torch.autograd.grad`` with ``retain_graph=True``, so the forward SpMM is
+    outside the measured region.  The workspace is the sparse triple plus the
+    three gradients, i.e. ``nnz + M*N + K*N + M*K`` elements, not the
+    ``B*M*N*K`` product the generic ``MAX_BACKWARD_ELEMENTS`` guard uses: that
+    product drops every default ``sparse_addmm`` shape (the smallest is
+    ``2*512^3``, above the 2**27 element cap) even though the real storage is
+    a few hundred MB.  The guard is disabled for this subclass and the
+    per-shape sizes are reported by the case manifest.
+    """
+
+    MAX_BACKWARD_ELEMENTS = None
+
+    # ``SparseAddmmBenchmark`` unpacks each ``(B, M, N, K)`` row itself and
+    # calls ``input_fn(m, n, k, dtype, device, False)``; ``BlasBenchmark``
+    # would hand the same factory the raw 4-tuple.  Case enumeration is
+    # therefore provided here explicitly (the base class treats a subclass
+    # that supplies both hooks as supporting cases) so the backward benchmark
+    # keeps the forward class' shape/ABI handling while still being listable.
+    def get_case_iter(self, dtype):
+        for ordinal, (b, m, n, k) in enumerate(self.shapes):
+            yield base.BenchmarkCaseSpec(
+                case_id=self._case_id(dtype, ordinal),
+                ordinal=ordinal,
+                dtype=dtype,
+                shape={"b": b, "m": m, "n": n, "k": k},
+                params={"b_column_major": False},
+                builder_args=(m, n, k, dtype, self.device, False),
+            )
+
+    def build_inputs(self, case):
+        input_iter = iter(self.input_fn(*case.builder_args))
+        try:
+            return next(input_iter)
+        except StopIteration as exc:
+            raise ValueError(
+                f"Input factory produced no inputs for case '{case.case_id}'."
+            ) from exc
+
+    def set_shapes(self, shape_file_path=None):
+        """Resolve shapes from the forward ``sparse_addmm`` block.
+
+        ``Benchmark.__init__`` appends "_backward" to ``op_name`` and
+        ``set_shapes`` looks that final name up in core_shapes.yaml.  There is
+        no ``sparse_addmm_backward`` block (the file is kept byte-identical to
+        the pinned base), so the generic lookup falls back to
+        ``DEFAULT_SHAPES`` — five unary pointwise sizes, none of which is a
+        sparse triple.  Look up the forward key instead so the backward
+        benchmark measures the six shapes its forward uses.
+        """
+        forward_key = self.op_name
+        self.op_name = "sparse_addmm"
+        try:
+            super().set_shapes(shape_file_path)
+        finally:
+            self.op_name = forward_key
+
+    def get_tflops(self, op, *args, **kwargs):
+        # The backward computes both dense products once more (grad_mat1 and
+        # grad_mat2), so it costs two SpMM-sized products: 2 * 2 * nnz * N.
+        mat1 = args[1]
+        mat2 = args[2]
+        nnz = mat1._nnz()
+        return 4 * nnz * mat2.shape[1]
+
+
+@pytest.mark.sparse_addmm_backward
+def test_sparse_addmm_backward():
+    """Latency of the FlagGems autograd backward for ``_sparse_addmm``.
+
+    The default M/N/K cases come from ``SparseAddmmBenchmark`` in
+    core_shapes.yaml; ``is_backward=True`` makes the harness time
+    ``torch.autograd.grad`` of the forward output.  Both sides run the native
+    forward to build the graph and differ only in the backward implementation:
+    the baseline uses ATen's ``SparseAddmmBackward0`` and the candidate uses
+    the FlagGems autograd bridge.
+    """
+    bench = SparseAddmmBackwardBenchmark(
+        # ``Benchmark`` appends "_backward" to ``op_name`` when is_backward is
+        # set, and ``set_shapes`` looks the *final* name up in
+        # core_shapes.yaml.  "sparse_addmm_backward" has no entry, so it would
+        # silently fall back to the five shared BlasBenchmark squares.  Name
+        # the operator after the forward entry (as the forward benchmark does)
+        # and let the marker carry the backward identity: the resulting
+        # op_name is "sparse_addmm_backward" and resolves the real block.
+        op_name="sparse_addmm",
+        input_fn=_input_fn,
+        torch_op=_torch_sparse_addmm,
+        gems_op=flag_gems._sparse_addmm,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # The native sparse backward rejects fp16/bf16 patterns, so the baseline
+    # for those dtypes is the fp32-upcast route used by _torch_sparse_addmm;
+    # fp32 stays the like-for-like comparison.
+    bench.run()
