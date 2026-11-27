@@ -40,25 +40,42 @@ def test_feature_dropout(shape, p, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.feature_dropout(inp, p, True)
     assert res_out.shape == inp.shape
+    assert res_out.dtype == inp.dtype
+    assert res_out.device == inp.device
     batch_size, num_channels = shape[0], shape[1]
     scale = 1.0 / (1.0 - p)
-    inp_reshaped = inp.view(batch_size, num_channels, -1)
-    out_reshaped = res_out.view(batch_size, num_channels, -1)
+    # MetaX, Hygon and MUSA native dropout can round the gain before multiplying.
+    use_cpu_scale = flag_gems.vendor_name == "hygon" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    )
+    # Hygon eager scalar multiplication can round the gain before multiplying.
+    # Compute the independent reference in FP32 before casting back to dtype.
+    check_inp = inp.cpu() if use_cpu_scale else inp
+    check_out = res_out.cpu() if use_cpu_scale else res_out
+    rounded_scale = (
+        check_inp.new_tensor(scale)
+        if flag_gems.vendor_name in ("metax", "hygon", "mthreads")
+        else None
+    )
+    inp_reshaped = check_inp.view(batch_size, num_channels, -1)
+    out_reshaped = check_out.view(batch_size, num_channels, -1)
     for b in range(batch_size):
         for c in range(num_channels):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                matches = torch.allclose(
-                    channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
+                expected = (
+                    (channel_inp.float() * scale).to(dtype)
+                    if use_cpu_scale
+                    else channel_inp * scale
                 )
-                if not matches and flag_gems.vendor_name == "mthreads":
-                    # MUSA can round the gain to the input dtype before the multiply.
-                    rounded_gain = channel_inp.new_tensor(scale)
-                    matches = torch.allclose(
-                        channel_out, channel_inp * rounded_gain, rtol=1e-4, atol=1e-5
+                assert torch.allclose(channel_out, expected, rtol=1e-4, atol=1e-5) or (
+                    rounded_scale is not None
+                    and torch.allclose(
+                        channel_out, channel_inp * rounded_scale, rtol=1e-4, atol=1e-5
                     )
-                assert matches
+                )
     out_by_channel = res_out.view(batch_size, num_channels, -1)
     dropped = sum(
         1
