@@ -14636,6 +14636,17 @@ ops:
   - MoE
   stages:
   - beta: '5.5'
+- id: moe_topk_gate_forward
+  description: Select experts with sqrt-softplus scores and stable top-k routing.
+  for:
+  - moe_topk_gate_forward
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: moveaxis
   description: 'Returns a view of the original tensor with the axes in `source` moved
     to the positions in `destination`.
