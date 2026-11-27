@@ -22,6 +22,11 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+_ASCEND_SPARSE_MASK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend to_dense_backward cannot mask a nonempty sparse input",
+)
+
 # to_dense_backward is the backward of to_dense: it converts `grad` into the
 # scalar type / sparse layout that `input` carries. For a strided input this is
 # a dtype conversion (identity when the dtypes already match); for a sparse
@@ -145,7 +150,13 @@ def test_to_dense_backward_cast_boundaries():
 
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=utils._SKIP_FP64),
+    ],
 )
 def test_to_dense_backward_special_values(dtype):
     info = torch.finfo(dtype)
@@ -217,7 +228,16 @@ def _make_coo(nnd, nnz, size, dtype, seed=0):
 
 
 @pytest.mark.to_dense_backward
-@pytest.mark.parametrize("masked_grad", [None, True, False])
+@pytest.mark.parametrize(
+    "masked_grad",
+    [
+        pytest.param(
+            masked_grad,
+            marks=(_ASCEND_SPARSE_MASK_SKIP if masked_grad in (None, True) else ()),
+        )
+        for masked_grad in (None, True, False)
+    ],
+)
 def test_to_dense_backward_sparse_input(masked_grad):
     # grad is a dense strided tensor; input is COO. masked branch routes to
     # sparse_mask(input.coalesce()), unmasked to grad.to_sparse(sparse_dim).
@@ -231,6 +251,7 @@ def test_to_dense_backward_sparse_input(masked_grad):
 
 
 @pytest.mark.to_dense_backward
+@_ASCEND_SPARSE_MASK_SKIP
 def test_to_dense_backward_sparse_uncoalesced():
     grad = torch.randn(3, 4, device=flag_gems.device, dtype=torch.float32)
     input = _make_coo(2, 4, (3, 4), torch.float32, seed=3).to(flag_gems.device)
@@ -257,6 +278,7 @@ def test_to_dense_backward_sparse_empty_domain():
 
 
 @pytest.mark.to_dense_backward
+@_ASCEND_SPARSE_MASK_SKIP
 @pytest.mark.parametrize("layout", ["csr", "csc", "bsr", "bsc"])
 def test_to_dense_backward_sparse_compressed(layout):
     grad = torch.randn(4, 4, device=flag_gems.device, dtype=torch.float32)
@@ -277,7 +299,16 @@ def test_to_dense_backward_sparse_compressed(layout):
 
 
 @pytest.mark.to_dense_backward
-@pytest.mark.parametrize("masked_grad", [1, 2, 0, -1])
+@pytest.mark.parametrize(
+    "masked_grad",
+    [
+        pytest.param(
+            masked_grad,
+            marks=(_ASCEND_SPARSE_MASK_SKIP if masked_grad not in (0, False) else ()),
+        )
+        for masked_grad in (1, 2, 0, -1)
+    ],
+)
 def test_to_dense_backward_masked_grad_integer(masked_grad):
     # Any nonzero int is treated as masked=True, int 0 as masked=False.
     grad = torch.randn(3, 4, device=flag_gems.device, dtype=torch.float32)
