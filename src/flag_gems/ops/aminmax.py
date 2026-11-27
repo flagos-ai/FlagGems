@@ -43,7 +43,7 @@ def _maximum_with_nan(a, b):
 @triton.jit
 def _reduce_min_with_nan(x):
     if x.dtype.is_floating():
-        if x.dtype.primitive_bitwidth < 32:
+        if x.dtype != tl.float64:
             x = x.to(tl.float32)
         return tl.reduce(x, 0, _minimum_with_nan)
     return tl.min(x, 0)
@@ -52,7 +52,7 @@ def _reduce_min_with_nan(x):
 @triton.jit
 def _reduce_max_with_nan(x):
     if x.dtype.is_floating():
-        if x.dtype.primitive_bitwidth < 32:
+        if x.dtype != tl.float64:
             x = x.to(tl.float32)
         return tl.reduce(x, 0, _maximum_with_nan)
     return tl.max(x, 0)
