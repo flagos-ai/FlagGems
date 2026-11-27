@@ -651,6 +651,17 @@ LayerNormBackwardLargeMBenchmark:
     - [[32768, 257], [257]]
   shape_desc: "input_shape, normalized_shape"
 
+polygamma_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: Frozen backward30 pointwise input shape
+
 TensorSelectBenchmark:
   shapes:
     - [64, 64]
