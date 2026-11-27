@@ -53,6 +53,21 @@ class RowStackBenchmark(base.Benchmark):
         more_shapes_3d = [(64, 64, 2**i) for i in range(0, 8, 4)]
         return more_shapes_2d + more_shapes_3d
 
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"inputs": [list(shape)] * 3},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        return next(self.input_fn(shape, case.dtype, self.device))
+
 
 def _input_fn(shape, dtype, device):
     inp1 = utils.generate_tensor_input(shape, dtype, device)
