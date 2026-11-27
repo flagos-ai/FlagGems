@@ -84,6 +84,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linalg_svd import linalg_svd
 from .linalg_svdvals import linalg_svdvals
 from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
@@ -230,6 +231,7 @@ __all__ = [
     "linalg_qr_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linalg_svd",
     "linalg_svdvals",
     "linalg_tensorinv",
     "linear",
