@@ -176,8 +176,10 @@ def _check(M, N, dtype):
 def test_rms_norm_ascend_core_dim_boundary(ascend_rms_norm, M, N):
     assert M > MAX_CORE_DIM
 
-    names = [
-        "rms_norm_kernel",
+    # The forward picks one of two kernels depending on whether a tile can span
+    # a whole row, so record both and require that exactly one of them ran.
+    forward = ["rms_norm_kernel", "rms_norm_rows_kernel"]
+    names = forward + [
         "rms_norm_grad_dx_kernel",
         "rms_norm_grad_dw_kernel",
     ]
@@ -188,6 +190,11 @@ def test_rms_norm_ascend_core_dim_boundary(ascend_rms_norm, M, N):
         _check(M, N, torch.float16)
     finally:
         ascend_rms_norm.update(saved)
+
+    launched = [name for name in forward if recs[name].grids]
+    assert len(launched) == 1, f"forward launched {launched or 'nothing'}"
+    for name in [name for name in forward if name not in launched]:
+        del recs[name]
 
     for name, rec in recs.items():
         assert len(rec.grids) == 1, f"{name} launched {len(rec.grids)} times"
@@ -217,7 +224,7 @@ def test_rms_norm_ascend_core_dim_capped(ascend_rms_norm, monkeypatch, dtype):
 )
 @pytest.mark.parametrize("M, N", [(2048, 128), (1, 4096), (3, 1)])
 def test_rms_norm_ascend_small_shapes(ascend_rms_norm, M, N):
-    # M below the cap must keep the one-row-per-program path intact.
+    # M below the cap must stay correct on whichever forward kernel it picks.
     _check(M, N, torch.float32)
 
 
@@ -235,6 +242,7 @@ def test_rms_norm_ascend_review_empty(
 
     for name in (
         "rms_norm_kernel",
+        "rms_norm_rows_kernel",
         "rms_norm_grad_dx_kernel",
         "rms_norm_grad_dw_kernel",
     ):
