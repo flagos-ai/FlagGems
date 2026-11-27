@@ -22,9 +22,12 @@ merging and compaction -- is produced here by Triton kernels instead:
                      of a CSC column pointer array;
 * ``exclusive_scan`` -- two-level prefix sum (per-block sums, one scan of the
                      block sums, then a local scan per block);
-* ``compact_by_flag`` / ``gather`` -- prefix-sum driven stable scatter, so the
+* ``_compact_kernel`` / ``gather`` -- prefix-sum driven stable scatter, so the
                      destination of an entry comes from a scan rather than an
-                     atomic cursor.
+                     atomic cursor;
+* ``csr_to_dense`` -- dense image of a CSR entry set, one program per row;
+* ``mark_rows`` / ``scale`` / ``dense_scatter`` -- row tables, integer
+                     scaling and plain scatter of unique coordinates.
 
 Every kernel writes to locations that are distinct per lane, so no global
 atomic is involved. The only host value read back is a final scalar count used
@@ -43,6 +46,8 @@ _SCAN_BLOCK = 1024
 # tile exceeds the lane budget of the lowering on this backend, so the tile is
 # capped at 128.
 _INDEX_BLOCK = 128
+# Entries per block of the per-row CSR fill.
+_CSR_BLOCK = 128
 
 
 # --------------------------------------------------------------------------
@@ -160,15 +165,23 @@ def _gather_kernel(src_ptr, idx_ptr, dst_ptr, n, BLOCK: tl.constexpr):
     tl.store(dst_ptr + i, tl.load(src_ptr + j, mask=m, other=0), mask=m)
 
 
-@triton.jit(do_not_specialize=["n"])
-def _compact_kernel(src_ptr, pos_ptr, flag_ptr, dst_ptr, n, BLOCK: tl.constexpr):
+@triton.jit(do_not_specialize=["n", "sink"])
+def _compact_kernel(src_ptr, pos_ptr, flag_ptr, dst_ptr, n, sink, BLOCK: tl.constexpr):
+    """``dst[pos[i]] = src[i]`` for the flagged lanes of ``src``.
+
+    Lanes that do not keep their value are redirected to ``dst[sink]`` and the
+    store runs unmasked: a store mask AND-ed with a comparison on a loaded
+    value is dropped by the lowering on this backend, so the guard is folded
+    into the destination instead. ``dst`` therefore needs ``sink + 1`` slots.
+    """
     pid = tl.program_id(0)
     i = pid * BLOCK + tl.arange(0, BLOCK)
     m = i < n
     f = tl.load(flag_ptr + i, mask=m, other=0)
     p = tl.load(pos_ptr + i, mask=m, other=0).to(tl.int32)
     v = tl.load(src_ptr + i, mask=m, other=0)
-    tl.store(dst_ptr + p, v, mask=m & (f != 0))
+    keep = m & (f != 0)
+    tl.store(dst_ptr + tl.where(keep, p, sink), v)
 
 
 @triton.jit(do_not_specialize=["n"])
@@ -213,6 +226,32 @@ def _key_kernel(rows_ptr, cols_ptr, key_ptr, n, n_cols, BLOCK: tl.constexpr):
     tl.store(key_ptr + i, r * ncols + c, mask=m)
 
 
+@triton.jit(do_not_specialize=["n_cols"])
+def _csr_to_dense_kernel(
+    crow_ptr, col_ptr, val_ptr, dense_ptr, n_cols, BLOCK: tl.constexpr
+):
+    """One program fills one dense row from its CSR entries.
+
+    The row of every entry is the program's own, so no per-entry row index has
+    to be searched. Complete blocks run unmasked; the tail block is masked.
+    """
+    r = tl.program_id(0)
+    start = tl.load(crow_ptr + r).to(tl.int32)
+    end = tl.load(crow_ptr + r + 1).to(tl.int32)
+    n = end - start
+    row = r.to(tl.int64) * n_cols.to(tl.int64)
+    for b in range(0, n // BLOCK):
+        i = b * BLOCK + tl.arange(0, BLOCK)
+        c = tl.load(col_ptr + start + i).to(tl.int64)
+        v = tl.load(val_ptr + start + i)
+        tl.store(dense_ptr + row + c, v)
+    i = (n // BLOCK) * BLOCK + tl.arange(0, BLOCK)
+    m = i < n
+    c = tl.load(col_ptr + start + i, mask=m, other=0).to(tl.int64)
+    v = tl.load(val_ptr + start + i, mask=m, other=0.0)
+    tl.store(dense_ptr + row + c, v, mask=m)
+
+
 @triton.jit(do_not_specialize=["n", "n_rows"])
 def _scatter_dense_kernel(
     rows_ptr, cols_ptr, vals_ptr, dense_ptr, n_rows, n, BLOCK: tl.constexpr
@@ -238,18 +277,45 @@ def _eq_kernel(lhs_ptr, rhs_ptr, out_ptr, n, BLOCK: tl.constexpr):
     tl.store(out_ptr + i, (a == b).to(tl.int32), mask=m)
 
 
+# Duplicate runs up to this length are summed directly; longer runs fall back
+# to the prefix-sum difference (the direct sum stays exact, the difference can
+# lose precision once the running total dwarfs the run).
+_DIRECT_RUN = 16
+
+
 @triton.jit(do_not_specialize=["n"])
-def _range_sum_kernel(pref_ptr, lo_ptr, hi_ptr, out_ptr, n, BLOCK: tl.constexpr):
+def _range_sum_kernel(
+    vals_ptr,
+    pref_ptr,
+    lo_ptr,
+    hi_ptr,
+    out_ptr,
+    n,
+    KMAX: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     pid = tl.program_id(0)
     i = pid * BLOCK + tl.arange(0, BLOCK)
     m = i < n
     lo = tl.load(lo_ptr + i, mask=m, other=0).to(tl.int32)
     hi = tl.load(hi_ptr + i, mask=m, other=0).to(tl.int32)
-    has_hi = m & (hi > 0)
-    has_lo = m & (lo > 0)
-    total = tl.load(pref_ptr + tl.where(has_hi, hi - 1, 0), mask=has_hi, other=0.0)
-    before = tl.load(pref_ptr + tl.where(has_lo, lo - 1, 0), mask=has_lo, other=0.0)
-    tl.store(out_ptr + i, total - before, mask=m)
+
+    # Only lane-local comparisons take part in the masks below: a mask AND-ed
+    # with a comparison on a loaded value is dropped by the lowering here, so
+    # the addresses are clamped and the guard is applied through ``tl.where``.
+    direct = tl.zeros((BLOCK,), dtype=tl.float32)
+    for j in range(KMAX):
+        inside = (j < hi - lo) & m
+        direct += tl.load(
+            vals_ptr + tl.where(inside, lo + j, 0), mask=m, other=0.0
+        ) * tl.where(inside, 1.0, 0.0)
+
+    total = tl.load(pref_ptr + tl.where(hi > 0, hi - 1, 0), mask=m, other=0.0)
+    before = tl.load(pref_ptr + tl.where(lo > 0, lo - 1, 0), mask=m, other=0.0)
+    diff = tl.where(lo > 0, total - before, total)
+
+    value = tl.where(hi - lo <= KMAX, direct, diff)
+    tl.store(out_ptr + i, value, mask=m)
 
 
 # --------------------------------------------------------------------------
@@ -407,6 +473,24 @@ def csc_entry_columns(ptr, nnz):
     return out
 
 
+def csr_to_dense(crow, cols, values, n_rows, n_cols):
+    """Dense image of a CSR entry set, one program per row."""
+    dense = torch.zeros((n_rows, n_cols), dtype=values.dtype, device=values.device)
+    if cols.numel():
+        _launch(
+            _csr_to_dense_kernel,
+            (n_rows,),
+            values.device,
+            crow,
+            cols,
+            values,
+            dense,
+            n_cols,
+            BLOCK=_CSR_BLOCK,
+        )
+    return dense
+
+
 def dense_scatter(rows, cols, values, n_rows, n_cols):
     """Dense image of unique coordinates."""
     dense = torch.zeros((n_rows, n_cols), dtype=values.dtype, device=values.device)
@@ -435,19 +519,22 @@ def equal_flags(lhs, rhs):
     return out
 
 
-def _range_sums(inclusive, lo, hi):
+def _range_sums(values, inclusive, lo, hi):
+    """Sum of ``values[lo:hi]`` per lane (direct, with a prefix fallback)."""
     n = int(lo.numel())
-    out = torch.empty(n, dtype=inclusive.dtype, device=inclusive.device)
+    out = torch.empty(n, dtype=values.dtype, device=values.device)
     if n:
         _launch(
             _range_sum_kernel,
             _grid(n),
-            inclusive.device,
+            values.device,
+            values,
             inclusive,
             lo,
             hi,
             out,
             n,
+            KMAX=_DIRECT_RUN,
             BLOCK=_INDEX_BLOCK,
         )
     return out
@@ -455,7 +542,7 @@ def _range_sums(inclusive, lo, hi):
 
 def coalesce_triplets(rows, cols, values, n_cols):
     """Row-major unique triplets of a COO entry set; duplicates are summed."""
-    from .sort import sort as _sort
+    from ..ops.sort import sort as _sort
 
     nnz = int(rows.numel())
     if nnz == 0:
@@ -485,12 +572,12 @@ def coalesce_triplets(rows, cols, values, n_cols):
     heads = equal_flags(lo, iota(nnz, device))
 
     acc = inclusive_scan(svals.to(torch.float32))
-    run_sum = _range_sums(acc, lo, hi).to(values.dtype)
+    run_sum = _range_sums(svals.to(torch.float32), acc, lo, hi).to(values.dtype)
     pos = exclusive_scan(heads)
 
-    urows = torch.empty(nnz, dtype=rows.dtype, device=device)
-    ucols = torch.empty(nnz, dtype=cols.dtype, device=device)
-    uvals = torch.empty(nnz, dtype=values.dtype, device=device)
+    urows = torch.empty(nnz + 1, dtype=rows.dtype, device=device)
+    ucols = torch.empty(nnz + 1, dtype=cols.dtype, device=device)
+    uvals = torch.empty(nnz + 1, dtype=values.dtype, device=device)
     for src, dst in ((srows, urows), (scols, ucols), (run_sum, uvals)):
         _launch(
             _compact_kernel,
@@ -500,6 +587,7 @@ def coalesce_triplets(rows, cols, values, n_cols):
             pos,
             heads,
             dst,
+            nnz,
             nnz,
             BLOCK=_INDEX_BLOCK,
         )

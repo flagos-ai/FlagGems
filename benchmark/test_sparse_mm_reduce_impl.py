@@ -26,6 +26,8 @@ from . import base, consts
 # common real-world case.
 SPARSITY = 0.9
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _make_sparse_csr(shape, dtype, device, sparsity=SPARSITY):
     m, n = shape[-2:]
@@ -72,6 +74,20 @@ class _TorchSparseMmReduceImpl:
         return out
 
 
+class _DeviceSparseMmReduceImpl:
+    """Unfused device baseline (substituted / non-contract) for Kunlunxin."""
+
+    def __call__(self, self_sparse, other, reduce="sum"):
+        crow = self_sparse.crow_indices()
+        counts = crow[1:] - crow[:-1]
+        rows = torch.repeat_interleave(
+            torch.arange(self_sparse.shape[0], device=other.device), counts
+        )
+        dense = torch.zeros(self_sparse.shape, dtype=other.dtype, device=other.device)
+        dense.index_put_((rows, self_sparse.col_indices()), self_sparse.values())
+        return torch.mm(dense, other)
+
+
 def _input_fn(m, n, k, dtype, device, b_column_major=False, sparsity=SPARSITY):
     mat1 = _make_sparse_csr((m, k), dtype, device, sparsity)
     mat2 = torch.randn([k, n], dtype=dtype, device=device)
@@ -102,7 +118,9 @@ def test_sparse_mm_reduce_impl(monkeypatch):
     bench = SparseMmReduceImplBenchmark(
         op_name="sparse_mm_reduce_impl",
         input_fn=_input_fn,
-        torch_op=_TorchSparseMmReduceImpl(),
+        torch_op=(
+            _DeviceSparseMmReduceImpl() if IS_KUNLUNXIN else _TorchSparseMmReduceImpl()
+        ),
         gems_op=flag_gems._sparse_mm_reduce_impl,
         dtypes=consts.FLOAT_DTYPES,
     )
