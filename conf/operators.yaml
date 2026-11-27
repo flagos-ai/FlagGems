@@ -15602,7 +15602,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: nested_select_backward
   description: 'Triton kernel implementation for the backward of nested tensor `select`
 
