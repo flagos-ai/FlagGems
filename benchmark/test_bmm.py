@@ -20,6 +20,7 @@ from flag_gems import bmm_w8a8_fp8
 from flag_gems.ops.bmm import bmm_out as triton_bmm_out
 
 from . import base, consts
+from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
@@ -77,6 +78,8 @@ FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
 
 
 def _is_fp8e4nv_supported():
+    if bmm_w8a8_fp8.__module__.endswith("_mthreads.ops.bmm_w8a8_fp8"):
+        return True
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
     major, minor = torch.cuda.get_device_capability()
@@ -184,30 +187,50 @@ def _gems_bmm_w8a8_fp8(
     )
 
 
-class BmmW8A8Fp8Benchmark(base.Benchmark):
-    DEFAULT_SHAPE_DESC = "B, M, N, K"
+def native_channel_fp8_bmm(
+    A, B, A_fp8, B_fp8, A_scale, B_scale, out, block_m, block_n, block_k
+):
+    outputs = [
+        torch._scaled_mm(
+            A_fp8[index],
+            B_fp8[index],
+            scale_a=A_scale[index],
+            scale_b=B_scale[index],
+            out_dtype=out.dtype,
+        )
+        for index in range(A_fp8.shape[0])
+    ]
+    return outputs[0].unsqueeze(0) if len(outputs) == 1 else torch.stack(outputs)
 
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            (2, 16, 32, 64),
-            (4, 64, 64, 128),
-            (2, 128, 128, 256),
-            (4, 256, 256, 512),
-            (8, 512, 512, 1024),
-            (8, 1024, 1024, 2048),
-            (8, 2048, 2048, 4096),
-            (4, 4096, 4096, 16384),
-            (8, 4096, 4096, 16384),
-        ]
+
+class BmmW8A8Fp8Benchmark(ParallelBenchmarkMixin, base.Benchmark):
+    RECORD_PARALLEL_RESULTS = True
+    SHAPE_COST_OP_NAME = "bmm"
+    DEFAULT_SHAPE_DESC = "B, M, N, K"
+    DEFAULT_SHAPES = [
+        (2, 16, 32, 64),
+        (4, 64, 64, 128),
+        (2, 128, 128, 256),
+        (4, 256, 256, 512),
+        (8, 512, 512, 1024),
+        (8, 1024, 1024, 2048),
+        (8, 2048, 2048, 4096),
+        (4, 4096, 4096, 16384),
+        (8, 4096, 4096, 16384),
+    ]
 
     def get_input_iter(self, dtype):
+        channel_wise = bmm_w8a8_fp8.__module__.endswith("_mthreads.ops.bmm_w8a8_fp8")
         for batch, m, n, k in self.shapes:
             A = torch.randn((batch, m, k), device=self.device, dtype=dtype)
             B = torch.randn((batch, k, n), device=self.device, dtype=dtype)
-            A_fp8, A_scale = _quantize_a_fp8_per_mk_block(A)
-            B_fp8, B_scale = _quantize_b_fp8_per_nk_block(B)
+            bm, bn, bk = (1, 1, k) if channel_wise else (128, 128, 128)
+            A_fp8, A_scale = _quantize_a_fp8_per_mk_block(A, bm, bk)
+            B_fp8, B_scale = _quantize_b_fp8_per_nk_block(B, bn, bk)
+            if channel_wise:
+                B_fp8 = B_fp8.transpose(1, 2).contiguous().transpose(1, 2)
             out = torch.empty((batch, m, n), device=self.device, dtype=dtype)
-            yield A, B, A_fp8, B_fp8, A_scale, B_scale, out, 128, 128, 128
+            yield A, B, A_fp8, B_fp8, A_scale, B_scale, out, bm, bn, bk
 
 
 @pytest.mark.bmm_w8a8_fp8
@@ -215,10 +238,15 @@ class BmmW8A8Fp8Benchmark(base.Benchmark):
     not _is_fp8e4nv_supported(),
     reason="FP8 BMM W8A8 block-scale requires CUDA fp8e4nv support",
 )
-def test_bmm_w8a8_fp8_vs_triton_bf16():
+def test_bmm_w8a8_fp8():
+    native_op = (
+        native_channel_fp8_bmm
+        if bmm_w8a8_fp8.__module__.endswith("_mthreads.ops.bmm_w8a8_fp8")
+        else _triton_bmm_bf16_block_scale_baseline
+    )
     bench = BmmW8A8Fp8Benchmark(
         op_name="bmm_w8a8_fp8",
-        torch_op=_triton_bmm_bf16_block_scale_baseline,
+        torch_op=native_op,
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_bmm_w8a8_fp8)
