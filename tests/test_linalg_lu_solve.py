@@ -71,12 +71,14 @@ def _reference_lu_solve(lu, pivots, rhs):
 
 def _make_lu_inputs(batch_shape, n, k, dtype, device):
     """Create a well-conditioned matrix and compute its LU factorization."""
-    A = torch.randn(*batch_shape, n, n, dtype=dtype, device=device)
+    # PPU device-side lu_factor aborts; factor the same recipe on CPU instead.
+    factory_device = "cpu" if flag_gems.vendor_name == "thead" else device
+    A = torch.randn(*batch_shape, n, n, dtype=dtype, device=factory_device)
     # Make A well-conditioned by adding n * I
-    A = A @ A.mT + torch.eye(n, dtype=dtype, device=device) * n
-    B = torch.randn(*batch_shape, n, k, dtype=dtype, device=device)
+    A = A @ A.mT + torch.eye(n, dtype=dtype, device=factory_device) * n
+    B = torch.randn(*batch_shape, n, k, dtype=dtype, device=factory_device)
     LU, pivots = torch.linalg.lu_factor(A)
-    return LU, pivots, B
+    return tuple(value.to(device) for value in (LU, pivots, B))
 
 
 @pytest.mark.linalg_lu_solve
