@@ -51,7 +51,7 @@ def _absolute_complex_kernel(ri_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constex
 
 
 def absolute(input: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 ABSOLUTE")
+    logger.debug("GEMS_ENFLAME ABSOLUTE")
     x = input.contiguous()
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
@@ -70,7 +70,7 @@ def absolute(input: torch.Tensor):
 
 
 def absolute_(input: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 ABSOLUTE_")
+    logger.debug("GEMS_ENFLAME ABSOLUTE_")
     n_elements = input.numel()
     if n_elements == 0:
         return input

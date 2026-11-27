@@ -47,6 +47,13 @@ def _input_fn(shape, dtype, device):
         yield uniq_elements, uniq_test_elements, {"assume_unique": True}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::isin.Tensor_Tensor; the native "
+        "baseline falls back to the CPU path and the core shapes never finish"
+    ),
+)
 @pytest.mark.isin
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -76,6 +83,13 @@ def _scalar_tensor_input_fn(shape, dtype, device):
         yield scalar_val2, uniq_test_elements, {"assume_unique": True}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::isin.Scalar_Tensor; the native "
+        "baseline falls back to the CPU path and the core shapes never finish"
+    ),
+)
 @pytest.mark.isin_scalar_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -102,6 +116,13 @@ def _input_fn_tensor_scalar(shape, dtype, device):
         yield uniq_elements, test_value, {"assume_unique": True}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::isin.Tensor_Scalar; the native "
+        "baseline falls back to the CPU path and the core shapes never finish"
+    ),
+)
 @pytest.mark.isin_tensor_scalar
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

@@ -73,7 +73,7 @@ def embedding_renorm_kernel(
 
 
 def embedding_renorm_(weight, indices, max_norm, norm_type):
-    logger.debug("GEMS_ENFLAME_GCU400 EMBEDDING_RENORM_")
+    logger.debug("GEMS_ENFLAME EMBEDDING_RENORM_")
     assert weight.dim() == 2, "embedding_renorm_ expects a 2D weight matrix"
 
     # ATen renormalizes each embedding row at most once. Rather than collapse

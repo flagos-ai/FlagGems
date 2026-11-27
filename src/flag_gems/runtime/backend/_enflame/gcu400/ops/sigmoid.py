@@ -140,7 +140,7 @@ def _choose_block_backward(N_total, itemsize):
         return 8192
     if itemsize >= 4:
         return 32768
-    if N_total <= (1 << 25):
+    if N_total <= 524288:
         return 32768
     return 65536
 
@@ -187,13 +187,12 @@ def sigmoid_(A):
         logger.debug("GEMS_ENFLAME SIGMOID_")
     inp = A.contiguous()
     N_total = inp.numel()
-    # Empty tensors have no CTA to launch; return directly to avoid a 0-CTA grid
+    # An empty tensor has no CTA to launch, so return directly to avoid a 0-CTA grid
     if N_total == 0:
         return A
-    # The kernel writes a contiguous buffer by linear offsets; a contiguous copy of a non-contiguous input has a
-    # different
-    # layout from the original, so write a temporary buffer and copy back by the original stride to preserve in-place
-    # semantics
+    # The kernel writes a contiguous buffer by linear offset; the contiguous copy of a non-contiguous input has a
+    # different layout from the original tensor, so write to a temporary buffer then copy back with the original stride
+    # to preserve in-place semantics
     output = A if inp.data_ptr() == A.data_ptr() else torch.empty_like(inp)
 
     BLOCK = _choose_block(N_total, inp.element_size())

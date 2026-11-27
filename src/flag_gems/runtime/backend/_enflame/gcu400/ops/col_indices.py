@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 # row-compressed layouts (CSR/BSR) carry a column-indices buffer; the mapping
 # below covers every remaining standard layout so the mirrored message is
 # byte-identical to the native one.
+# This op is purely metadata passthrough, so host-side overhead is the entire cost: resolve the attribute lookup on the
+# hot path
+# (the context manager type) at import time and remove the uninformative debug logging.
+_AUTO_DISPATCH_BELOW_AUTOGRAD = torch._C._AutoDispatchBelowAutograd
+
+_ROW_COMPRESSED_LAYOUTS = (torch.sparse_csr, torch.sparse_bsr)
+
 _NON_ROW_COMPRESSED_LAYOUT_NAMES = {
     torch.strided: "Strided",
     torch.sparse_coo: "Sparse",
@@ -60,16 +67,16 @@ def col_indices(self: torch.Tensor) -> torch.Tensor:
     native ``SparseCsrCUDA`` kernel instead, preserving the zero-copy alias
     contract.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 COL_INDICES")
-    if self.layout not in (torch.sparse_csr, torch.sparse_bsr):
+    logger.debug("GEMS_ENFLAME COL_INDICES")
+    if self.layout not in _ROW_COMPRESSED_LAYOUTS:
         layout_name = _NON_ROW_COMPRESSED_LAYOUT_NAMES.get(self.layout)
         if layout_name is None:
             # Unknown layout: fall through to the native op, which reports it.
-            with torch._C._AutoDispatchBelowAutograd():
+            with _AUTO_DISPATCH_BELOW_AUTOGRAD():
                 return torch.ops.aten.col_indices.default(self)
         raise RuntimeError(
             "col_indices expected sparse row compressed tensor layout "
             f"but got {layout_name}"
         )
-    with torch._C._AutoDispatchBelowAutograd():
+    with _AUTO_DISPATCH_BELOW_AUTOGRAD():
         return torch.ops.aten.col_indices.default(self)

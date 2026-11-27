@@ -28,6 +28,20 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 _INT32_MAX = torch.iinfo(torch.int32).max
+# Grid cap and tile are tiered by lane width (alternating A/B on 2026-11-17, same board and same do_bench settings,
+# median, with 3 rounds each of cur/new per tier, taking the median):
+# - 4-byte lanes (fp32 elements / i32 words packing bools) switch to a single wave of
+#   24 CTAs beyond >=2^18 elements: fp32 2^22 0.955x -> 1.049x (-9.0%), 2^24 0.974x -> 1.004x;
+#   packed bool 2^22 1.139x -> 1.379x (-17.4%), 2^24 1.403x -> 1.511x.
+# - 2-byte lanes (fp16/bf16) also converge to a single wave of 24 CTAs beyond >=2^22, and raise the tile from
+#   65536 to 131072 (from 2^24): fp16 2^22 1.153x -> 1.291x (-10.6%),
+#   2^24 1.073x -> 1.106x; bf16 2^22 1.014x -> 1.147x, 2^24 0.913x -> 0.970x.
+_WIDE_LANE_GRID_CAP = NUM_SIPS
+_NARROW_LANE_GRID_CAP = NUM_SIPS * 2
+_WIDE_LANE_MIN_N = 1 << 18
+_WIDE_LANE_MIN_WORDS = 8192
+_NARROW_LANE_MIN_N = 1 << 22
+_NARROW_LANE_BIG_N = 1 << 24
 # torch_gcu process flag that switches int64 storage to real 8-byte lanes;
 # when unset, int64 tensors are fake: a compact N x int32 word payload.
 _INT64_ENV = "TORCH_GCU_ENABLE_INT64_AND_UINT64"
@@ -71,17 +85,31 @@ _FAST_DTYPES = (
 # fallback runs (correct under the env per the bitwise_left_shift finding).
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
-def logical_not_flat_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
+def logical_not_flat_kernel(
+    x_ptr, out_ptr, N_total, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
     num_blocks = (N_total + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask)
-        v = (x == 0).to(out_ptr.dtype.element_ty)
-        tl.store(out_ptr + off, v, mask=mask)
+        if EVEN:
+            x = tl.load(x_ptr + off)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask)
+        if x_ptr.dtype.element_ty == tl.int16:
+            v = (~(x | -x) >> 15) & 1
+        elif x_ptr.dtype.element_ty == tl.int8:
+            v = (~(x | -x) >> 7) & 1
+        else:
+            v = (x == 0).to(out_ptr.dtype.element_ty)
+        v = v.to(out_ptr.dtype.element_ty)
+        if EVEN:
+            tl.store(out_ptr + off, v)
+        else:
+            tl.store(out_ptr + off, v, mask=mask)
 
 
 # Bool fast lane: 1-byte loads/stores top out at ~2.4TB/s on GCU400 (the
@@ -89,12 +117,19 @@ def logical_not_flat_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
 # 512M-element core shape) while 4-byte lanes stream at ~3.1TB/s.  Packing
 # four bools per i32 word through an in-kernel pointer bitcast recovers the
 # floor: t = (w & 0x7f7f7f7f) + 0x7f7f7f7f | w sets bit 7 of every byte
-# iff that byte is nonzero, so (~t >> 7) & 0x01010101 is exactly the
-# logical_not of the four packed booleans.  Contiguous word loads only --
+# iff that byte is nonzero (the masked add cannot carry across bytes, so
+# each byte is classified independently), and (~t >> 7) & 0x01010101 is
+# exactly the logical_not of the four packed booleans.  NOTE: the tempting
+# 5-op `(~(w | -w) >> 7) & 0x01010101` per-element trick is INVALID here --
+# the word-wide two's-complement borrow chain crosses byte boundaries and
+# misclassifies zero bytes above a nonzero byte (-0x01000100 = 0xFEFFFF00),
+# value-probe caught it before delivery.  Contiguous word loads only --
 # strided bitcast loads miscompile (see the job record).
 @libentry()
 @triton.jit(do_not_specialize=["N_words"])
-def logical_not_bool_packed_kernel(x_ptr, out_ptr, N_words, BLOCK: tl.constexpr):
+def logical_not_bool_packed_kernel(
+    x_ptr, out_ptr, N_words, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
     x32 = x_ptr.to(tl.pointer_type(tl.int32))
     o32 = out_ptr.to(tl.pointer_type(tl.int32))
     pid = tl.program_id(0)
@@ -103,17 +138,25 @@ def logical_not_bool_packed_kernel(x_ptr, out_ptr, N_words, BLOCK: tl.constexpr)
     num_blocks = (N_words + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
-        mask = off < N_words
-        w = tl.load(x32 + off, mask=mask, other=1)
+        if EVEN:
+            w = tl.load(x32 + off)
+        else:
+            mask = off < N_words
+            w = tl.load(x32 + off, mask=mask, other=1)
         t = (w & 0x7F7F7F7F) + 0x7F7F7F7F
         t = t | w
         v = (~t >> 7) & 0x01010101
-        tl.store(o32 + off, v, mask=mask)
+        if EVEN:
+            tl.store(o32 + off, v)
+        else:
+            tl.store(o32 + off, v, mask=mask)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["N_words"])
-def logical_not_bool_packed_inplace_kernel(x_ptr, N_words, BLOCK: tl.constexpr):
+def logical_not_bool_packed_inplace_kernel(
+    x_ptr, N_words, BLOCK: tl.constexpr, EVEN: tl.constexpr
+):
     x32 = x_ptr.to(tl.pointer_type(tl.int32))
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
@@ -121,12 +164,18 @@ def logical_not_bool_packed_inplace_kernel(x_ptr, N_words, BLOCK: tl.constexpr):
     num_blocks = (N_words + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
-        mask = off < N_words
-        w = tl.load(x32 + off, mask=mask, other=1)
+        if EVEN:
+            w = tl.load(x32 + off)
+        else:
+            mask = off < N_words
+            w = tl.load(x32 + off, mask=mask, other=1)
         t = (w & 0x7F7F7F7F) + 0x7F7F7F7F
         t = t | w
         v = (~t >> 7) & 0x01010101
-        tl.store(x32 + off, v, mask=mask)
+        if EVEN:
+            tl.store(x32 + off, v)
+        else:
+            tl.store(x32 + off, v, mask=mask)
 
 
 # int64 (fake storage) out-of-place arm: element i's value is the i-th
@@ -171,19 +220,32 @@ def logical_not_func(x):
     return not x.to(tl.int1)
 
 
-def _choose_block(n_total, itemsize):
+def _choose_block(n_total, itemsize, packed=False):
     # do_bench(median) ladder shared with the sibling flat kernels
     # (rad2deg / bitwise_and, same 1-read/1-write trivial-ALU body):
     # tiny shapes want the exact pow2 tile, mid shapes peak at 32768, and
     # only >2^28-element 1/2-byte streams gain from 131072 (a 4-byte
     # 131072 tile overflows tile resources and segfaults in ld.lld).
+    # Packed bool-word streams (itemsize lane = 4 bytes per 4 bools)
+    # measure best at 32768 across the whole mid+large band (2026-11-16:
+    # 4.2M words -5.6% vs 65536 -- the 64-block/48-CTA stride loop leaves a
+    # 2:1 tail imbalance at 65536 -- and 134M words ties 65536 within noise).
+    if packed:
+        if n_total <= 8192:
+            return max(triton.next_power_of_2(n_total), 2)
+        if n_total <= 65536:
+            return 8192
+        return 32768
     if n_total <= 8192:
         return max(triton.next_power_of_2(n_total), 2)
     if n_total <= 65536:
         return 8192
     if n_total <= 524288:
         return 32768
-    if n_total > (1 << 28) and itemsize <= 2:
+    if itemsize >= 4:
+        # For 4-byte lanes on large shapes, 32768 is consistently better than 65536 (see the grid-cap comment above)
+        return 32768
+    if n_total >= _NARROW_LANE_BIG_N:
         return 131072
     return 65536
 
@@ -194,14 +256,26 @@ def _lane_view(t):
     return t.view(torch.int8) if t.dtype == torch.bool else t
 
 
-def _launch_flat(kern, grid, args, block):
+def _launch_flat(kern, grid, args, block, even=None):
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic host-level flake on shared nodes); retrying the
     # launch recompiles and succeeds (rad2deg / atan2_ / sinh precedents).
+    # even=None -> kernel has no EVEN arm (the int64 word kernels keep the
+    # masked-only form; they are unreachable under the service int64 env and
+    # stay bit-identical to their 2026-11-11 validated build).
+    kwargs = (
+        {"num_warps": 2, "BLOCK": block}
+        if even is None
+        else {
+            "num_warps": 2,
+            "BLOCK": block,
+            "EVEN": even,
+        }
+    )
     for attempt in range(3):
         try:
             with torch_device_fn.device(args[0].device):
-                kern[grid](*args, num_warps=2, BLOCK=block)
+                kern[grid](*args, **kwargs)
             return
         except Exception as exc:
             if attempt == 2:
@@ -228,11 +302,15 @@ def _fast_tensor(t):
     )
 
 
-def _flat_config(n_total, itemsize):
-    block = _choose_block(n_total, itemsize)
+def _flat_config(n_total, itemsize, packed=False):
+    block = _choose_block(n_total, itemsize, packed=packed)
     if triton.cdiv(n_total, block) * block > _INT32_MAX:
         return None
-    return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),)
+    return (
+        block,
+        (min(triton.cdiv(n_total, block), NUM_SIPS * 2),),
+        n_total % block == 0,
+    )
 
 
 def _fake_i64_words(t):
@@ -258,7 +336,7 @@ def logical_not(A):
             if _fake_i64_words(A):
                 config = _flat_config(n_total, 4)
                 if config is not None:
-                    block, grid = config
+                    block, grid, _ = config
                     _launch_flat(
                         logical_not_i64_word_kernel,
                         grid,
@@ -274,24 +352,26 @@ def logical_not(A):
             and out.data_ptr() % 4 == 0
         ):
             n_words = n_total // 4
-            config = _flat_config(n_words, 4)
+            config = _flat_config(n_words, 4, packed=True)
             if config is not None:
-                block, grid = config
+                block, grid, even = config
                 _launch_flat(
                     logical_not_bool_packed_kernel,
                     grid,
                     (A, out, n_words),
                     block,
+                    even,
                 )
                 return out
         config = _flat_config(n_total, A.element_size())
         if config is not None:
-            block, grid = config
+            block, grid, even = config
             _launch_flat(
                 logical_not_flat_kernel,
                 grid,
                 (_lane_view(A), out.view(torch.int8), n_total),
                 block,
+                even,
             )
             return out
     return logical_not_func(A)

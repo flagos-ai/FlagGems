@@ -132,7 +132,7 @@ def _transform_bias_rescale_qkv(qkv, qkv_bias, num_heads):
         Tuple of (q, k, v) tensors, each with shape [batch, num_heads, seq_len, head_dim]
         where q is scaled by 1/sqrt(head_dim)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _TRANSFORM_BIAS_RESCALE_QKV")
+    logger.debug("GEMS_ENFLAME _TRANSFORM_BIAS_RESCALE_QKV")
 
     # The kernel reads the bias with a unit stride, so a non-contiguous bias
     # would silently produce garbage. Route it through the FlagGems contiguous

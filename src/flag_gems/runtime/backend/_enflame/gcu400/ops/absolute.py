@@ -13,5 +13,6 @@
 # limitations under the License.
 
 from .abs import abs as absolute
+from .abs import abs_ as absolute_
 
-__all__ = ["absolute"]
+__all__ = ["absolute", "absolute_"]

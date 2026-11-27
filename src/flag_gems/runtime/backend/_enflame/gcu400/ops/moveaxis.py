@@ -20,6 +20,14 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+def _dim_out_of_range(dim, ndim):
+    """Raise the exact ``aten`` ``IndexError`` for an out-of-range axis."""
+    raise IndexError(
+        "Dimension out of range (expected to be in range of "
+        f"[{-max(ndim, 1)}, {max(ndim - 1, 0)}], but got {dim})"
+    )
+
+
 def _normalize_moveaxis_axes(self: torch.Tensor, source, destination):
     """Shared argument normalization for the ``moveaxis`` overloads.
 
@@ -56,10 +64,7 @@ def _normalize_moveaxis_axes(self: torch.Tensor, source, destination):
     # tensor aten's range is [-1, 0]: both 0 and -1 refer to the only dim.
     def normalize(dim):
         if dim < -max(ndim, 1) or dim >= max(ndim, 1):
-            raise IndexError(
-                "Dimension out of range (expected to be in range of "
-                f"[-{max(ndim, 1)}, {max(ndim - 1, 0)}], but got {dim})"
-            )
+            _dim_out_of_range(dim, ndim)
         return dim % ndim if ndim > 0 else 0
 
     src = [normalize(d) for d in src]
@@ -83,6 +88,26 @@ def _normalize_moveaxis_axes(self: torch.Tensor, source, destination):
     return order
 
 
+def _moveaxis_view(self: torch.Tensor, source, destination) -> torch.Tensor:
+    """Cold path for tuple / multi-axis / non-int operands.
+
+    Mirrors the generic implementation exactly (validation order, error
+    messages, identity handling).
+    """
+
+    order = _normalize_moveaxis_axes(self, source, destination)
+    if all(order[p] == p for p in range(self.dim())):
+        # Identity mapping (including the empty int[] no-op): aten still
+        # hands back a fresh view object over the same storage.
+        return torch.as_strided(self, self.shape, self.stride())
+
+    shape = self.shape
+    strides = self.stride()
+    out_shape = tuple(shape[order[p]] for p in range(self.dim()))
+    out_strides = tuple(strides[order[p]] for p in range(self.dim()))
+    return torch.as_strided(self, out_shape, out_strides)
+
+
 def moveaxis(self: torch.Tensor, source, destination) -> torch.Tensor:
     """Return a view of the tensor with the axes in ``source`` moved to
     positions ``destination``.
@@ -91,17 +116,59 @@ def moveaxis(self: torch.Tensor, source, destination) -> torch.Tensor:
     storage with the input. It is implemented as a zero-copy view via
     :func:`torch.as_strided`, matching the semantics of ``aten::moveaxis.int``
     / ``aten::moveaxis.intlist`` (``Tensor(a) -> Tensor(a)``).
-    """
-    logger.debug("GEMS_ENFLAME_GCU400 MOVEAXIS")
+    logger.debug("GEMS_ENFLAME MOVEAXIS")
 
-    order = _normalize_moveaxis_axes(self, source, destination)
-    if all(order[p] == p for p in range(self.dim())):
-        # Identity mapping (including the empty int[] no-op): aten still
-        # hands back a fresh view object over the same storage.
-        return self.as_strided(self.shape, self.stride())
+    GCU hot path: ``moveaxis`` never launches a kernel, so the operator cost
+    is pure host time. The two dominant call patterns -- plain-int operands
+    (the ``aten::moveaxis.int`` overload) and single-element int lists (the
+    typical ``moveaxis.intlist`` call) -- skip the generic list/set-based
+    permutation machinery and go straight to ``as_strided`` with identical
+    validation order and error messages.
+    """
+    if type(source) is int:
+        if type(destination) is not int:
+            return _moveaxis_view(self, source, destination)
+    elif (
+        type(source) is list
+        and type(destination) is list
+        and len(source) == 1
+        and len(destination) == 1
+        and type(source[0]) is int
+        and type(destination[0]) is int
+    ):
+        source = source[0]
+        destination = destination[0]
+    else:
+        return _moveaxis_view(self, source, destination)
+
+    ndim = self.dim()
+    if ndim:
+        if not -ndim <= source < ndim:
+            _dim_out_of_range(source, ndim)
+        if not -ndim <= destination < ndim:
+            _dim_out_of_range(destination, ndim)
+        if source < 0:
+            source += ndim
+        if destination < 0:
+            destination += ndim
+    else:
+        # 0-d tensor: only 0 and -1 are in range, and both map to axis 0,
+        # so every valid combination is an identity move.
+        if source != 0 and source != -1:
+            _dim_out_of_range(source, ndim)
+        if destination != 0 and destination != -1:
+            _dim_out_of_range(destination, ndim)
+        source = destination = 0
 
     shape = self.shape
     strides = self.stride()
-    out_shape = tuple(shape[order[p]] for p in range(self.dim()))
-    out_strides = tuple(strides[order[p]] for p in range(self.dim()))
+    if source == destination:
+        # Identity move: aten still hands back a fresh view object over the
+        # same storage.
+        return torch.as_strided(self, shape, strides)
+
+    out_shape = list(shape)
+    out_strides = list(strides)
+    out_shape.insert(destination, out_shape.pop(source))
+    out_strides.insert(destination, out_strides.pop(source))
     return torch.as_strided(self, out_shape, out_strides)

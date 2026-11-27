@@ -167,11 +167,15 @@ def to_reference(inp, upcast=False):
     return reference
 
 
-def assert_result_close(result, reference, *, atol=1e-4):
+def assert_result_close(result, reference, device, *, atol=1e-4):
+    assert result.device == device
+    assert result.shape == reference.shape
+    assert result.dtype == reference.dtype
+    assert result.layout == reference.layout
     # K0e has a pole at 0 and returns NaN for negative inputs, so the
     # comparison must ignore NaNs.
     utils.gems_assert_close(
-        result, reference, dtype=result.dtype, atol=atol, equal_nan=True
+        result, reference, dtype=reference.dtype, atol=atol, equal_nan=True
     )
 
 
@@ -339,10 +343,19 @@ def _edge_input(dtype, kind):
     return value.reshape(1)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SUPPORTED_DTYPES
+    for value_range in (
+        selected_ranges()[:1] if dtype == torch.bool else selected_ranges()
+    )
+]
+
+
 @pytest.mark.special_scaled_modified_bessel_k0
 @pytest.mark.parametrize("shape", selected_shapes())
-@pytest.mark.parametrize("value_range", selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
     inp = make_input(dtype, shape, value_range)
     ref_inp = to_reference(inp)
@@ -350,7 +363,7 @@ def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
 
-    assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0_out
@@ -368,7 +381,7 @@ def test_special_scaled_modified_bessel_k0_out(shape, value_range, dtype, out_dt
     # The out= overload must write into, and return, the caller's buffer;
     # comparing pointers would also pass for a distinct alias of one storage.
     assert res_out is buf
-    assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
@@ -381,7 +394,7 @@ def test_special_scaled_modified_bessel_k0_strided(kind, shape, dtype):
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
 
-    assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
@@ -393,7 +406,7 @@ def test_special_scaled_modified_bessel_k0_special_values(dtype, scenario):
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
 
-    assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
@@ -410,7 +423,7 @@ def test_special_scaled_modified_bessel_k0_edge_values(kind, dtype):
     # float32, 9.35e-155 in float64), so the default absolute tolerance would
     # let a candidate that flushes the tail to zero pass. rtol stays the shared
     # per-dtype resolution.
-    assert_result_close(res_out, ref_out, atol=0)
+    assert_result_close(res_out, ref_out, inp.device, atol=0)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
@@ -423,7 +436,7 @@ def test_special_scaled_modified_bessel_k0_empty(shape, dtype):
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
 
-    assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0

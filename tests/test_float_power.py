@@ -47,6 +47,13 @@ def _assert_result(result, reference):
     if flag_gems.vendor_name == "kunlunxin":
         assert result.dtype == torch.float32
         utils.gems_assert_close(result, reference, torch.float32, equal_nan=True)
+    elif flag_gems.vendor_name == "enflame":
+        # gcu400 has no fp64 datapath (torch_gcu stores a "float64" as fp32),
+        # so the values only carry fp32 precision; the dtype tag stays
+        # float64, hence the explicit .float() casts for the fp32 comparison.
+        utils.gems_assert_close(
+            result.float(), reference.float(), torch.float32, equal_nan=True
+        )
     else:
         assert result.dtype == torch.float64
         utils.gems_assert_close(
@@ -218,4 +225,4 @@ def test_float_power_out_rejects_non_double_output():
     out = torch.empty_like(base)
 
     with pytest.raises(RuntimeError, match="requires dtype Double"):
-        torch.ops.aten.float_power.Tensor_Scalar_out(base, 2.0, out=out)
+        flag_gems.float_power_tensor_scalar_out(base, 2.0, out=out)

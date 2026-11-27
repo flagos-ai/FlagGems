@@ -410,7 +410,7 @@ def _thnn_differentiable_lstm_cell_backward(
     grad_hy, grad_cy, input_gates, hidden_gates, input_bias, hidden_bias, cx, cy
 ):
     """Compute the five differentiable LSTM-cell backward outputs."""
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_DIFFERENTIABLE_LSTM_CELL_BACKWARD")
+    logger.debug("GEMS_ENFLAME _THNN_DIFFERENTIABLE_LSTM_CELL_BACKWARD")
 
     # Native returns a tuple of undefined tensors without inspecting the other
     # arguments when neither output gradient is defined.

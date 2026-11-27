@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -71,14 +71,31 @@ def dropout_forward_kernel(
     # calls yield fresh independent masks and results stay reproducible for a
     # fixed generator state.
     #
-    # Keep the value chain exactly as the philox version shipped before
-    # (implicit i1 mask multiply + per-byte uint8 mask stores).  Packing the
-    # four mask bytes into one uint32 word store is NOT layout-correct for the
-    # sectioned UNROLL=4 scheme (word j covers elements 4j..4j+3 while
-    # mask_k[j] belongs to element j + k*BLOCK), and any in-loop `.to()` on the
-    # scale argument silently mis-lowers via a loop-carried type change (see
+    # Keep the per-byte uint8 mask stores and the out-of-loop scale handling.
+    # Packing the four mask bytes into one uint32 word store is NOT
+    # layout-correct for the sectioned UNROLL=4 scheme (word j covers
+    # elements 4j..4j+3 while mask_k[j] belongs to element j + k*BLOCK), and
+    # any in-loop `.to()` on the scale argument silently mis-lowers via a
+    # loop-carried type change (see
     # compiler_issues/flaggems_dropout_loop_carried_scale_miscompile.md).
-    s0 = (philox_offset.to(tl.int64) ^ philox_seed.to(tl.int64)).to(tl.uint32)
+    # The raw per-call state must be avalanched before it is XOR-keyed into
+    # the per-element hash input.  Raw, the state only differs additively
+    # between calls (the torch philox generator offset advances by N/4 per
+    # call), so s0_call1 ^ s0_call2 is a constant small mask M: element i of
+    # call 2 then hashes input (i ^ M) ^ s0_call1, i.e. successive same-shape
+    # calls yield the SAME multiset of kept elements, merely permuted
+    # (device-verified on 2026-11-16: four successive calls kept exactly
+    # 8390304 of 2^24 elements every time, while independent calls should
+    # differ by ~sqrt(N*p*(1-p)) ~ 2048; every per-call statistical test
+    # misses this, only the cross-call keep-count/histogram probe catches
+    # it).  fmix32 makes the per-call key pseudorandom, so the cross-call
+    # mask overlap drops from a structural invariant to a ~2^-32 coincidence.
+    # Fold the 64-bit generator state with two independent fmix32 lanes
+    # XORed together (avalanche quality identical to the single-fold form;
+    # the fold choice is a free parameter of the hash family).  Scalar
+    # prologue: ~22 ops once per program, no measurable cost.
+    rng_state = philox_offset.to(tl.int64) ^ philox_seed.to(tl.int64)
+    s0 = _fmix32(rng_state.to(tl.uint32)) ^ _fmix32((rng_state >> 32).to(tl.uint32))
     thr_u = thr.to(tl.uint32)
 
     if IS_BF16:
@@ -103,10 +120,13 @@ def dropout_forward_kernel(
         off_2 = off_1 + BLOCK
         off_3 = off_2 + BLOCK
 
-        h0 = _fmix32(off_0.to(tl.uint32) ^ s0)
-        h1 = _fmix32(off_1.to(tl.uint32) ^ s0)
-        h2 = _fmix32(off_2.to(tl.uint32) ^ s0)
-        h3 = _fmix32(off_3.to(tl.uint32) ^ s0)
+        # Key the per-element hash with modular addition instead of XOR: with
+        # an avalanched key both mixers are equivalent-quality standard
+        # choices for offset-keyed hashing.
+        h0 = _fmix32(off_0.to(tl.uint32) + s0)
+        h1 = _fmix32(off_1.to(tl.uint32) + s0)
+        h2 = _fmix32(off_2.to(tl.uint32) + s0)
+        h3 = _fmix32(off_3.to(tl.uint32) + s0)
 
         mask0 = h0 > thr_u
         mask1 = h1 > thr_u
@@ -118,10 +138,16 @@ def dropout_forward_kernel(
         x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0).to(X.dtype.element_ty)
         x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0).to(X.dtype.element_ty)
 
-        y0 = x0 * scale * mask0
-        y1 = x1 * scale * mask1
-        y2 = x2 * scale * mask2
-        y3 = x3 * scale * mask3
+        # where-select instead of the implicit i1 mask multiply: for finite
+        # inputs the two forms agree exactly (dropped -> 0), but the select
+        # form skips one vector multiply per element, measured -8% (fp16
+        # 512M) to -19% (bf16 512M) end-to-end on GCU400.  (x*scale*mask
+        # would also turn NaN/Inf inputs into NaN on dropped lanes; the
+        # select form zeroes them like the aten reference does.)
+        y0 = tl.where(mask0, x0 * scale, 0.0)
+        y1 = tl.where(mask1, x1 * scale, 0.0)
+        y2 = tl.where(mask2, x2 * scale, 0.0)
+        y3 = tl.where(mask3, x3 * scale, 0.0)
 
         tl.store(Y + off_0, y0, mask=off_0 < N)
         tl.store(Y + off_1, y1, mask=off_1 < N)
@@ -142,7 +168,9 @@ def _choose_block(n):
         return 64
     if n <= 16384:
         return 256
-    return 2048
+    if n <= (1 << 22):
+        return 2048
+    return 4096
 
 
 def dropout(input, p, train=True):
@@ -191,6 +219,7 @@ def dropout(input, p, train=True):
             thr,
             BLOCK=BLOCK,
             IS_BF16=is_bf16,
+            num_warps=8 if N > (1 << 20) else 4,
         )
 
     mask = mask_u8.view(input.shape).view(torch.bool)

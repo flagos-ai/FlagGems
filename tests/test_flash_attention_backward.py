@@ -30,18 +30,6 @@ from flag_gems.utils.random_utils import set_philox_state
 from . import accuracy_utils as utils
 
 
-@pytest.fixture(scope="module", autouse=flag_gems.vendor_name == "hygon")
-def _hygon_reference_threads():
-    # DTK exposes all host CPUs to PyTorch. The per-head FP64 reductions run
-    # faster with one thread inside the CI container's CPU quota.
-    previous = torch.get_num_threads()
-    torch.set_num_threads(1)
-    try:
-        yield
-    finally:
-        torch.set_num_threads(previous)
-
-
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()
     set_philox_state(1234567890, 0, dev)
@@ -1040,6 +1028,10 @@ _FLASH_BWD_ORACLE_CASES = [
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+# enflame (torch_gcu) registers no kernel for aten::_flash_attention_backward on
+# any backend, so the route planner resolves the reference dQ/dK/dV through the
+# CPU fp64 oracle (and keeps the native forward when it is available). The
+# family is therefore exercised there instead of being skipped as a whole.
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     _FLASH_BWD_ORIGINAL_SHAPES,

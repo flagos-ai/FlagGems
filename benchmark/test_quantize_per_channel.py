@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # quantize_per_channel is an element-wise quantization with per-channel scale
@@ -54,6 +56,10 @@ class QuantizePerChannelBenchmark(base.GenericBenchmark):
         return []
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel():
     bench = QuantizePerChannelBenchmark(
@@ -93,6 +99,10 @@ class QuantizePerChannelOutBenchmark(base.GenericBenchmark):
         return []
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.quantize_per_channel_out
 def test_quantize_per_channel_out():
     bench = QuantizePerChannelOutBenchmark(

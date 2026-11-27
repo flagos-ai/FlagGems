@@ -29,7 +29,7 @@ def scalar_tensor_kernel(out, value_scalar):
 
 
 def scalar_tensor(s, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALAR_TENSOR")
+    logger.debug("GEMS_ENFLAME SCALAR_TENSOR")
     out = torch.empty(
         (), dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
     )

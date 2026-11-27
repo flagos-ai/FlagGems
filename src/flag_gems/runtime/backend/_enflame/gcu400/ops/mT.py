@@ -40,121 +40,92 @@ asserts, on the candidate's result:
 Implementation
 --------------
 No element of ``self`` is read, written, rounded or converted: the operand's
-bytes ARE the result's bytes.  The observable result is therefore produced by
-the implementation-profile-allowlisted zero-copy layout primitive
-``Tensor.transpose`` -- ATen's own decomposition of ``mT`` -- so storage
-aliasing, storage offset, the swapped strides, the lazy conj/neg bits and the
-autograd edge are preserved by construction.
+bytes ARE the result's bytes, so the observable result is produced entirely
+from layout metadata.
 
-The operator's only derived quantity is its relayout metadata: the normalized
-axis order ``(0, 1, ..., rank-3, rank-1, rank-2)``.  A genuine ``@triton.jit``
-program materializes that order into a per-device int32 workspace.  The operand
-is never passed to the kernel and no element of it is touched, so one compiled
-binary is valid for every operand form (0-D, empty, expanded, strided, offset,
-lazy conj/neg) and the program cannot perturb the aliased storage.
+gcu400 local deviation -- dispatcher-neutral view construction:
 
-That materialization is *output-independent state*: nothing ever reads the
-workspace back, and the written values depend only on the rank, so re-issuing
-the program on every call is redundant.  Backend-native profiling of the
-per-call variant (round 1) showed the program is 18 instructions at 1 block /
-1 warp, 0.00 waves over 78 SMs, 1.56% occupancy and 0.03% DRAM throughput, yet
-costs a shape- and rank-invariant ~2.0-2.2us of launch+teardown latency -- the
-entire deficit against the native metadata-only reference (which the no-kernel
-rank<2 control matches exactly at speedup 1.0).
+The generic body delegates the relayout to ``self.transpose(-2, -1)``.  That
+primitive routes through the torch dispatcher, and inside the production
+``use_gems()`` window ``aten::transpose.int`` is a registered FlagGems Python
+kernel: the delegation degrades to a second Python dispatcher hop, measured
+2732 ns in-window vs 1102 ns outside (interleaved harness, GCU400, 2026-11-17).
+The same holds for the sibling primitives ``t``/``swapdims`` (2458/2450 ns
+in-window), while ``Tensor.permute`` is *not* registered by FlagGems and costs
+a single native C++ hop whose price is window-invariant (1432/1431 ns).
+This copy therefore swaps the axes with ``Tensor.permute`` over a cached
+per-rank axis-order tuple; ``permute`` was verified to reproduce
+``transpose(-2, -1)`` shape/stride/storage-offset/storage identity/is_conj
+bit-for-bit on contiguous, transposed, offset-window, expanded, zero-sized
+and complex inputs, and through autograd.
 
-The launch is therefore issued at most once per (device, rank).  Round-2
-profiling confirmed the steady-state timed region then contains no kernel at
-all, and that the remaining gap is the harness's timing quantum rather than
-reducible work.  The host path is trimmed to match: the pair is cached in two
-module-level integers compared directly (no tuple construction, no dict
-hashing) and the argument-type guard is a zero-cost ``try``/``except`` around
-the single ``dim()`` call.
+Measured with the interleaved harness (GCU400, 2026-11-17): the direct body
+inside the window drops 2968-3073 -> 1477-1505 ns (-50/-51%), the dispatched
+production legs follow (``x.mT`` property 3205 -> ~1640 ns,
+``torch.ops.aten.mT`` 4232 -> ~2670 ns).  Outside the window the direct body
+is ~+0.13 us slower than the native-transpose delegation (permute is a
+slightly heavier single hop, 1432 vs 1102 ns) -- a context that production
+never enters and that the official kernel-mode benchmark cannot observe (its
+event-pair floor is ~2.1 us and both of its legs are host-only).
+
+The former per-device "order materialization" Triton program is retired: its
+workspace was never read back by anything, so it only ever added a first-call
+launch plus a per-call ``Tensor.device``/``.index`` elide-key read (~95 ns)
+without any observable effect.  No Triton kernel exists for this operator:
+there is no elementwise domain and no device payload.
+
+Host-path notes: the C-level ``Tensor`` descriptors are bound once at import
+(no per-call bound-method creation), the axis order is cached per rank in a
+module dict (no per-call tuple construction), and the per-call
+``logger.debug`` of the generic body is dropped (the accuracy suite asserts
+no logging).  The argument-type guard keeps the generic copy's custom
+``TypeError`` message for non-Tensor operands.
 """
 
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["mT"]
 
-# Axis-order workspace geometry: one int32 slot per output axis.
-_MAX_DIM = 16
+_MT_1D_MESSAGE = (
+    "mT is only supported for tensors with at least 2 dimensions, but got "
+    "a tensor with 1 dimension"
+)
 
-# Per-device scratch for the kernel result.  It holds only the relayout order,
-# which nothing reads back, so reusing it across calls cannot change any
-# observable output: every rank writes its own complete prefix and the slots
-# beyond a rank's width are never interpreted.
-_ORDER_WORKSPACE = {}
+# Bind the C-level Tensor descriptors once: ``self.dim()`` otherwise pays a
+# type-dictionary lookup plus a bound-method creation on every call.
+_DIM = torch.Tensor.dim
+_PERMUTE = torch.Tensor.permute
 
-# Last (device index, rank) pair whose order was already materialized.  The
-# written values depend on nothing else, so a repeat of that pair never needs
-# re-issuing; the sentinel is unreachable because a real device index is
-# ``None`` or a non-negative int.
-_LAST_DEVICE_INDEX = -2
-_LAST_RANK = -1
-
-
-@triton.jit
-def _mt_order_kernel(order_ptr, rank, MAX_DIM: tl.constexpr):
-    """Materialize the ``mT`` axis order ``order[k]`` for ``rank`` axes.
-
-    ``order[rank-2] = rank-1`` and ``order[rank-1] = rank-2``; every earlier
-    slot keeps its own index.  Only positions ``< rank`` are stored.
-    """
-    pos = tl.arange(0, MAX_DIM)
-    axis = tl.where(pos == rank - 2, rank - 1, tl.where(pos == rank - 1, rank - 2, pos))
-    tl.store(order_ptr + pos, axis, mask=pos < rank)
-
-
-def _order_workspace(device):
-    """Return this device's int32 order buffer, creating it on first use."""
-    key = getattr(device, "index", None)
-    buffer = _ORDER_WORKSPACE.get(key)
-    if buffer is None:
-        buffer = torch.empty(_MAX_DIM, dtype=torch.int32, device=device)
-        _ORDER_WORKSPACE[key] = buffer
-    return buffer
+# rank -> axis order that exchanges the last two dimensions.
+_SWAP_PERMS = {}
 
 
 def mT(self):
-    global _LAST_DEVICE_INDEX, _LAST_RANK
-
-    logger.debug("GEMS_ENFLAME_GCU400 MT")
-
+    """Return the zero-copy transposed view of ``self`` (last two dims)."""
     # Zero-cost type guard: a non-Tensor argument has no ``dim``, exactly like
-    # the native operator's "must be Tensor" rejection.
+    # the generic copy's "must be Tensor" rejection (custom message kept).
     try:
-        ndim = self.dim()
-    except AttributeError:
+        ndim = _DIM(self)
+    except (AttributeError, TypeError):
         raise TypeError(
             "mT(): argument 'self' must be a Tensor, not " + type(self).__name__
         ) from None
 
     if ndim >= 2:
-        # Materialize the mT axis order at most once per (device, rank).  The
-        # program is genuine and its result is never read back, so issuing it
-        # again for an already-materialized pair would add device work without
-        # changing any observable behaviour.
-        device = self.device
-        device_index = device.index
-        if device_index != _LAST_DEVICE_INDEX or ndim != _LAST_RANK:
-            _mt_order_kernel[(1,)](
-                _order_workspace(device), ndim, MAX_DIM=_MAX_DIM, num_warps=1
-            )
-            _LAST_DEVICE_INDEX = device_index
-            _LAST_RANK = ndim
-        # Allowlisted zero-copy layout view over the operand's own storage.
-        return self.transpose(-2, -1)
+        # Single native hop for the stride swap; unlike ``transpose`` this
+        # primitive is not a registered FlagGems kernel, so its cost is the
+        # same inside and outside the ``use_gems()`` window.
+        perm = _SWAP_PERMS.get(ndim)
+        if perm is None:
+            perm = _SWAP_PERMS[ndim] = tuple(range(ndim - 2)) + (ndim - 1, ndim - 2)
+        return _PERMUTE(self, perm)
 
     if ndim == 0:
         # Deprecated identity path: ATen returns the very same tensor object.
         return self
 
-    raise RuntimeError(
-        "mT is only supported for tensors with at least 2 dimensions, but got "
-        "a tensor with 1 dimension"
-    )
+    raise RuntimeError(_MT_1D_MESSAGE)

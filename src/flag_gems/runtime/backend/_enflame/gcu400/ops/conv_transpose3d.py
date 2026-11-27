@@ -278,7 +278,7 @@ def conv_transpose3d(
     Returns:
         Output tensor of shape (N, out_channels, oD, oH, oW)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CONV_TRANSPOSE3D")
+    logger.debug("GEMS_ENFLAME CONV_TRANSPOSE3D")
 
     assert input.ndim == 5, f"Input must be 5D, received shape {input.shape}"
     assert weight.ndim == 5, f"Weights must be 5D, received shape {weight.shape}"

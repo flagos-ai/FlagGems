@@ -269,28 +269,34 @@ def quantized_max_pool3d_forward_kernel(
     non-contiguous inputs need no repacking and a ``channels_last_3d`` output
     can be written in place.
 
-    Grid: (N * C, num_d_blocks * num_h_blocks * num_w_blocks)
+    Grid: (N * C * out_d * num_h_blocks * num_w_blocks,)
     where num_h_blocks = cdiv(out_h, BLOCK_H),
           num_w_blocks = cdiv(out_w, BLOCK_W).
-    The depth dimension is iterated inside the kernel: each program handles a
-    single output depth position and a (BLOCK_H, BLOCK_W) tile of the
-    height/width plane.
+    Each program handles a single output depth position and a
+    (BLOCK_H, BLOCK_W) tile of the height/width plane; the flat program id is
+    decomposed here into (n*C, d_out, h_block, w_block).
+
+    The grid is deliberately one-dimensional: the earlier ``(N*C, d*hb*wb)``
+    layout put the tile triple on axis 1, which the GCU backend caps at 255
+    programs, so any shape with more than 255 tiles per (n, c) failed to launch
+    with ``OutOfResources: out of resource: grid.y``. Axis 0 has no such cap,
+    and flattening the two axes costs nothing measurable (same body, same tile:
+    within 2% of the two-axis layout).
     """
-    pid_nc = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
+    pid = tl.program_id(0)
 
     num_h_blocks = tl.cdiv(out_h, BLOCK_H)
     num_w_blocks = tl.cdiv(out_w, BLOCK_W)
 
-    d_block_idx = pid_dhw // (num_h_blocks * num_w_blocks)
-    hw_remainder = pid_dhw % (num_h_blocks * num_w_blocks)
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
+    w_block_idx = pid % num_w_blocks
+    remainder = pid // num_w_blocks
+    h_block_idx = remainder % num_h_blocks
+    remainder = remainder // num_h_blocks
+    d_out = remainder % out_d
+    pid_nc = remainder // out_d
 
     n_idx = pid_nc // in_c
     c_idx = pid_nc % in_c
-
-    d_out = d_block_idx
 
     h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
@@ -329,6 +335,151 @@ def quantized_max_pool3d_forward_kernel(
     )
 
     out_mask = (h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w)
+    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("quantized_max_pool3d_channel"),
+    key=[
+        "in_c",
+        "out_d",
+        "out_h",
+        "out_w",
+        "kernel_d",
+        "kernel_h",
+        "kernel_w",
+        "stride_d",
+        "stride_h",
+        "stride_w",
+    ],
+)
+@triton.jit
+def quantized_max_pool3d_channel_kernel(
+    input_ptr,
+    output_ptr,
+    # Input tensor strides
+    in_stride_n,
+    in_stride_c,
+    in_stride_d,
+    in_stride_h,
+    in_stride_w,
+    # Output tensor strides
+    out_stride_n,
+    out_stride_c,
+    out_stride_d,
+    out_stride_h,
+    out_stride_w,
+    # Input/Output shapes
+    in_c,
+    in_d,
+    in_h,
+    in_w,
+    out_d,
+    out_h,
+    out_w,
+    # Pooling parameters
+    kernel_d: tl.constexpr,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_d: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_d: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_d: tl.constexpr,
+    dilation_h: tl.constexpr,
+    dilation_w: tl.constexpr,
+    # Meta-parameters for tiling
+    BLOCK_C: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+):
+    """Channel-tiled variant of the pooling kernel.
+
+    Shapes such as ``(32, 256, 2, 7, 7)`` have a huge ``N * C`` but a tiny
+    spatial extent: one program per ``(n, c, d)`` tile then produces only
+    ``4 * 4`` outputs, so a naive grid launches thousands of programs that each
+    waste >95% of their lanes on masked-off pooling taps. Folding a channel
+    block into the tile raises the useful lane count and drops the program
+    count by one to two orders of magnitude (measured: 8192 -> 128 programs,
+    3081us -> 110us on that shape).
+
+    The tile is two-dimensional on purpose. Triton's GCU backend aborts with a
+    device Sip exception on the obvious three-dimensional
+    ``(BLOCK_C, BLOCK_H, BLOCK_W)`` tile, even with ``BLOCK_C == 1``, so the
+    channel and height axes are folded into a single row axis instead::
+
+        row  = c_part * BLOCK_H + h_part
+
+    and the row offset becomes ``c_idx * in_stride_c + h_in * in_stride_h``,
+    while the column axis stays contiguous in ``W``.
+
+    Grid: (N * out_d * cdiv(C, BLOCK_C) * cdiv(out_h, BLOCK_H)
+           * cdiv(out_w, BLOCK_W),)
+    """
+    pid = tl.program_id(0)
+
+    num_c_blocks = tl.cdiv(in_c, BLOCK_C)
+    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
+    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
+
+    w_block_idx = pid % num_w_blocks
+    remainder = pid // num_w_blocks
+    h_block_idx = remainder % num_h_blocks
+    remainder = remainder // num_h_blocks
+    c_block_idx = remainder % num_c_blocks
+    remainder = remainder // num_c_blocks
+    d_out = remainder % out_d
+    n_idx = remainder // out_d
+
+    # Row axis carries both the channel block and the height block.
+    row = tl.arange(0, BLOCK_C * BLOCK_H)
+    c_part = row // BLOCK_H
+    h_part = row % BLOCK_H
+
+    c_idx = c_block_idx * BLOCK_C + c_part
+    c_valid = c_idx < in_c
+    h_out_offsets = h_block_idx * BLOCK_H + h_part
+    h_out_valid = h_out_offsets < out_h
+
+    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
+    w_out_valid = w_out_offsets < out_w
+
+    dtype = input_ptr.type.element_ty
+    min_val = get_dtype_min(dtype)
+    max_val_acc = tl.full((BLOCK_C * BLOCK_H, BLOCK_W), min_val, dtype=dtype)
+
+    input_row_ptr = input_ptr + n_idx * in_stride_n + c_idx[:, None] * in_stride_c
+
+    for kd in tl.static_range(0, kernel_d):
+        d_in = d_out * stride_d - padding_d + kd * dilation_d
+        d_valid = (d_in >= 0) & (d_in < in_d)
+        for kh in tl.static_range(0, kernel_h):
+            h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
+            h_valid = (h_in >= 0) & (h_in < in_h)
+            for kw in tl.static_range(0, kernel_w):
+                w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
+                w_valid = (w_in >= 0) & (w_in < in_w)
+                in_mask = c_valid[:, None] & d_valid & h_valid & w_valid
+                input_offset = (
+                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
+                )
+                current_val = tl.load(
+                    input_row_ptr + input_offset, mask=in_mask, other=min_val
+                )
+                max_val_acc = tl.maximum(max_val_acc, current_val)
+
+    output_row_ptr = (
+        output_ptr
+        + n_idx * out_stride_n
+        + c_idx[:, None] * out_stride_c
+        + d_out * out_stride_d
+        + h_out_offsets[:, None] * out_stride_h
+    )
+    output_block_ptr = output_row_ptr + w_out_offsets[None, :] * out_stride_w
+    out_mask = c_valid[:, None] & h_out_valid[:, None] & w_out_valid[None, :]
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
 
 
@@ -384,6 +535,14 @@ def _int_view(qtensor):
     )
 
 
+# Number of ``(n, c)`` planes at which the channel-tiled kernel starts to win.
+# Measured crossover on GCU400 (3-D max pool, 3x3x3 kernel, stride 2, pad 1):
+# 12 planes -> flat tile is better (fewer, fatter programs), 512 planes ->
+# channel tiling is 1.8x faster, 2048 planes 6.4x, 8192 planes 28x. 512 sits
+# between the two regimes with a wide margin on both sides.
+_CHANNEL_TILED_MIN_PLANES = 512
+
+
 def _launch_quantized_max_pool3d(input, params, out_shape, out_int):
     """Run the pooling kernel over ``input``'s integer representation."""
     kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw = params
@@ -395,14 +554,7 @@ def _launch_quantized_max_pool3d(input, params, out_shape, out_int):
     # would materialise a compacted copy of a strided input.
     int_repr = _int_view(input)
 
-    grid = lambda meta: (
-        in_n * in_c,
-        out_d
-        * triton.cdiv(out_h, meta["BLOCK_H"])
-        * triton.cdiv(out_w, meta["BLOCK_W"]),
-    )
-
-    quantized_max_pool3d_forward_kernel[grid](
+    common = (
         int_repr,
         out_int,
         *int_repr.stride(),
@@ -427,6 +579,28 @@ def _launch_quantized_max_pool3d(input, params, out_shape, out_int):
         dh,
         dw,
     )
+
+    # One-dimensional grid in both branches: the tile triple must not live on
+    # axis 1, whose GCU-side limit is 255 programs (see the kernel docstrings).
+    if in_n * in_c >= _CHANNEL_TILED_MIN_PLANES:
+        grid = lambda meta: (
+            in_n
+            * out_d
+            * triton.cdiv(in_c, meta["BLOCK_C"])
+            * triton.cdiv(out_h, meta["BLOCK_H"])
+            * triton.cdiv(out_w, meta["BLOCK_W"]),
+        )
+        quantized_max_pool3d_channel_kernel[grid](*common)
+    else:
+        grid = lambda meta: (
+            in_n
+            * in_c
+            * out_d
+            * triton.cdiv(out_h, meta["BLOCK_H"])
+            * triton.cdiv(out_w, meta["BLOCK_W"]),
+        )
+        quantized_max_pool3d_forward_kernel[grid](*common)
+
     return out_int
 
 
@@ -449,7 +623,7 @@ def quantized_max_pool3d(
     An omitted or empty ``stride`` falls back to ``kernel_size``, matching the
     ``int[3] stride=[]`` schema default of ``aten::quantized_max_pool3d``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL3D")
+    logger.debug("GEMS_ENFLAME QUANTIZED_MAX_POOL3D")
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
     _check_quantized_input(input)
@@ -505,12 +679,14 @@ def quantized_max_pool3d(
 def _resize_quantized_out(out, shape):
     """Resize a quantized ``out`` tensor to ``shape``, ATen-style.
 
-    ``aten::resize_`` and ``aten::set_.source_Tensor`` are both unimplemented
-    for the QuantizedCUDA backend, so the metadata is rewritten through
-    ``set_(storage, offset, size, stride)``, which is registered. This
-    reproduces what ``at::native::resize_output`` does for a strided tensor:
-    the storage offset is preserved, the storage only ever grows, and the
-    resized tensor is given contiguous strides.
+    ``aten::resize_`` and ``aten::set_(storage, offset, size, stride)`` both
+    lower to ``_copy_from_and_resize`` on GCU, which refuses to resize a
+    quantized device tensor (``device side quantized resize_ is not
+    implemented``). ``as_strided_`` is a pure metadata rewrite and stays
+    registered for quantized tensors, so it reproduces what
+    ``at::native::resize_output`` does for a strided tensor: the storage offset
+    is preserved, the storage only ever grows, and the resized tensor is given
+    contiguous strides.
     """
     strides = []
     acc = 1
@@ -524,7 +700,7 @@ def _resize_quantized_out(out, shape):
     needed = (offset + acc) * out.element_size()
     if acc != 0 and storage.size() < needed:
         storage.resize_(needed)
-    out.set_(storage, offset, tuple(shape), strides)
+    out.as_strided_(tuple(shape), strides, offset)
     return out
 
 
@@ -547,7 +723,7 @@ def quantized_max_pool3d_out(
     and finally the pooled values *and* the input's quantization parameters are
     written into it.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL3D_OUT")
+    logger.debug("GEMS_ENFLAME QUANTIZED_MAX_POOL3D_OUT")
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
     _check_quantized_input(input)

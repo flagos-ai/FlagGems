@@ -31,6 +31,12 @@ def test_chalf_real(shape, dtype):
 @pytest.mark.parametrize("shape", [(256,), (32, 64), (2, 3, 4), (1024, 1024)])
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test_chalf_complex(shape, dtype):
+    if dtype == torch.complex32 and flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: torch.Tensor.to(complex32) aborts the process on this "
+            "backend, so a complex32 input cannot be constructed"
+        )
+
     real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     imag = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     res_inp = torch.complex(real, imag).to(dtype)

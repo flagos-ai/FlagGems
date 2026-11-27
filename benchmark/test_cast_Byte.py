@@ -29,6 +29,10 @@ class CastByteBenchmark(Benchmark):
         yield (x[:, ::2],)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cast_Byte
 def test_cast_Byte():
     bench = CastByteBenchmark(
