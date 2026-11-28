@@ -149,3 +149,15 @@ def test_remainder_scalar_tensor():
         dtypes=consts.INT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.remainder_backward
+def test_remainder_backward():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="remainder_backward",
+        torch_op=torch.remainder,
+        gems_op=flag_gems.remainder,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
