@@ -14,8 +14,10 @@
 
 from .chunk import chunk_gated_delta_rule_fwd
 from .fused_recurrent import fused_recurrent_gated_delta_rule_fwd
+from .sigmoid_gating import fused_sigmoid_gating_delta_rule_update
 
 __all__ = [
     "chunk_gated_delta_rule_fwd",
     "fused_recurrent_gated_delta_rule_fwd",
+    "fused_sigmoid_gating_delta_rule_update",
 ]
