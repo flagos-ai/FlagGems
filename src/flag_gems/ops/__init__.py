@@ -568,7 +568,7 @@ from flag_gems.ops.amin import amin, amin_, amin_backward
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.and_scalar import and_scalar
 from flag_gems.ops.and_tensor import and_tensor
-from flag_gems.ops.angle import angle
+from flag_gems.ops.angle import angle, angle_backward
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.arccos import arccos, arccos_
@@ -2323,6 +2323,7 @@ __all__ = [
     "and_scalar",
     "and_tensor",
     "angle",
+    "angle_backward",
     "any",
     "any_dim",
     "any_dims",
