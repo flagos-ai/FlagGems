@@ -19,24 +19,21 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils._atanh_autograd import unary_autograd
 
+# libdevice atanh is a branch-free polynomial/rational approximation that
+# keeps full relative accuracy down to x ~ 0, unlike the naive
+# 0.5*log((1+x)/(1-x)) which cancels catastrophically for small |x|.
+_ATANH = tl_extra_shim.atanh
 logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def atanh_func(x):
-    # atanh(x) = 0.5 * ln((1 + x) / (1 - x))
-    # Compute in float32 for better precision, then convert back
-    x_fp32 = x.to(tl.float32)
-    one = 1.0
-    # Compute result: 0.5 * log((1 + x) / (1 - x))
-    numerator = one + x_fp32
-    denominator = one - x_fp32
-    # For x outside (-1, 1), log of negative or zero gives NaN/inf naturally
-    return 0.5 * tl.math.log(numerator / denominator)
+    # Match torch.atanh by evaluating in float32 before casting back.
+    return _ATANH(x.to(tl.float32))
 
 
 def atanh(A):

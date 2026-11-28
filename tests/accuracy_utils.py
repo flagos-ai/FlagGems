@@ -105,6 +105,15 @@ SPECIAL_SHAPES = (
     else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
 )
 
+# Shapes that ``x.repeat(2, *[1] * (x.ndim - 1))[::2]`` can actually make
+# non-contiguous: a 0-dim tensor has no stride to perturb, and doubling then
+# striding a dim of size 1 collapses back to stride 1. Quick mode shrinks
+# POINTWISE_SHAPES to a single already-suitable entry, so the filtered list
+# stays non-empty there instead of skipping the whole test function.
+POINTWISE_NONCONTIG_SHAPES = [
+    s for s in POINTWISE_SHAPES if s and all(d != 1 for d in s)
+] or [(2, 19, 7)]
+
 FP8_QUANT_SHAPES = {
     "DTYPES": [torch.bfloat16],
     "NUM_TOKENS": [7] if QUICK_MODE else [7, 83, 2048],
