@@ -20,14 +20,14 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # lt_ is a comparison op in ATen: floats and all int dtypes (incl. 1-byte ints).
-LT_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.INT_DTYPES
+LT_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.INT_DTYPES
 
 
 @pytest.mark.lt_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", LT_DTYPES)
 def test_lt_(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES + utils.INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES + utils.INT_DTYPES:
         inp1 = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
@@ -52,7 +52,7 @@ def test_lt_(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", LT_DTYPES)
 def test_lt_scalar_(shape, dtype):
-    if dtype in utils.BYTE_INT_DTYPES + utils.INT_DTYPES:
+    if dtype in utils.BYTE_DTYPES + utils.INT_DTYPES:
         inp = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )

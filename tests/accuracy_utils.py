@@ -292,9 +292,6 @@ ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPE
 # explicitly; the 16/32/64-bit list above misses both.
 SMALL_INT_DTYPES = [torch.int8, torch.uint8]
 BOOL_TYPES = [torch.bool]
-# 1-byte dtypes (int8/uint8) and fp8 dtypes are not part of the default CI lists;
-# tests that target them parametrize over these constants explicitly.
-BYTE_INT_DTYPES = [torch.int8, torch.uint8]
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
     if complex_is_supported

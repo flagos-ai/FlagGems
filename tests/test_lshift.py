@@ -19,7 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-LSHIFT_DTYPES = utils.ALL_INT_DTYPES + utils.SMALL_INT_DTYPES
+LSHIFT_DTYPES = utils.ALL_INT_DTYPES + utils.BYTE_DTYPES
 
 
 @pytest.mark.lshift_tensor
